@@ -1,0 +1,5 @@
+# TODO add workflow
+changelog:
+  exclude:
+    authors:
+      - renovate
