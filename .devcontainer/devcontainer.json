@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json",
   "name": "Flux Cluster Template",
-  "image": "ghcr.io/thaynes43/devcontainer:latest",
-  "initializeCommand": "docker pull ghcr.io/thaynes43/devcontainer:latest",
+  "image": "ghcr.io/thaynes43/haynes-ops/devcontainer:latest",
+  "initializeCommand": "docker pull ghcr.io/haynes-ops/thaynes43/devcontainer:latest",
   "postCreateCommand": {
     "setup": "bash ${containerWorkspaceFolder}/.devcontainer/postCreateCommand.sh"
   },
