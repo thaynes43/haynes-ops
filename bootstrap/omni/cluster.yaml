@@ -1,0 +1,42 @@
+kind: Cluster
+name: haynes-ops
+kubernetes:
+  version: v1.31.1
+talos:
+  version: v1.8.0
+---
+kind: ControlPlane
+machines:
+  - 88d0b080-43be-11ef-9fe8-3b0f229ef000
+patches:
+  - idOverride: 400-talos-default-control-planes
+    inline:
+      cluster:
+        allowSchedulingOnControlPlanes: true
+---
+kind: Workers
+---
+kind: Machine
+systemExtensions:
+  - siderolabs/intel-ucode
+  - siderolabs/nut-client
+  - siderolabs/nvidia-container-toolkit-lts
+  - siderolabs/nvidia-open-gpu-kernel-modules-lts
+  - siderolabs/thunderbolt
+name: 88d0b080-43be-11ef-9fe8-3b0f229ef000
+patches:
+  - idOverride: 400-cm-88d0b080-43be-11ef-9fe8-3b0f229ef000
+    inline:
+      machine:
+        kernel:
+          modules:
+            - name: nvidia
+              parameters:
+                - NVreg_OpenRmEnableUnsupportedGpus=1
+            - name: nvidia_uvm
+            - name: nvidia_drm
+            - name: nvidia_modeset
+        network:
+          hostname: talosm01
+        sysctls:
+          net.core.bpf_jit_harden: 1
