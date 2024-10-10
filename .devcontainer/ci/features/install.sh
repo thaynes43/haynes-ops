@@ -29,7 +29,7 @@ for app in \
     "kubernetes-sigs/kustomize!!?as=kustomize&type=script" \
     "stern/stern!!?as=stern&type=script" \
     "siderolabs/talos!!?as=talosctl&type=script" \
-    "siderolabs/talos!!?as=omnictl&type=script" \
+    "siderolabs/omni!!?as=omnictl&type=script" \
     "int128/kubelogin!!?as=kubectl-oidc_login&type=script" \
     "yannh/kubeconform!!?as=kubeconform&type=script"
 do
