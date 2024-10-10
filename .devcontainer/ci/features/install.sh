@@ -29,6 +29,8 @@ for app in \
     "kubernetes-sigs/kustomize!!?as=kustomize&type=script" \
     "stern/stern!!?as=stern&type=script" \
     "siderolabs/talos!!?as=talosctl&type=script" \
+    "siderolabs/talos!!?as=omnictl&type=script" \
+    "int128/kubelogin!!?as=kubectl-oidc_login&type=script" \
     "yannh/kubeconform!!?as=kubeconform&type=script"
 do
     echo "=== Installing ${app} ==="
@@ -39,7 +41,7 @@ done
 mkdir -p /home/vscode/.config/fish/{completions,conf.d}
 
 # Setup autocompletions for fish
-for tool in cilium flux helm helmfile k9s kubectl kustomize talhelper talosctl; do
+for tool in cilium flux helm helmfile k9s kubectl kustomize talhelper talosctl omnictl kubectl-oidc_login; do
     $tool completion fish > /home/vscode/.config/fish/completions/$tool.fish
 done
 gh completion --shell fish > /home/vscode/.config/fish/completions/gh.fish

@@ -60,8 +60,8 @@ tasks:
           - jqlang/jq?as=jq&type=script
           - kubernetes-sigs/kustomize?as=kustomize&type=script
           - siderolabs/talos?as=talosctl&type=script
-          - siderolabs/talos?as=omnictl&type=script
-          - siderolabs/talos?as=kubectl-oidc_login&type=script
+          - siderolabs/omni?as=omnictl&type=script
+          - int128/kubelogin?as=kubectl-oidc_login&type=script
           - yannh/kubeconform?as=kubeconform&type=script
           - mikefarah/yq?as=yq&type=script
         cmd: curl -fsSL "https://i.jpillora.com/{{.ITEM}}" | bash
