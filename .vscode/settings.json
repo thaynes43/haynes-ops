@@ -1,5 +1,31 @@
 {
+    "files.associations": {
+        "*.json5": "jsonc",
+        "./kubernetes/**/*.sops.toml": "plaintext"
+    },
+    "sops.defaults.ageKeyFile": "age.key",
+    "yaml.schemas": {
+        "Kubernetes": "./kubernetes/*.yaml"
+    },
+    "vs-kubernetes": {
+        "vs-kubernetes.kubeconfig": "./kubeconfig",
+        "vs-kubernetes.knownKubeconfigs": [
+          "./kubeconfig"
+      ]
+    },
     "cSpell.words": [
+        "automerge",
+        "certificaterequests",
+        "datasource",
+        "Datasources",
+        "devcontainer",
+        "fluxcd",
+        "gitrepositories",
+        "helmreleases",
+        "helmrepositories",
+        "kubeconform",
+        "kustomizations",
+        "siderolabs",
         "thaynes"
     ]
 }
