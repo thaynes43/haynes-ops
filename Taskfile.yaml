@@ -29,7 +29,7 @@ includes:
   flux: .taskfiles/Flux
   repository: .taskfiles/Repository
   #talos: .taskfiles/Talos
-  #sops: .taskfiles/Sops
+  sops: .taskfiles/Sops
   workstation: .taskfiles/Workstation
   user:
     taskfile: .taskfiles/User
