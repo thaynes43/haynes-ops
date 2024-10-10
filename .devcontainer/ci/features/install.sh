@@ -41,7 +41,8 @@ done
 mkdir -p /home/vscode/.config/fish/{completions,conf.d}
 
 # Setup autocompletions for fish
-for tool in cilium flux helm helmfile k9s kubectl kustomize talhelper talosctl omnictl kubectl-oidc_login; do
+# TODO removed completin for omnictl as a test
+for tool in cilium flux helm helmfile k9s kubectl kustomize talhelper talosctl kubectl-oidc_login; do
     $tool completion fish > /home/vscode/.config/fish/completions/$tool.fish
 done
 gh completion --shell fish > /home/vscode/.config/fish/completions/gh.fish
