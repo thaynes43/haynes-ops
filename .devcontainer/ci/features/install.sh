@@ -15,6 +15,10 @@ apk add --no-cache \
     --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing \
         lsd
 
+# TODO https://github.com/jpillora/installer/pull/45#issuecomment-2403866231
+#     "siderolabs/omni!!?as=omnictl&type=script" \
+# Or we need another way to install it
+
 for app in \
     "budimanjojo/talhelper!!?as=talhelper&type=script" \
     "cilium/cilium-cli!!?as=cilium&type=script" \
@@ -29,7 +33,6 @@ for app in \
     "kubernetes-sigs/kustomize!!?as=kustomize&type=script" \
     "stern/stern!!?as=stern&type=script" \
     "siderolabs/talos!!?as=talosctl&type=script" \
-    "siderolabs/omni!!?as=omnictl&type=script" \
     "int128/kubelogin!!?as=kubectl-oidc_login&type=script" \
     "yannh/kubeconform!!?as=kubeconform&type=script"
 do
