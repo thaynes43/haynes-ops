@@ -1,6 +1,6 @@
-context: haynes
+context: haynes-haynes-ops
 contexts:
-    haynes:
+    haynes-haynes-ops:
         endpoints:
             - https://haynes.omni.siderolabs.io
         nodes:
@@ -8,3 +8,4 @@ contexts:
         auth:
             siderov1:
                 identity: manofoz@gmail.com
+        cluster: haynes-ops
