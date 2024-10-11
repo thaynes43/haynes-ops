@@ -4,7 +4,7 @@ version: "3"
 
 tasks:
 
-  bootstrap:
+  sync:
     desc: Bootstrap the cluter using omnictl
     cmds:
       # TODO envr for cluster name to support different names
