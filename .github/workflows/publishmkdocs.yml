@@ -1,4 +1,4 @@
-name: ci 
+name: publishmkdocs 
 on:
   push:
     branches:
