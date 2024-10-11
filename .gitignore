@@ -22,7 +22,7 @@ Brewfile.lock.json
 wiki
 # Bootstrap
 /config.yaml
-# Cluster access - TODO nothing really secret here, can we commit these?
-kubeconfig
-talosconfig
-omniconfig
+# Uncomment configs if not using auth w/ omni 
+#kubeconfig
+#talosconfig
+#omniconfig
