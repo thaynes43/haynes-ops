@@ -4,6 +4,7 @@ Thumbs.db
 # k8s
 kubeconfig
 talosconfig
+omniconfig
 .decrypted~*.yaml
 .config.env
 *.agekey

@@ -15,10 +15,6 @@ apk add --no-cache \
     --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing \
         lsd
 
-# TODO https://github.com/jpillora/installer/pull/45#issuecomment-2403866231
-#     "siderolabs/omni!!?as=omnictl&type=script" \
-# Or we need another way to install it
-
 for app in \
     "budimanjojo/talhelper!!?as=talhelper&type=script" \
     "cilium/cilium-cli!!?as=cilium&type=script" \
@@ -33,6 +29,7 @@ for app in \
     "kubernetes-sigs/kustomize!!?as=kustomize&type=script" \
     "stern/stern!!?as=stern&type=script" \
     "siderolabs/talos!!?as=talosctl&type=script" \
+    "siderolabs/omni!!?select=ctl&as=omnictl&type=script" \
     "int128/kubelogin!!?as=kubectl-oidc_login&type=script" \
     "yannh/kubeconform!!?as=kubeconform&type=script"
 do
@@ -44,8 +41,7 @@ done
 mkdir -p /home/vscode/.config/fish/{completions,conf.d}
 
 # Setup autocompletions for fish
-# TODO removed completin for omnictl as a test
-for tool in cilium flux helm helmfile k9s kubectl kustomize talhelper talosctl kubectl-oidc_login; do
+for tool in cilium flux helm helmfile k9s kubectl kustomize talhelper talosctl omnictl kubectl-oidc_login; do
     $tool completion fish > /home/vscode/.config/fish/completions/$tool.fish
 done
 gh completion --shell fish > /home/vscode/.config/fish/completions/gh.fish

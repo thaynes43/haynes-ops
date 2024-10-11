@@ -60,7 +60,7 @@ tasks:
           - jqlang/jq?as=jq&type=script
           - kubernetes-sigs/kustomize?as=kustomize&type=script
           - siderolabs/talos?as=talosctl&type=script
-          - siderolabs/omni?as=omnictl&type=script
+          - siderolabs/omni?select=ctl&as=omnictl&type=script
           - int128/kubelogin?as=kubectl-oidc_login&type=script
           - yannh/kubeconform?as=kubeconform&type=script
           - mikefarah/yq?as=yq&type=script
