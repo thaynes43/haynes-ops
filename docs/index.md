@@ -1,6 +1,6 @@
-# Welcome to MkDocs
+# Haynes Ops Cluster Repo
 
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
+Welcome to the documents for my home ops style cluster repo. I've put these together so I can remember how it works but you are welcome to read them too!
 
 ## Commands
 
