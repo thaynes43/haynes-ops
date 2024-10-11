@@ -9,7 +9,7 @@ kind: ControlPlane
 machines:
   - 88d0b080-43be-11ef-9fe8-3b0f229ef000
 patches:
-  - idOverride: 400-talos-default-control-planes
+  - idOverride: 400-haynes-ops-control-planes
     inline:
       cluster:
         allowSchedulingOnControlPlanes: true
