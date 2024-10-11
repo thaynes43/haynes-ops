@@ -2,9 +2,6 @@
 .DS_Store
 Thumbs.db
 # k8s
-kubeconfig
-talosconfig
-omniconfig
 .decrypted~*.yaml
 .config.env
 *.agekey
@@ -25,3 +22,7 @@ Brewfile.lock.json
 wiki
 # Bootstrap
 /config.yaml
+# Uncomment configs if not using auth w/ omni 
+#kubeconfig
+#talosconfig
+#omniconfig

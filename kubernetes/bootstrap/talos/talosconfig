@@ -1,0 +1,10 @@
+context: haynes
+contexts:
+    haynes:
+        endpoints:
+            - https://haynes.omni.siderolabs.io
+        nodes:
+            - 192.168.40.93
+        auth:
+            siderov1:
+                identity: manofoz@gmail.com
