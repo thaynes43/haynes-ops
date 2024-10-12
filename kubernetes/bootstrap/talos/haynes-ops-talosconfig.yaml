@@ -5,6 +5,8 @@ contexts:
             - https://haynes.omni.siderolabs.io
         nodes:
             - 192.168.40.93
+            - 192.168.40.59
+            - 192.168.40.10
         auth:
             siderov1:
                 identity: manofoz@gmail.com

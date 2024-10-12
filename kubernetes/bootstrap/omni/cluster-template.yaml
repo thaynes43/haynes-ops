@@ -3,11 +3,13 @@ name: haynes-ops
 kubernetes:
   version: v1.31.1
 talos:
-  version: v1.8.0
+  version: v1.8.1
 ---
 kind: ControlPlane
 machines:
   - 88d0b080-43be-11ef-9fe8-3b0f229ef000
+  - c1f22c00-4390-11ef-a299-436f6535c900
+  - 98290580-1909-11ef-944c-5fe147626300
 patches:
   - idOverride: 400-haynes-ops-control-planes
     inline:
@@ -28,6 +30,11 @@ patches:
   - idOverride: 400-cm-88d0b080-43be-11ef-9fe8-3b0f229ef000
     inline:
       machine:
+        install:
+          disk: /dev/nvme1n1
+          diskSelector:
+            model: CT1000T500SSD8
+          wipe: true
         kernel:
           modules:
             - name: nvidia
@@ -40,3 +47,43 @@ patches:
           hostname: talosm01
         sysctls:
           net.core.bpf_jit_harden: 1
+---
+kind: Machine
+systemExtensions:
+  - siderolabs/intel-ucode
+  - siderolabs/nut-client
+  - siderolabs/thunderbolt
+name: c1f22c00-4390-11ef-a299-436f6535c900
+patches:
+  - idOverride: 400-cm-c1f22c00-4390-11ef-a299-436f6535c900
+    inline:
+      machine:
+        install:
+          extraKernelArgs:
+            - nomodeset
+          disk: /dev/nvme0n1
+          diskSelector:
+            model: CT1000T500SSD8
+          wipe: true
+        network:
+          hostname: talosm02
+---
+kind: Machine
+systemExtensions:
+  - siderolabs/intel-ucode
+  - siderolabs/nut-client
+  - siderolabs/thunderbolt
+name: 98290580-1909-11ef-944c-5fe147626300
+patches:
+  - idOverride: 400-cm-98290580-1909-11ef-944c-5fe147626300
+    inline:
+      machine:
+        install:
+          extraKernelArgs:
+            - nomodeset
+          disk: /dev/nvme0n1
+          diskSelector:
+            model: CT1000T500SSD8
+          wipe: true
+        network:
+          hostname: talosm03

@@ -5,7 +5,7 @@ version: "3"
 tasks:
 
   sync:
-    desc: Bootstrap the cluter using omnictl
+    desc: Sync the cluter to the template using omnictl
     cmds:
       # TODO envr for cluster name to support different names
       - omnictl cluster template sync -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml --verbose
@@ -16,6 +16,14 @@ tasks:
       - msg: Omni cluster template vlaidation failed
         sh: omnictl cluster template validate -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml
 
+  validate:
+    desc: Validate the template is configured correctly
+    cmds:
+      - omnictl cluster template validate -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml
+    preconditions:
+      - msg: Missing Omni cluster template
+        sh: test -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml
+        
   nuke:
     desc: Destroy the cluter using omnictl
     cmds:
