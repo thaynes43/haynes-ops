@@ -20,7 +20,7 @@ spec:
     - name: snapshot-controller
   sourceRef:
     kind: GitRepository
-    name: flux-system
+    name: haynes-ops
   path: ./kubernetes/apps/volsync-system/volsync/app
   postBuild:
     substitute:
