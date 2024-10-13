@@ -17,5 +17,5 @@ spec:
   wait: true
   sourceRef:
     kind: GitRepository
-    name: flux-system
+    name: haynes-ops
   path: ./kubernetes/apps/external-secrets/onepassword-connect/app

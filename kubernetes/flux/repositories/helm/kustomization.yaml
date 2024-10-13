@@ -10,3 +10,4 @@ resources:
   - ./prometheus-community.yaml
   - ./spegel.yaml
   - ./stakater.yaml
+  - ./external-secrets.yaml
