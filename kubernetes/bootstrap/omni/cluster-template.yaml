@@ -61,7 +61,7 @@ patches:
         install:
           extraKernelArgs:
             - nomodeset
-          disk: /dev/nvme0n1
+          disk: /dev/nvme1n1
           diskSelector:
             model: CT1000T500SSD8
           wipe: true
