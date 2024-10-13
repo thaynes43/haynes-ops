@@ -11,3 +11,5 @@ resources:
   - ./spegel.yaml
   - ./stakater.yaml
   - ./external-secrets.yaml
+  - ./piraeus.yaml
+  - ./rook-ceph.yaml
