@@ -48,6 +48,24 @@ Now the operator:
 helm -n rook-ceph uninstall rook-ceph
 ```
 
+### Cluseter Finalizer
+
+```bash
+kubectl patch cephcluster rook-ceph -n rook-ceph --type=json -p='[{"op": "remove", "path": "/metadata/finalizers"}]'
+```
+
+```bash
+for CRD in $(kubectl get crd -n rook-ceph | awk '/ceph.rook.io/ {print $1}'); do
+    kubectl get -n rook-ceph "$CRD" -o name | \
+    xargs -I {} kubectl patch -n rook-ceph {} --type merge -p '{"metadata":{"finalizers": []}}'
+done
+```
+
+```bash
+kubectl -n rook-ceph patch configmap rook-ceph-mon-endpoints --type merge -p '{"metadata":{"finalizers": []}}'
+kubectl -n rook-ceph patch secrets rook-ceph-mon --type merge -p '{"metadata":{"finalizers": []}}'
+```
+
 ### Finish off metadata
 
 Talos may need some massaging:
