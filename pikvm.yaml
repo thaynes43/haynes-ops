@@ -1,0 +1,189 @@
+kvmd:
+    gpio:
+        drivers:
+            tes:
+                type: tesmart
+                host: 192.168.40.70
+                port: 5000
+            wol_server0:
+                type: wol
+                mac: 58:47:ca:78:bf:f6
+            wol_server1:
+                type: wol
+                mac: 58:47:ca:78:bc:4a
+            wol_server2:
+                type: wol
+                mac: 58:47:ca:77:c5:ae
+        scheme:
+            server0_led:
+                driver: tes
+                pin: 0
+                mode: input
+            server0_switch:
+                driver: tes
+                pin: 0
+                mode: output
+                switch: false
+            server1_led:
+                driver: tes
+                pin: 1
+                mode: input
+            server1_switch:
+                driver: tes
+                pin: 1
+                mode: output
+                switch: false
+            server2_led:
+                driver: tes
+                pin: 2
+                mode: input
+            server2_switch:
+                driver: tes
+                pin: 2
+                mode: output
+                switch: false
+            server3_led:
+                driver: tes
+                pin: 3
+                mode: input
+            server3_switch:
+                driver: tes
+                pin: 3
+                mode: output
+                switch: false
+            server4_led:
+                driver: tes
+                pin: 4
+                mode: input
+            server4_switch:
+                driver: tes
+                pin: 4
+                mode: output
+                switch: false
+            server5_led:
+                driver: tes
+                pin: 5
+                mode: input
+            server5_switch:
+                driver: tes
+                pin: 5
+                mode: output
+                switch: false
+            server6_led:
+                driver: tes
+                pin: 6
+                mode: input
+            server6_switch:
+                driver: tes
+                pin: 6
+                mode: output
+                switch: false
+            server7_led:
+                driver: tes
+                pin: 7
+                mode: input
+            server7_switch:
+                driver: tes
+                pin: 7
+                mode: output
+                switch: false
+            server8_led:
+                driver: tes
+                pin: 8
+                mode: input
+            server8_switch:
+                driver: tes
+                pin: 8
+                mode: output
+                switch: false
+            server9_led:
+                driver: tes
+                pin: 9
+                mode: input
+            server9_switch:
+                driver: tes
+                pin: 9
+                mode: output
+                switch: false
+            server10_led:
+                driver: tes
+                pin: 10
+                mode: input
+            server10_switch:
+                driver: tes
+                pin: 10
+                mode: output
+                switch: false
+            server11_led:
+                driver: tes
+                pin: 11
+                mode: input
+            server11_switch:
+                driver: tes
+                pin: 11
+                mode: output
+                switch: false
+            server12_led:
+                driver: tes
+                pin: 12
+                mode: input
+            server12_switch:
+                driver: tes
+                pin: 12
+                mode: output
+                switch: false
+            server13_led:
+                driver: tes
+                pin: 13
+                mode: input
+            server13_switch:
+                driver: tes
+                pin: 13
+                mode: output
+                switch: false
+            server14_led:
+                driver: tes
+                pin: 14
+                mode: input
+            server14_switch:
+                driver: tes
+                pin: 14
+                mode: output
+                switch: false
+            server15_led:
+                driver: tes
+                pin: 15
+                mode: input
+            server15_switch:
+                driver: tes
+                pin: 15
+                mode: output
+                switch: false
+            wol_server0:
+                driver: wol_server0
+                pin: 0
+                mode: output
+                switch: false
+            wol_server1:
+                driver: wol_server1
+                pin: 0
+                mode: output
+                switch: false
+            wol_server2:
+                driver: wol_server2
+                pin: 0
+                mode: output
+                switch: false
+        view:
+            table:
+                - ["TESMART Switch"]
+                - []
+                - ["#talosm01", server0_led, server0_switch|Switch]
+                - ["#talosm02", server1_led, server1_switch|Switch]
+                - ["#talosm03", server2_led, server2_switch|Switch]
+                - ["#windock", server14_led, server14_switch|Switch]
+                - ["#HaynesS100-02", server15_led, server15_switch|Switch]
+                - ["Wake On LAN"]
+                - ["#talosm01", "wol_server0|Send Wake-on-LAN"]
+                - ["#talosm02", "wol_server1|Send Wake-on-LAN"]
+                - ["#talosm03", "wol_server2|Send Wake-on-LAN"]

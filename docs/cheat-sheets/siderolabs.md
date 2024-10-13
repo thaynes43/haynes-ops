@@ -23,6 +23,13 @@ talosctl disks
 talosctl disks -n <iNODE_IPp>
 ```
 
+For partitions: 
+
+```bash
+talosctl get blockdevices
+talosctl -n 192.168.40.59 get blockdevices
+```
+
 ```bash
 talosctl get links
 talosctl get links -n <NODE_IP> --insecure

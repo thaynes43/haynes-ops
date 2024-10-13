@@ -2,17 +2,40 @@
 
 Merge of my notes from proxmox and commands from [this guide](https://www.talos.dev/v1.8/kubernetes-guides/configuration/ceph-with-rook/)
 
+## Rook
+
+Restart operator to re-invoke cluster init:
+
+```bash
+kubectl -n rook-ceph delete pod -l app=rook-ceph-operator
+```
+
 ## Talos
+
+### Status
+
+We can use a tools pod to run `ceph` commands
+
+#### Checl Status
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
+```
+
+#### Clear Warn:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
+```
 
 ### Misc TOOD
 
 ```bash
 kubectl get storageclass
 
-kubectl -n rook-ceph get cephclusters.ceph.rook.io rook-ceph
+kubectl -n rook-ceph get cephclusters rook-ceph
 
-kubectl -n rook-ceph get cephclusters.ceph.rook.io
-
+kubectl -n rook-ceph get cephclusters
 ```
 
 Pre-condtion before talos upgrade:
