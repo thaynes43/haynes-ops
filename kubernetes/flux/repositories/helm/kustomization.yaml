@@ -13,3 +13,4 @@ resources:
   - ./external-secrets.yaml
   - ./piraeus.yaml
   - ./rook-ceph.yaml
+  - ./backube.yaml
