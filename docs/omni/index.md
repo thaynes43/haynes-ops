@@ -11,25 +11,3 @@ At this point I've gotten started but documenting as I go endes up being a mess 
 I'll recap how the story went so far but first some TODOs:
 
 - Bootstraping flux sets those limits but I'm not sure why
-
-## Rook
-
-!!! Dependencies 
-
-    - External Secrets (for dashboard)
-
-A cluster insn't a cluster with out some ceph action and that's where this [rook guide](https://www.talos.dev/v1.8/kubernetes-guides/configuration/ceph-with-rook/) on the talos docs comes in. 
-
-??? question "What does this do?"
-
-    This seems cool but we will come back to it later.
-
-    === "One thing"
-
-        This is one thing to check out.
-
-    === "A second thing"
-
-        This is a second thing to check out.
-
-Back to ceph! 
