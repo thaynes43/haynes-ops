@@ -1,0 +1,70 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/external-secrets.io/externalsecret_v1beta1.json
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: "${EXTRAVOL}-volsync-aws"
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: onepassword-connect
+  target:
+    name: "${EXTRAVOL}-volsync-aws-secret"
+    template:
+      engineVersion: v2
+      data:
+        RESTIC_REPOSITORY: "{{ .REPOSITORY_TEMPLATE }}/${EXTRAVOL}"
+        RESTIC_PASSWORD: "{{ .RESTIC_PASSWORD }}"
+        AWS_ACCESS_KEY_ID: "{{ .AWS_ACCESS_KEY_ID }}"
+        AWS_SECRET_ACCESS_KEY: "{{ .AWS_SECRET_ACCESS_KEY }}"
+  dataFrom:
+    - extract:
+        key: aws
+    - extract:
+        key: volsync-restic
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/volsync.backube/replicationsource_v1alpha1.json
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: "${EXTRAVOL}-aws"
+spec:
+  sourcePVC: "${EXTRAVOL}"
+  trigger:
+    schedule: "0 0 * * *"
+  restic:
+    copyMethod: "${EXTRAVOL_COPYMETHOD:-Snapshot}"
+    pruneIntervalDays: 7
+    repository: "${EXTRAVOL}-volsync-aws-secret"
+    volumeSnapshotClassName: "${VOLSYNC_SNAPSHOTCLASS:-ceph-rbd-snapshotter}"
+    cacheCapacity: "${EXTRAVOL_CACHE_CAPACITY:-4Gi}"
+    storageClassName: "${EXTRAVOL_STORAGECLASS:-ceph-rbd}"
+    accessModes: ["${EXTRAVOL_ACCESSMODES:-ReadWriteOnce}"]
+    moverSecurityContext:
+      runAsUser: 568
+      runAsGroup: 568
+      fsGroup: 568
+    retain:
+      daily: 10  # Keep most recent from each day for 10 days
+      within: 3d # And keep all that were created within 3 days
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/volsync.backube/replicationdestination_v1alpha1.json
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: "${EXTRAVOL}-dst"
+spec:
+  trigger:
+    manual: restore-once
+  restic:
+    repository: "${EXTRAVOL}-volsync-aws-secret"
+    copyMethod: Snapshot # must be Snapshot
+    volumeSnapshotClassName: "${EXTRAVOL_SNAPSHOTCLASS:-ceph-rbd-snapshotter}"
+    cacheCapacity: "${EXTRAVOL_CACHE_CAPACITY:-8Gi}"
+    storageClassName: "${EXTRAVOL_STORAGECLASS:-ceph-rbd}"
+    accessModes: ["${EXTRAVOL_ACCESSMODES:-ReadWriteOnce}"]
+    capacity: "${EXTRAVOL_CAPACITY}"
+    # moverSecurityContext:
+    #   runAsUser: 568
+    #   runAsGroup: 568
+    #   fsGroup: 568
