@@ -21,9 +21,9 @@ spec:
     - extract:
         key: aws
     - extract:
-        key: volsync-restic
+        key: volsync-hayesops
 ---
-# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/volsync.backube/replicationsource_v1alpha1.json
+# yaml-language-server: $schema=https://gist.githubusercontent.com/thaynes43/21ef53eace2d3c6c8f00c8ee0fe4ec24/raw/b0fd8341723eee62b8a47127d40cb75f00056b67/empty-json-schema.json
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationSource
 metadata:
@@ -36,9 +36,9 @@ spec:
     copyMethod: "${EXTRAVOL_COPYMETHOD:-Snapshot}"
     pruneIntervalDays: 7
     repository: "${EXTRAVOL}-volsync-aws-secret"
-    volumeSnapshotClassName: "${VOLSYNC_SNAPSHOTCLASS:-ceph-rbd-snapshotter}"
+    volumeSnapshotClassName: "${VOLSYNC_SNAPSHOTCLASS:-csi-ceph-blockpool}"
     cacheCapacity: "${EXTRAVOL_CACHE_CAPACITY:-4Gi}"
-    storageClassName: "${EXTRAVOL_STORAGECLASS:-ceph-rbd}"
+    storageClassName: "${EXTRAVOL_STORAGECLASS:-ceph-block}"
     accessModes: ["${EXTRAVOL_ACCESSMODES:-ReadWriteOnce}"]
     moverSecurityContext:
       runAsUser: 568
@@ -48,7 +48,7 @@ spec:
       daily: 10  # Keep most recent from each day for 10 days
       within: 3d # And keep all that were created within 3 days
 ---
-# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/volsync.backube/replicationdestination_v1alpha1.json
+# yaml-language-server: $schema=https://gist.githubusercontent.com/thaynes43/21ef53eace2d3c6c8f00c8ee0fe4ec24/raw/b0fd8341723eee62b8a47127d40cb75f00056b67/empty-json-schema.json
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination
 metadata:
@@ -59,9 +59,9 @@ spec:
   restic:
     repository: "${EXTRAVOL}-volsync-aws-secret"
     copyMethod: Snapshot # must be Snapshot
-    volumeSnapshotClassName: "${EXTRAVOL_SNAPSHOTCLASS:-ceph-rbd-snapshotter}"
+    volumeSnapshotClassName: "${EXTRAVOL_SNAPSHOTCLASS:-csi-ceph-blockpool}"
     cacheCapacity: "${EXTRAVOL_CACHE_CAPACITY:-8Gi}"
-    storageClassName: "${EXTRAVOL_STORAGECLASS:-ceph-rbd}"
+    storageClassName: "${EXTRAVOL_STORAGECLASS:-ceph-block}"
     accessModes: ["${EXTRAVOL_ACCESSMODES:-ReadWriteOnce}"]
     capacity: "${EXTRAVOL_CAPACITY}"
     # moverSecurityContext:

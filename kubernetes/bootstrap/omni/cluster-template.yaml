@@ -47,6 +47,15 @@ patches:
           hostname: talosm01
         sysctls:
           net.core.bpf_jit_harden: 1
+        kubelet:
+          extraMounts:
+            - destination: /var/openebs/local
+              type: bind
+              source: /var/openebs/local
+              options:
+                - bind
+                - rshared
+                - rw
 ---
 kind: Machine
 systemExtensions:
@@ -67,6 +76,15 @@ patches:
           wipe: true
         network:
           hostname: talosm02
+        kubelet:
+          extraMounts:
+            - destination: /var/openebs/local
+              type: bind
+              source: /var/openebs/local
+              options:
+                - bind
+                - rshared
+                - rw
 ---
 kind: Machine
 systemExtensions:
@@ -87,3 +105,12 @@ patches:
           wipe: true
         network:
           hostname: talosm03
+        kubelet:
+          extraMounts:
+            - destination: /var/openebs/local
+              type: bind
+              source: /var/openebs/local
+              options:
+                - bind
+                - rshared
+                - rw
