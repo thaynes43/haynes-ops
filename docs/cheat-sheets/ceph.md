@@ -9,43 +9,43 @@ Merge of my notes from proxmox and commands from [this guide](https://www.talos.
 ```bash
 kubectl get storageclass
 
-kubectl --namespace rook-ceph get cephclusters.ceph.rook.io rook-ceph
+kubectl -n rook-ceph get cephclusters.ceph.rook.io rook-ceph
 
-kubectl --namespace rook-ceph get cephclusters.ceph.rook.io
+kubectl -n rook-ceph get cephclusters.ceph.rook.io
 
 ```
 
 Pre-condtion before talos upgrade:
 
 ```yaml
-kubectl --namespace rook-ceph wait --timeout=1800s --for=jsonpath='{.status.ceph.health}=HEALTH_OK' rook-ceph
+kubectl -n rook-ceph wait --timeout=1800s --for=jsonpath='{.status.ceph.health}=HEALTH_OK' rook-ceph
 ```
 
 ### Remove from k8s
 
 ```bash
-kubectl --namespace rook-ceph patch cephcluster rook-ceph --type merge -p '{"spec":{"cleanupPolicy":{"confirmation":"yes-really-destroy-data"}}}'
+kubectl -n rook-ceph patch cephcluster rook-ceph --type merge -p '{"spec":{"cleanupPolicy":{"confirmation":"yes-really-destroy-data"}}}'
 
 kubectl delete storageclasses ceph-block ceph-bucket ceph-filesystem
 
-kubectl --namespace rook-ceph delete cephblockpools ceph-blockpool
+kubectl -n rook-ceph delete cephblockpools ceph-blockpool
 
-kubectl --namespace rook-ceph delete cephobjectstore ceph-objectstore
+kubectl -n rook-ceph delete cephobjectstore ceph-objectstore
 
-kubectl --namespace rook-ceph delete cephfilesystem ceph-filesystem
+kubectl -n rook-ceph delete cephfilesystem ceph-filesystem
 ```
 
 Now delete cluster:
 
 ```bash
-kubectl --namespace rook-ceph delete cephcluster rook-ceph
+kubectl -n rook-ceph delete cephcluster rook-ceph
 
-helm --namespace rook-ceph uninstall rook-ceph-cluster
+helm -n rook-ceph uninstall rook-ceph-cluster
 ```
 
 Now the operator:
 ```bash
-helm --namespace rook-ceph uninstall rook-ceph
+helm -n rook-ceph uninstall rook-ceph
 ```
 
 ### Finish off metadata
