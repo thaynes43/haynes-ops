@@ -15,3 +15,5 @@ resources:
   - ./piraeus.yaml
   - ./rook-ceph.yaml
   - ./backube.yaml
+  - ./emberstack.yaml
+  - ./k8tz.yaml
