@@ -10,12 +10,12 @@ spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  #dependsOn:
-    #- name: cert-manager
-    #- name: cert-manager-issuers
-    #- name: external-secrets-stores
-  path: ./kubernetes/apps/cert-manager/certificates
-  prune: false
+  dependsOn:
+    - name: cert-manager
+    - name: cert-manager-issuers
+    - name: external-secrets-stores
+  path: ./kubernetes/apps/cert-manager/certificates/self-signed
+  prune: true
   sourceRef:
     kind: GitRepository
     name: haynes-ops
