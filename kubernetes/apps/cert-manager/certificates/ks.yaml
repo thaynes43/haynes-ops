@@ -10,9 +10,10 @@ spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  dependsOn:
-    - name: cert-manager-issuers
-    - name: external-secrets-stores
+  #dependsOn:
+    #- name: cert-manager
+    #- name: cert-manager-issuers
+    #- name: external-secrets-stores
   path: ./kubernetes/apps/cert-manager/certificates
   prune: false
   sourceRef:
