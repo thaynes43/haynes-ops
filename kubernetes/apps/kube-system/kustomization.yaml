@@ -9,4 +9,4 @@ resources:
   - ./kubelet-csr-approver/ks.yaml
   - ./spegel/ks.yaml
   - ./k8tz                            # Has own namespace, add entire dir
-  - ./reflector/ks.yaml
+  #- ./reflector/ks.yaml
