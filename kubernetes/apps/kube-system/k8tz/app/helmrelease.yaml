@@ -1,0 +1,31 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/helm.toolkit.fluxcd.io/helmrelease_v2beta1.json
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: k8tz
+  namespace: k8tz
+spec:
+  chart:
+    spec:
+      chart: k8tz
+      version: 0.16.2 # https://github.com/k8tz/k8tz/blob/master/charts/k8tz/Chart.yaml
+      sourceRef:
+        kind: HelmRepository
+        name: k8tz
+        namespace: flux-system
+  interval: 15m
+  timeout: 5m
+  releaseName: k8tz
+  values:
+    kind: DaemonSet
+    namespace: null
+    timezone: America/New_York
+    injectAll: true
+    cronJobTimeZone: true
+    webhook:
+      certManager:
+        enabled: true
+        issuerRef:
+          name: k8tz-webhook-ca
+          kind: Issuer

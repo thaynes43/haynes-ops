@@ -1,0 +1,19 @@
+# Generate a CA Certificate used to sign certificates for the webhook
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: k8tz-webhook-ca
+spec:
+  secretName: k8tz-webhook-ca
+  duration: 43800h # 5y
+  issuerRef:
+    name: k8tz-webhook-selfsign
+    kind: Issuer
+  commonName: "ca.k8tz.cert-manager"
+  isCA: true
+  secretTemplate:
+    annotations:
+      reflector.v1.k8s.emberstack.com/reflection-allowed: "true"
+      reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces: "k8tz"
+      reflector.v1.k8s.emberstack.com/reflection-auto-enabled: "true"
+      reflector.v1.k8s.emberstack.com/reflection-auto-namespaces: "k8tz"

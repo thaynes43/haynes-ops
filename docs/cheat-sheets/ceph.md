@@ -16,7 +16,7 @@ kubectl -n rook-ceph delete pod -l app=rook-ceph-operator
 
 We can use a tools pod to run `ceph` commands
 
-#### Checl Status
+#### Check Status
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
@@ -133,22 +133,23 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: disk-wipe
+  namespace: rook-ceph
 spec:
   restartPolicy: Never
-  nodeName: <storage-node-name>
+  nodeName: talosm01
   containers:
   - name: disk-wipe
     image: busybox
     securityContext:
       privileged: true
-    command: ["/bin/sh", "-c", "dd if=/dev/zero bs=1M count=100 oflag=direct of=<device>"]
+    command: ["/bin/sh", "-c", "dd if=/dev/zero bs=1M count=100 oflag=direct of=/dev/nvme0n1"]
 EOF
 pod/disk-wipe created
 
 $ kubectl wait --timeout=900s --for=jsonpath='{.status.phase}=Succeeded' pod disk-wipe
 pod/disk-wipe condition met
 
-$ kubectl delete pod disk-clean
+$ kubectl delete pod disk-wipe
 pod "disk-wipe" deleted
 ```
 
