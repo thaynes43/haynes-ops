@@ -1,0 +1,13 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: certificate-haynesops
+spec:
+  secretName: certificate-haynesops
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: "*.haynesops.com"
+  dnsNames:
+    - "haynesops.com"
+    - "*.haynesops.com"

@@ -7,3 +7,5 @@ resources:
   - ./certificate-hayneslab-staging.yaml
   #- ./certificate-haynesnetwork-prod.yaml
   - ./certificate-haynesnetwork-staging.yaml
+  #- ./certificate-haynesops-prod.yaml
+  - ./certificate-haynesops-staging.yaml

@@ -14,7 +14,7 @@ spec:
     - name: cert-manager
     - name: cert-manager-issuers
     - name: external-secrets-stores
-  path: ./kubernetes/apps/cert-manager/certificates/self-signed
+  path: ./kubernetes/apps/cert-manager/certificates
   prune: true
   sourceRef:
     kind: GitRepository
