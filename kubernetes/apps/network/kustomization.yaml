@@ -5,6 +5,5 @@ kind: Kustomization
 resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
-  # Flux-Kustomizations  
-  - ./cert-manager/ks.yaml
-  #- ./certificates/ks.yaml
+  # Flux-Kustomizations
+  - ./external-dns/ks.yaml
