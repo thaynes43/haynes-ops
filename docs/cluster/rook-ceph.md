@@ -1,6 +1,6 @@
 # Rook Ceph on Omni
 
-!!! Dependencies 
+!!! tip Dependencies 
 
     - External Secrets (for dashboard)
 

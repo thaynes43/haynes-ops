@@ -53,13 +53,20 @@ plugins:
 ## Add 'extra:' block here
 
 # Extensions
-## Add 'markdown_extensions:' block here
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
 
 # Page tree
 nav:
   - Home: index.md
-  - Omni:
-    - omni/index.md
-    - Rook Ceph: omni/rook-ceph.md
+  - This Site:
+    - this-site/index.md
+  - Cluster Essentials:
+    - cluster/index.md
+    - Rook Ceph: cluster/rook-ceph.md
   - Cheat Sheets:
     - Siderolabs: cheat-sheets/siderolabs.md
+    - Kubernetes: cheat-sheets/kubernetes.md
+    - Ceph: cheat-sheets/ceph.md
