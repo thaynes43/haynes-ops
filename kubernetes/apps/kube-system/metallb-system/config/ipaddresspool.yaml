@@ -1,0 +1,9 @@
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: metallb-pool
+spec:
+  addresses:
+    #- 192.168.40.100-192.168.40.254 # TODO Full range again when I merge back the clusters
+    #- 192.168.40.100-192.168.40.201 # k3s range
+    - 192.168.40.202-192.168.40.254  # Talos range

@@ -1,0 +1,18 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: metallb
+spec:
+  chart:
+    spec:
+      # https://github.com/metallb/metallb/blob/main/charts/metallb/
+      chart: metallb
+      version: 0.14.7
+      sourceRef:
+        kind: HelmRepository
+        name: metallb
+        namespace: flux-system
+  interval: 15m
+  timeout: 5m
+  releaseName: metallb
+  values: values.yaml 

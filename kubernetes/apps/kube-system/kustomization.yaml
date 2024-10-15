@@ -10,4 +10,4 @@ resources:
   - ./spegel/ks.yaml
   - ./reflector/ks.yaml
   - ./k8tz                            # Has own namespace, add entire dir
-
+  - ./metallb-system/ks.yaml
