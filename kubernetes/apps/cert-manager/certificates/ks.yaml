@@ -5,6 +5,8 @@ kind: Kustomization
 metadata:
   name: certificates
   namespace: flux-system
+  labels:
+    substitution.flux.home.arpa/disabled: "true"
 spec:
   targetNamespace: cert-manager
   dependsOn:
