@@ -7,8 +7,9 @@ spec:
   interval: 30m
   chart:
     spec:
+      # https://github.com/kubernetes-sigs/external-dns/blob/master/charts/external-dns/values.yaml
       chart: external-dns
-      version: 1.14.5 # https://github.com/kubernetes-sigs/external-dns/blob/master/charts/external-dns/values.yaml
+      version: 1.14.5 
       sourceRef:
         kind: HelmRepository
         name: external-dns
@@ -57,9 +58,10 @@ spec:
             port: http-wh-metrics
           initialDelaySeconds: 10
           timeoutSeconds: 5
-    extraArgs:
-      - --traefik-disable-legacy
-      - --ingress-class=traefik-internal # TODO this did not work, had to exclude the domain instead. May revisit.
+    #extraArgs:
+    #  - --traefik-disable-legacy
+    #  - --ingress-class=traefik-internal # TODO this did not work, had to exclude the domain instead. May revisit.
     policy: sync
-    sources: ["crd", "traefik-proxy"]
-    excludeDomains: ["haynesnetwork.com"]
+    #sources: ["crd", "traefik-proxy"]
+    sources: ["crd", "ingress"] # TODO enable traefik once that's installed
+    excludeDomains: ["haynesnetwork.com", "haynesops.com"]

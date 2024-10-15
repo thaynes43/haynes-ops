@@ -7,7 +7,8 @@ spec:
   interval: 30m
   chart:
     spec:
-      chart: external-dns # https://github.com/kubernetes-sigs/external-dns/blob/master/charts/external-dns/values.yaml
+      # https://github.com/kubernetes-sigs/external-dns/blob/master/charts/external-dns/values.yaml
+      chart: external-dns
       version: 1.14.5
       sourceRef:
         kind: HelmRepository
@@ -34,10 +35,11 @@ spec:
             key: cloudflare_api_token
     extraArgs:
       - --cloudflare-proxied
-      - --traefik-disable-legacy
-      - --ingress-class=traefik-external # TODO this did not work for UniFi, likely only the domain filter is controlling what this adds entries for
+      #- --traefik-disable-legacy
+      #- --ingress-class=traefik-external # TODO this did not work for UniFi, likely only the domain filter is controlling what this adds entries for
     logLevel: debug
     policy: sync
-    sources: ["crd", "traefik-proxy"]
+    #sources: ["crd", "traefik-proxy"]
+    sources: ["crd", "ingress"] # TODO enable traefik once that's installed
     domainFilters: ["haynesops.com"]
     excludeDomains: ["haynesnetwork.com"] # TODO as of now these are only controlled by the other cluster

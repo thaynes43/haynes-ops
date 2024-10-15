@@ -5,8 +5,6 @@ kind: Kustomization
 metadata:
   name: certificates
   namespace: flux-system
-  labels:
-    substitution.flux.home.arpa/disabled: "true"
 spec:
   targetNamespace: cert-manager
   dependsOn:
@@ -18,7 +16,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
-  wait: true
+  wait: false
   interval: 15m
   retryInterval: 1m  
   timeout: 2m
