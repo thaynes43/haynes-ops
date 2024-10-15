@@ -3,13 +3,10 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: &app certificates
+  name: certificates
   namespace: flux-system
 spec:
-  targetNamespace: &namespace cert-manager
-  commonMetadata:
-    labels:
-      app.kubernetes.io/name: *app
+  targetNamespace: cert-manager
   dependsOn:
     - name: cert-manager
     - name: cert-manager-issuers
@@ -20,22 +17,6 @@ spec:
     kind: GitRepository
     name: haynes-ops
   wait: true
-  interval: 30m
-  timeout: 5m
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Certificate
-      name: k8tz-webhook-ca
-      namespace: *namespace
-    - apiVersion: apps/v1
-      kind: Certificate
-      name: certificate-hayneslab-staging
-      namespace: *namespace
-    - apiVersion: apps/v1
-      kind: Certificate
-      name: certificate-haynesnetwork-staging
-      namespace: *namespace
-    - apiVersion: apps/v1
-      kind: Certificate
-      name: certificate-haynesops-staging
-      namespace: *namespace
+  interval: 15m
+  retryInterval: 1m  
+  timeout: 2m
