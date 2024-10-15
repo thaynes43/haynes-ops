@@ -6,7 +6,7 @@ metadata:
   name: &app reflector
   namespace: flux-system
 spec:
-  targetNamespace: kube-system
+  targetNamespace: &namespace kube-system
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
@@ -18,3 +18,8 @@ spec:
   wait: true
   interval: 30m
   timeout: 5m
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: *app
+      namespace: *namespace
