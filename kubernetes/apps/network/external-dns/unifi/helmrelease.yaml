@@ -8,16 +8,18 @@ spec:
     spec:
       # https://github.com/kubernetes-sigs/external-dns/blob/master/charts/external-dns/values.yaml
       chart: external-dns
-      version: 1.14.5 
+      version: 1.15.0
       sourceRef:
         kind: HelmRepository
         name: external-dns
         namespace: flux-system
   install:
+    crds: CreateReplace
     remediation:
       retries: 3
   upgrade:
     cleanupOnFail: true
+    crds: CreateReplace
     remediation:
       strategy: rollback
       retries: 3
@@ -29,7 +31,7 @@ spec:
       webhook:
         image:
           repository: ghcr.io/kashalls/external-dns-unifi-webhook
-          tag: v0.2.2
+          tag: v0.2.4
         env:
           - name: UNIFI_HOST
             value: https://192.168.40.1
