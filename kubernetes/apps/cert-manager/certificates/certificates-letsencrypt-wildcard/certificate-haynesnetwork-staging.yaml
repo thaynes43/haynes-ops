@@ -1,9 +1,9 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: certificate-haynesnetwork.com-staging
+  name: certificate-haynesnetwork-staging
 spec:
-  secretName: certificate-haynesnetwork.com-staging 
+  secretName: certificate-haynesnetwork-staging 
   issuerRef:
     name: letsencrypt-staging
     kind: ClusterIssuer

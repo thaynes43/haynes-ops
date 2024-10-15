@@ -1,9 +1,9 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: certificate-haynesnetwork.com
+  name: certificate-haynesnetwork
 spec:
-  secretName: certificate-haynesnetwork.com
+  secretName: certificate-haynesnetwork
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
