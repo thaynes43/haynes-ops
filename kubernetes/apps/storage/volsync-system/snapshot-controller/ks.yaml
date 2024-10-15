@@ -20,7 +20,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
-  path: ./kubernetes/apps/volsync-system/snapshot-controller/app
+  path: ./kubernetes/apps/storage/volsync-system/snapshot-controller/app
   postBuild:
     substitute:
       APP: *app
