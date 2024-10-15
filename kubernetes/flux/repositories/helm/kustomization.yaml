@@ -18,3 +18,4 @@ resources:
   - ./emberstack.yaml
   - ./k8tz.yaml
   - ./metallb.yaml
+  - ./external-dns.yaml
