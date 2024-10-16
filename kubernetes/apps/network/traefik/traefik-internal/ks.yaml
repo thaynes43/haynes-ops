@@ -1,0 +1,29 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app traefik-internal
+  namespace: flux-system
+spec:
+  targetNamespace: &namespace network
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: metallb
+    - name: certificates
+    - name: reflector
+    - name: traefik-external # TODO if we install CRDs independantly we don't need to wait for one to install them
+  path: ./kubernetes/apps/network/traefik/traefik-internal/app
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+  wait: true
+  interval: 15m
+  retryInterval: 1m
+  timeout: 2m
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2beta1
+      kind: Deployment
+      name: *app
+      namespace: *namespace

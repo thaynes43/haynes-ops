@@ -1,0 +1,74 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: traefik-internal
+spec:
+  chart:
+    spec:
+      chart: traefik
+      version: 32.1.0
+      sourceRef:
+        kind: HelmRepository
+        name: traefik
+        namespace: flux-system
+  interval: 15m
+  timeout: 5m
+  releaseName: traefik-internal
+  values: 
+    # Values https://github.com/traefik/traefik-helm-chart/blob/master/traefik/values.yaml 
+    globalArguments:
+      - "--global.sendanonymoususage=false"
+      - "--global.checknewversion=false"
+
+    additionalArguments:
+      - "--serversTransport.insecureSkipVerify=true"
+      - "--log.level=DEBUG" # TODO Set to INFO later
+
+    deployment:
+      enabled: true
+      replicas: 3
+      annotations: {}
+      podAnnotations: {}
+      additionalContainers: []
+      initContainers: []
+
+    ports:
+      web:
+        redirectTo:
+          port: websecure
+          priority: 10
+      websecure:
+        http3:
+          enabled: true
+        advertisedPort: 4443
+        tls:
+          enabled: true
+          
+    ingressRoute:
+      dashboard:
+        enabled: false # will declare in a separate file
+  
+    providers:
+      kubernetesCRD:
+        enabled: true
+        ingressClass: traefik-internal
+        allowExternalNameServices: true
+        allowCrossNamespace: true
+      kubernetesIngress:
+        enabled: false
+        ingressClass: traefik-internal
+        allowExternalNameServices: true
+        publishedService:
+          enabled: false
+
+    rbac:
+      enabled: true
+
+    service:
+      enabled: true
+      type: LoadBalancer
+      annotations:
+        metallb.universe.tf/loadBalancerIPs: 192.168.40.203
+      labels: {}
+      loadBalancerSourceRanges: []
+      externalIPs: []

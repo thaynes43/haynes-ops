@@ -7,3 +7,5 @@ resources:
   - ./namespace.yaml
   # Flux-Kustomizations
   - ./external-dns/ks.yaml
+  - ./traefik/traefik-internal/ks.yaml
+  - ./traefik/traefik-external/ks.yaml

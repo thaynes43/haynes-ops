@@ -19,3 +19,4 @@ resources:
   - ./k8tz.yaml
   - ./metallb.yaml
   - ./external-dns.yaml
+  - ./traefik.yaml
