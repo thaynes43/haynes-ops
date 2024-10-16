@@ -1,0 +1,20 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: traefik-internal-dashboard
+  annotations:
+    external-dns.alpha.kubernetes.io/target: haynesops.com
+    kubernetes.io/ingress.class: traefik-internal
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`traefikinternal.haynesops.com`)
+      kind: Rule
+      services:
+        - name: api@internal
+          kind: TraefikService
+      middlewares:
+        - name: traefik-dashboard-basicauth
+  tls:
+    secretName: certificate-haynesops

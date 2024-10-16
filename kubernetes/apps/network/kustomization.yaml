@@ -9,3 +9,4 @@ resources:
   - ./external-dns/ks.yaml
   - ./traefik/traefik-internal/ks.yaml
   - ./traefik/traefik-external/ks.yaml
+  - ./traefik/config/ks.yaml

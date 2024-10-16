@@ -34,11 +34,10 @@ spec:
             key: cloudflare_api_token
     extraArgs:
       - --cloudflare-proxied
-      #- --traefik-disable-legacy
-      #- --ingress-class=traefik-external # TODO this did not work for UniFi, likely only the domain filter is controlling what this adds entries for
+      - --traefik-disable-legacy
+      - --ingress-class=traefik-external # TODO this did not work for UniFi, likely only the domain filter is controlling what this adds entries for
     logLevel: debug
     policy: sync
-    #sources: ["crd", "traefik-proxy"]
-    sources: ["crd", "ingress"] # TODO enable traefik once that's installed
-    domainFilters: ["haynesops.com"]
-    excludeDomains: ["haynesnetwork.com"] # TODO as of now these are only controlled by the other cluster
+    sources: ["crd", "ingress", "traefik-proxy"]
+    domainFilters: ["hayneshosted.com"]
+    excludeDomains: ["haynesnetwork.com", "haynesops.com", "hayneslab.net"] # TODO as of now these are only controlled by the other cluster

@@ -59,10 +59,9 @@ spec:
             port: http-wh-metrics
           initialDelaySeconds: 10
           timeoutSeconds: 5
-    #extraArgs:
-    #  - --traefik-disable-legacy
-    #  - --ingress-class=traefik-internal # TODO this did not work, had to exclude the domain instead. May revisit.
+    extraArgs:
+      - --traefik-disable-legacy
+      - --ingress-class=traefik-internal # TODO this did not work, had to exclude the domain instead. May revisit.
     policy: sync
-    #sources: ["crd", "traefik-proxy"]
-    sources: ["crd", "ingress"] # TODO enable traefik once that's installed
-    excludeDomains: ["haynesnetwork.com", "haynesops.com"]
+    sources: ["crd", "ingress", "traefik-proxy"]
+    excludeDomains: ["hayneshosted.com", "haynesnetwork.com", "hayneslab.net", "haynesassistant.com"]
