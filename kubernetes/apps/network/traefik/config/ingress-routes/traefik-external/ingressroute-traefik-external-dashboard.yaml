@@ -9,7 +9,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`traefik-dash-external.haynesops.com`)
+    - match: Host(`traefik-external.haynesops.com`)
       kind: Rule
       services:
         - name: api@internal
