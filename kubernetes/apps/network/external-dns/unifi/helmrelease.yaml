@@ -47,18 +47,6 @@ spec:
                 key: password
           - name: LOG_LEVEL
             value: "debug"
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: http-wh-metrics
-          initialDelaySeconds: 10
-          timeoutSeconds: 5
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: http-wh-metrics
-          initialDelaySeconds: 10
-          timeoutSeconds: 5
     extraArgs:
       - --traefik-disable-legacy
       - --ingress-class=traefik-internal # TODO this did not work, had to exclude the domain instead. May revisit.
