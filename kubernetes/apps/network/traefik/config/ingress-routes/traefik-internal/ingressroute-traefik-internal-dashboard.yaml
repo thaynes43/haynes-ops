@@ -3,13 +3,13 @@ kind: IngressRoute
 metadata:
   name: traefik-internal-dashboard
   annotations:
-    external-dns.alpha.kubernetes.io/target: haynesops.com
+    external-dns.alpha.kubernetes.io/target: internal.haynesops.com
     kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`traefikinternal.haynesops.com`)
+    - match: Host(`traefik-dash-internal.haynesops.com`)
       kind: Rule
       services:
         - name: api@internal
