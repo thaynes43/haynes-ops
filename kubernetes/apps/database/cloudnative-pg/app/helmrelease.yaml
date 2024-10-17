@@ -23,10 +23,13 @@ spec:
     remediation:
       strategy: rollback
       retries: 3
+  dependsOn:
+    - name: openebs
+      namespace: openebs-system
   values:
     crds:
       create: true
     monitoring:
-      podMonitorEnabled: false
+      podMonitorEnabled: false # TODO Monitoring
       grafanaDashboard:
-        create: true
+        create: false # TODO Install grafana
