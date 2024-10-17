@@ -21,3 +21,4 @@ resources:
   - ./external-dns.yaml
   - ./traefik.yaml
   - ./cloudnative-pg.yaml
+  - ./node-feature-discovery.yaml
