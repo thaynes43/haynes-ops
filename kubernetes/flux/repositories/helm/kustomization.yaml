@@ -20,3 +20,4 @@ resources:
   - ./metallb.yaml
   - ./external-dns.yaml
   - ./traefik.yaml
+  - ./cloudnative-pg.yaml

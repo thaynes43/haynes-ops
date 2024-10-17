@@ -41,3 +41,30 @@ First upgrade BIOS for MS-01.
 
 Boot using Gparted and delete any data on the drives we will be using. This is especially important for Ceph as that is picky and hard to fix up the drives from Talos. 
 
+Once you add the node to the cluster, before configurign Ceph, run this to wipe the partition table:
+
+```yaml
+$ cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: disk-wipe
+  namespace: rook-ceph
+spec:
+  restartPolicy: Never
+  nodeName: talosm01
+  containers:
+  - name: disk-wipe
+    image: busybox
+    securityContext:
+      privileged: true
+    command: ["/bin/sh", "-c", "dd if=/dev/zero bs=1M count=100 oflag=direct of=/dev/nvme0n1"]
+EOF
+pod/disk-wipe created
+
+$ kubectl wait --timeout=900s --for=jsonpath='{.status.phase}=Succeeded' pod disk-wipe
+pod/disk-wipe condition met
+
+$ kubectl delete pod disk-wipe
+pod "disk-wipe" deleted
+```
