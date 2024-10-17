@@ -3,13 +3,13 @@
 apiVersion: nfd.k8s-sigs.io/v1alpha1
 kind: NodeFeatureRule
 metadata:
-  name: nvidia-2000-ada--gpu-device
+  name: nvidia-3090-gpu-device
 spec:
   rules:
-    - # Nvidia RTX 3090 GPU
-      name: nvidia-2000-ada.gpu
+    - # Nvidia 3090 GPU
+      name: nvidia-3090.gpu
       labels:
-        intel.feature.node.kubernetes.io/nvidia-2000-ada-gpu: "true"
+        intel.feature.node.kubernetes.io/nvidia-3090-gpu: "true"
       matchFeatures:
         - feature: pci.device
           matchExpressions:
