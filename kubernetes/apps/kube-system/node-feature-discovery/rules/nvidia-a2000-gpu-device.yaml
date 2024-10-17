@@ -1,0 +1,18 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/nfd.k8s-sigs.io/nodefeaturerule_v1alpha1.json
+apiVersion: nfd.k8s-sigs.io/v1alpha1
+kind: NodeFeatureRule
+metadata:
+  name: nvidia-3090-gpu-device
+spec:
+  rules:
+    - # Nvidia A2000 GPU
+      name: nvidia-a2000.gpu
+      labels:
+        intel.feature.node.kubernetes.io/nvidia-3090-gpu: "true"
+      matchFeatures:
+        - feature: pci.device
+          matchExpressions:
+            class: { op: In, value: ["0300"] }
+            vendor: { op: In, value: ["10de"] }
+            device: { op: In, value: ["25b8"] }
