@@ -28,6 +28,10 @@ spec:
     worker:
       config:
         core:
-          sources: ["pci", "system", "usb"]
+          #labelSources: [pci, system, usb]
+          labelSources: [all]
+        sources:
+          pci:
+            deviceLabelFields: [class, vendor, device]
     prometheus:
       enable: true
