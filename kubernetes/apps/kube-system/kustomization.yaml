@@ -11,3 +11,4 @@ resources:
   - ./reflector/ks.yaml
   - ./k8tz                            # Has own namespace, add entire dir
   - ./metallb-system/ks.yaml
+  - ./node-feature-discovery/ks.yaml
