@@ -9,7 +9,7 @@ spec:
     - # Nvidia 3090 GPU
       name: nvidia-3090.gpu
       labels:
-        intel.feature.node.kubernetes.io/nvidia-3090-gpu: "true"
+        feature.node.kubernetes.io/nvidia-3090-gpu: "true"
       matchFeatures:
         - feature: pci.device
           matchExpressions:

@@ -9,7 +9,7 @@ spec:
     - # Nvidia A2000 GPU
       name: nvidia-a2000.gpu
       labels:
-        intel.feature.node.kubernetes.io/nvidia-a2000: "true"
+        feature.node.kubernetes.io/nvidia-a2000: "true"
       matchFeatures:
         - feature: pci.device
           matchExpressions:
