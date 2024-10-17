@@ -28,8 +28,8 @@ spec:
     worker:
       config:
         core:
-          #labelSources: [pci, system, usb]
-          labelSources: [all]
+          labelSources: [pci, system, usb]
+          #labelSources: [all]
         sources:
           pci:
             deviceLabelFields: [class, vendor, device]
