@@ -23,3 +23,4 @@ resources:
   - ./cloudnative-pg.yaml
   - ./node-feature-discovery.yaml
   - ./kubernetes-sigs-descheduler.yaml
+  - ./authentik.yaml

@@ -1,0 +1,75 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.ok8.sh/helm.toolkit.fluxcd.io/helmrelease_v2beta1.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: authentik
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: authentik
+      version: 2024.8.3
+      sourceRef:
+        kind: HelmRepository
+        name: authentik
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  uninstall:
+    keepHistory: false
+  values:
+    global:
+      deploymentAnnotations:
+        secret.reloader.stakater.com/reload: authentik-secret
+      envFrom:
+        - secretRef:
+            name: authentik-secret
+    authentik:
+      log_level: debug # TODO info once working
+      error_reporting:
+        enable: false
+        send_pii: false
+      outposts:
+        container_image_base: ghcr.io/goauthentik/%(type)s:%(version)s
+      redis:
+        host: "{{ .Release.Name }}-redis-master"
+    server:
+      replicas: 3
+      initContainers:
+        - name: init-db
+          image: ghcr.io/onedr0p/postgres-init:16.3
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: authentik-secret
+      metrics:
+        serviceMonitor:
+          enabled: true
+      ingress:
+        enabled: false
+    worker:
+       replicas: 3
+    geoip:
+      enabled: false
+      existingSecret:
+        secretName: "authentik-secret"
+        accountId: "MAXMIND_ACCOUNT_ID"
+        licenseKey: "MAXMIND_LICENSE_KEY"
+    prometheus:
+      rules:
+        enabled: true
+    postgresql:
+      enabled: false
+    redis:
+      enabled: true
+      persistence:
+        enabled: false
+      auth:
+        existingSecret: authentik-secret
+        existingSecretPasswordKey: AUTHENTIK_REDIS__PASSWORD
