@@ -35,9 +35,9 @@ spec:
     extraArgs:
       - --cloudflare-proxied
       - --traefik-disable-legacy
-      - --ingress-class=traefik-external # TODO this did not work for UniFi, likely only the domain filter is controlling what this adds entries for
     logLevel: debug
     policy: sync
-    sources: ["crd", "ingress", "traefik-proxy", "service"]
+    #sources: ["crd", "ingress", "traefik-proxy", "service"]
+    sources: ["crd", "traefik-proxy"]
     domainFilters: ["hayneshosted.com"]
     excludeDomains: ["haynesnetwork.com", "haynesops.com", "hayneslab.net"] # TODO as of now these are only controlled by the other cluster

@@ -49,7 +49,7 @@ spec:
             value: "debug"
     extraArgs:
       - --traefik-disable-legacy
-      - --ingress-class=traefik-internal # TODO this did not work, had to exclude the domain instead. May revisit.
     policy: sync
-    sources: ["crd", "ingress", "traefik-proxy", "service"]
+    #sources: ["crd", "ingress", "traefik-proxy", "service"]
+    sources: ["crd", "traefik-proxy"]
     excludeDomains: ["hayneshosted.com", "haynesnetwork.com", "hayneslab.net", "haynesassistant.com"]
