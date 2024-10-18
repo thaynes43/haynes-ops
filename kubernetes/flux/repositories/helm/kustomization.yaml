@@ -24,4 +24,3 @@ resources:
   - ./node-feature-discovery.yaml
   - ./kubernetes-sigs-descheduler.yaml
   - ./authentik.yaml
-  - ./prometheus-community.yaml
