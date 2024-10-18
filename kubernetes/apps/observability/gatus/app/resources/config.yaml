@@ -31,8 +31,8 @@ endpoints:
     group: traefik-internal
     url: https://status.haynesops.com
     interval: 1m
-    client:
-      dns-resolver: tcp://1.1.1.1:53
+    #client:
+    #  dns-resolver: tcp://1.1.1.1:53
     conditions:
       - "[STATUS] == 200"
     alerts:
@@ -41,8 +41,8 @@ endpoints:
     group: traefik-internal
     url: https://flux-webhook.haynesops.com
     interval: 1m
-    client:
-      dns-resolver: tcp://1.1.1.1:53
+    #client:
+    #  dns-resolver: tcp://1.1.1.1:53
     conditions:
       - "[STATUS] == 404"
     alerts:
