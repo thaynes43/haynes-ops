@@ -10,4 +10,4 @@ resources:
   - ./traefik/traefik-internal/ks.yaml
   - ./traefik/traefik-external/ks.yaml
   - ./traefik/config/ks.yaml
-  #- ./authentik/ks.yaml
+  - ./authentik/ks.yaml

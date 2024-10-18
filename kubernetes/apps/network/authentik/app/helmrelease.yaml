@@ -39,7 +39,7 @@ spec:
         container_image_base: ghcr.io/goauthentik/%(type)s:%(version)s
       redis:
         host: "{{ .Release.Name }}-redis-master"
-        password: "${AUTHENTIK_REDIS__PASSWORD}"
+        password: ""
     server:
       replicas: 3
       initContainers:
@@ -72,5 +72,4 @@ spec:
       persistence:
         enabled: false
       auth:
-        existingSecret: authentik-secret
-        existingSecretPasswordKey: AUTHENTIK_REDIS__PASSWORD
+        enabled: false
