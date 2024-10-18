@@ -22,3 +22,4 @@ resources:
   - ./traefik.yaml
   - ./cloudnative-pg.yaml
   - ./node-feature-discovery.yaml
+  - ./kubernetes-sigs-descheduler.yaml
