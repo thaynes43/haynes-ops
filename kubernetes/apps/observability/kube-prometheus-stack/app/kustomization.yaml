@@ -3,6 +3,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ./namespace.yaml
-  - ./prometheus-operator-crds/ks.yaml
-  - ./kube-prometheus-stack/ks.yaml
+  - ./externalsecret.yaml
+  - ./helmrelease.yaml
+  - ./prometheusrule.yaml
+  #- ./scrapeconfig.yaml # TODO set up for pikvm metrics etc
