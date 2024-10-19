@@ -1,4 +1,7 @@
 kvmd:
+    prometheus:
+        auth:
+            enabled: false
     gpio:
         drivers:
             tes:
