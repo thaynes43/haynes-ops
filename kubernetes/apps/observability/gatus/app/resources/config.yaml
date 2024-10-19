@@ -29,23 +29,29 @@ connectivity:
 endpoints:
   - name: status
     group: internal
-    url: https://status.haynesops.com
+    url: 1.1.1.1
     interval: 1m
-    client:
-      dns-resolver: udp://192.168.40.1:53
-      #dns-resolver: tcp://1.1.1.1:53
+    ui:
+      hide-hostname: true
+      hide-url: true
+    dns:
+      query-name: "status.haynesops.com"
+      query-type: A
     conditions:
-      - "[STATUS] == 200"
+      - "len([BODY]) == 0"
     alerts:
       - type: pushover
   - name: flux-webhook
     group: internal
-    url: https://flux-webhook.haynesops.com
+    url: 1.1.1.1
     interval: 1m
-    client:
-      dns-resolver: udp://192.168.40.1:53
-    #  dns-resolver: tcp://1.1.1.1:53
+    ui:
+      hide-hostname: true
+      hide-url: true
+    dns:
+      query-name: "flux-webhook.haynesops.com"
+      query-type: A
     conditions:
-      - "[STATUS] == 404"
+      - "len([BODY]) == 0"
     alerts:
       - type: pushover
