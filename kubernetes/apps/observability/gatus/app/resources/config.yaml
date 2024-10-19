@@ -28,7 +28,7 @@ connectivity:
     interval: 1m
 endpoints:
   - name: status
-    group: traefik-internal
+    group: internal
     url: https://status.haynesops.com
     interval: 1m
     #client:
@@ -38,7 +38,7 @@ endpoints:
     alerts:
       - type: pushover
   - name: flux-webhook
-    group: traefik-internal
+    group: internal
     url: https://flux-webhook.haynesops.com
     interval: 1m
     #client:
