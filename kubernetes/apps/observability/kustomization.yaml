@@ -10,3 +10,4 @@ resources:
   - ./promtail/ks.yaml
   - ./blackbox-exporter/ks.yaml
   - ./gatus/ks.yaml
+  - ./kromgo/ks.yaml
