@@ -1,7 +1,7 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: external-dns-unifi
+  name: &name external-dns-unifi
 spec:
   interval: 30m
   chart:
@@ -24,7 +24,7 @@ spec:
       strategy: rollback
       retries: 3
   values:
-    fullnameOverride: external-dns-unifi
+    fullnameOverride: *app
     logLevel: debug
     provider:
       name: webhook
@@ -38,12 +38,12 @@ spec:
           - name: UNIFI_USER
             valueFrom:
               secretKeyRef:
-                name: external-dns-unifi-secret
+                name: &secret external-dns-unifi-secret
                 key: username
           - name: UNIFI_PASS
             valueFrom:
               secretKeyRef:
-                name: external-dns-unifi-secret
+                name: *secret
                 key: password
           - name: LOG_LEVEL
             value: "debug"
@@ -52,3 +52,7 @@ spec:
     policy: sync
     sources: ["crd", "ingress", "traefik-proxy", "service"]
     excludeDomains: ["hayneshosted.com", "haynesnetwork.com", "hayneslab.net", "haynesassistant.com"]
+    serviceMonitor:
+      enabled: true
+    podAnnotations:
+      secret.reloader.stakater.com/reload: *secret

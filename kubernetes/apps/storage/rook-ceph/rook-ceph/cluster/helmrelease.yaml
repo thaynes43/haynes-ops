@@ -29,10 +29,9 @@ spec:
     - name: snapshot-controller
       namespace: volsync-system
   values:
-    # TODO enable once monitoring set up
     monitoring:
-      enabled: false
-      createPrometheusRules: false
+      enabled: true
+      createPrometheusRules: true
     ingress:
       dashboard:
         annotations:
