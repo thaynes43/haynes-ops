@@ -33,14 +33,14 @@ spec:
     monitoring:
       enabled: false
       createPrometheusRules: false
-    #ingress:
-    #  dashboard:
-    #    annotations:
-    #      external-dns.alpha.kubernetes.io/target: internal.hayneslab.net
-    #    ingressClassName: internal
-    #    host:
-    #      name: rook.hayneslab.net
-    #      path: /
+    ingress:
+      dashboard:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+        ingressClassName: traefik-internal
+        host:
+          name: rook.haynesops.com
+          path: /
     toolbox:
       enabled: true
     configOverride: |
@@ -55,8 +55,7 @@ spec:
         enabled: true
         urlPrefix: /
         ssl: false
-        # TODO enable once monitoring set up
-        #prometheusEndpoint: http://prometheus-operated.observability.svc.cluster.local:9090
+        prometheusEndpoint: http://prometheus-operated.observability.svc.cluster.local:9090
       mgr:
         modules:
           - name: pg_autoscaler
@@ -232,12 +231,12 @@ spec:
           parameters:
             region: us-east-1
         ingress:
-          enabled: false
+          enabled: true
           annotations:
-            external-dns.alpha.kubernetes.io/target: internal.hayneslab.net
+            external-dns.alpha.kubernetes.io/target: internal.haynesops
             nginx.ingress.kubernetes.io/proxy-body-size: "0"
             nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
-          ingressClassName: internal
+          ingressClassName: traefik-internal
           host:
-            name: rgw.hayneslab.net
+            name: rgw.haynesops.com
             path: /
