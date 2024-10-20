@@ -13,3 +13,8 @@ Do this FIRST to save time later (said noone)
 - I did not include or turned off out a bunch of stuff since the observability stack wasn't set up. I need to review resources to see what needs to be enabled
 - Grafana and initial dashboards
 - add custom dashboards etc
+
+## Dashboards TODO
+
+- [Traefik Official](https://grafana.com/grafana/dashboards/17346-traefik-official-standalone-dashboard/)
+

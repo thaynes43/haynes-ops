@@ -25,3 +25,4 @@ resources:
   - ./kubernetes-sigs-descheduler.yaml
   - ./authentik.yaml
   - ./grafana.yaml
+  - ./emqx.yaml

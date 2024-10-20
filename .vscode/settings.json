@@ -26,15 +26,19 @@
     "cSpell.words": [
         "automerge",
         "certificaterequests",
+        "cloudnative",
         "datasource",
         "Datasources",
         "devcontainer",
+        "emqx",
         "fluxcd",
         "gitrepositories",
         "helmreleases",
         "helmrepositories",
         "kubeconform",
+        "Kustomization",
         "kustomizations",
+        "kustomize",
         "siderolabs",
         "thaynes"
     ]
