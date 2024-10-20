@@ -49,9 +49,12 @@ spec:
             value: "debug"
     extraArgs:
       - --traefik-disable-legacy
+      - --ignore-ingress-tls-spec
     policy: sync
     sources: ["crd", "ingress", "traefik-proxy"]
-    excludeDomains: ["hayneshosted.com", "haynesnetwork.com", "hayneslab.net", "haynesassistant.com"]
+    excludeDomains: ["hayneshosted.com"]
+    txtOwnerId: haynes-ops
+    txtPrefix: k8s.haynes-ops.
     serviceMonitor:
       enabled: true
     podAnnotations:

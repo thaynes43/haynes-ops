@@ -36,11 +36,12 @@ spec:
     extraArgs:
       - --cloudflare-proxied
       - --traefik-disable-legacy
+      - --ignore-ingress-tls-spec
     logLevel: debug
     policy: sync
     sources: ["crd", "ingress", "traefik-proxy"]
     domainFilters: ["hayneshosted.com"]
-    excludeDomains: ["haynesnetwork.com", "haynesops.com", "hayneslab.net"] # TODO as of now these are only controlled by the other cluster
+    excludeDomains: ["haynesops.com"]
     serviceMonitor:
       enabled: true
     podAnnotations:
