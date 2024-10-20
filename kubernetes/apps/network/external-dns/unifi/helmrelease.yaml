@@ -50,7 +50,7 @@ spec:
     extraArgs:
       - --traefik-disable-legacy
     policy: sync
-    sources: ["crd", "ingress", "traefik-proxy", "service"]
+    sources: ["crd", "ingress", "traefik-proxy"]
     excludeDomains: ["hayneshosted.com", "haynesnetwork.com", "hayneslab.net", "haynesassistant.com"]
     serviceMonitor:
       enabled: true

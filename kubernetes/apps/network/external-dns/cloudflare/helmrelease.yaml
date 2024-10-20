@@ -38,7 +38,7 @@ spec:
       - --traefik-disable-legacy
     logLevel: debug
     policy: sync
-    sources: ["crd", "ingress", "traefik-proxy", "service"]
+    sources: ["crd", "ingress", "traefik-proxy"]
     domainFilters: ["hayneshosted.com"]
     excludeDomains: ["haynesnetwork.com", "haynesops.com", "hayneslab.net"] # TODO as of now these are only controlled by the other cluster
     serviceMonitor:
