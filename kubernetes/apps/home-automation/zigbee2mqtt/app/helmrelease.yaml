@@ -69,10 +69,6 @@ spec:
               ZIGBEE2MQTT_CONFIG_SERIAL_PORT: "tcp://tubeszb-zigbee01.haynesnetwork:6638"
               ZIGBEE2MQTT_CONFIG_SERIAL_ADAPTER: ember
               ZIGBEE2MQTT_CONFIG_ADVANCED_CHANNEL: 15
-              # TODO Delete once generated
-              #ZIGBEE2MQTT_CONFIG_ADVANCED_EXT_PAN_ID: GENERATE
-              #ZIGBEE2MQTT_CONFIG_ADVANCED_PAN_ID: GENERATE
-              #ZIGBEE2MQTT_CONFIG_ADVANCED_NETWORK_KEY: GENERATE
             envFrom:
               - secretRef:
                   name: zigbee2mqtt-secret
