@@ -12,11 +12,11 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: external-secrets-stores
-  path: ./kubernetes/main/apps/default/esphome/app
+  path: ./kubernetes/apps/home-automation/esphome/app
   prune: true
   sourceRef:
     kind: GitRepository
-    name: home-kubernetes
+    name: haynes-ops
   wait: false
   interval: 30m
   retryInterval: 1m
