@@ -1,0 +1,12 @@
+---
+version: v1
+flags:
+  migStrategy: "single"
+  plugin:
+    deviceListStrategy: "envvar"
+    deviceIDStrategy: "uuid"
+sharing:
+  timeSlicing:
+    resources:
+      - name: nvidia.com/gpu
+        replicas: 3

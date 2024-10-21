@@ -26,3 +26,4 @@ resources:
   - ./authentik.yaml
   - ./grafana.yaml
   - ./emqx.yaml
+  - ./nvidia.yaml
