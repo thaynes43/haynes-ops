@@ -54,7 +54,13 @@ Looks ready to go on `tubeszb-zigbee01.haynesnetwork:6053` though 6638 is the po
 
 ### Zooz Radeo Firmware
 
-TODO
+ZWave JS UI is complainign that it want's Z-Wave SDK 7.22.1 or greater so we better do this one!
+
+Get the file from Zooz, at the time I did so it was [here](https://www.support.getzooz.com/kb/article/1158-zooz-ota-firmware-files/) and called `https://www.getzooz.com/firmware/ZAC93_SDK_7.22.1_US-LR_V01R50.zip`. Note that I have model number `ZAC93` which is how I found this file.
+
+Extract the zip and verify it's a .gbl file. Then go to the device in ZWave JS UI -> Advanced -> Firmware update OTW and select the file.
+
+> Note that the [release notes](https://www.support.getzooz.com/kb/article/1389-zac93-gpio-module-change-log/) stopped being updated at 1.20 but here in October we got 1.50
 
 ### ESPHome for Z Wave
 
