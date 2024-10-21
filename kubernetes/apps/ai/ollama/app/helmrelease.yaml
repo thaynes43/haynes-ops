@@ -52,12 +52,12 @@ spec:
                 value: "-1"
             resources:
               requests:
-                nvidia.com/gpu: 1 # requesting 1 GPU
+                #nvidia.com/gpu: 1 # requesting 1 GPU
                 cpu: 2000m
                 memory: 8Gi
               limits:
                 memory: 32Gi
-                nvidia.com/gpu: 1 # requesting 1 GPU
+                #nvidia.com/gpu: 1 # requesting 1 GPU
     service:
       app:
         controller: ollama
