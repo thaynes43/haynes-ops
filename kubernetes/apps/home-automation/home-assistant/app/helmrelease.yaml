@@ -1,0 +1,76 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: home-assistant
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: app-template
+      version: 3.5.1
+      interval: 30m
+      sourceRef:
+        kind: HelmRepository
+        name: bjw-s
+        namespace: flux-system
+  values:
+    controllers:
+      home-assistant:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        containers:
+          app:
+            image:
+              repository: ghcr.io/home-assistant/home-assistant
+              tag: 2024.10.3
+            envFrom:
+              - secretRef:
+                  name: home-assistant-secret
+            probes:
+              liveness:
+                enabled: false
+              readiness:
+                enabled: false
+              startup:
+                enabled: false
+            resources:
+              requests:
+                cpu: "4"
+                memory: 8Gi
+              limits:
+                memory: 32Gi
+    service:
+      app:
+        controller: home-assistant
+        ports:
+          http:
+            port: 8123
+    ingress:
+      app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+        className: traefik-internal
+        hosts:
+          - host: hass.haynesops.com
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+    persistence:
+      config:
+        existingClaim: home-assistant
+        advancedMounts:
+          home-assistant:
+            app:
+              - path: /config
+      deploy-key:
+        type: secret
+        name: home-assistant-secret
+        defaultMode: 256
+        globalMounts:
+          - path: /root/.ssh/id_ed25519
+            subPath: GH_DEPLOY_KEY   # TODO https://community.home-assistant.io/t/sharing-your-configuration-on-github/195144
+
