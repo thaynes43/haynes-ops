@@ -23,6 +23,11 @@ spec:
     remediation:
       strategy: rollback
       retries: 3
+  dependsOn:
+    - name: rook-ceph-cluster
+      namespace: rook-ceph
+    - name: volsync
+      namespace: volsync-system
   values:
     controllers:
       home-assistant:
@@ -49,12 +54,38 @@ spec:
                 memory: 8Gi
               limits:
                 memory: 32Gi
+          code-server:
+            image:
+              repository: ghcr.io/coder/code-server
+              tag: 4.93.1@sha256:c69e398d1b64589b3b77a7becfd03f4ec524982def20e6bffbb51b1b839e72ba
+            args: [
+              "--auth", "none",
+              "--user-data-dir", "/config/.vscode",
+              "--extensions-dir", "/config/.vscode",
+              "--port", "12321",
+              "/config"
+            ]
+            resources:
+              requests:
+                cpu: 100m
+              limits:
+                memory: 2Gi
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 568
+        runAsGroup: 568
+        fsGroup: 568
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
     service:
       app:
         controller: home-assistant
         ports:
           http:
             port: 8123
+          code-server:
+            port: 12321
     ingress:
       app:
         annotations:
@@ -67,13 +98,34 @@ spec:
                 service:
                   identifier: app
                   port: http
+      code-server:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+        className: traefik-internal
+        hosts:
+          - host: hass-code.haynesops.com
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: code-server
     persistence:
       config:
         existingClaim: home-assistant
-        advancedMounts:
-          home-assistant:
-            app:
-              - path: /config
+        globalMounts:
+          - path: /config
+      logs:
+        type: emptyDir
+        globalMounts:
+          - path: /config/logs
+      tts:
+        type: emptyDir
+        globalMounts:
+          - path: /config/tts
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
       deploy-key:
         type: secret
         name: home-assistant-secret

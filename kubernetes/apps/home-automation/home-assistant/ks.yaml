@@ -11,8 +11,6 @@ spec:
     labels:
       app.kubernetes.io/name: *app
   dependsOn:
-    - name: rook-ceph-cluster
-    - name: volsync
     - name: external-secrets-stores
   path: ./kubernetes/apps/home-automation/home-assistant/app
   prune: true
@@ -27,26 +25,3 @@ spec:
     substitute:
       APP: *app
       VOLSYNC_CAPACITY: 30Gi
----
-# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: &app home-assistant-code
-  namespace: flux-system
-spec:
-  targetNamespace: home-automation
-  commonMetadata:
-    labels:
-      app.kubernetes.io/name: *app
-  dependsOn:
-    - name: esphome
-  path: ./kubernetes/apps/home-automation/home-assistant/code
-  prune: true
-  sourceRef:
-    kind: GitRepository
-    name: haynes-ops
-  wait: true
-  interval: 30m
-  retryInterval: 1m
-  timeout: 5m
