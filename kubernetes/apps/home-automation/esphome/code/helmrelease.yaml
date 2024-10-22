@@ -33,14 +33,14 @@ spec:
 
   values:
     controllers:
-      main:
+      app:
         type: statefulset
         
         annotations:
           reloader.stakater.com/auto: "true"
 
         containers:
-          main:
+          app:
             image:
               repository: ghcr.io/coder/code-server
               tag: 4.93.1@sha256:c69e398d1b64589b3b77a7becfd03f4ec524982def20e6bffbb51b1b839e72ba
@@ -72,8 +72,8 @@ spec:
             fsGroupChangePolicy: OnRootMismatch
           
     service:
-      main:
-        controller: main
+      app:
+        controller: app
         ports:
           http:
             port: &httpPort 8080
