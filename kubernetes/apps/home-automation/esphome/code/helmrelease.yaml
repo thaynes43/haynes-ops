@@ -46,7 +46,7 @@ spec:
               tag: 4.93.1@sha256:c69e398d1b64589b3b77a7becfd03f4ec524982def20e6bffbb51b1b839e72ba
 
             env:
-              TZ: ${TIMEZONE}
+              TZ: America/New_York
 
             args:
               - --auth
