@@ -18,24 +18,19 @@ spec:
   install:
     remediation:
       retries: 3
-
   upgrade:
     cleanupOnFail: true
     remediation:
       retries: 3
-
   uninstall:
     keepHistory: false
-
   dependsOn:
     - name: esphome
       namespace: home-automation
-
   values:
     controllers:
       app:
-        type: statefulset
-        
+        type: statefulset      
         annotations:
           reloader.stakater.com/auto: "true"
 
@@ -44,10 +39,8 @@ spec:
             image:
               repository: ghcr.io/coder/code-server
               tag: 4.93.1@sha256:c69e398d1b64589b3b77a7becfd03f4ec524982def20e6bffbb51b1b839e72ba
-
             env:
               TZ: America/New_York
-
             args:
               - --auth
               - none
@@ -58,26 +51,22 @@ spec:
               - --port
               - "8080"
               - /config
-
             resources:
               requests:
                 cpu: 50m
                 memory: 2Gi
-
         pod:
           securityContext:
             runAsUser: 0
             runAsGroup: 0
             fsGroup: 0
-            fsGroupChangePolicy: OnRootMismatch
-          
+            fsGroupChangePolicy: OnRootMismatch      
     service:
       app:
         controller: app
         ports:
           http:
             port: &httpPort 8080
-
     ingress:
       app:
         annotations:
@@ -90,9 +79,8 @@ spec:
                 service:
                   identifier: app
                   port: *httpPort
-
     persistence:
       config:
-        existingClaim: esphome-config
+        existingClaim: esphome
         globalMounts:
           - path: /config
