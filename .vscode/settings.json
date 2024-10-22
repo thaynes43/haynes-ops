@@ -31,15 +31,25 @@
         "Datasources",
         "devcontainer",
         "emqx",
+        "esphome",
         "fluxcd",
         "gitrepositories",
+        "haynesops",
+        "helmrelease",
         "helmreleases",
         "helmrepositories",
         "kubeconform",
         "Kustomization",
         "kustomizations",
         "kustomize",
+        "mqtt",
         "siderolabs",
-        "thaynes"
+        "stakater",
+        "statefulset",
+        "thaynes",
+        "traefik",
+        "VOLSYNC",
+        "zigbee",
+        "zwave"
     ]
 }

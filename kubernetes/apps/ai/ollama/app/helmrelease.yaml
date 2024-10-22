@@ -52,7 +52,7 @@ spec:
                 value: "-1"
             resources:
               requests:
-                #nvidia.com/gpu: 1 # requesting 1 GPU
+                #nvidia.com/gpu: 1 # requesting 1 GPU TODO dig into how it works here https://github.com/jahanson/theshire/blob/main/kubernetes/apps/ai/ollama/app/helmrelease.yaml#L50 
                 cpu: 2000m
                 memory: 8Gi
               limits:
