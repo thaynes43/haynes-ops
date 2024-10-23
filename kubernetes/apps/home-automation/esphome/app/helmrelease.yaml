@@ -23,6 +23,11 @@ spec:
     remediation:
       strategy: rollback
       retries: 3
+  dependsOn:
+    - name: rook-ceph-cluster
+      namespace: rook-ceph
+    - name: volsync
+      namespace: volsync-system
   values:
     controllers:
       esphome:
@@ -32,11 +37,21 @@ spec:
           app:
             image:
               repository: ghcr.io/esphome/esphome
-              tag: 2024.10.0
+              tag: 2024.10.1@sha256:7cc11bbd80ea1c4c34b3b29f51948fc063579163ff1946f3f84768e758d52b880
             env:
               TZ: America/New_York
               PLATFORMIO_CORE_DIR: .platformio
               PLATFORMIO_GLOBALLIB_DIR: .platformiolibs
+            probes:
+              liveness:
+                enabled: true
+              readiness:
+                enabled: true
+              startup:
+                enabled: true
+                spec:
+                  failureThreshold: 30
+                  periodSeconds: 5
             resources:
               requests:
                 cpu: 500m
@@ -101,10 +116,8 @@ spec:
     persistence:
       config:
         existingClaim: esphome
-        advancedMounts:
-          esphome:
-            app:
-              - path: /config
+        globalMounts:
+          - path: /config
       secrets:
         type: secret
         name: esphome-secret
@@ -121,7 +134,7 @@ spec:
               - path: /home/coder/.ssh/id_ed25519
                 readOnly: true
                 subPath: id_ed25519
-      esphome-cache:
+      cache:
         type: emptyDir
         globalMounts:
           - path: /config/.esphome
