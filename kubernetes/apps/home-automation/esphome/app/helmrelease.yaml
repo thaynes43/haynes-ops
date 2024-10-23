@@ -23,6 +23,11 @@ spec:
     remediation:
       strategy: rollback
       retries: 3
+  dependsOn:
+    - name: rook-ceph-cluster
+      namespace: rook-ceph
+    - name: volsync
+      namespace: volsync-system
   values:
     controllers:
       esphome:
@@ -35,7 +40,9 @@ spec:
               tag: 2024.10.0
             env:
               TZ: America/New_York
-              ESPHOME_DASHBOARD_USE_PING: "false"
+              ESPHOME_DASHBOARD_USE_PING: "true"
+              PLATFORMIO_CORE_DIR: /cache/platformio
+              PLATFORMIO_GLOBALLIB_DIR: /cache/platformio/lib
             resources:
               requests:
                 cpu: 50m
@@ -69,3 +76,5 @@ spec:
         type: emptyDir
         globalMounts:
           - path: /config/.esphome
+          - path: /cache
+            subPath: cache
