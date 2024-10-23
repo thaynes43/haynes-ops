@@ -18,16 +18,11 @@ spec:
   install:
     remediation:
       retries: 3
-  #upgrade:
-    #cleanupOnFail: true
-    #remediation:
-      #strategy: rollback
-      #retries: 3
-  dependsOn:
-    - name: rook-ceph-cluster
-      namespace: rook-ceph
-    - name: volsync
-      namespace: volsync-system
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
   values:
     controllers:
       esphome:
@@ -37,63 +32,20 @@ spec:
           app:
             image:
               repository: ghcr.io/esphome/esphome
-              tag: 2024.10.1@sha256:7cc11bbd80ea1c4c34b3b29f51948fc063579163ff1946f3f84768e758d52b880
+              tag: 2024.10.0
             env:
               TZ: America/New_York
-              ESPHOME_DASHBOARD_USE_PING: true
-              PLATFORMIO_CORE_DIR: /cache/platformio
-              PLATFORMIO_GLOBALLIB_DIR: /cache/platformio/lib
-            probes:
-              liveness:
-                enabled: true
-              readiness:
-                enabled: true
-              startup:
-                enabled: true
-                spec:
-                  failureThreshold: 30
-                  periodSeconds: 5
+              ESPHOME_DASHBOARD_USE_PING: "false"
             resources:
               requests:
-                cpu: 500m
+                cpu: 50m
                 memory: 2Gi
-          code-server:
-            image:
-              repository: ghcr.io/coder/code-server
-              tag: 4.93.1@sha256:c69e398d1b64589b3b77a7becfd03f4ec524982def20e6bffbb51b1b839e72ba
-            args: [
-              "--auth", "none",
-              "--user-data-dir", "/config/.vscode",
-              "--extensions-dir", "/config/.vscode",
-              "--port", "12321",
-              "/config"
-            ]
-            resources:
-              requests:
-                cpu: 100m
-              limits:
-                memory: 2Gi
-        pod:
-          hostNetwork: true
-    defaultPodOptions:
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 568
-        runAsGroup: 568
-        fsGroup: 568
-        fsGroupChangePolicy: OnRootMismatch
-        seccompProfile: { type: RuntimeDefault }
     service:
       app:
         controller: esphome
-        type: LoadBalancer
-        annotations:
-          metallb.universe.tf/loadBalancerIPs: 192.168.40.206
         ports:
           http:
             port: 6052
-          code-server:
-            port: 12321
     ingress:
       app:
         annotations:
@@ -106,41 +58,14 @@ spec:
                 service:
                   identifier: app
                   port: http
-      code-server:
-        annotations:
-          external-dns.alpha.kubernetes.io/target: internal.haynesops
-        className: traefik-internal
-        hosts:
-          - host: esphome-code.haynesops.com
-            paths:
-              - path: /
-                service:
-                  identifier: app
-                  port: code-server
     persistence:
       config:
         existingClaim: esphome
-        globalMounts:
-          - path: /config
-      #secrets:
-      #  type: secret
-      #  name: esphome-secret
-      #  globalMounts:
-      #    - path: /config/secrets.yaml
-      #      subPath: secrets.yaml
-      #deploy-key:
-      #  type: secret
-      #  name: esphome-deploykey
-      #  defaultMode: 256
-      #  advancedMounts:
-      #    esphome:
-      #      code-server:
-      #        - path: /home/coder/.ssh/id_ed25519
-      #          readOnly: true
-      #          subPath: id_ed25519
-      cache:
+        advancedMounts:
+          esphome:
+            app:
+              - path: /config
+      esphome-cache:
         type: emptyDir
         globalMounts:
           - path: /config/.esphome
-          - path: /cache
-            subPath: cache
