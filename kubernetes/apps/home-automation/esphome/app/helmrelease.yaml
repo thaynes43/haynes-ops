@@ -122,12 +122,12 @@ spec:
         existingClaim: esphome
         globalMounts:
           - path: /config
-      secrets:
-        type: secret
-        name: esphome-secret
-        globalMounts:
-          - path: /config/secrets.yaml
-            subPath: secrets.yaml
+      #secrets:
+      #  type: secret
+      #  name: esphome-secret
+      #  globalMounts:
+      #    - path: /config/secrets.yaml
+      #      subPath: secrets.yaml
       #deploy-key:
       #  type: secret
       #  name: esphome-deploykey
