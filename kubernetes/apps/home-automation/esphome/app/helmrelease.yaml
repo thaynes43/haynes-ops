@@ -48,8 +48,8 @@ spec:
               requests:
                 cpu: 50m
                 memory: 2Gi
-        pod:
-          hostNetwork: true
+        #pod:
+        #  hostNetwork: true
     defaultPodOptions:
       securityContext:
         runAsNonRoot: false
