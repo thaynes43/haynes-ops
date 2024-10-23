@@ -43,6 +43,7 @@
         "kustomizations",
         "kustomize",
         "mqtt",
+        "onepassword",
         "siderolabs",
         "stakater",
         "statefulset",
