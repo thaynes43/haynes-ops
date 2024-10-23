@@ -18,11 +18,11 @@ spec:
   install:
     remediation:
       retries: 3
-  upgrade:
-    cleanupOnFail: true
-    remediation:
-      strategy: rollback
-      retries: 3
+  #upgrade:
+    #cleanupOnFail: true
+    #remediation:
+      #strategy: rollback
+      #retries: 3
   dependsOn:
     - name: rook-ceph-cluster
       namespace: rook-ceph
@@ -40,8 +40,9 @@ spec:
               tag: 2024.10.1@sha256:7cc11bbd80ea1c4c34b3b29f51948fc063579163ff1946f3f84768e758d52b880
             env:
               TZ: America/New_York
-              PLATFORMIO_CORE_DIR: .platformio
-              PLATFORMIO_GLOBALLIB_DIR: .platformiolibs
+              ESPHOME_DASHBOARD_USE_PING: true
+              PLATFORMIO_CORE_DIR: /cache/platformio
+              PLATFORMIO_GLOBALLIB_DIR: /cache/platformio/lib
             probes:
               liveness:
                 enabled: true
@@ -77,14 +78,17 @@ spec:
     defaultPodOptions:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 100
+        runAsUser: 568
+        runAsGroup: 568
+        fsGroup: 568
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile: { type: RuntimeDefault }
     service:
       app:
         controller: esphome
+        type: LoadBalancer
+        annotations:
+          metallb.universe.tf/loadBalancerIPs: 192.168.40.206
         ports:
           http:
             port: 6052
@@ -124,17 +128,19 @@ spec:
         globalMounts:
           - path: /config/secrets.yaml
             subPath: secrets.yaml
-      deploy-key:
-        type: secret
-        name: esphome-deploykey
-        defaultMode: 256
-        advancedMounts:
-          esphome:
-            code-server:
-              - path: /home/coder/.ssh/id_ed25519
-                readOnly: true
-                subPath: id_ed25519
+      #deploy-key:
+      #  type: secret
+      #  name: esphome-deploykey
+      #  defaultMode: 256
+      #  advancedMounts:
+      #    esphome:
+      #      code-server:
+      #        - path: /home/coder/.ssh/id_ed25519
+      #          readOnly: true
+      #          subPath: id_ed25519
       cache:
         type: emptyDir
         globalMounts:
           - path: /config/.esphome
+          - path: /cache
+            subPath: cache
