@@ -43,6 +43,7 @@ spec:
               ESPHOME_DASHBOARD_USE_PING: "true"
               PLATFORMIO_CORE_DIR: /cache/platformio
               PLATFORMIO_GLOBALLIB_DIR: /cache/platformio/lib
+              ESPHOME_LOG_LEVEL: debug
             resources:
               requests:
                 cpu: 50m
