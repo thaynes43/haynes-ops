@@ -35,7 +35,8 @@ spec:
               tag: 2024.10.0
             env:
               TZ: America/New_York
-              ESPHOME_DASHBOARD_USE_PING: "false"
+              PLATFORMIO_CORE_DIR: .platformio
+              PLATFORMIO_GLOBALLIB_DIR: .platformiolibs
             resources:
               requests:
                 cpu: 500m
@@ -56,6 +57,16 @@ spec:
                 cpu: 100m
               limits:
                 memory: 2Gi
+        pod:
+          hostNetwork: true
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 100
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
     service:
       app:
         controller: esphome
@@ -94,6 +105,22 @@ spec:
           esphome:
             app:
               - path: /config
+      secrets:
+        type: secret
+        name: esphome-secret
+        globalMounts:
+          - path: /config/secrets.yaml
+            subPath: secrets.yaml
+      deploy-key:
+        type: secret
+        name: esphome-deploykey
+        defaultMode: 256
+        advancedMounts:
+          esphome:
+            code-server:
+              - path: /home/coder/.ssh/id_ed25519
+                readOnly: true
+                subPath: id_ed25519
       esphome-cache:
         type: emptyDir
         globalMounts:
