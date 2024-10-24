@@ -107,20 +107,14 @@ spec:
     persistence:
       config:
         existingClaim: esphome
-        advancedMounts:
-          esphome:
-            app:
-              - path: /config
+        globalMounts:
+          - path: /config
       secrets:
         type: secret
         name: esphome-secrets
         globalMounts:
           - path: /config/secrets.yaml
             subPath: secrets.yaml
-      esphome-cache:
-        type: emptyDir
-        globalMounts:
-          - path: /config/.esphome
       deploy-key:
         type: secret
         name: esphome-deploykey
