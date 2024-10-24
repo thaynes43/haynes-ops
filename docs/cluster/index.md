@@ -11,3 +11,10 @@ At this point I've gotten started but documenting as I go endes up being a mess 
 I'll recap how the story went so far but first some TODOs:
 
 - Bootstraping flux sets those limits but I'm not sure why
+
+Try:
+
+```
+task omni:sync
+task talos:install-helm-apps
+task flux:bootstrap
