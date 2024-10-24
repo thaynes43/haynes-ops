@@ -11,3 +11,8 @@
           hajimari.io/appName: "ESPHome Configuration"
           hajimari.io/instance: "admin"
 ```
+
+OR
+
+- [homepage](https://gethomepage.dev/)
+  See https://github.com/brunnels/talos-cluster/blob/main/kubernetes/apps/automation/esphome/app/helmrelease.yaml#L75C11-L75C26
