@@ -43,9 +43,9 @@ spec:
     storageClassName: "${VOLSYNC_STORAGECLASS:-ceph-block}"
     accessModes: ["${VOLSYNC_ACCESSMODES:-ReadWriteOnce}"]
     moverSecurityContext:
-      runAsUser: 568
-      runAsGroup: 568
-      fsGroup: 568
+      runAsUser: ${VOLSYNC_PUID:-568}
+      runAsGroup: ${VOLSYNC_PGID:-568}
+      fsGroup: ${VOLSYNC_PGID:-568}
     retain:
       daily: 10  # Keep most recent from each day for 10 days
       within: 3d # And keep all that were created within 3 days
@@ -68,7 +68,7 @@ spec:
     storageClassName: "${VOLSYNC_STORAGECLASS:-ceph-block}"
     accessModes: ["${VOLSYNC_ACCESSMODES:-ReadWriteOnce}"]
     capacity: "${VOLSYNC_CAPACITY}"
-    # moverSecurityContext:
+    # moverSecurityContext: # Not needed due to privileged movers
     #   runAsUser: 568
     #   runAsGroup: 568
     #   fsGroup: 568
