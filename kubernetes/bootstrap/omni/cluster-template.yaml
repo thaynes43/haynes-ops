@@ -15,6 +15,9 @@ patches:
     inline:
       cluster:
         allowSchedulingOnControlPlanes: true
+        apiServer:
+          extraArgs:
+            allow-privileged: "true"
         proxy:
           extraArgs:
             proxy-mode: ipvs
