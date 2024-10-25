@@ -33,6 +33,15 @@ spec:
       esphome:
         annotations:
           secret.reloader.stakater.com/reload: esphome-secrets,esphome-deploykey
+        pod:
+          annotations:
+            k8s.v1.cni.cncf.io/networks: |
+              [{
+                "name":"multus-iot",
+                "namespace": "network",
+                "ips": ["192.168.40.206/24"],
+                "mac": "a4:40:6d:ad:fd:d2"
+              }]
         containers:
           app:
             image:
