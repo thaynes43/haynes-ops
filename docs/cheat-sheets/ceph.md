@@ -31,6 +31,11 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
 ### Misc TOOD
 
 ```bash
+kubectl -n rook-ceph scale deployment rook-ceph-operator --replicas=0
+kubectl -n rook-ceph scale deployment rook-ceph-operator --replicas=1
+```
+
+```bash
 kubectl get storageclass
 
 kubectl -n rook-ceph get cephclusters rook-ceph
@@ -136,13 +141,13 @@ metadata:
   namespace: rook-ceph
 spec:
   restartPolicy: Never
-  nodeName: talosm01
+  nodeName: talosm02
   containers:
   - name: disk-wipe
     image: busybox
     securityContext:
       privileged: true
-    command: ["/bin/sh", "-c", "dd if=/dev/zero bs=1M count=100 oflag=direct of=/dev/nvme0n1"]
+    command: ["/bin/sh", "-c", "dd if=/dev/zero bs=1M count=100 oflag=direct of=/dev/nvme1n1"]
 EOF
 pod/disk-wipe created
 

@@ -16,6 +16,7 @@ vars:
   ts: '{{now | date "150405"}}'
 
 tasks:
+  # TODO This did not quite work - need to add "RookDiskWipe" to the mix
   wipe-disks-talosm01:
     desc: Trigger a wipe of Rook-Ceph data on node "talosm01"
     cmds:

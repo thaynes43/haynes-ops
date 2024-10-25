@@ -14,6 +14,8 @@ I'll recap how the story went so far but first some TODOs:
 
 Try:
 
+> **WARNING** Wiping disks is for ceph. They wipe `/dev/nvme#` which happens to change all the time when talos re-images the OS. Make sure these paths are correct before running this!!!
+
 ```bash
 task omni:sync
 task rook:wipe-disks-talosm01
@@ -21,3 +23,4 @@ task rook:wipe-disks-talosm02
 task rook:wipe-disks-talosm03
 task flux:bootstrap
 ```
+> **TODO** See Rook task file and add `RookDiskWipe` in which was needed to get bluestore partition off of OSDs
