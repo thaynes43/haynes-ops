@@ -67,6 +67,8 @@ spec:
                 cpu: 100m
               limits:
                 memory: 2Gi
+        pod:
+          hostNetwork: true
     defaultPodOptions:
       securityContext:
         runAsNonRoot: false
@@ -78,34 +80,37 @@ spec:
     service:
       app:
         controller: esphome
+        type: LoadBalancer
+        annotations:
+          metallb.universe.tf/loadBalancerIPs: 192.168.40.206
         ports:
           http:
             port: 6052
           code-server:
             port: 12321
-    ingress:
-      app:
-        annotations:
-          external-dns.alpha.kubernetes.io/target: internal.haynesops
-        className: traefik-internal
-        hosts:
-          - host: esphome.haynesops.com
-            paths:
-              - path: /
-                service:
-                  identifier: app
-                  port: http
-      code-server:
-        annotations:
-          external-dns.alpha.kubernetes.io/target: internal.haynesops
-        className: traefik-internal
-        hosts:
-          - host: esphome-code.haynesops.com
-            paths:
-              - path: /
-                service:
-                  identifier: app
-                  port: code-server
+    #ingress:
+    #  app:
+    #    annotations:
+    #      external-dns.alpha.kubernetes.io/target: internal.haynesops
+    #    className: traefik-internal
+    #    hosts:
+    #      - host: esphome.haynesops.com
+    #        paths:
+    #          - path: /
+    #            service:
+    #              identifier: app
+    #              port: http
+    #  code-server:
+    #    annotations:
+    #      external-dns.alpha.kubernetes.io/target: internal.haynesops
+    #    className: traefik-internal
+    #    hosts:
+    #      - host: esphome-code.haynesops.com
+    #        paths:
+    #          - path: /
+    #            service:
+    #              identifier: app
+    #              port: code-server
     persistence:
       config:
         existingClaim: esphome
