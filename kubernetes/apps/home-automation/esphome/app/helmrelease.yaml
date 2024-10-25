@@ -67,14 +67,6 @@ spec:
                 cpu: 100m
               limits:
                 memory: 2Gi
-        pod:
-          hostNetwork: true
-          dnsPolicy: "None"
-          dnsConfig:
-            nameservers:
-              - 10.96.0.10
-            searches:
-              - svc.cluster.local
     defaultPodOptions:
       securityContext:
         runAsNonRoot: false
@@ -91,32 +83,32 @@ spec:
           metallb.universe.tf/loadBalancerIPs: 192.168.40.206
         ports:
           http:
-            port: 6053
+            port: 6052
           code-server:
-            port: 12322
-    #ingress:
-    #  app:
-    #    annotations:
-    #      external-dns.alpha.kubernetes.io/target: internal.haynesops
-    #    className: traefik-internal
-    #    hosts:
-    #      - host: esphome.haynesops.com
-    #        paths:
-    #          - path: /
-    #            service:
-    #              identifier: app
-    #              port: http
-    #  code-server:
-    #    annotations:
-    #      external-dns.alpha.kubernetes.io/target: internal.haynesops
-    #    className: traefik-internal
-    #    hosts:
-    #      - host: esphome-code.haynesops.com
-    #        paths:
-    #          - path: /
-    #            service:
-    #              identifier: app
-    #              port: code-server
+            port: 12321
+    ingress:
+      app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+        className: traefik-internal
+        hosts:
+          - host: esphome.haynesops.com
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+      code-server:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+        className: traefik-internal
+        hosts:
+          - host: esphome-code.haynesops.com
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: code-server
     persistence:
       config:
         existingClaim: esphome
