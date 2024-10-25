@@ -39,7 +39,7 @@ spec:
               [{
                 "name":"multus-iot",
                 "namespace": "network",
-                "ips": ["192.168.40.206/24"],
+                "ips": ["192.168.40.249/24"],
                 "mac": "a4:40:6d:ad:fd:d2"
               }]
         containers:
@@ -88,8 +88,6 @@ spec:
       app:
         controller: esphome
         type: LoadBalancer
-        annotations:
-          metallb.universe.tf/loadBalancerIPs: 192.168.40.206
         ports:
           http:
             port: 6052
