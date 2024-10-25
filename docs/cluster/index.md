@@ -14,7 +14,10 @@ I'll recap how the story went so far but first some TODOs:
 
 Try:
 
-```
+```bash
 task omni:sync
-task talos:install-helm-apps
+task rook:wipe-disks-talosm01
+task rook:wipe-disks-talosm02
+task rook:wipe-disks-talosm03
 task flux:bootstrap
+```

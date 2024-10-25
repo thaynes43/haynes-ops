@@ -30,6 +30,7 @@ includes:
   repository: .taskfiles/Repository
   talos: .taskfiles/Talos
   omni: .taskfiles/Omni
+  rook: .taskfiles/Rook
   sops: .taskfiles/Sops
   workstation: .taskfiles/Workstation
   user:

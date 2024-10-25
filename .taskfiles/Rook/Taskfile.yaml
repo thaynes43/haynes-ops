@@ -1,0 +1,137 @@
+---
+# yaml-language-server: $schema=https://gist.githubusercontent.com/thaynes43/21ef53eace2d3c6c8f00c8ee0fe4ec24/raw/b0fd8341723eee62b8a47127d40cb75f00056b67/empty-json-schema.json
+version: "3"
+
+rook-task-vars: &task-vars
+  node: "{{.node}}"
+  ceph_disk: "{{.ceph_disk}}"
+  ts: "{{.ts}}"
+  jobName: "{{.jobName}}"
+
+vars:
+  waitForJobScript: "{{.ROOT_DIR}}/.taskfiles/_scripts/wait-for-k8s-job.sh"
+  wipeRookDataJobTemplate: "{{.ROOT_DIR}}/.taskfiles/Rook/WipeRookDataJob.tmpl.yaml"
+  wipeRookDiskJobTemplate: "{{.ROOT_DIR}}/.taskfiles/Rook/WipeDiskJob.tmpl.yaml"
+  tempNamespace: "{{.ROOT_DIR}}/.taskfiles/Rook/CreateTempNamespace.yaml"
+  ts: '{{now | date "150405"}}'
+
+tasks:
+  wipe-disks-talosm01:
+    desc: Trigger a wipe of Rook-Ceph data on node "talosm01"
+    cmds:
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/nvme0n1"
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/nvme2n1"
+    vars:
+      node: talosm01
+
+  wipe-disks-talosm02:
+    desc: Trigger a wipe of Rook-Ceph data on node "talosm02"
+    cmds:
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/nvme1n1"
+    vars:
+      node: talosm02
+
+  wipe-disks-talosm03:
+    desc: Trigger a wipe of Rook-Ceph data on node "talosm03"
+    cmds:
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/nvme1n1"
+    vars:
+      node: talosm03
+
+  wipe-node-talosm01:
+    desc: Trigger a wipe of Rook-Ceph data on node "talosm01"
+    cmds:
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/nvme0n1"
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/nvme2n1"
+      - task: wipe-data
+        vars:
+          node: "{{.node}}"
+    vars:
+      node: talosm01
+
+  wipe-node-talosm02:
+    desc: Trigger a wipe of Rook-Ceph data on node "talosm02"
+    cmds:
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/nvme1n1"
+      - task: wipe-data
+        vars:
+          node: "{{.node}}"
+    vars:
+      node: talosm02
+
+  wipe-node-talosm03:
+    desc: Trigger a wipe of Rook-Ceph data on node "talosm03"
+    cmds:
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/nvme1n1"
+      - task: wipe-data
+        vars:
+          node: "{{.node}}"
+    vars:
+      node: talosm03
+
+  wipe-disk:
+    desc: Wipe all remnants of rook-ceph from a given disk (ex. task rook:wipe-disk node=talosm01 ceph_disk="/dev/nvme0n1")
+    silent: true
+    internal: true
+    cmds:
+      - kubectl create -f {{.tempNamespace}}
+      - envsubst < <(cat {{.wipeRookDiskJobTemplate}}) | kubectl apply -f -
+      - bash {{.waitForJobScript}} {{.jobName}} temp-ns
+      - kubectl -n temp-ns wait job/{{.jobName}} --for condition=complete --timeout=1m
+      - kubectl -n temp-ns logs job/{{.jobName}}
+      - kubectl -n temp-ns delete job {{.jobName}}
+      - kubectl delete -f {{.tempNamespace}}
+    vars:
+      node: '{{ or .node (fail "`node` is required") }}'
+      ceph_disk: '{{ or .ceph_disk (fail "`ceph_disk` is required") }}'
+      jobName: "wipe-disk-{{- .node -}}"
+    env: *task-vars
+    preconditions:
+      - sh: test -f {{.waitForJobScript}}
+      - sh: test -f {{.wipeRookDiskJobTemplate}}
+      - sh: test -f {{.tempNamespace}}
+
+  wipe-data:
+    desc: Wipe all remnants of rook-ceph from a given disk (ex. task rook:wipe-data node=talosm01)
+    silent: true
+    internal: true
+    cmds:
+      - kubectl create -f {{.tempNamespace}}
+      - envsubst < <(cat {{.wipeRookDataJobTemplate}}) | kubectl apply -f -
+      - bash {{.waitForJobScript}} {{.jobName}} temp-ns
+      - kubectl -n temp-ns wait job/{{.jobName}} --for condition=complete --timeout=1m
+      - kubectl -n temp-ns logs job/{{.jobName}}
+      - kubectl -n temp-ns delete job {{.jobName}}
+      - kubectl delete -f {{.tempNamespace}}
+    vars:
+      node: '{{ or .node (fail "`node` is required") }}'
+      jobName: "wipe-rook-data-{{- .node -}}"
+    env: *task-vars
+    preconditions:
+      - sh: test -f {{.waitForJobScript}}
+      - sh: test -f {{.wipeRookDataJobTemplate}}
+      - sh: test -f {{.tempNamespace}}
