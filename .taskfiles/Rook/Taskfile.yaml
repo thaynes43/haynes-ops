@@ -17,6 +17,7 @@ vars:
 
 tasks:
   # TODO This did not quite work - need to add "RookDiskWipe" to the mix
+  # TODO https://github.com/onedr0p/home-ops/blob/main/.taskfiles/bootstrap/resources/rook-disk-job.yaml.j2
   wipe-disks-talosm01:
     desc: Trigger a wipe of Rook-Ceph data on node "talosm01"
     cmds:

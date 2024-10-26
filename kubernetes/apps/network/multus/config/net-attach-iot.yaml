@@ -4,6 +4,7 @@ kind: NetworkAttachmentDefinition
 metadata:
   name: multus-iot
 spec:
+  # TODO https://technotim.live/posts/advanced-kubernetes-networking/ learn about this more, this config don't work
   config: |-
     {
       "cniVersion": "0.3.1",
