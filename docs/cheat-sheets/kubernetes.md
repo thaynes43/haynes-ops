@@ -235,19 +235,19 @@ kubectl logs -f velero-764d58dfd9-k47sh
 This was super hard to get rid of vs. a regular namespace! 
 
 ```bash
-kubectl get ns home-automation -o json | jq '.spec.finalizers = []' | kubectl replace --raw "/api/v1/namespaces/home-automation/finalize" -f -
+kubectl get ns rook-ceph -o json | jq '.spec.finalizers = []' | kubectl replace --raw "/api/v1/namespaces/rook-ceph/finalize" -f -
 ```
 
 ```bash
-kubectl get namespace home-automation -o json > tmp.json
+kubectl get namespace rook-ceph -o json > tmp.json
 ```
 
 - Delete kubernetes finalizer in tmp.json (leave empty array "finalizers": [])
 - Run kubectl proxy in another terminal for auth purposes and run following curl request to returned port
 
 ```bash
-
-curl -k -H "Content-Type: application/json" -X PUT --data-binary @tmp.json 127.0.0.1:8001/api/v1/namespaces/home-automation/finalize
+kubectl proxy &
+curl -k -H "Content-Type: application/json" -X PUT --data-binary @tmp.json 127.0.0.1:8001/api/v1/namespaces/rook-ceph/finalize
 
 ```
 
