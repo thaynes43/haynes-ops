@@ -53,7 +53,13 @@ patches:
         network:
           hostname: talosm01
           interfaces:
+            - interface: eth0
+              dhcp: true
+            - interface: eth1
+              dhcp: true
             - interface: eth2
+              dhcp: true
+            - interface: eth3
               dhcp: true
         sysctls:
           net.core.bpf_jit_harden: 1
@@ -90,7 +96,13 @@ patches:
         network:
           hostname: talosm02
           interfaces:
+            - interface: eth0
+              dhcp: true
+            - interface: eth1
+              dhcp: true
             - interface: eth2
+              dhcp: true
+            - interface: eth3
               dhcp: true
         kubelet:
           nodeIP:
@@ -125,7 +137,13 @@ patches:
         network:
           hostname: talosm03
           interfaces:
+            - interface: eth0
+              dhcp: true
+            - interface: eth1
+              dhcp: true
             - interface: eth2
+              dhcp: true
+            - interface: eth3
               dhcp: true
         kubelet:
           nodeIP:
