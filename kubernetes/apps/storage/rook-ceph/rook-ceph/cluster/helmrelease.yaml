@@ -60,15 +60,15 @@ spec:
           - name: pg_autoscaler
             enabled: true
       network:
-        # TODO do I need https://rook.io/docs/rook/latest/CRDs/Cluster/network-providers/#multus ?
-        #provider: host
-        #addressRanges:
-        #  public: ["192.168.40.0/24"]
-        #  cluster: ["192.168.60.0/24"]
-        provider: multus
-        selectors:
-          public: network/multus-public
-          cluster: network/multus-ceph
+        provider: host
+        addressRanges:
+          public: ["192.168.40.0/24"]
+          cluster: ["192.168.60.0/24"]
+        # TODO https://rook.io/docs/rook/latest/CRDs/Cluster/network-providers/#multus worth it?
+        #provider: multus
+        #selectors:
+        #  public: network/multus-public
+        #  cluster: network/multus-ceph
         connections:
           requireMsgr2: true
       storage:
