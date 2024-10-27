@@ -60,12 +60,15 @@ spec:
           - name: pg_autoscaler
             enabled: true
       network:
-        provider: host
-        addressRanges:
-          public:
-            - "192.168.40.0/24"
-          cluster:
-            - "192.168.60.0/24"
+        # TODO do I need https://rook.io/docs/rook/latest/CRDs/Cluster/network-providers/#multus ?
+        #provider: host
+        #addressRanges:
+        #  public: ["192.168.40.0/24"]
+        #  cluster: ["192.168.60.0/24"]
+        provider: multus
+        selectors:
+          public: network/multus-public
+          cluster: network/multus-ceph
         connections:
           requireMsgr2: true
       storage:
@@ -79,9 +82,11 @@ spec:
           - name: talosm02
             devices:
               - name: "/dev/disk/by-id/nvme-MZ1LB1T9HBLS-000FB_S5XANE0NC09500"
+              - name: "/dev/disk/by-id/nvme-SAMSUNG_MZ1LB1T9HALS-00007_S436NA0N910125"
           - name: talosm03
             devices:
               - name: "/dev/disk/by-id/nvme-MZ1LB1T9HBLS-000FB_S5XANA0T113526"
+              - name: "/dev/disk/by-id/nvme-SAMSUNG_MZ1LB1T9HALS-00007_S436NA0N910040"
       placement:
         mgr: &placement
           nodeAffinity:

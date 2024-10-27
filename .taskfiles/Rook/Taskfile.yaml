@@ -24,7 +24,7 @@ tasks:
       - task: wipe-disk
         vars:
           node: "{{.node}}"
-          ceph_disk: "/dev/nvme0n1"
+          ceph_disk: "/dev/nvme1n1"
       - task: wipe-disk
         vars:
           node: "{{.node}}"
@@ -38,7 +38,11 @@ tasks:
       - task: wipe-disk
         vars:
           node: "{{.node}}"
-          ceph_disk: "/dev/nvme1n1"
+          ceph_disk: "/dev/nvme0n1"
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/nvme2n1"
     vars:
       node: talosm02
 
@@ -49,51 +53,26 @@ tasks:
         vars:
           node: "{{.node}}"
           ceph_disk: "/dev/nvme1n1"
-    vars:
-      node: talosm03
-
-  wipe-node-talosm01:
-    desc: Trigger a wipe of Rook-Ceph data on node "talosm01"
-    cmds:
-      - task: wipe-disk
-        vars:
-          node: "{{.node}}"
-          ceph_disk: "/dev/nvme0n1"
       - task: wipe-disk
         vars:
           node: "{{.node}}"
           ceph_disk: "/dev/nvme2n1"
-      - task: wipe-data
-        vars:
-          node: "{{.node}}"
-    vars:
-      node: talosm01
-
-  wipe-node-talosm02:
-    desc: Trigger a wipe of Rook-Ceph data on node "talosm02"
-    cmds:
-      - task: wipe-disk
-        vars:
-          node: "{{.node}}"
-          ceph_disk: "/dev/nvme1n1"
-      - task: wipe-data
-        vars:
-          node: "{{.node}}"
-    vars:
-      node: talosm02
-
-  wipe-node-talosm03:
-    desc: Trigger a wipe of Rook-Ceph data on node "talosm03"
-    cmds:
-      - task: wipe-disk
-        vars:
-          node: "{{.node}}"
-          ceph_disk: "/dev/nvme1n1"
-      - task: wipe-data
-        vars:
-          node: "{{.node}}"
     vars:
       node: talosm03
+
+  wipe-node-example:
+    desc: Trigger a wipe of Rook-Ceph data on node "example"
+    cmds:
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/example"
+      - task: wipe-data
+        vars:
+          node: "{{.node}}"
+    vars:
+      node: example
+
 
   wipe-disk:
     desc: Wipe all remnants of rook-ceph from a given disk (ex. task rook:wipe-disk node=talosm01 ceph_disk="/dev/nvme0n1")

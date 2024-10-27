@@ -5,6 +5,7 @@ metadata:
   name: "${jobName}"
   namespace: "temp-ns"
 spec:
+  # See https://github.com/onedr0p/home-ops/blob/main/.taskfiles/bootstrap/resources/rook-disk-job.yaml.j2
   ttlSecondsAfterFinished: 3600
   template:
     spec:
@@ -16,10 +17,10 @@ spec:
           image: alpine:latest
           command: ["/bin/sh", "-c"]
           args:
-            - apk add --no-cache sgdisk util-linux parted;
+            - apk add --no-cache sgdisk util-linux util-linux-misc parted device-mapper;
               sgdisk --zap-all ${ceph_disk};
               blkdiscard ${ceph_disk};
-              dd if=/dev/zero bs=1M count=10000 oflag=direct of=${ceph_disk};
+              dd if=/dev/zero bs=1M count=100 oflag=direct of=${ceph_disk};
               partprobe ${ceph_disk};
           securityContext:
             privileged: true

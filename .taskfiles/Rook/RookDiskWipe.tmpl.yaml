@@ -4,6 +4,7 @@ metadata:
   name: disk-wipe-${node}
   namespace: "temp-ns"
 spec:
+  # See https://www.talos.dev/v1.8/kubernetes-guides/configuration/ceph-with-rook/
   restartPolicy: Never
   nodeName: ${node}
   containers:
@@ -11,4 +12,4 @@ spec:
     image: busybox
     securityContext:
       privileged: true
-    command: ["/bin/sh", "-c", "dd if=/dev/zero bs=1M count=100 oflag=direct of=/dev/nvme1n1"]
+    command: ["/bin/sh", "-c", "dd if=/dev/zero bs=1M count=100 oflag=direct of=${ceph_disk};"]

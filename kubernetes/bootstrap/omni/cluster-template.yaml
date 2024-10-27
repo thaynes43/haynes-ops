@@ -37,6 +37,8 @@ patches:
     inline:
       machine:
         install:
+          extraKernelArgs:
+            - "net.ifnames=0"
           diskSelector:
             model: CT1000T500SSD8
           wipe: true
@@ -75,6 +77,7 @@ patches:
         install:
           extraKernelArgs:
             - nomodeset
+            - "net.ifnames=0"
           diskSelector:
             model: CT1000T500SSD8
           wipe: true
@@ -103,6 +106,7 @@ patches:
         install:
           extraKernelArgs:
             - nomodeset
+            - "net.ifnames=0"
           diskSelector:
             model: CT1000T500SSD8
           wipe: true

@@ -10,6 +10,82 @@ Restart operator to re-invoke cluster init:
 kubectl -n rook-ceph delete pod -l app=rook-ceph-operator
 ```
 
+Get into a place you can use the regular commands:
+
+```bash
+kubectl --namespace rook-ceph exec -it deploy/rook-ceph-operator -- bash
+```
+
+> **TODO** Move this
+
+```bash
+kubectl --namespace rook-ceph exec -it deploy/rook-ceph-operator -- bash
+rook multus validation run --public-network=kube-multus-net --cluster-network=ceph-multus-net -n rook-ceph
+rook multus validation config converged
+
+``` bash
+Example:
+
+thaynes@HaynesHyperion:~$ kubectl --namespace rook-ceph exec -it deploy/rook-ceph-operator -- bash
+Defaulted container "rook-ceph-operator" out of: rook-ceph-operator, k8tz (init)
+[rook@rook-ceph-operator-69745fc466-pc95r /]$ rook multus validation run --help
+2024/10/26 10:59:57 maxprocs: Leaving GOMAXPROCS=20: CPU quota undefined
+
+Run a validation test that determines whether the current Multus and system
+configurations will support Rook with Multus.
+
+This should be run BEFORE Rook is installed.
+
+This is a fairly long-running test. It starts up a web server and many
+clients to verify that Multus network communication works properly.
+
+It does *not* perform any load testing. Networks that cannot support high
+volumes of Ceph traffic may still encounter runtime issues. This may be
+particularly noticeable with high I/O load or during OSD rebalancing
+(see: https://docs.ceph.com/en/latest/architecture/#rebalancing).
+For example, during Rook or Ceph cluster upgrade.
+
+Override the kube config file location by setting the KUBECONFIG environment variable.
+
+Usage:
+  rook multus validation run [--public-network=<nad-name>] [--cluster-network=<nad-name>] [flags]
+
+Flags:
+      --cluster-network string                   The name of the Network Attachment Definition (NAD) that will be used for Ceph's cluster network. This should be a namespaced name in the form <namespace>/<name> if the NAD is defined in a different namespace from the cluster namespace.
+  -c, --config string                            The validation test config file to use. This cannot be used with other flags except --host-check-only.
+      --daemons-per-node int                     The number of validation test daemons to run per node. It is recommended to set this to the maximum number of Ceph daemons that can run on any node in the worst case of node failure(s). The default value is set to the worst-case value for a Rook Ceph cluster with 3 portable OSDs, 3 portable monitors, and where all optional child resources have been created with 1 daemon such that they all might run on a single node in a failure scenario. If you aren't sure what to choose for this value, add 1 for each additional OSD beyond 3. (default 19)
+      --flaky-threshold-seconds timeoutSeconds   This is the time window in which validation clients are all expected to become 'Ready' together. Validation clients are all started at approximately the same time, and they should all stabilize at approximately the same time. Once the first validation client becomes 'Ready', the tool checks that all of the remaining clients become 'Ready' before this threshold duration elapses. In networks that have connectivity issues, limited bandwidth, or high latency, clients will contend for network traffic with each other, causing some clients to randomly fail and become 'Ready' later than others. These randomly-failing clients are considered 'flaky.' Adjust this value to reflect expectations for the underlying network. For fast and reliable networks, this can be set to a smaller value. For networks that are intended to be slow, this can be set to a larger value. Additionally, for very large Kubernetes clusters, it may take longer for all clients to start, and it therefore may take longer for all clients to become 'Ready'; in that case, this value can be set slightly higher. (default 30s)
+  -h, --help                                     help for run
+      --host-check-only                          Only check that hosts can connect to the server via the public network. Do not start clients. This mode is recommended when a Rook cluster is already running and consuming the public network specified.
+  -n, --namespace string                         The namespace for validation test resources. It is recommended to set this to the namespace in which Rook's Ceph cluster will be installed. (default "rook-ceph")
+      --nginx-image string                       The Nginx image used for the validation server and clients. (default "quay.io/nginx/nginx-unprivileged:stable-alpine")
+      --public-network string                    The name of the Network Attachment Definition (NAD) that will be used for Ceph's public network. This should be a namespaced name in the form <namespace>/<name> if the NAD is defined in a different namespace from the cluster namespace.
+      --service-account string                   The name of the service account that will be used for test resources. (default "rook-ceph-system")
+      --timeout-minutes timeoutMinutes           The time to wait for resources to change to the expected state. For example, for the test web server to start, for test clients to become ready, or for test resources to be deleted. At longest, this may need to reflect the time it takes for client pods to to pull images, get address assignments, and then for each client to determine that its network connection is stable. Minimum: 1 minute. Recommended: 2 minutes or more. (default 3m0s)
+
+Global Flags:
+      --log-level string   logging level for logging/tracing output (valid values: ERROR,WARNING,INFO,DEBUG) (default "INFO")
+[rook@rook-ceph-operator-69745fc466-pc95r /]$ rook multus validation config --help
+2024/10/26 11:00:16 maxprocs: Leaving GOMAXPROCS=20: CPU quota undefined
+Generate a validation test config file for different default scenarios to stdout.
+
+Usage:
+  rook multus validation config [command]
+
+Available Commands:
+  converged               Example config for a cluster that runs storage and user workloads on all nodes.
+  dedicated-storage-nodes Example config file for a cluster that uses dedicated storage nodes.
+  stretch-cluster         Example config file for a stretch cluster with dedicated storage nodes.
+
+Flags:
+  -h, --help   help for config
+
+Global Flags:
+      --log-level string   logging level for logging/tracing output (valid values: ERROR,WARNING,INFO,DEBUG) (default "INFO")
+
+Use "rook multus validation config [command] --help" for more information about a command.
+```
+
 ## Talos
 
 ### Status

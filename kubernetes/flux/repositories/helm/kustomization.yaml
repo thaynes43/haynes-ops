@@ -27,3 +27,4 @@ resources:
   - ./grafana.yaml
   - ./emqx.yaml
   - ./nvidia.yaml
+  - ./whereabouts.yaml
