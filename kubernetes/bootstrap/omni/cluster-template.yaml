@@ -52,9 +52,15 @@ patches:
             - name: nvidia_modeset
         network:
           hostname: talosm01
+          interfaces:
+            - interface: eth2
+              dhcp: true
         sysctls:
           net.core.bpf_jit_harden: 1
         kubelet:
+          nodeIP:
+            validSubnets:
+              - 192.168.40.0/24
           extraMounts:
             - destination: /var/openebs/local
               type: bind
@@ -83,7 +89,13 @@ patches:
           wipe: true
         network:
           hostname: talosm02
+          interfaces:
+            - interface: eth2
+              dhcp: true
         kubelet:
+          nodeIP:
+            validSubnets:
+              - 192.168.40.0/24
           extraMounts:
             - destination: /var/openebs/local
               type: bind
@@ -112,7 +124,13 @@ patches:
           wipe: true
         network:
           hostname: talosm03
+          interfaces:
+            - interface: eth2
+              dhcp: true
         kubelet:
+          nodeIP:
+            validSubnets:
+              - 192.168.40.0/24
           extraMounts:
             - destination: /var/openebs/local
               type: bind

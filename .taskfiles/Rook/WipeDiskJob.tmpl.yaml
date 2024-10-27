@@ -6,6 +6,7 @@ metadata:
   namespace: "temp-ns"
 spec:
   # See https://github.com/onedr0p/home-ops/blob/main/.taskfiles/bootstrap/resources/rook-disk-job.yaml.j2
+  # TODO This again did nto do the job! Only the two new disks worked, rest complained about having bluestore fs
   ttlSecondsAfterFinished: 3600
   template:
     spec:
@@ -14,13 +15,13 @@ spec:
       nodeName: ${node}
       containers:
         - name: disk-wipe
-          image: alpine:latest
+          image: docker.io/library/alpine:latest
           command: ["/bin/sh", "-c"]
           args:
             - apk add --no-cache sgdisk util-linux util-linux-misc parted device-mapper;
               sgdisk --zap-all ${ceph_disk};
+              dd if=/dev/zero of=${ceph_disk} bs=1M count=10000 oflag=direct;
               blkdiscard ${ceph_disk};
-              dd if=/dev/zero bs=1M count=100 oflag=direct of=${ceph_disk};
               partprobe ${ceph_disk};
           securityContext:
             privileged: true

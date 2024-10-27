@@ -13,7 +13,7 @@ spec:
       nodeName: ${node}
       containers:
         - name: disk-wipe
-          image: alpine:latest
+          image: docker.io/library/alpine:latest
           securityContext:
             privileged: true
           resources: {}
