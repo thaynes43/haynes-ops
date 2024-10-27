@@ -20,7 +20,7 @@ kubectl --namespace rook-ceph exec -it deploy/rook-ceph-operator -- bash
 
 ```bash
 kubectl --namespace rook-ceph exec -it deploy/rook-ceph-operator -- bash
-rook multus validation run --public-network=kube-multus-net --cluster-network=ceph-multus-net -n rook-ceph
+rook multus validation run --public-network=network/multus-public --cluster-network=network/multus-ceph -n rook-ceph
 rook multus validation config converged
 
 ``` bash
