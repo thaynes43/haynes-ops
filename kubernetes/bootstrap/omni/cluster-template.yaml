@@ -66,7 +66,8 @@ patches:
         kubelet:
           nodeIP:
             validSubnets:
-              - 192.168.40.0/24
+              - 192.168.40.0/24 # Main
+              - 192.168.60.0/24 # Rook
           extraMounts:
             - destination: /var/openebs/local
               type: bind
@@ -107,7 +108,8 @@ patches:
         kubelet:
           nodeIP:
             validSubnets:
-              - 192.168.40.0/24
+              - 192.168.40.0/24 # Main
+              - 192.168.60.0/24 # Rook
           extraMounts:
             - destination: /var/openebs/local
               type: bind
@@ -148,7 +150,8 @@ patches:
         kubelet:
           nodeIP:
             validSubnets:
-              - 192.168.40.0/24
+              - 192.168.40.0/24 # Main
+              - 192.168.60.0/24 # Rook
           extraMounts:
             - destination: /var/openebs/local
               type: bind

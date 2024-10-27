@@ -64,7 +64,7 @@ spec:
         addressRanges:
           public: ["192.168.40.0/24"]
           cluster: ["192.168.60.0/24"]
-        # TODO https://rook.io/docs/rook/latest/CRDs/Cluster/network-providers/#multus worth it?
+        # TODO https://rook.io/docs/rook/latest/CRDs/Cluster/network-providers/#multus needed?
         #provider: multus
         #selectors:
         #  public: network/multus-public
