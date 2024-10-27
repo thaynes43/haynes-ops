@@ -4,12 +4,21 @@ kind: NetworkAttachmentDefinition
 metadata:
   name: multus-public
 spec:
-  config: '{
+  config: |-
+    {
       "cniVersion": "0.3.1",
-      "type": "macvlan",
-      "master": "eth2",
-      "mode": "bridge",
-      "ipam": {
-        "type": "dhcp",
-      }
-    }'
+      "name": "multus-public",
+      "plugins": [
+        {
+          "type": "macvlan",
+          "master": "eth2",
+          "mode": "bridge",
+          "capabilities": {
+            "ips": true
+          },
+          "ipam": {
+            "type": "dhcp"
+          }
+        }
+      ]
+    }
