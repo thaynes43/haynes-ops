@@ -21,7 +21,18 @@ kubectl --namespace rook-ceph exec -it deploy/rook-ceph-operator -- bash
 ```bash
 kubectl --namespace rook-ceph exec -it deploy/rook-ceph-operator -- bash
 rook multus validation run --public-network=network/multus-public --cluster-network=network/multus-ceph -n rook-ceph
+```
+This leaves a MESS so you need to run:
+
+```bash
+rook multus validation cleanup --namespace rook-ceph
+```
+
+Then the next validation:
+
+```bash
 rook multus validation config converged
+```
 
 ``` bash
 Example:

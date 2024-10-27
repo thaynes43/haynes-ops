@@ -3,8 +3,7 @@ kind: NetworkAttachmentDefinition
 metadata:
   name: multus-ceph
 spec:
-  config: |- 
-    {
+  config: '{
       "cniVersion": "0.3.1",
       "type": "macvlan",
       "master": "eth3",
@@ -13,4 +12,4 @@ spec:
         "type": "whereabouts",
         "range": "192.168.60.0/24"
       }
-    }
+    }'
