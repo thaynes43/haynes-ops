@@ -13,7 +13,7 @@ spec:
   dependsOn:
     - name: external-secrets-stores
   path: ./kubernetes/apps/storage/rook-ceph/rook-ceph/app
-  prune: false # never should be deleted
+  prune: true # never should be deleted
   sourceRef:
     kind: GitRepository
     name: haynes-ops
