@@ -17,21 +17,24 @@ vars:
 
 tasks:
   # TODO This did not quite work - need to add "RookDiskWipe" to the mix
+  # TODO Worked for 4/6 disks, then manually "RookDiskWipe"'ing them fixed it so IDK
   # TODO https://github.com/onedr0p/home-ops/blob/main/.taskfiles/bootstrap/resources/rook-disk-job.yaml.j2
+  # CHECK /dev MOUNTS WITH `talosctl -n 192.168.40.93 disks` FIRST
   wipe-disks-talosm01:
     desc: Trigger a wipe of Rook-Ceph data on node "talosm01"
     cmds:
       - task: wipe-disk
         vars:
           node: "{{.node}}"
-          ceph_disk: "/dev/nvme1n1"
+          ceph_disk: "/dev/nvme0n1"
       - task: wipe-disk
         vars:
           node: "{{.node}}"
-          ceph_disk: "/dev/nvme2n1"
+          ceph_disk: "/dev/nvme1n1"
     vars:
       node: talosm01
 
+  # CHECK /dev MOUNTS WITH `talosctl -n 192.168.40.59 disks` FIRST
   wipe-disks-talosm02:
     desc: Trigger a wipe of Rook-Ceph data on node "talosm02"
     cmds:
@@ -46,6 +49,7 @@ tasks:
     vars:
       node: talosm02
 
+  # CHECK /dev MOUNTS WITH `talosctl -n 192.168.40.10 disks` FIRST
   wipe-disks-talosm03:
     desc: Trigger a wipe of Rook-Ceph data on node "talosm03"
     cmds:

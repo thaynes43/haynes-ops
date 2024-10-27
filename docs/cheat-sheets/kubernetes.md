@@ -23,7 +23,7 @@ permalink: /cheatsheets/kube-commands/
 I see this when things take a while because something else is broken (like a csi) but there is no reason to fix the thing that is stuck. First force helmrelease to get fixed:
 
 ```bash
-flux reconcile helmrelease -n home-automation zigbee2mqtt --force
+flux reconcile helmrelease -n home-automation home-assistant --force
 ```
 
 Then get the kustomization in a good state again (if the helmrelease was OK):

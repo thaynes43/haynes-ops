@@ -220,7 +220,7 @@ pod "disk-clean" deleted
 And wipe the disks:
 
 ```yaml
-$ cat <<EOF | kubectl apply -f -
+cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -228,7 +228,7 @@ metadata:
   namespace: rook-ceph
 spec:
   restartPolicy: Never
-  nodeName: talosm02
+  nodeName: talosm03
   containers:
   - name: disk-wipe
     image: busybox
