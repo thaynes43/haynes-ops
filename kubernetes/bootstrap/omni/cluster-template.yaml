@@ -3,7 +3,7 @@ name: haynes-ops
 kubernetes:
   version: v1.31.1
 talos:
-  version: v1.8.1
+  version: v1.8.0
 ---
 kind: ControlPlane
 machines:
@@ -38,7 +38,7 @@ patches:
       machine:
         install:
           extraKernelArgs:
-            - "net.ifnames=0"
+            - net.ifnames=0
           diskSelector:
             model: CT1000T500SSD8
           wipe: true
@@ -67,7 +67,6 @@ patches:
           nodeIP:
             validSubnets:
               - 192.168.40.0/24 # Main
-              - 192.168.60.0/24 # Rook
           extraMounts:
             - destination: /var/openebs/local
               type: bind
@@ -90,7 +89,7 @@ patches:
         install:
           extraKernelArgs:
             - nomodeset
-            - "net.ifnames=0"
+            - net.ifnames=0
           diskSelector:
             model: CT1000T500SSD8
           wipe: true
@@ -109,7 +108,6 @@ patches:
           nodeIP:
             validSubnets:
               - 192.168.40.0/24 # Main
-              - 192.168.60.0/24 # Rook
           extraMounts:
             - destination: /var/openebs/local
               type: bind
@@ -132,7 +130,7 @@ patches:
         install:
           extraKernelArgs:
             - nomodeset
-            - "net.ifnames=0"
+            - net.ifnames=0
           diskSelector:
             model: CT1000T500SSD8
           wipe: true
@@ -151,7 +149,6 @@ patches:
           nodeIP:
             validSubnets:
               - 192.168.40.0/24 # Main
-              - 192.168.60.0/24 # Rook
           extraMounts:
             - destination: /var/openebs/local
               type: bind
