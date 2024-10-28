@@ -15,14 +15,14 @@ spec:
         kind: HelmRepository
         name: bjw-s
         namespace: flux-system
-  #install:
-  #  remediation:
-  #    retries: 3
-  #upgrade:
-  #  cleanupOnFail: true
-  #  remediation:
-  #    strategy: rollback
-  #    retries: 3
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
   dependsOn:
     - name: rook-ceph-cluster
       namespace: rook-ceph
@@ -34,15 +34,15 @@ spec:
         annotations:
           secret.reloader.stakater.com/reload: esphome-secrets,esphome-deploykey
         pod:
-          hostNetwork: true
-          #annotations:
-          #  k8s.v1.cni.cncf.io/networks: |
-          #    [{
-          #      "name":"multus-iot",
-          #      "namespace": "network",
-          #      "ips": ["192.168.50.249/24"],
-          #      "mac": "a4:40:6d:ad:fd:d2"
-          #    }]
+          #hostNetwork: true
+          annotations:
+            k8s.v1.cni.cncf.io/networks: |
+              [{
+                "name":"multus-iot",
+                "namespace": "network",
+                "ips": ["192.168.50.249/24"],
+                "mac": "a4:40:6d:ad:fd:d2"
+              }]
         containers:
           app:
             image:

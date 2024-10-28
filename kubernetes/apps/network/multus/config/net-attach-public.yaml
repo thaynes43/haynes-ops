@@ -4,6 +4,7 @@ kind: NetworkAttachmentDefinition
 metadata:
   name: multus-public
 spec:
+  # TODO dhcp is not setup for multus so this will fail
   config: |-
     {
       "cniVersion": "0.3.1",
