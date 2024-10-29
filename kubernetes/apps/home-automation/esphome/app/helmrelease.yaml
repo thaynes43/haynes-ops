@@ -33,8 +33,8 @@ spec:
       esphome:
         annotations:
           secret.reloader.stakater.com/reload: esphome-secrets,esphome-deploykey
-        pod:
-          hostNetwork: true
+        #pod:
+          #hostNetwork: true
           #annotations:
           #  k8s.v1.cni.cncf.io/networks: |
           #    [{
