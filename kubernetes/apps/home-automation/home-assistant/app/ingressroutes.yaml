@@ -18,7 +18,7 @@ spec:
           port: 8123
       middlewares:  
         - name: default-headers
-          namespace: traefik
+          namespace: network
   tls:
     secretName: certificate-haynesops
 ---
@@ -41,6 +41,6 @@ spec:
           port: 12321
       middlewares:  
         - name: default-headers
-          namespace: traefik
+          namespace: network
   tls:
     secretName: certificate-haynesops
