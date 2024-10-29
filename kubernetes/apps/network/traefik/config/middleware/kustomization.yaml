@@ -5,3 +5,4 @@ kind: Kustomization
 resources:
   - ./externalsecret.yaml
   - ./middleware-traefik-dashboard-basicauth.yaml
+  - ./default-headers.yaml
