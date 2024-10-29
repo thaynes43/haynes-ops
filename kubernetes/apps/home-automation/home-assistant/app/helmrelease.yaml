@@ -93,7 +93,7 @@ spec:
         controller: home-assistant
         type: LoadBalancer
         annotations:
-          metallb.universe.tf/loadBalancerIPs: 192.168.40.206
+          metallb.universe.tf/loadBalancerIPs: 192.168.40.207
         ports:
           http:
             port: 8123
