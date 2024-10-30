@@ -9,4 +9,5 @@ resources:
   - ./zigbee2mqtt/ks.yaml
   - ./zwave/ks.yaml
   - ./esphome/ks.yaml
+  - ./music-assistant/ks.yaml
   - ./home-assistant/ks.yaml
