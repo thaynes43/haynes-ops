@@ -1,4 +1,5 @@
 ---
+# yaml-language-server: $schema=https://json.schemastore.org/helmfile
 helmDefaults:
   wait: true
   waitForJobs: true
@@ -30,7 +31,7 @@ releases:
   - name: coredns
     namespace: kube-system
     chart: coredns/coredns
-    version: 1.36.1
+    version: 1.36.0
     values:
       - ../apps/kube-system/coredns/app/helm-values.yaml
     needs:
