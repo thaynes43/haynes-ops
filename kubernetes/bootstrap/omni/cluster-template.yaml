@@ -229,6 +229,8 @@ kind: Machine
 systemExtensions:
   - siderolabs/intel-ucode
   - siderolabs/nut-client
+  - siderolabs/nvidia-container-toolkit-lts
+  - siderolabs/nvidia-open-gpu-kernel-modules-lts
   - siderolabs/thunderbolt
 name: 98290580-1909-11ef-944c-5fe147626300
 patches:
@@ -242,6 +244,14 @@ patches:
           diskSelector:
             model: CT1000T500SSD8
           wipe: true
+        kernel:
+          modules:
+            - name: nvidia
+              parameters:
+                - NVreg_OpenRmEnableUnsupportedGpus=1
+            - name: nvidia_uvm
+            - name: nvidia_drm
+            - name: nvidia_modeset
         network:
           hostname: talosm03
           interfaces:
