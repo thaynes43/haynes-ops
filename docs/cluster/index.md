@@ -21,6 +21,7 @@ task omni:sync
 task rook:wipe-disks-talosm01
 task rook:wipe-disks-talosm02
 task rook:wipe-disks-talosm03
+task talos:install-helm-apps
 task flux:bootstrap
 ```
 > **TODO** See Rook task file and add `RookDiskWipe` in which was needed to get bluestore partition off of OSDs
