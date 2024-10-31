@@ -1,15 +1,22 @@
-apiVersion: v1
-kind: Pod
+---
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: disk-wipe-${node}
+  name: "${secondJobName}"
   namespace: "temp-ns"
 spec:
-  # See https://www.talos.dev/v1.8/kubernetes-guides/configuration/ceph-with-rook/
-  restartPolicy: Never
-  nodeName: ${node}
-  containers:
-  - name: disk-wipe
-    image: busybox
-    securityContext:
-      privileged: true
-    command: ["/bin/sh", "-c", "dd if=/dev/zero bs=1M count=100 oflag=direct of=${ceph_disk};"]
+  # See https://github.com/onedr0p/home-ops/blob/main/.taskfiles/bootstrap/resources/rook-disk-job.yaml.j2
+  # TODO This again did nto do the job! Only the two new disks worked, rest complained about having bluestore fs
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      nodeName: ${node}
+      containers:
+        - name: second-wipe
+          image: busybox
+          command: ["/bin/sh", "-c", "dd if=/dev/zero bs=1M count=100 oflag=direct of=${ceph_disk};"]
+          securityContext:
+            privileged: true
+          resources: {}

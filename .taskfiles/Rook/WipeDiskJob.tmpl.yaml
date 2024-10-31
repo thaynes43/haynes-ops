@@ -14,7 +14,7 @@ spec:
       restartPolicy: Never
       nodeName: ${node}
       containers:
-        - name: disk-wipe
+        - name: wipe-disk
           image: docker.io/library/alpine:latest
           command: ["/bin/sh", "-c"]
           args:

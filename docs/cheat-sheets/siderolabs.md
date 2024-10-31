@@ -33,7 +33,7 @@ talosctl -n 192.168.40.59 get blockdevices
 For id:
 
 ```bash
-talosctl -n <NODE_IP> ls /dev/disk/by-id
+talosctl -n <NODE_IP> ls -l /dev/disk/by-id
 ```
 
 ### Not disks

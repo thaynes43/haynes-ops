@@ -7,6 +7,7 @@ rook-task-vars: &task-vars
   ceph_disk: "{{.ceph_disk}}"
   ts: "{{.ts}}"
   jobName: "{{.jobName}}"
+  secondJobName: "{{.secondJobName}}"
 
 vars:
   waitForJobScript: "{{.ROOT_DIR}}/.taskfiles/_scripts/wait-for-k8s-job.sh"
@@ -31,7 +32,7 @@ tasks:
       - task: wipe-disk
         vars:
           node: "{{.node}}"
-          ceph_disk: "/dev/nvme1n1"
+          ceph_disk: "/dev/nvme2n1"
     vars:
       node: talosm01
 
@@ -46,7 +47,7 @@ tasks:
       - task: wipe-disk
         vars:
           node: "{{.node}}"
-          ceph_disk: "/dev/nvme2n1"
+          ceph_disk: "/dev/nvme1n1"
     vars:
       node: talosm02
 
@@ -57,7 +58,7 @@ tasks:
       - task: wipe-disk
         vars:
           node: "{{.node}}"
-          ceph_disk: "/dev/nvme1n1"
+          ceph_disk: "/dev/nvme0n1"
       - task: wipe-disk
         vars:
           node: "{{.node}}"
@@ -87,12 +88,14 @@ tasks:
       # Isolate
       - kubectl create -f {{.tempNamespace}}
       # First type
+      - echo "----------------First Wipe----------------"
       - envsubst < <(cat {{.wipeRookDiskJobTemplate}}) | kubectl apply -f -
       - bash {{.waitForJobScript}} {{.jobName}} temp-ns
       - kubectl -n temp-ns wait job/{{.jobName}} --for condition=complete --timeout=1m
       - kubectl -n temp-ns logs job/{{.jobName}}
       - kubectl -n temp-ns delete job {{.jobName}}
       # Second try
+      - echo "----------------Second Wipe----------------"
       - envsubst < <(cat {{.secondTryDiskWipeTemplate}}) | kubectl apply -f -
       - bash {{.waitForJobScript}} {{.secondJobName}} temp-ns
       - kubectl -n temp-ns wait job/{{.secondJobName}} --for condition=complete --timeout=1m
@@ -104,7 +107,7 @@ tasks:
       node: '{{ or .node (fail "`node` is required") }}'
       ceph_disk: '{{ or .ceph_disk (fail "`ceph_disk` is required") }}'
       jobName: "wipe-disk-{{- .node -}}"
-      secondJobName: "disk-wipe-{{- .node -}}"
+      secondJobName: "second-wipe-{{- .node -}}"
     env: *task-vars
     preconditions:
       - sh: test -f {{.waitForJobScript}}

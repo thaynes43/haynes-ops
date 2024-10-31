@@ -80,7 +80,7 @@ spec:
     persistence:
       models:
         enabled: true
-        existingClaim: ollama-models
+        existingClaim: assist01-models
         advancedMounts:
           ollama:
             app:
