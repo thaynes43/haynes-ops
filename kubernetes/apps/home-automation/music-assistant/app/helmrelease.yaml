@@ -52,6 +52,7 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile: { type: RuntimeDefault }
     service:
+      # http://music-assistant.home-automation.svc.cluster.local:8095
       app:
         controller: music-assistant
         ports:
