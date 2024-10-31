@@ -12,6 +12,7 @@ vars:
   waitForJobScript: "{{.ROOT_DIR}}/.taskfiles/_scripts/wait-for-k8s-job.sh"
   wipeRookDataJobTemplate: "{{.ROOT_DIR}}/.taskfiles/Rook/WipeRookDataJob.tmpl.yaml"
   wipeRookDiskJobTemplate: "{{.ROOT_DIR}}/.taskfiles/Rook/WipeDiskJob.tmpl.yaml"
+  secondTryDiskWipeTemplate: "{{.ROOT_DIR}}/.taskfiles/Rook/SecondTryDiskWipe.tmpl.yaml"
   tempNamespace: "{{.ROOT_DIR}}/.taskfiles/Rook/CreateTempNamespace.yaml"
   ts: '{{now | date "150405"}}'
 
@@ -83,21 +84,32 @@ tasks:
     silent: true
     internal: true
     cmds:
+      # Isolate
       - kubectl create -f {{.tempNamespace}}
+      # First type
       - envsubst < <(cat {{.wipeRookDiskJobTemplate}}) | kubectl apply -f -
       - bash {{.waitForJobScript}} {{.jobName}} temp-ns
       - kubectl -n temp-ns wait job/{{.jobName}} --for condition=complete --timeout=1m
       - kubectl -n temp-ns logs job/{{.jobName}}
       - kubectl -n temp-ns delete job {{.jobName}}
+      # Second try
+      - envsubst < <(cat {{.secondTryDiskWipeTemplate}}) | kubectl apply -f -
+      - bash {{.waitForJobScript}} {{.secondJobName}} temp-ns
+      - kubectl -n temp-ns wait job/{{.secondJobName}} --for condition=complete --timeout=1m
+      - kubectl -n temp-ns logs job/{{.secondJobName}}
+      - kubectl -n temp-ns delete job {{.secondJobName}}
+      # Cleanup
       - kubectl delete -f {{.tempNamespace}}
     vars:
       node: '{{ or .node (fail "`node` is required") }}'
       ceph_disk: '{{ or .ceph_disk (fail "`ceph_disk` is required") }}'
       jobName: "wipe-disk-{{- .node -}}"
+      secondJobName: "disk-wipe-{{- .node -}}"
     env: *task-vars
     preconditions:
       - sh: test -f {{.waitForJobScript}}
       - sh: test -f {{.wipeRookDiskJobTemplate}}
+      - sh: test -f {{.secondTryDiskWipeTemplate}}
       - sh: test -f {{.tempNamespace}}
 
   wipe-data:

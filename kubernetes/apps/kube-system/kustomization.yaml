@@ -6,13 +6,15 @@ resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
     # Flux-Kustomizations
+  - ./cilium/ks.yaml
+  - ./coredns/ks.yaml
   - ./metrics-server/ks.yaml
   - ./reloader/ks.yaml
   - ./kubelet-csr-approver/ks.yaml
   - ./spegel/ks.yaml
   - ./reflector/ks.yaml
   - ./k8tz                            # Has own namespace, add entire dir
-  - ./metallb-system/ks.yaml
+  #- ./metallb-system/ks.yaml
   - ./node-feature-discovery/ks.yaml
   - ./descheduler/ks.yaml
   - ./nvidia-device-plugin/ks.yaml
