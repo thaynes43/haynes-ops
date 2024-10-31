@@ -5,8 +5,8 @@ metadata:
   name: ollama-models
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
-      storage: 100Gi
-  storageClassName: openebs-hostpath
+      storage: 250Gi
+  storageClassName: ceph-filesystem
