@@ -34,15 +34,15 @@ spec:
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
-          hostNetwork: true
-          #annotations:
-          #  k8s.v1.cni.cncf.io/networks: |
-          #    [{
-          #      "name":"multus-iot",
-          #      "namespace": "network",
-          #      "ips": ["192.168.50.247/24"],
-          #      "mac": "f9:55:f4:6c:56:ec"
-          #    }]
+          #hostNetwork: true
+          annotations:
+            k8s.v1.cni.cncf.io/networks: |
+              [{
+                "name":"multus-iot",
+                "namespace": "network",
+                "ips": ["192.168.50.249/24"],
+                "mac": "f9:55:f4:6c:56:ec"
+              }]
         containers:
           app:
             image:
@@ -51,8 +51,9 @@ spec:
               tag: 2024.10.4
             env:
               TZ: America/New_York
-              HASS_HTTP_TRUSTED_PROXY_1: 192.168.40.0/24 # Lab Subnet
-              HASS_HTTP_TRUSTED_PROXY_2: 10.244.0.0/16   # Pod Subnet
+              HASS_HTTP_TRUSTED_PROXY_1: 192.168.40.0/24  # Lab Subnet
+              HASS_HTTP_TRUSTED_PROXY_2: 10.42.0.0/16     # Pod Subnet
+              HASS_HTTP_TRUSTED_PROXY_3: 192.168.0.0/24   # Default Subnet
             envFrom:
               - secretRef:
                   name: home-assistant-secret

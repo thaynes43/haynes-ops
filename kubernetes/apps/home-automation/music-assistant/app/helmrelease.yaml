@@ -53,6 +53,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
     service:
       # http://music-assistant.home-automation.svc.cluster.local:8095
+      # TODO need the official integration in a month cause this is getting weird https://github.com/music-assistant/hass-music-assistant/issues/3031 
       app:
         controller: music-assistant
         ports:
