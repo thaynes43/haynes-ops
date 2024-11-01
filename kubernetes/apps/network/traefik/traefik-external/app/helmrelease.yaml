@@ -70,8 +70,8 @@ spec:
       enabled: true
       type: LoadBalancer
       annotations:
-        #metallb.universe.tf/loadBalancerIPs: 192.168.40.202
-        lbipam.cilium.io/ips: 192.168.40.202
+        #metallb.universe.tf/loadBalancerIPs: 192.168.40.206
+        lbipam.cilium.io/ips: 192.168.40.206
       labels: {}
       loadBalancerSourceRanges: []
       externalIPs: []
