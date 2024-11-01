@@ -9,7 +9,7 @@ spec:
     labels:
       app.kubernetes.io/name: *app
   dependsOn:
-    - name: metallb
+    - name: cilium
     - name: certificates
     - name: reflector
   path: ./kubernetes/apps/network/traefik/traefik-external/app

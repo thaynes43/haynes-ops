@@ -9,7 +9,7 @@ spec:
     labels:
       app.kubernetes.io/name: *app
   dependsOn:
-    - name: metallb
+    - name: cilium
     - name: certificates
     - name: reflector
     - name: traefik-external # TODO if we install CRDs independantly we don't need to wait for one to install them
