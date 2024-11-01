@@ -91,14 +91,6 @@ spec:
         fsGroup: 568
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile: { type: RuntimeDefault }
-    #defaultPodOptions:
-    #  securityContext:
-    #    runAsNonRoot: false
-    #    runAsUser: 0
-    #    runAsGroup: 0
-    #    fsGroup: 0
-    #    fsGroupChangePolicy: OnRootMismatch
-    #    seccompProfile: { type: RuntimeDefault }
     service:
       app:
         # http://home-assistant.home-automation.svc.cluster.local:8123
