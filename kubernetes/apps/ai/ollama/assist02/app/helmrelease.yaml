@@ -61,6 +61,7 @@ spec:
     service:
       app:
         # http://ollama-assist02.ai.svc.cluster.local:11434
+        # TODO https://www.gpu-mart.com/blog/import-models-from-huggingface-to-ollama#:~:text=4%20Steps%20to%20Import%20Models%20from%20HuggingFace%20to,Step%204%3A%20Run%20and%20Test%20the%20Model%20 
         controller: ollama
         ports:
           http:
