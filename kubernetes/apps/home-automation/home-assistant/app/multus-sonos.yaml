@@ -8,12 +8,12 @@ spec:
     {
       "cniVersion": "0.3.1",
       "type": "macvlan",
-      "master": "eth1",
+      "master": "eth0",
       "mode": "bridge",
       "ipam": {
         "type": "static",
         "addresses": [
-          { "address": "192.168.50.247/24" }
+          { "address": "192.168.50.250/24" }
         ]
       }
     }
