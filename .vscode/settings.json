@@ -49,6 +49,7 @@
         "macvlan",
         "mqtt",
         "multus",
+        "onedr",
         "onepassword",
         "siderolabs",
         "stakater",
