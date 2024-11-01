@@ -8,4 +8,4 @@ resources:
   - ./ingressroutes.yaml
   - ../../../../templates/gatus/internal
   - ../../../../templates/volsync/app-pvc
-  - ./multus.yaml
+  - ./multus-iot.yaml
