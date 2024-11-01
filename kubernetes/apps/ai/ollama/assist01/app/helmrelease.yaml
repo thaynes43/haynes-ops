@@ -87,6 +87,6 @@ spec:
               - path: *modelPath
       config:
         enabled: true
-        existingClaim: ollama
+        existingClaim: ollama-assist01
         globalMounts:
           - path: /root/.ollama
