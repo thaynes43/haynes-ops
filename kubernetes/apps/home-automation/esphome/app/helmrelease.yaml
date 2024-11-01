@@ -34,8 +34,9 @@ spec:
         annotations:
           secret.reloader.stakater.com/reload: esphome-secrets,esphome-deploykey
         pod:
-          hostNetwork: true
-          #annotations:
+          #hostNetwork: true
+          annotations:
+            k8s.v1.cni.cncf.io/networks: static-iot-esphome
           #  k8s.v1.cni.cncf.io/networks: |
           #    [{
           #      "name":"multus-iot",

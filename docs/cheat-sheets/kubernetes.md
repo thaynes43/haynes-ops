@@ -34,6 +34,24 @@ flux reconcile kustomization -n flux-system zigbee2mqtt
 
 Here are some commands for managing Kubernetes.
 
+## Clean Mess
+
+Check what you are deleting:
+
+```bash
+kubectl get pod --field-selector=status.phase==Succeeded -A
+kubectl get pod --field-selector=status.phase==Failed -A
+```
+
+If nothing to debug go ahead and kill em:
+
+```bash
+kubectl delete pod --field-selector=status.phase==Succeeded -A
+kubectl delete pod --field-selector=status.phase==Failed -A
+```
+
+Rebooting sometimes creates a mess and this will clean it but I thing they go away after a bit.
+
 ## kubectx & kubens
 
 These are helper scripts that come from [here](https://github.com/ahmetb/kubectx).

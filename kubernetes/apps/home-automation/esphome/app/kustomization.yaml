@@ -7,3 +7,4 @@ resources:
   - ./helmrelease.yaml
   - ../../../../templates/gatus/internal
   - ../../../../templates/volsync/app-pvc
+  - ./multus.yaml

@@ -86,7 +86,7 @@ killall pmxcfs
 systemctl start pve-cluster
 ```
 
-And maybe even `rm -R /etc/pve/nodes` but I didn't get that far.
+And `rm -R /etc/pve/nodes` but I didn't get that far.
 
 ## Update MS-01 BIOS
 
