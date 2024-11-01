@@ -3,7 +3,7 @@ name: haynes-ops
 kubernetes:
   version: v1.31.1
 talos:
-  version: v1.8.0
+  version: v1.8.2
 ---
 kind: ControlPlane
 machines:
@@ -239,7 +239,6 @@ patches:
       machine:
         install:
           extraKernelArgs:
-            - nomodeset
             - net.ifnames=0
           diskSelector:
             model: CT1000T500SSD8
