@@ -36,7 +36,7 @@ spec:
         pod:
           #hostNetwork: true
           annotations:
-            k8s.v1.cni.cncf.io/networks: static-iot-hass
+            k8s.v1.cni.cncf.io/networks: static-iot-hass, static-sonos-hass
             #k8s.v1.cni.cncf.io/networks: |
             #  [{
             #    "name":"multus-iot",

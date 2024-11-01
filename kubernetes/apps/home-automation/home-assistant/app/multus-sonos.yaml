@@ -2,7 +2,7 @@
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
-  name: static-iot-hass
+  name: static-sonos-hass
 spec:
   config: |-
     {
@@ -13,7 +13,7 @@ spec:
       "ipam": {
         "type": "static",
         "addresses": [
-          { "address": "192.168.50.249/24" }
+          { "address": "192.168.50.247/24" }
         ]
       }
     }
