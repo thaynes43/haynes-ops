@@ -36,13 +36,14 @@ spec:
         pod:
           #hostNetwork: true
           annotations:
-            k8s.v1.cni.cncf.io/networks: |
-              [{
-                "name":"multus-iot",
-                "namespace": "network",
-                "ips": ["192.168.50.249/24"],
-                "mac": "f9:55:f4:6c:56:ec"
-              }]
+            k8s.v1.cni.cncf.io/networks: static-iot-hass
+            #k8s.v1.cni.cncf.io/networks: |
+            #  [{
+            #    "name":"multus-iot",
+            #    "namespace": "network",
+            #    "ips": ["192.168.50.249/24"],
+            #    "mac": "f9:55:f4:6c:56:ec"
+            #  }]
         containers:
           app:
             image:
