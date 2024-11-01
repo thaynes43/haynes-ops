@@ -23,7 +23,7 @@ spec:
         pod:
           #hostNetwork: true
           annotations:
-            k8s.v1.cni.cncf.io/networks: static-sonos-hass
+            k8s.v1.cni.cncf.io/networks: static-sonos-mass
         containers:
           app:
             image:
