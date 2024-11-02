@@ -136,6 +136,7 @@ spec:
           - path: /config/.esphome
           - path: /cache
             subPath: cache
+          - path: /.cache
       secrets:
         type: secret
         name: esphome-secrets
