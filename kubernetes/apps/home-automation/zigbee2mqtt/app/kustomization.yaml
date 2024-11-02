@@ -7,6 +7,7 @@ resources:
   - ./helmrelease.yaml
   - ../../../../templates/gatus/internal
   - ../../../../templates/volsync/app-pvc
+  - ./multus-iot.yaml
 configMapGenerator:
   - name: zigbee2mqtt-loki-rules
     files:
