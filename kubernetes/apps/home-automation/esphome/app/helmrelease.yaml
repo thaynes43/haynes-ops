@@ -49,8 +49,11 @@ spec:
             image:
               repository: ghcr.io/esphome/esphome
               tag: 2024.10.2
-            #env:
-            #  ESPHOME_DASHBOARD_USE_PING: true
+            env:
+              PLATFORMIO_CORE_DIR: /cache/platformio
+              PLATFORMIO_GLOBALLIB_DIR: /cache/platformio/lib
+              PLATFORMIO_SETTING_ENABLE_TELEMETRY: No
+              #ESPHOME_DASHBOARD_USE_PING: true
             probes:
               liveness:
                 enabled: false
@@ -131,6 +134,8 @@ spec:
         type: emptyDir
         globalMounts:
           - path: /config/.esphome
+          - path: /cache
+            subPath: cache
       secrets:
         type: secret
         name: esphome-secrets
