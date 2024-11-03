@@ -30,6 +30,10 @@ spec:
   values:
     controllers:
       wyoming-whisper:
+        pod:
+          nodeSelector:
+            feature.node.kubernetes.io/nvidia-2000-ada-gpu: "true"
+          runtimeClassName: nvidia
         containers:
           app:
             image:
