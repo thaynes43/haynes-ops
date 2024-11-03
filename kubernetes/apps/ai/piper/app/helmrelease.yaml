@@ -57,6 +57,12 @@ spec:
               readOnlyRootFilesystem: true
         pod:
           terminationGracePeriodSeconds: 1
+    service:
+      app:
+        controller: piper
+        ports:
+          http:
+            port: 10200
     ingress:
       app:
         annotations:
@@ -69,12 +75,6 @@ spec:
                 service:
                   identifier: app
                   port: http
-    service:
-      piper:
-        controller: piper
-        ports:
-          http:
-            port: 10200
     persistence:
       data:
         existingClaim: piper
