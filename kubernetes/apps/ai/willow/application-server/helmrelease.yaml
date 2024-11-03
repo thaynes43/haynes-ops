@@ -62,5 +62,7 @@ spec:
                   identifier: app
                   port: http
     persistence:
-      was-storage:
+      app-storage:
         existingClaim: willow-application-server
+        globalMounts:
+          - path: /app/storage
