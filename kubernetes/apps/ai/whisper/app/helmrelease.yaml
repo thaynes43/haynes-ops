@@ -44,8 +44,6 @@ spec:
               - small
               - --language
               - en
-              - --gpus
-              - all
             env:
               TZ: America/New_York
     service:
