@@ -29,7 +29,7 @@ spec:
       namespace: volsync-system
   values:
     controllers:
-      wyoming-whisper:
+      whisper:
         pod:
           nodeSelector:
             feature.node.kubernetes.io/nvidia-2000-ada-gpu: "true"
