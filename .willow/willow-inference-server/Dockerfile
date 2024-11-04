@@ -41,9 +41,6 @@ RUN mkdir -p /var/tmp && \
     rm -rf /root/.cache/pip && \
     rm -rf /var/tmp/*
 
-# Generate self-signed TLS certificates (you may replace this with real certificates)
-RUN ./utils.sh gen-cert localhost
-
 # Download the models during the build
 RUN ./utils.sh whisper-model tovera/wis-whisper-tiny && \
     ./utils.sh whisper-model tovera/wis-whisper-base && \
