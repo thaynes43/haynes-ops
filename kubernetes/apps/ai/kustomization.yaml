@@ -8,5 +8,5 @@ resources:
   # Flux-Kustomizations
   - ./ollama/
   - ./piper/ks.yaml
-  - ./whisper/ks.yaml
+  - ./wyoming-protocol/ks.yaml
   - ./willow/ks.yaml
