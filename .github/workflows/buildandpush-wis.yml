@@ -54,4 +54,4 @@ jobs:
           # Specify the Dockerfile location
           file: ./.willow/willow-inference-server/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/willow-inference-server:0.1.0
+          tags: ghcr.io/${{ github.repository_owner }}/willow-inference-server:0.1.1

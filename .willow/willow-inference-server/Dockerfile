@@ -15,8 +15,8 @@ RUN apt-get update && \
     python3 \
     python3-pip \
     python3-dev \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+    ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
 WORKDIR /app
@@ -24,11 +24,20 @@ WORKDIR /app
 # Clone the Willow Inference Server repository
 RUN git clone https://github.com/toverainc/willow-inference-server.git /app/willow-inference-server
 
+# Remove 'sudo' commands from utils.sh
+RUN sed -i 's/sudo //g' /app/willow-inference-server/utils.sh
+
 # Set the working directory to the cloned repository
 WORKDIR /app/willow-inference-server
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Set a temporary directory with more space
+ENV TMPDIR=/var/tmp
+
+# Install Python dependencies and clean up
+RUN mkdir -p /var/tmp && \
+    pip3 install --no-cache-dir -r requirements.txt && \
+    rm -rf /root/.cache/pip && \
+    rm -rf /var/tmp/*
 
 # Generate self-signed TLS certificates (you may replace this with real certificates)
 RUN ./utils.sh gen-cert localhost
