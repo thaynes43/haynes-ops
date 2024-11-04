@@ -30,9 +30,6 @@ WORKDIR /app
 # Clone the Willow Inference Server repository
 RUN git clone https://github.com/toverainc/willow-inference-server.git .
 
-# Copy the repository into the container
-COPY . /app
-
 # Install Python dependencies
 RUN --mount=type=cache,target=/root/.cache \
     pip install -r requirements.txt
@@ -74,7 +71,7 @@ RUN ./utils.sh download-models
 RUN ./utils.sh gen-cert localhost
 
 # Copy nginx configuration
-COPY nginx/nginx.conf /etc/nginx/nginx.conf
+COPY /app/willow-inference-server/nginx/nginx.conf /etc/nginx/nginx.conf
 
 # Ensure entrypoint.sh is executable
 RUN chmod +x /app/entrypoint.sh
@@ -85,4 +82,4 @@ EXPOSE 19001
 EXPOSE 10000-10050/udp
 
 # Start NGINX and the application
-CMD ["./entrypoint.sh"]
+CMD ["/app/entrypoint.sh"]
