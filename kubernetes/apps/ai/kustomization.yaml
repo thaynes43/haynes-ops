@@ -7,6 +7,5 @@ resources:
   - ./namespace.yaml
   # Flux-Kustomizations
   - ./ollama/
-  - ./piper/ks.yaml
   - ./wyoming-protocol/ks.yaml
   - ./willow/ks.yaml
