@@ -1,3 +1,3 @@
 ---
-providerRegex: ^(talosm\d+$)$
+providerRegex:  ^(talosm|talosw)\d+$
 bypassDnsResolution: true

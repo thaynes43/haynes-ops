@@ -10,7 +10,7 @@ spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  path: ./kubernetes/apps/ai/piper
+  path: ./kubernetes/apps/ai/wyoming-protocol/piper
   prune: true
   sourceRef:
     kind: GitRepository
@@ -34,7 +34,7 @@ spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  path: ./kubernetes/apps/ai/whisper
+  path: ./kubernetes/apps/ai/wyoming-protocol/whisper
   prune: true
   sourceRef:
     kind: GitRepository
@@ -58,7 +58,7 @@ spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  path: ./kubernetes/apps/ai/openwakeword
+  path: ./kubernetes/apps/ai/wyoming-protocol/openwakeword
   prune: true
   sourceRef:
     kind: GitRepository

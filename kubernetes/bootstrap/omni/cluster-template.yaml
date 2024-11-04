@@ -363,8 +363,6 @@ patches:
                 hardwareAddr: BC:24:11:83:72:D2
               mtu: 1500
               dhcp: true
-              vip:
-                ip: 192.168.40.202
           disableSearchDomain: true
         sysctls:
           net.core.bpf_jit_harden: 1
