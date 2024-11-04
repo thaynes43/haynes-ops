@@ -17,8 +17,13 @@ RUN apt-get update && \
     python3-pip \
     python3-dev \
     python-is-python3 \
-    ffmpeg && \
-    rm -rf /var/lib/apt/lists/*
+    ffmpeg \
+    cmake \
+    libprotobuf-dev \
+    protobuf-compiler \
+    zlib1g-dev \
+    libunwind-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
 WORKDIR /app
@@ -35,11 +40,17 @@ RUN sed -i '/docker run/d' /app/willow-inference-server/utils.sh
 # Set the working directory to the cloned repository
 WORKDIR /app/willow-inference-server
 
+# After cloning the repository and before installing requirements
+RUN echo "ctranslate2" >> requirements.txt
+
 # Install Python dependencies and clean up
 RUN mkdir -p /var/tmp && \
     pip3 install --no-cache-dir -r requirements.txt && \
     rm -rf /root/.cache/pip && \
     rm -rf /var/tmp/*
+
+# Test if ctranslate2 is installed
+RUN python -c "import ctranslate2"
 
 # Download the models during the build
 RUN ./utils.sh whisper-model tovera/wis-whisper-tiny && \
