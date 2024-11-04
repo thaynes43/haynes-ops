@@ -29,7 +29,7 @@ spec:
       namespace: volsync-system
   values:
     controllers:
-      piper:
+      openwakeword:
         containers:
           app:
             image:
