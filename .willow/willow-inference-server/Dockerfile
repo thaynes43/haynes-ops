@@ -16,6 +16,7 @@ RUN apt-get update && \
     python3 \
     python3-pip \
     python3-dev \
+    python-is-python3 \
     ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
@@ -39,6 +40,9 @@ RUN mkdir -p /var/tmp && \
     pip3 install --no-cache-dir -r requirements.txt && \
     rm -rf /root/.cache/pip && \
     rm -rf /var/tmp/*
+
+# Generate self-signed TLS certificates (you may replace this with real certificates)
+RUN ./utils.sh gen-cert localhost
 
 # Download the models during the build
 RUN ./utils.sh whisper-model tovera/wis-whisper-tiny && \
