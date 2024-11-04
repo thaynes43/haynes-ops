@@ -45,6 +45,34 @@ patches:
 kind: Workers
 machines:
   - 83596797-0281-4927-94fb-f34bb869b1de
+patches:
+  - idOverride: 400-haynes-ops-workers
+    inline:
+      cluster:
+        network:
+            cni:
+              name: none
+            dnsDomain: cluster.local
+            podSubnets:
+              - 10.42.0.0/16
+            serviceSubnets:
+              - 10.43.0.0/16
+        coreDNS:
+            disabled: true
+        allowSchedulingOnControlPlanes: true
+        apiServer:
+          disablePodSecurityPolicy: true
+          extraArgs:
+            allow-privileged: "true"
+        proxy:
+          disabled: true
+        discovery:
+            enabled: true
+            registries:
+                kubernetes:
+                    disabled: false
+                service:
+                    disabled: true
 ---
 kind: Machine
 systemExtensions:
@@ -426,5 +454,3 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: main
             topology.kubernetes.io/zone: w
-        nodeTaints:
-          provisioningStatus: notReady:NoSchedule

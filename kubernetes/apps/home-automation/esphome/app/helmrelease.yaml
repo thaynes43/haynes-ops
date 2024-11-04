@@ -34,6 +34,8 @@ spec:
         annotations:
           secret.reloader.stakater.com/reload: esphome-secrets,esphome-deploykey
         pod:
+          nodeSelector:
+            topology.kubernetes.io/zone: "m" # TODO select subnet
           annotations:
             k8s.v1.cni.cncf.io/networks: static-iot-esphome
         containers:

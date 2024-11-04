@@ -52,6 +52,14 @@ kubectl delete pod --field-selector=status.phase==Failed -A
 
 Rebooting sometimes creates a mess and this will clean it but I thing they go away after a bit.
 
+## DNS
+
+DNS Test:
+
+```bash
+kubectl -n ai run dns-test --rm -it --image=busybox --restart=Never -- nslookup volsync-hayesops.s3.amazonaws.com
+```
+
 ## kubectx & kubens
 
 These are helper scripts that come from [here](https://github.com/ahmetb/kubectx).

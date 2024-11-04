@@ -33,6 +33,8 @@ spec:
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
+          nodeSelector:
+            topology.kubernetes.io/zone: "m" # TODO select subnet
           annotations:
             k8s.v1.cni.cncf.io/networks: static-iot-was
         containers:
@@ -55,6 +57,7 @@ spec:
         className: traefik-internal
         hosts:
           # wss://was.haynesops.com/ws
+          # TOOD Host flash service can
           - host: was.haynesops.com
             paths:
               - path: /
