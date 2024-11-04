@@ -71,7 +71,7 @@ RUN ./utils.sh download-models
 RUN ./utils.sh gen-cert localhost
 
 # Copy nginx configuration
-COPY /app/willow-inference-server/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY ./nginx/nginx.conf /etc/nginx/nginx.conf
 
 # Ensure entrypoint.sh is executable
 RUN chmod +x /app/entrypoint.sh
