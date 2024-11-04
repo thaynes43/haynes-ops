@@ -54,6 +54,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
+          file: ./.willow/willow-inference-server/Dockerfile
           push: true
           platforms: linux/amd64
           tags: ghcr.io/${{ github.repository_owner }}/willow-inference-server:0.1.4
