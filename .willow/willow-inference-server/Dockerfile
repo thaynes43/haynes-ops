@@ -70,9 +70,6 @@ RUN ./utils.sh download-models
 # Generate self-signed TLS certificates (or replace with real certificates)
 RUN ./utils.sh gen-cert localhost
 
-# Copy nginx configuration
-COPY nginx/nginx.conf /etc/nginx/nginx.conf
-
 # Ensure entrypoint.sh is executable
 RUN chmod +x /app/entrypoint.sh
 
