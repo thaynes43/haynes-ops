@@ -48,7 +48,7 @@ spec:
         controller: willow-inference-server
         ports:
           http:
-            port: 1234
+            port: 19001
     ingress:
       app:
         annotations:

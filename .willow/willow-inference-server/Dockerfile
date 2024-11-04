@@ -3,6 +3,7 @@ FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
+ENV TMPDIR=/var/tmp
 
 # Install system dependencies
 RUN apt-get update && \
@@ -27,11 +28,11 @@ RUN git clone https://github.com/toverainc/willow-inference-server.git /app/will
 # Remove 'sudo' commands from utils.sh
 RUN sed -i 's/sudo //g' /app/willow-inference-server/utils.sh
 
+# Remove 'docker' commands from utils.sh
+RUN sed -i '/docker run/d' /app/willow-inference-server/utils.sh
+
 # Set the working directory to the cloned repository
 WORKDIR /app/willow-inference-server
-
-# Set a temporary directory with more space
-ENV TMPDIR=/var/tmp
 
 # Install Python dependencies and clean up
 RUN mkdir -p /var/tmp && \
@@ -39,16 +40,27 @@ RUN mkdir -p /var/tmp && \
     rm -rf /root/.cache/pip && \
     rm -rf /var/tmp/*
 
-# Generate self-signed TLS certificates (you may replace this with real certificates)
-RUN ./utils.sh gen-cert localhost
+# Download the models during the build
+RUN ./utils.sh whisper-model tovera/wis-whisper-tiny && \
+    ./utils.sh whisper-model tovera/wis-whisper-base && \
+    ./utils.sh whisper-model tovera/wis-whisper-small && \
+    ./utils.sh whisper-model tovera/wis-whisper-medium && \
+    ./utils.sh whisper-model tovera/wis-whisper-large-v2 && \
+    ./utils.sh t5-model && \
+    ./utils.sh sv-model
 
 # Expose necessary ports
-EXPOSE 19000 19001
+EXPOSE 19001
 EXPOSE 10000-10050/udp
 
-# Copy the entrypoint script into the container
-COPY entrypoint.sh /app/willow-inference-server/entrypoint.sh
-RUN chmod +x /app/willow-inference-server/entrypoint.sh
+# Set environment variables
+ENV LISTEN_PORT=19001
+ENV FORWARDED_ALLOW_IPS="*"
+ENV LOG_LEVEL=info
 
-# Set the entrypoint to run the entrypoint script
-ENTRYPOINT ["./entrypoint.sh"]
+# Start the application
+CMD gunicorn main:app --worker-class uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:19001 \
+    --graceful-timeout 10 \
+    --forwarded-allow-ips "*" \
+    --log-level info -t 0
