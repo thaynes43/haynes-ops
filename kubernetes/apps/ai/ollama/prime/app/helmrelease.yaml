@@ -1,0 +1,93 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ollama-prime
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: app-template
+      version: 3.5.1
+      sourceRef:
+        kind: HelmRepository
+        name: bjw-s
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      strategy: rollback
+  dependsOn:
+    - name: rook-ceph-cluster
+      namespace: rook-ceph
+    - name: volsync
+      namespace: volsync-system
+  values:
+    controllers:
+      ollama:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        pod:
+          nodeSelector:
+            feature.node.kubernetes.io/nvidia-3090-gpu: "true"
+          runtimeClassName: nvidia
+        containers:
+          app:
+            image:
+              repository: docker.io/ollama/ollama
+              tag: 0.3.14
+            env:
+              - name: OLLAMA_HOST
+                value: 0.0.0.0
+              - name: OLLAMA_ORIGINS
+                value: "*"
+              - name: OLLAMA_MODELS
+                value: &modelPath "/models"
+              - name: OLLAMA_KEEP_ALIVE
+                value: "30m"
+            resources:
+              requests:
+                #nvidia.com/gpu: 1 # requesting 1 GPU TODO dig into how it works here https://github.com/jahanson/theshire/blob/main/kubernetes/apps/ai/ollama/app/helmrelease.yaml#L50 
+                cpu: 2000m
+                memory: 8Gi
+              limits:
+                memory: 32Gi
+                #nvidia.com/gpu: 1 # requesting 1 GPU
+    service:
+      app:
+        # http://ollama-assist02.ai.svc.cluster.local:11434
+        # TODO https://www.gpu-mart.com/blog/import-models-from-huggingface-to-ollama#:~:text=4%20Steps%20to%20Import%20Models%20from%20HuggingFace%20to,Step%204%3A%20Run%20and%20Test%20the%20Model%20 
+        controller: ollama
+        ports:
+          http:
+            port: 11434
+    ingress:
+      app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+        className: traefik-internal
+        hosts:
+          - host: "{{ .Release.Name }}.haynesops.com"
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+    persistence:
+      models:
+        enabled: true
+        existingClaim: prime-models
+        advancedMounts:
+          ollama:
+            app:
+              - path: *modelPath
+      config:
+        enabled: true
+        existingClaim: ollama-prime
+        globalMounts:
+          - path: /root/.ollama
