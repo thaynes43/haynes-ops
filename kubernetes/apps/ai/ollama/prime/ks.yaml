@@ -3,7 +3,7 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: &app ollama-assist02
+  name: &app ollama-prime
   namespace: flux-system
 spec:
   targetNamespace: ai
@@ -13,7 +13,7 @@ spec:
   dependsOn:
     - name: nvidia-device-plugin
     - name: node-feature-discovery
-  path: ./kubernetes/apps/ai/ollama/assist02/app
+  path: ./kubernetes/apps/ai/ollama/prime/app
   prune: true
   sourceRef:
     kind: GitRepository
