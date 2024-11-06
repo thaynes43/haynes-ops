@@ -6,4 +6,11 @@ kind: Kustomization
 resources:
   - ./helmrelease.yaml
   - ../../../../templates/gatus/internal
-  - ../../../../templates/volsync/app-pvc
+
+configMapGenerator:
+  - name: openwakeword
+    files:
+      - resources/Hey_Regina.tflite
+
+generatorOptions:
+  disableNameSuffixHash: true

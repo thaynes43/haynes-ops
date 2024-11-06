@@ -48,5 +48,9 @@ spec:
           http:
             port: 10400
     persistence:
-      custom:
-        existingClaim: openwakeword
+      config:
+        enabled: true
+        type: configMap
+        name: openwakeword
+        globalMounts:
+          - path: /custom
