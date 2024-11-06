@@ -11,6 +11,7 @@ configMapGenerator:
   - name: openwakeword
     files:
       - resources/Hey_Regina.tflite
+      - resources/Hey_Regina_v2.tflite
 
 generatorOptions:
   disableNameSuffixHash: true

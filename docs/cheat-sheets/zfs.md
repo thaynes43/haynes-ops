@@ -20,3 +20,9 @@ Delete stuff that is not needed anymore:
 zfs destroy rpool/data/vm-<VMID>-disk-<DISKID>
 zfs destroy rpool/data/vm-<VMID>-disk-<DISKID>@<snapshot_name>
 ```
+
+See what else there is:
+
+```bash
+zfs list -o space
+```
