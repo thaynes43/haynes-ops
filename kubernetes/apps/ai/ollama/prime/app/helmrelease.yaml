@@ -58,6 +58,15 @@ spec:
               limits:
                 memory: 32Gi
                 #nvidia.com/gpu: 1 # requesting 1 GPU
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 568
+        runAsGroup: 568
+        fsGroup: 568
+        fsGroupChangePolicy: OnRootMismatch
+        supplementalGroups: [10000]
+        seccompProfile: { type: RuntimeDefault }
     service:
       app:
         # http://ollama-assist02.ai.svc.cluster.local:11434
