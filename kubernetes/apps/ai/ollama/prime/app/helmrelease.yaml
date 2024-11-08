@@ -91,3 +91,7 @@ spec:
         existingClaim: ollama-prime
         globalMounts:
           - path: /root/.ollama
+      tank:
+        type: nfs
+        server: HaynesIntelligence.haynesnetwork
+        path: /tank/data_root
