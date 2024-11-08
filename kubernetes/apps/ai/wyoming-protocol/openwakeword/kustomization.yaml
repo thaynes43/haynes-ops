@@ -11,6 +11,7 @@ configMapGenerator:
   - name: openwakeword
     files:
       - resources/Hey_Regina.tflite
+      - resources/Regina.tflite
       - resources/Hey_Deadpool.tflite
 
 generatorOptions:
