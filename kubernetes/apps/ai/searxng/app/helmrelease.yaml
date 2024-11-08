@@ -23,6 +23,11 @@ spec:
     controller:
       annotations:
         reloader.stakater.com/auto: "true"
+    service:
+      main:
+        ports:
+          http:
+            port: 8080
     env:
       INSTANCE_NAME: "haynes-searxng"
       BASE_URL: "https://searxng.haynesnetwork.com/"
@@ -59,14 +64,19 @@ spec:
       persistentVolumeClaim:
         storageClassName: ceph-rbd
     ingress:
-      searxng:
+      main:
+        enabled: true
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
-        className: traefik-internal
+        ingressClassName: traefik-internal
         hosts:
-          - host: "{{ .Release.Name }}.haynesops.com"
+          - host: searxng.haynesops.com
             paths:
               - path: /
                 service:
                   identifier: searxng
-                  port: http
+                  port: 8080
+        tls:
+          - secretName: certificate-haynesops
+            hosts:
+                - searxng.haynesops.com
