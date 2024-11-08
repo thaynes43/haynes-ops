@@ -24,7 +24,7 @@ spec:
       enabled: false
 
     # -- A list of Ollama API endpoints. These can be added in lieu of automatically installing the Ollama Helm chart, or in addition to it.
-    ollamaUrls: [http://pop02.haynesnetwork:11434] # TODO traefik this 
+    ollamaUrls: [http://ollama-prime.ai.svc.cluster.local:11434]
 
     annotations:
       reloader.stakater.com/auto: "true"
