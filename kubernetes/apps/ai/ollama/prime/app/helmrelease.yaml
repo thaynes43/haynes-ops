@@ -79,19 +79,16 @@ spec:
                   identifier: app
                   port: http
     persistence:
-      models:
-        enabled: true
-        existingClaim: prime-models
-        advancedMounts:
-          ollama:
-            app:
-              - path: *modelPath
       config:
         enabled: true
         existingClaim: ollama-prime
         globalMounts:
           - path: /root/.ollama
-      tank:
+      models:
         type: nfs
         server: HaynesIntelligence.haynesnetwork
-        path: /tank/data_root
+        path: /tank/data_root/LLM/Ollama
+        advancedMounts:
+          ollama:
+            app:
+              - path: *modelPath
