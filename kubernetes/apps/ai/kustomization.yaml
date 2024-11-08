@@ -9,3 +9,5 @@ resources:
   - ./ollama/
   - ./wyoming-protocol/ks.yaml
   - ./willow/ks.yaml
+  - ./searxng/ks.yaml
+  - ./open-webui/ks.yaml

@@ -30,3 +30,5 @@ resources:
   - ./emqx.yaml
   - ./nvidia.yaml
   - ./whereabouts.yaml
+  - ./open-webui.yaml
+  - ./searxng.yaml

@@ -1,0 +1,72 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/helm.toolkit.fluxcd.io/helmrelease_v2beta1.json
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: searxng
+spec:
+  chart:
+    spec:
+      chart: searxng
+      version: 1.0.0
+      sourceRef:
+        kind: HelmRepository
+        name: searxng
+        namespace: flux-system
+  interval: 15m
+  timeout: 5m
+  releaseName: searxng
+  values: 
+    # config https://github.com/searxng/searxng/blob/master/searx/settings.yml
+    # values https://github.com/searxng/searxng-helm-chart/blob/main/searxng/values.yaml
+    # common https://github.com/k8s-at-home/library-charts/blob/main/charts/stable/common/values.yaml
+    controller:
+      annotations:
+        reloader.stakater.com/auto: "true"
+    env:
+      INSTANCE_NAME: "haynes-searxng"
+      BASE_URL: "https://searxng.haynesnetwork.com/"
+      AUTOCOMPLETE: "google"
+      SEARXNG_SECRET: 
+        valueFrom:
+          secretKeyRef:
+            name: searxng-secret
+            key: SEARXNG_TOKEN
+    persistence:
+      limiter:
+        enabled: true
+        type: configMap
+        name: configmap-searxng-limiter
+        mountPath: /etc/searxng/limiter.toml
+        subPath: limiter.toml
+    searxng:
+      config:
+        use_default_settings: true
+        server:
+          secret_key: "$SEARXNG_SECRET"
+          # See https://docs.searxng.org/admin/searx.limiter.html
+          limiter: false # TODO 
+          public_instance: false # This forces limiter and link_token to be enabled
+        search:
+          formats:
+            - html
+            - json
+        redis:
+          url: redis://searxng-redis:6379
+    # https://github.com/pascaliske/helm-charts/tree/main/charts/redis
+    redis:
+      enabled: true
+      persistentVolumeClaim:
+        storageClassName: ceph-rbd
+    ingress:
+      searxng:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+        className: traefik-internal
+        hosts:
+          - host: "{{ .Release.Name }}.haynesops.com"
+            paths:
+              - path: /
+                service:
+                  identifier: searxng
+                  port: http
