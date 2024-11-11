@@ -107,5 +107,5 @@ spec:
         name: home-assistant-secret
         defaultMode: 256
         globalMounts:
-          - path: /root/.ssh/id_ed25519
+          - path: /home/coder/.ssh/id_ed25519
             subPath: GH_DEPLOY_KEY   # TODO https://community.home-assistant.io/t/sharing-your-configuration-on-github/195144
