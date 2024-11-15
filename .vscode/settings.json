@@ -51,6 +51,7 @@
         "macvlan",
         "mqtt",
         "multus",
+        "nvme",
         "ollama",
         "onedr",
         "onepassword",

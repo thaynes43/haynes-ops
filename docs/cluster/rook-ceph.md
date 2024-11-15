@@ -1,5 +1,11 @@
 # Rook Ceph on Omni
 
+## TODO
+
+Check out command [here](https://github.com/onedr0p/home-ops/commit/8b0af335d9407dfc1e1ddb762b2026a8e3365679#diff-2310e54712275905c8b328fc318d6c38ff5a6bd81e64454db134519ef27312bfR27) that uses MODEL to look up disk instead of /dev/nvme which has been changing around for this cluster.
+
+## WTF
+
 !!! tip Dependencies 
 
     - External Secrets (for dashboard)

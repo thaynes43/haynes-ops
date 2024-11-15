@@ -58,14 +58,16 @@ Just created one using default settings (no .gitignore) [here](https://github.co
 ## Setup repo in vscode
 
 ```bash
+git config --global init.defaultBranch main
 git init
 git config --global --add safe.directory /config
 git config --global user.email "thaynes43@gmail.com"
 git config --global user.name "Tom Haynes"
 git config --local core.sshCommand "/usr/bin/ssh -i /home/coder/.ssh/id_ed25519"
+git remote add origin https://github.com/thaynes43/esphome-config.git
 git add .
 git commti -m "Initial commit"
-git push -u origin master
+git push -u origin main
 ```
 
 After this I had to authorize github against a code it gave me and my credentials. 
