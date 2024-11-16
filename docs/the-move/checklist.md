@@ -30,3 +30,15 @@
 | 5      | 192.168.50.0/24 | IoT         | TODO needs work to be better isolate         | 
 | 6      | 192.168.60.0/24 | RookLan     | Isolated, no internet, for rook-ceph only    |
 
+### DNS Entries
+
+| Record                           | Fixed IP      | 
+| -------------------------------- | ------------- |
+| haynesintelligence.haynesnetwork | 192.168.40.11 |
+| nas01.haynesnetwork              | 192.168.40.52 |
+| nut02.haynesnetwork              | 192.168.40.53 | 
+| talosm01.haynesnetwork           | 192.168.40.93 |
+| talosm02.haynesnetwork           | 192.168.40.59 |
+| talosm03.haynesnetwork           | 192.168.40.10 |
+| pikvm.haynesnetwork              | 192.168.40.66 |
+| N/A (TESmart KVM)                | 192.168.40.70 | 
