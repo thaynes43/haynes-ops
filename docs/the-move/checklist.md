@@ -32,13 +32,22 @@
 
 ### DNS Entries
 
-| Record                           | Fixed IP      | 
-| -------------------------------- | ------------- |
-| haynesintelligence.haynesnetwork | 192.168.40.11 |
-| nas01.haynesnetwork              | 192.168.40.52 |
-| nut02.haynesnetwork              | 192.168.40.53 | 
-| talosm01.haynesnetwork           | 192.168.40.93 |
-| talosm02.haynesnetwork           | 192.168.40.59 |
-| talosm03.haynesnetwork           | 192.168.40.10 |
-| pikvm.haynesnetwork              | 192.168.40.66 |
-| N/A (TESmart KVM)                | 192.168.40.70 | 
+#### HaynesLab VLAM
+
+| Record                           | Fixed IP       | 
+| -------------------------------- | -------------- |
+| haynesintelligence.haynesnetwork | 192.168.40.11  |
+| nas01.haynesnetwork              | 192.168.40.52  |
+| nut02.haynesnetwork              | 192.168.40.53  | 
+| talosm01.haynesnetwork           | 192.168.40.93  |
+| talosm02.haynesnetwork           | 192.168.40.59  |
+| talosm03.haynesnetwork           | 192.168.40.10  |
+| pikvm.haynesnetwork              | 192.168.40.66  |
+| N/A (TESmart KVM)                | 192.168.40.70  | 
+
+#### IoT VLAN
+
+| Record                           | Fixed IP       | 
+| -------------------------------- | -------------- |
+| tubeszb-zigbee01.haynesnetwork   | 192.168.50.162 |
+| tubeszb-zwave01.haynesnetwork    | 192.168.50.92  |
