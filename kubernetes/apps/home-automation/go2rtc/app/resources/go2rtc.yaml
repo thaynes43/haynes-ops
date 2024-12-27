@@ -13,13 +13,13 @@ webrtc:
   #     - stun:stun.cloudflare.com:3478
 streams:
   back-yard:
-    - rtsps://192.168.70.223:7441/HoiG09M5w466my7s
+    - rtsps://192.168.70.223:7441/QqnlYcV9pGVo9LfZ
   driveway:
-    - rtsps://192.168.70.223:7441/2QU493LulT0M1k4f
+    - rtsps://192.168.70.223:7441/GdKqSzRMQ6D35bOv
   front-porch:
-    - rtsps://192.168.70.223:7441/SmMJbEkksW0Z014F
+    - rtsps://192.168.70.223:7441/Jr3xv0R2Sp83s6cM
   front-yard:
-    - rtsps://192.168.70.223:7441/blBbS2yQoQKiLKh9
+    - rtsps://192.168.70.223:7441/fv22ThSwcnh8Scaa
   doorbell:
     - rtsps://192.168.70.223:7441/YwV4AghmZMZCNFMP
   doorbell-packages:
