@@ -10,9 +10,6 @@ spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  dependsOn:
-    - name: rook-ceph-cluster
-    - name: volsync
   path: ./kubernetes/apps/home-automation/music-assistant/app
   prune: true
   sourceRef:
