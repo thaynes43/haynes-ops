@@ -134,6 +134,13 @@ kubectl get svc --all-namespaces
 ```bash
 kubectl get pv,pvc -o wide
 ```
+
+#### Browse Volume 
+
+```bash
+kubectl browse-pvc -n home-automation zigbee2mqtt
+```
+
 #### get volumesnapshots
 
 ```bash
