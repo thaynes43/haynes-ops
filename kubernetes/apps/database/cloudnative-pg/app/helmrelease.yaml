@@ -10,7 +10,7 @@ spec:
     spec:
       # https://github.com/cloudnative-pg/charts/tree/main/charts/cloudnative-pg
       chart: cloudnative-pg
-      version: 0.22.1
+      version: 0.23.0
       sourceRef:
         kind: HelmRepository
         name: cloudnative-pg
