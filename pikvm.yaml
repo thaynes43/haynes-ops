@@ -1,3 +1,12 @@
+## Log into https://pikvm/
+## Navigate to terminal
+## >su -
+## >rw
+## >nano /etc/kvmd/override.yaml
+## Make edits
+## >ro
+## >systemctl restart kvmd
+
 kvmd:
     prometheus:
         auth:
@@ -184,8 +193,9 @@ kvmd:
                 - ["#talosm01", server0_led, server0_switch|Switch]
                 - ["#talosm02", server1_led, server1_switch|Switch]
                 - ["#talosm03", server2_led, server2_switch|Switch]
-                - ["#windock", server14_led, server14_switch|Switch]
-                - ["#HaynesS100-02", server15_led, server15_switch|Switch]
+                - ["#HaynesIntelligence", server3_led, server3_switch|Switch]
+                - ["#pve03", server4_led, server4_switch|Switch]
+                - ["#HaynesTower", server15_led, server15_switch|Switch]
                 - ["Wake On LAN"]
                 - ["#talosm01", "wol_server0|Send Wake-on-LAN"]
                 - ["#talosm02", "wol_server1|Send Wake-on-LAN"]

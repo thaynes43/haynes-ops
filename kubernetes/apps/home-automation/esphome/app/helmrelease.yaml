@@ -89,6 +89,7 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile: { type: RuntimeDefault }
     service:
+      # http://esphome.home-automation.svc.cluster.local:6052
       app:
         controller: esphome
         ports:

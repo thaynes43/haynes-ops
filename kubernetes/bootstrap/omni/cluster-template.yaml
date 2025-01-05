@@ -1,7 +1,7 @@
 kind: Cluster
 name: haynes-ops
 kubernetes:
-  version: v1.31.2
+  version: v1.32.0
 talos:
   version: v1.9.1
 ---
