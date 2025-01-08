@@ -13,14 +13,20 @@ webrtc:
   #     - stun:stun.cloudflare.com:3478
 streams:
   back-yard:
-    - rtsps://192.168.70.223:7441/QqnlYcV9pGVo9LfZ
+    #- rtsps://192.168.70.223:7441/QqnlYcV9pGVo9LfZ
+    - rtspx://192.168.70.223:7441/QqnlYcV9pGVo9LfZ
   driveway:
-    - rtsps://192.168.70.223:7441/GdKqSzRMQ6D35bOv
+    #- rtsps://192.168.70.223:7441/GdKqSzRMQ6D35bOv
+    - rtspx://192.168.70.223:7441/GdKqSzRMQ6D35bOv
   front-porch:
-    - rtsps://192.168.70.223:7441/Jr3xv0R2Sp83s6cM
+    #- rtsps://192.168.70.223:7441/Jr3xv0R2Sp83s6cM
+    - rtspx://192.168.70.223:7441/Jr3xv0R2Sp83s6cM
   front-yard:
-    - rtsps://192.168.70.223:7441/fv22ThSwcnh8Scaa
+    #- rtsps://192.168.70.223:7441/fv22ThSwcnh8Scaa
+    - rtspx://192.168.70.223:7441/fv22ThSwcnh8Scaa
   doorbell:
-    - rtsps://192.168.70.223:7441/YwV4AghmZMZCNFMP
+    #- rtsps://192.168.70.223:7441/YwV4AghmZMZCNFMP
+    - rtspx://192.168.70.223:7441/YwV4AghmZMZCNFMP
   doorbell-packages:
-    - rtsps://192.168.70.223:7441/KJy1bwYDZ1FnZxi0
+    #- rtsps://192.168.70.223:7441/KJy1bwYDZ1FnZxi0
+    - rtspx://192.168.70.223:7441/KJy1bwYDZ1FnZxi0
