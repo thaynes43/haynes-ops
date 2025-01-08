@@ -64,6 +64,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
     service:
       app:
+        # http://go2rtc.home-automation.svc.cluster.local:80
         controller: go2rtc
         type: LoadBalancer
         annotations:
