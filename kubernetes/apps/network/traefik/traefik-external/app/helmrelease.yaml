@@ -36,9 +36,11 @@ spec:
 
     ports:
       web:
-        redirectTo:
-          port: websecure
-          priority: 10
+        redirections:
+          entryPoint:
+            to: websecure
+            scheme: https
+            priority: 10
       websecure:
         http3:
           enabled: true
