@@ -199,6 +199,8 @@ kvmd:
                 - ["#pve02", server6_led, server6_switch|Switch]
                 - ["#pve04", server7_led, server7_switch|Switch]
                 - ["#pve-filet02", server8_led, server8_switch|Switch]
+                - ["#twin-bottom", server9_led, server9_switch|Switch]
+                - ["#twin-top", server10_led, server10_switch|Switch]
                 - ["#HaynesTower", server15_led, server15_switch|Switch]
                 - ["Wake On LAN"]
                 - ["#talosm01", "wol_server0|Send Wake-on-LAN"]
