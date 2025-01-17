@@ -102,6 +102,10 @@ spec:
         existingClaim: home-assistant
         globalMounts:
           - path: /config
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
       deploy-key:
         type: secret
         name: home-assistant-secret
