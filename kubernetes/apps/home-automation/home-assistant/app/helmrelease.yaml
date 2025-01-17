@@ -49,6 +49,7 @@ spec:
               HASS_HTTP_TRUSTED_PROXY_1: 192.168.40.0/24  # Lab Subnet
               HASS_HTTP_TRUSTED_PROXY_2: 10.42.0.0/16     # Pod Subnet
               HASS_HTTP_TRUSTED_PROXY_3: 192.168.0.0/24   # Default Subnet
+              PYTHONUSERBASE: /config/deps
             envFrom:
               - secretRef:
                   name: home-assistant-secret
