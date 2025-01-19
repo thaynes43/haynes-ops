@@ -25,7 +25,7 @@ spec:
   timeout: 5m
   postBuild:
     substitute:
-      APP: *appflu
+      APP: *app
       VOLSYNC_CAPACITY: 30Gi
       EXTRAVOL: home-assistant-lib
       EXTRAVOL_CAPACITY: 10Gi
