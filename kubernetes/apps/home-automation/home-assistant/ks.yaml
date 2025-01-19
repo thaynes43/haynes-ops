@@ -27,5 +27,3 @@ spec:
     substitute:
       APP: *app
       VOLSYNC_CAPACITY: 30Gi
-      #EXTRAVOL: home-assistant-lib
-      #EXTRAVOL_CAPACITY: 10Gi
