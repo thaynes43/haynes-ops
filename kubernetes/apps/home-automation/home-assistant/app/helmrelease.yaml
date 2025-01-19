@@ -103,8 +103,8 @@ spec:
         existingClaim: home-assistant
         globalMounts:
           - path: /config
-      lib:
-        existingClaim: home-assistant-lib
+      python-deps:
+        existingClaim: home-assistant-python-deps
         globalMounts:
           - path: /usr/local/lib
       tmp:

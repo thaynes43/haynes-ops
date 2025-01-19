@@ -8,6 +8,7 @@ resources:
   - ./ingressroutes.yaml
   - ../../../../templates/gatus/internal
   - ../../../../templates/volsync/app-pvc
-  - ../../../../templates/volsync/extra-pvc
+  #- ../../../../templates/volsync/extra-pvc
+  - ./pvc.yaml # TODO fix extra-pvc
   - ./multus-iot.yaml
   - ./multus-sonos.yaml
