@@ -49,7 +49,8 @@ spec:
               HASS_HTTP_TRUSTED_PROXY_1: 192.168.40.0/24  # Lab Subnet
               HASS_HTTP_TRUSTED_PROXY_2: 10.42.0.0/16     # Pod Subnet
               HASS_HTTP_TRUSTED_PROXY_3: 192.168.0.0/24   # Default Subnet
-              PYTHONUSERBASE: /config/deps
+              # Temp fix for python issue https://github.com/home-assistant/core/issues/127966#issuecomment-2439414558
+              PYTHONPATH: /usr/local/lib/python3.12:/config/deps
             envFrom:
               - secretRef:
                   name: home-assistant-secret
