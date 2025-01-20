@@ -24,9 +24,13 @@ spec:
     cleanupOnFail: true
     remediation:
       retries: 3
+  dependsOn:
+    - name: snapshot-controller
+      namespace: volsync-system
   uninstall:
     keepHistory: false
   values:
     manageCRDs: true
+    replicaCount: 1
     metrics:
       disableAuth: true
