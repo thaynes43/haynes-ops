@@ -19,7 +19,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
-  wait: false
+  wait: true
   interval: 30m
   timeout: 5m
   postBuild:
