@@ -28,7 +28,6 @@ spec:
       namespace: volsync-system
   values:
     csi:
-      enableVolumeGroupSnapshot: false # TODO: enable this when I can figure out snapshot controller 4.0.1 v1beta1 CRDs are available
       cephFSKernelMountOptions: ms_mode=prefer-crc
       enableLiveness: true
       serviceMonitor:
