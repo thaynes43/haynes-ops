@@ -43,7 +43,7 @@ spec:
             image:
               repository: ghcr.io/home-assistant/home-assistant
               #repository: ghcr.io/onedr0p/home-assistant  # TODO this is a rootless image
-              tag: 2025.2.0
+              tag: 2025.2.1
             env:
               TZ: America/New_York
               HASS_HTTP_TRUSTED_PROXY_1: 192.168.40.0/24  # Lab Subnet
