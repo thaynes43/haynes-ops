@@ -71,6 +71,7 @@
         "traefik",
         "VOLSYNC",
         "websecure",
+        "ytdl",
         "zigbee",
         "zwave"
     ]
