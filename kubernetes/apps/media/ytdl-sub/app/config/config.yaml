@@ -32,7 +32,7 @@
 
       output_options:
         maintain_download_archive: True
-        output_directory: "/library/YouTube"
+        output_directory: "/media/youtube"
         file_name: "{video_path}.{ext}"
         thumbnail_name: "{video_path}-thumb.{thumbnail_ext}"
         keep_files_after: "{download_after}"
@@ -82,7 +82,7 @@
       preset: "yt_video"
 
       output_options:
-        output_directory: "/library/YouTube/{tv_show_name_sanitized}"
+        output_directory: "/media/youtube/{tv_show_name_sanitized}"
         file_name: "{episode_path}.{ext}"
         thumbnail_name: "{episode_path}-thumb.{thumbnail_ext}"
 
@@ -130,7 +130,7 @@
         playlistreverse: True
 
       output_options:
-        output_directory: "/library/YouTube/{tv_show_name_sanitized}"
+        output_directory: "/media/youtube/{tv_show_name_sanitized}"
         file_name: "{episode_path}.{ext}"
         thumbnail_name: "{episode_path}-thumb.{thumbnail_ext}"
 
