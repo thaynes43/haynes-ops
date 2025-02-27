@@ -22,15 +22,6 @@ spec:
 
         pod:
           restartPolicy: Never
-          securityContext:
-            runAsUser: 2000
-            runAsGroup: 2000
-            runAsNonRoot: true
-            fsGroup: 2000
-            fsGroupChangePolicy: OnRootMismatch
-            supplementalGroups:
-              - 44
-              - 109
 
         cronjob:
           # schedule: "0 0 5 31 2" # Disable cronjob by giving it a schedule that will never run
@@ -77,12 +68,12 @@ spec:
       media:
         type: nfs
         server: HaynesIntelligence.haynesnetwork
-        path: /tank/data_root/Media/ytdl
+        path: /tank/data_root/Media
         advancedMounts:
           ytdl-sub:
             app:
               - path: /media/youtube
-                subPath: Library/Main/Youtube
+                subPath: ytdl
       tmp:
         type: emptyDir
         advancedMounts:
