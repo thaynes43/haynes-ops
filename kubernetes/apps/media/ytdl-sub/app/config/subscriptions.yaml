@@ -12,4 +12,4 @@
   Plex TV Show by Date:
     # Sets genre tag to "Documentaries"
     = Documentaries:
-      "Defunctland": "ttps://www.youtube.com/@Defunctland"
+      "Defunctland": "https://www.youtube.com/@Defunctland"
