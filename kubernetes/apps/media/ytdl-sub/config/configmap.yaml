@@ -6,7 +6,7 @@ metadata:
 data:
   config.yml: |
     configuration:
-      working_directory: "/tmp/ytdl-sub/"
+      working_directory: "/workdir/"
 
   subscriptions.yml: |-
     # See https://github.com/jmbannon/ytdl-sub/blob/master/examples/tv_show_subscriptions.yaml

@@ -73,5 +73,10 @@ spec:
                 subPath: ytdl
       tmp:
         type: emptyDir
-        globalMounts:
-          - path: /tmp/ytdl-sub
+        advancedMounts:
+          ytdl-sub:
+            app:
+              - path: /tmp
+                subPath: tmp
+              - path: /workdir
+                subPath: workdir
