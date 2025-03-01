@@ -5,9 +5,11 @@ kind: Kustomization
 resources:
   - ./helmrelease.yaml
 configMapGenerator:
-  - name: ytdl-sub
+  - name: ytdl-sub-config
     files:
       - config/config.yaml
+  - name: ytdl-sub-subscription
+    files:
       - config/subscription.yaml
 generatorOptions:
   annotations:
