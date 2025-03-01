@@ -57,20 +57,14 @@ spec:
 
     persistence:
       config:
-        name: ytdl-sub-config
+        name: ytdl-sub
         type: configMap
         advancedMounts:
-          ytdl-sub-config:
+          ytdl-sub:
             app:
               - path: /config/config.yaml
                 subPath: config.yaml
-                readOnly: true       
-      subscription:
-        name: ytdl-sub-subscription
-        type: configMap
-        advancedMounts:
-          ytdl-sub-subscription:
-            app:
+                readOnly: true
               - path: /config/subscription.yaml
                 subPath: subscription.yaml
                 readOnly: true
