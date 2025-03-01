@@ -1,0 +1,15 @@
+---
+  # See https://github.com/jmbannon/ytdl-sub/blob/master/examples/tv_show_subscriptions.yaml
+  # Overrides to the prebuilt presets
+  __preset__:
+    overrides:
+      tv_show_directory: "/media/youtube"  # Root folder of all ytdl-sub TV Shows
+
+      # Config for 'Only Recent' preset
+      only_recent_date_range: "24months"
+      only_recent_max_files: 300
+
+  Plex TV Show by Date:
+    # Sets genre tag to "Documentaries"
+    = Documentaries:
+      "Defunctland": "ttps://www.youtube.com/@Defunctland"

@@ -1,0 +1,3 @@
+---
+  configuration:
+    working_directory: "/workdir/"

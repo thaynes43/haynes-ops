@@ -57,11 +57,17 @@ spec:
 
     persistence:
       config:
-        name: ytdl-sub-config
+        name: ytdl-sub
         type: configMap
-        globalMounts:
-          - path: /config
-            readOnly: true
+        advancedMounts:
+          ytdl-sub:
+            app:
+              - path: /config/config.yaml
+                subPath: config.yaml
+                readOnly: true
+              - path: /config/subscription.yaml
+                subPath: subscription.yaml
+                readOnly: true
       media:
         type: nfs
         server: HaynesIntelligence.haynesnetwork
@@ -78,5 +84,7 @@ spec:
             app:
               - path: /tmp
                 subPath: tmp
+              - path: /config
+                subPath: config
               - path: /workdir
                 subPath: workdir
