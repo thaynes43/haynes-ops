@@ -8,9 +8,9 @@ configMapGenerator:
   - name: ytdl-sub-config
     files:
       - config/config.yaml
-  - name: ytdl-sub-subscription
+  - name: ytdl-sub-subscriptions
     files:
-      - config/subscription.yaml
+      - config/subscriptions.yaml
 generatorOptions:
   annotations:
     kustomize.toolkit.fluxcd.io/substitute: disabled

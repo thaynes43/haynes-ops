@@ -65,14 +65,14 @@ spec:
               - path: /config/config.yaml
                 subPath: config.yaml
                 readOnly: true
-      subscription:
-        name: ytdl-sub-subscription
+      subscriptions:
+        name: ytdl-sub-subscriptions
         type: configMap
         advancedMounts:
           ytdl-sub:
             app:
-              - path: /config/subscription.yaml
-                subPath: subscription.yaml
+              - path: /config/subscriptions.yaml
+                subPath: subscriptions.yaml
                 readOnly: true
       media:
         type: nfs
