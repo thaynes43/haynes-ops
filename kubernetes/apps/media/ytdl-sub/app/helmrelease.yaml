@@ -41,7 +41,7 @@ spec:
               - -c
             args:
               - |
-                ytdl-sub --log-level=debug --config=/config/config.yaml sub /media/youtube/subscriptions.yaml
+                ytdl-sub --log-level=debug --config=/config/config.yaml sub /config/subscriptions.yaml
             securityContext:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
@@ -57,14 +57,11 @@ spec:
 
     persistence:
       config:
-        name: ytdl-sub
+        name: ytdl-sub-config
         type: configMap
-        advancedMounts:
-          ytdl-sub:
-            app:
-              - path: /config/config.yaml
-                subPath: config.yaml
-                readOnly: true
+        globalMounts:
+          - path: /config
+            readOnly: true
       media:
         type: nfs
         server: HaynesIntelligence.haynesnetwork
