@@ -73,12 +73,5 @@ spec:
                 subPath: ytdl
       tmp:
         type: emptyDir
-        advancedMounts:
-          ytdl-sub:
-            app:
-              - path: /tmp
-                subPath: tmp
-              - path: /config
-                subPath: config
-              - path: /workdir
-                subPath: workdir
+        globalMounts:
+          - path: /tmp/ytdl-sub
