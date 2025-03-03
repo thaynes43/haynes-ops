@@ -9,3 +9,4 @@ spec:
     requests:
       storage: 100Ti
   volumeName: cephfs-hdd-nfs-pv-media
+  storageClassName: ""
