@@ -50,6 +50,8 @@ spec:
                 value: &modelPath "/models"
               - name: OLLAMA_KEEP_ALIVE
                 value: "5m"
+              - name: OLLAMA_DEBUG
+                value: "1"
             resources:
               requests:
                 #nvidia.com/gpu: 1 # requesting 1 GPU TODO dig into how it works here https://github.com/jahanson/theshire/blob/main/kubernetes/apps/ai/ollama/app/helmrelease.yaml#L50 
