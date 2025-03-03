@@ -84,7 +84,6 @@ spec:
               - path: /media/youtube
                 subPath: ytdl
       nfs-test:
-        type: pvc
         existingClaim: cephfs-hdd-nfs-pvc-media
         advancedMounts:
           ytdl-sub:
