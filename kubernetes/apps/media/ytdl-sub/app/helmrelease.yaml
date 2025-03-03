@@ -91,7 +91,6 @@ spec:
           ytdl-sub:
             app:
               - path: /media/test
-                subPath: data/media/youtube
       tmp:
         type: emptyDir
         advancedMounts:
