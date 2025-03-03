@@ -88,7 +88,7 @@ spec:
         server: gasha01.haynesnetwork
         path: /hdd-nfs
         advancedMounts:
-          ollama:
+          ytdl-sub:
             app:
               - path: /media/test
                 subPath: data/media/youtube
