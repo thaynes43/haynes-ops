@@ -83,13 +83,13 @@ spec:
             app:
               - path: /media/youtube
                 subPath: ytdl
-      media2:
-        type: nfs
+      nfs-test:
         enabled: true
-        server: gasha01
-        path: /hdd-nfs
-        globalMounts:
-          - path: /mnt/ceph-hdd
+        type: pvc
+        existingClaim: cephfs-hdd-nfs-pvc
+        mountPath: /mnt/nfs
+        subPath: data/media/youtube
+        readOnly: false
       tmp:
         type: emptyDir
         advancedMounts:

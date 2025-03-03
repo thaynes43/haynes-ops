@@ -5,6 +5,8 @@ kind: Kustomization
 resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
+  - ./nfs-pv.yaml
+  - ./nfs-pvc.yaml
   # Flux-Kustomizations
   - ./overseerr/ks.yaml
   - ./ytdl-sub/ks.yaml
