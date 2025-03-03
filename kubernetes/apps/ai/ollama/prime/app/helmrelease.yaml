@@ -86,8 +86,8 @@ spec:
           - path: /root/.ollama
       models:
         type: nfs
-        server: HaynesIntelligence.haynesnetwork
-        path: /tank/data_root/LLM/Ollama
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs/misc/ollama-models
         advancedMounts:
           ollama:
             app:
