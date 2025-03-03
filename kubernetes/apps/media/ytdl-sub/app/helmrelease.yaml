@@ -85,12 +85,11 @@ spec:
                 subPath: ytdl
       media2:
         type: nfs
-        server: gasha01.haynesnetwork
+        enabled: true
+        server: gasha01
         path: /hdd-nfs
-        advancedMounts:
-          ytdl-sub:
-            app:
-              - path: /media/test
+        globalMounts:
+          - path: /mnt/ceph-hdd
       tmp:
         type: emptyDir
         advancedMounts:
