@@ -85,10 +85,20 @@ spec:
         globalMounts:
           - path: /root/.ollama
       models:
-        existingClaim: cephfs-hdd-nfs-pvc-ai
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
         advancedMounts:
           ollama:
             app:
               - path: *modelPath
                 subPath: misc/ollama/models
                 readOnly: false
+      #models:
+      #  existingClaim: cephfs-hdd-nfs-pvc-ai
+      #  advancedMounts:
+      #    ollama:
+      #      app:
+      #        - path: *modelPath
+      #          subPath: misc/ollama/models
+      #          readOnly: false
