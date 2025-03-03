@@ -83,6 +83,15 @@ spec:
             app:
               - path: /media/youtube
                 subPath: ytdl
+      media2:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs
+        advancedMounts:
+          ollama:
+            app:
+              - path: /media/test
+                subPath: data/media/youtube
       tmp:
         type: emptyDir
         advancedMounts:
