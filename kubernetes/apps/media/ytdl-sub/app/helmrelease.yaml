@@ -84,12 +84,14 @@ spec:
               - path: /media/youtube
                 subPath: ytdl
       nfs-test:
-        enabled: true
         type: pvc
         existingClaim: cephfs-hdd-nfs-pvc
-        mountPath: /mnt/nfs
-        subPath: data/media/youtube
-        readOnly: false
+        advancedMounts:
+          ytdl-sub:
+            app:
+              - path: /mnt/nfs
+                subPath: data/media/youtube
+                readOnly: false
       tmp:
         type: emptyDir
         advancedMounts:
