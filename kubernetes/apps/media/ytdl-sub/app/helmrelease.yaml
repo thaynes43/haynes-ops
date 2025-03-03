@@ -74,17 +74,10 @@ spec:
               - path: /config/subscriptions.yaml
                 subPath: subscriptions.yaml
                 readOnly: true
-      #media:
-      #  type: nfs
-      #  server: HaynesIntelligence.haynesnetwork
-      #  path: /tank/data_root/Media
-      #  advancedMounts:
-      #    ytdl-sub:
-      #      app:
-      #        - path: /media/youtube
-      #          subPath: ytdl
-      media:
-        existingClaim: cephfs-hdd-nfs-pvc-media
+      models:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
         advancedMounts:
           ytdl-sub:
             app:

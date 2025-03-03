@@ -13,7 +13,6 @@ spec:
   dependsOn:
     - name: nvidia-device-plugin
     - name: node-feature-discovery
-    - name: ai-nfs
   path: ./kubernetes/apps/ai/ollama/prime/app
   prune: true
   sourceRef:
