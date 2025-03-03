@@ -85,7 +85,7 @@ spec:
                 subPath: ytdl
       nfs-test:
         type: pvc
-        existingClaim: cephfs-hdd-nfs-pvc
+        existingClaim: cephfs-hdd-nfs-pvc-media
         advancedMounts:
           ytdl-sub:
             app:
