@@ -9,6 +9,9 @@
       only_recent_date_range: "24months"
       only_recent_max_files: 300
 
+      # Download 4K
+      format: "bestvideo[height=2160]+bestaudio/best"
+
   Plex TV Show by Date:
     = Animation:
       "Helluva Boss": "https://www.youtube.com/playlist?list=PL-uopgYBi65HwiiDR9Y23lomAkGr9mm-S"
