@@ -1,3 +1,4 @@
 ---
   configuration:
     working_directory: "/workdir/"
+    format: "bestvideo[height=2160]+bestaudio/best"
