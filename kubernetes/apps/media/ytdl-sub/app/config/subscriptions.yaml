@@ -8,7 +8,8 @@
       # Config for 'Only Recent' preset
       only_recent_date_range: "24months"
       only_recent_max_files: 300
-
+      
+    ytdl_options:
       cookiefile: "/media/youtube/cookies.txt"
 
   Plex TV Show by Date | Max Video Quality | Max Audio Quality:
