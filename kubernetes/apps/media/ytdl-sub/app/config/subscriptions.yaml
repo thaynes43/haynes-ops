@@ -8,7 +8,19 @@
       # Config for 'Only Recent' preset
       only_recent_date_range: "24months"
       only_recent_max_files: 300
-      
+
+    throttle_protection:
+      sleep_per_download_s:
+        min: 20
+        max: 70
+      sleep_per_subscription_s:
+        min: 60
+        max: 90
+      max_downloads_per_subscription:
+        min: 25
+        max: 75
+      subscription_download_probability: 0.5
+
     ytdl_options:
       cookiefile: "/media/youtube/cookies.txt"
 
