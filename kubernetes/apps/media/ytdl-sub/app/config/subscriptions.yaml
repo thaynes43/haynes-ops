@@ -24,7 +24,7 @@
     ytdl_options:
       cookiefile: "/media/youtube/cookies.txt"
 
-  Plex TV Show by Date | Max Video Quality | Max Audio Quality:
+  Plex TV Show by Date:
     = Animation:
       "Alex Meyers": "https://www.youtube.com/@AlexMeyersVids"
       "Helluva Boss": "https://www.youtube.com/playlist?list=PL-uopgYBi65HwiiDR9Y23lomAkGr9mm-S"
