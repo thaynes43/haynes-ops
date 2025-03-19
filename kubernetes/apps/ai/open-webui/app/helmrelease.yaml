@@ -10,7 +10,7 @@ spec:
       # https://github.com/open-webui/helm-charts/releases
       chart: open-webui
       # TODO 3.1.19 broke if ollama.enabled is false, 3.2.x broke ODIC.. going from 3.1.18 -> 3.6.
-      version: 5.20.0
+      version: 5.25.0
       sourceRef:
         kind: HelmRepository
         name: open-webui
