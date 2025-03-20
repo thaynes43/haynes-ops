@@ -24,8 +24,8 @@ spec:
           restartPolicy: Never
 
         cronjob:
-          schedule: "0 0 5 12 2" # Disable cronjob by giving it a schedule that will never run
-          #schedule: "*/15 * * * *"
+          #schedule: "0 0 5 12 2" # Disable cronjob by giving it a schedule that will never run
+          schedule: "*/15 * * * *"
           backoffLimit: 0
           concurrencyPolicy: Forbid
           failedJobsHistory: 1
