@@ -30,7 +30,7 @@ spec:
         external-dns.alpha.kubernetes.io/target: internal.haynesops
       className: traefik-internal
       hosts:
-        - host: blackbox-exporter.haynesnetwork.com
+        - host: blackbox-exporter.haynesops.com
           paths:
             - path: /
               pathType: Prefix
