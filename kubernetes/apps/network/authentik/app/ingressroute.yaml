@@ -3,14 +3,14 @@ kind: IngressRoute
 metadata:
   name: authentik
   annotations:
-    external-dns.alpha.kubernetes.io/target: external.haynesops
+    external-dns.alpha.kubernetes.io/target: haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
 spec:
   entryPoints:
     - websecure
   routes:
     - kind: Rule
-      match: Host(`authentik.haynesops.com`) && PathPrefix(`/`)
+      match: Host(`authentik.haynesnetwork.com`) && PathPrefix(`/`)
       services:
         - kind: Service
           name: authentik-server
@@ -18,4 +18,4 @@ spec:
       middlewares:
         - name: authentik-middleware
   tls:
-    secretName: certificate-haynesops
+    secretName: certificate-haynesnetwork
