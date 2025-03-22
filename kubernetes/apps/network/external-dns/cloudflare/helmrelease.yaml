@@ -40,7 +40,7 @@ spec:
     logLevel: debug
     policy: sync
     sources: ["crd", "ingress", "traefik-proxy"]
-    domainFilters: ["hayneshosted.com", "haynesnetwork.com"]
+    domainFilters: ["haynesnetwork.com"]
     excludeDomains: ["haynesops.com"]
     serviceMonitor:
       enabled: true
