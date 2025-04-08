@@ -3,7 +3,7 @@ name: haynes-ops
 kubernetes:
   version: v1.32.0
 talos:
-  version: v1.9.1
+  version: v1.9.5
 ---
 kind: ControlPlane
 machines:
