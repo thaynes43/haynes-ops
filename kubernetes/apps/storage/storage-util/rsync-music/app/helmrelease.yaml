@@ -60,7 +60,7 @@ spec:
       source:
         type: nfs
         server: haynestower.haynesnetwork
-        path: /data
+        path: /mnt/user/data
         advancedMounts:
           rsync:
             app:
