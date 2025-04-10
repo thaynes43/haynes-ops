@@ -41,7 +41,7 @@ spec:
               - -c
               - |-
                 printf "\e[1;32m%-6s\e[m\n" "Running rsync..."
-                /usr/bin/rsync -avh --delete --dry-run /source/ /destination/
+                /usr/bin/rsync -avh --delete /source/ /destination/
                 printf "\e[1;32m%-6s\e[m\n" "rsync complete."
             securityContext:
               allowPrivilegeEscalation: false
