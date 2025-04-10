@@ -24,6 +24,7 @@
       ]
     },
     "cSpell.words": [
+        "alertmanager",
         "automerge",
         "backube",
         "ceph",
@@ -38,8 +39,10 @@
         "emqx",
         "esphome",
         "fluxcd",
+        "gasha",
         "gatus",
         "gitrepositories",
+        "haraldkoch",
         "hayneshosted",
         "haynesnetwork",
         "haynesops",

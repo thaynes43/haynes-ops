@@ -17,7 +17,7 @@ spec:
   interval: 30m
   values:
     controllers:
-      ytdl-sub:
+      rsync:
         type: cronjob
 
         pod:
@@ -34,14 +34,15 @@ spec:
         containers:
           app:
             image:
-              repository: ghcr.io/jmbannon/ytdl-sub
-              tag: 2025.04.03
+              repository: ghcr.io/haraldkoch/rsync
+              tag: 3.4.0@sha256:8a2d4613662b56e350ec1a5a07996f4c1012a92e5969a2ec8e8195eccac1a5e7
             command:
-              - bash
+              - /bin/sh
               - -c
-            args:
-              - |
-                ytdl-sub --log-level=debug --config=/config/config.yaml sub /config/subscriptions.yaml
+              - |-
+                printf "\e[1;32m%-6s\e[m\n" "Running rsync..."
+                /usr/bin/rsync -avh --delete --dry-run /source/ /destination/
+                printf "\e[1;32m%-6s\e[m\n" "rsync complete."
             securityContext:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
@@ -56,42 +57,23 @@ spec:
                 memory: 6Gi
 
     persistence:
-      config:
-        name: ytdl-sub-config
-        type: configMap
+      source:
+        type: nfs
+        server: haynestower.haynesnetwork
+        path: /data
         advancedMounts:
-          ytdl-sub:
+          rsync:
             app:
-              - path: /config/config.yaml
-                subPath: config.yaml
-                readOnly: true
-      subscriptions:
-        name: ytdl-sub-subscriptions
-        type: configMap
-        advancedMounts:
-          ytdl-sub:
-            app:
-              - path: /config/subscriptions.yaml
-                subPath: subscriptions.yaml
-                readOnly: true
-      media:
+              - path: /source
+                subPath: Media/Music
+                readOnly: false
+      destination:
         type: nfs
         server: gasha01.haynesnetwork
         path: /hdd-nfs-repl
         advancedMounts:
-          ytdl-sub:
+          rsync:
             app:
-              - path: /media/youtube
-                subPath: data/media/youtube
+              - path: /destination
+                subPath: data/media/music
                 readOnly: false
-      tmp:
-        type: emptyDir
-        advancedMounts:
-          ytdl-sub:
-            app:
-              - path: /tmp
-                subPath: tmp
-              - path: /config
-                subPath: config
-              - path: /workdir
-                subPath: workdir
