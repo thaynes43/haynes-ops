@@ -4,6 +4,9 @@ kubernetes:
   version: v1.32.3
 talos:
   version: v1.9.5
+features:
+  backupConfiguration:
+    interval: 24h
 ---
 kind: ControlPlane
 machines:
