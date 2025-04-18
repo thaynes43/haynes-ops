@@ -1,9 +1,15 @@
 ---
 version: v1
 flags:
-  migStrategy: none
+  migStrategy: single
+  plugin:
+    deviceListStrategy: envvar
+    deviceIDStrategy: uuid
+    securityContext:
+      privileged: true
 sharing:
   timeSlicing:
     resources:
       - name: nvidia.com/gpu
         replicas: 3
+tolerations: []
