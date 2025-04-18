@@ -26,6 +26,8 @@ spec:
       retries: 3
       strategy: rollback
   values:
+    nodeSelector:
+      feature.node.kubernetes.io/nvidia-a2000: "true"
     flags:
       migStrategy: single
       plugin:
