@@ -32,3 +32,4 @@ resources:
   - ./whereabouts.yaml
   - ./open-webui.yaml
   - ./searxng.yaml
+  - ./intel

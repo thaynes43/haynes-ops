@@ -62,6 +62,7 @@
         "mqtt",
         "multus",
         "nvme",
+        "ocirepository",
         "ollama",
         "onedr",
         "onepassword",
