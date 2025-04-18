@@ -30,11 +30,7 @@ spec:
       configmap.reloader.stakater.com/reload: nvidia-helm-values
     config:
       name: nvidia-helm-values
-    runtimeClassName: "nvidia"
-    gfd:
-      enabled: true
-    nfd:
-      enabled: false
+    runtimeClassName: nvidia
     resources:
       requests:
         cpu: 100m
