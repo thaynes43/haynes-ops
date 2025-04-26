@@ -69,6 +69,6 @@ spec:
       - name: ENABLE_OAUTH_SIGNUP
         value: "true"
       - name: ENABLE_LOGIN_FORM
-        value: "false"
+        value: "true"
       - name: DEFAULT_USER_ROLE
         value: "user"
