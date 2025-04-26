@@ -66,9 +66,9 @@ spec:
             key: OAUTH_CLIENT_SECRET
       - name: OAUTH_PROVIDER_NAME
         value: "authentik"
-      - name: ENABLE_OAUTH_SIGNUP # TODO flip after initial setup
-        value: "false"
-      - name: ENABLE_LOGIN_FORM # TODO flip after initial setup
+      - name: ENABLE_OAUTH_SIGNUP
+        value: "true"
+      - name: ENABLE_LOGIN_FORM
         value: "true"
       - name: DEFAULT_USER_ROLE
         value: "user"
