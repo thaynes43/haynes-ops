@@ -9,7 +9,6 @@ spec:
     spec:
       # https://github.com/open-webui/helm-charts/releases
       chart: open-webui
-      # TODO 3.1.19 broke if ollama.enabled is false, 3.2.x broke ODIC.. going from 3.1.18 -> 3.6.
       version: 6.4.0
       sourceRef:
         kind: HelmRepository
@@ -31,12 +30,12 @@ spec:
 
     ingress:
       enabled: true
-      class: traefik-internal
+      class: traefik-external
       annotations:
-        external-dns.alpha.kubernetes.io/target: internal.haynesops
-      host: ai.haynesops.com
+        external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+      host: ai.haynesnetwork.com
       tls: true
-      existingSecret: certificate-haynesops
+      existingSecret: certificate-haynesnetwork
 
     persistence:
       enabled: true
