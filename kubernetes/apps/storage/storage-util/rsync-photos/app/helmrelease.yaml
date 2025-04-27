@@ -1,0 +1,79 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: rsync-photos
+spec:
+  chart:
+    spec:
+      chart: app-template
+      version: 3.7.3
+      interval: 30m
+      sourceRef:
+        kind: HelmRepository
+        name: bjw-s
+        namespace: flux-system
+  interval: 30m
+  values:
+    controllers:
+      rsync:
+        type: cronjob
+
+        pod:
+          restartPolicy: Never
+
+        cronjob:
+          #schedule: "0 0 5 12 2" # Disable cronjob by giving it a schedule that will never run
+          schedule: "*/15 * * * *"
+          backoffLimit: 0
+          concurrencyPolicy: Forbid
+          failedJobsHistory: 1
+          successfulJobsHistory: 1
+
+        containers:
+          app:
+            image:
+              repository: ghcr.io/haraldkoch/rsync
+              tag: 3.4.0@sha256:8a2d4613662b56e350ec1a5a07996f4c1012a92e5969a2ec8e8195eccac1a5e7
+            command:
+              - /bin/sh
+              - -c
+              - |-
+                printf "\e[1;32m%-6s\e[m\n" "Running rsync..."
+                /usr/bin/rsync -avh --delete /source/ /destination/
+                printf "\e[1;32m%-6s\e[m\n" "rsync complete."
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                  - ALL
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                memory: 6Gi
+
+    persistence:
+      source:
+        type: nfs
+        server: haynestower.haynesnetwork
+        path: /mnt/user/Photos
+        advancedMounts:
+          rsync:
+            app:
+              - path: /source
+                subPath: PlexShare
+                readOnly: false
+      destination:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          rsync:
+            app:
+              - path: /destination
+                subPath: data/photos
+                readOnly: false
