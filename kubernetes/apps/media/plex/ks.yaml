@@ -13,9 +13,7 @@ spec:
   path: ./kubernetes/apps/media/plex/app
   dependsOn:
     - name: intel-device-plugin-gpu
-      namespace: kube-system
     - name: rook-ceph-cluster
-      namespace: rook-ceph
   prune: true
   sourceRef:
     kind: GitRepository
