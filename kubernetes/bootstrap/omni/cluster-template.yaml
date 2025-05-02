@@ -1,7 +1,7 @@
 kind: Cluster
 name: haynes-ops
 kubernetes:
-  version: v1.32.3
+  version: v1.32.4
 talos:
   version: v1.9.5
 features:
@@ -471,7 +471,12 @@ patches:
         install:
           extraKernelArgs:
             - net.ifnames=0
+            - i915.enable_guc=3
+            - sysctl.kernel.kexec_load_disabled=1 
           wipe: true
+        udev:
+          rules:
+            - SUBSYSTEM=="drm", KERNEL=="renderD*", GROUP="44", MODE="0660"
         network:
           hostname: talosw02
           interfaces:
@@ -542,6 +547,7 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: main
             topology.kubernetes.io/zone: w
+            intel.feature.node.kubernetes.io/gpu: "true"
 ---
 kind: Machine
 systemExtensions:
@@ -554,7 +560,12 @@ patches:
         install:
           extraKernelArgs:
             - net.ifnames=0
+            - i915.enable_guc=3
+            - sysctl.kernel.kexec_load_disabled=1 
           wipe: true
+        udev:
+          rules:
+            - SUBSYSTEM=="drm", KERNEL=="renderD*", GROUP="44", MODE="0660"
         network:
           hostname: talosw03
           interfaces:
@@ -625,3 +636,4 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: main
             topology.kubernetes.io/zone: w
+            intel.feature.node.kubernetes.io/gpu: "true"

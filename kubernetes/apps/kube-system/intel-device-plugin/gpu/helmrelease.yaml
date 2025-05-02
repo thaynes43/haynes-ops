@@ -29,3 +29,6 @@ spec:
     name: i915
     sharedDevNum: 99
     nodeFeatureRule: true
+    plugin:
+      securityContext:
+        privileged: true
