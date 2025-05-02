@@ -5,7 +5,6 @@ metadata:
   name: postgres-lb
   annotations:
     external-dns.alpha.kubernetes.io/hostname: postgres.haynesops
-    #metallb.universe.tf/loadBalancerIPs: 192.168.40.204
     lbipam.cilium.io/ips: 192.168.40.204
 spec:
   type: LoadBalancer
