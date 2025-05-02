@@ -91,6 +91,9 @@ spec:
     persistence:
       config:
         existingClaim: plex
+        globalMounts:
+          - path: /config
+            readOnly: false
       config-cache:
         existingClaim: plex-cache
         globalMounts:
@@ -108,7 +111,7 @@ spec:
         advancedMounts:
           plex:
             app:
-              - path: /media
+              - path: /cephfs-hdd
                 subPath: data
                 readOnly: false
       tmp:
