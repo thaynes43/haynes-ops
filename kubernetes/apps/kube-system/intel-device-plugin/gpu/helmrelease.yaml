@@ -26,6 +26,6 @@ spec:
     - name: intel-device-plugin-operator
       namespace: kube-system
   values:
-    name: intel-device-plugin-gpu
+    name: i915
     sharedDevNum: 3
     nodeFeatureRule: true
