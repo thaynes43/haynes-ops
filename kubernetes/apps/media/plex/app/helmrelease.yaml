@@ -33,8 +33,8 @@ spec:
         containers:
           app:
             image:
-              repository: plexinc/pms-docker
-              tag: 1.41.6.9685-d301f511a
+              repository: ghcr.io/home-operations/plex
+              tag: 1.41.6.9685@sha256:37d36646471fb905a0080daaaa1f09ad3370b06149ed5f94dad73ead591cad0e
             env:
               TZ: America/New_York
               PLEX_ADVERTISE_URL: https://k8plex.haynesnetwork.com:443,http://192.168.40.209:32401
@@ -63,6 +63,13 @@ spec:
               limits:
                 # gpu.intel.com/i915: 1 # TODO not working, fix later
                 memory: 32Gi
+      defaultPodOptions:
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          fsGroup: 1000
+          fsGroupChangePolicy: OnRootMismatch
     service:
       app:
         controller: plex
@@ -91,9 +98,6 @@ spec:
     persistence:
       config:
         existingClaim: plex
-        globalMounts:
-          - path: /config
-            readOnly: false
       config-cache:
         existingClaim: plex-cache
         globalMounts:
