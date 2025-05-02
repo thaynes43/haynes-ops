@@ -37,7 +37,7 @@ spec:
               tag: 1.41.6.9685@sha256:37d36646471fb905a0080daaaa1f09ad3370b06149ed5f94dad73ead591cad0e
             env:
               TZ: America/New_York
-              PLEX_ADVERTISE_URL: https://k8plex.haynesnetwork.com:443,http://192.168.40.209:32401
+              PLEX_ADVERTISE_URL: https://k8plex.haynesnetwork.com:443,http://192.168.40.209:32400
               PLEX_NO_AUTH_NETWORKS: 192.168.0.0/24
             probes:
               liveness: &probes
@@ -46,7 +46,7 @@ spec:
                 spec:
                   httpGet:
                     path: /identity
-                    port: &port 32401
+                    port: &port 32400
                   initialDelaySeconds: 0
                   periodSeconds: 10
                   timeoutSeconds: 1
@@ -83,7 +83,7 @@ spec:
           lbipam.cilium.io/ips: 192.168.40.209
         ports:
           http:
-            port: 32401
+            port: 32400
     ingress:
       app:
         annotations:
