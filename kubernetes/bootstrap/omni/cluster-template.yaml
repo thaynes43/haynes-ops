@@ -463,6 +463,7 @@ patches:
 kind: Machine
 systemExtensions:
   - siderolabs/qemu-guest-agent
+  - siderolabs/i915
 name: 2fe46add-9e72-401c-8ec1-b5fb6837ffa0
 patches:
   - idOverride: 400-cm-2fe46add-9e72-401c-8ec1-b5fb6837ffa0
@@ -552,6 +553,7 @@ patches:
 kind: Machine
 systemExtensions:
   - siderolabs/qemu-guest-agent
+  - siderolabs/i915
 name: 960513a6-7a1d-4ece-949d-54a022fe85e5
 patches:
   - idOverride: 400-cm-960513a6-7a1d-4ece-949d-54a022fe85e5
