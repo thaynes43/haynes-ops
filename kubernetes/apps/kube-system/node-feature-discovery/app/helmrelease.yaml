@@ -28,7 +28,7 @@ spec:
     worker:
       config:
         core:
-          labelSources: [pci, system, usb]
+          labelSources: ["cpu", "pci", "system", "usb"]
           #labelSources: [all]
         sources:
           pci:
