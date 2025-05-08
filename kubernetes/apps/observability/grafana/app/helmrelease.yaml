@@ -33,16 +33,39 @@ spec:
       GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: natel-discrete-panel,pr0ps-trackmap-panel,panodata-map-panel
       GF_SECURITY_ANGULAR_SUPPORT_ENABLED: true
       GF_SERVER_ROOT_URL: https://grafana.haynesops.com
+      GF_AUTH_GENERIC_OAUTH_API_URL: https://authentik.haynesnetwork.com/application/o/userinfo/
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: https://authentik.haynesnetwork.com/application/o/authorize/
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: https://authentik.haynesnetwork.com/application/o/token/
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
+    envFromSecrets:
+      - name: grafana-authentik-secret
     grafana.ini:
       analytics:
         check_for_updates: false
         check_for_plugin_updates: false
         reporting_enabled: false
-      auth.anonymous:
+      auth:
+        signout_redirect_url: https://authentik.haynesnetwork.com/application/o/grafana/end-session/
+        oauth_auto_login: false
+        oauth_allow_insecure_email_lookup: true
+      auth.generic_oauth:
         enabled: true
+        name: Authentik
+        icon: signin
+        scopes: "openid profile email"
+        empty_scopes: false
+        login_attribute_path: user
+        groups_attribute_path: groups
+        name_attribute_path: user
+        use_pkce: true
+      auth.generic_oauth.group_mapping:
         org_id: 1
-        org_name: Main Org.
-        org_role: Viewer
+        role_attribute_path: |
+          contains(groups[*], 'grafana_admin') && 'Admin' || contains(groups[*], 'grafana_viewer') && 'Viewer'
+      auth.basic:
+        enabled: true
+      auth.anonymous:
+        enabled: false
       news:
         news_feed_enabled: false
     datasources:
