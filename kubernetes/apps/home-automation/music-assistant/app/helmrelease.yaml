@@ -36,7 +36,7 @@ spec:
         pod:
           nodeSelector:
             topology.kubernetes.io/zone: "m" # TODO select subnet
-          hostNetwork: true
+          #hostNetwork: true
           #annotations:
           #  k8s.v1.cni.cncf.io/networks: static-sonos-mass
         containers:
@@ -73,9 +73,9 @@ spec:
       # TODO need the official integration in a month cause this is getting weird https://github.com/music-assistant/hass-music-assistant/issues/3031 
       app:
         controller: music-assistant
-        type: LoadBalancer
-        annotations:
-          lbipam.cilium.io/ips: 192.168.40.210
+        #type: LoadBalancer
+        #annotations:
+        #  lbipam.cilium.io/ips: 192.168.40.210
         ports:
           http:
             port: 8095
