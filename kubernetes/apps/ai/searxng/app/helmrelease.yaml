@@ -30,7 +30,7 @@ spec:
             port: 8080
     env:
       INSTANCE_NAME: "haynes-searxng"
-      BASE_URL: "https://searxng.haynesnetwork.com/"
+      BASE_URL: "https://searxng.haynesops.com/"
       AUTOCOMPLETE: "google"
       SEARXNG_SECRET: 
         valueFrom:
