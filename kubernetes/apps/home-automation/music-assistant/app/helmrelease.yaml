@@ -37,8 +37,8 @@ spec:
           nodeSelector:
             topology.kubernetes.io/zone: "m" # TODO select subnet
           #hostNetwork: true
-          annotations:
-            k8s.v1.cni.cncf.io/networks: static-sonos-mass
+          #annotations:
+          #  k8s.v1.cni.cncf.io/networks: static-sonos-mass
         containers:
           app:
             image:
