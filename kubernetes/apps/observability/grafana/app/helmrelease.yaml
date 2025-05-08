@@ -38,7 +38,7 @@ spec:
       GF_AUTH_GENERIC_OAUTH_TOKEN_URL: https://authentik.haynesnetwork.com/application/o/token/
       GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
     envFromSecrets:
-      - name: grafana-authentik-secret
+      - name: grafana-admin-secret
     grafana.ini:
       analytics:
         check_for_updates: false
