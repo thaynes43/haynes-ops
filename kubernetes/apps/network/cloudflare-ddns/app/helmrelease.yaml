@@ -46,12 +46,12 @@ spec:
               CF_APITOKEN:
                 valueFrom:
                   secretKeyRef:
-                    name: cloudflare-ddns-secrets
+                    name: cloudflare-ddns-secret
                     key: CLOUDFLARE_API_TOKEN
               CF_ZONES:
                 valueFrom:
                   secretKeyRef:
-                    name: cloudflare-ddns-secrets
+                    name: cloudflare-ddns-secret
                     key: CLOUDFLARE_ZONE_ID
             probes:
               liveness:
