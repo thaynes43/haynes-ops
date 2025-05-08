@@ -1,0 +1,71 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: &app cloudflare-ddns
+  namespace: networking
+spec:
+  chart:
+    spec:
+      chart: app-template
+      version: 3.7.3
+      interval: 30m
+      sourceRef:
+        kind: HelmRepository
+        name: bjw-s
+        namespace: flux-system
+  interval: 1h
+  maxHistory: 2
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  values:
+    controllers:
+      cloudflare-ddns:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        containers:
+          app:
+            image:
+              repository: ghcr.io/hotio/cloudflareddns
+              tag: latest@sha256:2465b4415151a771caa80749fdaa481c30581c649ee65287f84fd110a28204d0
+            env:
+              TZ: America/New_York
+              PUID: 568
+              PGID: 568
+              INTERVAL: 300
+              DETECTION_MODE: dig-whoami.cloudflare
+              CF_HOSTS: "haynesnetwork.com,www.haynesnetwork.com"
+              CF_RECORDTYPES: A
+              CF_APITOKEN:
+                valueFrom:
+                  secretKeyRef:
+                    name: cloudflare-ddns-secrets
+                    key: CLOUDFLARE_API_TOKEN
+              CF_ZONES:
+                valueFrom:
+                  secretKeyRef:
+                    name: cloudflare-ddns-secrets
+                    key: CLOUDFLARE_ZONE_ID
+            probes:
+              liveness:
+                enabled: false
+              readiness:
+                enabled: false
+              startup:
+                enabled: false
+            resources:
+              requests:
+                cpu: 5m
+                memory: 10Mi
+              limits:
+                memory: 1Gi
+    persistence:
+      config:
+        type: emptyDir
