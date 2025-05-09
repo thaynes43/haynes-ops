@@ -43,7 +43,7 @@ spec:
               - --hass-websocket-uri
               - ws://home-assistant.home-automation.svc.cluster.local:8123/api/websocket
               - --hass-token
-              - env:HASS_TOKEN
+              - "$(HASS_TOKEN)"
               - --retrain-on-start
             env:
               TZ: America/New_York
