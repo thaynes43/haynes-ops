@@ -38,7 +38,7 @@ spec:
           app:
             image:
               repository: rhasspy/wyoming-whisper
-              tag: latest
+              tag: 2.4.0
             args:
               - --model
               - small
