@@ -98,3 +98,13 @@ spec:
           music-assistant:
             app:
               - path: /data
+      music:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          music-assistant:
+            app:
+              - path: /music
+                subPath: data/media/music
+                readOnly: true
