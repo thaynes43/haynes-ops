@@ -65,7 +65,7 @@ spec:
       models:
         enabled: true
         existingClaim: speech-to-phrase-models
-      custom_sentences:
+      custom-sentences:
         type: nfs
         server: gasha01.haynesnetwork
         path: /hdd-nfs-repl
