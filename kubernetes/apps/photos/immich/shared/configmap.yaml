@@ -14,6 +14,6 @@ data:
   LOG_LEVEL: log
 
   # REDIS
-  REDIS_HOSTNAME: dragonfly.dragonfly.svc.cluster.local
+  REDIS_HOSTNAME: dragonfly.database.svc.cluster.local
   REDIS_DBINDEX: "1"
   REDIS_PORT: "6379"
