@@ -98,7 +98,7 @@ spec:
         server: gasha01.haynesnetwork
         path: /hdd-nfs-repl
         advancedMounts:
-          immich:
+          immich-server:
             app:
               - path: /photos
                 subPath: data/photos
