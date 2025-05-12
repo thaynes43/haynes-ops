@@ -4,7 +4,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: &app dragonfly-operator
-  namespace: dragonflydb
+  namespace: dragonflydb # TODO why did I need to add this? 
 spec:
   interval: 30m
   chart:
