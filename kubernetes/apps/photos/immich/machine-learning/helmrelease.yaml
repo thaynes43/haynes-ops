@@ -61,7 +61,6 @@ spec:
               repository: ghcr.io/immich-app/immich-machine-learning
               tag: v1.131.2@sha256:29836cf73146057ac388546021fff3e00c923e22a28587cceb5108a5e537987d
             env:
-              IMMICH_MEDIA_LOCATION: /photos
               TZ: America/New_York
             envFrom:
               - secretRef:
@@ -93,7 +92,7 @@ spec:
         type: emptyDir
         globalMounts:
           - path: /usr/src/app/.transformers_cache
-      photos:
+      upload:
         type: nfs
         server: gasha01.haynesnetwork
         path: /hdd-nfs-repl
@@ -101,5 +100,15 @@ spec:
           immich-machine-learning:
             app:
               - path: /usr/src/app/upload
+                subPath: data/photos/immich
+                readOnly: true
+      photos:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          immich-machine-learning:
+            app:
+              - path: /photos
                 subPath: data/photos
                 readOnly: true

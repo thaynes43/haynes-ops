@@ -130,13 +130,23 @@ spec:
         name: immich-configmap
         globalMounts:
           - path: /config
+      upload:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          immich-machine-learning:
+            app:
+              - path: /usr/src/app/upload
+                subPath: data/photos/immich
+                readOnly: false
       photos:
         type: nfs
         server: gasha01.haynesnetwork
         path: /hdd-nfs-repl
         advancedMounts:
-          immich-server:
+          immich-machine-learning:
             app:
-              - path: /usr/src/app/upload
+              - path: /photos
                 subPath: data/photos
-                readOnly: false
+                readOnly: true
