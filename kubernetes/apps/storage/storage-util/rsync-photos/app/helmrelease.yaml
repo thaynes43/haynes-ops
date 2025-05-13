@@ -24,8 +24,8 @@ spec:
           restartPolicy: Never
 
         cronjob:
-          schedule: "0 0 5 12 2" # Disable cronjob by giving it a schedule that will never run
-          #schedule: "0 */12 * * *" # Every 12 hours
+          #schedule: "0 0 5 12 2" # Disable cronjob by giving it a schedule that will never run
+          schedule: "0 */12 * * *" # Every 12 hours
           backoffLimit: 0
           concurrencyPolicy: Forbid
           failedJobsHistory: 1
@@ -75,5 +75,5 @@ spec:
           rsync:
             app:
               - path: /destination
-                subPath: data/photos
+                subPath: data/photos/from_haynestower
                 readOnly: false
