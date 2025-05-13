@@ -37,6 +37,8 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
     controllers:
       immich-server:
+        annotations:
+          reloader.stakater.com/auto: "true"
         replicas: 1
         strategy: RollingUpdate
         containers:
@@ -66,8 +68,44 @@ spec:
             envFrom:
               - secretRef:
                   name: immich-secret
-              - configMapRef:
-                  name: immich-configmap
+          02-init-extensions:
+            image:
+              repository: ghcr.io/onedr0p/postgres-init
+              tag: 14
+            env:
+              - name: PGDATABASE
+                valueFrom:
+                  secretKeyRef:
+                    name: immich-secret
+                    key: DB_DATABASE_NAME
+              - name: PGUSER
+                value: postgres
+              - name: PGPASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: immich-secret
+                    key: INIT_POSTGRES_SUPER_PASS
+              - name: PGHOST
+                valueFrom:
+                  secretKeyRef:
+                    name: immich-secret
+                    key: DB_HOSTNAME
+              - name: PGPORT
+                valueFrom:
+                  secretKeyRef:
+                    name: immich-secret
+                    key: DB_PORT
+            envFrom:
+              - secretRef:
+                  name: immich-secret
+            command:
+              - /bin/bash
+              - -c
+              - |
+                psql <<'EOF'
+                  CREATE EXTENSION IF NOT EXISTS "vectors";
+                  CREATE EXTENSION IF NOT EXISTS "cube";
+                  CREATE EXTENSION IF NOT EXISTS "earthdistance";
     service:
       app:
         controller: *app

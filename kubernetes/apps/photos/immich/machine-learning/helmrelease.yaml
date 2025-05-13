@@ -48,10 +48,10 @@ spec:
                       - key: feature.node.kubernetes.io/nvidia-3090-gpu
                         operator: In
                         values: ["true"]
-                  - matchExpressions:
-                      - key: feature.node.kubernetes.io/nvidia-2000-ada-gpu
-                        operator: In
-                        values: ["true"]
+                  #- matchExpressions: # TODO need a load balancer if we want these too
+                  #    - key: feature.node.kubernetes.io/nvidia-2000-ada-gpu
+                  #      operator: In
+                  #      values: ["true"]
           runtimeClassName: nvidia
         replicas: 3
         strategy: RollingUpdate
