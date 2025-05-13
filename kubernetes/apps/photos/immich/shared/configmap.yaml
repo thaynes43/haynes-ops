@@ -13,7 +13,8 @@ data:
   # SETTINGS
   LOG_LEVEL: log
   UPLOAD_LOCATION: /usr/src/app/upload
-
+  DB_VECTOR_EXTENSION: pgvector
+  
   # REDIS
   REDIS_HOSTNAME: dragonfly.database.svc.cluster.local
   REDIS_DBINDEX: "1"
