@@ -140,4 +140,4 @@ spec:
             app:
               - path: /photos
                 subPath: data/photos
-                readOnly: true
+                readOnly: false
