@@ -40,9 +40,9 @@ spec:
         maxParallel: 8
       destinationPath: s3://cnpg-haynesops/
       endpointURL: https://s3.us-east-2.amazonaws.com
-      # Note: serverName version needs to be inccemented
+      # Note: serverName version needs to be incremented
       # when recovering from an existing cnpg cluster
-      serverName: &currentCluster postgres16-pgvecto-v1
+      serverName: &currentCluster postgres16-pgvecto-v0
       s3Credentials:
         accessKeyId:
           name: cloudnative-pg-secret
@@ -59,8 +59,8 @@ spec:
   #  recovery:
   #    source: &previousCluster postgres16-pgvecto-v1
   # Note: externalClusters is needed when recovering from an existing cnpg cluster
-  externalClusters:
-    - name: *previousCluster
-      barmanObjectStore:
-        <<: *barmanObjectStore
-        serverName: *previousCluster
+  #externalClusters:
+  #  - name: *previousCluster
+  #    barmanObjectStore:
+  #      <<: *barmanObjectStore
+  #      serverName: *previousCluster
