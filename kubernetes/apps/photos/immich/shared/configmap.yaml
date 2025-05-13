@@ -12,7 +12,7 @@ data:
   
   # SETTINGS
   LOG_LEVEL: log
-  UPLOAD_LOCATION: /upload
+  IMMICH_MEDIA_LOCATION: /upload
 
   # REDIS
   REDIS_HOSTNAME: dragonfly.database.svc.cluster.local
