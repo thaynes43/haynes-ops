@@ -12,8 +12,9 @@ data:
   
   # SETTINGS
   LOG_LEVEL: log
-  IMMICH_MEDIA_LOCATION: /upload
-
+  UPLOAD_LOCATION: /upload
+  IMMICH_IGNORE_MOUNT_CHECK_ERRORS: "true"
+  
   # REDIS
   REDIS_HOSTNAME: dragonfly.database.svc.cluster.local
   REDIS_DBINDEX: "1"
