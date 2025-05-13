@@ -100,6 +100,6 @@ spec:
         advancedMounts:
           immich-machine-learning:
             app:
-              - path: /photos
+              - path: /usr/src/app/upload
                 subPath: data/photos
                 readOnly: true
