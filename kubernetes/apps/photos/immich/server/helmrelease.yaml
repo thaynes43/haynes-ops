@@ -137,7 +137,7 @@ spec:
         advancedMounts:
           immich-server:
             app:
-              - path: /upload
+              - path: /usr/src/app/upload
                 subPath: data/photos/immich
                 readOnly: false
       photos:
