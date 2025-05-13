@@ -12,6 +12,7 @@ data:
   
   # SETTINGS
   LOG_LEVEL: log
+  UPLOAD_LOCATION: /photos
 
   # REDIS
   REDIS_HOSTNAME: dragonfly.database.svc.cluster.local
