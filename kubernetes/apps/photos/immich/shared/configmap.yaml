@@ -12,6 +12,7 @@ data:
   
   # SETTINGS
   LOG_LEVEL: log
+  DB_VECTOR_EXTENSION: pgvector
 
   # REDIS
   REDIS_HOSTNAME: dragonfly.database.svc.cluster.local
