@@ -32,4 +32,4 @@ spec:
     monitoring:
       podMonitorEnabled: false # TODO Monitoring
       grafanaDashboard:
-        create: false # TODO Install grafana
+        create: true
