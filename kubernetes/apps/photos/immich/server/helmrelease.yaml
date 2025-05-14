@@ -114,15 +114,19 @@ spec:
     ingress:
       app:
         annotations:
-          external-dns.alpha.kubernetes.io/target: internal.haynesops
-        className: traefik-internal
+          external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+        className: traefik-external
         hosts:
-          - host: immich.haynesops.com
+          - host: immich.haynesnetwork.com
             paths:
               - path: /
                 service:
                   identifier: app
                   port: http
+        tls:
+          - secretName: certificate-haynesnetwork
+            hosts:
+                - immich.haynesnetwork.com
     persistence:
       config:
         enabled: true
