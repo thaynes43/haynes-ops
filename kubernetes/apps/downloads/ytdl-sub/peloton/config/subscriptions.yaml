@@ -2,14 +2,10 @@ peloton_flat:
   preset:
     - _base
     - _plex_base
-    - _plex_video_base
-    - _episode_base
-    - _episode_video_tags
     - _url_bilateral_overrides
     - _multi_url_bilateral_inner
     - _multi_url
     - _multi_url_bilateral
-    - _plex_tv_show
   overrides:
     tv_show_directory: "/media/peloton"
     output_options:
