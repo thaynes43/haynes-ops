@@ -8,6 +8,7 @@ peloton_flat:
     tv_show_directory: "/media/peloton"
   output_options:
     use_season_folders: false
+    file_name: "{upload_date:%Y-%m-%d} - {episode_title}.{ext}"
   video_tags:
     title: "{upload_date:%Y-%m-%d} - {episode_title}"
   ytdl_options:
