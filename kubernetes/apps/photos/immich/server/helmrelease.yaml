@@ -70,7 +70,7 @@ spec:
           02-init-extensions:
             image:
               repository: ghcr.io/onedr0p/postgres-init
-              tag: 14
+              tag: 16
             env:
               - name: PGDATABASE
                 valueFrom:
