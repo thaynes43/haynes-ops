@@ -15,11 +15,11 @@ peloton_flat:
     output_options:
       use_season_folders: false
     video_tags:
-      title: "{upload_date:%Y-%m-%d} - {episode_title}"
-    ytdl_options:
-      cookiefile: "/media/peloton/cookies.txt"
-      format: "bestvideo+bestaudio"
-      merge_output_format: mp4
+      title: "{upload_date} - {episode_title}"
+  ytdl_options:
+    cookiefile: "/media/peloton/cookies.txt"
+    format: "bestvideo+bestaudio"
+    merge_output_format: mp4
   throttle_protection:
     sleep_per_download_s:
       min: 20
