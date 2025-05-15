@@ -11,10 +11,10 @@
 
     # REMOVE the Season sub‑folder while keeping Plex’s filename template
     output_options:
-      output_directory: "{tv_show_directory}" # Strip season
-      file_name: "{upload_date} - {title}.{ext}"   # same format Plex preset uses
-      thumbnail_name: "{file_name}-thumb" # Strip season
-      info_json_name: "{file_name}" # Strip season
+      output_directory: "{tv_show_directory}"         # Strip season
+      file_name: "{upload_date} - {title}.{ext}"      # Same format Plex preset uses
+      thumbnail_name: "{upload_date} - {title}-thumb" # Strip season
+      info_json_name: "{upload_date} - {title}"       # Strip season
     throttle_protection:
       sleep_per_download_s:
         min: 20
