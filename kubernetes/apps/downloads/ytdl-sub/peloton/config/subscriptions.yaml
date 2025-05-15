@@ -31,34 +31,34 @@
       "30 min Taylor Swift TTPD Yoga Flow":
         download: "https://members.onepeloton.com/classes/player/1e0bf72a7f2a485cbdcd1236e77df9ff"
         overrides:
-          tv_show_name: "ADITI & ANNA/Yoga"
+          tv_show_directory: "/media/peloton/ADITI & ANNA/Yoga"
 
     # START Anna Greenberg 
     = Anna Greenberg - Meditation:
       "5 min Kindness Meditation":
         download: "https://members.onepeloton.com/classes/player/2a2775d2aaff4074b2aa36d9fd47093c"
         overrides:
-          tv_show_name: "Anna Greenberg/Meditation"
+          tv_show_directory: "/media/peloton/Anna Greenberg/Meditation"
 
     = Anna Greenberg - Strength:
       "10 min Pilates: Lower Body":
         download: "https://members.onepeloton.com/classes/player/a8196f812a5645548e2a9a8f2b0b977f"
         overrides:
-          tv_show_name: "Anna Greenberg/Strength"
+          tv_show_directory: "/media/peloton/Anna Greenberg/Strength"
 
     = Anna Greenberg - Yoga:
       "30 min 1989 Yoga Flow":
         download: "https://members.onepeloton.com/classes/player/2c66a8904222428f970efeb630ec0fbb"
         overrides:
-          tv_show_name: "Anna Greenberg/Yoga"
+          tv_show_directory: "/media/peloton/Anna Greenberg/Yoga"
       "15 min Focus Flow: Healthy Back":
         download: "https://members.onepeloton.com/classes/player/72044061414a41c7872ea166b59b70e6"
         overrides:
-          tv_show_name: "Anna Greenberg/Yoga"
+          tv_show_directory: "/media/peloton/Anna Greenberg/Yoga"
     # END Anna Greenberg 
     
     = Mariana Fernandez - Yoga:
       "30 min Taylor Swift Midnights Yoga":
         download: "https://members.onepeloton.com/classes/player/ae9ec5882f704c45a7d4a2bd0684bf40"
         overrides:
-          tv_show_name: "Mariana Fernandez/Yoga"
+          tv_show_directory: "/media/peloton/Mariana Fernandez/Yoga"
