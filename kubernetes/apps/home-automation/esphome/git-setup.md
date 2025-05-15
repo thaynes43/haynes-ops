@@ -27,6 +27,7 @@ spec:
         key: esphome
         property: github_deploy_key
 ```
+
 Map to somewhere the 1000 user can get the secret:
 
 ```yaml
@@ -46,6 +47,7 @@ Map to somewhere the 1000 user can get the secret:
 Just created one using default settings (no .gitignore) [here](https://github.com/thaynes43/esphome-config). An esphome centric gitignore was created automattically somehow but I modified it slightly:
 
 `.gitignore`:
+
 ```bash
 # Gitignore settings for ESPHome
 # This is an example and may include too much for your use-case.
