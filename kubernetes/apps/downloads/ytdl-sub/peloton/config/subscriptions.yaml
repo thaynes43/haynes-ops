@@ -11,10 +11,13 @@
 
     # REMOVE the Season sub‑folder while keeping Plex’s filename template
     output_options:
-      output_directory: "{tv_show_directory}/{upload_date} - {title}"  # Strip season
-      file_name: "{upload_date} - {title}.{ext}"                       # Same format Plex preset uses
-      thumbnail_name: "{upload_date} - {title}-thumb.jpg"              # Strip season
-      info_json_name: "{upload_date} - {title}.info.json"              # Strip season
+      # static piece (no entry‑level vars here)
+      output_directory: "{tv_show_directory}"
+
+      # each workout lives in its own sub‑folder "<date> - <title>"
+      file_name:       "{upload_date} - {title}/{upload_date} - {title}.{ext}"
+      thumbnail_name:  "{upload_date} - {title}/{upload_date} - {title}-thumb.jpg"
+      info_json_name:  "{upload_date} - {title}/{upload_date} - {title}.info.json"
     throttle_protection:
       sleep_per_download_s:
         min: 20
