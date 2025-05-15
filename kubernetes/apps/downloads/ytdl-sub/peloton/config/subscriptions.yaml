@@ -7,8 +7,7 @@ peloton_flat:
   overrides:
     tv_show_directory: "/media/peloton"
   output_options:
-    output_directory: "{tv_show_directory}"   
-    use_season_folders: false
+    output_directory: "{tv_show_directory}"
     file_name: "{upload_date:%Y-%m-%d} - {episode_title}.{ext}"
   video_tags:
     title: "{upload_date:%Y-%m-%d} - {episode_title}"
