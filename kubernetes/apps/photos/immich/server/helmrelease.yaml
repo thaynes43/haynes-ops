@@ -55,10 +55,10 @@ spec:
                   name: immich-configmap
             resources:
               requests:
-                cpu: 10m
-                memory: 512Mi
+                cpu: 1000m
+                memory: 4Gi
               limits:
-                memory: 1Gi
+                memory: 32Gi
         initContainers:
           01-init-db:
             image:
