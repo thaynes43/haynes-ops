@@ -8,9 +8,9 @@ peloton_flat:
     tv_show_directory: "/media/peloton"
   output_options:
     output_directory: "{tv_show_directory}"
-    file_name: "{upload_date} - {episode_title}.{ext}"
+    file_name: "{upload_date} - {title}.{ext}"
   video_tags:
-    title: "{upload_date} - {episode_title}"
+    title: "{upload_date} - {title}"
   ytdl_options:
     cookiefile: "/media/peloton/cookies.txt"
     format: "bestvideo+bestaudio"
