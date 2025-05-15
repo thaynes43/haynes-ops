@@ -3,7 +3,7 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: ytdl-sub
+  name: ytdl-sub-peloton
 spec:
   chart:
     spec:
@@ -57,7 +57,7 @@ spec:
 
     persistence:
       config:
-        name: ytdl-sub-config
+        name: ytdl-sub-peloton-config
         type: configMap
         advancedMounts:
           ytdl-sub:
@@ -66,7 +66,7 @@ spec:
                 subPath: config.yaml
                 readOnly: true
       subscriptions:
-        name: ytdl-sub-subscriptions
+        name: ytdl-sub-peloton-subscriptions
         type: configMap
         advancedMounts:
           ytdl-sub:
@@ -81,8 +81,8 @@ spec:
         advancedMounts:
           ytdl-sub:
             app:
-              - path: /media/youtube
-                subPath: data/media/youtube
+              - path: /media/peloton
+                subPath: data/media/peloton
                 readOnly: false
       tmp:
         type: emptyDir

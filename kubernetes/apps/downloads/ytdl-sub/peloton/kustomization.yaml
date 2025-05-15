@@ -5,10 +5,10 @@ kind: Kustomization
 resources:
   - ./helmrelease.yaml
 configMapGenerator:
-  - name: ytdl-sub-config
+  - name: ytdl-sub-peloton-config
     files:
       - config/config.yaml
-  - name: ytdl-sub-subscriptions
+  - name: ytdl-sub-peloton-subscriptions
     files:
       - config/subscriptions.yaml
 generatorOptions:
