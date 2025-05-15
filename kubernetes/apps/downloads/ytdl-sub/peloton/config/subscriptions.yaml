@@ -6,16 +6,20 @@ peloton_flat:
     - _multi_url_bilateral_inner
     - _multi_url
     - _multi_url_bilateral
-  overrides:
-    tv_show_directory: "/media/peloton"
-    output_options:
-      use_season_folders: false
-    video_tags:
-      title: "{upload_date} - {episode_title}"
+
+  tv_show_directory: "/media/peloton"
+
+  output_options:
+    use_season_folders: false
+
+  video_tags:
+    title: "{upload_date} - {episode_title}"
+
   ytdl_options:
     cookiefile: "/media/peloton/cookies.txt"
     format: "bestvideo+bestaudio"
     merge_output_format: mp4
+
   throttle_protection:
     sleep_per_download_s:
       min: 20
@@ -30,7 +34,6 @@ peloton_flat:
 
 Peloton:
   preset: peloton_flat
-
   = ADITI & ANNA - Yoga:
     "30 min Taylor Swift TTPD Yoga Flow":
       download: "https://members.onepeloton.com/classes/player/1e0bf72a7f2a485cbdcd1236e77df9ff"
@@ -42,13 +45,11 @@ Peloton:
       download: "https://members.onepeloton.com/classes/player/2a2775d2aaff4074b2aa36d9fd47093c"
       overrides:
         tv_show_directory: "/media/peloton/Anna Greenberg/Meditation"
-
   = Anna Greenberg - Strength:
     "10 min Pilates: Lower Body":
       download: "https://members.onepeloton.com/classes/player/a8196f812a5645548e2a9a8f2b0b977f"
       overrides:
         tv_show_directory: "/media/peloton/Anna Greenberg/Strength"
-
   = Anna Greenberg - Yoga:
     "30 min 1989 Yoga Flow":
       download: "https://members.onepeloton.com/classes/player/2c66a8904222428f970efeb630ec0fbb"
