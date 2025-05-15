@@ -36,7 +36,13 @@
       merge_output_format: mp4
   
   Plex TV Show by Date:
-    = Cycling:
+    = 20min Cycling:
+      "2000s Rock Ride (20 min)":
+        download: "https://members.onepeloton.com/classes/player/3e2095468726453788e0db18be7cc8e4"
+        overrides:
+          tv_show_directory: "/media/peloton/Cycling/Bradley Rose"
+              
+    = 30min Cycling:
       "Country Ride (30 min)":
         download: "https://members.onepeloton.com/classes/player/0cd4989189ea47cb940db352e7267eef"
         overrides:
