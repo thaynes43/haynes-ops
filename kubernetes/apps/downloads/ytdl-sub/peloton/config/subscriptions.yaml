@@ -28,7 +28,7 @@
       max_downloads_per_subscription:
         min: 25
         max: 75
-      subscription_download_probability: 0.5
+      subscription_download_probability: 1 # TODO Dial down later
 
     ytdl_options:
       cookiefile: "/media/peloton/cookies.txt"
