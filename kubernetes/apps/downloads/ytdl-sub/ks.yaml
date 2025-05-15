@@ -6,11 +6,11 @@ metadata:
   name: &app ytdl-sub
   namespace: flux-system
 spec:
-  targetNamespace: media
+  targetNamespace: downloads
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  path: ./kubernetes/apps/media/ytdl-sub/app
+  path: ./kubernetes/apps/downloads/ytdl-sub/app
   prune: true
   sourceRef:
     kind: GitRepository
