@@ -9,7 +9,7 @@ I grabbed the contents of `~/.ssh/id_ed25519` from my desktop and created entry 
 ```yaml
 ---
 # yaml-language-server: $schema=https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/external-secrets.io/externalsecret_v1beta1.json
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: esphome-deploykey

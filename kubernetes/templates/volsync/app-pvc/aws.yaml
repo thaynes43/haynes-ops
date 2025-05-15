@@ -1,6 +1,6 @@
 ---
 # yaml-language-server: $schema=https://gist.githubusercontent.com/thaynes43/21ef53eace2d3c6c8f00c8ee0fe4ec24/raw/b0fd8341723eee62b8a47127d40cb75f00056b67/empty-json-schema.json
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: "${APP}-volsync-aws"
