@@ -37,7 +37,7 @@
   
   Plex TV Show by Date:
     = Cycling (5 min):
-      "Cool Down Ride w/ Dennis Morton (5 min)":
+      "Cool Down Ride (5 min)":
         download: "https://members.onepeloton.com/classes/player/e6ed83ecdc424bbbb61fd5a58dcbf59c"
         overrides:
           tv_show_directory: "/media/peloton/Cycling/Denis Morton"
@@ -59,7 +59,7 @@
           episode_number: 1
 
     = Cycling (15 min):
-      "Climb Ride w/ Jess King (15 min)":
+      "Climb Ride (15 min)":
         download: "https://members.onepeloton.com/classes/player/0966ea7ee8e645998f87b03240c5611b"
         overrides:
           tv_show_directory: "/media/peloton/Cycling/Jess King"
