@@ -10,6 +10,9 @@ import os
 import json
 import yaml
 from dotenv import load_dotenv
+import tempfile
+import git  # GitPython
+from github import Github
 
 class Activity(Enum):
     ALL = "all"
@@ -226,7 +229,7 @@ class FileManager:
                         activity_str = "bike_bootcamp"
                     elif activity_str == "row bootcamp":
                         activity_str = "row_bootcamp"
-                        
+
                     # Map string to Activity enum (skip if not recognized)
                     try:
                         activity_enum = Activity(activity_str)
@@ -450,31 +453,152 @@ class PelotonScraper:
             return int(match.group(1))
         return None
 
+class EnvManager:
+    def __init__(self):
+        load_dotenv()
+        self.username = ""
+        self.password = ""
+        self.mediaDir = ""
+        self.loadRequiredConfiguration()
+        self.subsFile = ""
+        self.githubRepo = ""
+        self.githubToken = ""
+        self.loadConditionalConfiguration()
+        self.limit = 25
+        self.activities = Activity.ALL
+        self.loadOptionalConfiguration()
+
+        self.dirToCloneRepo = "/tmp/peloton-scrape-repo"
+        self.bootstrap()
+
+    """
+    MUST define to run
+    """
+    def loadRequiredConfiguration(self):
+        self.username = os.environ.get("PELOTON_USERNAME")
+        self.password = os.environ.get("PELOTON_PASSWORD")
+        self.mediaDir = os.environ.get("MEDIA_DIR")
+
+        print("Required Configuration:")
+        print(f"PELOTON_USERNAME={self.username}, PELOTON_PASSWORD={len(self.password)} chars, MEDIA_DIR={self.mediaDir}")
+        if not self.username or not self.password or not self.mediaDir:
+            raise ValueError("One or more required environment variables are missing!")
+        
+    """
+    Need either a local SUBS_FILE or a GITHUB_REPO_URL & GITHUB_TOKEN - default subscriptions.yaml is relative to the repository
+    """
+    def loadConditionalConfiguration(self):
+        self.subsFile = os.environ.get("SUBS_FILE", "/tmp/peloton-scrape-repo/kubernetes/apps/downloads/ytdl-sub/peloton/config/subscriptions.yaml")
+        self.githubRepo = os.getenv("GITHUB_REPO_URL", "")
+        self.githubToken = os.getenv("GITHUB_TOKEN", "")
+
+        print("Conditional Configuration:")
+        print(f"GITHUB_REPO_URL={self.githubRepo}, SUBS_FILE={self.subsFile}, GITHUB_TOKEN={len(self.githubToken)} chars")
+
+        if not self.githubRepo and not self.githubToken:
+            raise ValueError("Must configure GITHUB_TOKEN if using GITHUB_REPO_URL!")
+        
+        if self.githubRepo.startswith("https://"):
+            self.githubRepo = self.githubRepo[len("https://"):]
+        
+    """
+    Defaults are typically OK to use for these
+    """
+    def loadOptionalConfiguration(self):
+        self.limit = int(os.getenv("PELOTON_CLASS_LIMIT_PER_ACTIVITY", 25))
+        self.activities = ActivityData.parseActivitiesFromEnv(os.getenv("PELOTON_ACTIVITY"))
+
+        print("Optional Configuration:")
+        print(f"PELOTON_CLASS_LIMIT_PER_ACTIVITY={self.limit} (default 25), PELOTON_ACTIVITY={self.activities} (default all but all)")
+
+
+    def bootstrap(self):
+        if not self.githubRepo:
+            # Only needed if we are not running against a local repo
+            pass
+
+        repo_url_with_token = f"https://{self.githubToken}:x-oauth-basic@{self.githubRepo}"
+
+        if not os.path.exists(self.dirToCloneRepo):
+            # No repo, fresh clone
+            print(f"cloning {self.githubRepo} in {self.dirToCloneRepo}")
+            git.Repo.clone_from(repo_url_with_token, self.dirToCloneRepo)
+        else:
+            # Assume repo is here, do a pull or crash
+            print(f"pulling {self.githubRepo}i n {self.dirToCloneRepo}")
+            repo = git.Repo(self.dirToCloneRepo)
+            repo.git.checkout('main')
+            repo.remotes.origin.pull()
+
+    def finalize(self):
+        if not self.githubRepo:
+            # Only needed if we are not running against a local repo
+            pass
+
+        branchName = self.commit_and_push(self.dirToCloneRepo)
+        self.create_pull_request(
+            github_token=self.githubToken,
+            repo_name=self.githubRepo.removeprefix("github.com/"),
+            head_branch=branchName,
+            base_branch="main"
+        )
+
+    def commit_and_push(self, dirToCloneRepo, branch_prefix="peloton-update"):
+        repo = git.Repo(dirToCloneRepo)
+        origin = repo.remote(name='origin')
+        
+        # Generate a unique branch name
+        timestamp = time.strftime("%Y%m%d%H%M%S")
+        new_branch = f"{branch_prefix}-{timestamp}"
+        
+        # Create and checkout new branch
+        repo.git.checkout('-b', new_branch)
+        
+        # Stage changes (edit this if you want to limit to certain files)
+        repo.git.add('--all')
+        repo.git.commit('-m', f"Auto-update Peloton subscriptions {timestamp}")
+        
+        # Push new branch to origin
+        origin.push(new_branch)
+        print(f"Created branch {new_branch} for repo {dirToCloneRepo}")
+        return new_branch
+    
+    def create_pull_request(
+        self,
+        github_token,
+        repo_name,
+        head_branch,
+        base_branch="main",
+        pr_title=None,
+        pr_body=None
+    ):
+        g = Github(github_token)
+        repo = g.get_repo(repo_name)
+        
+        if pr_title is None:
+            pr_title = f"Auto-update Peloton subscriptions {time.strftime("%Y%m%d%H%M%S")}"
+        if pr_body is None:
+            pr_body = "This PR was created automatically by the Peloton subscriptions update script."
+
+        pr = repo.create_pull(
+            title=pr_title,
+            body=pr_body,
+            head=head_branch,
+            base=base_branch
+        )
+        print(f"PR created: {pr.html_url}")
+        return pr
+
 if __name__ == "__main__":
     print("////////////////////////////////////////////////////////")
     print("///                READING CONFIG                    ///")
     print("////////////////////////////////////////////////////////")
-    load_dotenv()
-    username = os.environ.get("PELOTON_USERNAME")
-    password = os.environ.get("PELOTON_PASSWORD")
-    mediaDir = os.environ.get("MEDIA_DIR")
-    subsFile = os.environ.get("SUBS_FILE")
-    if not username or not password or not mediaDir or not subsFile:
-        raise ValueError("One or more required environment variables are missing!")
+    config = EnvManager()
     
-    print("Required Configuration:")
-    print(f"PELOTON_USERNAME={username}, PELOTON_PASSWORD={len(password)} chars, MEDIA_DIR={mediaDir}, SUBS_FILE={subsFile}")
-
-    limit = int(os.getenv("PELOTON_CLASS_LIMIT_PER_ACTIVITY", 25))
-    activities = ActivityData.parseActivitiesFromEnv(os.getenv("PELOTON_ACTIVITY"))
-
-    print("Optional Configuration:")
-    print(f"PELOTON_CLASS_LIMIT_PER_ACTIVITY={limit} (default 25), PELOTON_ACTIVITY={activities} (default all but all)")
-
     print("////////////////////////////////////////////////////////")
     print("///                TAKING INVENTORY                  ///")
     print("////////////////////////////////////////////////////////")
-    fileManager = FileManager(mediaDir, subsFile)
+    fileManager = FileManager(config.mediaDir, config.subsFile)
 
     existingClasses = fileManager.findExistingClasses()
     
@@ -503,15 +627,15 @@ if __name__ == "__main__":
     print("////////////////////////////////////////////////////////")
     print("///              FINDING NEW CLASSES                 ///")
     print("////////////////////////////////////////////////////////")
-    session = PelotonSession(username, password)
+    session = PelotonSession(config.username, config.password)
     session.openSession()
 
-    for activity in activities:
+    for activity in config.activities:
         print(f"FINDING CLASSES FOR {activity.name}: {activity.value}")
         if activity not in seasons:
             seasons[activity] = ActivityData(activity)
 
-        scraper = PelotonScraper(session, activity, limit, existingClasses, seasons[activity])
+        scraper = PelotonScraper(session, activity, config.limit, existingClasses, seasons[activity])
         scraper.scrape()
         fileManager.addNewClasses(scraper.output())
 
@@ -519,3 +643,4 @@ if __name__ == "__main__":
     print("///                 WORK COMPLETE                    ///")
     print("////////////////////////////////////////////////////////")
     session.closeSession()
+    config.finalize()

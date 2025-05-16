@@ -1,0 +1,6 @@
+selenium
+requests
+pyyaml
+python-dotenv
+PyGithub
+GitPython
