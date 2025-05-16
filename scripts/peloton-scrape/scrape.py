@@ -9,6 +9,7 @@ from enum import Enum
 import os
 import json
 import yaml
+from dotenv import load_dotenv
 
 class Activity(Enum):
     ALL = "all"
@@ -256,7 +257,9 @@ class FileManager:
             yaml.dump(subs, f, sort_keys=False, allow_unicode=True, default_flow_style=False, indent=2, width=4096)
 
 class PelotonScraper:
-    def __init__(self, activity, maxClasses, existingCLasses, seasons):
+    def __init__(self, username, password, activity, maxClasses, existingCLasses, seasons):
+        self.username = username
+        self.password = password
         self.activity = activity
         self.url = "https://members.onepeloton.com/classes/{}?class_languages=%5B%22en-US%22%5D&sort=original_air_time&desc=true".format(activity.value)
         self.maxClasses = maxClasses
@@ -266,14 +269,14 @@ class PelotonScraper:
 
     def scrape(self):
         chrome_options = Options()
-        # chrome_options.add_argument("--headless")  # Use visible browser for login, headless for automation
+        chrome_options.add_argument("--headless")  # Use visible browser for login, headless for automation
         driver = webdriver.Chrome(options=chrome_options)
 
         driver.get("https://members.onepeloton.com/login")
         time.sleep(5)
 
-        driver.find_element(By.NAME, "usernameOrEmail").send_keys("REDACTED@gmail.com")
-        driver.find_element(By.NAME, "password").send_keys("REDACTED!")
+        driver.find_element(By.NAME, "usernameOrEmail").send_keys(self.username)
+        driver.find_element(By.NAME, "password").send_keys(self.password)
         driver.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
 
         # Wait for login to complete
@@ -401,7 +404,18 @@ class PelotonScraper:
         return None
 
 if __name__ == "__main__":
-    fileManager = FileManager("/mnt/cephfs-hdd/data/media/peloton", "/home/thaynes/workspace/haynes-ops/kubernetes/apps/downloads/ytdl-sub/peloton/config/subscriptions.yaml")
+    print("////////////////////////////////////////////////////////")
+    print("///                READING CONFIG                    ///")
+    print("////////////////////////////////////////////////////////")
+    load_dotenv()
+    username = os.environ.get("PELOTON_USERNAME")
+    password = os.environ.get("PELOTON_PASSWORD")
+    mediaDir = os.environ.get("MEDIA_DIR")
+    subsFile = os.environ.get("SUBS_FILE")
+    if not username or not password or not mediaDir or not subsFile:
+        raise ValueError("One or more required environment variables are missing!")
+
+    fileManager = FileManager(mediaDir, subsFile)
     
     print("////////////////////////////////////////////////////////")
     print("///                TAKING INVENTORY                  ///")
@@ -437,7 +451,7 @@ if __name__ == "__main__":
     print("///              FINDING NEW CLASSES                 ///")
     print("////////////////////////////////////////////////////////")
 
-    scraper = PelotonScraper(Activity.CYCLING, 30, existingClasses, seasons[Activity.CYCLING])
+    scraper = PelotonScraper(username, password, Activity.CYCLING, 30, existingClasses, seasons[Activity.CYCLING])
     scraper.scrape()
     
     fileManager.addNewClasses(scraper.output())
