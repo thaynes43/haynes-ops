@@ -36,9 +36,6 @@ spec:
             image:
               repository: ghcr.io/jmbannon/ytdl-sub
               tag: 2025.05.05
-            env:
-              - name: NETRC
-                value: /etc/peloton/.netrc
             command:
               - bash
               - -c
@@ -105,6 +102,6 @@ spec:
         advancedMounts:
           ytdl-sub:
             app:
-              - path: /etc/peloton/.netrc
+              - path: /config/.netrc
                 subPath: netrc
                 readOnly: true
