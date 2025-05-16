@@ -66,6 +66,39 @@ class ActivityData:
 
         return merged
     
+    @staticmethod
+    def parseActivitiesFromEnv(env_var):
+        """
+        Parse a comma-separated string of activities from the environment.
+        Defaults to all activities except 'ALL' if not set.
+        """
+        if not env_var or not env_var.strip():
+            # Default: all except ALL
+            return [a for a in Activity if a != Activity.ALL]
+
+        selected = []
+        for val in env_var.split(","):
+            val = val.strip()
+            if not val:
+                continue
+            matched = None
+            # Match by value (case-insensitive)
+            for a in Activity:
+                if a.value.lower() == val.lower():
+                    matched = a
+                    break
+            # Match by name (case-insensitive, allows ALL_CAPS)
+            if not matched:
+                try:
+                    matched = Activity[val.strip().upper()]
+                except KeyError:
+                    pass
+            if matched:
+                selected.append(matched)
+            else:
+                raise ValueError(f"Invalid activity in PELOTON_ACTIVITY: '{val}'")
+        return selected
+
 class FileManager:
     def __init__(self, mediaDir, subsFile):
         self.mediaDir = mediaDir
@@ -256,10 +289,32 @@ class FileManager:
         with open(self.subsFile, "w") as f:
             yaml.dump(subs, f, sort_keys=False, allow_unicode=True, default_flow_style=False, indent=2, width=4096)
 
-class PelotonScraper:
-    def __init__(self, username, password, activity, maxClasses, existingCLasses, seasons):
+class PelotonSession:
+    def __init__(self, username, password):
         self.username = username
         self.password = password
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")  # TOGGLE FOR DEBUGGING
+        self.driver = webdriver.Chrome(options=chrome_options)
+
+    def openSession(self):
+        self.driver.get("https://members.onepeloton.com/login")
+        time.sleep(10)
+
+        self.driver.find_element(By.NAME, "usernameOrEmail").send_keys(self.username)
+        self.driver.find_element(By.NAME, "password").send_keys(self.password)
+        self.driver.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
+
+        # Wait for login to complete
+        time.sleep(15)
+        return self.driver
+
+    def closeSession(self):
+        self.driver.quit()
+
+class PelotonScraper:
+    def __init__(self, session, activity, maxClasses, existingCLasses, seasons):
+        self.session = session
         self.activity = activity
         self.url = "https://members.onepeloton.com/classes/{}?class_languages=%5B%22en-US%22%5D&sort=original_air_time&desc=true".format(activity.value)
         self.maxClasses = maxClasses
@@ -268,43 +323,27 @@ class PelotonScraper:
         self.results = []
 
     def scrape(self):
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")  # Use visible browser for login, headless for automation
-        driver = webdriver.Chrome(options=chrome_options)
-
-        driver.get("https://members.onepeloton.com/login")
-        time.sleep(5)
-
-        driver.find_element(By.NAME, "usernameOrEmail").send_keys(self.username)
-        driver.find_element(By.NAME, "password").send_keys(self.password)
-        driver.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
-
-        # Wait for login to complete
-        time.sleep(5)
-
-        driver.get(self.url)
-        #input("Log in, let the page fully load, then press Enter here...")
-
-        # Wait for all thumbnails to load (adjust sleep if needed)
-        time.sleep(5)
+        self.session.driver.get(self.url)
+        time.sleep(10)
 
         # Scroll to the bottom n times to load more links
         # TODO if we need more content we can rework this to keep scrolling until we find enough classes.
         #   This will be useful once we are excluding classes we already have
-        SCROLL_PAUSE_TIME = 2  # seconds
+        SCROLL_PAUSE_TIME = 3  # seconds
 
-        for _ in range(5):
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        for _ in range(10):
+            self.session.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(SCROLL_PAUSE_TIME)
 
         # Load the links we just stirred up
-        links = driver.find_elements(By.CSS_SELECTOR, 'a[href*="classId="]')
+        links = self.session.driver.find_elements(By.CSS_SELECTOR, 'a[href*="classId="]')
         print(f"Found {len(links)} classes to parse.")
 
         index = 0
+        skipped = 0
         for link in links:
             if len(self.results) >= self.maxClasses:
-                print(f"Found required {self.maxClasses} classes after searching {index}.")
+                print(f"Found required {self.maxClasses} {self.activity} classes after searching {index}. Skipped {skipped}.")
                 break
 
             index = index + 1
@@ -316,8 +355,9 @@ class PelotonScraper:
                 print(f"Could not extract class_id from link: {href}")
                 continue
 
+
             if class_id in self.existingCLasses:
-                print(f"Skipping class {class_id} since it was found either on the filesystem or in a remaining subscription.")
+                skipped = skipped + 1
                 continue
 
             # Compose player URL
@@ -357,8 +397,6 @@ class PelotonScraper:
                 "episode_number": self.seasons.maxEpisode[season],
             })
 
-        driver.quit()
-
     def output(self):
         """
         Returns:
@@ -367,13 +405,13 @@ class PelotonScraper:
         result_dict = {}
 
         for r in self.results:
-            if r["activity"].lower() != self.activity.value.lower():
+            if r["activity"].lower() != self.activity.value.lower() and "bootcamp" not in r["activity"].lower():
                 print(f'{r["title"]} had invalid activity: {r["activity"]}')
                 continue
 
             # Compose duration key, e.g., '= Stretching (10 min)'
             duration = r.get("season_number")  # This is actually the minutes (duration)
-            activity = r["activity"].capitalize()  # For YAML style
+            activity = r["activity"].title()  # For YAML style
             duration_key = f'= {activity} ({duration} min)'
 
             # Compose episode title
@@ -383,7 +421,7 @@ class PelotonScraper:
             ep_dict = {
                 "download": r["player_url"],
                 "overrides": {
-                    "tv_show_directory": f'/media/peloton/{r["activity"].capitalize()}/{r["instructor"]}',
+                    "tv_show_directory": f'/media/peloton/{r["activity"].title()}/{r["instructor"]}',
                     "season_number": r["season_number"],
                     "episode_number": r["episode_number"]
                 }
@@ -414,14 +452,20 @@ if __name__ == "__main__":
     subsFile = os.environ.get("SUBS_FILE")
     if not username or not password or not mediaDir or not subsFile:
         raise ValueError("One or more required environment variables are missing!")
-
-    fileManager = FileManager(mediaDir, subsFile)
     
+    print("Required Configuration:")
+    print(f"PELOTON_USERNAME={username}, PELOTON_PASSWORD={len(password)} chars, MEDIA_DIR={mediaDir}, SUBS_FILE={subsFile}")
+
+    limit = int(os.getenv("PELOTON_CLASS_LIMIT_PER_ACTIVITY", 25))
+    activities = ActivityData.parseActivitiesFromEnv(os.getenv("PELOTON_ACTIVITY"))
+
+    print("Optional Configuration:")
+    print(f"PELOTON_CLASS_LIMIT_PER_ACTIVITY={limit} (default 25), PELOTON_ACTIVITY={activities} (default all but all)")
+
     print("////////////////////////////////////////////////////////")
     print("///                TAKING INVENTORY                  ///")
     print("////////////////////////////////////////////////////////")
-
-    print("FINDING EXISTING CLASSES FROM FILE SYSTEM")
+    fileManager = FileManager(mediaDir, subsFile)
 
     existingClasses = fileManager.findExistingClasses()
     
@@ -450,8 +494,19 @@ if __name__ == "__main__":
     print("////////////////////////////////////////////////////////")
     print("///              FINDING NEW CLASSES                 ///")
     print("////////////////////////////////////////////////////////")
+    session = PelotonSession(username, password)
+    session.openSession()
 
-    scraper = PelotonScraper(username, password, Activity.CYCLING, 30, existingClasses, seasons[Activity.CYCLING])
-    scraper.scrape()
-    
-    fileManager.addNewClasses(scraper.output())
+    for activity in activities:
+        print(f"FINDING CLASSES FOR {activity.name}: {activity.value}")
+        if activity not in seasons:
+            seasons[activity] = ActivityData(activity)
+
+        scraper = PelotonScraper(session, activity, limit, existingClasses, seasons[activity])
+        scraper.scrape()
+        fileManager.addNewClasses(scraper.output())
+
+    print("////////////////////////////////////////////////////////")
+    print("///                 WORK COMPLETE                    ///")
+    print("////////////////////////////////////////////////////////")
+    session.closeSession()
