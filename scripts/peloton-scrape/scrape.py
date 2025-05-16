@@ -220,6 +220,13 @@ class FileManager:
                         print(f"Error extracting activity from overrides: {ep_val}")
                         continue
 
+                    if activity_str == "tread bootcamp":
+                        activity_str = "bootcamp"
+                    elif activity_str == "bike bootcamp":
+                        activity_str = "bike_bootcamp"
+                    elif activity_str == "row bootcamp":
+                        activity_str = "row_bootcamp"
+                        
                     # Map string to Activity enum (skip if not recognized)
                     try:
                         activity_enum = Activity(activity_str)
@@ -298,6 +305,7 @@ class PelotonSession:
         self.driver = webdriver.Chrome(options=chrome_options)
 
     def openSession(self):
+        print("Opening session to members.onepeloton.com...")
         self.driver.get("https://members.onepeloton.com/login")
         time.sleep(10)
 
@@ -306,6 +314,7 @@ class PelotonSession:
         self.driver.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
 
         # Wait for login to complete
+        print("Sleeping to allow login process to complete")
         time.sleep(15)
         return self.driver
 
