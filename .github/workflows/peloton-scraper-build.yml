@@ -7,6 +7,10 @@ on:
       - 'Dockerfile'
       - '.github/workflows/peloton-scraper-build.yaml'
   workflow_dispatch:
+  
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build-and-push:
