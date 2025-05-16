@@ -1,0 +1,264 @@
+---
+  # See https://github.com/jmbannon/ytdl-sub/blob/master/examples/tv_show_subscriptions.yaml for a build out custom config
+  # Overrides to the prebuilt presets
+  __preset__:
+    overrides:
+      tv_show_directory: "/media/peloton"  # Root folder of all ytdl-sub TV Shows
+
+      # Config for 'Only Recent' preset
+      only_recent_date_range: "24months"
+      only_recent_max_files: 300
+
+    # REMOVE the Season sub‑folder while keeping Plex’s filename template
+    output_options:
+      # static piece (no entry‑level vars here)
+      output_directory: "{tv_show_directory}"
+
+      # each workout lives in its own sub‑folder "<date> - <title>"
+      file_name:       "S{season_number}E{episode_number} - {upload_date} - {title}/S{season_number}E{episode_number} - {upload_date} - {title}.{ext}"
+      thumbnail_name:  "S{season_number}E{episode_number} - {upload_date} - {title}/S{season_number}E{episode_number} - {upload_date} - {title}-thumb.jpg"
+      info_json_name:  "S{season_number}E{episode_number} - {upload_date} - {title}/S{season_number}E{episode_number} - {upload_date} - {title}.info.json"
+    throttle_protection:
+      sleep_per_download_s:
+        min: 120
+        max: 270
+      sleep_per_subscription_s:
+        min: 60
+        max: 90
+      max_downloads_per_subscription:
+        min: 25
+        max: 75
+      subscription_download_probability: 1
+
+    ytdl_options:
+      #cookiefile: "/media/peloton/cookies.txt"
+      usenetrc: true
+      format: "bestvideo+bestaudio"
+      merge_output_format: mp4
+  
+  Plex TV Show by Date:
+    = Stretching (5 min):
+      "10 min Full Body Stretch with Hannah Corbin":
+        download: "https://members.onepeloton.com/classes/player/cf28720ddd4249e9953160ac2fc9b5c2"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Hannah Corbin"
+          season_number: 10
+          episode_number: 1
+
+      "5 min Post-Ride Stretch with Jess King":
+        download: "https://members.onepeloton.com/classes/player/a2576f456d8c4c40aaf4931f7fbac181"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Jess King"
+          season_number: 5
+          episode_number: 1
+
+      "5 min Pre-Ride Warm Up with Hannah Corbin":
+        download: "https://members.onepeloton.com/classes/player/d9bf348b496243aebbe2d07d1379840c"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Hannah Corbin"
+          season_number: 5
+          episode_number: 2
+
+      "5 min Post-Run Stretch with Rebecca Kennedy":
+        download: "https://members.onepeloton.com/classes/player/a5a88ec32d06446aa58ab5f28c3b0871"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Rebecca Kennedy"
+          season_number: 5
+          episode_number: 3
+
+      "5 min Pre-Run Warm Up with Matt Wilpers":
+        download: "https://members.onepeloton.com/classes/player/7f0d542929ff4c8bbd7f4d5b9243b93e"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Matt Wilpers"
+          season_number: 5
+          episode_number: 4
+
+      "5 min Upper Body Stretch with Adrian Williams":
+        download: "https://members.onepeloton.com/classes/player/24c36eceb20c418d89c00ebab6b0f70d"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Adrian Williams"
+          season_number: 5
+          episode_number: 5
+
+      "10 min Full Body Stretch with Logan Aldridge":
+        download: "https://members.onepeloton.com/classes/player/0867bbdec581477fbf34c4987a3f815c"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Logan Aldridge"
+          season_number: 10
+          episode_number: 2
+
+      "10 min Mother's Day Full Body Stretch with Matty Maggiacomo":
+        download: "https://members.onepeloton.com/classes/player/d867d43144254d9e8959258f8f4dda2f"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Matty Maggiacomo"
+          season_number: 10
+          episode_number: 3
+
+      "5 min Post-Row Stretch with Ash Pryor":
+        download: "https://members.onepeloton.com/classes/player/7b6d3363ac674c2e96d5ee7a72a14db8"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Ash Pryor"
+          season_number: 5
+          episode_number: 6
+
+      "5 min Post-Ride Stretch with Christine D'Ercole":
+        download: "https://members.onepeloton.com/classes/player/6021547136444c278e445b9920fce084"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Christine D'Ercole"
+          season_number: 5
+          episode_number: 7
+
+      "5 min Post-Run Stretch with Jess Sims":
+        download: "https://members.onepeloton.com/classes/player/7527176318a5461288af39480f76ac60"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Jess Sims"
+          season_number: 5
+          episode_number: 8
+
+      "10 min Lower Body Stretch with Ally Love":
+        download: "https://members.onepeloton.com/classes/player/6d3a9450e93b47fc887c2ff2c14e57b9"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Ally Love"
+          season_number: 10
+          episode_number: 4
+
+      "10 min Mental Health Awareness Stretch with Rebecca Kennedy":
+        download: "https://members.onepeloton.com/classes/player/1483a6bfb9564798a7ebf490488eb51a"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Rebecca Kennedy"
+          season_number: 10
+          episode_number: 5
+
+      "15 min Full Body Stretch with Jermaine Johnson":
+        download: "https://members.onepeloton.com/classes/player/bce79f49e00641a182f68d16d8db3d3a"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Jermaine Johnson"
+          season_number: 15
+          episode_number: 1
+
+      "5 min Post-Ride Stretch with Denis Morton":
+        download: "https://members.onepeloton.com/classes/player/90a67400a80a4014aca88c3ca3b523c0"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Denis Morton"
+          season_number: 5
+          episode_number: 9
+
+      "10 min Foam Rolling: Full Body with Rebecca Kennedy":
+        download: "https://members.onepeloton.com/classes/player/a800594d0a8a41348238fd4ae3ac9bf1"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Rebecca Kennedy"
+          season_number: 10
+          episode_number: 6
+
+      "5 min Post-Run Stretch with Robin Arzón":
+        download: "https://members.onepeloton.com/classes/player/960a572a23bc4b03b4a149748c461c60"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Robin Arzón"
+          season_number: 5
+          episode_number: 10
+
+      "5 min Pre-Run Warm Up with Susie Chan":
+        download: "https://members.onepeloton.com/classes/player/43c8c1592cb343298695ea0738d3a28d"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Susie Chan"
+          season_number: 5
+          episode_number: 11
+
+      "5 min Lower Body Stretch with Selena Samuela":
+        download: "https://members.onepeloton.com/classes/player/260488bdb4674081938ec42f9d95dfe0"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Selena Samuela"
+          season_number: 5
+          episode_number: 12
+
+      "10 min Full Body Stretch with Andy Speer":
+        download: "https://members.onepeloton.com/classes/player/640c7097213b4b41a5c8bf4e1cb9ba54"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Andy Speer"
+          season_number: 10
+          episode_number: 7
+
+      "5 min Pre-Row Warm Up with Adrian Williams":
+        download: "https://members.onepeloton.com/classes/player/dccb484ba8414b4fac1493a1266d732d"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Adrian Williams"
+          season_number: 5
+          episode_number: 13
+
+      "5 min Post-Ride Stretch with Cody Rigsby":
+        download: "https://members.onepeloton.com/classes/player/2fd67e2028b44fb29274bdaf82e62b5c"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Cody Rigsby"
+          season_number: 5
+          episode_number: 14
+
+      "10 min Upper Body Mobility with Selena Samuela":
+        download: "https://members.onepeloton.com/classes/player/e350c3f4c68a485aada12f78744fd68c"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Selena Samuela"
+          season_number: 10
+          episode_number: 8
+
+      "5 min Post-Run Stretch with Andy Speer":
+        download: "https://members.onepeloton.com/classes/player/473e257472904786b1a31939e9a3b685"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Andy Speer"
+          season_number: 5
+          episode_number: 15
+
+      "5 min Lower Body Stretch with Kirra Michel":
+        download: "https://members.onepeloton.com/classes/player/c8c7b868a2734aeca3f05da675d1c3fe"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Kirra Michel"
+          season_number: 5
+          episode_number: 16
+
+      "15 min Full Body Stretch with Logan Aldridge":
+        download: "https://members.onepeloton.com/classes/player/ace22fd22a004901ae140dbd71dd2cd2"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Logan Aldridge"
+          season_number: 15
+          episode_number: 2
+
+      "10 min Full Body Stretch with Adrian Williams":
+        download: "https://members.onepeloton.com/classes/player/18170c4947a74b3895fa91e02f32388c"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Adrian Williams"
+          season_number: 10
+          episode_number: 9
+
+      "5 min Post-Ride Stretch with Hannah Corbin":
+        download: "https://members.onepeloton.com/classes/player/5fc10d0e09cb431d842858edc54fa937"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Hannah Corbin"
+          season_number: 5
+          episode_number: 17
+
+      "5 min Post-Run Stretch with Joslyn Thompson Rule":
+        download: "https://members.onepeloton.com/classes/player/d0d9fd5866bb40519917420e3594f78f"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Joslyn Thompson Rule"
+          season_number: 5
+          episode_number: 18
+
+      "10 min Miranda Lambert Full Body Stretch with Selena Samuela":
+        download: "https://members.onepeloton.com/classes/player/ba6d7421ae9547608193bdca07a96877"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Selena Samuela"
+          season_number: 10
+          episode_number: 10
+
+      "5 min Evening Stretch with Matty Maggiacomo":
+        download: "https://members.onepeloton.com/classes/player/56dcb6f80dbe4c0796917f823d9ef495"
+        overrides:
+          tv_show_directory: "/media/peloton/Stretching/Matty Maggiacomo"
+          season_number: 5
+          episode_number: 19
+
+    = Cardio (20 min):
+      "HIIT Cardio (20 min)":
+        download: https://members.onepeloton.com/classes/player/a466354a5a444e93902b922a0650a2a4
+        overrides:
+          tv_show_directory: /media/peloton/Cardio/Logan Aldridge
+          season_number: 20
+          episode_number: 1

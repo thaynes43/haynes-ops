@@ -1,249 +1,226 @@
----
-  # See https://github.com/jmbannon/ytdl-sub/blob/master/examples/tv_show_subscriptions.yaml for a build out custom config
-  # Overrides to the prebuilt presets
-  __preset__:
-    overrides:
-      tv_show_directory: "/media/peloton"  # Root folder of all ytdl-sub TV Shows
-
-      # Config for 'Only Recent' preset
-      only_recent_date_range: "24months"
-      only_recent_max_files: 300
-
-    # REMOVE the Season sub‑folder while keeping Plex’s filename template
-    output_options:
-      # static piece (no entry‑level vars here)
-      output_directory: "{tv_show_directory}"
-
-      # each workout lives in its own sub‑folder "<date> - <title>"
-      file_name:       "S{season_number}E{episode_number} - {upload_date} - {title}/S{season_number}E{episode_number} - {upload_date} - {title}.{ext}"
-      thumbnail_name:  "S{season_number}E{episode_number} - {upload_date} - {title}/S{season_number}E{episode_number} - {upload_date} - {title}-thumb.jpg"
-      info_json_name:  "S{season_number}E{episode_number} - {upload_date} - {title}/S{season_number}E{episode_number} - {upload_date} - {title}.info.json"
-    throttle_protection:
-      sleep_per_download_s:
-        min: 120
-        max: 270
-      sleep_per_subscription_s:
-        min: 60
-        max: 90
-      max_downloads_per_subscription:
-        min: 25
-        max: 75
-      subscription_download_probability: 1
-
-    ytdl_options:
-      #cookiefile: "/media/peloton/cookies.txt"
-      usenetrc: true
-      format: "bestvideo+bestaudio"
-      merge_output_format: mp4
-  
-  Plex TV Show by Date:
-    = Stretching:
-      "10 min Full Body Stretch with Hannah Corbin":
-        download: "https://members.onepeloton.com/classes/player/cf28720ddd4249e9953160ac2fc9b5c2"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Hannah Corbin"
-          season_number: 10
-          episode_number: 1
-
-      "5 min Post-Ride Stretch with Jess King":
-        download: "https://members.onepeloton.com/classes/player/a2576f456d8c4c40aaf4931f7fbac181"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Jess King"
-          season_number: 5
-          episode_number: 1
-
-      "5 min Pre-Ride Warm Up with Hannah Corbin":
-        download: "https://members.onepeloton.com/classes/player/d9bf348b496243aebbe2d07d1379840c"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Hannah Corbin"
-          season_number: 5
-          episode_number: 2
-
-      "5 min Post-Run Stretch with Rebecca Kennedy":
-        download: "https://members.onepeloton.com/classes/player/a5a88ec32d06446aa58ab5f28c3b0871"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Rebecca Kennedy"
-          season_number: 5
-          episode_number: 3
-
-      "5 min Pre-Run Warm Up with Matt Wilpers":
-        download: "https://members.onepeloton.com/classes/player/7f0d542929ff4c8bbd7f4d5b9243b93e"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Matt Wilpers"
-          season_number: 5
-          episode_number: 4
-
-      "5 min Upper Body Stretch with Adrian Williams":
-        download: "https://members.onepeloton.com/classes/player/24c36eceb20c418d89c00ebab6b0f70d"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Adrian Williams"
-          season_number: 5
-          episode_number: 5
-
-      "10 min Full Body Stretch with Logan Aldridge":
-        download: "https://members.onepeloton.com/classes/player/0867bbdec581477fbf34c4987a3f815c"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Logan Aldridge"
-          season_number: 10
-          episode_number: 2
-
-      "10 min Mother's Day Full Body Stretch with Matty Maggiacomo":
-        download: "https://members.onepeloton.com/classes/player/d867d43144254d9e8959258f8f4dda2f"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Matty Maggiacomo"
-          season_number: 10
-          episode_number: 3
-
-      "5 min Post-Row Stretch with Ash Pryor":
-        download: "https://members.onepeloton.com/classes/player/7b6d3363ac674c2e96d5ee7a72a14db8"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Ash Pryor"
-          season_number: 5
-          episode_number: 6
-
-      "5 min Post-Ride Stretch with Christine D'Ercole":
-        download: "https://members.onepeloton.com/classes/player/6021547136444c278e445b9920fce084"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Christine D'Ercole"
-          season_number: 5
-          episode_number: 7
-
-      "5 min Post-Run Stretch with Jess Sims":
-        download: "https://members.onepeloton.com/classes/player/7527176318a5461288af39480f76ac60"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Jess Sims"
-          season_number: 5
-          episode_number: 8
-
-      "10 min Lower Body Stretch with Ally Love":
-        download: "https://members.onepeloton.com/classes/player/6d3a9450e93b47fc887c2ff2c14e57b9"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Ally Love"
-          season_number: 10
-          episode_number: 4
-
-      "10 min Mental Health Awareness Stretch with Rebecca Kennedy":
-        download: "https://members.onepeloton.com/classes/player/1483a6bfb9564798a7ebf490488eb51a"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Rebecca Kennedy"
-          season_number: 10
-          episode_number: 5
-
-      "15 min Full Body Stretch with Jermaine Johnson":
-        download: "https://members.onepeloton.com/classes/player/bce79f49e00641a182f68d16d8db3d3a"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Jermaine Johnson"
-          season_number: 15
-          episode_number: 1
-
-      "5 min Post-Ride Stretch with Denis Morton":
-        download: "https://members.onepeloton.com/classes/player/90a67400a80a4014aca88c3ca3b523c0"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Denis Morton"
-          season_number: 5
-          episode_number: 9
-
-      "10 min Foam Rolling: Full Body with Rebecca Kennedy":
-        download: "https://members.onepeloton.com/classes/player/a800594d0a8a41348238fd4ae3ac9bf1"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Rebecca Kennedy"
-          season_number: 10
-          episode_number: 6
-
-      "5 min Post-Run Stretch with Robin Arzón":
-        download: "https://members.onepeloton.com/classes/player/960a572a23bc4b03b4a149748c461c60"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Robin Arzón"
-          season_number: 5
-          episode_number: 10
-
-      "5 min Pre-Run Warm Up with Susie Chan":
-        download: "https://members.onepeloton.com/classes/player/43c8c1592cb343298695ea0738d3a28d"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Susie Chan"
-          season_number: 5
-          episode_number: 11
-
-      "5 min Lower Body Stretch with Selena Samuela":
-        download: "https://members.onepeloton.com/classes/player/260488bdb4674081938ec42f9d95dfe0"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Selena Samuela"
-          season_number: 5
-          episode_number: 12
-
-      "10 min Full Body Stretch with Andy Speer":
-        download: "https://members.onepeloton.com/classes/player/640c7097213b4b41a5c8bf4e1cb9ba54"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Andy Speer"
-          season_number: 10
-          episode_number: 7
-
-      "5 min Pre-Row Warm Up with Adrian Williams":
-        download: "https://members.onepeloton.com/classes/player/dccb484ba8414b4fac1493a1266d732d"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Adrian Williams"
-          season_number: 5
-          episode_number: 13
-
-      "5 min Post-Ride Stretch with Cody Rigsby":
-        download: "https://members.onepeloton.com/classes/player/2fd67e2028b44fb29274bdaf82e62b5c"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Cody Rigsby"
-          season_number: 5
-          episode_number: 14
-
-      "10 min Upper Body Mobility with Selena Samuela":
-        download: "https://members.onepeloton.com/classes/player/e350c3f4c68a485aada12f78744fd68c"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Selena Samuela"
-          season_number: 10
-          episode_number: 8
-
-      "5 min Post-Run Stretch with Andy Speer":
-        download: "https://members.onepeloton.com/classes/player/473e257472904786b1a31939e9a3b685"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Andy Speer"
-          season_number: 5
-          episode_number: 15
-
-      "5 min Lower Body Stretch with Kirra Michel":
-        download: "https://members.onepeloton.com/classes/player/c8c7b868a2734aeca3f05da675d1c3fe"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Kirra Michel"
-          season_number: 5
-          episode_number: 16
-
-      "15 min Full Body Stretch with Logan Aldridge":
-        download: "https://members.onepeloton.com/classes/player/ace22fd22a004901ae140dbd71dd2cd2"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Logan Aldridge"
-          season_number: 15
-          episode_number: 2
-
-      "10 min Full Body Stretch with Adrian Williams":
-        download: "https://members.onepeloton.com/classes/player/18170c4947a74b3895fa91e02f32388c"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Adrian Williams"
-          season_number: 10
-          episode_number: 9
-
-      "5 min Post-Ride Stretch with Hannah Corbin":
-        download: "https://members.onepeloton.com/classes/player/5fc10d0e09cb431d842858edc54fa937"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Hannah Corbin"
-          season_number: 5
-          episode_number: 17
-
-      "5 min Post-Run Stretch with Joslyn Thompson Rule":
-        download: "https://members.onepeloton.com/classes/player/d0d9fd5866bb40519917420e3594f78f"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Joslyn Thompson Rule"
-          season_number: 5
-          episode_number: 18
-
-      "10 min Miranda Lambert Full Body Stretch with Selena Samuela":
-        download: "https://members.onepeloton.com/classes/player/ba6d7421ae9547608193bdca07a96877"
-        overrides:
-          tv_show_directory: "/media/peloton/Stretching/Selena Samuela"
-          season_number: 10
-          episode_number: 10
+__preset__:
+  overrides:
+    tv_show_directory: /media/peloton
+    only_recent_date_range: 24months
+    only_recent_max_files: 300
+  output_options:
+    output_directory: '{tv_show_directory}'
+    file_name: S{season_number}E{episode_number} - {upload_date} - {title}/S{season_number}E{episode_number} - {upload_date} - {title}.{ext}
+    thumbnail_name: S{season_number}E{episode_number} - {upload_date} - {title}/S{season_number}E{episode_number} - {upload_date} - {title}-thumb.jpg
+    info_json_name: S{season_number}E{episode_number} - {upload_date} - {title}/S{season_number}E{episode_number} - {upload_date} - {title}.info.json
+  throttle_protection:
+    sleep_per_download_s:
+      min: 120
+      max: 270
+    sleep_per_subscription_s:
+      min: 60
+      max: 90
+    max_downloads_per_subscription:
+      min: 25
+      max: 75
+    subscription_download_probability: 1
+  ytdl_options:
+    usenetrc: true
+    format: bestvideo+bestaudio
+    merge_output_format: mp4
+Plex TV Show by Date:
+  = Stretching (5 min):
+    5 min Evening Stretch with Matty Maggiacomo:
+      download: https://members.onepeloton.com/classes/player/56dcb6f80dbe4c0796917f823d9ef495
+      overrides:
+        tv_show_directory: /media/peloton/Stretching/Matty Maggiacomo
+        season_number: 5
+        episode_number: 19
+  = Cardio (20 min):
+    HIIT Cardio (20 min):
+      download: https://members.onepeloton.com/classes/player/a466354a5a444e93902b922a0650a2a4
+      overrides:
+        tv_show_directory: /media/peloton/Cardio/Logan Aldridge
+        season_number: 20
+        episode_number: 1
+  = Cycling (30 min):
+    30 min Intervals & Arms Ride with Olivia Amato:
+      download: https://members.onepeloton.com/classes/player/b83339ad05144fd9a6d9b2c7e791f406
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Olivia Amato
+        season_number: 30
+        episode_number: 10
+    30 min Beastie Boys Ride with Denis Morton:
+      download: https://members.onepeloton.com/classes/player/20f72250921c4d3da81ae70624ccb2e6
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Denis Morton
+        season_number: 30
+        episode_number: 11
+    30 min 2000s Ride with Ally Love:
+      download: https://members.onepeloton.com/classes/player/12f4c2df94fc40e3bf570583e302428a
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Ally Love
+        season_number: 30
+        episode_number: 12
+    30 min 90s Ride with Cody Rigsby:
+      download: https://members.onepeloton.com/classes/player/621bf53400444d5b9f3e0bf95a049f2d
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Cody Rigsby
+        season_number: 30
+        episode_number: 13
+    30 min Feel Good Ride with Ally Love:
+      download: https://members.onepeloton.com/classes/player/eae33cd6e14d4c7c8d76c18580d82b4b
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Ally Love
+        season_number: 30
+        episode_number: 14
+    30 min 90s Rock Ride with Hannah Corbin:
+      download: https://members.onepeloton.com/classes/player/ea913ac9694f4807ba00c630326e4a82
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Hannah Corbin
+        season_number: 30
+        episode_number: 15
+    30 min 80s Rock Ride with Ben Alldis:
+      download: https://members.onepeloton.com/classes/player/8df1187afdbe42f1a98d7bfa599c5f0a
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Ben Alldis
+        season_number: 30
+        episode_number: 16
+    30 min Mother's Day Ride with Emma Lovewell:
+      download: https://members.onepeloton.com/classes/player/0b673ae385bd435b8157fde6c04b727b
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Emma Lovewell
+        season_number: 30
+        episode_number: 17
+    30 min Pop Ride with Leanne Hainsby-Alldis:
+      download: https://members.onepeloton.com/classes/player/56716e9022534ebb9ed889713da85195
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Leanne Hainsby-Alldis
+        season_number: 30
+        episode_number: 18
+    30 min 2000s Ride with Denis Morton:
+      download: https://members.onepeloton.com/classes/player/47a41a527d4341cf845f1cc8e42e7c78
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Denis Morton
+        season_number: 30
+        episode_number: 19
+    30 min 80s Ride with Alex Toussaint:
+      download: https://members.onepeloton.com/classes/player/748e3b5e894c43eca700c20d3467fa01
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Alex Toussaint
+        season_number: 30
+        episode_number: 20
+    30 min Classic Rock Ride with Denis Morton:
+      download: https://members.onepeloton.com/classes/player/0d70e70ec0ea4856aa7fe6c5d1519ba3
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Denis Morton
+        season_number: 30
+        episode_number: 21
+    30 min HIIT & Hills Ride with Hannah Frankson:
+      download: https://members.onepeloton.com/classes/player/92a98cadd0874d6d90ee64915ee0225d
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Hannah Frankson
+        season_number: 30
+        episode_number: 22
+    30 min Live DJ Ride with Robin Arzón:
+      download: https://members.onepeloton.com/classes/player/e53e34cb227c44da8397f80b4aff6551
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Robin Arzón
+        season_number: 30
+        episode_number: 23
+    30 min Classic Rock Ride with Bradley Rose:
+      download: https://members.onepeloton.com/classes/player/6dfbd98274354495b93a4fe354e93557
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Bradley Rose
+        season_number: 30
+        episode_number: 24
+    30 min Pick-Me-Up Ride with Hannah Corbin:
+      download: https://members.onepeloton.com/classes/player/5ca6993f20934ef6ae76ae7fcb127629
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Hannah Corbin
+        season_number: 30
+        episode_number: 25
+    30 min Country Pop Ride with Olivia Amato:
+      download: https://members.onepeloton.com/classes/player/8200cae29be84d2ea4ed44b365943f8e
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Olivia Amato
+        season_number: 30
+        episode_number: 26
+  = Cycling (45 min):
+    45 min Rock Ride with Christine D'Ercole:
+      download: https://members.onepeloton.com/classes/player/6e60504c823f4eb99ff14e0fafbb8b40
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Christine D'Ercole
+        season_number: 45
+        episode_number: 6
+    45 min Power Zone Ride with Christine D'Ercole:
+      download: https://members.onepeloton.com/classes/player/059354b6cca24abbbdba1d64dbeddb40
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Christine D'Ercole
+        season_number: 45
+        episode_number: 7
+  = Cycling (20 min):
+    20 min Jewish American Heritage Ride with Jenn Sherman:
+      download: https://members.onepeloton.com/classes/player/776f188c726f455999898f58128a6939
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Jenn Sherman
+        season_number: 20
+        episode_number: 7
+    20 min Low Impact Ride with Leanne Hainsby-Alldis:
+      download: https://members.onepeloton.com/classes/player/ea310a595b754091af8514694d8f49ed
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Leanne Hainsby-Alldis
+        season_number: 20
+        episode_number: 8
+    20 min 2000s Ride with Leanne Hainsby-Alldis:
+      download: https://members.onepeloton.com/classes/player/b31505c8a1454afaa7d0149cfe6a097b
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Leanne Hainsby-Alldis
+        season_number: 20
+        episode_number: 9
+    20 min Classical Music Ride with Christine D'Ercole:
+      download: https://members.onepeloton.com/classes/player/0db257fee1ff4782bc16a22aef007146
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Christine D'Ercole
+        season_number: 20
+        episode_number: 10
+    20 min Mother's Day Ride with Christine D'Ercole:
+      download: https://members.onepeloton.com/classes/player/689d7052593c4bf794242287140eca88
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Christine D'Ercole
+        season_number: 20
+        episode_number: 11
+    20 min Pop Punk Ride with Bradley Rose:
+      download: https://members.onepeloton.com/classes/player/2e0c28d031fd42589942994c26d127d1
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Bradley Rose
+        season_number: 20
+        episode_number: 12
+    20 min 90s Hip Hop Ride with Hannah Frankson:
+      download: https://members.onepeloton.com/classes/player/d4711285db994709b0e9bb4fcef3df08
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Hannah Frankson
+        season_number: 20
+        episode_number: 13
+  = Cycling (60 min):
+    60 min Power Zone Endurance Ride with Matt Wilpers:
+      download: https://members.onepeloton.com/classes/player/ca84d5a2c9244b0b8e7bc26432aedc16
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Matt Wilpers
+        season_number: 60
+        episode_number: 1
+  = Cycling (15 min):
+    15 min 2010s Ride with Bradley Rose:
+      download: https://members.onepeloton.com/classes/player/3deb1b3445ae480fbb3651820f6ff5cc
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Bradley Rose
+        season_number: 15
+        episode_number: 4
+    15 min Climb Ride with Hannah Frankson:
+      download: https://members.onepeloton.com/classes/player/d470b96dee3b4bc9afbde4480233f0f4
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Hannah Frankson
+        season_number: 15
+        episode_number: 5
+  = Cycling (5 min):
+    5 min Cool Down Ride with Bradley Rose:
+      download: https://members.onepeloton.com/classes/player/14fcb6d40d114b9ab4936490843955fe
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Bradley Rose
+        season_number: 5
+        episode_number: 3
