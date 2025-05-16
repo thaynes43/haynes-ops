@@ -30,6 +30,8 @@ spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
+  dependsOn:
+    - name: external-secrets-stores
   path: ./kubernetes/apps/downloads/ytdl-sub/peloton
   prune: true
   sourceRef:
