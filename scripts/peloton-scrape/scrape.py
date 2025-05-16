@@ -1,66 +1,57 @@
-import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
+from urllib.parse import urlparse, parse_qs
+import time
 
 chrome_options = Options()
-chrome_options.add_argument("--headless")  # run headless
-
+# chrome_options.add_argument("--headless")  # Use visible browser for login, headless for automation
 driver = webdriver.Chrome(options=chrome_options)
+
 driver.get("https://members.onepeloton.com/classes/cycling?class_languages=%5B%22en-US%22%5D&sort=original_air_time&desc=true")
+input("Log in, let the page fully load, then press Enter here...")
 
-# Wait for classes to load
-time.sleep(5)
+# Wait for all thumbnails to load (adjust sleep if needed)
+time.sleep(3)
 
-# Find all class tiles
-tiles = driver.find_elements(By.CSS_SELECTOR, 'div[class^="classCard"] a')
+links = driver.find_elements(By.CSS_SELECTOR, 'a[href*="classId="]')
 
 results = []
 
-for idx, tile in enumerate(tiles[:5]):  # Limit to first 5 for demo
-    # Open in new tab to avoid losing your place
-    link = tile.get_attribute("href")
-    driver.execute_script(f"window.open('{link}','_blank');")
-    driver.switch_to.window(driver.window_handles[-1])
-    time.sleep(4)
+for idx, link in enumerate(links[:10]):  # Adjust count as needed
+    href = link.get_attribute("href")
+    parsed = urlparse(href)
+    qs = parse_qs(parsed.query)
+    class_id = qs.get("classId", [""])[0]
+    if not class_id:
+        continue
 
-    # Click Start (wait for it to appear)
+    # Compose player URL
+    player_url = f"https://members.onepeloton.com/classes/player/{class_id}"
+
+    # Get metadata from inside the link
     try:
-        start_btn = driver.find_element(By.XPATH, "//button[contains(.,'Start')]")
-        start_btn.click()
-        time.sleep(2)
-
-        # Grab the player link (the URL now contains /player/<id>)
-        player_url = driver.current_url
-    except Exception as e:
-        player_url = "Not found"
-
-    # Extract metadata (example for title, duration, instructor)
-    try:
-        title = driver.find_element(By.CSS_SELECTOR, 'h1').text
-        meta = driver.find_elements(By.CSS_SELECTOR, '[data-test-id="classDetails-meta"] span')
-        duration = meta[0].text if meta else ""
-        instructor = driver.find_element(By.CSS_SELECTOR, '[data-test-id="classDetails-instructor"]').text
+        title = link.find_element(By.CSS_SELECTOR, '[data-test-id="videoCellTitle"]').text
     except Exception:
-        title, duration, instructor = "Unknown", "Unknown", "Unknown"
+        title = "Unknown"
+    try:
+        instructor = link.find_element(By.CSS_SELECTOR, '[data-test-id="videoCellSubtitle"]').text
+    except Exception:
+        instructor = "Unknown"
 
     results.append({
         "title": title,
-        "duration": duration,
         "instructor": instructor,
         "player_url": player_url,
-        "season_number": 1,  # you can customize
+        "season_number": 1,  # Customize if needed
         "episode_number": idx + 1,
     })
 
-    driver.close()
-    driver.switch_to.window(driver.window_handles[0])
-
 driver.quit()
 
-# Fill out template
+# Output template
 for r in results:
-    print(f'''"{r["title"]} w/ {r["instructor"]} ({r["duration"]})":
+    print(f'''"{r["title"]} w/ {r["instructor"]}":
   download: "{r["player_url"]}"
   overrides:
     tv_show_directory: "/media/peloton/Cycling/{r["instructor"]}"
