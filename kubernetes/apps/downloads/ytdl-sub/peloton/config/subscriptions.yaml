@@ -25,48 +25,6 @@ __preset__:
     merge_output_format: mp4
 Plex TV Show by Date:
   = Cycling (30 min):
-    30 min 80s Rock Ride with Ben Alldis:
-      download: https://members.onepeloton.com/classes/player/8df1187afdbe42f1a98d7bfa599c5f0a
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Ben Alldis
-        season_number: 30
-        episode_number: 16
-    30 min Mother's Day Ride with Emma Lovewell:
-      download: https://members.onepeloton.com/classes/player/0b673ae385bd435b8157fde6c04b727b
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Emma Lovewell
-        season_number: 30
-        episode_number: 17
-    30 min Country Pop Ride with Olivia Amato:
-      download: https://members.onepeloton.com/classes/player/8200cae29be84d2ea4ed44b365943f8e
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Olivia Amato
-        season_number: 30
-        episode_number: 26
-    30 min Low Impact Ride with Christine D'Ercole:
-      download: https://members.onepeloton.com/classes/player/f0e445abfd3743659c7a09943517fa8b
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Christine D'Ercole
-        season_number: 30
-        episode_number: 27
-    30 min Teddy Swims Ride with Matt Wilpers:
-      download: https://members.onepeloton.com/classes/player/d49e4a3a183e48118bbf60043acb6a50
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Matt Wilpers
-        season_number: 30
-        episode_number: 28
-    30 min Soft Rock Ride with Ally Love:
-      download: https://members.onepeloton.com/classes/player/2966f807adef42a2a05a90b740cd68e3
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Ally Love
-        season_number: 30
-        episode_number: 29
-    30 min 90s Ride with Robin Arzón:
-      download: https://members.onepeloton.com/classes/player/62deb4fd41e44dbdb9a4e0db3bbda24e
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Robin Arzón
-        season_number: 30
-        episode_number: 30
     30 min Progressive Push with Hannah Frankson:
       download: https://members.onepeloton.com/classes/player/d86ebfb282f54ed78c77552abaa2541c
       overrides:
@@ -181,19 +139,25 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Cycling/Hannah Corbin
         season_number: 30
         episode_number: 49
+    30 min Power Zone Max Ride with Christine D'Ercole:
+      download: https://members.onepeloton.com/classes/player/1e65e9462c9d431aad35c5799e41c25b
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Christine D'Ercole
+        season_number: 30
+        episode_number: 50
+    30 min 80s Ride with Bradley Rose:
+      download: https://members.onepeloton.com/classes/player/4266a724a5264cbb83aceb21b2fda269
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Bradley Rose
+        season_number: 30
+        episode_number: 51
+    30 min Rolling Hills Ride with Robin Arzón:
+      download: https://members.onepeloton.com/classes/player/0cd0c5b51a724ea38fde5d38c2b5b557
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Robin Arzón
+        season_number: 30
+        episode_number: 52
   = Cycling (45 min):
-    45 min Rock Ride with Christine D'Ercole:
-      download: https://members.onepeloton.com/classes/player/6e60504c823f4eb99ff14e0fafbb8b40
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Christine D'Ercole
-        season_number: 45
-        episode_number: 6
-    45 min Power Zone Ride with Christine D'Ercole:
-      download: https://members.onepeloton.com/classes/player/059354b6cca24abbbdba1d64dbeddb40
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Christine D'Ercole
-        season_number: 45
-        episode_number: 7
     45 min 2000s Pop Ride with Camila Ramón:
       download: https://members.onepeloton.com/classes/player/3cc547a7061146e19a3c1ce9e6740bcf
       overrides:
@@ -243,48 +207,6 @@ Plex TV Show by Date:
         season_number: 45
         episode_number: 15
   = Cycling (20 min):
-    20 min Jewish American Heritage Ride with Jenn Sherman:
-      download: https://members.onepeloton.com/classes/player/776f188c726f455999898f58128a6939
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Jenn Sherman
-        season_number: 20
-        episode_number: 7
-    20 min Low Impact Ride with Leanne Hainsby-Alldis:
-      download: https://members.onepeloton.com/classes/player/ea310a595b754091af8514694d8f49ed
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Leanne Hainsby-Alldis
-        season_number: 20
-        episode_number: 8
-    20 min 2000s Ride with Leanne Hainsby-Alldis:
-      download: https://members.onepeloton.com/classes/player/b31505c8a1454afaa7d0149cfe6a097b
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Leanne Hainsby-Alldis
-        season_number: 20
-        episode_number: 9
-    20 min Classical Music Ride with Christine D'Ercole:
-      download: https://members.onepeloton.com/classes/player/0db257fee1ff4782bc16a22aef007146
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Christine D'Ercole
-        season_number: 20
-        episode_number: 10
-    20 min Mother's Day Ride with Christine D'Ercole:
-      download: https://members.onepeloton.com/classes/player/689d7052593c4bf794242287140eca88
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Christine D'Ercole
-        season_number: 20
-        episode_number: 11
-    20 min Pop Punk Ride with Bradley Rose:
-      download: https://members.onepeloton.com/classes/player/2e0c28d031fd42589942994c26d127d1
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Bradley Rose
-        season_number: 20
-        episode_number: 12
-    20 min 90s Hip Hop Ride with Hannah Frankson:
-      download: https://members.onepeloton.com/classes/player/d4711285db994709b0e9bb4fcef3df08
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Hannah Frankson
-        season_number: 20
-        episode_number: 13
     20 min Tea Time with Cody with Cody Rigsby:
       download: https://members.onepeloton.com/classes/player/46806e8bd7c8441cb8a4b0ad307eb7d3
       overrides:
@@ -357,6 +279,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Cycling/Bradley Rose
         season_number: 20
         episode_number: 25
+    20 min 60s Ride with Hannah Corbin:
+      download: https://members.onepeloton.com/classes/player/76f9adc794e3442396372051d9cb8cdd
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Hannah Corbin
+        season_number: 20
+        episode_number: 26
   = Cycling (60 min):
     60 min Power Zone Endurance Ride with Matt Wilpers:
       download: https://members.onepeloton.com/classes/player/e122a7a91e8246e8b7bd3e57ac699452
@@ -371,18 +299,6 @@ Plex TV Show by Date:
         season_number: 60
         episode_number: 2
   = Cycling (15 min):
-    15 min 2010s Ride with Bradley Rose:
-      download: https://members.onepeloton.com/classes/player/3deb1b3445ae480fbb3651820f6ff5cc
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Bradley Rose
-        season_number: 15
-        episode_number: 4
-    15 min Climb Ride with Hannah Frankson:
-      download: https://members.onepeloton.com/classes/player/d470b96dee3b4bc9afbde4480233f0f4
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Hannah Frankson
-        season_number: 15
-        episode_number: 5
     15 min Metal Ride with Camila Ramón:
       download: https://members.onepeloton.com/classes/player/dd8df3d581b249d1a004ef87b16cd703
       overrides:
@@ -395,13 +311,13 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Cycling/Ally Love
         season_number: 15
         episode_number: 7
-  = Cycling (5 min):
-    5 min Cool Down Ride with Bradley Rose:
-      download: https://members.onepeloton.com/classes/player/14fcb6d40d114b9ab4936490843955fe
+    15 min Low Impact Ride with Hannah Corbin:
+      download: https://members.onepeloton.com/classes/player/299e9446e7314bc5a2f041f7bf73458b
       overrides:
-        tv_show_directory: /media/peloton/Cycling/Bradley Rose
-        season_number: 5
-        episode_number: 3
+        tv_show_directory: /media/peloton/Cycling/Hannah Corbin
+        season_number: 15
+        episode_number: 8
+  = Cycling (5 min):
     5 min Cool Down Ride with Matt Wilpers:
       download: https://members.onepeloton.com/classes/player/d45b82db0a1a44958389c0deb37ffd89
       overrides:
