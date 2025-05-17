@@ -16,6 +16,7 @@ import tempfile
 import git  # GitPython
 from github import Github
 import subprocess
+import sys
 
 class Activity(Enum):
     ALL = "all"
@@ -647,7 +648,7 @@ if __name__ == "__main__":
     print("REMOVING EXISTING CLASSES FROM SUBSCRIPTIONS")
 
     fileManager.removeExistingClasses(existingClasses)
-
+    #sys.exit(0)
     print("EXTRACTING SEASONS & EPISODES FROM EXISTING CLASSES")
 
     seasonsFromDisk = fileManager.findMaxEpisodePerActivityFromDisk()
