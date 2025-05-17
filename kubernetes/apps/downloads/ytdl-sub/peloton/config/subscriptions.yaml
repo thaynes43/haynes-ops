@@ -21,7 +21,7 @@ __preset__:
     subscription_download_probability: 1
   ytdl_options:
     usenetrc: true
-    format: bestvideo+bestaudio
+    format: bestvideo+bestaudio/bestaudio
     merge_output_format: mp4
 Plex TV Show by Date:
   = Cycling (30 min):
