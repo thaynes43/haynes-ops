@@ -281,7 +281,7 @@ class FileManager:
 
         if changed:
             with open(self.subsFile, "w") as f:
-                yaml.dump(subs, f, default_flow_style=False, sort_keys=False, width=4096)
+                yaml.dump(subs, f, default_flow_style=False, sort_keys=False, allow_unicode=True, width=4096)
             print(f"Updated {self.subsFile} with already-downloaded classes removed.")
         else:
             print("No changes made to subscriptions.")

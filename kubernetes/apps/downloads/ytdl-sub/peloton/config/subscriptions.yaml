@@ -259,16 +259,16 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Stretching/Becs Gentry
         season_number: 5
         episode_number: 24
-    "5 min Post-Ride Stretch with Robin Arz\xF3n":
+    5 min Post-Ride Stretch with Robin Arzón:
       download: https://members.onepeloton.com/classes/player/8980fb491f0247ea979e1cc41b11fcae
       overrides:
-        tv_show_directory: "/media/peloton/Stretching/Robin Arz\xF3n"
+        tv_show_directory: /media/peloton/Stretching/Robin Arzón
         season_number: 5
         episode_number: 25
-    "5 min Post-Run Stretch with Mariana Fern\xE1ndez":
+    5 min Post-Run Stretch with Mariana Fernández:
       download: https://members.onepeloton.com/classes/player/d599705591984d6c85fc0fe2b4663722
       overrides:
-        tv_show_directory: "/media/peloton/Stretching/Mariana Fern\xE1ndez"
+        tv_show_directory: /media/peloton/Stretching/Mariana Fernández
         season_number: 5
         episode_number: 26
     5 min Pre-Run Warm Up with Jon Hosking:
@@ -557,10 +557,10 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Running/Joslyn Thompson Rule
         season_number: 30
         episode_number: 9
-    "30 min 90s Hip Hop Run with Robin Arz\xF3n":
+    30 min 90s Hip Hop Run with Robin Arzón:
       download: https://members.onepeloton.com/classes/player/dc241ad4e33e44589b6b0e025a2c809d
       overrides:
-        tv_show_directory: "/media/peloton/Running/Robin Arz\xF3n"
+        tv_show_directory: /media/peloton/Running/Robin Arzón
         season_number: 30
         episode_number: 10
     30 min Endurance Run with Alex Karwoski:
@@ -605,10 +605,10 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Running/Marcel Dinkins
         season_number: 30
         episode_number: 17
-    "30 min Pop Punk Run with Robin Arz\xF3n":
+    30 min Pop Punk Run with Robin Arzón:
       download: https://members.onepeloton.com/classes/player/98f4a848276044149a2b0af83440c875
       overrides:
-        tv_show_directory: "/media/peloton/Running/Robin Arz\xF3n"
+        tv_show_directory: /media/peloton/Running/Robin Arzón
         season_number: 30
         episode_number: 18
     30 min 80s Run with Joslyn Thompson Rule:
@@ -727,10 +727,10 @@ Plex TV Show by Date:
         season_number: 20
         episode_number: 17
   = Running (45 min):
-    "45 min Rock Run with Mariana Fern\xE1ndez":
+    45 min Rock Run with Mariana Fernández:
       download: https://members.onepeloton.com/classes/player/8c2ba3df638c4f9fbf0b3b8a3d504412
       overrides:
-        tv_show_directory: "/media/peloton/Running/Mariana Fern\xE1ndez"
+        tv_show_directory: /media/peloton/Running/Mariana Fernández
         season_number: 45
         episode_number: 1
     45 min 90s Pop Run with Logan Aldridge:
@@ -771,10 +771,10 @@ Plex TV Show by Date:
         season_number: 15
         episode_number: 3
   = Running (90 min):
-    "90 min Long Run with Mariana Fern\xE1ndez":
+    90 min Long Run with Mariana Fernández:
       download: https://members.onepeloton.com/classes/player/e3d28620f7c445f282c7341138267058
       overrides:
-        tv_show_directory: "/media/peloton/Running/Mariana Fern\xE1ndez"
+        tv_show_directory: /media/peloton/Running/Mariana Fernández
         season_number: 90
         episode_number: 1
   = Running (None min):
@@ -842,16 +842,16 @@ Plex TV Show by Date:
         season_number: 15
         episode_number: 6
   = Walking (20 min):
-    "20 min Walk + Run with Robin Arz\xF3n":
+    20 min Walk + Run with Robin Arzón:
       download: https://members.onepeloton.com/classes/player/6c19e81c43ce48968324e7f6058d97b8
       overrides:
-        tv_show_directory: "/media/peloton/Walking/Robin Arz\xF3n"
+        tv_show_directory: /media/peloton/Walking/Robin Arzón
         season_number: 20
         episode_number: 1
-    "20 min Walk + Run with Camila Ram\xF3n":
+    20 min Walk + Run with Camila Ramón:
       download: https://members.onepeloton.com/classes/player/ec3750d3867c440fb959782bb147bbf9
       overrides:
-        tv_show_directory: "/media/peloton/Walking/Camila Ram\xF3n"
+        tv_show_directory: /media/peloton/Walking/Camila Ramón
         season_number: 20
         episode_number: 2
     20 min Hike with Joslyn Thompson Rule:
@@ -890,10 +890,10 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Walking/Jess King
         season_number: 20
         episode_number: 8
-    "20 min Hike with Camila Ram\xF3n":
+    20 min Hike with Camila Ramón:
       download: https://members.onepeloton.com/classes/player/0a38d44bc491456abe9aaccdea2f0b2d
       overrides:
-        tv_show_directory: "/media/peloton/Walking/Camila Ram\xF3n"
+        tv_show_directory: /media/peloton/Walking/Camila Ramón
         season_number: 20
         episode_number: 9
     20 min 2010s Walk with Susie Chan:
@@ -1038,16 +1038,16 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Walking/Emma Lovewell
         season_number: 30
         episode_number: 10
-    "30 min Hike with Robin Arz\xF3n":
+    30 min Hike with Robin Arzón:
       download: https://members.onepeloton.com/classes/player/bc8566e8366945a2b810f8d5fa75c768
       overrides:
-        tv_show_directory: "/media/peloton/Walking/Robin Arz\xF3n"
+        tv_show_directory: /media/peloton/Walking/Robin Arzón
         season_number: 30
         episode_number: 11
-    "30 min Walk + Run with Robin Arz\xF3n":
+    30 min Walk + Run with Robin Arzón:
       download: https://members.onepeloton.com/classes/player/a048213c1ff9421ab0f0e07a99ce9f2e
       overrides:
-        tv_show_directory: "/media/peloton/Walking/Robin Arz\xF3n"
+        tv_show_directory: /media/peloton/Walking/Robin Arzón
         season_number: 30
         episode_number: 12
     30 min At The Club with Jon Hosking:
