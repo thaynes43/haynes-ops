@@ -594,6 +594,10 @@ class EnvManager:
         
         # Stage changes (edit this if you want to limit to certain files)
         repo.git.add('--all')
+
+        repo.git.config('--local', 'user.email', 'noreply@haynesnetwork.com')
+        repo.git.config('--local', 'user.name', 'Peloton Scraper Bot')
+
         repo.git.commit('-m', f"Auto-update Peloton subscriptions {timestamp}")
         
         # Push new branch to origin
