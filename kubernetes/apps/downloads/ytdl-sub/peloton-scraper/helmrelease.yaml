@@ -1,0 +1,71 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: peloton-scraper
+spec:
+  chart:
+    spec:
+      chart: app-template
+      version: 3.7.3
+      interval: 30m
+      sourceRef:
+        kind: HelmRepository
+        name: bjw-s
+        namespace: flux-system
+  interval: 30m
+  values:
+    controllers:
+      peloton-scraper:
+        type: cronjob
+
+        pod:
+          restartPolicy: Never
+
+        cronjob:
+          #schedule: "0 0 5 12 2" # Disable cronjob by giving it a schedule that will never run
+          schedule: "0 0 * * *" # Run at midnight
+          backoffLimit: 0
+          concurrencyPolicy: Forbid
+          failedJobsHistory: 1
+          successfulJobsHistory: 1
+
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/peloton-scraper
+              tag: 0.1.0
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                  - ALL
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                memory: 6Gi
+            envFrom:
+              - secretRef:
+                  name: peloton-scraper-secret
+    persistence:
+      tmp:
+        type: emptyDir
+        advancedMounts:
+          peloton-scraper:
+            app:
+              - path: /tmp
+                subPath: tmp
+      media:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          peloton-scraper:
+            app:
+              - path: /media/peloton
+                subPath: data/media/peloton
+                readOnly: true

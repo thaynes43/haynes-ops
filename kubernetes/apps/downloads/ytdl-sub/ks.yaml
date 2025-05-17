@@ -40,3 +40,25 @@ spec:
   wait: true
   interval: 30m
   timeout: 5m
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app peloton-scraper
+  namespace: flux-system
+spec:
+  targetNamespace: downloads
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: ytdl-sub-peloton
+  path: ./kubernetes/apps/downloads/ytdl-sub/peloton-scraper
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+  wait: true
+  interval: 30m
+  timeout: 5m
