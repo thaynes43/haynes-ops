@@ -305,6 +305,7 @@ class PelotonSession:
         self.password = password
         chrome_options = Options()
         chrome_options.add_argument("--headless")  # TOGGLE FOR DEBUGGING
+        chrome_options.add_argument(f"--user-data-dir={tempfile.mkdtemp()}") # Pod needs unique directory
         self.driver = webdriver.Chrome(options=chrome_options)
 
     def openSession(self):
