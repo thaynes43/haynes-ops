@@ -26,7 +26,7 @@ class Activity(Enum):
     CARDIO = "cardio"
     STRETCHING = "stretching"
     CYCLING = "cycling"
-    OUTDOOR = "outdoor"
+    #OUTDOOR = "outdoor" # This is 100% audio
     RUNNING = "running"
     WALKING = "walking"
     BOOTCAMP = "bootcamp"
