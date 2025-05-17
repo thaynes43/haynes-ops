@@ -36,12 +36,6 @@ spec:
             image:
               repository: ghcr.io/thaynes43/peloton-scraper
               tag: 0.1.1
-            securityContext:
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: true
-              capabilities:
-                drop:
-                  - ALL
             resources:
               requests:
                 cpu: 100m
