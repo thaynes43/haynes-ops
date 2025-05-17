@@ -1,6 +1,8 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+
 from urllib.parse import urlparse, parse_qs
 import time
 import re
@@ -317,12 +319,13 @@ class PelotonSession:
         chrome_options.add_argument(f'--user-data-dir={tmp_profile}')
 
         self.printChromeVersions()
-
-        # If chromedriver is not on PATH, set executable_path:
-        self.driver = webdriver.Chrome(
-            executable_path="/usr/bin/chromedriver",  # Remove if it's already in PATH and works without
-            options=chrome_options
-        )
+        print("Launching Chromium with:", chrome_options.arguments)
+        service = Service("/usr/bin/chromedriver")
+        try:
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        except Exception as e:
+            print("Failed to launch Chrome:", repr(e))
+            raise
 
     def openSession(self):
         print("Opening session to members.onepeloton.com...")
