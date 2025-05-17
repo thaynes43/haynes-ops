@@ -534,7 +534,7 @@ class EnvManager:
         print("Conditional Configuration:")
         print(f"GITHUB_REPO_URL={self.githubRepo}, SUBS_FILE={self.subsFile}, GITHUB_TOKEN={len(self.githubToken)} chars")
 
-        if not self.githubRepo and not self.githubToken:
+        if self.githubRepo and not self.githubToken:
             raise ValueError("Must configure GITHUB_TOKEN if using GITHUB_REPO_URL!")
         
         if self.githubRepo.startswith("https://"):
@@ -554,7 +554,7 @@ class EnvManager:
     def bootstrap(self):
         if not self.githubRepo:
             # Only needed if we are not running against a local repo
-            pass
+            return
 
         repo_url_with_token = f"https://{self.githubToken}:x-oauth-basic@{self.githubRepo}"
 
@@ -572,7 +572,7 @@ class EnvManager:
     def finalize(self):
         if not self.githubRepo:
             # Only needed if we are not running against a local repo
-            pass
+            return
 
         branchName = self.commit_and_push(self.dirToCloneRepo)
         self.create_pull_request(
@@ -648,7 +648,9 @@ if __name__ == "__main__":
     print("REMOVING EXISTING CLASSES FROM SUBSCRIPTIONS")
 
     fileManager.removeExistingClasses(existingClasses)
-    #sys.exit(0)
+    
+    #sys.exit(0) # Exit early just to clean file
+    
     print("EXTRACTING SEASONS & EPISODES FROM EXISTING CLASSES")
 
     seasonsFromDisk = fileManager.findMaxEpisodePerActivityFromDisk()
