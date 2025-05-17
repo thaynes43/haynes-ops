@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 import tempfile
 import git  # GitPython
 from github import Github
+import subprocess
 
 class Activity(Enum):
     ALL = "all"
@@ -305,8 +306,23 @@ class PelotonSession:
         self.password = password
         chrome_options = Options()
         chrome_options.add_argument("--headless")  # TOGGLE FOR DEBUGGING
-        chrome_options.add_argument(f"--user-data-dir={tempfile.mkdtemp()}") # Pod needs unique directory
-        self.driver = webdriver.Chrome(options=chrome_options)
+
+        # Pod options 
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.binary_location = "/usr/bin/chromium"
+
+        tmp_profile = tempfile.mkdtemp()
+        print(f"Using Chrome user-data-dir: {tmp_profile} exists: {os.path.exists(tmp_profile)}")
+        chrome_options.add_argument(f'--user-data-dir={tmp_profile}')
+
+        self.printChromeVersions()
+
+        # If chromedriver is not on PATH, set executable_path:
+        self.driver = webdriver.Chrome(
+            executable_path="/usr/bin/chromedriver",  # Remove if it's already in PATH and works without
+            options=chrome_options
+        )
 
     def openSession(self):
         print("Opening session to members.onepeloton.com...")
@@ -324,6 +340,24 @@ class PelotonSession:
 
     def closeSession(self):
         self.driver.quit()
+
+    def printChromeVersions(self):
+        try:
+            chromium_version = subprocess.check_output(["chromium", "--version"], text=True).strip()
+        except FileNotFoundError:
+            chromium_version = "chromium not found"
+        except Exception as e:
+            chromium_version = f"chromium error: {e}"
+
+        try:
+            chromedriver_version = subprocess.check_output(["chromedriver", "--version"], text=True).strip()
+        except FileNotFoundError:
+            chromedriver_version = "chromedriver not found"
+        except Exception as e:
+            chromedriver_version = f"chromedriver error: {e}"
+
+        print(f"Chromium version: {chromium_version}")
+        print(f"Chromedriver version: {chromedriver_version}")
 
 class PelotonScraper:
     def __init__(self, session, activity, maxClasses, existingCLasses, seasons):
