@@ -10,11 +10,11 @@ __preset__:
     info_json_name: S{season_number}E{episode_number} - {upload_date} - {title}/S{season_number}E{episode_number} - {upload_date} - {title}.info.json
   throttle_protection:
     sleep_per_download_s:
-      min: 60
-      max: 170
+      min: 120
+      max: 270
     sleep_per_subscription_s:
-      min: 25
-      max: 75
+      min: 60
+      max: 90
     max_downloads_per_subscription:
       min: 25
       max: 75
