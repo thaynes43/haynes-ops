@@ -55,25 +55,6 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Walking/Olivia Amato
         season_number: 20
         episode_number: 18
-  = Tread Bootcamp (None min):
-    'Sims 60: 90s with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/e08bcd57fa744fbdb3e0a2aa26da79eb
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
-        season_number: null
-        episode_number: 2
-    Sims 60 with Jess Sims:
-      download: https://members.onepeloton.com/classes/player/bf4d5cb357204a43b5b5279dc4dcd93e
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
-        season_number: null
-        episode_number: 1
-    Thunder 45 with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/a14ec98571174b6d90bcaba1c31aac0f
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Adrian Williams
-        season_number: null
-        episode_number: 9
   = Strength (20 min):
     20 min Core Strength with Ben Alldis:
       download: https://members.onepeloton.com/classes/player/46527cfcff864dfa84c9f53af20b33e1
@@ -717,13 +698,6 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Cycling/Matt Wilpers
         season_number: 45
         episode_number: 19
-  = Cycling (None min):
-    'Extra 10: Low Impact Ride with Jess King':
-      download: https://members.onepeloton.com/classes/player/1da8355266c440f58bac1da3fc45bdae
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Jess King
-        season_number: null
-        episode_number: 1
   = Cycling (30 min):
     30 min Reggaeton Ride with Camila Ramón:
       download: https://members.onepeloton.com/classes/player/481b923feb11450b9fbc7529b1cb04a7
@@ -1002,19 +976,6 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Running/Jess Sims
         season_number: 15
         episode_number: 7
-  = Walking (None min):
-    'Extra 10: Walk with Marcel Dinkins':
-      download: https://members.onepeloton.com/classes/player/73a91aadee014d0e9c10e8387e5d7824
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Marcel Dinkins
-        season_number: null
-        episode_number: 1
-    'Extra 10: Hike with Joslyn Thompson Rule':
-      download: https://members.onepeloton.com/classes/player/c92afb4827df4c6b89b13753f50439dc
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Joslyn Thompson Rule
-        season_number: null
-        episode_number: 2
   = Walking (30 min):
     30 min Hike with Jess King:
       download: https://members.onepeloton.com/classes/player/175bb2fb80f049e99684999e1a778697
@@ -1203,19 +1164,6 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
         season_number: 30
         episode_number: 8
-  = Bike Bootcamp (None min):
-    Sims 60 with Jess Sims:
-      download: https://members.onepeloton.com/classes/player/b8ae7d9935764b8bb8d14bc769544bd8
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
-        season_number: null
-        episode_number: 3
-    'Sims 60: Pop with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/1dfd58c4474844daa3de95773d3298b2
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
-        season_number: null
-        episode_number: 2
   = Bike Bootcamp (45 min):
     45 min Bootcamp with Jess Sims:
       download: https://members.onepeloton.com/classes/player/3c8c0eb83c394f47b9d82281b614031b
@@ -1377,19 +1325,6 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Rowing/Ash Pryor
         season_number: 10
         episode_number: 7
-  = Rowing (None min):
-    'Extra 5: HIIT Row with Adrian Williams':
-      download: https://members.onepeloton.com/classes/player/d0e39aba1a4a48298959cb36e2c60791
-      overrides:
-        tv_show_directory: /media/peloton/Rowing/Adrian Williams
-        season_number: null
-        episode_number: 1
-    'Extra 5: Listening Party Row with Becs Gentry':
-      download: https://members.onepeloton.com/classes/player/cefe2345db454c3f95ed69cea646330e
-      overrides:
-        tv_show_directory: /media/peloton/Rowing/Becs Gentry
-        season_number: null
-        episode_number: 2
   = Row Bootcamp (30 min):
     30 min Bootcamp with Katie Wang:
       download: https://members.onepeloton.com/classes/player/58ec3d3f92f3426c99895ca9e4fbf986
