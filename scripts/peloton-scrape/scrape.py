@@ -313,7 +313,7 @@ class PelotonSession:
         # Pod options 
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.binary_location = "/usr/bin/chromium"
+        chrome_options.binary_location = "/usr/bin/chromium"   # TODO needs to be commented out for local script
 
         tmp_profile = tempfile.mkdtemp()
         print(f"Using Chrome user-data-dir: {tmp_profile} exists: {os.path.exists(tmp_profile)}")
@@ -321,9 +321,10 @@ class PelotonSession:
 
         self.printChromeVersions()
         print("Launching Chromium with:", chrome_options.arguments)
-        service = Service("/usr/bin/chromedriver")
+        service = Service("/usr/bin/chromedriver") # TODO needs to be commented out for local script
         try:
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            self.driver = webdriver.Chrome(service=service, options=chrome_options) # TODO needs to be commented out for local script
+            #self.driver = webdriver.Chrome(options=chrome_options)                 # TODO needs to be used for local script - manage envs better
         except Exception as e:
             print("Failed to launch Chrome:", repr(e))
             raise
@@ -405,7 +406,6 @@ class PelotonScraper:
             if not class_id:
                 print(f"Could not extract class_id from link: {href}")
                 continue
-
 
             if class_id in self.existingCLasses:
                 skipped = skipped + 1
@@ -490,7 +490,10 @@ class PelotonScraper:
         match = re.match(r"^\s*(\d+)\s*min", text, re.IGNORECASE)
         if match:
             return int(match.group(1))
-        return None
+        fallback = re.search(r"\b(\d+)\b", text)
+        if fallback:
+            return int(fallback.group(1))
+        return 0
 
 class EnvManager:
     def __init__(self):
