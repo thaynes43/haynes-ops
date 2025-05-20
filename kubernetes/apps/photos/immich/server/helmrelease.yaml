@@ -111,22 +111,6 @@ spec:
         ports:
           http:
             port: &port 2283
-    ingress:
-      app:
-        annotations:
-          external-dns.alpha.kubernetes.io/target: haynesnetwork.com
-        className: traefik-external
-        hosts:
-          - host: immich.haynesnetwork.com
-            paths:
-              - path: /
-                service:
-                  identifier: app
-                  port: http
-        tls:
-          - secretName: certificate-haynesnetwork
-            hosts:
-                - immich.haynesnetwork.com
     persistence:
       config:
         enabled: true
