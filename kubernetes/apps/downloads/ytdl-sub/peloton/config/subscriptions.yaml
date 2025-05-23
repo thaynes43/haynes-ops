@@ -24,13 +24,6 @@ __preset__:
     format: bestvideo+bestaudio/bestaudio
     merge_output_format: mp4
 Plex TV Show by Date:
-  = Walking (20 min):
-    20 min Pop Walk with Hannah Frankson:
-      download: https://members.onepeloton.com/classes/player/fe30657f7b164c37ae56f0e0aa3324a9
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Hannah Frankson
-        season_number: 20
-        episode_number: 5
   = Bike Bootcamp (30 min):
     '30 min Bootcamp: 50/50 with Tunde Oyeneyin':
       download: https://members.onepeloton.com/classes/player/9e1b6654a6ad40f6ad1369228dcf4710
