@@ -114,13 +114,13 @@ spec:
         globalMounts:
           - path: /home/coder/.ssh/id_ed25519
             subPath: GH_DEPLOY_KEY
-      photos:
+      immich-album:
         type: nfs
         server: gasha01.haynesnetwork
         path: /hdd-nfs-repl
         advancedMounts:
           home-assistant:
             app:
-              - path: /photos
+              - path: /config/www/immich-album
                 subPath: data/photos/hass-gallery
                 readOnly: true
