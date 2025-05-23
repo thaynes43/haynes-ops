@@ -304,7 +304,7 @@ class FileManager:
             yaml.dump(subs, f, sort_keys=False, allow_unicode=True, default_flow_style=False, indent=2, width=4096)
 
 class PelotonSession:
-    def __init__(self, username, password):
+    def __init__(self, username, password, docker):
         self.username = username
         self.password = password
         chrome_options = Options()
@@ -313,7 +313,9 @@ class PelotonSession:
         # Pod options 
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.binary_location = "/usr/bin/chromium"   # TODO needs to be commented out for local script
+
+        if docker:
+            chrome_options.binary_location = "/usr/bin/chromium"
 
         tmp_profile = tempfile.mkdtemp()
         print(f"Using Chrome user-data-dir: {tmp_profile} exists: {os.path.exists(tmp_profile)}")
@@ -321,10 +323,15 @@ class PelotonSession:
 
         self.printChromeVersions()
         print("Launching Chromium with:", chrome_options.arguments)
-        service = Service("/usr/bin/chromedriver") # TODO needs to be commented out for local script
+
+        service = None
+        if docker:
+            service = Service("/usr/bin/chromedriver")
         try:
-            self.driver = webdriver.Chrome(service=service, options=chrome_options) # TODO needs to be commented out for local script
-            #self.driver = webdriver.Chrome(options=chrome_options)                 # TODO needs to be used for local script - manage envs better
+            if docker:
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            else:
+                self.driver = webdriver.Chrome(options=chrome_options)
         except Exception as e:
             print("Failed to launch Chrome:", repr(e))
             raise
@@ -365,13 +372,14 @@ class PelotonSession:
         print(f"Chromedriver version: {chromedriver_version}")
 
 class PelotonScraper:
-    def __init__(self, session, activity, maxClasses, existingCLasses, seasons):
+    def __init__(self, session, activity, maxClasses, existingCLasses, seasons, scrolls):
         self.session = session
         self.activity = activity
         self.url = "https://members.onepeloton.com/classes/{}?class_languages=%5B%22en-US%22%5D&sort=original_air_time&desc=true".format(activity.value)
         self.maxClasses = maxClasses
         self.existingCLasses = existingCLasses
         self.seasons = seasons
+        self.scrolls = scrolls
         self.results = []
 
     def scrape(self):
@@ -383,7 +391,7 @@ class PelotonScraper:
         #   This will be useful once we are excluding classes we already have
         SCROLL_PAUSE_TIME = 3  # seconds
 
-        for _ in range(10):
+        for _ in range(self.scrolls):
             self.session.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(SCROLL_PAUSE_TIME)
 
@@ -508,6 +516,8 @@ class EnvManager:
         self.loadConditionalConfiguration()
         self.limit = 25
         self.activities = Activity.ALL
+        self.docker = True
+        self.scrolls = 10
         self.loadOptionalConfiguration()
 
         self.dirToCloneRepo = "/tmp/peloton-scrape-repo"
@@ -549,10 +559,11 @@ class EnvManager:
     def loadOptionalConfiguration(self):
         self.limit = int(os.getenv("PELOTON_CLASS_LIMIT_PER_ACTIVITY", 25))
         self.activities = ActivityData.parseActivitiesFromEnv(os.getenv("PELOTON_ACTIVITY"))
-
+        self.docker = os.getenv("RUN_IN_CONTAINER", "True").strip().lower() in ("1", "true", "yes")
+        self.scrolls = int(os.getenv("PELOTON_PAGE_SCROLLS", 10))
         print("Optional Configuration:")
         print(f"PELOTON_CLASS_LIMIT_PER_ACTIVITY={self.limit} (default 25), PELOTON_ACTIVITY={self.activities} (default all but all)")
-
+        print(f"RUN_IN_CONTAINER={self.docker} (default True), PELOTON_PAGE_SCROLLS={self.scrolls} (default 10)")
 
     def bootstrap(self):
         if not self.githubRepo:
@@ -675,7 +686,7 @@ if __name__ == "__main__":
     print("////////////////////////////////////////////////////////")
     print("///              FINDING NEW CLASSES                 ///")
     print("////////////////////////////////////////////////////////")
-    session = PelotonSession(config.username, config.password)
+    session = PelotonSession(config.username, config.password, config.docker)
     session.openSession()
 
     for activity in config.activities:
@@ -683,7 +694,7 @@ if __name__ == "__main__":
         if activity not in seasons:
             seasons[activity] = ActivityData(activity)
 
-        scraper = PelotonScraper(session, activity, config.limit, existingClasses, seasons[activity])
+        scraper = PelotonScraper(session, activity, config.limit, existingClasses, seasons[activity], config.scrolls)
         scraper.scrape()
         fileManager.addNewClasses(scraper.output())
 

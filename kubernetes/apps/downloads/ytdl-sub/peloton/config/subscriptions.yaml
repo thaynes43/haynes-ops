@@ -31,529 +31,480 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Walking/Hannah Frankson
         season_number: 20
         episode_number: 5
-  = Tread Bootcamp (60 min):
-    Sims 60 with Jess Sims:
-      download: https://members.onepeloton.com/classes/player/01b2f1e5be4f46558225545c328e251f
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
-        season_number: 60
-        episode_number: 7
-    'Sims 60: EDM with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/03fa220bbc0348a292ee14b4a6cee34b
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
-        season_number: 60
-        episode_number: 3
-    'Sims 60: 90s with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/d918107dc57d4d4e844e7353c111163b
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
-        season_number: 60
-        episode_number: 6
-    'Sims 60: Hip Hop with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/fd65b9bb6deb4c2bbd02d8772963ea68
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
-        season_number: 60
-        episode_number: 8
-    'Sims 60: Full Body with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/3eb1001611c148fabe1d1deacd8a50db
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
-        season_number: 60
-        episode_number: 9
-    'Sims 60: Pop with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/53ab9262562f46599491be64e1692e33
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
-        season_number: 60
-        episode_number: 10
-  = Bike Bootcamp (45 min):
-    45 min Bootcamp with Rad Lopez:
-      download: https://members.onepeloton.com/classes/player/0eaeb4fafba44d1697fcbafa594f328f
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
-        season_number: 45
-        episode_number: 1
-    45 min Bootcamp with Jess Sims:
-      download: https://members.onepeloton.com/classes/player/631fbc0549dd4a739cfea197db47cae0
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
-        season_number: 45
-        episode_number: 8
-    45 min Bootcamp with Tunde Oyeneyin:
-      download: https://members.onepeloton.com/classes/player/047d958f9e51483fa5e732153af1eb00
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
-        season_number: 45
-        episode_number: 7
-    '45 min Bootcamp: Full Body with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/6e21abb89c5c4e4495e3a0a9f2337505
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
-        season_number: 45
-        episode_number: 24
-    '45 min Bootcamp: Full Body with Tunde Oyeneyin':
-      download: https://members.onepeloton.com/classes/player/4d4b958559f546b9b81916eab1aaade0
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
-        season_number: 45
-        episode_number: 25
-    45 min Hip Hop Bootcamp with Robin Arzón:
-      download: https://members.onepeloton.com/classes/player/4d539ce0d7f04dcd8e664130dec55628
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Robin Arzón
-        season_number: 45
-        episode_number: 11
-    45 min 90s Bootcamp with Jess Sims:
-      download: https://members.onepeloton.com/classes/player/c1ac39fc9c31431e8b3c834457fc7ae3
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
-        season_number: 45
-        episode_number: 12
-    45 min Pop Bootcamp with Cody Rigsby:
-      download: https://members.onepeloton.com/classes/player/68c6f3a8ecc643a680edddd2514f18a4
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
-        season_number: 45
-        episode_number: 14
-    '45 min Bootcamp: Full Body with Robin Arzón':
-      download: https://members.onepeloton.com/classes/player/94f52cacfe934349b1e0f1ffc3e768e0
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Robin Arzón
-        season_number: 45
-        episode_number: 17
-    45 min Hip Hop Bootcamp with Tunde Oyeneyin:
-      download: https://members.onepeloton.com/classes/player/b3b8c994540f46418c7830fd3d8d9034
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
-        season_number: 45
-        episode_number: 18
-    '45 min Bootcamp: Full Body with Callie Gullickson':
-      download: https://members.onepeloton.com/classes/player/33ea2d5a3c664b42acdf81f2cabd937c
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
-        season_number: 45
-        episode_number: 23
   = Bike Bootcamp (30 min):
     '30 min Bootcamp: 50/50 with Tunde Oyeneyin':
-      download: https://members.onepeloton.com/classes/player/3aec625ffcd54219bd81bcd58960a3e3
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
-        season_number: 30
-        episode_number: 4
-    30 min Bootcamp with Tunde Oyeneyin:
-      download: https://members.onepeloton.com/classes/player/3dd312b0e6044f9081ddb081fd85f0b7
+      download: https://members.onepeloton.com/classes/player/9e1b6654a6ad40f6ad1369228dcf4710
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
         season_number: 30
         episode_number: 2
     '30 min Bootcamp: Upper Body with Tunde Oyeneyin':
-      download: https://members.onepeloton.com/classes/player/fe856be768b045c88d5f5f992ddf871a
+      download: https://members.onepeloton.com/classes/player/917ace0ed9a447d29a38086e9674c574
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
         season_number: 30
-        episode_number: 27
+        episode_number: 43
     '30 min Bootcamp: Core with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/9192310d3f4b42abb7c4934f9e2de82d
+      download: https://members.onepeloton.com/classes/player/1371729b980c4b959c6663ca5cadf818
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
+        season_number: 30
+        episode_number: 46
+    '30 min Bootcamp: Full Body with Jess Sims':
+      download: https://members.onepeloton.com/classes/player/95d31f12b6854713a2d834ec3575ed0a
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
+        season_number: 30
+        episode_number: 42
+    '30 min Bootcamp: Upper Body with Jess Sims':
+      download: https://members.onepeloton.com/classes/player/9d848fb785fa4ab1b705405f5121cc78
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
+        season_number: 30
+        episode_number: 27
+    '30 min Bootcamp: Full Body with Callie Gullickson':
+      download: https://members.onepeloton.com/classes/player/2eda41f1e1f143c9b1057bc83dbc6898
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
+        season_number: 30
+        episode_number: 45
+    '30 min Bootcamp: Upper Body with Callie Gullickson':
+      download: https://members.onepeloton.com/classes/player/d9d9c2e7178f4d2c8ccca848c29b8149
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
+        season_number: 30
+        episode_number: 48
+    '30 min Bootcamp: Full Body with Tunde Oyeneyin':
+      download: https://members.onepeloton.com/classes/player/debe461cefd74442b1c7a06290ed18cb
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
         season_number: 30
         episode_number: 35
-    '30 min Bootcamp: Full Body with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/08a9570634ed4a81b99a9f1fc65c97f8
+    30 min Janet Jackson Bootcamp with Cody Rigsby:
+      download: https://members.onepeloton.com/classes/player/5c64d8f201b9456786b967b6df02a18b
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
+        season_number: 30
+        episode_number: 25
+    '30 min Bootcamp: Core with Tunde Oyeneyin':
+      download: https://members.onepeloton.com/classes/player/c0d088364ed04939b19713b54b6a2ed9
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
+        season_number: 30
+        episode_number: 26
+    '30 min Bootcamp: Core with Callie Gullickson':
+      download: https://members.onepeloton.com/classes/player/e393e8991c6c450db0fffb5e92c4d672
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
+        season_number: 30
+        episode_number: 49
+    '30 min Bootcamp: Core with Cody Rigsby':
+      download: https://members.onepeloton.com/classes/player/467cabd949484ca4a2dbf6136caed1c5
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
+        season_number: 30
+        episode_number: 32
+    30 min Hip Hop 50 Bootcamp with Jess Sims:
+      download: https://members.onepeloton.com/classes/player/d955ab29d5484209bf8f23c5dadcd748
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
         season_number: 30
-        episode_number: 39
-    '30 min Bootcamp: Upper Body with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/7ca7fecdb8a243cbb46f14676ae23fd9
+        episode_number: 34
+    30 min Tropical House Bootcamp with Callie Gullickson:
+      download: https://members.onepeloton.com/classes/player/47daa0578f0a4ab8b81993eebfd73c88
       overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
+        tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
+        season_number: 30
+        episode_number: 37
+    '30 min Bootcamp: Upper Body with Cody Rigsby':
+      download: https://members.onepeloton.com/classes/player/114f68cb00eb40e18ce2cd0ee59ad508
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
         season_number: 30
         episode_number: 38
-    '30 min Bootcamp: Full Body with Callie Gullickson':
-      download: https://members.onepeloton.com/classes/player/9d77a9c858ed461faeb020e61378b8f0
+    30 min Christina Aguilera Bootcamp with Jess Sims:
+      download: https://members.onepeloton.com/classes/player/fc10216be76d4c4687256b72ee3b4d9e
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
+        season_number: 30
+        episode_number: 40
+    30 min Country Bootcamp with Callie Gullickson:
+      download: https://members.onepeloton.com/classes/player/6b58db1ec01949598c3d5e5db4ef5e9f
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
         season_number: 30
         episode_number: 44
-    30 min Justin Timberlake Bootcamp with Jess Sims:
-      download: https://members.onepeloton.com/classes/player/8d77a8c166f947bca98b742e3f379313
+    30 min Caribbean Bootcamp with Jess Sims:
+      download: https://members.onepeloton.com/classes/player/ee0d19816094422684a66fc89ebf83c6
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
         season_number: 30
-        episode_number: 10
-    30 min Country Bootcamp with Callie Gullickson:
-      download: https://members.onepeloton.com/classes/player/fde5f383df1d48d9adea48b6c9746284
+        episode_number: 47
+  = Bike Bootcamp (45 min):
+    45 min Bootcamp with Jess Sims:
+      download: https://members.onepeloton.com/classes/player/41cfd23a677f41e887af8bad57c51946
       overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
-        season_number: 30
-        episode_number: 11
-    '30 min Bootcamp: Upper Body with Callie Gullickson':
-      download: https://members.onepeloton.com/classes/player/ed4fa90d1e794e76b134ef03dee98223
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
-        season_number: 30
-        episode_number: 43
-    '30 min Bootcamp: Bodyweight with Cody Rigsby':
-      download: https://members.onepeloton.com/classes/player/e0c5c1270fa74ac099981feaf68cb33e
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
-        season_number: 30
-        episode_number: 15
-    '30 min Bootcamp: Full Body with Tunde Oyeneyin':
-      download: https://members.onepeloton.com/classes/player/f9464b5555ee425699246cd2535e36e6
+        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
+        season_number: 45
+        episode_number: 1
+    45 min Bootcamp with Tunde Oyeneyin:
+      download: https://members.onepeloton.com/classes/player/d17878d4464240e19a0577113fa9ce10
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
-        season_number: 30
-        episode_number: 36
-    30 min Pop Bootcamp with Callie Gullickson:
-      download: https://members.onepeloton.com/classes/player/562ae5d8f19840d19627c676ac061913
+        season_number: 45
+        episode_number: 5
+    '45 min Bootcamp: Full Body with Jess Sims':
+      download: https://members.onepeloton.com/classes/player/3ee9db95741b4843a945cb543d4dc778
       overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
-        season_number: 30
+        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
+        season_number: 45
         episode_number: 20
-    '30 min Bootcamp: Bodyweight with Callie Gullickson':
-      download: https://members.onepeloton.com/classes/player/377e2a262a26472fbe3c623ab1b65f3e
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
-        season_number: 30
-        episode_number: 23
-    '30 min Bootcamp: Core with Tunde Oyeneyin':
-      download: https://members.onepeloton.com/classes/player/e098e9c6b2db424faf111bd0db843759
+    '45 min Bootcamp: Full Body with Tunde Oyeneyin':
+      download: https://members.onepeloton.com/classes/player/77b4a7cfe54c4ff4b6f13132e1d7feda
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
-        season_number: 30
-        episode_number: 24
-    30 min Pop Bootcamp with Cody Rigsby:
-      download: https://members.onepeloton.com/classes/player/25083ecd67db4154a42c14eb63c38e40
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
-        season_number: 30
-        episode_number: 26
-    30 min Hip Hop Bootcamp with Robin Arzón:
-      download: https://members.onepeloton.com/classes/player/94d69ff8d3604c11bad5a63c2966ec8c
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Robin Arzón
-        season_number: 30
-        episode_number: 30
-    30 min Pop Punk Bootcamp with Callie Gullickson:
-      download: https://members.onepeloton.com/classes/player/7721faf9aa14406dae6371ae5cffaca5
+        season_number: 45
+        episode_number: 18
+    45 min EDM Bootcamp with Callie Gullickson:
+      download: https://members.onepeloton.com/classes/player/6c7d35257a6444be91b8090955bd5fd1
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
-        season_number: 30
-        episode_number: 34
-    30 min Ludacris Bootcamp with Tunde Oyeneyin:
-      download: https://members.onepeloton.com/classes/player/fb3a1c3bc7444dc7b7b53815fe998cd7
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
-        season_number: 30
-        episode_number: 40
-    '30 min Bootcamp: Core with Callie Gullickson':
-      download: https://members.onepeloton.com/classes/player/99bad6e4c1f94c4caa694fb3684722f7
+        season_number: 45
+        episode_number: 15
+    '45 min Bootcamp: Full Body with Callie Gullickson':
+      download: https://members.onepeloton.com/classes/player/31796f1637df41e1a431de956df263df
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Callie Gullickson
-        season_number: 30
-        episode_number: 42
-    30 min Latin Bootcamp with Jess Sims:
-      download: https://members.onepeloton.com/classes/player/e082cd6873db4297b68d92edacbe4c9f
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
-        season_number: 30
-        episode_number: 45
+        season_number: 45
+        episode_number: 19
   = Bike Bootcamp (60 min):
     '60 min Bootcamp: Full Body with Jess Sims':
-      download: https://members.onepeloton.com/classes/player/0495559157724886ac7f699bc9bf6175
+      download: https://members.onepeloton.com/classes/player/29c75c763d5b4d7cb21341bfb25f8038
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
         season_number: 60
-        episode_number: 4
-    60 min EDM Bootcamp with Jess Sims:
-      download: https://members.onepeloton.com/classes/player/e968616cbf3b4a98a8fa99675876540f
+        episode_number: 6
+  = Tread Bootcamp (45 min):
+    Thunder 45 with Adrian Williams:
+      download: https://members.onepeloton.com/classes/player/8002f5a767654a19ac9924297e6d5761
       overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
-        season_number: 60
-        episode_number: 5
+        tv_show_directory: /media/peloton/Tread Bootcamp/Adrian Williams
+        season_number: 45
+        episode_number: 31
+    45 min HIIT Bootcamp with Andy Speer:
+      download: https://members.onepeloton.com/classes/player/d4d0b5ba033f47faaa35cff984b8bc18
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Andy Speer
+        season_number: 45
+        episode_number: 27
+    45 min Hiking Bootcamp with Rebecca Kennedy:
+      download: https://members.onepeloton.com/classes/player/0e9c2a77bc8a4de9ad4512b7b1cb0a90
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Rebecca Kennedy
+        season_number: 45
+        episode_number: 23
+    '45 min HIIT Bootcamp: Full Body with Andy Speer':
+      download: https://members.onepeloton.com/classes/player/09b80f2b85994066b3929b2aa6b574ce
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Andy Speer
+        season_number: 45
+        episode_number: 29
+    45 min 2000s Bootcamp with Rebecca Kennedy:
+      download: https://members.onepeloton.com/classes/player/1093a884091340e69a4a0e7f8e7480c8
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Rebecca Kennedy
+        season_number: 45
+        episode_number: 30
+    '45 min Bootcamp: Full Body with Selena Samuela':
+      download: https://members.onepeloton.com/classes/player/d582a9a21e5742a2b3748011c7a20504
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Selena Samuela
+        season_number: 45
+        episode_number: 32
+    '45 min Hiking Bootcamp: Full Body with Rebecca Kennedy':
+      download: https://members.onepeloton.com/classes/player/0c6bd376bbf848c5b4be319a65c71247
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Rebecca Kennedy
+        season_number: 45
+        episode_number: 33
   = Tread Bootcamp (30 min):
     30 min HIIT Bootcamp with Andy Speer:
-      download: https://members.onepeloton.com/classes/player/852546cb044a4b1a99d2182f2bb0999d
+      download: https://members.onepeloton.com/classes/player/52cf1330108d471baa30ab03b58e586f
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Andy Speer
+        season_number: 30
+        episode_number: 27
+    '30 min Walking Bootcamp: 50/50 with Matty Maggiacomo':
+      download: https://members.onepeloton.com/classes/player/7c80aebd79d44cb0bae47d228a151a11
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Matty Maggiacomo
+        season_number: 30
+        episode_number: 2
+    30 min Hiking Bootcamp with Rebecca Kennedy:
+      download: https://members.onepeloton.com/classes/player/79bc349e9c52404e85749c2a623c2b59
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Rebecca Kennedy
+        season_number: 30
+        episode_number: 17
+    30 min Walking Bootcamp with Matty Maggiacomo:
+      download: https://members.onepeloton.com/classes/player/92a0cefe57444d8a8800235c784e220a
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Matty Maggiacomo
+        season_number: 30
+        episode_number: 24
+    30 min Bootcamp with Joslyn Thompson Rule:
+      download: https://members.onepeloton.com/classes/player/a114a9cc9af84529885a72d47bde4d91
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Joslyn Thompson Rule
+        season_number: 30
+        episode_number: 26
+    '30 min Hiking Bootcamp: 50/50 with Rebecca Kennedy':
+      download: https://members.onepeloton.com/classes/player/050348110a3740ad94414120ebc3fc9e
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Rebecca Kennedy
+        season_number: 30
+        episode_number: 21
+    '30 min Bootcamp: Full Body with Marcel Maurer':
+      download: https://members.onepeloton.com/classes/player/9dbb494c0dbc43ddb187c980c36f083e
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Marcel Maurer
+        season_number: 30
+        episode_number: 28
+    30 min Pop Bootcamp with Joslyn Thompson Rule:
+      download: https://members.onepeloton.com/classes/player/09efc2900d814b7faef55add486446d0
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Joslyn Thompson Rule
+        season_number: 30
+        episode_number: 29
+    '30 min HIIT Bootcamp: Full Body with Andy Speer':
+      download: https://members.onepeloton.com/classes/player/24ed5c91ecbb4cc38d1c31eb0bfd30a2
       overrides:
         tv_show_directory: /media/peloton/Tread Bootcamp/Andy Speer
         season_number: 30
         episode_number: 35
-    '30 min Walking Bootcamp: 50/50 with Matty Maggiacomo':
-      download: https://members.onepeloton.com/classes/player/2645fbae161047f8a9cadb809aa6612a
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Matty Maggiacomo
-        season_number: 30
-        episode_number: 20
-    30 min Hiking Bootcamp with Rebecca Kennedy:
-      download: https://members.onepeloton.com/classes/player/4abf8b810bc04787a5455eb139758ca1
+    '30 min Hiking Bootcamp: Standing Core with Rebecca Kennedy':
+      download: https://members.onepeloton.com/classes/player/7d7e2275e8944012a1e75b6b14a98358
       overrides:
         tv_show_directory: /media/peloton/Tread Bootcamp/Rebecca Kennedy
         season_number: 30
-        episode_number: 28
-    '30 min Bootcamp: 50/50 with Selena Samuela':
-      download: https://members.onepeloton.com/classes/player/856ba25254a849d58d65e4ac4e358649
+        episode_number: 31
+    '30 min HIIT Bootcamp: Upper Body with Andy Speer':
+      download: https://members.onepeloton.com/classes/player/6e99889653cf407bb478c845af37dfa6
       overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Selena Samuela
+        tv_show_directory: /media/peloton/Tread Bootcamp/Andy Speer
         season_number: 30
-        episode_number: 11
-    30 min Walking Bootcamp with Matty Maggiacomo:
-      download: https://members.onepeloton.com/classes/player/295ff19951204ba3afabffebe683e466
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Matty Maggiacomo
-        season_number: 30
-        episode_number: 37
-    30 min Bootcamp with Joslyn Thompson Rule:
-      download: https://members.onepeloton.com/classes/player/bf1ac88cd79b4fad8ee4cef0726da846
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Joslyn Thompson Rule
-        season_number: 30
-        episode_number: 36
-    '30 min Bootcamp: 50/50 with Joslyn Thompson Rule':
-      download: https://members.onepeloton.com/classes/player/210d0209a9bb4697959114afb6ecbedf
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Joslyn Thompson Rule
-        season_number: 30
-        episode_number: 16
-    '30 min Hiking Bootcamp: 50/50 with Rebecca Kennedy':
-      download: https://members.onepeloton.com/classes/player/ef3de11f933344e1901a3a3c817528ba
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Rebecca Kennedy
-        season_number: 30
-        episode_number: 30
-    30 min Bootcamp with Selena Samuela:
-      download: https://members.onepeloton.com/classes/player/eb21fa2b8479403ea7c11b2bfed67e7d
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Selena Samuela
-        season_number: 30
-        episode_number: 24
-    '30 min Bootcamp: 50/50 with Rebecca Kennedy':
-      download: https://members.onepeloton.com/classes/player/d615b706905648698a0e00e4d7c066ca
+        episode_number: 32
+    '30 min Hiking Bootcamp: Full Body with Rebecca Kennedy':
+      download: https://members.onepeloton.com/classes/player/f8c94a75696c4cbebd9b098d239846d7
       overrides:
         tv_show_directory: /media/peloton/Tread Bootcamp/Rebecca Kennedy
         season_number: 30
         episode_number: 34
-  = Tread Bootcamp (45 min):
-    Thunder 45 with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/f09cb2a4f4414efeb7fc6c4850fdb0a1
+  = Tread Bootcamp (60 min):
+    Sims 60 with Jess Sims:
+      download: https://members.onepeloton.com/classes/player/8c4c309708ff4918804358ac3aaffd80
       overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Adrian Williams
-        season_number: 45
-        episode_number: 28
-    45 min HIIT Bootcamp with Andy Speer:
-      download: https://members.onepeloton.com/classes/player/1836267d8461421588836b6c9764e68e
+        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
+        season_number: 60
+        episode_number: 4
+    'Sims 60: Full Body with Jess Sims':
+      download: https://members.onepeloton.com/classes/player/8ab70c05ca9e433d9b109bd4fbf37921
       overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Andy Speer
-        season_number: 45
-        episode_number: 24
-    45 min Hiking Bootcamp with Rebecca Kennedy:
-      download: https://members.onepeloton.com/classes/player/b376b7f1bdf24c4abe8eabe38e63a5e6
+        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
+        season_number: 60
+        episode_number: 5
+    'Sims 60: 2000s with Jess Sims':
+      download: https://members.onepeloton.com/classes/player/c8c030dea4f54a95a4a47d2b1ba679d5
       overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Rebecca Kennedy
-        season_number: 45
-        episode_number: 26
-  = Tread Bootcamp (50 min):
-    'Bootcamp: 50/50 with Selena Samuela':
-      download: https://members.onepeloton.com/classes/player/fbb778cca7d1464ba59b8421f52a5e0a
+        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
+        season_number: 60
+        episode_number: 6
+    'Sims 60: 90s with Jess Sims':
+      download: https://members.onepeloton.com/classes/player/57f43273bfaf46c29dc521737bb7494b
       overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Selena Samuela
-        season_number: 50
-        episode_number: 1
+        tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
+        season_number: 60
+        episode_number: 7
   = Row Bootcamp (30 min):
     30 min Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/bb9316c3b0314facb47b9e2275712bc3
+      download: https://members.onepeloton.com/classes/player/844ff9d55318444d85573fc47a6fbdf1
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 30
-        episode_number: 7
+        episode_number: 5
     '30 min Bootcamp: 50/50 with Katie Wang':
-      download: https://members.onepeloton.com/classes/player/2321415d21e74361b0196f444c80d655
+      download: https://members.onepeloton.com/classes/player/daa27badbdb04e3c96bdb3f4b35f71cd
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 30
-        episode_number: 3
+        episode_number: 2
     '30 min Bootcamp: Upper Body with Adrian Williams':
-      download: https://members.onepeloton.com/classes/player/954cf7b8fb40442d9cc4fc3d1e78dfbf
+      download: https://members.onepeloton.com/classes/player/2256c3fda00247d1bcbd2ba2c17da855
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
         season_number: 30
-        episode_number: 22
+        episode_number: 36
     30 min Hip Hop Bootcamp with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/e618fce38636494585f6738712a84f29
+      download: https://members.onepeloton.com/classes/player/7ea284ff3a684d038c18dd5cb809bb58
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
         season_number: 30
-        episode_number: 43
+        episode_number: 37
     '30 min Bootcamp: Full Body with Adrian Williams':
-      download: https://members.onepeloton.com/classes/player/cf0f5bbdfad04dd990720977158e39bd
+      download: https://members.onepeloton.com/classes/player/0dff059bcae44e97865de8930ff2de50
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
         season_number: 30
-        episode_number: 38
+        episode_number: 46
     30 min EDM Bootcamp with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/aaabdf2afa784344bb31636e33e7a2d3
+      download: https://members.onepeloton.com/classes/player/76d4779571e44079b68b1585cf4e6a33
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
         season_number: 30
-        episode_number: 50
+        episode_number: 27
     30 min Disco Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/7cc7d7564b4347059243ee948ea4e7bf
+      download: https://members.onepeloton.com/classes/player/5886f1a53e7f44c39eb3ff43c1a3cfbf
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 30
+        episode_number: 11
+    '30 min Bootcamp: Lower Body with Katie Wang':
+      download: https://members.onepeloton.com/classes/player/3252a6a7bb8f44d9ba5c9dd534080e22
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 30
+        episode_number: 42
+    '30 min Bootcamp: Upper Body with Katie Wang':
+      download: https://members.onepeloton.com/classes/player/a6346c76324c44318ee347fea0ac031a
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 30
+        episode_number: 45
+    30 min Hip Hop Bootcamp with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/e86dd95ce4504f678b0d06048ff6a357
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 30
+        episode_number: 15
+    '30 min Bootcamp: Core with Katie Wang':
+      download: https://members.onepeloton.com/classes/player/4cd7ed8aea184deb97d7114b786bbae9
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 30
+        episode_number: 31
+    30 min 2000s Bootcamp with Adrian Williams:
+      download: https://members.onepeloton.com/classes/player/c7f727abb12f4274be059395a572c9ff
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
+        season_number: 30
+        episode_number: 20
+    '30 min Bootcamp: Full Body with Katie Wang':
+      download: https://members.onepeloton.com/classes/player/7b8fb0ab44d046c786db3788af4ca0e1
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 30
+        episode_number: 44
+    30 min Jonas Brothers Bootcamp with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/afc87622b312465e8e10f1ddd3a3e19b
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 30
+        episode_number: 30
+    30 min K-Pop Bootcamp with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/6987a55a93f249b7aea17986d583a6df
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 30
         episode_number: 32
-    '30 min Bootcamp: Lower Body with Katie Wang':
-      download: https://members.onepeloton.com/classes/player/bbaac33f35204e0a9bcd020377904837
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 30
-        episode_number: 46
     30 min Latin Bootcamp with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/3c4da126ff3347dea85e0b8a8f4bf6f2
+      download: https://members.onepeloton.com/classes/player/21945a707844497a8c217979941201d7
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
         season_number: 30
-        episode_number: 15
-    '30 min Bootcamp: Upper Body with Katie Wang':
-      download: https://members.onepeloton.com/classes/player/3992aa65184848018facb9d89eb1b843
+        episode_number: 35
+    30 min EDM Bootcamp with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/1e9ef5bb02204f34bca2c73b76e5934a
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 30
-        episode_number: 36
-    30 min Hip Hop Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/07ef300dd3e7483f96a6269037e4ef43
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 30
-        episode_number: 33
-    '30 min Bootcamp: Core with Katie Wang':
-      download: https://members.onepeloton.com/classes/player/e924e5b1ab8e4b4389401a09aa9c63bc
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 30
-        episode_number: 49
-    30 min 2000s Bootcamp with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/343d8a098f6e4a45bb47ba293e33e667
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
-        season_number: 30
-        episode_number: 37
-    30 min Pop Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/3a22be86110d46d69b59cf2657c7bb17
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 30
-        episode_number: 25
-    30 min 80s Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/ea3823b0648f46738397efa6c1f981d7
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 30
-        episode_number: 28
-    '30 min Bootcamp: Bodyweight with Adrian Williams':
-      download: https://members.onepeloton.com/classes/player/0567be13708f4ba7b542668fa90f6a5a
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
-        season_number: 30
-        episode_number: 31
-    30 min Pop Punk Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/9281968ff8354076b1eea166f5478971
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 30
-        episode_number: 34
+        episode_number: 38
     30 min 90s Bootcamp with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/800643f544d84badb33ba2dbd226dd4a
+      download: https://members.onepeloton.com/classes/player/a95e232d27f547dd8d17db3eeab0bffd
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
         season_number: 30
         episode_number: 39
-    '30 min Bootcamp: Full Body with Katie Wang':
-      download: https://members.onepeloton.com/classes/player/6f1c66c07a6c4c1082d6148c69a8a5c1
+    '30 min Bootcamp: Core with Adrian Williams':
+      download: https://members.onepeloton.com/classes/player/f9b41dbe2e644cfb9eced3875d2523cf
       overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
         season_number: 30
-        episode_number: 42
-    30 min Upper Body Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/d025b3a4ba0e417a9bb0fe04bfc72835
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 30
-        episode_number: 44
+        episode_number: 40
     30 min Pop Bootcamp with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/10c65bb17b4543ddb13a70ee844ad969
+      download: https://members.onepeloton.com/classes/player/d26c58325a2e43dbb09b2165acef40c7
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
         season_number: 30
-        episode_number: 45
-    30 min EDM Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/43c4a99680e4441a85ba9205bda08777
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 30
-        episode_number: 47
-    '30 min Bootcamp: Lower Body with Adrian Williams':
-      download: https://members.onepeloton.com/classes/player/2dfe190b57324b8a8926fd613af6ab06
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
-        season_number: 30
-        episode_number: 48
-    30 min 2010s Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/c7a1d0b7e507455aafcb4691b9e8f9f5
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 30
-        episode_number: 51
+        episode_number: 41
   = Row Bootcamp (45 min):
     '45 min Bootcamp: Full Body with Katie Wang':
-      download: https://members.onepeloton.com/classes/player/1ec44d54de3a477a964713ee8591ebeb
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 45
-        episode_number: 19
-    45 min Pop Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/d03c6fd4bbf34b2aab38675786bd114c
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 45
-        episode_number: 14
-    45 min Rock Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/b685f2a4b46a4fbbb6025901f3ee0c0f
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 45
-        episode_number: 13
-    45 min 2010s Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/00f3cc37e0934969bcfa5825d4d714d3
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 45
-        episode_number: 16
-    '45 min Bootcamp: Upper Body with Katie Wang':
-      download: https://members.onepeloton.com/classes/player/ee938b1db76747dd9579e895bdf90b11
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 45
-        episode_number: 9
-    45 min Hip Hop Bootcamp with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/71dd686a8ee547b0918aa51e0bbccae6
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
-        season_number: 45
-        episode_number: 15
-    45 min 90s Bootcamp with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/2cb087513e8e4d2baaca75ffa46a3f17
+      download: https://members.onepeloton.com/classes/player/9cda6a362759468595539961996c9eae
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 45
         episode_number: 18
+    45 min Pop Bootcamp with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/3d4df080dce848198acdd8bcb7aa863f
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 45
+        episode_number: 20
+    45 min Rock Bootcamp with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/0e675e92632b4a2a90b3bc4ef3fd7168
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 45
+        episode_number: 14
+    45 min 2010s Bootcamp with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/7b4c3bdbfa774ae0b6bca2b40222df23
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 45
+        episode_number: 8
+    45 min EDM Bootcamp with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/3a58ffab94974ddf87d929310379ee8a
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 45
+        episode_number: 23
+    45 min 2000s Bootcamp with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/6f9a3e89420b4caeaf7e6145c3d127dd
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 45
+        episode_number: 19
+    45 min Hip Hop Bootcamp with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/84ba79f1673b4aa8b546e80b6aaa8f1b
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 45
+        episode_number: 17
+    '45 min Bootcamp: Bodyweight with Katie Wang':
+      download: https://members.onepeloton.com/classes/player/5a979930880f451f847a09b08eca8562
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 45
+        episode_number: 21
+    45 min Latin Bootcamp with Adrian Williams:
+      download: https://members.onepeloton.com/classes/player/6fd5805f8ebb45f1a5305d0b3a2c523d
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
+        season_number: 45
+        episode_number: 22
   = Row Bootcamp (60 min):
     '60 min Bootcamp: Full Body with Katie Wang':
-      download: https://members.onepeloton.com/classes/player/8ecb31c18a5b45fba172bc7fe569f8e5
+      download: https://members.onepeloton.com/classes/player/347d8f3b6284454d9fef124e04c69cf0
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 60
-        episode_number: 5
+        episode_number: 6
