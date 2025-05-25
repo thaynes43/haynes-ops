@@ -25,7 +25,7 @@ __preset__:
     merge_output_format: mp4
 Plex TV Show by Date:
   = Bike Bootcamp (30 min):
-    '30 min Bootcamp: 50/50 with Tunde Oyeneyin':
+    '30 min Bootcamp: 50-50 with Tunde Oyeneyin':
       download: https://members.onepeloton.com/classes/player/9e1b6654a6ad40f6ad1369228dcf4710
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
@@ -227,7 +227,7 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Tread Bootcamp/Andy Speer
         season_number: 30
         episode_number: 27
-    '30 min Walking Bootcamp: 50/50 with Matty Maggiacomo':
+    '30 min Walking Bootcamp: 50-50 with Matty Maggiacomo':
       download: https://members.onepeloton.com/classes/player/7c80aebd79d44cb0bae47d228a151a11
       overrides:
         tv_show_directory: /media/peloton/Tread Bootcamp/Matty Maggiacomo
@@ -251,7 +251,7 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Tread Bootcamp/Joslyn Thompson Rule
         season_number: 30
         episode_number: 26
-    '30 min Hiking Bootcamp: 50/50 with Rebecca Kennedy':
+    '30 min Hiking Bootcamp: 50-50 with Rebecca Kennedy':
       download: https://members.onepeloton.com/classes/player/050348110a3740ad94414120ebc3fc9e
       overrides:
         tv_show_directory: /media/peloton/Tread Bootcamp/Rebecca Kennedy
@@ -325,7 +325,7 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 30
         episode_number: 5
-    '30 min Bootcamp: 50/50 with Katie Wang':
+    '30 min Bootcamp: 50-50 with Katie Wang':
       download: https://members.onepeloton.com/classes/player/daa27badbdb04e3c96bdb3f4b35f71cd
       overrides:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
