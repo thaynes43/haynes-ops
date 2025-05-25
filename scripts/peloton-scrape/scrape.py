@@ -167,13 +167,28 @@ class FileManager:
                 continue  # Only process leaf directories
 
             parts = root.split(os.sep)
-            if len(parts) < 4:
+            if len(parts) < 8:
+                print(f"WARN - SKIPPING {root}")
                 continue
+                #raise ValueError(f"Path \"{root}\" cannot be used to find an activity!")
 
             activity_name = parts[-3]
             activity = activity_map.get(activity_name.lower())
+
+            # Fallback for ones that don't match enum
             if not activity:
-                continue
+                if activity_name == "Tread Bootcamp":
+                    activity = Activity.BOOTCAMP
+                elif activity_name == "Row Bootcamp":
+                    activity = Activity.ROW_BOOTCAMP
+                elif activity_name == "Bike Bootcamp":
+                    activity = Activity.BIKE_BOOTCAMP
+                elif "50-50" in root:                   # HACK need to fix my directory after 50/50 disaster
+                    print(f"ERROR - {root}")
+                    continue
+                else:
+                    # DO NOT RUN SCRIPT OR WE WILL MISLAIN THE EPISODE #s
+                    raise ValueError(f"Activity name {activity_name} does not map to a known activity.")
 
             if activity not in results:
                 results[activity] = ActivityData(activity)
