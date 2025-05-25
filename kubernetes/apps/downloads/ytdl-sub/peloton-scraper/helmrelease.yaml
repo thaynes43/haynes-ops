@@ -35,7 +35,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/peloton-scraper
-              tag: 0.2.1
+              tag: 0.3.0
             resources:
               requests:
                 cpu: 100m
