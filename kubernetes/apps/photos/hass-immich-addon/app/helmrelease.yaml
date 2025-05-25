@@ -55,4 +55,4 @@ spec:
             app:
               - path: /immich-album
                 subPath: data/photos/hass-gallery
-                readOnly: true
+                readOnly: false
