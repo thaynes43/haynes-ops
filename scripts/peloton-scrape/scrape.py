@@ -252,7 +252,6 @@ class FileManager:
 
         return activity_map
 
-
     def removeExistingClasses(self, existingClasses):
         with open(self.subsFile, "r") as f:
             subs = yaml.safe_load(f)
@@ -287,7 +286,6 @@ class FileManager:
             print("No changes made to subscriptions.")
 
         return changed
-
 
     def addNewClasses(self, classes):
         with open(self.subsFile, "r") as f:
@@ -403,7 +401,7 @@ class PelotonScraper:
         skipped = 0
         for link in links:
             if len(self.results) >= self.maxClasses:
-                print(f"Found required {self.maxClasses} {self.activity} classes after searching {index}. Skipped {skipped}.")
+                print(f"Found {len(self.results)} >= required {self.maxClasses} {self.activity} classes after searching {index}. Skipped {skipped}.")
                 break
 
             index = index + 1
@@ -462,6 +460,7 @@ class PelotonScraper:
             dict: Nested dict for merging into subscriptions.yaml
         """
         result_dict = {}
+        dupe_dict = {}
 
         for r in self.results:
             if r["activity"].lower() != self.activity.value.lower() and "bootcamp" not in r["activity"].lower():
@@ -474,7 +473,19 @@ class PelotonScraper:
             duration_key = f'= {activity} ({duration} min)'
 
             # Compose episode title
-            episode_title = f'{r["title"]} with {r["instructor"]}'
+            episode_title = f'{r["title"]} with {r["instructor"]}'.replace("/", "-")
+
+            # Insert into the nested dict structure
+            if duration_key not in result_dict:
+                result_dict[duration_key] = {}
+
+            # QnD conflict resolution that will still give us a decent name
+            if episode_title in result_dict[duration_key]:
+                if episode_title not in dupe_dict:
+                    dupe_dict[episode_title] = 1
+                updated_title = f"{episode_title} ({dupe_dict[episode_title]})"
+                dupe_dict[episode_title] += 1
+                episode_title = updated_title
 
             # Compose episode dict
             ep_dict = {
@@ -486,10 +497,10 @@ class PelotonScraper:
                 }
             }
 
-            # Insert into the nested dict structure
-            if duration_key not in result_dict:
-                result_dict[duration_key] = {}
             result_dict[duration_key][episode_title] = ep_dict
+
+        for duration_key in result_dict:
+            print(f"Extracted {len(result_dict[duration_key])} YAML entries for {duration_key}")
 
         return result_dict
             

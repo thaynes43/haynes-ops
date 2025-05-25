@@ -33,5 +33,5 @@ jobs:
           file: ./scripts/peloton-scrape/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/peloton-scraper:0.2.3
+            ghcr.io/${{ github.repository_owner }}/peloton-scraper:0.3.0
             ghcr.io/${{ github.repository_owner }}/peloton-scraper:latest
