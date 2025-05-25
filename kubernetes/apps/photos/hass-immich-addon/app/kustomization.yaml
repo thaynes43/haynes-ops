@@ -3,8 +3,5 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Pre Flux-Kustomizations
-  - ./namespace.yaml
-  # Flux-Kustomizations
-  - ./immich/ks.yaml
-  - ./hass-immich-addon/ks.yaml
+  - ./externalsecret.yaml
+  - ./helmrelease.yaml
