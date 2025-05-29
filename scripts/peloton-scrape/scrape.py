@@ -166,8 +166,10 @@ class FileManager:
             if dirs:
                 continue  # Only process leaf directories
 
+            pattern = r"S(\d+)E(\d+)"
+            classFolderMatch = re.search(pattern, root)
             parts = root.split(os.sep)
-            if len(parts) < 8:
+            if len(parts) < 3 or not classFolderMatch:
                 print(f"WARN - SKIPPING {root}")
                 continue
                 #raise ValueError(f"Path \"{root}\" cannot be used to find an activity!")
@@ -183,7 +185,7 @@ class FileManager:
                     activity = Activity.ROW_BOOTCAMP
                 elif activity_name == "Bike Bootcamp":
                     activity = Activity.BIKE_BOOTCAMP
-                elif "50-50" in root:                   # HACK need to fix my directory after 50/50 disaster
+                elif "50-50" in root or "Bootcamp: 50" in root:             # HACK need to fix my directory after 50/50 disaster
                     print(f"ERROR - {root}")
                     continue
                 else:
