@@ -35,7 +35,7 @@ spec:
           app:
             image:
               repository: ghcr.io/jmbannon/ytdl-sub
-              tag: 2025.05.23
+              tag: 2025.06.01
             command:
               - bash
               - -c
