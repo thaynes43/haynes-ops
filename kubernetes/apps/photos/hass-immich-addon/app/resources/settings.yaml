@@ -10,9 +10,9 @@ filters:
     selector_type: "random"
     people: ["Donna Peterson"]
 
-  - name: "Dogs"
-    selector_type: "smart"
-    search_query: "Dogs"
+#  - name: "Dogs"
+#    selector_type: "smart"
+#    search_query: "Dogs"
 
   - name: "Photos of the Kids"
     selector_type: "random"
@@ -24,9 +24,9 @@ filters:
     taken_before: "2013-01-01" 
     city: "Andover"
 
-  - name: "Vacation Photos"
-    selector_type: "smart"
-    search_query: "Theme Park"
+#  - name: "Vacation Photos"
+#    selector_type: "smart"
+#    search_query: "Theme Park"
 
   - name: "Random Photos From This Year"
     selector_type: "random"
