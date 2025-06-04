@@ -1,6 +1,7 @@
 # Only overrides specific settings, lets envs handle secrets
 hass_img_path: "/immich-album"
 update_interval_minutes: 12
+num_photos: 12
 log_level: "DEBUG"
 
 # Photo filters - list of filter sets to cycle through
