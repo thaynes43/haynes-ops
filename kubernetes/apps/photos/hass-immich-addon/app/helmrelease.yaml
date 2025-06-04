@@ -27,6 +27,9 @@ spec:
             image:
               repository: ghcr.io/thaynes43/hass-immich-addon
               tag: 0.2.5
+            args:
+              - --config
+              - /config/settings.yaml
             resources:
               requests:
                 cpu: 100m
@@ -47,3 +50,10 @@ spec:
               - path: /immich-album
                 subPath: data/photos/hass-gallery
                 readOnly: false
+      config:
+        type: configMap
+        name: hass-immich-addon-configmap
+        globalMounts:
+          - path: /config/settings.yaml
+            subPath: settings.yaml
+            readOnly: true

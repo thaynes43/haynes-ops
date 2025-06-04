@@ -1,0 +1,33 @@
+# Only overrides specific settings, lets envs handle secrets
+hass_img_path: "/immich-album"
+update_interval_minutes: 12
+log_level: "DEBUG"
+
+# Photo filters - list of filter sets to cycle through
+filters:
+  - name: "Random of Donna"
+    selector_type: "random"
+    people: ["Donna Peterson"]
+
+  - name: "Dogs"
+    selector_type: "smart"
+    search_query: "Dogs"
+
+  - name: "Photos of the Kids"
+    selector_type: "random"
+    people: ["Jackson Haynes", "Penelope Haynes"]
+
+  - name: "Wedding Photos"
+    selector_type: "random"
+    people: ["Tom Haynes", "Kellie Haynes"]
+    taken_before: "2013-01-01" 
+    city: "Andover"
+
+  - name: "Vacation Photos"
+    selector_type: "smart"
+    search_query: "Theme Park"
+
+  - name: "Random Photos From This Year"
+    selector_type: "random"
+    taken_after: "2024-12-31"
+    taken_before: "2025-12-31"
