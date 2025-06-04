@@ -21,12 +21,12 @@ spec:
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
-          restartPolicy: Never
+          restartPolicy: Always
         containers:
           app:
             image:
               repository: ghcr.io/thaynes43/hass-immich-addon
-              tag: 0.2.4
+              tag: 0.2.5
             resources:
               requests:
                 cpu: 100m
