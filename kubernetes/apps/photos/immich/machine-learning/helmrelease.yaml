@@ -62,6 +62,11 @@ spec:
               tag: v1.134.0@sha256:e157e0fa0d4363b0b6bab1923adab5951bbcdb71cd9016470bc6810dae21d115
             env:
               TZ: America/New_York
+              IMMICH_MEDIA_LOCATION: /usr/src/app/upload
+              MACHINE_LEARNING_CACHE_FOLDER: /cache
+              TRANSFORMERS_CACHE: /cache
+              XDG_CONFIG_HOME: /cache/.config
+              MPLCONFIGDIR: /cache/.config/matplotlib
             envFrom:
               - secretRef:
                   name: immich-secret
@@ -81,7 +86,8 @@ spec:
             port: &port 3003
     persistence:
       cache:
-        type: emptyDir
+        type: persistentVolumeClaim
+        existingClaim: immich-machine-learning
         globalMounts:
           - path: /cache
       geocoding-dump:

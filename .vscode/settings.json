@@ -87,6 +87,7 @@
         "letsencrypt",
         "Lovewell",
         "macvlan",
+        "matplotlib",
         "mqtt",
         "multus",
         "netrc",
