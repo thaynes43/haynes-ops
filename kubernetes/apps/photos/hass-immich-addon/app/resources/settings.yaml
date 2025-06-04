@@ -6,29 +6,32 @@ log_level: "DEBUG"
 
 # Photo filters - list of filter sets to cycle through
 filters:
+  - name: "Dracut Home"
+    selector_type: "smart-rng"
+    search_query: "House"
+    max_search_results: 50
+    city: "Dracut"
+
   - name: "Random of Donna"
     selector_type: "random"
     people: ["Donna Peterson"]
 
-#  - name: "Dogs"
-#    selector_type: "smart"
-#    search_query: "Dogs"
+  - name: "Theme Park Vacations"
+    selector_type: "smart-rng"
+    search_query: "Theme Park"
+    max_search_results: 1000
 
-  - name: "Photos of the Kids"
+  - name: "Photos of the Kids Together"
     selector_type: "random"
     people: ["Jackson Haynes", "Penelope Haynes"]
 
-  - name: "Wedding Photos"
-    selector_type: "random"
-    people: ["Tom Haynes", "Kellie Haynes"]
-    taken_before: "2013-01-01" 
-    city: "Andover"
-
-#  - name: "Vacation Photos"
-#    selector_type: "smart"
-#    search_query: "Theme Park"
+  - name: "Jody"
+    selector_type: "smart-rng"
+    search_query: "Springer Spaniel"
+    max_search_results: 100
 
   - name: "Random Photos From This Year"
     selector_type: "random"
     taken_after: "2024-12-31"
     taken_before: "2025-12-31"
+
