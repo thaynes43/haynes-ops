@@ -6,6 +6,14 @@ log_level: "DEBUG"
 
 # Photo filters - list of filter sets to cycle through
 filters:
-  - name: "Random of Donna"
+  - name: "Random of Ellen"
     selector_type: "random"
-    people: ["Donna Peterson"]
+    people: ["Ellen Haynes"]
+
+  - name: "Random of Mike"
+    selector_type: "random"
+    people: ["Mike Johnson"]
+
+  - name: "Random of Mike and Ellen"
+    selector_type: "random"
+    people: ["Ellen Haynes", "Mike Johnson"]
