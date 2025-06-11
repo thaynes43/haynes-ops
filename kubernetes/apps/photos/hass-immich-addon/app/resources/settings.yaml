@@ -1,19 +1,36 @@
 # Only overrides specific settings, lets envs handle secrets
 hass_img_path: "/immich-album"
-update_interval_minutes: 12
-num_photos: 12
+update_interval_minutes: 10
+num_photos: 10
 log_level: "DEBUG"
 
 # Photo filters - list of filter sets to cycle through
 filters:
-  - name: "Random of Ellen"
+  - name: "Random of Jackson & Penelope"
     selector_type: "random"
-    people: ["Ellen Haynes"]
+    people: ["Jackson Haynes", "Penelope Haynes"]
 
-  - name: "Random of Mike"
-    selector_type: "random"
-    people: ["Mike Johnson"]
+  - name: "Theme Park Vacations"
+    selector_type: "smart-rng"
+    search_query: "Theme Park"
+    max_search_results: 500
 
   - name: "Random of Mike and Ellen"
     selector_type: "random"
     people: ["Ellen Haynes", "Mike Johnson"]
+
+  - name: "Nature Photos"
+    selector_type: "smart-rng"
+    search_query: "Nature"
+    max_search_results: 500
+
+  - name: "Wedding Photos"
+    selector_type: "random"
+    people: ["Tom Haynes", "Kellie Haynes"]
+    taken_before: "2013-01-01" 
+    city: "Andover"
+
+  - name: "Baby Photos"
+    selector_type: "smart-rng"
+    search_query: "Baby"
+    max_search_results: 500
