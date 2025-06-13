@@ -22,6 +22,7 @@ immich=# GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres;
 
 DB BROKE! Here is how I fixed it:
 
+`k -n database exec -it postgres16-pgvecto-1 -- psql immich`
 ```sql
 DROP INDEX IF EXISTS clip_index;
 ALTER TABLE smart_search ALTER COLUMN embedding SET DATA TYPE real[];
