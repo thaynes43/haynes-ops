@@ -5,7 +5,7 @@ kind: Cluster
 metadata:
   name: postgres16-pgvecto
 spec:
-  instances: 1
+  instances: 3
   imageName: ghcr.io/tensorchord/cloudnative-pgvecto.rs:16.2-v0.2.1
   primaryUpdateStrategy: unsupervised
   storage:
