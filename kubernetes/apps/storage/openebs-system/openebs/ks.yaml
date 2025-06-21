@@ -6,7 +6,7 @@ metadata:
   name: &app openebs
   namespace: flux-system
 spec:
-  targetNamespace: openebs-system
+  targetNamespace: &namespace openebs-system
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
@@ -15,6 +15,11 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
-  wait: false
+  wait: true
   interval: 30m
   timeout: 5m
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: *app
+      namespace: *namespace
