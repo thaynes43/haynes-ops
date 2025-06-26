@@ -118,7 +118,7 @@ spec:
         server: gasha01.haynesnetwork
         path: /hdd-nfs-repl
         advancedMounts:
-          immich-server:
+          paperless-ngx:
             app:
               - path: /library
                 subPath: data/documents/paperless
