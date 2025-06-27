@@ -93,6 +93,23 @@ spec:
         ports:
           http:
             port: *port
+    ingress:
+      app:
+        annotations:
+          traefik.ingress.kubernetes.io/router.middlewares: network-ak-outpost-authentik-embedded-outpost@kubernetescrd
+          external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+        className: traefik-external
+        hosts:
+          - host: "paperless.haynesnetwork.com"
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+        tls:
+          - secretName: certificate-haynesnetwork
+            hosts:
+                - paperless.haynesnetwork.com
     persistence:
       config:
         enabled: true
