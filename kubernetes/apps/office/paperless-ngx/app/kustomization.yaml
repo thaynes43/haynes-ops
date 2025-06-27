@@ -5,3 +5,4 @@ resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml
   - ../../../../templates/volsync/app-pvc
+  - ./ingressroute.yaml

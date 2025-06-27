@@ -69,6 +69,8 @@ spec:
               PAPERLESS_TIKA_ENDPOINT: http://localhost:9998
               PAPERLESS_URL: https://paperless.haynesnetwork.com
               PAPERLESS_ALLOWED_HOSTS: paperless.haynesnetwork.com
+              PAPERLESS_ENABLE_HTTP_REMOTE_USER: 'true'
+              PAPERLESS_HTTP_REMOTE_USER_HEADER_NAME: HTTP_X_AUTHENTIK_EMAIL
               PAPERLESS_CONSUMPTION_DIR: /library/consume
               PAPERLESS_DATA_DIR: /library/data
               PAPERLESS_MEDIA_ROOT: /library/media
@@ -91,22 +93,6 @@ spec:
         ports:
           http:
             port: *port
-    ingress:
-      app:
-        annotations:
-          external-dns.alpha.kubernetes.io/target: haynesnetwork.com
-        className: traefik-external
-        hosts:
-          - host: "paperless.haynesnetwork.com"
-            paths:
-              - path: /
-                service:
-                  identifier: app
-                  port: http
-        tls:
-          - secretName: certificate-haynesnetwork
-            hosts:
-                - paperless.haynesnetwork.com
     persistence:
       config:
         enabled: true
