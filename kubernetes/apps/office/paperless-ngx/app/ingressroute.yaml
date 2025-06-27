@@ -3,7 +3,8 @@ kind: IngressRoute
 metadata:
   name: paperless-ngx
   annotations:
-    external-dns.alpha.kubernetes.io/target: authentik.haynesnetwork.com
+    external-dns.alpha.kubernetes.io/hostname: paperless.haynesnetwork.com
+    external-dns.alpha.kubernetes.io/cname: authentik.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
 spec:
   entryPoints:
