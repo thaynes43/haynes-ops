@@ -1,0 +1,22 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: paperless-ngx
+  annotations:
+    external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+    kubernetes.io/ingress.class: traefik-external
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`paperless.haynesnetwork.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: paperless-ngx
+          port: 80
+      middlewares:
+        - name: ak-outpost-proxy-provider-external-outpost
+          namespace: network
+  tls:
+    secretName: certificate-haynesnetwork
