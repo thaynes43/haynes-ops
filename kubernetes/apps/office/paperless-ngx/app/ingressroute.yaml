@@ -2,9 +2,7 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: paperless-ngx
-  annotations:
-    external-dns.alpha.kubernetes.io/hostname: paperless.haynesnetwork.com
-    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
+  annotations: # TODO external-dns does not work with the middleware!
     kubernetes.io/ingress.class: traefik-external
 spec:
   entryPoints:
