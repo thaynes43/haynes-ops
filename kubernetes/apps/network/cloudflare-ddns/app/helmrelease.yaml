@@ -41,7 +41,7 @@ spec:
               PGID: 568
               INTERVAL: 300
               DETECTION_MODE: dig-whoami.cloudflare
-              CF_HOSTS: "haynesnetwork.com,www.haynesnetwork.com"
+              CF_HOSTS: "haynesnetwork.com" # Cloudflare API only allows one host per zone
               CF_RECORDTYPES: A
               CF_APITOKEN:
                 valueFrom:
