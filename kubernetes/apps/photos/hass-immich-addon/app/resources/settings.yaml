@@ -10,27 +10,29 @@ filters:
     selector_type: "random"
     people: ["Jackson Haynes", "Penelope Haynes"]
 
-  - name: "Theme Park Vacations"
-    selector_type: "smart-rng"
-    search_query: "Theme Park"
-    max_search_results: 500
-
-  - name: "Random of Mike and Ellen"
+  - name: "Pop Pop"
     selector_type: "random"
-    people: ["Ellen Haynes", "Mike Johnson"]
+    people: ["Thomas Peterson Sr"]
 
-  - name: "Nature Photos"
+  - name: "Beach Photos"
     selector_type: "smart-rng"
-    search_query: "Nature"
-    max_search_results: 500
+    search_query: "Beach"
+    max_search_results: 250
 
-  - name: "Wedding Photos"
+  - name: "Nana"
     selector_type: "random"
-    people: ["Tom Haynes", "Kellie Haynes"]
-    taken_before: "2013-01-01" 
-    city: "Andover"
+    people: ["Mary-Ellen Zier"]
 
-  - name: "Baby Photos"
+  - name: "Fireworks"
     selector_type: "smart-rng"
-    search_query: "Baby"
+    search_query: "Fireworks"
+    max_search_results: 50
+
+  - name: "Papa"
+    selector_type: "random"
+    people: ["Rick Zier"]
+
+  - name: "Vacation"
+    selector_type: "smart-rng"
+    search_query: "Vacation"
     max_search_results: 500
