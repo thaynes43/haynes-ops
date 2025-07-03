@@ -38,7 +38,7 @@ spec:
           app:
             image:
               repository: rhasspy/wyoming-speech-to-phrase
-              tag: 1.3.0
+              tag: 1.4.1
             args:
               - --hass-websocket-uri
               - ws://home-assistant.home-automation.svc.cluster.local:8123/api/websocket
