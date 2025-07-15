@@ -42,11 +42,6 @@ spec:
               repository: thecodingmachine/gotenberg
               tag: 8.21.1
               pullPolicy: IfNotPresent
-          redis:
-            image:
-              repository: public.ecr.aws/docker/library/redis
-              tag: 8.0.3
-              pullPolicy: IfNotPresent
           tika:
             image:
               repository: ghcr.io/paperless-ngx/tika
@@ -62,7 +57,7 @@ spec:
               USERMAP_GID: 1000
               PAPERLESS_TIME_ZONE: America/New_York
               PAPERLESS_PORT: &port 80
-              PAPERLESS_REDIS: redis://localhost:6379
+              PAPERLESS_REDIS: redis://dragonfly.database.svc.cluster.local:6379/2
               PAPERLESS_TASK_WORKERS: 2
               PAPERLESS_TIKA_ENABLED: 1
               PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://localhost:3000
