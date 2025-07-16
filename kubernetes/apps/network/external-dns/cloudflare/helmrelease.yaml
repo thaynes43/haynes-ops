@@ -8,7 +8,7 @@ spec:
     spec:
       # https://github.com/kubernetes-sigs/external-dns/blob/master/charts/external-dns/values.yaml
       chart: external-dns
-      version: 1.17.0
+      version: 1.18.0
       sourceRef:
         kind: HelmRepository
         name: external-dns
