@@ -9,7 +9,7 @@ spec:
     spec:
       # https://github.com/open-webui/helm-charts/releases
       chart: open-webui
-      version: 6.26.0
+      version: 6.29.0
       sourceRef:
         kind: HelmRepository
         name: open-webui
