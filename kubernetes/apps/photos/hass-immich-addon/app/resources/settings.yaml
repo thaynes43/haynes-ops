@@ -6,33 +6,24 @@ log_level: "DEBUG"
 
 # Photo filters - list of filter sets to cycle through
 filters:
-  - name: "Random of Jackson & Penelope"
+  - name: "Universal"
     selector_type: "random"
-    people: ["Jackson Haynes", "Penelope Haynes"]
+    city: "Tangelo Park"
 
-  - name: "Pop Pop"
-    selector_type: "random"
-    people: ["Thomas Peterson Sr"]
-
-  - name: "Beach Photos"
+  - name: "Halloween"
     selector_type: "smart-rng"
-    search_query: "Beach"
+    search_query: "Halloween"
+    max_search_results: 125
+
+  - name: "Mount Vernon"
+    selector_type: "random"
+    city: "Mount Vernon"
+
+  - name: "Autumn"
+    selector_type: "smart-rng"
+    search_query: "Autumn"
     max_search_results: 250
 
-  - name: "Nana"
+  - name: "Dulles"
     selector_type: "random"
-    people: ["Mary-Ellen Zier"]
-
-  - name: "Fireworks"
-    selector_type: "smart-rng"
-    search_query: "Fireworks"
-    max_search_results: 50
-
-  - name: "Papa"
-    selector_type: "random"
-    people: ["Rick Zier"]
-
-  - name: "Vacation"
-    selector_type: "smart-rng"
-    search_query: "Vacation"
-    max_search_results: 500
+    city: "Chantilly"
