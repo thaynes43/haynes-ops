@@ -42,7 +42,7 @@ spec:
           app:
             image:
               repository: ghcr.io/home-assistant/home-assistant
-              tag: 2025.8.1 # *.4 broke due to https://github.com/home-assistant/core/issues/149567
+              tag: 2025.8.2 # *.4 broke due to https://github.com/home-assistant/core/issues/149567
             env:
               TZ: America/New_York
               HASS_HTTP_TRUSTED_PROXY_1: 192.168.40.0/24  # Lab Subnet
