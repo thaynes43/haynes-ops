@@ -1,5 +1,5 @@
 # Use the NVIDIA TensorRT base image
-FROM nvcr.io/nvidia/tensorrt:25.06-py3
+FROM nvcr.io/nvidia/tensorrt:25.08-py3
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
