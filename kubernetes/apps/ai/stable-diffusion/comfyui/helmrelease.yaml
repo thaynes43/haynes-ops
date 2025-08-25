@@ -41,8 +41,8 @@ spec:
             env:
               AUTO_UPDATE: "false"
               DIRECT_ADDRESS_GET_WAN: "true"
-              #SERVICEPORTAL_URL: "comfyui.haynesnetwork.com"
-              WEB_ENABLE_AUTH: "true"
+              SERVICEPORTAL_URL: "comfyui.haynesops.com"
+              WEB_ENABLE_AUTH: "false"
               WORKSPACE: "/workspace"
               CF_QUICK_TUNNELS: "false"
               SERVERLESS: "false"
@@ -57,6 +57,16 @@ spec:
               limits:
                 memory: 32Gi
                 #nvidia.com/gpu: 1
+    defaultPodOptions:
+      # https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/
+      hostUsers: false
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
     service:
       app:
         controller: comfyui
