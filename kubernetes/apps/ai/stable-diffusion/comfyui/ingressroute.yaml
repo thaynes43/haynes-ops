@@ -1,0 +1,19 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: comfyui
+  annotations:
+    external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+    kubernetes.io/ingress.class: traefik-external
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`comfyui.haynesnetwork.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: comfyui
+          port: 8188
+  tls:
+    secretName: certificate-haynesnetwork

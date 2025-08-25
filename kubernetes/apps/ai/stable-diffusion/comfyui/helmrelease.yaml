@@ -41,7 +41,7 @@ spec:
             env:
               AUTO_UPDATE: "false"
               DIRECT_ADDRESS_GET_WAN: "true"
-              #SERVICEPORTAL_URL: "comfyui.haynesnetwork.com"
+              SERVICEPORTAL_URL: "comfyui.haynesnetwork.com"
               WEB_ENABLE_AUTH: "true"
               WORKSPACE: "/workspace"
               CF_QUICK_TUNNELS: "false"
@@ -63,18 +63,6 @@ spec:
         ports:
           http:
             port: 8188
-    ingress:
-      app:
-        annotations:
-          external-dns.alpha.kubernetes.io/target: haynesnetwork.com
-        className: traefik-external
-        hosts:
-          - host: comfyui.haynesnetwork.com
-            paths:
-              - path: /
-                service:
-                  identifier: app
-                  port: http
     persistence:
       workspace:
         enabled: true
