@@ -41,7 +41,7 @@ spec:
             env:
               AUTO_UPDATE: "false"
               DIRECT_ADDRESS_GET_WAN: "true"
-              SERVICEPORTAL_URL: "comfyui.haynesnetwork.com"
+              #SERVICEPORTAL_URL: "comfyui.haynesnetwork.com"
               WEB_ENABLE_AUTH: "true"
               WORKSPACE: "/workspace"
               CF_QUICK_TUNNELS: "false"
