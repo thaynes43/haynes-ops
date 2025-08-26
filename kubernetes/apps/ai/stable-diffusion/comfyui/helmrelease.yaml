@@ -56,12 +56,11 @@ spec:
                     "/workspace/storage/stable_diffusion/models/esrgan" \
                     "/workspace/home/user/.local/share/jupyter/runtime"
                 do
-                    # Use double-backslash '\\$' to escape for the Flux build pipeline
-                    if [ ! -d "\\$DIR" ]; then
-                        echo "Creating directory: \\$DIR"
-                        mkdir -p "\\$DIR"
+                    if [ ! -d "$DIR" ]; then
+                        echo "Creating directory: $DIR"
+                        mkdir -p "$DIR"
                     else
-                        echo "Directory exists, skipping: \\$DIR"
+                        echo "Directory exists, skipping: $DIR"
                     fi
                 done
                 
