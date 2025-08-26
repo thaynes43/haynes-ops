@@ -42,8 +42,8 @@ spec:
 
                 # List of directories to create
                 DIRECTORIES=(
-                    "/workspace/ComfyUI/user/default"
                     "/workspace/ComfyUI/temp"
+                    "/workspace/ComfyUI/user/default"
                     "/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache"
                     "/workspace/ComfyUI/models/checkpoints"
                     "/workspace/ComfyUI/models/loras"
@@ -57,12 +57,13 @@ spec:
                     "/workspace/home/user/.local/share/jupyter/runtime"
                 )
 
-                for DIR in "${DIRECTORIES[@]}"; do
-                    if [ ! -d "$DIR" ]; then
-                        echo "Creating directory: $DIR"
-                        mkdir -p "$DIR"
+                # Note the escaped '\$' characters below
+                for DIR in "\${DIRECTORIES[@]}"; do
+                    if [ ! -d "\$DIR" ]; then
+                        echo "Creating directory: \$DIR"
+                        mkdir -p "\$DIR"
                     else
-                        echo "Directory exists, skipping: $DIR"
+                        echo "Directory exists, skipping: \$DIR"
                     fi
                 done
                 
