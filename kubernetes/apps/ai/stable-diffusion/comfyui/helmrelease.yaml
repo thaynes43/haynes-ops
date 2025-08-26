@@ -37,17 +37,38 @@ spec:
             command: ["sh", "-c"]
             args:
               - |
-                echo "Preparing workspace volume for non-root user (UID 1000)..."
+                set -e
+                echo "--- Preparing workspace volume for non-root user (UID 1000) ---"
 
-                if [ ! -d "/workspace/ComfyUI/user/default" ]; then
-                  echo "Creating /workspace/ComfyUI/user/default..."
-                  mkdir -p /workspace/ComfyUI/user/default
-                fi
+                # Loop over a multi-line string to avoid problematic '${...}' syntax
+                for DIR in \
+                    "/workspace/ComfyUI/temp" \
+                    "/workspace/ComfyUI/user/default" \
+                    "/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache" \
+                    "/workspace/ComfyUI/models/checkpoints" \
+                    "/workspace/ComfyUI/models/loras" \
+                    "/workspace/ComfyUI/models/controlnet" \
+                    "/workspace/ComfyUI/models/vae" \
+                    "/workspace/ComfyUI/models/upscale_models" \
+                    "/workspace/storage/stable_diffusion/models/unet" \
+                    "/workspace/storage/stable_diffusion/models/vae" \
+                    "/workspace/storage/stable_diffusion/models/clip" \
+                    "/workspace/storage/stable_diffusion/models/esrgan" \
+                    "/workspace/home/user/.local/share/jupyter/runtime"
+                do
+                    # Use double-backslash '\\$' to escape for the Flux build pipeline
+                    if [ ! -d "\\$DIR" ]; then
+                        echo "Creating directory: \\$DIR"
+                        mkdir -p "\\$DIR"
+                    else
+                        echo "Directory exists, skipping: \\$DIR"
+                    fi
+                done
                 
                 echo "Setting ownership of /workspace to 1000:1000..."
                 chown -R 1000:1000 /workspace
                 
-                echo "Workspace preparation complete."
+                echo "--- Workspace preparation complete. ---"
         pod:
           nodeSelector:
             feature.node.kubernetes.io/nvidia-3090-gpu: "true"
