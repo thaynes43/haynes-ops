@@ -29,6 +29,25 @@ spec:
         type: statefulset
         annotations:
           reloader.stakater.com/auto: "true"
+        initContainers:
+          prepare-workspace:
+            image:
+              repository: busybox
+              tag: latest
+            command: ["sh", "-c"]
+            args:
+              - |
+                echo "Preparing workspace volume for non-root user (UID 1000)..."
+
+                if [ ! -d "/workspace/ComfyUI/user/default" ]; then
+                  echo "Creating /workspace/ComfyUI/user/default..."
+                  mkdir -p /workspace/ComfyUI/user/default
+                fi
+                
+                echo "Setting ownership of /workspace to 1000:1000..."
+                chown -R 1000:1000 /workspace
+                
+                echo "Workspace preparation complete."
         pod:
           nodeSelector:
             feature.node.kubernetes.io/nvidia-3090-gpu: "true"
@@ -57,6 +76,16 @@ spec:
               limits:
                 memory: 32Gi
                 #nvidia.com/gpu: 1
+    defaultPodOptions:
+      # https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/
+      hostUsers: false
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
     service:
       app:
         controller: comfyui
