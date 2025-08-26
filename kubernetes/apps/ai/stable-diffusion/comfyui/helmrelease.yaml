@@ -37,37 +37,77 @@ spec:
             command: ["sh", "-c"]
             args:
               - |
-                set -e
-                echo "--- Preparing workspace volume for non-root user (UID 1000) ---"
+                echo "Preparing workspace volume for non-root user (UID 1000)..."
 
-                # Loop over a multi-line string to avoid problematic '${...}' syntax
-                for DIR in \
-                    "/workspace/ComfyUI/temp" \
-                    "/workspace/ComfyUI/user/default" \
-                    "/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache" \
-                    "/workspace/ComfyUI/models/checkpoints" \
-                    "/workspace/ComfyUI/models/loras" \
-                    "/workspace/ComfyUI/models/controlnet" \
-                    "/workspace/ComfyUI/models/vae" \
-                    "/workspace/ComfyUI/models/upscale_models" \
-                    "/workspace/storage/stable_diffusion/models/unet" \
-                    "/workspace/storage/stable_diffusion/models/vae" \
-                    "/workspace/storage/stable_diffusion/models/clip" \
-                    "/workspace/storage/stable_diffusion/models/esrgan" \
-                    "/workspace/home/user/.local/share/jupyter/runtime"
-                do
-                    if [ ! -d "$DIR" ]; then
-                        echo "Creating directory: $DIR"
-                        mkdir -p "$DIR"
-                    else
-                        echo "Directory exists, skipping: $DIR"
-                    fi
-                done
+                if [ ! -d "/workspace/ComfyUI/user/default" ]; then
+                  echo "Creating /workspace/ComfyUI/user/default..."
+                  mkdir -p /workspace/ComfyUI/user/default
+                fi
                 
+                if [ ! -d "/workspace/ComfyUI/temp" ]; then
+                  echo "Creating /workspace/ComfyUI/temp..."
+                  mkdir -p /workspace/ComfyUI/temp
+                fi
+
+                if [ ! -d "/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache" ]; then
+                  echo "Creating /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache..."
+                  mkdir -p /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache
+                fi
+
+                if [ ! -d "/workspace/ComfyUI/models/checkpoints" ]; then
+                  echo "Creating /workspace/ComfyUI/models/checkpoints..."
+                  mkdir -p /workspace/ComfyUI/models/checkpoints
+                fi
+
+                if [ ! -d "/workspace/ComfyUI/models/loras" ]; then
+                  echo "Creating /workspace/ComfyUI/models/loras..."
+                  mkdir -p /workspace/ComfyUI/models/loras
+                fi
+
+                if [ ! -d "/workspace/ComfyUI/models/controlnet" ]; then
+                  echo "Creating /workspace/ComfyUI/models/controlnet..."
+                  mkdir -p /workspace/ComfyUI/models/controlnet
+                fi
+
+                if [ ! -d "/workspace/ComfyUI/models/vae" ]; then
+                  echo "Creating /workspace/ComfyUI/models/vae..."
+                  mkdir -p /workspace/ComfyUI/models/vae
+                fi
+
+                if [ ! -d "/workspace/ComfyUI/models/upscale_models" ]; then
+                  echo "Creating /workspace/ComfyUI/models/upscale_models..."
+                  mkdir -p /workspace/ComfyUI/models/upscale_models
+                fi
+
+                if [ ! -d "/workspace/storage/stable_diffusion/models/unet" ]; then
+                  echo "Creating /workspace/storage/stable_diffusion/models/unet..."
+                  mkdir -p /workspace/storage/stable_diffusion/models/unet
+                fi
+
+                if [ ! -d "/workspace/storage/stable_diffusion/models/vae" ]; then
+                  echo "Creating /workspace/storage/stable_diffusion/models/vae..."
+                  mkdir -p /workspace/storage/stable_diffusion/models/vae
+                fi
+
+                if [ ! -d "/workspace/storage/stable_diffusion/models/clip" ]; then
+                  echo "Creating /workspace/storage/stable_diffusion/models/clip..."
+                  mkdir -p /workspace/storage/stable_diffusion/models/clip
+                fi
+
+                if [ ! -d "/workspace/storage/stable_diffusion/models/esrgan" ]; then
+                  echo "Creating /workspace/storage/stable_diffusion/models/esrgan..."
+                  mkdir -p /workspace/storage/stable_diffusion/models/esrgan
+                fi
+
+                if [ ! -d "/workspace/home/user/.local/share/jupyter/runtime" ]; then
+                  echo "Creating /workspace/home/user/.local/share/jupyter/runtime..."
+                  mkdir -p /workspace/home/user/.local/share/jupyter/runtime
+                fi
+
                 echo "Setting ownership of /workspace to 1000:1000..."
                 chown -R 1000:1000 /workspace
                 
-                echo "--- Workspace preparation complete. ---"
+                echo "Workspace preparation complete."
         pod:
           nodeSelector:
             feature.node.kubernetes.io/nvidia-3090-gpu: "true"
