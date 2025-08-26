@@ -6,4 +6,4 @@ namespace: frontend
 components:
   - ../../components/common
 resources:
-  - ./homepage/ks.yaml
+  - homepage/ks.yaml
