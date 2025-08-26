@@ -66,7 +66,7 @@ spec:
     persistence:
       workspace:
         enabled: true
-        existingClaim: comfyui-workspace-obs
+        existingClaim: comfyui-workspace
         globalMounts:
           - path: /workspace
       output:
