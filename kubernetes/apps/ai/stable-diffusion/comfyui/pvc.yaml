@@ -2,11 +2,11 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: comfyui-workspace
+  name: comfyui-workspace-openebs
 spec:
   accessModes:
     - ReadWriteMany
   resources:
     requests:
       storage: 200Gi
-  storageClassName: ceph-filesystem
+  storageClassName: openebs-hostpath
