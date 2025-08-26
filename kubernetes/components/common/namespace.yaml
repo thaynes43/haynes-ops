@@ -1,8 +1,9 @@
+# TODO https://github.com/onedr0p/home-ops/commit/1f45e31c35662c84bd64abdc2c4b8aa02fbe773c
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: frontend
+  name: not-used
   annotations:
     kustomize.toolkit.fluxcd.io/prune: disabled
     volsync.backube/privileged-movers: "true"
