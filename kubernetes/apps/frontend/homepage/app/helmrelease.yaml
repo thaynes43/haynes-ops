@@ -64,6 +64,14 @@ spec:
             - apiGroups: ["apiextensions.k8s.io"]
               resources: ["customresourcedefinitions/status"]
               verbs: ["get"]
+      bindings:
+        homepage:
+          type: ClusterRoleBinding
+          roleRef:
+            kind: ClusterRole
+            identifier: homepage
+          subjects:
+            - identifier: homepage
     persistence:
       config:
         type: configMap
