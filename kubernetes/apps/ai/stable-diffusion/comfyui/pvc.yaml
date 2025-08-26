@@ -5,7 +5,7 @@ metadata:
   name: comfyui-workspace-openebs
 spec:
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   resources:
     requests:
       storage: 200Gi
