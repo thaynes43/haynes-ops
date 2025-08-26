@@ -58,6 +58,7 @@ spec:
                 memory: 32Gi
                 #nvidia.com/gpu: 1
     defaultPodOptions:
+      hostUsers: false
       securityContext:
         runAsNonRoot: false
         runAsUser: 0
@@ -77,6 +78,10 @@ spec:
         existingClaim: comfyui-workspace
         globalMounts:
           - path: /workspace
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /workspace/ComfyUI/temp
       output:
         type: nfs
         server: gasha01.haynesnetwork
