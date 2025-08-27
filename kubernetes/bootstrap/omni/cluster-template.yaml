@@ -464,7 +464,7 @@ kind: Machine
 systemExtensions:
   - siderolabs/qemu-guest-agent
   - siderolabs/i915
-  - ghcr.io/thaynes43/talos-arrowlake-firmware:0.2.0@sha256:becd38888b7c394e97ea8a0927611659d9eaa41d564742f8f1d605a6114cc326
+  #- ghcr.io/thaynes43/talos-arrowlake-firmware:0.2.1
 name: 2fe46add-9e72-401c-8ec1-b5fb6837ffa0
 patches:
   - idOverride: 400-cm-2fe46add-9e72-401c-8ec1-b5fb6837ffa0
@@ -562,7 +562,7 @@ kind: Machine
 systemExtensions:
   - siderolabs/qemu-guest-agent
   - siderolabs/i915
-  - ghcr.io/thaynes43/talos-arrowlake-firmware:0.2.0@sha256:becd38888b7c394e97ea8a0927611659d9eaa41d564742f8f1d605a6114cc326
+  #- ghcr.io/thaynes43/talos-arrowlake-firmware:0.2.1
 name: 960513a6-7a1d-4ece-949d-54a022fe85e5
 patches:
   - idOverride: 400-cm-960513a6-7a1d-4ece-949d-54a022fe85e5
