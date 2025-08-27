@@ -10,7 +10,7 @@ spec:
   chart:
     spec:
       chart: rook-ceph
-      version: v1.18.0
+      version: v1.17.7
       sourceRef:
         kind: HelmRepository
         name: rook-ceph
@@ -32,6 +32,7 @@ spec:
       enableLiveness: true
       serviceMonitor:
         enabled: true
+    enableDiscoveryDaemon: true
     monitoring:
       enabled: true
     resources:
