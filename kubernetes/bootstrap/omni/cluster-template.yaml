@@ -3,7 +3,7 @@ name: haynes-ops
 kubernetes:
   version: v1.33.4
 talos:
-  version: v1.10.7
+  version: v1.10.6
 features:
   backupConfiguration:
     interval: 24h
