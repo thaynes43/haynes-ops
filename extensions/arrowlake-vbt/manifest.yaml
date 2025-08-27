@@ -1,0 +1,6 @@
+name: arrowlake-vbt
+version: "0.2.0"
+files:
+  - path: /rootfs/usr/lib/firmware/i915/arrowlake_vbt.bin
+    mode: 0644
+    source: ./arrowlake_vbt.bin
