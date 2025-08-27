@@ -78,7 +78,7 @@ spec:
                 memory: 12Gi
     defaultPodOptions:
       # https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/
-      hostUsers: false
+      #hostUsers: false
       securityContext:
         runAsNonRoot: false
         runAsUser: 0
