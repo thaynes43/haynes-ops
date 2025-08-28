@@ -46,6 +46,14 @@ rules:
       - list
       - watch
   - apiGroups:
+      - gateway.networking.k8s.io
+    resources:
+      - gateways
+      - httproutes
+    verbs:
+      - get
+      - list
+  - apiGroups:
       - apiextensions.k8s.io
     resources:
       - customresourcedefinitions/status
