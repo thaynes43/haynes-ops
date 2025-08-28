@@ -17,8 +17,6 @@ metadata:
     gethomepage.dev/widget.url: "https://immich.haynesnetwork.com"
     gethomepage.dev/widget.key: "{{ `{{HOMEPAGE_VAR_IMMICH_API_KEY}}` }}"
     gethomepage.dev/widget.version: "2"
-    gethomepage.dev/pod-selector: >-
-        gethomepage.dev/name in (immich-server)
 spec:
   entryPoints:
     - websecure
