@@ -33,6 +33,9 @@ spec:
               tag: v1.4.6
             env:
               HOMEPAGE_ALLOWED_HOSTS: &host "homepage.haynesops.com"
+            envFrom:
+              - secretRef:
+                  name: homepage-secret
             resources:
               requests:
                 memory: 200Mi
