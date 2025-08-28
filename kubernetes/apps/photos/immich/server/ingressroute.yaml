@@ -6,13 +6,16 @@ metadata:
     external-dns.alpha.kubernetes.io/target: haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
     # Homepage
+    gethomepage.dev/href: "https://immich.haynesnetwork.com"
     gethomepage.dev/enabled: "true"
     gethomepage.dev/description: Photo management platform
     gethomepage.dev/group: Apps
     gethomepage.dev/name: Immich
     gethomepage.dev/app: immich
     gethomepage.dev/icon: sh-immich.svg
-    gethomepage.dev/href: "https://immich.haynesnetwork.com"
+    gethomepage.dev/widget.type: "immich"
+    gethomepage.dev/widget.url: "https://immich.haynesnetwork.com"
+    gethomepage.dev/pod-selector: ""
 spec:
   entryPoints:
     - websecure
