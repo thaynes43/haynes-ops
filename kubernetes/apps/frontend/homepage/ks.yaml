@@ -12,6 +12,7 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: external-secrets-stores
+      namespace: flux-system
   path: ./kubernetes/apps/frontend/homepage/app
   sourceRef:
     kind: GitRepository
