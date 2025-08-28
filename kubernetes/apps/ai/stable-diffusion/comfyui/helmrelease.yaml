@@ -137,8 +137,6 @@ spec:
                 memory: 32Gi
                 #nvidia.com/gpu: 1
     defaultPodOptions:
-      # https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/
-      hostUsers: false
       securityContext:
         runAsNonRoot: false
         runAsUser: 0
