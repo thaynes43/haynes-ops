@@ -6,3 +6,5 @@ resources:
   - ./configuration.yaml
   - ./helmrelease.yaml
   - ./ingressroute.yaml
+  - ./rbac.yaml
+  

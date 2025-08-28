@@ -39,44 +39,13 @@ spec:
                 cpu: 10m
               limits:
                 memory: 2Gi
+    serviceAccount:
+      homepage: {}
     service:
       main:
         ports:
           http:
             port: 3000
-    serviceAccount:
-      create: true
-    rbac:
-      roles:
-        homepage:
-          type: ClusterRole
-          rules:
-            - apiGroups: [""]
-              resources: ["namespaces", "pods", "nodes"]
-              verbs: ["get", "list"]
-            - apiGroups: ["extensions", "networking.k8s.io"]
-              resources: ["ingresses"]
-              verbs: ["get", "list"]
-            - apiGroups: ["extensions", "gateway.networking.k8s.io"]
-              resources: ["httproutes", "gateways"]
-              verbs: ["get", "list"]
-            - apiGroups: ["traefik.io", "traefik.containo.us"]
-              resources: ["ingressroutes"]
-              verbs: ["get", "list"]
-            - apiGroups: ["metrics.k8s.io"]
-              resources: ["nodes", "pods"]
-              verbs: ["get", "list"]
-            - apiGroups: ["apiextensions.k8s.io"]
-              resources: ["customresourcedefinitions/status"]
-              verbs: ["get"]
-      bindings:
-        homepage:
-          type: ClusterRoleBinding
-          roleRef:
-            kind: ClusterRole
-            identifier: homepage
-          subjects:
-            - identifier: homepage
     persistence:
       config:
         type: configMap
