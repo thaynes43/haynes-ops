@@ -11,7 +11,7 @@ metadata:
     gethomepage.dev/description: Photo management platform
     gethomepage.dev/group: Apps
     gethomepage.dev/name: Immich
-    gethomepage.dev/app: immich
+    gethomepage.dev/app: immich-server
     gethomepage.dev/icon: sh-immich.svg
     gethomepage.dev/widget.type: "immich"
     gethomepage.dev/widget.url: "https://immich.haynesnetwork.com"
