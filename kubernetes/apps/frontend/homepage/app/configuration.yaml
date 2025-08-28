@@ -9,8 +9,8 @@ data:
   kubernetes.yaml: |
     mode: cluster
     gateway: true
-    ingress: false
-    traefik: false
+    ingress: true
+    traefik: true
 
   settings.yaml: |
     title: HaynesOps
