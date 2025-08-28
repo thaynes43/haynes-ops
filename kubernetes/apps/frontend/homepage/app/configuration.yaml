@@ -30,46 +30,66 @@ data:
       showSearchSuggestions: true
       hideVisitURL: true
     layout:
-      Home Automation:
+      Network:
+        style: row
+        columns: 3
+        icon: mdi-network
+      Calendar:
         style: column
-        icon: home-assistant
-      LLM/Ai:
+        icon: mdi-calendar
+      Video:
         style: column
-        icon: open-webui
-      Apps:
-        style: column
-        icon: immich
-      Security:
-        style: column
-        icon: pocket-id
-      Social:
-        style: column
-        icon: mastodon
-      Media:
-        style: column
-        icon: plex
+        icon: mdi-play-circle
+      Books:
+        style: row
+        columns: 2
+        icon: mdi-book
+      Infrastructure:
+        style: row
+        columns: 5
+        icon: mdi-server
+      Observability:
+        style: row
+        columns: 5
+        icon: mdi-chart-line
+      Home:
+        style: row
+        columns: 3
+        icon: mdi-home-analytics
       Downloads:
-        style: column
-        icon: sonarr
-      Kubernetes:
-        style: column
-        icon: kubernetes
+        style: row
+        columns: 3
+        icon: mdi-download-circle
+      Services:
+        style: row
+        columns: 5
+        icon: mdi-tools
+      Media:
+        style: row
+        columns: 3
+        icon: mdi-television-play
 
   widgets.yaml: |
-    - kubernetes:
-        cluster:
-          show: true
-          cpu: true
-          memory: true
-          showLabel: true
-          label: "cluster"
-        nodes:
-          show: false
+    - logo:
+        icon: https://sundayguardianlive.com/wp-content/uploads/2020/07/Untitled-design-9.png
     - search:
-        provider: duckduckgo
+        provider: [google]
         focus: false
         target: _blank
-
+    - greeting:
+        text_size: xl
+        text: "How are you doing today?"
+    - kubernetes:
+        cluster:
+            cpu: true
+            memory: true
+            show: true
+            showLabel: true
+        nodes:
+            cpu: true
+            memory: true
+            show: false
+            showLabel: true
   bookmarks.yaml: ""
 
   services.yaml: ""
