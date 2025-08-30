@@ -6,6 +6,7 @@ resources:
   - ./helmrelease.yaml
   - ./pvc.yaml
   - ./ingressroute.yaml
+  - ./externalsecret.yaml
   - ../../../../templates/gatus/external
 configMapGenerator:
   - name: comfyui-configmap

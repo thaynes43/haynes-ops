@@ -127,6 +127,9 @@ spec:
               SERVERLESS: "false"
               PROVISIONING_SCRIPT: "https://raw.githubusercontent.com/ai-dock/comfyui/main/config/provisioning/flux.sh"
               COMFYUI_DISABLE_EXTRA_NODES: "0"
+            envFrom:
+              - secretRef:
+                  name: comfyui-secret
             securityContext:
               privileged: true
             resources:
