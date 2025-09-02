@@ -3,49 +3,40 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: &app metallb
+  name: &app node-feature-discovery
   namespace: flux-system
 spec:
-  targetNamespace: &namespace kube-system
+  targetNamespace: kube-system
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  path: ./kubernetes/main/apps/kube-system/metallb-system/app
+  path: ./kubernetes/main/apps/kube-system/node-feature-discovery/app
   prune: true
   sourceRef:
     kind: GitRepository
     name: haynes-ops
   wait: true
-  interval: 30m
+  interval: 15m
   timeout: 5m
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: *app
-      namespace: *namespace
 ---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: &app metallb-config
+  name: &app node-feature-discovery-rules
   namespace: flux-system
 spec:
-  targetNamespace: &namespace kube-system
+  targetNamespace: kube-system
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  dependsOn: 
-    - name: metallb
-  path: ./kubernetes/main/apps/kube-system/metallb-system/config
+  dependsOn:
+    - name: node-feature-discovery
+  path: ./kubernetes/main/apps/kube-system/node-feature-discovery/rules
   prune: true
   sourceRef:
     kind: GitRepository
     name: haynes-ops
   wait: true
-  interval: 30m
+  interval: 15m
   timeout: 5m
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: L2Advertisement
-      name: metallb-l2-advertisement
-      namespace: *namespace

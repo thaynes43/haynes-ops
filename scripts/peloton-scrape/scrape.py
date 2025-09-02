@@ -568,7 +568,7 @@ class EnvManager:
     Need either a local SUBS_FILE or a GITHUB_REPO_URL & GITHUB_TOKEN - default subscriptions.yaml is relative to the repository
     """
     def loadConditionalConfiguration(self):
-        self.subsFile = os.environ.get("SUBS_FILE", "/tmp/peloton-scrape-repo/kubernetes/apps/downloads/ytdl-sub/peloton/config/subscriptions.yaml")
+        self.subsFile = os.environ.get("SUBS_FILE", "/tmp/peloton-scrape-repo/kubernetes/main/apps/downloads/ytdl-sub/peloton/config/subscriptions.yaml")
         self.githubRepo = os.getenv("GITHUB_REPO_URL", "")
         self.githubToken = os.getenv("GITHUB_TOKEN", "")
 

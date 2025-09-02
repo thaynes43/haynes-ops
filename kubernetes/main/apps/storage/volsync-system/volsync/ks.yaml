@@ -1,0 +1,27 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1beta2.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app volsync
+  namespace: flux-system
+spec:
+  targetNamespace: volsync-system
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  interval: 15m
+  retryInterval: 1m
+  timeout: 2m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: rook-ceph
+    - name: snapshot-controller
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+  path: ./kubernetes/main/apps/storage/volsync-system/volsync/app
+  postBuild:
+    substitute:
+      APP: *app
