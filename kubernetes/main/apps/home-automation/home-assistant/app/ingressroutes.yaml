@@ -47,8 +47,9 @@ metadata:
     gethomepage.dev/description: Code editor for Home Assistant
     gethomepage.dev/group: Home
     gethomepage.dev/name: HASS VS Code
-    gethomepage.dev/app: HASS VS Code
+    gethomepage.dev/app: home-assistant
     gethomepage.dev/icon: sh-visual-studio-code.svg
+    gethomepage.dev/widget.type: custom
     gethomepage.dev/widget.url: *url
     gethomepage.dev/siteMonitor: *url
 spec:
