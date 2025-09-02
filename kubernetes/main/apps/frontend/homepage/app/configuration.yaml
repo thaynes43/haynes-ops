@@ -17,7 +17,7 @@ data:
     # background:
     #   image: https://raw.githubusercontent.com/joryirving/home-ops/main/.docs/assets/101518784_p0.jpg
     #   opacity: 20
-    #favicon: https://github.com/walkxcode/dashboard-icons/blob/main/png/heimdall.png
+    favicon: https://github.com/homarr-labs/dashboard-icons/blob/main/png/asus.png
     theme: dark
     color: slate
     headerStyle: clean
