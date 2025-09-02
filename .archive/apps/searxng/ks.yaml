@@ -10,7 +10,7 @@ spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  path: ./kubernetes/apps/ai/searxng/config
+  path: ./kubernetes/main/apps/ai/searxng/config
   prune: true
   sourceRef:
     kind: GitRepository
@@ -33,7 +33,7 @@ spec:
   dependsOn:
     - name: external-secrets-stores
     - name: searxng-config
-  path: ./kubernetes/apps/ai/searxng/app
+  path: ./kubernetes/main/apps/ai/searxng/app
   prune: true
   sourceRef:
     kind: GitRepository

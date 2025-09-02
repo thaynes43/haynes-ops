@@ -10,7 +10,7 @@ spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  path: ./kubernetes/apps/ai/willow/application-server
+  path: ./kubernetes/main/apps/ai/willow/application-server
   prune: true
   sourceRef:
     kind: GitRepository
@@ -34,7 +34,7 @@ spec:
 #  commonMetadata:
 #    labels:
 #      app.kubernetes.io/name: *app
-#  path: ./kubernetes/apps/ai/willow/inference-server
+#  path: ./kubernetes/main/apps/ai/willow/inference-server
 #  prune: true
 #  sourceRef:
 #    kind: GitRepository
