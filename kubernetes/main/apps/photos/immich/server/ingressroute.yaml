@@ -18,9 +18,7 @@ metadata:
     gethomepage.dev/widget.key: "{{HOMEPAGE_VAR_IMMICH_API_KEY}}"
     gethomepage.dev/widget.version: "2"
     gethomepage.dev/pod-selector: >-
-      app.kubernetes.io/instance in (
-          immich-server
-      )
+      app.kubernetes.io/instance=immich-server
 spec:
   entryPoints:
     - websecure
