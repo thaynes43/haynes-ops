@@ -49,7 +49,7 @@ metadata:
     gethomepage.dev/name: HASS VS Code
     gethomepage.dev/app: home-assistant
     gethomepage.dev/icon: sh-visual-studio-code.svg
-    gethomepage.dev/widget.type: custom
+    gethomepage.dev/widget.type: default
     gethomepage.dev/widget.url: *url
     gethomepage.dev/siteMonitor: *url
 spec:
