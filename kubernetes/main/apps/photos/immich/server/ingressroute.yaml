@@ -12,8 +12,8 @@ metadata:
     gethomepage.dev/group: Media
     gethomepage.dev/name: Immich
     gethomepage.dev/app: immich-server
-    gethomepage.dev/icon: immich
-    gethomepage.dev/widget.type: immich
+    gethomepage.dev/icon: sh-immich.svg
+    gethomepage.dev/widget.type: "immich"
     gethomepage.dev/widget.url: "https://immich.haynesnetwork.com"
     gethomepage.dev/widget.key: "{{HOMEPAGE_VAR_IMMICH_API_KEY}}"
     gethomepage.dev/widget.version: "2"
