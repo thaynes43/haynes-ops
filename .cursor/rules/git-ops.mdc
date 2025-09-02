@@ -4,9 +4,43 @@ globs:
 alwaysApply: true
 ---
 
+# Introduction
+
 This repository manages kubernetes clusters that run on Talos Linux by Sidero Labs whos documentation may be found [here](https://www.talos.dev/v1.10/introduction/). The Talos Linux kubernetes nodes are managed by Sidero Lab's Omni software who's documentation may be found [here](https://docs.siderolabs.com/omni/overview/what-is-omni). The use of the utility Talosctl is limited as the utility Omnictl handles cluster management.
 
 This repository follows patterns put into place by a group of kubernetes home lab enthusiests who meet in the `Home Operations` discord. They use to manage popular helm charts known as `k8s at home` but those have been deprecated. Instead of individual charts most services may be hosted using [bjw-s-labs app template](https://bjw-s-labs.github.io/helm-charts/docs/app-template/)
 
 Excellent examples of `home-ops` repositories would be [onedr0p's](https://github.com/onedr0p/home-ops) and [bjw-s-labs'](https://github.com/bjw-s-labs/home-ops). Note these are single cluster repositorys. A multi cluster example would be [szinn's](https://github.com/szinn/k8s-homelab)
 
+## Repo Structure
+
+This repository currently has apps for two seperate kubernetes clusters. They are `main` and `edge`. The `main` cluster is currently running in a server rack at the users home. The `edge` cluster will be used to test some re-architecting of the repository before it is applied to the production cluster `main`.
+
+haynes-ops/
+└── kubernetes/                    # GitOps Root
+    ├── main/                      # 🏠 Primary Cluster
+    │   ├── apps/                  # Application Deployments
+    │   │   ├── ...
+    │   ├── bootstrap/           # Cluster Bootstrap
+    │   │   ├── ...
+    │   └── flux/               # Flux Configuration
+    │       ├── ...
+    │
+    ├── edge/                   # 🌐 Edge Cluster
+    │   ├── apps/              # Edge Applications
+    │   │   └── flux-system/   # Edge Flux Add-ons
+    │   ├── bootstrap/         # Edge Bootstrap
+    │   └── flux/             # Edge Flux Config
+    │       ├── ...
+    │
+    └── shared/                # 🔄 Cross-Cluster Resources
+        ├── components/        # Reusable Kustomize Components
+        │   └── common/
+        │       ├── ...
+        └── templates/         # Reusable Templates
+            ├── ...
+
+# Instructions
+
+- Do not try to run any kubectl commands. This VSCode environment is not set up to reach the cluster. Tell the user to run the commands and send back the output instead.
+- Do not try to run any talosctl or omnictl commands for the same reason as above.
