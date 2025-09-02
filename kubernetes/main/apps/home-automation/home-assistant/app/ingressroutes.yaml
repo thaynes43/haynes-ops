@@ -9,7 +9,7 @@ metadata:
     # Homepage
     gethomepage.dev/href: &url "https://hass.haynesops.com"
     gethomepage.dev/enabled: "true"
-    gethomepage.dev/description: Photo management platform
+    gethomepage.dev/description: Home Automation
     gethomepage.dev/group: Home
     gethomepage.dev/name: Home Assistant
     gethomepage.dev/app: home-assistant
@@ -47,9 +47,8 @@ metadata:
     gethomepage.dev/description: Code editor for Home Assistant
     gethomepage.dev/group: Home
     gethomepage.dev/name: HASS VS Code
-    gethomepage.dev/app: HASS VS Code
+    gethomepage.dev/app: home-assistant
     gethomepage.dev/icon: sh-visual-studio-code.svg
-    gethomepage.dev/widget.type: homeassistant
     gethomepage.dev/widget.url: *url
     gethomepage.dev/siteMonitor: *url
 spec:
