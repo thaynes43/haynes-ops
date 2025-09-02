@@ -7,7 +7,7 @@ metadata:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
     # Homepage
-    gethomepage.dev/href: "https://hass.haynesops.com"
+    gethomepage.dev/href: &url "https://hass.haynesops.com"
     gethomepage.dev/enabled: "true"
     gethomepage.dev/description: Photo management platform
     gethomepage.dev/group: Home
@@ -15,7 +15,7 @@ metadata:
     gethomepage.dev/app: home-assistant
     gethomepage.dev/icon: home-assistant
     gethomepage.dev/widget.type: homeassistant
-    gethomepage.dev/widget.url: &url "https://hass.haynesops.com"
+    gethomepage.dev/widget.url: *url
     gethomepage.dev/widget.key: "{{HOMEPAGE_VAR_HOMEASSISTANT_KEY}}"
     gethomepage.dev/siteMonitor: *url
 spec:
@@ -41,6 +41,17 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
+    # Homepage
+    gethomepage.dev/href: &url "https://hass-code.haynesops.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/description: Code editor for Home Assistant
+    gethomepage.dev/group: Home
+    gethomepage.dev/name: HASS VS Code
+    gethomepage.dev/app: HASS VS Code
+    gethomepage.dev/icon: sh-visual-studio-code.svg
+    gethomepage.dev/widget.type: homeassistant
+    gethomepage.dev/widget.url: *url
+    gethomepage.dev/siteMonitor: *url
 spec:
   entryPoints:
     - websecure
