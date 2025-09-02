@@ -1,0 +1,21 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1beta2.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app onepassword-connect
+  namespace: flux-system
+spec:
+  targetNamespace: external-secrets
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  interval: 15m
+  retryInterval: 1m
+  timeout: 2m
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+  path: ./kubernetes/main/apps/external-secrets/onepassword-connect/app

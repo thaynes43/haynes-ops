@@ -3,14 +3,14 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: &app metallb
+  name: &app dragonfly
   namespace: flux-system
 spec:
-  targetNamespace: &namespace kube-system
+  targetNamespace: database
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  path: ./kubernetes/main/apps/kube-system/metallb-system/app
+  path: ./kubernetes/main/apps/database/dragonfly/app
   prune: true
   sourceRef:
     kind: GitRepository
@@ -18,25 +18,21 @@ spec:
   wait: true
   interval: 30m
   timeout: 5m
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: *app
-      namespace: *namespace
 ---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: &app metallb-config
+  name: &app dragonfly-cluster
   namespace: flux-system
 spec:
-  targetNamespace: &namespace kube-system
+  targetNamespace: database
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
-  dependsOn: 
-    - name: metallb
-  path: ./kubernetes/main/apps/kube-system/metallb-system/config
+  dependsOn:
+    - name: dragonfly
+  path: ./kubernetes/main/apps/database/dragonfly/cluster
   prune: true
   sourceRef:
     kind: GitRepository
@@ -44,8 +40,3 @@ spec:
   wait: true
   interval: 30m
   timeout: 5m
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: L2Advertisement
-      name: metallb-l2-advertisement
-      namespace: *namespace

@@ -1,0 +1,22 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: certificates
+  namespace: flux-system
+spec:
+  targetNamespace: cert-manager
+  dependsOn:
+    - name: cert-manager
+    - name: cert-manager-issuers
+    - name: external-secrets-stores
+  path: ./kubernetes/main/apps/cert-manager/certificates
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+  wait: false
+  interval: 15m
+  retryInterval: 1m  
+  timeout: 2m

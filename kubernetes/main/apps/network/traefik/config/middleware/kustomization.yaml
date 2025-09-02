@@ -1,0 +1,8 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./externalsecret.yaml
+  - ./middleware-traefik-dashboard-basicauth.yaml
+  - ./default-headers.yaml

@@ -1,0 +1,18 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+# TODO see https://github.com/mchestr/home-cluster/blob/main/kubernetes/apps/default/openwakeword/app/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./helmrelease.yaml
+  - ../../../../../shared/templates/gatus/internal
+
+configMapGenerator:
+  - name: openwakeword
+    files:
+      - resources/Hey_Regina.tflite
+      - resources/Regina.tflite
+      - resources/Hey_Deadpool.tflite
+
+generatorOptions:
+  disableNameSuffixHash: true
