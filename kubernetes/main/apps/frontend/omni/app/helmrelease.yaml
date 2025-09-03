@@ -111,7 +111,8 @@ spec:
                 memory: 500Mi
               limits:
                 memory: 16Gi
-
+                squat.ai/tun: "1"
+                
             # containerPort is informational with hostNetwork, but keep names for Service/Ingress
             ports:
               - { name: http,    containerPort: 8080 }
