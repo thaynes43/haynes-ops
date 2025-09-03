@@ -2,7 +2,6 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: omni
-  namespace: frontend
 spec:
   interval: 30m
   chartRef:
@@ -24,55 +23,25 @@ spec:
     controllers:
       omni:
         type: deployment
-        strategy: Recreate          # avoid port/interface conflicts during upgrades
+        strategy: Recreate
         replicas: 1
-
         annotations:
           reloader.stakater.com/auto: "true"
-
         pod:
-          #hostNetwork: true         # mirror compose: network_mode: host
-          #dnsPolicy: ClusterFirstWithHostNet
           securityContext:
             runAsUser: 0
             runAsGroup: 0
             fsGroup: 0
           terminationGracePeriodSeconds: 5
-
-        # optional safety; with Recreate you shouldn't need it, but it helps clean leftovers
-        initContainers:
-          cleanup-wireguard:
-            image:
-              repository: alpine
-              tag: "3.20"
-            command:
-              - /bin/sh
-              - -c
-              - |
-                set -eux
-                apk add --no-cache iproute2 psmisc
-                # remove stale interface if it exists
-                ip link show siderolink >/dev/null 2>&1 && ip link delete siderolink || true
-                # free any stale listeners on machine API port
-                fuser -k 8090/tcp 2>/dev/null || true
-                fuser -k 8090/udp 2>/dev/null || true
-            securityContext:
-              privileged: true
-              capabilities:
-                add: ["NET_ADMIN"]
-
         containers:
           app:
             image:
               repository: ghcr.io/siderolabs/omni
               tag: v1.1.3
               pullPolicy: IfNotPresent
-
             envFrom:
               - secretRef:
-                  name: omni-secret     # holds OMNI_* / ADVERTISED_* / SAML vars you already have
-
-            # mirror compose flags; serve TLS directly (and still fine behind your Ingress)
+                  name: omni-secret
             args:
               - --account-id=$(OMNI_ACCOUNT_UUID)
               - --name=$(OMNI_NAME)
@@ -88,22 +57,18 @@ spec:
               - --advertised-api-url=$(ADVERTISED_API_URL)
               - --advertised-kubernetes-proxy-url=$(ADVERTISED_K8S_PROXY_URL)
               - --machine-api-advertised-url=$(SIDEROLINK_API_ADVERTISED_URL)
-              # optional (only if you set it in the secret), same as compose:
-              - --siderolink-wireguard-advertised-addr=$(SIDEROLINK_WIREGUARD_ADVERTISED_ADDR)
-              # SAML
+              - --siderolink-wireguard-advertised-addr=$(SIDEROLINK_WIREGARD_ADVERTISED_ADDR)
               - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
-              # embedded etcd like you had before
               - --etcd-embedded=true
               - --etcd-embedded-unsafe-fsync=true
 
-            # make cgroup/device access a non-issue
             securityContext:
               privileged: true
               allowPrivilegeEscalation: true
               readOnlyRootFilesystem: false
               capabilities:
-                add: ["NET_ADMIN","NET_RAW"]
+                add: ["NET_ADMIN", "NET_RAW"]
 
             resources:
               requests:
@@ -113,11 +78,11 @@ spec:
                 memory: 16Gi
                 squat.ai/tun: "1"
 
-            # containerPort is informational with hostNetwork, but keep names for Service/Ingress
             ports:
-              - { name: http,    containerPort: 8080 }
+              - { name: http, containerPort: 8080 }
               - { name: machine, containerPort: 8090 }
-              - { name: kube,    containerPort: 8100 }
+              - { name: kube, containerPort: 8100 }
+              - { name: wireguard, containerPort: 50180, protocol: UDP }
 
             probes:
               liveness:
@@ -148,26 +113,25 @@ spec:
         controller: omni
         type: ClusterIP
         ports:
-          http:    { port: 8080, targetPort: http }
+          http: { port: 8080, targetPort: http }
           machine: { port: 8090, targetPort: machine }
-          kube:    { port: 8100, targetPort: kube }
+          kube: { port: 8100, targetPort: kube }
+
+      omni-wireguard:
+        controller: omni
+        type: NodePort
+        ports:
+          wireguard:
+            port: 50180
+            targetPort: wireguard
+            protocol: UDP
 
     persistence:
-      # etcd data, like ${ETCD_VOLUME_PATH}:/_out/etcd
       etcd:
         existingClaim: omni
         globalMounts:
           - path: /_out/etcd
 
-      # map /dev/net/tun just like compose "devices: - /dev/net/tun"
-      dev-net-tun:
-        type: hostPath
-        hostPath: /dev/net/tun
-        hostPathType: CharDevice
-        globalMounts:
-          - path: /dev/net/tun
-
-      # private key (same idea as ${ETCD_ENCRYPTION_KEY}:/omni.asc)
       deploy-key:
         type: secret
         name: omni-secret
@@ -183,7 +147,7 @@ spec:
         globalMounts:
           - path: /tls.crt
             subPath: OMNI_TLS_CRT
- 
+
       deploy-tls-key:
         type: secret
         name: omni-secret
