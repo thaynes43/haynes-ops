@@ -21,6 +21,7 @@ spec:
   values:
     defaultPodOptions:
       securityContext:
+        privileged: true
         runAsUser: 0
         runAsGroup: 0
         fsGroup: 0
@@ -113,8 +114,6 @@ spec:
               # SAML
               - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
-              # Force userspace WireGuard if kernel module fails
-              - --siderolink-use-userspace-wireguard=true
             resources:
               requests:
                 memory: 500Mi
