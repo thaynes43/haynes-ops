@@ -3,7 +3,6 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: generic-device-plugin
-  namespace: kube-system
   labels:
     app.kubernetes.io/name: generic-device-plugin
 spec:
