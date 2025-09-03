@@ -21,7 +21,6 @@ spec:
   values:
     defaultPodOptions:
       securityContext:
-        privileged: true
         runAsUser: 0
         runAsGroup: 0
         fsGroup: 0
@@ -120,10 +119,13 @@ spec:
                 cpu: 10m
               limits:
                 memory: 16Gi
-            securityContext:
-              capabilities:
-                add: ["NET_ADMIN", "SYS_MODULE"]
-              privileged: true
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+            capabilities:
+              add: ["NET_ADMIN","NET_RAW"]
+            runAsUser: 0
+            runAsGroup: 0
             ports:
               - { name: http,    containerPort: 8080 }
               - { name: machine, containerPort: 8090 }
