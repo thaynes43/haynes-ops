@@ -19,25 +19,51 @@ spec:
       retries: 3
   uninstall:
     keepHistory: false
+
   values:
-    # Pod-wide defaults (schema-safe)
-    defaultPodOptions:
-      hostNetwork: false
-      dnsPolicy: ClusterFirst
-      securityContext:
-        runAsUser: 0
-        runAsGroup: 0
-        fsGroup: 0
-      annotations:
-        # Unconfine only this container by name ("app") if your cluster enforces AppArmor
-        container.apparmor.security.beta.kubernetes.io/app: unconfined
+    # (Optional) defaults for all controllers/pods
+    defaultPodOptions: {}
 
     controllers:
       omni:
-        # Safer during port moves
-        strategy: Recreate
+        type: deployment
+        strategy: Recreate         # avoid two pods overlapping (WireGuard iface/addr clash)
+        replicas: 1
+
         annotations:
           reloader.stakater.com/auto: "true"
+
+        pod:
+          hostNetwork: false       # userspace WG does not need host networking
+          dnsPolicy: ClusterFirst
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            fsGroup: 0
+          terminationGracePeriodSeconds: 5
+
+        initContainers:
+          cleanup-wireguard:
+            image:
+              repository: alpine
+              tag: "3.20"
+            command:
+              - /bin/sh
+              - -c
+              - |
+                set -eux
+                apk add --no-cache iproute2 psmisc
+                echo "Cleaning up any stale WireGuard/TUN bits..."
+                # Remove leftover siderolink interface if present
+                ip link show siderolink >/dev/null 2>&1 && ip link delete siderolink || true
+                # Kill anything that might be holding the machine API port (rare with Recreate, but cheap)
+                fuser -k 8091/tcp 2>/dev/null || true
+                fuser -k 8091/udp 2>/dev/null || true
+                echo "Cleanup complete."
+            securityContext:
+              privileged: true
+              capabilities:
+                add: ["NET_ADMIN"]
 
         containers:
           app:
@@ -46,11 +72,12 @@ spec:
               tag: v1.1.3
               pullPolicy: IfNotPresent
 
+            # Load your secrets as you already do (OMNI_* vars, SAML, advertised URL, etc.)
             envFrom:
               - secretRef:
                   name: omni-secret
 
-            # Omni flags (Machine API moved to 8091 to avoid previous bind clash)
+            # Bind inside the pod; Ingress still fronts 443 externally
             args:
               - --name=$(OMNI_NAME)
               - --account-id=$(OMNI_ACCOUNT_UUID)
@@ -67,32 +94,28 @@ spec:
               - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
 
-            # Correct placement for per-container securityContext
             securityContext:
               allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: false
               capabilities:
-                add: ["NET_ADMIN"]
-              runAsUser: 0
-              runAsGroup: 0
-              seccompProfile:
-                type: Unconfined
+                add: ["NET_ADMIN","NET_RAW"]
 
-            # Request the /dev/net/tun device from the generic device plugin
+            # Request the TUN device via Talos device plugin so the cgroup allowlist is correct
             resources:
-              limits:
-                memory: 16Gi
-                squat.ai/tun: "1"
               requests:
                 cpu: 10m
                 memory: 500Mi
+                "devices.kube.talos.dev/tun": "1"
+              limits:
+                memory: 16Gi
+                "devices.kube.talos.dev/tun": "1"
 
-            # Expose ports by name for services/probes
             ports:
-              http:
+              - name: http
                 containerPort: 8080
-              machine:
+              - name: machine
                 containerPort: 8091
-              kube:
+              - name: kube
                 containerPort: 8100
 
             probes:
@@ -102,7 +125,7 @@ spec:
                 spec:
                   httpGet:
                     path: /api/health
-                    port: http
+                    port: 8080
                   initialDelaySeconds: 60
                   periodSeconds: 30
                   timeoutSeconds: 10
@@ -113,7 +136,7 @@ spec:
                 spec:
                   httpGet:
                     path: /api/health
-                    port: http
+                    port: 8080
                   initialDelaySeconds: 30
                   periodSeconds: 10
                   timeoutSeconds: 5
@@ -128,7 +151,7 @@ spec:
             port: 8080
             targetPort: http
           machine:
-            port: 8091
+            port: 8091          # Service targets new internal port name
             targetPort: machine
           kube:
             port: 8100
@@ -139,6 +162,15 @@ spec:
         existingClaim: omni
         globalMounts:
           - path: /_out/etcd
+
+      # Expose /dev/net/tun inside the container
+      dev-net-tun:
+        type: hostPath
+        hostPath: /dev/net/tun
+        hostPathType: CharDevice
+        globalMounts:
+          - path: /dev/net/tun
+
       deploy-key:
         type: secret
         name: omni-secret
