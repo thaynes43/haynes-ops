@@ -21,27 +21,25 @@ spec:
     keepHistory: false
 
   values:
-    # (Optional) defaults for all controllers/pods
-    defaultPodOptions: {}
-
     controllers:
       omni:
         type: deployment
-        strategy: Recreate         # avoid two pods overlapping (WireGuard iface/addr clash)
+        strategy: Recreate          # avoid port/interface conflicts during upgrades
         replicas: 1
 
         annotations:
           reloader.stakater.com/auto: "true"
 
         pod:
-          hostNetwork: false       # userspace WG does not need host networking
-          dnsPolicy: ClusterFirst
+          hostNetwork: true         # mirror compose: network_mode: host
+          dnsPolicy: ClusterFirstWithHostNet
           securityContext:
             runAsUser: 0
             runAsGroup: 0
             fsGroup: 0
           terminationGracePeriodSeconds: 5
 
+        # optional safety; with Recreate you shouldn't need it, but it helps clean leftovers
         initContainers:
           cleanup-wireguard:
             image:
@@ -53,13 +51,11 @@ spec:
               - |
                 set -eux
                 apk add --no-cache iproute2 psmisc
-                echo "Cleaning up any stale WireGuard/TUN bits..."
-                # Remove leftover siderolink interface if present
+                # remove stale interface if it exists
                 ip link show siderolink >/dev/null 2>&1 && ip link delete siderolink || true
-                # Kill anything that might be holding the machine API port (rare with Recreate, but cheap)
-                fuser -k 8091/tcp 2>/dev/null || true
-                fuser -k 8091/udp 2>/dev/null || true
-                echo "Cleanup complete."
+                # free any stale listeners on machine API port
+                fuser -k 8090/tcp 2>/dev/null || true
+                fuser -k 8090/udp 2>/dev/null || true
             securityContext:
               privileged: true
               capabilities:
@@ -72,51 +68,55 @@ spec:
               tag: v1.1.3
               pullPolicy: IfNotPresent
 
-            # Load your secrets as you already do (OMNI_* vars, SAML, advertised URL, etc.)
             envFrom:
               - secretRef:
-                  name: omni-secret
+                  name: omni-secret     # holds OMNI_* / ADVERTISED_* / SAML vars you already have
 
-            # Bind inside the pod; Ingress still fronts 443 externally
+            # mirror compose flags; serve TLS directly (and still fine behind your Ingress)
             args:
-              - --name=$(OMNI_NAME)
               - --account-id=$(OMNI_ACCOUNT_UUID)
-              - --initial-users=$(OMNI_ADMIN_EMAILS)
-              - --etcd-embedded=true
-              - --etcd-embedded-unsafe-fsync=true
+              - --name=$(OMNI_NAME)
+              - --cert=/tls.crt
+              - --key=/tls.key
+              - --machine-api-cert=/tls.crt
+              - --machine-api-key=/tls.key
               - --private-key-source=file:///omni.asc
+              - --event-sink-port=$(EVENT_SINK_PORT)
               - --bind-addr=0.0.0.0:8080
+              - --machine-api-bind-addr=0.0.0.0:8090
               - --k8s-proxy-bind-addr=0.0.0.0:8100
-              - --machine-api-bind-addr=0.0.0.0:8091
               - --advertised-api-url=$(ADVERTISED_API_URL)
               - --advertised-kubernetes-proxy-url=$(ADVERTISED_K8S_PROXY_URL)
               - --machine-api-advertised-url=$(SIDEROLINK_API_ADVERTISED_URL)
+              # optional (only if you set it in the secret), same as compose:
+              - --siderolink-wireguard-advertised-addr=$(SIDEROLINK_WIREGUARD_ADVERTISED_ADDR)
+              # SAML
               - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
+              # embedded etcd like you had before
+              - --etcd-embedded=true
+              - --etcd-embedded-unsafe-fsync=true
 
+            # make cgroup/device access a non-issue
             securityContext:
-              allowPrivilegeEscalation: false
+              privileged: true
+              allowPrivilegeEscalation: true
               readOnlyRootFilesystem: false
               capabilities:
                 add: ["NET_ADMIN","NET_RAW"]
 
-            # Request the TUN device via Talos device plugin so the cgroup allowlist is correct
             resources:
               requests:
                 cpu: 10m
                 memory: 500Mi
-                "devices.kube.talos.dev/tun": "1"
               limits:
                 memory: 16Gi
-                "devices.kube.talos.dev/tun": "1"
 
+            # containerPort is informational with hostNetwork, but keep names for Service/Ingress
             ports:
-              - name: http
-                containerPort: 8080
-              - name: machine
-                containerPort: 8091
-              - name: kube
-                containerPort: 8100
+              - { name: http,    containerPort: 8080 }
+              - { name: machine, containerPort: 8090 }
+              - { name: kube,    containerPort: 8100 }
 
             probes:
               liveness:
@@ -147,23 +147,18 @@ spec:
         controller: omni
         type: ClusterIP
         ports:
-          http:
-            port: 8080
-            targetPort: http
-          machine:
-            port: 8091          # Service targets new internal port name
-            targetPort: machine
-          kube:
-            port: 8100
-            targetPort: kube
+          http:    { port: 8080, targetPort: http }
+          machine: { port: 8090, targetPort: machine }
+          kube:    { port: 8100, targetPort: kube }
 
     persistence:
+      # etcd data, like ${ETCD_VOLUME_PATH}:/_out/etcd
       etcd:
         existingClaim: omni
         globalMounts:
           - path: /_out/etcd
 
-      # Expose /dev/net/tun inside the container
+      # map /dev/net/tun just like compose "devices: - /dev/net/tun"
       dev-net-tun:
         type: hostPath
         hostPath: /dev/net/tun
@@ -171,6 +166,7 @@ spec:
         globalMounts:
           - path: /dev/net/tun
 
+      # private key (same idea as ${ETCD_ENCRYPTION_KEY}:/omni.asc)
       deploy-key:
         type: secret
         name: omni-secret
@@ -178,3 +174,14 @@ spec:
         globalMounts:
           - path: /omni.asc
             subPath: OMNI_ASC
+
+      # TLS cert/key (compose mounts /tls.crt and /tls.key)
+      tls:
+        type: secret
+        name: omni-tls             # create a kubernetes.io/tls secret with tls.crt/tls.key
+        defaultMode: 256
+        globalMounts:
+          - path: /tls.crt
+            subPath: tls.crt
+          - path: /tls.key
+            subPath: tls.key
