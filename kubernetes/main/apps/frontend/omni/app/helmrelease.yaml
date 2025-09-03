@@ -24,6 +24,13 @@ spec:
         runAsUser: 0
         runAsGroup: 0
         fsGroup: 0
+        sysctls:
+          - name: net.ipv4.conf.all.src_valid_mark
+            value: "1"
+          - name: net.ipv4.ip_forward
+            value: "1"
+          - name: net.ipv6.conf.all.forwarding
+            value: "1"
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
     controllers:
@@ -39,7 +46,20 @@ spec:
               - /bin/sh
               - -c
               - |
-                apk add --no-cache iproute2 psmisc
+                apk add --no-cache iproute2 psmisc kmod
+                echo "Setting up environment for WireGuard..."
+                
+                # Load TUN module if available
+                modprobe tun 2>/dev/null || echo "TUN module already loaded or not available"
+                
+                # Check TUN device
+                if [ ! -c /dev/net/tun ]; then
+                  echo "ERROR: /dev/net/tun device not available"
+                  ls -la /dev/net/ || echo "/dev/net/ not found"
+                else
+                  echo "TUN device available: $(ls -la /dev/net/tun)"
+                fi
+                
                 echo "Cleaning up existing WireGuard interfaces and processes..."
                 
                 # Clean up any existing siderolink interfaces
@@ -93,6 +113,8 @@ spec:
               # SAML
               - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
+              # Force userspace WireGuard if kernel module fails
+              - --siderolink-use-userspace-wireguard=true
             resources:
               requests:
                 memory: 500Mi
@@ -107,6 +129,29 @@ spec:
               - { name: http,    containerPort: 8080 }
               - { name: machine, containerPort: 8090 }
               - { name: kube,    containerPort: 8100 }
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/health
+                    port: 8080
+                  initialDelaySeconds: 60
+                  periodSeconds: 30
+                  timeoutSeconds: 10
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/health
+                    port: 8080
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 3
     service:
       omni:
         controller: omni
