@@ -7,3 +7,12 @@ spec:
   headers:
     customRequestHeaders:
       X-Forwarded-Proto: https
+    customResponseHeaders:
+      Content-Security-Policy: >
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' 'unsafe-eval' data:;
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' data:;
+        connect-src 'self';
+        frame-ancestors 'self';
+        form-action 'self' https://omni.haynesnetwork.com https://*.haynesnetwork.com;
