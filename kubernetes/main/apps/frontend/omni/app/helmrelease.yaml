@@ -14,58 +14,19 @@ spec:
       retries: 3
   upgrade:
     cleanupOnFail: true
-    force: true
     remediation:
       retries: 3
   uninstall:
     keepHistory: false
   values:
+    # Pod-level options (no hostNetwork, no sysctls)
+    defaultPodOptions:
+      dnsPolicy: ClusterFirst
+
     controllers:
       omni:
         annotations:
           reloader.stakater.com/auto: "true"
-        pod:
-          hostNetwork: true
-          dnsPolicy: ClusterFirstWithHostNet
-        initContainers:
-          cleanup-wireguard:
-            image:
-              repository: alpine
-              tag: latest
-            command:
-              - /bin/sh
-              - -c
-              - |
-                set -eu
-                apk add --no-cache iproute2 psmisc kmod procps
-
-                echo "Loading TUN (ok if already present)..."
-                modprobe tun 2>/dev/null || true
-
-                echo "Enabling required sysctls at runtime (hostNetwork => affects the host)"
-                sysctl -w net.ipv4.conf.all.src_valid_mark=1 || true
-                sysctl -w net.ipv4.ip_forward=1 || true
-                sysctl -w net.ipv6.conf.all.forwarding=1 || true
-
-                echo "Checking /dev/net/tun"
-                [ -c /dev/net/tun ] && ls -la /dev/net/tun || { echo "MISSING /dev/net/tun"; ls -la /dev/net || true; }
-
-                echo "Removing any stale WG interfaces"
-                ip link show siderolink 2>/dev/null && ip link delete siderolink || true
-                for iface in $(ip -6 addr show | awk '/fdae:41e4:649b:9303/ {print $NF}'); do
-                  ip link delete "$iface" 2>/dev/null || true
-                done
-
-                echo "Freeing port 8090"
-                fuser -k 8090/tcp 2>/dev/null || true
-                fuser -k 8090/udp 2>/dev/null || true
-                sleep 1
-                echo "Init cleanup complete"
-            securityContext:
-              privileged: true
-              capabilities:
-                add: ["NET_ADMIN","SYS_ADMIN"]
-
         containers:
           app:
             image:
@@ -90,19 +51,6 @@ spec:
               - --machine-api-advertised-url=$(SIDEROLINK_API_ADVERTISED_URL)
               - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
-            securityContext:
-              privileged: true
-              allowPrivilegeEscalation: true
-              runAsUser: 0
-              runAsGroup: 0
-              capabilities:
-                add: ["NET_ADMIN","NET_RAW"]
-            resources:
-              requests:
-                memory: 500Mi
-                cpu: 10m
-              limits:
-                memory: 16Gi
             ports:
               - { name: http,    containerPort: 8080 }
               - { name: machine, containerPort: 8090 }
@@ -112,7 +60,9 @@ spec:
                 enabled: true
                 custom: true
                 spec:
-                  httpGet: { path: /api/health, port: 8080 }
+                  httpGet:
+                    path: /api/health
+                    port: 8080
                   initialDelaySeconds: 60
                   periodSeconds: 30
                   timeoutSeconds: 10
@@ -121,11 +71,30 @@ spec:
                 enabled: true
                 custom: true
                 spec:
-                  httpGet: { path: /api/health, port: 8080 }
+                  httpGet:
+                    path: /api/health
+                    port: 8080
                   initialDelaySeconds: 30
                   periodSeconds: 10
                   timeoutSeconds: 5
                   failureThreshold: 3
+            # Request the /dev/net/tun device from the device plugin
+            resources:
+              requests:
+                cpu: 10m
+                memory: 500Mi
+                squat.ai/tun: "1"
+              limits:
+                memory: 16Gi
+                squat.ai/tun: "1"
+            # Unprivileged container with NET_ADMIN per Sidero guide
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ "ALL" ]
+                add:  [ "NET_ADMIN" ]
+              runAsUser: 0
+              runAsGroup: 0
 
     service:
       omni:
@@ -141,12 +110,6 @@ spec:
         existingClaim: omni
         globalMounts:
           - path: /_out/etcd
-      dev-net-tun:
-        type: hostPath
-        hostPath: /dev/net/tun
-        hostPathType: CharDevice
-        globalMounts:
-          - path: /dev/net/tun
       deploy-key:
         type: secret
         name: omni-secret

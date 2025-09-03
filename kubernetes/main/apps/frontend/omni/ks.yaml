@@ -11,6 +11,8 @@ spec:
     labels:
       app.kubernetes.io/name: *app
   dependsOn:
+    - name: generic-device-plugin
+      namespace: flux-system
     - name: external-secrets-stores
       namespace: flux-system
     - name: traefik-external
