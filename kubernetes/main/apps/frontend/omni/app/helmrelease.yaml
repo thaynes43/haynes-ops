@@ -24,11 +24,31 @@ spec:
         runAsUser: 0
         runAsGroup: 0
         fsGroup: 0
-      hostNetwork: false
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
     controllers:
       omni:
         annotations:
           reloader.stakater.com/auto: "true"
+        initContainers:
+          cleanup-wireguard:
+            image:
+              repository: alpine
+              tag: latest
+            command:
+              - /bin/sh
+              - -c
+              - |
+                # Clean up any existing siderolink interfaces
+                if ip link show siderolink 2>/dev/null; then
+                  ip link delete siderolink
+                fi
+                # Kill any processes using port 8090
+                fuser -k 8090/tcp || true
+            securityContext:
+              privileged: true
+              capabilities:
+                add: ["NET_ADMIN", "SYS_ADMIN"]
         containers:
           app:
             image:
@@ -55,6 +75,9 @@ spec:
               # SAML
               - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
+              # WireGuard configuration
+              - --siderolink-wireguard-endpoint=0.0.0.0:8090
+              - --siderolink-wireguard-bind-addr=0.0.0.0:8090
             resources:
               requests:
                 memory: 500Mi
