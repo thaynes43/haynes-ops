@@ -2,6 +2,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: omni
+  namespace: frontend
 spec:
   interval: 30m
   chartRef:
@@ -19,83 +20,89 @@ spec:
   uninstall:
     keepHistory: false
   values:
-    # Pod-level options (no hostNetwork, no sysctls)
+    # Pod-wide defaults (schema-safe)
     defaultPodOptions:
+      hostNetwork: false
       dnsPolicy: ClusterFirst
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
+      annotations:
+        # Unconfine only this container by name ("app") if your cluster enforces AppArmor
+        container.apparmor.security.beta.kubernetes.io/app: unconfined
+
     controllers:
-        omni:
-          annotations:
-            reloader.stakater.com/auto: "true"
-          initContainers:
-            cleanup-wireguard:
-              image:
-                repository: alpine
-                tag: latest
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  apk add --no-cache iproute2 psmisc
-                  echo "Cleaning up existing WireGuard interfaces..."
-                  
-                  # Clean up any existing siderolink interfaces
-                  if ip link show siderolink 2>/dev/null; then
-                    echo "Removing existing siderolink interface"
-                    ip link delete siderolink
-                  fi
-                  
-                  # Clean up any WireGuard interfaces with the problematic IPv6
-                  for iface in $(ip -6 addr show | grep "fdae:41e4:649b:9303" | awk '{print $NF}' | head -5); do
-                    echo "Removing interface $iface with problematic IPv6"
-                    ip link delete "$iface" 2>/dev/null || true
-                  done
-                  
-                  # Kill any processes using port 8090
-                  echo "Killing processes on port 8090"
-                  fuser -k 8090/tcp 2>/dev/null || true
-                  fuser -k 8090/udp 2>/dev/null || true
-                  
-                  echo "Cleanup complete"
-              securityContext:
-                privileged: true
-                capabilities:
-                  add: ["NET_ADMIN"]
-          containers:
-            app:
-              image:
-                repository: ghcr.io/siderolabs/omni
-                tag: v1.1.3
-                pullPolicy: IfNotPresent
-              envFrom:
-                - secretRef:
-                    name: omni-secret
-              args:
-                - --name=$(OMNI_NAME)
-                - --account-id=$(OMNI_ACCOUNT_UUID)
-                - --initial-users=$(OMNI_ADMIN_EMAILS)
-                - --etcd-embedded=true
-                - --etcd-embedded-unsafe-fsync=true
-                - --private-key-source=file:///omni.asc
-                - --bind-addr=0.0.0.0:8080
-                - --k8s-proxy-bind-addr=0.0.0.0:8100
-                - --machine-api-bind-addr=0.0.0.0:8090
-                - --advertised-api-url=$(ADVERTISED_API_URL)
-                - --advertised-kubernetes-proxy-url=$(ADVERTISED_K8S_PROXY_URL)
-                - --machine-api-advertised-url=$(SIDEROLINK_API_ADVERTISED_URL)
-                - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
-                - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
-              ports:
-                - { name: http,    containerPort: 8080 }
-                - { name: machine, containerPort: 8090 }
-                - { name: kube,    containerPort: 8100 }
-              probes:
+      omni:
+        # Safer during port moves
+        strategy: Recreate
+        annotations:
+          reloader.stakater.com/auto: "true"
+
+        containers:
+          app:
+            image:
+              repository: ghcr.io/siderolabs/omni
+              tag: v1.1.3
+              pullPolicy: IfNotPresent
+
+            envFrom:
+              - secretRef:
+                  name: omni-secret
+
+            # Omni flags (Machine API moved to 8091 to avoid previous bind clash)
+            args:
+              - --name=$(OMNI_NAME)
+              - --account-id=$(OMNI_ACCOUNT_UUID)
+              - --initial-users=$(OMNI_ADMIN_EMAILS)
+              - --etcd-embedded=true
+              - --etcd-embedded-unsafe-fsync=true
+              - --private-key-source=file:///omni.asc
+              - --bind-addr=0.0.0.0:8080
+              - --k8s-proxy-bind-addr=0.0.0.0:8100
+              - --machine-api-bind-addr=0.0.0.0:8091
+              - --advertised-api-url=$(ADVERTISED_API_URL)
+              - --advertised-kubernetes-proxy-url=$(ADVERTISED_K8S_PROXY_URL)
+              - --machine-api-advertised-url=$(SIDEROLINK_API_ADVERTISED_URL)
+              - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
+              - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
+
+            # Correct placement for per-container securityContext
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                add: ["NET_ADMIN"]
+              runAsUser: 0
+              runAsGroup: 0
+              seccompProfile:
+                type: Unconfined
+
+            # Request the /dev/net/tun device from the generic device plugin
+            resources:
+              limits:
+                memory: 16Gi
+                squat.ai/tun: "1"
+              requests:
+                cpu: 10m
+                memory: 500Mi
+
+            # Expose ports by name for services/probes
+            ports:
+              http:
+                containerPort: 8080
+              machine:
+                containerPort: 8091
+              kube:
+                containerPort: 8100
+
+            probes:
               liveness:
                 enabled: true
                 custom: true
                 spec:
                   httpGet:
                     path: /api/health
-                    port: 8080
+                    port: http
                   initialDelaySeconds: 60
                   periodSeconds: 30
                   timeoutSeconds: 10
@@ -106,37 +113,26 @@ spec:
                 spec:
                   httpGet:
                     path: /api/health
-                    port: 8080
+                    port: http
                   initialDelaySeconds: 30
                   periodSeconds: 10
                   timeoutSeconds: 5
                   failureThreshold: 3
-            # Request the /dev/net/tun device from the device plugin
-            resources:
-              requests:
-                cpu: 10m
-                memory: 500Mi
-                squat.ai/tun: "1"
-              limits:
-                memory: 16Gi
-                squat.ai/tun: "1"
-            # Unprivileged container with NET_ADMIN per Sidero guide
-            securityContext:
-              allowPrivilegeEscalation: false
-              capabilities:
-                drop: [ "ALL" ]
-                add:  [ "NET_ADMIN" ]
-              runAsUser: 0
-              runAsGroup: 0
 
     service:
       omni:
         controller: omni
         type: ClusterIP
         ports:
-          http:    { port: 8080, targetPort: http }
-          machine: { port: 8090, targetPort: machine }
-          kube:    { port: 8100, targetPort: kube }
+          http:
+            port: 8080
+            targetPort: http
+          machine:
+            port: 8091
+            targetPort: machine
+          kube:
+            port: 8100
+            targetPort: kube
 
     persistence:
       etcd:
