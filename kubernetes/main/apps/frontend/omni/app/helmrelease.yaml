@@ -81,7 +81,7 @@ spec:
               - --machine-api-cert=/tls.crt
               - --machine-api-key=/tls.key
               - --private-key-source=file:///omni.asc
-              - --event-sink-port=$(EVENT_SINK_PORT)
+              - --event-sink-port=8091
               - --bind-addr=0.0.0.0:8080
               - --machine-api-bind-addr=0.0.0.0:8090
               - --k8s-proxy-bind-addr=0.0.0.0:8100
@@ -112,7 +112,7 @@ spec:
               limits:
                 memory: 16Gi
                 squat.ai/tun: "1"
-                
+
             # containerPort is informational with hostNetwork, but keep names for Service/Ingress
             ports:
               - { name: http,    containerPort: 8080 }
