@@ -1,0 +1,39 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/fluxcd-community/flux2-schemas/main/kustomization-kustomize-v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app omni
+  namespace: &namespace frontend
+spec:
+  targetNamespace: *namespace
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: external-secrets-stores
+      namespace: flux-system
+    - name: traefik-external
+      namespace: flux-system
+    - name: certificates
+      namespace: flux-system
+    - name: authentik
+      namespace: flux-system
+    - name: rook-ceph-cluster
+      namespace: flux-system
+    - name: volsync
+      namespace: flux-system
+  path: ./kubernetes/main/apps/frontend/omni/app
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  prune: true
+  wait: false
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m
+  postBuild:
+    substitute:
+      APP: *app
+      VOLSYNC_CAPACITY: 10Gi

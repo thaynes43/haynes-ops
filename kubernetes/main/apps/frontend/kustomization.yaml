@@ -12,3 +12,4 @@ resources:
   - namespace.yaml
   # Flux-Kustomizations
   - ./homepage/ks.yaml
+  #- ./omni/ks.yaml

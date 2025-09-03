@@ -9,3 +9,4 @@ resources:
   - ./certificate-haynesnetwork-staging.yaml
   - ./certificate-haynesops-prod.yaml
   - ./certificate-haynesops-staging.yaml
+  - ./certificate-omni-prod.yaml
