@@ -31,8 +31,8 @@ spec:
           reloader.stakater.com/auto: "true"
 
         pod:
-          hostNetwork: true         # mirror compose: network_mode: host
-          dnsPolicy: ClusterFirstWithHostNet
+          #hostNetwork: true         # mirror compose: network_mode: host
+          #dnsPolicy: ClusterFirstWithHostNet
           securityContext:
             runAsUser: 0
             runAsGroup: 0
