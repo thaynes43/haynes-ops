@@ -38,7 +38,7 @@ spec:
         - name: omni-headers
       services:
         - name: omni
-          port: 8091
+          port: 8090
           scheme: h2c   # gRPC over h2c
           serversTransport: omni-long-timeouts
   tls:
