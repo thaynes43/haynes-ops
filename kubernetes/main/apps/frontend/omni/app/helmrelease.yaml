@@ -19,6 +19,12 @@ spec:
   uninstall:
     keepHistory: false
   values:
+    defaultPodOptions:
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
+      hostNetwork: false
     controllers:
       omni:
         annotations:
@@ -41,11 +47,11 @@ spec:
               # bind on all interfaces for Service/Ingress
               - --bind-addr=0.0.0.0:8080
               - --k8s-proxy-bind-addr=0.0.0.0:8100
-              - --siderolink-api-bind-addr=0.0.0.0:8090
+              - --machine-api-bind-addr=0.0.0.0:8090
               # advertised externally
               - --advertised-api-url=$(ADVERTISED_API_URL)
               - --advertised-kubernetes-proxy-url=$(ADVERTISED_K8S_PROXY_URL)
-              - --siderolink-api-advertised-url=$(SIDEROLINK_API_ADVERTISED_URL)
+              - --machine-api-advertised-url=$(SIDEROLINK_API_ADVERTISED_URL)
               # SAML
               - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
@@ -57,7 +63,8 @@ spec:
                 memory: 16Gi
             securityContext:
               capabilities:
-                add: ["NET_ADMIN"]
+                add: ["NET_ADMIN", "SYS_MODULE"]
+              privileged: true
             ports:
               - { name: http,    containerPort: 8080 }
               - { name: machine, containerPort: 8090 }
@@ -76,7 +83,7 @@ spec:
         globalMounts:
           - path: /_out/etcd
       dev-net-tun:
-        type: hostPath                 # <- use hostPath with type CharDevice
+        type: hostPath
         hostPath: /dev/net/tun
         hostPathType: CharDevice
         globalMounts:
