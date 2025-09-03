@@ -6,7 +6,7 @@ resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml
   - ./ingressroutes.yaml
-  - ../../../../../shared/templates/gatus/internal
+  - ../../../../../shared/templates/gatus/gaurded
   - ../../../../../shared/templates/volsync/app-pvc
   - ./multus-iot.yaml
   - ./multus-sonos.yaml

@@ -5,5 +5,5 @@ kind: Kustomization
 resources:
   - ./pvc.yaml
   - ./helmrelease.yaml
-  - ../../../../../../shared/templates/gatus/internal
+  - ../../../../../../shared/templates/gatus/gaurded
   - ../../../../../../shared/templates/volsync/app-pvc
