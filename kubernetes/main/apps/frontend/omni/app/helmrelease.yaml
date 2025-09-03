@@ -175,3 +175,19 @@ spec:
         globalMounts:
           - path: /omni.asc
             subPath: OMNI_ASC
+
+      deploy-tls-crt:
+        type: secret
+        name: omni-secret
+        defaultMode: 256
+        globalMounts:
+          - path: /tls.crt
+            subPath: OMNI_TLS_CRT
+ 
+      deploy-tls-key:
+        type: secret
+        name: omni-secret
+        defaultMode: 256
+        globalMounts:
+          - path: /tls.key
+            subPath: OMNI_TLS_KEY
