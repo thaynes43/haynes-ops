@@ -39,12 +39,29 @@ spec:
               - /bin/sh
               - -c
               - |
+                apk add --no-cache iproute2 psmisc
+                echo "Cleaning up existing WireGuard interfaces and processes..."
+                
                 # Clean up any existing siderolink interfaces
                 if ip link show siderolink 2>/dev/null; then
+                  echo "Removing existing siderolink interface"
                   ip link delete siderolink
                 fi
+                
+                # Clean up any WireGuard interfaces with the problematic IPv6
+                for iface in $(ip -6 addr show | grep "fdae:41e4:649b:9303" | awk '{print $NF}'); do
+                  echo "Removing interface $iface with problematic IPv6"
+                  ip link delete "$iface" 2>/dev/null || true
+                done
+                
                 # Kill any processes using port 8090
-                fuser -k 8090/tcp || true
+                echo "Killing processes on port 8090"
+                fuser -k 8090/tcp 2>/dev/null || true
+                fuser -k 8090/udp 2>/dev/null || true
+                
+                # Wait a moment for cleanup
+                sleep 2
+                echo "Cleanup complete"
             securityContext:
               privileged: true
               capabilities:
@@ -63,6 +80,7 @@ spec:
               - --account-id=$(OMNI_ACCOUNT_UUID)
               - --initial-users=$(OMNI_ADMIN_EMAILS)
               - --etcd-embedded=true
+              - --etcd-embedded-unsafe-fsync=true
               - --private-key-source=file:///omni.asc
               # bind on all interfaces for Service/Ingress
               - --bind-addr=0.0.0.0:8080
@@ -75,9 +93,6 @@ spec:
               # SAML
               - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
-              # WireGuard configuration
-              - --siderolink-wireguard-endpoint=0.0.0.0:8090
-              - --siderolink-wireguard-bind-addr=0.0.0.0:8090
             resources:
               requests:
                 memory: 500Mi
