@@ -17,6 +17,7 @@ spec:
       services:
         - name: omni
           port: 8080
+          scheme: https
           serversTransport: omni-long-timeouts
   tls:
     secretName: certificate-haynesnetwork
@@ -39,7 +40,7 @@ spec:
       services:
         - name: omni
           port: 8090
-          scheme: h2c   # gRPC over h2c
+          scheme: https
           serversTransport: omni-long-timeouts
   tls:
     secretName: certificate-omni-api
@@ -62,6 +63,7 @@ spec:
       services:
         - name: omni
           port: 8100
+          scheme: https
           serversTransport: omni-long-timeouts
   tls:
     secretName: certificate-omni-kube
