@@ -174,14 +174,3 @@ spec:
         globalMounts:
           - path: /omni.asc
             subPath: OMNI_ASC
-
-      # TLS cert/key (compose mounts /tls.crt and /tls.key)
-      tls:
-        type: secret
-        name: omni-tls             # create a kubernetes.io/tls secret with tls.crt/tls.key
-        defaultMode: 256
-        globalMounts:
-          - path: /tls.crt
-            subPath: tls.crt
-          - path: /tls.key
-            subPath: tls.key
