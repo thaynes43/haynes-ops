@@ -2,11 +2,12 @@
 # yaml-language-server: $schema=https://json.schemastore.org/kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+components:
+  - ../../../../../shared/components/volsync/aws
+  - ../../../../../shared/components/gatus/external
 resources:
   - ./serverstransport.yaml
   - ./middleware.yaml
   - ./ingressroutes.yaml
   - ./externalsecret.yaml
   - ./helmrelease.yaml
-  - ../../../../../shared/components/volsync/aws
-  - ../../../../../shared/components/gatus/external
