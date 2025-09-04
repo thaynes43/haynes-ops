@@ -13,9 +13,9 @@ spec:
     - match: Host(`omni.haynesnetwork.com`)
       kind: Rule
       services:
-        - name: omni
+        - kind: Service
+          name: omni
           port: 8080
-          serversTransport: omni-long-timeouts
   tls:
     secretName: certificate-haynesnetwork
 ---
@@ -33,9 +33,9 @@ spec:
     - match: Host(`api.omni.haynesnetwork.com`)
       kind: Rule
       services:
-        - name: omni
+        - kind: Service
+          name: omni
           port: 8090
-          serversTransport: omni-long-timeouts
   tls:
     secretName: certificate-omni-api
 ---
@@ -53,8 +53,8 @@ spec:
     - match: Host(`kube.omni.haynesnetwork.com`)
       kind: Rule
       services:
-        - name: omni
+        - kind: Service
+          name: omni
           port: 8100
-          serversTransport: omni-long-timeouts
   tls:
     secretName: certificate-omni-kube

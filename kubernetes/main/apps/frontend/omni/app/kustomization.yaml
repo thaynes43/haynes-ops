@@ -6,8 +6,6 @@ components:
   - ../../../../../shared/components/volsync/aws
   - ../../../../../shared/components/gatus/external
 resources:
-  - ./serverstransport.yaml
-  - ./middleware.yaml
   - ./ingressroutes.yaml
   - ./externalsecret.yaml
   - ./helmrelease.yaml
