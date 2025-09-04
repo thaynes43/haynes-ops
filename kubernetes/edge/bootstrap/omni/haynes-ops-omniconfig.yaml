@@ -1,7 +1,0 @@
-contexts:
-    default:
-        url: https://haynes.omni.siderolabs.io
-        auth:
-            siderov1:
-                identity: manofoz@gmail.com
-context: default

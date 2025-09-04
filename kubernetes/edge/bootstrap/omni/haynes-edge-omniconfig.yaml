@@ -1,0 +1,12 @@
+contexts:
+    haynes-ops:
+        url: https://haynes.omni.siderolabs.io
+        auth:
+            siderov1:
+                identity: manofoz@gmail.com
+    haynes-edge:
+        url: https://omni.haynesnetwork.com
+        auth:
+            siderov1:
+                identity: admin@haynesnetwork.com
+context: haynes-ops

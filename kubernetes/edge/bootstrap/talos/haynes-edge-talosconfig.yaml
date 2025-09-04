@@ -1,8 +1,12 @@
-context: haynes-haynes-ops
+context: haynes-ops
 contexts:
-    haynes-haynes-ops:
+    haynes-ops:
         endpoints:
             - https://haynes.omni.siderolabs.io
+        auth:
+            siderov1:
+                identity: manofoz@gmail.com
+        cluster: haynes-ops
         nodes:
             - 192.168.40.93
             - 192.168.40.59
@@ -10,7 +14,9 @@ contexts:
             - 192.168.40.53
             - 192.168.40.77
             - 192.168.40.21
+    haynes-edge:
+        endpoints:
+            - https://omni.haynesnetwork.com/
         auth:
             siderov1:
-                identity: manofoz@gmail.com
-        cluster: haynes-ops
+                identity: admin@haynesnetwork.com
