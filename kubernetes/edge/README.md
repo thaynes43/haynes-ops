@@ -2,13 +2,6 @@
 
 The edge cluster uses self hosted `omni` from the main cluster to control the nodes. It's intended to be used for development and testing and no services hosted here shall be used in "production".
 
-```bash
-omnictl cluster template validate -f
-
-omnictl cluster template sync -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml --verbose
-omnictl cluster template status -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml
-```
-
 ## Managing Config Context
 
 We need to change context for kube, talos, and omni configs. 
@@ -42,6 +35,22 @@ To switch:
 ```bash
 omnictl config context haynes-edge
 omnictl config context haynes-ops
+```
+
+Cheat sheet:
+
+```bash
+omnictl get clusters
+omnictl get machines
+```
+
+Then test and apply templates:
+
+```bash
+omnictl cluster template validate -f haynes-edge-omniconfig.yaml
+
+omnictl cluster template sync -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml --verbose
+omnictl cluster template status -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml
 ```
 
 ## Nodes
