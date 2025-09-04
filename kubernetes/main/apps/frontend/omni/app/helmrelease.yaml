@@ -57,7 +57,7 @@ spec:
               - --advertised-api-url=$(ADVERTISED_API_URL)
               - --advertised-kubernetes-proxy-url=$(ADVERTISED_K8S_PROXY_URL)
               - --machine-api-advertised-url=$(SIDEROLINK_API_ADVERTISED_URL)
-              - --siderolink-wireguard-advertised-addr=$(SIDEROLINK_WIREGARD_ADVERTISED_ADDR)
+              - --siderolink-wireguard-advertised-addr=$(SIDEROLINK_WIREGUARD_ADVERTISED_ADDR)
               - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
               - --etcd-embedded=true
@@ -119,11 +119,14 @@ spec:
           machine: { port: 8090, targetPort: machine }
           kube: { port: 8100, targetPort: kube }
 
-      omni-wireguard:
+      wireguard:
         controller: omni
-        type: NodePort
+        type: LoadBalancer
+        annotations:
+          lbipam.cilium.io/ips: "192.168.40.210"
         ports:
           wireguard:
+            enabled: true
             port: 50180
             targetPort: wireguard
             protocol: UDP
