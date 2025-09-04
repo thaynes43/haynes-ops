@@ -25,6 +25,7 @@ metadata:
   name: omni-machine
   annotations:
     external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
     kubernetes.io/ingress.class: traefik-external
 spec:
   entryPoints:
@@ -45,6 +46,7 @@ metadata:
   name: omni-kube
   annotations:
     external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
     kubernetes.io/ingress.class: traefik-external
 spec:
   entryPoints:
