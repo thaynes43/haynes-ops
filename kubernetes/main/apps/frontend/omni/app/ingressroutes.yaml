@@ -13,9 +13,9 @@ spec:
     - match: Host(`omni.haynesnetwork.com`)
       kind: Rule
       services:
-        - kind: Service
-          name: omni
+        - name: omni
           port: 8080
+          scheme: https
   tls:
     secretName: certificate-haynesnetwork
 ---
@@ -33,9 +33,9 @@ spec:
     - match: Host(`api.omni.haynesnetwork.com`)
       kind: Rule
       services:
-        - kind: Service
-          name: omni
+        - name: omni
           port: 8090
+          scheme: https
   tls:
     secretName: certificate-omni-api
 ---
@@ -53,8 +53,8 @@ spec:
     - match: Host(`kube.omni.haynesnetwork.com`)
       kind: Rule
       services:
-        - kind: Service
-          name: omni
+        - name: omni
           port: 8100
+          scheme: https
   tls:
     secretName: certificate-omni-kube
