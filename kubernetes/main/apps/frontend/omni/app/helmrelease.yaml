@@ -121,12 +121,12 @@ spec:
 
       wireguard:
         controller: omni
-        type: LoadBalancer
-        annotations:
-          lbipam.cilium.io/ips: "192.168.40.210"
+        type: NodePort
+        #type: LoadBalancer
+        #annotations:
+        #  lbipam.cilium.io/ips: "192.168.40.210"
         ports:
           wireguard:
-            enabled: true
             port: 50180
             targetPort: wireguard
             protocol: UDP
