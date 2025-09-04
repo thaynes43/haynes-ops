@@ -12,12 +12,9 @@ spec:
   routes:
     - match: Host(`omni.haynesnetwork.com`)
       kind: Rule
-      middlewares:
-        - name: omni-headers
       services:
         - name: omni
           port: 8080
-          scheme: https
           serversTransport: omni-long-timeouts
   tls:
     secretName: certificate-haynesnetwork
@@ -35,12 +32,9 @@ spec:
   routes:
     - match: Host(`api.omni.haynesnetwork.com`)
       kind: Rule
-      middlewares:
-        - name: omni-headers
       services:
         - name: omni
           port: 8090
-          scheme: https
           serversTransport: omni-long-timeouts
   tls:
     secretName: certificate-omni-api
@@ -58,12 +52,9 @@ spec:
   routes:
     - match: Host(`kube.omni.haynesnetwork.com`)
       kind: Rule
-      middlewares:
-        - name: omni-headers
       services:
         - name: omni
           port: 8100
-          scheme: https
           serversTransport: omni-long-timeouts
   tls:
     secretName: certificate-omni-kube
