@@ -45,8 +45,8 @@ spec:
             args:
               - --account-id=$(OMNI_ACCOUNT_UUID)
               - --name=$(OMNI_NAME)
-              - --cert=/tls.crt
-              - --key=/tls.key
+              #- --cert=/tls.crt
+              #- --key=/tls.key
               - --machine-api-cert=/tls.crt
               - --machine-api-key=/tls.key
               - --private-key-source=file:///omni.asc
