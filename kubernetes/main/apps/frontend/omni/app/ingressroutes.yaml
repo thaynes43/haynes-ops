@@ -3,9 +3,6 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: omni-main-http
-  annotations:
-    external-dns.alpha.kubernetes.io/target: internal.haynesops
-    kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
     - websecure
@@ -25,9 +22,6 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: omni-machine-grpc
-  annotations:
-    external-dns.alpha.kubernetes.io/target: internal.haynesops
-    kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
     - websecure
@@ -47,9 +41,6 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: omni-kube
-  annotations:
-    external-dns.alpha.kubernetes.io/target: internal.haynesops
-    kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
     - websecure
