@@ -23,7 +23,7 @@ spec:
       object-src 'none';
       frame-ancestors 'self';
       base-uri 'self';
-      form-action 'self' https://omni.haynesnetwork.com https://*.haynesnetwork.com;
+      form-action 'self' https://omni.haynesops.com https://*.haynesops.com;
     customFrameOptionsValue: SAMEORIGIN
     customRequestHeaders:
       X-Forwarded-Proto: https

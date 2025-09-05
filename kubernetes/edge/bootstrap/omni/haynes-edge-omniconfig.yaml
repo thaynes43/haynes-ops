@@ -5,7 +5,7 @@ contexts:
             siderov1:
                 identity: manofoz@gmail.com
     haynes-edge:
-        url: https://omni.haynesnetwork.com
+        url: https://omni.haynesops.com
         auth:
             siderov1:
                 identity: admin@haynesnetwork.com

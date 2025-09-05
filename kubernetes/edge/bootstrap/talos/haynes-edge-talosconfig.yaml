@@ -16,7 +16,7 @@ contexts:
             - 192.168.40.21
     haynes-edge:
         endpoints:
-            - https://omni.haynesnetwork.com/
+            - https://omni.haynesops.com/
         auth:
             siderov1:
                 identity: admin@haynesnetwork.com
