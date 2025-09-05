@@ -10,4 +10,3 @@ resources:
   - ./ingressroutes.yaml
   - ./externalsecret.yaml
   - ./helmrelease.yaml
-  - ./dnsendpoint.yaml

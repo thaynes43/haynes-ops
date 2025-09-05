@@ -4,6 +4,8 @@ kind: IngressRoute
 metadata:
   name: omni-main-http
   annotations:
+    external-dns.alpha.kubernetes.io/target: haynes01886.duckdns.org
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
     kubernetes.io/ingress.class: traefik-external
 spec:
   entryPoints:
@@ -25,6 +27,8 @@ kind: IngressRoute
 metadata:
   name: omni-main-grpc
   annotations:
+    external-dns.alpha.kubernetes.io/target: haynes01886.duckdns.org
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
     kubernetes.io/ingress.class: traefik-external
 spec:
   entryPoints:
@@ -46,6 +50,8 @@ kind: IngressRoute
 metadata:
   name: omni-machine-grpc
   annotations:
+    external-dns.alpha.kubernetes.io/target: haynes01886.duckdns.org
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
     kubernetes.io/ingress.class: traefik-external
 spec:
   entryPoints:
@@ -67,6 +73,8 @@ kind: IngressRoute
 metadata:
   name: omni-kube
   annotations:
+    external-dns.alpha.kubernetes.io/target: haynes01886.duckdns.org
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
     kubernetes.io/ingress.class: traefik-external
 spec:
   entryPoints:
