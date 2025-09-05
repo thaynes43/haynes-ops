@@ -2,7 +2,7 @@
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
-  name: omni-main
+  name: omni-main-http
   annotations:
     external-dns.alpha.kubernetes.io/target: haynesnetwork.com
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
@@ -11,7 +11,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`omni.haynesnetwork.com`)
+    - match: Host(`omni.haynesnetwork.com`) && !HeadersRegexp(`Content-Type`, `^application/grpc.*`)
       kind: Rule
       services:
         - name: omni
@@ -25,7 +25,30 @@ spec:
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
-  name: omni-machine
+  name: omni-main-grpc
+  annotations:
+    external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
+    kubernetes.io/ingress.class: traefik-external
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`omni.haynesnetwork.com`) && HeadersRegexp(`Content-Type`, `^application/grpc.*`)
+      kind: Rule
+      services:
+        - name: omni
+          port: 8080
+          scheme: h2c
+          serversTransport: omni-long-timeouts
+          passHostHeader: true
+  tls:
+    secretName: certificate-haynesnetwork
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: omni-machine-grpc
   annotations:
     external-dns.alpha.kubernetes.io/target: haynesnetwork.com
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
@@ -39,7 +62,7 @@ spec:
       services:
         - name: omni
           port: 8090
-          scheme: https
+          scheme: h2c
           serversTransport: omni-long-timeouts
           passHostHeader: true
   tls:

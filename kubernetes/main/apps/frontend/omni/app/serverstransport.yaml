@@ -6,7 +6,7 @@ metadata:
 spec:
   insecureSkipVerify: true
   forwardingTimeouts:
-    dialTimeout: 30s
-    responseHeaderTimeout: 300s
+    dialTimeout: 60s
+    responseHeaderTimeout: 0s
     idleConnTimeout: 1h
   maxIdleConnsPerHost: 200
