@@ -23,14 +23,15 @@ spec:
     additionalArguments:
       - "--serversTransport.insecureSkipVerify=true"
       - "--log.level=DEBUG"
-      - "--serversTransport.maxIdleConnsPerHost=200"
-      - "--serversTransport.forwardingTimeouts.dialTimeout=30s"
-      - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=300s"
-      - "--serversTransport.forwardingTimeouts.idleConnTimeout=1h"
-      - "--entryPoints.websecure.transport.respondingTimeouts.idleTimeout=1h"
+      - "--serversTransport.maxIdleConnsPerHost=1000"
+      - "--serversTransport.forwardingTimeouts.dialTimeout=60s"
+      - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=0s"
+      - "--serversTransport.forwardingTimeouts.idleConnTimeout=0s"
+      - "--entryPoints.websecure.transport.respondingTimeouts.idleTimeout=0s"
       - "--entryPoints.websecure.transport.respondingTimeouts.readTimeout=0s"
       - "--entryPoints.websecure.transport.respondingTimeouts.writeTimeout=0s"
       - "--entryPoints.websecure.http2.maxConcurrentStreams=1000"
+      - "--entryPoints.websecure.http2.pingTimeout=60s"
 
     #fullnameOverride: traefik-external ## Using releaseName instead
     deployment:

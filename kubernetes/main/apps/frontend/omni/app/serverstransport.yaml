@@ -8,5 +8,6 @@ spec:
   forwardingTimeouts:
     dialTimeout: 60s
     responseHeaderTimeout: 0s
-    idleConnTimeout: 1h
-  maxIdleConnsPerHost: 200
+    idleConnTimeout: 0s
+  maxIdleConnsPerHost: 1000
+  disableHTTP2: false
