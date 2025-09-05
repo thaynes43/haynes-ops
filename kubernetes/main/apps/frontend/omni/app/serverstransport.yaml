@@ -4,6 +4,7 @@ kind: ServersTransport
 metadata:
   name: omni-long-timeouts
 spec:
+  insecureSkipVerify: true
   forwardingTimeouts:
     dialTimeout: 30s
     responseHeaderTimeout: 300s
