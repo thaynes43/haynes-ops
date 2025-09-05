@@ -11,7 +11,7 @@ spec:
       targets:
         - haynes01886.duckdns.org
       providerSpecific:
-        - name: cloudflare-proxied
+        - name: proxied
           value: "false"
     - dnsName: api.omni.haynesnetwork.com
       recordTTL: 300
@@ -19,7 +19,7 @@ spec:
       targets:
         - haynes01886.duckdns.org
       providerSpecific:
-        - name: cloudflare-proxied
+        - name: proxied
           value: "false"
     - dnsName: kube.omni.haynesnetwork.com
       recordTTL: 300
@@ -27,5 +27,5 @@ spec:
       targets:
         - haynes01886.duckdns.org
       providerSpecific:
-        - name: cloudflare-proxied
+        - name: proxied
           value: "false"
