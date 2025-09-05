@@ -19,6 +19,8 @@ spec:
           scheme: https
           serversTransport: omni-long-timeouts
           passHostHeader: true
+      middlewares:
+        - name: omni-kube-websocket
   tls:
     secretName: certificate-haynesnetwork
 ---
@@ -65,5 +67,7 @@ spec:
           scheme: https
           serversTransport: omni-long-timeouts
           passHostHeader: true
+      middlewares:
+        - name: omni-kube-websocket
   tls:
     secretName: certificate-omni-kube
