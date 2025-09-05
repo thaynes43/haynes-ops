@@ -62,7 +62,7 @@ spec:
       services:
         - name: omni
           port: 8100
-          scheme: https
+          scheme: http
           serversTransport: omni-long-timeouts
           passHostHeader: true
   tls:
