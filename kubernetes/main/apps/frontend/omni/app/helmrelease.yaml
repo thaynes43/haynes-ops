@@ -62,7 +62,6 @@ spec:
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
               - --etcd-embedded=true
               - --etcd-embedded-unsafe-fsync=true
-              - --k8s-proxy-timeout=0s
 
             securityContext:
               privileged: true
