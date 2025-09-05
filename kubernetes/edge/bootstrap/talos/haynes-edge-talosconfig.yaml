@@ -20,3 +20,8 @@ contexts:
         auth:
             siderov1:
                 identity: admin@haynesnetwork.com
+        cluster: haynes-edge
+        nodes:
+            - 192.168.40.6
+            - 192.168.40.7
+            - 192.168.40.8
