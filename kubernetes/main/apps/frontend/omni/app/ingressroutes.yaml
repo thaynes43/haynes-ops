@@ -3,11 +3,14 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: omni-main-http
+  annotations:
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`omni.haynesnetwork.com`)
+    - match: Host(`omni.haynesops.com`)
       kind: Rule
       services:
         - name: omni
@@ -16,17 +19,20 @@ spec:
           serversTransport: omni-long-timeouts
           passHostHeader: true
   tls:
-    secretName: certificate-haynesnetwork
+    secretName: certificate-haynesops
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: omni-machine-grpc
+  annotations:
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`api.omni.haynesnetwork.com`)
+    - match: Host(`api.omni.haynesops.com`)
       kind: Rule
       services:
         - name: omni
@@ -35,17 +41,20 @@ spec:
           serversTransport: omni-long-timeouts
           passHostHeader: true
   tls:
-    secretName: certificate-omni-api
+    secretName: certificate-omni-api-internal
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: omni-kube
+  annotations:
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`kube.omni.haynesnetwork.com`)
+    - match: Host(`kube.omni.haynesops.com`)
       kind: Rule
       services:
         - name: omni
@@ -54,4 +63,4 @@ spec:
           serversTransport: omni-long-timeouts
           passHostHeader: true
   tls:
-    secretName: certificate-omni-kube
+    secretName: certificate-omni-kube-internal
