@@ -11,35 +11,12 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`omni.haynesnetwork.com`) && !HeadersRegexp(`Content-Type`, `^application/grpc.*`)
+    - match: Host(`omni.haynesnetwork.com`)
       kind: Rule
       services:
         - name: omni
           port: 8080
           scheme: https
-          serversTransport: omni-long-timeouts
-          passHostHeader: true
-  tls:
-    secretName: certificate-haynesnetwork
----
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
-metadata:
-  name: omni-main-grpc
-  annotations:
-    external-dns.alpha.kubernetes.io/target: haynes01886.duckdns.org
-    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
-    kubernetes.io/ingress.class: traefik-external
-spec:
-  entryPoints:
-    - websecure
-  routes:
-    - match: Host(`omni.haynesnetwork.com`) && HeadersRegexp(`Content-Type`, `^application/grpc.*`)
-      kind: Rule
-      services:
-        - name: omni
-          port: 8080
-          scheme: h2c
           serversTransport: omni-long-timeouts
           passHostHeader: true
   tls:
