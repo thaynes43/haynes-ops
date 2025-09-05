@@ -22,7 +22,15 @@ spec:
 
     additionalArguments:
       - "--serversTransport.insecureSkipVerify=true"
-      - "--log.level=DEBUG" # TODO Set to INFO later
+      - "--log.level=DEBUG"
+      - "--serversTransport.maxIdleConnsPerHost=1000"
+      - "--serversTransport.forwardingTimeouts.dialTimeout=60s"
+      - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=0s"
+      - "--serversTransport.forwardingTimeouts.idleConnTimeout=0s"
+      - "--entryPoints.websecure.transport.respondingTimeouts.idleTimeout=0s"
+      - "--entryPoints.websecure.transport.respondingTimeouts.readTimeout=0s"
+      - "--entryPoints.websecure.transport.respondingTimeouts.writeTimeout=0s"
+      - "--entryPoints.websecure.http2.maxConcurrentStreams=1000"
 
     deployment:
       enabled: true

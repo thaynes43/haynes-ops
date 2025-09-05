@@ -4,9 +4,8 @@ kind: IngressRoute
 metadata:
   name: omni-main-http
   annotations:
-    external-dns.alpha.kubernetes.io/target: haynes01886.duckdns.org
-    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
-    kubernetes.io/ingress.class: traefik-external
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
     - websecure
@@ -19,8 +18,6 @@ spec:
           scheme: https
           serversTransport: omni-long-timeouts
           passHostHeader: true
-      middlewares:
-        - name: omni-kube-websocket
   tls:
     secretName: certificate-haynesnetwork
 ---
@@ -29,9 +26,8 @@ kind: IngressRoute
 metadata:
   name: omni-machine-grpc
   annotations:
-    external-dns.alpha.kubernetes.io/target: haynes01886.duckdns.org
-    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
-    kubernetes.io/ingress.class: traefik-external
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
     - websecure
@@ -52,9 +48,8 @@ kind: IngressRoute
 metadata:
   name: omni-kube
   annotations:
-    external-dns.alpha.kubernetes.io/target: haynes01886.duckdns.org
-    external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
-    kubernetes.io/ingress.class: traefik-external
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
     - websecure
@@ -67,7 +62,5 @@ spec:
           scheme: https
           serversTransport: omni-long-timeouts
           passHostHeader: true
-      middlewares:
-        - name: omni-kube-websocket
   tls:
     secretName: certificate-omni-kube
