@@ -31,7 +31,6 @@ spec:
       - "--entryPoints.websecure.transport.respondingTimeouts.readTimeout=0s"
       - "--entryPoints.websecure.transport.respondingTimeouts.writeTimeout=0s"
       - "--entryPoints.websecure.http2.maxConcurrentStreams=1000"
-      - "--experimental.http3=true"
 
     #fullnameOverride: traefik-external ## Using releaseName instead
     deployment:
