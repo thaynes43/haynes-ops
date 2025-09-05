@@ -45,10 +45,10 @@ spec:
             args:
               - --account-id=$(OMNI_ACCOUNT_UUID)
               - --name=$(OMNI_NAME)
-              #- --cert=/ui-tls.crt
-              #- --key=/ui-tls.key
-              #- --machine-api-cert=/tls.crt
-              #- --machine-api-key=/tls.key
+              - --cert=/ui-tls.crt
+              - --key=/ui-tls.key
+              - --machine-api-cert=/tls.crt
+              - --machine-api-key=/tls.key
               - --private-key-source=file:///omni.asc
               - --event-sink-port=8091
               - --bind-addr=0.0.0.0:8080
@@ -119,34 +119,34 @@ spec:
           - path: /omni.asc
             subPath: OMNI_ASC
 
-      #deploy-tls-crt:
-      #  type: secret
-      #  name: omni-secret
-      #  defaultMode: 256
-      #  globalMounts:
-      #    - path: /tls.crt
-      #      subPath: OMNI_TLS_CRT
+      deploy-tls-crt:
+        type: secret
+        name: omni-secret
+        defaultMode: 256
+        globalMounts:
+          - path: /tls.crt
+            subPath: HAYNESOPS_OMNI_API_TLS_CRT
 
-      #deploy-tls-key:
-      #  type: secret
-      #  name: omni-secret
-      #  defaultMode: 256
-      #  globalMounts:
-      #    - path: /tls.key
-      #      subPath: OMNI_TLS_KEY
+      deploy-tls-key:
+        type: secret
+        name: omni-secret
+        defaultMode: 256
+        globalMounts:
+          - path: /tls.key
+            subPath: HAYNESOPS_OMNI_API_TLS_KEY
 
-      #deploy-ui-tls-crt:
-      #  type: secret
-      #  name: omni-secret
-      #  defaultMode: 256
-      #  globalMounts:
-      #    - path: /ui-tls.crt
-      #      subPath: OMNI_UI_TLS_CRT
+      deploy-ui-tls-crt:
+        type: secret
+        name: omni-secret
+        defaultMode: 256
+        globalMounts:
+          - path: /ui-tls.crt
+            subPath: HAYNESOPS_OMNI_UI_TLS_CRT
 
-      #deploy-ui-tls-key:
-      #  type: secret
-      #  name: omni-secret
-      #  defaultMode: 256
-      #  globalMounts:
-      #    - path: /ui-tls.key
-      #      subPath: OMNI_UI_TLS_KEY
+      deploy-ui-tls-key:
+        type: secret
+        name: omni-secret
+        defaultMode: 256
+        globalMounts:
+          - path: /ui-tls.key
+            subPath: HAYNESOPS_OMNI_UI_TKS_KEY
