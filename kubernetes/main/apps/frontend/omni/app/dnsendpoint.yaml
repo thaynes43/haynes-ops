@@ -1,0 +1,31 @@
+---
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
+metadata:
+  name: omni-domains
+spec:
+  endpoints:
+    - dnsName: omni.haynesnetwork.com
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - haynes01886.duckdns.org
+      providerSpecific:
+        - name: cloudflare-proxied
+          value: "false"
+    - dnsName: api.omni.haynesnetwork.com
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - haynes01886.duckdns.org
+      providerSpecific:
+        - name: cloudflare-proxied
+          value: "false"
+    - dnsName: kube.omni.haynesnetwork.com
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - haynes01886.duckdns.org
+      providerSpecific:
+        - name: cloudflare-proxied
+          value: "false"
