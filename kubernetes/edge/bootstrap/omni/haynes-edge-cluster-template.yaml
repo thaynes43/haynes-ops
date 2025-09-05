@@ -1,5 +1,5 @@
 kind: Cluster
-name: haynes-ops
+name: haynes-edge
 kubernetes:
   version: v1.33.4
 talos:
@@ -10,7 +10,7 @@ features:
 ---
 kind: ControlPlane
 machines:
-  - c1f22c00-4390-11ef-a299-436f6535c900
+  - 956a5500-f349-11ee-8c29-2960cf0dd000
 patches:
   - idOverride: haynes-edge-control-planes
     inline:
@@ -49,9 +49,9 @@ systemExtensions:
   - siderolabs/i915
   - siderolabs/nut-client
   - siderolabs/thunderbolt
-name: c1f22c00-4390-11ef-a299-436f6535c900
+name: 956a5500-f349-11ee-8c29-2960cf0dd000
 patches:
-  - idOverride: edgem02-c1f22c00-4390-11ef-a299-436f6535c900
+  - idOverride: edgem02-956a5500-f349-11ee-8c29-2960cf0dd000
     inline:
       machine:
         install:
@@ -81,7 +81,7 @@ patches:
           net.core.wmem_max: "7500000"
         kubelet:
           extraArgs:
-            rotate-server-certificates: "true"
+            rotate-server-certificates: "false" # TODO need service to approve these
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:

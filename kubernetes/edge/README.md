@@ -6,25 +6,7 @@ The edge cluster uses self hosted `omni` from the main cluster to control the no
 
 We need to change context for kube, talos, and omni configs. 
 
-### Talos
-
-Talos config may be found at `/home/thaynes/.talos/config`.
-
-`talosctl config contexts` will list all contexts and * the current.
-
-To switch:
-
-```bash
-talosctl config context haynes-edge
-talosctl config context haynes-ops
-```
-
-Cheat sheet:
-
-- To list all resources `talosctl get rd`
-- `talosctl memory`
-
-### Omni
+### Omnictl
 
 The omnictl config may be found at `/home/thaynes/.config/omni/config`.
 
@@ -47,11 +29,48 @@ omnictl get machines
 Then test and apply templates:
 
 ```bash
-omnictl cluster template validate -f haynes-edge-omniconfig.yaml
+cd /home/thaynes/haynes-ops/kubernetes/edge/bootstrap/omni
 
-omnictl cluster template sync -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml --verbose
-omnictl cluster template status -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml
+omnictl cluster template validate -f haynes-edge-cluster-template.yaml
+
+omnictl cluster template sync -f haynes-edge-cluster-template.yaml --verbose
+omnictl cluster template status -f haynes-edge-cluster-template.yaml
 ```
+
+### Talosctl
+
+Talos config may be found at `/home/thaynes/.talos/config`.
+
+`talosctl config contexts` will list all contexts and * the current.
+
+To switch:
+
+```bash
+talosctl config context haynes-edge
+talosctl config context haynes-ops
+```
+
+Cheat sheet:
+
+- To list all resources `talosctl get rd`
+- `talosctl memory`
+
+### Kubectl
+
+Kube config may be found at `/home/thaynes/.kube`.
+
+`kubectl config get-contexts` will list all contexts and * the current. 
+
+To switch:
+
+```bash
+kubectl config use-context haynes-edge
+kubectl config use-context haynes-ops
+```
+
+Chreat sheet:
+
+- `kubectl config current-context`
 
 ## Nodes
 
