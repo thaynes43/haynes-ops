@@ -1,0 +1,11 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: omni-long-timeouts
+spec:
+  forwardingTimeouts:
+    dialTimeout: 30s
+    responseHeaderTimeout: 300s
+    idleConnTimeout: 1h
+  maxIdleConnsPerHost: 200

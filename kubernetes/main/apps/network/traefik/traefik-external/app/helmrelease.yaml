@@ -22,7 +22,14 @@ spec:
 
     additionalArguments:
       - "--serversTransport.insecureSkipVerify=true"
-      - "--log.level=DEBUG" # TODO Set to INFO later
+      - "--log.level=DEBUG"
+      - "--serversTransport.maxIdleConnsPerHost=200"
+      - "--serversTransport.forwardingTimeouts.dialTimeout=30s"
+      - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=300s"
+      - "--serversTransport.forwardingTimeouts.idleConnTimeout=1h"
+      - "--entryPoints.websecure.transport.respondingTimeouts.idleTimeout=1h"
+      - "--entryPoints.websecure.transport.respondingTimeouts.readTimeout=0s"
+      - "--entryPoints.websecure.transport.respondingTimeouts.writeTimeout=0s"
 
     #fullnameOverride: traefik-external ## Using releaseName instead
     deployment:
