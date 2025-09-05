@@ -97,10 +97,43 @@ Kernel Args:
             - net.ifnames=0
 ```
 
+### edgem01
+
+__from pve01__
+
+eth0: `58:47:ca:77:13:da`
+
 ### edgem02
 
+__from pve02__
+
 eth0: `58:47:ca:77:0d:aa`
+
+### edgem03
+
+__from pve03__
+
+eth0: `58:47:ca:77:0a:7a`
 
 ### edgew01
 
 Machine ID: `77d65c00-5811-11ef-b65b-a8751caa6100`
+
+## Notes on migrating
+
+Remove proxmox nodes
+
+Part 1 - Ceph
+
+- Delete mgr, mon, mds
+- Set OSD to out
+- Let cluster rebalance
+- Set OSD to down
+- Verify there are no undersized pgs
+- Delete OSDs
+- `ceph osd crush rm NODE`
+
+Part 2 - HA cluster
+
+- `pvecm delnode NODE`
+- pvecm nodes

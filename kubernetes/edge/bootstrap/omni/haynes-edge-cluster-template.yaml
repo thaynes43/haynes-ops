@@ -10,7 +10,9 @@ features:
 ---
 kind: ControlPlane
 machines:
+  - 100b8400-f2fa-11ee-8190-410728e5a600
   - 956a5500-f349-11ee-8c29-2960cf0dd000
+  - 0412ab80-f1ae-11ee-9e2d-bdcefa626900
 patches:
   - idOverride: haynes-edge-control-planes
     inline:
@@ -49,6 +51,98 @@ systemExtensions:
   - siderolabs/i915
   - siderolabs/nut-client
   - siderolabs/thunderbolt
+name: 100b8400-f2fa-11ee-8190-410728e5a600
+patches:
+  - idOverride: edgem01-100b8400-f2fa-11ee-8190-410728e5a600
+    inline:
+      machine:
+        install:
+          extraKernelArgs:
+            - nomodeset
+            - net.ifnames=0
+          diskSelector:
+            model: CT1000T500SSD8
+          wipe: true
+        network:
+          hostname: edgem01
+          interfaces:
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:13:da
+              mtu: 1500
+              dhcp: true
+              vip:
+                ip: 192.168.40.102
+          disableSearchDomain: true
+        sysctls:
+          user.max_user_namespaces: "11255"
+          net.core.bpf_jit_harden: 1
+          fs.inotify.max_queued_events: "65536"
+          fs.inotify.max_user_instances: "8192"
+          fs.inotify.max_user_watches: "524288"
+          net.core.rmem_max: "7500000"
+          net.core.wmem_max: "7500000"
+        kubelet:
+          extraArgs:
+            rotate-server-certificates: "false" # TODO need service to approve these
+          defaultRuntimeSeccompProfileEnabled: true
+          nodeIP:
+            validSubnets:
+              - 192.168.40.0/24
+          disableManifestsDirectory: true
+          extraMounts:
+            - destination: /var/openebs/local
+              type: bind
+              source: /var/openebs/local
+              options:
+                - bind
+                - rshared
+                - rw
+        files:
+            - content: |
+                [plugins."io.containerd.grpc.v1.cri"]
+                  enable_unprivileged_ports = true
+                  enable_unprivileged_icmp = true
+                [plugins."io.containerd.grpc.v1.cri".containerd]
+                  discard_unpacked_layers = false
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                  discard_unpacked_layers = false
+              permissions: 0
+              path: /etc/cri/conf.d/20-customization.part
+              op: create
+            - content: |
+                [ NFSMount_Global_Options ]
+                nfsvers=4.2
+                hard=True
+                noatime=True
+                nodiratime=True
+                rsize=131072
+                wsize=131072
+                nconnect=8
+              permissions: 420
+              path: /etc/nfsmount.conf
+              op: overwrite
+        features:
+            rbac: true
+            stableHostname: true
+            apidCheckExtKeyUsage: true
+            diskQuotaSupport: true
+            kubePrism:
+                enabled: true
+                port: 7445
+            hostDNS:
+                enabled: true
+                resolveMemberNames: true
+                forwardKubeDNSToHost: false
+        nodeLabels:
+            topology.kubernetes.io/region: edge
+            topology.kubernetes.io/zone: m
+---
+kind: Machine
+systemExtensions:
+  - siderolabs/intel-ucode
+  - siderolabs/i915
+  - siderolabs/nut-client
+  - siderolabs/thunderbolt
 name: 956a5500-f349-11ee-8c29-2960cf0dd000
 patches:
   - idOverride: edgem02-956a5500-f349-11ee-8c29-2960cf0dd000
@@ -66,6 +160,98 @@ patches:
           interfaces:
             - deviceSelector:
                 hardwareAddr: 58:47:ca:77:0d:aa
+              mtu: 1500
+              dhcp: true
+              vip:
+                ip: 192.168.40.102
+          disableSearchDomain: true
+        sysctls:
+          user.max_user_namespaces: "11255"
+          net.core.bpf_jit_harden: 1
+          fs.inotify.max_queued_events: "65536"
+          fs.inotify.max_user_instances: "8192"
+          fs.inotify.max_user_watches: "524288"
+          net.core.rmem_max: "7500000"
+          net.core.wmem_max: "7500000"
+        kubelet:
+          extraArgs:
+            rotate-server-certificates: "false" # TODO need service to approve these
+          defaultRuntimeSeccompProfileEnabled: true
+          nodeIP:
+            validSubnets:
+              - 192.168.40.0/24
+          disableManifestsDirectory: true
+          extraMounts:
+            - destination: /var/openebs/local
+              type: bind
+              source: /var/openebs/local
+              options:
+                - bind
+                - rshared
+                - rw
+        files:
+            - content: |
+                [plugins."io.containerd.grpc.v1.cri"]
+                  enable_unprivileged_ports = true
+                  enable_unprivileged_icmp = true
+                [plugins."io.containerd.grpc.v1.cri".containerd]
+                  discard_unpacked_layers = false
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                  discard_unpacked_layers = false
+              permissions: 0
+              path: /etc/cri/conf.d/20-customization.part
+              op: create
+            - content: |
+                [ NFSMount_Global_Options ]
+                nfsvers=4.2
+                hard=True
+                noatime=True
+                nodiratime=True
+                rsize=131072
+                wsize=131072
+                nconnect=8
+              permissions: 420
+              path: /etc/nfsmount.conf
+              op: overwrite
+        features:
+            rbac: true
+            stableHostname: true
+            apidCheckExtKeyUsage: true
+            diskQuotaSupport: true
+            kubePrism:
+                enabled: true
+                port: 7445
+            hostDNS:
+                enabled: true
+                resolveMemberNames: true
+                forwardKubeDNSToHost: false
+        nodeLabels:
+            topology.kubernetes.io/region: edge
+            topology.kubernetes.io/zone: m
+---
+kind: Machine
+systemExtensions:
+  - siderolabs/intel-ucode
+  - siderolabs/i915
+  - siderolabs/nut-client
+  - siderolabs/thunderbolt
+name: 0412ab80-f1ae-11ee-9e2d-bdcefa626900
+patches:
+  - idOverride: edgem03-0412ab80-f1ae-11ee-9e2d-bdcefa626900
+    inline:
+      machine:
+        install:
+          extraKernelArgs:
+            - nomodeset
+            - net.ifnames=0
+          diskSelector:
+            model: CT1000T500SSD8
+          wipe: true
+        network:
+          hostname: edgem03
+          interfaces:
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:0a:7a
               mtu: 1500
               dhcp: true
               vip:
