@@ -45,6 +45,38 @@ patches:
                 service:
                     disabled: true
 ---
+kind: Workers
+machines:
+  - 77d65c00-5811-11ef-b65b-a8751caa6100
+patches:
+  - idOverride: haynes-edge-control-workers
+    inline:
+      cluster:
+        network:
+            cni:
+              name: none
+            dnsDomain: edge.local
+            podSubnets:
+              - 10.42.0.0/16
+            serviceSubnets:
+              - 10.43.0.0/16
+        coreDNS:
+            disabled: true
+        allowSchedulingOnControlPlanes: true
+        apiServer:
+          disablePodSecurityPolicy: true
+          extraArgs:
+            allow-privileged: "true"
+        proxy:
+          disabled: true
+        discovery:
+            enabled: true
+            registries:
+                kubernetes:
+                    disabled: false
+                service:
+                    disabled: true
+---
 kind: Machine
 systemExtensions:
   - siderolabs/intel-ucode
@@ -320,3 +352,98 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: edge
             topology.kubernetes.io/zone: m
+---
+kind: Machine
+systemExtensions:
+  - siderolabs/nut-client
+  - siderolabs/thunderbolt
+  - siderolabs/nvidia-container-toolkit-lts
+  - siderolabs/nvidia-open-gpu-kernel-modules-lts
+name: 77d65c00-5811-11ef-b65b-a8751caa6100
+patches:
+  - idOverride: edgew01-77d65c00-5811-11ef-b65b-a8751caa6100
+    inline:
+      machine:
+        install:
+          extraKernelArgs:
+            - net.ifnames=0
+          wipe: true
+        kernel:
+          modules:
+            - name: nvidia
+              parameters:
+                - NVreg_OpenRmEnableUnsupportedGpus=1
+            - name: nvidia_uvm
+            - name: nvidia_drm
+            - name: nvidia_modeset
+        network:
+          hostname: edgew01
+          # interfaces: # TODO only one eth for now
+            #- deviceSelector:
+            #    hardwareAddr: BC:24:11:83:72:D2
+            #  mtu: 1500
+            #  dhcp: true
+          disableSearchDomain: true
+        sysctls:
+          user.max_user_namespaces: "11255"
+          net.core.bpf_jit_harden: 1
+          fs.inotify.max_queued_events: "65536"
+          fs.inotify.max_user_instances: "8192"
+          fs.inotify.max_user_watches: "524288"
+          net.core.rmem_max: "7500000"
+          net.core.wmem_max: "7500000"
+        kubelet:
+          extraArgs:
+            rotate-server-certificates: "false" # TODO need service to approve these
+          defaultRuntimeSeccompProfileEnabled: true
+          nodeIP:
+            validSubnets:
+              - 192.168.40.0/24
+          disableManifestsDirectory: true
+          extraMounts:
+            - destination: /var/openebs/local
+              type: bind
+              source: /var/openebs/local
+              options:
+                - bind
+                - rshared
+                - rw
+        files:
+            - content: |
+                [plugins."io.containerd.grpc.v1.cri"]
+                  enable_unprivileged_ports = true
+                  enable_unprivileged_icmp = true
+                [plugins."io.containerd.grpc.v1.cri".containerd]
+                  discard_unpacked_layers = false
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                  discard_unpacked_layers = false
+              permissions: 0
+              path: /etc/cri/conf.d/20-customization.part
+              op: create
+            - content: |
+                [ NFSMount_Global_Options ]
+                nfsvers=4.2
+                hard=True
+                noatime=True
+                nodiratime=True
+                rsize=131072
+                wsize=131072
+                nconnect=8
+              permissions: 420
+              path: /etc/nfsmount.conf
+              op: overwrite
+        features:
+            rbac: true
+            stableHostname: true
+            apidCheckExtKeyUsage: true
+            diskQuotaSupport: true
+            kubePrism:
+                enabled: true
+                port: 7445
+            hostDNS:
+                enabled: true
+                resolveMemberNames: true
+                forwardKubeDNSToHost: false
+        nodeLabels:
+            topology.kubernetes.io/region: edge
+            topology.kubernetes.io/zone: w
