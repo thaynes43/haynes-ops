@@ -1,5 +1,3 @@
----
-# yaml-language-server: $schema=https://gist.githubusercontent.com/thaynes43/21ef53eace2d3c6c8f00c8ee0fe4ec24/raw/b0fd8341723eee62b8a47127d40cb75f00056b67/empty-json-schema.json
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -14,35 +12,33 @@ spec:
   superuserSecret:
     name: cloudnative-pg-secret
   enableSuperuserAccess: true
+
   postgresql:
     shared_preload_libraries:
       - "vectors.so"
     parameters:
       max_connections: "400"
       shared_buffers: 256MB
+
   nodeMaintenanceWindow:
     inProgress: false
-    reusePVC: true
+    reusePVC: false   # disable reuse for a clean restore run
+
   resources:
     requests:
       cpu: 1000m
     limits:
       memory: 8Gi
+
   monitoring:
     enablePodMonitor: true
+
   backup:
     retentionPolicy: 30d
-    barmanObjectStore: &barmanObjectStore
-      data:
-        compression: bzip2
-      wal:
-        compression: bzip2
-        maxParallel: 8
+    barmanObjectStore: &writeStore
       destinationPath: s3://cnpg-haynesops/
       endpointURL: https://s3.us-east-2.amazonaws.com
-      # Note: serverName version needs to be incremented
-      # when recovering from an existing cnpg cluster
-      serverName: &currentCluster postgres16-pgvecto-v3
+      serverName: postgres16-pgvecto-v4   # bump to a NEW prefix for writes
       s3Credentials:
         accessKeyId:
           name: cloudnative-pg-secret
@@ -53,14 +49,44 @@ spec:
         region:
           name: cloudnative-pg-secret
           key: aws-region
-  # Note: previousCluster needs to be set to the name of the previous
-  # cluster when recovering from an existing cnpg cluster
+      data:
+        compression: bzip2
+      wal:
+        compression: bzip2
+        maxParallel: 8
+
   bootstrap:
     recovery:
-      source: &previousCluster postgres16-pgvecto-v1
-  # Note: externalClusters is needed when recovering from an existing cnpg cluster
+      source: postgres16-pgvecto-v1        # OLD prefix to read from
+      backupID: "20250908T000000"          # from your logs
+      recoveryTarget:
+        timeline: "current"                # pin to TLI 8 (from backup)
+      recoveryTargetAction: promote
+
   externalClusters:
-    - name: *previousCluster
+    - name: postgres16-pgvecto-v1
       barmanObjectStore:
-        <<: *barmanObjectStore
-        serverName: *previousCluster
+        destinationPath: s3://cnpg-haynesops/
+        endpointURL: https://s3.us-east-2.amazonaws.com
+        serverName: postgres16-pgvecto-v1
+        s3Credentials:
+          accessKeyId:
+            name: cloudnative-pg-secret
+            key: aws-access-key-id
+          secretAccessKey:
+            name: cloudnative-pg-secret
+            key: aws-secret-access-key
+          region:
+            name: cloudnative-pg-secret
+            key: aws-region
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: postgres-pgvecto
+spec:
+  schedule: "@daily"
+  immediate: true
+  backupOwnerReference: self
+  cluster:
+    name: postgres16-pgvecto
