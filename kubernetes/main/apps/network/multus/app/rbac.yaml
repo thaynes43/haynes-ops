@@ -18,7 +18,14 @@ rules:
       - get
       - list
       - update
+      - patch
       - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods/exec
+    verbs:
+      - create
   - apiGroups:
       - ""
       - events.k8s.io
