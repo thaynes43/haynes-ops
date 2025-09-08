@@ -137,3 +137,59 @@ Part 2 - HA cluster
 
 - `pvecm delnode NODE`
 - pvecm nodes
+
+# Getting Edge Cluster Online
+
+## TODOs
+
+- [ ] fix KUBERNETES_DIR as it assumes a single cluster.
+
+## Install Prerequisites 
+
+`install-helm-apps` task unwrapped:
+
+```sh
+HELMFILE_FILE: "{{.KUBERNETES_DIR}}/bootstrap/helmfile.yaml" # ./kubernetes/edge/bootstrap/helmfile.yaml
+KUBERNETES_DIR: "{{.ROOT_DIR}}/kubernetes"
+helmfile --kubeconfig {{.KUBECONFIG_FILE}} --file {{.HELMFILE_FILE}} apply --skip-diff-on-install --suppress-diff
+```
+
+## TODO Rook-Ceph Wipe
+
+Gotta wipe the NVMes rook will use later
+
+## Bootstrap Flux
+
+Need `CLUSTER_SECRET_SOPS_FILE: "{{.KUBERNETES_DIR}}/flux/vars/cluster-secrets.sops.yaml"`
+
+Settings:
+
+```yaml
+CLUSTER_SETTINGS_FILE: "{{.KUBERNETES_DIR}}/flux/vars/cluster-settings.yaml"
+KUBECONFIG_FILE: "{{.ROOT_DIR}}/kubeconfig"
+CLUSTER_SECRET_SOPS_FILE: "{{.KUBERNETES_DIR}}/flux/vars/cluster-secrets.sops.yaml"
+AGE_FILE: "{{.ROOT_DIR}}/age.key"
+```
+
+`flux:bootstrap` unwrapped: 
+
+```yaml
+  bootstrap:
+    desc: Bootstrap Flux into a Kubernetes cluster
+    cmds:
+      - kubectl apply --kubeconfig {{.KUBECONFIG_FILE}} --server-side --kustomize {{.KUBERNETES_DIR}}/bootstrap/flux
+      - |
+        if ! kubectl --kubeconfig {{.KUBECONFIG_FILE}} -n flux-system get secret sops-age >/dev/null 2>&1; then
+          cat {{.AGE_FILE}} | kubectl --kubeconfig {{.KUBECONFIG_FILE}} -n flux-system create secret generic sops-age --from-file=age.agekey=/dev/stdin
+        else
+          echo "sops-age secret already exists, skipping creation."
+        fi
+      - sops --decrypt {{.CLUSTER_SECRET_SOPS_FILE}} | kubectl apply --kubeconfig {{.KUBECONFIG_FILE}} --server-side --filename -
+      - kubectl apply --kubeconfig {{.KUBECONFIG_FILE}} --server-side --filename {{.CLUSTER_SETTINGS_FILE}}
+      - kubectl apply --kubeconfig {{.KUBECONFIG_FILE}} --server-side --kustomize {{.KUBERNETES_DIR}}/flux/config
+    preconditions:
+      - msg: Missing kubeconfig
+        sh: test -f {{.KUBECONFIG_FILE}}
+      - msg: Missing Sops Age key file
+        sh: test -f {{.AGE_FILE}}
+```
