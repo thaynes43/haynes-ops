@@ -1,3 +1,5 @@
+---
+# yaml-language-server: $schema=https://gist.githubusercontent.com/thaynes43/21ef53eace2d3c6c8f00c8ee0fe4ec24/raw/b0fd8341723eee62b8a47127d40cb75f00056b67/empty-json-schema.json
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -12,34 +14,35 @@ spec:
   superuserSecret:
     name: cloudnative-pg-secret
   enableSuperuserAccess: true
-
   postgresql:
     shared_preload_libraries:
       - "vectors.so"
     parameters:
       max_connections: "400"
       shared_buffers: 256MB
-
-  # ensure we don't accidentally reuse old data on restore
   nodeMaintenanceWindow:
     inProgress: false
-    reusePVC: false
-
+    reusePVC: true
   resources:
     requests:
       cpu: 1000m
     limits:
       memory: 8Gi
-
   monitoring:
     enablePodMonitor: true
-
   backup:
     retentionPolicy: 30d
-    barmanObjectStore:
+    barmanObjectStore: &barmanObjectStore
+      data:
+        compression: bzip2
+      wal:
+        compression: bzip2
+        maxParallel: 8
       destinationPath: s3://cnpg-haynesops/
       endpointURL: https://s3.us-east-2.amazonaws.com
-      serverName: postgres16-pgvecto-v4        # NEW & empty write prefix
+      # Note: serverName version needs to be incremented
+      # when recovering from an existing cnpg cluster
+      serverName: &currentCluster postgres16-pgvecto-v2
       s3Credentials:
         accessKeyId:
           name: cloudnative-pg-secret
@@ -50,32 +53,14 @@ spec:
         region:
           name: cloudnative-pg-secret
           key: aws-region
-      data:
-        compression: bzip2
-      wal:
-        compression: bzip2
-        maxParallel: 8
-
+  # Note: previousCluster needs to be set to the name of the previous
+  # cluster when recovering from an existing cnpg cluster
   bootstrap:
     recovery:
-      source: postgres16-pgvecto-v1
-      backupID: "20250908T000000"
-      recoveryTarget:
-        targetImmediate: true
-
+      source: &previousCluster postgres16-pgvecto-v1
+  # Note: externalClusters is needed when recovering from an existing cnpg cluster
   externalClusters:
-    - name: postgres16-pgvecto-v1
+    - name: *previousCluster
       barmanObjectStore:
-        destinationPath: s3://cnpg-haynesops/
-        endpointURL: https://s3.us-east-2.amazonaws.com
-        serverName: postgres16-pgvecto-v1
-        s3Credentials:
-          accessKeyId:
-            name: cloudnative-pg-secret
-            key: aws-access-key-id
-          secretAccessKey:
-            name: cloudnative-pg-secret
-            key: aws-secret-access-key
-          region:
-            name: cloudnative-pg-secret
-            key: aws-region
+        <<: *barmanObjectStore
+        serverName: *previousCluster
