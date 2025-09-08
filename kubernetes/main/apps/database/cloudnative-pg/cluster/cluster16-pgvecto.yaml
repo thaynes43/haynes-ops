@@ -58,9 +58,10 @@ spec:
 
   bootstrap:
     recovery:
-      source: postgres16-pgvecto-v1             # OLD prefix to READ from
+      source: postgres16-pgvecto-v1
+      backupID: "20250908T000000"
       recoveryTarget:
-        targetImmediate: true                   # <-- supported in your CRD; stop at end of base backup
+        targetImmediate: true
 
   externalClusters:
     - name: postgres16-pgvecto-v1
