@@ -55,14 +55,16 @@ spec:
         compression: bzip2
         maxParallel: 8
 
+  # Note: previousCluster needs to be set to the name of the previous
+  # cluster when recovering from an existing cnpg cluster
   bootstrap:
     recovery:
-      source: postgres16-pgvecto-v1        # OLD prefix to read from
-      backupID: "20250908T000000"          # from your logs
+      source: postgres16-pgvecto-v1
       recoveryTarget:
-        timeline: "current"                # pin to TLI 8 (from backup)
+        timeline: "current"
       recoveryTargetAction: promote
-
+    
+  # Note: externalClusters is needed when recovering from an existing cnpg cluster
   externalClusters:
     - name: postgres16-pgvecto-v1
       barmanObjectStore:
