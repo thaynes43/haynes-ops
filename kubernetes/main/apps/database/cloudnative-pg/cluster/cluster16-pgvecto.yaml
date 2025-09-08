@@ -20,9 +20,10 @@ spec:
       max_connections: "400"
       shared_buffers: 256MB
 
+  # ensure we don't accidentally reuse old data on restore
   nodeMaintenanceWindow:
     inProgress: false
-    reusePVC: false   # disable reuse for a clean restore run
+    reusePVC: false
 
   resources:
     requests:
@@ -35,10 +36,10 @@ spec:
 
   backup:
     retentionPolicy: 30d
-    barmanObjectStore: &writeStore
+    barmanObjectStore:
       destinationPath: s3://cnpg-haynesops/
       endpointURL: https://s3.us-east-2.amazonaws.com
-      serverName: postgres16-pgvecto-v4   # bump to a NEW prefix for writes
+      serverName: postgres16-pgvecto-v4        # NEW & empty write prefix
       s3Credentials:
         accessKeyId:
           name: cloudnative-pg-secret
@@ -55,16 +56,12 @@ spec:
         compression: bzip2
         maxParallel: 8
 
-  # Note: previousCluster needs to be set to the name of the previous
-  # cluster when recovering from an existing cnpg cluster
   bootstrap:
     recovery:
-      source: postgres16-pgvecto-v1
+      source: postgres16-pgvecto-v1             # OLD prefix to READ from
       recoveryTarget:
-        timeline: "current"
-      recoveryTargetAction: promote
-    
-  # Note: externalClusters is needed when recovering from an existing cnpg cluster
+        targetImmediate: true                   # <-- supported in your CRD; stop at end of base backup
+
   externalClusters:
     - name: postgres16-pgvecto-v1
       barmanObjectStore:
