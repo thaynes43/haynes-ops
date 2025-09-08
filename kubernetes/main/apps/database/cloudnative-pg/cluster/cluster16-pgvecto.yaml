@@ -79,14 +79,3 @@ spec:
           region:
             name: cloudnative-pg-secret
             key: aws-region
----
-apiVersion: postgresql.cnpg.io/v1
-kind: ScheduledBackup
-metadata:
-  name: postgres-pgvecto
-spec:
-  schedule: "@daily"
-  immediate: true
-  backupOwnerReference: self
-  cluster:
-    name: postgres16-pgvecto
