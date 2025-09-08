@@ -40,7 +40,7 @@ spec:
       endpointURL: https://s3.us-east-2.amazonaws.com
       # Note: serverName version needs to be incremented
       # when recovering from an existing cnpg cluster
-      serverName: &currentCluster postgres16-v5
+      serverName: &currentCluster postgres16-v6
       s3Credentials:
         accessKeyId:
           name: cloudnative-pg-secret

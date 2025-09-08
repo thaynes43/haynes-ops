@@ -173,7 +173,7 @@ AGE_FILE: "{{.ROOT_DIR}}/age.key"
 
 `flux:bootstrap` unwrapped: 
 
-```yaml
+```sh
   bootstrap:
     desc: Bootstrap Flux into a Kubernetes cluster
     cmds:
@@ -192,4 +192,22 @@ AGE_FILE: "{{.ROOT_DIR}}/age.key"
         sh: test -f {{.KUBECONFIG_FILE}}
       - msg: Missing Sops Age key file
         sh: test -f {{.AGE_FILE}}
+```
+
+### Main cluster flux crisis
+
+`flux uninstall --namespace=flux-system --silent` followed by a `task flux:bootstrap` got me out of some 
+
+Had a problem with multus earlier - not sure if this was needed:
+
+```sh
+kubectl patch namespace flux-system -p '{
+  "metadata": {
+    "labels": {
+      "pod-security.kubernetes.io/enforce": "privileged",
+      "pod-security.kubernetes.io/audit": "privileged", 
+      "pod-security.kubernetes.io/warn": "privileged"
+    }
+  }
+}' --type=merge
 ```
