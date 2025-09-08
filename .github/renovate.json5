@@ -21,9 +21,7 @@
   ignorePaths: [
     '**/*.sops.*',
     '**/bootstrap/**',
-    '**/flux/config/**',
-    '**/flux/vars/**',
-    '**/flux/repositories/helm/**',
+    '**/flux/**',
   ],
   flux: {
     managerFilePatterns: [
