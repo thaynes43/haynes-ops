@@ -58,6 +58,13 @@ tasks:
       - msg: Missing Sops Age key file
         sh: test -f {{.AGE_FILE}}
 
+  reconcile:
+    desc: Force update Flux to pull in changes from your Git repository
+    cmd: flux --kubeconfig {{.EDGEKUBECONFIG_FILE}} reconcile --namespace flux-system kustomization cluster --with-source
+    preconditions:
+      - msg: Missing kubeconfig
+        sh: test -f {{.EDGEKUBECONFIG_FILE}}
+
   nuke:
     desc: Destroy the edge cluster using omnictl
     cmds:
