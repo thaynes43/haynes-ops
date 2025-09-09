@@ -32,7 +32,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`api.omni.haynesops.com`) || Host(`api.omni.haynesnetwork.com`)
+    - match: Host(`api.omni.haynesops.com`)
       kind: Rule
       services:
         - name: omni
