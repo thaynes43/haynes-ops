@@ -144,15 +144,12 @@ Part 2 - HA cluster
 
 - [ ] fix KUBERNETES_DIR as it assumes a single cluster.
 
-Notes from cluster1:
+## NEW NEW NEW
 
 ```bash
-task omni:sync
-task talos:install-helm-apps
-task rook:wipe-disks-talosm01
-task rook:wipe-disks-talosm02
-task rook:wipe-disks-talosm03
-task flux:bootstrap
+task edge:sync
+task edge:install-helm-apps
+task edge:bootstrap
 ```
 
 ## Install Prerequisites 
