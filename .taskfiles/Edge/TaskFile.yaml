@@ -1,0 +1,64 @@
+---
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+version: "3"
+
+vars:
+  HELMFILE_FILE: "{{.KUBERNETES_DIR}}/edge/bootstrap/helmfile.yaml"
+
+tasks:
+  validate:
+    desc: Validate the template is configured correctly
+    cmds:
+      - omnictl cluster template validate -f {{.KUBERNETES_DIR}}/edge/bootstrap/omni/haynes-edge-cluster-template.yaml
+    preconditions:
+      - msg: Missing Omni cluster template
+        sh: test -f {{.KUBERNETES_DIR}}/edge/bootstrap/omni/haynes-edge-cluster-template.yaml
+
+  sync:
+    desc: Sync the edge cluster to the template using omnictl
+    cmds:
+      # TODO envr for cluster name to support different names
+      - omnictl cluster template sync -f {{.KUBERNETES_DIR}}/edge/bootstrap/omni/haynes-edge-cluster-template.yaml --verbose
+      - omnictl cluster template status -f {{.KUBERNETES_DIR}}/edge/bootstrap/omni/haynes-edge-cluster-template.yaml
+    preconditions:
+      - msg: Missing Omni cluster template
+        sh: test -f {{.KUBERNETES_DIR}}/edge/bootstrap/omni/haynes-edge-cluster-template.yaml
+      - msg: Omni cluster template vlaidation failed
+        sh: omnictl cluster template validate -f {{.KUBERNETES_DIR}}/edge/bootstrap/omni/haynes-edge-cluster-template.yaml
+
+  install-helm-apps:
+    desc: Bootstrap core apps needed for Talos
+    dir: "{{.KUBERNETES_DIR}}/edge/bootstrap/talos"
+    cmds:
+      #- until kubectl --kubeconfig {{.KUBECONFIG_FILE}} wait --for=condition=Ready=False nodes --all --timeout=600s; do sleep 10; done
+      - helmfile --kubeconfig {{.KUBECONFIG_FILE}} --file {{.HELMFILE_FILE}} apply --skip-diff-on-install --suppress-diff
+      #- until kubectl --kubeconfig {{.KUBECONFIG_FILE}} wait --for=condition=Ready nodes --all --timeout=600s; do sleep 10; done
+    preconditions:
+      - msg: Missing kubeconfig
+        sh: test -f {{.KUBECONFIG_FILE}}
+      - msg: Missing helmfile
+        sh: test -f {{.HELMFILE_FILE}}
+
+  bootstrap:
+    desc: Bootstrap Flux into a Kubernetes cluster for Edge Cluster
+    cmds:
+      - kubectl apply --kubeconfig {{.EDGEKUBECONFIG_FILE}} --server-side --kustomize {{.KUBERNETES_DIR}}/edge/bootstrap/flux
+      - |
+        if ! kubectl --kubeconfig {{.EDGEKUBECONFIG_FILE}} -n flux-system get secret sops-age >/dev/null 2>&1; then
+          cat {{.AGE_FILE}} | kubectl --kubeconfig {{.EDGEKUBECONFIG_FILE}} -n flux-system create secret generic sops-age --from-file=age.agekey=/dev/stdin
+        else
+          echo "sops-age secret already exists, skipping creation."
+        fi
+      - sops --decrypt {{.CLUSTER_SECRET_SOPS_FILE}} | kubectl apply --kubeconfig {{.EDGEKUBECONFIG_FILE}} --server-side --filename -
+      - kubectl apply --kubeconfig {{.EDGEKUBECONFIG_FILE}} --server-side --filename {{.CLUSTER_SETTINGS_FILE}}
+      - kubectl apply --kubeconfig {{.EDGEKUBECONFIG_FILE}} --server-side --kustomize {{.KUBERNETES_DIR}}/edge/flux/config
+    preconditions:
+      - msg: Missing kubeconfig
+        sh: test -f {{.EDGEKUBECONFIG_FILE}}
+      - msg: Missing Sops Age key file
+        sh: test -f {{.AGE_FILE}}
+
+  nuke:
+    desc: Destroy the edge cluster using omnictl
+    cmds:
+      - omnictl delete cluster haynes-edge

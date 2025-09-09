@@ -5,27 +5,27 @@ version: "3"
 tasks:
 
   sync:
-    desc: Sync the cluter to the template using omnictl
+    desc: Sync the cluster to the template using omnictl
     cmds:
       # TODO envr for cluster name to support different names
-      - omnictl cluster template sync -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml --verbose
-      - omnictl cluster template status -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml
+      - omnictl cluster template sync -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml --verbose
+      - omnictl cluster template status -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml
     preconditions:
       - msg: Missing Omni cluster template
-        sh: test -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml
+        sh: test -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml
       - msg: Omni cluster template vlaidation failed
-        sh: omnictl cluster template validate -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml
+        sh: omnictl cluster template validate -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml
 
   validate:
     desc: Validate the template is configured correctly
     cmds:
-      - omnictl cluster template validate -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml
+      - omnictl cluster template validate -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml
     preconditions:
       - msg: Missing Omni cluster template
-        sh: test -f {{.KUBERNETES_DIR}}/bootstrap/omni/cluster-template.yaml
+        sh: test -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml
         
   nuke:
-    desc: Destroy the cluter using omnictl
+    desc: Destroy the cluster using omnictl
     cmds:
       # TODO envr for cluster name to support different names
       - omnictl delete cluster haynes-ops

@@ -115,7 +115,7 @@ patches:
           net.core.wmem_max: "7500000"
         kubelet:
           extraArgs:
-            rotate-server-certificates: "false" # TODO need service to approve these
+            rotate-server-certificates: "true"
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -207,7 +207,7 @@ patches:
           net.core.wmem_max: "7500000"
         kubelet:
           extraArgs:
-            rotate-server-certificates: "false" # TODO need service to approve these
+            rotate-server-certificates: "true"
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -299,7 +299,7 @@ patches:
           net.core.wmem_max: "7500000"
         kubelet:
           extraArgs:
-            rotate-server-certificates: "false" # TODO need service to approve these
+            rotate-server-certificates: "true"
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -394,7 +394,7 @@ patches:
           net.core.wmem_max: "7500000"
         kubelet:
           extraArgs:
-            rotate-server-certificates: "false" # TODO need service to approve these
+            rotate-server-certificates: "true"
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
