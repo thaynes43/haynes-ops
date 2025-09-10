@@ -35,7 +35,6 @@ spec:
             key: cloudflare_api_token
     extraArgs:
       - --cloudflare-proxied
-      - --traefik-disable-legacy
       - --ignore-ingress-tls-spec
     logLevel: debug
     policy: sync

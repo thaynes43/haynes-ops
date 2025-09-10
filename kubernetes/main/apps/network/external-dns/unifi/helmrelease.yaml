@@ -48,7 +48,6 @@ spec:
           - name: LOG_LEVEL
             value: "debug"
     extraArgs:
-      - --traefik-disable-legacy
       - --ignore-ingress-tls-spec
     policy: sync
     sources: ["crd", "ingress", "traefik-proxy"]
