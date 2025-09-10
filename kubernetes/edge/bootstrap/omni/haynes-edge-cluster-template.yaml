@@ -20,7 +20,7 @@ patches:
         network:
             cni:
               name: none
-            dnsDomain: edge.local
+            dnsDomain: cluster.local
             podSubnets:
               - 10.42.0.0/16
             serviceSubnets:
@@ -55,7 +55,7 @@ patches:
         network:
             cni:
               name: none
-            dnsDomain: edge.local
+            dnsDomain: cluster.local
             podSubnets:
               - 10.42.0.0/16
             serviceSubnets:
