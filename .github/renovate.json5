@@ -21,7 +21,8 @@
   ignorePaths: [
     '**/*.sops.*',
     '**/bootstrap/**',
-    'kubernetes/edge/flux/repositories/helm/**',
+    'kubernetes/edge/bootstrap/**',
+    'kubernetes/edge/flux/repositories/**',
   ],
   flux: {
     managerFilePatterns: [
