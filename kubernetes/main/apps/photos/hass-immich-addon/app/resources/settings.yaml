@@ -6,17 +6,15 @@ log_level: "DEBUG"
 
 # Photo filters - list of filter sets to cycle through
 filters:
-  - name: "Halloween"
+  - name: "Halloween with Jackson and Penelope"
     selector_type: "smart-rng"
-    search_query: "Halloween"
+    search_query: "Halloween with Jackson and Penelope"
     max_search_results: 200
-    people: ["Jackson Haynes", "Penelope Haynes"]
 
-  - name: "Autumn"
+  - name: "Fall fun"
     selector_type: "smart-rng"
-    search_query: "Autumn"
+    search_query: "Fall fun"
     max_search_results: 200
-    people: ["Jackson Haynes", "Penelope Haynes"]
 
   - name: "Halloween Party"
     selector_type: "smart-rng"
