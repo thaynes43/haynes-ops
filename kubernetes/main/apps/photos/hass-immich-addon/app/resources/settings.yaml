@@ -6,24 +6,24 @@ log_level: "DEBUG"
 
 # Photo filters - list of filter sets to cycle through
 filters:
-  - name: "Universal"
-    selector_type: "random"
-    city: "Tangelo Park"
-
   - name: "Halloween"
     selector_type: "smart-rng"
     search_query: "Halloween"
-    max_search_results: 125
-
-  - name: "Mount Vernon"
-    selector_type: "random"
-    city: "Mount Vernon"
+    max_search_results: 500
+    people: ["Jackson Haynes", "Penelope Haynes"]
 
   - name: "Autumn"
     selector_type: "smart-rng"
     search_query: "Autumn"
-    max_search_results: 250
+    max_search_results: 500
+    people: ["Jackson Haynes", "Penelope Haynes"]
 
-  - name: "Dulles"
-    selector_type: "random"
-    city: "Chantilly"
+  - name: "Halloween Party"
+    selector_type: "smart-rng"
+    search_query: "Halloween Party"
+    max_search_results: 1000
+
+  - name: "Thanksgiving"
+    selector_type: "smart-rng"
+    search_query: "Thanksgiving"
+    max_search_results: 500
