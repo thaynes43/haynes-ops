@@ -9,21 +9,21 @@ filters:
   - name: "Halloween"
     selector_type: "smart-rng"
     search_query: "Halloween"
-    max_search_results: 500
+    max_search_results: 200
     people: ["Jackson Haynes", "Penelope Haynes"]
 
   - name: "Autumn"
     selector_type: "smart-rng"
     search_query: "Autumn"
-    max_search_results: 500
+    max_search_results: 200
     people: ["Jackson Haynes", "Penelope Haynes"]
 
   - name: "Halloween Party"
     selector_type: "smart-rng"
     search_query: "Halloween Party"
-    max_search_results: 1000
+    max_search_results: 200
 
   - name: "Thanksgiving"
     selector_type: "smart-rng"
     search_query: "Thanksgiving"
-    max_search_results: 500
+    max_search_results: 200
