@@ -132,8 +132,6 @@ spec:
               - |
                 echo "Installing missing av dependency..."
                 pip install av --no-cache-dir
-                echo "Starting ComfyUI..."
-                exec /start.sh
             env:
               AUTO_UPDATE: "false"
               DIRECT_ADDRESS_GET_WAN: "true"
