@@ -9,5 +9,6 @@ if [ -n "$1" ]; then
 else
   # If no argument is provided, use --all-namespaces
   echo "Watching Kustomizations in --all-namespaces"
-  watch -n 1 --no-wrap flux get kustomizations --all-namespaces
+  #watch -n 1 --no-wrap flux get kustomizations --all-namespaces
+  watch kubectl get kustomizations --all-namespaces
 fi

@@ -107,6 +107,16 @@ spec:
                 echo "Setting ownership of /workspace to 1000:1000..."
                 chown -R 1000:1000 /workspace
                 
+                # Ensure cache directory has proper permissions
+                chmod -R 755 /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache
+                
+                # Test network connectivity for troubleshooting
+                echo "Testing network connectivity..."
+                echo "DNS resolution test:"
+                nslookup raw.githubusercontent.com || echo "DNS resolution failed"
+                echo "HTTP connectivity test:"
+                wget --spider --timeout=10 https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main || echo "HTTP connectivity failed"
+                
                 echo "Workspace preparation complete."
         pod:
           nodeSelector:
@@ -127,6 +137,10 @@ spec:
               SERVERLESS: "false"
               PROVISIONING_SCRIPT: "https://raw.githubusercontent.com/ai-dock/comfyui/main/config/provisioning/flux.sh"
               COMFYUI_DISABLE_EXTRA_NODES: "0"
+              # Cache and download settings
+              COMFYUI_MANAGER_CACHE_DIR: "/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache"
+              # Network debugging
+              COMFYUI_MANAGER_DEBUG: "true"
             envFrom:
               - secretRef:
                   name: comfyui-secret
