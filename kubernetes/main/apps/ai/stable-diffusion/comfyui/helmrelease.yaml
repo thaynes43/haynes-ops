@@ -110,12 +110,25 @@ spec:
                 # Ensure cache directory has proper permissions
                 chmod -R 755 /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache
                 
+                # Clear any corrupted cache
+                echo "Clearing ComfyUI-Manager cache..."
+                rm -rf /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache/*
+                
                 # Test network connectivity for troubleshooting
                 echo "Testing network connectivity..."
                 echo "DNS resolution test:"
                 nslookup raw.githubusercontent.com || echo "DNS resolution failed"
+                nslookup github.com || echo "GitHub DNS resolution failed"
                 echo "HTTP connectivity test:"
-                wget --spider --timeout=10 https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main || echo "HTTP connectivity failed"
+                wget --spider --timeout=30 https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main || echo "HTTP connectivity failed"
+                wget --spider --timeout=30 https://github.com || echo "GitHub connectivity failed"
+                
+                # Pre-warm the cache directory with proper permissions
+                echo "Setting up cache directory with proper permissions..."
+                mkdir -p /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache/custom_node_list
+                mkdir -p /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache/model_list
+                chown -R 1000:1000 /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache
+                chmod -R 755 /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache
                 
                 echo "Workspace preparation complete."
         pod:
@@ -139,8 +152,18 @@ spec:
               COMFYUI_DISABLE_EXTRA_NODES: "0"
               # Cache and download settings
               COMFYUI_MANAGER_CACHE_DIR: "/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache"
-              # Network debugging
+              # Network debugging and timeout settings
               COMFYUI_MANAGER_DEBUG: "true"
+              COMFYUI_MANAGER_TIMEOUT: "60"
+              COMFYUI_MANAGER_RETRY_COUNT: "3"
+              # Python networking settings
+              PYTHONHTTPSVERIFY: "1"
+              REQUESTS_CA_BUNDLE: ""
+              # Git settings for custom node downloads
+              GIT_SSL_NO_VERIFY: "false"
+              # Network timeouts
+              CURL_TIMEOUT: "60"
+              WGET_TIMEOUT: "60"
             envFrom:
               - secretRef:
                   name: comfyui-secret
