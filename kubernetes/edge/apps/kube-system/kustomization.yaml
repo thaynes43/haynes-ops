@@ -11,7 +11,7 @@ resources:
   - ./metrics-server/ks.yaml
   - ./reloader/ks.yaml
   - ./kubelet-csr-approver/ks.yaml
-  - ./spegel/ks.yaml
+  #- ./spegel/ks.yaml
   #- ./reflector/ks.yaml
   #- ./k8tz                            # Has own namespace, add entire dir
   #- ./node-feature-discovery/ks.yaml
