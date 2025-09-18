@@ -2,7 +2,6 @@
 spegel:
   containerdSock: /run/containerd/containerd.sock
   containerdRegistryConfigPath: /etc/cri/conf.d/hosts
-  prependMirrors: true
 service:
   registry:
     hostPort: 29999
