@@ -62,4 +62,4 @@ spec:
             app:
               - path: /media/peloton
                 subPath: data/media/peloton
-                readOnly: true
+                readOnly: false
