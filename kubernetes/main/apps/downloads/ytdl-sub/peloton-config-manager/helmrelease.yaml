@@ -35,7 +35,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdl-sub-config-manager
-              tag: 0.2.2
+              tag: 0.2.3
             resources:
               requests:
                 cpu: 100m
