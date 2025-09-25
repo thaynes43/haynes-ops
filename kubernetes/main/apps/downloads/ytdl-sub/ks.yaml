@@ -45,7 +45,7 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: &app peloton-scraper
+  name: &app ytdl-sub-config-manager
   namespace: flux-system
 spec:
   targetNamespace: downloads
@@ -54,7 +54,7 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: ytdl-sub-peloton
-  path: ./kubernetes/main/apps/downloads/ytdl-sub/peloton-scraper
+  path: ./kubernetes/main/apps/downloads/ytdl-sub/ytdl-sub-config-manager
   prune: true
   sourceRef:
     kind: GitRepository
