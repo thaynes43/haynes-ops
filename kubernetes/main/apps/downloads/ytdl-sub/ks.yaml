@@ -54,7 +54,7 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: ytdl-sub-peloton
-  path: ./kubernetes/main/apps/downloads/ytdl-sub/ytdl-sub-peloton-config-manager
+  path: ./kubernetes/main/apps/downloads/ytdl-sub/peloton-config-manager
   prune: true
   sourceRef:
     kind: GitRepository
