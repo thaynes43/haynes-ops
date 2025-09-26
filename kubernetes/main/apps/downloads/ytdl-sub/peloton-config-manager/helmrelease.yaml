@@ -25,7 +25,7 @@ spec:
 
         cronjob:
           #schedule: "0 0 5 12 2" # Disable cronjob by giving it a schedule that will never run
-          schedule: "0 20 * * *" # Run at 8PM every day
+          schedule: "0 0 * * *" # Run at midnight every day
           backoffLimit: 0
           concurrencyPolicy: Forbid
           failedJobsHistory: 1
@@ -35,7 +35,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdl-sub-config-manager
-              tag: 0.2.3
+              tag: 0.2.4
             resources:
               requests:
                 cpu: 100m
