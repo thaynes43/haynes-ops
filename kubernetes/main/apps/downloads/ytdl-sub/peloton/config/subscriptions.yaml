@@ -31,12 +31,6 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Walking/Logan Aldridge
         season_number: 5
         episode_number: 22
-    5 min Cool Down Walk with Selena Samuela:
-      download: https://members.onepeloton.com/classes/player/e6a33ce6d1cc49969d6e446d2c75ee82
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Selena Samuela
-        season_number: 5
-        episode_number: 25
   = Tread Bootcamp (30 min):
     '30 min Bootcamp: 50-50 with Joslyn Thompson Rule':
       download: https://members.onepeloton.com/classes/player/4bf1f041eebb44e890145cc34333ee51
@@ -106,12 +100,6 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
         season_number: 45
         episode_number: 128
-    45 min Bootcamp with Rad Lopez:
-      download: https://members.onepeloton.com/classes/player/6696a34393844d519e54a04fadb18fda
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
-        season_number: 45
-        episode_number: 130
   = Row Bootcamp (30 min):
     '30 min Bootcamp: 50-50 with Katie Wang':
       download: https://members.onepeloton.com/classes/player/b6ab3ab82b224ecc804eebab4a3e1d62
@@ -125,617 +113,536 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 30
         episode_number: 412
-  = Cycling (45 min):
-    45 min Power Zone Endurance Ride with Denis Morton:
-      download: https://members.onepeloton.com/classes/player/9c03bb56d6b14d9f9a71c4386aed43f3
+  = Cycling (5 min):
+    5 min Cool Down Ride with Camila Ramón:
+      download: https://members.onepeloton.com/classes/player/7d244dca4f9c439799da282f2dea1bea
       overrides:
-        tv_show_directory: /media/peloton/Cycling/Denis Morton
-        season_number: 45
-        episode_number: 89
-    45 min Low Impact Ride with Jenn Sherman:
-      download: https://members.onepeloton.com/classes/player/db6768a74b77498abcfef1af4d988bec
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Jenn Sherman
-        season_number: 45
-        episode_number: 90
-    45 min Low Impact Ride with Hannah Corbin:
-      download: https://members.onepeloton.com/classes/player/8a7b7cca2ed145588f3cfec2bb83954e
+        tv_show_directory: /media/peloton/Cycling/Camila Ramón
+        season_number: 5
+        episode_number: 26
+    5 min Warm Up Ride with Hannah Corbin:
+      download: https://members.onepeloton.com/classes/player/6417b8fe071a4a91b64eb771a8c8a1f0
       overrides:
         tv_show_directory: /media/peloton/Cycling/Hannah Corbin
-        season_number: 45
-        episode_number: 91
-    45 min Your Day One Ride with Robin Arzón:
-      download: https://members.onepeloton.com/classes/player/c19897d5efdf4e848cdd047dbb384a8e
+        season_number: 5
+        episode_number: 27
+  = Cycling (20 min):
+    20 min Beginner Ride with Leanne Hainsby-Alldis:
+      download: https://members.onepeloton.com/classes/player/6bb77add3a7b43fe929d2f8e34651792
       overrides:
-        tv_show_directory: /media/peloton/Cycling/Robin Arzón
+        tv_show_directory: /media/peloton/Cycling/Leanne Hainsby-Alldis
+        season_number: 20
+        episode_number: 183
+    20 min Motown Ride with Jenn Sherman:
+      download: https://members.onepeloton.com/classes/player/ef8c3a28a3604f07adea310edb9908ce
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Jenn Sherman
+        season_number: 20
+        episode_number: 184
+    20 min Low Impact Ride with Emma Lovewell:
+      download: https://members.onepeloton.com/classes/player/8c8fa2ba1b904489b04234f3467157d9
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Emma Lovewell
+        season_number: 20
+        episode_number: 185
+    20 min 90s Ride with Emma Lovewell:
+      download: https://members.onepeloton.com/classes/player/d8b97b5624ce471080cdb6d96dffe3b7
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Emma Lovewell
+        season_number: 20
+        episode_number: 186
+    20 min HIIT Ride with Leanne Hainsby-Alldis:
+      download: https://members.onepeloton.com/classes/player/4d90d96242cb4ff4af2efd03d6afeff0
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Leanne Hainsby-Alldis
+        season_number: 20
+        episode_number: 187
+    20 min Low Impact Ride with Camila Ramón:
+      download: https://members.onepeloton.com/classes/player/2feb874f57674556948a04e385263ecc
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Camila Ramón
+        season_number: 20
+        episode_number: 188
+    20 min Reggaeton Ride with Camila Ramón:
+      download: https://members.onepeloton.com/classes/player/3fba251bb8744c5eb5d1b8b15320f7a6
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Camila Ramón
+        season_number: 20
+        episode_number: 189
+  = Cycling (45 min):
+    45 min Pop Ride with Sam Yo:
+      download: https://members.onepeloton.com/classes/player/47dfc9af07024056aa140efc598db2ca
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Sam Yo
         season_number: 45
-        episode_number: 92
+        episode_number: 93
+    45 min Pop Ride with Cody Rigsby:
+      download: https://members.onepeloton.com/classes/player/d51ffc5a1b354eecbed5e13a31e1db26
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Cody Rigsby
+        season_number: 45
+        episode_number: 94
   = Cycling (30 min):
-    30 min Country Pop Ride with Bradley Rose:
-      download: https://members.onepeloton.com/classes/player/b9572077acc44a35a481beadd5d805fe
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Bradley Rose
-        season_number: 30
-        episode_number: 333
-    30 min Rolling Hills Ride with Jess King:
-      download: https://members.onepeloton.com/classes/player/5936d682b4144b8e918264438ec406a9
+    '30 min Sweat Steady: Low Impact Ride with Jess King':
+      download: https://members.onepeloton.com/classes/player/2be38974d0e04fe883c79c35893bc1d3
       overrides:
         tv_show_directory: /media/peloton/Cycling/Jess King
         season_number: 30
-        episode_number: 334
-    30 min Classic Rock Ride with Sam Yo:
-      download: https://members.onepeloton.com/classes/player/5b72ea9bbd6d4452ad2e2920f36ca843
+        episode_number: 345
+    30 min 80s Ride with Leanne Hainsby-Alldis:
+      download: https://members.onepeloton.com/classes/player/9d19457ef8fb4bd29d0b526ea87001d5
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Leanne Hainsby-Alldis
+        season_number: 30
+        episode_number: 346
+    30 min HIIT & Hills Ride with Ben Alldis:
+      download: https://members.onepeloton.com/classes/player/cf6f366787b04c6d93182da2fd49e271
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Ben Alldis
+        season_number: 30
+        episode_number: 347
+    30 min Intervals & Arms Ride with Hannah Frankson:
+      download: https://members.onepeloton.com/classes/player/06766ee905ea4cc09c3e301afad5de8f
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Hannah Frankson
+        season_number: 30
+        episode_number: 348
+    30 min 80s Ride with Jenn Sherman:
+      download: https://members.onepeloton.com/classes/player/14b547dbde0f42b990e17d308adb1761
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Jenn Sherman
+        season_number: 30
+        episode_number: 349
+    30 min Hip Hop Ride with Alex Toussaint:
+      download: https://members.onepeloton.com/classes/player/520af9d89db944efba932d7730c1ad25
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Alex Toussaint
+        season_number: 30
+        episode_number: 350
+    30 min 90s Rock Ride with Sam Yo:
+      download: https://members.onepeloton.com/classes/player/bc329fd1634a468ea480c75cff1cfde8
       overrides:
         tv_show_directory: /media/peloton/Cycling/Sam Yo
         season_number: 30
-        episode_number: 335
-    '30 min Peloton Tri: Ride with Matt Wilpers':
-      download: https://members.onepeloton.com/classes/player/b0d85a02ea9d44b0831945355293c3a0
+        episode_number: 351
+    30 min 2010s Ride with Jenn Sherman:
+      download: https://members.onepeloton.com/classes/player/90be3931e3d54fc095ba31037a5981ce
       overrides:
-        tv_show_directory: /media/peloton/Cycling/Matt Wilpers
+        tv_show_directory: /media/peloton/Cycling/Jenn Sherman
         season_number: 30
-        episode_number: 336
-    30 min Vinyl Vault Ride with Hannah Corbin:
-      download: https://members.onepeloton.com/classes/player/bb4c23457b054a5c84ba590dab2bf964
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Hannah Corbin
-        season_number: 30
-        episode_number: 337
-    30 min Hip Hop Ride with Hannah Frankson:
-      download: https://members.onepeloton.com/classes/player/7a09e6fe9476411eac0435419685f52f
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Hannah Frankson
-        season_number: 30
-        episode_number: 338
-    30 min Pop Ride with Cody Rigsby:
-      download: https://members.onepeloton.com/classes/player/a16d1c8fc2a044539f2219955c056669
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Cody Rigsby
-        season_number: 30
-        episode_number: 339
-    30 min Classic Rock Ride with Bradley Rose:
-      download: https://members.onepeloton.com/classes/player/26f05dcaa0d1438682a77b2dcf8aa70d
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Bradley Rose
-        season_number: 30
-        episode_number: 340
-    30 min Power Zone Pop Ride with Olivia Amato:
-      download: https://members.onepeloton.com/classes/player/8398f166ecfd4bf780e7c658da76ad0a
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Olivia Amato
-        season_number: 30
-        episode_number: 341
-    30 min DeBÍ TiRAR MáS FOToS Ride with Camila Ramón:
-      download: https://members.onepeloton.com/classes/player/9b71d014daf941359e573ef1a7866709
+        episode_number: 352
+    30 min Pop Punk Ride with Camila Ramón:
+      download: https://members.onepeloton.com/classes/player/f0b6c37dbd7447d6a8f630f639dda74d
       overrides:
         tv_show_directory: /media/peloton/Cycling/Camila Ramón
         season_number: 30
-        episode_number: 342
-    30 min HIIT Ride with Robin Arzón:
-      download: https://members.onepeloton.com/classes/player/d633521ea2cd4a3bae4ec068a72c64b1
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Robin Arzón
-        season_number: 30
-        episode_number: 343
-    30 min Groove Ride with Emma Lovewell:
-      download: https://members.onepeloton.com/classes/player/0e9b47a776074c44983e1d667c0a2c4d
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Emma Lovewell
-        season_number: 30
-        episode_number: 344
-  = Cycling (20 min):
-    20 min Hip Hop Ride with Hannah Frankson:
-      download: https://members.onepeloton.com/classes/player/64a962ba8c59408d890394eff1b0ea48
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Hannah Frankson
-        season_number: 20
-        episode_number: 178
-    20 min Tabata Ride with Hannah Frankson:
-      download: https://members.onepeloton.com/classes/player/1fd4c8b906fd484bb575d677d9697c09
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Hannah Frankson
-        season_number: 20
-        episode_number: 179
-    20 min Pop Punk Ride with Bradley Rose:
-      download: https://members.onepeloton.com/classes/player/5228df68439d4e36897830e3cbf5948a
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Bradley Rose
-        season_number: 20
-        episode_number: 180
-    20 min Low Impact Ride with Hannah Frankson:
-      download: https://members.onepeloton.com/classes/player/629eff3d775f48de9324c4b0260ac9b3
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Hannah Frankson
-        season_number: 20
-        episode_number: 181
-    20 min 2010s Ride with Hannah Frankson:
-      download: https://members.onepeloton.com/classes/player/548936108fae4ced8d48658260b1ba68
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Hannah Frankson
-        season_number: 20
-        episode_number: 182
-  = Cycling (10 min):
-    10 min Warm Up Ride with Ben Alldis:
-      download: https://members.onepeloton.com/classes/player/1da49d70b4374c8c98df3f0c2bb6ecae
-      overrides:
-        tv_show_directory: /media/peloton/Cycling/Ben Alldis
-        season_number: 10
-        episode_number: 24
+        episode_number: 353
   = Cycling (15 min):
-    15 min HIIT Ride with Bradley Rose:
-      download: https://members.onepeloton.com/classes/player/9ade78cef064437a9834c4dacb1ad69c
+    15 min Climb Ride with Bradley Rose:
+      download: https://members.onepeloton.com/classes/player/d98105a94d244f87b6a00df7f644d288
       overrides:
         tv_show_directory: /media/peloton/Cycling/Bradley Rose
         season_number: 15
-        episode_number: 51
-  = Cycling (60 min):
-    60 min Power Zone Endurance Ride with Denis Morton:
-      download: https://members.onepeloton.com/classes/player/f339e0d62b764ae089ace2f3e989bcad
+        episode_number: 52
+    15 min Country Ride with Bradley Rose:
+      download: https://members.onepeloton.com/classes/player/dae2aac2cf6f4b4f97a514b73facf8e5
       overrides:
-        tv_show_directory: /media/peloton/Cycling/Denis Morton
-        season_number: 60
-        episode_number: 13
-  = Cycling (5 min):
-    5 min Cool Down Ride with Emma Lovewell:
-      download: https://members.onepeloton.com/classes/player/634ffe8dd5d94fdf8ecca74fe05891af
+        tv_show_directory: /media/peloton/Cycling/Bradley Rose
+        season_number: 15
+        episode_number: 53
+    15 min Low Impact Ride with Jenn Sherman:
+      download: https://members.onepeloton.com/classes/player/8ec933dbeaa74847a1bc387b5b40a03a
       overrides:
-        tv_show_directory: /media/peloton/Cycling/Emma Lovewell
-        season_number: 5
+        tv_show_directory: /media/peloton/Cycling/Jenn Sherman
+        season_number: 15
+        episode_number: 54
+    15 min Disco Ride with Leanne Hainsby-Alldis:
+      download: https://members.onepeloton.com/classes/player/fe9493a3e4cc4be680e50eb1ab56412c
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Leanne Hainsby-Alldis
+        season_number: 15
+        episode_number: 55
+  = Cycling (10 min):
+    'Extra 10: Low Impact Ride with Alex Toussaint':
+      download: https://members.onepeloton.com/classes/player/07e1b83856af4570a7ef1159272df14e
+      overrides:
+        tv_show_directory: /media/peloton/Cycling/Alex Toussaint
+        season_number: 10
         episode_number: 25
-  = Strength (30 min):
-    30 min Upper Body Strength with Jermaine Johnson:
-      download: https://members.onepeloton.com/classes/player/e8bd58dc628243869c15675259153473
+  = Yoga (30 min):
+    '30 min Yoga + Pilates: Deep Core with Anna Greenberg':
+      download: https://members.onepeloton.com/classes/player/6d9fe5ed14444ed9b4653be9a09bf575
       overrides:
-        tv_show_directory: /media/peloton/Strength/Jermaine Johnson
+        tv_show_directory: /media/peloton/Yoga/Anna Greenberg
         season_number: 30
-        episode_number: 129
-    30 min 2010s Upper Body Strength with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/64bd441be0d14b0eb7089db0b2c95d5e
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Adrian Williams
-        season_number: 30
-        episode_number: 130
-    30 min Upper Body Strength with Andy Speer:
-      download: https://members.onepeloton.com/classes/player/dacff4f9c637410fb869f05f822b1e9b
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Andy Speer
-        season_number: 30
-        episode_number: 131
-    30 min Kettlebell Strength with Jermaine Johnson:
-      download: https://members.onepeloton.com/classes/player/18f43420ba854ec387f186d0a7d4c1d3
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Jermaine Johnson
-        season_number: 30
-        episode_number: 132
-    30 min Full Body Strength with Matty Maggiacomo:
-      download: https://members.onepeloton.com/classes/player/4103805981dc4c2f949249b24de18965
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Matty Maggiacomo
-        season_number: 30
-        episode_number: 133
-    30 min Upper Body Strength with Rebecca Kennedy:
-      download: https://members.onepeloton.com/classes/player/da935774b3bb49f395ca54040286dfdd
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Rebecca Kennedy
-        season_number: 30
-        episode_number: 134
-    30 min Full Body Strength with Ben Alldis:
-      download: https://members.onepeloton.com/classes/player/4790649d84d24bb8b9721ee5d8512347
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Ben Alldis
-        season_number: 30
-        episode_number: 135
-  = Strength (15 min):
-    15 min Bodyweight Strength with Logan Aldridge:
-      download: https://members.onepeloton.com/classes/player/d24d7743eda34c42997393ddc1b687df
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Logan Aldridge
-        season_number: 15
-        episode_number: 47
-    15 min Standing Core Strength with Rebecca Kennedy:
-      download: https://members.onepeloton.com/classes/player/3443d2aeef2e41bc9894833060dea0fd
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Rebecca Kennedy
-        season_number: 15
-        episode_number: 48
-    15 min Core Strength with Tunde Oyeneyin:
-      download: https://members.onepeloton.com/classes/player/9a17f0afb937478c804d29cf47557b28
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Tunde Oyeneyin
-        season_number: 15
-        episode_number: 49
+        episode_number: 207
   = Strength (10 min):
-    10 min Arms & Shoulders Strength with Matty Maggiacomo:
-      download: https://members.onepeloton.com/classes/player/9089a669946840f9b52c7b2b954342c7
+    10 min Arms & Light Weights with Susie Chan:
+      download: https://members.onepeloton.com/classes/player/efefc6e6481945be85bd83970ea86fe8
       overrides:
-        tv_show_directory: /media/peloton/Strength/Matty Maggiacomo
+        tv_show_directory: /media/peloton/Strength/Susie Chan
         season_number: 10
-        episode_number: 163
-    10 min Arms & Light Weights with Jenn Sherman:
-      download: https://members.onepeloton.com/classes/player/085a8f9ebd60431c8ca8c28a159bbcc9
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Jenn Sherman
-        season_number: 10
-        episode_number: 164
-    10 min Glutes & Legs Strength with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/0860ee7105484404aac7c7fff63acd89
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Adrian Williams
-        season_number: 10
-        episode_number: 165
-    10 min Core Strength with Logan Aldridge:
-      download: https://members.onepeloton.com/classes/player/43461e1691aa44a99d5e43e70a902280
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Logan Aldridge
-        season_number: 10
-        episode_number: 166
-    '10 min Barre: Glutes & Legs with Ally Love':
-      download: https://members.onepeloton.com/classes/player/5d66670bdcfe497cb2ac955e987489ce
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Ally Love
-        season_number: 10
-        episode_number: 167
-    '10 min Pilates: Upper Body with Rebecca Kennedy':
-      download: https://members.onepeloton.com/classes/player/bd212647b69245fb80973284b9b6eae0
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Rebecca Kennedy
-        season_number: 10
-        episode_number: 168
-  = Strength (20 min):
-    20 min 80s Pilates with Emma Lovewell:
-      download: https://members.onepeloton.com/classes/player/edc02e4f74df49e5a0827a88f77c5f88
+        episode_number: 169
+    '10 min Pilates: Upper Body with Emma Lovewell':
+      download: https://members.onepeloton.com/classes/player/5fa4c494159e4e259383214cc518a22a
       overrides:
         tv_show_directory: /media/peloton/Strength/Emma Lovewell
-        season_number: 20
-        episode_number: 192
-    20 min Chest & Back Strength with Logan Aldridge:
-      download: https://members.onepeloton.com/classes/player/cee14fd0fa2e482997042d3ad757dccd
+        season_number: 10
+        episode_number: 170
+    '10 min Barre: Glutes & Legs with Hannah Corbin':
+      download: https://members.onepeloton.com/classes/player/eeea2b378f534185a051aacd4b4df870
       overrides:
-        tv_show_directory: /media/peloton/Strength/Logan Aldridge
-        season_number: 20
-        episode_number: 193
-    20 min Arms & Shoulders Strength with Rad Lopez:
-      download: https://members.onepeloton.com/classes/player/4be23c42a90b422396a7d1ce1b572458
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Rad Lopez
-        season_number: 20
-        episode_number: 194
-    20 min Glutes & Legs Strength with Rad Lopez:
-      download: https://members.onepeloton.com/classes/player/0af47d32c5744e6cbfcf8b592db7adf3
-      overrides:
-        tv_show_directory: /media/peloton/Strength/Rad Lopez
-        season_number: 20
-        episode_number: 195
-    20 min Bodyweight Strength with Jermaine Johnson:
-      download: https://members.onepeloton.com/classes/player/a8e6ae6a5ab340068eb71af1c6cc12c1
+        tv_show_directory: /media/peloton/Strength/Hannah Corbin
+        season_number: 10
+        episode_number: 171
+    10 min Core Strength with Jermaine Johnson:
+      download: https://members.onepeloton.com/classes/player/8d585b41791543ad9f37e9dce9c6a964
       overrides:
         tv_show_directory: /media/peloton/Strength/Jermaine Johnson
+        season_number: 10
+        episode_number: 172
+    10 min Arms & Light Weights with Alex Toussaint:
+      download: https://members.onepeloton.com/classes/player/a86d60109dc94aa3b6fb96bcc8e57127
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Alex Toussaint
+        season_number: 10
+        episode_number: 173
+    10 min Core Strength with Andy Speer:
+      download: https://members.onepeloton.com/classes/player/39d38609e92346c0b4c4d734b5b2fa76
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Andy Speer
+        season_number: 10
+        episode_number: 174
+    10 min Arms & Shoulders Strength with Rebecca Kennedy:
+      download: https://members.onepeloton.com/classes/player/d7d10c2cd4834bc8b20a95c019cf3872
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Rebecca Kennedy
+        season_number: 10
+        episode_number: 175
+  = Strength (20 min):
+    20 min Glutes & Legs Strength with Matty Maggiacomo:
+      download: https://members.onepeloton.com/classes/player/d72e50a2aca145c6b9ceec6af9b57273
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Matty Maggiacomo
         season_number: 20
-        episode_number: 196
-    20 min Chest & Back Strength with Logan Aldridge (1):
-      download: https://members.onepeloton.com/classes/player/e267ff73dab642d2b6d7422d37bbfe39
+        episode_number: 198
+    20 min Hip Hop Glutes & Legs Strength with Adrian Williams:
+      download: https://members.onepeloton.com/classes/player/3c8a6d32cf56490db3d032e698436f98
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Adrian Williams
+        season_number: 20
+        episode_number: 199
+    20 min Full Body Strength with Callie Gullickson:
+      download: https://members.onepeloton.com/classes/player/dcfe18ae17dc4aa2ac60fbf9f5d5dc16
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Callie Gullickson
+        season_number: 20
+        episode_number: 200
+    20 min Chest & Back Strength with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/b227ae843b3d44e4a0c3032b76cab090
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Katie Wang
+        season_number: 20
+        episode_number: 201
+    20 min Dance Music Barre with Leanne Hainsby-Alldis:
+      download: https://members.onepeloton.com/classes/player/f06afe305a5c4bf4bfc74f7a75c291d5
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Leanne Hainsby-Alldis
+        season_number: 20
+        episode_number: 202
+    20 min Glutes & Legs Strength with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/6764e5ce9dcb4b66b5c221fa3b1599ed
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Katie Wang
+        season_number: 20
+        episode_number: 203
+    20 min Full Body Strength with Adrian Williams:
+      download: https://members.onepeloton.com/classes/player/74a56516ad71467d9e8f5f2e14963692
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Adrian Williams
+        season_number: 20
+        episode_number: 204
+    20 min Upper Body Strength with Logan Aldridge:
+      download: https://members.onepeloton.com/classes/player/a86f79d4a65840c0b2b823d3310eae5e
       overrides:
         tv_show_directory: /media/peloton/Strength/Logan Aldridge
         season_number: 20
-        episode_number: 197
-  = Strength (5 min):
-    5 min Upper Body Strength Warm Up with Callie Gullickson:
-      download: https://members.onepeloton.com/classes/player/b7f0f791119a4720a43a21b40b0e7c10
+        episode_number: 205
+    20 min Kettlebell Strength&Conditioning with Joslyn Thompson Rule:
+      download: https://members.onepeloton.com/classes/player/0877a98fb02343749361d5947ffa18c4
       overrides:
-        tv_show_directory: /media/peloton/Strength/Callie Gullickson
-        season_number: 5
-        episode_number: 34
-    5 min Core Strength with Selena Samuela:
-      download: https://members.onepeloton.com/classes/player/eb8d5b22ed684274a30e370a20550cc9
+        tv_show_directory: /media/peloton/Strength/Joslyn Thompson Rule
+        season_number: 20
+        episode_number: 206
+    20 min Full Body Strength with Rad Lopez:
+      download: https://members.onepeloton.com/classes/player/10861a3c19324473a2279926b7685376
       overrides:
-        tv_show_directory: /media/peloton/Strength/Selena Samuela
-        season_number: 5
-        episode_number: 35
-  = Strength (60 min):
-    60 min Total Strength with Andy Speer:
-      download: https://members.onepeloton.com/classes/player/7fda1af342444b1ebfa89bda55f61c0a
+        tv_show_directory: /media/peloton/Strength/Rad Lopez
+        season_number: 20
+        episode_number: 207
+  = Strength (30 min):
+    30 min Upper Body Strength with Rad Lopez:
+      download: https://members.onepeloton.com/classes/player/62e8b5276c39490694f916409c18a1b8
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Rad Lopez
+        season_number: 30
+        episode_number: 136
+    30 min Full Body Strengh with Logan Aldridge:
+      download: https://members.onepeloton.com/classes/player/b83b6b4f4d4b4467b1b68649e161fe43
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Logan Aldridge
+        season_number: 30
+        episode_number: 137
+    30 min Full Body Strength with Andy Speer:
+      download: https://members.onepeloton.com/classes/player/a717fae809ea44b69aa4d381acd21c71
       overrides:
         tv_show_directory: /media/peloton/Strength/Andy Speer
-        season_number: 60
-        episode_number: 16
-  = Running (30 min):
-    30 min 2010s Run with Joslyn Thompson Rule:
-      download: https://members.onepeloton.com/classes/player/b73d67212dda467eb3f18be42b01a223
-      overrides:
-        tv_show_directory: /media/peloton/Running/Joslyn Thompson Rule
         season_number: 30
-        episode_number: 268
-    30 min 2000s Run with Susie Chan:
-      download: https://members.onepeloton.com/classes/player/1d2438715d0f416a90755d77d42c7169
+        episode_number: 138
+    30 min Arms & Shoulders Strength with Jermaine Johnson:
+      download: https://members.onepeloton.com/classes/player/30f602492a12402687a5816807b8a947
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Jermaine Johnson
+        season_number: 30
+        episode_number: 139
+  = Strength (5 min):
+    5 min Core Strength with Adrian Williams:
+      download: https://members.onepeloton.com/classes/player/029f682a61d3476fa3beb52d8684fd37
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Adrian Williams
+        season_number: 5
+        episode_number: 36
+    5 min Core Strength with Emma Lovewell:
+      download: https://members.onepeloton.com/classes/player/95bc26f4ec0743b1bd4411bc3e0e1d3d
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Emma Lovewell
+        season_number: 5
+        episode_number: 37
+  = Strength (15 min):
+    15 min Core Strength with Selena Samuela:
+      download: https://members.onepeloton.com/classes/player/83f93ac767704f2e96d50d7fac228782
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Selena Samuela
+        season_number: 15
+        episode_number: 50
+    '15 min Pilates: Express with Rebecca Kennedy':
+      download: https://members.onepeloton.com/classes/player/eda0bc7460f74cc3ae1a0698fcb10637
+      overrides:
+        tv_show_directory: /media/peloton/Strength/Rebecca Kennedy
+        season_number: 15
+        episode_number: 51
+  = Meditation (10 min):
+    10 min Family Meditation with Chelsea Jackson Roberts:
+      download: https://members.onepeloton.com/classes/player/f2fa372e53b343bba66ccfcefdde9a15
+      overrides:
+        tv_show_directory: /media/peloton/Meditation/Chelsea Jackson Roberts
+        season_number: 10
+        episode_number: 271
+    10 min Breathing Meditation with Kirra Michel:
+      download: https://members.onepeloton.com/classes/player/969d9a759cae4f3a84f170dbcfa14a75
+      overrides:
+        tv_show_directory: /media/peloton/Meditation/Kirra Michel
+        season_number: 10
+        episode_number: 272
+  = Cardio (10 min):
+    10 min Fit Family Fun with Jess Sims:
+      download: https://members.onepeloton.com/classes/player/d62e0b9c8f61440d8030ec8134f9a715
+      overrides:
+        tv_show_directory: /media/peloton/Cardio/Jess Sims
+        season_number: 10
+        episode_number: 83
+    10 min Fit Family Fun with Rad Lopez:
+      download: https://members.onepeloton.com/classes/player/1364ecba416d4fdc973368709a1623af
+      overrides:
+        tv_show_directory: /media/peloton/Cardio/Rad Lopez
+        season_number: 10
+        episode_number: 84
+  = Stretching (5 min):
+    5 min Post-Ride Stretch with Jess King:
+      download: https://members.onepeloton.com/classes/player/d300f442a28a481388ea4eeb2c0d5a0f
+      overrides:
+        tv_show_directory: /media/peloton/Stretching/Jess King
+        season_number: 5
+        episode_number: 175
+    5 min Pre-Ride Warm Up with Hannah Frankson:
+      download: https://members.onepeloton.com/classes/player/d0d78a09698f4e9b9600150c25dd8550
+      overrides:
+        tv_show_directory: /media/peloton/Stretching/Hannah Frankson
+        season_number: 5
+        episode_number: 176
+  = Stretching (10 min):
+    10 min Upper Body Stretch with Joslyn Thompson Rule:
+      download: https://members.onepeloton.com/classes/player/aff059f6c17645deba243acfa50b4f47
+      overrides:
+        tv_show_directory: /media/peloton/Stretching/Joslyn Thompson Rule
+        season_number: 10
+        episode_number: 110
+  = Running (30 min):
+    30 min Intervals Run with Hannah Frankson:
+      download: https://members.onepeloton.com/classes/player/714679f504bb46f99c2407c6709153b5
+      overrides:
+        tv_show_directory: /media/peloton/Running/Hannah Frankson
+        season_number: 30
+        episode_number: 281
+    30 min Endurance Run with Mariana Fernández:
+      download: https://members.onepeloton.com/classes/player/db31578e2c664254a8a2e30ae9f7485d
+      overrides:
+        tv_show_directory: /media/peloton/Running/Mariana Fernández
+        season_number: 30
+        episode_number: 282
+    30 min Endurance Run with Susie Chan:
+      download: https://members.onepeloton.com/classes/player/02f6265a307144b98901128ba6ab2c3d
       overrides:
         tv_show_directory: /media/peloton/Running/Susie Chan
         season_number: 30
-        episode_number: 269
-    30 min 90s Run with Logan Aldridge:
-      download: https://members.onepeloton.com/classes/player/e424424817e34647a96bb43c0d228cd5
+        episode_number: 283
+    30 min Endurance Run with Kirsten Ferguson:
+      download: https://members.onepeloton.com/classes/player/08c5381680e24c4c8f240e1cdb9125e0
       overrides:
-        tv_show_directory: /media/peloton/Running/Logan Aldridge
+        tv_show_directory: /media/peloton/Running/Kirsten Ferguson
         season_number: 30
-        episode_number: 270
-    30 min Max Out Run with Alex Karwoski:
-      download: https://members.onepeloton.com/classes/player/2bcf0df4ea4344e891deaae08107a817
+        episode_number: 284
+    30 min Classic Rock Run with Susie Chan:
+      download: https://members.onepeloton.com/classes/player/f20cad278cd5456eb1e7d8f85d1877b9
       overrides:
-        tv_show_directory: /media/peloton/Running/Alex Karwoski
+        tv_show_directory: /media/peloton/Running/Susie Chan
         season_number: 30
-        episode_number: 271
-    30 min 2000s Pop Run with Marcel Dinkins:
-      download: https://members.onepeloton.com/classes/player/73f0d05d5b734c3b85d6548aa77b0a1a
+        episode_number: 285
+    30 min 2000s Run with Jermaine Johnson:
+      download: https://members.onepeloton.com/classes/player/a0b643dd3ea54acca1e2b2600b25eaa4
       overrides:
-        tv_show_directory: /media/peloton/Running/Marcel Dinkins
+        tv_show_directory: /media/peloton/Running/Jermaine Johnson
         season_number: 30
-        episode_number: 272
-    30 min Sweat Steady Run with Jess King:
-      download: https://members.onepeloton.com/classes/player/b29731c98f4941d3b57b191a15b32531
+        episode_number: 286
+    30 min Pop Punk Run with Olivia Amato:
+      download: https://members.onepeloton.com/classes/player/83d98f3745e34efc8cf8dd4d92f6b38c
       overrides:
-        tv_show_directory: /media/peloton/Running/Jess King
+        tv_show_directory: /media/peloton/Running/Olivia Amato
         season_number: 30
-        episode_number: 273
-    30 min Pop Run with Marcel Dinkins:
-      download: https://members.onepeloton.com/classes/player/1dceb32dc4914e43b60fa283bbb2ecd1
+        episode_number: 287
+    30 min 90s Run with Jon Hosking:
+      download: https://members.onepeloton.com/classes/player/b024eb00f3724a01ba6c6d10d65c4861
       overrides:
-        tv_show_directory: /media/peloton/Running/Marcel Dinkins
+        tv_show_directory: /media/peloton/Running/Jon Hosking
         season_number: 30
-        episode_number: 274
-    30 min Tropical House Run with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/db81bf5801d042e994f6884f7c2149dd
-      overrides:
-        tv_show_directory: /media/peloton/Running/Adrian Williams
-        season_number: 30
-        episode_number: 275
-    30 min HIIT Run with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/fd2a6143a9d84a73a429afc249c684b5
+        episode_number: 288
+    30 min Live DJ Run with Adrian Williams:
+      download: https://members.onepeloton.com/classes/player/9c1ed40b7fa046489764772bacf57321
       overrides:
         tv_show_directory: /media/peloton/Running/Adrian Williams
         season_number: 30
-        episode_number: 276
-    30 min New Tracks Run with Alex Toussaint:
-      download: https://members.onepeloton.com/classes/player/2dfae953f1924d6985052543439ccefa
+        episode_number: 289
+    30 min Intervals Run with Alex Toussaint:
+      download: https://members.onepeloton.com/classes/player/d9bc3ddebd4d4515b63446815b61c489
       overrides:
         tv_show_directory: /media/peloton/Running/Alex Toussaint
         season_number: 30
-        episode_number: 277
-    30 min Endurance Run with Alex Karwoski:
-      download: https://members.onepeloton.com/classes/player/2ff905908c404d7f823e576c50219b85
-      overrides:
-        tv_show_directory: /media/peloton/Running/Alex Karwoski
-        season_number: 30
-        episode_number: 278
-    30 min Tempo Run with Mariana Fernández:
-      download: https://members.onepeloton.com/classes/player/994063ca2cec44f68622e51b57dadde0
+        episode_number: 290
+    30 min 2010s Run with Mariana Fernández:
+      download: https://members.onepeloton.com/classes/player/91cd552aa2a04900ac02b2afbc900668
       overrides:
         tv_show_directory: /media/peloton/Running/Mariana Fernández
         season_number: 30
-        episode_number: 279
-    30 min Rising Rock Run with Susie Chan:
-      download: https://members.onepeloton.com/classes/player/206204eb0a3e43af8b3f2986f3cceb8b
+        episode_number: 291
+    30 min Sean Paul Run with Kirsten Ferguson:
+      download: https://members.onepeloton.com/classes/player/d4a27ef0925246aca5021b8a78668cc5
       overrides:
-        tv_show_directory: /media/peloton/Running/Susie Chan
+        tv_show_directory: /media/peloton/Running/Kirsten Ferguson
         season_number: 30
-        episode_number: 280
+        episode_number: 292
+    30 min Advanced Beginner Run with Jermaine Johnson:
+      download: https://members.onepeloton.com/classes/player/749558f36b32413e9fb354adc1eff8cc
+      overrides:
+        tv_show_directory: /media/peloton/Running/Jermaine Johnson
+        season_number: 30
+        episode_number: 293
+    30 min 80s Run with Mariana Fernández:
+      download: https://members.onepeloton.com/classes/player/f593ebc4f34c4d28b65e3450f503a380
+      overrides:
+        tv_show_directory: /media/peloton/Running/Mariana Fernández
+        season_number: 30
+        episode_number: 294
   = Running (20 min):
-    20 min Intervals Run with Jon Hosking:
-      download: https://members.onepeloton.com/classes/player/005d47aacbb442279c4521e6e418d8ba
+    20 min Intervals Run with Matt Wilpers:
+      download: https://members.onepeloton.com/classes/player/0b09ef6a447647d79d06c8f20b3b72ca
       overrides:
-        tv_show_directory: /media/peloton/Running/Jon Hosking
+        tv_show_directory: /media/peloton/Running/Matt Wilpers
         season_number: 20
-        episode_number: 148
-    20 min Pop Run with Marcel Dinkins:
-      download: https://members.onepeloton.com/classes/player/592b37dd54244daa878e7be2367dc32c
+        episode_number: 153
+    20 min Pop Run with Mariana Fernández:
+      download: https://members.onepeloton.com/classes/player/ade4f6dbec974a789698f02e2c042ce9
       overrides:
-        tv_show_directory: /media/peloton/Running/Marcel Dinkins
+        tv_show_directory: /media/peloton/Running/Mariana Fernández
         season_number: 20
-        episode_number: 149
-    20 min 90s Rock Run with Jermaine Johnson:
-      download: https://members.onepeloton.com/classes/player/ff70934c69dd4b5f8e447b5af9d7baad
+        episode_number: 154
+    20 min HIIT Run with Jermaine Johnson:
+      download: https://members.onepeloton.com/classes/player/61d722f0271940edb25017d1ba7cd426
       overrides:
         tv_show_directory: /media/peloton/Running/Jermaine Johnson
         season_number: 20
-        episode_number: 150
-    20 min Hip Hop Run with Marcel Dinkins:
-      download: https://members.onepeloton.com/classes/player/16920283d5184ebe91000d84e1267cb0
+        episode_number: 155
+    20 min HIIT Run with Selena Samuela:
+      download: https://members.onepeloton.com/classes/player/39e3a9e4b6a9452e8522f34f70cf9cb8
       overrides:
-        tv_show_directory: /media/peloton/Running/Marcel Dinkins
+        tv_show_directory: /media/peloton/Running/Selena Samuela
         season_number: 20
-        episode_number: 151
-    20 min 80s Run with Jon Hosking:
-      download: https://members.onepeloton.com/classes/player/d22c9f4b56bf4f7591c094e11b8c9e04
+        episode_number: 156
+    20 min EDM Run with Olivia Amato:
+      download: https://members.onepeloton.com/classes/player/fe4a9b25ce6b47168f5c71e13391daa5
       overrides:
-        tv_show_directory: /media/peloton/Running/Jon Hosking
+        tv_show_directory: /media/peloton/Running/Olivia Amato
         season_number: 20
-        episode_number: 152
-  = Running (10 min):
-    10 min Warm Up Run with Hannah Frankson:
-      download: https://members.onepeloton.com/classes/player/733d2c720899477b846bad89f3115fd1
-      overrides:
-        tv_show_directory: /media/peloton/Running/Hannah Frankson
-        season_number: 10
-        episode_number: 26
-  = Running (60 min):
-    60 min Intervals Run with Mariana Fernández:
-      download: https://members.onepeloton.com/classes/player/accee4323054421592e091674d67622a
-      overrides:
-        tv_show_directory: /media/peloton/Running/Mariana Fernández
-        season_number: 60
-        episode_number: 12
-    60 min 2010s Run with Mariana Fernández:
-      download: https://members.onepeloton.com/classes/player/ee04ea94d56047ecaf631268c7edc16d
-      overrides:
-        tv_show_directory: /media/peloton/Running/Mariana Fernández
-        season_number: 60
-        episode_number: 13
+        episode_number: 157
   = Running (15 min):
-    15 min New Tracks Run with Marcel Dinkins:
-      download: https://members.onepeloton.com/classes/player/5720aae7f06441468f68b0b71c7ae8d9
-      overrides:
-        tv_show_directory: /media/peloton/Running/Marcel Dinkins
-        season_number: 15
-        episode_number: 39
-    15 min Beginner Run with Camila Ramón:
-      download: https://members.onepeloton.com/classes/player/f579707dac1a44c6bcce5ce8e09c3bdd
-      overrides:
-        tv_show_directory: /media/peloton/Running/Camila Ramón
-        season_number: 15
-        episode_number: 40
-    15 min R&B Run with Marcel Dinkins:
-      download: https://members.onepeloton.com/classes/player/264e8c28a286489a8afea0be07a3cca1
-      overrides:
-        tv_show_directory: /media/peloton/Running/Marcel Dinkins
-        season_number: 15
-        episode_number: 41
-  = Running (75 min):
-    75 min Long Run with Joslyn Thompson Rule:
-      download: https://members.onepeloton.com/classes/player/b71aa8eefe1d46c9aa664f3900d54842
+    15 min Intervals Run with Joslyn Thompson Rule:
+      download: https://members.onepeloton.com/classes/player/f4ad7d1034354e8d9d30aabbf0a83674
       overrides:
         tv_show_directory: /media/peloton/Running/Joslyn Thompson Rule
-        season_number: 75
-        episode_number: 1
-  = Walking (20 min):
-    20 min Hike with Jon Hosking:
-      download: https://members.onepeloton.com/classes/player/cbde0d52f34c4839acb8f9a7278f15d7
+        season_number: 15
+        episode_number: 42
+    15 min 90s Run with Alex Karwoski:
+      download: https://members.onepeloton.com/classes/player/d3cd1a314a5c4239a1a4bfb4218ff950
       overrides:
-        tv_show_directory: /media/peloton/Walking/Jon Hosking
-        season_number: 20
-        episode_number: 121
-    20 min Walk + Run with Alex Karwoski:
-      download: https://members.onepeloton.com/classes/player/de9d3e348c55429c8cb79471ec893c1c
+        tv_show_directory: /media/peloton/Running/Alex Karwoski
+        season_number: 15
+        episode_number: 43
+  = Running (5 min):
+    5 min Get to Know Me Warm Up Run with Mariana Fernández:
+      download: https://members.onepeloton.com/classes/player/21b2a989cd644d5dab6999a5ed01c827
       overrides:
-        tv_show_directory: /media/peloton/Walking/Alex Karwoski
-        season_number: 20
-        episode_number: 122
-    20 min Walk + Run with Jon Hosking:
-      download: https://members.onepeloton.com/classes/player/a8bf9cc103c94d9aa13e93b32b7673c6
+        tv_show_directory: /media/peloton/Running/Mariana Fernández
+        season_number: 5
+        episode_number: 14
+  = Running (45 min):
+    45 min EDM Run with Mariana Fernández:
+      download: https://members.onepeloton.com/classes/player/e097d533b5e547b8beb85ca616bcd5b7
       overrides:
-        tv_show_directory: /media/peloton/Walking/Jon Hosking
-        season_number: 20
-        episode_number: 123
-    20 min Classic Rock Walk with Susie Chan:
-      download: https://members.onepeloton.com/classes/player/65d21cebd8ec422a8adcc3b2d94176b9
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Susie Chan
-        season_number: 20
-        episode_number: 124
-    20 min 80s Walk with Joslyn Thompson Rule:
-      download: https://members.onepeloton.com/classes/player/e5c5da426113440f8bc70647a5b7d9c3
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Joslyn Thompson Rule
-        season_number: 20
-        episode_number: 125
-  = Walking (10 min):
-    10 min Cool Down Walk with Camila Ramón:
-      download: https://members.onepeloton.com/classes/player/da38dd0a248c471c94f9aa0ee49c59af
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Camila Ramón
-        season_number: 10
-        episode_number: 34
-    10 min Cool Down Walk with Alex Toussaint:
-      download: https://members.onepeloton.com/classes/player/fb7bfbc36a1648e58a0a66c63f860e69
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Alex Toussaint
-        season_number: 10
-        episode_number: 35
-    10 min Warm Up Walk with Jon Hosking:
-      download: https://members.onepeloton.com/classes/player/57d69fefb17a45848b13543c4f811858
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Jon Hosking
-        season_number: 10
-        episode_number: 36
-    'Extra 10: Hike with Robin Arzón':
-      download: https://members.onepeloton.com/classes/player/83f54ae90f5c4fc38a3371ffb5aad358
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Robin Arzón
-        season_number: 10
-        episode_number: 37
-  = Walking (30 min):
-    30 min Hike with Jess King:
-      download: https://members.onepeloton.com/classes/player/983dab45fca5402aa1edd55453d6acdb
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Jess King
-        season_number: 30
-        episode_number: 210
-    30 min 80s Walk with Susie Chan:
-      download: https://members.onepeloton.com/classes/player/ed161347942e4303b15dcd85afc37082
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Susie Chan
-        season_number: 30
-        episode_number: 211
-    30 min Rock Walk with Jermaine Johnson:
-      download: https://members.onepeloton.com/classes/player/b75639146f0f4e39a05db73298c07222
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Jermaine Johnson
-        season_number: 30
-        episode_number: 212
-    30 min 90s Walk with Olivia Amato:
-      download: https://members.onepeloton.com/classes/player/5d3fd5a45442492690646ca38db7668e
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Olivia Amato
-        season_number: 30
-        episode_number: 213
-    30 min Tropical House Walk with Jon Hosking:
-      download: https://members.onepeloton.com/classes/player/3318966632704ebeb630b4f28b96fa81
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Jon Hosking
-        season_number: 30
-        episode_number: 214
-    30 min 90s Pop Walk with Emma Lovewell:
-      download: https://members.onepeloton.com/classes/player/6626bcf770db49ad98eef7e8d1d71449
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Emma Lovewell
-        season_number: 30
-        episode_number: 215
-    30 min Power Walk with Robin Arzón:
-      download: https://members.onepeloton.com/classes/player/fc8152012a954641acdb827ce11fce62
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Robin Arzón
-        season_number: 30
-        episode_number: 216
-    30 min Pop Walk with Jermaine Johnson:
-      download: https://members.onepeloton.com/classes/player/5441e0051f9d44fcb2b85c2a6e99dbc0
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Jermaine Johnson
-        season_number: 30
-        episode_number: 217
-    30 min Hike with Logan Aldridge:
-      download: https://members.onepeloton.com/classes/player/bd2c0a1c8b4e4027886f43fd89650cb9
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Logan Aldridge
-        season_number: 30
-        episode_number: 218
-  = Walking (60 min):
-    60 min Walk + Run with Kirsten Ferguson:
-      download: https://members.onepeloton.com/classes/player/1f7cf70536fd4ad9a724c07ccef93844
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Kirsten Ferguson
-        season_number: 60
-        episode_number: 9
-  = Walking (45 min):
-    45 min Country Pop Walk with Selena Samuela:
-      download: https://members.onepeloton.com/classes/player/1964c350e7814070a2d67bb9a8bba84f
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Selena Samuela
+        tv_show_directory: /media/peloton/Running/Mariana Fernández
         season_number: 45
-        episode_number: 35
-  = Walking (15 min):
-    15 min Hike with Olivia Amato:
-      download: https://members.onepeloton.com/classes/player/aed8cee8d54f48e488d8673a7caf72f2
+        episode_number: 40
+    45 min Hip Hop Run with Marcel Dinkins:
+      download: https://members.onepeloton.com/classes/player/af135f35876c4e34bba03cbb2bc75068
       overrides:
-        tv_show_directory: /media/peloton/Walking/Olivia Amato
-        season_number: 15
-        episode_number: 49
-    15 min Disney Walk with Emma Lovewell:
-      download: https://members.onepeloton.com/classes/player/6a2d09ca96244ff2a19fe04e5a34cfc8
+        tv_show_directory: /media/peloton/Running/Marcel Dinkins
+        season_number: 45
+        episode_number: 41
+    45 min Endurance Run with Alex Karwoski:
+      download: https://members.onepeloton.com/classes/player/3a16836a1fd84e2e9153d9b31587bdd9
+      overrides:
+        tv_show_directory: /media/peloton/Running/Alex Karwoski
+        season_number: 45
+        episode_number: 42
+  = Walking (30 min):
+    30 min Hike with Emma Lovewell:
+      download: https://members.onepeloton.com/classes/player/eb0279643a0440b8ae5069c72e8d369a
       overrides:
         tv_show_directory: /media/peloton/Walking/Emma Lovewell
-        season_number: 15
-        episode_number: 50
-  = Rowing (20 min):
-    20 min 2000s Pop Row with Katie Wang:
-      download: https://members.onepeloton.com/classes/player/c8cbcad589f2497ca18c2aecd52257d5
+        season_number: 30
+        episode_number: 219
+  = Row Bootcamp (45 min):
+    Thunder 45 with Adrian Williams:
+      download: https://members.onepeloton.com/classes/player/daaa98d51c634f13b30abc42207b463c
       overrides:
-        tv_show_directory: /media/peloton/Rowing/Katie Wang
-        season_number: 20
-        episode_number: 124
+        tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
+        season_number: 45
+        episode_number: 144
