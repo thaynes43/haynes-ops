@@ -367,7 +367,40 @@
     {
       "id": "0822c3d99f814d9e94371e4b07980d59",
       "date_added": "2025-10-02T22:11:46.361733"
+    },
+    {
+      "id": "7d244dca4f9c439799da282f2dea1bea",
+      "date_added": "2025-10-03T11:32:15.700669"
+    },
+    {
+      "id": "8856314b3d0644eebdd002a92d6a4b56",
+      "date_added": "2025-10-03T11:32:15.700669"
+    },
+    {
+      "id": "eb0279643a0440b8ae5069c72e8d369a",
+      "date_added": "2025-10-03T11:32:15.700669"
+    },
+    {
+      "id": "efefc6e6481945be85bd83970ea86fe8",
+      "date_added": "2025-10-03T11:32:15.700669"
+    },
+    {
+      "id": "cbde0d52f34c4839acb8f9a7278f15d7",
+      "date_added": "2025-10-03T11:32:15.700669"
+    },
+    {
+      "id": "ab6546208c2041688055d2554987aa0f",
+      "date_added": "2025-10-03T11:32:15.700669"
     }
   ],
-  "last_updated": "2025-10-02T22:11:46.361825"
+  "last_updated": "2025-10-03T11:32:15.769378",
+  "run_snapshots": [
+    {
+      "run_timestamp": "2025-10-03T11:30:53.555653",
+      "videos_on_disk": 4128,
+      "videos_in_subscriptions": 4132,
+      "new_videos_added": 6,
+      "total_activities": 11
+    }
+  ]
 }
