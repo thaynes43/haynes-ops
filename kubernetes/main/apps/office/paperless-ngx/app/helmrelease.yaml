@@ -40,7 +40,7 @@ spec:
           gotenburg:
             image:
               repository: thecodingmachine/gotenberg
-              tag: 8.23.2
+              tag: 8.24.0
               pullPolicy: IfNotPresent
           tika:
             image:
