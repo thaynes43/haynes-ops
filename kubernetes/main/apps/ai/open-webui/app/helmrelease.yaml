@@ -9,7 +9,7 @@ spec:
     spec:
       # https://github.com/open-webui/helm-charts/releases
       chart: open-webui
-      version: 8.10.0
+      version: 8.12.2
       sourceRef:
         kind: HelmRepository
         name: open-webui
@@ -42,33 +42,32 @@ spec:
       existingClaim: open-webui
 
     extraEnvVars:
-      # -- Default API key value for Pipelines. Should be updated in a production deployment, or be changed to the required API key if not using Pipelines
-      - name: GLOBAL_LOG_LEVEL
-        value: "DEBUG" # TODO set to "INFO" once stable
-      - name: OPENAI_API_BASE_URLS
+      GLOBAL_LOG_LEVEL:
+        value: "DEBUG"
+      OPENAI_API_BASE_URLS:
         value: "http://open-webui-pipelines.ai.svc.cluster.local:9099;https://api.openai.com/v1"
-      - name: OPENAI_API_KEYS
+      OPENAI_API_KEYS:
         valueFrom:
           secretKeyRef:
             name: openwebui-secret
             key: OPENAI_API_KEYS
-      - name: OPENID_PROVIDER_URL
+      OPENID_PROVIDER_URL:
         value: "https://authentik.haynesnetwork.com/application/o/open-webui/.well-known/openid-configuration"
-      - name: OAUTH_CLIENT_ID
+      OAUTH_CLIENT_ID:
         valueFrom:
           secretKeyRef:
             name: openwebui-secret
             key: OAUTH_CLIENT_ID
-      - name: OAUTH_CLIENT_SECRET
+      OAUTH_CLIENT_SECRET:
         valueFrom:
           secretKeyRef:
             name: openwebui-secret
             key: OAUTH_CLIENT_SECRET
-      - name: OAUTH_PROVIDER_NAME
+      OAUTH_PROVIDER_NAME:
         value: "authentik"
-      - name: ENABLE_OAUTH_SIGNUP
+      ENABLE_OAUTH_SIGNUP:
         value: "true"
-      - name: ENABLE_LOGIN_FORM
+      ENABLE_LOGIN_FORM:
         value: "false"
-      - name: DEFAULT_USER_ROLE
+      DEFAULT_USER_ROLE:
         value: "user"
