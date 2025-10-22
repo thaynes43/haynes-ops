@@ -6,22 +6,22 @@ log_level: "DEBUG"
 
 # Photo filters - list of filter sets to cycle through
 filters:
-  - name: "Halloween with Jackson and Penelope"
+  - name: "Kids Halloween Costumese"
     selector_type: "smart-rng"
-    search_query: "Halloween with Jackson and Penelope"
-    max_search_results: 200
+    search_query: "Kids Halloween Costumes"
+    max_search_results: 500
 
-  - name: "Fall fun"
+  - name: "Autumn Serenity"
     selector_type: "smart-rng"
-    search_query: "Fall fun"
-    max_search_results: 200
+    search_query: "Autumn Serenity"
+    max_search_results: 500
 
-  - name: "Halloween Party"
+  - name: "Thanksgiving Feast"
     selector_type: "smart-rng"
-    search_query: "Halloween Party"
-    max_search_results: 200
+    search_query: "Thanksgiving Feast"
+    max_search_results: 250
 
-  - name: "Thanksgiving"
+  - name: "Christmas Joy"
     selector_type: "smart-rng"
-    search_query: "Thanksgiving"
-    max_search_results: 200
+    search_query: "Christmas Joy"
+    max_search_results: 500
