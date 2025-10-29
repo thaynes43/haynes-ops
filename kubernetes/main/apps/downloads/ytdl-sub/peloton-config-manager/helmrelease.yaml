@@ -37,7 +37,7 @@ spec:
               repository: ghcr.io/thaynes43/ytdl-sub-config-manager
               tag: 0.5.1
             env:
-              PELOTON_PAGE_SCROLLS: "250"
+              PELOTON_MAX_SCROLLS: "250"
               GITHUB_AUTO_MERGE: "true"
             resources:
               requests:
