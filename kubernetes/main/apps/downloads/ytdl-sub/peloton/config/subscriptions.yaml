@@ -55,6 +55,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
         season_number: 30
         episode_number: 500
+    '30 min Bootcamp: 50-50 with Cody Rigsby':
+      download: https://members.onepeloton.com/classes/player/eb14fec393234c05b7258427fd508105
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
+        season_number: 30
+        episode_number: 504
   = Row Bootcamp (30 min):
     '30 min Bootcamp: 50-50 with Katie Wang':
       download: https://members.onepeloton.com/classes/player/b6ab3ab82b224ecc804eebab4a3e1d62
@@ -75,12 +81,6 @@ Plex TV Show by Date:
         season_number: 30
         episode_number: 430
   = Stretching (10 min):
-    '10 min Foam Rolling: Chest & Back with Hannah Corbin':
-      download: https://members.onepeloton.com/classes/player/bfdf54609dcb49bfa77cff7946809191
-      overrides:
-        tv_show_directory: /media/peloton/Stretching/Hannah Corbin
-        season_number: 10
-        episode_number: 126
     10 min Upper Body Stretch with Rebecca Kennedy:
       download: https://members.onepeloton.com/classes/player/1734cd07c9b648039249889013b4d757
       overrides:
@@ -964,6 +964,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Stretching/Adrian Williams
         season_number: 5
         episode_number: 354
+    5 min Post-Run Stretch with Susie Chan:
+      download: https://members.onepeloton.com/classes/player/fd7c236ad1964374bd09c9953505b189
+      overrides:
+        tv_show_directory: /media/peloton/Stretching/Susie Chan
+        season_number: 5
+        episode_number: 355
   = Stretching (20 min):
     20 min Evening Mobility with Kirra Michel:
       download: https://members.onepeloton.com/classes/player/d3645b957f8e4803b704189ae906d0bd
