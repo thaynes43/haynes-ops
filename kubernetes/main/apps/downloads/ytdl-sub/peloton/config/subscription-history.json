@@ -1,10 +1,6 @@
 {
   "subscriptions": [
     {
-      "id": "bfdf54609dcb49bfa77cff7946809191",
-      "date_added": "2025-10-15T22:26:41.794085"
-    },
-    {
       "id": "ff629436a63148ec82338a631a4caf16",
       "date_added": "2025-10-16T22:27:16.807073"
     },
@@ -1035,31 +1031,18 @@
     {
       "id": "5f580686f14646bbb425947aa9a2088d",
       "date_added": "2025-10-29T23:41:02.745915"
+    },
+    {
+      "id": "fd7c236ad1964374bd09c9953505b189",
+      "date_added": "2025-10-30T23:14:19.457247"
+    },
+    {
+      "id": "eb14fec393234c05b7258427fd508105",
+      "date_added": "2025-10-30T23:14:19.457247"
     }
   ],
-  "last_updated": "2025-10-29T23:41:21.230682",
+  "last_updated": "2025-10-30T23:14:42.256647",
   "run_snapshots": [
-    {
-      "run_timestamp": "2025-10-16T22:00:02.178059",
-      "videos_on_disk": 6117,
-      "videos_in_subscriptions": 496,
-      "new_videos_added": 218,
-      "total_activities": 12,
-      "episodes_by_activity": {
-        "RUNNING": 714,
-        "STRENGTH": 804,
-        "CYCLING": 924,
-        "ROW_BOOTCAMP": 227,
-        "WALKING": 580,
-        "STRETCHING": 396,
-        "YOGA": 532,
-        "ROWING": 435,
-        "BOOTCAMP": 352,
-        "MEDITATION": 417,
-        "CARDIO": 366,
-        "BIKE_BOOTCAMP": 370
-      }
-    },
     {
       "run_timestamp": "2025-10-17T22:00:14.223615",
       "videos_on_disk": 6325,
@@ -1275,6 +1258,27 @@
       "videos_on_disk": 8214,
       "videos_in_subscriptions": 325,
       "new_videos_added": 66,
+      "total_activities": 12,
+      "episodes_by_activity": {
+        "RUNNING": 864,
+        "STRENGTH": 1030,
+        "CYCLING": 1194,
+        "ROW_BOOTCAMP": 228,
+        "WALKING": 759,
+        "STRETCHING": 595,
+        "YOGA": 774,
+        "ROWING": 609,
+        "BOOTCAMP": 520,
+        "MEDITATION": 655,
+        "CARDIO": 548,
+        "BIKE_BOOTCAMP": 438
+      }
+    },
+    {
+      "run_timestamp": "2025-10-30T22:00:02.258030",
+      "videos_on_disk": 8214,
+      "videos_in_subscriptions": 262,
+      "new_videos_added": 2,
       "total_activities": 12,
       "episodes_by_activity": {
         "RUNNING": 864,
