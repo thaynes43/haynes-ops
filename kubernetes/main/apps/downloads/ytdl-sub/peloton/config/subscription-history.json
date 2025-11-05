@@ -1,62 +1,6 @@
 {
   "subscriptions": [
     {
-      "id": "83ccaf62f7c34d2dad48083ffab16d4b",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "fbb778cca7d1464ba59b8421f52a5e0a",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "b6ab3ab82b224ecc804eebab4a3e1d62",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "d27afa88bc114686891a4568af024d2b",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "566548ead05f4fbbb850ad507bac2198",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "a2af4b39353b4ee4b80d2e1b56d854ae",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "4bfe274394ff4c659b89768358d99770",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "cb128b855e214aa99ac9b0a70c5c5a66",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "8600d7015be3452cb7b77e5a18582b32",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "85569d7c5b87411b9fb120eaaed4f30b",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "922bf5c12ad241ac89e1ae0030dca07f",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "b32a4c7044b841038a0bd3fefe8cdd80",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "93c896e56039455c8fc237f201ff1829",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
-      "id": "4bf1f041eebb44e890145cc34333ee51",
-      "date_added": "2025-10-20T22:30:34.239618"
-    },
-    {
       "id": "26e25f93f7304123b1595f43044441a1",
       "date_added": "2025-10-21T22:39:32.767778"
     },
@@ -1039,31 +983,66 @@
     {
       "id": "ff629436a63148ec82338a631a4caf16",
       "date_added": "2025-10-31T23:13:54.732185"
+    },
+    {
+      "id": "4bfe274394ff4c659b89768358d99770",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "93c896e56039455c8fc237f201ff1829",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "d27afa88bc114686891a4568af024d2b",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "b6ab3ab82b224ecc804eebab4a3e1d62",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "8600d7015be3452cb7b77e5a18582b32",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "0a689e7292a54fbc8ea9559757122827",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "83ccaf62f7c34d2dad48083ffab16d4b",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "b32a4c7044b841038a0bd3fefe8cdd80",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "cb128b855e214aa99ac9b0a70c5c5a66",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "85569d7c5b87411b9fb120eaaed4f30b",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "566548ead05f4fbbb850ad507bac2198",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "4bf1f041eebb44e890145cc34333ee51",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "922bf5c12ad241ac89e1ae0030dca07f",
+      "date_added": "2025-11-04T23:14:30.401612"
+    },
+    {
+      "id": "a2af4b39353b4ee4b80d2e1b56d854ae",
+      "date_added": "2025-11-04T23:14:30.401612"
     }
   ],
-  "last_updated": "2025-11-03T23:14:29.055874",
+  "last_updated": "2025-11-04T23:14:53.795236",
   "run_snapshots": [
-    {
-      "run_timestamp": "2025-10-21T22:00:02.177381",
-      "videos_on_disk": 6921,
-      "videos_in_subscriptions": 455,
-      "new_videos_added": 189,
-      "total_activities": 12,
-      "episodes_by_activity": {
-        "RUNNING": 764,
-        "STRENGTH": 880,
-        "CYCLING": 1019,
-        "ROW_BOOTCAMP": 227,
-        "WALKING": 650,
-        "STRETCHING": 469,
-        "YOGA": 614,
-        "ROWING": 512,
-        "BOOTCAMP": 408,
-        "MEDITATION": 506,
-        "CARDIO": 442,
-        "BIKE_BOOTCAMP": 430
-      }
-    },
     {
       "run_timestamp": "2025-10-22T22:00:01.633321",
       "videos_on_disk": 7085,
@@ -1300,6 +1279,27 @@
       "videos_on_disk": 8214,
       "videos_in_subscriptions": 260,
       "new_videos_added": 0,
+      "total_activities": 12,
+      "episodes_by_activity": {
+        "RUNNING": 864,
+        "STRENGTH": 1030,
+        "CYCLING": 1194,
+        "ROW_BOOTCAMP": 228,
+        "WALKING": 759,
+        "STRETCHING": 595,
+        "YOGA": 774,
+        "ROWING": 609,
+        "BOOTCAMP": 520,
+        "MEDITATION": 655,
+        "CARDIO": 548,
+        "BIKE_BOOTCAMP": 438
+      }
+    },
+    {
+      "run_timestamp": "2025-11-04T22:00:02.681140",
+      "videos_on_disk": 8214,
+      "videos_in_subscriptions": 274,
+      "new_videos_added": 14,
       "total_activities": 12,
       "episodes_by_activity": {
         "RUNNING": 864,
