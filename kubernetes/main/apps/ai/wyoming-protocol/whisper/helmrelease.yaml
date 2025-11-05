@@ -44,6 +44,8 @@ spec:
               - small
               - --language
               - en
+              - --data-dir
+              - /data
             env:
               TZ: America/New_York
     service:
