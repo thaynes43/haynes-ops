@@ -173,12 +173,6 @@ Plex TV Show by Date:
         season_number: 30
         episode_number: 404
   = Walking (5 min):
-    5 min Warm Up Walk with Logan Aldridge:
-      download: https://members.onepeloton.com/classes/player/26e25f93f7304123b1595f43044441a1
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Logan Aldridge
-        season_number: 5
-        episode_number: 33
     5 min Cool Down Walk with Marcel Dinkins:
       download: https://members.onepeloton.com/classes/player/dd28f54e81e547cdbed161aa40994d4d
       overrides:
@@ -1206,6 +1200,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Walking/Emma Lovewell
         season_number: 30
         episode_number: 336
+    30 min 80s Rock Walk with Jon Hosking:
+      download: https://members.onepeloton.com/classes/player/6f9a2697611b49a3a953bf45c6cb2351
+      overrides:
+        tv_show_directory: /media/peloton/Walking/Jon Hosking
+        season_number: 30
+        episode_number: 337
   = Walking (15 min):
     15 min Power Walk with Joslyn Thompson Rule:
       download: https://members.onepeloton.com/classes/player/f0e929a1fb324e799396e9cb6c04ffec
@@ -1640,3 +1640,10 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
         season_number: 45
         episode_number: 198
+  = Row Bootcamp (45 min):
+    Thunder 45 with Adrian Williams:
+      download: https://members.onepeloton.com/classes/player/aafbd35bc26543bda9b11804aa239bf5
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
+        season_number: 45
+        episode_number: 146
