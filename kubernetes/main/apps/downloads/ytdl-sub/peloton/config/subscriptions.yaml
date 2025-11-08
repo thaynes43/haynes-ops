@@ -172,6 +172,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Tread Bootcamp/Rebecca Kennedy
         season_number: 30
         episode_number: 404
+    '30 min Bootcamp: 50-50 with Joslyn Thompson Rule df518c5':
+      download: https://members.onepeloton.com/classes/player/df518c53c35547388ad272eb0bce4c8f
+      overrides:
+        tv_show_directory: /media/peloton/Tread Bootcamp/Joslyn Thompson Rule
+        season_number: 30
+        episode_number: 405
   = Walking (5 min):
     5 min Cool Down Walk with Marcel Dinkins:
       download: https://members.onepeloton.com/classes/player/dd28f54e81e547cdbed161aa40994d4d
@@ -180,12 +186,6 @@ Plex TV Show by Date:
         season_number: 5
         episode_number: 42
   = Walking (20 min):
-    20 min Pop Walk with Hannah Frankson:
-      download: https://members.onepeloton.com/classes/player/fe30657f7b164c37ae56f0e0aa3324a9
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Hannah Frankson
-        season_number: 20
-        episode_number: 182
     20 min 70s Walk with Susie Chan:
       download: https://members.onepeloton.com/classes/player/a7c65aef7bcf491594cd1d44710b2470
       overrides:
@@ -199,12 +199,6 @@ Plex TV Show by Date:
         season_number: 20
         episode_number: 206
   = Tread Bootcamp (45 min):
-    '45 min Bootcamp: 50-50 with Joslyn Thompson Rule':
-      download: https://members.onepeloton.com/classes/player/16858cbc29cb4480a30ab15f86051e57
-      overrides:
-        tv_show_directory: /media/peloton/Tread Bootcamp/Joslyn Thompson Rule
-        season_number: 45
-        episode_number: 172
     Thunder 45 with Adrian Williams:
       download: https://members.onepeloton.com/classes/player/dc427b7c876a47dca9810695df1bcbc3
       overrides:
@@ -1205,6 +1199,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Walking/Jon Hosking
         season_number: 30
         episode_number: 337
+    30 min 2010s Walk with Jermaine Johnson:
+      download: https://members.onepeloton.com/classes/player/02e4cf9988984c37836ba86f6c198e78
+      overrides:
+        tv_show_directory: /media/peloton/Walking/Jermaine Johnson
+        season_number: 30
+        episode_number: 338
   = Walking (15 min):
     15 min Power Walk with Joslyn Thompson Rule:
       download: https://members.onepeloton.com/classes/player/f0e929a1fb324e799396e9cb6c04ffec
