@@ -1045,29 +1045,8 @@
       "date_added": "2025-11-07T23:14:57.633711"
     }
   ],
-  "last_updated": "2025-11-07T23:15:44.589555",
+  "last_updated": "2025-11-08T23:14:34.322948",
   "run_snapshots": [
-    {
-      "run_timestamp": "2025-10-25T22:00:02.186566",
-      "videos_on_disk": 7699,
-      "videos_in_subscriptions": 432,
-      "new_videos_added": 173,
-      "total_activities": 12,
-      "episodes_by_activity": {
-        "RUNNING": 814,
-        "STRENGTH": 980,
-        "CYCLING": 1119,
-        "ROW_BOOTCAMP": 228,
-        "WALKING": 709,
-        "STRETCHING": 537,
-        "YOGA": 714,
-        "ROWING": 570,
-        "BOOTCAMP": 472,
-        "MEDITATION": 605,
-        "CARDIO": 514,
-        "BIKE_BOOTCAMP": 437
-      }
-    },
     {
       "run_timestamp": "2025-10-26T22:00:20.584792",
       "videos_on_disk": 7911,
@@ -1304,6 +1283,27 @@
       "videos_on_disk": 8214,
       "videos_in_subscriptions": 263,
       "new_videos_added": 2,
+      "total_activities": 12,
+      "episodes_by_activity": {
+        "RUNNING": 864,
+        "STRENGTH": 1030,
+        "CYCLING": 1194,
+        "ROW_BOOTCAMP": 228,
+        "WALKING": 759,
+        "STRETCHING": 595,
+        "YOGA": 774,
+        "ROWING": 609,
+        "BOOTCAMP": 520,
+        "MEDITATION": 655,
+        "CARDIO": 548,
+        "BIKE_BOOTCAMP": 438
+      }
+    },
+    {
+      "run_timestamp": "2025-11-08T22:00:02.595098",
+      "videos_on_disk": 8214,
+      "videos_in_subscriptions": 261,
+      "new_videos_added": 0,
       "total_activities": 12,
       "episodes_by_activity": {
         "RUNNING": 864,
