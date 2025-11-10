@@ -236,12 +236,6 @@ Plex TV Show by Date:
         season_number: 45
         episode_number: 199
   = Meditation (15 min):
-    15 min Kindness Meditation with Ross Rayburn:
-      download: https://members.onepeloton.com/classes/player/9e1c783b9e24423ab6be0de75f7d2c4b
-      overrides:
-        tv_show_directory: /media/peloton/Meditation/Ross Rayburn
-        season_number: 15
-        episode_number: 55
     15 min Metta Meditation with Aditi Shah:
       download: https://members.onepeloton.com/classes/player/d31c945a65ec4130bc2672f8b8ed6736
       overrides:
@@ -637,6 +631,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Meditation/Anna Greenberg
         season_number: 10
         episode_number: 502
+    10 min Sleep Meditation with Denis Morton:
+      download: https://members.onepeloton.com/classes/player/d728ea124a1f4caca6f17f0bd7d73b1e
+      overrides:
+        tv_show_directory: /media/peloton/Meditation/Denis Morton
+        season_number: 10
+        episode_number: 503
   = Meditation (20 min):
     20 min Morning Walking Meditation with Ross Rayburn:
       download: https://members.onepeloton.com/classes/player/308484ffe58e4bf49eb1cc0d1cdafd8b
