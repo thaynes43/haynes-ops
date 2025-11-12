@@ -20,4 +20,4 @@ spec:
   blocks:
     - # Controller VIP: 192.168.40.102
       start: 192.168.40.103
-      stop: 192.168.40.202
+      stop: 192.168.40.201 # Main cluster starts at 202
