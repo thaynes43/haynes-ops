@@ -27,12 +27,16 @@ servers:
       - name: kubernetes
         parameters: cluster.local in-addr.arpa ip6.arpa
         configBlock: |-
-          pods insecure
+          pods verified
           fallthrough in-addr.arpa ip6.arpa
+      - name: autopath
+        parameters: "@kubernetes"
       - name: forward
         parameters: . /etc/resolv.conf
       - name: cache
-        parameters: 30
+        configBlock: |-
+          prefetch 20
+          serve_stale
       - name: loop
       - name: reload
       - name: loadbalance
