@@ -3,7 +3,7 @@ name: haynes-ops
 kubernetes:
   version: v1.33.4
 talos:
-  version: v1.10.7
+  version: v1.11.5
 features:
   backupConfiguration:
     interval: 24h
@@ -114,6 +114,9 @@ patches:
               dhcp: true
               vip:
                 ip: 192.168.40.202
+          nameservers:
+            - 192.168.40.1
+            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
@@ -205,6 +208,9 @@ patches:
               dhcp: true
               vip:
                 ip: 192.168.40.202
+          nameservers:
+            - 192.168.40.1
+            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
@@ -305,6 +311,9 @@ patches:
               dhcp: true
               vip:
                 ip: 192.168.40.202
+          nameservers:
+            - 192.168.40.1
+            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
@@ -399,6 +408,9 @@ patches:
                 hardwareAddr: BC:24:11:83:72:D2
               mtu: 1500
               dhcp: true
+          nameservers:
+            - 192.168.40.1
+            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
@@ -493,6 +505,9 @@ patches:
                 hardwareAddr: BC:24:11:6F:7E:CD
               mtu: 1500
               dhcp: true
+          nameservers:
+            - 192.168.40.1
+            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
@@ -590,6 +605,9 @@ patches:
                 hardwareAddr: BC:24:11:C5:5B:92
               mtu: 1500
               dhcp: true
+          nameservers:
+            - 192.168.40.1
+            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
