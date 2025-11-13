@@ -11,7 +11,7 @@ spec:
     labels:
       app.kubernetes.io/name: *app
   dependsOn:
-    - name: multus-config
+    - name: multus
   path: ./kubernetes/main/apps/home-automation/music-assistant/app
   prune: true
   sourceRef:
