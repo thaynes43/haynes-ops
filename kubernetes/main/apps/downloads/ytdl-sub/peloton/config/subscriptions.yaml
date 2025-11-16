@@ -23,6 +23,7 @@ __preset__:
     usenetrc: true
     format: bestvideo+bestaudio/bestaudio
     merge_output_format: mp4
+    cookiefile: "/media/peloton/cookies.txt"
 Plex TV Show by Date:
   = Bike Bootcamp (30 min):
     30 min Bootcamp 50-50 with Callie Gullickson:
