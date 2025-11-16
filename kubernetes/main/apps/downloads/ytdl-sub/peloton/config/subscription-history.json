@@ -1,10 +1,6 @@
 {
   "subscriptions": [
     {
-      "id": "ff629436a63148ec82338a631a4caf16",
-      "date_added": "2025-10-31T23:13:54.732185"
-    },
-    {
       "id": "4bfe274394ff4c659b89768358d99770",
       "date_added": "2025-11-04T23:14:30.401612"
     },
@@ -1055,31 +1051,14 @@
     {
       "id": "eb14fec393234c05b7258427fd508105",
       "date_added": "2025-11-14T22:36:34.947265"
+    },
+    {
+      "id": "ff629436a63148ec82338a631a4caf16",
+      "date_added": "2025-11-15T22:36:27.401501"
     }
   ],
-  "last_updated": "2025-11-14T22:36:38.601902",
+  "last_updated": "2025-11-15T22:36:31.092447",
   "run_snapshots": [
-    {
-      "run_timestamp": "2025-11-01T22:00:02.754121",
-      "videos_on_disk": 8214,
-      "videos_in_subscriptions": 260,
-      "new_videos_added": 0,
-      "total_activities": 12,
-      "episodes_by_activity": {
-        "RUNNING": 864,
-        "STRENGTH": 1030,
-        "CYCLING": 1194,
-        "ROW_BOOTCAMP": 228,
-        "WALKING": 759,
-        "STRETCHING": 595,
-        "YOGA": 774,
-        "ROWING": 609,
-        "BOOTCAMP": 520,
-        "MEDITATION": 655,
-        "CARDIO": 548,
-        "BIKE_BOOTCAMP": 438
-      }
-    },
     {
       "run_timestamp": "2025-11-02T22:00:01.874390",
       "videos_on_disk": 8214,
@@ -1337,6 +1316,27 @@
       "videos_on_disk": 8214,
       "videos_in_subscriptions": 266,
       "new_videos_added": 2,
+      "total_activities": 12,
+      "episodes_by_activity": {
+        "RUNNING": 864,
+        "STRENGTH": 1030,
+        "CYCLING": 1194,
+        "ROW_BOOTCAMP": 228,
+        "WALKING": 759,
+        "STRETCHING": 595,
+        "YOGA": 774,
+        "ROWING": 609,
+        "BOOTCAMP": 520,
+        "MEDITATION": 655,
+        "CARDIO": 548,
+        "BIKE_BOOTCAMP": 438
+      }
+    },
+    {
+      "run_timestamp": "2025-11-15T22:00:01.696776",
+      "videos_on_disk": 8214,
+      "videos_in_subscriptions": 265,
+      "new_videos_added": 1,
       "total_activities": 12,
       "episodes_by_activity": {
         "RUNNING": 864,
