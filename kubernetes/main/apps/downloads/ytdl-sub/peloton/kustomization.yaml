@@ -8,7 +8,7 @@ resources:
 configMapGenerator:
   - name: ytdl-sub-peloton-config
     files:
-      - config/config.yaml
+      - config/config.template.yaml
   - name: ytdl-sub-peloton-subscriptions
     files:
       - config/subscriptions.yaml
