@@ -73,7 +73,7 @@ spec:
                 memory: 6Gi
 
     persistence:
-      configTemplate:
+      config-template:
         name: ytdl-sub-peloton-config
         type: configMap
         advancedMounts:
