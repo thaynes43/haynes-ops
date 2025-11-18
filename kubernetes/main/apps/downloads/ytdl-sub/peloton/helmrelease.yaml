@@ -36,18 +36,19 @@ spec:
             image:
               repository: ghcr.io/jmbannon/ytdl-sub
               tag: 2025.11.13
-            env:
-              PELOTON_BEARER:
-                valueFrom:
-                  secretKeyRef:
-                    name: ytdl-sub-peloton-secret
-                    key: PELOTON_BEARER
+            envFrom:
+              - secretRef:
+                  name: ytdl-sub-peloton-secret
             command:
               - bash
               - -c
             args:
               - |
                 set -euo pipefail
+
+                echo "=== Environment Variables ==="
+                env | sort
+                echo "============================="
 
                 if [[ -z "${PELOTON_BEARER:-}" ]]; then
                   echo "PELOTON_BEARER env var is not set; refusing to run" >&2
