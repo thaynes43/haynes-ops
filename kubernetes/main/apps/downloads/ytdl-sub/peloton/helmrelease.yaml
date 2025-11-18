@@ -36,11 +36,28 @@ spec:
             image:
               repository: ghcr.io/jmbannon/ytdl-sub
               tag: 2025.11.13
+            env:
+              PELOTON_BEARER:
+                valueFrom:
+                  secretKeyRef:
+                    name: ytdl-sub-peloton-secret
+                    key: PELOTON_BEARER
             command:
               - bash
               - -c
             args:
               - |
+                set -euo pipefail
+
+                if [[ -z "${PELOTON_BEARER:-}" ]]; then
+                  echo "PELOTON_BEARER env var is not set; refusing to run" >&2
+                  exit 1
+                fi
+
+                mkdir -p /config
+
+                sed "s|\${PELOTON_BEARER}|${PELOTON_BEARER}|g" /config-ro/config.template.yaml > /config/config.yaml
+
                 ytdl-sub --log-level=debug --config=/config/config.yaml sub /config/subscriptions.yaml
             securityContext:
               allowPrivilegeEscalation: false
@@ -56,14 +73,14 @@ spec:
                 memory: 6Gi
 
     persistence:
-      config:
+      configTemplate:
         name: ytdl-sub-peloton-config
         type: configMap
         advancedMounts:
           ytdl-sub:
             app:
-              - path: /config/config.yaml
-                subPath: config.yaml
+              - path: /config-ro/config.template.yaml
+                subPath: config.template.yaml
                 readOnly: true
       subscriptions:
         name: ytdl-sub-peloton-subscriptions
@@ -95,13 +112,3 @@ spec:
                 subPath: config
               - path: /workdir
                 subPath: workdir
-      netrc:
-        enabled: true
-        type: secret
-        name: ytdl-sub-peloton-secret
-        advancedMounts:
-          ytdl-sub:
-            app:
-              - path: /config/.netrc
-                subPath: netrc
-                readOnly: true
