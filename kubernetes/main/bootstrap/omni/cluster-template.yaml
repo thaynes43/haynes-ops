@@ -1,7 +1,7 @@
 kind: Cluster
 name: haynes-ops
 kubernetes:
-  version: v1.33.4
+  version: v1.33.6
 talos:
   version: v1.11.5
 features:
@@ -116,7 +116,6 @@ patches:
                 ip: 192.168.40.202
           nameservers:
             - 192.168.40.1
-            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
@@ -210,7 +209,6 @@ patches:
                 ip: 192.168.40.202
           nameservers:
             - 192.168.40.1
-            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
@@ -313,7 +311,6 @@ patches:
                 ip: 192.168.40.202
           nameservers:
             - 192.168.40.1
-            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
@@ -410,7 +407,6 @@ patches:
               dhcp: true
           nameservers:
             - 192.168.40.1
-            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
@@ -507,7 +503,6 @@ patches:
               dhcp: true
           nameservers:
             - 192.168.40.1
-            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
@@ -607,7 +602,6 @@ patches:
               dhcp: true
           nameservers:
             - 192.168.40.1
-            - 1.1.1.1
           disableSearchDomain: true
         sysctls:
           user.max_user_namespaces: "11255"
