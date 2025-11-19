@@ -41,8 +41,8 @@ spec:
               - --log-level=debug
               - --config=/config/config.yaml
               - sub
-              - /config/subscriptions-override.yaml
               - /config/subscriptions.yaml
+              - /config/subscriptions-override.yaml
             securityContext:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
