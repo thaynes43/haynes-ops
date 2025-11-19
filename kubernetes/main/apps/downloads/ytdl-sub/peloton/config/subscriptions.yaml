@@ -23,7 +23,7 @@ __preset__:
     usenetrc: true
     format: bestvideo+bestaudio/bestaudio
     merge_output_format: mp4
-    cookiefile: "/media/peloton/cookies.txt"
+    cookiefile: /media/peloton/cookies.txt
 Plex TV Show by Date:
   = Bike Bootcamp (30 min):
     30 min Bootcamp 50-50 with Callie Gullickson:
@@ -829,6 +829,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
         season_number: 45
         episode_number: 198
+    45 min Bootcamp with Rad Lopez:
+      download: https://members.onepeloton.com/classes/player/47980ba935b5473bb650606e7f1a461e
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
+        season_number: 45
+        episode_number: 199
   = Row Bootcamp (45 min):
     Thunder 45 with Adrian Williams:
       download: https://members.onepeloton.com/classes/player/aafbd35bc26543bda9b11804aa239bf5
