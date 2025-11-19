@@ -41,6 +41,7 @@ spec:
               - --log-level=debug
               - --config=/config/config.yaml
               - sub
+              - /config/subscriptions-override.yaml
               - /config/subscriptions.yaml
             securityContext:
               allowPrivilegeEscalation: false
@@ -64,6 +65,9 @@ spec:
             app:
               - path: /config/config.yaml
                 subPath: config.yaml
+                readOnly: true
+              - path: /config/subscriptions-override.yaml
+                subPath: subscriptions-override.yaml
                 readOnly: true
       subscriptions:
         name: ytdl-sub-peloton-subscriptions
