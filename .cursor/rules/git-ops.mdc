@@ -42,5 +42,8 @@ haynes-ops/
 
 # Instructions
 
-- Do not try to run any kubectl commands. This VSCode environment is not set up to reach the cluster. Tell the user to run the commands and send back the output instead.
-- Do not try to run any talosctl or omnictl commands for the same reason as above.
+- **GitOps Strictly**: This repository is the source of truth. All changes to the cluster MUST be made via Git commits to this repository. Flux will then apply them.
+- **No Manual `kubectl apply`**: Do not manually apply manifests to the cluster. `kubectl` is permitted for read-only operations (get, describe, logs) or temporary debugging only.
+- **Repopulation Capability**: This repository must remain capable of bootstrapping a cluster from scratch (or "nuke"). Avoid any state or configuration that exists only on the cluster and not in Git.
+- **Do not run kubectl**: This VSCode environment is not set up to reach the cluster. Tell the user to run the commands and send back the output instead.
+- **Do not run talosctl/omnictl**: Same as above.
