@@ -46,26 +46,58 @@ spec:
               - |
                 set -euo pipefail
                 
+                echo "Checking environment..."
+                if [ -z "${PELOTON_BEARER}" ]; then
+                  echo "PELOTON_BEARER is not set in bash environment"
+                else
+                  echo "PELOTON_BEARER is set (length: ${#PELOTON_BEARER})"
+                fi
+
+                echo "Checking input file..."
+                ls -l /config-ro/subscriptions.yaml
+                
                 # Use python for template substitution as it is more robust and available in the image
                 cat <<'EOF' > /tmp/subst.py
                 import os
                 import sys
 
+                print("Python script starting...")
                 token = os.environ.get('PELOTON_BEARER')
                 if not token:
                     print("Error: PELOTON_BEARER is not set or empty", file=sys.stderr)
                     sys.exit(1)
+                
+                print(f"Token found, length: {len(token)}")
 
-                with open('/config-ro/subscriptions.yaml', 'r') as f:
-                    content = f.read()
+                input_path = '/config-ro/subscriptions.yaml'
+                output_path = '/config/subscriptions.yaml'
+
+                try:
+                    with open(input_path, 'r') as f:
+                        content = f.read()
+                    print(f"Read {len(content)} bytes from {input_path}")
+                    if len(content) == 0:
+                        print("Warning: Input file is empty!")
+                except Exception as e:
+                    print(f"Error reading {input_path}: {e}", file=sys.stderr)
+                    sys.exit(1)
 
                 content = content.replace('${PELOTON_BEARER}', token)
+                print(f"Content length after substitution: {len(content)}")
 
-                with open('/config/subscriptions.yaml', 'w') as f:
-                    f.write(content)
+                try:
+                    with open(output_path, 'w') as f:
+                        f.write(content)
+                    print(f"Wrote {len(content)} bytes to {output_path}")
+                except Exception as e:
+                    print(f"Error writing {output_path}: {e}", file=sys.stderr)
+                    sys.exit(1)
                 EOF
 
                 python3 /tmp/subst.py
+                
+                echo "Checking output file..."
+                ls -l /config/subscriptions.yaml
                 
                 # Run ytdl-sub
                 ytdl-sub --log-level=debug --config=/config/config.yaml sub /config/subscriptions.yaml
