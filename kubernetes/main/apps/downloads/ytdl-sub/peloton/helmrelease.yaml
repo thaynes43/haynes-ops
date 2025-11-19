@@ -46,11 +46,26 @@ spec:
               - |
                 set -euo pipefail
                 
-                # Write token to temp file using printenv (which works)
-                printenv PELOTON_BEARER > /tmp/bearer_token.txt
-                
-                # Use awk to do the substitution - reads token from file, no bash var expansion needed  
-                awk 'NR==FNR{token=$0;next} {gsub(/\$\{PELOTON_BEARER\}/,token)}1' /tmp/bearer_token.txt /config-ro/subscriptions.yaml > /config/subscriptions.yaml
+                # Use python for template substitution as it is more robust and available in the image
+                cat <<'EOF' > /tmp/subst.py
+                import os
+                import sys
+
+                token = os.environ.get('PELOTON_BEARER')
+                if not token:
+                    print("Error: PELOTON_BEARER is not set or empty", file=sys.stderr)
+                    sys.exit(1)
+
+                with open('/config-ro/subscriptions.yaml', 'r') as f:
+                    content = f.read()
+
+                content = content.replace('${PELOTON_BEARER}', token)
+
+                with open('/config/subscriptions.yaml', 'w') as f:
+                    f.write(content)
+                EOF
+
+                python3 /tmp/subst.py
                 
                 # Run ytdl-sub
                 ytdl-sub --log-level=debug --config=/config/config.yaml sub /config/subscriptions.yaml
