@@ -50,26 +50,15 @@ spec:
                 env | sort
                 echo "============================="
                 
-                echo "Testing different ways to access PELOTON_BEARER:"
-                echo "1. Via bash expansion: '${PELOTON_BEARER}'"
-                echo "2. Via printenv: '$(printenv PELOTON_BEARER)'"
-                echo "3. Via grep on env: $(env | grep PELOTON_BEARER)"
-                
-                # Use printenv instead of bash variable expansion
-                BEARER_TOKEN=$(printenv PELOTON_BEARER)
-                
-                echo "After assignment: '${BEARER_TOKEN}'"
-                echo "Length: ${#BEARER_TOKEN}"
-
-                if [[ -z "${BEARER_TOKEN}" ]]; then
-                  echo "PELOTON_BEARER env var is not accessible; refusing to run" >&2
-                  exit 1
-                fi
+                echo "Checking PELOTON_BEARER availability:"
+                printenv PELOTON_BEARER | head -c 50
+                echo "... (truncated for display)"
 
                 mkdir -p /config
 
-                # Use the BEARER_TOKEN variable we captured
-                sed "s|\${PELOTON_BEARER}|${BEARER_TOKEN}|g" /config-ro/config.template.yaml > /config/config.yaml
+                # Use printenv directly in sed - avoid bash variable assignment issues
+                printenv PELOTON_BEARER | sed "s|^|Bearer_Token: |" | head -1
+                sed "s|\${PELOTON_BEARER}|$(printenv PELOTON_BEARER)|g" /config-ro/config.template.yaml > /config/config.yaml
                 
                 echo "=== Generated config.yaml ==="
                 cat /config/config.yaml
