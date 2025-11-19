@@ -69,18 +69,11 @@ spec:
 
                 # Construct the placeholder to avoid Flux substitution during deployment
                 placeholder = '$' + '{PELOTON_BEARER}'
-                
-                if placeholder not in content:
-                     print(f"Warning: Placeholder {placeholder} not found in input file")
-                else:
-                     print(f"Found placeholder {placeholder}, performing substitution...")
-
                 content = content.replace(placeholder, token)
 
                 try:
                     with open(output_path, 'w') as f:
                         f.write(content)
-                    print(f"Successfully processed subscriptions.yaml. Output size: {len(content)} bytes")
                 except Exception as e:
                     print(f"Error writing {output_path}: {e}", file=sys.stderr)
                     sys.exit(1)
