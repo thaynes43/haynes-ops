@@ -36,13 +36,21 @@ spec:
             image:
               repository: ghcr.io/jmbannon/ytdl-sub
               tag: 2025.11.13
+            envFrom:
+              - secretRef:
+                  name: ytdl-sub-peloton-secret
             command:
-              - ytdl-sub
-              - --log-level=debug
-              - --config=/config/config.yaml
-              - sub
-              - /config/subscriptions.yaml
-              - /config/subscriptions-override.yaml
+              - bash
+              - -c
+            args:
+              - |
+                set -euo pipefail
+                
+                # Substitute the Bearer token in subscriptions.yaml  
+                envsubst < /config-ro/subscriptions.yaml > /config/subscriptions.yaml
+                
+                # Run ytdl-sub
+                ytdl-sub --log-level=debug --config=/config/config.yaml sub /config/subscriptions.yaml
             securityContext:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
@@ -58,16 +66,13 @@ spec:
 
     persistence:
       config:
-        name: ytdl-sub-peloton-secret
-        type: secret
+        name: ytdl-sub-peloton-config
+        type: configMap
         advancedMounts:
           ytdl-sub:
             app:
               - path: /config/config.yaml
                 subPath: config.yaml
-                readOnly: true
-              - path: /config/subscriptions-override.yaml
-                subPath: subscriptions-override.yaml
                 readOnly: true
       subscriptions:
         name: ytdl-sub-peloton-subscriptions
@@ -75,7 +80,7 @@ spec:
         advancedMounts:
           ytdl-sub:
             app:
-              - path: /config/subscriptions.yaml
+              - path: /config-ro/subscriptions.yaml
                 subPath: subscriptions.yaml
                 readOnly: true
       media:
@@ -95,5 +100,7 @@ spec:
             app:
               - path: /tmp
                 subPath: tmp
+              - path: /config
+                subPath: config
               - path: /workdir
                 subPath: workdir
