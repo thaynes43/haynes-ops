@@ -6,9 +6,6 @@ resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml
 configMapGenerator:
-  - name: ytdl-sub-peloton-config
-    files:
-      - config/config.template.yaml
   - name: ytdl-sub-peloton-subscriptions
     files:
       - config/subscriptions.yaml

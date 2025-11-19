@@ -1,7 +1,0 @@
-configuration:
-  working_directory: "/workdir/"
-  ytdl_options:
-    http_headers:
-      Authorization: "${PELOTON_BEARER}"
-      Origin: "https://members.onepeloton.com"
-      Referer: "https://members.onepeloton.com/"
