@@ -49,6 +49,11 @@ spec:
                 echo "=== Environment Variables ==="
                 env | sort
                 echo "============================="
+                
+                echo "Direct check of PELOTON_BEARER:"
+                echo "Value: '${PELOTON_BEARER}'"
+                echo "Length: ${#PELOTON_BEARER}"
+                echo "Is it set? $(if [[ -n "${PELOTON_BEARER:-}" ]]; then echo 'YES'; else echo 'NO'; fi)"
 
                 if [[ -z "${PELOTON_BEARER:-}" ]]; then
                   echo "PELOTON_BEARER env var is not set; refusing to run" >&2
@@ -58,6 +63,10 @@ spec:
                 mkdir -p /config
 
                 sed "s|\${PELOTON_BEARER}|${PELOTON_BEARER}|g" /config-ro/config.template.yaml > /config/config.yaml
+                
+                echo "=== Generated config.yaml ==="
+                cat /config/config.yaml
+                echo "============================="
 
                 ytdl-sub --log-level=debug --config=/config/config.yaml sub /config/subscriptions.yaml
             securityContext:
