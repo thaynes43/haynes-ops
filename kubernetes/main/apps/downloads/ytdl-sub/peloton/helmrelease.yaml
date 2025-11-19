@@ -50,19 +50,26 @@ spec:
                 env | sort
                 echo "============================="
                 
-                echo "Direct check of PELOTON_BEARER:"
-                echo "Value: '${PELOTON_BEARER}'"
-                echo "Length: ${#PELOTON_BEARER}"
-                echo "Is it set? $(if [[ -n "${PELOTON_BEARER:-}" ]]; then echo 'YES'; else echo 'NO'; fi)"
+                echo "Testing different ways to access PELOTON_BEARER:"
+                echo "1. Via bash expansion: '${PELOTON_BEARER}'"
+                echo "2. Via printenv: '$(printenv PELOTON_BEARER)'"
+                echo "3. Via grep on env: $(env | grep PELOTON_BEARER)"
+                
+                # Use printenv instead of bash variable expansion
+                BEARER_TOKEN=$(printenv PELOTON_BEARER)
+                
+                echo "After assignment: '${BEARER_TOKEN}'"
+                echo "Length: ${#BEARER_TOKEN}"
 
-                if [[ -z "${PELOTON_BEARER:-}" ]]; then
-                  echo "PELOTON_BEARER env var is not set; refusing to run" >&2
+                if [[ -z "${BEARER_TOKEN}" ]]; then
+                  echo "PELOTON_BEARER env var is not accessible; refusing to run" >&2
                   exit 1
                 fi
 
                 mkdir -p /config
 
-                sed "s|\${PELOTON_BEARER}|${PELOTON_BEARER}|g" /config-ro/config.template.yaml > /config/config.yaml
+                # Use the BEARER_TOKEN variable we captured
+                sed "s|\${PELOTON_BEARER}|${BEARER_TOKEN}|g" /config-ro/config.template.yaml > /config/config.yaml
                 
                 echo "=== Generated config.yaml ==="
                 cat /config/config.yaml
