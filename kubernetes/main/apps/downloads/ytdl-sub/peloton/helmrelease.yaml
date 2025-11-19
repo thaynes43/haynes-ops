@@ -56,9 +56,15 @@ spec:
 
                 mkdir -p /config
 
-                # Use printenv directly in sed - avoid bash variable assignment issues
-                printenv PELOTON_BEARER | sed "s|^|Bearer_Token: |" | head -1
-                sed "s|\${PELOTON_BEARER}|$(printenv PELOTON_BEARER)|g" /config-ro/config.template.yaml > /config/config.yaml
+                # Write token to temp file to avoid bash variable issues
+                printenv PELOTON_BEARER > /tmp/bearer_token.txt
+                
+                echo "Token written to file, first 50 chars:"
+                head -c 50 /tmp/bearer_token.txt
+                echo "..."
+                
+                # Use a delimiter that won't appear in the token (# is safe for base64)
+                sed "s#\${PELOTON_BEARER}#$(cat /tmp/bearer_token.txt)#g" /config-ro/config.template.yaml > /config/config.yaml
                 
                 echo "=== Generated config.yaml ==="
                 cat /config/config.yaml
