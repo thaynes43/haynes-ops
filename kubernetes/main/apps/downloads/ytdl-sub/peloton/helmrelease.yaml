@@ -63,15 +63,19 @@ spec:
                 head -c 50 /tmp/bearer_token.txt
                 echo "..."
                 
-                # Use awk to avoid bash command substitution issues
-                awk '{
-                  if (NR == FNR) {
-                    token = $0;
-                    next;
-                  }
-                  gsub(/\${PELOTON_BEARER}/, token);
-                  print;
-                }' /tmp/bearer_token.txt /config-ro/config.template.yaml > /config/config.yaml
+                # Use Python for reliable string replacement
+                python3 << 'PYTHON_SCRIPT'
+                with open('/tmp/bearer_token.txt', 'r') as f:
+                    token = f.read().strip()
+                
+                with open('/config-ro/config.template.yaml', 'r') as f:
+                    template = f.read()
+                
+                with open('/config/config.yaml', 'w') as f:
+                    f.write(template.replace('${PELOTON_BEARER}', token))
+                
+                print("Template substitution completed successfully")
+                PYTHON_SCRIPT
                 
                 echo "=== Generated config.yaml ==="
                 cat /config/config.yaml
