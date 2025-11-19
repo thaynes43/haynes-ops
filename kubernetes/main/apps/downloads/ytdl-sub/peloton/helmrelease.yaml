@@ -49,18 +49,18 @@ spec:
                 # Write token to temp file using printenv (which works)
                 printenv PELOTON_BEARER > /tmp/bearer_token.txt
                 
-                # Use Python to substitute the token
-                python3 << 'EOF'
-import os
-with open('/tmp/bearer_token.txt', 'r') as f:
-    token = f.read().strip()
-
-with open('/config-ro/subscriptions.yaml', 'r') as f:
-    content = f.read()
-
-with open('/config/subscriptions.yaml', 'w') as f:
-    f.write(content.replace('${PELOTON_BEARER}', token))
-EOF
+                # Create Python substitution script
+                cat > /tmp/substitute.py << 'PYTHON_EOF'
+                with open('/tmp/bearer_token.txt', 'r') as f:
+                    token = f.read().strip()
+                with open('/config-ro/subscriptions.yaml', 'r') as f:
+                    content = f.read()
+                with open('/config/subscriptions.yaml', 'w') as f:
+                    f.write(content.replace('${PELOTON_BEARER}', token))
+                PYTHON_EOF
+                
+                # Run the Python script
+                python3 /tmp/substitute.py
                 
                 # Run ytdl-sub
                 ytdl-sub --log-level=debug --config=/config/config.yaml sub /config/subscriptions.yaml
