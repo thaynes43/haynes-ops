@@ -9,7 +9,12 @@ filters:
   - name: "Winter Wonderland"
     selector_type: "smart-rng"
     search_query: "Winter Wonderland"
-    max_search_results: 200
+    max_search_results: 100
+
+  - name: "Christmas Tree"
+    selector_type: "smart-rng"
+    search_query: "Christmas Tree"
+    max_search_results: 100
 
   - name: "Family Gatherings for Thanksgiving"
     selector_type: "smart-rng"
@@ -19,4 +24,4 @@ filters:
   - name: "Christmas Presents"
     selector_type: "smart-rng"
     search_query: "Christmas Presents"
-    max_search_results: 200
+    max_search_results: 100
