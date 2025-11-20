@@ -1,27 +1,22 @@
 # Only overrides specific settings, lets envs handle secrets
 hass_img_path: "/immich-album"
-update_interval_minutes: 10
+update_interval_minutes: 15
 num_photos: 10
 log_level: "DEBUG"
 
 # Photo filters - list of filter sets to cycle through
 filters:
-  - name: "Kids Halloween Costumese"
+  - name: "Winter Wonderland"
     selector_type: "smart-rng"
-    search_query: "Kids Halloween Costumes"
-    max_search_results: 500
+    search_query: "Winter Wonderland"
+    max_search_results: 200
 
-  - name: "Autumn Serenity"
+  - name: "Family Gatherings for Thanksgiving"
     selector_type: "smart-rng"
-    search_query: "Autumn Serenity"
-    max_search_results: 500
+    search_query: "Family Gatherings for Thanksgiving"
+    max_search_results: 100
 
-  - name: "Thanksgiving Feast"
+  - name: "Christmas Presents"
     selector_type: "smart-rng"
-    search_query: "Thanksgiving Feast"
-    max_search_results: 250
-
-  - name: "Christmas Joy"
-    selector_type: "smart-rng"
-    search_query: "Christmas Joy"
-    max_search_results: 500
+    search_query: "Christmas Presents"
+    max_search_results: 200
