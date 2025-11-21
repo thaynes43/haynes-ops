@@ -20,7 +20,6 @@ __preset__:
       max: 75
     subscription_download_probability: 1
   ytdl_options:
-    usenetrc: true
     format: bestvideo+bestaudio/bestaudio
     merge_output_format: mp4
     cookiefile: /media/peloton/cookies.txt
