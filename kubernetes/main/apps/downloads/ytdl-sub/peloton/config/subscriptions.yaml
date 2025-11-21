@@ -72,6 +72,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
         season_number: 30
         episode_number: 516
+    30 min Bootcamp with Tunde Oyeneyin:
+      download: https://members.onepeloton.com/classes/player/a5c27b5293c4453fa1f9df940c421bdf
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
+        season_number: 30
+        episode_number: 517
   = Row Bootcamp (30 min):
     30 min HIIT Bootcamp with Katie Wang:
       download: https://members.onepeloton.com/classes/player/bd6d8aea670a4b9d908a757fe9a3d3b6
@@ -710,12 +716,6 @@ Plex TV Show by Date:
         season_number: 20
         episode_number: 39
   = Walking (30 min):
-    30 min 80s Rock Walk with Jon Hosking:
-      download: https://members.onepeloton.com/classes/player/6f9a2697611b49a3a953bf45c6cb2351
-      overrides:
-        tv_show_directory: /media/peloton/Walking/Jon Hosking
-        season_number: 30
-        episode_number: 337
     30 min 2010s Walk with Jermaine Johnson:
       download: https://members.onepeloton.com/classes/player/02e4cf9988984c37836ba86f6c198e78
       overrides:
@@ -788,6 +788,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Walking/Logan Aldridge
         season_number: 30
         episode_number: 349
+    30 min Power Walk with Kirsten Ferguson:
+      download: https://members.onepeloton.com/classes/player/0e5f3c6fef2d46a19104223e127ede43
+      overrides:
+        tv_show_directory: /media/peloton/Walking/Kirsten Ferguson
+        season_number: 30
+        episode_number: 350
   = Yoga (10 min):
     '10 min Focus Flow: Shoulders with Chelsea Jackson Roberts':
       download: https://members.onepeloton.com/classes/player/b0726f8a91794be8a7d85fda38811195
@@ -833,13 +839,6 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
         season_number: 45
         episode_number: 200
-  = Row Bootcamp (45 min):
-    Thunder 45 with Adrian Williams:
-      download: https://members.onepeloton.com/classes/player/aafbd35bc26543bda9b11804aa239bf5
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
-        season_number: 45
-        episode_number: 146
   = Bike Bootcamp (60 min):
     'Sims 60: Pop with Jess Sims':
       download: https://members.onepeloton.com/classes/player/cacc96ec13ff419b967ad6a912dc0c0e
@@ -1670,3 +1669,10 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Tread Bootcamp/Jess Sims
         season_number: 60
         episode_number: 98
+  = Row Bootcamp (45 min):
+    Thunder 45 with Adrian Williams:
+      download: https://members.onepeloton.com/classes/player/aafbd35bc26543bda9b11804aa239bf5
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Adrian Williams
+        season_number: 45
+        episode_number: 146
