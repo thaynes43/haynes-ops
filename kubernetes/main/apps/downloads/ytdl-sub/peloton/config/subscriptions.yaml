@@ -22,6 +22,7 @@ __preset__:
   ytdl_options:
     format: bestvideo+bestaudio/bestaudio
     merge_output_format: mp4
+    writethumbnail: false
     cookiefile: /media/peloton/cookies.txt
     http_headers:
       Authorization: ${PELOTON_BEARER}
