@@ -98,18 +98,6 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Stretching/Hannah Corbin
         season_number: 10
         episode_number: 199
-    10 min Hip Mobility with Rebecca Kennedy:
-      download: https://members.onepeloton.com/classes/player/fd35d1c1c7394dfaab91a775ccacaccf
-      overrides:
-        tv_show_directory: /media/peloton/Stretching/Rebecca Kennedy
-        season_number: 10
-        episode_number: 200
-    10 min Upper Body Stretch with Rebecca Kennedy:
-      download: https://members.onepeloton.com/classes/player/1734cd07c9b648039249889013b4d757
-      overrides:
-        tv_show_directory: /media/peloton/Stretching/Rebecca Kennedy
-        season_number: 10
-        episode_number: 201
     10 min Lower Body Stretch with Matty Maggiacomo:
       download: https://members.onepeloton.com/classes/player/0ad9f985c0904c0fad7e9673f2b5152d
       overrides:
@@ -140,6 +128,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Stretching/Logan Aldridge
         season_number: 10
         episode_number: 209
+    10 min Lower Body Stretch with Selena Samuela:
+      download: https://members.onepeloton.com/classes/player/fe52efabf4de4aaabe6cd6c337bb16ad
+      overrides:
+        tv_show_directory: /media/peloton/Stretching/Selena Samuela
+        season_number: 10
+        episode_number: 210
   = Tread Bootcamp (30 min):
     '30 min Bootcamp: 50-50 with Selena Samuela fbb778c':
       download: https://members.onepeloton.com/classes/player/fbb778cca7d1464ba59b8421f52a5e0a
@@ -1258,6 +1252,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Stretching/Jess King
         season_number: 5
         episode_number: 386
+    5 min Post-Ride Stretch with Hannah Corbin:
+      download: https://members.onepeloton.com/classes/player/a407f45c77ec4952b3b0d13400fdf99e
+      overrides:
+        tv_show_directory: /media/peloton/Stretching/Hannah Corbin
+        season_number: 5
+        episode_number: 387
   = Stretching (20 min):
     20 min Full Body Stretch with Callie Gullickson:
       download: https://members.onepeloton.com/classes/player/e7323afd9c5345e8b4904564eb33d620
