@@ -1023,31 +1023,46 @@
     {
       "id": "6ae040204ff840bc9e1b1cc9f89e8dfc",
       "date_added": "2025-11-26T01:31:40.308959"
+    },
+    {
+      "id": "faab53f113474ba09216b9811a8e624d",
+      "date_added": "2025-11-26T23:22:57.268651"
+    },
+    {
+      "id": "850204a133754ead8c3d3703ac2a1913",
+      "date_added": "2025-11-26T23:22:57.268651"
+    },
+    {
+      "id": "1372a804b7594e6faafb3037da15d4a4",
+      "date_added": "2025-11-26T23:22:57.268651"
+    },
+    {
+      "id": "3b6ccf7091ad452792da00814cd54713",
+      "date_added": "2025-11-26T23:22:57.268651"
+    },
+    {
+      "id": "5dbd0c2fe0b045bc97f016cbec847848",
+      "date_added": "2025-11-26T23:22:57.268651"
+    },
+    {
+      "id": "3e867ea0cb5b422cb954f406be1f7b9a",
+      "date_added": "2025-11-26T23:22:57.268651"
+    },
+    {
+      "id": "ffb7e43b7cb148c7989b78352c168d98",
+      "date_added": "2025-11-26T23:22:57.268651"
+    },
+    {
+      "id": "e5012289c78e4310857f38aea149d324",
+      "date_added": "2025-11-26T23:22:57.268651"
+    },
+    {
+      "id": "e4bcdca2204e43648b3ff3ddd5eea19f",
+      "date_added": "2025-11-26T23:22:57.268651"
     }
   ],
-  "last_updated": "2025-11-26T01:31:44.809129",
+  "last_updated": "2025-11-26T23:23:06.714988",
   "run_snapshots": [
-    {
-      "run_timestamp": "2025-11-12T22:00:13.392477",
-      "videos_on_disk": 8214,
-      "videos_in_subscriptions": 435,
-      "new_videos_added": 172,
-      "total_activities": 12,
-      "episodes_by_activity": {
-        "RUNNING": 864,
-        "STRENGTH": 1030,
-        "CYCLING": 1194,
-        "ROW_BOOTCAMP": 228,
-        "WALKING": 759,
-        "STRETCHING": 595,
-        "YOGA": 774,
-        "ROWING": 609,
-        "BOOTCAMP": 520,
-        "MEDITATION": 655,
-        "CARDIO": 548,
-        "BIKE_BOOTCAMP": 438
-      }
-    },
     {
       "run_timestamp": "2025-11-13T22:00:02.087083",
       "videos_on_disk": 8214,
@@ -1326,6 +1341,27 @@
       "videos_on_disk": 8879,
       "videos_in_subscriptions": 448,
       "new_videos_added": 192,
+      "total_activities": 12,
+      "episodes_by_activity": {
+        "RUNNING": 940,
+        "STRENGTH": 1105,
+        "CYCLING": 1264,
+        "ROW_BOOTCAMP": 229,
+        "WALKING": 830,
+        "STRETCHING": 663,
+        "YOGA": 865,
+        "ROWING": 665,
+        "BOOTCAMP": 560,
+        "MEDITATION": 727,
+        "CARDIO": 592,
+        "BIKE_BOOTCAMP": 439
+      }
+    },
+    {
+      "run_timestamp": "2025-11-26T22:00:17.262089",
+      "videos_on_disk": 8879,
+      "videos_in_subscriptions": 274,
+      "new_videos_added": 9,
       "total_activities": 12,
       "episodes_by_activity": {
         "RUNNING": 940,
