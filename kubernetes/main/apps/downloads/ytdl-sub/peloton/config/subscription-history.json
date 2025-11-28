@@ -1,82 +1,6 @@
 {
   "subscriptions": [
     {
-      "id": "c3148111787f4584895dd10814cd5f08",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "7e5c2eb13600495e80ed63b9cf19cca8",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "c7df2eb265a4461d863448bebd7cd93f",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "874ab22f73f34a4f87b18ac47a1ce587",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "2603ef02052a444f8230156650408e2f",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "d0a54e79ef124e88bb1067ab0fc4e6a5",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "a8fbaaafdbb94302bb33652ea3723dfc",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "adeeaa8c6be64bfd91d8c7e1501527df",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "493d8227fe4b47b9a36d89f4acba5b44",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "16858cbc29cb4480a30ab15f86051e57",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "f5f54cc77c6140e087042e70ae3647e0",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "e494eb8a8cde47a3a9f3872969eb3cf1",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "33c6d6dc554d44d194fabb3f38cc605b",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "74e6f9906dd74defbc91a26d89dbfb90",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "3948eac3344842c6a1e081d86f25ea51",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "6890f359c4a9475d883f9229e912e004",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "9e1c783b9e24423ab6be0de75f7d2c4b",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "54d8d91127d54f41be133605f1b3aa9b",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
-      "id": "bfdf54609dcb49bfa77cff7946809191",
-      "date_added": "2025-11-12T22:51:26.464822"
-    },
-    {
       "id": "685fe8d825e4470297b14dc252853bf3",
       "date_added": "2025-11-13T22:42:35.427078"
     },
@@ -1059,31 +983,54 @@
     {
       "id": "e4bcdca2204e43648b3ff3ddd5eea19f",
       "date_added": "2025-11-26T23:22:57.268651"
+    },
+    {
+      "id": "33c6d6dc554d44d194fabb3f38cc605b",
+      "date_added": "2025-11-28T00:04:11.681322"
+    },
+    {
+      "id": "d0a54e79ef124e88bb1067ab0fc4e6a5",
+      "date_added": "2025-11-28T00:04:11.681322"
+    },
+    {
+      "id": "9e1c783b9e24423ab6be0de75f7d2c4b",
+      "date_added": "2025-11-28T00:04:11.681322"
+    },
+    {
+      "id": "c3148111787f4584895dd10814cd5f08",
+      "date_added": "2025-11-28T00:04:11.681322"
+    },
+    {
+      "id": "16858cbc29cb4480a30ab15f86051e57",
+      "date_added": "2025-11-28T00:04:11.681322"
+    },
+    {
+      "id": "dc2b55bf3e374da0be4c72e2b556e71d",
+      "date_added": "2025-11-28T00:04:11.681322"
+    },
+    {
+      "id": "98b9904985e9458fbaee70f2d28beaa3",
+      "date_added": "2025-11-28T00:04:11.681322"
+    },
+    {
+      "id": "2603ef02052a444f8230156650408e2f",
+      "date_added": "2025-11-28T00:04:11.681322"
+    },
+    {
+      "id": "54d8d91127d54f41be133605f1b3aa9b",
+      "date_added": "2025-11-28T00:04:11.681322"
+    },
+    {
+      "id": "74e6f9906dd74defbc91a26d89dbfb90",
+      "date_added": "2025-11-28T00:04:11.681322"
+    },
+    {
+      "id": "940ac1bef00a4bcfad1b7cf2376e701d",
+      "date_added": "2025-11-28T00:04:11.681322"
     }
   ],
-  "last_updated": "2025-11-26T23:23:06.714988",
+  "last_updated": "2025-11-28T00:04:25.499892",
   "run_snapshots": [
-    {
-      "run_timestamp": "2025-11-13T22:00:02.087083",
-      "videos_on_disk": 8214,
-      "videos_in_subscriptions": 331,
-      "new_videos_added": 67,
-      "total_activities": 12,
-      "episodes_by_activity": {
-        "RUNNING": 864,
-        "STRENGTH": 1030,
-        "CYCLING": 1194,
-        "ROW_BOOTCAMP": 228,
-        "WALKING": 759,
-        "STRETCHING": 595,
-        "YOGA": 774,
-        "ROWING": 609,
-        "BOOTCAMP": 520,
-        "MEDITATION": 655,
-        "CARDIO": 548,
-        "BIKE_BOOTCAMP": 438
-      }
-    },
     {
       "run_timestamp": "2025-11-14T22:00:01.751809",
       "videos_on_disk": 8214,
@@ -1362,6 +1309,27 @@
       "videos_on_disk": 8879,
       "videos_in_subscriptions": 274,
       "new_videos_added": 9,
+      "total_activities": 12,
+      "episodes_by_activity": {
+        "RUNNING": 940,
+        "STRENGTH": 1105,
+        "CYCLING": 1264,
+        "ROW_BOOTCAMP": 229,
+        "WALKING": 830,
+        "STRETCHING": 663,
+        "YOGA": 865,
+        "ROWING": 665,
+        "BOOTCAMP": 560,
+        "MEDITATION": 727,
+        "CARDIO": 592,
+        "BIKE_BOOTCAMP": 439
+      }
+    },
+    {
+      "run_timestamp": "2025-11-27T22:00:03.022224",
+      "videos_on_disk": 8879,
+      "videos_in_subscriptions": 268,
+      "new_videos_added": 11,
       "total_activities": 12,
       "episodes_by_activity": {
         "RUNNING": 940,
