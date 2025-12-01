@@ -31,12 +31,6 @@ __preset__:
       Referer: https://members.onepeloton.com/
 Plex TV Show by Date:
   = Bike Bootcamp (30 min):
-    '30 min Bootcamp: 50-50 with Tunde Oyeneyin ff62943':
-      download: https://members.onepeloton.com/classes/player/ff629436a63148ec82338a631a4caf16
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
-        season_number: 30
-        episode_number: 512
     30 min Bootcamp 50-50 with Callie Gullickson:
       download: https://members.onepeloton.com/classes/player/8600d7015be3452cb7b77e5a18582b32
       overrides:
@@ -79,6 +73,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
         season_number: 30
         episode_number: 520
+    '30 min Bootcamp: 50-50 with Tunde Oyeneyin ff62943':
+      download: https://members.onepeloton.com/classes/player/ff629436a63148ec82338a631a4caf16
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
+        season_number: 30
+        episode_number: 521
   = Row Bootcamp (30 min):
     '30 min Bootcamp: 50-50 with Katie Wang':
       download: https://members.onepeloton.com/classes/player/b6ab3ab82b224ecc804eebab4a3e1d62
@@ -580,24 +580,6 @@ Plex TV Show by Date:
         season_number: 5
         episode_number: 24
   = Running (30 min):
-    30 min HIIT Run with Jermaine Johnson:
-      download: https://members.onepeloton.com/classes/player/866bc36c62ab4d3b94b5a276ae6233cf
-      overrides:
-        tv_show_directory: /media/peloton/Running/Jermaine Johnson
-        season_number: 30
-        episode_number: 472
-    30 min Walk + Run with Olivia Amato:
-      download: https://members.onepeloton.com/classes/player/ce2d16f3330546178d431a25f5c14eb3
-      overrides:
-        tv_show_directory: /media/peloton/Running/Olivia Amato
-        season_number: 30
-        episode_number: 473
-    30 min Hip Hop Run with Jermaine Johnson:
-      download: https://members.onepeloton.com/classes/player/4c516da678054e70baf48b2e3e10cc75
-      overrides:
-        tv_show_directory: /media/peloton/Running/Jermaine Johnson
-        season_number: 30
-        episode_number: 474
     30 min HIIT Run with Robin Arzón:
       download: https://members.onepeloton.com/classes/player/3075606b0b5247ec81cb2b3f2181aba8
       overrides:
@@ -658,44 +640,60 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Running/Jeffrey Mceachern
         season_number: 30
         episode_number: 484
-  = Running (20 min):
-    20 min Classic Rock Run with Susie Chan:
-      download: https://members.onepeloton.com/classes/player/9ce3fe0e70f04efc8de8ed5b8155e948
-      overrides:
-        tv_show_directory: /media/peloton/Running/Susie Chan
-        season_number: 20
-        episode_number: 248
-    20 min Walk + Run with Jon Hosking:
-      download: https://members.onepeloton.com/classes/player/49371f2c47b94abd8e16d0784b746e50
+    30 min EDM Run with Jon Hosking:
+      download: https://members.onepeloton.com/classes/player/dcf2a0bc6a1049f8a662d6b7fed9c77c
       overrides:
         tv_show_directory: /media/peloton/Running/Jon Hosking
-        season_number: 20
-        episode_number: 249
-  = Running (15 min):
-    15 min 90s Run with Jon Hosking:
-      download: https://members.onepeloton.com/classes/player/aa00e2da950341588d6fac79b25989b8
+        season_number: 30
+        episode_number: 485
+    30 min Pop Run with Kirsten Ferguson:
+      download: https://members.onepeloton.com/classes/player/0884209a649547bda12b55bb2b15b029
       overrides:
-        tv_show_directory: /media/peloton/Running/Jon Hosking
-        season_number: 15
-        episode_number: 69
-    15 min HIIT Run with Joslyn Thompson Rule:
-      download: https://members.onepeloton.com/classes/player/e1a414b589234e3a94bf3a553fc500f9
+        tv_show_directory: /media/peloton/Running/Kirsten Ferguson
+        season_number: 30
+        episode_number: 486
+    30 min Intervals Run with Marcel Dinkins:
+      download: https://members.onepeloton.com/classes/player/959e177da12c4bddbf95ee7924d5bcd2
+      overrides:
+        tv_show_directory: /media/peloton/Running/Marcel Dinkins
+        season_number: 30
+        episode_number: 487
+    30 min 2010s Run with Joslyn Thompson Rule:
+      download: https://members.onepeloton.com/classes/player/cad139e46dcc4de6a56ee9c6fb749954
       overrides:
         tv_show_directory: /media/peloton/Running/Joslyn Thompson Rule
-        season_number: 15
-        episode_number: 70
-    15 min HIIT Run with Mariana Fernández:
-      download: https://members.onepeloton.com/classes/player/215bbf4f5d974b5dbaefcdd72e6d7c8f
+        season_number: 30
+        episode_number: 488
+    30 min 2010s Run with Alex Toussaint:
+      download: https://members.onepeloton.com/classes/player/70513c4af891466ca87eb5e8feeea218
       overrides:
-        tv_show_directory: /media/peloton/Running/Mariana Fernández
-        season_number: 15
-        episode_number: 71
-    15 min 90s Run with Logan Aldridge:
-      download: https://members.onepeloton.com/classes/player/aa013ee08600405e9ee50a93e589d569
+        tv_show_directory: /media/peloton/Running/Alex Toussaint
+        season_number: 30
+        episode_number: 489
+    30 min Rock Run with Becs Gentry:
+      download: https://members.onepeloton.com/classes/player/8acca278e888468fa4333265502491d4
       overrides:
-        tv_show_directory: /media/peloton/Running/Logan Aldridge
-        season_number: 15
-        episode_number: 72
+        tv_show_directory: /media/peloton/Running/Becs Gentry
+        season_number: 30
+        episode_number: 490
+    30 min Live DJ Run with Adrian Williams:
+      download: https://members.onepeloton.com/classes/player/2d71bbed9d7b4956a30d95cf658c4a2c
+      overrides:
+        tv_show_directory: /media/peloton/Running/Adrian Williams
+        season_number: 30
+        episode_number: 491
+    30 min Pop Run with Kirsten Ferguson (1):
+      download: https://members.onepeloton.com/classes/player/e9d199352380433d8f31ff496ece8db1
+      overrides:
+        tv_show_directory: /media/peloton/Running/Kirsten Ferguson
+        season_number: 30
+        episode_number: 492
+    30 min Trap Run with Marcel Dinkins:
+      download: https://members.onepeloton.com/classes/player/81a37f8f811c4c73882a3cbcdcdb563e
+      overrides:
+        tv_show_directory: /media/peloton/Running/Marcel Dinkins
+        season_number: 30
+        episode_number: 493
   = Running (5 min):
     5 min Cool Down Run with Selena Samuela:
       download: https://members.onepeloton.com/classes/player/21696e41e72d4273bbd9bd5c1fa71e06
