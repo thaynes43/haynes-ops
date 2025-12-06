@@ -13,15 +13,15 @@ filters:
 
   - name: "Random Christmas Card"
     selector_type: "random"
-    taken_after: "2025-10-10"
+    taken_after: "2025-10-20"
     taken_before: "2025-10-21"
 
   - name: "Random Christmas 2023"
     selector_type: "random"
     taken_after: "2023-12-24"
-    taken_before: "2025-12-26"
+    taken_before: "2023-12-26"
 
-  - name: "Christmas Presents"
+  - name: "Christmas Photoshoot"
     selector_type: "smart-rng"
-    search_query: "Christmas Presents"
-    max_search_results: 100
+    search_query: "Christmas Photoshoot"
+    max_search_results: 500
