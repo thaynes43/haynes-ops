@@ -1,126 +1,6 @@
 {
   "subscriptions": [
     {
-      "id": "91918a9005b643ee9190a66789e36a55",
-      "date_added": "2025-12-03T21:03:34.183049"
-    },
-    {
-      "id": "5eeabfc2330d468f8d6976541946fd32",
-      "date_added": "2025-12-03T21:03:34.183049"
-    },
-    {
-      "id": "e8f2d396be094f40b4da5d2e8bf6b28b",
-      "date_added": "2025-12-03T21:03:34.183049"
-    },
-    {
-      "id": "b9758b04bbf647ab8f6de496d07b8258",
-      "date_added": "2025-12-03T21:03:34.183049"
-    },
-    {
-      "id": "47980ba935b5473bb650606e7f1a461e",
-      "date_added": "2025-12-03T21:03:34.183049"
-    },
-    {
-      "id": "680d64d735ec4513a34ac98e3271d759",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "166a83bd0a6949ecad6282d15f080e9d",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "8600d7015be3452cb7b77e5a18582b32",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "d27afa88bc114686891a4568af024d2b",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "cb128b855e214aa99ac9b0a70c5c5a66",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "5b17bdd1b26d4509ba85eabbb80ec620",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "ebe18213095149eeb7d05ba9d70d802f",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "2b9229a589bc40f09a3341491a073f68",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "d1017a741f5d48d5afee136d0eed9f55",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "7668051867d54d51b302eced083a010d",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "4bf1f041eebb44e890145cc34333ee51",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "55221090a07a49129fde6b4e4f09f6b8",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "587c0265c4e94b409246e5512e78acba",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "419f6ae2ccfc459480ca391fe3cc6648",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "37aef5f5d23e464fba3da855b88fdccb",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "feb1a01e31d54728b65d57f7ad521381",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "b8fd586887854fe58a6ca3e0d2124ef6",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "a2af4b39353b4ee4b80d2e1b56d854ae",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "b6ab3ab82b224ecc804eebab4a3e1d62",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "5949f5bd154d441e985e0d9cdc9f001d",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "c4ad79f65ed64bb1a2e5bf6cfe3e7c43",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "308fc4b487894da08943d185bb07efcb",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "b32a4c7044b841038a0bd3fefe8cdd80",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "566548ead05f4fbbb850ad507bac2198",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
-      "id": "85569d7c5b87411b9fb120eaaed4f30b",
-      "date_added": "2025-12-04T23:06:37.320177"
-    },
-    {
       "id": "b9b27c68111a417e8b1feab0e1f9c1d5",
       "date_added": "2025-12-05T23:11:47.630407"
     },
@@ -1075,67 +955,149 @@
     {
       "id": "922bf5c12ad241ac89e1ae0030dca07f",
       "date_added": "2025-12-16T22:41:09.400340"
+    },
+    {
+      "id": "0fd6a2040faf497faebfbfecc4a3da4b",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "25e6c457a802432ba01dd6ccc29eaf4b",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "5b17bdd1b26d4509ba85eabbb80ec620",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "cb79b7fc3c9544faaa559c31d04565ca",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "be2bf858c8244ec7a2f6f5b8cb0d3116",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "c28aeb0411ee40559c25b3334bb05215",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "92deb0ece1fb4901aaef1a08ce93595b",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "b32a4c7044b841038a0bd3fefe8cdd80",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "47980ba935b5473bb650606e7f1a461e",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "94a031574a1642f4996cb86eb178424f",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "6167f6c59c2d42bf8859579cd5e85f4b",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "b6ab3ab82b224ecc804eebab4a3e1d62",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "493d8227fe4b47b9a36d89f4acba5b44",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "37aef5f5d23e464fba3da855b88fdccb",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "4c346cf6b64f4e388356a687702b422e",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "166a83bd0a6949ecad6282d15f080e9d",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "a2af4b39353b4ee4b80d2e1b56d854ae",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "d27afa88bc114686891a4568af024d2b",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "b577ae7ea2b74dea8d1bd383d2345101",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "20c3ea87f7ed4c978047dbd747bd65d2",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "b77452e8cee1423d876d48f66e93285e",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "9c9c229dd8c94deaaabe770d3c513746",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "34a60eab34de4fdeaff08ffdce9cac73",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "9a71d3a74d074b2b87d642700c1b8a9b",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "680d64d735ec4513a34ac98e3271d759",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "78cf34d91ada40bd97799968220ea317",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "b8fd586887854fe58a6ca3e0d2124ef6",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "8600d7015be3452cb7b77e5a18582b32",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "566548ead05f4fbbb850ad507bac2198",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "c3148111787f4584895dd10814cd5f08",
+      "date_added": "2025-12-19T22:41:03.729997"
+    },
+    {
+      "id": "cb128b855e214aa99ac9b0a70c5c5a66",
+      "date_added": "2025-12-19T22:41:03.729997"
     }
   ],
-  "last_updated": "2025-12-16T22:41:14.429097",
+  "last_updated": "2025-12-19T22:41:08.700403",
   "run_snapshots": [
     {
-      "run_timestamp": "2025-12-03T20:04:14.735206",
-      "videos_on_disk": 9269,
-      "videos_in_subscriptions": 479,
-      "new_videos_added": 211,
-      "total_activities": 12,
-      "episodes_by_activity": {
-        "RUNNING": 986,
-        "STRENGTH": 1155,
-        "CYCLING": 1312,
-        "ROW_BOOTCAMP": 229,
-        "WALKING": 861,
-        "STRETCHING": 710,
-        "YOGA": 915,
-        "ROWING": 696,
-        "BOOTCAMP": 584,
-        "MEDITATION": 760,
-        "CARDIO": 622,
-        "BIKE_BOOTCAMP": 439
-      }
-    },
-    {
-      "run_timestamp": "2025-12-04T22:00:02.520513",
-      "videos_on_disk": 9467,
-      "videos_in_subscriptions": 472,
-      "new_videos_added": 206,
-      "total_activities": 12,
-      "episodes_by_activity": {
-        "RUNNING": 1010,
-        "STRENGTH": 1179,
-        "CYCLING": 1335,
-        "ROW_BOOTCAMP": 231,
-        "WALKING": 881,
-        "STRETCHING": 728,
-        "YOGA": 939,
-        "ROWING": 719,
-        "BOOTCAMP": 596,
-        "MEDITATION": 775,
-        "CARDIO": 634,
-        "BIKE_BOOTCAMP": 440
-      }
-    },
-    {
-      "run_timestamp": "2025-12-05T22:00:02.876396",
-      "videos_on_disk": 9638,
-      "videos_in_subscriptions": 438,
-      "new_videos_added": 172,
+      "run_timestamp": "2025-12-16T22:00:02.598801",
+      "videos_on_disk": 9656,
+      "videos_in_subscriptions": 336,
+      "new_videos_added": 67,
       "total_activities": 12,
       "episodes_by_activity": {
         "RUNNING": 1035,
         "STRENGTH": 1204,
         "CYCLING": 1357,
         "ROW_BOOTCAMP": 231,
-        "WALKING": 894,
+        "WALKING": 900,
         "STRETCHING": 747,
         "YOGA": 964,
-        "ROWING": 721,
+        "ROWING": 733,
         "BOOTCAMP": 608,
         "MEDITATION": 788,
         "CARDIO": 649,
@@ -1143,10 +1105,10 @@
       }
     },
     {
-      "run_timestamp": "2025-12-16T22:00:02.598801",
+      "run_timestamp": "2025-12-19T22:00:02.528640",
       "videos_on_disk": 9656,
-      "videos_in_subscriptions": 336,
-      "new_videos_added": 67,
+      "videos_in_subscriptions": 301,
+      "new_videos_added": 31,
       "total_activities": 12,
       "episodes_by_activity": {
         "RUNNING": 1035,
