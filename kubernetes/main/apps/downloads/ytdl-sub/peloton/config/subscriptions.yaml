@@ -85,6 +85,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
         season_number: 30
         episode_number: 535
+    30 min Bootcamp with Rad Lopez:
+      download: https://members.onepeloton.com/classes/player/e475d0f3340946c2bc03f45ae416d00d
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
+        season_number: 30
+        episode_number: 536
   = Row Bootcamp (30 min):
     '30 min Bootcamp: 50-50 with Katie Wang a4223cd':
       download: https://members.onepeloton.com/classes/player/a4223cddcf73439c8a46db11a942febb
