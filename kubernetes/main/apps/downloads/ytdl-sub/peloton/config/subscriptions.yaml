@@ -97,6 +97,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
         season_number: 30
         episode_number: 546
+    30 min Bootcamp with Jess Sims:
+      download: https://members.onepeloton.com/classes/player/1f8fa4fa87a64078b340c14c6e4a91c1
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
+        season_number: 30
+        episode_number: 547
   = Tread Bootcamp (30 min):
     '30 min Walking Bootcamp: 50-50 with Kirsten Ferguson':
       download: https://members.onepeloton.com/classes/player/85569d7c5b87411b9fb120eaaed4f30b
@@ -1722,3 +1728,9 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 30
         episode_number: 438
+    '30 min Bootcamp: 50-50 with Katie Wang 416c293':
+      download: https://members.onepeloton.com/classes/player/416c293955c146d59a2b75025d3e193b
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 30
+        episode_number: 439
