@@ -486,6 +486,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
         season_number: 45
         episode_number: 212
+    45 min Bootcamp with Cody Rigsby:
+      download: https://members.onepeloton.com/classes/player/58f8687510dd4f0aba5205ab652879bb
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
+        season_number: 45
+        episode_number: 213
   = Tread Bootcamp (60 min):
     Sims 60 with Jess Sims:
       download: https://members.onepeloton.com/classes/player/d23dca1f176a4da689a930edd4ec6fa0

@@ -1099,9 +1099,13 @@
     {
       "id": "b467f620e6264e308bc58ae9b82ac83d",
       "date_added": "2026-01-07T23:41:36.450104"
+    },
+    {
+      "id": "58f8687510dd4f0aba5205ab652879bb",
+      "date_added": "2026-01-08T23:19:17.500813"
     }
   ],
-  "last_updated": "2026-01-07T23:41:50.206316",
+  "last_updated": "2026-01-08T23:19:30.035259",
   "run_snapshots": [
     {
       "run_timestamp": "2025-12-29T22:00:02.470323",
@@ -1171,6 +1175,27 @@
       "videos_on_disk": 9656,
       "videos_in_subscriptions": 448,
       "new_videos_added": 173,
+      "total_activities": 12,
+      "episodes_by_activity": {
+        "RUNNING": 1035,
+        "STRENGTH": 1204,
+        "CYCLING": 1357,
+        "ROW_BOOTCAMP": 231,
+        "WALKING": 900,
+        "STRETCHING": 747,
+        "YOGA": 964,
+        "ROWING": 733,
+        "BOOTCAMP": 608,
+        "MEDITATION": 788,
+        "CARDIO": 649,
+        "BIKE_BOOTCAMP": 440
+      }
+    },
+    {
+      "run_timestamp": "2026-01-08T22:00:02.289837",
+      "videos_on_disk": 9656,
+      "videos_in_subscriptions": 277,
+      "new_videos_added": 1,
       "total_activities": 12,
       "episodes_by_activity": {
         "RUNNING": 1035,
