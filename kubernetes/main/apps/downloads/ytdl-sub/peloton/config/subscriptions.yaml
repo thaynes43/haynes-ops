@@ -31,12 +31,6 @@ __preset__:
       Referer: https://members.onepeloton.com/
 Plex TV Show by Date:
   = Bike Bootcamp (30 min):
-    30 min Bootcamp with Rad Lopez:
-      download: https://members.onepeloton.com/classes/player/e475d0f3340946c2bc03f45ae416d00d
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
-        season_number: 30
-        episode_number: 536
     30 min Avicii Bootcamp with Rad Lopez:
       download: https://members.onepeloton.com/classes/player/d7ea88f394de40df9d7470701b9282c6
       overrides:
@@ -103,6 +97,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
         season_number: 30
         episode_number: 547
+    30 min Bootcamp with Rad Lopez:
+      download: https://members.onepeloton.com/classes/player/e475d0f3340946c2bc03f45ae416d00d
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
+        season_number: 30
+        episode_number: 548
   = Tread Bootcamp (30 min):
     30 min Walking Bootcamp with Matty Maggiacomo:
       download: https://members.onepeloton.com/classes/player/92deb0ece1fb4901aaef1a08ce93595b
@@ -1082,6 +1082,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
         season_number: 60
         episode_number: 49
+    Sims 60 with Jess Sims:
+      download: https://members.onepeloton.com/classes/player/2bb4ed8d7c654deeb1f59a930b4d6231
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
+        season_number: 60
+        episode_number: 50
   = Rowing (20 min):
     20 min Intervals Row with Alex Karwoski:
       download: https://members.onepeloton.com/classes/player/0acf16f71c234293a75c4edd57635f43
@@ -1182,6 +1188,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 30
         episode_number: 439
+    30 min HIIT Bootcamp with Katie Wang 1dd6ada:
+      download: https://members.onepeloton.com/classes/player/1dd6ada5baa943919b7ca131be8731c1
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 30
+        episode_number: 440
   = Cycling (20 min):
     20 min HIIT & Hills Ride with Camila Ramón:
       download: https://members.onepeloton.com/classes/player/574858db3182486693f50582abd6148b
