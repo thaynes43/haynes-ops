@@ -103,6 +103,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
         season_number: 30
         episode_number: 548
+    '30 min Bootcamp: 50-50 with Tunde Oyeneyin c8ec3b3':
+      download: https://members.onepeloton.com/classes/player/c8ec3b3e3d684bbab159a83a4a441ea8
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Tunde Oyeneyin
+        season_number: 30
+        episode_number: 549
   = Tread Bootcamp (30 min):
     30 min Walking Bootcamp with Matty Maggiacomo:
       download: https://members.onepeloton.com/classes/player/92deb0ece1fb4901aaef1a08ce93595b
