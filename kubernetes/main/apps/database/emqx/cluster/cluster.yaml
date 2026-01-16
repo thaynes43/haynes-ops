@@ -8,6 +8,9 @@ spec:
   image: public.ecr.aws/emqx/emqx:5.8.9
   config:
     data: |
+      mqtt {
+        max_packet_size = 10MB
+      }
       authentication {
         backend = "built_in_database"
         mechanism = "password_based"
