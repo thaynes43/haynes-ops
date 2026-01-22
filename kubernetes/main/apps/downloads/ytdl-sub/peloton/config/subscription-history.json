@@ -1,14 +1,6 @@
 {
   "subscriptions": [
     {
-      "id": "1f8fa4fa87a64078b340c14c6e4a91c1",
-      "date_added": "2026-01-06T23:16:39.677331"
-    },
-    {
-      "id": "416c293955c146d59a2b75025d3e193b",
-      "date_added": "2026-01-06T23:16:39.677331"
-    },
-    {
       "id": "574858db3182486693f50582abd6148b",
       "date_added": "2026-01-07T23:41:36.450104"
     },
@@ -1123,31 +1115,18 @@
     {
       "id": "d103427c8f6f4930948da9f56ddf5881",
       "date_added": "2026-01-20T22:41:20.436807"
+    },
+    {
+      "id": "1f8fa4fa87a64078b340c14c6e4a91c1",
+      "date_added": "2026-01-21T22:35:23.194859"
+    },
+    {
+      "id": "416c293955c146d59a2b75025d3e193b",
+      "date_added": "2026-01-21T22:35:23.194859"
     }
   ],
-  "last_updated": "2026-01-20T22:41:25.795652",
+  "last_updated": "2026-01-21T22:35:28.262610",
   "run_snapshots": [
-    {
-      "run_timestamp": "2026-01-07T22:00:02.361266",
-      "videos_on_disk": 9656,
-      "videos_in_subscriptions": 448,
-      "new_videos_added": 173,
-      "total_activities": 12,
-      "episodes_by_activity": {
-        "RUNNING": 1035,
-        "STRENGTH": 1204,
-        "CYCLING": 1357,
-        "ROW_BOOTCAMP": 231,
-        "WALKING": 900,
-        "STRETCHING": 747,
-        "YOGA": 964,
-        "ROWING": 733,
-        "BOOTCAMP": 608,
-        "MEDITATION": 788,
-        "CARDIO": 649,
-        "BIKE_BOOTCAMP": 440
-      }
-    },
     {
       "run_timestamp": "2026-01-08T22:00:02.289837",
       "videos_on_disk": 9656,
@@ -1405,6 +1384,27 @@
       "videos_on_disk": 9656,
       "videos_in_subscriptions": 382,
       "new_videos_added": 101,
+      "total_activities": 12,
+      "episodes_by_activity": {
+        "RUNNING": 1035,
+        "STRENGTH": 1204,
+        "CYCLING": 1357,
+        "ROW_BOOTCAMP": 231,
+        "WALKING": 900,
+        "STRETCHING": 747,
+        "YOGA": 964,
+        "ROWING": 733,
+        "BOOTCAMP": 608,
+        "MEDITATION": 788,
+        "CARDIO": 649,
+        "BIKE_BOOTCAMP": 440
+      }
+    },
+    {
+      "run_timestamp": "2026-01-21T22:00:02.901262",
+      "videos_on_disk": 9656,
+      "videos_in_subscriptions": 283,
+      "new_videos_added": 2,
       "total_activities": 12,
       "episodes_by_activity": {
         "RUNNING": 1035,
