@@ -438,12 +438,6 @@ Plex TV Show by Date:
         season_number: 20
         episode_number: 390
   = Bike Bootcamp (45 min):
-    45 min Bootcamp with Cody Rigsby:
-      download: https://members.onepeloton.com/classes/player/58f8687510dd4f0aba5205ab652879bb
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
-        season_number: 45
-        episode_number: 213
     45 min Bootcamp with Tunde Oyeneyin:
       download: https://members.onepeloton.com/classes/player/c28aeb0411ee40559c25b3334bb05215
       overrides:
@@ -480,6 +474,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
         season_number: 45
         episode_number: 219
+    45 min Bootcamp with Cody Rigsby:
+      download: https://members.onepeloton.com/classes/player/58f8687510dd4f0aba5205ab652879bb
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
+        season_number: 45
+        episode_number: 220
   = Tread Bootcamp (60 min):
     'Sims 60: Pop with Jess Sims':
       download: https://members.onepeloton.com/classes/player/05b1672ccdc249c09e77a691d6acf5e7
