@@ -16,9 +16,9 @@ spec:
   releaseName: traefik-internal
   values: 
     # Values https://github.com/traefik/traefik-helm-chart/blob/master/traefik/values.yaml 
-    globalArguments:
-      - "--global.sendanonymoususage=false"
-      - "--global.checknewversion=false"
+    global:
+      sendAnonymousUsage: false
+      checkNewVersion: false
 
     additionalArguments:
       - "--serversTransport.insecureSkipVerify=true"
@@ -43,16 +43,18 @@ spec:
 
     ports:
       web:
-        redirections:
-          entryPoint:
-            to: websecure
-            scheme: https
-            priority: 10
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              priority: 10
       websecure:
         http3:
           enabled: true
-        tls:
-          enabled: true
+        http:
+          tls:
+            enabled: true
           
     ingressRoute:
       dashboard:
