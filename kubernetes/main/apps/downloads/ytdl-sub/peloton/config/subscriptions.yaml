@@ -480,6 +480,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Cody Rigsby
         season_number: 45
         episode_number: 220
+    45 min Bootcamp with Jess Sims 152eb05:
+      download: https://members.onepeloton.com/classes/player/152eb051f7aa4315ad7daa929fa712a6
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
+        season_number: 45
+        episode_number: 221
   = Tread Bootcamp (60 min):
     'Sims 60: Pop with Jess Sims':
       download: https://members.onepeloton.com/classes/player/05b1672ccdc249c09e77a691d6acf5e7
@@ -1071,6 +1077,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 30
         episode_number: 447
+    30 min Bootcamp with Katie Wang:
+      download: https://members.onepeloton.com/classes/player/a9fbd7c1ebc04f108565f04fdf1ee434
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 30
+        episode_number: 448
   = Cycling (45 min):
     45 min Power Zone Ride with Denis Morton:
       download: https://members.onepeloton.com/classes/player/9e70a40b028b4de487e348469f8776d4
