@@ -317,7 +317,7 @@
         '/(^|/)kubernetes/.+\\.ya?ml(?:\\.j2)?$/',
       ],
       matchStrings: [
-        '(?<prefix># renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?(?:\\r\\n|\\n)\\s*-\\s+.+?/)(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)(?<suffix>/[^\\s]+)',
+        '(?<prefix>\\s*# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?(?:\\r\\n|\\n)\\s*-\\s+.+?/)(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)(?<suffix>/[^\\s]+)',
       ],
       autoReplaceStringTemplate: '{{{prefix}}}{{{newValue}}}{{{suffix}}}',
       datasourceTemplate: '{{#if datasource}}{{{datasource}}}{{else}}github-releases{{/if}}',
