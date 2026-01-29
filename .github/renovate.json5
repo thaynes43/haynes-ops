@@ -311,13 +311,26 @@
     {
       customType: 'regex',
       description: [
+        'GitHub raw URL with path (e.g. CRD) - preserve path after version',
+      ],
+      managerFilePatterns: [
+        '/(^|/)kubernetes/.+\\.ya?ml(?:\\.j2)?$/',
+      ],
+      matchStrings: [
+        '(?<prefix># renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?(?:\\r\\n|\\n)\\s*-\\s+.+?/)(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)(?<suffix>/[^\\s]+)',
+      ],
+      autoReplaceStringTemplate: '{{{prefix}}}{{{newValue}}}{{{suffix}}}',
+      datasourceTemplate: '{{#if datasource}}{{{datasource}}}{{else}}github-releases{{/if}}',
+    },
+    {
+      customType: 'regex',
+      description: [
         'Process custom dependencies',
       ],
       managerFilePatterns: [
         '/(^|/)kubernetes/.+\\.ya?ml(?:\\.j2)?$/',
       ],
       matchStrings: [
-        'datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?\\n.+/(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)/[^\\s]+',
         'datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?\\n.+[/:](?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+[^\\s]*)',
         'datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?\\n.+: (&\\S+\\s)?(?<currentValue>\\S+)',
       ],
