@@ -317,6 +317,7 @@
         '/(^|/)kubernetes/.+\\.ya?ml(?:\\.j2)?$/',
       ],
       matchStrings: [
+        'datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?\\n.+/(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)/[^\\s]+',
         'datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?\\n.+[/:](?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+[^\\s]*)',
         'datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?\\n.+: (&\\S+\\s)?(?<currentValue>\\S+)',
       ],
