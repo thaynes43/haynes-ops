@@ -31,12 +31,6 @@ __preset__:
       Referer: https://members.onepeloton.com/
 Plex TV Show by Date:
   = Bike Bootcamp (30 min):
-    30 min Bootcamp with Rad Lopez:
-      download: https://members.onepeloton.com/classes/player/e475d0f3340946c2bc03f45ae416d00d
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
-        season_number: 30
-        episode_number: 548
     '30 min Bootcamp: 50-50 with Tunde Oyeneyin c8ec3b3':
       download: https://members.onepeloton.com/classes/player/c8ec3b3e3d684bbab159a83a4a441ea8
       overrides:
@@ -115,6 +109,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
         season_number: 30
         episode_number: 561
+    30 min Bootcamp with Rad Lopez:
+      download: https://members.onepeloton.com/classes/player/e475d0f3340946c2bc03f45ae416d00d
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Rad Lopez
+        season_number: 30
+        episode_number: 562
   = Tread Bootcamp (30 min):
     '30 min Walking Bootcamp: 50-50 with Kirsten Ferguson 1577f93':
       download: https://members.onepeloton.com/classes/player/1577f939d0de461c9e0d7e858a398fea
@@ -973,18 +973,18 @@ Plex TV Show by Date:
         season_number: 30
         episode_number: 130
   = Bike Bootcamp (60 min):
-    Sims 60 with Jess Sims:
-      download: https://members.onepeloton.com/classes/player/2bb4ed8d7c654deeb1f59a930b4d6231
-      overrides:
-        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
-        season_number: 60
-        episode_number: 50
     'Sims 60: Pop with Jess Sims':
       download: https://members.onepeloton.com/classes/player/cacc96ec13ff419b967ad6a912dc0c0e
       overrides:
         tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
         season_number: 60
         episode_number: 51
+    Sims 60 with Jess Sims:
+      download: https://members.onepeloton.com/classes/player/2bb4ed8d7c654deeb1f59a930b4d6231
+      overrides:
+        tv_show_directory: /media/peloton/Bike Bootcamp/Jess Sims
+        season_number: 60
+        episode_number: 52
   = Rowing (20 min):
     20 min 80s Row with Alex Karwoski:
       download: https://members.onepeloton.com/classes/player/aebe6130fc934b1e813f60e1e8b55d8a
@@ -1029,12 +1029,6 @@ Plex TV Show by Date:
         season_number: 20
         episode_number: 264
   = Row Bootcamp (30 min):
-    30 min HIIT Bootcamp with Katie Wang 1dd6ada:
-      download: https://members.onepeloton.com/classes/player/1dd6ada5baa943919b7ca131be8731c1
-      overrides:
-        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
-        season_number: 30
-        episode_number: 440
     '30 min Bootcamp: 50-50 with Katie Wang':
       download: https://members.onepeloton.com/classes/player/cf93ea1aa0d940cda10a00e6e811fd8d
       overrides:
@@ -1083,6 +1077,12 @@ Plex TV Show by Date:
         tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
         season_number: 30
         episode_number: 448
+    30 min HIIT Bootcamp with Katie Wang 1dd6ada:
+      download: https://members.onepeloton.com/classes/player/1dd6ada5baa943919b7ca131be8731c1
+      overrides:
+        tv_show_directory: /media/peloton/Row Bootcamp/Katie Wang
+        season_number: 30
+        episode_number: 449
   = Cycling (45 min):
     45 min Power Zone Ride with Denis Morton:
       download: https://members.onepeloton.com/classes/player/9e70a40b028b4de487e348469f8776d4
