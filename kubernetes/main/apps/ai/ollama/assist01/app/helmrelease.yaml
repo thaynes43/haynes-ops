@@ -5,6 +5,8 @@ kind: HelmRelease
 metadata:
   name: ollama-assist01
 spec:
+  upgrade:
+    force: true
   interval: 30m
   chartRef:
     kind: OCIRepository
