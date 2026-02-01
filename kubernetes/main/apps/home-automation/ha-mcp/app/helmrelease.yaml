@@ -27,7 +27,7 @@ spec:
           app:
             image:
               repository: ghcr.io/homeassistant-ai/ha-mcp
-              tag: latest
+              tag: 6.4.0
             command: ["ha-mcp-web"]
             env:
               HOMEASSISTANT_URL: http://home-assistant.home-automation.svc.cluster.local:8123
@@ -66,7 +66,9 @@ spec:
                 memory: 512Mi
     defaultPodOptions:
       securityContext:
-        runAsNonRoot: true
+        # The upstream image sets USER to a string ("mcpuser"), not a numeric UID.
+        # With runAsNonRoot=true kubelet cannot verify the user is non-root and fails
+        # CreateContainerConfigError. Rely on the image's non-root USER instead.
         seccompProfile: { type: RuntimeDefault }
     service:
       app:
