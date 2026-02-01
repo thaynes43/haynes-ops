@@ -29,6 +29,7 @@ spec:
               repository: ghcr.io/homeassistant-ai/ha-mcp
               tag: 6.4.0
             command: ["ha-mcp-web"]
+            args: []
             env:
               HOMEASSISTANT_URL: http://home-assistant.home-automation.svc.cluster.local:8123
               HOMEASSISTANT_TOKEN:
