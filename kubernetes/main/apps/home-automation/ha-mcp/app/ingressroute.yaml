@@ -1,0 +1,31 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ha-mcp
+  annotations:
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+    # Homepage
+    gethomepage.dev/href: &url "https://ha-mcp.haynesops.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/description: Home Assistant MCP Server
+    gethomepage.dev/group: Home
+    gethomepage.dev/name: ha-mcp
+    gethomepage.dev/icon: home-assistant
+    gethomepage.dev/siteMonitor: *url
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`ha-mcp.haynesops.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: ha-mcp
+          port: 8086
+      middlewares:
+        - name: default-headers
+          namespace: network
+  tls:
+    secretName: certificate-haynesops
