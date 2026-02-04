@@ -63,6 +63,28 @@ spec:
                 memory: 256Mi
               limits:
                 memory: 4Gi
+          sftp:
+            image:
+              repository: lscr.io/linuxserver/openssh-server
+              tag: latest
+            env:
+              TZ: America/New_York
+              PUID: 0
+              PGID: 0
+              USER_NAME: appdaemon
+              PASSWORD_ACCESS: "false"
+              SUDO_ACCESS: "false"
+              LOG_STDOUT: "true"
+              PUBLIC_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: appdaemon-secret
+                    key: SSH_PUBLIC_KEY
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: false
+              capabilities:
+                drop: ["ALL"]
     defaultPodOptions:
       securityContext:
         seccompProfile: { type: RuntimeDefault }
@@ -72,6 +94,8 @@ spec:
         ports:
           http:
             port: *port
+          sftp:
+            port: 2222
     persistence:
       config:
         existingClaim: appdaemon
@@ -87,6 +111,10 @@ spec:
           - path: /conf/secrets.yaml
             subPath: secrets.yaml
             readOnly: true
+      ssh-config:
+        type: emptyDir
+        globalMounts:
+          - path: /config
       tmp:
         type: emptyDir
         globalMounts:
