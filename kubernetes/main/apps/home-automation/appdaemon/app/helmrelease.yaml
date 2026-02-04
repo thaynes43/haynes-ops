@@ -105,6 +105,12 @@ spec:
         existingClaim: appdaemon
         globalMounts:
           - path: /conf
+      conf-sftp:
+        existingClaim: appdaemon
+        advancedMounts:
+          appdaemon:
+            sftp:
+              - path: /config/conf
       appdaemon-config:
         type: secret
         name: appdaemon-secret
