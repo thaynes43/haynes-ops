@@ -85,6 +85,7 @@ spec:
               readOnlyRootFilesystem: false
               capabilities:
                 drop: ["ALL"]
+                add: ["SETUID", "SETGID"]
     defaultPodOptions:
       securityContext:
         seccompProfile: { type: RuntimeDefault }
