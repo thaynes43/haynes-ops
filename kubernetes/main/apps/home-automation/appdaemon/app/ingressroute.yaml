@@ -1,0 +1,31 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: appdaemon
+  annotations:
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+    # Homepage
+    gethomepage.dev/href: &url "https://appdaemon.haynesops.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/description: AppDaemon automation apps + dashboards
+    gethomepage.dev/group: Home
+    gethomepage.dev/name: AppDaemon
+    gethomepage.dev/icon: home-assistant
+    gethomepage.dev/siteMonitor: *url
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`appdaemon.haynesops.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: appdaemon
+          port: 5050
+      middlewares:
+        - name: default-headers
+          namespace: network
+  tls:
+    secretName: certificate-haynesops

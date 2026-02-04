@@ -13,3 +13,4 @@ resources:
   - ./go2rtc/ks.yaml
   - ./home-assistant/ks.yaml
   - ./ha-mcp/ks.yaml
+  - ./appdaemon/ks.yaml
