@@ -28,6 +28,8 @@ spec:
       appdaemon:
         annotations:
           reloader.stakater.com/auto: "true"
+        # RWO PVC: avoid rolling updates that block on volume attach
+        strategy: Recreate
         containers:
           app:
             image:
@@ -105,8 +107,6 @@ spec:
         existingClaim: appdaemon
         globalMounts:
           - path: /conf
-      conf-sftp:
-        existingClaim: appdaemon
         advancedMounts:
           appdaemon:
             sftp:
