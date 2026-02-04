@@ -85,7 +85,10 @@ spec:
               readOnlyRootFilesystem: false
               capabilities:
                 drop: ["ALL"]
-                add: ["SETUID", "SETGID"]
+                # Minimal capabilities for OpenSSH in-container:
+                # - SETUID/SETGID: switch to the configured non-root user
+                # - SYS_CHROOT: required for sshd's default chroot behavior
+                add: ["SETUID", "SETGID", "SYS_CHROOT"]
     defaultPodOptions:
       securityContext:
         seccompProfile: { type: RuntimeDefault }
