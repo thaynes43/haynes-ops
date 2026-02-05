@@ -36,9 +36,6 @@ spec:
             image:
               repository: ghcr.io/jmbannon/ytdl-sub
               tag: 2026.02.03
-            envFrom:
-              - secretRef:
-                  name: ytdl-sub-peloton-secret
             command:
               - bash
               - -c
@@ -52,9 +49,16 @@ spec:
                 import os
                 import sys
 
-                token = os.environ.get('PELOTON_BEARER')
+                token_path = '/media/peloton/bearer.txt'
+                try:
+                    with open(token_path, 'r') as f:
+                        token = f.read().strip()
+                except Exception as e:
+                    print(f"Error reading {token_path}: {e}", file=sys.stderr)
+                    sys.exit(1)
+
                 if not token:
-                    print("Error: PELOTON_BEARER is not set or empty", file=sys.stderr)
+                    print(f"Error: {token_path} is empty", file=sys.stderr)
                     sys.exit(1)
 
                 input_path = '/config-ro/subscriptions.yaml'
