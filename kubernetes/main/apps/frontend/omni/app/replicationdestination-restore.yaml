@@ -1,7 +1,0 @@
-apiVersion: volsync.backube/v1alpha1
-kind: ReplicationDestination
-metadata:
-  name: omni-dst
-spec:
-  trigger:
-    manual: restore-2026-02-07-omni-nuke
