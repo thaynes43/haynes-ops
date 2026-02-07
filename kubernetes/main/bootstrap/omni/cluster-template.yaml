@@ -4,6 +4,14 @@ kubernetes:
   version: v1.33.6
 talos:
   version: v1.11.5
+patches:
+  # Ensure control-plane services (e.g. etcd) don't deadlock on NTP during upgrades.
+  # If NTP is unreachable (e.g. no Internet), don't deadlock boot forever.
+  - idOverride: 050-time-sync
+    inline:
+      machine:
+        time:
+          bootTimeout: 2m
 features:
   backupConfiguration:
     interval: 24h
@@ -35,13 +43,6 @@ patches:
           disablePodSecurityPolicy: true
           extraArgs:
             allow-privileged: "true"
-            default-not-ready-toleration-seconds: "60"
-            default-unreachable-toleration-seconds: "60"
-        controllerManager:
-          extraArgs:
-            node-monitor-grace-period: "30s"
-            node-monitor-period: "5s"
-            pod-eviction-timeout: "2m"
         proxy:
           disabled: true
         discovery:
