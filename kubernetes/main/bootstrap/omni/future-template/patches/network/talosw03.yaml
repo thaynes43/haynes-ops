@@ -1,0 +1,11 @@
+machine:
+  network:
+    hostname: talosw03
+    interfaces:
+      - deviceSelector:
+          hardwareAddr: BC:24:11:C5:5B:92
+        mtu: 1500
+        dhcp: true
+    nameservers:
+      - 192.168.40.1
+    disableSearchDomain: true

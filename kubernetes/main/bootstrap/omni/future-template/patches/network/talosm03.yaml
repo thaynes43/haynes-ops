@@ -1,0 +1,33 @@
+machine:
+  network:
+    hostname: talosm03
+    interfaces:
+      - deviceSelector:
+          hardwareAddr: 58:47:ca:77:c5:ae
+        mtu: 1500
+        dhcp: true
+        dhcpOptions:
+          routeMetric: 100
+        vip:
+          ip: 192.168.40.202
+      - deviceSelector:
+          hardwareAddr: 58:47:ca:77:c5:af
+        mtu: 1500
+        dhcp: true
+        dhcpOptions:
+          routeMetric: 2000
+      - deviceSelector:
+          hardwareAddr: 58:47:ca:77:c5:b0
+        mtu: 1500
+        dhcp: true
+        dhcpOptions:
+          routeMetric: 3000
+      - deviceSelector:
+          hardwareAddr: 58:47:ca:77:c5:b1
+        mtu: 1500
+        dhcp: true
+        dhcpOptions:
+          routeMetric: 4000
+    nameservers:
+      - 192.168.40.1
+    disableSearchDomain: true

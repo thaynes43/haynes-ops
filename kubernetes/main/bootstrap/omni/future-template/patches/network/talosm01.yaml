@@ -1,0 +1,39 @@
+machine:
+  network:
+    hostname: talosm01
+    interfaces:
+      # Enumerate all physical NICs so Talos doesn't run DHCP on "extra" links
+      # and accidentally install multiple default routes during upgrades.
+      #
+      # We intentionally keep DHCP enabled on all connected VLAN NICs so they
+      # still receive addresses (e.g. Ceph cluster network on 192.168.60.0/24),
+      # but we use DHCP route metrics so only the mgmt NIC "wins" the default route.
+      - deviceSelector:
+          hardwareAddr: 58:47:ca:78:bf:f6
+        mtu: 1500
+        dhcp: true
+        dhcpOptions:
+          routeMetric: 100
+        vip:
+          ip: 192.168.40.202
+      - deviceSelector:
+          hardwareAddr: 58:47:ca:78:bf:f7
+        mtu: 1500
+        dhcp: true
+        dhcpOptions:
+          routeMetric: 2000
+      - deviceSelector:
+          hardwareAddr: 58:47:ca:78:bf:f8
+        mtu: 1500
+        dhcp: true
+        dhcpOptions:
+          routeMetric: 3000
+      - deviceSelector:
+          hardwareAddr: 58:47:ca:78:bf:f9
+        mtu: 1500
+        dhcp: true
+        dhcpOptions:
+          routeMetric: 4000
+    nameservers:
+      - 192.168.40.1
+    disableSearchDomain: true
