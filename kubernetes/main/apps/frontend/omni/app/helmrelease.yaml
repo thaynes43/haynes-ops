@@ -64,7 +64,7 @@ spec:
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
               - --etcd-embedded=true
               - --etcd-embedded-unsafe-fsync=true
-              - --storage-sqlite-path=/storage/sqlite/omni.db
+              - --sqlite-storage-path=/storage/sqlite/omni.db
 
             securityContext:
               privileged: true
@@ -113,8 +113,10 @@ spec:
         existingClaim: omni
         globalMounts:
           - path: /_out/etcd
+            subPath: etcd
           - path: /storage/sqlite
-      
+            subPath: sqlite
+            
       deploy-key:
         type: secret
         name: omni-secret
