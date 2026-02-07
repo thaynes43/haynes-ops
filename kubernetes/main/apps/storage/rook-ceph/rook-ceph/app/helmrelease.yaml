@@ -28,7 +28,6 @@ spec:
       namespace: volsync-system
   values:
     csi:
-      logLevel: 5
       cephFSKernelMountOptions: ms_mode=prefer-crc
       enableLiveness: true
       serviceMonitor:
