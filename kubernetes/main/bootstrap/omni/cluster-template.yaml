@@ -3,7 +3,7 @@ name: haynes-ops
 kubernetes:
   version: v1.33.6
 talos:
-  version: v1.11.4
+  version: v1.11.5
 features:
   backupConfiguration:
     interval: 24h
@@ -35,6 +35,13 @@ patches:
           disablePodSecurityPolicy: true
           extraArgs:
             allow-privileged: "true"
+            default-not-ready-toleration-seconds: "60"
+            default-unreachable-toleration-seconds: "60"
+        controllerManager:
+          extraArgs:
+            node-monitor-grace-period: "30s"
+            node-monitor-period: "5s"
+            pod-eviction-timeout: "2m"
         proxy:
           disabled: true
         discovery:
@@ -99,6 +106,8 @@ patches:
           wipe: true
         kernel:
           modules:
+            - name: nbd
+            - name: rbd
             - name: nvidia
               parameters:
                 - NVreg_OpenRmEnableUnsupportedGpus=1
@@ -198,6 +207,10 @@ patches:
           diskSelector:
             model: CT1000T500SSD8
           wipe: true
+        kernel:
+          modules:
+            - name: nbd
+            - name: rbd
         network:
           hostname: talosm02
           interfaces:
@@ -294,6 +307,8 @@ patches:
           wipe: true
         kernel:
           modules:
+            - name: nbd
+            - name: rbd
             - name: nvidia
               parameters:
                 - NVreg_OpenRmEnableUnsupportedGpus=1
@@ -392,6 +407,8 @@ patches:
           wipe: true
         kernel:
           modules:
+            - name: nbd
+            - name: rbd
             - name: nvidia
               parameters:
                 - NVreg_OpenRmEnableUnsupportedGpus=1
@@ -488,6 +505,8 @@ patches:
           wipe: true
         kernel:
           modules:
+            - name: nbd
+            - name: rbd
             - name: i915
               parameters:
                 - enable_guc=3
@@ -587,6 +606,8 @@ patches:
           wipe: true
         kernel:
           modules:
+            - name: nbd
+            - name: rbd
             - name: i915
               parameters:
                 - enable_guc=3
