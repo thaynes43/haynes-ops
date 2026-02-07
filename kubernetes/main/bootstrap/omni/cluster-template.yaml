@@ -1,9 +1,9 @@
 kind: Cluster
 name: haynes-ops
 kubernetes:
-  version: v1.33.6
+  version: v1.34.3
 talos:
-  version: v1.11.5
+  version: v1.12.3
 patches:
   # Ensure control-plane services (e.g. etcd) don't deadlock on NTP during upgrades.
   # If NTP is unreachable (e.g. no Internet), don't deadlock boot forever.
@@ -116,12 +116,38 @@ patches:
         network:
           hostname: talosm01
           interfaces:
+            # Enumerate all physical NICs so Talos doesn't run DHCP on "extra" links
+            # and accidentally install multiple default routes during upgrades.
+            #
+            # We intentionally keep DHCP enabled on all connected VLAN NICs so they
+            # still receive addresses (e.g. Ceph cluster network on 192.168.60.0/24),
+            # but we use DHCP route metrics so only the mgmt NIC "wins" the default route.
             - deviceSelector:
                 hardwareAddr: 58:47:ca:78:bf:f6
               mtu: 1500
               dhcp: true
+              dhcpOptions:
+                routeMetric: 100
               vip:
                 ip: 192.168.40.202
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:78:bf:f7
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 2000
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:78:bf:f8
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 3000
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:78:bf:f9
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 4000
           nameservers:
             - 192.168.40.1
           disableSearchDomain: true
@@ -188,6 +214,9 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: main
             topology.kubernetes.io/zone: m
+            network.haynesops.com/ceph-private: "true" # eth3 58:47:ca:78:bf:f7
+            network.haynesops.com/sonos: "true"        # eth0 58:47:ca:78:bf:f8
+            network.haynesops.com/iot: "true"          # eth1 58:47:ca:78:bf:f9
 ---
 kind: Machine
 systemExtensions:
@@ -215,8 +244,28 @@ patches:
                 hardwareAddr: 58:47:ca:78:bc:4a
               mtu: 1500
               dhcp: true
+              dhcpOptions:
+                routeMetric: 100
               vip:
                 ip: 192.168.40.202
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:78:bc:4b
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 2000
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:78:bc:4c
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 3000
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:78:bc:4d
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 4000
           nameservers:
             - 192.168.40.1
           disableSearchDomain: true
@@ -283,6 +332,9 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: main
             topology.kubernetes.io/zone: m
+            network.haynesops.com/ceph-private: "true" # eth3 58:47:ca:78:bc:4b
+            network.haynesops.com/sonos: "true"        # eth0 58:47:ca:78:bc:4c
+            network.haynesops.com/iot: "true"          # eth1 58:47:ca:78:bc:4d
 ---
 kind: Machine
 systemExtensions:
@@ -317,8 +369,28 @@ patches:
                 hardwareAddr: 58:47:ca:77:c5:ae
               mtu: 1500
               dhcp: true
+              dhcpOptions:
+                routeMetric: 100
               vip:
                 ip: 192.168.40.202
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:c5:af
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 2000
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:c5:b0
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 3000
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:c5:b1
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 4000
           nameservers:
             - 192.168.40.1
           disableSearchDomain: true
@@ -385,6 +457,9 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: main
             topology.kubernetes.io/zone: m
+            network.haynesops.com/ceph-private: "true" # eth3 58:47:ca:77:c5:af
+            network.haynesops.com/sonos: "true"        # eth0 58:47:ca:77:c5:b0
+            network.haynesops.com/iot: "true"          # eth1 58:47:ca:77:c5:b1
 ---
 kind: Machine
 systemExtensions:
