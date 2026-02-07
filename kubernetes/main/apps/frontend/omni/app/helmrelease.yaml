@@ -16,6 +16,7 @@ spec:
   upgrade:
     cleanupOnFail: true
     remediation:
+      remediateLastFailure: true
       strategy: uninstall
       retries: 3
   uninstall:
