@@ -62,6 +62,7 @@ spec:
               - --siderolink-wireguard-advertised-addr=$(SIDEROLINK_WIREGUARD_ADVERTISED_ADDR)
               - --auth-saml-enabled=$(AUTH_SAML_ENABLED)
               - --auth-saml-url=$(AUTH_SAML_METADATA_URL)
+              - --initial-users=$(OMNI_ADMIN_EMAILS)
               - --etcd-embedded=true
               - --etcd-embedded-unsafe-fsync=true
               - --sqlite-storage-path=/storage/sqlite/omni.db
