@@ -113,12 +113,8 @@ spec:
         existingClaim: omni
         globalMounts:
           - path: /_out/etcd
-
-      sqlite:
-        existingClaim: omni
-        globalMounts:
           - path: /storage/sqlite
-
+      
       deploy-key:
         type: secret
         name: omni-secret
