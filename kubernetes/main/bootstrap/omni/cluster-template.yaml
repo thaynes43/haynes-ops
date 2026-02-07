@@ -106,8 +106,6 @@ patches:
           wipe: true
         kernel:
           modules:
-            - name: nbd
-            - name: rbd
             - name: nvidia
               parameters:
                 - NVreg_OpenRmEnableUnsupportedGpus=1
@@ -209,8 +207,6 @@ patches:
           wipe: true
         kernel:
           modules:
-            - name: nbd
-            - name: rbd
         network:
           hostname: talosm02
           interfaces:
@@ -307,8 +303,6 @@ patches:
           wipe: true
         kernel:
           modules:
-            - name: nbd
-            - name: rbd
             - name: nvidia
               parameters:
                 - NVreg_OpenRmEnableUnsupportedGpus=1
@@ -407,8 +401,6 @@ patches:
           wipe: true
         kernel:
           modules:
-            - name: nbd
-            - name: rbd
             - name: nvidia
               parameters:
                 - NVreg_OpenRmEnableUnsupportedGpus=1
@@ -505,8 +497,6 @@ patches:
           wipe: true
         kernel:
           modules:
-            - name: nbd
-            - name: rbd
             - name: i915
               parameters:
                 - enable_guc=3
@@ -606,8 +596,6 @@ patches:
           wipe: true
         kernel:
           modules:
-            - name: nbd
-            - name: rbd
             - name: i915
               parameters:
                 - enable_guc=3

@@ -11,3 +11,8 @@ resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml
   - ./middleware.yaml
+patches:
+  - target:
+      kind: ReplicationDestination
+      name: omni-dst
+    path: ./replicationdestination-restore.yaml
