@@ -39,6 +39,14 @@ spec:
         enabled: true
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          # Homepage
+          gethomepage.dev/href: &url "https://alertmanager.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Observability
+          gethomepage.dev/name: Alertmanager
+          gethomepage.dev/description: Alerts and silences
+          gethomepage.dev/icon: alertmanager
+          gethomepage.dev/siteMonitor: "https://alertmanager.haynesops.com/-/ready"
         ingressClassName: traefik-internal
         hosts: ["alertmanager.haynesops.com"]
         pathType: Prefix
@@ -73,6 +81,14 @@ spec:
         enabled: true
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          # Homepage
+          gethomepage.dev/href: &url "https://prometheus.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Observability
+          gethomepage.dev/name: Prometheus
+          gethomepage.dev/description: Metrics + queries
+          gethomepage.dev/icon: prometheus
+          gethomepage.dev/siteMonitor: "https://prometheus.haynesops.com/-/ready"
         ingressClassName: traefik-internal
         hosts: ["prometheus.haynesops.com"]
         pathType: Prefix

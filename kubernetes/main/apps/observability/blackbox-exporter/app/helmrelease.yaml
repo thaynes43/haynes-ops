@@ -28,6 +28,14 @@ spec:
       enabled: true
       annotations:
         external-dns.alpha.kubernetes.io/target: internal.haynesops
+        # Homepage
+        gethomepage.dev/href: &url "https://blackbox-exporter.haynesops.com"
+        gethomepage.dev/enabled: "true"
+        gethomepage.dev/group: Observability
+        gethomepage.dev/name: Blackbox Exporter
+        gethomepage.dev/description: Probe endpoint + metrics
+        gethomepage.dev/icon: prometheus
+        gethomepage.dev/siteMonitor: "https://blackbox-exporter.haynesops.com/"
       className: traefik-internal
       hosts:
         - host: blackbox-exporter.haynesops.com

@@ -282,6 +282,20 @@ spec:
       enabled: true
       annotations:
         external-dns.alpha.kubernetes.io/target: internal.haynesops
+        # Homepage
+        gethomepage.dev/href: &url "https://grafana.haynesops.com"
+        gethomepage.dev/enabled: "true"
+        gethomepage.dev/group: Observability
+        gethomepage.dev/name: Grafana
+        gethomepage.dev/description: Dashboards + alerting UI
+        gethomepage.dev/icon: grafana
+        gethomepage.dev/siteMonitor: "https://grafana.haynesops.com/api/health"
+        gethomepage.dev/widget.type: grafana
+        gethomepage.dev/widget.version: "2"
+        gethomepage.dev/widget.alerts: alertmanager
+        gethomepage.dev/widget.url: *url
+        gethomepage.dev/widget.username: "{{HOMEPAGE_VAR_GRAFANA_USERNAME}}"
+        gethomepage.dev/widget.password: "{{HOMEPAGE_VAR_GRAFANA_PASSWORD}}"
       ingressClassName: traefik-internal
       hosts: ["grafana.haynesops.com"]
     persistence:
