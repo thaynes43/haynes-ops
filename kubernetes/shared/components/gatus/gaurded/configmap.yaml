@@ -10,17 +10,11 @@ data:
     endpoints:
       - name: "${APP}"
         group: internal
-        # DNS checks should query CoreDNS inside the cluster by default.
-        # Override with GATUS_DNS_SERVER if needed.
-        url: "${GATUS_DNS_SERVER:-10.43.0.10}"
+        # Internal services are often behind SSO; treat any non-5xx as "up".
+        # This also makes the service URL visible in the UI.
+        url: "https://${GATUS_SUBDOMAIN:-${APP}}.${GATUS_DOMAIN:-haynesops.com}${GATUS_PATH:-/}"
         interval: 1m
-        ui:
-          hide-hostname: true
-          hide-url: true
-        dns:
-          query-name: "${GATUS_SUBDOMAIN:-${APP}}.haynesops.com"
-          query-type: A
         conditions:
-          - "[DNS_RCODE] == NOERROR"
+          - "[STATUS] < ${GATUS_STATUS_MAX:-500}"
         alerts:
           - type: pushover
