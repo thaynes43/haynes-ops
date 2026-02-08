@@ -296,8 +296,9 @@ spec:
         gethomepage.dev/widget.version: "2"
         gethomepage.dev/widget.alerts: alertmanager
         gethomepage.dev/widget.url: *url
-        gethomepage.dev/widget.username: "{{HOMEPAGE_VAR_GRAFANA_USERNAME}}"
-        gethomepage.dev/widget.password: "{{HOMEPAGE_VAR_GRAFANA_PASSWORD}}"
+        # grafana chart uses tpl on annotations; escape Homepage vars so Helm doesn't render them
+        gethomepage.dev/widget.username: '{{ "{{HOMEPAGE_VAR_GRAFANA_USERNAME}}" }}'
+        gethomepage.dev/widget.password: '{{ "{{HOMEPAGE_VAR_GRAFANA_PASSWORD}}" }}'
       ingressClassName: traefik-internal
       hosts: ["grafana.haynesops.com"]
     persistence:
