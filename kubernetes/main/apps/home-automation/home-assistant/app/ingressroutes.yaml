@@ -44,12 +44,12 @@ metadata:
     # Homepage
     gethomepage.dev/href: &url "https://hass-code.haynesops.com"
     gethomepage.dev/enabled: "true"
-    gethomepage.dev/app: HASS VS Code
+    gethomepage.dev/app: home-assistant
     gethomepage.dev/group: Home
     gethomepage.dev/icon: sh-visual-studio-code.svg
     gethomepage.dev/name: HASS VS Code
     gethomepage.dev/description: Code editor for Home Assistant
-    gethomepage.dev/siteMonitor: *url
+    gethomepage.dev/siteMonitor: &healthUrl "https://hass-code.haynesops.com/healthz"
 spec:
   entryPoints:
     - websecure
