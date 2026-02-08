@@ -63,6 +63,8 @@ spec:
               GATUS_CONFIG_PATH: /config
               GATUS_DELAY_START_SECONDS: 5
               WEB_PORT: &port 80
+              # Used by DNS-type endpoints in /config/config.yaml
+              GATUS_DNS_SERVER: 10.43.0.10
             envFrom: *envFrom
             probes:
               liveness: &probes

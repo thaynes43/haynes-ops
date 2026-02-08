@@ -26,4 +26,6 @@ spec:
   postBuild:
     substitute:
       APP: *app
+      # Gatus guarded: ingress host is hass.haynesops.com (not home-assistant.haynesops.com)
+      GATUS_SUBDOMAIN: hass
       VOLSYNC_CAPACITY: 60Gi

@@ -10,7 +10,9 @@ data:
     endpoints:
       - name: "${APP}"
         group: internal
-        url: 1.1.1.1
+        # DNS checks should query CoreDNS inside the cluster by default.
+        # Override with GATUS_DNS_SERVER if needed.
+        url: "${GATUS_DNS_SERVER:-10.43.0.10}"
         interval: 1m
         ui:
           hide-hostname: true

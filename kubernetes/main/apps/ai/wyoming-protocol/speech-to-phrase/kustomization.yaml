@@ -5,6 +5,6 @@ kind: Kustomization
 resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml
-  - ../../../../../shared/templates/gatus/gaurded
+  # No ingress / DNS entry for this internal-only service
   - ../../../../../shared/templates/volsync/app-pvc
   - ../../../../../shared/templates/volsync/extra-pvc
