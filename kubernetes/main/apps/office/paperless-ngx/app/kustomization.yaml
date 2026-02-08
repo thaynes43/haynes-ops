@@ -6,3 +6,4 @@ resources:
   - ./helmrelease.yaml
   - ../../../../../shared/templates/volsync/app-pvc
   - ./ingressroute.yaml
+  - ../../../../../shared/templates/gatus/external

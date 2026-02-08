@@ -17,6 +17,11 @@ spec:
   wait: true
   interval: 30m
   timeout: 5m
+  postBuild:
+    substitute:
+      APP: *app
+      # Gatus: monitor hubble.haynesops.com (Ingress is created by Cilium)
+      GATUS_SUBDOMAIN: hubble
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization

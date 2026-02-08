@@ -7,3 +7,4 @@ resources:
   - ./helmrelease.yaml
   - ./middleware.yaml
   - ./ingressroute.yaml
+  - ../../../../../shared/templates/gatus/external

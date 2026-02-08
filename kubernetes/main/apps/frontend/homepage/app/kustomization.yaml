@@ -8,3 +8,4 @@ resources:
   - ./helmrelease.yaml
   - ./ingressroute.yaml
   - ./rbac.yaml
+  - ../../../../../shared/templates/gatus/gaurded

@@ -23,3 +23,7 @@ spec:
   interval: 15m
   retryInterval: 1m
   timeout: 5m
+  postBuild:
+    substitute:
+      APP: *app
+      GATUS_DOMAIN: haynesnetwork.com

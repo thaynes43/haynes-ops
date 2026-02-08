@@ -1,0 +1,24 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traefik-external-dashboard-gatus-ep
+  labels:
+    gatus.io/enabled: "true"
+data:
+  config.yaml: |
+    endpoints:
+      - name: traefik-external-dashboard
+        group: internal
+        url: "${GATUS_DNS_SERVER:-10.43.0.10}"
+        interval: 1m
+        ui:
+          hide-hostname: true
+          hide-url: true
+        dns:
+          query-name: "traefik-external.haynesops.com"
+          query-type: A
+        conditions:
+          - "[DNS_RCODE] == NOERROR"
+        alerts:
+          - type: pushover

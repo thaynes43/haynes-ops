@@ -7,3 +7,4 @@ resources:
   - ./ingressroute-overseerr.yaml
   - ./ingressroute-tautulli.yaml
   - ./ingressroute-plex.yaml
+  - ./gatus-endpoint.yaml

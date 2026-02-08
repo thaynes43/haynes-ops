@@ -26,3 +26,6 @@ spec:
     substitute:
       APP: *app
       VOLSYNC_CAPACITY: 25Gi
+      # Gatus: host is paperless.haynesnetwork.com (not paperless-ngx)
+      GATUS_SUBDOMAIN: paperless
+      GATUS_DOMAIN: haynesnetwork.com

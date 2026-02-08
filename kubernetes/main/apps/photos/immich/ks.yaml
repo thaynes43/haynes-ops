@@ -44,6 +44,12 @@ spec:
   wait: true
   interval: 30m
   timeout: 5m
+  postBuild:
+    substitute:
+      APP: *app
+      # Gatus: host is immich.haynesnetwork.com (not immich-server)
+      GATUS_SUBDOMAIN: immich
+      GATUS_DOMAIN: haynesnetwork.com
 ---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
 apiVersion: kustomize.toolkit.fluxcd.io/v1
