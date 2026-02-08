@@ -10,7 +10,7 @@ data:
     endpoints:
       - name: rook
         group: internal
-        url: "$${GATUS_DNS_SERVER:-10.43.0.10}"
+        url: "10.43.0.10"
         interval: 1m
         ui:
           hide-hostname: true
@@ -34,7 +34,7 @@ data:
     endpoints:
       - name: rgw
         group: internal
-        url: "$${GATUS_DNS_SERVER:-10.43.0.10}"
+        url: "10.43.0.10"
         interval: 1m
         ui:
           hide-hostname: true
