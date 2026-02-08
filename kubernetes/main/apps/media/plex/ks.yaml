@@ -29,4 +29,4 @@ spec:
       # Gatus: ingress host is k8plex.haynesnetwork.com, use a health-ish endpoint
       GATUS_SUBDOMAIN: k8plex
       GATUS_PATH: /identity
-      GATUS_STATUS_MAX: 500
+      GATUS_STATUS_MAX: "500"
