@@ -35,7 +35,9 @@ spec:
         gethomepage.dev/name: Blackbox Exporter
         gethomepage.dev/description: Probe endpoint + metrics
         gethomepage.dev/icon: prometheus
-        gethomepage.dev/siteMonitor: "https://blackbox-exporter.haynesops.com/"
+        # Root may return 404; /metrics should always be 200 when healthy.
+        # Use the Service directly to avoid auth/TLS issues.
+        gethomepage.dev/siteMonitor: "http://blackbox-exporter.observability.svc.cluster.local:9115/metrics"
       className: traefik-internal
       hosts:
         - host: blackbox-exporter.haynesops.com

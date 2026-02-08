@@ -289,7 +289,9 @@ spec:
         gethomepage.dev/name: Grafana
         gethomepage.dev/description: Dashboards + alerting UI
         gethomepage.dev/icon: grafana
-        gethomepage.dev/siteMonitor: "https://grafana.haynesops.com/api/health"
+        # /api/health is unauth in Grafana, but may still be protected by proxy auth;
+        # use the Service directly to ensure accurate monitoring.
+        gethomepage.dev/siteMonitor: "http://grafana.observability.svc.cluster.local:80/api/health"
         gethomepage.dev/widget.type: grafana
         gethomepage.dev/widget.version: "2"
         gethomepage.dev/widget.alerts: alertmanager

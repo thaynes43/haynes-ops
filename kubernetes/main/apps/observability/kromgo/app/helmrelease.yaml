@@ -78,14 +78,6 @@ spec:
       app:
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
-          # Homepage
-          gethomepage.dev/href: &url "https://kromgo.haynesops.com"
-          gethomepage.dev/enabled: "true"
-          gethomepage.dev/group: Observability
-          gethomepage.dev/name: Kromgo
-          gethomepage.dev/description: Prometheus metrics status dashboard
-          gethomepage.dev/icon: mdi:chart-line
-          gethomepage.dev/siteMonitor: "https://kromgo.haynesops.com/readyz"
         className: traefik-internal
         hosts:
           - host: "{{ .Release.Name }}.haynesops.com"
