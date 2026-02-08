@@ -38,7 +38,7 @@ endpoints:
       query-name: "status.haynesops.com"
       query-type: A
     conditions:
-      - "len([BODY]) == 0"
+      - "[DNS_RCODE] == NOERROR"
     alerts:
       - type: pushover
   - name: flux-webhook
@@ -52,6 +52,6 @@ endpoints:
       query-name: "flux-webhook.haynesops.com"
       query-type: A
     conditions:
-      - "len([BODY]) == 0"
+      - "[DNS_RCODE] == NOERROR"
     alerts:
       - type: pushover

@@ -6,5 +6,5 @@ namespace: haynes-intelligence
 resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml
-  - ../../../../../shared/templates/gatus/gaurded
+  - ../../../../../shared/templates/gatus/external
   - ../../../../../shared/templates/volsync/app-pvc

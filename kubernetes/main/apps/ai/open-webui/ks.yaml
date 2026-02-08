@@ -24,3 +24,5 @@ spec:
     substitute:
       APP: *app
       VOLSYNC_CAPACITY: 24Gi
+      # Gatus: ingress host is ai.haynesnetwork.com
+      GATUS_SUBDOMAIN: ai

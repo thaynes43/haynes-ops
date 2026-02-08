@@ -19,6 +19,6 @@ data:
           query-name: "${GATUS_SUBDOMAIN:-${APP}}.haynesops.com"
           query-type: A
         conditions:
-          - "len([BODY]) == 0"
+          - "[DNS_RCODE] == NOERROR"
         alerts:
           - type: pushover
