@@ -108,6 +108,15 @@ spec:
       app:
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          # Homepage
+          gethomepage.dev/href: &url "https://zigbee.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Home
+          gethomepage.dev/name: Zigbee2MQTT
+          gethomepage.dev/description: Zigbee coordinator + device management
+          gethomepage.dev/icon: zigbee2mqtt
+          gethomepage.dev/app: zigbee2mqtt
+          gethomepage.dev/siteMonitor: *url
         className: traefik-internal
         hosts:
           - host: zigbee.haynesops.com

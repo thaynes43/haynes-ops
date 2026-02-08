@@ -101,6 +101,15 @@ spec:
       app:
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          # Homepage
+          gethomepage.dev/href: &url "https://esphome.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Home
+          gethomepage.dev/name: ESPHome
+          gethomepage.dev/description: ESP device firmware + dashboard
+          gethomepage.dev/icon: esphome
+          gethomepage.dev/app: esphome
+          gethomepage.dev/siteMonitor: *url
         className: traefik-internal
         hosts:
           - host: esphome.haynesops.com # TODO https://github.com/mchestr/home-cluster/blob/main/kubernetes/apps/default/esphome/app/helmrelease.yaml
@@ -112,6 +121,15 @@ spec:
       code-server:
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          # Homepage
+          gethomepage.dev/href: &codeUrl "https://esphome-code.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Home
+          gethomepage.dev/name: ESPHome VS Code
+          gethomepage.dev/description: Code editor for ESPHome
+          gethomepage.dev/icon: sh-visual-studio-code.svg
+          gethomepage.dev/app: esphome
+          gethomepage.dev/siteMonitor: *codeUrl
         className: traefik-internal
         hosts:
           - host: esphome-code.haynesops.com

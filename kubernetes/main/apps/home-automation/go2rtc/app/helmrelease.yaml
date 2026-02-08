@@ -83,6 +83,17 @@ spec:
             protocol: UDP
     ingress:
       app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+          # Homepage
+          gethomepage.dev/href: &url "https://go2rtc.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Home
+          gethomepage.dev/name: go2rtc
+          gethomepage.dev/description: RTSP/WebRTC gateway for cameras
+          gethomepage.dev/icon: go2rtc
+          gethomepage.dev/app: go2rtc
+          gethomepage.dev/siteMonitor: *url
         className: traefik-internal
         hosts:
           - host: go2rtc.haynesops.com

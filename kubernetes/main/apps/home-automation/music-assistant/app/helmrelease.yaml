@@ -80,6 +80,15 @@ spec:
       app:
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          # Homepage
+          gethomepage.dev/href: &url "https://music-assistant.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Home
+          gethomepage.dev/name: Music Assistant
+          gethomepage.dev/description: Home Assistant music server
+          gethomepage.dev/icon: music-assistant
+          gethomepage.dev/app: music-assistant
+          gethomepage.dev/siteMonitor: *url
         className: traefik-internal
         hosts:
           - host: music-assistant.haynesops.com

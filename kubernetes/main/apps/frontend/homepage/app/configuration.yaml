@@ -71,14 +71,14 @@ data:
 
   widgets.yaml: |
     - logo:
-        icon: https://sundayguardianlive.com/wp-content/uploads/2020/07/Untitled-design-9.png
+        icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/svg/kubernetes.svg
     - search:
         provider: [google]
         focus: false
         target: _blank
     - greeting:
         text_size: xl
-        text: "How are you doing today?"
+        text: "Welcome to HaynesOps."
     - kubernetes:
         cluster:
             cpu: true

@@ -87,6 +87,15 @@ spec:
       app:
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          # Homepage
+          gethomepage.dev/href: &url "https://{{ .Release.Name }}.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Home
+          gethomepage.dev/name: Z-Wave JS UI
+          gethomepage.dev/description: Z-Wave controller + device management
+          gethomepage.dev/icon: z-wave-js-ui
+          gethomepage.dev/app: zwave
+          gethomepage.dev/siteMonitor: *url
         className: traefik-internal
         hosts:
           - host: "{{ .Release.Name }}.haynesops.com"
