@@ -71,6 +71,15 @@ spec:
       app:
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          # Homepage
+          gethomepage.dev/href: &url "https://ollama-prime.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: AI
+          gethomepage.dev/name: Ollama (Prime)
+          gethomepage.dev/description: LLM inference API endpoint
+          gethomepage.dev/icon: ollama-dark
+          gethomepage.dev/app: ollama-prime
+          gethomepage.dev/siteMonitor: "https://ollama-prime.haynesops.com/api/version"
         className: traefik-internal
         hosts:
           - host: "{{ .Release.Name }}.haynesops.com"

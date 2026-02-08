@@ -5,6 +5,15 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
+    # Homepage
+    gethomepage.dev/href: &url "https://comfyui.haynesops.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: AI
+    gethomepage.dev/name: ComfyUI
+    gethomepage.dev/description: Stable Diffusion workflow UI
+    gethomepage.dev/icon: comfy-ui
+    gethomepage.dev/app: comfyui
+    gethomepage.dev/siteMonitor: *url
 spec:
   entryPoints:
     - websecure

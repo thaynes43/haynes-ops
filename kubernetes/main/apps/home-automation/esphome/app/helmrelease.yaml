@@ -110,6 +110,9 @@ spec:
           gethomepage.dev/icon: esphome
           gethomepage.dev/app: esphome
           gethomepage.dev/siteMonitor: *url
+          # Homepage widget
+          gethomepage.dev/widget.type: esphome
+          gethomepage.dev/widget.url: *url
         className: traefik-internal
         hosts:
           - host: esphome.haynesops.com # TODO https://github.com/mchestr/home-cluster/blob/main/kubernetes/apps/default/esphome/app/helmrelease.yaml
