@@ -289,6 +289,8 @@ spec:
         gethomepage.dev/name: Grafana
         gethomepage.dev/description: Dashboards + alerting UI
         gethomepage.dev/icon: grafana
+        # Needed for Kubernetes status/metrics lookup
+        gethomepage.dev/app: grafana
         # /api/health is unauth in Grafana, but may still be protected by proxy auth;
         # use the Service directly to ensure accurate monitoring.
         gethomepage.dev/siteMonitor: "http://grafana.observability.svc.cluster.local:80/api/health"

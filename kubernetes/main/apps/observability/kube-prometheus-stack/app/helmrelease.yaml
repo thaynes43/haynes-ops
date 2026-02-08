@@ -46,6 +46,8 @@ spec:
           gethomepage.dev/name: Alertmanager
           gethomepage.dev/description: Alerts and silences
           gethomepage.dev/icon: alertmanager
+          # Needed for Kubernetes status/metrics lookup
+          gethomepage.dev/app: alertmanager
           # Homepage siteMonitor runs from inside the cluster; bypass auth/TLS by using the Service directly
           gethomepage.dev/siteMonitor: "http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093/-/ready"
         ingressClassName: traefik-internal
@@ -89,6 +91,8 @@ spec:
           gethomepage.dev/name: Prometheus
           gethomepage.dev/description: Metrics + queries
           gethomepage.dev/icon: prometheus
+          # Needed for Kubernetes status/metrics lookup
+          gethomepage.dev/app: prometheus
           # Homepage siteMonitor runs from inside the cluster; bypass auth/TLS by using the Service directly
           gethomepage.dev/siteMonitor: "http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/-/ready"
         ingressClassName: traefik-internal
