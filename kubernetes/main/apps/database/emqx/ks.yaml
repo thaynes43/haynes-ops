@@ -45,3 +45,5 @@ spec:
   postBuild:
     substitute:
       APP: *app
+      # Gatus guarded: ingress host is emqx.haynesops.com (not emqx-cluster.haynesops.com)
+      GATUS_SUBDOMAIN: emqx
