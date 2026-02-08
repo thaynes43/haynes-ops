@@ -34,15 +34,10 @@ data:
     endpoints:
       - name: alertmanager
         group: internal
-        url: "10.43.0.10"
+        # Alertmanager is behind auth; consider any non-5xx as "up"
+        url: "https://alertmanager.haynesops.com/"
         interval: 1m
-        ui:
-          hide-hostname: true
-          hide-url: true
-        dns:
-          query-name: "alertmanager.haynesops.com"
-          query-type: A
         conditions:
-          - "[DNS_RCODE] == NOERROR"
+          - "[STATUS] < 500"
         alerts:
           - type: pushover
