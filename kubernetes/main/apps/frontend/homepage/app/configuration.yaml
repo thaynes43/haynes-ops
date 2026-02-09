@@ -40,7 +40,7 @@ data:
         icon: mdi-robot
       Proxmox:
         style: row
-        columns: 2
+        columns: 5
         icon: si-proxmox
       Calendar:
         style: column
@@ -178,71 +178,92 @@ data:
               password: "{{HOMEPAGE_VAR_UNIFI_PASSWORD}}"
     - Proxmox:
         - haynesintelligence:
+            href: http://haynesintelligence.haynesnetwork:61208
             icon: proxmox
-            widgets:
-              - type: glances
-                url: http://haynesintelligence.haynesnetwork:61208
-                version: 4
-                metric: info
-                chart: false
-              - type: glances
-                url: http://haynesintelligence.haynesnetwork:61208
-                version: 4
-                # CPU temp requires a specific sensor id, not "sensors"
-                # If this doesn't render, open Glances UI and use the exact sensor name shown there.
-                # Common examples: "Package id 0", "Tctl", "Core 0"
-                # HaynesIntelligence exposes sensors like "Composite", "MAC Temperature", etc.
-                metric: sensor:Composite
-                chart: false
+            widget:
+              type: glances
+              url: http://haynesintelligence.haynesnetwork:61208
+              version: 4
+              metric: info
+              chart: false
+        - haynesintelligence Temp:
+            href: http://haynesintelligence.haynesnetwork:61208
+            icon: mdi-thermometer
+            widget:
+              type: glances
+              url: http://haynesintelligence.haynesnetwork:61208
+              version: 4
+              metric: sensor:Composite
+              chart: false
         - twin-top:
+            href: http://twin-top.haynesnetwork:61208
             icon: proxmox
-            widgets:
-              - type: glances
-                url: http://twin-top.haynesnetwork:61208
-                version: 4
-                metric: info
-                chart: false
-              - type: glances
-                url: http://twin-top.haynesnetwork:61208
-                version: 4
-                metric: sensor:Package id 0
-                chart: false
+            widget:
+              type: glances
+              url: http://twin-top.haynesnetwork:61208
+              version: 4
+              metric: info
+              chart: false
+        - twin-top Temp:
+            href: http://twin-top.haynesnetwork:61208
+            icon: mdi-thermometer
+            widget:
+              type: glances
+              url: http://twin-top.haynesnetwork:61208
+              version: 4
+              metric: sensor:Package id 0
+              chart: false
         - twin-bottom:
+            href: http://twin-bottom.haynesnetwork:61208
             icon: proxmox
-            widgets:
-              - type: glances
-                url: http://twin-bottom.haynesnetwork:61208
-                version: 4
-                metric: info
-                chart: false
-              - type: glances
-                url: http://twin-bottom.haynesnetwork:61208
-                version: 4
-                metric: sensor:Package id 0
-                chart: false
+            widget:
+              type: glances
+              url: http://twin-bottom.haynesnetwork:61208
+              version: 4
+              metric: info
+              chart: false
+        - twin-bottom Temp:
+            href: http://twin-bottom.haynesnetwork:61208
+            icon: mdi-thermometer
+            widget:
+              type: glances
+              url: http://twin-bottom.haynesnetwork:61208
+              version: 4
+              metric: sensor:Package id 0
+              chart: false
         - pve-filet02:
+            href: http://pve-filet02.haynesnetwork:61208
             icon: proxmox
-            widgets:
-              - type: glances
-                url: http://pve-filet02.haynesnetwork:61208
-                version: 4
-                metric: info
-                chart: false
-              - type: glances
-                url: http://pve-filet02.haynesnetwork:61208
-                version: 4
-                metric: sensor:Package id 0
-                chart: false
+            widget:
+              type: glances
+              url: http://pve-filet02.haynesnetwork:61208
+              version: 4
+              metric: info
+              chart: false
+        - pve-filet02 Temp:
+            href: http://pve-filet02.haynesnetwork:61208
+            icon: mdi-thermometer
+            widget:
+              type: glances
+              url: http://pve-filet02.haynesnetwork:61208
+              version: 4
+              metric: sensor:Package id 0
+              chart: false
         - pve04:
+            href: http://pve04.haynesnetwork:61208
             icon: proxmox
-            widgets:
-              - type: glances
-                url: http://pve04.haynesnetwork:61208
-                version: 4
-                metric: info
-                chart: false
-              - type: glances
-                url: http://pve04.haynesnetwork:61208
-                version: 4
-                metric: sensor:Package id 0
-                chart: false
+            widget:
+              type: glances
+              url: http://pve04.haynesnetwork:61208
+              version: 4
+              metric: info
+              chart: false
+        - pve04 Temp:
+            href: http://pve04.haynesnetwork:61208
+            icon: mdi-thermometer
+            widget:
+              type: glances
+              url: http://pve04.haynesnetwork:61208
+              version: 4
+              metric: sensor:Package id 0
+              chart: false
