@@ -12,6 +12,8 @@ metadata:
     gethomepage.dev/name: Traefik (internal)
     gethomepage.dev/description: Ingress controller dashboard
     gethomepage.dev/icon: traefik
+    # Needed for Kubernetes status/metrics lookup
+    gethomepage.dev/app: traefik-internal
     gethomepage.dev/widget.type: traefik
     gethomepage.dev/widget.url: *url
     gethomepage.dev/widget.username: "{{HOMEPAGE_VAR_TRAEFIK_USERNAME}}"
