@@ -38,6 +38,26 @@ spec:
                 cpu: 10m
               limits:
                 memory: 64Mi
+          configmap-sidecar:
+            # Watches gatus.io/enabled ConfigMaps (our existing endpoint injection pattern)
+            # and writes them into /config so Gatus loads them automatically.
+            image:
+              repository: ghcr.io/kiwigrid/k8s-sidecar
+              tag: 2.5.0
+            env:
+              FOLDER: /config
+              LABEL: gatus.io/enabled
+              NAMESPACE: ALL
+              RESOURCE: configmap
+              UNIQUE_FILENAMES: "true"
+              METHOD: WATCH
+            restartPolicy: Always
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 128Mi
         containers:
           app:
             image:
@@ -129,6 +149,14 @@ spec:
                 - ""
               resources:
                 - services
+              verbs:
+                - get
+                - watch
+                - list
+            - apiGroups:
+                - ""
+              resources:
+                - configmaps
               verbs:
                 - get
                 - watch
