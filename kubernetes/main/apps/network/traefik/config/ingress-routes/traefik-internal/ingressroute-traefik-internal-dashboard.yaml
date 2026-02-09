@@ -14,8 +14,8 @@ metadata:
     gethomepage.dev/icon: traefik
     gethomepage.dev/widget.type: traefik
     gethomepage.dev/widget.url: *url
-    gethomepage.dev/widget.username: "{{HOMEPAGE_VAR_TRAEFIK_DASHBOARD_USERNAME}}"
-    gethomepage.dev/widget.password: "{{HOMEPAGE_VAR_TRAEFIK_DASHBOARD_PASSWORD}}"
+    gethomepage.dev/widget.username: "{{HOMEPAGE_VAR_TRAEFIK_USERNAME}}"
+    gethomepage.dev/widget.password: "{{HOMEPAGE_VAR_TRAEFIK_PASSWORD}}"
 spec:
   entryPoints:
     - websecure

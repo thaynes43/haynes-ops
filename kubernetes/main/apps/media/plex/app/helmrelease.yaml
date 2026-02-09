@@ -102,7 +102,8 @@ spec:
           gethomepage.dev/siteMonitor: "http://plex.media.svc.cluster.local:32400/identity"
           gethomepage.dev/widget.type: plex
           gethomepage.dev/widget.url: "http://plex.media.svc.cluster.local:32400"
-          gethomepage.dev/widget.key: "{{HOMEPAGE_VAR_HAYNESKUBE_PLEX_API_KEY}}"
+          # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it
+          gethomepage.dev/widget.key: '{{ "{{HOMEPAGE_VAR_HAYNESKUBE_PLEX_API_KEY}}" }}'
         className: traefik-external
         hosts:
           - host: "k8plex.haynesnetwork.com"
