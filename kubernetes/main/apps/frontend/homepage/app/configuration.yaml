@@ -79,13 +79,6 @@ data:
     - greeting:
         text_size: xl
         text: "Welcome to HaynesOps."
-    - glances:
-        url: http://pve-filet02.haynesnetwork:61209
-        cpu: true
-        mem: true
-        uptime: true
-        expanded: true
-        label: pve-filet02
     - kubernetes:
         cluster:
             cpu: true
@@ -179,3 +172,10 @@ data:
               url: https://192.168.0.1/
               username: "{{HOMEPAGE_VAR_UNIFI_USER}}"
               password: "{{HOMEPAGE_VAR_UNIFI_PASSWORD}}"
+        - Proxmox pve-filet02:
+            icon: proxmox.svg
+            widget:
+              type: glances
+              url: http://pve-filet02.haynesnetwork:61209
+              version: 4
+              metric: info
