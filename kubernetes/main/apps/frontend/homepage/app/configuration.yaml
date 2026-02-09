@@ -187,7 +187,11 @@ data:
               - type: glances
                 url: http://haynesintelligence.haynesnetwork:61208
                 version: 4
-                metric: sensors
+                # CPU temp requires a specific sensor id, not "sensors"
+                # If this doesn't render, open Glances UI and use the exact sensor name shown there.
+                # Common examples: "Package id 0", "Tctl", "Core 0"
+                metric: sensor:Package id 0
+                chart: false
         - twin-top:
             icon: proxmox
             widgets:
@@ -198,7 +202,8 @@ data:
               - type: glances
                 url: http://twin-top.haynesnetwork:61208
                 version: 4
-                metric: sensors
+                metric: sensor:Package id 0
+                chart: false
         - twin-bottom:
             icon: proxmox
             widgets:
@@ -209,7 +214,8 @@ data:
               - type: glances
                 url: http://twin-bottom.haynesnetwork:61208
                 version: 4
-                metric: sensors
+                metric: sensor:Package id 0
+                chart: false
         - pve-filet02:
             icon: proxmox
             widgets:
@@ -220,7 +226,8 @@ data:
               - type: glances
                 url: http://pve-filet02.haynesnetwork:61208
                 version: 4
-                metric: sensors
+                metric: sensor:Package id 0
+                chart: false
         - pve04:
             icon: proxmox
             widgets:
@@ -231,4 +238,5 @@ data:
               - type: glances
                 url: http://pve04.haynesnetwork:61208
                 version: 4
-                metric: sensors
+                metric: sensor:Package id 0
+                chart: false
