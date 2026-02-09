@@ -183,12 +183,7 @@ data:
               - type: glances
                 url: http://haynesintelligence.haynesnetwork:61208
                 version: 4
-                metric: cpu
-                chart: false
-              - type: glances
-                url: http://haynesintelligence.haynesnetwork:61208
-                version: 4
-                metric: memory
+                metric: info
                 chart: false
               - type: glances
                 url: http://haynesintelligence.haynesnetwork:61208
@@ -205,12 +200,7 @@ data:
               - type: glances
                 url: http://twin-top.haynesnetwork:61208
                 version: 4
-                metric: cpu
-                chart: false
-              - type: glances
-                url: http://twin-top.haynesnetwork:61208
-                version: 4
-                metric: memory
+                metric: info
                 chart: false
               - type: glances
                 url: http://twin-top.haynesnetwork:61208
@@ -223,12 +213,7 @@ data:
               - type: glances
                 url: http://twin-bottom.haynesnetwork:61208
                 version: 4
-                metric: cpu
-                chart: false
-              - type: glances
-                url: http://twin-bottom.haynesnetwork:61208
-                version: 4
-                metric: memory
+                metric: info
                 chart: false
               - type: glances
                 url: http://twin-bottom.haynesnetwork:61208
@@ -241,12 +226,7 @@ data:
               - type: glances
                 url: http://pve-filet02.haynesnetwork:61208
                 version: 4
-                metric: cpu
-                chart: false
-              - type: glances
-                url: http://pve-filet02.haynesnetwork:61208
-                version: 4
-                metric: memory
+                metric: info
                 chart: false
               - type: glances
                 url: http://pve-filet02.haynesnetwork:61208
@@ -259,12 +239,7 @@ data:
               - type: glances
                 url: http://pve04.haynesnetwork:61208
                 version: 4
-                metric: cpu
-                chart: false
-              - type: glances
-                url: http://pve04.haynesnetwork:61208
-                version: 4
-                metric: memory
+                metric: info
                 chart: false
               - type: glances
                 url: http://pve04.haynesnetwork:61208
