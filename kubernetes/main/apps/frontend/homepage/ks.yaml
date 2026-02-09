@@ -5,8 +5,6 @@ kind: Kustomization
 metadata:
   name: &app homepage
   namespace: &namespace frontend
-  labels:
-    substitution.flux.home.arpa/disabled: "true"
 spec:
   targetNamespace: *namespace
   commonMetadata:

@@ -4,7 +4,7 @@ This doc explains how to reduce per-app boilerplate by applying **global default
 
 ### Why this is worth doing
 
-- You already apply shared SOPS + substitutions via patches in:
+- Historically, this repo applied shared SOPS + substitutions via patches in:
   - `kubernetes/main/flux/apps.yaml`
   - `kubernetes/edge/flux/apps.yaml`
 - The reference repo (`example-ops/onedr0p-home-ops`) takes this further by also injecting **HelmRelease remediation defaults** via patches in:
@@ -14,15 +14,10 @@ The outcome is fewer repeated fields across `ks.yaml` and `helmrelease.yaml`, an
 
 ## Current state (haynes-ops)
 
-Your root `cluster-apps` Kustomizations include patches that inject:
+`haynes-ops` is moving toward the reference repo’s “explicit per-app settings” model:
 
-- `spec.decryption` (SOPS age secret)
-- `spec.postBuild.substituteFrom` (cluster settings/secrets)
-
-Files:
-
-- `kubernetes/main/flux/apps.yaml`
-- `kubernetes/edge/flux/apps.yaml`
+- `cluster-apps` no longer injects `postBuild.substituteFrom` by default
+- SOPS decryption is configured explicitly on the few Flux `Kustomization` CRs that actually apply `*.sops.yaml`
 
 ## Reference pattern (example-ops/onedr0p-home-ops)
 
@@ -88,11 +83,11 @@ Once defaults are stable:
 
 ## Suggested implementation technique
 
-In `kubernetes/*/flux/apps.yaml` (root `cluster-apps` Kustomization), add a patch targeting child Kustomizations (similar to your existing SOPS/substitution patch), and inside it include a `spec.patches` entry targeting HelmReleases.
+In `kubernetes/*/flux/apps.yaml` (root `cluster-apps` Kustomization), add a patch targeting child Kustomizations, and inside it include a `spec.patches` entry targeting HelmReleases.
 
 Key safety tactics:
 
-- **Add opt-out label selectors** (default-on, but allow disabling for special cases).
+- Prefer **opt-in selectors** for higher-risk behavior changes (safer rollout), or opt-out selectors for low-risk defaults.
 - **Batch and reconcile**: add defaults, reconcile, and check readiness before continuing.
 
 ## Operational commands

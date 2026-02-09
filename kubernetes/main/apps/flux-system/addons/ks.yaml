@@ -12,6 +12,10 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: external-secrets-stores
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
   path: ./kubernetes/main/apps/flux-system/addons/app
   prune: true
   sourceRef:

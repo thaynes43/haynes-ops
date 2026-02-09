@@ -6,19 +6,9 @@ This keeps us aligned with the “app Kustomizations live in the app namespace�
 
 ### Why this is necessary in this repo
 
-`kubernetes/main/flux/apps.yaml` (and `kubernetes/edge/flux/apps.yaml`) injects SOPS decryption + substitutions into **all child Flux Kustomizations** unless they opt out:
+Historically, `kubernetes/*/flux/apps.yaml` injected SOPS decryption + `postBuild.substituteFrom` into **all child Flux Kustomizations** by default. That caused breakage when Flux `Kustomization` CRs lived outside `flux-system` (because `sops-age`, `cluster-settings`, etc. would be expected in that app namespace).
 
-- Patch target selector:
-  - `labelSelector: substitution.flux.home.arpa/disabled notin (true)`
-
-That injected config expects these namespaced objects to exist in the **same namespace as the Flux `Kustomization` CR**:
-
-- `Secret/sops-age`
-- `ConfigMap/cluster-settings`
-- `Secret/cluster-secrets`
-- (optionally) user settings/secrets
-
-If you place Flux `Kustomization` CRs into an app namespace (e.g., `frontend`), the defaults will try to use `frontend/sops-age`, `frontend/cluster-settings`, etc.
+As part of aligning with the reference repo’s “explicit per-app settings” model, `haynes-ops` has moved away from default-on injection.
 
 ### Current coupling we want to remove
 
@@ -40,22 +30,19 @@ We want to stop doing that so SOPS stays confined to:
 
 - Stop including `kubernetes/shared/components/common/sops` from namespace-level kustomizations (like `kubernetes/main/apps/frontend/kustomization.yaml`).
 
-### Step 2: Opt out app Kustomizations from global SOPS/substitution defaults
+### Step 2: Make SOPS decryption explicit only where needed
 
-For any Flux `Kustomization` CR that lives outside `flux-system`, add:
+If a Flux `Kustomization` applies any `*.sops.yaml` files, add decryption to that `Kustomization` CR:
 
 ```yaml
-metadata:
-  labels:
-    substitution.flux.home.arpa/disabled: "true"
+spec:
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
 ```
 
-This prevents Flux from injecting:
-
-- `spec.decryption.secretRef: sops-age`
-- `spec.postBuild.substituteFrom: cluster-settings/cluster-secrets`
-
-So the Kustomization no longer depends on SOPS assets in that namespace.
+If it does not apply SOPS files, do not add decryption.
 
 ### Step 3: Keep `sourceRef` explicit
 
@@ -73,11 +60,11 @@ spec:
 
 ## Example: `frontend/homepage`
 
-`kubernetes/main/apps/frontend/homepage/ks.yaml` is a Flux `Kustomization` in the `frontend` namespace. To keep it from requiring `frontend/sops-age` and `frontend/cluster-secrets`, it should be labeled with the opt-out label above.
+`kubernetes/main/apps/frontend/homepage/ks.yaml` is a Flux `Kustomization` in the `frontend` namespace. It does not apply SOPS files, so it does not need `spec.decryption`. It does need an explicit `sourceRef.namespace: flux-system`.
 
 ## Definition of done (for a namespace)
 
 - Namespace kustomization no longer includes `shared/components/common/sops`
-- Any Flux `Kustomization` CRs in that namespace that do not need SOPS/substituteFrom have `substitution.flux.home.arpa/disabled: "true"`
-- `cluster-apps` still uses SOPS/substituteFrom from `flux-system` via `kubernetes/*/flux/vars/`
+- Flux `Kustomization` CRs in that namespace only include `spec.decryption` when they actually apply `*.sops.yaml`
+- No dependency on stamping SOPS assets into app namespaces
 
