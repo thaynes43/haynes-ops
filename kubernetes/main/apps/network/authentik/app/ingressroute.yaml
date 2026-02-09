@@ -5,6 +5,18 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/target: haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
+    # Homepage
+    gethomepage.dev/href: &url "https://authentik.haynesnetwork.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Network
+    gethomepage.dev/name: Authentik
+    gethomepage.dev/description: SSO and identity provider
+    gethomepage.dev/icon: authentik
+    gethomepage.dev/siteMonitor: *url
+    gethomepage.dev/widget.type: authentik
+    gethomepage.dev/widget.url: *url
+    gethomepage.dev/widget.key: "{{HOMEPAGE_VAR_AUTHENTIK_API_TOKEN}}"
+    gethomepage.dev/widget.version: "2"
 spec:
   entryPoints:
     - websecure

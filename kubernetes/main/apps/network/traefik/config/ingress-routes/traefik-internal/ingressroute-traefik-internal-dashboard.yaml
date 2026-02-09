@@ -5,6 +5,17 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
+    # Homepage
+    gethomepage.dev/href: &url "https://traefik-internal.haynesops.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Network
+    gethomepage.dev/name: Traefik (internal)
+    gethomepage.dev/description: Ingress controller dashboard
+    gethomepage.dev/icon: traefik
+    gethomepage.dev/widget.type: traefik
+    gethomepage.dev/widget.url: *url
+    gethomepage.dev/widget.username: "{{HOMEPAGE_VAR_TRAEFIK_DASHBOARD_USERNAME}}"
+    gethomepage.dev/widget.password: "{{HOMEPAGE_VAR_TRAEFIK_DASHBOARD_PASSWORD}}"
 spec:
   entryPoints:
     - websecure

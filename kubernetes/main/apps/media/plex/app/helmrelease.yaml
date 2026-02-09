@@ -89,6 +89,20 @@ spec:
       app:
         annotations:
           external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+          # Homepage
+          gethomepage.dev/href: &url "https://k8plex.haynesnetwork.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Media
+          gethomepage.dev/name: Plex
+          gethomepage.dev/description: Media server
+          gethomepage.dev/icon: plex
+          # Needed for Kubernetes status/metrics lookup
+          gethomepage.dev/app: plex
+          # Use Service directly for accurate monitoring
+          gethomepage.dev/siteMonitor: "http://plex.media.svc.cluster.local:32400/identity"
+          gethomepage.dev/widget.type: plex
+          gethomepage.dev/widget.url: "http://plex.media.svc.cluster.local:32400"
+          gethomepage.dev/widget.key: "{{HOMEPAGE_VAR_HAYNESKUBE_PLEX_API_KEY}}"
         className: traefik-external
         hosts:
           - host: "k8plex.haynesnetwork.com"
