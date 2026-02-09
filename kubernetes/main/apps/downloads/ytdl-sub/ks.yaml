@@ -4,7 +4,9 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app ytdl-sub-youtube
-  namespace: flux-system
+  namespace: downloads
+  labels:
+    substitution.flux.home.arpa/disabled: "true"
 spec:
   targetNamespace: downloads
   commonMetadata:
@@ -15,6 +17,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
+    namespace: flux-system
   wait: true
   interval: 30m
   timeout: 5m
@@ -24,7 +27,9 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app ytdl-sub-peloton
-  namespace: flux-system
+  namespace: downloads
+  labels:
+    substitution.flux.home.arpa/disabled: "true"
 spec:
   targetNamespace: downloads
   commonMetadata:
@@ -32,11 +37,13 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: external-secrets-stores
+      namespace: flux-system
   path: ./kubernetes/main/apps/downloads/ytdl-sub/peloton
   prune: true
   sourceRef:
     kind: GitRepository
     name: haynes-ops
+    namespace: flux-system
   wait: true
   interval: 30m
   timeout: 5m
@@ -46,7 +53,9 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app ytdl-sub-peloton-config-manager
-  namespace: flux-system
+  namespace: downloads
+  labels:
+    substitution.flux.home.arpa/disabled: "true"
 spec:
   targetNamespace: downloads
   commonMetadata:
@@ -59,6 +68,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
+    namespace: flux-system
   wait: true
   interval: 30m
   timeout: 5m
