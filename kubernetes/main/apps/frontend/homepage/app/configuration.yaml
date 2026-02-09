@@ -76,10 +76,6 @@ data:
   widgets.yaml: |
     - logo:
         icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/svg/kubernetes.svg
-    - search:
-        provider: [google]
-        focus: false
-        target: _blank
     - greeting:
         text_size: xl
         text: "Welcome to HaynesOps."
@@ -109,7 +105,8 @@ data:
               refreshInterval: 30000
               metrics:
                 - label: Available
-                  query: ceph_cluster_total_avail_bytes
+                  # Derive available bytes from total/used (since those exist for the Used% metric)
+                  query: ceph_cluster_total_bytes - ceph_cluster_total_used_bytes
                   format:
                     type: bytes
                 - label: Used
@@ -148,7 +145,7 @@ data:
         - Kubernetes Health:
             href: https://prometheus.haynesops.com
             description: Nodes + pods + alerts
-            icon: mdi:kubernetes
+            icon: mdi-kubernetes
             widget:
               type: prometheusmetric
               url: http://prometheus-operated.observability.svc.cluster.local:9090
