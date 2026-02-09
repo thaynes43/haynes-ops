@@ -6,7 +6,6 @@ namespace: frontend
 components:
   - ../../../shared/components/common/repos/app-template
   - ../../../shared/components/common/alerts/alertmanager
-  - ../../../shared/components/common/sops
 resources:
   # Pre Flux-Kustomizations
   - namespace.yaml
