@@ -127,5 +127,6 @@ flux reconcile helmrelease <name> -n <namespace> --with-source
 - `helmrelease-chartref-migration.md`: migrate `HelmRelease` to `chartRef` safely (batching + recovery)
 - `flux-global-patches.md`: staged approach to onedr0p-style global defaults
 - `flux-operator-migration.md`: edge-first migration plan to Flux Operator + Flux Instance
+- `gatus-deployment-alignment.md`: align Gatus deployment + substitution behavior to the reference repo
 - `repository-source-strategy.md`: decide shared vs per-app OCI sources, and how that affects migrations
 - `todo-refactor.md`: backlog (includes Gateway API migration ideas; treat as high risk)

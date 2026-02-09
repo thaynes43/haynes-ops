@@ -1,27 +1,17 @@
 ---
-# Note: Gatus vars should be escaped with $${VAR_NAME} to avoid interpolation by Flux
+# Note: `${VAR_NAME}` is intended for Gatus runtime env var expansion.
+# Flux substitution is disabled for the generated ConfigMap (see app/kustomization.yaml).
 web:
-  port: $${WEB_PORT}
+  port: ${GATUS_WEB_PORT}
 storage:
-  type: postgres
-  path: postgres://$${INIT_POSTGRES_USER}:$${INIT_POSTGRES_PASS}@$${INIT_POSTGRES_HOST}:5432/$${INIT_POSTGRES_DBNAME}?sslmode=disable
+  type: sqlite
   caching: true
+  path: ${GATUS_CONFIG_PATH}/gatus.db
 metrics: true
 debug: false
 ui:
   title: Status | Gatus
   header: Status
-alerting:
-  pushover:
-    title: Gatus
-    application-token: $${PUSHOVER_TOKEN}
-    user-key: $${PUSHOVER_USER_KEY}
-    priority: 1
-    default-alert:
-      description: health-check failed
-      send-on-resolved: true
-      failure-threshold: 3
-      success-threshold: 3
 connectivity:
   checker:
     target: 1.1.1.1:53
@@ -29,7 +19,7 @@ connectivity:
 endpoints:
   - name: status
     group: internal
-    url: $${GATUS_DNS_SERVER}
+    url: ${GATUS_DNS_SERVER}
     interval: 1m
     ui:
       hide-hostname: true
@@ -43,7 +33,7 @@ endpoints:
       - type: pushover
   - name: flux-webhook
     group: internal
-    url: $${GATUS_DNS_SERVER}
+    url: ${GATUS_DNS_SERVER}
     interval: 1m
     ui:
       hide-hostname: true
