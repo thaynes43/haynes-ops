@@ -4,7 +4,9 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app ollama-assist02
-  namespace: flux-system
+  namespace: ai
+  labels:
+    substitution.flux.home.arpa/disabled: "true"
 spec:
   targetNamespace: ai
   commonMetadata:
@@ -12,12 +14,15 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: nvidia-device-plugin
+      namespace: flux-system
     - name: node-feature-discovery
+      namespace: flux-system
   path: ./kubernetes/main/apps/ai/ollama/assist02/app
   prune: true
   sourceRef:
     kind: GitRepository
     name: haynes-ops
+    namespace: flux-system
   wait: true
   interval: 30m
   timeout: 5m
