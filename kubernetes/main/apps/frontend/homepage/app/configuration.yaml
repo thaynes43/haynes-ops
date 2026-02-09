@@ -92,8 +92,77 @@ data:
         nodes:
             cpu: true
             memory: true
-            show: false
+            show: true
             showLabel: true
   bookmarks.yaml: ""
 
-  services.yaml: ""
+  services.yaml: |
+    - Infrastructure:
+        - Ceph Storage:
+            href: https://rook.haynesops.com
+            description: Available/used storage from Ceph metrics
+            icon: si-ceph
+            widget:
+              type: prometheusmetric
+              # Use in-cluster Prometheus for reliable access
+              url: http://prometheus-operated.observability.svc.cluster.local:9090
+              refreshInterval: 30000
+              metrics:
+                - label: Available
+                  query: ceph_cluster_total_avail_bytes
+                  format:
+                    type: bytes
+                - label: Used
+                  query: 100 * (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes)
+                  format:
+                    type: number
+                    suffix: "%"
+                    options:
+                      maximumFractionDigits: 1
+        - Ceph Health:
+            href: https://rook.haynesops.com
+            description: Health + OSDs + PGs
+            icon: si-ceph
+            widget:
+              type: prometheusmetric
+              url: http://prometheus-operated.observability.svc.cluster.local:9090
+              refreshInterval: 30000
+              metrics:
+                # 0=HEALTH_OK, 1=HEALTH_WARN, 2=HEALTH_ERR (commonly exported by Ceph mgr)
+                - label: Health
+                  query: ceph_health_status
+                  format:
+                    type: number
+                - label: OSDs Up
+                  query: sum(ceph_osd_up)
+                  format:
+                    type: number
+                - label: OSDs In
+                  query: sum(ceph_osd_in)
+                  format:
+                    type: number
+                - label: PGs
+                  query: ceph_pg_total
+                  format:
+                    type: number
+        - Kubernetes Health:
+            href: https://prometheus.haynesops.com
+            description: Nodes + pods + alerts
+            icon: mdi:kubernetes
+            widget:
+              type: prometheusmetric
+              url: http://prometheus-operated.observability.svc.cluster.local:9090
+              refreshInterval: 30000
+              metrics:
+                - label: Nodes Ready
+                  query: count(count by (node) (kube_node_status_condition{condition="Ready",status="true"}))
+                  format:
+                    type: number
+                - label: Pods Running
+                  query: sum(kube_pod_status_phase{phase="Running"})
+                  format:
+                    type: number
+                - label: Alerts Firing
+                  query: count(ALERTS{alertstate="firing"})
+                  format:
+                    type: number
