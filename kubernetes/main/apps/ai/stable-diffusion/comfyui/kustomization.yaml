@@ -7,7 +7,9 @@ resources:
   - ./pvc.yaml
   - ./ingressroute.yaml
   - ./externalsecret.yaml
-  - ../../../../../shared/templates/gatus/gaurded
+components:
+  - ../../../../../shared/components/common/repos/app-template
+  - ../../../../../shared/components/common/gatus/guarded
 configMapGenerator:
   - name: comfyui-configmap
     files:
