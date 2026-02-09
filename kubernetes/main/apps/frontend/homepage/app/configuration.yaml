@@ -176,5 +176,7 @@ data:
             icon: proxmox
             widget:
               type: glances
-              url: http://pve-filet02.haynesnetwork:61209
+              # Glances widget expects host + port (no scheme)
+              url: pve-filet02.haynesnetwork
+              port: 61209
               metric: info
