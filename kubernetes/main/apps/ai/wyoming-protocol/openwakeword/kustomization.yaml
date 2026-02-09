@@ -7,6 +7,9 @@ resources:
   - ./helmrelease.yaml
   # No ingress / DNS entry for this internal-only service
 
+components:
+  - ../../../../../shared/components/common/repos/app-template
+
 configMapGenerator:
   - name: openwakeword
     files:

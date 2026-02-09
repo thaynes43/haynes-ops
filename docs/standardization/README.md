@@ -39,7 +39,10 @@ We’re aiming for:
 
 Important nuance (about the reference patterns):
 
-- `example-ops/onedr0p-home-ops` uses **per-app `OCIRepository`** objects and strong global patching defaults.\n+- `haynes-ops` currently uses **shared repositories** under `kubernetes/shared/repositories/`.\n+\n+Neither is “the one true way” for all home-ops repos; we’re choosing what fits this repo best while reducing operational risk.
+- `example-ops/onedr0p-home-ops` uses **per-app `OCIRepository`** objects and strong global patching defaults.
+- `haynes-ops` currently uses **shared repositories** under `kubernetes/shared/repositories/`.
+
+Neither is “the one true way” for all home-ops repos; we’re choosing what fits this repo best while reducing operational risk.
 
 ## Work phases (ordered)
 
@@ -119,6 +122,14 @@ flux resume helmrelease <name> -n <namespace>
 flux reconcile helmrelease <name> -n <namespace> --with-source
 ```
 
+### Incident note: `comfyui` rollback during `app-template` v3 → v4
+
+During the `chartRef` migration / `app-template` v3→v4 upgrade, `HelmRelease/ai/comfyui` failed and rolled back even though the Flux `Kustomization` looked “clean” at a glance.
+
+- **Why it failed**: Kubernetes forbids changes to most `StatefulSet.spec` fields. The chart upgrade attempted a forbidden `StatefulSet` change, so Helm failed the upgrade and **rolled back** to `app-template@3.7.3`.
+- **Why KS didn’t obviously show it**: `comfyui` is applied with `wait: false`, so the KS primarily reflects “applied manifests”, not “Helm upgrade succeeded”. The HelmRelease status is the source of truth for chart upgrade outcomes.
+- **Remediation pattern**: suspend HR → delete the blocking workload (StatefulSet for `comfyui`, Deployment for `ollama-*`) → resume + reconcile HR, then reconcile KS to refresh its health.
+
 ## Breakout documents (index)
 
 - `edge-stabilization.md`: get `edge` to a trustworthy baseline
@@ -127,6 +138,7 @@ flux reconcile helmrelease <name> -n <namespace> --with-source
 - `helmrelease-chartref-migration.md`: migrate `HelmRelease` to `chartRef` safely (batching + recovery)
 - `flux-global-patches.md`: staged approach to onedr0p-style global defaults
 - `flux-operator-migration.md`: edge-first migration plan to Flux Operator + Flux Instance
+- `health-signals-with-wait-false.md`: how the reference repo gets strong health signals without relying on KS `wait: true`
 - `gatus-deployment-alignment.md`: align Gatus deployment + substitution behavior to the reference repo
 - `repository-source-strategy.md`: decide shared vs per-app OCI sources, and how that affects migrations
 - `todo-refactor.md`: backlog (includes Gateway API migration ideas; treat as high risk)

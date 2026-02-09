@@ -1,0 +1,74 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/external-secrets.io/externalsecret_v1beta1.json
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: "${EXTRAVOL}-volsync-aws"
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: onepassword-connect
+  target:
+    name: "${EXTRAVOL}-volsync-aws-secret"
+    template:
+      engineVersion: v2
+      data:
+        RESTIC_REPOSITORY: "{{ .REPOSITORY_TEMPLATE }}/${EXTRAVOL}"
+        RESTIC_PASSWORD: "{{ .RESTIC_PASSWORD }}"
+        AWS_ACCESS_KEY_ID: "{{ .AWS_ACCESS_KEY_ID }}"
+        AWS_SECRET_ACCESS_KEY: "{{ .AWS_SECRET_ACCESS_KEY }}"
+  dataFrom:
+    - extract:
+        key: aws
+    - extract:
+        key: volsync-hayesops
+---
+# yaml-language-server: $schema=https://gist.githubusercontent.com/thaynes43/21ef53eace2d3c6c8f00c8ee0fe4ec24/raw/b0fd8341723eee62b8a47127d40cb75f00056b67/empty-json-schema.json
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: "${EXTRAVOL}-aws"
+spec:
+  sourcePVC: "${EXTRAVOL}"
+  trigger:
+    schedule: "0 0 * * *"
+  restic:
+    copyMethod: "${EXTRAVOL_COPYMETHOD:-Snapshot}"
+    pruneIntervalDays: 7
+    repository: "${EXTRAVOL}-volsync-aws-secret"
+    volumeSnapshotClassName: "${VOLSYNC_SNAPSHOTCLASS:-csi-ceph-blockpool}"
+    cacheStorageClassName: "${VOLSYNC_CACHE_SNAPSHOTCLASS:-openebs-hostpath}"
+    cacheAccessModes: ["${VOLSYNC_CACHE_ACCESSMODES:-ReadWriteOnce}"]
+    cacheCapacity: "${EXTRAVOL_CACHE_CAPACITY:-4Gi}"
+    storageClassName: "${EXTRAVOL_STORAGECLASS:-ceph-block}"
+    accessModes: ["${EXTRAVOL_ACCESSMODES:-ReadWriteOnce}"]
+    moverSecurityContext:
+      runAsUser: ${VOLSYNC_PUID:-568}
+      runAsGroup: ${VOLSYNC_PGID:-568}
+      fsGroup: ${VOLSYNC_PGID:-568}
+    retain:
+      daily: 10  # Keep most recent from each day for 10 days
+      within: 3d # And keep all that were created within 3 days
+---
+# yaml-language-server: $schema=https://gist.githubusercontent.com/thaynes43/21ef53eace2d3c6c8f00c8ee0fe4ec24/raw/b0fd8341723eee62b8a47127d40cb75f00056b67/empty-json-schema.json
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: "${EXTRAVOL}-dst"
+spec:
+  trigger:
+    manual: restore-once
+  restic:
+    repository: "${EXTRAVOL}-volsync-aws-secret"
+    copyMethod: Snapshot # must be Snapshot
+    volumeSnapshotClassName: "${EXTRAVOL_SNAPSHOTCLASS:-csi-ceph-blockpool}"
+    cacheStorageClassName: "${VOLSYNC_CACHE_SNAPSHOTCLASS:-openebs-hostpath}"
+    cacheAccessModes: ["${VOLSYNC_CACHE_ACCESSMODES:-ReadWriteOnce}"]
+    cacheCapacity: "${EXTRAVOL_CACHE_CAPACITY:-8Gi}"
+    storageClassName: "${EXTRAVOL_STORAGECLASS:-ceph-block}"
+    accessModes: ["${EXTRAVOL_ACCESSMODES:-ReadWriteOnce}"]
+    capacity: "${EXTRAVOL_CAPACITY}"
+    # moverSecurityContext:
+    #   runAsUser: 568
+    #   runAsGroup: 568
+    #   fsGroup: 568

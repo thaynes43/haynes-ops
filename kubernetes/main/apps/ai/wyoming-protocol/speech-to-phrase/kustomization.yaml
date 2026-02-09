@@ -6,5 +6,7 @@ resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml
   # No ingress / DNS entry for this internal-only service
-  - ../../../../../shared/templates/volsync/app-pvc
-  - ../../../../../shared/templates/volsync/extra-pvc
+components:
+  - ../../../../../shared/components/common/repos/app-template
+  - ../../../../../shared/components/volsync/aws
+  - ../../../../../shared/components/volsync/aws-extra
