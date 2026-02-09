@@ -176,10 +176,10 @@ data:
             icon: proxmox
             widgets:
               - type: glances
-                url: http://pve-filet02.haynesnetwork:61208
+                url: http://pve-filet02.haynesnetwork:61209
                 version: 4
                 metric: info
               - type: glances
-                url: http://pve-filet02.haynesnetwork:61208
+                url: http://pve-filet02.haynesnetwork:61209
                 version: 4
                 metric: sensors
