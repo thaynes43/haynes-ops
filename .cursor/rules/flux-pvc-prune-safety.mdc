@@ -1,0 +1,30 @@
+---
+description: Warn about Flux Kustomization inventory pruning (PVC deletion risk) during namespace moves/refactors
+alwaysApply: true
+---
+
+# Flux inventory pruning & PVC deletion risk
+
+When changing Flux `Kustomization` objects or their scope, ALWAYS warn the user about **inventory-based pruning** and **PVC deletion risk**.
+
+## Must-warn scenarios (common Flux quirks)
+
+- Moving a `Kustomization` to another namespace (namespace is immutable) is **delete + create**; the old object may prune its inventory.
+- Renaming a `Kustomization` (new name means new inventory) while `spec.prune: true` can delete objects no longer rendered by the new object.
+- Changing `spec.path`, `spec.targetNamespace`, or removing resources/components can cause Flux to prune previously-applied objects.
+
+## Required mitigations to mention
+
+- For PVCs that must never be auto-deleted, add:
+  - `metadata.annotations.kustomize.toolkit.fluxcd.io/prune: disabled`
+- Consider a safer cutover:
+  - temporarily set `spec.prune: false` on the old `Kustomization` and reconcile before deleting/moving it
+- For Helm-owned resources, note Helm’s keep mechanism:
+  - `metadata.annotations.helm.sh/resource-policy: keep`
+
+## Minimal checklist (say this before proceeding)
+
+- Identify **PVCs/stateful resources** in the Kustomization inventory.
+- Decide which ones must be **sticky** (add prune-disabled annotation).
+- Call out the concrete failure mode: pods will go `Pending` with `persistentvolumeclaim "<name>" not found`.
+
