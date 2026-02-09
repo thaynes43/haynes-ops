@@ -11,6 +11,7 @@ spec:
   dependsOn:
     - name: cilium
     - name: certificates
+      namespace: cert-manager
     - name: reflector
   path: ./kubernetes/main/apps/network/traefik/traefik-external/app
   prune: false

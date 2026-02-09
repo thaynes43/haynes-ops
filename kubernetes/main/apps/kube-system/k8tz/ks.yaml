@@ -12,6 +12,7 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: certificates
+      namespace: cert-manager
   prune: true
   sourceRef:
     kind: GitRepository

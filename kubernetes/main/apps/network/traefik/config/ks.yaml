@@ -50,6 +50,7 @@ spec:
     - name: traefik-middleware
     - name: external-services
     - name: certificates
+      namespace: cert-manager
   path: ./kubernetes/main/apps/network/traefik/config/ingress-routes
   prune: true
   sourceRef:

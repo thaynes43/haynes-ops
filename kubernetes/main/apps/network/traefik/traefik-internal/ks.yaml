@@ -11,6 +11,7 @@ spec:
   dependsOn:
     - name: cilium
     - name: certificates
+      namespace: cert-manager
     - name: reflector
     - name: traefik-external # TODO if we install CRDs independantly we don't need to wait for one to install them
   path: ./kubernetes/main/apps/network/traefik/traefik-internal/app

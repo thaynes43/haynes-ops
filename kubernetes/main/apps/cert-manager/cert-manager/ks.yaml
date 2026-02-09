@@ -4,43 +4,12 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app cert-manager
-  namespace: flux-system
-spec:
-  targetNamespace: cert-manager
-  commonMetadata:
-    labels:
-      app.kubernetes.io/name: *app
-  dependsOn:
-    - name: external-secrets-stores
-      namespace: flux-system
-  path: ./kubernetes/main/apps/cert-manager/cert-manager/app
-  # Migration safety: keep the old KS from pruning its inventory when we move
-  # the active Kustomization into the cert-manager namespace.
-  prune: false
-  sourceRef:
-    kind: GitRepository
-    name: haynes-ops
-    namespace: flux-system
-  suspend: true
-  wait: true
-  interval: 30m
-  timeout: 5m
----
-# Active Kustomization (moved into the target namespace).
-#
-# NOTE: namespace moves are delete+create, so we keep the old KS suspended with
-# prune disabled until we confirm this one is healthy.
-# Once confirmed, we can delete the suspended flux-system KS from Git.
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: cert-manager
   namespace: cert-manager
 spec:
   targetNamespace: cert-manager
   commonMetadata:
     labels:
-      app.kubernetes.io/name: cert-manager
+      app.kubernetes.io/name: *app
   dependsOn:
     - name: external-secrets-stores
       namespace: flux-system
@@ -59,41 +28,12 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app cert-manager-issuers
-  namespace: flux-system
-spec:
-  targetNamespace: cert-manager
-  commonMetadata:
-    labels:
-      app.kubernetes.io/name: *app
-  dependsOn:
-    - name: cert-manager
-      namespace: cert-manager
-    - name: external-secrets-stores
-      namespace: flux-system
-  # Migration safety: keep the old KS from pruning its inventory when we move
-  # the active Kustomization into the cert-manager namespace.
-  prune: false
-  path: ./kubernetes/main/apps/cert-manager/cert-manager/issuers
-  sourceRef:
-    kind: GitRepository
-    name: haynes-ops
-    namespace: flux-system
-  suspend: true
-  wait: true
-  interval: 30m
-  timeout: 5m
----
-# Active Kustomization (moved into the target namespace).
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: cert-manager-issuers
   namespace: cert-manager
 spec:
   targetNamespace: cert-manager
   commonMetadata:
     labels:
-      app.kubernetes.io/name: cert-manager-issuers
+      app.kubernetes.io/name: *app
   dependsOn:
     - name: cert-manager
       namespace: cert-manager
