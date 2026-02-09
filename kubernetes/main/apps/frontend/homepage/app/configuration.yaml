@@ -79,6 +79,13 @@ data:
     - greeting:
         text_size: xl
         text: "Welcome to HaynesOps."
+    - glances:
+        url: http://pve-filet02.haynesnetwork:61209
+        cpu: true
+        mem: true
+        uptime: true
+        expanded: true
+        label: pve-filet02
     - kubernetes:
         cluster:
             cpu: true
@@ -163,3 +170,12 @@ data:
                   query: count(ALERTS{alertstate="firing"})
                   format:
                     type: number
+        - UniFi Controller:
+            href: https://unifi.ui.com/
+            description: Network controller status
+            icon: unifi
+            widget:
+              type: unifi
+              url: https://192.168.0.1/
+              username: "{{HOMEPAGE_VAR_UNIFI_USER}}"
+              password: "{{HOMEPAGE_VAR_UNIFI_PASSWORD}}"
