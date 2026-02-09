@@ -10,7 +10,7 @@ data:
     endpoints:
       - name: traefik-internal-dashboard
         group: internal
-        url: "${GATUS_DNS_SERVER:-10.43.0.10}"
+        url: "${GATUS_DNS_SERVER}"
         interval: 1m
         ui:
           hide-hostname: true
