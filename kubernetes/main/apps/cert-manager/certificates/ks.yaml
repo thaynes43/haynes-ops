@@ -1,34 +1,5 @@
 ---
-# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: certificates
-  namespace: flux-system
-spec:
-  targetNamespace: cert-manager
-  dependsOn:
-    - name: cert-manager
-      namespace: cert-manager
-    - name: cert-manager-issuers
-      namespace: cert-manager
-    - name: external-secrets-stores
-      namespace: flux-system
-  path: ./kubernetes/main/apps/cert-manager/certificates/app
-  # Migration safety: keep the old KS from pruning its inventory when we move
-  # the active Kustomization into the cert-manager namespace.
-  prune: false
-  sourceRef:
-    kind: GitRepository
-    name: haynes-ops
-    namespace: flux-system
-  suspend: true
-  wait: false
-  interval: 15m
-  retryInterval: 1m  
-  timeout: 2m
----
-# Active Kustomization (moved into the target namespace).
+# Flux Kustomization (in target namespace).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
