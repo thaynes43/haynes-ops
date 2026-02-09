@@ -173,9 +173,8 @@ data:
               username: "{{HOMEPAGE_VAR_UNIFI_USER}}"
               password: "{{HOMEPAGE_VAR_UNIFI_PASSWORD}}"
         - Proxmox pve-filet02:
-            icon: proxmox.svg
+            icon: proxmox
             widget:
               type: glances
               url: http://pve-filet02.haynesnetwork:61209
-              version: 4
               metric: info
