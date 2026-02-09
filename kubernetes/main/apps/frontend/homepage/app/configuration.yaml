@@ -174,9 +174,12 @@ data:
               password: "{{HOMEPAGE_VAR_UNIFI_PASSWORD}}"
         - Proxmox pve-filet02:
             icon: proxmox
-            widget:
-              type: glances
-              # Glances widget expects host + port (no scheme)
-              url: pve-filet02.haynesnetwork
-              port: 61209
-              metric: info
+            widgets:
+              - type: glances
+                url: http://pve-filet02.haynesnetwork:61208
+                version: 4
+                metric: info
+              - type: glances
+                url: http://pve-filet02.haynesnetwork:61208
+                version: 4
+                metric: sensors
