@@ -21,37 +21,7 @@ spec:
     namespace: flux-system
   path: ./kubernetes/main/apps/external-secrets/external-secrets/app
 ---
-# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: &app external-secrets-stores
-  namespace: flux-system
-spec:
-  targetNamespace: external-secrets
-  commonMetadata:
-    labels:
-      app.kubernetes.io/name: *app
-  dependsOn:
-    - name: external-secrets
-      namespace: external-secrets
-    - name: onepassword-connect
-      namespace: flux-system
-  interval: 15m
-  retryInterval: 1m
-  timeout: 2m
-  # Migration safety: keep the old KS from pruning its inventory when we move
-  # the active Kustomization into the external-secrets namespace.
-  prune: false
-  wait: true
-  sourceRef:
-    kind: GitRepository
-    name: haynes-ops
-    namespace: flux-system
-  path: ./kubernetes/main/apps/external-secrets/external-secrets/stores
-  suspend: true
----
-# Active Kustomization (moved into the target namespace).
+# Flux Kustomization (in target namespace).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
