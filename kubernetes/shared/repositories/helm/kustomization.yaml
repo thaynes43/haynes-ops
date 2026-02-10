@@ -9,8 +9,6 @@ resources:
   - ./postfinance.yaml
   - ./spegel.yaml
   - ./stakater.yaml
-  - ./piraeus.yaml
-  - ./backube.yaml
   - ./metallb.yaml
   - ./kubernetes-sigs-descheduler.yaml
   - ./whereabouts.yaml
