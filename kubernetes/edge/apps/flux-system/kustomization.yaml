@@ -5,5 +5,5 @@ kind: Kustomization
 resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
-    # Flux-Kustomizations
-  #- ./addons/ks.yaml
+  # Flux-Kustomizations
+  #- ./addons/ks.yaml     # TODO won't work for edge cluster
