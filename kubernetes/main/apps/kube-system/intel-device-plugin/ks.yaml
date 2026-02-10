@@ -4,7 +4,7 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app intel-device-plugin
-  namespace: flux-system
+  namespace: kube-system
 spec:
   targetNamespace: kube-system
   commonMetadata:
@@ -19,13 +19,16 @@ spec:
   wait: false
   interval: 30m
   timeout: 5m
+  dependsOn:
+    - name: node-feature-discovery
+      namespace: kube-system
 ---
 # yaml-language-server: $schema=https://raw.githubusercontent.com/fluxcd-community/flux2-schemas/main/kustomization-kustomize-v1.json
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app intel-device-plugin-gpu
-  namespace: flux-system
+  namespace: kube-system
 spec:
   targetNamespace: kube-system
   commonMetadata:
@@ -40,13 +43,16 @@ spec:
   wait: false
   interval: 30m
   timeout: 5m
+  dependsOn:
+    - name: intel-device-plugin
+      namespace: kube-system
 ---
 # yaml-language-server: $schema=https://raw.githubusercontent.com/fluxcd-community/flux2-schemas/main/kustomization-kustomize-v1.json
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app intel-device-plugin-exporter
-  namespace: flux-system
+  namespace: kube-system
 spec:
   targetNamespace: kube-system
   commonMetadata:
@@ -61,3 +67,6 @@ spec:
   wait: false
   interval: 30m
   timeout: 5m
+  dependsOn:
+    - name: intel-device-plugin-gpu
+      namespace: kube-system
