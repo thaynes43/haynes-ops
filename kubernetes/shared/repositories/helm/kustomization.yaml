@@ -20,7 +20,6 @@ resources:
   - ./k8tz.yaml
   - ./metallb.yaml
   - ./external-dns.yaml
-  - ./traefik.yaml
   - ./node-feature-discovery.yaml
   - ./kubernetes-sigs-descheduler.yaml
   - ./authentik.yaml

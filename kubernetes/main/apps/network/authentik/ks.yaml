@@ -15,6 +15,7 @@ spec:
       namespace: external-secrets
     - name: cloudnative-pg-cluster
     - name: traefik-external
+      namespace: network
   path: ./kubernetes/main/apps/network/authentik/app
   prune: true
   sourceRef:

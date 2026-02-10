@@ -16,7 +16,7 @@ spec:
     - name: external-secrets-stores
       namespace: external-secrets
     - name: traefik-external
-      namespace: flux-system
+      namespace: network
     - name: certificates
       namespace: cert-manager
     - name: authentik
