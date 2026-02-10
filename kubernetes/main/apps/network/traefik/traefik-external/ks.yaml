@@ -10,7 +10,7 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: cilium
-      namespace: flux-system
+      namespace: kube-system
     - name: certificates
       namespace: cert-manager
     - name: reflector
