@@ -10,7 +10,6 @@ resources:
   - ./metrics-server.yaml
   - ./openebs.yaml
   - ./postfinance.yaml
-  - ./prometheus-community.yaml
   - ./spegel.yaml
   - ./stakater.yaml
   - ./piraeus.yaml
@@ -21,7 +20,6 @@ resources:
   - ./metallb.yaml
   - ./node-feature-discovery.yaml
   - ./kubernetes-sigs-descheduler.yaml
-  - ./grafana.yaml
   - ./nvidia.yaml
   - ./whereabouts.yaml
   - ./intel.yaml
