@@ -154,7 +154,7 @@ spec:
 
       config:
         type: configMap
-        name: multus-daemon-config
+        name: multus
         advancedMounts:
           multus:
             multus-daemon:
