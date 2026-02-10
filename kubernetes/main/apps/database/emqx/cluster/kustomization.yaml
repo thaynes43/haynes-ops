@@ -2,8 +2,9 @@
 # yaml-language-server: $schema=https://json.schemastore.org/kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+components:
+  - ../../../../../shared/components/common/gatus/guarded
 resources:
   - ./cluster.yaml
   - ./ingress.yaml
   - ./podmonitor.yaml
-  - ../../../../../shared/templates/gatus/gaurded
