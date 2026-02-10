@@ -3,13 +3,13 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: &app k8tz
-  namespace: flux-system
+  name: k8tz
+  namespace: k8tz
 spec:
   targetNamespace: k8tz
   commonMetadata:
     labels:
-      app.kubernetes.io/name: *app
+      app.kubernetes.io/name: k8tz
   dependsOn:
     - name: certificates
       namespace: cert-manager
@@ -17,6 +17,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
+    namespace: flux-system
   path: ./kubernetes/main/apps/kube-system/k8tz/app
   wait: true
   interval: 30m
