@@ -14,7 +14,6 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: k8tz
-        namespace: flux-system
   interval: 15m
   timeout: 5m
   releaseName: k8tz

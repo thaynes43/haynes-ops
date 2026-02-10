@@ -15,7 +15,6 @@ resources:
   - ./piraeus.yaml
   - ./rook-ceph.yaml
   - ./backube.yaml
-  - ./k8tz.yaml
   - ./metallb.yaml
   - ./kubernetes-sigs-descheduler.yaml
   - ./whereabouts.yaml
