@@ -135,6 +135,7 @@ During the `chartRef` migration / `app-template` v3→v4 upgrade, `HelmRelease/a
 - `edge-stabilization.md`: get `edge` to a trustworthy baseline
 - `components-over-templates.md`: converge on components; stop template drift
 - `sops-scope-and-kustomization-namespacing.md`: keep SOPS confined to `flux/vars` while allowing app `Kustomization`s outside `flux-system`
+- `seed-secrets-and-removing-sops.md`: future task — external-secrets seed strategy + removing per-app `*.sops.yaml`
 - `helmrelease-chartref-migration.md`: migrate `HelmRelease` to `chartRef` safely (batching + recovery)
 - `flux-global-patches.md`: staged approach to onedr0p-style global defaults
 - `flux-operator-migration.md`: edge-first migration plan to Flux Operator + Flux Instance

@@ -13,11 +13,36 @@ spec:
   interval: 15m
   retryInterval: 1m
   timeout: 2m
+  # Migration safety: keep the old KS from pruning its inventory when we move
+  # the active Kustomization into the external-secrets namespace.
+  prune: false
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  path: ./kubernetes/main/apps/external-secrets/external-secrets/app
+---
+# Active Kustomization (moved into the target namespace).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: external-secrets
+  namespace: external-secrets
+spec:
+  targetNamespace: external-secrets
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: external-secrets
+  interval: 15m
+  retryInterval: 1m
+  timeout: 2m
   prune: true
   wait: true
   sourceRef:
     kind: GitRepository
     name: haynes-ops
+    namespace: flux-system
   path: ./kubernetes/main/apps/external-secrets/external-secrets/app
 ---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
@@ -33,7 +58,9 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: external-secrets
+      namespace: external-secrets
     - name: onepassword-connect
+      namespace: flux-system
   interval: 15m
   retryInterval: 1m
   timeout: 2m
@@ -42,4 +69,5 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
+    namespace: flux-system
   path: ./kubernetes/main/apps/external-secrets/external-secrets/stores
