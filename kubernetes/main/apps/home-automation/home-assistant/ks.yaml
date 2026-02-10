@@ -4,7 +4,7 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app home-assistant
-  namespace: flux-system
+  namespace: home-automation
 spec:
   targetNamespace: home-automation
   commonMetadata:
@@ -22,6 +22,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
+    namespace: flux-system
   wait: true
   interval: 30m
   retryInterval: 1m
