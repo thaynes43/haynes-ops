@@ -14,7 +14,7 @@ spec:
     - name: external-secrets-stores
       namespace: external-secrets
     - name: openebs
-      namespace: flux-system
+      namespace: openebs-system
   path: ./kubernetes/main/apps/observability/kube-prometheus-stack/app
   prune: true
   sourceRef:

@@ -6,7 +6,6 @@ resources:
   - ./bjw-s.yaml
   - ./bjw-s-labs.yaml
   - ./metrics-server.yaml
-  - ./openebs.yaml
   - ./postfinance.yaml
   - ./spegel.yaml
   - ./stakater.yaml
