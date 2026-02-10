@@ -24,7 +24,7 @@ spec:
     - name: rook-ceph-cluster
       namespace: rook-ceph
     - name: volsync
-      namespace: flux-system
+      namespace: volsync-system
   path: ./kubernetes/main/apps/frontend/omni/app
   sourceRef:
     kind: GitRepository
