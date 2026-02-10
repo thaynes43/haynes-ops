@@ -4,7 +4,7 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app rook-ceph
-  namespace: flux-system
+  namespace: rook-ceph
 spec:
   targetNamespace: rook-ceph
   commonMetadata:
@@ -18,6 +18,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
+    namespace: flux-system
   wait: false
   interval: 30m
   timeout: 5m
@@ -30,7 +31,7 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app rook-ceph-cluster
-  namespace: flux-system
+  namespace: rook-ceph
 spec:
   targetNamespace: rook-ceph
   commonMetadata:
@@ -44,6 +45,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
+    namespace: flux-system
   wait: false
   interval: 30m
   timeout: 15m

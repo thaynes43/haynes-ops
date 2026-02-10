@@ -10,7 +10,6 @@ resources:
   - ./spegel.yaml
   - ./stakater.yaml
   - ./piraeus.yaml
-  - ./rook-ceph.yaml
   - ./backube.yaml
   - ./metallb.yaml
   - ./kubernetes-sigs-descheduler.yaml

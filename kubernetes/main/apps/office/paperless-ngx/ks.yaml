@@ -14,7 +14,7 @@ spec:
     - name: external-secrets-stores
       namespace: external-secrets
     - name: rook-ceph-cluster
-      namespace: flux-system
+      namespace: rook-ceph
     - name: volsync
       namespace: flux-system
   path: ./kubernetes/main/apps/office/paperless-ngx/app
