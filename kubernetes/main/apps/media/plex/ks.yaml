@@ -12,7 +12,7 @@ spec:
   path: ./kubernetes/main/apps/media/plex/app
   dependsOn:
     - name: intel-device-plugin-gpu
-      namespace: flux-system
+      namespace: kube-system
     - name: rook-ceph-cluster
       namespace: flux-system
   prune: true

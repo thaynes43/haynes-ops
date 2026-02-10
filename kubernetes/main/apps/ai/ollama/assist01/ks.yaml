@@ -12,9 +12,9 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: nvidia-device-plugin
-      namespace: flux-system
+      namespace: kube-system
     - name: node-feature-discovery
-      namespace: flux-system
+      namespace: kube-system
   path: ./kubernetes/main/apps/ai/ollama/assist01/app
   prune: true
   sourceRef:
