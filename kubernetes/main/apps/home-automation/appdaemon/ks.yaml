@@ -12,7 +12,7 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: home-assistant
-      namespace: flux-system
+      namespace: home-automation
     - name: external-secrets-stores
       namespace: external-secrets
   path: ./kubernetes/main/apps/home-automation/appdaemon/app
