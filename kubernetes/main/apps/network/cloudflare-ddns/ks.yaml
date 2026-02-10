@@ -13,6 +13,7 @@ spec:
   path: ./kubernetes/main/apps/network/cloudflare-ddns/shared
   dependsOn:
     - name: external-secrets-stores
+      namespace: external-secrets
   prune: true
   sourceRef:
     kind: GitRepository
@@ -35,6 +36,7 @@ spec:
   path: ./kubernetes/main/apps/network/cloudflare-ddns/app-www
   dependsOn:
     - name: external-secrets-stores
+      namespace: external-secrets
     - name: cloudflare-ddns-shared
   prune: true
   sourceRef:
@@ -61,6 +63,7 @@ spec:
   path: ./kubernetes/main/apps/network/cloudflare-ddns/app
   dependsOn:
     - name: external-secrets-stores
+      namespace: external-secrets
     - name: cloudflare-ddns-shared
   prune: true
   sourceRef:

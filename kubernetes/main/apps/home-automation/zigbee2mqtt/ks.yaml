@@ -13,6 +13,7 @@ spec:
   dependsOn:
     - name: emqx-cluster
     - name: external-secrets-stores
+      namespace: external-secrets
   path: ./kubernetes/main/apps/home-automation/zigbee2mqtt/app
   prune: true
   sourceRef:

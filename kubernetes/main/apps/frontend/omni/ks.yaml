@@ -14,7 +14,7 @@ spec:
     - name: generic-device-plugin
       namespace: flux-system
     - name: external-secrets-stores
-      namespace: flux-system
+      namespace: external-secrets
     - name: traefik-external
       namespace: flux-system
     - name: certificates

@@ -14,7 +14,7 @@ spec:
     - name: home-assistant
       namespace: flux-system
     - name: external-secrets-stores
-      namespace: flux-system
+      namespace: external-secrets
   path: ./kubernetes/main/apps/home-automation/appdaemon/app
   prune: true
   sourceRef:

@@ -12,6 +12,7 @@ spec:
       app.kubernetes.io/name: *app
   dependsOn:
     - name: external-secrets-stores
+      namespace: external-secrets
     - name: cloudnative-pg-cluster
     - name: traefik-external
   path: ./kubernetes/main/apps/network/authentik/app
