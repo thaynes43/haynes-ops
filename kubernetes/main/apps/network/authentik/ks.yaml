@@ -4,7 +4,7 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: &app authentik
-  namespace: flux-system
+  namespace: network
 spec:
   targetNamespace: network
   commonMetadata:
@@ -14,6 +14,7 @@ spec:
     - name: external-secrets-stores
       namespace: external-secrets
     - name: cloudnative-pg-cluster
+      namespace: flux-system
     - name: traefik-external
       namespace: network
   path: ./kubernetes/main/apps/network/authentik/app
@@ -21,6 +22,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: haynes-ops
+    namespace: flux-system
   wait: true
   interval: 15m
   retryInterval: 1m

@@ -20,7 +20,7 @@ spec:
     - name: certificates
       namespace: cert-manager
     - name: authentik
-      namespace: flux-system
+      namespace: network
     - name: rook-ceph-cluster
       namespace: flux-system
     - name: volsync

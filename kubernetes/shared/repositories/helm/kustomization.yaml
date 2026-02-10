@@ -21,7 +21,6 @@ resources:
   - ./metallb.yaml
   - ./node-feature-discovery.yaml
   - ./kubernetes-sigs-descheduler.yaml
-  - ./authentik.yaml
   - ./grafana.yaml
   - ./nvidia.yaml
   - ./whereabouts.yaml
