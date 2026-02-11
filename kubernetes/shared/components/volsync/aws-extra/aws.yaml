@@ -46,6 +46,7 @@ spec:
       runAsUser: ${VOLSYNC_PUID:-568}
       runAsGroup: ${VOLSYNC_PGID:-568}
       fsGroup: ${VOLSYNC_PGID:-568}
+      fsGroupChangePolicy: OnRootMismatch
     retain:
       daily: 10  # Keep most recent from each day for 10 days
       within: 3d # And keep all that were created within 3 days
