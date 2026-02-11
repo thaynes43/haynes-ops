@@ -490,6 +490,14 @@ patches:
                 hardwareAddr: BC:24:11:83:72:D2
               mtu: 1500
               dhcp: true
+              dhcpOptions:
+                routeMetric: 100
+            - deviceSelector:
+                hardwareAddr: BC:24:11:3E:CA:00
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 2000
           nameservers:
             - 192.168.40.1
           disableSearchDomain: true
@@ -556,6 +564,7 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: main
             topology.kubernetes.io/zone: w
+            network.haynesops.com/vpn: "true"
 ---
 kind: Machine
 systemExtensions:
@@ -586,6 +595,14 @@ patches:
                 hardwareAddr: BC:24:11:6F:7E:CD
               mtu: 1500
               dhcp: true
+              dhcpOptions:
+                routeMetric: 100
+            - deviceSelector:
+                hardwareAddr: BC:24:11:74:58:0A
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 2000
           nameservers:
             - 192.168.40.1
           disableSearchDomain: true
@@ -654,6 +671,7 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: main
             topology.kubernetes.io/zone: w
+            network.haynesops.com/vpn: "true"
             intel.feature.node.kubernetes.io/gpu: "true"
 ---
 kind: Machine
@@ -685,6 +703,14 @@ patches:
                 hardwareAddr: BC:24:11:C5:5B:92
               mtu: 1500
               dhcp: true
+              dhcpOptions:
+                routeMetric: 100
+            - deviceSelector:
+                hardwareAddr: BC:24:11:5A:B3:3A
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 2000
           nameservers:
             - 192.168.40.1
           disableSearchDomain: true
@@ -753,4 +779,5 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: main
             topology.kubernetes.io/zone: w
+            network.haynesops.com/vpn: "true"
             intel.feature.node.kubernetes.io/gpu: "true"
