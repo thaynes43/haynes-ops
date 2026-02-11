@@ -45,19 +45,19 @@ Reminder of what network adapters are where.
 
 | Adapter  | VLAN      | Subnet          | Decription                         | IP            |
 | -------- | --------- | --------------- | ---------------------------------- | ------------- |
-| eth0     | Default   | 192.168.0.0/24  | Home network, only here for Sonos  | dhcp          |
-| eth1     | VPN       | 192.168.30.0/24 |  VPN Network                       | dhcp          |
+| eth0     | Hayneslab | 192.168.40.0/24 | Rack network                       | dhcp          |
+| eth1     | VPN       | 192.168.30.0/24 | VPN Network                        | dhcp          |
 
 ## taslosw02
 
 | Adapter  | VLAN      | Subnet          | Decription                         | IP            |
 | -------- | --------- | --------------- | ---------------------------------- | ------------- |
-| eth0     | Default   | 192.168.0.0/24  | Home network, only here for Sonos  | dhcp          |
-| eth1     | VPN       | 192.168.30.0/24 |  VPN Network                       | dhcp          |
+| eth0     | Hayneslab | 192.168.40.0/24 | Rack network                       | dhcp          |
+| eth1     | VPN       | 192.168.30.0/24 | VPN Network                        | dhcp          |
 
 ## taslosw03
 
 | Adapter  | VLAN      | Subnet          | Decription                         | IP            |
 | -------- | --------- | --------------- | ---------------------------------- | ------------- |
-| eth0     | Default   | 192.168.0.0/24  | Home network, only here for Sonos  | dhcp          |
-| eth1     | VPN       | 192.168.30.0/24 |  VPN Network                       | dhcp          |
+| eth0     | Hayneslab | 192.168.40.0/24 | Rack network                       | dhcp          |
+| eth1     | VPN       | 192.168.30.0/24 | VPN Network                        | dhcp          |

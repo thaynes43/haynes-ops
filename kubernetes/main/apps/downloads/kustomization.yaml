@@ -9,4 +9,5 @@ resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
   # Flux-Kustomizations
+  - ./qbittorrent/ks.yaml
   - ./ytdl-sub/ks.yaml
