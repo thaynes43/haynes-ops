@@ -68,6 +68,29 @@ if [[ "${have_kubectl}" == "true" ]]; then
   # With -A the columns are: NAMESPACE NAME READY STATUS RESTARTS AGE
   kubectl get pods -A | awk 'NR==1 || ($1 != "flux-system" && $4 !~ /^(Running|Completed)$/) {print}'
 
+  section "VolSync ReplicationSources (latestMoverStatus.result)"
+  if kubectl get replicationsources.volsync.backube >/dev/null 2>&1; then
+    # Print: namespace, name, result
+    echo -e "NAMESPACE\tNAME\tRESULT"
+    kubectl get replicationsources.volsync.backube -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.latestMoverStatus.result}{"\n"}{end}' \
+      | awk '{ if ($3 == "") $3="(none)"; print }'
+
+    echo
+    echo "Non-succeeded ReplicationSources:"
+    non_ok="$(
+      kubectl get replicationsources.volsync.backube -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.latestMoverStatus.result}{"\n"}{end}' \
+        | awk '$3 != "" && $3 != "Succeeded" && $3 != "Successful" {print}'
+    )"
+    if [[ -z "${non_ok}" ]]; then
+      echo "(all Successful)"
+    else
+      echo -e "NAMESPACE\tNAME\tRESULT"
+      echo "${non_ok}"
+    fi
+  else
+    echo "ReplicationSource CRD not found (VolSync not installed?)"
+  fi
+
   section "Rook / Ceph health (rook-ceph)"
   if kubectl get ns rook-ceph >/dev/null 2>&1; then
     if kubectl -n rook-ceph get cephcluster >/dev/null 2>&1; then
