@@ -1,7 +1,5 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-  logLevel: 'debug',
-  printConfig: true,
   extends: [
     'config:recommended',
     'docker:enableMajor',
@@ -319,7 +317,7 @@
         '/(^|/)kubernetes/.+\\.ya?ml(?:\\.j2)?$/',
       ],
       matchStrings: [
-        '(?<prefix>\\s*# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=\\S+)?(?:\\r\\n|\\n)\\s*-\\s+.+?/)(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)(?<suffix>/[^\\s]+)',
+        '(?<prefix>\\s*# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?(?:\\r\\n|\\n)\\s*-\\s+.+?/)(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)(?<suffix>/[^\\s]+)',
       ],
       autoReplaceStringTemplate: '{{{prefix}}}{{{newValue}}}{{{suffix}}}',
       datasourceTemplate: '{{#if datasource}}{{{datasource}}}{{else}}github-releases{{/if}}',
@@ -333,8 +331,8 @@
         '/(^|/)kubernetes/.+\\.ya?ml(?:\\.j2)?$/',
       ],
       matchStrings: [
-        'datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=\\S+)?\\n.+[/:](?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+[^\\s/]*)',
-        'datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=\\S+)?\\n.+: (&\\S+\\s)?(?<currentValue>\\S+)',
+        'datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?\\n.+[/:](?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+[^\\s/]*)',
+        'datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( repository=(?<registryUrl>\\S+))?\\n.+: (&\\S+\\s)?(?<currentValue>\\S+)',
       ],
       datasourceTemplate: '{{#if datasource}}{{{datasource}}}{{else}}github-releases{{/if}}',
     },

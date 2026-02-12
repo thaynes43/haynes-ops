@@ -11,7 +11,7 @@ spec:
       version: 1.2.13
       sourceRef:
         kind: HelmRepository
-        name: postfinance
+        name: postfinance-main
         namespace: kube-system
   install:
     remediation:

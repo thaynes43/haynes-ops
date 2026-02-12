@@ -3,7 +3,7 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: postfinance
+  name: postfinance-edge
   namespace: kube-system
 spec:
   interval: 1h

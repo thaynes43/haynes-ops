@@ -9,7 +9,7 @@ spec:
       version: 39.0.0
       sourceRef:
         kind: HelmRepository
-        name: traefik
+        name: traefik-external
   interval: 15m
   timeout: 5m
   releaseName: traefik-external
