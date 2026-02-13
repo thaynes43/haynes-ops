@@ -26,7 +26,7 @@ spec:
           app:
             image:
               repository: ghcr.io/homeassistant-ai/ha-mcp
-              tag: 6.5.0
+              tag: 6.6.1
             command: ["ha-mcp-web"]
             args: []
             env:
