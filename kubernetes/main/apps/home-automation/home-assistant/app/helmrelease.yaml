@@ -106,6 +106,15 @@ spec:
         globalMounts:
           - path: /home/coder/.ssh/id_ed25519
             subPath: GH_DEPLOY_KEY
+      local-media:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          home-assistant:
+            app:
+              - path: /media
+                subPath: misc/hass-media
       immich-album:
         type: nfs
         server: gasha01.haynesnetwork
