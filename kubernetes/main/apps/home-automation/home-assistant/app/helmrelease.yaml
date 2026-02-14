@@ -115,6 +115,9 @@ spec:
             app:
               - path: /media
                 subPath: misc/hass-media
+            code-server:
+              - path: /media
+                subPath: misc/hass-media
       immich-album:
         type: nfs
         server: gasha01.haynesnetwork
@@ -122,6 +125,10 @@ spec:
         advancedMounts:
           home-assistant:
             app:
+              - path: /config/www/immich-album
+                subPath: data/photos/hass-gallery
+                readOnly: true
+            code-server:
               - path: /config/www/immich-album
                 subPath: data/photos/hass-gallery
                 readOnly: true
