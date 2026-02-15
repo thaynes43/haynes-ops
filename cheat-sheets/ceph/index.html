@@ -1,0 +1,1480 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentaiton for my home-ops style repository so I can have an idea what past me did when something breaks. Hopefully someone else finds something useful here too!">
+      
+      
+        <meta name="author" content="Tom Haynes">
+      
+      
+        <link rel="canonical" href="https://haynesops.com/cheat-sheets/ceph/">
+      
+      
+        <link rel="prev" href="../kubernetes/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>Ceph - HaynesOps</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ceph-cheat-sheet" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="HaynesOps" class="md-header__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            HaynesOps
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Ceph
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5M7 15a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="HaynesOps" class="md-nav__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    HaynesOps
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../this-site/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    This Site
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    This Site
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cluster/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cluster Essentials
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cluster Essentials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cluster/rook-ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rook Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheat Sheets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cheat Sheets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../siderolabs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Siderolabs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kubernetes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kubernetes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ceph
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#rook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rook
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#talos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Talos
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Talos">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check Status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear-warn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clear Warn:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#misc-tood" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Misc TOOD
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#remove-from-k8s" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remove from k8s
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cluseter-finalizer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cluseter Finalizer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#finish-off-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Finish off metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ceph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ceph
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ceph">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#archive-crash-warnings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Archive crash warnings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cluster-info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cluster info
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cluster info">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#status_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitors
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ceph-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ceph Services
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ceph Services">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#see-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Services
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restart-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restart Service
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#rook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rook
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#talos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Talos
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Talos">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check Status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear-warn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clear Warn:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#misc-tood" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Misc TOOD
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#remove-from-k8s" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remove from k8s
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cluseter-finalizer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cluseter Finalizer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#finish-off-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Finish off metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ceph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ceph
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ceph">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#archive-crash-warnings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Archive crash warnings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cluster-info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cluster info
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cluster info">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#status_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitors
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ceph-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ceph Services
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ceph Services">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#see-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Services
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restart-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restart Service
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../siderolabs/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Cheat Sheets
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="ceph-cheat-sheet">Ceph Cheat Sheet</h1>
+<p>Merge of my notes from proxmox and commands from <a href="https://www.talos.dev/v1.8/kubernetes-guides/configuration/ceph-with-rook/">this guide</a></p>
+<h2 id="rook">Rook</h2>
+<p>Restart operator to re-invoke cluster init:</p>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>delete<span class="w"> </span>pod<span class="w"> </span>-l<span class="w"> </span><span class="nv">app</span><span class="o">=</span>rook-ceph-operator
+</code></pre></div>
+<p>Get into a place you can use the regular commands:</p>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>--namespace<span class="w"> </span>rook-ceph<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>deploy/rook-ceph-operator<span class="w"> </span>--<span class="w"> </span>bash
+</code></pre></div>
+<blockquote>
+<p><strong>TODO</strong> Move this</p>
+</blockquote>
+<p><div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>--namespace<span class="w"> </span>rook-ceph<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>deploy/rook-ceph-operator<span class="w"> </span>--<span class="w"> </span>bash
+rook<span class="w"> </span>multus<span class="w"> </span>validation<span class="w"> </span>run<span class="w"> </span>--public-network<span class="o">=</span>network/multus-public<span class="w"> </span>--cluster-network<span class="o">=</span>network/multus-ceph<span class="w"> </span>-n<span class="w"> </span>rook-ceph
+</code></pre></div>
+This leaves a MESS so you need to run:</p>
+<div class="highlight"><pre><span></span><code>rook<span class="w"> </span>multus<span class="w"> </span>validation<span class="w"> </span>cleanup<span class="w"> </span>--namespace<span class="w"> </span>rook-ceph
+</code></pre></div>
+<p>Then the next validation:</p>
+<div class="highlight"><pre><span></span><code>rook<span class="w"> </span>multus<span class="w"> </span>validation<span class="w"> </span>config<span class="w"> </span>converged
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Example:
+
+thaynes@HaynesHyperion:~$<span class="w"> </span>kubectl<span class="w"> </span>--namespace<span class="w"> </span>rook-ceph<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>deploy/rook-ceph-operator<span class="w"> </span>--<span class="w"> </span>bash
+Defaulted<span class="w"> </span>container<span class="w"> </span><span class="s2">&quot;rook-ceph-operator&quot;</span><span class="w"> </span>out<span class="w"> </span>of:<span class="w"> </span>rook-ceph-operator,<span class="w"> </span>k8tz<span class="w"> </span><span class="o">(</span>init<span class="o">)</span>
+<span class="o">[</span>rook@rook-ceph-operator-69745fc466-pc95r<span class="w"> </span>/<span class="o">]</span>$<span class="w"> </span>rook<span class="w"> </span>multus<span class="w"> </span>validation<span class="w"> </span>run<span class="w"> </span>--help
+<span class="m">2024</span>/10/26<span class="w"> </span><span class="m">10</span>:59:57<span class="w"> </span>maxprocs:<span class="w"> </span>Leaving<span class="w"> </span><span class="nv">GOMAXPROCS</span><span class="o">=</span><span class="m">20</span>:<span class="w"> </span>CPU<span class="w"> </span>quota<span class="w"> </span>undefined
+
+Run<span class="w"> </span>a<span class="w"> </span>validation<span class="w"> </span><span class="nb">test</span><span class="w"> </span>that<span class="w"> </span>determines<span class="w"> </span>whether<span class="w"> </span>the<span class="w"> </span>current<span class="w"> </span>Multus<span class="w"> </span>and<span class="w"> </span>system
+configurations<span class="w"> </span>will<span class="w"> </span>support<span class="w"> </span>Rook<span class="w"> </span>with<span class="w"> </span>Multus.
+
+This<span class="w"> </span>should<span class="w"> </span>be<span class="w"> </span>run<span class="w"> </span>BEFORE<span class="w"> </span>Rook<span class="w"> </span>is<span class="w"> </span>installed.
+
+This<span class="w"> </span>is<span class="w"> </span>a<span class="w"> </span>fairly<span class="w"> </span>long-running<span class="w"> </span>test.<span class="w"> </span>It<span class="w"> </span>starts<span class="w"> </span>up<span class="w"> </span>a<span class="w"> </span>web<span class="w"> </span>server<span class="w"> </span>and<span class="w"> </span>many
+clients<span class="w"> </span>to<span class="w"> </span>verify<span class="w"> </span>that<span class="w"> </span>Multus<span class="w"> </span>network<span class="w"> </span>communication<span class="w"> </span>works<span class="w"> </span>properly.
+
+It<span class="w"> </span>does<span class="w"> </span>*not*<span class="w"> </span>perform<span class="w"> </span>any<span class="w"> </span>load<span class="w"> </span>testing.<span class="w"> </span>Networks<span class="w"> </span>that<span class="w"> </span>cannot<span class="w"> </span>support<span class="w"> </span>high
+volumes<span class="w"> </span>of<span class="w"> </span>Ceph<span class="w"> </span>traffic<span class="w"> </span>may<span class="w"> </span>still<span class="w"> </span>encounter<span class="w"> </span>runtime<span class="w"> </span>issues.<span class="w"> </span>This<span class="w"> </span>may<span class="w"> </span>be
+particularly<span class="w"> </span>noticeable<span class="w"> </span>with<span class="w"> </span>high<span class="w"> </span>I/O<span class="w"> </span>load<span class="w"> </span>or<span class="w"> </span>during<span class="w"> </span>OSD<span class="w"> </span>rebalancing
+<span class="o">(</span>see:<span class="w"> </span>https://docs.ceph.com/en/latest/architecture/#rebalancing<span class="o">)</span>.
+For<span class="w"> </span>example,<span class="w"> </span>during<span class="w"> </span>Rook<span class="w"> </span>or<span class="w"> </span>Ceph<span class="w"> </span>cluster<span class="w"> </span>upgrade.
+
+Override<span class="w"> </span>the<span class="w"> </span>kube<span class="w"> </span>config<span class="w"> </span>file<span class="w"> </span>location<span class="w"> </span>by<span class="w"> </span>setting<span class="w"> </span>the<span class="w"> </span>KUBECONFIG<span class="w"> </span>environment<span class="w"> </span>variable.
+
+Usage:
+<span class="w">  </span>rook<span class="w"> </span>multus<span class="w"> </span>validation<span class="w"> </span>run<span class="w"> </span><span class="o">[</span>--public-network<span class="o">=</span>&lt;nad-name&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--cluster-network<span class="o">=</span>&lt;nad-name&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>flags<span class="o">]</span>
+
+Flags:
+<span class="w">      </span>--cluster-network<span class="w"> </span>string<span class="w">                   </span>The<span class="w"> </span>name<span class="w"> </span>of<span class="w"> </span>the<span class="w"> </span>Network<span class="w"> </span>Attachment<span class="w"> </span>Definition<span class="w"> </span><span class="o">(</span>NAD<span class="o">)</span><span class="w"> </span>that<span class="w"> </span>will<span class="w"> </span>be<span class="w"> </span>used<span class="w"> </span><span class="k">for</span><span class="w"> </span>Ceph<span class="s1">&#39;s cluster network. This should be a namespaced name in the form &lt;namespace&gt;/&lt;name&gt; if the NAD is defined in a different namespace from the cluster namespace.</span>
+<span class="s1">  -c, --config string                            The validation test config file to use. This cannot be used with other flags except --host-check-only.</span>
+<span class="s1">      --daemons-per-node int                     The number of validation test daemons to run per node. It is recommended to set this to the maximum number of Ceph daemons that can run on any node in the worst case of node failure(s). The default value is set to the worst-case value for a Rook Ceph cluster with 3 portable OSDs, 3 portable monitors, and where all optional child resources have been created with 1 daemon such that they all might run on a single node in a failure scenario. If you aren&#39;</span>t<span class="w"> </span>sure<span class="w"> </span>what<span class="w"> </span>to<span class="w"> </span>choose<span class="w"> </span><span class="k">for</span><span class="w"> </span>this<span class="w"> </span>value,<span class="w"> </span>add<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>each<span class="w"> </span>additional<span class="w"> </span>OSD<span class="w"> </span>beyond<span class="w"> </span><span class="m">3</span>.<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="m">19</span><span class="o">)</span>
+<span class="w">      </span>--flaky-threshold-seconds<span class="w"> </span>timeoutSeconds<span class="w">   </span>This<span class="w"> </span>is<span class="w"> </span>the<span class="w"> </span><span class="nb">time</span><span class="w"> </span>window<span class="w"> </span><span class="k">in</span><span class="w"> </span>which<span class="w"> </span>validation<span class="w"> </span>clients<span class="w"> </span>are<span class="w"> </span>all<span class="w"> </span>expected<span class="w"> </span>to<span class="w"> </span>become<span class="w"> </span><span class="s1">&#39;Ready&#39;</span><span class="w"> </span>together.<span class="w"> </span>Validation<span class="w"> </span>clients<span class="w"> </span>are<span class="w"> </span>all<span class="w"> </span>started<span class="w"> </span>at<span class="w"> </span>approximately<span class="w"> </span>the<span class="w"> </span>same<span class="w"> </span>time,<span class="w"> </span>and<span class="w"> </span>they<span class="w"> </span>should<span class="w"> </span>all<span class="w"> </span>stabilize<span class="w"> </span>at<span class="w"> </span>approximately<span class="w"> </span>the<span class="w"> </span>same<span class="w"> </span>time.<span class="w"> </span>Once<span class="w"> </span>the<span class="w"> </span>first<span class="w"> </span>validation<span class="w"> </span>client<span class="w"> </span>becomes<span class="w"> </span><span class="s1">&#39;Ready&#39;</span>,<span class="w"> </span>the<span class="w"> </span>tool<span class="w"> </span>checks<span class="w"> </span>that<span class="w"> </span>all<span class="w"> </span>of<span class="w"> </span>the<span class="w"> </span>remaining<span class="w"> </span>clients<span class="w"> </span>become<span class="w"> </span><span class="s1">&#39;Ready&#39;</span><span class="w"> </span>before<span class="w"> </span>this<span class="w"> </span>threshold<span class="w"> </span>duration<span class="w"> </span>elapses.<span class="w"> </span>In<span class="w"> </span>networks<span class="w"> </span>that<span class="w"> </span>have<span class="w"> </span>connectivity<span class="w"> </span>issues,<span class="w"> </span>limited<span class="w"> </span>bandwidth,<span class="w"> </span>or<span class="w"> </span>high<span class="w"> </span>latency,<span class="w"> </span>clients<span class="w"> </span>will<span class="w"> </span>contend<span class="w"> </span><span class="k">for</span><span class="w"> </span>network<span class="w"> </span>traffic<span class="w"> </span>with<span class="w"> </span>each<span class="w"> </span>other,<span class="w"> </span>causing<span class="w"> </span>some<span class="w"> </span>clients<span class="w"> </span>to<span class="w"> </span>randomly<span class="w"> </span>fail<span class="w"> </span>and<span class="w"> </span>become<span class="w"> </span><span class="s1">&#39;Ready&#39;</span><span class="w"> </span>later<span class="w"> </span>than<span class="w"> </span>others.<span class="w"> </span>These<span class="w"> </span>randomly-failing<span class="w"> </span>clients<span class="w"> </span>are<span class="w"> </span>considered<span class="w"> </span><span class="s1">&#39;flaky.&#39;</span><span class="w"> </span>Adjust<span class="w"> </span>this<span class="w"> </span>value<span class="w"> </span>to<span class="w"> </span>reflect<span class="w"> </span>expectations<span class="w"> </span><span class="k">for</span><span class="w"> </span>the<span class="w"> </span>underlying<span class="w"> </span>network.<span class="w"> </span>For<span class="w"> </span>fast<span class="w"> </span>and<span class="w"> </span>reliable<span class="w"> </span>networks,<span class="w"> </span>this<span class="w"> </span>can<span class="w"> </span>be<span class="w"> </span><span class="nb">set</span><span class="w"> </span>to<span class="w"> </span>a<span class="w"> </span>smaller<span class="w"> </span>value.<span class="w"> </span>For<span class="w"> </span>networks<span class="w"> </span>that<span class="w"> </span>are<span class="w"> </span>intended<span class="w"> </span>to<span class="w"> </span>be<span class="w"> </span>slow,<span class="w"> </span>this<span class="w"> </span>can<span class="w"> </span>be<span class="w"> </span><span class="nb">set</span><span class="w"> </span>to<span class="w"> </span>a<span class="w"> </span>larger<span class="w"> </span>value.<span class="w"> </span>Additionally,<span class="w"> </span><span class="k">for</span><span class="w"> </span>very<span class="w"> </span>large<span class="w"> </span>Kubernetes<span class="w"> </span>clusters,<span class="w"> </span>it<span class="w"> </span>may<span class="w"> </span>take<span class="w"> </span>longer<span class="w"> </span><span class="k">for</span><span class="w"> </span>all<span class="w"> </span>clients<span class="w"> </span>to<span class="w"> </span>start,<span class="w"> </span>and<span class="w"> </span>it<span class="w"> </span>therefore<span class="w"> </span>may<span class="w"> </span>take<span class="w"> </span>longer<span class="w"> </span><span class="k">for</span><span class="w"> </span>all<span class="w"> </span>clients<span class="w"> </span>to<span class="w"> </span>become<span class="w"> </span><span class="s1">&#39;Ready&#39;</span><span class="p">;</span><span class="w"> </span><span class="k">in</span><span class="w"> </span>that<span class="w"> </span><span class="k">case</span>,<span class="w"> </span>this<span class="w"> </span>value<span class="w"> </span>can<span class="w"> </span>be<span class="w"> </span><span class="nb">set</span><span class="w"> </span>slightly<span class="w"> </span>higher.<span class="w"> </span><span class="o">(</span>default<span class="w"> </span>30s<span class="o">)</span>
+<span class="w">  </span>-h,<span class="w"> </span>--help<span class="w">                                     </span><span class="nb">help</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>run
+<span class="w">      </span>--host-check-only<span class="w">                          </span>Only<span class="w"> </span>check<span class="w"> </span>that<span class="w"> </span>hosts<span class="w"> </span>can<span class="w"> </span>connect<span class="w"> </span>to<span class="w"> </span>the<span class="w"> </span>server<span class="w"> </span>via<span class="w"> </span>the<span class="w"> </span>public<span class="w"> </span>network.<span class="w"> </span>Do<span class="w"> </span>not<span class="w"> </span>start<span class="w"> </span>clients.<span class="w"> </span>This<span class="w"> </span>mode<span class="w"> </span>is<span class="w"> </span>recommended<span class="w"> </span>when<span class="w"> </span>a<span class="w"> </span>Rook<span class="w"> </span>cluster<span class="w"> </span>is<span class="w"> </span>already<span class="w"> </span>running<span class="w"> </span>and<span class="w"> </span>consuming<span class="w"> </span>the<span class="w"> </span>public<span class="w"> </span>network<span class="w"> </span>specified.
+<span class="w">  </span>-n,<span class="w"> </span>--namespace<span class="w"> </span>string<span class="w">                         </span>The<span class="w"> </span>namespace<span class="w"> </span><span class="k">for</span><span class="w"> </span>validation<span class="w"> </span><span class="nb">test</span><span class="w"> </span>resources.<span class="w"> </span>It<span class="w"> </span>is<span class="w"> </span>recommended<span class="w"> </span>to<span class="w"> </span><span class="nb">set</span><span class="w"> </span>this<span class="w"> </span>to<span class="w"> </span>the<span class="w"> </span>namespace<span class="w"> </span><span class="k">in</span><span class="w"> </span>which<span class="w"> </span>Rook<span class="s1">&#39;s Ceph cluster will be installed. (default &quot;rook-ceph&quot;)</span>
+<span class="s1">      --nginx-image string                       The Nginx image used for the validation server and clients. (default &quot;quay.io/nginx/nginx-unprivileged:stable-alpine&quot;)</span>
+<span class="s1">      --public-network string                    The name of the Network Attachment Definition (NAD) that will be used for Ceph&#39;</span>s<span class="w"> </span>public<span class="w"> </span>network.<span class="w"> </span>This<span class="w"> </span>should<span class="w"> </span>be<span class="w"> </span>a<span class="w"> </span>namespaced<span class="w"> </span>name<span class="w"> </span><span class="k">in</span><span class="w"> </span>the<span class="w"> </span>form<span class="w"> </span>&lt;namespace&gt;/&lt;name&gt;<span class="w"> </span><span class="k">if</span><span class="w"> </span>the<span class="w"> </span>NAD<span class="w"> </span>is<span class="w"> </span>defined<span class="w"> </span><span class="k">in</span><span class="w"> </span>a<span class="w"> </span>different<span class="w"> </span>namespace<span class="w"> </span>from<span class="w"> </span>the<span class="w"> </span>cluster<span class="w"> </span>namespace.
+<span class="w">      </span>--service-account<span class="w"> </span>string<span class="w">                   </span>The<span class="w"> </span>name<span class="w"> </span>of<span class="w"> </span>the<span class="w"> </span>service<span class="w"> </span>account<span class="w"> </span>that<span class="w"> </span>will<span class="w"> </span>be<span class="w"> </span>used<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span>resources.<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="s2">&quot;rook-ceph-system&quot;</span><span class="o">)</span>
+<span class="w">      </span>--timeout-minutes<span class="w"> </span>timeoutMinutes<span class="w">           </span>The<span class="w"> </span><span class="nb">time</span><span class="w"> </span>to<span class="w"> </span><span class="nb">wait</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>resources<span class="w"> </span>to<span class="w"> </span>change<span class="w"> </span>to<span class="w"> </span>the<span class="w"> </span>expected<span class="w"> </span>state.<span class="w"> </span>For<span class="w"> </span>example,<span class="w"> </span><span class="k">for</span><span class="w"> </span>the<span class="w"> </span><span class="nb">test</span><span class="w"> </span>web<span class="w"> </span>server<span class="w"> </span>to<span class="w"> </span>start,<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span>clients<span class="w"> </span>to<span class="w"> </span>become<span class="w"> </span>ready,<span class="w"> </span>or<span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span>resources<span class="w"> </span>to<span class="w"> </span>be<span class="w"> </span>deleted.<span class="w"> </span>At<span class="w"> </span>longest,<span class="w"> </span>this<span class="w"> </span>may<span class="w"> </span>need<span class="w"> </span>to<span class="w"> </span>reflect<span class="w"> </span>the<span class="w"> </span><span class="nb">time</span><span class="w"> </span>it<span class="w"> </span>takes<span class="w"> </span><span class="k">for</span><span class="w"> </span>client<span class="w"> </span>pods<span class="w"> </span>to<span class="w"> </span>to<span class="w"> </span>pull<span class="w"> </span>images,<span class="w"> </span>get<span class="w"> </span>address<span class="w"> </span>assignments,<span class="w"> </span>and<span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>each<span class="w"> </span>client<span class="w"> </span>to<span class="w"> </span>determine<span class="w"> </span>that<span class="w"> </span>its<span class="w"> </span>network<span class="w"> </span>connection<span class="w"> </span>is<span class="w"> </span>stable.<span class="w"> </span>Minimum:<span class="w"> </span><span class="m">1</span><span class="w"> </span>minute.<span class="w"> </span>Recommended:<span class="w"> </span><span class="m">2</span><span class="w"> </span>minutes<span class="w"> </span>or<span class="w"> </span>more.<span class="w"> </span><span class="o">(</span>default<span class="w"> </span>3m0s<span class="o">)</span>
+
+Global<span class="w"> </span>Flags:
+<span class="w">      </span>--log-level<span class="w"> </span>string<span class="w">   </span>logging<span class="w"> </span>level<span class="w"> </span><span class="k">for</span><span class="w"> </span>logging/tracing<span class="w"> </span>output<span class="w"> </span><span class="o">(</span>valid<span class="w"> </span>values:<span class="w"> </span>ERROR,WARNING,INFO,DEBUG<span class="o">)</span><span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="s2">&quot;INFO&quot;</span><span class="o">)</span>
+<span class="o">[</span>rook@rook-ceph-operator-69745fc466-pc95r<span class="w"> </span>/<span class="o">]</span>$<span class="w"> </span>rook<span class="w"> </span>multus<span class="w"> </span>validation<span class="w"> </span>config<span class="w"> </span>--help
+<span class="m">2024</span>/10/26<span class="w"> </span><span class="m">11</span>:00:16<span class="w"> </span>maxprocs:<span class="w"> </span>Leaving<span class="w"> </span><span class="nv">GOMAXPROCS</span><span class="o">=</span><span class="m">20</span>:<span class="w"> </span>CPU<span class="w"> </span>quota<span class="w"> </span>undefined
+Generate<span class="w"> </span>a<span class="w"> </span>validation<span class="w"> </span><span class="nb">test</span><span class="w"> </span>config<span class="w"> </span>file<span class="w"> </span><span class="k">for</span><span class="w"> </span>different<span class="w"> </span>default<span class="w"> </span>scenarios<span class="w"> </span>to<span class="w"> </span>stdout.
+
+Usage:
+<span class="w">  </span>rook<span class="w"> </span>multus<span class="w"> </span>validation<span class="w"> </span>config<span class="w"> </span><span class="o">[</span>command<span class="o">]</span>
+
+Available<span class="w"> </span>Commands:
+<span class="w">  </span>converged<span class="w">               </span>Example<span class="w"> </span>config<span class="w"> </span><span class="k">for</span><span class="w"> </span>a<span class="w"> </span>cluster<span class="w"> </span>that<span class="w"> </span>runs<span class="w"> </span>storage<span class="w"> </span>and<span class="w"> </span>user<span class="w"> </span>workloads<span class="w"> </span>on<span class="w"> </span>all<span class="w"> </span>nodes.
+<span class="w">  </span>dedicated-storage-nodes<span class="w"> </span>Example<span class="w"> </span>config<span class="w"> </span>file<span class="w"> </span><span class="k">for</span><span class="w"> </span>a<span class="w"> </span>cluster<span class="w"> </span>that<span class="w"> </span>uses<span class="w"> </span>dedicated<span class="w"> </span>storage<span class="w"> </span>nodes.
+<span class="w">  </span>stretch-cluster<span class="w">         </span>Example<span class="w"> </span>config<span class="w"> </span>file<span class="w"> </span><span class="k">for</span><span class="w"> </span>a<span class="w"> </span>stretch<span class="w"> </span>cluster<span class="w"> </span>with<span class="w"> </span>dedicated<span class="w"> </span>storage<span class="w"> </span>nodes.
+
+Flags:
+<span class="w">  </span>-h,<span class="w"> </span>--help<span class="w">   </span><span class="nb">help</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>config
+
+Global<span class="w"> </span>Flags:
+<span class="w">      </span>--log-level<span class="w"> </span>string<span class="w">   </span>logging<span class="w"> </span>level<span class="w"> </span><span class="k">for</span><span class="w"> </span>logging/tracing<span class="w"> </span>output<span class="w"> </span><span class="o">(</span>valid<span class="w"> </span>values:<span class="w"> </span>ERROR,WARNING,INFO,DEBUG<span class="o">)</span><span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="s2">&quot;INFO&quot;</span><span class="o">)</span>
+
+Use<span class="w"> </span><span class="s2">&quot;rook multus validation config [command] --help&quot;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>more<span class="w"> </span>information<span class="w"> </span>about<span class="w"> </span>a<span class="w"> </span>command.
+</code></pre></div>
+<h2 id="talos">Talos</h2>
+<h3 id="status">Status</h3>
+<p>We can use a tools pod to run <code>ceph</code> commands</p>
+<h4 id="check-status">Check Status</h4>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>deploy/rook-ceph-tools<span class="w"> </span>--<span class="w"> </span>ceph<span class="w"> </span>status
+</code></pre></div>
+<h4 id="clear-warn">Clear Warn:</h4>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>deploy/rook-ceph-tools<span class="w"> </span>--<span class="w"> </span>ceph<span class="w"> </span>status
+</code></pre></div>
+<h3 id="misc-tood">Misc TOOD</h3>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>scale<span class="w"> </span>deployment<span class="w"> </span>rook-ceph-operator<span class="w"> </span>--replicas<span class="o">=</span><span class="m">0</span>
+kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>scale<span class="w"> </span>deployment<span class="w"> </span>rook-ceph-operator<span class="w"> </span>--replicas<span class="o">=</span><span class="m">1</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>get<span class="w"> </span>storageclass
+
+kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>get<span class="w"> </span>cephclusters<span class="w"> </span>rook-ceph
+
+kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>get<span class="w"> </span>cephclusters
+</code></pre></div>
+<p>Pre-condtion before talos upgrade:</p>
+<div class="highlight"><pre><span></span><code><span class="l l-Scalar l-Scalar-Plain">kubectl -n rook-ceph wait --timeout=1800s --for=jsonpath=&#39;{.status.ceph.health}=HEALTH_OK&#39; rook-ceph</span>
+</code></pre></div>
+<h3 id="remove-from-k8s">Remove from k8s</h3>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>patch<span class="w"> </span>cephcluster<span class="w"> </span>rook-ceph<span class="w"> </span>--type<span class="w"> </span>merge<span class="w"> </span>-p<span class="w"> </span><span class="s1">&#39;{&quot;spec&quot;:{&quot;cleanupPolicy&quot;:{&quot;confirmation&quot;:&quot;yes-really-destroy-data&quot;}}}&#39;</span>
+
+kubectl<span class="w"> </span>delete<span class="w"> </span>storageclasses<span class="w"> </span>ceph-block<span class="w"> </span>ceph-bucket<span class="w"> </span>ceph-filesystem
+
+kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>delete<span class="w"> </span>cephblockpools<span class="w"> </span>ceph-blockpool
+
+kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>delete<span class="w"> </span>cephobjectstore<span class="w"> </span>ceph-objectstore
+
+kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>delete<span class="w"> </span>cephfilesystem<span class="w"> </span>ceph-filesystem
+</code></pre></div>
+<p>Now delete cluster:</p>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>delete<span class="w"> </span>cephcluster<span class="w"> </span>rook-ceph
+
+helm<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>uninstall<span class="w"> </span>rook-ceph-cluster
+</code></pre></div>
+<p>Now the operator:
+<div class="highlight"><pre><span></span><code>helm<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>uninstall<span class="w"> </span>rook-ceph
+</code></pre></div></p>
+<h3 id="cluseter-finalizer">Cluseter Finalizer</h3>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>patch<span class="w"> </span>cephcluster<span class="w"> </span>rook-ceph<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>--type<span class="o">=</span>json<span class="w"> </span>-p<span class="o">=</span><span class="s1">&#39;[{&quot;op&quot;: &quot;remove&quot;, &quot;path&quot;: &quot;/metadata/finalizers&quot;}]&#39;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="k">for</span><span class="w"> </span>CRD<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="k">$(</span>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;/ceph.rook.io/ {print $1}&#39;</span><span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span>kubectl<span class="w"> </span>get<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CRD</span><span class="s2">&quot;</span><span class="w"> </span>-o<span class="w"> </span>name<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>xargs<span class="w"> </span>-I<span class="w"> </span><span class="o">{}</span><span class="w"> </span>kubectl<span class="w"> </span>patch<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span><span class="o">{}</span><span class="w"> </span>--type<span class="w"> </span>merge<span class="w"> </span>-p<span class="w"> </span><span class="s1">&#39;{&quot;metadata&quot;:{&quot;finalizers&quot;: []}}&#39;</span>
+<span class="k">done</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>patch<span class="w"> </span>configmap<span class="w"> </span>rook-ceph-mon-endpoints<span class="w"> </span>--type<span class="w"> </span>merge<span class="w"> </span>-p<span class="w"> </span><span class="s1">&#39;{&quot;metadata&quot;:{&quot;finalizers&quot;: []}}&#39;</span>
+kubectl<span class="w"> </span>-n<span class="w"> </span>rook-ceph<span class="w"> </span>patch<span class="w"> </span>secrets<span class="w"> </span>rook-ceph-mon<span class="w"> </span>--type<span class="w"> </span>merge<span class="w"> </span>-p<span class="w"> </span><span class="s1">&#39;{&quot;metadata&quot;:{&quot;finalizers&quot;: []}}&#39;</span>
+</code></pre></div>
+<h3 id="finish-off-metadata">Finish off metadata</h3>
+<p>Talos may need some massaging:</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>cat<span class="w"> </span><span class="s">&lt;&lt;EOF | kubectl apply -f -</span>
+<span class="s">apiVersion: v1</span>
+<span class="s">kind: Pod</span>
+<span class="s">metadata:</span>
+<span class="s">  name: disk-clean</span>
+<span class="s">spec:</span>
+<span class="s">  restartPolicy: Never</span>
+<span class="s">  nodeName: &lt;storage-node-name&gt;</span>
+<span class="s">  volumes:</span>
+<span class="s">  - name: rook-data-dir</span>
+<span class="s">    hostPath:</span>
+<span class="s">      path: &lt;dataDirHostPath&gt;</span>
+<span class="s">  containers:</span>
+<span class="s">  - name: disk-clean</span>
+<span class="s">    image: busybox</span>
+<span class="s">    securityContext:</span>
+<span class="s">      privileged: true</span>
+<span class="s">    volumeMounts:</span>
+<span class="s">    - name: rook-data-dir</span>
+<span class="s">      mountPath: /node/rook-data</span>
+<span class="s">    command: [&quot;/bin/sh&quot;, &quot;-c&quot;, &quot;rm -rf /node/rook-data/*&quot;]</span>
+<span class="s">EOF</span>
+pod/disk-clean<span class="w"> </span>created
+
+$<span class="w"> </span>kubectl<span class="w"> </span><span class="nb">wait</span><span class="w"> </span>--timeout<span class="o">=</span>900s<span class="w"> </span>--for<span class="o">=</span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.phase}=Succeeded&#39;</span><span class="w"> </span>pod<span class="w"> </span>disk-clean
+pod/disk-clean<span class="w"> </span>condition<span class="w"> </span>met
+
+$<span class="w"> </span>kubectl<span class="w"> </span>delete<span class="w"> </span>pod<span class="w"> </span>disk-clean
+pod<span class="w"> </span><span class="s2">&quot;disk-clean&quot;</span><span class="w"> </span>deleted
+</code></pre></div>
+<p>And wipe the disks:</p>
+<div class="highlight"><pre><span></span><code><span class="l l-Scalar l-Scalar-Plain">cat &lt;&lt;EOF | kubectl apply -f -</span>
+<span class="l l-Scalar l-Scalar-Plain">apiVersion</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Pod</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">disk-wipe</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rook-ceph</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">restartPolicy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Never</span>
+<span class="w">  </span><span class="nt">nodeName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">talosm03</span>
+<span class="w">  </span><span class="nt">containers</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">disk-wipe</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">busybox</span>
+<span class="w">    </span><span class="nt">securityContext</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">privileged</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;/bin/sh&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;-c&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;dd</span><span class="nv"> </span><span class="s">if=/dev/zero</span><span class="nv"> </span><span class="s">bs=1M</span><span class="nv"> </span><span class="s">count=100</span><span class="nv"> </span><span class="s">oflag=direct</span><span class="nv"> </span><span class="s">of=/dev/nvme1n1&quot;</span><span class="p p-Indicator">]</span>
+<span class="l l-Scalar l-Scalar-Plain">EOF</span>
+<span class="l l-Scalar l-Scalar-Plain">pod/disk-wipe created</span>
+
+<span class="l l-Scalar l-Scalar-Plain">$ kubectl wait --timeout=900s --for=jsonpath=&#39;{.status.phase}=Succeeded&#39; pod disk-wipe</span>
+<span class="l l-Scalar l-Scalar-Plain">pod/disk-wipe condition met</span>
+
+<span class="l l-Scalar l-Scalar-Plain">$ kubectl delete pod disk-wipe</span>
+<span class="l l-Scalar l-Scalar-Plain">pod &quot;disk-wipe&quot; deleted</span>
+</code></pre></div>
+<h2 id="ceph">Ceph</h2>
+<p>Not sure how these would work unless you install ceph and a config that points to the cluster on another machine (seeing you can't run ceph cli on talos)</p>
+<h3 id="archive-crash-warnings">Archive crash warnings</h3>
+<p>These happen when I reboot.</p>
+<div class="highlight"><pre><span></span><code>ceph<span class="w"> </span>crash<span class="w"> </span>archive-all
+</code></pre></div>
+<h3 id="cluster-info">Cluster info</h3>
+<h4 id="status_1">Status</h4>
+<p>Overall status of the cluster.</p>
+<div class="highlight"><pre><span></span><code>ceph<span class="w"> </span>status<span class="w"> </span><span class="o">||</span><span class="w"> </span>ceph<span class="w"> </span>-w
+</code></pre></div>
+<h4 id="config">Config</h4>
+<div class="highlight"><pre><span></span><code>ceph<span class="w"> </span>config<span class="w"> </span>dump
+</code></pre></div>
+<h4 id="monitors">Monitors</h4>
+<p>Get details about the monitors.</p>
+<div class="highlight"><pre><span></span><code>ceph<span class="w"> </span>mon<span class="w"> </span>dump
+</code></pre></div>
+<h3 id="ceph-services">Ceph Services</h3>
+<h4 id="see-services">See Services</h4>
+<div class="highlight"><pre><span></span><code>ceph<span class="w"> </span>mgr<span class="w"> </span>services
+</code></pre></div>
+<h4 id="restart-service">Restart Service</h4>
+<div class="highlight"><pre><span></span><code>ceph<span class="w"> </span>mgr<span class="w"> </span>module<span class="w"> </span>disable<span class="w"> </span>dashboard
+ceph<span class="w"> </span>mgr<span class="w"> </span>module<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>dashboard
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024-2025 Thomas Haynes
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.path", "navigation.indexes", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
