@@ -11,4 +11,5 @@ resources:
   - namespace.yaml
   # Flux-Kustomizations
   - ./homepage/ks.yaml
+  - ./headlamp/ks.yaml
   - ./omni/ks.yaml

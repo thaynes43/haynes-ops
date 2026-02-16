@@ -1,0 +1,27 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: headlamp
+  annotations:
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+    gethomepage.dev/href: "https://headlamp.haynesops.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Frontend
+    gethomepage.dev/name: Headlamp
+    gethomepage.dev/description: Kubernetes web UI with Flux, cert-manager, and AI assistant plugins
+    gethomepage.dev/icon: kubernetes
+    gethomepage.dev/siteMonitor: "https://headlamp.haynesops.com"
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`headlamp.haynesops.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: headlamp
+          port: 80
+  tls:
+    secretName: certificate-haynesops
