@@ -26,7 +26,7 @@ spec:
         # with redirect URI: https://headlamp.haynesops.com/oidc-callback
         externalSecret:
           enabled: true
-          name: headlamp-oidc
+          name: headlamp
         callbackURL: https://headlamp.haynesops.com/oidc-callback
     ingress:
       enabled: false
