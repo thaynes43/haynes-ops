@@ -21,6 +21,13 @@ spec:
     replicaCount: 1
     config:
       watchPlugins: true
+      oidc:
+        # Authentik is an OIDC provider; configure an Authentik OAuth2/OIDC Application
+        # with redirect URI: https://headlamp.haynesops.com/oidc-callback
+        externalSecret:
+          enabled: true
+          name: headlamp-oidc
+        callbackURL: https://headlamp.haynesops.com/oidc-callback
     ingress:
       enabled: false
     httpRoute:
@@ -83,6 +90,3 @@ spec:
           - name: cert-manager
             source: https://artifacthub.io/packages/headlamp/headlamp-plugins/headlamp_cert-manager
             version: 0.1.0
-          - name: prometheus
-            source: https://artifacthub.io/packages/headlamp/headlamp-plugins/headlamp_prometheus
-            version: 0.8.2

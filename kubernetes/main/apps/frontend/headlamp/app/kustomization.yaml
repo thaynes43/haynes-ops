@@ -6,6 +6,7 @@ namespace: frontend
 components:
   - ../../../../../shared/components/common/gatus/guarded
 resources:
+  - ./externalsecret.yaml
   - ./ocirepository.yaml
   - ./helmrelease.yaml
   - ./ingressroute.yaml
