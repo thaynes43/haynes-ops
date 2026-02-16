@@ -120,6 +120,17 @@ spec:
           - path: /conf/secrets.yaml
             subPath: secrets.yaml
             readOnly: true
+        advancedMounts:
+          appdaemon:
+            sftp:
+              # The SFTP container exposes /config via sshfs; overlay the same
+              # Secret-backed config file there to avoid drifting from /conf.
+              - path: /config/conf/appdaemon.yaml
+                subPath: appdaemon.yaml
+                readOnly: true
+              - path: /config/conf/secrets.yaml
+                subPath: secrets.yaml
+                readOnly: true
       ssh-config:
         type: emptyDir
         globalMounts:
