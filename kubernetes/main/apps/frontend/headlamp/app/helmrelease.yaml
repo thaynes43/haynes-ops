@@ -35,6 +35,10 @@ spec:
       create: true
     clusterRoleBinding:
       create: true
+    podSecurityContext:
+      # Ensure emptyDir mounts under /home/headlamp are writable
+      # for the non-root headlamp user/group (100/101).
+      fsGroup: 101
     podAnnotations:
       reloader.stakater.com/auto: "true"
     # Workaround for https://github.com/kubernetes-sigs/headlamp/issues/1826: Headlamp expects
