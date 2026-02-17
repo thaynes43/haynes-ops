@@ -8,5 +8,4 @@ components:
 resources:
   - ./ocirepository.yaml
   - ./helmrelease.yaml
-  - ./middleware-forwardauth.yaml
   - ./ingressroute.yaml

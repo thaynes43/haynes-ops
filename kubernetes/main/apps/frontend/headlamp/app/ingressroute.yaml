@@ -20,7 +20,8 @@ spec:
     - kind: Rule
       match: Host(`headlamp.haynesops.com`) && PathPrefix(`/`)
       middlewares:
-        - name: authentik-forwardauth
+        - name: ak-outpost-proxy-provider-external-outpost
+          namespace: network
       services:
         - kind: Service
           name: headlamp
