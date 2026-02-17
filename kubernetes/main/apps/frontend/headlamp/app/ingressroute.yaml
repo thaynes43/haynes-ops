@@ -10,7 +10,7 @@ metadata:
     gethomepage.dev/enabled: "true"
     gethomepage.dev/group: Frontend
     gethomepage.dev/name: Headlamp
-    gethomepage.dev/description: Kubernetes web UI with Flux, cert-manager, and AI assistant plugins
+    gethomepage.dev/description: Kubernetes web UI with Flux and cert-manager plugins
     gethomepage.dev/icon: kubernetes
     gethomepage.dev/siteMonitor: "https://headlamp.haynesops.com"
 spec:
@@ -19,6 +19,8 @@ spec:
   routes:
     - kind: Rule
       match: Host(`headlamp.haynesops.com`) && PathPrefix(`/`)
+      middlewares:
+        - name: authentik-forwardauth
       services:
         - kind: Service
           name: headlamp
