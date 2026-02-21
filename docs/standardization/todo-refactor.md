@@ -227,6 +227,38 @@ route:
       gatus.home-operations.com/enabled: "true"
 ```
 
+#### 3.3. PVC Disk Space Monitoring & Alerts (early warning)
+
+**Goal**: Get alerted before PVCs fill up (avoid emergency restores / corruption due to 100% full disks).
+
+**Why**: We had a real incident where an app (Plex) ran out of PVC space, corrupted data, and required a VolSync restore. We want proactive alerting so we can either:
+- increase the PVC request (online expansion where supported), or
+- clean up space, or
+- restore before corruption occurs.
+
+**Prerequisites**
+- Prometheus is scraping kubelet volume stats (these are the common metrics to alert on):
+  - `kubelet_volume_stats_used_bytes`
+  - `kubelet_volume_stats_capacity_bytes`
+  - `kubelet_volume_stats_available_bytes`
+
+**TODOs**
+- Add a reusable `PrometheusRule` for PVC usage thresholds:
+  - warn at **>80%** used
+  - critical at **>90%** used
+  - include labels: `namespace`, `persistentvolumeclaim`, and optionally `storageclass` / `volumename`
+- Add a predictive “will fill soon” alert using `predict_linear()` (e.g. “<24h remaining”).
+- Decide exclusions/filters:
+  - exclude known ephemeral/cache PVCs (e.g. VolSync cache PVCs named `volsync-*-cache`) or alert at different thresholds
+  - ensure we still alert on “real” app PVCs (e.g. `plex`)
+- Wire alerts into Alertmanager routing (Pushover) with a clear runbook link:
+  - include remediation steps: expand PVC request, prune data, or trigger VolSync restore
+- Optional: add a dashboard panel grouping top PVC consumers by namespace/app.
+
+**Implementation target (suggestion)**
+- Create a shared component (e.g. `kubernetes/shared/components/observability/pvc-alerts/`) that installs the `PrometheusRule`.
+- Or add it alongside existing rules in the observability stack (where other `PrometheusRule` objects live).
+
 ## 5. Templates vs. Components
 
 **Goal**: Migrate from using Kustomize *Templates* (copied files) to *Components* (reusable overlays) to DRY (Don't Repeat Yourself) up the codebase.

@@ -1,0 +1,240 @@
+---
+description: VolSync (restic) restore runbook (standard + PVC resize edge cases)
+alwaysApply: true
+---
+
+# VolSync restore runbook (AWS/restic)
+
+This repo uses VolSync (restic) to back up and restore PVCs (commonly to S3-compatible storage like AWS).
+
+The common pattern in this repo is defined in:
+- `kubernetes/shared/components/volsync/aws/aws.yaml` (ExternalSecret + `ReplicationSource` + `ReplicationDestination`)
+- `kubernetes/shared/components/volsync/aws/claim.yaml` (PVC with `dataSourceRef` pointing at `ReplicationDestination`)
+
+## Concepts (so the steps make sense)
+
+- **`ReplicationSource`**: runs scheduled backups from a **source PVC** to the restic repo.
+- **`ReplicationDestination`**: runs *manual* restores from the restic repo into a PVC.
+- **Initial population vs in-place restore**:
+  - **Initial population** is done by creating the PVC with `spec.dataSourceRef` pointing at `ReplicationDestination` (see `claim.yaml`).
+  - **In-place restore** (most common ops case) is done by patching `ReplicationDestination.spec.restic.destinationPVC` to the *existing* PVC and triggering a manual restore.
+
+## Model tips: MCP tool calls to use (avoid guesswork)
+
+This repo’s Cursor environment cannot reach the cluster directly via shell, but the model can inspect cluster state via the Kubernetes MCP server (`user-kubernetes-mcp-server`). Use MCP calls to:
+
+- **Find the namespace/app/PVC quickly**
+  - Use `pods_list` then filter by pod name when the user provides it (e.g. `plex-...`), or use `resources_list` with `namespace` and label selectors if known.
+- **Fetch VolSync objects and their status/conditions**
+  - `resources_list` with `apiVersion: volsync.backube/v1alpha1` and `kind: ReplicationSource` / `ReplicationDestination`
+  - `resources_get` to read the full object and inspect:
+    - `spec.restic.*` (`destinationPVC`, `restoreAsOf`, `previous`, `enableFileDeletion`, cache settings)
+    - `status.conditions[]` (`reason`, `message`, `Synchronizing`)
+- **See restore mover pods and logs**
+  - `resources_list` (`apiVersion: v1`, `kind: Pod`, `namespace: <NS>`, `labelSelector: app.kubernetes.io/created-by=volsync`)
+  - `pods_log` to tail logs from the *current* mover pod
+  - `pods_get` to confirm mover pod mounts the intended `claimName` and has the intended env vars (e.g. `RESTORE_AS_OF`)
+- **Understand failures without loops**
+  - `events_list` (scoped to the namespace) for attach/resize/permission errors
+  - `resources_get` for `batch/v1 Job` (`volsync-dst-<rd>`) to see backoff/retries and template env
+
+Safety / guardrails for models:
+- **Never fetch Secrets** with MCP (`resources_get` on `kind: Secret`) in normal operation; treat repo credentials as sensitive. Prefer reading `ReplicationSource/ReplicationDestination` which reference the secret name.
+- **Always limit scope**: prefer `resources_list` with `namespace` and (when possible) `labelSelector` to avoid huge outputs.
+- If you see multiple mover pods with `Error` after a Job replacement, use MCP to identify the **newest running** mover pod and tail logs there; old pods can show `Error` as they terminate.
+
+## Pre-flight checklist (always do this first)
+
+Identify the namespace/app/PVC and confirm VolSync objects exist.
+
+```bash
+NS=<namespace>
+APP=<app>  # often the helmrelease name
+
+kubectl -n "$NS" get pvc
+kubectl -n "$NS" get replicationsource,replicationdestination
+```
+
+If you don’t know the VolSync names, they usually follow the component convention:
+- `ReplicationSource`: `${APP}-aws`
+- `ReplicationDestination`: `${APP}-dst`
+
+Also identify the workload that must be stopped to release the PVC:
+
+```bash
+kubectl -n "$NS" get deploy,sts -l "app.kubernetes.io/name=$APP"
+```
+
+## Standard restore (PVC size not changing)
+
+### 1) Stop GitOps for this app (prevents Flux/Helm reverting your operational patches)
+
+This repo is GitOps-first, but restores are an *operational* action. Suspend only what’s needed, then resume.
+
+```bash
+kubectl -n "$NS" patch kustomization "$APP" --type merge -p '{"spec":{"suspend":true}}'
+kubectl -n "$NS" patch helmrelease "$APP" --type merge -p '{"spec":{"suspend":true}}'
+```
+
+### 2) Scale the workload to 0 (must release the PVC)
+
+```bash
+kubectl -n "$NS" scale deployment "$APP" --replicas=0
+kubectl -n "$NS" get pods -l "app.kubernetes.io/name=$APP" -w
+```
+
+Wait until there are **no** app pods running.
+
+### 3) Trigger restore into the existing PVC
+
+Pick **one** restore selector:
+
+- **Time-based**: restore the most recent snapshot as-of a timestamp (recommended)
+  - Use RFC3339, ideally with `Z` (UTC).
+- **Relative**: restore the Nth previous snapshot (`previous: 1` = “one back”)
+
+Also decide whether you need `--delete`:
+- **`enableFileDeletion: true`** passes `restic restore --delete` (recommended when corruption/stray files exist).
+
+Critical detail:
+- **Always set `spec.restic.destinationPVC` when you want an in-place restore.**
+  - If `destinationPVC` is not set, VolSync may restore into a **temp destination PVC** (often named like `volsync-<app>-dst-dest`), and your workload will come back still using the **old/corrupt PVC**.
+  - If unsure, validate by checking the mover pod mounts `claimName: <APP>` (see validation section).
+
+```bash
+RD="${APP}-dst"
+PVC="$APP"
+
+# Option A: restore-as-of (recommended)
+ASOF="2026-02-20T12:00:00Z"
+
+kubectl -n "$NS" patch replicationdestination "$RD" --type merge -p "{
+  \"spec\": {
+    \"restic\": {
+      \"destinationPVC\": \"$PVC\",
+      \"restoreAsOf\": \"$ASOF\",
+      \"enableFileDeletion\": true
+    },
+    \"trigger\": {\"manual\": \"restore-$(date +%Y%m%d-%H%M%S)\"}
+  }
+}"
+
+# Option B: restore Nth previous snapshot (comment Option A if using this)
+# kubectl -n "$NS" patch replicationdestination \"$RD\" --type merge -p '{
+#   "spec": {
+#     "restic": {
+#       "destinationPVC": "'"$PVC"'",
+#       "previous": 2,
+#       "enableFileDeletion": true
+#     },
+#     "trigger": {"manual": "restore-'"$(date +%Y%m%d-%H%M%S)"'"}
+#   }
+# }'
+```
+
+### 4) Watch restore progress (Linux/macOS)
+
+Find the mover pod created by the restore Job:
+
+```bash
+kubectl -n "$NS" get pods -w
+kubectl -n "$NS" get pods -l "job-name=volsync-dst-$RD"
+```
+
+Stream mover logs:
+
+```bash
+POD="$(kubectl -n "$NS" get pods -l "job-name=volsync-dst-$RD" -o name | head -n1 | cut -d/ -f2)"
+kubectl -n "$NS" logs -f "$POD" --all-containers
+```
+
+Wait for Job completion:
+
+```bash
+kubectl -n "$NS" wait --for=condition=complete "job/volsync-dst-$RD" --timeout=2h
+```
+
+If the Job is already gone (cleanup) but you saw `=== Done ===` in mover logs, treat that as normal. Confirm success via:
+- `ReplicationDestination.status.latestMoverStatus.result` is `Successful`
+- `ReplicationDestination.status.lastManualSync` matches your manual trigger value
+- `ReplicationDestination.status.lastSyncTime` updated
+
+### 5) Bring the app back and resume GitOps
+
+```bash
+kubectl -n "$NS" scale deployment "$APP" --replicas=1
+kubectl -n "$NS" get pods -l "app.kubernetes.io/name=$APP" -w
+
+kubectl -n "$NS" patch helmrelease "$APP" --type merge -p '{"spec":{"suspend":false}}'
+kubectl -n "$NS" patch kustomization "$APP" --type merge -p '{"spec":{"suspend":false}}'
+```
+
+## Advanced restore: “PVC grew / ran out of space” + cache PVC resize failure
+
+### Symptom
+
+`ReplicationDestination` shows an error like:
+
+- `persistentvolumeclaims "volsync-dst-<rd>-cache" is forbidden: only dynamically provisioned pvc can be resized ... storageclass ... must support resize`
+
+This happens when:
+- `ReplicationDestination.spec.restic.cacheCapacity` increased (e.g., `50Gi -> 100Gi`), **and**
+- the cache storageClass (often `openebs-hostpath`) **does not support expansion**.
+
+### Seamless fix (avoid try/fail loops)
+
+1) **Ensure the app is scaled to 0** (PVC must be free).
+2) **Delete the restore Job** if it exists (so it can be recreated cleanly).
+3) **Delete the destination cache PVC** so VolSync recreates it at the desired size.
+4) Re-trigger the restore.
+
+```bash
+NS=<namespace>
+APP=<app>
+RD="${APP}-dst"
+
+# 1) stop workload
+kubectl -n "$NS" scale deployment "$APP" --replicas=0
+
+# 2) stop any in-flight restore
+kubectl -n "$NS" delete job "volsync-dst-$RD" --ignore-not-found=true
+
+# 3) delete cache pvc so it can be recreated at new cacheCapacity
+kubectl -n "$NS" delete pvc "volsync-dst-$RD-cache"
+
+# (optional) if backups start failing for the same reason, do the source cache too:
+# kubectl -n "$NS" delete pvc "volsync-src-${APP}-aws-cache"
+
+# 4) re-trigger restore (standard section)
+```
+
+### Validate the restore is targeting the correct PVC and time
+
+When the new mover pod appears, verify:
+- it mounts `claimName: <APP>` (the *real* PVC)
+- it has `RESTORE_AS_OF` set (or `SELECT_PREVIOUS` set) as intended
+
+```bash
+POD="$(kubectl -n "$NS" get pods -l "job-name=volsync-dst-$RD" -o name | head -n1 | cut -d/ -f2)"
+kubectl -n "$NS" get pod "$POD" -o yaml | grep -n -E 'claimName:|RESTORE_AS_OF|SELECT_PREVIOUS|RESTORE_OPTIONS'
+```
+
+## Common failure modes + quick checks
+
+- **No mover pod appears after patching `ReplicationDestination`**
+  - Check status/conditions:
+    - `kubectl -n "$NS" get replicationdestination "$RD" -o yaml | grep -n -E 'reason:|message:|Synchronizing'`
+  - Check events:
+    - `kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -n 50`
+
+- **Multi-attach / PVC still in use**
+  - Ensure the workload is truly down and pods are gone.
+  - Watch events for `Multi-Attach error for volume`.
+
+- **Wrong snapshot restored**
+  - Confirm mover pod env shows `RESTORE_AS_OF` or `SELECT_PREVIOUS`.
+  - Confirm logs show the snapshot timestamp you intended.
+
+- **Windows vs Linux tooling**
+  - On Linux/macOS, use `grep` not `findstr`.
+
