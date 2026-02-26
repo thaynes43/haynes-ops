@@ -8,7 +8,7 @@ storage:
   caching: true
   path: ${GATUS_CONFIG_PATH}/gatus.db
 metrics: true
-debug: false
+debug: true
 ui:
   title: Status | Gatus
   header: Status

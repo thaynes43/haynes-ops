@@ -4,7 +4,6 @@ kind: IngressRoute
 metadata:
   name: headlamp
   annotations:
-    external-dns.alpha.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
     gethomepage.dev/href: "https://headlamp.haynesops.com"
     gethomepage.dev/enabled: "true"
