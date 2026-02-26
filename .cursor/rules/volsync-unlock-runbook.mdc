@@ -1,0 +1,188 @@
+---
+description: VolSync (restic) unlock runbook (stale repo locks)
+alwaysApply: true
+---
+
+# VolSync unlock runbook (restic stale locks)
+
+VolSync’s restic mover uses restic repository locks to prevent corruption. If a mover pod dies mid-operation (often during forget/prune), a **stale lock** can remain and block future backups with errors like:
+
+- `repo already locked ... repository is already locked ... the unlock command can be used to remove stale locks`
+
+Unlocking is safe **only when no other restic mover is actively using the same repository**.
+
+## Model tips: MCP tool calls to use (avoid guesswork)
+
+This repo’s Cursor environment cannot reach the cluster directly via shell, but the model can inspect cluster state via the Kubernetes MCP server (`user-kubernetes-mcp-server`). Use MCP calls to:
+
+- **Find the failing mover pods**
+  - `pods_list` then filter for `volsync-src-<app>-...` / `volsync-dst-<app>-...`
+  - `pods_log` for the newest failing mover pod to confirm `repository is already locked ...`
+- **Fetch VolSync objects and confirm the repo secret name (without reading the Secret)**
+  - `resources_get` for `volsync.backube/v1alpha1 ReplicationSource` / `ReplicationDestination`
+  - Inspect `spec.restic.repository` (secret name only) and `status.latestMoverStatus.logs`
+- **Look for cluster hints why locks are happening**
+  - `events_list` (namespace-scoped) for OOMKills, volume issues, evictions
+
+Safety / guardrails for models:
+- **Never fetch Secrets** with MCP (`resources_get` on `kind: Secret`) in normal operation; treat repo credentials as sensitive.
+- **Do not unlock while a mover pod is Running** for that same repo.
+
+## Pre-flight checklist (always do this first)
+
+Identify:
+
+- **Namespace**: `NS=<namespace>`
+- **ReplicationSource**: `RS=<app>-aws` (common convention) or whatever exists
+- **Restic repo secret name**: from `ReplicationSource.spec.restic.repository`
+
+Then confirm there is a lock failure:
+
+```bash
+kubectl -n "$NS" get replicationsource "$RS" -o yaml | grep -n -E 'repository:|latestMoverStatus:|result:'
+kubectl -n "$NS" get pods | grep -E 'volsync-src-|volsync-dst-' | grep "$RS"
+```
+
+If mover logs include `repository is already locked`, proceed.
+
+## Step 1) Ensure no mover is currently running
+
+Make sure there are **no Running** pods for the lock owner / job-name:
+
+```bash
+kubectl -n "$NS" get pods -o wide | grep -E "volsync-(src|dst)-"
+kubectl -n "$NS" get pods -l "job-name=volsync-src-$RS" || true
+# If you’re troubleshooting a restore lock, list the restore mover pods too:
+# kubectl -n "$NS" get pods -l "app.kubernetes.io/created-by=volsync" | grep -E "volsync-dst-|volsync-src-" || true
+```
+
+If you see an actively Running mover, **do not unlock**. First let it finish or stop it intentionally.
+
+## Step 2) Clear the stuck backup Job (optional but recommended)
+
+If the `volsync-src-...` Job has already hit backoff / is repeatedly failing, delete it so the controller can recreate cleanly:
+
+```bash
+kubectl -n "$NS" delete job "volsync-src-$RS" --ignore-not-found=true
+```
+
+This does **not** delete your backup repository; it only deletes the Kubernetes Job object.
+
+## Step 3) Unlock the repository
+
+You have two safe options. Prefer **Option A** because it uses VolSync’s supported mechanism and service account/permissions.
+
+## Running this end-to-end from Windows via WSL (agent-friendly)
+
+If you’re driving remediation from Cursor on Windows, an agent can execute this playbook end-to-end via:
+
+- `C:\WINDOWS\System32\wsl.exe -d Ubuntu-24.04`
+
+This is useful because the agent can:
+
+- run the unlock + trigger
+- stream the mover logs
+- provide status updates based on log milestones (e.g. “Starting backup”, “snapshot … saved”, “Starting forget”, “Done”, or the lock error reappearing)
+
+Example pattern (Windows host calling into WSL bash):
+
+```bash
+/mnt/c/WINDOWS/System32/wsl.exe -d Ubuntu-24.04 -- bash -lc '
+  set -euo pipefail
+  NS="home-automation"
+  RS="home-assistant-aws"
+  echo "NS=$NS RS=$RS"
+  kubectl -n "$NS" get pods -l "job-name=volsync-src-$RS" || true
+'
+```
+
+### Option A (preferred): trigger VolSync to run `restic unlock`
+
+VolSync supports a one-time unlock via `ReplicationSource.spec.restic.unlock`.
+Important behavior:
+- Unlock runs **once per unique string value**.
+- Unlock does **not** schedule a backup on its own.
+
+Use a new unique value each time (timestamp is fine) and (optionally) add a manual trigger to run a backup immediately after unlocking:
+
+```bash
+NS=<namespace>
+RS=<replicationsource-name> # e.g. home-assistant-aws
+
+STAMP="unlock-$(date +%Y%m%d-%H%M%S)"
+
+kubectl -n "$NS" patch replicationsource "$RS" --type merge -p "{
+  \"spec\": {
+    \"restic\": { \"unlock\": \"$STAMP\" },
+    \"trigger\": { \"manual\": \"$STAMP\" }
+  }
+}"
+```
+
+Then watch:
+
+```bash
+kubectl -n "$NS" get job "volsync-src-$RS" -w
+```
+
+Stream logs (robust options):
+
+```bash
+# Option 1: explicit selector (works even if your shell variables are lost)
+kubectl -n home-automation logs -l job-name=volsync-src-home-assistant-aws --all-containers --tail=200 -f
+
+# Option 2: using variables (verify RS is non-empty first)
+echo "NS=$NS RS=$RS"
+kubectl -n "$NS" logs -l "job-name=volsync-src-$RS" --all-containers --tail=200 -f
+
+# Option 3: fetch the newest mover pod name, then stream logs from that pod
+POD="$(kubectl -n "$NS" get pods -l "job-name=volsync-src-$RS" -o jsonpath='{.items[-1:].metadata.name}')"
+kubectl -n "$NS" logs "$POD" --all-containers --tail=200 -f
+```
+
+### Option B: run a one-off restic unlock Job (direct restic)
+
+This is useful if you want to unlock without touching the VolSync CR.
+You must reference the **same repo secret** used by VolSync (from `ReplicationSource.spec.restic.repository`).
+
+```bash
+NS=<namespace>
+RESTIC_SECRET=<from ReplicationSource.spec.restic.repository>
+
+kubectl -n "$NS" delete job "restic-unlock" --ignore-not-found=true
+kubectl -n "$NS" create job "restic-unlock" --image="docker.io/restic/restic:0.18.0" -- \
+  unlock --remove-all
+
+kubectl -n "$NS" patch job restic-unlock --type='json' -p="[
+  {\"op\":\"replace\",\"path\":\"/spec/template/spec/restartPolicy\",\"value\":\"OnFailure\"},
+  {\"op\":\"add\",\"path\":\"/spec/template/spec/containers/0/envFrom\",\"value\":[{\"secretRef\":{\"name\":\"$RESTIC_SECRET\"}}]}
+]"
+
+kubectl -n "$NS" wait --for=condition=complete job/restic-unlock --timeout=30m
+kubectl -n "$NS" logs job/restic-unlock --tail=200
+```
+
+Notes:
+- This job uses repo credentials from a Secret; do not paste Secret contents into tickets/chat.
+- Only run this when you’re confident no other mover is using the repo.
+
+## Step 4) Validate success
+
+For Option A:
+
+```bash
+kubectl -n "$NS" get replicationsource "$RS" -o jsonpath='{.status.latestMoverStatus.result}{"\n"}'
+kubectl -n "$NS" get replicationsource "$RS" -o jsonpath='{.status.restic.lastUnlocked}{"\n"}'
+```
+
+For either option, the next backup should proceed past `forget` without the lock error.
+
+## If locks keep recurring (root-cause checklist)
+
+Stale locks are usually a symptom of mover interruption or failures during forget/prune.
+
+- **OOM / eviction**: check events for `OOMKilled`, `Evicted`
+- **Cache PVC full**: check `volsync-src-<rs>-cache` usage and size (`spec.restic.cacheCapacity`)
+- **Backend/object-store instability**: intermittent S3 errors during prune can leave locks behind
+- **Repository health**: run `restic check` manually against the repo (from a trusted admin environment)
+
