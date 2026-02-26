@@ -1,0 +1,43 @@
+---
+description: Use Kubernetes MCP server (schema-first) for cluster inspection
+alwaysApply: true
+---
+
+# Kubernetes MCP usage (schema-first)
+
+When the user asks you to inspect cluster state, prefer the Kubernetes MCP server over asking the user to run `kubectl`.
+
+## Discover what MCP servers/tools exist (don’t guess)
+
+- MCP tool schemas live under `C:\Users\thaynes\.cursor\projects\d-labspace-haynes-ops\mcps\`.
+- The Kubernetes server folder is typically `mcps/user-kubernetes-mcp-server/`.
+- Tools are JSON descriptors under `mcps/<server>/tools/*.json`.
+
+## Mandatory: read the tool schema before calling it
+
+Before calling any MCP tool, read its descriptor JSON (examples):
+- `mcps/user-kubernetes-mcp-server/tools/resources_get.json`
+- `mcps/user-kubernetes-mcp-server/tools/resources_list.json`
+- `mcps/user-kubernetes-mcp-server/tools/events_list.json`
+- `mcps/user-kubernetes-mcp-server/tools/pods_log.json`
+
+Use the descriptor’s `arguments.required` to form a valid call.
+
+## Call pattern
+
+Use `CallMcpTool` with:
+- `server`: `user-kubernetes-mcp-server`
+- `toolName`: the descriptor’s `name` (e.g. `resources_get`)
+- `arguments`: JSON object matching the tool schema
+
+## Safety guardrails (cluster data)
+
+- Never fetch Secrets via MCP (`kind: Secret`) unless the user explicitly requests it and understands the risk.
+- Prefer narrow queries: namespace-scoped lists and label/field selectors to keep outputs small.
+
+## Example (read-only)
+
+Fetch a HelmRelease:
+- tool: `resources_get`
+- arguments: `{ "apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease", "namespace": "rook-ceph", "name": "rook-ceph-operator" }`
+

@@ -11,9 +11,11 @@ spec:
     kind: OCIRepository
     name: rook-ceph
   install:
+    crds: CreateReplace
     remediation:
       retries: 3
   upgrade:
+    crds: Skip
     cleanupOnFail: true
     remediation:
       strategy: rollback
