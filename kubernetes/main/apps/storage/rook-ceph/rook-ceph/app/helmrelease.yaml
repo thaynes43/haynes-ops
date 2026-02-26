@@ -16,6 +16,8 @@ spec:
       retries: 3
   upgrade:
     crds: Skip
+    disableWait: true
+    disableWaitForJobs: true
     cleanupOnFail: true
     remediation:
       strategy: rollback
