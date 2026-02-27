@@ -37,8 +37,9 @@ spec:
               - secretRef:
                   name: cloudflare-tunnel-secret
             args:
+              - --config
+              - /etc/cloudflared/config.yaml
               - tunnel
-              - --no-autoupdate
               - run
             probes:
               liveness: &probes
@@ -76,3 +77,20 @@ spec:
       app:
         endpoints:
           - port: http
+    configMaps:
+      config:
+        data:
+          config.yaml: |-
+            ingress:
+              - hostname: "*.haynesnetwork.com"
+                originRequest:
+                  noTLSVerify: true
+                service: https://traefik-external.network.svc.cluster.local:443
+              - service: http_status:404
+    persistence:
+      config-file:
+        type: configMap
+        identifier: config
+        globalMounts:
+          - path: /etc/cloudflared/config.yaml
+            subPath: config.yaml
