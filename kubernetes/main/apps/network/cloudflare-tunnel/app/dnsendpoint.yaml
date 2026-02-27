@@ -9,4 +9,4 @@ spec:
     - dnsName: ingress-ext.haynesnetwork.com
       recordType: CNAME
       targets:
-        - 6f5be361-6794-4749-a475-f6a084b587bd.cfargotunnel.com
+        - dbefa0b0-be3c-4f18-8dc7-dc6c9e18cf26.cfargotunnel.com
