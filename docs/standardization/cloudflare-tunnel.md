@@ -4,6 +4,11 @@ Goal: eliminate intermittent Cloudflare `523 Origin Unreachable` events by **rem
 
 This document is written as a step-by-step plan so it can be copied into Cursor Plan Mode later.
 
+### Status (2026-02-27)
+
+- **Implemented**: tunnel connector deployed in-cluster, stable DNS target created (`ingress-ext.haynesnetwork.com`), and public app hostnames repointed to `ingress-ext` via External-DNS.
+- **Key learning**: Cloudflare “wizard” style tunnels (`docker run ... --token ...`) and “Published application” routes can make the tunnel **remotely managed** and override local `config.yaml` ingress rules (including forcing `http_status:404`). The working pattern is a **locally-managed token** built from **account tag + tunnel id + tunnel secret** (the same pattern used in the example repos).
+
 ---
 
 ### High-level decisions (what we’re optimizing for)
@@ -49,6 +54,7 @@ Cloudflare:
 - Cloudflare Tunnel (concepts + setup): `https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/`
 - `cloudflared` configuration (`config.yaml`, ingress rules): `https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/configure-tunnels/local-management/configuration-file/`
 - Public hostname routing for tunnels: `https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/routing-to-tunnel/`
+- Routes UI terminology (“Published application”, “Private hostname”, etc): `https://developers.cloudflare.com/cloudflare-one/networks/routes/`
 
 Traefik:
 - Forwarded headers / real client IP concepts (Traefik proxy behavior): `https://doc.traefik.io/traefik/routing/entrypoints/#forwarded-headers`
@@ -80,14 +86,21 @@ Outputs we will use in Git:
 - **Account tag** (Cloudflare account identifier)
 
 Notes:
-- The Kubernetes deployment can authenticate either via a “tunnel token” or via credentials file. The example repos build the `TUNNEL_TOKEN` JSON and base64-encode it.
+- Prefer creating the tunnel via `cloudflared tunnel create --credentials-file cloudflare-tunnel.json ...` so you can reliably extract `AccountTag`, `TunnelID`, and `TunnelSecret`.
+- Avoid relying on the “run with Docker token” wizard token for GitOps; it leads to **remotely-managed tunnel config** which can override `cloudflared` ingress rules from `config.yaml`.
 
 ### 0.2 Secret management prerequisites (manual)
 
-This repo uses External Secrets. We will store tunnel values in your secret backend (e.g., 1Password item):
-- `cloudflare_tunnel_account_tag`
-- `cloudflare_tunnel_id`
-- `cloudflare_tunnel_secret`
+This repo uses External Secrets (1Password Connect). Store tunnel values in 1Password under item `cloudflared`:
+
+- `CLOUDFLARE_ACCOUNT_TAG`
+- `CLOUDFLARE_TUNNEL_ID`
+- `CLOUDFLARE_TUNNEL_SECRET`
+
+Optional (not used by the locally-managed pattern):
+
+- `CLOUDFLARED_TUNNEL_TOKEN` (the dashboard/docker run token)
+- `CLOUDFLARED_API_TOKEN` (useful for read-only inspection; not required for the in-cluster connector)
 
 An agent cannot create or read these secrets safely without your secret store access.
 
@@ -120,16 +133,19 @@ Implementation details (recommended defaults):
 - **Ingress rules**:
   - Start with a wildcard for your external domain:
     - `hostname: "*.haynesnetwork.com"`
-    - `service: http://traefik-external.network.svc.cluster.local:80`
+    - `service: https://traefik-external.network.svc.cluster.local:443`
   - Default: `http_status:404`
 
-Why HTTP to Traefik initially:
-- Avoids TLS/SNI complexity between `cloudflared` and Traefik during early validation.
-- Still end-to-end encrypted between client↔Cloudflare↔tunnel; the only plaintext hop is inside the cluster.
+Important gotcha (Traefik redirect loop):
+
+- Routing to Traefik over `http://...:80` causes **redirect loops** (`ERR_TOO_MANY_REDIRECTS`) because `traefik-external` redirects `web` → `websecure`.
+- Prefer `https://...:443` and configure `originRequest` appropriately:
+  - simplest bring-up: `noTLSVerify: true`
+  - better end-state: set `originServerName: ingress-ext.haynesnetwork.com` and remove `noTLSVerify` once validated
 
 ### 1.2 Reconcile and verify `cloudflared` is healthy (manual commands)
 
-An agent can’t run `kubectl` from this environment; you’ll run these and paste results if needed:
+You can validate using `kubectl` locally; cluster state can also be inspected via Kubernetes MCP (pods/logs/events) when available.
 
 - Pods ready:
   - `kubectl -n network get pods -l app.kubernetes.io/name=cloudflare-tunnel`
@@ -169,6 +185,12 @@ In this repo:
 
 Success criteria:
 - Cloudflare DNS shows the CNAME for `ingress-ext.haynesnetwork.com`
+
+Important gotcha (Error 1033):
+
+- If you delete/recreate the tunnel, the **Tunnel ID changes**.
+- If `ingress-ext.haynesnetwork.com` still points at the old `<tunnel_id>.cfargotunnel.com`, Cloudflare returns **Error 1033** (“unable to resolve”).
+- Fix by updating the `DNSEndpoint` target to the new tunnel id and letting External-DNS reconcile.
 
 ### 1.4 Update external `IngressRoute` targets to point at `ingress-ext`
 
@@ -298,8 +320,9 @@ Rollback:
   - You may want to configure Traefik forwarded header trust appropriately (don’t blindly trust all in-cluster sources).
 
 - **TLS between cloudflared → Traefik**:
-  - Start with HTTP to Traefik to validate the tunnel quickly.
-  - Later, you can tighten to HTTPS origin if desired (requires SNI / cert alignment).
+  - Prefer HTTPS to Traefik (`:443`) to avoid redirect loops.
+  - Bring-up can use `noTLSVerify: true`.
+  - Harden by setting `originServerName: ingress-ext.haynesnetwork.com` (SNI) once validated.
 
 - **external-dns record shape**:
   - The easiest migration is changing the `external-dns .../target` annotation from `haynesnetwork.com` to `ingress-ext.haynesnetwork.com` so every app record repoints cleanly.
@@ -316,6 +339,13 @@ Rollback:
 - Reconcile Flux and validate from LAN + WAN
 - Optionally close router 80/443 port-forwards after confidence
 
+### What we actually changed in `haynes-ops` (implemented)
+
+- Added `kubernetes/main/apps/network/cloudflare-tunnel/` (Flux `Kustomization` + app manifests)
+- Added `DNSEndpoint` for `ingress-ext.haynesnetwork.com`
+- Repointed public app records by changing `external-dns.alpha.kubernetes.io/target` from `haynesnetwork.com` → `ingress-ext.haynesnetwork.com` (Plex, Authentik, Immich, Paperless, Open WebUI, and Traefik external ingressroutes)
+- Added `/cloudflare-tunnel.json` to `.gitignore` (local credentials artifact)
+
 ### Phase 2: monitoring foundation
 
 - Add Gatus endpoints for public URLs (tunnel path)
@@ -327,4 +357,32 @@ Rollback:
 - Choose manual vs GitOps for Unifi DNS overrides
 - Implement overrides for selected hostnames
 - Validate with Gatus (public + lan-direct + DNS)
+
+---
+
+## Remaining TODOs (validation + WAN cleanup)
+
+### Validate tunnel viability (before removing rollback options)
+
+- Verify from WAN/cellular:
+  - `https://authentik.haynesnetwork.com`
+  - `https://ai.haynesnetwork.com`
+  - `https://immich.haynesnetwork.com`
+- Confirm `cloudflare-tunnel` pods stay connected (no flapping) and External-DNS remains stable.
+- Add/verify Gatus checks (public URL checks + “LAN direct” Traefik service checks with Host headers).
+
+### WAN / router cleanup (recommended: disable first, delete later)
+
+- Disable (don’t delete yet) UniFi port forwards for inbound 80/443 (and any other “public ingress” forwards).
+- After 24–48h of confidence, delete the forwards.
+
+### Cloudflare DNS cleanup (WAN public IP records)
+
+- Decide what to do with existing A records that point to your WAN IP (e.g. apex `haynesnetwork.com`, `www`):
+  - keep temporarily for rollback
+  - or remove/disable once tunnel is proven
+  - or repoint to the tunnel pattern (Cloudflare supports proxied CNAME/flattening)
+- Review `kubernetes/main/apps/network/cloudflare-ddns/`:
+  - If you remove WAN ingress, `cloudflare-ddns` may no longer be needed for public app traffic.
+  - Decide whether to keep it for other records, or disable it to prevent it from continuing to update WAN-IP A records unnecessarily.
 
