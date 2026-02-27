@@ -31,7 +31,7 @@ spec:
       enabled: true
       class: traefik-external
       annotations:
-        external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+        external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
         # Homepage
         gethomepage.dev/href: &url "https://ai.haynesnetwork.com"
         gethomepage.dev/enabled: "true"

@@ -3,7 +3,7 @@ kind: IngressRoute
 metadata:
   name: immich
   annotations:
-    external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+    external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
     # Homepage
     gethomepage.dev/href: "https://immich.haynesnetwork.com"

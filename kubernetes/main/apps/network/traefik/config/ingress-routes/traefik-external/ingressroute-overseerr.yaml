@@ -3,7 +3,7 @@ kind: IngressRoute
 metadata:
   name: overseerr
   annotations:
-    external-dns.alpha.kubernetes.io/target: haynesnetwork.com
+    external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
 spec:
   entryPoints:
