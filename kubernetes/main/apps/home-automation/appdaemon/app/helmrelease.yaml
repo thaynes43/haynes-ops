@@ -36,11 +36,9 @@ spec:
               tag: latest
             env:
               TZ: America/New_York
-              TOKEN:
-                valueFrom:
-                  secretKeyRef:
-                    name: appdaemon-secret
-                    key: TOKEN
+            envFrom:
+              - secretRef:
+                  name: appdaemon-secret
             probes:
               liveness: &probes
                 enabled: true
