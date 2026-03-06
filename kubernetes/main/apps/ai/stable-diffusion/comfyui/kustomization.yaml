@@ -12,6 +12,9 @@ components:
   - ../../../../../shared/components/common/gatus/guarded
 configMapGenerator:
   - name: comfyui-configmap
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
     files:
       - config.ini=./resources/config.ini
       - provisioning.sh=./resources/provisioning.sh
