@@ -103,6 +103,21 @@ spec:
                 chown -R 1000:1000 /workspace
                 
                 echo "Workspace preparation complete."
+          provision-models:
+            image:
+              repository: ghcr.io/ai-dock/comfyui
+              tag: v2-cuda-12.1.1-base-22.04-v0.2.7@sha256:ca4c95d4d4743d7d5683e57f5e0358fe586bc57578f66c2a844e9fa0650cc619
+            command: ["bash", "-c"]
+            args:
+              - |
+                /bin/bash /opt/comfyui-provisioning/provisioning.sh
+            env:
+              WORKSPACE: "/workspace"
+              MODEL_MANIFEST: "/opt/comfyui-provisioning/models.txt"
+              PROVISIONING_UPDATE_EXISTING: "false"
+            envFrom:
+              - secretRef:
+                  name: comfyui-secret
         pod:
           nodeSelector:
             feature.node.kubernetes.io/nvidia-3090-gpu: "true"
@@ -120,9 +135,6 @@ spec:
               WORKSPACE: "/workspace"
               CF_QUICK_TUNNELS: "false"
               SERVERLESS: "false"
-              PROVISIONING_SCRIPT: "/opt/comfyui-provisioning/provisioning.sh"
-              MODEL_MANIFEST: "/opt/comfyui-provisioning/models.txt"
-              PROVISIONING_UPDATE_EXISTING: "false"
               COMFYUI_DISABLE_EXTRA_NODES: "0"
             envFrom:
               - secretRef:
@@ -170,15 +182,12 @@ spec:
       config:
         type: configMap
         name: comfyui-configmap
+        globalMounts:
+          - path: /opt/comfyui-provisioning
+            readOnly: true
         advancedMounts:
           comfyui:
             app:
               - path: /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/config.ini
                 subPath: config.ini
-                readOnly: true
-              - path: /opt/comfyui-provisioning/provisioning.sh
-                subPath: provisioning.sh
-                readOnly: true
-              - path: /opt/comfyui-provisioning/models.txt
-                subPath: models.txt
                 readOnly: true
