@@ -120,7 +120,9 @@ spec:
               WORKSPACE: "/workspace"
               CF_QUICK_TUNNELS: "false"
               SERVERLESS: "false"
-              PROVISIONING_SCRIPT: "https://raw.githubusercontent.com/ai-dock/comfyui/main/config/provisioning/flux.sh"
+              PROVISIONING_SCRIPT: "/opt/comfyui-provisioning/provisioning.sh"
+              MODEL_MANIFEST: "/opt/comfyui-provisioning/models.txt"
+              PROVISIONING_UPDATE_EXISTING: "false"
               COMFYUI_DISABLE_EXTRA_NODES: "0"
             envFrom:
               - secretRef:
@@ -173,4 +175,10 @@ spec:
             app:
               - path: /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/config.ini
                 subPath: config.ini
+                readOnly: true
+              - path: /opt/comfyui-provisioning/provisioning.sh
+                subPath: provisioning.sh
+                readOnly: true
+              - path: /opt/comfyui-provisioning/models.txt
+                subPath: models.txt
                 readOnly: true

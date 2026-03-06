@@ -1,0 +1,15 @@
+# Format: <relative path under /workspace/ComfyUI/models>|<download URL>|<optional sha256>
+# Notes:
+# - Keep paths aligned with the workflow's expected model folders.
+# - To force refreshing existing files on startup, set PROVISIONING_UPDATE_EXISTING=true.
+
+# Qwen Image workflow (ComfyUI Manager community gallery)
+diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors|
+text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors|
+vae/qwen_image_vae.safetensors|https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors|
+diffusion_models/Qwen-Image-2512-Lightning-4steps-V1.0-fp32.safetensors|https://huggingface.co/lightx2v/Qwen-Image-2512-Lightning/resolve/main/Qwen-Image-2512-Lightning-4steps-V1.0-fp32.safetensors|
+
+# Optional SD baselines (uncomment if you still want these)
+# checkpoints/v1-5-pruned-emaonly.ckpt|https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.ckpt?download=true|
+# checkpoints/sd_xl_base_1.0_0.9vae.safetensors|https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0_0.9vae.safetensors?download=true|
+# checkpoints/sd_xl_turbo_1.0_fp16.safetensors|https://huggingface.co/stabilityai/sdxl-turbo/resolve/main/sd_xl_turbo_1.0_fp16.safetensors?download=true|

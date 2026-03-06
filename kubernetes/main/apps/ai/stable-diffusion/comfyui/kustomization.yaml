@@ -14,5 +14,7 @@ configMapGenerator:
   - name: comfyui-configmap
     files:
       - config.ini=./resources/config.ini
+      - provisioning.sh=./resources/provisioning.sh
+      - models.txt=./resources/models.txt
 generatorOptions:
   disableNameSuffixHash: true
