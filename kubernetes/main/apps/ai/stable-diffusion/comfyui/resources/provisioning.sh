@@ -15,6 +15,26 @@ TMP_DIR="${WORKSPACE_ROOT}/tmp/provisioning"
 
 mkdir -p "${MODELS_ROOT}" "${TMP_DIR}"
 
+ensure_python_dependency() {
+  local module_name="$1"
+  local package_name="$2"
+  local venv_python="/opt/environments/python/comfyui/bin/python"
+  local venv_pip="/opt/environments/python/comfyui/bin/pip"
+
+  if [[ ! -x "${venv_python}" || ! -x "${venv_pip}" ]]; then
+    log "ComfyUI virtualenv not found, skipping dependency check for ${module_name}."
+    return 0
+  fi
+
+  if "${venv_python}" -c "import ${module_name}" >/dev/null 2>&1; then
+    log "Python dependency already present: ${module_name}"
+    return 0
+  fi
+
+  log "Installing missing Python dependency: ${package_name}"
+  "${venv_pip}" install --no-cache-dir "${package_name}"
+}
+
 sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'
@@ -121,22 +141,27 @@ process_model() {
 
 if [[ ! -f "${MANIFEST_PATH}" ]]; then
   log "Model manifest not found at ${MANIFEST_PATH}; nothing to provision."
-  exit 0
+  # Continue startup dependency checks even if no model manifest is provided.
 fi
 
-log "Using model manifest: ${MANIFEST_PATH}"
+# Some recent ComfyUI builds import SQLAlchemy during startup.
+ensure_python_dependency "sqlalchemy" "sqlalchemy"
 
-while IFS='|' read -r relative_path url expected_sha; do
-  # Skip comments and blank lines.
-  [[ -z "${relative_path// }" ]] && continue
-  [[ "${relative_path}" == \#* ]] && continue
+if [[ -f "${MANIFEST_PATH}" ]]; then
+  log "Using model manifest: ${MANIFEST_PATH}"
 
-  if [[ -z "${url// }" ]]; then
-    log "Skipping invalid manifest row (missing URL): ${relative_path}"
-    continue
-  fi
+  while IFS='|' read -r relative_path url expected_sha; do
+    # Skip comments and blank lines.
+    [[ -z "${relative_path// }" ]] && continue
+    [[ "${relative_path}" == \#* ]] && continue
 
-  process_model "${relative_path}" "${url}" "${expected_sha:-}"
-done < "${MANIFEST_PATH}"
+    if [[ -z "${url// }" ]]; then
+      log "Skipping invalid manifest row (missing URL): ${relative_path}"
+      continue
+    fi
+
+    process_model "${relative_path}" "${url}" "${expected_sha:-}"
+  done < "${MANIFEST_PATH}"
+fi
 
 log "Provisioning complete"
