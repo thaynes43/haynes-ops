@@ -20,19 +20,22 @@ ensure_python_dependency() {
   local package_name="$2"
   local venv_python="/opt/environments/python/comfyui/bin/python"
   local venv_pip="/opt/environments/python/comfyui/bin/pip"
+  local dependency_dir="${WORKSPACE_ROOT}/.python-deps"
 
   if [[ ! -x "${venv_python}" || ! -x "${venv_pip}" ]]; then
     log "ComfyUI virtualenv not found, skipping dependency check for ${module_name}."
     return 0
   fi
 
-  if "${venv_python}" -c "import ${module_name}" >/dev/null 2>&1; then
-    log "Python dependency already present: ${module_name}"
+  mkdir -p "${dependency_dir}"
+
+  if PYTHONPATH="${dependency_dir}" "${venv_python}" -c "import ${module_name}" >/dev/null 2>&1; then
+    log "Python dependency already present in shared deps: ${module_name}"
     return 0
   fi
 
-  log "Installing missing Python dependency: ${package_name}"
-  "${venv_pip}" install --no-cache-dir "${package_name}"
+  log "Installing missing Python dependency to shared deps: ${package_name}"
+  "${venv_pip}" install --no-cache-dir --target "${dependency_dir}" "${package_name}"
 }
 
 sha256_file() {

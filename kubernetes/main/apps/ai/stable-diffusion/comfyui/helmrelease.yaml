@@ -133,6 +133,7 @@ spec:
               SERVICEPORTAL_URL: "comfyui.haynesops.com"
               WEB_ENABLE_AUTH: "false"
               WORKSPACE: "/workspace"
+              PYTHONPATH: "/workspace/.python-deps"
               CF_QUICK_TUNNELS: "false"
               SERVERLESS: "false"
               COMFYUI_DISABLE_EXTRA_NODES: "0"
