@@ -19,5 +19,11 @@ configMapGenerator:
       - config.ini=./resources/config.ini
       - provisioning.sh=./resources/provisioning.sh
       - models.txt=./resources/models.txt
+  - name: comfyui-workflows
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+    files:
+      - ./resources/workflows/image_qwen_Image_2512.json
 generatorOptions:
   disableNameSuffixHash: true

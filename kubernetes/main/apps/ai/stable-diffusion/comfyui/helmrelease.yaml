@@ -38,6 +38,11 @@ spec:
                   echo "Creating /workspace/ComfyUI/user/default..."
                   mkdir -p /workspace/ComfyUI/user/default
                 fi
+
+                if [ ! -d "/workspace/ComfyUI/user/default/workflows" ]; then
+                  echo "Creating /workspace/ComfyUI/user/default/workflows..."
+                  mkdir -p /workspace/ComfyUI/user/default/workflows
+                fi
                 
                 if [ ! -d "/workspace/ComfyUI/temp" ]; then
                   echo "Creating /workspace/ComfyUI/temp..."
@@ -92,6 +97,16 @@ spec:
                 if [ ! -d "/workspace/storage/stable_diffusion/models/esrgan" ]; then
                   echo "Creating /workspace/storage/stable_diffusion/models/esrgan..."
                   mkdir -p /workspace/storage/stable_diffusion/models/esrgan
+                fi
+
+                if [ -f "/workspace/storage/stable_diffusion/models/unet/flux1-dev.safetensors" ]; then
+                  echo "Removing stale legacy Flux model artifact..."
+                  rm -f /workspace/storage/stable_diffusion/models/unet/flux1-dev.safetensors
+                fi
+
+                if compgen -G "/opt/comfyui-workflows/*.json" > /dev/null; then
+                  echo "Installing bundled UI workflows into ComfyUI user workflows..."
+                  cp -f /opt/comfyui-workflows/*.json /workspace/ComfyUI/user/default/workflows/
                 fi
 
                 if [ ! -d "/workspace/home/user/.local/share/jupyter/runtime" ]; then
@@ -190,3 +205,9 @@ spec:
               - path: /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/config.ini
                 subPath: config.ini
                 readOnly: true
+      workflows:
+        type: configMap
+        name: comfyui-workflows
+        globalMounts:
+          - path: /opt/comfyui-workflows
+            readOnly: true
