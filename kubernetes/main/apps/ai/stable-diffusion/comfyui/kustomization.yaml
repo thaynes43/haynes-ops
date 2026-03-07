@@ -24,6 +24,7 @@ configMapGenerator:
       annotations:
         kustomize.toolkit.fluxcd.io/substitute: disabled
     files:
+      - ./resources/workflows/02_qwen_Image_edit_subgraphed.json
       - ./resources/workflows/image_qwen_Image_2512.json
 generatorOptions:
   disableNameSuffixHash: true

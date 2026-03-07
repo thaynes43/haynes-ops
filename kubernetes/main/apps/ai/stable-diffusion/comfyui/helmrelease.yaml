@@ -104,7 +104,7 @@ spec:
                   rm -f /workspace/storage/stable_diffusion/models/unet/flux1-dev.safetensors
                 fi
 
-                if compgen -G "/opt/comfyui-workflows/*.json" > /dev/null; then
+                if ls /opt/comfyui-workflows/*.json >/dev/null 2>&1; then
                   echo "Installing bundled UI workflows into ComfyUI user workflows..."
                   cp -f /opt/comfyui-workflows/*.json /workspace/ComfyUI/user/default/workflows/
                 fi
