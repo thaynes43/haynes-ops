@@ -11,32 +11,9 @@ COMFY_ROOT="${WORKSPACE_ROOT}/ComfyUI"
 MODELS_ROOT="${COMFY_ROOT}/models"
 MANIFEST_PATH="${MODEL_MANIFEST:-/opt/comfyui-provisioning/models.txt}"
 FORCE_UPDATE="${PROVISIONING_UPDATE_EXISTING:-false}"
-TMP_DIR="${WORKSPACE_ROOT}/tmp/provisioning"
+DEPS_DIR="${WORKSPACE_ROOT}/.python-deps"
 
-mkdir -p "${MODELS_ROOT}" "${TMP_DIR}"
-
-ensure_python_dependency() {
-  local module_name="$1"
-  local package_name="$2"
-  local venv_python="/opt/environments/python/comfyui/bin/python"
-  local venv_pip="/opt/environments/python/comfyui/bin/pip"
-  local dependency_dir="${WORKSPACE_ROOT}/.python-deps"
-
-  if [[ ! -x "${venv_python}" || ! -x "${venv_pip}" ]]; then
-    log "ComfyUI virtualenv not found, skipping dependency check for ${module_name}."
-    return 0
-  fi
-
-  mkdir -p "${dependency_dir}"
-
-  if PYTHONPATH="${dependency_dir}" "${venv_python}" -c "import ${module_name}" >/dev/null 2>&1; then
-    log "Python dependency already present in shared deps: ${module_name}"
-    return 0
-  fi
-
-  log "Installing missing Python dependency to shared deps: ${package_name}"
-  "${venv_pip}" install --no-cache-dir --target "${dependency_dir}" "${package_name}"
-}
+mkdir -p "${MODELS_ROOT}" "${DEPS_DIR}"
 
 sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -44,9 +21,38 @@ sha256_file() {
   elif command -v shasum >/dev/null 2>&1; then
     shasum -a 256 "$1" | awk '{print $1}'
   else
-    log "No SHA256 tool found (sha256sum/shasum); cannot verify checksum."
-    return 1
+    echo "no-hash-tool"
   fi
+}
+
+install_comfyui_requirements() {
+  local requirements_file="${COMFY_ROOT}/requirements.txt"
+  local marker_file="${DEPS_DIR}/.requirements-hash"
+  local venv_pip="/opt/environments/python/comfyui/bin/pip"
+
+  if [[ ! -f "${requirements_file}" ]]; then
+    log "No requirements.txt found at ${requirements_file}; skipping."
+    return 0
+  fi
+
+  if [[ ! -x "${venv_pip}" ]]; then
+    log "ComfyUI venv pip not found; skipping requirements install."
+    return 0
+  fi
+
+  local current_hash
+  current_hash="$(sha256_file "${requirements_file}")"
+
+  if [[ -f "${marker_file}" && "$(cat "${marker_file}")" == "${current_hash}" ]]; then
+    log "Requirements already installed (hash unchanged); skipping."
+    return 0
+  fi
+
+  log "Installing ComfyUI requirements.txt to shared deps at ${DEPS_DIR}..."
+  "${venv_pip}" install --no-cache-dir --target "${DEPS_DIR}" -r "${requirements_file}"
+
+  echo "${current_hash}" > "${marker_file}"
+  log "Requirements installed successfully."
 }
 
 download_file() {
@@ -142,19 +148,16 @@ process_model() {
   fi
 }
 
+# --- Python dependencies ---
+install_comfyui_requirements
+
+# --- Model downloads ---
 if [[ ! -f "${MANIFEST_PATH}" ]]; then
-  log "Model manifest not found at ${MANIFEST_PATH}; nothing to provision."
-  # Continue startup dependency checks even if no model manifest is provided.
-fi
-
-# Some recent ComfyUI builds import SQLAlchemy during startup.
-ensure_python_dependency "sqlalchemy" "sqlalchemy"
-
-if [[ -f "${MANIFEST_PATH}" ]]; then
+  log "Model manifest not found at ${MANIFEST_PATH}; skipping model downloads."
+else
   log "Using model manifest: ${MANIFEST_PATH}"
 
   while IFS='|' read -r relative_path url expected_sha; do
-    # Skip comments and blank lines.
     [[ -z "${relative_path// }" ]] && continue
     [[ "${relative_path}" == \#* ]] && continue
 
