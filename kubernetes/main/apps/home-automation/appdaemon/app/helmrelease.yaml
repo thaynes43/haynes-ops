@@ -17,23 +17,16 @@ spec:
     remediation:
       strategy: rollback
       retries: 3
-  dependsOn:
-    - name: rook-ceph-cluster
-      namespace: rook-ceph
-    - name: volsync
-      namespace: volsync-system
   values:
     controllers:
       appdaemon:
         annotations:
           reloader.stakater.com/auto: "true"
-        # RWO PVC: avoid rolling updates that block on volume attach
-        strategy: Recreate
         containers:
           app:
             image:
-              repository: acockburn/appdaemon
-              tag: latest
+              repository: ghcr.io/thaynes43/appdaemon
+              tag: 0.1.0-appdaemon-docker-image.94ad8a2
             env:
               TZ: America/New_York
             envFrom:
@@ -58,36 +51,10 @@ spec:
                 drop: ["ALL"]
             resources:
               requests:
-                cpu: 50m
-                memory: 256Mi
+                cpu: 1
+                memory: 2Gi
               limits:
-                memory: 4Gi
-          sftp:
-            image:
-              repository: lscr.io/linuxserver/openssh-server
-              tag: latest
-            env:
-              TZ: America/New_York
-              PUID: 0
-              PGID: 0
-              USER_NAME: appdaemon
-              PASSWORD_ACCESS: "false"
-              SUDO_ACCESS: "false"
-              LOG_STDOUT: "true"
-              PUBLIC_KEY:
-                valueFrom:
-                  secretKeyRef:
-                    name: appdaemon-secret
-                    key: SSH_PUBLIC_KEY
-            securityContext:
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: false
-              capabilities:
-                drop: ["ALL"]
-                # Minimal capabilities for OpenSSH in-container:
-                # - SETUID/SETGID: switch to the configured non-root user
-                # - SYS_CHROOT: required for sshd's default chroot behavior
-                add: ["SETUID", "SETGID", "SYS_CHROOT"]
+                memory: 12Gi
     defaultPodOptions:
       securityContext:
         seccompProfile: { type: RuntimeDefault }
@@ -97,17 +64,11 @@ spec:
         ports:
           http:
             port: *port
-          sftp:
-            port: 2222
     persistence:
       config:
-        existingClaim: appdaemon
+        type: emptyDir
         globalMounts:
           - path: /conf
-        advancedMounts:
-          appdaemon:
-            sftp:
-              - path: /config/conf
       appdaemon-config:
         type: secret
         name: appdaemon-secret
@@ -118,21 +79,6 @@ spec:
           - path: /conf/secrets.yaml
             subPath: secrets.yaml
             readOnly: true
-        advancedMounts:
-          appdaemon:
-            sftp:
-              # The SFTP container exposes /config via sshfs; overlay the same
-              # Secret-backed config file there to avoid drifting from /conf.
-              - path: /config/conf/appdaemon.yaml
-                subPath: appdaemon.yaml
-                readOnly: true
-              - path: /config/conf/secrets.yaml
-                subPath: secrets.yaml
-                readOnly: true
-      ssh-config:
-        type: emptyDir
-        globalMounts:
-          - path: /config
       tmp:
         type: emptyDir
         globalMounts:

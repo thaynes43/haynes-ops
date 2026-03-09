@@ -5,7 +5,6 @@ kind: Kustomization
 components:
   - ../../../../../shared/components/common/gatus/guarded
   - ../../../../../shared/components/common/repos/app-template
-  - ../../../../../shared/components/volsync/aws
 resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml

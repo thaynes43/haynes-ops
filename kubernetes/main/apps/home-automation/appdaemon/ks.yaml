@@ -28,4 +28,3 @@ spec:
     substitute:
       APP: *app
       GATUS_SUBDOMAIN: appdaemon
-      VOLSYNC_CAPACITY: 2Gi
