@@ -13,3 +13,4 @@ resources:
   - ./gatus/ks.yaml
   - ./kromgo/ks.yaml
   - ./grafana/ks.yaml
+  - ./mcp-grafana/ks.yaml
