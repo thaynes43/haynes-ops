@@ -27,6 +27,11 @@ spec:
             image:
               repository: grafana/mcp-grafana
               tag: 0.11.3
+            args:
+              - -t
+              - streamable-http
+              - --endpoint-path
+              - /mcp
             env:
               GRAFANA_URL: http://grafana.observability.svc.cluster.local
             envFrom:
@@ -34,11 +39,28 @@ spec:
                   name: mcp-grafana-secret
             probes:
               liveness:
-                enabled: false
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8000
               readiness:
-                enabled: false
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8000
               startup:
-                enabled: false
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8000
+                  failureThreshold: 30
+                  periodSeconds: 10
             resources:
               requests:
                 cpu: 50m

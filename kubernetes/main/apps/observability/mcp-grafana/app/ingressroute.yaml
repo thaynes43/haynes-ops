@@ -6,7 +6,7 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
-    # No siteMonitor: mcp-grafana exposes MCP/SSE only, no HTTP GET / that returns 200
+    # streamable-http MCP endpoint is served at /mcp; health checks are available at /healthz
 spec:
   entryPoints:
     - websecure
