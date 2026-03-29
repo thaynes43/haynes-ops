@@ -26,7 +26,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/appdaemon
-              tag: 0.7.2
+              tag: 0.7.3
             env:
               TZ: America/New_York
             envFrom:
