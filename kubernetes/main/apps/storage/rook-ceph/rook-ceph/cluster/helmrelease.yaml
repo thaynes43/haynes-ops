@@ -68,8 +68,7 @@ spec:
         #selectors:
         #  public: network/multus-public
         #  cluster: network/multus-ceph
-        connections:
-          requireMsgr2: true
+        connections: {}
       storage:
         useAllNodes: false
         useAllDevices: false
