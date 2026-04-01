@@ -9,7 +9,7 @@ spec:
   config:
     data: |
       mqtt {
-        max_packet_size = 10MB
+        max_packet_size = 256MB
       }
       authentication {
         backend = "built_in_database"
