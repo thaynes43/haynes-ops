@@ -11,6 +11,7 @@ metadata:
     gethomepage.dev/name: Tautulli
     gethomepage.dev/description: Plex monitoring dashboard
     gethomepage.dev/icon: tautulli
+    gethomepage.dev/siteMonitor: "https://tautulli.haynesnetwork.com"
 spec:
   entryPoints:
     - websecure

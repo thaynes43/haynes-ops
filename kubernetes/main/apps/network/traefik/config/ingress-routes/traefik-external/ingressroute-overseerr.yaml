@@ -11,6 +11,7 @@ metadata:
     gethomepage.dev/name: Overseerr
     gethomepage.dev/description: Media request management
     gethomepage.dev/icon: overseerr
+    gethomepage.dev/siteMonitor: "https://overseerr.haynesnetwork.com"
 spec:
   entryPoints:
     - websecure
