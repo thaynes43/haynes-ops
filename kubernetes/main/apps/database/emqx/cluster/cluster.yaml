@@ -11,6 +11,9 @@ spec:
       mqtt {
         max_packet_size = 256MB
       }
+      retainer {
+        max_payload_size = 4MB
+      }
       authentication {
         backend = "built_in_database"
         mechanism = "password_based"
