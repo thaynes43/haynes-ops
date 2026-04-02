@@ -13,9 +13,9 @@ metadata:
     gethomepage.dev/name: Immich
     gethomepage.dev/app: immich-server
     gethomepage.dev/icon: sh-immich.svg
-    gethomepage.dev/siteMonitor: "https://immich.haynesnetwork.com"
+    gethomepage.dev/siteMonitor: "http://immich-server.photos.svc.cluster.local:2283"
     gethomepage.dev/widget.type: "immich"
-    gethomepage.dev/widget.url: "https://immich.haynesnetwork.com"
+    gethomepage.dev/widget.url: "http://immich-server.photos.svc.cluster.local:2283"
     gethomepage.dev/widget.key: "{{HOMEPAGE_VAR_IMMICH_API_KEY}}"
     gethomepage.dev/widget.version: "2"
 spec:

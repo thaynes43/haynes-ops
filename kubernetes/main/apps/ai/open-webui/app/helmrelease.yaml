@@ -40,7 +40,7 @@ spec:
         gethomepage.dev/description: Chat UI for Ollama + OpenAI
         gethomepage.dev/icon: open-webui
         gethomepage.dev/app: open-webui
-        gethomepage.dev/siteMonitor: *url
+        gethomepage.dev/siteMonitor: "http://open-webui.ai.svc.cluster.local:80"
       host: ai.haynesnetwork.com
       tls: true
       existingSecret: certificate-haynesnetwork

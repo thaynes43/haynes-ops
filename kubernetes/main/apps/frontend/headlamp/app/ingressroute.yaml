@@ -11,7 +11,7 @@ metadata:
     gethomepage.dev/name: Headlamp
     gethomepage.dev/description: Kubernetes web UI with Flux and cert-manager plugins
     gethomepage.dev/icon: kubernetes
-    gethomepage.dev/siteMonitor: "https://headlamp.haynesops.com"
+    gethomepage.dev/siteMonitor: "http://headlamp.frontend.svc.cluster.local:80"
 spec:
   entryPoints:
     - websecure
