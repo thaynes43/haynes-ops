@@ -5,6 +5,13 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
+    gethomepage.dev/href: "https://overseerr.haynesnetwork.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Media
+    gethomepage.dev/name: Overseerr
+    gethomepage.dev/description: Media request management
+    gethomepage.dev/icon: overseerr
+    gethomepage.dev/siteMonitor: "https://overseerr.haynesnetwork.com"
 spec:
   entryPoints:
     - websecure

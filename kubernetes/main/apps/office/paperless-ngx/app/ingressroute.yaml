@@ -5,6 +5,13 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
+    gethomepage.dev/href: "https://paperless.haynesnetwork.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Media
+    gethomepage.dev/name: Paperless-NGX
+    gethomepage.dev/description: Document management
+    gethomepage.dev/icon: paperless-ngx
+    gethomepage.dev/siteMonitor: "https://paperless.haynesnetwork.com"
 spec:
   entryPoints:
     - websecure

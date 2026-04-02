@@ -5,6 +5,13 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
+    gethomepage.dev/href: "https://tautulli.haynesnetwork.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Media
+    gethomepage.dev/name: Tautulli
+    gethomepage.dev/description: Plex monitoring dashboard
+    gethomepage.dev/icon: tautulli
+    gethomepage.dev/siteMonitor: "https://tautulli.haynesnetwork.com"
 spec:
   entryPoints:
     - websecure

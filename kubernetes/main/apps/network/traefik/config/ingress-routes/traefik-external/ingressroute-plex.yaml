@@ -5,6 +5,13 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
+    gethomepage.dev/href: "https://plex.haynesnetwork.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Media
+    gethomepage.dev/name: Plex (External)
+    gethomepage.dev/description: Media server
+    gethomepage.dev/icon: plex
+    gethomepage.dev/siteMonitor: "https://plex.haynesnetwork.com"
 spec:
   entryPoints:
     - websecure

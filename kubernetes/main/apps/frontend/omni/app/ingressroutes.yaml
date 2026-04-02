@@ -6,6 +6,13 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
+    gethomepage.dev/href: "https://omni.haynesops.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Infrastructure
+    gethomepage.dev/name: Omni
+    gethomepage.dev/description: Talos cluster management
+    gethomepage.dev/icon: sidero
+    gethomepage.dev/siteMonitor: "https://omni.haynesops.com"
 spec:
   entryPoints:
     - websecure

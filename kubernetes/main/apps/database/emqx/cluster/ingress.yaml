@@ -5,6 +5,13 @@ metadata:
   name: emqx-dashboard
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
+    gethomepage.dev/href: &url "https://emqx.haynesops.com"
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/group: Infrastructure
+    gethomepage.dev/name: EMQX
+    gethomepage.dev/description: MQTT broker
+    gethomepage.dev/icon: emqx
+    gethomepage.dev/siteMonitor: *url
 spec:
   ingressClassName: traefik-internal
   rules:
