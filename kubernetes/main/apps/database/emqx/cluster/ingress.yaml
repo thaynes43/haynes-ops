@@ -11,6 +11,7 @@ metadata:
     gethomepage.dev/name: EMQX
     gethomepage.dev/description: MQTT broker
     gethomepage.dev/icon: emqx
+    gethomepage.dev/pod-selector: apps.emqx.io/instance=emqx
     gethomepage.dev/siteMonitor: *url
 spec:
   ingressClassName: traefik-internal

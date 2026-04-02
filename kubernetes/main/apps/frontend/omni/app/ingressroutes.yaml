@@ -12,6 +12,8 @@ metadata:
     gethomepage.dev/name: Omni
     gethomepage.dev/description: Talos cluster management
     gethomepage.dev/icon: kubernetes
+    gethomepage.dev/app: omni
+    gethomepage.dev/siteMonitor: "https://omni.haynesops.com"
 spec:
   entryPoints:
     - websecure
