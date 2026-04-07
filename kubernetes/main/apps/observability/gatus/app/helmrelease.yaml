@@ -43,7 +43,7 @@ spec:
             # and writes them into /config so Gatus loads them automatically.
             image:
               repository: ghcr.io/kiwigrid/k8s-sidecar
-              tag: 2.5.0
+              tag: 2.5.5
             env:
               FOLDER: /config
               LABEL: gatus.io/enabled
