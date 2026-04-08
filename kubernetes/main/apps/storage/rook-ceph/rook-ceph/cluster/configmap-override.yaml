@@ -1,0 +1,11 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rook-config-override
+data:
+  # Rook daemon deployments still mount this config file even when the chart
+  # no longer renders a custom override ConfigMap. Keep a minimal valid file so
+  # the mount target exists without carrying local Ceph tuning.
+  config: |
+    [global]
