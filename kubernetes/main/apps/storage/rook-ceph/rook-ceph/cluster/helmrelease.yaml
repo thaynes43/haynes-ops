@@ -28,11 +28,7 @@ spec:
             patch: |-
               - op: replace
                 path: /data/config
-                value: |
-                  [global]
-                  bdev_enable_discard = true
-                  bdev_async_discard = true
-                  osd_class_update_on_start = false
+                value: "[global]\nbdev_enable_discard = true\nbdev_async_discard = true\nosd_class_update_on_start = false\n"
   dependsOn:
     - name: rook-ceph-operator
       namespace: rook-ceph
@@ -53,8 +49,8 @@ spec:
     toolbox:
       enabled: true
     # The chart currently renders this ConfigMap with `|-`, which strips the
-    # final newline Ceph 19.2.3 expects. The postRenderer above restores the
-    # exact data written to the generated rook-config-override ConfigMap.
+    # final newline Ceph 19.2.3 expects. The postRenderer above rewrites the
+    # generated ConfigMap value with an explicit trailing "\n".
     configOverride: |
       [global]
       bdev_enable_discard = true
