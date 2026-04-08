@@ -18,6 +18,21 @@ spec:
     remediation:
       strategy: rollback
       retries: 3
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              version: v1
+              kind: ConfigMap
+              name: rook-config-override
+            patch: |-
+              - op: replace
+                path: /data/config
+                value: |
+                  [global]
+                  bdev_enable_discard = true
+                  bdev_async_discard = true
+                  osd_class_update_on_start = false
   dependsOn:
     - name: rook-ceph-operator
       namespace: rook-ceph
@@ -37,9 +52,9 @@ spec:
           path: /
     toolbox:
       enabled: true
-    # Keep the trailing blank line in this block scalar. Ceph 19.2.3 daemon
-    # startup can fail if the rendered override ConfigMap loses its final
-    # newline at EOF.
+    # The chart currently renders this ConfigMap with `|-`, which strips the
+    # final newline Ceph 19.2.3 expects. The postRenderer above restores the
+    # exact data written to the generated rook-config-override ConfigMap.
     configOverride: |
       [global]
       bdev_enable_discard = true
