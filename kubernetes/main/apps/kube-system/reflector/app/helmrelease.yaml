@@ -14,4 +14,3 @@ spec:
   interval: 15m
   timeout: 5m
   releaseName: reflector
-  values: values.yaml # Take all defaults
