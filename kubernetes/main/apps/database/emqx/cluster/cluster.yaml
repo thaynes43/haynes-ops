@@ -5,7 +5,7 @@ kind: EMQX
 metadata:
   name: emqx
 spec:
-  image: public.ecr.aws/emqx/emqx:5.8.9
+  image: public.ecr.aws/emqx/emqx:6.2.0
   config:
     data: |
       mqtt {
@@ -38,7 +38,7 @@ spec:
       annotations:
         reloader.stakater.com/auto: "true"
     spec:
-      replicas: 3
+      replicas: 1
       envFrom:
         - secretRef:
             name: emqx-secret
