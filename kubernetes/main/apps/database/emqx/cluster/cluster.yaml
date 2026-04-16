@@ -51,6 +51,12 @@ spec:
         - name: init-user
           secret:
             secretName: emqx-init-user-secret
+      volumeClaimTemplates:
+        accessModes: [ReadWriteOnce]
+        storageClassName: ceph-block
+        resources:
+          requests:
+            storage: 8Gi
   listenersServiceTemplate:
     metadata:
       annotations:
