@@ -48,6 +48,8 @@ git commit -m "description"
 git push origin main
 ```
 
+**SSH key note**: SSH keys are managed via 1Password. The first `git push` in a new terminal session requires the user to approve the key interactively. If push fails with "communication with agent failed" or "Permission denied (publickey)", ask the user to approve and retry — do not troubleshoot SSH config.
+
 ### 2. Reconcile Flux
 
 **Full reconcile** (pulls latest Git and reconciles everything from the top-level `cluster` kustomization down):
