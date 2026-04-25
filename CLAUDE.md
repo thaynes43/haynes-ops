@@ -84,7 +84,7 @@ kubectl logs -n <namespace> <pod> --tail=50
 scripts/checkHealth.sh
 ```
 
-For config changes that don't trigger a pod restart (e.g., EMQX CR config updates), verify the running config matches expectations by exec-ing into the pod or checking the operator's behavior.
+**Cascading restarts**: Operator-managed resources (EMQX CR, Rook CephCluster, etc.) may restart pods when their config changes. Check whether dependent apps need a restart too. For example, changing EMQX config restarts the broker pod, which clears in-flight MQTT state — downstream clients like Zigbee2MQTT may need a pod restart to re-publish retained messages.
 
 ## Key Commands (Task runner)
 
