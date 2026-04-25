@@ -13,6 +13,10 @@ spec:
       }
       retainer {
         max_payload_size = 4MB
+        backend {
+          type = built_in_database
+          storage_type = disc
+        }
       }
       authentication {
         backend = "built_in_database"
