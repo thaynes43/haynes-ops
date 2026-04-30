@@ -1,0 +1,1122 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentaiton for my home-ops style repository so I can have an idea what past me did when something breaks. Hopefully someone else finds something useful here too!">
+      
+      
+        <meta name="author" content="Tom Haynes">
+      
+      
+        <link rel="canonical" href="https://haynesops.com/renovate/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Renovate Automation Roadmap - HaynesOps</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#renovate-automation-roadmap" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="HaynesOps" class="md-header__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            HaynesOps
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Renovate Automation Roadmap
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5M7 15a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="HaynesOps" class="md-nav__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    HaynesOps
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../this-site/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    This Site
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    This Site
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../cluster/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cluster Essentials
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cluster Essentials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cluster/rook-ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rook Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheat Sheets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cheat Sheets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cheat-sheets/siderolabs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Siderolabs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cheat-sheets/kubernetes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kubernetes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cheat-sheets/ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-not-auto-merge-everything-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why not auto-merge everything today
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-were-borrowing-from-onedr0phome-ops-and-bjw-s-labshome-ops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What we're borrowing from onedr0p/home-ops and bjw-s-labs/home-ops
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tier-1-flux-local-pr-gate-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 1 — flux-local PR gate (next)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tier-2-trusted-package-auto-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 2 — Trusted-package auto-merge
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tier-3-grouped-multi-component-apps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 3 — Grouped multi-component apps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tier-4-stateful-operators-with-a-health-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 4 — Stateful operators with a health gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decisions-made" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions made
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#changelog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changelog
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="renovate-automation-roadmap">Renovate Automation Roadmap</h1>
+<p>The goal: stop hand-merging every Renovate PR from
+<a href="https://github.com/thaynes43/haynes-ops/issues/1">issue #1</a> and only spend
+attention on the updates that actually break things.</p>
+<p>This is a staged rollout. We expand the auto-merge blast radius one trust
+boundary at a time, only after the prior tier has been quiet for long enough
+to trust it.</p>
+<h2 id="why-not-auto-merge-everything-today">Why not auto-merge everything today</h2>
+<p>Three concrete failure modes:</p>
+<ol>
+<li><strong>Sidecar coupling.</strong> <code>home-assistant</code> runs <code>code-server</code> as a sidecar in
+   the same pod, so a <code>code-server</code> patch bumps and restarts Home Assistant.
+   Any rule that touches <code>home-automation/</code> has to treat the whole pod as one
+   unit.</li>
+<li><strong>Apps that must move together.</strong> <code>ha-mcp</code> is meaningless without a
+   matching <code>home-assistant</code> version — bumping it alone is a footgun. Z2M
+   updates can broadcast devices that HA misses on startup, leaving Zigbee
+   entities <code>unavailable</code> until HA is restarted.</li>
+<li><strong>Stateful operators drift on upgrade.</strong> <code>rook-ceph</code> and <code>cnpg</code> upgrades
+   regularly need hands-on recovery (PVC/pod deletion to re-seed CNPG
+   replication, CRD/deprecation fixes for Rook). These must stay manual until
+   we have a health gate that can detect drift and either roll back or page.</li>
+</ol>
+<p>There is also no PR-gating CI today (<code>.github/workflows/</code> only builds
+peloton-scraper and publishes mkdocs). So even if we flipped <code>automerge:
+true</code> right now, nothing would actually validate the change before it lands.
+<strong>Fixing the CI gap is the precondition for everything below.</strong></p>
+<h2 id="what-were-borrowing-from-onedr0phome-ops-and-bjw-s-labshome-ops">What we're borrowing from <code>onedr0p/home-ops</code> and <code>bjw-s-labs/home-ops</code></h2>
+<p>Two well-respected home-ops repos have solved most of this. We pull from
+both — onedr0p where the patterns are conservative and battle-tested,
+bjw-s where they show what "more aggressive once you trust it" looks like.
+The pieces worth porting:</p>
+<ul>
+<li><strong><code>flux-local</code> PR action</strong> (from onedr0p's
+  <code>.github/workflows/flux-local.yaml</code>). Runs
+  <a href="https://github.com/allenporter/flux-local"><code>flux-local test</code></a> on every PR
+  to validate that all HelmReleases and Kustomizations actually render, and
+  runs <code>flux-local diff helmrelease/kustomization</code> to post the rendered diff
+  as a sticky PR comment. This is the real auto-merge gate — without it,
+  <code>automerge: true</code> is uninspected. We use onedr0p's <code>docker://</code> invocation
+  pattern (no runner pre-install needed) rather than bjw-s's shell-command
+  pattern (which assumes flux-local is on the runner image).</li>
+<li><strong>Trusted-package auto-merge</strong>, not path-based. Both repos do this. The
+  shape: whitelist specific packages by name/prefix, never auto-merge an
+  entire directory. onedr0p uses <code>home-operations/*</code> digests + a handful of
+  charts; bjw-s uses a broader prefix list (<code>ghcr.io/home-operations</code>,
+  <code>ghcr.io/onedr0p</code>, <code>ghcr.io/bjw-s</code>, <code>ghcr.io/bjw-s-labs</code>). For us:
+  start narrow with <code>ghcr.io/thaynes43/*</code> digests + <code>kube-prometheus-stack</code>
+  minor/patch, expand later.</li>
+<li><strong><code>groupName</code> + <code>minimumGroupSize</code></strong> for must-move-together components.
+  Used by both repos for kubernetes (5), flux-operator (3), rook-ceph (2),
+  talos (2). <strong>Important semantic gotcha</strong> — see "Tier 3" below.</li>
+<li><strong><code>minimumReleaseAge: 3 days</code></strong> (onedr0p) to bake third-party tags before
+  auto-merging. bjw-s has dropped this — they've earned the trust. We start
+  with onedr0p's bake time and revisit later.</li>
+<li><strong>Renovate runtime options:</strong> onedr0p self-hosts Renovate via a GitHub
+  Actions cron (<code>.github/workflows/renovate.yaml</code>); bjw-s runs Renovate
+  in-cluster as <code>renovate-operator</code> (a GitOps-managed HelmRelease at
+  <code>kubernetes/apps/renovate/renovate-operator/</code>). Both beat the hosted
+  Renovate app for control and logs. Not Tier 1; revisit at Tier 2 or
+  later. The in-cluster option is interesting because it puts the bot in
+  the same lifecycle as the rest of the cluster.</li>
+<li><strong>Split config into <code>.renovate/*.json5</code></strong> files (<code>autoMerge.json5</code>,
+  <code>groups.json5</code>, <code>customManagers.json5</code>, etc.) extended from the root.
+  Both repos do this. Makes future tier work land as small reviewable diffs
+  against individual files.</li>
+</ul>
+<h2 id="tiers">Tiers</h2>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Scope</th>
+<th>Mode</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>github-actions</code> minor/patch</td>
+<td>auto-merge</td>
+<td>✅ live (existing rule)</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>flux-local</code> PR gate</td>
+<td>required check on all Renovate PRs</td>
+<td>⬜ <strong>next</strong></td>
+</tr>
+<tr>
+<td>2</td>
+<td>Trusted packages: own <code>ghcr.io/thaynes43/*</code> digests, <code>kube-prometheus-stack</code> chart</td>
+<td>auto-merge after Tier 1</td>
+<td>⬜ planned</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Grouped multi-component apps: <code>home-assistant</code> (HA + code-server + ha-mcp), Z2M</td>
+<td>weekly batch, dashboard-approval</td>
+<td>⬜ planned</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>rook-ceph</code>, <code>cnpg</code>, Talos, Flux</td>
+<td>dashboard-approval + post-reconcile health-gate agent</td>
+<td>⬜ planned</td>
+</tr>
+</tbody>
+</table>
+<p>Tier 0 already works. Everything else is the roadmap.</p>
+<h2 id="tier-1-flux-local-pr-gate-next">Tier 1 — flux-local PR gate (next)</h2>
+<p><strong>Why first:</strong> Without this, every other tier is auto-merging unchecked
+YAML. With it, even the manually-merged PRs get a rendered diff comment,
+which makes review faster.</p>
+<p><strong>What to port from onedr0p:</strong></p>
+<ul>
+<li><code>.github/workflows/flux-local.yaml</code>, with two adaptations for this repo:</li>
+<li><strong>Two flux roots</strong>, not one. Main lives at <code>kubernetes/main/flux</code>
+    (Kustomization <code>cluster-apps</code> → <code>./kubernetes/main/apps</code>). Edge lives at
+    <code>kubernetes/edge/flux</code> with the same shape. Both go in a matrix so each
+    PR validates both clusters. Edge can be in the matrix even while it's
+    powered off — <code>flux-local test</code> only validates that the YAML renders, it
+    doesn't talk to the cluster.</li>
+<li><strong>Token strategy</strong> — see below. Start with <code>GITHUB_TOKEN</code> to avoid
+    blocking on App registration; flip to a GitHub App once Tier 1 is
+    proven.</li>
+<li>The <code>bjw-s-labs/action-changed-files</code> filter step is what makes this cheap
+  — only runs when <code>kubernetes/**</code> actually changed.</li>
+</ul>
+<p><strong>Token strategy: <code>GITHUB_TOKEN</code> vs GitHub App</strong></p>
+<p>onedr0p uses a GitHub App (<code>BOT_APP_ID</code> / <code>BOT_APP_PRIVATE_KEY</code>) instead of
+the default <code>GITHUB_TOKEN</code>. The reasons that matter for haynes-ops:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>GITHUB_TOKEN</code></th>
+<th>GitHub App</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Commits trigger downstream workflows</td>
+<td>❌ blocked by GH</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Comment author identity</td>
+<td><code>github-actions[bot]</code></td>
+<td>your bot's name</td>
+</tr>
+<tr>
+<td>Cross-repo install</td>
+<td>one repo only</td>
+<td>many repos, one credential</td>
+</tr>
+<tr>
+<td>Rate limit</td>
+<td>1k/hr/repo</td>
+<td>5k/hr/install</td>
+</tr>
+<tr>
+<td>Setup cost</td>
+<td>none</td>
+<td>~10 min app registration</td>
+</tr>
+</tbody>
+</table>
+<p>The killer feature is #1: with <code>GITHUB_TOKEN</code>, when Renovate auto-merges a
+PR, the resulting merge commit on <code>main</code> will <em>not</em> fire any push-triggered
+workflow (GitHub blocks this to prevent loops). With an App token, the
+merge looks like a real user push and downstream workflows run normally.
+For one cluster it's annoying-but-livable; for <code>main + edge + future
+expansion</code> it gets painful.</p>
+<p><strong>Plan:</strong> ship Tier 1 with <code>GITHUB_TOKEN</code> so we're not blocked on app
+registration, then register a <code>haynes-ops-bot</code> GitHub App and flip the
+secrets in once flux-local is proven green. Document the app registration
+steps in this file when we do it.</p>
+<p><strong>Exit criteria:</strong> the action runs green on at least one real Renovate PR
+on each of <code>main</code> and <code>edge</code> clusters, and the diff comment is useful
+enough to make the merge decision from the PR page alone. Then Tier 2.</p>
+<h2 id="tier-2-trusted-package-auto-merge">Tier 2 — Trusted-package auto-merge</h2>
+<p>After Tier 1 is green, mirror onedr0p's <code>autoMerge.json5</code> with a haynes-ops
+twist:</p>
+<ul>
+<li><strong>Own images on digest:</strong> <code>automerge: true</code> for <code>docker</code> digests where
+  <code>matchPackageNames: ["/thaynes43/"]</code>. Rationale: when we bump our own image
+  tag (like today's appdaemon 1.0.1), we tested it before pushing — Renovate
+  picking up the digest is a no-brainer.</li>
+<li><strong><code>kube-prometheus-stack</code> on minor/patch.</strong> Direct lift from onedr0p,
+  observability has been quiet here for months.</li>
+<li><strong>Use <code>ignoreTests: false</code></strong> on every rule so flux-local actually gates
+  the merge. (Our existing GH-actions auto-merge rule sets <code>ignoreTests:
+  true</code> because there's no test today — once Tier 1 lands we should flip
+  it.)</li>
+<li><strong><code>minimumReleaseAge: 3 days</code></strong> on third-party packages, <code>1 minute</code> on our
+  own images.</li>
+</ul>
+<p><strong>Exit criteria:</strong> four consecutive weeks with no auto-merge regression
+traced to a Tier 2 rule. Each new package added to the trust list resets the
+clock for that package only, not the tier.</p>
+<h2 id="tier-3-grouped-multi-component-apps">Tier 3 — Grouped multi-component apps</h2>
+<p>Home automation can't tier up by namespace because of sidecar coupling and
+companion-image coupling. The unit of update is the <em>pod</em>, not the file or
+the namespace.</p>
+<p><strong>Important semantic gotcha:</strong> <code>minimumGroupSize</code> does <strong>not</strong> mean "always
+bundle these together." It means "only form the group PR if N+ matching
+deps have updates available in the same Renovate scan." If only one
+matches, it ships as an <strong>individual PR under the normal rules</strong>. Both
+onedr0p and bjw-s use it, and that's fine for things like
+kubernetes-component bumps where the components naturally release
+together. It is the <em>wrong</em> tool for sidecar coupling.</p>
+<p>For HA specifically we need two layers:</p>
+<div class="highlight"><pre><span></span><code><span class="c1">// Layer 1: ban standalone bumps for the satellites</span>
+<span class="c1">// (use dependencyDashboardApproval for an escape hatch instead of enabled:false</span>
+<span class="c1">//  if you ever want to manually pull in a code-server-only bump)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nv">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;code-server and ha-mcp must never ship without home-assistant&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nv">matchPackageNames</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s">&quot;/coder/code-server/&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;/ha-mcp/&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nv">matchFileNames</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s">&quot;kubernetes/main/apps/home-automation/**&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nv">dependencyDashboardApproval</span><span class="p">:</span><span class="w"> </span><span class="k">true</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="c1">// Layer 2: when HA bumps, sweep the satellites in</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="nv">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Home Assistant group&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nv">groupName</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;home-assistant&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nv">matchPackageNames</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="s">&quot;/home-assistant/home-assistant/&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;/coder/code-server/&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s">&quot;/ha-mcp/&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nv">matchFileNames</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s">&quot;kubernetes/main/apps/home-automation/**&quot;</span><span class="p">],</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>code-server</code> and <code>ha-mcp</code> then never open their own PRs without manual
+approval, but the moment HA itself gets a bump the group rule fires and
+sweeps in any pending satellite updates as a single PR.</p>
+<p>A second group for <code>zigbee2mqtt</code> on its own (no companions, but the
+HA-restart-on-Z2M-change race means it should land on a known schedule
+where we can babysit it). Renovate <code>schedule: ["before 6am on Monday"]</code> is
+the bjw-s pattern for high-cadence-but-needs-attention.</p>
+<p>Even with grouping, Tier 3 stays <strong>dashboard-approval</strong> until the Tier 4
+health gate exists — the Z2M/HA race is exactly the kind of thing the gate
+needs to catch automatically.</p>
+<h2 id="tier-4-stateful-operators-with-a-health-gate">Tier 4 — Stateful operators with a health gate</h2>
+<p><code>rook-ceph</code>, <code>cnpg</code>, Talos, and Flux itself never auto-merge on tag alone.
+The plan is:</p>
+<ol>
+<li>Renovate opens the PR with <code>dependencyDashboardApproval: true</code> (no
+   automatic merge ever).</li>
+<li>flux-local renders the diff in the PR comment, human approves the merge.</li>
+<li>A scheduled agent (cron trigger or <code>/loop</code>) watches Flux Kustomization
+   status, <code>cnpg</code> cluster health, <code>rook-ceph</code> health, and HA Zigbee entity
+   availability after every reconcile.</li>
+<li>On regression, the agent either rolls the HelmRelease back to the prior
+   chart version or pages via the existing notification path.</li>
+</ol>
+<p>Pre-merge gating cannot solve this — the failure modes only show up <em>after</em>
+reconcile. The agent is doing the work that no PR check can.</p>
+<p><strong>Open question:</strong> does the agent run as a GitHub Action, an in-cluster
+CronJob, or a Claude Code scheduled trigger? The trigger is fastest to
+prototype; the in-cluster job is the right long-term home.</p>
+<h2 id="decisions-made">Decisions made</h2>
+<ul>
+<li><strong>Tier 1 starts with <code>GITHUB_TOKEN</code></strong>, swap to a GitHub App after
+  flux-local is proven. App registration is the second step, not the first.</li>
+<li><strong>Renovate config will be split</strong> into <code>.renovate/*.json5</code> files (mirror
+  onedr0p / bjw-s) as a pure refactor — but in a <strong>follow-up PR after Tier
+  1 merges</strong>, not in the Tier 1 PR itself. Reason: Renovate's <code>extends</code>
+  resolves referenced files from the <em>default branch</em> of the repo, so
+  adding both the new files and the <code>extends</code> pointing at them in the same
+  PR breaks Renovate until merge. Phase order: Tier 1 PR → merge → Phase
+  1.5 split PR → merge → Tier 2.</li>
+<li><strong>Edge cluster goes in the flux-local matrix from day one</strong>, even while
+  it's powered off — validation is YAML-only.</li>
+</ul>
+<h2 id="open-questions">Open questions</h2>
+<ul>
+<li><strong>Renovate runtime</strong> — three options, decide at Tier 2:</li>
+<li><strong>Hosted Renovate app</strong> (current). Zero ops, least control.</li>
+<li><strong>GitHub Actions self-hosted</strong> (onedr0p pattern). Hourly cron, your
+     own logs, runs on GH-hosted runners. Easy migration.</li>
+<li><strong>In-cluster <code>renovate-operator</code></strong> (bjw-s pattern). GitOps-managed
+     HelmRelease, lives with the rest of the cluster. Heavier setup but
+     the bot is in the same lifecycle as everything else it manages.</li>
+<li>Tier 4 health-gate agent: GitHub Action, in-cluster CronJob, or Claude
+  Code scheduled trigger? Decide when we get there.</li>
+<li>Document the rollback procedure for each Tier 4 component in
+  <code>docs/observability/</code> so the agent (and a human at 2am) has a runbook.</li>
+</ul>
+<h2 id="changelog">Changelog</h2>
+<ul>
+<li><strong>2026-04-14</strong> — Roadmap created. No config changes yet — Tier 1
+  (flux-local) is the precondition for the auto-merge tiers and lands first.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024-2025 Thomas Haynes
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.path", "navigation.indexes", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
