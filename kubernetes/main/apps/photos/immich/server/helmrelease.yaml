@@ -97,7 +97,7 @@ spec:
               - -c
               - |
                 psql <<'EOF'
-                  CREATE EXTENSION IF NOT EXISTS "vectors";
+                  CREATE EXTENSION IF NOT EXISTS vchord CASCADE;
                   CREATE EXTENSION IF NOT EXISTS "cube";
                   CREATE EXTENSION IF NOT EXISTS "earthdistance";
     service:
