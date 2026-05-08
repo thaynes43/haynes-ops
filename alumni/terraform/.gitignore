@@ -1,0 +1,6 @@
+.terraform/
+terraform.tfvars
+*.tfstate
+*.tfstate.backup
+crash.log
+# Note: .terraform.lock.hcl IS tracked — pins provider versions for reproducibility.

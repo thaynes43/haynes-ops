@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+project_id      = "robust-fin-495718-a9"
+region          = "us-central1"
+zone            = "us-central1-a"
+domain          = "sigoalumni.org"
+wiki_subdomain  = "wiki"
+admin_email     = "admin@sigoalumni.org"
+vm_machine_type = "e2-small"
