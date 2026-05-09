@@ -31,3 +31,34 @@ resource "google_storage_bucket_iam_member" "vm_backup_writer" {
 # Attachments live on the VM disk via FILE_STORAGE=local — no separate uploads bucket
 # or HMAC key needed. The backups bucket above receives nightly tarballs of
 # /var/lib/outline/files via scripts/backup.sh.
+
+# ---------------------------------------------------------------------
+# Drive cold-tier backup: SA JSON key for rclone → Workspace Shared Drive.
+# Why: GCS is the hot tier (90d, lifecycle, fast restore). Drive is the
+# cold-tier insurance — if this GCP project ever gets neglected/suspended,
+# the org Shared Drive (tied to actively-monitored Workspace billing)
+# still has the most recent backups.
+# ---------------------------------------------------------------------
+
+resource "google_service_account_key" "outline_vm_drive" {
+  service_account_id = google_service_account.outline_vm.name
+}
+
+resource "google_secret_manager_secret" "outline_drive_sa_key" {
+  secret_id = "outline-drive-sa-key"
+  replication {
+    auto {}
+  }
+  labels = local.labels
+}
+
+resource "google_secret_manager_secret_version" "outline_drive_sa_key" {
+  secret      = google_secret_manager_secret.outline_drive_sa_key.id
+  secret_data = base64decode(google_service_account_key.outline_vm_drive.private_key)
+}
+
+resource "google_secret_manager_secret_iam_member" "vm_drive_sa_key" {
+  secret_id = google_secret_manager_secret.outline_drive_sa_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.outline_vm.email}"
+}

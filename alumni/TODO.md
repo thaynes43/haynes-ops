@@ -28,15 +28,16 @@ Currently running on the `admin@sigoalumni.org` $300 free trial in project `robu
 
 ## Phase 3 — Operational hardening
 
-- [ ] **Wire `scripts/backup.sh` into cron** on the VM (more critical now that attachments live on the VM disk):
-      `echo "0 3 * * * root /opt/outline/scripts/backup.sh >> /var/log/outline-backup.log 2>&1" | sudo tee /etc/cron.d/outline-backup`
-- [ ] **Test the backup → restore flow end-to-end** — restore postgres dump + files tarball to a scratch VM, confirm data integrity. With local file storage this is even more important.
+- [x] **Wire `scripts/backup.sh` into cron** on the VM — runs at 03:00 UTC nightly via `/etc/cron.d/outline-backup`
+- [x] **Dual-tier backup**: GCS hot tier (90d) + Workspace Shared Drive cold tier (30d, "Backups/Outline/"). Cold tier survives GCP project neglect.
+- [ ] **Test the backup → restore flow end-to-end** — restore postgres dump + files tarball to a scratch VM from EITHER tier (GCS *and* Drive), confirm data integrity. Critical because attachments only live on the VM disk between backups.
 - [ ] Pin the Outline image to a specific version (currently `:latest` — risky for unattended self-hosting)
 - [ ] Add Cloud Monitoring **uptime check** for `https://wiki.sigoalumni.org` with email alerts to `admin@sigoalumni.org`
+- [ ] Add a **backup-failure alert** — if `/var/log/outline-backup.log` doesn't show a "backup complete" line in the last 36h, email `admin@sigoalumni.org`. Important because both cron and the SA key can silently break.
 - [ ] Configure SMTP for Outline notifications (password resets, mentions, share notifications). Options: SendGrid free tier, Postmark, Workspace SMTP relay
 - [ ] Populate `outline-smtp-password` secret once SMTP provider is chosen
 - [ ] Document and store the **break-glass admin recovery flow** (what to do if `admin@sigoalumni.org` loses access)
-- [ ] Re-enable the two GCP org policy constraints that were disabled during the GCS attempt (`iam.disableServiceAccountKeyCreation`, `storage.uniformBucketLevelAccess`) — neither is needed now, both add defense-in-depth
+- [ ] Re-enable `constraints/storage.uniformBucketLevelAccess` org policy (was disabled during the GCS attempt; not needed now). Note: `constraints/iam.disableServiceAccountKeyCreation` must STAY disabled — backup.sh's Drive auth uses a SA JSON key.
 
 ## Phase 4 — Security & governance
 

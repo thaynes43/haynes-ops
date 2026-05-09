@@ -23,4 +23,9 @@ if ! command -v gcloud >/dev/null 2>&1; then
   apt-get install -y google-cloud-cli
 fi
 
+# rclone — used by backup.sh to push cold-tier copies to the Workspace Shared Drive.
+if ! command -v rclone >/dev/null 2>&1; then
+  apt-get install -y rclone
+fi
+
 echo "Bootstrap complete. SCP the compose stack to ${APP_DIR}, then run scripts/load-secrets.sh and 'docker compose up -d'."

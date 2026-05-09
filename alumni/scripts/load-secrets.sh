@@ -34,3 +34,14 @@ trap 'rm -f "$TMP"' EXIT
 mv "$TMP" "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 echo "Wrote $ENV_FILE"
+
+# Drive SA JSON key — used by rclone in backup.sh to push to Workspace Shared Drive.
+DRIVE_KEY_FILE=/opt/outline/drive-sa-key.json
+if gcloud secrets versions access latest --secret=outline-drive-sa-key --project="$PROJECT" 2>/dev/null > "${DRIVE_KEY_FILE}.tmp"; then
+  mv "${DRIVE_KEY_FILE}.tmp" "$DRIVE_KEY_FILE"
+  chmod 600 "$DRIVE_KEY_FILE"
+  echo "Wrote $DRIVE_KEY_FILE"
+else
+  rm -f "${DRIVE_KEY_FILE}.tmp"
+  echo "Skipped $DRIVE_KEY_FILE (secret not yet populated)"
+fi
