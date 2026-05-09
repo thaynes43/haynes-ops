@@ -4,9 +4,8 @@ Tracking what's left to do *if* evaluation decides Outline is the right tool. It
 
 ## Phase 1 — Evaluation (now)
 
-- [ ] Confirm `admin@sigoalumni.org` can sign in via Google OAuth
-- [ ] Confirm a Cloud Identity Free board member can sign in (validates Internal vs External user-type decision)
-- [ ] If CIF users get rejected: switch OAuth consent screen User Type from Internal to External, add CIF users as Test Users
+- [x] Confirm `admin@sigoalumni.org` can sign in via Google OAuth — works
+- [x] Confirm a Cloud Identity Free board member can sign in — works on Internal user type
 - [ ] Have 1–2 board members actually create docs in Outline; gather their UX feedback
 - [ ] Decide: keep Outline, or pivot to another tool (Slite/Notion/Google Sites/etc.)
 - [ ] Test the export → import migration to Outline Cloud as a dry run (the safety valve must actually work, not just exist)
