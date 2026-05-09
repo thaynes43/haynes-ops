@@ -10,9 +10,14 @@ resource "google_storage_bucket" "backups" {
     enabled = true
   }
 
+  # NO age-based lifecycle. Retention is count-based and managed by backup.sh
+  # (keep N most recent). Reason: if backups silently stop, age-based deletion
+  # would empty the bucket exactly when we need it. Count-based freezes the
+  # last N until cron resumes. As a safety net, keep noncurrent versions for
+  # 30 days so accidental overwrites/deletes are recoverable.
   lifecycle_rule {
     condition {
-      age = 90
+      days_since_noncurrent_time = 30
     }
     action {
       type = "Delete"

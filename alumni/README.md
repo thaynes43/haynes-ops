@@ -25,8 +25,9 @@ If Tom ever rotates off the board, this entire folder must be extractable as a u
 - **Cloudflare** DNS (zone managed there, not in GCP)
 - **Google OAuth** as Outline's auth provider — board members sign in with their `name@sigoalumni.org` Cloud Identity
 - **Dual-tier nightly backup** (`pg_dump` + tar of `files/`):
-  - **Hot**: GCS `*-outline-backups` bucket, 90-day lifecycle, fast restore
-  - **Cold**: Workspace Shared Drive `Backups/Outline/`, 30-day retention, insurance against GCP project neglect (Workspace bills get attention because mailboxes go silent)
+  - **Hot**: GCS `*-outline-backups` bucket, **keep newest 90 files per prefix**, fast restore
+  - **Cold**: Workspace Shared Drive `Backups/Outline/`, **keep newest 30 files per pattern**, insurance against GCP project neglect (Workspace bills get attention because mailboxes go silent)
+  - Retention is count-based, not age-based — if cron silently stops, the most recent N stay frozen instead of expiring out from under you
 
 > **Why not S3/MinIO/GCS for attachments?** Tried both. MinIO worked but adds a container + browser-side subdomain + CORS. GCS via S3-interop hit cascading GCP org-policy constraints (HMAC creation, UBLA) and AWS SDK v3 quirks. For a 5-user docs wiki, `FILE_STORAGE=local` is the right architectural call: zero S3 complexity, files backed up nightly. Worst-case data loss is 24h of attachments. Wiki content is in Postgres which gets dumped on the same schedule.
 
