@@ -19,11 +19,14 @@ If Tom ever rotates off the board, this entire folder must be extractable as a u
 
 ## Stack
 
-- **Compute Engine VM** running Docker Compose: Outline + Postgres + Redis + MinIO + Caddy
+- **Compute Engine VM** running Docker Compose: Outline + Postgres + Redis + Caddy
+- **Attachments**: Outline's built-in `FILE_STORAGE=local` — files at `/var/lib/outline/files` on the VM disk
 - **GCP Secret Manager** for all app secrets (no SOPS here — that's a Flux pattern)
 - **Cloudflare** DNS (zone managed there, not in GCP)
 - **Google OAuth** as Outline's auth provider — board members sign in with their `name@sigoalumni.org` Cloud Identity
-- **Nightly backup** via cron in compose: `pg_dump` + MinIO sync → GCS bucket
+- **Nightly backup** via cron in compose: `pg_dump` + tar `files/` → GCS bucket
+
+> **Why not S3/MinIO/GCS for attachments?** Tried both. MinIO worked but adds a container + browser-side subdomain + CORS. GCS via S3-interop hit cascading GCP org-policy constraints (HMAC creation, UBLA) and AWS SDK v3 quirks. For a 5-user docs wiki, `FILE_STORAGE=local` is the right architectural call: zero S3 complexity, files backed up nightly. Worst-case data loss is 24h of attachments. Wiki content is in Postgres which gets dumped on the same schedule.
 
 ## Migration Path (the safety valve)
 

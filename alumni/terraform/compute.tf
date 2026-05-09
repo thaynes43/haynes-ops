@@ -38,10 +38,14 @@ resource "google_compute_instance" "outline" {
 
   allow_stopping_for_update = true
 
-  # Keep TF from churning when the VM is rebooted by GCP and gets a new fingerprint.
   lifecycle {
     ignore_changes = [
       metadata["ssh-keys"],
+      # Bootstrap script content is baked into the VM at creation. Changes to the
+      # script file should NOT trigger VM replacement (which would lose data).
+      # To update bootstrap behavior, recreate the VM intentionally:
+      #   tofu apply -replace=google_compute_instance.outline
+      metadata_startup_script,
     ]
   }
 }

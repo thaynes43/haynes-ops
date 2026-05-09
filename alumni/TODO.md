@@ -28,15 +28,15 @@ Currently running on the `admin@sigoalumni.org` $300 free trial in project `robu
 
 ## Phase 3 — Operational hardening
 
-- [ ] Wire `scripts/backup.sh` into cron on the VM:
+- [ ] **Wire `scripts/backup.sh` into cron** on the VM (more critical now that attachments live on the VM disk):
       `echo "0 3 * * * root /opt/outline/scripts/backup.sh >> /var/log/outline-backup.log 2>&1" | sudo tee /etc/cron.d/outline-backup`
-- [ ] Test the backup → restore flow end-to-end (restore to a scratch VM, confirm data integrity)
+- [ ] **Test the backup → restore flow end-to-end** — restore postgres dump + files tarball to a scratch VM, confirm data integrity. With local file storage this is even more important.
 - [ ] Pin the Outline image to a specific version (currently `:latest` — risky for unattended self-hosting)
-- [ ] Investigate the "unhealthy" docker healthcheck on Outline (cosmetic now, but pollutes monitoring later)
 - [ ] Add Cloud Monitoring **uptime check** for `https://wiki.sigoalumni.org` with email alerts to `admin@sigoalumni.org`
 - [ ] Configure SMTP for Outline notifications (password resets, mentions, share notifications). Options: SendGrid free tier, Postmark, Workspace SMTP relay
 - [ ] Populate `outline-smtp-password` secret once SMTP provider is chosen
 - [ ] Document and store the **break-glass admin recovery flow** (what to do if `admin@sigoalumni.org` loses access)
+- [ ] Re-enable the two GCP org policy constraints that were disabled during the GCS attempt (`iam.disableServiceAccountKeyCreation`, `storage.uniformBucketLevelAccess`) — neither is needed now, both add defense-in-depth
 
 ## Phase 4 — Security & governance
 

@@ -7,7 +7,6 @@ set -euo pipefail
 PROJECT=robust-fin-495718-a9
 ENV_FILE=/opt/outline/.env
 
-# Each secret is required unless explicitly marked optional.
 read_required() {
   gcloud secrets versions access latest --secret="$1" --project="$PROJECT" 2>/dev/null \
     || { echo "ERROR: secret $1 has no value yet" >&2; exit 1; }
@@ -27,9 +26,6 @@ trap 'rm -f "$TMP"' EXIT
   echo "UTILS_SECRET=$(read_required outline-utils-secret)"
   echo "POSTGRES_PASSWORD=$(read_required outline-postgres-password)"
   echo "REDIS_PASSWORD=$(read_required outline-redis-password)"
-  echo "MINIO_ROOT_PASSWORD=$(read_required outline-minio-root-password)"
-  echo "MINIO_ACCESS_KEY=$(read_required outline-minio-access-key)"
-  echo "MINIO_SECRET_KEY=$(read_required outline-minio-secret-key)"
   echo "GOOGLE_CLIENT_ID=$(read_required outline-oauth-client-id)"
   echo "GOOGLE_CLIENT_SECRET=$(read_required outline-oauth-client-secret)"
   echo "SMTP_PASSWORD=$(read_optional outline-smtp-password)"

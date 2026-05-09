@@ -11,8 +11,11 @@ if ! command -v docker >/dev/null 2>&1; then
   systemctl enable --now docker
 fi
 
-mkdir -p "$APP_DIR" "$DATA_DIR"/{postgres,redis,minio}
-chown -R root:root "$APP_DIR" "$DATA_DIR"
+mkdir -p "$APP_DIR" "$DATA_DIR"/{postgres,redis,files}
+# Outline runs as uid 1001 inside its container — give it ownership of the files dir.
+chown -R 1001:1001 "$DATA_DIR/files"
+chown -R root:root "$APP_DIR"
+chown -R root:root "$DATA_DIR/postgres" "$DATA_DIR/redis"
 
 # Install gcloud (already present on most GCP images, but ensure)
 if ! command -v gcloud >/dev/null 2>&1; then

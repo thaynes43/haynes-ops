@@ -15,8 +15,8 @@ cd "$APP_DIR"
 docker compose exec -T postgres pg_dump -U outline -d outline -Fc \
   | gcloud storage cp - "gs://${BUCKET}/postgres/outline-${TS}.dump" --project="$PROJECT"
 
-# MinIO data — tar from host bind mount
-tar -czf - -C /var/lib/outline minio \
-  | gcloud storage cp - "gs://${BUCKET}/minio/minio-${TS}.tar.gz" --project="$PROJECT"
+# Attachments — tar files dir from host bind mount and ship to GCS
+tar -czf - -C /var/lib/outline files \
+  | gcloud storage cp - "gs://${BUCKET}/files/files-${TS}.tar.gz" --project="$PROJECT"
 
 echo "[$TS] backup complete"
