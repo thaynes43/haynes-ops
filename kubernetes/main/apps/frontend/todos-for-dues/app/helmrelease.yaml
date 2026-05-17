@@ -68,6 +68,13 @@ spec:
               # out with ETIMEDOUT before the IPv4 fallback finished. This
               # forces the system resolver to return IPv4 addresses first.
               NODE_OPTIONS: --dns-result-order=ipv4first
+              # Resend FROM address. Must be on a domain whose SPF + DKIM
+              # records have been added in the Resend dashboard. The
+              # SaaS-repo default (`noreply@todos-for-dues.app`) is a
+              # placeholder; without this override Resend rejects every
+              # send with "domain is not verified". `sigoalumni.org` is
+              # this chapter's verified sending domain.
+              RESEND_FROM_ADDRESS: "TODOs for Dues <noreply@sigoalumni.org>"
             envFrom:
               - secretRef:
                   name: todos-for-dues-secret
