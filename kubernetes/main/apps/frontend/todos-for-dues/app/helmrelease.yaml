@@ -46,7 +46,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/todos-for-dues
-              tag: v0.2.1
+              tag: v0.2.2
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -61,6 +61,13 @@ spec:
               NODE_ENV: production
               PORT: "3000"
               HOSTNAME: "0.0.0.0"
+              # The cluster has no IPv6 egress to the internet. Node 18+'s
+              # built-in fetch (undici) does Happy Eyeballs and tries IPv6
+              # first by default — Google's OAuth endpoints return both
+              # AAAA and A records, so the OIDC token exchange was timing
+              # out with ETIMEDOUT before the IPv4 fallback finished. This
+              # forces the system resolver to return IPv4 addresses first.
+              NODE_OPTIONS: --dns-result-order=ipv4first
             envFrom:
               - secretRef:
                   name: todos-for-dues-secret
