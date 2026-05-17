@@ -1,0 +1,20 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: todos-for-dues
+  annotations:
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`todos-for-dues.haynesops.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: todos-for-dues
+          port: 3000
+  tls:
+    secretName: certificate-haynesops
