@@ -46,7 +46,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/todos-for-dues
-              tag: v0.6.0
+              tag: v0.7.3
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -84,7 +84,7 @@ spec:
                 custom: true
                 spec:
                   httpGet:
-                    path: /
+                    path: /api/health
                     port: 3000
                   initialDelaySeconds: 15
                   periodSeconds: 30
@@ -95,7 +95,7 @@ spec:
                 custom: true
                 spec:
                   httpGet:
-                    path: /
+                    path: /api/health
                     port: 3000
                   initialDelaySeconds: 5
                   periodSeconds: 10
@@ -106,7 +106,7 @@ spec:
                 custom: true
                 spec:
                   httpGet:
-                    path: /
+                    path: /api/health
                     port: 3000
                   initialDelaySeconds: 5
                   periodSeconds: 5
