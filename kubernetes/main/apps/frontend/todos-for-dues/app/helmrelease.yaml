@@ -46,7 +46,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/todos-for-dues
-              tag: v0.7.3
+              tag: v0.8.0
               pullPolicy: IfNotPresent
             command:
               - tsx
