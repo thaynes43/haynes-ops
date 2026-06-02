@@ -7,5 +7,5 @@ resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml
   - ./prometheusrule.yaml
-  - ./scrapeconfig.yaml
+  # - ./scrapeconfig.yaml  # all scrape configs currently disabled (see file)
   - ./gatus-endpoints.yaml

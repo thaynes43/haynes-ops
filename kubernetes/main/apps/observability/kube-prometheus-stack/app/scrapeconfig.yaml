@@ -1,18 +1,21 @@
----
+# Disabled — PiKVM is reachable but intentionally not monitored (accessed
+# directly via http://pikvm). Re-add ./scrapeconfig.yaml to the kustomization
+# resources and uncomment to re-enable.
+#---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/scrapeconfig_v1alpha1.json
-apiVersion: monitoring.coreos.com/v1alpha1
-kind: ScrapeConfig
-metadata:
-  name: &name pikvm
-spec:
-  staticConfigs:
-    - targets:
-        - pikvm.haynesnetwork
-  metricsPath: /api/export/prometheus/metrics
-  relabelings:
-    - action: replace
-      targetLabel: job
-      replacement: *name
+#apiVersion: monitoring.coreos.com/v1alpha1
+#kind: ScrapeConfig
+#metadata:
+#  name: &name pikvm
+#spec:
+#  staticConfigs:
+#    - targets:
+#        - pikvm.haynesnetwork
+#  metricsPath: /api/export/prometheus/metrics
+#  relabelings:
+#    - action: replace
+#      targetLabel: job
+#      replacement: *name
 #---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/scrapeconfig_v1alpha1.json
 #apiVersion: monitoring.coreos.com/v1alpha1
