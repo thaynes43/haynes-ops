@@ -1,0 +1,56 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cloudnative-pg
+spec:
+  groups:
+    - name: cnpg.rules
+      rules:
+        # A standby that stops streaming falls back to restoring WAL from the S3
+        # archive — the failure mode that drove ~600GB of egress in May 2026.
+        # "expected" is derived from the instance count since CNPG 1.29 does not
+        # expose cnpg_pg_replication_expected.
+        - alert: CNPGReplicaNotStreaming
+          annotations:
+            summary: >-
+              CNPG {{ $labels.job }} has fewer streaming replicas than expected — a
+              standby may be stuck restoring WAL from S3 (egress risk).
+          expr: |
+            max by (job) (cnpg_pg_replication_streaming_replicas)
+              < count by (job) (cnpg_collector_up) - 1
+          for: 15m
+          labels:
+            severity: critical
+        - alert: CNPGReplicationLagHigh
+          annotations:
+            summary: >-
+              CNPG replica {{ $labels.pod }} replication lag is
+              {{ $value | humanizeDuration }}.
+          expr: cnpg_pg_replication_lag > 300
+          for: 15m
+          labels:
+            severity: warning
+        # Would have caught postgres16-9's 63 restarts.
+        - alert: CNPGInstanceRestartLoop
+          annotations:
+            summary: >-
+              CNPG pod {{ $labels.pod }} restarted {{ $value | printf "%.0f" }}
+              times in the last hour.
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="database", pod=~"postgres16.*"}[1h]) > 5
+          for: 10m
+          labels:
+            severity: warning
+        # cnpg_collector_up drops to 0 while a standby loops in "database system
+        # is starting up" recovery — the state postgres16-9 was stuck in.
+        - alert: CNPGInstanceDown
+          annotations:
+            summary: >-
+              CNPG instance {{ $labels.pod }} in {{ $labels.namespace }} is down
+              (metrics collector cannot reach Postgres).
+          expr: cnpg_collector_up{namespace="database"} == 0
+          for: 10m
+          labels:
+            severity: critical
