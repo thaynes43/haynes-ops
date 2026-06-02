@@ -70,8 +70,12 @@ spec:
       service:
         selector:
           k8s-app: kube-controller-manager
+    # Disabled until the next Talos upgrade restarts etcd and picks up the
+    # listen-metrics-urls=http://0.0.0.0:2381 arg added to the Omni ControlPlane
+    # patch. etcd is a Talos service, so a plain `omnictl template sync` does not
+    # restart it — re-enable (revert to `<<: *kubeControllerManager`) post-upgrade.
     kubeEtcd:
-      <<: *kubeControllerManager # etcd runs on control plane nodes
+      enabled: false
     kubeProxy:
       enabled: false
     prometheus:
