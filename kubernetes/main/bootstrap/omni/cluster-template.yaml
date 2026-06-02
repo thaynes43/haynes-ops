@@ -36,6 +36,10 @@ patches:
         etcd:
           advertisedSubnets:
             - 192.168.40.0/24
+          extraArgs:
+            # Expose etcd metrics on a node-reachable address so the
+            # kube-prometheus-stack kubeEtcd ServiceMonitor can scrape :2381
+            listen-metrics-urls: http://0.0.0.0:2381
         coreDNS:
             disabled: true
         allowSchedulingOnControlPlanes: true
@@ -43,6 +47,14 @@ patches:
           disablePodSecurityPolicy: true
           extraArgs:
             allow-privileged: "true"
+        controllerManager:
+          extraArgs:
+            # Bind to all interfaces so Prometheus can scrape metrics on :10257
+            bind-address: 0.0.0.0
+        scheduler:
+          extraArgs:
+            # Bind to all interfaces so Prometheus can scrape metrics on :10259
+            bind-address: 0.0.0.0
         proxy:
           disabled: true
         discovery:
