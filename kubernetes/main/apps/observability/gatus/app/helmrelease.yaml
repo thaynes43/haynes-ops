@@ -102,6 +102,9 @@ spec:
               accessMode: ReadWriteOnce
               size: 5Gi
     defaultPodOptions:
+      # app-template v5 defaults automountServiceAccountToken to false; the
+      # gatus-sidecar needs the SA token to watch Services/Ingresses for endpoints.
+      automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

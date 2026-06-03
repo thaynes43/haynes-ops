@@ -42,6 +42,10 @@ spec:
                 cpu: 10m
               limits:
                 memory: 2Gi
+    defaultPodOptions:
+      # app-template v5 defaults automountServiceAccountToken to false; homepage
+      # needs the SA token (ClusterRole) to render its Kubernetes widgets.
+      automountServiceAccountToken: true
     serviceAccount:
       homepage: {}
     service:

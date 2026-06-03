@@ -92,5 +92,9 @@ spec:
             path: /metrics
             interval: 1m
             scrapeTimeout: 10s
+    defaultPodOptions:
+      # app-template v5 defaults automountServiceAccountToken to false; the
+      # dragonfly-operator needs the SA token (ClusterRole) to reconcile its CRs.
+      automountServiceAccountToken: true
     serviceAccount:
       dragonfly-operator: {}
