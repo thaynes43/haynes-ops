@@ -107,10 +107,19 @@ task rook:*                          # Rook/Ceph disk operations
 - **PR validation**: `flux-local` runs on PRs touching `kubernetes/` — tests and diffs both `main` and `edge` clusters
 - **Renovate**: Auto-updates container images, Helm charts, and GitHub Actions on weekends; ignores SOPS files and bootstrap dirs
 
+## Agent docs (`.agents/`)
+
+Longer-form runbooks, safety rules, and reference context live in [`.agents/`](.agents/README.md) (migrated from the retired `.cursor/rules/`). Consult these when the task matches:
+
+- **Runbooks** — [`.agents/runbooks/`](.agents/runbooks/): [renovate-upgrade-batches](.agents/runbooks/renovate-upgrade-batches.md) (merge Renovate PR backlogs in risk-tiered batches), [volsync-restore](.agents/runbooks/volsync-restore.md), [volsync-unlock](.agents/runbooks/volsync-unlock.md).
+- **Rules** — [`.agents/rules/`](.agents/rules/): [flux-pvc-prune-safety](.agents/rules/flux-pvc-prune-safety.md).
+- **Reference** — [`.agents/reference/`](.agents/reference/): [repo-overview](.agents/reference/repo-overview.md), [cluster-inspection](.agents/reference/cluster-inspection.md).
+
 ## Safety Guardrails
 
-- **PVC pruning risk**: Renaming/moving Flux `Kustomization` objects can trigger inventory pruning that deletes PVCs. Add `kustomize.toolkit.fluxcd.io/prune: disabled` annotation to protect stateful PVCs. See `.cursor/rules/flux-pvc-prune-safety.mdc`.
-- **VolSync runbooks**: Restore and unlock procedures are documented in `.cursor/rules/volsync-restore-runbook.mdc` and `.cursor/rules/volsync-unlock-runbook.mdc`.
+- **PVC pruning risk**: Renaming/moving Flux `Kustomization` objects can trigger inventory pruning that deletes PVCs. Add `kustomize.toolkit.fluxcd.io/prune: disabled` annotation to protect stateful PVCs. See [`.agents/rules/flux-pvc-prune-safety.md`](.agents/rules/flux-pvc-prune-safety.md).
+- **VolSync runbooks**: Restore and unlock procedures are in [`.agents/runbooks/volsync-restore.md`](.agents/runbooks/volsync-restore.md) and [`.agents/runbooks/volsync-unlock.md`](.agents/runbooks/volsync-unlock.md).
+- **Upgrading Renovate PRs**: Work through update-PR backlogs in risk-tiered batches per [`.agents/runbooks/renovate-upgrade-batches.md`](.agents/runbooks/renovate-upgrade-batches.md).
 
 ## Environment Setup
 

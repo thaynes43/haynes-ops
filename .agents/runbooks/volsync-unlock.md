@@ -1,8 +1,3 @@
----
-description: VolSync (restic) unlock runbook (stale repo locks)
-alwaysApply: true
----
-
 # VolSync unlock runbook (restic stale locks)
 
 VolSync’s restic mover uses restic repository locks to prevent corruption. If a mover pod dies mid-operation (often during forget/prune), a **stale lock** can remain and block future backups with errors like:

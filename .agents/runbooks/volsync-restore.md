@@ -1,8 +1,3 @@
----
-description: VolSync (restic) restore runbook (standard + PVC resize edge cases)
-alwaysApply: true
----
-
 # VolSync restore runbook (AWS/restic)
 
 This repo uses VolSync (restic) to back up and restore PVCs (commonly to S3-compatible storage like AWS).
