@@ -25,8 +25,10 @@ spec:
       namespace: volsync-system
   values:
     csi:
-      cephFSKernelMountOptions: ms_mode=prefer-crc
-      enableLiveness: true
+      # v1.20: cephFSKernelMountOptions and enableLiveness were removed from the
+      # rook-ceph chart. CSI is now managed by the bundled ceph-csi-operator
+      # (csi.installCsiOperator defaults true). The ms_mode=prefer-crc CephFS mount
+      # option is dropped here — re-add via the ceph-csi-operator Driver CR if needed.
       serviceMonitor:
         enabled: true
     enableDiscoveryDaemon: true
