@@ -15,7 +15,7 @@ Self-hosted infrastructure for the SIGO 501(c)(7) fraternity alumni association.
 
 All application secrets (database passwords, OAuth client secret, Outline app secret, etc.) live exclusively in GCP Secret Manager — no SOPS, no 1Password, no `.env` files in git. The VM's service account reads them at runtime via IAM.
 
-If Tom ever rotates off the board, this entire folder must be extractable as a unit (`git filter-repo --path alumni/`) and the GCP project + Cloudflare zone transfer ownership without touching haynes-ops.
+If Tom ever rotates off the board, this entire folder must be extractable as a unit (`git filter-repo --path archive/alumni/`) and the GCP project + Cloudflare zone transfer ownership without touching haynes-ops.
 
 ## Stack
 
