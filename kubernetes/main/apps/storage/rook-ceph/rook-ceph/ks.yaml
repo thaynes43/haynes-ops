@@ -30,6 +30,36 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: &app rook-ceph-csi-drivers
+  namespace: rook-ceph
+spec:
+  targetNamespace: rook-ceph
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  # rook-ceph 1.20: the ceph-csi-drivers chart provides the CSI driver SAs/RBAC
+  # and Driver CRs (operator only ships the controller-manager). Must apply after
+  # the operator (CRDs) and before the cluster.
+  dependsOn:
+    - name: rook-ceph
+      namespace: rook-ceph
+  path: ./kubernetes/main/apps/storage/rook-ceph/rook-ceph/csi-drivers
+  prune: false # never should be deleted
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 10m
+  postBuild:
+    substitute:
+      APP: *app
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: &app rook-ceph-cluster
   namespace: rook-ceph
 spec:
@@ -40,6 +70,8 @@ spec:
   dependsOn:
     - name: external-secrets-stores
       namespace: external-secrets
+    - name: rook-ceph-csi-drivers
+      namespace: rook-ceph
   path: ./kubernetes/main/apps/storage/rook-ceph/rook-ceph/cluster
   prune: false # never should be deleted
   sourceRef:

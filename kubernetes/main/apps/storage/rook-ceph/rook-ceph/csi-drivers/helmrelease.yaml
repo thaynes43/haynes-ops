@@ -1,0 +1,122 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/helm.toolkit.fluxcd.io/helmrelease_v2.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ceph-csi-drivers
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: ceph-csi-drivers
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  values:
+    # rook-ceph 1.20 moved CSI driver SAs/RBAC + Driver CRs out of the operator
+    # chart and into this ceph-csi-drivers chart (operator only ships the
+    # controller-manager via installCsiOperator: true). This restores the
+    # provisioner/attacher RBAC and re-applies ms_mode + liveness.
+    operatorConfig:
+      driverSpecDefaults:
+        cephFsClientType: kernel
+        clusterName: rook-ceph
+        deployCsiAddons: false
+        fsGroupPolicy: File
+        generateOMapInfo: false
+        controllerPlugin:
+          hostNetwork: true
+          replicas: 2
+          priorityClassName: system-cluster-critical
+          deploymentStrategy:
+            type: Recreate
+        nodePlugin:
+          kubeletDirPath: /var/lib/kubelet
+          priorityClassName: system-node-critical
+    drivers:
+      cephfs:
+        enabled: true
+        name: rook-ceph.cephfs.csi.ceph.com
+        snapshotPolicy: volumeSnapshot
+        # Preserved from the pre-1.20 operator csi.cephFSKernelMountOptions.
+        # Required because the cluster sets connections.requireMsgr2: true.
+        kernelMountOptions:
+          ms_mode: prefer-crc
+        controllerPlugin:
+          resources:
+            attacher:
+              requests: { cpu: 100m, memory: 128Mi }
+              limits: { memory: 256Mi }
+            plugin:
+              requests: { cpu: 250m, memory: 512Mi }
+              limits: { memory: 1Gi }
+            provisioner:
+              requests: { cpu: 100m, memory: 128Mi }
+              limits: { memory: 256Mi }
+            resizer:
+              requests: { cpu: 100m, memory: 128Mi }
+              limits: { memory: 256Mi }
+            snapshotter:
+              requests: { cpu: 100m, memory: 128Mi }
+              limits: { memory: 256Mi }
+            omapGenerator: {}
+            logRotator: {}
+            liveness: {}
+            addons: {}
+        nodePlugin:
+          resources:
+            plugin:
+              requests: { cpu: 250m, memory: 512Mi }
+              limits: { memory: 1Gi }
+            registrar:
+              requests: { cpu: 50m, memory: 128Mi }
+              limits: { memory: 256Mi }
+            logRotator: {}
+            liveness: {}
+            addons: {}
+      rbd:
+        enabled: true
+        name: rook-ceph.rbd.csi.ceph.com
+        snapshotPolicy: volumeSnapshot
+        controllerPlugin:
+          resources:
+            attacher:
+              requests: { cpu: 100m, memory: 128Mi }
+              limits: { memory: 256Mi }
+            omapGenerator:
+              requests: { cpu: 250m, memory: 512Mi }
+              limits: { memory: 1Gi }
+            plugin:
+              requests: { memory: 512Mi }
+              limits: { memory: 1Gi }
+            provisioner:
+              requests: { cpu: 100m, memory: 128Mi }
+              limits: { memory: 256Mi }
+            resizer:
+              requests: { cpu: 100m, memory: 128Mi }
+              limits: { memory: 256Mi }
+            snapshotter:
+              requests: { cpu: 100m, memory: 128Mi }
+              limits: { memory: 256Mi }
+            logRotator: {}
+            liveness: {}
+            addons: {}
+        nodePlugin:
+          resources:
+            plugin:
+              requests: { cpu: 250m, memory: 512Mi }
+              limits: { memory: 1Gi }
+            registrar:
+              requests: { cpu: 50m, memory: 128Mi }
+              limits: { memory: 256Mi }
+            logRotator: {}
+            liveness: {}
+            addons: {}
+      nfs:
+        enabled: false
+      nvmeof:
+        enabled: false
