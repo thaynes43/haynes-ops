@@ -204,5 +204,10 @@ spec:
               - path: /run/netns/
                 mountPropagation: HostToContainer
 
+    defaultPodOptions:
+      # app-template v5 defaults automountServiceAccountToken to false; the multus
+      # daemon needs the SA token for its in-cluster k8s client (else it panics:
+      # "serviceaccount/token: no such file or directory").
+      automountServiceAccountToken: true
     serviceAccount:
       multus: {}
