@@ -29,6 +29,15 @@ spec:
     crds:
       enabled: false
     cleanPrometheusOperatorObjectNames: true
+    defaultRules:
+      # The stock node-exporter network-error rules watch EVERY interface,
+      # including virtual/tunnel devices (siderolink WireGuard, cilium_*, lxc*),
+      # which legitimately show TX/RX "errors" (e.g. WG encapsulation drops) and
+      # fire false positives. Disabled here and replaced with device-filtered
+      # versions in prometheusrule.yaml that only watch real NICs.
+      disabled:
+        NodeNetworkTransmitErrs: true
+        NodeNetworkReceiveErrs: true
     alertmanager:
       ingress:
         enabled: true
