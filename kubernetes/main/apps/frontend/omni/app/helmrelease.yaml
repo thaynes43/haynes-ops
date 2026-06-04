@@ -80,7 +80,7 @@ spec:
                 memory: 500Mi
               limits:
                 memory: 16Gi
-                squat.ai/tun: "1"
+                devic.es/tun: "1"
 
             ports:
               - { name: http, containerPort: 8080 }
