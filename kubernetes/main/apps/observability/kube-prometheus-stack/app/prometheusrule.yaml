@@ -32,3 +32,27 @@ spec:
           for: 15m
           labels:
             severity: critical
+    # Replaces the stock NodeNetworkTransmitErrs/ReceiveErrs (disabled in the
+    # HelmRelease defaultRules) — same expr but excludes virtual/tunnel devices
+    # (siderolink WireGuard, cilium_*, lxc*, veth*, etc.) that throw benign
+    # TX/RX "errors", so we only alert on real NICs (eth*/enp*).
+    - name: node-network
+      rules:
+        - alert: NodeNetworkTransmitErrs
+          annotations:
+            description: '{{ $labels.instance }} interface {{ $labels.device }} has encountered {{ printf "%.0f" $value }} transmit errors in the last two minutes.'
+            runbook_url: https://runbooks.prometheus-operator.dev/runbooks/node/nodenetworktransmiterrs
+            summary: Network interface is reporting many transmit errors.
+          expr: rate(node_network_transmit_errs_total{job="node-exporter", device!~"siderolink|veth.*|cilium.*|lxc.*|cni.*|cali.*|tunl.*|wg.*|flannel.*|dummy.*|kube-ipvs.*|nodelocaldns.*"}[2m]) / rate(node_network_transmit_packets_total{job="node-exporter", device!~"siderolink|veth.*|cilium.*|lxc.*|cni.*|cali.*|tunl.*|wg.*|flannel.*|dummy.*|kube-ipvs.*|nodelocaldns.*"}[2m]) > 0.01
+          for: 1h
+          labels:
+            severity: warning
+        - alert: NodeNetworkReceiveErrs
+          annotations:
+            description: '{{ $labels.instance }} interface {{ $labels.device }} has encountered {{ printf "%.0f" $value }} receive errors in the last two minutes.'
+            runbook_url: https://runbooks.prometheus-operator.dev/runbooks/node/nodenetworkreceiveerrs
+            summary: Network interface is reporting many receive errors.
+          expr: rate(node_network_receive_errs_total{job="node-exporter", device!~"siderolink|veth.*|cilium.*|lxc.*|cni.*|cali.*|tunl.*|wg.*|flannel.*|dummy.*|kube-ipvs.*|nodelocaldns.*"}[2m]) / rate(node_network_receive_packets_total{job="node-exporter", device!~"siderolink|veth.*|cilium.*|lxc.*|cni.*|cali.*|tunl.*|wg.*|flannel.*|dummy.*|kube-ipvs.*|nodelocaldns.*"}[2m]) > 0.01
+          for: 1h
+          labels:
+            severity: warning
