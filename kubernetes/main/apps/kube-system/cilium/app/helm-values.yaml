@@ -12,6 +12,11 @@ cluster:
 cni:
   exclusive: false
 devices: eth+
+# Pin the direct-routing device to the management NIC. On freshly-imaged nodes
+# multiple NICs (ceph-private/iot/sonos) can each carry a default route, which
+# breaks Cilium's auto-detection ("unable to determine direct routing device")
+# and crashloops the agent. eth0 is the 192.168.40.x mgmt device on every node.
+directRoutingDevice: eth0
 enableRuntimeDeviceDetection: true
 endpointRoutes:
   enabled: true
