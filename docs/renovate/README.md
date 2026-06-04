@@ -75,13 +75,19 @@ The pieces worth porting:
 
 | Tier | Scope | Mode | Status |
 |------|-------|------|--------|
-| 0 | `github-actions` minor/patch | auto-merge | ✅ live (existing rule) |
-| 1 | `flux-local` PR gate | required check on all Renovate PRs | ⬜ **next** |
-| 2 | Trusted packages: own `ghcr.io/thaynes43/*` digests, `kube-prometheus-stack` chart | auto-merge after Tier 1 | ⬜ planned |
+| 0 | `github-actions` minor/patch | auto-merge | ✅ live |
+| 1 | `flux-local` PR gate | required check on all Renovate PRs | ✅ live (`.github/workflows/flux-local.yaml`) |
+| 2 | Curated allowlist: own `ghcr.io/thaynes43/*`, `kube-prometheus-stack`, + safe stateless leaf-app domains (`media`, `ai`, `downloads`, `frontend`, `office`, `photos`) on minor/patch | auto-merge, flux-local-gated + bake | ✅ live (`.renovate/autoMerge.json5`) |
 | 3 | Grouped multi-component apps: `home-assistant` (HA + code-server + ha-mcp), Z2M | weekly batch, dashboard-approval | ⬜ planned |
 | 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent | ⬜ planned |
 
-Tier 0 already works. Everything else is the roadmap.
+Tiers 0–2 are live. **Tier 2 carve-out:** `immich-app/*` is excluded from
+auto-merge (breaking schema/DB migrations even on minor) despite living in
+`photos/`. Ramp the allowlist by adding packages/domains as each proves quiet.
+The end state is **100% hands-off**, with a Tier 4 health-gate agent
+shepherding the risky merges (the manual merge→reconcile→verify→rollback loop,
+automated). That agent needs GitHub Actions (a `GITHUB_TOKEN`-merged PR does
+not fire downstream workflows) + a scoped cluster credential.
 
 ## Tier 1 — flux-local PR gate (next)
 
@@ -258,5 +264,13 @@ prototype; the in-cluster job is the right long-term home.
 
 ## Changelog
 
+- **2026-06-04** — Tiers 1 + 2 landed. Tier 1 (`flux-local` PR gate) was
+  already live. Split config into `.renovate/*.json5` (the Phase 1.5 refactor,
+  superseding the stale PR #1673), fixed the `ignorePaths` `.archive` glob
+  (Renovate had been scanning archived apps), flipped the github-actions
+  auto-merge to `ignoreTests: false` now that the gate exists, and added the
+  Tier 2 curated-allowlist auto-merge (own images + `kube-prometheus-stack` +
+  safe leaf-app domains, minor/patch, `minimumReleaseAge` bake, `immich-app/*`
+  carved out). Decision: start with the curated allowlist and ramp.
 - **2026-04-14** — Roadmap created. No config changes yet — Tier 1
   (flux-local) is the precondition for the auto-merge tiers and lands first.
