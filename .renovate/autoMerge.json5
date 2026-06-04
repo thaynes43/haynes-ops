@@ -1,0 +1,66 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  packageRules: [
+    // Tier 0 — github-actions minor/patch. Now that the flux-local PR gate
+    // exists, require the check (ignoreTests:false) so auto-merge is gated.
+    {
+      description: 'Auto merge GitHub Actions (gated by flux-local)',
+      matchManagers: ['github-actions'],
+      matchUpdateTypes: ['minor', 'patch'],
+      automerge: true,
+      automergeType: 'branch',
+      ignoreTests: false,
+    },
+    // Tier 2 — our own images. We build and test these before pushing, so a
+    // Renovate digest/tag bump is a no-brainer; only a short bake.
+    {
+      description: 'Auto merge our own ghcr.io/thaynes43/* images',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/thaynes43//'],
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
+      automerge: true,
+      automergeType: 'branch',
+      ignoreTests: false,
+      minimumReleaseAge: '1 minute',
+    },
+    // Tier 2 — kube-prometheus-stack chart (observability has been quiet here).
+    {
+      description: 'Auto merge kube-prometheus-stack minor/patch',
+      matchDatasources: ['helm'],
+      matchPackageNames: ['/kube-prometheus-stack/'],
+      matchUpdateTypes: ['minor', 'patch'],
+      automerge: true,
+      automergeType: 'branch',
+      ignoreTests: false,
+      minimumReleaseAge: '3 days',
+    },
+    // Tier 2 — safe stateless leaf-app domains on the main cluster. These apps
+    // restart as a single pod with no operator/coupling/state-migration risk.
+    // Gated by flux-local + a 3-day bake. Ramp this list as each proves quiet.
+    {
+      description: 'Auto merge safe leaf-app domains (stateless, single-pod)',
+      matchFileNames: [
+        'kubernetes/main/apps/media/**',
+        'kubernetes/main/apps/ai/**',
+        'kubernetes/main/apps/downloads/**',
+        'kubernetes/main/apps/frontend/**',
+        'kubernetes/main/apps/office/**',
+        'kubernetes/main/apps/photos/**',
+      ],
+      matchUpdateTypes: ['minor', 'patch'],
+      automerge: true,
+      automergeType: 'branch',
+      ignoreTests: false,
+      minimumReleaseAge: '3 days',
+    },
+    // Carve-out: Immich ships breaking schema/DB migrations even on minor and
+    // documents manual upgrade steps — keep it MANUAL despite living in photos/.
+    // (Scoped to immich-app/* so it does NOT catch our ghcr.io/thaynes43/hass-immich-addon.)
+    {
+      description: 'Immich: breaking migrations -> never auto-merge',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/immich-app//'],
+      automerge: false,
+    },
+  ],
+}
