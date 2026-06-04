@@ -734,20 +734,16 @@ patches:
               mtu: 1500
               dhcp: true
               dhcpOptions:
+                # CANARY (talosw03 only): rely purely on routeMetric like the
+                # control planes do, with NO static `routes:` default override.
+                # On 1.12.8 the control planes honor routeMetric (their 4 NIC
+                # defaults sit at distinct metrics and mgmt@100 wins). The static
+                # default route previously added here appears to poison DHCP
+                # routeMetric node-wide: with it present, BOTH NICs' defaults fall
+                # back to metric 1024 and collide, so eth1/VPN can win the race.
+                # Removing it should let eth0@100 beat eth1@2000. Validate on w03
+                # before replicating to w01/w02.
                 routeMetric: 100
-              # Pin an explicit metric-100 default route to the mgmt NIC. The
-              # dhcpOptions.routeMetric above was not being honored on this node:
-              # talosw03 uniquely received a SECOND default-gateway offer on
-              # 192.168.30.0/24 (the VPN/Multus net — which shouldn't even be on
-              # this node) and both DHCP defaults landed at the kernel-default
-              # metric 1024, so the VPN NIC (eth1) won the tie and captured the
-              # node default route, breaking all node egress (registry pulls reset
-              # via 192.168.30.1). A static metric-100 default guarantees eth0 wins
-              # regardless of any stray DHCP default on eth1.
-              routes:
-                - network: 0.0.0.0/0
-                  gateway: 192.168.40.1
-                  metric: 100
             - deviceSelector:
                 hardwareAddr: BC:24:11:5A:B3:3A
               mtu: 1500
