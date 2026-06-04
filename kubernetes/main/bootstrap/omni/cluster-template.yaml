@@ -107,6 +107,12 @@ systemExtensions:
   - siderolabs/nvidia-open-gpu-kernel-modules-lts
   - siderolabs/thunderbolt
 name: 88d0b080-43be-11ef-9fe8-3b0f229ef000
+# net.ifnames=0 forces eth0..ethN naming (macvlan NADs reference eth0/eth1).
+# m01 + m03 were USB bare-metal recovered with a persisted cmdline lacking it,
+# so the in-place 1.13.x upgrade kept enpXsY names and broke Multus. This Omni
+# kernelArgs field reapplies it via a non-destructive reboot (no wipe).
+kernelArgs:
+  - net.ifnames=0
 patches:
   - idOverride: 400-cm-88d0b080-43be-11ef-9fe8-3b0f229ef000
     inline:
@@ -356,6 +362,10 @@ systemExtensions:
   - siderolabs/nvidia-open-gpu-kernel-modules-lts
   - siderolabs/thunderbolt
 name: 98290580-1909-11ef-944c-5fe147626300
+# See m01 above: net.ifnames=0 reapplied via non-destructive reboot so eth0/eth1
+# naming returns (macvlan NADs reference eth1). USB-recovered node.
+kernelArgs:
+  - net.ifnames=0
 patches:
   - idOverride: 400-cm-98290580-1909-11ef-944c-5fe147626300
     inline:
