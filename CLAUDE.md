@@ -111,15 +111,20 @@ task rook:*                          # Rook/Ceph disk operations
 
 Longer-form runbooks, safety rules, and reference context live in [`.agents/`](.agents/README.md) (migrated from the retired `.cursor/rules/`). Consult these when the task matches:
 
-- **Runbooks** — [`.agents/runbooks/`](.agents/runbooks/): [renovate-upgrade-batches](.agents/runbooks/renovate-upgrade-batches.md) (merge Renovate PR backlogs in risk-tiered batches), [volsync-restore](.agents/runbooks/volsync-restore.md), [volsync-unlock](.agents/runbooks/volsync-unlock.md).
+- **Runbooks** — [`.agents/runbooks/`](.agents/runbooks/): [talos-version-upgrade](.agents/runbooks/talos-version-upgrade.md) (bump Talos/k8s via Omni, verify per node, re-image a node that won't upgrade), [renovate-upgrade-batches](.agents/runbooks/renovate-upgrade-batches.md) (merge Renovate PR backlogs in risk-tiered batches), [volsync-restore](.agents/runbooks/volsync-restore.md), [volsync-unlock](.agents/runbooks/volsync-unlock.md).
 - **Rules** — [`.agents/rules/`](.agents/rules/): [flux-pvc-prune-safety](.agents/rules/flux-pvc-prune-safety.md).
-- **Reference** — [`.agents/reference/`](.agents/reference/): [repo-overview](.agents/reference/repo-overview.md), [cluster-inspection](.agents/reference/cluster-inspection.md).
+- **Reference** — [`.agents/reference/`](.agents/reference/): [talos-omni-gotchas](.agents/reference/talos-omni-gotchas.md) (silent Talos/Omni node & network traps — read before editing the Omni cluster template or upgrading), [repo-overview](.agents/reference/repo-overview.md), [cluster-inspection](.agents/reference/cluster-inspection.md).
 
 ## Safety Guardrails
 
 - **PVC pruning risk**: Renaming/moving Flux `Kustomization` objects can trigger inventory pruning that deletes PVCs. Add `kustomize.toolkit.fluxcd.io/prune: disabled` annotation to protect stateful PVCs. See [`.agents/rules/flux-pvc-prune-safety.md`](.agents/rules/flux-pvc-prune-safety.md).
 - **VolSync runbooks**: Restore and unlock procedures are in [`.agents/runbooks/volsync-restore.md`](.agents/runbooks/volsync-restore.md) and [`.agents/runbooks/volsync-unlock.md`](.agents/runbooks/volsync-unlock.md).
 - **Upgrading Renovate PRs**: Work through update-PR backlogs in risk-tiered batches per [`.agents/runbooks/renovate-upgrade-batches.md`](.agents/runbooks/renovate-upgrade-batches.md).
+- **Talos/Omni node & network config (SILENT traps)**: Before editing `kubernetes/main/bootstrap/omni/cluster-template.yaml` or running a Talos/k8s upgrade, read [`.agents/reference/talos-omni-gotchas.md`](.agents/reference/talos-omni-gotchas.md). The big ones, each of which fails *silently* (no error, `lastconfigerror` empty):
+  - **`deviceSelector.hardwareAddr` is case-sensitive — MACs MUST be lowercase.** An uppercase MAC matches nothing, so the whole interface block (dhcp/addresses/routes/routeMetric/vip) is silently ignored. This was the real cause of the "worker egress out the VPN NIC" bug. Fix applies live via `task omni:sync` — no reboot.
+  - **`machine.install.extraKernelArgs` is a no-op under UKI** (`talosctl get securitystate` → `bootedWithUKI: true`). Use the Omni-native per-machine `kernelArgs` field instead (rebuilds the boot image, reboots — not a wipe; don't duplicate an arg already in the cmdline → reboot loop, omni#2382).
+  - **Wiping a VM loses its Omni identity** (META partition) → re-registers as a new machine. Pin `qm set <vmid> --smbios1 uuid=<original-machine-id>` before re-imaging.
+  - **Re-imaging** (node that won't upgrade, e.g. `/boot` too small for the nvidia initramfs) follows [`.agents/runbooks/talos-version-upgrade.md`](.agents/runbooks/talos-version-upgrade.md) — bake `net.ifnames=0` + extensions into the image; resizing the VM disk does NOT enlarge `/boot`.
 
 ## Environment Setup
 
