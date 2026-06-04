@@ -504,15 +504,10 @@ patches:
               dhcp: true
               dhcpOptions:
                 routeMetric: 100
-              # Pin the node default route to the mgmt NIC. routeMetric is not
-              # honored on this Talos build, so the eth1/192.168.30.0/24 VPN NIC
-              # could win the equal-metric (1024) default-route race on a re-DHCP
-              # (as it did on talosw03) and break node egress. Static metric-100
-              # default guarantees eth0 wins.
-              routes:
-                - network: 0.0.0.0/0
-                  gateway: 192.168.40.1
-                  metric: 100
+              # (Removed the static metric-100 default-route override: it never
+              # installed and gave no protection — both routeMetric and static
+              # route metric are ignored on these VM/virtio workers. The real fix
+              # is handled at eth1 — see commit history.)
             - deviceSelector:
                 hardwareAddr: BC:24:11:3E:CA:00
               mtu: 1500
@@ -618,15 +613,10 @@ patches:
               dhcp: true
               dhcpOptions:
                 routeMetric: 100
-              # Pin the node default route to the mgmt NIC. routeMetric is not
-              # honored on this Talos build, so the eth1/192.168.30.0/24 VPN NIC
-              # could win the equal-metric (1024) default-route race on a re-DHCP
-              # (as it did on talosw03) and break node egress. Static metric-100
-              # default guarantees eth0 wins.
-              routes:
-                - network: 0.0.0.0/0
-                  gateway: 192.168.40.1
-                  metric: 100
+              # (Removed the static metric-100 default-route override: it never
+              # installed and gave no protection — both routeMetric and static
+              # route metric are ignored on these VM/virtio workers. The real fix
+              # is handled at eth1 — see commit history.)
             - deviceSelector:
                 hardwareAddr: BC:24:11:74:58:0A
               mtu: 1500
