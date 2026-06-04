@@ -511,9 +511,15 @@ patches:
             - deviceSelector:
                 hardwareAddr: BC:24:11:3E:CA:00
               mtu: 1500
-              dhcp: true
-              dhcpOptions:
-                routeMetric: 2000
+              # eth1 = .30 VPN macvlan parent (qbittorrent). Static, NO gateway:
+              # routeMetric is ignored on these VM/virtio workers, so a DHCP
+              # default here wins the metric-1024 race and steals node egress
+              # (the talosw03 symptom). Static + no-gateway keeps eth1 up for
+              # Multus while guaranteeing eth0 owns the default route. The UniFi
+              # .30 DHCP stays on for everything else; only the hosts opt out.
+              dhcp: false
+              addresses:
+                - 192.168.30.101/24
           nameservers:
             - 192.168.40.1
           disableSearchDomain: true
@@ -620,9 +626,11 @@ patches:
             - deviceSelector:
                 hardwareAddr: BC:24:11:74:58:0A
               mtu: 1500
-              dhcp: true
-              dhcpOptions:
-                routeMetric: 2000
+              # eth1 = .30 VPN macvlan parent (qbittorrent). Static, NO gateway —
+              # see talosw01 for rationale (routeMetric ignored on VM workers).
+              dhcp: false
+              addresses:
+                - 192.168.30.102/24
           nameservers:
             - 192.168.40.1
           disableSearchDomain: true
@@ -737,9 +745,11 @@ patches:
             - deviceSelector:
                 hardwareAddr: BC:24:11:5A:B3:3A
               mtu: 1500
-              dhcp: true
-              dhcpOptions:
-                routeMetric: 2000
+              # eth1 = .30 VPN macvlan parent (qbittorrent). Static, NO gateway —
+              # see talosw01 for rationale (routeMetric ignored on VM workers).
+              dhcp: false
+              addresses:
+                - 192.168.30.103/24
           nameservers:
             - 192.168.40.1
           disableSearchDomain: true
