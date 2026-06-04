@@ -3,7 +3,7 @@ name: haynes-ops
 kubernetes:
   version: v1.34.3
 talos:
-  version: v1.12.8
+  version: v1.13.3
 patches:
   # Ensure control-plane services (e.g. etcd) don't deadlock on NTP during upgrades.
   # If NTP is unreachable (e.g. no Internet), don't deadlock boot forever.
