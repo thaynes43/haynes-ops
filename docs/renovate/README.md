@@ -81,6 +81,13 @@ The pieces worth porting:
 | 3 | Grouped multi-component apps: `home-assistant` (HA + code-server + ha-mcp), Z2M | weekly batch, dashboard-approval | ⬜ planned |
 | 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent | ⬜ planned |
 
+> **Resuming this roadmap (next session):** Tiers 0–2 are live as of 2026-06-04.
+> **Tier 3 is next** — its full design is the [Tier 3 section](#tier-3--grouped-multi-component-apps)
+> below (HA two-layer group + Z2M schedule); it's a config-only change to
+> `.renovate/*.json5`. **Tier 4** (the [health-gate agent](#tier-4--stateful-operators-with-a-health-gate))
+> is the 100%-hands-off endgame and has open questions to settle first (agent
+> runtime + cluster-credential strategy). Start a session pointed at this file.
+
 Tiers 0–2 are live. **Tier 2 carve-out:** `immich-app/*` is excluded from
 auto-merge (breaking schema/DB migrations even on minor) despite living in
 `photos/`. Ramp the allowlist by adding packages/domains as each proves quiet.
