@@ -11,7 +11,12 @@ cluster:
   name: "haynes-ops"
 cni:
   exclusive: false
-devices: eth+
+# Match both legacy eth* names and predictable enp* names. USB-reimaged nodes
+# that boot without net.ifnames=0 baked into their boot assets enumerate NICs
+# as enpXsX; eth+ alone matched nothing there, so Cilium crashed with "unable
+# to determine direct routing device". Routing is already correct (mgmt NIC
+# wins the default route at metric 100), so Cilium just needs to see the device.
+devices: eth+ enp+
 enableRuntimeDeviceDetection: true
 endpointRoutes:
   enabled: true
