@@ -509,7 +509,7 @@ patches:
           hostname: talosw01
           interfaces:
             - deviceSelector:
-                hardwareAddr: BC:24:11:83:72:D2
+                hardwareAddr: bc:24:11:83:72:d2
               mtu: 1500
               dhcp: true
               dhcpOptions:
@@ -519,7 +519,7 @@ patches:
               # route metric are ignored on these VM/virtio workers. The real fix
               # is handled at eth1 — see commit history.)
             - deviceSelector:
-                hardwareAddr: BC:24:11:3E:CA:00
+                hardwareAddr: bc:24:11:3e:ca:00
               mtu: 1500
               # eth1 = .30 VPN macvlan parent (qbittorrent). Static, NO gateway:
               # routeMetric is ignored on these VM/virtio workers, so a DHCP
@@ -624,7 +624,7 @@ patches:
           hostname: talosw02
           interfaces:
             - deviceSelector:
-                hardwareAddr: BC:24:11:6F:7E:CD
+                hardwareAddr: bc:24:11:6f:7e:cd
               mtu: 1500
               dhcp: true
               dhcpOptions:
@@ -634,7 +634,7 @@ patches:
               # route metric are ignored on these VM/virtio workers. The real fix
               # is handled at eth1 — see commit history.)
             - deviceSelector:
-                hardwareAddr: BC:24:11:74:58:0A
+                hardwareAddr: bc:24:11:74:58:0a
               mtu: 1500
               # eth1 = .30 VPN macvlan parent (qbittorrent). Static, NO gateway —
               # see talosw01 for rationale (routeMetric ignored on VM workers).
@@ -738,7 +738,7 @@ patches:
           hostname: talosw03
           interfaces:
             - deviceSelector:
-                hardwareAddr: BC:24:11:C5:5B:92
+                hardwareAddr: bc:24:11:c5:5b:92
               mtu: 1500
               dhcp: true
               dhcpOptions:
@@ -753,7 +753,7 @@ patches:
                 # before replicating to w01/w02.
                 routeMetric: 100
             - deviceSelector:
-                hardwareAddr: BC:24:11:5A:B3:3A
+                hardwareAddr: bc:24:11:5a:b3:3a
               mtu: 1500
               # eth1 = .30 VPN macvlan parent (qbittorrent). Static, NO gateway —
               # see talosw01 for rationale (routeMetric ignored on VM workers).
