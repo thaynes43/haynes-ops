@@ -24,9 +24,12 @@
       minimumReleaseAge: '1 minute',
     },
     // Tier 2 — kube-prometheus-stack chart (observability has been quiet here).
+    // Sourced via OCIRepository (oci://ghcr.io/.../charts/kube-prometheus-stack),
+    // which Renovate tracks as the `docker` datasource — not `helm`. Match both
+    // so it works whether the chart is OCI- or HelmRepository-sourced.
     {
       description: 'Auto merge kube-prometheus-stack minor/patch',
-      matchDatasources: ['helm'],
+      matchDatasources: ['docker', 'helm'],
       matchPackageNames: ['/kube-prometheus-stack/'],
       matchUpdateTypes: ['minor', 'patch'],
       automerge: true,
