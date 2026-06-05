@@ -20,8 +20,12 @@
     'prIgnoreNotification',
   ],
   rebaseWhen: 'conflicted',
+  timezone: 'America/New_York',
   schedule: [
-    'every weekend',
+    // Daily overnight window (local time). A release still soaks per
+    // minimumReleaseAge (3 days for third-party), then lands here while the
+    // cluster is idle — instead of waiting for the weekend.
+    'after 2am and before 6am',
   ],
   ignorePaths: [
     '**/*.sops.*',
