@@ -11,3 +11,19 @@ spec:
     requests:
       storage: 100Gi
   storageClassName: ceph-block
+---
+# Regenerable Plex artwork (Metadata + Media). Kept OFF the backed-up `plex`
+# config PVC so VolSync only protects the library DB. Plex re-fetches anything
+# missing here, so it is intentionally not backed up.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: plex-metadata
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 120Gi
+  storageClassName: ceph-block
