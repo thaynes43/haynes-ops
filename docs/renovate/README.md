@@ -156,7 +156,12 @@ twist:
   tag (like today's appdaemon 1.0.1), we tested it before pushing — Renovate
   picking up the digest is a no-brainer.
 - **`kube-prometheus-stack` on minor/patch.** Direct lift from onedr0p,
-  observability has been quiet here for months.
+  observability has been quiet here for months. **Datasource gotcha:** it's
+  sourced via `OCIRepository` (`oci://ghcr.io/.../charts/kube-prometheus-stack`),
+  which Renovate tracks as the **`docker`** datasource — *not* `helm`. The rule
+  must `matchDatasources: ['docker']` (we use `['docker', 'helm']` to be
+  source-agnostic); a `['helm']`-only match silently never fires. This applies
+  to any OCI-sourced chart added to the allowlist later.
 - **Use `ignoreTests: false`** on every rule so flux-local actually gates
   the merge. (Our existing GH-actions auto-merge rule sets `ignoreTests:
   true` because there's no test today — once Tier 1 lands we should flip
