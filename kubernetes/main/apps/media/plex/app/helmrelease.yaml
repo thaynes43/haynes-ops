@@ -117,12 +117,15 @@ spec:
         existingClaim: plex-cache
         globalMounts:
           - path: /config/Library/Application Support/Plex Media Server/Cache
-      # MIGRATION (temporary): plex-metadata mounted at a scratch path so we can
-      # copy the existing Metadata+Media into it before cutting over to subPaths.
+      # Regenerable artwork on a separate, non-backed-up PVC (keeps the VolSync
+      # backup of `plex` to just the library DB + prefs). Plex re-fetches if lost.
       config-metadata:
         existingClaim: plex-metadata
         globalMounts:
-          - path: /metadata-migrate
+          - path: /config/Library/Application Support/Plex Media Server/Metadata
+            subPath: Metadata
+          - path: /config/Library/Application Support/Plex Media Server/Media
+            subPath: Media
       config-logs:
         type: emptyDir
         globalMounts:
