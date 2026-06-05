@@ -28,6 +28,8 @@ spec:
       APP: *app
       VOLSYNC_CACHE_CAPACITY: 100Gi
       VOLSYNC_CAPACITY: 250Gi
+      # Plex backs up a large config (mostly regenerable artwork); weekly is plenty.
+      VOLSYNC_SCHEDULE: "0 0 * * 0" # Sundays 00:00 (default for other apps stays daily)
       # Gatus: ingress host is k8plex.haynesnetwork.com, use a health-ish endpoint
       GATUS_SUBDOMAIN: k8plex
       GATUS_PATH: /identity
