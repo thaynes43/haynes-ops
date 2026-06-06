@@ -113,6 +113,6 @@ spec:
         globalMounts:
           - path: /media
             subPath: misc/hass-media
-          - path: /config/www/immich-album
+          - path: /media/immich-album
             subPath: data/photos/hass-gallery
             readOnly: true
