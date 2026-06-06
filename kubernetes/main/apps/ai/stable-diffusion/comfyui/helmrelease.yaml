@@ -150,6 +150,10 @@ spec:
               CF_QUICK_TUNNELS: "false"
               SERVERLESS: "false"
               COMFYUI_DISABLE_EXTRA_NODES: "0"
+              # Load the qwen-edit diffusion model as fp8 (it IS fp8_e4m3fn on disk).
+              # ComfyUI >=0.3 otherwise upcasts a "default"-dtype UNET to fp16 (~24GB)
+              # and OOMs the 3090. Forcing fp8 keeps it ~12GB on GPU.
+              COMFYUI_ARGS: "--fp8_e4m3fn-unet"
             envFrom:
               - secretRef:
                   name: comfyui-secret
@@ -161,7 +165,9 @@ spec:
                 cpu: 500m
                 memory: 8Gi
               limits:
-                memory: 32Gi
+                # Loading the qwen models (~20GB) spiked past 32Gi during the
+                # v0.24.1 upgrade and OOMKilled the pod; node has ~135GB.
+                memory: 48Gi
                 #nvidia.com/gpu: 1
     defaultPodOptions:
       securityContext:
