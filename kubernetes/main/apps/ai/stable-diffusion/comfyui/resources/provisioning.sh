@@ -12,6 +12,7 @@ MODELS_ROOT="${COMFY_ROOT}/models"
 MANIFEST_PATH="${MODEL_MANIFEST:-/opt/comfyui-provisioning/models.txt}"
 FORCE_UPDATE="${PROVISIONING_UPDATE_EXISTING:-false}"
 DEPS_DIR="${WORKSPACE_ROOT}/.python-deps"
+COMFYUI_VERSION="${COMFYUI_VERSION:-}"
 
 mkdir -p "${MODELS_ROOT}" "${DEPS_DIR}"
 
@@ -53,6 +54,44 @@ install_comfyui_requirements() {
 
   echo "${current_hash}" > "${marker_file}"
   log "Requirements installed successfully."
+}
+
+# Pin the ComfyUI code to COMFYUI_VERSION. The ai-dock image bakes an old
+# ComfyUI; on a fresh openebs-hostpath workspace (post node re-image) it would
+# otherwise revert and lose newer nodes (e.g. Qwen-Image-Edit). Seed from the
+# baked /opt/ComfyUI (keeps ComfyUI-Manager/essentials) if absent, then checkout.
+# Idempotent: no-op when already at COMFYUI_VERSION.
+ensure_comfyui_version() {
+  if [[ -z "${COMFYUI_VERSION}" ]]; then
+    log "COMFYUI_VERSION unset; leaving ComfyUI code as-is."
+    return 0
+  fi
+
+  if [[ ! -d "${COMFY_ROOT}/.git" ]]; then
+    if [[ -d /opt/ComfyUI/.git ]]; then
+      log "Fresh workspace: seeding ComfyUI from baked /opt/ComfyUI..."
+      cp -a /opt/ComfyUI "${COMFY_ROOT}"
+      touch "${COMFY_ROOT}/.move_complete"
+    else
+      log "No ComfyUI git checkout and no /opt/ComfyUI to seed from; skipping version pin."
+      return 0
+    fi
+  fi
+
+  local current
+  current="$(git -C "${COMFY_ROOT}" describe --tags 2>/dev/null || echo unknown)"
+  if [[ "${current}" == "${COMFYUI_VERSION}" ]]; then
+    log "ComfyUI already at ${COMFYUI_VERSION}."
+    return 0
+  fi
+
+  log "Pinning ComfyUI ${current} -> ${COMFYUI_VERSION}..."
+  git -C "${COMFY_ROOT}" fetch --tags --quiet 2>/dev/null || log "git fetch failed; using local refs."
+  if git -C "${COMFY_ROOT}" checkout -f "${COMFYUI_VERSION}" 2>/dev/null; then
+    log "ComfyUI pinned to ${COMFYUI_VERSION}."
+  else
+    log "WARNING: checkout ${COMFYUI_VERSION} failed; leaving ComfyUI as ${current}."
+  fi
 }
 
 download_file() {
@@ -147,6 +186,9 @@ process_model() {
     fi
   fi
 }
+
+# --- ComfyUI version pin (self-heal after an openebs-hostpath wipe) ---
+ensure_comfyui_version
 
 # --- Python dependencies ---
 install_comfyui_requirements

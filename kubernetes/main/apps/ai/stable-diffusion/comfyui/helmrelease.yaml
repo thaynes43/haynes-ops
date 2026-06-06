@@ -128,6 +128,9 @@ spec:
               WORKSPACE: "/workspace"
               MODEL_MANIFEST: "/opt/comfyui-provisioning/models.txt"
               PROVISIONING_UPDATE_EXISTING: "false"
+              # Pin ComfyUI code so a fresh openebs workspace self-heals to a
+              # version with the Qwen-Image-Edit nodes (bump here to upgrade).
+              COMFYUI_VERSION: "v0.24.1"
             envFrom:
               - secretRef:
                   name: comfyui-secret
