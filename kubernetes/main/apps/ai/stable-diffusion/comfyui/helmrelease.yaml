@@ -212,6 +212,12 @@ spec:
               - path: /workspace/ComfyUI/models
                 subPath: misc/comfyui/models
                 readOnly: false
+            # provisioning also mounts NFS models so its model-download SKIPS
+            # already-present files instead of re-downloading to local disk.
+            provision-models:
+              - path: /workspace/ComfyUI/models
+                subPath: misc/comfyui/models
+                readOnly: false
       config:
         type: configMap
         name: comfyui-configmap
