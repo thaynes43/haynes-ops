@@ -199,6 +199,19 @@ spec:
               - path: /workspace/ComfyUI/output
                 subPath: misc/comfyui
                 readOnly: false
+      # Models on the NFS/cephFS share so a node re-image doesn't wipe them
+      # (was ~50GB on openebs-hostpath). Only the small code+deps stay local
+      # and are re-bootstrapped by provisioning.
+      models:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          comfyui:
+            app:
+              - path: /workspace/ComfyUI/models
+                subPath: misc/comfyui/models
+                readOnly: false
       config:
         type: configMap
         name: comfyui-configmap
