@@ -206,18 +206,13 @@ spec:
         type: nfs
         server: gasha01.haynesnetwork
         path: /hdd-nfs-repl
-        advancedMounts:
-          comfyui:
-            app:
-              - path: /workspace/ComfyUI/models
-                subPath: misc/comfyui/models
-                readOnly: false
-            # provisioning also mounts NFS models so its model-download SKIPS
-            # already-present files instead of re-downloading to local disk.
-            provision-models:
-              - path: /workspace/ComfyUI/models
-                subPath: misc/comfyui/models
-                readOnly: false
+        # globalMounts (all containers incl. the provision-models init) so the
+        # provisioning model-download SKIPS files already on NFS instead of
+        # re-downloading ~20GB to local disk. advancedMounts skips init containers.
+        globalMounts:
+          - path: /workspace/ComfyUI/models
+            subPath: misc/comfyui/models
+            readOnly: false
       config:
         type: configMap
         name: comfyui-configmap
