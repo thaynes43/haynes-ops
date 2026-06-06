@@ -22,10 +22,12 @@
   rebaseWhen: 'conflicted',
   timezone: 'America/New_York',
   schedule: [
-    // Daily overnight window (local time). A release still soaks per
+    // Nightly window (local time). A release still soaks per
     // minimumReleaseAge (3 days for third-party), then lands here while the
-    // cluster is idle — instead of waiting for the weekend.
-    'after 2am and before 6am',
+    // cluster is idle — instead of waiting for the weekend. Widened from the
+    // original 2–6am: Mend's hosted run cadence did not reliably land inside
+    // that narrow 4h window, so PRs went un-re-evaluated overnight.
+    'after 10pm and before 6am',
   ],
   ignorePaths: [
     '**/*.sops.*',
