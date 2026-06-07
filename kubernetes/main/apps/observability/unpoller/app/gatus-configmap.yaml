@@ -1,0 +1,22 @@
+---
+# Internal uptime check for the unpoller exporter. Picked up cluster-wide by the
+# Gatus configmap-sidecar (label gatus.io/enabled). unpoller has no ingress, so
+# this targets the in-cluster service /metrics directly — a 200 confirms the
+# exporter is alive and serving (pod up / not crashlooping).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: unpoller-gatus-ep
+  labels:
+    gatus.io/enabled: "true"
+data:
+  config.yaml: |
+    endpoints:
+      - name: unpoller
+        group: internal
+        url: "http://unpoller.observability.svc.cluster.local:9130/metrics"
+        interval: 1m
+        conditions:
+          - "[STATUS] == 200"
+        alerts:
+          - type: pushover
