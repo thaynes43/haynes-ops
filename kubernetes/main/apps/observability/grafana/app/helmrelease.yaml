@@ -38,6 +38,17 @@ spec:
       GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
     envFromSecrets:
       - name: grafana-authentik-secret
+      - name: grafana-postgres-secret
+    # Move Grafana off ephemeral SQLite to external Postgres (cluster16) so
+    # service-account tokens, alert rules, silences, and annotations survive
+    # pod restarts (previously wiped on every restart -> recurring MCP 401s).
+    # This init container idempotently creates the grafana DB + role first.
+    extraInitContainers:
+      - name: init-db
+        image: ghcr.io/home-operations/postgres-init:18.4
+        envFrom:
+          - secretRef:
+              name: grafana-postgres-secret
     grafana.ini:
       analytics:
         check_for_updates: false
