@@ -26,7 +26,7 @@ spec:
           app:
             image:
               repository: ghcr.io/enuno/unifi-mcp-server
-              tag: v0.2.6
+              tag: 0.2.6
             env:
               # Local UDM SE controller (not the cloud Site Manager API).
               UNIFI_API_TYPE: local
