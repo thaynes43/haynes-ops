@@ -45,6 +45,12 @@ spec:
                 value: &modelPath "/models"
               - name: OLLAMA_KEEP_ALIVE
                 value: "-1"
+              # Default context is 4096; detection-summary frame scoring sends a
+              # long instruction prompt + image that reaches ~4.5k tokens (garage
+              # camera hit 4479 -> 400 exceed_context_size). Raise the default so
+              # all served models have headroom. KV-cache bump is trivial vs 32Gi.
+              - name: OLLAMA_CONTEXT_LENGTH
+                value: "8192"
             resources:
               requests:
                 #nvidia.com/gpu: 1 # requesting 1 GPU TODO dig into how it works here https://github.com/jahanson/theshire/blob/main/kubernetes/apps/ai/ollama/app/helmrelease.yaml#L50 
