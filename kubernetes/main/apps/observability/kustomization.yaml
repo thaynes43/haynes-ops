@@ -14,4 +14,5 @@ resources:
   - ./kromgo/ks.yaml
   - ./grafana/ks.yaml
   - ./mcp-grafana/ks.yaml
+  - ./mcp-unifi/ks.yaml
   - ./unpoller/ks.yaml
