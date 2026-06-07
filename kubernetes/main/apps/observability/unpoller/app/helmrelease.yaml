@@ -37,7 +37,9 @@ spec:
               # Controller poll behaviour. Self-signed UniFi cert -> skip verify.
               UP_UNIFI_DEFAULT_VERIFY_SSL: "false"
               UP_UNIFI_DEFAULT_SAVE_SITES: "true"
-            # UP_UNIFI_DEFAULT_URL / _USER / _PASS come from the ExternalSecret.
+              # UDM SE controller address (RFC1918, not a secret).
+              UP_UNIFI_DEFAULT_URL: "https://192.168.0.1"
+            # UP_UNIFI_DEFAULT_USER / _PASS come from the ExternalSecret.
             envFrom:
               - secretRef:
                   name: "{{ .Release.Name }}-secret"
