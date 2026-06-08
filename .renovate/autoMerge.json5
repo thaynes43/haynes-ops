@@ -1,5 +1,12 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  // NOTE: all rules below use automergeType:'pr' (+ platformAutomerge:true in
+  // renovate.json5), NOT 'branch'. The flux-local gate runs `on: pull_request`
+  // only, so it never runs on a bare branch — with 'branch' Renovate could never
+  // see a green branch, fell back to opening a PR, and then (in branch mode) never
+  // merged it, so every eligible PR sat green forever (e.g. #1816). 'pr' +
+  // platformAutomerge hands the merge to GitHub, which fires when flux-local passes
+  // — independent of Mend's hosted run cadence — and leaves a visible merged-PR trail.
   packageRules: [
     // Tier 0 — github-actions minor/patch. Now that the flux-local PR gate
     // exists, require the check (ignoreTests:false) so auto-merge is gated.
@@ -8,7 +15,7 @@
       matchManagers: ['github-actions'],
       matchUpdateTypes: ['minor', 'patch'],
       automerge: true,
-      automergeType: 'branch',
+      automergeType: 'pr',
       ignoreTests: false,
     },
     // Tier 2 — our own images. We build and test these before pushing, so a
@@ -19,7 +26,7 @@
       matchPackageNames: ['/thaynes43//'],
       matchUpdateTypes: ['minor', 'patch', 'digest'],
       automerge: true,
-      automergeType: 'branch',
+      automergeType: 'pr',
       ignoreTests: false,
       minimumReleaseAge: '1 minute',
     },
@@ -33,7 +40,7 @@
       matchPackageNames: ['/kube-prometheus-stack/'],
       matchUpdateTypes: ['minor', 'patch'],
       automerge: true,
-      automergeType: 'branch',
+      automergeType: 'pr',
       ignoreTests: false,
       minimumReleaseAge: '3 days',
     },
@@ -52,7 +59,7 @@
       ],
       matchUpdateTypes: ['minor', 'patch'],
       automerge: true,
-      automergeType: 'branch',
+      automergeType: 'pr',
       ignoreTests: false,
       minimumReleaseAge: '3 days',
     },

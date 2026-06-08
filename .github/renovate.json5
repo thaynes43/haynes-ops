@@ -6,7 +6,11 @@
     ':disableRateLimiting',
     ':dependencyDashboard',
     ':semanticCommits',
-    ':automergeBranch',
+    // PR-based auto-merge (NOT :automergeBranch). flux-local runs on pull_request
+    // only, so branch-mode merges deadlocked — green PRs never merged. With PR mode
+    // + platformAutomerge, GitHub merges each eligible PR when flux-local passes,
+    // independent of Mend's hosted cadence, and leaves a visible merged-PR record.
+    ':automergePr',
     'github>thaynes43/haynes-ops//.renovate/autoMerge.json5',
     'github>thaynes43/haynes-ops//.renovate/groups.json5',
     'github>thaynes43/haynes-ops//.renovate/semanticCommits.json5',
@@ -20,6 +24,9 @@
     'prIgnoreNotification',
   ],
   rebaseWhen: 'conflicted',
+  // Use GitHub-native auto-merge: the PR merges itself the moment the required
+  // flux-local check passes, without waiting for Renovate's next hosted run.
+  platformAutomerge: true,
   timezone: 'America/New_York',
   schedule: [
     'after 10pm',
