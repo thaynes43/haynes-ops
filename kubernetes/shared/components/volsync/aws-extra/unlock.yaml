@@ -1,0 +1,63 @@
+---
+# yaml-language-server: $schema=https://gist.githubusercontent.com/thaynes43/21ef53eace2d3c6c8f00c8ee0fe4ec24/raw/b0fd8341723eee62b8a47127d40cb75f00056b67/empty-json-schema.json
+# See volsync/aws/unlock.yaml for rationale. Stale-only `restic unlock` (no
+# --remove-all, safe anytime) that self-heals orphaned repo locks before the
+# 00:00 backup window. Uses the per-extra-volume repo secret.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: "${EXTRAVOL}-volsync-unlock"
+spec:
+  schedule: "45 23 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: "${EXTRAVOL}-volsync-unlock"
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: ${VOLSYNC_PUID:-568}
+            runAsGroup: ${VOLSYNC_PGID:-568}
+            fsGroup: ${VOLSYNC_PGID:-568}
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: unlock
+              # renovate: datasource=docker depName=restic/restic
+              image: docker.io/restic/restic:0.18.0
+              args:
+                - unlock
+                - --no-cache
+              envFrom:
+                - secretRef:
+                    name: "${EXTRAVOL}-volsync-aws-secret"
+              env:
+                - name: TMPDIR
+                  value: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}

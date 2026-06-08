@@ -1,0 +1,68 @@
+---
+# yaml-language-server: $schema=https://gist.githubusercontent.com/thaynes43/21ef53eace2d3c6c8f00c8ee0fe4ec24/raw/b0fd8341723eee62b8a47127d40cb75f00056b67/empty-json-schema.json
+# Durable self-heal for recurring VolSync restic stale locks: when a mover dies
+# mid-prune it orphans a repo lock that blocks every subsequent forget/prune
+# (-> VolSyncVolumeOutOfSync, crash-looping volsync-src pods, manual unlock).
+# `restic unlock` WITHOUT --remove-all removes ONLY stale locks (dead process /
+# >30m old) and is safe to run anytime — it never touches a live mover's
+# refreshed lock. Runs ~15m before the 00:00 backup window so an orphaned lock is
+# cleared before the next backup's prune. Uses the same per-app repo secret as the
+# mover (envFrom -> RESTIC_REPOSITORY / RESTIC_PASSWORD / AWS creds).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: "${APP}-volsync-unlock"
+spec:
+  schedule: "${VOLSYNC_UNLOCK_SCHEDULE:-45 23 * * *}"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: "${APP}-volsync-unlock"
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: ${VOLSYNC_PUID:-568}
+            runAsGroup: ${VOLSYNC_PGID:-568}
+            fsGroup: ${VOLSYNC_PGID:-568}
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: unlock
+              # renovate: datasource=docker depName=restic/restic
+              image: docker.io/restic/restic:0.18.0
+              args:
+                - unlock
+                - --no-cache
+              envFrom:
+                - secretRef:
+                    name: "${APP}-volsync-aws-secret"
+              env:
+                - name: TMPDIR
+                  value: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
