@@ -40,9 +40,27 @@ spec:
             - name: unlock
               # renovate: datasource=docker depName=restic/restic
               image: docker.io/restic/restic:0.18.0
+              # `$$` is Flux's escape for a literal `$` (so the shell — not Flux's
+              # postBuild substitution — expands these); `${APP}` IS substituted by Flux.
+              command: ["/bin/sh", "-c"]
               args:
-                - unlock
-                - --no-cache
+                - |
+                  set -u
+                  # Count repo locks BEFORE unlocking. This job runs when no backup is
+                  # scheduled, so any lock present is an ORPHAN left by a mover killed
+                  # mid-backup (VolSync's recurring immutable-Job-delete bug) — i.e. the
+                  # issue actually recurred tonight.
+                  n=$$(restic list locks --no-cache 2>/dev/null | wc -l | tr -d ' ')
+                  # Remove stale locks (safe: never touches a live/refreshed lock).
+                  restic unlock --no-cache || true
+                  # If we just cleared an orphan, raise a self-resolving Alertmanager
+                  # alert (-> Pushover) so the recurrence is recorded. Lets us measure how
+                  # often the bug fires to narrow the RCA. Non-fatal if the POST fails.
+                  if [ "$${n:-0}" -gt 0 ]; then
+                    wget -q -O- --header='Content-Type: application/json' \
+                      --post-data='[{"labels":{"alertname":"VolSyncStaleLockCleared","severity":"warning","app":"${APP}","job":"volsync-unlock"},"annotations":{"summary":"VolSync auto-cleared a stale restic lock for ${APP}: a mover was killed mid-backup (recurring immutable-Job-delete bug). Backup data is safe and prune is now unblocked; logged to track recurrence frequency for RCA."}}]' \
+                      "http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093/api/v2/alerts" || true
+                  fi
               envFrom:
                 - secretRef:
                     name: "${APP}-volsync-aws-secret"

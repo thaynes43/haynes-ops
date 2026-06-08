@@ -34,10 +34,19 @@ spec:
           containers:
             - name: unlock
               # renovate: datasource=docker depName=restic/restic
+              # `$$` is Flux's escape for a literal `$`; `${EXTRAVOL}` IS substituted by Flux.
               image: docker.io/restic/restic:0.18.0
+              command: ["/bin/sh", "-c"]
               args:
-                - unlock
-                - --no-cache
+                - |
+                  set -u
+                  n=$$(restic list locks --no-cache 2>/dev/null | wc -l | tr -d ' ')
+                  restic unlock --no-cache || true
+                  if [ "$${n:-0}" -gt 0 ]; then
+                    wget -q -O- --header='Content-Type: application/json' \
+                      --post-data='[{"labels":{"alertname":"VolSyncStaleLockCleared","severity":"warning","app":"${EXTRAVOL}","job":"volsync-unlock"},"annotations":{"summary":"VolSync auto-cleared a stale restic lock for ${EXTRAVOL}: a mover was killed mid-backup (recurring immutable-Job-delete bug). Backup data is safe and prune is now unblocked; logged to track recurrence frequency for RCA."}}]' \
+                      "http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093/api/v2/alerts" || true
+                  fi
               envFrom:
                 - secretRef:
                     name: "${EXTRAVOL}-volsync-aws-secret"
