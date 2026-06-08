@@ -30,7 +30,11 @@
     '**/bootstrap/**',
     'kubernetes/edge/bootstrap/**',
     'kubernetes/edge/flux/repositories/**',
+    // Both archive folders are frozen, decommissioned configs — never update them.
+    // `.archive/` (older) + `archive/` (added 2026-06); the latter was leaking
+    // PRs (terraform/compose bumps under archive/alumni/) until added here.
     '.archive/**',
+    'archive/**',
   ],
   flux: {
     managerFilePatterns: [
