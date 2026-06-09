@@ -35,7 +35,7 @@ spec:
             - name: unlock
               # renovate: datasource=docker depName=restic/restic
               # `$$` is Flux's escape for a literal `$`; `${EXTRAVOL}` IS substituted by Flux.
-              image: docker.io/restic/restic:0.18.0
+              image: docker.io/restic/restic:0.18.1
               command: ["/bin/sh", "-c"]
               args:
                 - |

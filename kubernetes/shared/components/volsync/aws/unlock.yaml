@@ -39,7 +39,7 @@ spec:
           containers:
             - name: unlock
               # renovate: datasource=docker depName=restic/restic
-              image: docker.io/restic/restic:0.18.0
+              image: docker.io/restic/restic:0.18.1
               # `$$` is Flux's escape for a literal `$` (so the shell — not Flux's
               # postBuild substitution — expands these); `${APP}` IS substituted by Flux.
               command: ["/bin/sh", "-c"]
