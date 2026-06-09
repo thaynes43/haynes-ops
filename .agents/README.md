@@ -9,6 +9,7 @@ Top-level agent instructions live in [`CLAUDE.md`](../CLAUDE.md); this folder ho
 - [renovate-upgrade-batches.md](runbooks/renovate-upgrade-batches.md) — clear a backlog of Renovate update PRs by merging in risk-tiered batches (safe → infra → breaking → storage), reconciling and verifying after each.
 - [volsync-restore.md](runbooks/volsync-restore.md) — VolSync (restic) PVC restore, including PVC-resize edge cases.
 - [volsync-unlock.md](runbooks/volsync-unlock.md) — clearing stale restic repository locks.
+- [omni-service-account.md](runbooks/omni-service-account.md) — headless, non-interactive cluster access via an Omni service account, so `kubectl`/`flux` work from anywhere without the browser OIDC login that expires on long sessions (and can only be renewed from home).
 
 ## rules/ — must-follow safety guardrails
 - [flux-pvc-prune-safety.md](rules/flux-pvc-prune-safety.md) — warn about Flux inventory pruning / PVC deletion when moving or renaming Kustomizations.
