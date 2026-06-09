@@ -1,0 +1,168 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: slskd
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      slskd:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        pod:
+          nodeSelector:
+            network.haynesops.com/vpn: "true"
+          annotations:
+            k8s.v1.cni.cncf.io/networks: static-vpn-slskd
+        containers:
+          app:
+            image:
+              repository: ghcr.io/slskd/slskd
+              tag: 0.25.1
+            env:
+              TZ: America/New_York
+              DOTNET_BUNDLE_EXTRACT_BASE_DIR: /tmp/.net
+              SLSKD_APP_DIR: /config
+              SLSKD_HTTP_PORT: &port 5030
+              SLSKD_NO_HTTPS: "true"
+              SLSKD_NO_VERSION_CHECK: "true"
+              SLSKD_SLSK_LISTEN_PORT: 50300
+              SLSKD_DOWNLOADS_DIR: /data/soulseek/complete
+              SLSKD_INCOMPLETE_DIR: /data/soulseek/incomplete
+              # Share the music library back to peers; zero-share users get
+              # deprioritized and transfers park in "Queued, Remotely".
+              SLSKD_SHARED_DIR: /data/media/music
+              # Group-write so soularr can rename completed downloads into the
+              # artist-album layout Lidarr imports from.
+              SLSKD_UMASK: "0002"
+            envFrom:
+              - secretRef:
+                  name: slskd-secret
+            probes:
+              # slskd doesn't serve HTTP until the initial share scan finishes;
+              # the music library is ~4400 artists, so give it up to 30 min
+              # before liveness/readiness take over.
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: *port
+                  failureThreshold: 180
+                  periodSeconds: 10
+                  timeoutSeconds: 3
+              # /health alone stays green while slskd sits in "Disconnecting"
+              # forever after a VPN flap drops the Soulseek session. Assert the
+              # server connection is logged in or making progress, and restart
+              # the pod after 10x30s if not.
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  exec:
+                    command:
+                      - sh
+                      - -c
+                      - |
+                        wget -qO- http://localhost:5030/health >/dev/null || exit 1
+                        wget -qO- --header "X-API-Key: $SLSKD_API_KEY" http://localhost:5030/api/v0/application \
+                          | jq -e '.server.isLoggedIn or .server.isConnecting or .server.isLoggingIn' >/dev/null
+                  failureThreshold: 10
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: *port
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 5
+            resources:
+              requests:
+                cpu: 100m
+                memory: 512Mi
+              limits:
+                memory: 4Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: false
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+    service:
+      app:
+        forceRename: "{{ .Release.Name }}"
+        primary: true
+        ports:
+          http:
+            port: *port
+    ingress:
+      app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+          gethomepage.dev/href: &url "https://slskd.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Downloads
+          gethomepage.dev/name: slskd
+          gethomepage.dev/description: Soulseek client
+          gethomepage.dev/icon: slskd
+          gethomepage.dev/app: slskd
+          gethomepage.dev/siteMonitor: *url
+        className: traefik-internal
+        hosts:
+          - host: slskd.haynesops.com
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+    persistence:
+      config:
+        existingClaim: slskd
+      data:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          slskd:
+            app:
+              # Downloads land here (TRaSH-style sibling of torrents/usenet);
+              # lidarr and soularr see the same directory.
+              - path: /data/soulseek
+                subPath: data/soulseek
+                readOnly: false
+              # Shared library is read-only: slskd only ever serves it.
+              - path: /data/media/music
+                subPath: data/media/music
+                readOnly: true
+      tmp:
+        type: emptyDir
+      # /app is image-internal scratch; an emptyDir lets fsGroup make it
+      # writable so the entrypoint's r+w check passes while SLSKD_APP_DIR
+      # keeps real state on the config PVC.
+      app:
+        type: emptyDir

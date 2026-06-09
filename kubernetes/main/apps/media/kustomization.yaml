@@ -9,4 +9,5 @@ resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
   # Flux-Kustomizations
+  - ./lidarr/ks.yaml
   - ./plex/ks.yaml

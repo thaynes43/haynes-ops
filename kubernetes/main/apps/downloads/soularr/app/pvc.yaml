@@ -1,0 +1,15 @@
+---
+# Soularr state (logs, search-page cursor, failed-import denylist). All
+# regenerable, so no VolSync — just survive pod restarts.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: soularr-data
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: ceph-block
