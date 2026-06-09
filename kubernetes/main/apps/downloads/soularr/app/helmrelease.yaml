@@ -1,0 +1,114 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: soularr
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      soularr:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        containers:
+          app:
+            image:
+              repository: ghcr.io/mrusse/soularr
+              tag: 1.2.2
+            env:
+              TZ: America/New_York
+              SCRIPT_INTERVAL: "300"
+              WEBUI_ENABLED: "true"
+            probes:
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: &port 8265
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 5
+            resources:
+              requests:
+                cpu: 10m
+                memory: 128Mi
+              limits:
+                memory: 1Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: true
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+    service:
+      app:
+        forceRename: "{{ .Release.Name }}"
+        primary: true
+        ports:
+          http:
+            port: *port
+    ingress:
+      app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+          gethomepage.dev/href: &url "https://soularr.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Downloads
+          gethomepage.dev/name: Soularr
+          gethomepage.dev/description: Lidarr-to-Soulseek bridge
+          gethomepage.dev/icon: soularr
+          gethomepage.dev/app: soularr
+          gethomepage.dev/siteMonitor: *url
+        className: traefik-internal
+        hosts:
+          - host: soularr.haynesops.com
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+    persistence:
+      data:
+        existingClaim: soularr-data
+        globalMounts:
+          - path: /data
+      config-file:
+        type: secret
+        name: soularr-secret
+        globalMounts:
+          - path: /data/config.ini
+            subPath: config.ini
+            readOnly: true
+      downloads:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          soularr:
+            app:
+              - path: /downloads
+                subPath: data/soulseek
+                readOnly: false
+      tmp:
+        type: emptyDir

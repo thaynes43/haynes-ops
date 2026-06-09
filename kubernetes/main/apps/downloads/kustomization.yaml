@@ -10,4 +10,6 @@ resources:
   - ./namespace.yaml
   # Flux-Kustomizations
   - ./qbittorrent/ks.yaml
+  - ./slskd/ks.yaml
+  - ./soularr/ks.yaml
   - ./ytdl-sub/ks.yaml
