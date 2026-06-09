@@ -9,10 +9,16 @@ spec:
     kind: OCIRepository
     name: app-template
   interval: 30m
+  # The initial share scan (~4400 artists over NFS) takes 15-25 min before
+  # slskd binds HTTP, so a waiting helm action times out at 5m and its
+  # remediation kills the scan over and over. Don't wait on workload health —
+  # the startup probe (30 min grace) owns that.
   install:
+    disableWait: true
     remediation:
       retries: 3
   upgrade:
+    disableWait: true
     cleanupOnFail: true
     remediation:
       strategy: rollback
