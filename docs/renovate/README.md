@@ -53,6 +53,14 @@ The pieces worth porting:
   `ghcr.io/onedr0p`, `ghcr.io/bjw-s`, `ghcr.io/bjw-s-labs`). For us:
   start narrow with `ghcr.io/thaynes43/*` digests + `kube-prometheus-stack`
   minor/patch, expand later.
+  **Deliberate deviation (owned 2026-06-09):** our Tier 2 also trusts whole
+  *leaf-app domains* by path (`media`, `ai`, `downloads`, `frontend`,
+  `office`, `photos`) — we trust the *domain-placement decision* itself:
+  those directories only hold stateless single-pod apps. The cost is that
+  the trust is **implicit for future deps**: any new app or sidecar added
+  under those paths is auto-merge-trusted from day one. **Standing rule:**
+  when adding an app to an allowlisted domain, decide at that moment whether
+  it needs an Immich-style carve-out in `.renovate/autoMerge.json5`.
 - **`groupName` + `minimumGroupSize`** for must-move-together components.
   Used by both repos for kubernetes (5), flux-operator (3), rook-ceph (2),
   talos (2). **Important semantic gotcha** — see "Tier 3" below.
@@ -77,16 +85,18 @@ The pieces worth porting:
 |------|-------|------|--------|
 | 0 | `github-actions` minor/patch | auto-merge | ✅ live |
 | 1 | `flux-local` PR gate | required check on all Renovate PRs | ✅ live (`.github/workflows/flux-local.yaml`) |
-| 2 | Curated allowlist: own `ghcr.io/thaynes43/*`, `kube-prometheus-stack`, + safe stateless leaf-app domains (`media`, `ai`, `downloads`, `frontend`, `office`, `photos`) on minor/patch | auto-merge, flux-local-gated + bake | ✅ live (`.renovate/autoMerge.json5`) |
-| 3 | Grouped multi-component apps: `home-assistant` (HA + code-server + ha-mcp), Z2M | weekly batch, dashboard-approval | ⬜ planned |
-| 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent | ⬜ planned |
+| 2 | Curated allowlist: own `ghcr.io/thaynes43/*`, `kube-prometheus-stack`, + safe stateless leaf-app domains (`media`, `ai`, `downloads`, `frontend`, `office`, `photos`) on minor/patch | auto-merge, flux-local-gated + bake | ✅ live (`.renovate/autoMerge.json5`) — **trust clock starts 2026-06-08** (see exit criteria) |
+| 3 | Grouped multi-component apps: `home-assistant` (HA + code-server + ha-mcp), Z2M | symmetric dashboard-approval groups (manual phase) | ✅ live 2026-06-09 (`.renovate/groups.json5`) |
+| 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent | 🔶 designed — decisions locked 2026-06-09, build pending |
 
-> **Resuming this roadmap (next session):** Tiers 0–2 are live as of 2026-06-04.
-> **Tier 3 is next** — its full design is the [Tier 3 section](#tier-3--grouped-multi-component-apps)
-> below (HA two-layer group + Z2M schedule); it's a config-only change to
-> `.renovate/*.json5`. **Tier 4** (the [health-gate agent](#tier-4--stateful-operators-with-a-health-gate))
-> is the 100%-hands-off endgame and has open questions to settle first (agent
-> runtime + cluster-credential strategy). Start a session pointed at this file.
+> **Resuming this roadmap (next session):** Tiers 0–3 are live; Tier 3 runs in
+> its **manual dashboard-approval phase** (updates for the HA pod and Z2M show
+> up as checkboxes on the Dependency Dashboard, not as auto-opened PRs — tick
+> to release them as one group PR). Next milestones: **(a)** Tier 2 promotion
+> review on/after **2026-07-06** (four quiet weeks from the 2026-06-08
+> deadlock fix), **(b)** build the Tier 4 phase-4a health-gate agent — its
+> runtime/credential decisions are locked in the
+> [Tier 4 section](#tier-4--stateful-operators-with-a-health-gate).
 
 Tiers 0–2 are live. **Tier 2 carve-out:** `immich-app/*` is excluded from
 auto-merge (breaking schema/DB migrations even on minor) despite living in
@@ -173,6 +183,12 @@ twist:
 traced to a Tier 2 rule. Each new package added to the trust list resets the
 clock for that package only, not the tier.
 
+**Trust clock starts 2026-06-08, not 2026-06-04.** The rules existed from
+06-04 but were deadlocked (branch-mode automerge vs a PR-only flux-local
+check — see the note atop `autoMerge.json5`) and never fired until the
+06-08 fix; first confirmed auto-merge was #1829 on 06-09. Four quiet weeks
+of *rules actually firing* puts the promotion review at **≥ 2026-07-06**.
+
 ## Tier 3 — Grouped multi-component apps
 
 Home automation can't tier up by namespace because of sidecar coupling and
@@ -187,39 +203,57 @@ onedr0p and bjw-s use it, and that's fine for things like
 kubernetes-component bumps where the components naturally release
 together. It is the *wrong* tool for sidecar coupling.
 
-For HA specifically we need two layers:
+**Why the original two-layer design was scrapped (2026-06-09).** The first
+draft put `dependencyDashboardApproval: true` on the satellites only
+(code-server, ha-mcp) plus a `groupName` across all three, expecting an HA
+bump to "sweep in" pending satellite updates. It can't work: package rules
+merge **per-dependency**, so each satellite ends up with *both* the
+approval flag and the group name — and Renovate holds approval-gated deps
+**out of the group branch** until each is individually approved. The group
+PR would ship HA alone while the satellites strand behind un-ticked
+dashboard checkboxes; worst case, ha-mcp silently drifts incompatibly
+behind HA — the exact footgun the group exists to prevent.
 
-```json5
-// Layer 1: ban standalone bumps for the satellites
-// (use dependencyDashboardApproval for an escape hatch instead of enabled:false
-//  if you ever want to manually pull in a code-server-only bump)
-{
-  description: "code-server and ha-mcp must never ship without home-assistant",
-  matchPackageNames: ["/coder/code-server/", "/ha-mcp/"],
-  matchFileNames: ["kubernetes/main/apps/home-automation/**"],
-  dependencyDashboardApproval: true,
-}
-// Layer 2: when HA bumps, sweep the satellites in
-{
-  description: "Home Assistant group",
-  groupName: "home-assistant",
-  matchPackageNames: [
-    "/home-assistant/home-assistant/",
-    "/coder/code-server/",
-    "/ha-mcp/",
-  ],
-  matchFileNames: ["kubernetes/main/apps/home-automation/**"],
-}
-```
+**Locked design (live in [`.renovate/groups.json5`](../../.renovate/groups.json5)):
+one group, symmetric approval.** Every member of the HA pod group —
+`home-assistant`, `coder/code-server`, `homeassistant-ai/ha-mcp` — carries
+`dependencyDashboardApproval: true` and an explicit `automerge: false`.
 
-`code-server` and `ha-mcp` then never open their own PRs without manual
-approval, but the moment HA itself gets a bump the group rule fires and
-sweeps in any pending satellite updates as a single PR.
+Day-to-day workflow: member updates accumulate as **checkboxes on the
+Dependency Dashboard** instead of auto-opening PRs. Tick what you want to
+release → Renovate opens **one** group PR with everything ticked →
+flux-local renders the diff → manual merge → the HA pod restarts once with
+all bumps.
 
-A second group for `zigbee2mqtt` on its own (no companions, but the
-HA-restart-on-Z2M-change race means it should land on a known schedule
-where we can babysit it). Renovate `schedule: ["before 6am on Monday"]` is
-the bjw-s pattern for high-cadence-but-needs-attention.
+Accepted edge case: approving a satellite-only update produces a group PR
+containing just that satellite — one HA pod restart for a code-server bump.
+That's a restart-churn cost, not a compatibility risk, and a human chooses
+when to take it. (Two non-issues verified 2026-06-09: `ha-mcp` is
+third-party `ghcr.io/homeassistant-ai/ha-mcp`, *not* ours, so the Tier 2
+`thaynes43/*` wildcard can't catch it; and the Tier 3 rules live in
+`groups.json5`, which `extends` *after* `autoMerge.json5` — later rules win
+per-dependency — with `automerge: false` set explicitly as a belt-and-braces
+guard.)
+
+**Promotion rule — all-or-none.** When Tier 3 graduates from manual
+approval to automation (after the Tier 4 health gate exists), remove
+`dependencyDashboardApproval` from **all group members in the same commit**
+and add a `schedule`. Never go asymmetric (HA automated, satellites gated):
+that recreates the strand problem the two-layer design died of.
+
+**Zigbee2MQTT** gets its own approval-gated rule — no group (it has no
+companions). The risk is the HA-restart race: a Z2M update can broadcast
+devices while HA misses them on startup, leaving Zigbee entities
+`unavailable` until HA restarts. During the manual phase, **approval is the
+schedule** — you tick the box when you can babysit the reconcile; a
+`schedule:` would only add delay after an explicit approval, so it joins at
+the automation phase instead (`before 6am on Monday`, the bjw-s pattern).
+**Post-merge check (manual now, exactly what the Tier 4 gate automates
+later):** verify Zigbee entities are available; restart HA if not.
+
+Candidate for the same babysat pattern later: `zwave-js-ui` (HA's zwave-js
+integration has a server-schema compatibility window). Left manual-by-default
+for now — it's in no allowlist, so it still opens ordinary PRs.
 
 Even with grouping, Tier 3 stays **dashboard-approval** until the Tier 4
 health gate exists — the Z2M/HA race is exactly the kind of thing the gate
@@ -242,9 +276,29 @@ The plan is:
 Pre-merge gating cannot solve this — the failure modes only show up *after*
 reconcile. The agent is doing the work that no PR check can.
 
-**Open question:** does the agent run as a GitHub Action, an in-cluster
-CronJob, or a Claude Code scheduled trigger? The trigger is fastest to
-prototype; the in-cluster job is the right long-term home.
+**Decisions locked 2026-06-09:**
+
+- **Phase 4a — watch + page (build first):** a **Claude Code scheduled
+  agent** (cron trigger). Fastest to stand up, and the cluster-credential
+  question is already solved: the read-only **Omni service-account
+  kubeconfig** ([runbook](../../.agents/runbooks/omni-service-account.md))
+  gives it headless cluster access with no browser-OIDC dance. It runs the
+  post-reconcile health checks above and pages (Pushover, the existing
+  notification path) on regression. **Rollback stays human in this phase** —
+  the agent's job is to make sure a bad merge never goes unnoticed, not yet
+  to act on it.
+- **Phase 4b — the hands-off endgame:** once the checks have proven
+  themselves, move the loop **in-cluster (CronJob)** and automate the
+  rollback (revert commit or chart re-pin, pushed for Flux to reconcile).
+  Automated rollback requires the **`haynes-ops-bot` GitHub App** — a
+  `GITHUB_TOKEN`-pushed revert fires no downstream workflows (the
+  long-standing Tier 1 token-strategy item), so the bot's pushes must look
+  like user pushes.
+- **Preconditions for 4a:** Tier 3 quiet in manual mode, and the
+  **alert-noise cleanup done** — the gate's signal *is* the alert/metric
+  stream, and a noisy phone channel is how a regression gets missed. (This
+  is already true today: Alertmanager is the de-facto runtime health gate
+  for Tier 2's unsupervised overnight auto-merges.)
 
 ## Decisions made
 
@@ -259,23 +313,62 @@ prototype; the in-cluster job is the right long-term home.
   1.5 split PR → merge → Tier 2.
 - **Edge cluster goes in the flux-local matrix from day one**, even while
   it's powered off — validation is YAML-only.
+- **Branch protection stays `strict: false`** (2026-06-09, conscious
+  trade-off). PRs don't have to be up-to-date with `main` to merge, so two
+  PRs can each pass flux-local against an older base and merge in sequence
+  with the combined state never rendered. For independent image bumps the
+  risk is near zero, and the fix (`strict: true` + `rebaseWhen:
+  behind-base-branch`) would serialize every merge behind a rebase→re-check
+  cycle — a latency tax shaped suspiciously like the deadlock we just
+  escaped. Revisit only if a merge-order incident actually happens.
+- **Auto-merges deploy unsupervised overnight — by design** (2026-06-09).
+  The `schedule` gates PR *creation*; GitHub platform auto-merge fires
+  whenever the required check goes green, and Flux applies within the hour
+  — typically while we're asleep. Acceptable for the Tier 2 allowlist
+  precisely because it's stateless single-pod apps; Alertmanager is the
+  safety net (hence the alert-noise cleanup being a Tier 4 precondition).
+  `automergeSchedule` exists if this ever needs to change.
+- **Tier 3 uses symmetric dashboard-approval** (2026-06-09): every HA-pod
+  group member approval-gated, promotion to automation is all-or-none. The
+  asymmetric two-layer design is unimplementable — see Tier 3.
 
 ## Open questions
 
-- **Renovate runtime** — three options, decide at Tier 2:
-  1. **Hosted Renovate app** (current). Zero ops, least control.
-  2. **GitHub Actions self-hosted** (onedr0p pattern). Hourly cron, your
-     own logs, runs on GH-hosted runners. Easy migration.
-  3. **In-cluster `renovate-operator`** (bjw-s pattern). GitOps-managed
-     HelmRelease, lives with the rest of the cluster. Heavier setup but
-     the bot is in the same lifecycle as everything else it manages.
-- Tier 4 health-gate agent: GitHub Action, in-cluster CronJob, or Claude
-  Code scheduled trigger? Decide when we get there.
+- **Renovate runtime** — *urgency downgraded 2026-06-09*: `platformAutomerge`
+  decoupled merging from Mend's hosted run cadence (GitHub merges the moment
+  the check passes), which was the main pressure to self-host. The remaining
+  motives are logs/control only. Stay on the hosted app; revisit only if its
+  limits actually bite. (Options if they do: GitHub Actions self-hosted —
+  onedr0p pattern; in-cluster `renovate-operator` — bjw-s pattern.)
 - Document the rollback procedure for each Tier 4 component in
   `docs/observability/` so the agent (and a human at 2am) has a runbook.
+  Do this as part of building phase 4a — the agent's page should link the
+  runbook for the failing component.
 
 ## Changelog
 
+- **2026-06-09** — **Tier 3 design locked + implemented (manual-approval
+  phase)** in `.renovate/groups.json5`: scrapped the unimplementable
+  two-layer sweep design for the symmetric-approval HA-pod group + a
+  babysat Z2M rule (see Tier 3 for the post-mortem and the all-or-none
+  promotion rule). **Tier 4 decisions locked**: phase 4a = Claude Code
+  scheduled agent with the read-only Omni service-account kubeconfig
+  (watch + page, rollback stays human); phase 4b = in-cluster CronJob +
+  `haynes-ops-bot` GitHub App for automated rollback. Owned the Tier 2
+  path-based-domains deviation (+ standing carve-out rule for new apps);
+  restarted the Tier 2 trust clock at 2026-06-08; recorded the
+  `strict: false` and overnight-merge trade-offs. Fixed the restic
+  duplicate-PR pair (#1830/#1831 — `# renovate:` hints made the regex
+  manager double-track images the `kubernetes` manager already covers;
+  hints removed). Cleared the 9-PR manual backlog in risk batches
+  (leaf/infra → restic → HA pod as one unit → traefik last, verified
+  end-to-end).
+- **2026-06-08** — **Fixed the auto-merge deadlock**: Tier 0/2 rules used
+  branch-mode automerge, but flux-local runs `on: pull_request` only, so no
+  branch ever went green and every eligible PR sat unmerged (e.g. #1816).
+  Flipped to `automergeType: 'pr'` + `platformAutomerge: true` — GitHub
+  merges on check-pass, independent of Mend's run cadence. First confirmed
+  live auto-merge: #1829 (2026-06-09).
 - **2026-06-04** — Tiers 1 + 2 landed. Tier 1 (`flux-local` PR gate) was
   already live. Split config into `.renovate/*.json5` (the Phase 1.5 refactor,
   superseding the stale PR #1673), fixed the `ignorePaths` `.archive` glob

@@ -32,5 +32,48 @@
         '/siderolabs/installer/',
       ],
     },
+    // ── Tier 3: dashboard-approval phase (docs/renovate/README.md → Tier 3) ──
+    // The HA pod moves as ONE unit: code-server is a sidecar in the same pod
+    // (a bump restarts HA) and ha-mcp must stay compatible with HA. Approval
+    // is SYMMETRIC on every member — asymmetric (satellites-only) approval
+    // holds the gated deps OUT of the group branch, so the group would ship
+    // HA alone and the satellites strand (the scrapped two-layer design).
+    // Updates surface as Dependency Dashboard checkboxes; ticking them yields
+    // ONE group PR → flux-local diff → manual merge → one pod restart.
+    // PROMOTION RULE: when automating later, drop dependencyDashboardApproval
+    // from ALL members in the same commit (+ add a schedule). Never asymmetric.
+    {
+      description: 'Tier 3: Home Assistant pod group — HA + code-server sidecar + ha-mcp companion',
+      groupName: 'home-assistant',
+      matchFileNames: [
+        'kubernetes/main/apps/home-automation/home-assistant/**',
+        'kubernetes/main/apps/home-automation/ha-mcp/**',
+      ],
+      matchPackageNames: [
+        '/home-assistant/home-assistant/',
+        '/coder/code-server/',
+        '/homeassistant-ai/ha-mcp/',
+      ],
+      group: {
+        commitMessageTopic: '{{{groupName}}} group',
+      },
+      dependencyDashboardApproval: true,
+      automerge: false,
+    },
+    // Z2M has no companions, but an update can broadcast devices while HA
+    // misses them on startup (Zigbee entities stuck `unavailable` until HA
+    // restarts) — keep it a babysat, dashboard-approved merge. Post-merge:
+    // verify Zigbee entities are available; restart HA if not.
+    {
+      description: 'Tier 3: Zigbee2MQTT — babysat update (HA-restart race)',
+      matchFileNames: [
+        'kubernetes/main/apps/home-automation/zigbee2mqtt/**',
+      ],
+      matchPackageNames: [
+        '/koenkk/zigbee2mqtt/',
+      ],
+      dependencyDashboardApproval: true,
+      automerge: false,
+    },
   ],
 }
