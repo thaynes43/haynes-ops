@@ -68,7 +68,7 @@ spec:
                   httpGet:
                     path: /health
                     port: *port
-                  failureThreshold: 480
+                  failureThreshold: 1080
                   periodSeconds: 10
                   timeoutSeconds: 3
               # /health alone stays green while slskd sits in "Disconnecting"
