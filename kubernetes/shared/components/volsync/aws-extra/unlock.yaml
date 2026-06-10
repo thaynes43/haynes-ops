@@ -37,7 +37,7 @@ spec:
               # tracks this image natively; a hint makes the regex manager track it
               # too and open duplicate PRs (see #1830 vs #1831).
               # `$$` is Flux's escape for a literal `$`; `${EXTRAVOL}` IS substituted by Flux.
-              image: docker.io/restic/restic:0.18.1
+              image: docker.io/restic/restic:0.19.0
               command: ["/bin/sh", "-c"]
               args:
                 - |
