@@ -28,4 +28,5 @@ spec:
       APP: *app
       GATUS_SUBDOMAIN: lidarr
       GATUS_PATH: /ping
-      VOLSYNC_CAPACITY: 10Gi
+      # 4,374-artist library: ~8G MediaCover + ~2G db; 25Gi for headroom
+      VOLSYNC_CAPACITY: 25Gi
