@@ -51,6 +51,11 @@ spec:
               # Share the music library back to peers; zero-share users get
               # deprioritized and transfers park in "Queued, Remotely".
               SLSKD_SHARED_DIR: /data/media/music
+              # Mullvad blocks inbound, so distributed children can never
+              # connect to us; volunteering for them made the Soulseek server
+              # reset our session every 15-90s under load, killing transfers.
+              # Declining children = zero resets (verified over hours).
+              SLSKD_SLSK_DNET_NO_CHILDREN: "true"
               # Group-write so soularr can rename completed downloads into the
               # artist-album layout Lidarr imports from.
               SLSKD_UMASK: "0002"
