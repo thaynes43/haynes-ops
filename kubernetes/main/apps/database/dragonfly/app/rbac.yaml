@@ -8,8 +8,12 @@ rules:
     resources: ["events"]
     verbs: ["create", "patch"]
 
+  # configmaps added 2026-06-15 for operator v1.6.x: it now lists/watches
+  # ConfigMaps (custom-probes feature, upstream PR #500). We hand-maintain this
+  # ClusterRole (app-template, not the upstream chart), so we mirror the
+  # configmap role that upstream v1.6.1 added (its "missing configmap role" fix).
   - apiGroups: [""]
-    resources: ["pods", "services"]
+    resources: ["configmaps", "pods", "services"]
     verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
 
   - apiGroups: [""]
