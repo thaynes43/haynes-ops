@@ -5,7 +5,11 @@ kind: EMQX
 metadata:
   name: emqx
 spec:
-  image: docker.io/emqx/emqx:6.2.1
+  # Pinned to 6.2.0: EMQX 6.2.1 (Enterprise) hard-fails startup with
+  # "SINGLE_NODE_LICENSE ... configured with a valid license" — the license
+  # check 6.2.0 did not enforce. The new pod crash-loops; do NOT bump to 6.2.x
+  # until a license path is decided. Rolled back 2026-06-15 (PR #1841).
+  image: docker.io/emqx/emqx:6.2.0
   config:
     data: |
       mqtt {
