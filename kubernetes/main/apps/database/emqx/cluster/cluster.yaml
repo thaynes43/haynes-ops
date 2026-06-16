@@ -14,7 +14,7 @@ spec:
   # (likely a boot-time community-license gate — cf. emqx#17530, which moved a
   # similar gate out of app boot for 6.2.2). Filed upstream: emqx/emqx#17600.
   # Watch 6.2.2 — it may fix this. Rolled back 2026-06-15 (PR #1841).
-  image: docker.io/emqx/emqx:6.2.0
+  image: docker.io/emqx/emqx:6.2.1
   config:
     data: |
       mqtt {
