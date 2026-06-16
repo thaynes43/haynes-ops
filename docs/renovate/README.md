@@ -85,7 +85,7 @@ The pieces worth porting:
 |------|-------|------|--------|
 | 0 | `github-actions` minor/patch | auto-merge | ✅ live |
 | 1 | `flux-local` PR gate | required check on all Renovate PRs | ✅ live (`.github/workflows/flux-local.yaml`) |
-| 2 | Curated allowlist: own `ghcr.io/thaynes43/*`, `kube-prometheus-stack`, + safe stateless leaf-app domains (`media`, `ai`, `downloads`, `frontend`, `office`, `photos`) on minor/patch | auto-merge, flux-local-gated + bake | ✅ live (`.renovate/autoMerge.json5`) — **trust clock starts 2026-06-08** (see exit criteria) |
+| 2 | Curated allowlist: own `ghcr.io/thaynes43/*`, `kube-prometheus-stack`, safe stateless leaf-app domains (`media`, `ai`, `downloads`, `frontend`, `office`, `photos`, **`observability`** since 2026-06-15) + curated cluster-infra leaves by subpath (`kube-system/{metrics-server,reloader,reflector,k8tz,spegel}`, `network/cloudflare-ddns`) on minor/patch | auto-merge, flux-local-gated + bake | ✅ live (`.renovate/autoMerge.json5`) — **trust clock starts 2026-06-08** (see exit criteria) |
 | 3 | Grouped multi-component apps: `home-assistant` (HA + code-server + ha-mcp), Z2M | symmetric dashboard-approval groups (manual phase) | ✅ live 2026-06-09 (`.renovate/groups.json5`) |
 | 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent | 🔶 designed — decisions locked 2026-06-09, build pending |
 
@@ -188,6 +188,25 @@ clock for that package only, not the tier.
 check — see the note atop `autoMerge.json5`) and never fired until the
 06-08 fix; first confirmed auto-merge was #1829 on 06-09. Four quiet weeks
 of *rules actually firing* puts the promotion review at **≥ 2026-07-06**.
+
+**Allowlist expansion 2026-06-15 — observability domain + curated infra
+leaves.** Added `observability/**` as a whole leaf domain (every app is a
+plain Deployment — no StatefulSets, no operator CRs; grafana state lives in
+external CNPG, loki's only PVC is local log storage) and a *second* rule for
+curated cluster-infra leaves matched by **explicit subpath**:
+`kube-system/{metrics-server,reloader,reflector,k8tz,spegel}` and
+`network/cloudflare-ddns`. The subpath rule is deliberate: `kube-system` and
+`network` are **not** safe as whole domains — each holds a cluster-killer
+(cilium/coredns, traefik, authentik, multus, device-plugins) that GitOps
+can't self-heal if a bad push lands overnight, so only the stateless
+single-pod utilities are listed by name. Two things to keep an eye on as
+this bakes: `prometheus-operator-crds` (CRD bumps — additive on minor/patch,
+which is all the rule allows) and the meta-risk that observability is the
+safety net for the *other* Tier 2 merges (mitigated by the independent
+Gatus/Pushover/watchdog alert path). Per-package trust clocks for the new
+entries start 2026-06-15. **Still manual** (the irreducible core, → Tier 4):
+database operators (CNPG/dragonfly/EMQX), cilium, coredns, traefik,
+authentik, multus, device-plugins.
 
 ## Tier 3 — Grouped multi-component apps
 
@@ -300,6 +319,47 @@ reconcile. The agent is doing the work that no PR check can.
   is already true today: Alertmanager is the de-facto runtime health gate
   for Tier 2's unsupervised overnight auto-merges.)
 
+### The upgrade-shepherd agent — three invocation modes
+
+The Tier 4 agent is not *only* the scheduled health gate. It is **one agent**
+with a shared toolset — read-only cluster access via the Omni service-account
+kubeconfig ([runbook](../../.agents/runbooks/omni-service-account.md)), `gh`,
+repo read/write, `flux-local`, the Pushover page path, and the
+[`renovate-upgrade-batches`](../../.agents/runbooks/renovate-upgrade-batches.md)
+runbook — invoked three ways:
+
+1. **Scheduled gate (phase 4a, build first).** Cron / `/loop` trigger. After
+   every reconcile it runs the post-merge health checks (Flux Kustomization
+   status, CNPG / Rook-Ceph / EMQX health, HA Zigbee availability) and pages
+   on regression. Rollback stays human in 4a, automated in 4b.
+
+2. **Summoned remediation (on-demand).** When an upgrade *fails* — an alert
+   fires, a Kustomization is stuck `not Ready`, or a post-merge regression is
+   spotted — the agent is invoked directly (a chat session, or a page-reply /
+   `RemoteTrigger` hook) to diagnose, attempt the documented remediation
+   (revert the HelmRelease to the prior chart, re-pin a version, delete-and-
+   reseed per the component runbook), and report back. This is the manual
+   **Rollback** section of `renovate-upgrade-batches.md`, automated and
+   on-call. This is the "summoned if an upgrade failed" capability.
+
+3. **Breaking-change shepherd (the manual-tier upgrades).** For the
+   irreducible-manual set that will never blind-auto-merge — database
+   operators, traefik, authentik, cilium, Talos, Flux, Rook/Ceph — the agent
+   runs the `renovate-upgrade-batches.md` **Tier 3** process: read the release
+   notes / `UPGRADING` guide, grep our usage for the affected features, make
+   the required `values` edits in a commit, merge **one at a time**,
+   reconcile, verify, move on. This is the "reading release notes and making
+   other changes to support breaking changes" capability — work a pre-merge PR
+   check structurally cannot do.
+
+Modes 2 and 3 are the second reason (besides automated rollback) the
+`haynes-ops-bot` **GitHub App** is required: the agent must push commits
+(reverts, value edits) that fire downstream workflows, which a
+`GITHUB_TOKEN`-merged PR does not. Until the App exists, modes 2/3 run as a
+**supervised Claude Code session** (the human is the push identity, exactly as
+in this 2026-06-15 backlog sweep); only the scheduled gate (mode 1) is purely
+read+page, so it can ship on the Omni SA kubeconfig alone.
+
 ## Decisions made
 
 - **Tier 1 starts with `GITHUB_TOKEN`**, swap to a GitHub App after
@@ -347,6 +407,19 @@ reconcile. The agent is doing the work that no PR check can.
 
 ## Changelog
 
+- **2026-06-15** — **Tier 2 allowlist expansion + Tier 4 agent scope
+  codified.** Added `observability/**` as a whole leaf domain and a curated
+  cluster-infra-leaves rule (`kube-system/{metrics-server,reloader,reflector,
+  k8tz,spegel}`, `network/cloudflare-ddns`) matched by explicit subpath — see
+  the Tier 2 "Allowlist expansion 2026-06-15" note for the why (and why
+  `kube-system`/`network` are *not* safe whole-domain). Per-package trust
+  clocks for the new entries start today. Codified the Tier 4 **upgrade-
+  shepherd agent's three invocation modes** (scheduled health gate / summoned
+  on-failure remediation / breaking-change shepherd) — the "summon on failure"
+  and "read release notes + make supporting edits" capabilities now have a
+  home in the Tier 4 section. Cleared the standing 17-PR manual backlog in
+  risk-tiered batches (home-automation first under supervision → safe leaves →
+  shared restic → network infra → database operators).
 - **2026-06-09** — **Tier 3 design locked + implemented (manual-approval
   phase)** in `.renovate/groups.json5`: scrapped the unimplementable
   two-layer sweep design for the symmetric-approval HA-pod group + a

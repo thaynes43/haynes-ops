@@ -47,6 +47,17 @@
     // Tier 2 — safe stateless leaf-app domains on the main cluster. These apps
     // restart as a single pod with no operator/coupling/state-migration risk.
     // Gated by flux-local + a 3-day bake. Ramp this list as each proves quiet.
+    //
+    // observability/ added 2026-06-15: the whole domain is plain Deployments
+    // (no StatefulSets, no operator CRs) — grafana's state lives in external
+    // CNPG (durable), loki's only PVC is local log storage (a bad upgrade
+    // loses logs, not the cluster). kube-prometheus-stack is already trusted
+    // by name above. Accepted trade-off: observability IS the safety net that
+    // watches the other Tier 2 merges, so a bad monitoring push could blind
+    // us — mitigated by the flux-local gate, the 3-day bake, and the
+    // Gatus/Pushover/watchdog alert path that does NOT depend on Prometheus.
+    // Watch item: prometheus-operator-crds (CRD-only bumps) — safe here only
+    // because minor/patch CRD changes are additive; majors stay manual.
     {
       description: 'Auto merge safe leaf-app domains (stateless, single-pod)',
       matchFileNames: [
@@ -56,6 +67,30 @@
         'kubernetes/main/apps/frontend/**',
         'kubernetes/main/apps/office/**',
         'kubernetes/main/apps/photos/**',
+        'kubernetes/main/apps/observability/**',
+      ],
+      matchUpdateTypes: ['minor', 'patch'],
+      automerge: true,
+      automergeType: 'pr',
+      ignoreTests: false,
+      minimumReleaseAge: '3 days',
+    },
+    // Tier 2 (2026-06-15) — curated cluster-infra leaves, allowlisted by
+    // EXPLICIT SUBPATH (never whole-domain). kube-system and network each
+    // contain a cluster-killer that GitOps can't self-heal if a bad push lands
+    // overnight — cilium/coredns (CNI + cluster DNS), traefik (all ingress),
+    // authentik (SSO + DB migrations), multus (CNI), the device-plugins
+    // (GPU/detection pipeline). Only stateless, single-pod utilities with no
+    // such coupling go here. Same flux-local + 3-day bake. Ramp per-app.
+    {
+      description: 'Auto merge safe cluster-infra leaves (explicit subpaths)',
+      matchFileNames: [
+        'kubernetes/main/apps/kube-system/metrics-server/**',
+        'kubernetes/main/apps/kube-system/reloader/**',
+        'kubernetes/main/apps/kube-system/reflector/**',
+        'kubernetes/main/apps/kube-system/k8tz/**',
+        'kubernetes/main/apps/kube-system/spegel/**',
+        'kubernetes/main/apps/network/cloudflare-ddns/**',
       ],
       matchUpdateTypes: ['minor', 'patch'],
       automerge: true,
