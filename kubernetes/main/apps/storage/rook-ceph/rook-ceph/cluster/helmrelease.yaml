@@ -95,8 +95,14 @@ spec:
           requests:
             cpu: 100m
             memory: 512Mi
+          # Raised 2Gi -> 4Gi 2026-06-19. The ACTIVE mgr leaks ~0.05Gi/day
+          # (modules/maps/metrics; standby stays flat ~0.5Gi), so it climbed
+          # to 2Gi in ~2wk and got cgroup-OOMKilled (node had 78Gi free — a
+          # per-container limit, not node pressure). 4Gi pushes the self-heal
+          # restart cycle to ~8wk. A bigger limit only delays the leak; the
+          # real fix is finding the leaking module (likely prometheus/dashboard).
           limits:
-            memory: 2Gi
+            memory: 4Gi
         mon:
           requests:
             cpu: 50m
