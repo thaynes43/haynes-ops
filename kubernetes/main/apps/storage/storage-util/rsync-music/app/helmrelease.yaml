@@ -30,7 +30,7 @@ spec:
           app:
             image:
               repository: ghcr.io/haraldkoch/rsync
-              tag: 3.4.1@sha256:dc667d72eb9ae459be456f3a95b30612c1c8a127c3fc21d3e586339cbd51ad22
+              tag: 3.4.3@sha256:35894a7ffda6124d9d5be0afc62578e68497cc9079c319301848bb75156f86d7
             command:
               - /bin/sh
               - -c
