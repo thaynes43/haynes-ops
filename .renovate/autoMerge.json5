@@ -69,7 +69,12 @@
         'kubernetes/main/apps/photos/**',
         'kubernetes/main/apps/observability/**',
       ],
-      matchUpdateTypes: ['minor', 'patch'],
+      // 'digest' (2026-06-28): SHA-pinned image refreshes on the SAME tag are at
+      // least as safe as minor/patch for these stateless single-pod apps, yet the
+      // minor/patch-only list stranded every digest bump forever (cloudflare-ddns
+      // #1884, postgres-init #1889/#1890). The Immich carve-out below still blocks
+      // immich-app/* digests (matches by package name, last rule wins per-dep).
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
       automerge: true,
       automergeType: 'pr',
       ignoreTests: false,
@@ -92,7 +97,8 @@
         'kubernetes/main/apps/kube-system/spegel/**',
         'kubernetes/main/apps/network/cloudflare-ddns/**',
       ],
-      matchUpdateTypes: ['minor', 'patch'],
+      // 'digest' included for the same reason as the leaf-app rule above.
+      matchUpdateTypes: ['minor', 'patch', 'digest'],
       automerge: true,
       automergeType: 'pr',
       ignoreTests: false,

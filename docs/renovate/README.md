@@ -407,6 +407,23 @@ read+page, so it can ship on the Omni SA kubeconfig alone.
 
 ## Changelog
 
+- **2026-06-28** — **Digest updates now auto-merge in the path-based Tier 2
+  rules.** Added `'digest'` to `matchUpdateTypes` on both `matchFileNames` rules
+  (leaf-app domains + curated infra leaves) in `.renovate/autoMerge.json5`. They
+  were `['minor', 'patch']`-only, so every SHA-pinned image refresh in an
+  allowlisted domain stranded forever — `cloudflare-ddns` #1884 and
+  `postgres-init` #1889/#1890 sat unmerged purely for this. A digest bump on the
+  *same tag* is at least as safe as minor/patch; the Immich carve-out
+  (`immich-app/*`, package-name match, last rule wins per-dep) still blocks
+  immich digests. Found while clearing a ~24-PR manual backlog in risk-tiered
+  batches (safe leaves → infra leaves → breaking one-at-a-time: prom-operator-crds
+  v30 → kube-prometheus-stack v87, traefik v41, cilium v1.19.5, zwave-js-ui,
+  gh-action majors → rook v1.20.1 storage last; all verified). **EMQX held**
+  (#1859 broker, #1860 operator): the 6.2.1 single-node boot crash is a
+  maintainer-confirmed **emqx-operator blue-green** bug (not the broker); fix is
+  **operator 3.0.0**, still pre-release — hold both until it GAs, then
+  operator → broker.
+
 - **2026-06-15** — **Tier 2 allowlist expansion + Tier 4 agent scope
   codified.** Added `observability/**` as a whole leaf domain and a curated
   cluster-infra-leaves rule (`kube-system/{metrics-server,reloader,reflector,
