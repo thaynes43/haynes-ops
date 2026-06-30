@@ -1,0 +1,60 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  // ── Renovate HOLDS registry ───────────────────────────────────────────────
+  // A durable, reasoned blacklist of releases that must NOT be applied, with the
+  // WHY recorded right next to the enforcement. The Tier-4 upgrade-shepherd agent
+  // reads this file before working any PR (so it never re-investigates a known
+  // bad upgrade); Renovate enforces it directly (so the held PR stops churning).
+  //
+  // Each hold is a packageRule that does two things:
+  //   • ENFORCES via `allowedVersions` — a semver range that excludes the bad
+  //     version(s). Where a FIXED release is known, the range RE-OPENS at it
+  //     automatically (e.g. '<2.3.2 || >=3.0.0' skips 2.3.2–2.x and resumes at
+  //     3.0.0). Where the resume condition is NOT a version of THIS package (e.g.
+  //     "after a different component is upgraded"), use a plain upper bound and
+  //     lift the hold by hand.
+  //   • DOCUMENTS via `description` (array of strings — Renovate-legal, shown in
+  //     logs/PRs, greppable by the agent). Convention, one entry per line:
+  //       'HELD <pkg> <range> — <one-line summary>'
+  //       'Reason: <why it breaks>'
+  //       'Issue: <upstream tracking URL>'
+  //       'Resume: <condition> (auto | manual)'
+  //       'Recorded: <YYYY-MM-DD> by <who>. Related: <PR/issue/memory refs>'
+  //
+  // TO ADD a hold: append a packageRule following the convention, set the
+  //   tightest `allowedVersions` that blocks the bad release, validate with
+  //   `npx --yes --package renovate renovate-config-validator .renovate/holds.json5`,
+  //   commit.
+  // TO LIFT a hold: delete its packageRule (or widen `allowedVersions`) in a
+  //   commit that references the upstream resolution, then let Renovate re-propose.
+  //
+  // holds.json5 extends LAST in renovate.json5, so an `allowedVersions` block
+  // here is the final word for the package even if an allowlist would auto-merge it.
+  // ──────────────────────────────────────────────────────────────────────────
+  packageRules: [
+    {
+      description: [
+        'HELD emqx-operator: 2.3.2 through 2.x — do not upgrade until 3.0.0 GA.',
+        "Reason: emqx-operator does blue-green upgrades — it boots a NEW broker node, forming a transient 2-node cluster, before retiring the old pod. EMQX's built-in single-node COMMUNITY license rejects the 2nd node, so an operator-driven broker reconcile crash-loops with SINGLE_NODE_LICENSE. 2.3.2 does not fix this; only operator 3.0.0 reworks the blue-green logic. Maintainer-confirmed (see Issue).",
+        'Issue: https://github.com/emqx/emqx/issues/17600',
+        'Resume: emqx-operator 3.0.0 GA — auto (allowedVersions re-opens at >=3.0.0; Renovate ignores the 3.0.0-rc pre-releases until the final release).',
+        'Recorded: 2026-06-30 by claude. Related: PR #1860; memory renovate-automation-roadmap.',
+      ],
+      matchDatasources: ['helm'],
+      matchPackageNames: ['emqx-operator'],
+      allowedVersions: '<2.3.2 || >=3.0.0',
+    },
+    {
+      description: [
+        'HELD emqx (broker): 6.2.1 and newer — single-node community-license boot crash.',
+        'Reason: NOT a broker bug. The crash is the emqx-operator blue-green upgrade (see the emqx-operator hold above) forming a transient 2-node cluster that the single-node COMMUNITY license rejects — emqx_license aborts at boot with SINGLE_NODE_LICENSE. 6.2.0 boots fine; 6.2.1 first exposed it. The broker is pinned at 6.2.0 in cluster/cluster.yaml.',
+        'Issue: https://github.com/emqx/emqx/issues/17600',
+        'Resume: MANUAL — lift ONLY after emqx-operator 3.0.0 is deployed (which fixes blue-green). The resume condition is the OPERATOR version, not the broker version, so it cannot be encoded in allowedVersions; widen this bound by hand once the operator is on 3.0.0.',
+        'Recorded: 2026-06-30 by claude. Related: PR #1859; memory renovate-automation-roadmap.',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/emqx/emqx$/'],
+      allowedVersions: '<6.2.1',
+    },
+  ],
+}

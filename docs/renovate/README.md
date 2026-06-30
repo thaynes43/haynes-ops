@@ -360,6 +360,41 @@ Modes 2 and 3 are the second reason (besides automated rollback) the
 in this 2026-06-15 backlog sweep); only the scheduled gate (mode 1) is purely
 read+page, so it can ship on the Omni SA kubeconfig alone.
 
+## Holds registry — reasoned release blacklist
+
+[`.renovate/holds.json5`](../../.renovate/holds.json5) is a durable, reasoned
+blacklist of releases that must **not** be applied, with the WHY recorded next to
+the enforcement. It exists because a held upgrade otherwise *churns* (Renovate
+re-opens the PR every run) and the reason ends up living only in a human's head
+or a memory file — so the next person (or agent) re-investigates it from scratch.
+
+Each hold is a `packageRule` that does two things:
+
+- **Enforces** via `allowedVersions` — a semver range that excludes the bad
+  version(s), auto-resuming at the fixed release where one is known.
+- **Documents** via a structured `description` array (summary / `Reason:` /
+  `Issue:` / `Resume:` / `Recorded:`), which Renovate surfaces in logs/PRs and the
+  Tier-4 shepherd greps before working a PR.
+
+The file extends **last** in `renovate.json5`, so a hold is the final word for its
+package even over an auto-merge allowlist.
+
+Two enforcement shapes:
+
+- **Auto-resume** when the fix is a version of the *same* package:
+  `allowedVersions: '<2.3.2 || >=3.0.0'` skips 2.3.2–2.x and re-opens at 3.0.0.
+- **Manual lift** when the resume condition is something else (e.g. "after a
+  *different* component is upgraded"): a plain upper bound (`'<6.2.1'`) that a
+  human or the agent widens once the condition is met.
+
+**Add a hold:** append a `packageRule` per the in-file convention, set the
+tightest `allowedVersions`, run
+`npx --yes --package renovate renovate-config-validator .renovate/holds.json5`,
+commit. The Tier-4 shepherd does this automatically when it hits a blocker.
+**Lift a hold:** delete the rule (or widen `allowedVersions`) in a commit
+referencing the upstream fix; Renovate re-proposes. Seeded 2026-06-30 with the two
+EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/issues/17600)).
+
 ## Decisions made
 
 - **Tier 1 starts with `GITHUB_TOKEN`**, swap to a GitHub App after
@@ -406,6 +441,21 @@ read+page, so it can ship on the Omni SA kubeconfig alone.
   runbook for the failing component.
 
 ## Changelog
+
+- **2026-06-30** — **Tier 4 build started: `haynes-ops-bot` GitHub App + holds
+  registry.** Registered the least-privilege `haynes-ops-bot` App (Contents R/W,
+  Pull requests R/W, Checks read; single-repo install; webhook off) as the
+  unattended shepherd's push/PR/merge identity — click-by-click setup + the
+  adversarially-verified rationale (minimal perms, no branch-protection change, no
+  `flux-local.yaml` change, 1h token mint) in
+  [`tier4-bot-setup.md`](tier4-bot-setup.md); a credential-source-agnostic mint
+  helper at [`scripts/github-app-token.sh`](../../scripts/github-app-token.sh).
+  Added the **holds registry** ([`.renovate/holds.json5`](../../.renovate/holds.json5),
+  see [Holds registry](#holds-registry--reasoned-release-blacklist)) — a reasoned
+  release blacklist Renovate enforces and the agent reads — seeded with the two
+  EMQX holds (operator `2.3.2` → auto-resume at `3.0.0`; broker `6.2.1` → manual
+  lift after the operator reaches 3.0.0). Those PRs stop churning and the WHY
+  (emqx/emqx#17600) now lives next to the enforcement, not just in memory.
 
 - **2026-06-28** — **Digest updates now auto-merge in the path-based Tier 2
   rules.** Added `'digest'` to `matchUpdateTypes` on both `matchFileNames` rules

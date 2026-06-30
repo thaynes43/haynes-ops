@@ -5,15 +5,13 @@ kind: EMQX
 metadata:
   name: emqx
 spec:
-  # Pinned to 6.2.0 — DO NOT bump until upstream fixes this.
-  # EMQX 6.2.1 crash-loops at boot: the emqx_license app aborts with
-  # "SINGLE_NODE_LICENSE, make sure this node and peer nodes are configured with
-  # a valid license". That is the built-in COMMUNITY (single-node, FREE) license
-  # failing to start — NOT a demand for a paid license. Single-node is license-
-  # free under EMQX's BSL Additional Use Grant; 6.2.0 honors it, 6.2.1 aborts
-  # (likely a boot-time community-license gate — cf. emqx#17530, which moved a
-  # similar gate out of app boot for 6.2.2). Filed upstream: emqx/emqx#17600.
-  # Watch 6.2.2 — it may fix this. Rolled back 2026-06-15 (PR #1841).
+  # Pinned to 6.2.0 — HELD, do not bump. 6.2.1+ crash-loops at boot with
+  # SINGLE_NODE_LICENSE: the built-in single-node COMMUNITY (free) license aborts
+  # emqx_license. Root cause is NOT the broker (and NOT 6.2.2, the earlier theory)
+  # — it's the emqx-OPERATOR blue-green upgrade forming a transient 2-node cluster
+  # that the single-node license rejects (maintainer-confirmed, emqx/emqx#17600).
+  # Fix = emqx-operator 3.0.0; lift this pin only AFTER the operator is on 3.0.0.
+  # Enforced + fully reasoned in .renovate/holds.json5. Rolled back 2026-06-15 (#1841).
   image: docker.io/emqx/emqx:6.2.0
   config:
     data: |
