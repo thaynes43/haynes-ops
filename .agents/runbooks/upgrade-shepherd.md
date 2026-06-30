@@ -56,11 +56,15 @@ run on the read-only **Omni Reader** SA kubeconfig
 
 - **NEVER `flux reconcile … --with-source`.** It annotates the Kustomization = a
   write the Reader role is denied. After a merge, rollback push, or value edit,
-  **rely on the Flux GitHub webhook `Receiver`** — it reconciles the `haynes-ops`
-  GitRepository + the `cluster`/`cluster-apps` Kustomizations on every push, so a
-  bot push lands in **seconds** (the 30-minute GitRepository poll is only the
-  fallback if the webhook path is down). The Reader still can't force a *targeted*
-  `flux reconcile` of a leaf Kustomization.
+  **rely on the GitRepository poll** to pull it. Flux here is **poll-only on a
+  30-min interval**: a `Receiver` + ingress exist (`flux-webhook.haynesops.com`)
+  but GitHub has **no webhook configured** and that ingress is LAN-internal (a
+  deliberate lockdown — nothing flux is exposed to the internet), so pushes are
+  *not* push-triggered. **Budget up to 30 min** for `main` to be pulled, then the
+  leaf-KS intervals apply it; the Reader can't accelerate it (`flux reconcile …
+  --with-source` is a denied write). (The GitRepository `ignore`s everything
+  outside `/kubernetes`, so docs/`.renovate`/`scripts` commits don't move its
+  revision at all.)
 - **Any cluster WRITE is BREAK-GLASS / human.** `kubectl delete/scale/annotate`,
   `flux suspend/resume`, finalizer edits, PVC/pod deletion, reseeds — all live
   outside the Reader SA. The shepherd's recovery path is **git → Flux**, full
@@ -168,7 +172,8 @@ required `values` edit, health queries, rollback steps) live in
    | `device-plugins` | each plugin + its `dependsOn` NFD (NodeFeatureRule PCI IDs) |
 
 8. **Reconcile = wait for Flux.** Do **not** `--with-source` (Reader can't write).
-   Let the Receiver / 30-min poll pick up `main`. Watch read-only:
+   Flux is **poll-only (~30 min)** here — no active GitHub webhook — so budget up
+   to 30 min for `main` to be pulled. Watch read-only:
    ```bash
    flux get kustomization <ks> -n <ns>          # Ready=True + revision == your commit
    ```

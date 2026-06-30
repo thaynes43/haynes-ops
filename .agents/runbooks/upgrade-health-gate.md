@@ -10,7 +10,7 @@ Verdict is one of:
 | **benign-warn** | A check is non-green but matches a known-noise allowlist (transient pull, chronic spa, archived Ceph crash, ytdl-sub job). | Note it, re-poll the transients after one interval, do **not** page. |
 | **regression** | A check is non-green and **new** (broke across the reconcile window, or is tied to the changed component). | **Page via Pushover.** In phase 4a, rollback stays human (see [Rollback](#rollback)). |
 
-**Where it runs / credentials.** Read-and-page only — the gate **never mutates the cluster** (no `flux reconcile --with-source`, no `kubectl apply/exec/delete/annotate/scale`, no suspend/resume). It relies on Flux's own GitRepository poll / Receiver interval to pull new state. Three read paths, used in this priority:
+**Where it runs / credentials.** Read-and-page only — the gate **never mutates the cluster** (no `flux reconcile --with-source`, no `kubectl apply/exec/delete/annotate/scale`, no suspend/resume). It relies on Flux's own GitRepository **30-min poll** to pull new state (Flux is poll-only here — a `Receiver` exists but no GitHub webhook is wired, so pushes are not push-triggered). Three read paths, used in this priority:
 
 - **Omni Reader service-account kubeconfig** ([`omni-service-account.md`](omni-service-account.md)) — read-only `kubectl` + `flux get`. The **only** path for Flux reconcile state (gotk_* metrics are not scraped — see below). Denies `pods/exec`.
 - **Grafana MCP** — Prometheus (datasource uid `prometheus`) + Loki (uid `loki`). The no-cluster-creds fallback for the pod sweep, ESO, Alertmanager, and Ceph health when the Omni OIDC token is expired ([`kubectl-omni-oidc-expiry`](omni-service-account.md)).
