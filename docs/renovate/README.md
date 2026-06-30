@@ -87,7 +87,7 @@ The pieces worth porting:
 | 1 | `flux-local` PR gate | required check on all Renovate PRs | ✅ live (`.github/workflows/flux-local.yaml`) |
 | 2 | Curated allowlist: own `ghcr.io/thaynes43/*`, `kube-prometheus-stack`, safe stateless leaf-app domains (`media`, `ai`, `downloads`, `frontend`, `office`, `photos`, **`observability`** since 2026-06-15) + curated cluster-infra leaves by subpath (`kube-system/{metrics-server,reloader,reflector,k8tz,spegel}`, `network/cloudflare-ddns`) on minor/patch | auto-merge, flux-local-gated + bake | ✅ live (`.renovate/autoMerge.json5`) — **trust clock starts 2026-06-08** (see exit criteria) |
 | 3 | Grouped multi-component apps: `home-assistant` (HA + code-server + ha-mcp), Z2M | symmetric dashboard-approval groups (manual phase) | ✅ live 2026-06-09 (`.renovate/groups.json5`) |
-| 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent | 🔶 designed — decisions locked 2026-06-09, build pending |
+| 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent | 🟡 building (2026-06-30) — bot + holds + runbooks live; gate runtime next |
 
 > **Resuming this roadmap (next session):** Tiers 0–3 are live; Tier 3 runs in
 > its **manual dashboard-approval phase** (updates for the HA pod and Z2M show
@@ -280,6 +280,18 @@ needs to catch automatically.
 
 ## Tier 4 — Stateful operators with a health gate
 
+> **Build status (2026-06-30): in progress.** The keystone pieces are live — the
+> [`haynes-ops-bot`](tier4-bot-setup.md) GitHub App (push/PR/merge identity +
+> [`scripts/github-app-token.sh`](../../scripts/github-app-token.sh)), the
+> [holds registry](#holds-registry--reasoned-release-blacklist), and the three
+> runbooks that encode the agent: the
+> [**upgrade-shepherd**](../../.agents/runbooks/upgrade-shepherd.md) manual (loop
+> + 3 modes), the [**health gate**](../../.agents/runbooks/upgrade-health-gate.md)
+> checks, and the per-component
+> [**playbooks + rollback**](../../.agents/runbooks/tier4-component-playbooks.md).
+> Remaining: stand up the gate runtime (cloud scheduled routine / in-cluster
+> CronJob) and wire the shepherd as an invocable agent (phase 4a → 4b).
+
 `rook-ceph`, `cnpg`, Talos, and Flux itself never auto-merge on tag alone.
 The plan is:
 
@@ -455,7 +467,16 @@ EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/is
   release blacklist Renovate enforces and the agent reads — seeded with the two
   EMQX holds (operator `2.3.2` → auto-resume at `3.0.0`; broker `6.2.1` → manual
   lift after the operator reaches 3.0.0). Those PRs stop churning and the WHY
-  (emqx/emqx#17600) now lives next to the enforcement, not just in memory.
+  (emqx/emqx#17600) now lives next to the enforcement, not just in memory. Also
+  authored the three Tier-4 runbooks that encode the agent —
+  [`upgrade-shepherd.md`](../../.agents/runbooks/upgrade-shepherd.md) (the loop +
+  3 modes), [`upgrade-health-gate.md`](../../.agents/runbooks/upgrade-health-gate.md)
+  (cross-cutting post-reconcile checks), and
+  [`tier4-component-playbooks.md`](../../.agents/runbooks/tier4-component-playbooks.md)
+  (per-component supporting edits, health checks, and adversarially-verified
+  rollback for all 12 manual-tier components) — built from a multi-agent
+  spec-then-adversarial-rollback-verification pass. Remaining for Tier 4: the gate
+  runtime + invocable shepherd agent.
 
 - **2026-06-28** — **Digest updates now auto-merge in the path-based Tier 2
   rules.** Added `'digest'` to `matchUpdateTypes` on both `matchFileNames` rules

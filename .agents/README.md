@@ -10,6 +10,9 @@ Top-level agent instructions live in [`CLAUDE.md`](../CLAUDE.md); this folder ho
 - [volsync-restore.md](runbooks/volsync-restore.md) — VolSync (restic) PVC restore, including PVC-resize edge cases.
 - [volsync-unlock.md](runbooks/volsync-unlock.md) — clearing stale restic repository locks.
 - [omni-service-account.md](runbooks/omni-service-account.md) — headless, non-interactive cluster access via an Omni service account, so `kubectl`/`flux` work from anywhere without the browser OIDC login that expires on long sessions (and can only be renewed from home).
+- [upgrade-shepherd.md](runbooks/upgrade-shepherd.md) — **Tier-4 upgrade-shepherd**: the master operating manual for the agent that takes the irreducible-manual Renovate upgrades off your hands (one agent, three modes: scheduled health gate / summoned remediation / breaking-change shepherd). The `haynes-ops-bot` identity, read-only-SA guardrails, the merge-one-at-a-time loop, the holds protocol, and the merge-order/rollback-risk table.
+- [upgrade-health-gate.md](runbooks/upgrade-health-gate.md) — the cross-cutting post-reconcile health checks the scheduled gate (and the shepherd's per-merge verify) runs every cycle (Flux/pods/ESO/Ceph/HA-entities/Alertmanager), with healthy / benign-warn / regression criteria and the read-only run paths.
+- [tier4-component-playbooks.md](runbooks/tier4-component-playbooks.md) — per-component upgrade knowledge for the manual-tier set (rook-ceph, cnpg, emqx, dragonfly, cilium, coredns, traefik, authentik, multus, device-plugins, talos, flux): the supporting `values` edits, health checks, and **adversarially-verified rollback** (break-glass steps flagged).
 
 ## rules/ — must-follow safety guardrails
 - [flux-pvc-prune-safety.md](rules/flux-pvc-prune-safety.md) — warn about Flux inventory pruning / PVC deletion when moving or renaming Kustomizations.
