@@ -56,9 +56,11 @@ run on the read-only **Omni Reader** SA kubeconfig
 
 - **NEVER `flux reconcile … --with-source`.** It annotates the Kustomization = a
   write the Reader role is denied. After a merge, rollback push, or value edit,
-  **rely on the Flux Receiver / poll interval** to apply it. (Note: `main` has no
-  push Receiver for the GitRepository — budget up to the **30-minute** poll before
-  the change is even *seen*; the Reader can't accelerate it.)
+  **rely on the Flux GitHub webhook `Receiver`** — it reconciles the `haynes-ops`
+  GitRepository + the `cluster`/`cluster-apps` Kustomizations on every push, so a
+  bot push lands in **seconds** (the 30-minute GitRepository poll is only the
+  fallback if the webhook path is down). The Reader still can't force a *targeted*
+  `flux reconcile` of a leaf Kustomization.
 - **Any cluster WRITE is BREAK-GLASS / human.** `kubectl delete/scale/annotate`,
   `flux suspend/resume`, finalizer edits, PVC/pod deletion, reseeds — all live
   outside the Reader SA. The shepherd's recovery path is **git → Flux**, full
