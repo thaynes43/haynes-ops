@@ -1,0 +1,33 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/kyverno/main/api/kyverno/v1/clusterpolicy.json
+# Catches an image-registry swap (e.g. ghcr.io/... -> attacker.io/...). PHASE A:
+# Audit-only, fail-open, generous allowlist — the report will show every registry
+# actually in use so the allowlist can be tightened before Enforce. (An org-swap on
+# an allowed HOST, e.g. ghcr.io/home-operations -> ghcr.io/attacker, is caught by
+# diff-scope, not this host-level policy.)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+spec:
+  background: true
+  webhookConfiguration:
+    failurePolicy: Ignore
+  rules:
+    - name: allowed-registries
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        failureAction: Audit
+        message: "Container images must come from an allowlisted registry."
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - image: "ghcr.io/* | docker.io/* | quay.io/* | registry.k8s.io/* | gcr.io/* | k8s.gcr.io/* | public.ecr.aws/* | mcr.microsoft.com/* | cgr.dev/* | registry.gitlab.com/*"
+            =(initContainers):
+              - image: "ghcr.io/* | docker.io/* | quay.io/* | registry.k8s.io/* | gcr.io/* | k8s.gcr.io/* | public.ecr.aws/* | mcr.microsoft.com/* | cgr.dev/* | registry.gitlab.com/*"
+            containers:
+              - image: "ghcr.io/* | docker.io/* | quay.io/* | registry.k8s.io/* | gcr.io/* | k8s.gcr.io/* | public.ecr.aws/* | mcr.microsoft.com/* | cgr.dev/* | registry.gitlab.com/*"

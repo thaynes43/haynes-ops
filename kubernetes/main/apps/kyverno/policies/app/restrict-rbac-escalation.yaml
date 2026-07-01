@@ -1,0 +1,69 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/kyverno/main/api/kyverno/v1/clusterpolicy.json
+# Denies the RBAC-escalation paths a prompt-injected shepherd would use: binding to a
+# privileged built-in (cluster-admin/admin/edit) or a cluster-admin-equivalent
+# controller role, and Roles granting '*/*' or escalate/bind/impersonate.
+# PHASE A: Audit-only, fail-open, no namespace excludes (full report). helm-controller
+# is excluded (legitimate chart-internal RBAC). NEVER exclude kustomize-controller.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-rbac-escalation
+spec:
+  background: true
+  webhookConfiguration:
+    failurePolicy: Ignore
+  rules:
+    - name: no-privileged-role-binding
+      match:
+        any:
+          - resources:
+              kinds:
+                - ClusterRoleBinding
+                - RoleBinding
+      exclude: &excludeHelm
+        any:
+          - subjects:
+              - kind: ServiceAccount
+                name: helm-controller
+                namespace: flux-system
+      validate:
+        failureAction: Audit
+        message: "Binding to a privileged built-in (cluster-admin/admin/edit) or a controller role is not allowed."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.roleRef.name }}"
+                operator: AnyIn
+                value:
+                  - cluster-admin
+                  - admin
+                  - edit
+              - key: "{{ request.object.roleRef.name }}"
+                operator: AnyIn
+                value:
+                  - kustomize-controller
+                  - helm-controller
+                  - rook-ceph-system
+                  - cilium
+                  - cert-manager-controller
+    - name: no-wildcard-or-escalate-role
+      match:
+        any:
+          - resources:
+              kinds:
+                - ClusterRole
+                - Role
+      exclude: *excludeHelm
+      validate:
+        failureAction: Audit
+        message: "Roles granting '*' verbs+resources or escalate/bind/impersonate are not allowed."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.rules[?contains(not_null(verbs, `[]`), '*') && contains(not_null(resources, `[]`), '*')] | length(@) }}"
+                operator: GreaterThan
+                value: 0
+              - key: "{{ request.object.rules[?contains(not_null(verbs, `[]`), 'escalate') || contains(not_null(verbs, `[]`), 'bind') || contains(not_null(verbs, `[]`), 'impersonate')] | length(@) }}"
+                operator: GreaterThan
+                value: 0

@@ -1,0 +1,49 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/helm.toolkit.fluxcd.io/helmrelease_v2.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kyverno
+spec:
+  interval: 30m
+  timeout: 15m
+  chartRef:
+    kind: OCIRepository
+    name: kyverno
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    crds: CreateReplace
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    # HA so admission is not a single point of failure.
+    admissionController:
+      replicas: 2
+      container:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 512Mi
+    backgroundController:
+      replicas: 1
+    reportsController:
+      replicas: 1
+    cleanupController:
+      replicas: 1
+    features:
+      # PolicyExceptions ONLY creatable in the kyverno namespace (GHSA-qjvc-p88j-j9rm)
+      # — otherwise the shepherd could commit a self-exempting exception anywhere.
+      policyExceptions:
+        enabled: true
+        namespace: kyverno
+    config:
+      # Exclude ONLY Kyverno's own components from admission — NOT flux-system/
+      # kube-system (the two highest-value namespaces the shepherd could target).
+      excludeKyvernoNamespace: true
