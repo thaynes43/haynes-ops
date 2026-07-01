@@ -1,0 +1,73 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: upgrade-health-gate
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  values:
+    controllers:
+      upgrade-health-gate:
+        type: cronjob
+        pod:
+          restartPolicy: Never
+        cronjob:
+          schedule: "*/30 * * * *"       # aligned to Flux's ~30-min GitRepository poll
+          concurrencyPolicy: Forbid
+          startingDeadlineSeconds: 300
+          backoffLimit: 0
+          successfulJobsHistory: 3
+          failedJobsHistory: 3
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/upgrade-agent
+              tag: 0.1.0@sha256:103c09f32f23412c3bf5e5f1919f5608142674110b1c2f499c64d425bbe34de4
+            # Deterministic gate: run the ConfigMap-mounted script directly. No LLM,
+            # no token, no git — read the six checks and page Pushover on a regression.
+            command: ["/bin/bash", "/opt/gate/gate.sh"]
+            env:
+              PROMETHEUS_URL: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+              HA_URL: http://home-assistant.home-automation.svc.cluster.local:8123
+              PERSIST_OFFSET: "10m"       # "still bad N ago" => persisted past one cycle => page
+            envFrom:
+              - secretRef:
+                  name: upgrade-health-gate-secret
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+    defaultPodOptions:
+      # app-template v5 defaults automountServiceAccountToken to false; the gate's
+      # Flux CR reads (kubectl via the SA token) require it.
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+    serviceAccount:
+      upgrade-health-gate: {}
+    persistence:
+      gate-scripts:
+        type: configMap
+        name: upgrade-health-gate-scripts
+        defaultMode: 0555
+        globalMounts:
+          - path: /opt/gate
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
