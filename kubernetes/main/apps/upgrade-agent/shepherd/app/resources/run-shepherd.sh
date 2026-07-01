@@ -62,12 +62,15 @@ WRITE_TOOLS=(Edit Write
   "Bash(git switch:*)" "Bash(git checkout -b:*)" "Bash(git add:*)" "Bash(git commit:*)"
   "Bash(git push:*)" "Bash(gh pr create:*)" "Bash(gh pr comment:*)")
 
+# NB: set PROMPT defaults on their own line — NOT inline via ${UPGRADE_AGENT_PROMPT:-...}.
+# An apostrophe inside a ${VAR:-default} (e.g. "component's") breaks bash quote parsing.
+PROMPT="${UPGRADE_AGENT_PROMPT:-}"
 if [ "$MODE" = "shepherd" ]; then
   ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}")
-  PROMPT="${UPGRADE_AGENT_PROMPT:-You are the Tier-4 upgrade shepherd. Follow .agents/runbooks/upgrade-shepherd.md exactly. Survey open manual-tier Renovate PRs (gh pr list); pick the NEXT one by the runbook merge-order. CONSULT .renovate/holds.json5 first (skip if held). Read the release notes (gh release view) and the component's section in .agents/runbooks/tier4-component-playbooks.md. Make the required supporting helmrelease/values edits on a NEW branch shepherd/<pkg>-<version>, commit, push, and open a PR with gh pr create. Do NOT merge, do NOT push to main, do NOT touch anything outside kubernetes/**. One PR only, then stop and summarize.}"
+  [ -n "$PROMPT" ] || PROMPT="You are the Tier-4 upgrade shepherd. Follow .agents/runbooks/upgrade-shepherd.md exactly. Survey open manual-tier Renovate PRs (gh pr list); pick the NEXT one by the runbook merge-order. CONSULT .renovate/holds.json5 first (skip if held). Read the release notes (gh release view) and the component section in .agents/runbooks/tier4-component-playbooks.md. Make the required supporting helmrelease/values edits on a NEW branch shepherd/<pkg>-<version>, commit, push, and open a PR with gh pr create. Do NOT merge, do NOT push to main, do NOT touch anything outside kubernetes/**. One PR only, then stop and summarize."
 else
   ALLOWED=("${READONLY_TOOLS[@]}")
-  PROMPT="${UPGRADE_AGENT_PROMPT:-DRY RUN — make NO changes. You are the Tier-4 upgrade shepherd. Survey open manual-tier Renovate PRs (gh pr list) and, for the next one per .agents/runbooks/upgrade-shepherd.md, REPORT: is it held (.renovate/holds.json5)? what supporting helmrelease/values edits would it need (per tier4-component-playbooks.md)? Output a concise plan. Do NOT edit files, push, or open PRs.}"
+  [ -n "$PROMPT" ] || PROMPT="DRY RUN - make NO changes. You are the Tier-4 upgrade shepherd. Survey open manual-tier Renovate PRs (gh pr list) and, for the next one per .agents/runbooks/upgrade-shepherd.md, REPORT: is it held (.renovate/holds.json5)? what supporting helmrelease/values edits would it need (per tier4-component-playbooks.md)? Output a concise plan. Do NOT edit files, push, or open PRs."
 fi
 
 log "MODE=$MODE model=$MODEL max_turns=$MAX_TURNS budget=\$$MAX_BUDGET"
@@ -76,7 +79,7 @@ timeout "$RUN_TIMEOUT" claude -p "$PROMPT" \
   --permission-mode dontAsk \
   --allowedTools "${ALLOWED[@]}" \
   --disallowedTools "WebFetch" "WebSearch" \
-  --append-system-prompt "SAFETY: read-only cluster default; ALL cluster changes go via a PR to kubernetes/**; NEVER kubectl apply/exec/delete; NEVER 'gh pr merge'; NEVER push to main; stay inside kubernetes/**." \
+  --append-system-prompt "SAFETY: read-only cluster default; ALL cluster changes go via a PR to kubernetes/**; NEVER kubectl apply/exec/delete; NEVER gh pr merge; NEVER push to main; stay inside kubernetes/**." \
   --max-turns "$MAX_TURNS" \
   --max-budget-usd "$MAX_BUDGET" \
   --model "$MODEL" \
