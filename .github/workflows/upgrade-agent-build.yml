@@ -1,0 +1,43 @@
+name: Build and Push Upgrade Agent Image
+
+# Builds the Tier-4 health-gate toolbox image (ghcr.io/thaynes43/upgrade-agent).
+# Minimal by design (kubectl/jq/curl/bash) — see scripts/upgrade-agent/Dockerfile.
+# Build context is scripts/upgrade-agent (Dockerfile only) so nothing from the repo
+# — no secrets, no .git — can enter an image layer. Builds only on main.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/upgrade-agent/**'
+      - '.github/workflows/upgrade-agent-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./scripts/upgrade-agent
+          file: ./scripts/upgrade-agent/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/upgrade-agent:0.1.0
+            ghcr.io/${{ github.repository_owner }}/upgrade-agent:latest
