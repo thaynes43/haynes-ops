@@ -1,0 +1,23 @@
+# Build-context hygiene for the repo-root Docker build (scripts/upgrade-shepherd,
+# which COPYs scripts/github-app-token.sh). Nothing secret or irrelevant should ever
+# enter an image layer or the build cache.
+**/.git
+.git
+**/.github
+age.key
+age.*.key
+*.age
+*.agekey
+kubeconfig
+kubeconfig-*
+*.pem
+.sops.yaml
+.decrypted~*
+**/*.sops.yaml
+**/*.sops.env
+**/*.sops.*
+.venv
+.direnv
+.task
+.claude
+node_modules

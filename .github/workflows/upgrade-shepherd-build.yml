@@ -1,0 +1,45 @@
+name: Build and Push Upgrade Shepherd Image
+
+# Builds the Tier-4 breaking-change shepherd image (ghcr.io/thaynes43/upgrade-shepherd).
+# Fatter than the gate image (claude-code + gh + git + flux + kubectl). Build context
+# is the REPO ROOT so the Dockerfile can COPY scripts/github-app-token.sh (single
+# source of truth); a repo-root .dockerignore keeps secrets/.git out of the context.
+# Builds only on main.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/upgrade-shepherd/**'
+      - 'scripts/github-app-token.sh'
+      - '.github/workflows/upgrade-shepherd-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./scripts/upgrade-shepherd/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/upgrade-shepherd:0.1.0
+            ghcr.io/${{ github.repository_owner }}/upgrade-shepherd:latest
