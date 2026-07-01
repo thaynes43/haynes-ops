@@ -11,7 +11,7 @@
 # enters this (the LLM) container's env.
 #
 # Debian/glibc (kubectl/claude glibc-linked); amd64-only (all Talos nodes x86_64).
-FROM node:22-slim
+FROM node:24-slim
 
 # renovate: datasource=github-releases depName=kubernetes/kubernetes
 ARG KUBECTL_VERSION=v1.35.5
