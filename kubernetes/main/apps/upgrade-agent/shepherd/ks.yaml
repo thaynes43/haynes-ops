@@ -1,0 +1,29 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app upgrade-shepherd
+  namespace: upgrade-agent
+spec:
+  targetNamespace: upgrade-agent
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: external-secrets-stores
+      namespace: external-secrets
+    - name: upgrade-health-gate # reuse its read-only ClusterRole
+      namespace: upgrade-agent
+  path: ./kubernetes/main/apps/upgrade-agent/shepherd/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
+  # NO postBuild.substitute: Flux envsubst would rewrite the shell `${VAR:-default}`
+  # in run-shepherd.sh (breaking the MODE override) and errors on `${ARRAY[@]}`.
+  # These manifests use YAML anchors, not `${APP}`, so no substitution is needed.

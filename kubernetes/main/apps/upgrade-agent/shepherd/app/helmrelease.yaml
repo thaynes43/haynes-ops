@@ -1,0 +1,108 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: upgrade-shepherd
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  values:
+    controllers:
+      upgrade-shepherd:
+        type: cronjob
+        # SUSPENDED — never auto-runs. Summon it (supervised) with:
+        #   kubectl -n upgrade-agent create job shep-$(date +%s) --from=cronjob/upgrade-shepherd
+        # Default UPGRADE_AGENT_MODE=dryrun (read-only). Set MODE=shepherd for the real
+        # edit+PR run once you trust it. NEVER unattended before the 4b.2 guardrails.
+        cronjob:
+          suspend: true
+          schedule: "0 0 31 2 *"        # 31 Feb — never fires
+          concurrencyPolicy: Forbid
+          backoffLimit: 0
+          successfulJobsHistory: 3
+          failedJobsHistory: 3
+        pod:
+          restartPolicy: Never
+        initContainers:
+          # Mint a short-lived (1h) installation token from the bot PEM and hand ONLY
+          # the token to the main container via the shared /creds emptyDir. The PEM
+          # lives ONLY in this initContainer's env — never in the LLM container.
+          mint-token:
+            image:
+              repository: ghcr.io/thaynes43/upgrade-shepherd
+              tag: 0.1.0@sha256:b40eb95ae478021e3bb49e9a1514bf437cb7286c5d79765b5a1f6f9d73b61051
+            command:
+              - /bin/bash
+              - -c
+              - /opt/upgrade-shepherd/github-app-token.sh > /creds/gh_token && chmod 0400 /creds/gh_token
+            env:
+              # Down-scope to exactly what opening a PR needs — NOT merge-capable at
+              # the endpoint level is impossible (GitHub bundles merge into PRs:write),
+              # so merge-prevention is enforced by the run script's allowlist.
+              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","checks":"read"}'
+            envFrom:
+              - secretRef:
+                  name: upgrade-shepherd-bot-secret
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/upgrade-shepherd
+              tag: 0.1.0@sha256:b40eb95ae478021e3bb49e9a1514bf437cb7286c5d79765b5a1f6f9d73b61051
+            command: ["/bin/bash", "/opt/shepherd/run-shepherd.sh"]
+            env:
+              UPGRADE_AGENT_MODE: dryrun   # override to 'shepherd' for the real edit+PR run
+              UPGRADE_AGENT_MODEL: sonnet
+              # ANTHROPIC_API_KEY comes from the LLM secret ONLY (never the bot secret).
+              ANTHROPIC_API_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: upgrade-shepherd-llm-secret
+                    key: ANTHROPIC_API_KEY
+            resources:
+              requests:
+                cpu: 200m
+                memory: 512Mi
+              limits:
+                memory: 2Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+    defaultPodOptions:
+      automountServiceAccountToken: true   # read-only cluster diagnosis via the SA
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+    serviceAccount:
+      upgrade-shepherd: {}
+    persistence:
+      # Minted token handoff (init writes, main reads) — shared, in-memory.
+      creds:
+        type: emptyDir
+        medium: Memory
+        globalMounts:
+          - path: /creds
+      # The auditable run script (ConfigMap).
+      shepherd-scripts:
+        type: configMap
+        name: upgrade-shepherd-scripts
+        defaultMode: 0555
+        globalMounts:
+          - path: /opt/shepherd
+      # HOME + CLAUDE_CONFIG_DIR + the shallow clone (readOnlyRootFilesystem).
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
