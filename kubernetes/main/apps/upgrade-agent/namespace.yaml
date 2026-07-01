@@ -1,0 +1,13 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: upgrade-agent
+  labels:
+    # The credential-bearing Tier-4 agent gets a TIGHTER boundary than the
+    # privileged app namespaces — Pod Security Admission "restricted".
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled

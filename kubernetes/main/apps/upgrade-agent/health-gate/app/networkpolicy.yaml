@@ -1,0 +1,65 @@
+---
+# CiliumNetworkPolicy (NOT vanilla NetworkPolicy — we need toFQDNs + toEntities).
+# The cluster has no other netpols, so selecting ONLY the gate pod creates a
+# default-deny egress *for this pod alone*, additively. enable-l7-proxy=true is live,
+# so toFQDNs + the L7 DNS rule work. Gate egress is the tightest set: DNS, apiserver,
+# Prometheus, HA, Pushover. NO GitHub, NO Anthropic — the gate never pushes or LLMs.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: upgrade-health-gate
+  namespace: upgrade-agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: upgrade-health-gate
+  egress:
+    # 1. DNS via CoreDNS (required for toFQDNs). Restricted to cluster-internal names
+    #    + the ONE allowlisted external, to close DNS-tunnel exfil.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*.cluster.local"
+              - matchPattern: "*.svc"
+              - matchName: "api.pushover.net"
+    # 2. Kube API server — the ONLY cluster read path (Flux CRs via kubectl).
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # 3. In-cluster Prometheus (checks 2-5 PromQL). NOT Loki/Grafana/Alertmanager.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    # 4. Home Assistant REST (check 6).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: home-automation
+            app.kubernetes.io/name: home-assistant
+      toPorts:
+        - ports:
+            - port: "8123"
+              protocol: TCP
+    # 5. Pushover — the INDEPENDENT external page channel (must not depend on the
+    #    in-cluster Alertmanager the gate monitors).
+    - toFQDNs:
+        - matchName: api.pushover.net
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+  # No ingress rules -> all ingress denied (the gate serves nothing).

@@ -1,0 +1,68 @@
+---
+# Least-privilege identity for the Tier-4 upgrade health gate. READ-ONLY,
+# cluster-wide, get/list/watch ONLY — the tightest posture for an unattended pod.
+#
+# HARD DENIALS (do NOT add without re-review — each is a documented attack surface):
+#   * secrets   (any verb) -> the ESO check reads ExternalSecret .status only, never
+#                             Secret contents; granting it would expose the whole
+#                             HaynesKube vault (incl. the bot PEM). NEVER.
+#   * pods/exec (create)    -> arbitrary command in any pod = cluster takeover. Ceph
+#                             `ceph -s` toolbox exec is break-glass; the gate reads
+#                             Ceph health via Prometheus + the CephCluster CR instead.
+#   * pods/log             -> none of the checks read logs (they read STATUS); logs
+#                             routinely print secrets.
+#   * configmaps           -> not read by any check.
+#   * create/update/patch/delete on ANYTHING -> in particular NO patch on
+#                             kustomizations/helmreleases/gitrepositories (= flux
+#                             suspend/annotate/reconcile writes). The gate is
+#                             stateless, so it needs no write verb at all.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: &app upgrade-health-gate
+  labels:
+    app.kubernetes.io/instance: *app
+    app.kubernetes.io/name: *app
+rules:
+  # Check 2 (pod sweep) — names the offending pod; plus Warning events + node/ns context.
+  - apiGroups: [""]
+    resources: [pods, events, nodes, namespaces]
+    verbs: [get, list, watch]
+  # Check 1 (Flux) — the ONLY path (gotk_* metrics are not scraped here).
+  - apiGroups: [kustomize.toolkit.fluxcd.io]
+    resources: [kustomizations]
+    verbs: [get, list, watch]
+  - apiGroups: [helm.toolkit.fluxcd.io]
+    resources: [helmreleases]
+    verbs: [get, list, watch]
+  - apiGroups: [source.toolkit.fluxcd.io]
+    resources: [gitrepositories, ocirepositories, helmrepositories, helmcharts, buckets]
+    verbs: [get, list, watch]
+  # Check 3 (ESO) — ExternalSecret + ClusterSecretStore .status. NOT the Secrets.
+  - apiGroups: [external-secrets.io]
+    resources: [externalsecrets, clustersecretstores]
+    verbs: [get, list, watch]
+  # Check 5 (Ceph) — CephCluster .status.ceph.health (kubectl fallback for the promql).
+  - apiGroups: [ceph.rook.io]
+    resources: [cephclusters]
+    verbs: [get, list, watch]
+  # Bonus context — VolSync ReplicationSource results (checkHealth.sh parity).
+  - apiGroups: [volsync.backube]
+    resources: [replicationsources]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: &app upgrade-health-gate
+  labels:
+    app.kubernetes.io/instance: *app
+    app.kubernetes.io/name: *app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: *app
+subjects:
+  - kind: ServiceAccount
+    name: *app
+    namespace: upgrade-agent # MUST match the pod's namespace (else every read 403s)
