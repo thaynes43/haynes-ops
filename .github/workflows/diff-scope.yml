@@ -1,0 +1,58 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# Phase 4b.2 guardrail (b): diff-scope — the PRIMARY gate for shepherd auto-merge.
+#
+# PHASE A: ADVISORY (not a required check yet) — it runs on every PR and reports its
+# verdict in the Step Summary so we can observe its behaviour on real Renovate/human/
+# shepherd PRs before making it required in Phase B.
+#
+# Runs UNCONDITIONALLY on every PR to main AND edge (no path filter) so the
+# "Diff Scope - Success" context always reports. AUTHOR-SCOPED: it only FAILS for PRs
+# authored by the shepherd App (haynes-ops-bot[bot]); it always passes for
+# renovate[bot] and the human (trusted / admin-bypass). The enforcement logic is
+# fetched from the BASE branch so a PR that edits the script can't neuter its own
+# check. This YAML is un-editable by the bot (no Workflows scope).
+name: Diff Scope
+
+on:
+  pull_request:
+    branches: [main, edge]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    name: Diff Scope - Success
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch base branch
+        run: git fetch --no-tags origin "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+
+      - name: Run diff-scope (from BASE — tamper-proof), gate by author
+        env:
+          DIFF_SCOPE_BASE_BRANCH: ${{ github.base_ref }}
+          DIFF_SCOPE_REMOTE: origin
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -uo pipefail
+          # Execute the trusted BASE version of the script, never the PR's copy.
+          git show "origin/${DIFF_SCOPE_BASE_BRANCH}:scripts/diff-scope.sh" > /tmp/diff-scope.base.sh
+          bash /tmp/diff-scope.base.sh; rc=$?
+          echo "diff-scope exit=${rc} author=${PR_AUTHOR}"
+          if [ "${PR_AUTHOR}" = "haynes-ops-bot[bot]" ]; then
+            echo "Author is the shepherd bot — enforcing (advisory in Phase A)."
+            exit "${rc}"
+          fi
+          echo "Author '${PR_AUTHOR}' is trusted (renovate/human) — reporting success."
+          exit 0

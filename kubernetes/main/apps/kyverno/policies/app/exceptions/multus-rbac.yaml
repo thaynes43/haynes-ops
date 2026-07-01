@@ -1,0 +1,26 @@
+---
+# multus ships a legitimate wildcard ClusterRole (resources:"*"/verbs:"*", verified at
+# network/multus/app/rbac.yaml). It is cluster-scoped, so a namespace exclude does NOT
+# cover it — exempt it by NAME. PolicyException lives in the kyverno namespace
+# (features.policyExceptions.namespace: kyverno). In Phase A (audit) this just removes
+# the already-known multus noise from the report; enumerate the rest from the report
+# before Phase C enforce.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: multus-wildcard-clusterrole
+  namespace: kyverno
+spec:
+  exceptions:
+    - policyName: restrict-rbac-escalation
+      ruleNames:
+        - no-wildcard-or-escalate-role
+        - autogen-no-wildcard-or-escalate-role
+  match:
+    any:
+      - resources:
+          kinds:
+            - ClusterRole
+            - ClusterRoleBinding
+          names:
+            - "multus*"

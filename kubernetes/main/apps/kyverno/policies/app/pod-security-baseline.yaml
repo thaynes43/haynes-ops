@@ -1,0 +1,31 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/kyverno/main/api/kyverno/v1/clusterpolicy.json
+# Kyverno-native Pod Security Standards (baseline) — covers hostNamespaces, privileged,
+# capabilities.add, hostPath, hostPorts, procMount, seccomp, sysctls, runAsUser:0 (the
+# holes a hand-rolled pattern would miss). Autogen covers all controllers.
+#
+# PHASE A: Audit-only (failureAction: Audit) with NO namespace excludes — so the
+# ClusterPolicyReport enumerates the FULL real violator set (VolSync movers across 18
+# ns, device-plugins, multus, rook, comfyui, subchart pods, ...) before Phase C adds
+# per-workload PolicyExceptions and flips to Enforce. fail-open so a Kyverno outage
+# never wedges a Flux apply.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pod-security-baseline
+spec:
+  background: true
+  webhookConfiguration:
+    failurePolicy: Ignore
+  rules:
+    - name: baseline
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        failureAction: Audit
+        podSecurity:
+          level: baseline
+          version: latest
