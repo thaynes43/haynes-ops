@@ -10,7 +10,6 @@ GATE_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROM="${PROMETHEUS_URL:-http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090}"
 HA="${HA_URL:-http://home-assistant.home-automation.svc.cluster.local:8123}"
 OFFSET="${PERSIST_OFFSET:-10m}"
-FLUX_STALE="${FLUX_STALE_SECONDS:-2700}"
 REGRESSIONS=0
 NOW="$(date -u +%s)"
 
@@ -44,15 +43,17 @@ if [ "$API_OK" -eq 0 ]; then
       | "\($i.metadata.namespace)/\($i.metadata.name): \($c.message // "not ready")"' 2>/dev/null)"
     [ -n "$bad" ] && page critical flux "${kind%%.*}" "NotReady >10m: $(echo "$bad" | head -3 | tr '\n' ';')"
   done
-  gr="$(kubectl -n flux-system get gitrepository flux-system -o json 2>/dev/null)"
+  # The GitRepository is named 'haynes-ops' (in ns flux-system). Ready=False is the
+  # reliable "Flux can't fetch main" signal (auth/repo failure). We deliberately do
+  # NOT staleness-check artifact.lastUpdateTime: it only advances on a CONTENT change,
+  # so a quiet period with no commits would false-page. A wedged/down source-controller
+  # surfaces via the pod sweep + NotReady kustomizations instead.
+  gr="$(kubectl -n flux-system get gitrepository haynes-ops -o json 2>/dev/null)"
   gr_ready="$(echo "$gr" | jq -r '.status.conditions[]? | select(.type=="Ready") | .status' 2>/dev/null)"
-  gr_ts="$(echo "$gr" | jq -r '.status.artifact.lastUpdateTime // empty | sub("\\.[0-9]+";"") | fromdateiso8601' 2>/dev/null)"
   if [ -z "$gr_ready" ]; then
-    page warning flux-blind flux-system "Cannot read flux-system GitRepository status — Flux dimension is blind."
+    page warning flux-blind haynes-ops "Cannot read the haynes-ops GitRepository status — Flux source dimension is blind."
   elif [ "$gr_ready" != "True" ]; then
-    page critical flux flux-system "flux-system GitRepository Ready=$gr_ready (fetch failing)."
-  elif [ -n "$gr_ts" ] && [ "$((NOW - gr_ts))" -gt "$FLUX_STALE" ]; then
-    page critical flux flux-system "flux-system GitRepository last fetch >${FLUX_STALE}s ago — Flux stopped pulling main."
+    page critical flux haynes-ops "haynes-ops GitRepository Ready=$gr_ready — Flux can't fetch main (auth/repo failure)."
   fi
 fi
 
