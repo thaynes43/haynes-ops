@@ -1,0 +1,64 @@
+---
+# CiliumNetworkPolicy for the shepherd pod: the gate's read egress (DNS, apiserver,
+# Prometheus) PLUS GitHub (clone/push/PRs, release notes) and Anthropic (the LLM).
+# Default-deny for everything else. This is the exfil boundary for a prompt-injectable
+# LLM: even if talked into it, it can only reach github/anthropic/cluster-read.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: upgrade-shepherd
+  namespace: upgrade-agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: upgrade-shepherd
+  egress:
+    # 1. DNS via CoreDNS (required for toFQDNs). Only cluster-internal + the exact
+    #    external names the shepherd needs — closes DNS-tunnel exfil.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*.cluster.local"
+              - matchPattern: "*.svc"
+              - matchPattern: "*.github.com"
+              - matchPattern: "*.githubusercontent.com"
+              - matchName: "api.anthropic.com"
+    # 2. Kube API server — read-only diagnosis (kubectl get/describe, flux get).
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # 3. In-cluster Prometheus — mode-2 diagnosis queries.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    # 4. GitHub — git clone/push, gh PRs, gh release view (release notes).
+    - toFQDNs:
+        - matchPattern: "*.github.com"
+        - matchPattern: "*.githubusercontent.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # 5. Anthropic — the LLM API.
+    - toFQDNs:
+        - matchName: api.anthropic.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+  # No ingress rules -> all ingress denied.

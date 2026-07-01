@@ -1,0 +1,20 @@
+---
+# The shepherd VERIFIES/diagnoses read-only — its only WRITE path is git push -> a PR
+# -> Flux (never a direct cluster write). So it reuses the gate's read-only ClusterRole
+# `upgrade-health-gate` (get/list/watch only; no secrets/exec/log/write) via a new
+# binding for the shepherd's own ServiceAccount. No new permissions are granted.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: &app upgrade-shepherd
+  labels:
+    app.kubernetes.io/instance: *app
+    app.kubernetes.io/name: *app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: upgrade-health-gate # the shared read-only role (defined by the gate)
+subjects:
+  - kind: ServiceAccount
+    name: *app
+    namespace: upgrade-agent
