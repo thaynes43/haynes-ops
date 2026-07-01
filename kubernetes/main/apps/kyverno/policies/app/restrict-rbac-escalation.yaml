@@ -21,12 +21,10 @@ spec:
               kinds:
                 - ClusterRoleBinding
                 - RoleBinding
-      exclude: &excludeHelm
-        any:
-          - subjects:
-              - kind: ServiceAccount
-                name: helm-controller
-                namespace: flux-system
+      # No subject-based exclude: `exclude.subjects` matches the REQUESTER (admission-
+      # time userInfo), invalid under background:true. In Phase A we audit everything;
+      # legit binders (helm-controller etc.) surface in the report and get proper
+      # PolicyExceptions before Enforce (Phase C).
       validate:
         failureAction: Audit
         message: "Binding to a privileged built-in (cluster-admin/admin/edit) or a controller role is not allowed."
@@ -54,7 +52,6 @@ spec:
               kinds:
                 - ClusterRole
                 - Role
-      exclude: *excludeHelm
       validate:
         failureAction: Audit
         message: "Roles granting '*' verbs+resources or escalate/bind/impersonate are not allowed."
