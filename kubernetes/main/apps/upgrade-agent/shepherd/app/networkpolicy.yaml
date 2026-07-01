@@ -27,6 +27,7 @@ spec:
             dns:
               - matchPattern: "*.cluster.local"
               - matchPattern: "*.svc"
+              - matchName: "github.com"          # apex — *.github.com does NOT match it
               - matchPattern: "*.github.com"
               - matchPattern: "*.githubusercontent.com"
               - matchName: "api.anthropic.com"
@@ -48,6 +49,7 @@ spec:
               protocol: TCP
     # 4. GitHub — git clone/push, gh PRs, gh release view (release notes).
     - toFQDNs:
+        - matchName: "github.com"          # apex (git clone/push target)
         - matchPattern: "*.github.com"
         - matchPattern: "*.githubusercontent.com"
       toPorts:
