@@ -60,7 +60,11 @@ unsigned="$(printf '%s' "$header" | b64url).$(printf '%s' "$payload" | b64url)"
 sig="$(printf '%s' "$unsigned" | openssl dgst -sha256 -sign "$keyfile" | b64url)"
 jwt="${unsigned}.${sig}"
 
-perms="${GITHUB_BOT_TOKEN_PERMISSIONS:-{\"contents\":\"write\",\"pull_requests\":\"write\",\"checks\":\"read\"}}"
+# NB: do NOT use an inline brace-containing default (${VAR:-{...}}). When VAR is SET,
+# bash mis-parses the nested braces and appends a stray '}', producing malformed JSON
+# ({"permissions":{...}}}) -> HTTP 400 from GitHub. Split the default onto its own line.
+perms="${GITHUB_BOT_TOKEN_PERMISSIONS:-}"
+[ -n "$perms" ] || perms='{"contents":"write","pull_requests":"write","checks":"read"}'
 
 resp="$(curl -fsS -X POST \
   -H "Authorization: Bearer ${jwt}" \
