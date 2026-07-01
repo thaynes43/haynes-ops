@@ -33,7 +33,7 @@ spec:
           mint-token:
             image:
               repository: ghcr.io/thaynes43/upgrade-shepherd
-              tag: 0.1.0@sha256:b40eb95ae478021e3bb49e9a1514bf437cb7286c5d79765b5a1f6f9d73b61051
+              tag: 0.1.0@sha256:b210b50dde9bee482a90f25ec5107e96e5641963216d05da8addfd9a96374744
             command:
               - /bin/bash
               - -c
@@ -55,7 +55,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/upgrade-shepherd
-              tag: 0.1.0@sha256:b40eb95ae478021e3bb49e9a1514bf437cb7286c5d79765b5a1f6f9d73b61051
+              tag: 0.1.0@sha256:b210b50dde9bee482a90f25ec5107e96e5641963216d05da8addfd9a96374744
             command: ["/bin/bash", "/opt/shepherd/run-shepherd.sh"]
             env:
               UPGRADE_AGENT_MODE: dryrun   # override to 'shepherd' for the real edit+PR run
