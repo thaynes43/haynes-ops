@@ -29,3 +29,8 @@ wiki
 #talosconfig
 #omniconfig
 .env
+zprompt.md
+# Claude Code local working dir + session/handoff scratch (kept local, not repo content)
+.claude/
+HANDOFF-*.md
+SESSION-HANDOFF.md
