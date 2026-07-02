@@ -121,6 +121,10 @@ spec:
           gethomepage.dev/icon: sabnzbd
           gethomepage.dev/app: sabnzbd-fast
           gethomepage.dev/siteMonitor: *url
+          gethomepage.dev/widget.type: sabnzbd
+          gethomepage.dev/widget.url: "http://sabnzbd-fast.downloads.svc.cluster.local:8080"
+          # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it
+          gethomepage.dev/widget.key: '{{ "{{HOMEPAGE_VAR_SABNZBD_FAST_API_KEY}}" }}'
         className: traefik-internal
         hosts:
           - host: sabnzbd-fast.haynesops.com
