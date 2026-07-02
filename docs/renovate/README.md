@@ -87,7 +87,7 @@ The pieces worth porting:
 | 1 | `flux-local` PR gate | required check on all Renovate PRs | ✅ live (`.github/workflows/flux-local.yaml`) |
 | 2 | Curated allowlist: own `ghcr.io/thaynes43/*`, `kube-prometheus-stack`, safe stateless leaf-app domains (`media`, `ai`, `downloads`, `frontend`, `office`, `photos`, **`observability`** since 2026-06-15) + curated cluster-infra leaves by subpath (`kube-system/{metrics-server,reloader,reflector,k8tz,spegel}`, `network/cloudflare-ddns`) on minor/patch | auto-merge, flux-local-gated + bake | ✅ live (`.renovate/autoMerge.json5`) — **trust clock starts 2026-06-08** (see exit criteria) |
 | 3 | Grouped multi-component apps: `home-assistant` (HA + code-server + ha-mcp), Z2M | symmetric dashboard-approval groups (manual phase) | ✅ live 2026-06-09 (`.renovate/groups.json5`) |
-| 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent | 🟡 building (2026-06-30) — bot + holds + runbooks live; gate runtime next |
+| 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent + shepherd + guardrails | 🟡 building — 4a gate + 4b.1 shepherd live; 4b.2 **Phase A** (Kyverno audit + diff-scope advisory) + **Phase B** (diff-scope required + push protection on main+edge) live 2026-07-02; Phase C (Kyverno enforce) + D (auto-merge) next. See [audit](tier4-audit-2026-07-02.md). |
 
 > **Resuming this roadmap (next session):** Tiers 0–3 are live; Tier 3 runs in
 > its **manual dashboard-approval phase** (updates for the HA pod and Z2M show
@@ -453,6 +453,24 @@ EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/is
   runbook for the failing component.
 
 ## Changelog
+
+- **2026-07-02** — **Tier-4 Phase-1 audit + Phase B (push protection) live.**
+  Skeptical audit ([tier4-audit-2026-07-02.md](tier4-audit-2026-07-02.md)) with a
+  22-case diff-scope adversarial suite + live Kyverno/GitHub inspection. Fixed two
+  holes (commit `2dfc71ed`): diff-scope GATE B waved through version-shaped edits to
+  config files (`.renovate/holds.json5` hold-widening read as a "pure bump") — GATE A
+  now blocks any changed path outside `kubernetes/**`; and the Kyverno reports-controller
+  was audit-blind on RBAC (forbidden to list bindings) — added an aggregated read role.
+  **Phase B:** `Diff Scope - Success` is now a **required** status check on `main`
+  (alongside `Flux Local - Success`); the **Main** ruleset (14013135) gained a
+  require-PR rule (`required_approving_review_count: 0`, admin RepoRole-5 bypass
+  preserved); a new **Edge** ruleset (18431432) requires a PR + `Diff Scope - Success`
+  on `refs/heads/edge` (edge had zero protection; flux-local does not run on edge PRs so
+  it is deliberately not required there). Proven E2E: the real bot token was **rejected**
+  direct-pushing to `main` ("Changes must be made through a pull request" + "2 of 2
+  required status checks are expected") while its feature-branch push succeeded, and a
+  green Renovate PR stays `MERGEABLE`/`CLEAN` with no review deadlock. **No auto-merge
+  yet** — that's Phase D, gated on Phase C (Kyverno enforce).
 
 - **2026-06-30** — **Tier 4 build started: `haynes-ops-bot` GitHub App + holds
   registry.** Registered the least-privilege `haynes-ops-bot` App (Contents R/W,
