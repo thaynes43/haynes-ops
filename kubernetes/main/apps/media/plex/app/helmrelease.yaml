@@ -24,17 +24,18 @@ spec:
         pod:
           nodeSelector:
             feature.node.kubernetes.io/intel-arrow-lake-gpu: "true"
-          # One Plex per iGPU twin while both are up; soft so either instance
-          # can fail over to the surviving node (each twin has 3 i915 slots).
+          # One Plex per iGPU twin, hard-required: preferred anti-affinity
+          # empirically loses the scheduler's scoring here (repro 2026-07-02:
+          # clean reschedules with all volumes detached still co-located both
+          # Plexes). Cost: during single-twin maintenance the displaced
+          # instance stays Pending — acceptable, the other duplicate serves.
           affinity:
             podAntiAffinity:
-              preferredDuringSchedulingIgnoredDuringExecution:
-                - weight: 100
-                  podAffinityTerm:
-                    labelSelector:
-                      matchLabels:
-                        app.kubernetes.io/name: opsplex
-                    topologyKey: kubernetes.io/hostname
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: opsplex
+                  topologyKey: kubernetes.io/hostname
         containers:
           app:
             image:
