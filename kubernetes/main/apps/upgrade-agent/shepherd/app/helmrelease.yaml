@@ -81,7 +81,7 @@ spec:
       # Deterministic (no-LLM) triage: on a schedule, summon MODE=remediate ONLY when a
       # regression correlates with a recent merge to main. Inert until unsuspended +
       # scheduled (the Tom-gated final flip). Reuses the shared SA/secrets/CNP/volumes.
-      upgrade-shepherd-triage:
+      triage:
         type: cronjob
         cronjob:
           suspend: true
