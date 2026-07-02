@@ -32,7 +32,7 @@ spec:
               kinds:
                 - Pod
       validate:
-        failureAction: Audit
+        failureAction: Enforce
         message: >-
           A container image is from a non-allowlisted registry. Allowed: ghcr.io,
           docker.io, quay.io, registry.k8s.io, gcr.io, mirror.gcr.io, k8s.gcr.io,
