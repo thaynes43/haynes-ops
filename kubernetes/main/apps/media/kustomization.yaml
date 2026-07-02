@@ -12,3 +12,6 @@ resources:
   - ./lidarr/ks.yaml
   - ./plexops/ks.yaml
   - ./plex/ks.yaml
+  - ./radarr/ks.yaml
+  - ./recyclarr/ks.yaml
+  - ./sonarr/ks.yaml
