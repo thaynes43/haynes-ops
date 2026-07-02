@@ -1,0 +1,89 @@
+---
+# Per-workload exemptions from pod-security-baseline for the legitimately-privileged
+# infrastructure enumerated from the Phase-A audit report (2026-07-02). Each violates a
+# baseline control for a real infra reason (hostNetwork, hostPath to /dev|/sys|/lib/
+# modules|/var/lib/rook, NET_ADMIN/NET_RAW, privileged). Scoped by namespace + name so a
+# NEW/other workload in the same namespace is still checked — NOT a whole-namespace
+# webhook exclude (kube-system/flux-system must never be blanket-excluded).
+#
+# Rule names cover the base rule + both autogen variants (baseline / autogen-baseline /
+# autogen-cronjob-baseline) so controllers, Jobs, and bare Pods are all exempted.
+#
+# App-level flags to revisit (not infra — could be tightened instead of exempted):
+#   - ai/comfyui           : securityContext.privileged=true (GPU usually needs the
+#                            device plugin, NOT privileged — candidate to drop).
+#   - frontend/omni        : NET_ADMIN+NET_RAW+privileged; it's the self-hosted Omni for
+#                            the powered-off/unused edge cluster — candidate to remove.
+#   - home-automation/music-assistant : hostNetwork for cast/DLNA discovery (legit).
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: pss-baseline-privileged-infra
+  namespace: kyverno
+spec:
+  exceptions:
+    - policyName: pod-security-baseline
+      ruleNames:
+        - baseline
+        - autogen-baseline
+        - autogen-cronjob-baseline
+  match:
+    any:
+      # Dedicated privileged storage namespace (mons/osds/mgr/mds/rgw/csi/crash/exporter/
+      # discover) — the entire namespace is Ceph infra.
+      - resources:
+          kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
+          namespaces: [rook-ceph]
+      # kube-system: CNI, device plugins, spegel, NFD, and the control-plane STATIC pods
+      # (mirror pods re-created on node reboot). Named, never whole-namespace.
+      - resources:
+          kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
+          namespaces: [kube-system]
+          names:
+            - cilium*
+            - generic-device-plugin*
+            - intel-gpu-plugin*
+            - nvidia-device-plugin*
+            - inteldeviceplugins*
+            - node-feature-discovery*
+            - spegel*
+            - kube-apiserver-*
+            - kube-controller-manager-*
+            - kube-scheduler-*
+      - resources:
+          kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
+          namespaces: [observability]
+          names:
+            - node-exporter*
+            - promtail*
+            - smartctl-exporter*
+            - blackbox-exporter*
+      - resources:
+          kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
+          namespaces: [network]
+          names:
+            - multus*
+      - resources:
+          kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
+          namespaces: [ai]
+          names:
+            - comfyui*
+      - resources:
+          kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
+          namespaces: [home-automation]
+          names:
+            - music-assistant*
+      - resources:
+          kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
+          namespaces: [frontend]
+          names:
+            - omni*
+      # VolSync privileged movers — EPHEMERAL (only exist during a backup/restore), so
+      # they were absent from the audit scan but WILL fail baseline (privileged + host
+      # mounts) when they run, in ~18 app namespaces. Match by the mover name pattern
+      # (volsync-src-*/volsync-dst-*), which is stable across all namespaces.
+      - resources:
+          kinds: [Pod, Job]
+          names:
+            - volsync-src-*
+            - volsync-dst-*

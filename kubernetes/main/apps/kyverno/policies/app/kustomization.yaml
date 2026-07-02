@@ -7,3 +7,5 @@ resources:
   - ./restrict-rbac-escalation.yaml
   - ./pod-security-baseline.yaml
   - ./exceptions/multus-rbac.yaml
+  - ./exceptions/rbac-flux-headlamp.yaml
+  - ./exceptions/pss-baseline.yaml

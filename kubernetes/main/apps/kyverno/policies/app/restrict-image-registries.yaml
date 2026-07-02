@@ -1,10 +1,21 @@
 ---
 # yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/kyverno/main/api/kyverno/v1/clusterpolicy.json
-# Catches an image-registry swap (e.g. ghcr.io/... -> attacker.io/...). PHASE A:
-# Audit-only, fail-open, generous allowlist — the report will show every registry
-# actually in use so the allowlist can be tightened before Enforce. (An org-swap on
-# an allowed HOST, e.g. ghcr.io/home-operations -> ghcr.io/attacker, is caught by
-# diff-scope, not this host-level policy.)
+# Blocks images from a non-allowlisted registry HOST (a brand-new registry, e.g.
+# attacker.io/...). NOTE its residual value is modest: a host allowlist of
+# ghcr.io/docker.io/quay.io barely constrains an attacker (anyone can push there).
+# The org-swap threat (ghcr.io/home-operations/x -> ghcr.io/attacker/x) is caught by
+# diff-scope, and image *provenance* by the cosign verifyImages policy — this is the
+# weakest of the three, kept as defense-in-depth (per Tom, 2026-07-02).
+#
+# WHY foreach + {{ images }} instead of a pattern match: Kyverno's `images` context
+# NORMALIZES each image (bare `busybox:latest` -> registry `docker.io`), so this
+# correctly allows implicit-docker.io images that a literal `docker.io/*` pattern
+# rejected (that mismatch was the bulk of the 101 Phase-A audit fails; the rest were
+# reg.kyverno.io + mirror.gcr.io, now allowlisted).
+#
+# PHASE C: still Audit here; flip to Enforce (first of the three) only after the audit
+# report shows ~0 unexpected fails. fail-open so a Kyverno outage never wedges a Flux
+# apply.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -14,7 +25,7 @@ spec:
   webhookConfiguration:
     failurePolicy: Ignore
   rules:
-    - name: allowed-registries
+    - name: validate-registries
       match:
         any:
           - resources:
@@ -22,12 +33,41 @@ spec:
                 - Pod
       validate:
         failureAction: Audit
-        message: "Container images must come from an allowlisted registry."
-        pattern:
-          spec:
-            =(ephemeralContainers):
-              - image: "ghcr.io/* | docker.io/* | quay.io/* | registry.k8s.io/* | gcr.io/* | k8s.gcr.io/* | public.ecr.aws/* | mcr.microsoft.com/* | cgr.dev/* | registry.gitlab.com/*"
-            =(initContainers):
-              - image: "ghcr.io/* | docker.io/* | quay.io/* | registry.k8s.io/* | gcr.io/* | k8s.gcr.io/* | public.ecr.aws/* | mcr.microsoft.com/* | cgr.dev/* | registry.gitlab.com/*"
-            containers:
-              - image: "ghcr.io/* | docker.io/* | quay.io/* | registry.k8s.io/* | gcr.io/* | k8s.gcr.io/* | public.ecr.aws/* | mcr.microsoft.com/* | cgr.dev/* | registry.gitlab.com/*"
+        message: >-
+          A container image is from a non-allowlisted registry. Allowed: ghcr.io,
+          docker.io, quay.io, registry.k8s.io, gcr.io, mirror.gcr.io, k8s.gcr.io,
+          public.ecr.aws, mcr.microsoft.com, cgr.dev, registry.gitlab.com, reg.kyverno.io.
+        foreach:
+          - list: request.object.spec.containers
+            deny:
+              conditions:
+                all:
+                  - key: '{{ images.containers."{{ element.name }}".registry }}'
+                    operator: AnyNotIn
+                    value: &allowed
+                      - ghcr.io
+                      - docker.io
+                      - quay.io
+                      - registry.k8s.io
+                      - gcr.io
+                      - mirror.gcr.io
+                      - k8s.gcr.io
+                      - public.ecr.aws
+                      - mcr.microsoft.com
+                      - cgr.dev
+                      - registry.gitlab.com
+                      - reg.kyverno.io
+          - list: request.object.spec.initContainers
+            deny:
+              conditions:
+                all:
+                  - key: '{{ images.initContainers."{{ element.name }}".registry }}'
+                    operator: AnyNotIn
+                    value: *allowed
+          - list: request.object.spec.ephemeralContainers
+            deny:
+              conditions:
+                all:
+                  - key: '{{ images.ephemeralContainers."{{ element.name }}".registry }}'
+                    operator: AnyNotIn
+                    value: *allowed
