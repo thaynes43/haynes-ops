@@ -60,15 +60,24 @@ for entry in "${NAME_STATUS[@]}"; do
   status="${entry%%$'\t'*}"; path="${entry#*$'\t'}"; base="$(basename "$path")"
 
   # ---- GATE A: sensitive PATHS ----
+  # The shepherd's ONLY auto-mergeable edit is an image tag/digest + chart-version bump
+  # under kubernetes/**. ANY changed path (added, modified, OR deleted) outside
+  # kubernetes/** — a Renovate/CI policy file (.renovate/**, .github/**), a script, a
+  # root-level file — must fall to human review. This is load-bearing: GATE B masks
+  # version tokens, so an in-place version-range edit to a *config* file (e.g. widening
+  # a hold's `allowedVersions` in .renovate/holds.json5, or bumping a pinned version in
+  # any non-manifest file) would otherwise satisfy the masked-multiset check and read as
+  # a "pure version bump". Only version bumps to kubernetes/** manifests are auto-safe.
+  # (diff-scope is author-scoped to the bot, so this never gates Renovate/human PRs; the
+  # bot legitimately edits nothing outside kubernetes/** on an auto-merge path — the
+  # holds protocol PR is meant to be human-reviewed.) Kyverno lives UNDER kubernetes/**,
+  # so it still needs its own explicit rule below.
+  if [[ "$path" != kubernetes/* ]]; then
+    violation "changes a path outside kubernetes/** (only image/chart bumps there auto-merge): ${path}"
+  fi
   printf '%s' "$base" | grep -qiE 'rbac' && violation "sensitive path (rbac file): ${path}"
   [[ "$path" == kubernetes/*/apps/kyverno/* ]] && violation "touches the Kyverno guardrail tree: ${path}"
   [[ "$path" == scripts/diff-scope.sh ]]      && violation "touches the diff-scope guard itself: ${path}"
-  if [[ "$path" == .github/* ]] && [[ "$path" != .github/workflows/* ]]; then
-    violation "sensitive path (.github non-workflow): ${path}"
-  fi
-  if [ "${status:0:1}" = "A" ] && [[ "$path" != kubernetes/* ]]; then
-    violation "new file outside kubernetes/**: ${path}"
-  fi
 
   # ---- GATE A: sensitive ADDED content (only '+' lines) ----
   added="$(git diff --no-color "${RANGE}" -- "$path" | grep -E '^\+' | grep -vE '^\+\+\+' || true)"

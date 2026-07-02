@@ -1,0 +1,30 @@
+---
+# Restore the reports-controller's ability to background-scan RBAC resources.
+#
+# WHY: the `restrict-rbac-escalation` ClusterPolicy matches ClusterRoleBinding/
+# ClusterRole/RoleBinding/Role, but the Kyverno chart's default reports-controller
+# role does NOT grant read on rbac.authorization.k8s.io. At runtime the pod logs
+# `clusterrolebindings ... is forbidden ... cannot list` and `failed to start watcher`,
+# so the background scan produces ZERO PolicyReports for RBAC — the policy is
+# audit-blind (verified 2026-07-02: 3 cluster-admin bindings exist, 0 rbac reports).
+# The ADMISSION path is unaffected (the resource webhook already intercepts these
+# kinds), so enforce still denies a bad binding; this only restores audit VISIBILITY
+# so we can enumerate violators and watch for drift.
+#
+# HOW: Kyverno's `kyverno:reports-controller` ClusterRole is an aggregate; any
+# ClusterRole carrying the label below is merged into it by the controller-manager.
+# Read-only (get/list/watch) — no escalation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:reports-controller:rbac-read
+  labels:
+    rbac.kyverno.io/aggregate-to-reports-controller: "true"
+rules:
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - clusterrolebindings
+      - clusterroles
+      - rolebindings
+      - roles
+    verbs: ["get", "list", "watch"]
