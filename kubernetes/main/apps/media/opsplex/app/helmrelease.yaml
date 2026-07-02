@@ -3,7 +3,7 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: &app plex
+  name: &app opsplex
 spec:
   chartRef:
     kind: OCIRepository
@@ -18,7 +18,7 @@ spec:
       retries: 3
   values:
     controllers:
-      plex:
+      opsplex:
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
@@ -33,7 +33,7 @@ spec:
                   podAffinityTerm:
                     labelSelector:
                       matchLabels:
-                        app.kubernetes.io/name: opsplex
+                        app.kubernetes.io/name: plex
                     topologyKey: kubernetes.io/hostname
         containers:
           app:
@@ -42,7 +42,7 @@ spec:
               tag: 1.43.2.10687@sha256:be00a2ad851ea3193cd870636f908eb6425ad89390f23cdb08daa35ab5cceacc
             env:
               TZ: America/New_York
-              PLEX_ADVERTISE_URL: https://k8plex.haynesnetwork.com:443,http://192.168.40.209:32400
+              PLEX_ADVERTISE_URL: https://opsplex.haynesnetwork.com:443,http://192.168.40.211:32400
               PLEX_NO_AUTH_NETWORKS: 192.168.0.0/24
             probes:
               liveness: &probes
@@ -83,10 +83,10 @@ spec:
         supplementalGroups: [44]
     service:
       app:
-        controller: plex
+        controller: opsplex
         type: LoadBalancer
         annotations:
-          lbipam.cilium.io/ips: 192.168.40.209
+          lbipam.cilium.io/ips: 192.168.40.211
         ports:
           http:
             port: 32400
@@ -95,23 +95,18 @@ spec:
         annotations:
           external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
           # Homepage
-          gethomepage.dev/href: &url "https://k8plex.haynesnetwork.com"
+          gethomepage.dev/href: &url "https://opsplex.haynesnetwork.com"
           gethomepage.dev/enabled: "true"
           gethomepage.dev/group: Media
-          gethomepage.dev/name: Plex
-          gethomepage.dev/description: Media server
+          gethomepage.dev/name: OpsPlex
+          gethomepage.dev/description: Media server (Unraid mirror)
           gethomepage.dev/icon: plex
-          # Needed for Kubernetes status/metrics lookup
-          gethomepage.dev/app: plex
+          gethomepage.dev/app: opsplex
           # Use Service directly for accurate monitoring
-          gethomepage.dev/siteMonitor: "http://plex.media.svc.cluster.local:32400/identity"
-          gethomepage.dev/widget.type: plex
-          gethomepage.dev/widget.url: "http://plex.media.svc.cluster.local:32400"
-          # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it
-          gethomepage.dev/widget.key: '{{ "{{HOMEPAGE_VAR_HAYNESKUBE_PLEX_API_KEY}}" }}'
+          gethomepage.dev/siteMonitor: "http://opsplex.media.svc.cluster.local:32400/identity"
         className: traefik-external
         hosts:
-          - host: "k8plex.haynesnetwork.com"
+          - host: "opsplex.haynesnetwork.com"
             paths:
               - path: /
                 service:
@@ -120,18 +115,18 @@ spec:
         tls:
           - secretName: certificate-haynesnetwork
             hosts:
-                - k8plex.haynesnetwork.com
+                - opsplex.haynesnetwork.com
     persistence:
       config:
-        existingClaim: plex
+        existingClaim: opsplex
       config-cache:
-        existingClaim: plex-cache
+        existingClaim: opsplex-cache
         globalMounts:
           - path: /config/Library/Application Support/Plex Media Server/Cache
       # Regenerable artwork on a separate, non-backed-up PVC (keeps the VolSync
-      # backup of `plex` to just the library DB + prefs). Plex re-fetches if lost.
+      # backup of `opsplex` to just the library DB + prefs). Plex re-fetches if lost.
       config-metadata:
-        existingClaim: plex-metadata
+        existingClaim: opsplex-metadata
         globalMounts:
           - path: /config/Library/Application Support/Plex Media Server/Metadata
             subPath: Metadata
@@ -143,14 +138,27 @@ spec:
           - path: /config/Library/Application Support/Plex Media Server/Logs
       transcode:
         type: emptyDir
-      media:
+      # Unraid media library (movies/TV) — read-only mirror of what the
+      # haynestower Plex serves.
+      media-haynestower:
+        type: nfs
+        server: haynestower.haynesnetwork
+        path: /mnt/user/data
+        advancedMounts:
+          opsplex:
+            app:
+              - path: /data/haynestower
+                readOnly: true
+      # Cluster-side media root (music from lidarr, ytdl content) so opsplex
+      # can take over everything when it becomes the primary server.
+      media-gasha:
         type: nfs
         server: gasha01.haynesnetwork
         path: /hdd-nfs-repl
         advancedMounts:
-          plex:
+          opsplex:
             app:
-              - path: /cephfs-hdd
+              - path: /data/gasha01
                 subPath: data
                 readOnly: true
       tmp:
