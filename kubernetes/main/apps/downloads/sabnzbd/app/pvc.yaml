@@ -1,0 +1,13 @@
+---
+# Node-local scratch for incomplete downloads + unpack. Regenerable (SAB
+# re-downloads on loss), so no VolSync and no prune protection needed.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sabnzbd-incomplete
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 150Gi
+  storageClassName: openebs-hostpath

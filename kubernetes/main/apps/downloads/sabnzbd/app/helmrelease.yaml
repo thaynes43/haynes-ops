@@ -1,0 +1,161 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: sabnzbd
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      sabnzbd:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        pod:
+          nodeSelector:
+            network.haynesops.com/vpn: "true"
+          annotations:
+            k8s.v1.cni.cncf.io/networks: static-vpn-sabnzbd
+        containers:
+          app:
+            image:
+              repository: ghcr.io/home-operations/sabnzbd
+              tag: 5.0.4
+            env:
+              TZ: America/New_York
+              SABNZBD__PORT: &port 8080
+              SABNZBD__HOST_WHITELIST_ENTRIES: >-
+                sabnzbd,
+                sabnzbd.downloads,
+                sabnzbd.downloads.svc,
+                sabnzbd.downloads.svc.cluster.local,
+                sabnzbd.haynesops.com
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api?mode=version
+                    port: *port
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 5
+              # Readiness = Mullvad-egress check: with the VPN VLAN down (or
+              # misrouted out the WAN) the pod goes NotReady -> traefik 503 ->
+              # Gatus pages Pushover. Readiness (not liveness) on purpose:
+              # restarting the pod can't fix the VPN, so don't crash-loop.
+              # failureThreshold*period ≈ 4min tolerates brief blips of
+              # am.i.mullvad.net itself before paging.
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  exec:
+                    command:
+                      - python3
+                      - -c
+                      - |
+                        import urllib.request, sys
+                        body = urllib.request.urlopen("https://am.i.mullvad.net/connected", timeout=10).read()
+                        sys.exit(0 if b"You are connected" in body else 1)
+                  periodSeconds: 60
+                  timeoutSeconds: 15
+                  failureThreshold: 4
+              startup:
+                enabled: true
+                spec:
+                  failureThreshold: 30
+                  periodSeconds: 10
+            resources:
+              requests:
+                cpu: 100m
+                memory: 512Mi
+              limits:
+                # Capped so unpack/par2 bursts can't contend with neighbors.
+                cpu: 4000m
+                memory: 6Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: true
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+    service:
+      app:
+        forceRename: "{{ .Release.Name }}"
+        primary: true
+        ports:
+          http:
+            port: *port
+    ingress:
+      app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+          gethomepage.dev/href: &url "https://sabnzbd.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Downloads
+          gethomepage.dev/name: SABnzbd
+          gethomepage.dev/description: Usenet downloads (automation lane)
+          gethomepage.dev/icon: sabnzbd
+          gethomepage.dev/app: sabnzbd
+          gethomepage.dev/siteMonitor: *url
+        className: traefik-internal
+        hosts:
+          - host: sabnzbd.haynesops.com
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+    persistence:
+      config:
+        existingClaim: sabnzbd
+      # Local scratch for incomplete + unpack: par2/unrar on node-local disk,
+      # only the finished move crosses to NFS (usenet has no hardlink needs).
+      incomplete:
+        existingClaim: sabnzbd-incomplete
+        globalMounts:
+          - path: /incomplete
+      data-tower:
+        type: nfs
+        server: haynestower.haynesnetwork
+        path: /mnt/user/data
+        advancedMounts:
+          sabnzbd:
+            app:
+              - path: /data/haynestower
+                readOnly: false
+      # Same mount convention as qbittorrent so *arr remote-path mappings are
+      # identical across download clients.
+      data-proxmox:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          sabnzbd:
+            app:
+              - path: /data/cephfs-hdd
+                readOnly: false
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
