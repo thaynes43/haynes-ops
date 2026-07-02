@@ -53,4 +53,4 @@ jobs:
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/upgrade-agent
           DIGEST: ${{ steps.build.outputs.digest }}
-        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+        run: cosign sign --yes --registry-referrers-mode legacy "${IMAGE}@${DIGEST}"
