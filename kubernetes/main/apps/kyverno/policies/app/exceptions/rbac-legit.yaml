@@ -1,0 +1,61 @@
+---
+# Legit privileged RBAC that restrict-rbac-escalation would otherwise flag/deny. Two
+# classes, both enumerated from the Phase-A audit once the reports-controller could see
+# RBAC (2026-07-02):
+#
+#  1. Kubernetes BUILT-IN roles/bindings (admin, edit, cluster-admin, system:*) — they
+#     carry `*` verbs/resources or escalate/bind, but they're apiserver-managed
+#     (kubernetes.io/bootstrapping: rbac-defaults) and NEVER applied via Flux, so they
+#     are matched by that label, not by name.
+#  2. Our infra's legit privileged roles/bindings, chart/Flux-managed and re-applied on
+#     reconcile, matched BY NAME so any OTHER binding to cluster-admin / a controller
+#     role is still denied:
+#       - cluster-reconciler-flux-system, headlamp-admin  (bindings -> cluster-admin)
+#       - cilium, rook-ceph-system                        (bindings -> their own roles)
+#       - crd-controller-flux-system, openebs-localpv-provisioner (wildcard/escalate roles)
+#
+# NOT a requester/subject exclude (invalid under background:true) and NOT a
+# kustomize-/helm-controller exclude (that's the apply path a malicious shepherd PR
+# takes — must stay covered).
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: rbac-legit-privileged
+  namespace: kyverno
+spec:
+  exceptions:
+    - policyName: restrict-rbac-escalation
+      ruleNames:
+        - no-privileged-role-binding
+        - autogen-no-privileged-role-binding
+        - no-wildcard-or-escalate-role
+        - autogen-no-wildcard-or-escalate-role
+  match:
+    any:
+      # 1. Kubernetes built-in RBAC (apiserver-managed, bootstrap label).
+      - resources:
+          kinds:
+            - ClusterRole
+            - ClusterRoleBinding
+            - Role
+            - RoleBinding
+          selector:
+            matchLabels:
+              kubernetes.io/bootstrapping: rbac-defaults
+      # 2a. Infra bindings to cluster-admin / a controller role, by name.
+      - resources:
+          kinds:
+            - ClusterRoleBinding
+            - RoleBinding
+          names:
+            - cluster-reconciler-flux-system
+            - headlamp-admin
+            - cilium
+            - rook-ceph-system
+      # 2b. Infra roles carrying wildcard/escalate, by name.
+      - resources:
+          kinds:
+            - ClusterRole
+          names:
+            - crd-controller-flux-system
+            - openebs-localpv-provisioner

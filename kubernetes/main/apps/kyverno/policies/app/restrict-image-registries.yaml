@@ -36,7 +36,8 @@ spec:
         message: >-
           A container image is from a non-allowlisted registry. Allowed: ghcr.io,
           docker.io, quay.io, registry.k8s.io, gcr.io, mirror.gcr.io, k8s.gcr.io,
-          public.ecr.aws, mcr.microsoft.com, cgr.dev, registry.gitlab.com, reg.kyverno.io.
+          public.ecr.aws, mcr.microsoft.com, cgr.dev, registry.gitlab.com, reg.kyverno.io,
+          nvcr.io.
         foreach:
           - list: request.object.spec.containers
             deny:
@@ -57,6 +58,7 @@ spec:
                       - cgr.dev
                       - registry.gitlab.com
                       - reg.kyverno.io
+                      - nvcr.io
           - list: request.object.spec.initContainers
             deny:
               conditions:
