@@ -71,6 +71,11 @@ spec:
               requests:
                 gpu.intel.com/i915: 1
                 cpu: 1000m
+                # Explicit request: with only a limit set, k8s defaults
+                # request=limit and a 32Gi reservation can never fit talosw03
+                # (45Gi allocatable) — which silently pinned both Plexes to
+                # talosw02. Actual idle usage is <1Gi; 32Gi stays as burst room.
+                memory: 8Gi
               limits:
                 gpu.intel.com/i915: 1
                 memory: 32Gi
