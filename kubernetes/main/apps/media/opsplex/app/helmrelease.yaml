@@ -35,6 +35,29 @@ spec:
                       matchLabels:
                         app.kubernetes.io/name: plex
                     topologyKey: kubernetes.io/hostname
+        initContainers:
+          # On a FRESH (empty) config volume the runtime creates the parent dirs
+          # for the nested Cache/Metadata/Logs mounts as root:root, so Plex
+          # (uid 1000) can't write Preferences.xml next to them. Chown just the
+          # chain dirs (non-recursive — never touches the DB). No-op once owned.
+          # A VolSync restore preserves ownership, so this only matters on
+          # first bootstrap.
+          init-perms:
+            image:
+              repository: docker.io/library/busybox
+              tag: 1.37.0
+            command:
+              - /bin/sh
+              - -c
+              - |-
+                mkdir -p '/config/Library/Application Support/Plex Media Server'
+                chown 1000:1000 /config/Library '/config/Library/Application Support' '/config/Library/Application Support/Plex Media Server'
+            securityContext:
+              runAsNonRoot: false
+              runAsUser: 0
+              runAsGroup: 0
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
         containers:
           app:
             image:
