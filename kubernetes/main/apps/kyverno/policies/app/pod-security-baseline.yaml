@@ -4,7 +4,7 @@
 # capabilities.add, hostPath, hostPorts, procMount, seccomp, sysctls, runAsUser:0 (the
 # holes a hand-rolled pattern would miss). Autogen covers all controllers.
 #
-# PHASE A: Audit-only (failureAction: Audit) with NO namespace excludes — so the
+# PHASE A: Audit-only (failureAction: Enforce) with NO namespace excludes — so the
 # ClusterPolicyReport enumerates the FULL real violator set (VolSync movers across 18
 # ns, device-plugins, multus, rook, comfyui, subchart pods, ...) before Phase C adds
 # per-workload PolicyExceptions and flips to Enforce. fail-open so a Kyverno outage
@@ -25,7 +25,7 @@ spec:
               kinds:
                 - Pod
       validate:
-        failureAction: Audit
+        failureAction: Enforce
         podSecurity:
           level: baseline
           version: latest

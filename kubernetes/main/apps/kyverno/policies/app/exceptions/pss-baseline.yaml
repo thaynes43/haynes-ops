@@ -78,10 +78,17 @@ spec:
           namespaces: [frontend]
           names:
             - omni*
-      # VolSync privileged movers — EPHEMERAL (only exist during a backup/restore), so
-      # they were absent from the audit scan but WILL fail baseline (privileged + host
-      # mounts) when they run, in ~18 app namespaces. Match by the mover name pattern
-      # (volsync-src-*/volsync-dst-*), which is stable across all namespaces.
+      # VolSync movers — EPHEMERAL (only exist during a backup/restore), so they were
+      # absent from the audit scan but can fail baseline (privileged / host mounts,
+      # depending on the mover config) when they run, in ~18 app namespaces. Matched by
+      # the stable label VolSync stamps on every mover pod (verified on a live mover
+      # 2026-07-02: `volsync-src-open-webui-aws-nkgff` carried it) PLUS the name pattern
+      # as belt-and-braces.
+      - resources:
+          kinds: [Pod, Job]
+          selector:
+            matchLabels:
+              app.kubernetes.io/created-by: volsync
       - resources:
           kinds: [Pod, Job]
           names:
