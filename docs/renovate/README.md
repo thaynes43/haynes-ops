@@ -454,6 +454,23 @@ EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/is
 
 ## Changelog
 
+- **2026-07-02** — **Tier-4 Phase C: all three Kyverno policies now ENFORCE.**
+  After building the exception set to audit-clean (registry rewrite for normalized
+  bare-docker.io + reg.kyverno.io/mirror.gcr.io/nvcr.io; RBAC exceptions for K8s
+  built-ins by bootstrap label + infra roles/bindings by name; PSS exceptions for
+  privileged infra + VolSync movers by the `app.kubernetes.io/created-by: volsync`
+  label), flipped `failureAction: Audit → Enforce` one at a time
+  (registry → rbac → pod-security-baseline), each verified with a deliberate-violation
+  `--dry-run=server` (evil registry / new cluster-admin binding / wildcard role /
+  privileged pod all DENIED; legit + excepted admitted) and a clean reconcile. Kyverno
+  enforcement isolated from native PSA by testing in the `ai` namespace (PSA=privileged).
+  The VolSync mover exception was verified against a live mover via a controlled probe
+  sync. Caught + fixed a latent bug: the RBAC policy *errored* (fail-open = admit) on
+  null-rules roles (`not_null(request.object.rules, [])`). fail-open
+  (`failurePolicy: Ignore`) preserved throughout; kube-system/flux-system never
+  blanket-excluded; kustomize-controller never excluded. **Phase C hard-prereq for
+  Phase D (auto-merge) is now met** (both diff-scope-required and Kyverno-enforce).
+
 - **2026-07-02** — **Tier-4 Phase-1 audit + Phase B (push protection) live.**
   Skeptical audit ([tier4-audit-2026-07-02.md](tier4-audit-2026-07-02.md)) with a
   22-case diff-scope adversarial suite + live Kyverno/GitHub inspection. Fixed two
