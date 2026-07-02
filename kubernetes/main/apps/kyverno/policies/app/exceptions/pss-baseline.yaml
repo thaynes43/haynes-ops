@@ -94,3 +94,13 @@ spec:
           names:
             - volsync-src-*
             - volsync-dst-*
+      # OpenEBS localpv provisioning helpers — EPHEMERAL bare Pods the provisioner
+      # spawns in the PVC's namespace to mkdir/rm the hostpath dir (privileged +
+      # hostPath /var/openebs/local), so they were absent from the audit scan like
+      # the VolSync movers. First hit: opsplex bootstrap 2026-07-02 (provisioning
+      # of volsync-dst-opsplex-dst-cache denied -> PVC Pending forever).
+      - resources:
+          kinds: [Pod]
+          names:
+            - init-pvc-*
+            - cleanup-pvc-*
