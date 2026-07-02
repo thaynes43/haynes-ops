@@ -99,8 +99,14 @@ spec:
       # hostPath /var/openebs/local), so they were absent from the audit scan like
       # the VolSync movers. First hit: opsplex bootstrap 2026-07-02 (provisioning
       # of volsync-dst-opsplex-dst-cache denied -> PVC Pending forever).
+      # All three prefixes from provisioner-localpv v4.5.1 helper templates
+      # (init/cleanup/quota + "-<pvName>", pvName = pvc-<uid>). Helper pods carry
+      # NO labels upstream, so name globs are the only in-resource scoping; see
+      # HANDOFF-2026-07-02-kyverno-ephemeral-helpers.md for a stronger
+      # subjects-based (provisioner SA) alternative.
       - resources:
           kinds: [Pod]
           names:
             - init-pvc-*
             - cleanup-pvc-*
+            - quota-pvc-*
