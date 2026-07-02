@@ -242,6 +242,86 @@ phase-4b endgame, in-cluster CronJob.)
 
 ---
 
+## Phase 4b.3 — auto-merge & auto-summon (operating)
+
+The in-cluster hands-off endgame. Everything ships **inert** (both CronJobs suspended);
+enabling it is a deliberate flip. `run-shepherd.sh` gained two modes and a spend guard;
+a second CronJob (`upgrade-shepherd-triage`) does the auto-summon.
+
+### `UPGRADE_AGENT_MODE` — the four modes
+
+| Mode | Tools | Merge? | Use |
+|---|---|---|---|
+| `dryrun` (default) | read-only | no | report a plan, make nothing |
+| `shepherd` | + edit/PR | no (human merges) | 4b.1 supervised PR authoring |
+| `auto` | + `gh pr merge --auto` | **queues** (server-side) | 4b.3 hands-off auto-merge |
+| `remediate` | + edit/PR/merge | queues | Mode-2 regression fix/rollback |
+
+**Merge safety is server-side, not the allowlist.** The bot is non-admin + non-bypass,
+so `gh pr merge --auto` only *queues*; GitHub merges **only when Flux Local *and* Diff
+Scope are both green**. It cannot merge past a red/pending check, and `--admin`
+(skip-checks) fails for a non-admin. So `auto`/`remediate` are safe to allowlist `gh pr
+merge` — the Phase-B required checks are the boundary.
+
+### Summon (manual, any mode)
+
+```bash
+# dryrun (read-only, free-ish):
+kubectl -n upgrade-agent create job shep-$(date +%s) --from=cronjob/upgrade-shepherd
+# a specific mode (create-job can't set env; inject via jq):
+kubectl -n upgrade-agent create job shep-$(date +%s) --from=cronjob/upgrade-shepherd \
+  --dry-run=client -o json \
+  | jq '.spec.template.spec.containers |= map(if .name=="app"
+        then .env |= (map(if .name=="UPGRADE_AGENT_MODE" then .value="auto" else . end)
+                      + [{name:"UPGRADE_AGENT_PROMPT",value:"<task>"}]) else . end)' \
+  | kubectl apply -f -
+```
+
+### The triage auto-summon (`upgrade-shepherd-triage`)
+
+Deterministic, **no-LLM on the healthy path**. On each run `triage.sh`: (1) checks for a
+merge to `main` in the last `TRIAGE_MERGE_LOOKBACK_HOURS` (default 3) via the GitHub API;
+(2) checks for a regression *now* (Flux NotReady>10m, firing severity=critical, persisted
+crashloop); (3) only if **both** → `exec run-shepherd.sh` with `MODE=remediate`. On a
+healthy cluster it exits in a couple of curls (\$0). **Deliberately decoupled from the
+health-gate** — the gate stays the independent read-only Pushover tripwire; do not couple
+them. (Merge-correlation uses all `main` commits, so a docs-only commit + an unrelated
+pre-existing regression could summon remediate once — harmless, bounded by the
+regression AND + the spend guard; tighten to the Flux GitRepository revision if it ever
+misfires.)
+
+### The monthly spend guard
+
+`run-shepherd.sh` tracks month-to-date bot spend in a ConfigMap (`upgrade-shepherd-spend`,
+runtime state, **not** git-managed) and **refuses an unattended (`auto`/`remediate`) run**
+once month-to-date + the per-run cap (`--max-budget-usd`, \$5) would exceed
+`UPGRADE_AGENT_MONTHLY_CAP_USD` (default **\$50**). Manual modes record but are never
+blocked. Fails **open** on a kubectl error — the Anthropic **account balance is the hard
+backstop** (set a low balance / a per-workspace \$50/mo console limit for a server-side
+ceiling).
+
+```bash
+kubectl -n upgrade-agent get cm upgrade-shepherd-spend -o jsonpath='{.data}'   # check
+kubectl -n upgrade-agent delete cm upgrade-shepherd-spend                       # reset (recreated next run)
+```
+
+### The final flip (enable) — and the kill switch
+
+Enable = unsuspend + give a real schedule (do the two CronJobs separately, watch between):
+
+```bash
+# kill switch (instant, no git) — re-suspend either CronJob:
+kubectl -n upgrade-agent patch cronjob upgrade-shepherd-triage -p '{"spec":{"suspend":true}}'
+```
+
+Prefer enabling via **git** (edit `suspend`/`schedule`/`MODE` in the shepherd HR → Flux):
+`upgrade-shepherd` MODE=auto on a slow cadence for the safe manual-tier set first, then
+widen; `upgrade-shepherd-triage` on ~`*/30`. A bad auto-merge is undone by
+`git revert` → Flux (Flux polls ~30 min here), and the triage's remediate mode is the
+autonomous version of that.
+
+---
+
 ## Holds protocol
 
 A hold is how the shepherd records "this release is broken and I can't fix it
