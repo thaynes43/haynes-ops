@@ -17,6 +17,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write   # keyless cosign signing (OIDC) — proves the image came from THIS workflow
 
 jobs:
   build-and-push:
@@ -32,7 +33,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: ./scripts/upgrade-agent
@@ -41,3 +46,11 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/upgrade-agent:0.1.0
             ghcr.io/${{ github.repository_owner }}/upgrade-agent:latest
+
+      # Keyless sign by DIGEST (covers both tags). Verified in-cluster by the Kyverno
+      # verify-thaynes43-images policy against this workflow's OIDC identity.
+      - name: Sign the image (keyless)
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/upgrade-agent
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
