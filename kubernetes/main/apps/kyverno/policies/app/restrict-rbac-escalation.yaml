@@ -58,9 +58,15 @@ spec:
         deny:
           conditions:
             any:
-              - key: "{{ request.object.rules[?contains(not_null(verbs, `[]`), '*') && contains(not_null(resources, `[]`), '*')] | length(@) }}"
+              # not_null(request.object.rules, `[]`): a Role/ClusterRole with rules:null
+              # (e.g. an aggregation-only role like observability/grafana) made the bare
+              # `request.object.rules[?...]` ERROR ("Invalid type for: <nil>"). Under
+              # failurePolicy: Ignore an errored eval fails OPEN (admits) — so this was
+              # both noise and a latent bypass (a null-rules-at-admission aggregated role
+              # would skip the check). Default to [] so the filter yields 0, not an error.
+              - key: "{{ not_null(request.object.rules, `[]`)[?contains(not_null(verbs, `[]`), '*') && contains(not_null(resources, `[]`), '*')] | length(@) }}"
                 operator: GreaterThan
                 value: 0
-              - key: "{{ request.object.rules[?contains(not_null(verbs, `[]`), 'escalate') || contains(not_null(verbs, `[]`), 'bind') || contains(not_null(verbs, `[]`), 'impersonate')] | length(@) }}"
+              - key: "{{ not_null(request.object.rules, `[]`)[?contains(not_null(verbs, `[]`), 'escalate') || contains(not_null(verbs, `[]`), 'bind') || contains(not_null(verbs, `[]`), 'impersonate')] | length(@) }}"
                 operator: GreaterThan
                 value: 0
