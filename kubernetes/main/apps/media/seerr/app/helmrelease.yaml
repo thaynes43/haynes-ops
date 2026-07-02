@@ -98,6 +98,10 @@ spec:
           gethomepage.dev/icon: jellyseerr
           gethomepage.dev/app: seerr
           gethomepage.dev/siteMonitor: *url
+          gethomepage.dev/widget.type: jellyseerr
+          gethomepage.dev/widget.url: "http://seerr.media.svc.cluster.local:5055"
+          # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it
+          gethomepage.dev/widget.key: '{{ "{{HOMEPAGE_VAR_SEERR_API_KEY}}" }}'
         # INTERNAL ONLY for now — the family-facing URL is still the Unraid
         # instance behind the traefik-external ingressroute-overseerr
         # (overseerr.haynesnetwork.com). Cutover flips that route here later;
