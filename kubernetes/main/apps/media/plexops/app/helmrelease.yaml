@@ -3,7 +3,7 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: &app opsplex
+  name: &app plexops
 spec:
   chartRef:
     kind: OCIRepository
@@ -18,7 +18,7 @@ spec:
       retries: 3
   values:
     controllers:
-      opsplex:
+      plexops:
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
@@ -66,7 +66,7 @@ spec:
               tag: 1.43.2.10687@sha256:be00a2ad851ea3193cd870636f908eb6425ad89390f23cdb08daa35ab5cceacc
             env:
               TZ: America/New_York
-              PLEX_ADVERTISE_URL: https://opsplex.haynesnetwork.com:443,http://192.168.40.211:32400
+              PLEX_ADVERTISE_URL: https://plexops.haynesnetwork.com:443,http://192.168.40.211:32400
               PLEX_NO_AUTH_NETWORKS: 192.168.0.0/24
             probes:
               liveness: &probes
@@ -112,7 +112,7 @@ spec:
         supplementalGroups: [44]
     service:
       app:
-        controller: opsplex
+        controller: plexops
         type: LoadBalancer
         annotations:
           lbipam.cilium.io/ips: 192.168.40.211
@@ -124,18 +124,22 @@ spec:
         annotations:
           external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
           # Homepage
-          gethomepage.dev/href: &url "https://opsplex.haynesnetwork.com"
+          gethomepage.dev/href: &url "https://plexops.haynesnetwork.com"
           gethomepage.dev/enabled: "true"
           gethomepage.dev/group: Media
-          gethomepage.dev/name: OpsPlex
+          gethomepage.dev/name: PlexOps
           gethomepage.dev/description: Media server (Unraid mirror)
           gethomepage.dev/icon: plex
-          gethomepage.dev/app: opsplex
+          gethomepage.dev/app: plexops
           # Use Service directly for accurate monitoring
-          gethomepage.dev/siteMonitor: "http://opsplex.media.svc.cluster.local:32400/identity"
+          gethomepage.dev/siteMonitor: "http://plexops.media.svc.cluster.local:32400/identity"
+          gethomepage.dev/widget.type: plex
+          gethomepage.dev/widget.url: "http://plexops.media.svc.cluster.local:32400"
+          # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it
+          gethomepage.dev/widget.key: '{{ "{{HOMEPAGE_VAR_PLEXOPS_API_KEY}}" }}'
         className: traefik-external
         hosts:
-          - host: "opsplex.haynesnetwork.com"
+          - host: "plexops.haynesnetwork.com"
             paths:
               - path: /
                 service:
@@ -144,18 +148,18 @@ spec:
         tls:
           - secretName: certificate-haynesnetwork
             hosts:
-                - opsplex.haynesnetwork.com
+                - plexops.haynesnetwork.com
     persistence:
       config:
-        existingClaim: opsplex
+        existingClaim: plexops
       config-cache:
-        existingClaim: opsplex-cache
+        existingClaim: plexops-cache
         globalMounts:
           - path: /config/Library/Application Support/Plex Media Server/Cache
       # Regenerable artwork on a separate, non-backed-up PVC (keeps the VolSync
-      # backup of `opsplex` to just the library DB + prefs). Plex re-fetches if lost.
+      # backup of `plexops` to just the library DB + prefs). Plex re-fetches if lost.
       config-metadata:
-        existingClaim: opsplex-metadata
+        existingClaim: plexops-metadata
         globalMounts:
           - path: /config/Library/Application Support/Plex Media Server/Metadata
             subPath: Metadata
@@ -174,18 +178,18 @@ spec:
         server: haynestower.haynesnetwork
         path: /mnt/user/data
         advancedMounts:
-          opsplex:
+          plexops:
             app:
               - path: /data/haynestower
                 readOnly: true
-      # Cluster-side media root (music from lidarr, ytdl content) so opsplex
+      # Cluster-side media root (music from lidarr, ytdl content) so plexops
       # can take over everything when it becomes the primary server.
       media-gasha:
         type: nfs
         server: gasha01.haynesnetwork
         path: /hdd-nfs-repl
         advancedMounts:
-          opsplex:
+          plexops:
             app:
               - path: /data/gasha01
                 subPath: data

@@ -10,5 +10,5 @@ resources:
   - ./namespace.yaml
   # Flux-Kustomizations
   - ./lidarr/ks.yaml
-  - ./opsplex/ks.yaml
+  - ./plexops/ks.yaml
   - ./plex/ks.yaml

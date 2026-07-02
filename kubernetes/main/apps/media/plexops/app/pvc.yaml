@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: opsplex-cache
+  name: plexops-cache
   annotations:
     kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
@@ -12,14 +12,14 @@ spec:
       storage: 100Gi
   storageClassName: ceph-block
 ---
-# Regenerable Plex artwork (Metadata + Media). Kept OFF the backed-up `opsplex`
+# Regenerable Plex artwork (Metadata + Media). Kept OFF the backed-up `plexops`
 # config PVC so VolSync only protects the library DB. Plex re-fetches anything
 # missing here, so it is intentionally not backed up. Sized above k8plex's
-# 120Gi — opsplex mirrors the full Unraid video library.
+# 120Gi — plexops mirrors the full Unraid video library.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: opsplex-metadata
+  name: plexops-metadata
   annotations:
     kustomize.toolkit.fluxcd.io/prune: disabled
 spec:

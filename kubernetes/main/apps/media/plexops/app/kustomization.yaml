@@ -9,9 +9,9 @@ resources:
   - ./pvc.yaml
   - ./helmrelease.yaml
 configMapGenerator:
-  - name: opsplex-loki-rules
+  - name: plexops-loki-rules
     files:
-      - opsplex.yaml=./lokirule.yaml
+      - plexops.yaml=./lokirule.yaml
     options:
       labels:
         loki_rule: "true"

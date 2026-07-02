@@ -34,7 +34,7 @@ spec:
               requiredDuringSchedulingIgnoredDuringExecution:
                 - labelSelector:
                     matchLabels:
-                      app.kubernetes.io/name: opsplex
+                      app.kubernetes.io/name: plexops
                   topologyKey: kubernetes.io/hostname
         containers:
           app:
