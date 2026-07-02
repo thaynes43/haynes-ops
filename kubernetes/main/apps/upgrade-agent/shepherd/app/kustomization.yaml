@@ -13,6 +13,7 @@ configMapGenerator:
   - name: upgrade-shepherd-scripts
     files:
       - resources/run-shepherd.sh
+      - resources/triage.sh
 generatorOptions:
   disableNameSuffixHash: true
   labels:

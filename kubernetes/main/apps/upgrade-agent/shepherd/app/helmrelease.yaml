@@ -77,6 +77,66 @@ spec:
               readOnlyRootFilesystem: true
               capabilities:
                 drop: ["ALL"]
+      # ── Phase 4b.3 auto-summon (SUSPENDED groundwork) ──────────────────────────
+      # Deterministic (no-LLM) triage: on a schedule, summon MODE=remediate ONLY when a
+      # regression correlates with a recent merge to main. Inert until unsuspended +
+      # scheduled (the Tom-gated final flip). Reuses the shared SA/secrets/CNP/volumes.
+      upgrade-shepherd-triage:
+        type: cronjob
+        cronjob:
+          suspend: true
+          schedule: "0 0 31 2 *"        # 31 Feb — never fires until the final flip
+          concurrencyPolicy: Forbid
+          backoffLimit: 0
+          successfulJobsHistory: 3
+          failedJobsHistory: 3
+        pod:
+          restartPolicy: Never
+        initContainers:
+          mint-token:
+            image:
+              repository: ghcr.io/thaynes43/upgrade-shepherd
+              tag: 0.1.0@sha256:b210b50dde9bee482a90f25ec5107e96e5641963216d05da8addfd9a96374744
+            command:
+              - /bin/bash
+              - -c
+              - /opt/upgrade-shepherd/github-app-token.sh > /creds/gh_token && chmod 0400 /creds/gh_token
+            env:
+              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","checks":"read"}'
+            envFrom:
+              - secretRef:
+                  name: upgrade-shepherd-bot-secret
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+        containers:
+          triage:
+            image:
+              repository: ghcr.io/thaynes43/upgrade-shepherd
+              tag: 0.1.0@sha256:b210b50dde9bee482a90f25ec5107e96e5641963216d05da8addfd9a96374744
+            command: ["/bin/bash", "/opt/shepherd/triage.sh"]
+            env:
+              UPGRADE_AGENT_MODEL: sonnet
+              TRIAGE_MERGE_LOOKBACK_HOURS: "3"
+              # ANTHROPIC_API_KEY needed only if triage decides to summon remediate.
+              ANTHROPIC_API_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: upgrade-shepherd-llm-secret
+                    key: ANTHROPIC_API_KEY
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                memory: 2Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
     defaultPodOptions:
       automountServiceAccountToken: true   # read-only cluster diagnosis via the SA
       securityContext:
