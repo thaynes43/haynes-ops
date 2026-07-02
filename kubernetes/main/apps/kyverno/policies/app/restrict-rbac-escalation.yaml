@@ -26,7 +26,7 @@ spec:
       # legit binders (helm-controller etc.) surface in the report and get proper
       # PolicyExceptions before Enforce (Phase C).
       validate:
-        failureAction: Audit
+        failureAction: Enforce
         message: "Binding to a privileged built-in (cluster-admin/admin/edit) or a controller role is not allowed."
         deny:
           conditions:
@@ -53,7 +53,7 @@ spec:
                 - ClusterRole
                 - Role
       validate:
-        failureAction: Audit
+        failureAction: Enforce
         message: "Roles granting '*' verbs+resources or escalate/bind/impersonate are not allowed."
         deny:
           conditions:
