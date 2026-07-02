@@ -18,3 +18,36 @@ subjects:
   - kind: ServiceAccount
     name: *app
     namespace: upgrade-agent
+---
+# The ONE cluster write the shepherd has: manage its own monthly-spend counter
+# ConfigMap (upgrade-shepherd-spend) in its OWN namespace. Deliberately NOT the
+# read-only ClusterRole (which denies configmaps) — a tightly namespaced Role. This CM
+# is runtime state (create-or-updated by run-shepherd.sh, not Flux-managed). Nothing
+# security-relevant lives in upgrade-agent; this grants no reach into any app namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: upgrade-shepherd-spend
+  namespace: upgrade-agent
+  labels:
+    app.kubernetes.io/name: upgrade-shepherd
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: upgrade-shepherd-spend
+  namespace: upgrade-agent
+  labels:
+    app.kubernetes.io/name: upgrade-shepherd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: upgrade-shepherd-spend
+subjects:
+  - kind: ServiceAccount
+    name: upgrade-shepherd
+    namespace: upgrade-agent

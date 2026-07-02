@@ -28,7 +28,50 @@ RUN_TIMEOUT="${UPGRADE_AGENT_TIMEOUT:-20m}"
 REPO="thaynes43/haynes-ops"
 WORKDIR="${HOME}/repo"
 
+# ── Monthly spend guard (defense-in-depth; the Anthropic account balance is the HARD
+# backstop) ── Tracks bot spend in a ConfigMap and REFUSES an UNATTENDED run (auto/
+# remediate) once month-to-date + this run's cap would exceed MONTHLY_CAP. Manual modes
+# (dryrun/shepherd) still record spend but are never blocked (a human chose to run them).
+MONTHLY_CAP="${UPGRADE_AGENT_MONTHLY_CAP_USD:-50}"
+SPEND_NS="${UPGRADE_AGENT_NAMESPACE:-upgrade-agent}"
+SPEND_CM="${UPGRADE_AGENT_SPEND_CM:-upgrade-shepherd-spend}"
+SPEND_MONTH=""; SPEND_PRIOR="0"
+
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
+
+# Returns 0 = proceed, 1 = skip (cap reached). Fails OPEN on any kubectl/RBAC error
+# (the account balance + per-run --max-budget-usd are the real ceilings).
+spend_guard() {
+  SPEND_MONTH="$(date -u +%Y-%m)"
+  local cm; cm="$(kubectl -n "$SPEND_NS" get configmap "$SPEND_CM" -o json 2>/dev/null)" || {
+    log "spend-guard: cannot read $SPEND_CM (proceeding; account balance is the backstop)"; return 0; }
+  local m; m="$(printf '%s' "$cm" | jq -r '.data.month // ""')"
+  SPEND_PRIOR="$(printf '%s' "$cm" | jq -r '.data.spent_usd // "0"')"
+  [ "$m" = "$SPEND_MONTH" ] || SPEND_PRIOR="0"   # new month => reset
+  if awk -v s="$SPEND_PRIOR" -v b="$MAX_BUDGET" -v c="$MONTHLY_CAP" 'BEGIN{exit !(s + b > c)}'; then
+    log "spend-guard: month-to-date \$$SPEND_PRIOR + run cap \$$MAX_BUDGET would exceed \$$MONTHLY_CAP — SKIPPING."
+    return 1
+  fi
+  log "spend-guard: month-to-date \$$SPEND_PRIOR / \$$MONTHLY_CAP — OK (run cap \$$MAX_BUDGET)."
+  return 0
+}
+
+# Best-effort: add this run's actual cost (from claude's JSON) to the ConfigMap. Uses
+# create-or-apply (the CM is runtime state, deliberately NOT in git — Flux would revert
+# the counter to its seed value every reconcile).
+record_spend() {
+  local cost; cost="$(jq -r '.total_cost_usd // .cost_usd // 0' "$1" 2>/dev/null)"
+  [ -n "$cost" ] && [ "$cost" != "null" ] || cost=0
+  [ -n "$SPEND_MONTH" ] || SPEND_MONTH="$(date -u +%Y-%m)"
+  local new; new="$(awk -v a="${SPEND_PRIOR:-0}" -v b="$cost" 'BEGIN{printf "%.4f", a + b}')"
+  if kubectl -n "$SPEND_NS" create configmap "$SPEND_CM" \
+       --from-literal=month="$SPEND_MONTH" --from-literal=spent_usd="$new" \
+       --dry-run=client -o yaml | kubectl -n "$SPEND_NS" apply -f - >/dev/null 2>&1; then
+    log "spend-guard: recorded run cost \$$cost; month-to-date now \$$new / \$$MONTHLY_CAP."
+  else
+    log "spend-guard: WARN could not record cost \$$cost (RBAC?)."
+  fi
+}
 
 # Quiet claude-code's phone-home (the egress CNP would block it anyway).
 export DISABLE_TELEMETRY=1 CLAUDE_CODE_ENABLE_TELEMETRY=0 \
@@ -61,30 +104,60 @@ READONLY_TOOLS=(Read Grep Glob
 WRITE_TOOLS=(Edit Write
   "Bash(git switch:*)" "Bash(git checkout -b:*)" "Bash(git add:*)" "Bash(git commit:*)"
   "Bash(git push:*)" "Bash(gh pr create:*)" "Bash(gh pr comment:*)")
+# gh pr merge is allowed ONLY in auto/remediate modes. Note this is NOT the safety
+# boundary: the bot is non-admin + non-bypass, so `gh pr merge --auto` only QUEUES and
+# GitHub merges server-side ONLY when Flux Local + Diff Scope are both green. It cannot
+# merge past a red/pending check, and `--admin` (skip-checks) fails for a non-admin.
+MERGE_TOOLS=("Bash(gh pr merge:*)")
 
-# NB: set PROMPT defaults on their own line — NOT inline via ${UPGRADE_AGENT_PROMPT:-...}.
-# An apostrophe inside a ${VAR:-default} (e.g. "component's") breaks bash quote parsing.
+# NB: set PROMPT/SAFETY defaults on their OWN line — NOT inline via ${VAR:-default}.
+# An apostrophe or brace inside a ${VAR:-default} breaks bash quote parsing.
 PROMPT="${UPGRADE_AGENT_PROMPT:-}"
-if [ "$MODE" = "shepherd" ]; then
-  ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}")
-  [ -n "$PROMPT" ] || PROMPT="You are the Tier-4 upgrade shepherd. Follow .agents/runbooks/upgrade-shepherd.md exactly. Survey open manual-tier Renovate PRs (gh pr list); pick the NEXT one by the runbook merge-order. CONSULT .renovate/holds.json5 first (skip if held). Read the release notes (gh release view) and the component section in .agents/runbooks/tier4-component-playbooks.md. Make the required supporting helmrelease/values edits on a NEW branch shepherd/<pkg>-<version>, commit, push, and open a PR with gh pr create. Do NOT merge, do NOT push to main, do NOT touch anything outside kubernetes/**. One PR only, then stop and summarize."
-else
-  ALLOWED=("${READONLY_TOOLS[@]}")
-  [ -n "$PROMPT" ] || PROMPT="DRY RUN - make NO changes. You are the Tier-4 upgrade shepherd. Survey open manual-tier Renovate PRs (gh pr list) and, for the next one per .agents/runbooks/upgrade-shepherd.md, REPORT: is it held (.renovate/holds.json5)? what supporting helmrelease/values edits would it need (per tier4-component-playbooks.md)? Output a concise plan. Do NOT edit files, push, or open PRs."
+SAFETY_MERGE="NEVER gh pr merge, NEVER push to main"
+case "$MODE" in
+  shepherd)  # open a PR, human merges (Phase 4b.1)
+    ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}")
+    [ -n "$PROMPT" ] || PROMPT="You are the Tier-4 upgrade shepherd. Follow .agents/runbooks/upgrade-shepherd.md exactly. Survey open manual-tier Renovate PRs (gh pr list); pick the NEXT one by the runbook merge-order. CONSULT .renovate/holds.json5 first (skip if held). Read the release notes (gh release view) and the component section in .agents/runbooks/tier4-component-playbooks.md. Make the required supporting helmrelease/values edits on a NEW branch shepherd/<pkg>-<version>, commit, push, and open a PR with gh pr create. Do NOT merge, do NOT push to main, do NOT touch anything outside kubernetes/**. One PR only, then stop and summarize."
+    ;;
+  auto)      # open a PR AND enable server-side auto-merge (Phase 4b.3)
+    ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}" "${MERGE_TOOLS[@]}")
+    SAFETY_MERGE="you MAY enable auto-merge with 'gh pr merge <N> --auto --squash --delete-branch' AFTER opening the PR; NEVER merge immediately, NEVER use --admin, NEVER push to main"
+    [ -n "$PROMPT" ] || PROMPT="You are the Tier-4 upgrade shepherd in AUTO mode. Follow .agents/runbooks/upgrade-shepherd.md. Survey open manual-tier Renovate PRs (gh pr list); pick the NEXT one by the runbook merge-order. CONSULT .renovate/holds.json5 first (skip if held). Read the release notes and the component playbook. If supporting edits are needed, make them on a NEW branch shepherd/<pkg>-<version>, commit, push, and open a PR (gh pr create); then enable auto-merge with gh pr merge <N> --auto --squash --delete-branch. GitHub merges only when Flux Local AND Diff Scope are both green. Do NOT merge immediately, do NOT push to main, do NOT touch anything outside kubernetes/**. One PR only, then stop and summarize."
+    ;;
+  remediate) # mode 2: diagnose a regression, forward-fix or rollback+hold (Phase 4b.3)
+    ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}" "${MERGE_TOOLS[@]}")
+    SAFETY_MERGE="you MAY open a forward-fix or rollback PR and enable auto-merge with 'gh pr merge <N> --auto'; NEVER merge immediately, NEVER use --admin, NEVER push to main; if git-alone cannot converge, STOP and page a human"
+    [ -n "$PROMPT" ] || PROMPT="You are the Tier-4 upgrade shepherd in REMEDIATE mode (Mode 2). A recent upgrade may have regressed. Follow .agents/runbooks/upgrade-shepherd.md Mode 2. Diagnose READ-ONLY (flux get, kubectl describe/get). Identify the culprit merge (git log). Attempt the documented rollback from .agents/runbooks/tier4-component-playbooks.md: git revert the bump or re-pin the prior version on a NEW branch, commit, push, open a PR, enable auto-merge (gh pr merge <N> --auto). If a supporting forward-fix is the right call instead, do that. If the rollback cannot converge from git alone (immutable field, wedged HelmRelease, stuck finalizer, one-way major), do NOT improvise a cluster write; record a hold in .renovate/holds.json5 if applicable and STOP with a diagnosis for a human. Do NOT push to main, stay inside kubernetes/**."
+    ;;
+  *)         # dryrun (default): read-only, report a plan
+    ALLOWED=("${READONLY_TOOLS[@]}")
+    [ -n "$PROMPT" ] || PROMPT="DRY RUN - make NO changes. You are the Tier-4 upgrade shepherd. Survey open manual-tier Renovate PRs (gh pr list) and, for the next one per .agents/runbooks/upgrade-shepherd.md, REPORT: is it held (.renovate/holds.json5)? what supporting helmrelease/values edits would it need (per tier4-component-playbooks.md)? Output a concise plan. Do NOT edit files, push, or open PRs."
+    ;;
+esac
+
+# Populate month-to-date spend + enforce the cap on UNATTENDED runs only.
+spend_guard; guard_rc=$?
+if [ "$guard_rc" -ne 0 ]; then
+  case "$MODE" in
+    auto|remediate) log "run skipped by spend guard (monthly cap reached)"; exit 0 ;;
+    *) log "spend-guard: cap reached but MODE=$MODE is manual/human-summoned — proceeding." ;;
+  esac
 fi
 
-log "MODE=$MODE model=$MODEL max_turns=$MAX_TURNS budget=\$$MAX_BUDGET"
+log "MODE=$MODE model=$MODEL max_turns=$MAX_TURNS budget=\$$MAX_BUDGET cap=\$$MONTHLY_CAP"
 set +e
+OUT_FILE="$(mktemp 2>/dev/null || echo /tmp/claude-out.json)"
 timeout "$RUN_TIMEOUT" claude -p "$PROMPT" \
   --permission-mode dontAsk \
   --allowedTools "${ALLOWED[@]}" \
   --disallowedTools "WebFetch" "WebSearch" \
-  --append-system-prompt "SAFETY: read-only cluster default; ALL cluster changes go via a PR to kubernetes/**; NEVER kubectl apply/exec/delete; NEVER gh pr merge; NEVER push to main; stay inside kubernetes/**." \
+  --append-system-prompt "SAFETY: read-only cluster default; ALL cluster changes go via a PR to kubernetes/**; NEVER kubectl apply/exec/delete; ${SAFETY_MERGE}; stay inside kubernetes/**." \
   --max-turns "$MAX_TURNS" \
   --max-budget-usd "$MAX_BUDGET" \
   --model "$MODEL" \
-  --output-format json
-rc=$?
+  --output-format json | tee "$OUT_FILE"
+rc=${PIPESTATUS[0]}
 set -e 2>/dev/null || true
+record_spend "$OUT_FILE"
 log "claude exited rc=$rc"
 exit "$rc"
