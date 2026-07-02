@@ -41,6 +41,9 @@ spec:
                 sabnzbd-fast.downloads.svc,
                 sabnzbd-fast.downloads.svc.cluster.local,
                 sabnzbd-fast.haynesops.com
+            envFrom:
+              - secretRef:
+                  name: sabnzbd-fast-secret
             probes:
               liveness:
                 enabled: true

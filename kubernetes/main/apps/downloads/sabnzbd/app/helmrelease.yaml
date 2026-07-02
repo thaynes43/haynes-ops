@@ -41,6 +41,9 @@ spec:
                 sabnzbd.downloads.svc,
                 sabnzbd.downloads.svc.cluster.local,
                 sabnzbd.haynesops.com
+            envFrom:
+              - secretRef:
+                  name: sabnzbd-secret
             probes:
               liveness:
                 enabled: true
