@@ -7,9 +7,9 @@ metadata:
     kubernetes.io/ingress.class: traefik-external
     gethomepage.dev/href: "https://tautulli.haynesnetwork.com"
     gethomepage.dev/enabled: "true"
-    gethomepage.dev/group: Media
+    gethomepage.dev/group: Unraid
     gethomepage.dev/name: Tautulli
-    gethomepage.dev/description: Plex monitoring dashboard
+    gethomepage.dev/description: Stats for the Unraid Plex
     gethomepage.dev/icon: tautulli
 spec:
   entryPoints:

@@ -7,9 +7,9 @@ metadata:
     kubernetes.io/ingress.class: traefik-external
     gethomepage.dev/href: "https://overseerr.haynesnetwork.com"
     gethomepage.dev/enabled: "true"
-    gethomepage.dev/group: Media
+    gethomepage.dev/group: Unraid
     gethomepage.dev/name: Overseerr
-    gethomepage.dev/description: Media request management
+    gethomepage.dev/description: Media requests (retires at cutover)
     gethomepage.dev/icon: overseerr
 spec:
   entryPoints:

@@ -76,6 +76,10 @@ data:
         style: row
         columns: 3
         icon: mdi-television-play
+      Unraid:
+        style: row
+        columns: 3
+        icon: si-unraid
 
   widgets.yaml: |
     - logo:

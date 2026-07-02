@@ -7,9 +7,9 @@ metadata:
     kubernetes.io/ingress.class: traefik-external
     gethomepage.dev/href: "https://plex.haynesnetwork.com"
     gethomepage.dev/enabled: "true"
-    gethomepage.dev/group: Media
-    gethomepage.dev/name: Plex (External)
-    gethomepage.dev/description: Media server
+    gethomepage.dev/group: Unraid
+    gethomepage.dev/name: Plex
+    gethomepage.dev/description: Primary media server (stays on Unraid)
     gethomepage.dev/icon: plex
 spec:
   entryPoints:

@@ -104,7 +104,7 @@ spec:
           gethomepage.dev/href: &url "https://k8plex.haynesnetwork.com"
           gethomepage.dev/enabled: "true"
           gethomepage.dev/group: Media
-          gethomepage.dev/name: Plex
+          gethomepage.dev/name: K8Plex
           gethomepage.dev/description: Media server
           gethomepage.dev/icon: plex
           # Needed for Kubernetes status/metrics lookup
