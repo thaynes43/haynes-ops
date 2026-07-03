@@ -10,15 +10,6 @@ radarr:
       - template: radarr-quality-definition-movie
       - template: radarr-quality-profile-hd-bluray-web
       - template: radarr-custom-formats-hd-bluray-web
-    # VETTING POSTURE — REVERT AT CUTOVER: upgrades disabled so the new stack
-    # never replaces files in the tower library while the Unraid arrs still
-    # own it. Remove this override (restoring the template's upgrade-until
-    # behavior) in the cutover PR.
-    quality_profiles:
-      - name: HD Bluray + WEB
-        upgrade:
-          allowed: false
-
 sonarr:
   sonarr:
     base_url: http://sonarr.media.svc.cluster.local:8989
@@ -27,8 +18,3 @@ sonarr:
       - template: sonarr-quality-definition-series
       - template: sonarr-v4-quality-profile-web-1080p
       - template: sonarr-v4-custom-formats-web-1080p
-    # VETTING POSTURE — REVERT AT CUTOVER (see radarr note above).
-    quality_profiles:
-      - name: WEB-1080p
-        upgrade:
-          allowed: false
