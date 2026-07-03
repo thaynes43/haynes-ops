@@ -95,16 +95,24 @@ spec:
                   failureThreshold: 10
                   periodSeconds: 30
                   timeoutSeconds: 5
+              # Readiness = local health AND Mullvad egress (ported from the
+              # SABs when they went direct): VPN dead OR leaking -> NotReady ->
+              # Gatus pages Pushover. Liveness above separately restarts a
+              # wedged Soulseek session; readiness never restarts anything.
               readiness:
                 enabled: true
                 custom: true
                 spec:
-                  httpGet:
-                    path: /health
-                    port: *port
-                  periodSeconds: 10
-                  timeoutSeconds: 5
-                  failureThreshold: 5
+                  exec:
+                    command:
+                      - sh
+                      - -c
+                      - |
+                        wget -qO- -T 5 http://localhost:5030/health >/dev/null || exit 1
+                        wget -q -T 10 -O- https://am.i.mullvad.net/connected | grep -q "You are connected"
+                  periodSeconds: 60
+                  timeoutSeconds: 20
+                  failureThreshold: 4
             resources:
               requests:
                 cpu: 100m

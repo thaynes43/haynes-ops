@@ -43,16 +43,22 @@ spec:
                   periodSeconds: 30
                   timeoutSeconds: 5
                   failureThreshold: 5
+              # Readiness = Mullvad-egress check (ported from the SABs when they
+              # went direct): VPN dead OR leaking out the WAN -> NotReady ->
+              # traefik 503 -> Gatus pages Pushover. Readiness (not liveness)
+              # on purpose: restarting the pod can't fix the VPN.
               readiness:
                 enabled: true
                 custom: true
                 spec:
-                  httpGet:
-                    path: /api/v2/app/version
-                    port: *port
-                  periodSeconds: 10
-                  timeoutSeconds: 5
-                  failureThreshold: 5
+                  exec:
+                    command:
+                      - sh
+                      - -c
+                      - wget -q -T 10 -O- https://am.i.mullvad.net/connected | grep -q "You are connected"
+                  periodSeconds: 60
+                  timeoutSeconds: 15
+                  failureThreshold: 4
               startup:
                 enabled: true
                 spec:
