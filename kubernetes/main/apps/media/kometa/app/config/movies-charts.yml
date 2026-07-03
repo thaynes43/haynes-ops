@@ -1,0 +1,27 @@
+# Chart collections rebuilt from scratch (2026): the old config's
+# tmdb_popular/trakt_chart pulls had no language gate and flooded collections
+# (and, with add_missing, the radarr library) with international titles.
+# tmdb_discover filters SERVER-SIDE (with_original_language / vote_count.gte)
+# so nothing slow or foreign ever reaches Kometa. Display-only: no arr flags.
+collections:
+  Popular Now:
+    sort_title: "!020 Popular Now"
+    summary: "Currently popular English-language movies (in this library)"
+    tmdb_discover:
+      sort_by: popularity.desc
+      with_original_language: en
+      vote_count.gte: 300
+      limit: 60
+    sync_mode: sync
+    collection_order: custom
+
+  Top Rated:
+    sort_title: "!021 Top Rated"
+    summary: "All-time top-rated English-language movies (in this library)"
+    tmdb_discover:
+      sort_by: vote_average.desc
+      with_original_language: en
+      vote_count.gte: 2000
+      limit: 100
+    sync_mode: sync
+    collection_order: custom

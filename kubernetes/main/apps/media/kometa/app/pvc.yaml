@@ -1,0 +1,18 @@
+---
+# Kometa state: self-written config.yml (trakt tokens if ever added), the
+# cache DB, and original-poster backups for overlays (can reach several GB at
+# 9.4k movies). Deliberately NOT VolSync'd — poster backups in restic would
+# recreate the k8plex artwork-bloat problem. Disaster recovery: PVC re-creates
+# empty, init container re-seeds config.yml, overlays re-apply on next run.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kometa
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: ceph-block
