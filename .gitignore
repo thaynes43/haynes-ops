@@ -31,6 +31,8 @@ wiki
 .env
 zprompt.md
 # Claude Code local working dir + session/handoff scratch (kept local, not repo content)
-.claude/
+# — but DO track shared project slash commands under .claude/commands/.
+.claude/*
+!.claude/commands/
 HANDOFF-*.md
 SESSION-HANDOFF.md
