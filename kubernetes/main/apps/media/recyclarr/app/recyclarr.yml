@@ -1,48 +1,109 @@
 # TRaSH Guides sync (https://trash-guides.info) via Recyclarr.
-# Starter profiles from the official config templates — tune here in git,
-# never in the arr UIs (recyclarr re-asserts this config on every sync).
-# Radarr: HD Bluray + WEB. Sonarr v4: WEB-1080p.
+# Profiles are tuned here in git, never in the arr UIs (recyclarr re-asserts
+# nightly). QUALITY POLICY (user, 2026-07-03): upgrade-until-BEST everywhere —
+# Remux-2160p ceiling for video, FLAC for music (lidarr set via API, not here).
+#
+# Architecture (deep-research-verified 2026-07-03): TRaSH sanctions ONE merged
+# profile for HD-floor→UHD/Remux-ceiling upgrades. Base = the maintained
+# "Remux + WEB 2160p" guide templates (default score_set: TrueHD Atmos +5000,
+# lossless-friendly — SQP score-sets BAN lossless audio, wrong for us), with
+# the HD floor + HDTV-2160p added and the audio/HDR/tier CFs the template
+# lacks assigned explicitly (scores = TRaSH defaults).
 radarr:
   radarr:
     base_url: http://radarr.media.svc.cluster.local:7878
     api_key: !env_var RADARR_API_KEY
     include:
       - template: radarr-quality-definition-movie
-      - template: radarr-quality-profile-hd-bluray-web
-      - template: radarr-custom-formats-hd-bluray-web
-    # 2160p allowed on top of the HD profile (user call 2026-07-03): floor
-    # stays HD, initial grabs may take UHD when best, upgrades stop at
-    # Bluray-1080p (change until_quality to Bluray-2160p to chase 4K
-    # upgrades library-wide).
+      - template: radarr-quality-profile-remux-web-2160p
+      - template: radarr-custom-formats-remux-web-2160p
     quality_profiles:
-      - name: HD Bluray + WEB
+      - name: Remux + WEB 2160p
         upgrade:
           allowed: true
-          until_quality: Bluray-1080p
+          until_quality: Remux-2160p
+        # Merged ladder: HD floor, Remux-2160p ceiling. HDTV-2160p included
+        # per user request, slotted below Remux-1080p (TRaSH treats it as
+        # junk-tier; here it only outranks plain 1080p).
         qualities:
+          - name: Remux-2160p
           - name: Bluray-2160p
           - name: WEB 2160p
             qualities: [WEBDL-2160p, WEBRip-2160p]
+          - name: Remux-1080p
+          - name: HDTV-2160p
           - name: Bluray-1080p
           - name: WEB 1080p
             qualities: [WEBDL-1080p, WEBRip-1080p]
           - name: Bluray-720p
-    # UHD scoring/guards for the newly-allowed 2160p tier (ids from the
-    # official uhd-bluray-web template; scores = TRaSH defaults)
     custom_formats:
+      # Audio ladder (TRaSH default scores: TrueHD Atmos 5000 ... DD 750) —
+      # guide includes it only for remux-capable profiles, which this now is.
       - trash_ids:
-          - 493b6d1dbec3c3364c59d7607f7e3405 # Unified HDR
+          - 496f355514737f7d83bf7aa4d24f8169 # TrueHD Atmos
+          - 2f22d89048b01681dde8afe203bf2e95 # DTS X
+          - 417804f7f2c4308c1f4c5d380d4c4475 # ATMOS (undefined)
+          - 1af239278386be2919e1bcee0bde047e # DD+ ATMOS
+          - 3cafb66171b47f226146a0770576870f # TrueHD
+          - dcf3ec6938fa32445f590a4da84256cd # DTS-HD MA
+          - a570d4a0e56a2874b64e5bfa55202a1b # FLAC
+          - e7c2fcae07cbada050a0af3357491d7b # PCM
+          - 8e109e50e0a0b83a5098b056e13bf6db # DTS-HD HRA
+          - 185f1dd7264c4562b9022d963ac37424 # DD+
+          - f9f847ac70a0af62ea4a08280b859636 # DTS-ES
+          - 1c1a4c5e823891c75bc50380a6866f73 # DTS
+          - 240770601cc226190c367ef59aba7463 # AAC
+          - c2998bd0d90ed5621d8df281e839436e # DD
+        assign_scores_to:
+          - name: Remux + WEB 2160p
+      # HDR boosts + guards (template carries the unified HDR CF already).
+      # DV-without-fallback guard: broken colors on non-DV displays; remove
+      # if every family TV is DV-capable. SDR(no WEBDL): blocks SDR 4K
+      # encodes/remuxes (inferior masters) but allows SDR 4K WEB-DLs.
+      - trash_ids:
+          - b337d6812e06c200ec9a2d3cfa9d20a7 # DV Boost
+          - caa37d0df9c348912df1fb1d88f9273a # HDR10+ Boost
+          - 923b6abef9b17f937fab56cfcf89e1f1 # DV (w/o HDR fallback)
+          - 25c12f78430a3a23413652cbd1d48d77 # SDR (no WEBDL)
+        assign_scores_to:
+          - name: Remux + WEB 2160p
+      # Release-group tiers for the ladder rungs the 2160p template lacks
+      # (UHD Bluray encodes + the 1080p floor).
+      - trash_ids:
           - 4d74ac4c4db0b64bff6ce0cffef99bf0 # UHD Bluray Tier 01
           - a58f517a70193f8e578056642178419d # UHD Bluray Tier 02
           - e71939fae578037e7aed3ee219bbe7c1 # UHD Bluray Tier 03
+          - ed27ebfef2f323e964fb1f61391bcb35 # HD Bluray Tier 01
+          - c20c8647f2746a1f4c4262b0fbbeeeae # HD Bluray Tier 02
+          - 5608c71bcebba0a5e666223bae8c9227 # HD Bluray Tier 03
           - bfd8eb01832d646a0a89c4deb46f8564 # Upscaled
         assign_scores_to:
-          - name: HD Bluray + WEB
+          - name: Remux + WEB 2160p
+
 sonarr:
   sonarr:
     base_url: http://sonarr.media.svc.cluster.local:8989
     api_key: !env_var SONARR_API_KEY
     include:
       - template: sonarr-quality-definition-series
-      - template: sonarr-v4-quality-profile-web-1080p
-      - template: sonarr-v4-custom-formats-web-1080p
+      - template: sonarr-v4-quality-profile-web-2160p
+      - template: sonarr-v4-custom-formats-web-2160p
+    quality_profiles:
+      - name: WEB-2160p
+        upgrade:
+          allowed: true
+          until_quality: Bluray-2160p Remux
+        # Merged TV ladder: WEB floor -> Bluray/Remux ceiling (TV remuxes are
+        # rare but wanted per the upgrade-until-best policy).
+        qualities:
+          - name: Bluray-2160p Remux
+          - name: Bluray-2160p
+          - name: WEB 2160p
+            qualities: [WEBDL-2160p, WEBRip-2160p]
+          - name: Bluray-1080p Remux
+          - name: Bluray-1080p
+          - name: WEB 1080p
+            qualities: [WEBDL-1080p, WEBRip-1080p]
+          - name: Bluray-720p
+          - name: WEB 720p
+            qualities: [WEBDL-720p, WEBRip-720p]
