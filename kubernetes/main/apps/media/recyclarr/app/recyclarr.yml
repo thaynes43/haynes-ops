@@ -10,6 +10,34 @@ radarr:
       - template: radarr-quality-definition-movie
       - template: radarr-quality-profile-hd-bluray-web
       - template: radarr-custom-formats-hd-bluray-web
+    # 2160p allowed on top of the HD profile (user call 2026-07-03): floor
+    # stays HD, initial grabs may take UHD when best, upgrades stop at
+    # Bluray-1080p (change until_quality to Bluray-2160p to chase 4K
+    # upgrades library-wide).
+    quality_profiles:
+      - name: HD Bluray + WEB
+        upgrade:
+          allowed: true
+          until_quality: Bluray-1080p
+        qualities:
+          - name: Bluray-2160p
+          - name: WEB 2160p
+            qualities: [WEBDL-2160p, WEBRip-2160p]
+          - name: Bluray-1080p
+          - name: WEB 1080p
+            qualities: [WEBDL-1080p, WEBRip-1080p]
+          - name: Bluray-720p
+    # UHD scoring/guards for the newly-allowed 2160p tier (ids from the
+    # official uhd-bluray-web template; scores = TRaSH defaults)
+    custom_formats:
+      - trash_ids:
+          - 493b6d1dbec3c3364c59d7607f7e3405 # Unified HDR
+          - 4d74ac4c4db0b64bff6ce0cffef99bf0 # UHD Bluray Tier 01
+          - a58f517a70193f8e578056642178419d # UHD Bluray Tier 02
+          - e71939fae578037e7aed3ee219bbe7c1 # UHD Bluray Tier 03
+          - bfd8eb01832d646a0a89c4deb46f8564 # Upscaled
+        assign_scores_to:
+          - name: HD Bluray + WEB
 sonarr:
   sonarr:
     base_url: http://sonarr.media.svc.cluster.local:8989
