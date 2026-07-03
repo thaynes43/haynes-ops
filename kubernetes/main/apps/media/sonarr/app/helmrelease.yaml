@@ -78,6 +78,42 @@ spec:
               capabilities:
                 drop: ["ALL"]
               readOnlyRootFilesystem: true
+          exportarr:
+            image:
+              repository: ghcr.io/onedr0p/exportarr
+              tag: v2.3.0
+            args: ["sonarr"]
+            env:
+              PORT: &metricsPort 9708
+              URL: http://localhost:8989
+              APIKEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: sonarr-secret
+                    key: SONARR__AUTH__APIKEY
+            probes:
+              liveness: &exportarrProbes
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: *metricsPort
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 5
+              readiness: *exportarrProbes
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: true
     defaultPodOptions:
       securityContext:
         runAsNonRoot: true
@@ -93,6 +129,17 @@ spec:
         ports:
           http:
             port: *port
+          metrics:
+            port: *metricsPort
+    serviceMonitor:
+      app:
+        serviceName: sonarr
+        endpoints:
+          - port: metrics
+            scheme: http
+            path: /metrics
+            interval: 4m
+            scrapeTimeout: 90s
     ingress:
       app:
         annotations:
