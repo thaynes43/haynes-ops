@@ -5,12 +5,9 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
-    gethomepage.dev/href: "https://overseerr.haynesnetwork.com"
-    gethomepage.dev/enabled: "true"
-    gethomepage.dev/group: Unraid
-    gethomepage.dev/name: Overseerr
-    gethomepage.dev/description: Media requests (retires at cutover)
-    gethomepage.dev/icon: overseerr
+    # Homepage tile intentionally disabled: this URL now fronts the in-cluster
+    # Seerr, which already has its own Media tile (seerr.haynesops.com).
+    gethomepage.dev/enabled: "false"
 spec:
   entryPoints:
     - websecure
@@ -18,8 +15,11 @@ spec:
     - kind: Rule
       match: Host(`overseerr.haynesnetwork.com`) && PathPrefix(`/`)
       services:
+        # CUTOVER (2026-07-03): family-facing URL flipped from the Unraid
+        # overseerr (haynestower ExternalName) to the in-cluster Seerr.
         - kind: Service
-          name: haynestower
+          name: seerr
+          namespace: media
           port: 5055
       middlewares:
         - name: default-headers
