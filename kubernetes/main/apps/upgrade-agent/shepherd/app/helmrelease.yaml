@@ -13,13 +13,16 @@ spec:
     controllers:
       upgrade-shepherd:
         type: cronjob
-        # SUSPENDED — never auto-runs. Summon it (supervised) with:
-        #   kubectl -n upgrade-agent create job shep-$(date +%s) --from=cronjob/upgrade-shepherd
-        # Default UPGRADE_AGENT_MODE=dryrun (read-only). Set MODE=shepherd for the real
-        # edit+PR run once you trust it. NEVER unattended before the 4b.2 guardrails.
+        # PHASE D LIVE (2026-07-03): scheduled unattended auto-merge, ONE PR/day max,
+        # scope-constrained by UPGRADE_AGENT_PROMPT below to the clean-rollback tier.
+        # Server-side safety: the bot is non-admin/non-bypass — `gh pr merge --auto`
+        # only queues; GitHub merges only when Flux Local AND Diff Scope are green.
+        # Kill switch (instant, no git):
+        #   kubectl -n upgrade-agent patch cronjob upgrade-shepherd -p '{"spec":{"suspend":true}}'
+        # One-off summon (any mode) still works per .agents/runbooks/upgrade-shepherd.md.
         cronjob:
-          suspend: true
-          schedule: "0 0 31 2 *"        # 31 Feb — never fires
+          suspend: false
+          schedule: "0 9 * * *"         # daily 09:00 ET — Flux applies ~09:30, gate watches all day
           concurrencyPolicy: Forbid
           backoffLimit: 0
           successfulJobsHistory: 3
@@ -58,8 +61,31 @@ spec:
               tag: 0.1.0@sha256:afc88385606560ae21b3963e4baf53a82a84a9091bc02cf5bae147b4b4577e50
             command: ["/bin/bash", "/opt/shepherd/run-shepherd.sh"]
             env:
-              UPGRADE_AGENT_MODE: dryrun   # override to 'shepherd' for the real edit+PR run
+              UPGRADE_AGENT_MODE: auto     # Phase D: vet + `gh pr merge --auto` (server-side gated)
               UPGRADE_AGENT_MODEL: sonnet
+              # The auto-merge RAMP lives here: widen the component list one entry at a
+              # time as each proves quiet (docs/renovate/README.md tracks the ramp), and
+              # re-run /kyverno-verify after each widening.
+              UPGRADE_AGENT_PROMPT: >-
+                You are the Tier-4 upgrade shepherd in AUTO mode (scheduled, unattended).
+                Follow .agents/runbooks/upgrade-shepherd.md.
+                AUTO-MERGE SCOPE (current ramp): pure version/chart/digest bumps for
+                coredns, traefik, multus, device-plugins, and flux ONLY — no majors,
+                no other components, nothing that needs a supporting values edit.
+                Survey open Renovate PRs (gh pr list); pick the NEXT in-scope PR by the
+                runbook merge-order table. CONSULT .renovate/holds.json5 FIRST — skip
+                anything held. Read the release notes and the component playbook
+                (.agents/runbooks/tier4-component-playbooks.md). If it is a pure bump
+                needing NO supporting edit: enable auto-merge with
+                gh pr merge <N> --auto --squash --delete-branch (GitHub merges only when
+                Flux Local AND Diff Scope are both green). If an IN-SCOPE component needs
+                a supporting edit: author it on a NEW branch shepherd/<pkg>-<version>,
+                open a PR for HUMAN merge, and do NOT enable auto-merge on it. Everything
+                out of scope (majors, cnpg, rook-ceph, ceph-csi-drivers, cilium,
+                authentik, emqx, dragonfly-operator, the home-assistant pod group): leave
+                untouched, just list it in your summary. NEVER merge immediately, NEVER
+                use --admin, NEVER push to main, stay inside kubernetes/**. AT MOST ONE
+                auto-merge per run, then stop and summarize.
               # ANTHROPIC_API_KEY comes from the LLM secret ONLY (never the bot secret).
               ANTHROPIC_API_KEY:
                 valueFrom:
