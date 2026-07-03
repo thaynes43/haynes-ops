@@ -23,10 +23,16 @@ spec:
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
-          nodeSelector:
-            network.haynesops.com/vpn: "true"
-          annotations:
-            k8s.v1.cni.cncf.io/networks: static-vpn-sabnzbd-fast
+          # Off the VPN (2026-07-03): usenet is TLS end-to-end; the Mullvad
+          # tunnel at the UDM capped downloads at ~330Mbps. Torrent clients
+          # (qbt/slskd) stay behind the VPN — peers see raw IPs there.
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: DoesNotExist
         containers:
           app:
             image:
@@ -55,27 +61,16 @@ spec:
                   periodSeconds: 30
                   timeoutSeconds: 5
                   failureThreshold: 5
-              # Readiness = Mullvad-egress check: with the VPN VLAN down (or
-              # misrouted out the WAN) the pod goes NotReady -> traefik 503 ->
-              # Gatus pages Pushover. Readiness (not liveness) on purpose:
-              # restarting the pod can't fix the VPN, so don't crash-loop.
-              # failureThreshold*period ≈ 4min tolerates brief blips of
-              # am.i.mullvad.net itself before paging.
               readiness:
                 enabled: true
                 custom: true
                 spec:
-                  exec:
-                    command:
-                      - python3
-                      - -c
-                      - |
-                        import urllib.request, sys
-                        body = urllib.request.urlopen("https://am.i.mullvad.net/connected", timeout=10).read()
-                        sys.exit(0 if b"You are connected" in body else 1)
-                  periodSeconds: 60
-                  timeoutSeconds: 15
-                  failureThreshold: 4
+                  httpGet:
+                    path: /api?mode=version
+                    port: *port
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 5
               startup:
                 enabled: true
                 spec:
