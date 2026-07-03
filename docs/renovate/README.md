@@ -87,7 +87,7 @@ The pieces worth porting:
 | 1 | `flux-local` PR gate | required check on all Renovate PRs | ✅ live (`.github/workflows/flux-local.yaml`) |
 | 2 | Curated allowlist: own `ghcr.io/thaynes43/*`, `kube-prometheus-stack`, safe stateless leaf-app domains (`media`, `ai`, `downloads`, `frontend`, `office`, `photos`, **`observability`** since 2026-06-15) + curated cluster-infra leaves by subpath (`kube-system/{metrics-server,reloader,reflector,k8tz,spegel}`, `network/cloudflare-ddns`) on minor/patch | auto-merge, flux-local-gated + bake | ✅ live (`.renovate/autoMerge.json5`) — **trust clock starts 2026-06-08** (see exit criteria) |
 | 3 | Grouped multi-component apps: `home-assistant` (HA + code-server + ha-mcp), Z2M | symmetric dashboard-approval groups (manual phase) | ✅ live 2026-06-09 (`.renovate/groups.json5`) |
-| 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent + shepherd + guardrails | 🟡 building — 4a gate + 4b.1 shepherd live; 4b.2 **Phase A** (Kyverno audit + diff-scope advisory) + **Phase B** (diff-scope required + push protection on main+edge) live 2026-07-02; Phase C (Kyverno enforce) + D (auto-merge) next. See [audit](tier4-audit-2026-07-02.md). |
+| 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent + shepherd + guardrails | 🟢 **Phase D live 2026-07-03** — scheduled shepherd auto-merge (daily 09:00 ET, one PR/run) for pure bumps of the **clean-tier ramp set** (see "Phase-D auto-merge ramp" below); everything else gets a shepherd-authored PR for human merge or stays untouched. Phases A–C (Kyverno enforce, diff-scope required, push protection) live 2026-07-02. See [audit](tier4-audit-2026-07-02.md) + [handoff](tier4-phase-d-handoff.md). |
 
 > **Resuming this roadmap (next session):** Tiers 0–3 are live; Tier 3 runs in
 > its **manual dashboard-approval phase** (updates for the HA pod and Z2M show
@@ -372,6 +372,32 @@ Modes 2 and 3 are the second reason (besides automated rollback) the
 in this 2026-06-15 backlog sweep); only the scheduled gate (mode 1) is purely
 read+page, so it can ship on the Omni SA kubeconfig alone.
 
+## Phase-D auto-merge ramp
+
+The scheduled shepherd (CronJob `upgrade-shepherd`, daily 09:00 ET, `MODE=auto`) may
+**auto-merge pure version/chart/digest bumps only**, for the components listed here.
+The scope lives in the `UPGRADE_AGENT_PROMPT` env in
+[`shepherd/app/helmrelease.yaml`](../../kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml);
+widening it is a git edit (one component at a time, operator-approved), and every
+widening gets a fresh `/kyverno-verify`. Structural backstops regardless of prompt:
+diff-scope (bot PRs must be pure bumps in `kubernetes/**`), required checks, non-admin
+bot, Kyverno enforce, the $50/mo spend guard, and the health gate + guardrail alerts.
+
+| Component | In ramp since | Notes |
+|---|---|---|
+| `coredns` | 2026-07-03 | clean rollback |
+| `traefik` | 2026-07-03 | clean; internal→external order per playbook |
+| `multus` | 2026-07-03 | clean, node-wide blast on breakage (gate catches) |
+| `device-plugins` | 2026-07-03 | clean; Plex-unschedulable failure mode |
+| `flux` | 2026-07-03 | first proven auto-merge (#1917, v2.9.0, 2026-07-03) |
+
+Explicitly **excluded** (never in the ramp without a design change): all majors, the
+HA pod group, cnpg, rook-ceph/ceph-csi-drivers, cilium, authentik, emqx,
+dragonfly-operator. Supporting-edit upgrades arrive as shepherd-authored `shepherd/*`
+PRs for **human merge** (diff-scope structurally blocks the bot auto-merging those).
+
+Kill switch: `kubectl -n upgrade-agent patch cronjob upgrade-shepherd -p '{"spec":{"suspend":true}}'`.
+
 ## Holds registry — reasoned release blacklist
 
 [`.renovate/holds.json5`](../../.renovate/holds.json5) is a durable, reasoned
@@ -453,6 +479,20 @@ EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/is
   runbook for the failing component.
 
 ## Changelog
+
+- **2026-07-03** — **Tier-4 Phase D live: scheduled hands-off auto-merge (clean tier).**
+  Proved the chain supervised first: shepherd dry-run E2E ($0.66, correct triage of 12
+  open PRs), then a targeted `MODE=auto` summon vetted **flux v2.8.8→v2.9.0 (#1917)**
+  (release notes, playbook, holds; confirmed the v1beta2 CRD removals don't apply) and
+  auto-merged it as `haynes-ops-bot` through the required Flux Local + Diff Scope
+  checks; negative proof: an out-of-scope stateful PR (**cnpg #1910**) was declined,
+  no auto-merge armed. Then flipped the `upgrade-shepherd` CronJob live via git:
+  daily 09:00 ET, `MODE=auto`, scope pinned by prompt to the clean-tier ramp set
+  (see "Phase-D auto-merge ramp"). Spend guard verified recording ($1.84/$50 MTD).
+  One backlog artifact handled: PRs opened before Phase B lack the now-required
+  `Diff Scope - Success` on their head SHA — close/reopen re-fires it (new PRs get it
+  automatically). Triage auto-summon (`upgrade-shepherd-triage`) enabled separately
+  after soak.
 
 - **2026-07-02** — **Tier-4 Phase C: all three Kyverno policies now ENFORCE.**
   After building the exception set to audit-clean (registry rewrite for normalized
