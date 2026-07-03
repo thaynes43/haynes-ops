@@ -14,3 +14,4 @@ resources:
   - ./headlamp/ks.yaml
   - ./omni/ks.yaml
   - ./todos-for-dues/ks.yaml
+  - ./haynesnetwork/ks.yaml
