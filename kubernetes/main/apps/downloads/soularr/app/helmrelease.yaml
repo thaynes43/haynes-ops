@@ -77,7 +77,7 @@ spec:
           gethomepage.dev/group: Downloads
           gethomepage.dev/name: Soularr
           gethomepage.dev/description: Lidarr-to-Soulseek bridge
-          gethomepage.dev/icon: soularr
+          gethomepage.dev/icon: mdi-music-box-multiple
           gethomepage.dev/app: soularr
           gethomepage.dev/siteMonitor: *url
         className: traefik-internal

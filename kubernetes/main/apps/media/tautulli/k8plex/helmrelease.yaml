@@ -102,7 +102,7 @@ spec:
           gethomepage.dev/description: K8Plex watch stats
           gethomepage.dev/icon: tautulli
           gethomepage.dev/app: tautulli-k8plex
-          gethomepage.dev/siteMonitor: *url
+          gethomepage.dev/siteMonitor: "http://tautulli-k8plex.media.svc.cluster.local:8181/status"
           gethomepage.dev/widget.type: tautulli
           gethomepage.dev/widget.url: "http://tautulli-k8plex.media.svc.cluster.local:8181"
           # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it
