@@ -1,0 +1,18 @@
+---
+# Recyclarr's cache maps trash_ids -> arr CF ids ("ownership"). It MUST
+# persist across runs: with a fresh cache recyclarr sees its own CFs as
+# name conflicts, skips them all, and zeroes the profile scores. If this
+# PVC is ever lost: delete all custom formats in radarr+sonarr via API,
+# then re-run the sync to recreate and re-own them.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: recyclarr
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: ceph-block

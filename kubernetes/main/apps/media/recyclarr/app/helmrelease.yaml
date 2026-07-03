@@ -68,9 +68,11 @@ spec:
         seccompProfile: { type: RuntimeDefault }
     persistence:
       # Writable /config for recyclarr's cache/logs; the actual config file
-      # is projected read-only from git below.
+      # is projected read-only from git below. PERSISTENT: the cache tracks
+      # which CFs recyclarr owns — an emptyDir made every run see its own
+      # CFs as conflicts and zero the profile scores (2026-07-02).
       config:
-        type: emptyDir
+        existingClaim: recyclarr
         globalMounts:
           - path: /config
       config-file:
