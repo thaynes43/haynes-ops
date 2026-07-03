@@ -1,0 +1,28 @@
+# Custom movie collections — the survivors of the 2023 config cleanup.
+# Franchises/universes/studios/directors/actors/awards now come from Kometa
+# Defaults (see config.yml); only genuinely custom things live here.
+collections:
+  Christmas HNet:
+    sort_title: "!001 Christmas HNet"
+    imdb_list: https://www.imdb.com/list/ls000096828/
+    summary: "Hand-picked Christmas movies"
+    collection_order: release.desc
+    url_poster: https://theposterdb.com/api/assets/48897
+    # display-only during the Nov-Jan window; items persist year-round
+    schedule: range(11/01-01/07)
+
+  Spatial Surround:
+    sort_title: "!001 Spatial Surround"
+    plex_all: true
+    url_poster: https://haynesnetwork.com/wp-content/uploads/2023/11/SurroundTestCollection.png
+    collection_order: release.desc
+    # Full-library regex filter pass — deliberately weekly (filters are slow
+    # at 9.4k items per official docs).
+    schedule: weekly(saturday)
+    filters:
+      - filepath.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'
+      - audio_track_title.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'
+      - filepath.regex: '(?i)^(?=.*\b(dd[p+])|(dolby digital plus)\b)(?=.*\batmos(\b|\d))'
+      - audio_track_title.regex: '(?i)^(?=.*\b(dd[p+])|(dolby digital plus)\b)(?=.*\batmos(\b|\d))'
+      - filepath.regex: '(?i)\batmos(\b|\d)'
+      - audio_track_title.regex: '(?i)\batmos(\b|\d)'

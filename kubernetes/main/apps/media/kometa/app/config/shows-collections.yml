@@ -1,0 +1,192 @@
+# Family curated TV collections — ported verbatim from the 2023 PMM config
+# (sonarr_tag/add_missing stripped: Kometa builds from EXISTING items only;
+# see the cutover checklist before ever re-enabling arr integration flags).
+collections:
+  Curated for Jackson:
+    sort_title: "!010AA Curated for Jackson"
+    url_poster: https://theposterdb.com/api/assets/82398
+    tmdb_show:
+      - 15260  # Adventure Time
+      - 37606  # The Amazing World of Gumball
+      - 78254  # Apple & Onion
+      - 246    # Avatar: The Last Airbender
+      - 68295  # Ben 10
+      - 50035  # Clarence
+      - 79061  # Craig of the Creek
+      - 72350  # DuckTales (2017)
+      - 99127  # LEGO Jurassic World: The Secret Exhibit
+      - 68073  # The Loud House
+      - 59427  # Marvel's Avengers Assemble
+      - 111110 # ONE PIECE
+      - 1877   # Phineas and Ferb
+      - 211779 # The Really Loud House
+      - 81026  # Rise of the Teenage Mutant Ninja Turtles
+      - 387    # SpongeBob SquarePants
+      - 4194   # Star Wars: The Clone Wars
+      - 604    # Teen Titans
+      - 45140  # Teen Titans Go!
+    tvdb_show:
+      - 389511 # The Amazing World of Gumball: The Gumball Chronicles (2020)
+      - 384123 # The Amazing World of Gumball: Darwin's Yearbook
+      - 408850 # Adventure Time: Fionna and Cake
+      - 328982 # Freedom Fighters: The Ray
+      - 298305 # Vixen
+      - 435612 # LEGO Ninjago: Dragons Rising
+      - 253323 # Ninjago: Masters of Spinjitzu
+      - 76703  # Pokemon
+      - 336771 # UniKitty!
+      - 343608 # Total DramaRama
+      - 330710 # Star Wars: Forces of Destiny
+      - 351575 # Star Wars Resistance
+      - 393190 # Star Wars: Visions
+      - 283468 # Star Wars Rebels
+      - 385376 # Star Wars: The Bad Batch
+      - 366607 # The Cuphead Show!
+      - 367138 # Star Trek: Lower Decks
+      - 251085 # The Legend of Korra
+      - 77038  # Rugrats (TODO: get 2021 version)
+      - 72210  # Doug
+      - 72005  # Hey Arnold!
+
+  Curated for Kellie:
+    sort_title: "!010AA Curated for Kellie"
+    url_poster: https://theposterdb.com/api/assets/411741
+    tmdb_show:
+      - 1418   # The Big Bang Theory
+      - 2327   # Dawson's Creek
+      - 1940   # Entourage
+      - 203728 # Flowers in the Attic: The Origin
+      - 4278   # Friday Night Lights
+      - 1668   # Friends
+      - 4586   # Gilmore Girls
+      - 68799  # Gilmore Girls: A Year in the Life (2016)
+      - 1416   # Grey's Anatomy
+      - 1421   # Modern Family
+      - 107113 # Only Murders in the Building
+      - 93825  # Saved by the Bell
+      - 70453  # Sharp Objects
+      - 97546  # Ted Lasso
+      - 4454   # Will & Grace
+    tvdb_show:
+      - 72164  # The O.C.
+      - 380213 # Saved By the Bell (2020)
+      - 193131 # Downton Abbey
+      - 248841 # Scandal
+      - 83610  # Glee
+      - 72158  # One Tree Hill
+      - 75760  # How I Met Your Mother
+      - 82696  # Sons of Anarchy
+      - 321239 # The Handmaid's Tale
+      - 70500  # Full House
+      - 301236 # Fuller House
+
+  Curated for Penelope:
+    sort_title: "!010AA Curated for Penelope"
+    url_poster: https://theposterdb.com/api/assets/243003
+    tmdb_show:
+      - 39107  # Bubble Guppies
+      - 100088 # The Last of Us
+      - 3934   # Mickey Mouse Clubhouse
+      - 57532  # Paw Patrol
+      - 12225  # Peppa Pig
+      - 387    # SpongeBob SquarePants
+      - 119051 # Wednesday
+      - 74323  # Vampirina
+    tvdb_show:
+      - 354345 # Butterbean's Cafe
+      - 320725 # Mickey Mouse: Mixed-Up Adventures
+      - 353546 # Bluey
+      - 71416  # The Magic School Bus
+      - 334579 # The Magic School Bus Rides Again
+      - 78419  # Sesame Street
+      - 77750  # Mister Rogers' Neighborhood
+      - 391183 # Gabby's Dollhouse
+      - 368781 # Muppets Now
+      - 301376 # Be Cool, Scooby-Doo!
+
+  Big Kid Cartoons:
+    sort_title: "!010AB Big Kid Cartoons"
+    url_poster: https://theposterdb.com/api/assets/342075
+    tvdb_show:
+      - 371028 # Arcane
+      - 110381 # Archer
+      - 375892 # Solar Opposites
+      - 75978  # Family Guy
+      - 275274 # Rick and Morty
+      - 75897  # South Park
+      - 73871  # Futurama
+      - 71663  # The Simpsons
+      - 77120  # Aqua Teen Hunger Force
+      - 331431 # Big Mouth
+      - 93991  # The Cleveland Show
+
+  Kid Cartoons:
+    sort_title: "!010AB Kid Cartoons"
+    url_poster: https://theposterdb.com/api/assets/316188
+    tmdb_show:
+      - 15260  # Adventure Time
+      - 37606  # The Amazing World of Gumball
+      - 78254  # Apple & Onion
+      - 246    # Avatar: The Last Airbender
+      - 68295  # Ben 10
+      - 50035  # Clarence
+      - 79061  # Craig of the Creek
+      - 72350  # DuckTales (2017)
+      - 99127  # LEGO Jurassic World: The Secret Exhibit
+      - 68073  # The Loud House
+      - 59427  # Marvel's Avengers Assemble
+      - 111110 # ONE PIECE
+      - 1877   # Phineas and Ferb
+      - 211779 # The Really Loud House
+      - 81026  # Rise of the Teenage Mutant Ninja Turtles
+      - 387    # SpongeBob SquarePants
+      - 4194   # Star Wars: The Clone Wars
+      - 604    # Teen Titans
+      - 45140  # Teen Titans Go!
+      - 39107  # Bubble Guppies
+      - 3934   # Mickey Mouse Clubhouse
+      - 57532  # Paw Patrol
+      - 12225  # Peppa Pig
+      - 74323  # Vampirina
+    tvdb_show:
+      - 354345 # Butterbean's Cafe
+      - 320725 # Mickey Mouse: Mixed-Up Adventures
+      - 353546 # Bluey
+      - 389511 # The Amazing World of Gumball: The Gumball Chronicles (2020)
+      - 384123 # The Amazing World of Gumball: Darwin's Yearbook
+      - 408850 # Adventure Time: Fionna and Cake
+      - 328982 # Freedom Fighters: The Ray
+      - 298305 # Vixen
+      - 71416  # The Magic School Bus
+      - 334579 # The Magic School Bus Rides Again
+      - 391183 # Gabby's Dollhouse
+      - 435612 # LEGO Ninjago: Dragons Rising
+      - 253323 # Ninjago: Masters of Spinjitzu
+      - 76703  # Pokemon
+      - 368781 # Muppets Now
+      - 336771 # UniKitty!
+      - 343608 # Total DramaRama
+      - 301376 # Be Cool, Scooby-Doo!
+      - 330710 # Star Wars: Forces of Destiny
+      - 351575 # Star Wars Resistance
+      - 393190 # Star Wars: Visions
+      - 283468 # Star Wars Rebels
+      - 385376 # Star Wars: The Bad Batch
+      - 366607 # The Cuphead Show!
+      - 367138 # Star Trek: Lower Decks
+      - 251085 # The Legend of Korra
+      - 77038  # Rugrats
+      - 72210  # Doug
+      - 72005  # Hey Arnold!
+
+  Earth & Space Wonders:
+    sort_title: "!010AC Earth & Space Wonders"
+    url_poster: https://theposterdb.com/api/assets/121577
+    tvdb_show:
+      - 417835 # Our Great National Parks
+      - 74372  # The Blue Planet
+      - 260586 # Cosmos (2014)
+      - 79257  # Planet Earth
+      - 318408 # Planet Earth II
+      - 330942 # Blue Planet II
+      - 413197 # Planet Earth III
