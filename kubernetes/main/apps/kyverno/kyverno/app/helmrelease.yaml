@@ -35,6 +35,17 @@ spec:
       replicas: 1
     reportsController:
       replicas: 1
+      # Chart default (64Mi/128Mi) OOMKills on this cluster: the reports-controller holds
+      # informer caches for every scanned resource (~2200 pods/deployments/RBAC objects,
+      # incl. the cluster RBAC we added for restrict-rbac-escalation visibility) plus the
+      # background-scan report churn + verifyImages. Working set is ~85-125Mi with
+      # scan-cycle spikes that tipped over 128Mi (sawtooth OOM, not a leak — 24h trend).
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
     cleanupController:
       replicas: 1
     features:
