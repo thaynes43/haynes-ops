@@ -63,10 +63,12 @@ spec:
             resources:
               requests:
                 cpu: 100m
-                memory: 512Mi
+                memory: 1Gi
               limits:
                 cpu: 2000m
-                memory: 4Gi
+                # 4Gi OOMKilled during the full-badge overlay pass (ratings
+                # compositing across the whole library, 2026-07-03)
+                memory: 8Gi
             securityContext: *sc
       overlays:
         type: cronjob
