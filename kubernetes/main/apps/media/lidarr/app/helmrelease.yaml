@@ -142,6 +142,10 @@ spec:
           gethomepage.dev/icon: lidarr
           gethomepage.dev/app: lidarr
           gethomepage.dev/siteMonitor: *url
+          gethomepage.dev/widget.type: lidarr
+          gethomepage.dev/widget.url: "http://lidarr.media.svc.cluster.local:8686"
+          # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it
+          gethomepage.dev/widget.key: '{{ "{{HOMEPAGE_VAR_LIDARR_API_KEY}}" }}'
         className: traefik-internal
         hosts:
           - host: lidarr.haynesops.com
