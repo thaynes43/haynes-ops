@@ -79,11 +79,14 @@ spec:
             resources:
               requests:
                 cpu: 100m
-                memory: 512Mi
+                memory: 2Gi
               limits:
                 # Capped so unpack/par2 bursts can't contend with neighbors.
                 cpu: 4000m
-                memory: 6Gi
+                # 6Gi OOMKilled under a 450-job/17TB backfill queue (par2 on
+                # large remuxes + queue metadata); sized for library-rebuild
+                # class queues (1000+ jobs).
+                memory: 16Gi
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
