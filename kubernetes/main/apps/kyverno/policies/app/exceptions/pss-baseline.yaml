@@ -100,10 +100,14 @@ spec:
       # the VolSync movers. First hit: opsplex bootstrap 2026-07-02 (provisioning
       # of volsync-dst-opsplex-dst-cache denied -> PVC Pending forever).
       # All three prefixes from provisioner-localpv v4.5.1 helper templates
-      # (init/cleanup/quota + "-<pvName>", pvName = pvc-<uid>). Helper pods carry
-      # NO labels upstream, so name globs are the only in-resource scoping; see
-      # HANDOFF-2026-07-02-kyverno-ephemeral-helpers.md for a stronger
-      # subjects-based (provisioner SA) alternative.
+      # (init/cleanup/quota + "-<pvName>", pvName = pvc-<uid>). Helper pods carry NO
+      # labels upstream, so name globs are the only in-resource scoping. NOTE: a
+      # `subjects:` (provisioner-SA) scoped exception — the "stronger" fix — is NOT
+      # possible: Kyverno forbids `subjects` in a PolicyException for a background:true
+      # policy ("Usage of user info is forbidden", verified 2026-07-03), and dropping
+      # background scanning would blind the audit reports. Name globs stand; the residual
+      # name-spoof risk needs pre-existing pod-create RBAC to exploit. Periodic check that
+      # no new ephemeral spawner is being denied: .agents/runbooks/kyverno-enforce-verify.md.
       - resources:
           kinds: [Pod]
           names:
