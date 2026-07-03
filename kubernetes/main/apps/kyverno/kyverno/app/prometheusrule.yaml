@@ -63,3 +63,25 @@ spec:
           for: 20m
           labels:
             severity: critical
+        # Direct signal: an ENFORCE policy DENIED admission requests (not audit, not a
+        # background scan — a real block). >=3 in 1h targets a PERSISTENT block (a
+        # controller retrying a denied ephemeral pod = an exception gap, or a repeated
+        # attack) while ignoring a one-off manual bad-manifest test. Catches denials that
+        # never surface as a stuck PVC (a denied Deployment/Job pod). Faster, symptom-free.
+        - alert: KyvernoEnforceBlockingAdmission
+          annotations:
+            summary: Kyverno enforce is repeatedly blocking admission (policy {{ $labels.policy_name }}).
+            description: >-
+              An enforce-mode Kyverno policy denied >=3 admission requests in the last
+              hour. Most likely an exception gap denying a legitimate controller-spawned
+              (ephemeral) pod, which silently breaks the owning workload — or a real
+              blocked bad manifest. Find it: kubectl get events -A --field-selector
+              reason=PolicyViolation, or the kyverno-admission-controller logs. Fix by
+              adding a scoped PolicyException.
+          expr: |
+            sum by (policy_name) (
+              increase(kyverno_policy_results_total{rule_execution_cause="admission_request", policy_validation_mode="enforce", rule_result="fail"}[1h])
+            ) >= 3
+          for: 0m
+          labels:
+            severity: critical
