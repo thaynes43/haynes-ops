@@ -24,6 +24,11 @@ spec:
     # HA so admission is not a single point of failure.
     admissionController:
       replicas: 2
+      # Scrape Kyverno metrics (admission-request/block counters) so we can alert on
+      # admission denials + controller health (was unscraped -> the OOM + OpenEBS-deny
+      # incidents were both silent).
+      serviceMonitor:
+        enabled: true
       container:
         resources:
           requests:
@@ -33,8 +38,12 @@ spec:
             memory: 512Mi
     backgroundController:
       replicas: 1
+      serviceMonitor:
+        enabled: true
     reportsController:
       replicas: 1
+      serviceMonitor:
+        enabled: true
       # Chart default (64Mi/128Mi) OOMKills on this cluster: the reports-controller holds
       # informer caches for every scanned resource (~2200 pods/deployments/RBAC objects,
       # incl. the cluster RBAC we added for restrict-rbac-escalation visibility) plus the
@@ -48,6 +57,8 @@ spec:
           memory: 512Mi
     cleanupController:
       replicas: 1
+      serviceMonitor:
+        enabled: true
     features:
       # PolicyExceptions ONLY creatable in the kyverno namespace (GHSA-qjvc-p88j-j9rm)
       # — otherwise the shepherd could commit a self-exempting exception anywhere.

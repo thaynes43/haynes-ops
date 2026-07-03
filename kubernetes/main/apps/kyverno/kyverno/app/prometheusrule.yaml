@@ -1,0 +1,65 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+# Tripwires for the Kyverno-enforce experimental period. Two silent failures already
+# slipped a full day undetected (2026-07-02 reports-controller OOMKill loop; 2026-07-02
+# OpenEBS provisioning denied -> PVCs stuck Pending) because nothing watched the guardrail
+# itself. severity=critical so they PAGE (the root Alertmanager route is null; only
+# critical -> Pushover).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kyverno-guardrail-rules
+spec:
+  groups:
+    - name: kyverno-guardrail.rules
+      rules:
+        # Catches the reports-controller OOM loop (and any Kyverno container OOM): the
+        # last termination was OOMKilled AND it restarted within the last hour (so it
+        # self-clears once the pod runs stably; a graceful rollout restart has a
+        # non-OOMKilled reason and won't fire).
+        - alert: KyvernoControllerOOMKilling
+          annotations:
+            summary: Kyverno {{ $labels.container }} ({{ $labels.pod }}) is OOMKilling.
+            description: >-
+              Container {{ $labels.container }} in pod {{ $labels.pod }} (ns kyverno) was
+              OOMKilled and has restarted in the last hour. Raise its memory limit
+              (reportsController/backgroundController default is only 128Mi). While a
+              controller flaps, its function is degraded (reports go stale; admission is
+              HA/2-replica so enforce should hold).
+          expr: |
+            (kube_pod_container_status_last_terminated_reason{namespace="kyverno", reason="OOMKilled"} == 1)
+              and on (namespace, pod, container)
+            (increase(kube_pod_container_status_restarts_total{namespace="kyverno"}[1h]) >= 1)
+          for: 2m
+          labels:
+            severity: critical
+        # A Kyverno controller can't stay up (crash-loop / stuck rollout) for 15m — the
+        # guardrail is degraded. If the ADMISSION controller is the one down, enforce is
+        # fail-open (failurePolicy: Ignore) so bad manifests would be admitted unchecked.
+        - alert: KyvernoControllerNotReady
+          annotations:
+            summary: Kyverno deployment {{ $labels.deployment }} has unavailable replicas.
+            description: >-
+              {{ $labels.deployment }} (ns kyverno) has had unavailable replicas for 15m.
+              If it is kyverno-admission-controller, admission enforcement is failing OPEN.
+          expr: kube_deployment_status_replicas_unavailable{namespace="kyverno"} > 0
+          for: 15m
+          labels:
+            severity: critical
+        # A PVC stuck Pending for 20m = provisioning is broken. This is the exact symptom
+        # of the OpenEBS incident (a Kyverno exception gap denied the localpv helper pod,
+        # so every new openebs-hostpath PVC hung silently). Note: a WaitForFirstConsumer
+        # PVC with no consumer scheduled yet also sits Pending — 20m filters most of that,
+        # but a deliberately pre-created PVC can false-fire.
+        - alert: PersistentVolumeClaimStuckPending
+          annotations:
+            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} stuck Pending.
+            description: >-
+              PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has been
+              Pending for 20m. Check `kubectl describe pvc` for a ProvisioningFailed event
+              — during the Kyverno-enforce period this is often an admission denial of the
+              provisioner's helper pod (add a PolicyException).
+          expr: kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1
+          for: 20m
+          labels:
+            severity: critical
