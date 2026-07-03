@@ -1,0 +1,23 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+# Media-automation CronJobs fail silently otherwise: KubeJobFailed is
+# warning-severity and only severity=critical pages Pushover. User call
+# (2026-07-03): start critical, prune back if noisy.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: media-cronjobs
+spec:
+  groups:
+    - name: media-cronjobs.rules
+      rules:
+        - alert: MediaAutomationJobFailed
+          annotations:
+            summary: >-
+              {{ $labels.namespace }}/{{ $labels.job_name }} media-automation
+              job failed — collections/overlays/guide-sync may be stale.
+          expr: |
+            kube_job_status_failed{namespace="media", job_name=~"(kometa|recyclarr).*"} > 0
+          for: 5m
+          labels:
+            severity: critical
