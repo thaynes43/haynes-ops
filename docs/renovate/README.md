@@ -491,8 +491,15 @@ EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/is
   (see "Phase-D auto-merge ramp"). Spend guard verified recording ($1.84/$50 MTD).
   One backlog artifact handled: PRs opened before Phase B lack the now-required
   `Diff Scope - Success` on their head SHA — close/reopen re-fires it (new PRs get it
-  automatically). Triage auto-summon (`upgrade-shepherd-triage`) enabled separately
-  after soak.
+  automatically). Triage auto-summon (`upgrade-shepherd-triage`) enabled the same day
+  on `*/30` after validating both paths with one-off jobs: healthy path exits pre-LLM
+  at $0 (recent merges + green cluster), and an induced benign regression (throwaway-ns
+  ImagePullBackOff persisted >10m right after a merge) correctly summoned
+  `MODE=remediate`. During the flux upgrade a REAL wedge surfaced — the cluster's
+  image.toolkit CRDs still stored `v1beta2` (etcd bookkeeping, invisible to repo-side
+  vetting) — the flux ks failed Ready **fail-safe** (nothing applied), remediated with
+  the official `flux migrate` (operator-approved break-glass); pre-flight check added
+  to the flux playbook.
 
 - **2026-07-02** — **Tier-4 Phase C: all three Kyverno policies now ENFORCE.**
   After building the exception set to audit-clean (registry rewrite for normalized
