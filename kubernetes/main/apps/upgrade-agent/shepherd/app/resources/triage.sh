@@ -135,10 +135,13 @@ entry_of() {  # $1=whole-CM JSON $2=sig -> compact-JSON entry or ""
 
 # ── state WRITE (triage owns class/attempted/result; create OR replace via the in-namespace
 #    configmaps Role). last_paged + first_seen are PRESERVED so the gate's page de-dupe holds. ──
-state_upsert() {  # <sig> <class> <attempted> <result>
+state_upsert() {  # <sig> <class> <attempted> <result> ; RETURNS the write rc (0=persisted).
+  # The caller MUST check the rc when it is CLAIMING an attempt (cost safety): if the
+  # attempted=1 write did not land, the attempt is not durably recorded, so summoning
+  # would risk a re-spend next cycle — the summon path fails CLOSED on a non-zero rc.
   local sig="$1" class="$2" att="$3" res="${4:-none}"
   [ -n "$res" ] || res=none
-  local ttl
+  local ttl rc
   ttl="$(( STATE_TTL_HOURS * 3600 ))"
   if kubectl -n "$STATE_NS" get configmap "$STATE_CM" >/dev/null 2>&1; then
     kubectl -n "$STATE_NS" get configmap "$STATE_CM" -o json 2>/dev/null \
@@ -153,19 +156,23 @@ state_upsert() {  # <sig> <class> <attempted> <result>
                 select(.key == $k
                        or ((((.value | (fromjson? // {}) | (.first_seen // "0") | tonumber?) // 0)) > ($now - $ttl))))
         ' 2>/dev/null \
-      | kubectl -n "$STATE_NS" replace -f - >/dev/null 2>&1 \
-      && log "state: upsert sig=$sig class=$class attempted=$att result=$res (+pruned >${STATE_TTL_HOURS}h)" \
-      || log "state: WARN upsert sig=$sig failed (RBAC/conflict?) — the gate then FAILS SAFE to paging"
+      | kubectl -n "$STATE_NS" replace -f - >/dev/null 2>&1
+    rc=${PIPESTATUS[2]:-1}
   else
     kubectl -n "$STATE_NS" create configmap "$STATE_CM" --dry-run=client -o json 2>/dev/null \
       | jq --arg k "$sig" --arg class "$class" --arg att "$att" --arg res "$res" --argjson now "$NOW" '
           .data = { ($k): (({class:$class, attempted:$att, result:$res,
                 first_seen:($now|tostring), last_paged:"0"}) | tojson) }
         ' 2>/dev/null \
-      | kubectl -n "$STATE_NS" create -f - >/dev/null 2>&1 \
-      && log "state: created $STATE_CM sig=$sig class=$class attempted=$att result=$res" \
-      || log "state: WARN could not create $STATE_CM (RBAC?) — the gate then FAILS SAFE to paging"
+      | kubectl -n "$STATE_NS" create -f - >/dev/null 2>&1
+    rc=${PIPESTATUS[2]:-1}
   fi
+  if [ "${rc:-1}" -eq 0 ]; then
+    log "state: upsert sig=$sig class=$class attempted=$att result=$res (+pruned >${STATE_TTL_HOURS}h)"
+  else
+    log "state: WARN upsert sig=$sig failed rc=$rc (RBAC/conflict?) — a CLAIM caller fails CLOSED; the gate then FAILS SAFE to paging"
+  fi
+  return "${rc:-1}"
 }
 
 # state_prune — drop entries older than the TTL (approximates "regression no longer present"
@@ -306,11 +313,18 @@ if [ "$CLASS" = "upgrade" ]; then
     log "sig=$SIG upgrade-attributable but the state CM is UNREADABLE — cannot confirm no prior attempt; FAIL CLOSED, NOT summoning (protect spend). The gate pages."
     exit 0
   fi
-  log "sig=$SIG upgrade-attributable, FIRST attempt — summoning MODE=remediate."
+  log "sig=$SIG upgrade-attributable, FIRST attempt — claiming the attempt before summoning."
   # Rule 1 (crash-proof at-most-once): claim the attempt BEFORE invoking. A crash/timeout/
   # pod-death mid-run then still counts as attempted and is NEVER retried. result=none keeps
   # the gate suppressing (within the grace window) while remediate is in flight.
-  state_upsert "$SIG" upgrade 1 none
+  # COST FAIL-CLOSED: if the claim write does NOT land (RBAC glitch, or a resourceVersion
+  # race with the gate's last_paged write), we cannot guarantee at-most-once — so do NOT
+  # summon (protect spend). The gate fails safe and pages, so a human still handles it.
+  if ! state_upsert "$SIG" upgrade 1 none; then
+    log "sig=$SIG: could NOT durably claim the attempt — FAIL CLOSED, NOT summoning (protect spend). The gate pages."
+    exit 0
+  fi
+  log "sig=$SIG: attempt claimed — summoning MODE=remediate."
   prs_before="$(gh pr list -R "$REPO" --state open --json number --jq '[.[].number]|sort' 2>/dev/null || echo '[]')"
   export UPGRADE_AGENT_MODE=remediate
   export UPGRADE_AGENT_PROMPT="A regression appeared after a merge to main within the last ${LOOKBACK_HOURS}h. Detected signals: ${REG_SUMMARY}. Diagnose (read-only) and remediate per .agents/runbooks/upgrade-shepherd.md Mode 2 — forward-fix or git revert/re-pin the culprit bump and enable auto-merge. BAIL EARLY (within a few turns) with a single line 'BREAK-GLASS: <reason>' if the regression is NOT clearly caused by a recent upgrade you can fix via git — immutable field, wedged HelmRelease, stuck finalizer, one-way major, or an infra/KubePrism/etcd/node fault. Do NOT investigate to max-turns, do NOT retry denied cluster writes, do NOT push to main; stay inside kubernetes/**."
