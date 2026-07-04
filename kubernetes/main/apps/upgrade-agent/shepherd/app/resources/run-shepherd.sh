@@ -92,13 +92,16 @@ record_spend() {
 # Returns 1 = definitively no in-scope open Renovate PR -> caller should exit $0.
 prefilter_should_run() {
   local globs="$1" prs pr files g
-  prs="$(gh pr list --state open --limit 200 --json number,author \
+  # -R "$REPO" is REQUIRED: the pre-filter runs BEFORE the clone, so gh has no git
+  # remote to infer the repo from — a bare `gh pr list` errors "not a git repository"
+  # and the filter fails open (runs the LLM) every time (bit us live 2026-07-04).
+  prs="$(gh pr list -R "$REPO" --state open --limit 200 --json number,author \
            --jq '.[] | select(.author.login|test("renovate")) | .number' 2>/dev/null)" || {
     log "pre-filter: gh pr list failed — failing OPEN (running the LLM)."; return 0; }
   [ -n "$prs" ] || { log "pre-filter: no open Renovate PRs — skipping LLM (\$0)."; return 1; }
   local checked=0
   for pr in $prs; do
-    files="$(gh pr view "$pr" --json files --jq '.files[].path' 2>/dev/null)" || {
+    files="$(gh pr view "$pr" -R "$REPO" --json files --jq '.files[].path' 2>/dev/null)" || {
       log "pre-filter: gh pr view #$pr failed — failing OPEN (running the LLM)."; return 0; }
     checked=$((checked + 1))
     for g in $globs; do
