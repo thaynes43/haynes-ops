@@ -263,16 +263,45 @@ Scope are both green**. It cannot merge past a red/pending check, and `--admin`
 (skip-checks) fails for a non-admin. So `auto`/`remediate` are safe to allowlist `gh pr
 merge` — the Phase-B required checks are the boundary.
 
+### The scheduled-run pre-filter (cost control — LLM only when there's in-scope work)
+
+The scheduled `auto` run is deterministically pre-filtered so a **quiet day costs \$0**.
+Before any clone or LLM call, `run-shepherd.sh` (`prefilter_should_run`) lists open
+**Renovate** PRs and checks each one's changed files against
+`UPGRADE_AGENT_PREFILTER_GLOBS` — the ramp's repo path prefixes, set on the scheduled
+cronjob env in the shepherd HR. If **no** open Renovate PR touches a ramp path it logs
+`pre-filter: … skipping LLM ($0)` and exits `0` — no clone, no LLM, no spend record.
+Only when a ramp PR exists does it fall through to the (paid) survey+vet.
+
+- **It never decides mergeability.** The LLM still fully vets every in-scope PR (holds,
+  release notes, supporting-edit detection). The filter only decides *whether there is
+  work worth looking at* — the conservative split: deterministic gate on the *look*,
+  LLM owns the *judgement*.
+- **Fails OPEN.** Any `gh`/`jq` error → it returns "run the LLM" (never silently skips
+  real work); the identical old behaviour on error.
+- **The ramp is defined in TWO places that must stay in lockstep:**
+  `UPGRADE_AGENT_PREFILTER_GLOBS` (path prefixes — what the filter matches) and
+  `UPGRADE_AGENT_PROMPT` (component names — what the LLM is allowed to merge), both in
+  [`shepherd/app/helmrelease.yaml`](../../kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml).
+  **Widen the ramp by editing BOTH in the same commit** (add the component's path
+  prefix + its name), then re-run `/kyverno-verify`.
+- **Gating:** the filter runs only when `MODE=auto` **and** `UPGRADE_AGENT_PREFILTER_GLOBS`
+  is non-empty (i.e. the scheduled cronjob). A manual/targeted summon must **clear the
+  var** to bypass it (see the summon recipe's `UPGRADE_AGENT_PREFILTER_GLOBS:""`).
+
 ### Summon (manual, any mode)
 
 ```bash
 # dryrun (read-only, free-ish):
 kubectl -n upgrade-agent create job shep-$(date +%s) --from=cronjob/upgrade-shepherd
-# a specific mode (create-job can't set env; inject via jq):
+# a specific mode (create-job can't set env; inject via jq). NOTE: clear
+# UPGRADE_AGENT_PREFILTER_GLOBS so a TARGETED summon is never pre-filtered out (else a
+# PR outside the ramp — e.g. a cnpg negative-proof test — would be skipped before the LLM):
 kubectl -n upgrade-agent create job shep-$(date +%s) --from=cronjob/upgrade-shepherd \
   --dry-run=client -o json \
   | jq '.spec.template.spec.containers |= map(if .name=="app"
-        then .env |= (map(if .name=="UPGRADE_AGENT_MODE" then .value="auto" else . end)
+        then .env |= (map(if .name=="UPGRADE_AGENT_MODE" then .value="auto"
+                          elif .name=="UPGRADE_AGENT_PREFILTER_GLOBS" then .value="" else . end)
                       + [{name:"UPGRADE_AGENT_PROMPT",value:"<task>"}]) else . end)' \
   | kubectl apply -f -
 ```

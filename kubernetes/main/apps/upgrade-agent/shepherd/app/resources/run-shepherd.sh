@@ -73,6 +73,45 @@ record_spend() {
   fi
 }
 
+# ── Deterministic PRE-FILTER (Phase D cost control) ── On a SCHEDULED auto run, only
+# summon the (paid) LLM when an open Renovate PR actually touches a component in the
+# current auto-merge ramp. On a quiet day (no in-scope PR) this exits $0 with ZERO LLM
+# cost. It does NOT decide mergeability — the LLM still fully vets every in-scope PR
+# (holds, release notes, supporting edits). The filter only decides IF there is work
+# worth looking at, keeping the conservative posture: deterministic layer gates the
+# look, LLM owns the judgement.
+#
+# Gated by UPGRADE_AGENT_PREFILTER_GLOBS — a space-separated list of repo path prefixes
+# (one per ramp component), set ONLY on the scheduled cronjob. A manual/targeted summon
+# leaves it empty (or clears it) and is never filtered — it runs as asked. WIDEN THE
+# RAMP by adding the new component's path prefix HERE (via the HR env) AND naming it in
+# UPGRADE_AGENT_PROMPT, in the same commit. Fails OPEN (returns 0 = proceed to the LLM)
+# on any gh/jq error — never silently skips real work.
+#
+# Returns 0 = an in-scope PR exists (or we're unsure) -> run the LLM.
+# Returns 1 = definitively no in-scope open Renovate PR -> caller should exit $0.
+prefilter_should_run() {
+  local globs="$1" prs pr files g
+  prs="$(gh pr list --state open --limit 200 --json number,author \
+           --jq '.[] | select(.author.login|test("renovate")) | .number' 2>/dev/null)" || {
+    log "pre-filter: gh pr list failed — failing OPEN (running the LLM)."; return 0; }
+  [ -n "$prs" ] || { log "pre-filter: no open Renovate PRs — skipping LLM (\$0)."; return 1; }
+  local checked=0
+  for pr in $prs; do
+    files="$(gh pr view "$pr" --json files --jq '.files[].path' 2>/dev/null)" || {
+      log "pre-filter: gh pr view #$pr failed — failing OPEN (running the LLM)."; return 0; }
+    checked=$((checked + 1))
+    for g in $globs; do
+      if printf '%s\n' "$files" | grep -qF -- "$g"; then
+        log "pre-filter: Renovate PR #$pr touches ramp path '$g' — summoning the LLM."
+        return 0
+      fi
+    done
+  done
+  log "pre-filter: checked $checked open Renovate PR(s); none touch the ramp — skipping LLM (\$0). Ramp: $globs"
+  return 1
+}
+
 # Quiet claude-code's phone-home (the egress CNP would block it anyway).
 export DISABLE_TELEMETRY=1 CLAUDE_CODE_ENABLE_TELEMETRY=0 \
        DISABLE_ERROR_REPORTING=1 DISABLE_AUTOUPDATER=1 DISABLE_NON_ESSENTIAL_MODEL_CALLS=1
@@ -83,6 +122,16 @@ GH_TOKEN="$(cat /creds/gh_token)"; export GH_TOKEN
 # Assert the PEM did NOT leak into this (the LLM) container.
 if [ -n "${GITHUB_BOT_APP_PRIVATE_KEY:-}" ]; then
   log "FATAL: bot PEM present in the LLM container env — refusing to run."; exit 3
+fi
+
+# Pre-filter BEFORE the clone/LLM: a scheduled auto run with no in-scope PR exits here
+# at $0 (skips clone + LLM). Only when MODE=auto AND the ramp-globs var is set (i.e. the
+# scheduled cronjob). Manual/targeted summons leave it empty and are never filtered.
+if [ "$MODE" = "auto" ] && [ -n "${UPGRADE_AGENT_PREFILTER_GLOBS:-}" ]; then
+  if ! prefilter_should_run "${UPGRADE_AGENT_PREFILTER_GLOBS}"; then
+    log "run skipped by pre-filter (no in-scope open PR) — no clone, no LLM, \$0."
+    exit 0
+  fi
 fi
 
 git config --global user.name  "haynes-ops-bot[bot]"

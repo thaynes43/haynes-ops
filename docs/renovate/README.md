@@ -376,12 +376,24 @@ read+page, so it can ship on the Omni SA kubeconfig alone.
 
 The scheduled shepherd (CronJob `upgrade-shepherd`, daily 09:00 ET, `MODE=auto`) may
 **auto-merge pure version/chart/digest bumps only**, for the components listed here.
-The scope lives in the `UPGRADE_AGENT_PROMPT` env in
-[`shepherd/app/helmrelease.yaml`](../../kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml);
-widening it is a git edit (one component at a time, operator-approved), and every
-widening gets a fresh `/kyverno-verify`. Structural backstops regardless of prompt:
-diff-scope (bot PRs must be pure bumps in `kubernetes/**`), required checks, non-admin
-bot, Kyverno enforce, the $50/mo spend guard, and the health gate + guardrail alerts.
+The ramp is defined in **two lockstep env vars** in
+[`shepherd/app/helmrelease.yaml`](../../kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml):
+`UPGRADE_AGENT_PROMPT` (component names the LLM may merge) and
+`UPGRADE_AGENT_PREFILTER_GLOBS` (repo path prefixes the deterministic pre-filter
+matches). **Widen the ramp by editing BOTH in the same commit**, one component at a
+time, operator-approved, with a fresh `/kyverno-verify` after each.
+
+**Cost control — the pre-filter:** before the scheduled run spends a cent, a
+deterministic check (`prefilter_should_run` in `run-shepherd.sh`) lists open Renovate
+PRs and matches their changed files against the ramp path prefixes. **No in-scope PR ⇒
+it exits $0 with no clone and no LLM call** — most days cost nothing. It never decides
+mergeability (the LLM still fully vets every in-scope PR); it only gates *whether there
+is work worth looking at*, and fails open (runs the LLM) on any error. This is what
+keeps the daily cadence from burning ~$0.77/day surveying an empty-of-ramp queue.
+
+Structural backstops regardless of prompt: diff-scope (bot PRs must be pure bumps in
+`kubernetes/**`), required checks, non-admin bot, Kyverno enforce, the $50/mo spend
+guard, and the health gate + guardrail alerts.
 
 | Component | In ramp since | Notes |
 |---|---|---|
@@ -479,6 +491,19 @@ EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/is
   runbook for the failing component.
 
 ## Changelog
+
+- **2026-07-04** — **Phase D cost control: deterministic pre-filter (quiet day = $0).**
+  The first unattended 09:00 ET run behaved correctly (surveyed 11 PRs, none in the
+  ramp, auto-merged nothing) but cost ~$0.77 to conclude "nothing to do" — ~$23/mo of
+  no-op LLM surveys eating the $50 cap. Added `prefilter_should_run` to `run-shepherd.sh`:
+  a scheduled `auto` run now lists open Renovate PRs and matches their changed files
+  against the ramp path prefixes (`UPGRADE_AGENT_PREFILTER_GLOBS`, new HR env) **before**
+  cloning or calling the LLM — no in-scope PR ⇒ exit $0, no clone, no spend. It never
+  decides mergeability (the LLM still fully vets every in-scope PR) and fails open (runs
+  the LLM) on any `gh`/`jq` error. The ramp is now two lockstep env vars (prompt names +
+  filter globs) — widen both together. Matcher proven both ways against the live queue
+  (real ramp → skip; probe glob at #1921's path → summon). Targeted manual summons must
+  clear the globs var (documented in the summon recipe).
 
 - **2026-07-03** — **Tier-4 Phase D live: scheduled hands-off auto-merge (clean tier).**
   Proved the chain supervised first: shepherd dry-run E2E ($0.66, correct triage of 12

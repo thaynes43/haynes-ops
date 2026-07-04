@@ -63,6 +63,22 @@ spec:
             env:
               UPGRADE_AGENT_MODE: auto     # Phase D: vet + `gh pr merge --auto` (server-side gated)
               UPGRADE_AGENT_MODEL: sonnet
+              # Deterministic PRE-FILTER (cost control): the scheduled run invokes the
+              # paid LLM ONLY when an open Renovate PR touches one of these ramp path
+              # prefixes; a quiet day exits $0 with no clone + no LLM. This is the
+              # SECOND half of the ramp definition — keep it in lockstep with the
+              # component names in UPGRADE_AGENT_PROMPT below (widen BOTH together).
+              # Manual/targeted summons must clear this var to bypass the filter.
+              UPGRADE_AGENT_PREFILTER_GLOBS: >-
+                kubernetes/main/apps/kube-system/coredns/
+                kubernetes/edge/apps/kube-system/coredns/
+                kubernetes/main/apps/network/traefik/
+                kubernetes/main/apps/network/multus/
+                kubernetes/main/apps/kube-system/generic-device-plugin/
+                kubernetes/main/apps/kube-system/intel-device-plugin/
+                kubernetes/main/apps/kube-system/nvidia-device-plugin/
+                kubernetes/main/flux/
+                kubernetes/edge/flux/
               # The auto-merge RAMP lives here: widen the component list one entry at a
               # time as each proves quiet (docs/renovate/README.md tracks the ramp), and
               # re-run /kyverno-verify after each widening.
