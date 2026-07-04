@@ -19,10 +19,16 @@ subjects:
     name: *app
     namespace: upgrade-agent
 ---
-# The ONE cluster write the shepherd has: manage its own monthly-spend counter
-# ConfigMap (upgrade-shepherd-spend) in its OWN namespace. Deliberately NOT the
-# read-only ClusterRole (which denies configmaps) — a tightly namespaced Role. This CM
-# is runtime state (create-or-updated by run-shepherd.sh, not Flux-managed). Nothing
+# The shepherd's cluster writes, both confined to TWO runtime ConfigMaps in its OWN
+# namespace (deliberately NOT the read-only ClusterRole, which denies configmaps — a
+# tightly namespaced Role):
+#   * upgrade-shepherd-spend       — the monthly-spend counter (run-shepherd.sh).
+#   * upgrade-remediation-state    — the Phase-D remediation-gating coordination state
+#                                    (triage.sh owns class/attempted/result; the gate reads
+#                                    it and stamps last_paged via its OWN name-scoped Role).
+# Both are runtime state (create-or-updated at runtime, NOT Flux-managed — Flux would
+# revert them). This Role is namespace-scoped rather than name-scoped BECAUSE it needs
+# `create` (RBAC cannot restrict create by resourceName) for both CMs. Nothing
 # security-relevant lives in upgrade-agent; this grants no reach into any app namespace.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

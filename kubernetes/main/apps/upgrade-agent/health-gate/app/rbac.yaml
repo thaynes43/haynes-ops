@@ -66,3 +66,40 @@ subjects:
   - kind: ServiceAccount
     name: *app
     namespace: upgrade-agent # MUST match the pod's namespace (else every read 403s)
+---
+# Phase-D remediation-gating coordination (2026-07). The gate is otherwise STRICTLY
+# read-only (see the ClusterRole above). This is the ONE write it now has: stamp
+# `last_paged` on the shared runtime ConfigMap `upgrade-remediation-state` for page
+# de-dupe. NAME-SCOPED via resourceNames + verbs [get, update] ONLY — it cannot create,
+# delete, list, or watch, cannot touch ANY other ConfigMap, and reaches NO app namespace
+# (nothing security-relevant lives in upgrade-agent). triage (the shepherd SA) OWNS the
+# class/attempted/result fields and creates the CM; the gate only reads them and stamps
+# last_paged. This grants the gate NO ability to summon the LLM or push to the repo.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: upgrade-remediation-state-pager
+  namespace: upgrade-agent
+  labels:
+    app.kubernetes.io/name: upgrade-health-gate
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [upgrade-remediation-state]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: upgrade-remediation-state-pager
+  namespace: upgrade-agent
+  labels:
+    app.kubernetes.io/name: upgrade-health-gate
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: upgrade-remediation-state-pager
+subjects:
+  - kind: ServiceAccount
+    name: upgrade-health-gate
+    namespace: upgrade-agent
