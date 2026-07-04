@@ -40,6 +40,24 @@ localRedirectPolicy: true
 operator:
   replicas: 1
   rollOutPods: true
+  # Pin the operator to control-plane nodes. WHY (verified 2026-07-04 via
+  # `talosctl get kubeprismendpoints`): worker KubePrism (127.0.0.1:7445) has ONLY the
+  # Omni SideroLink apiserver endpoint (fdae:41e4:649b:9303::1:10000), while CP nodes
+  # also have localhost:6443 + the direct apiserver IPs. So an operator on a worker
+  # reaches the apiserver over a single SideroLink tunnel; under heavy worker load (the
+  # *arr pipeline) that path congests, the operator's 5s leader-election lease renewal
+  # times out, and it self-terminates (`Leader election lost`) into a crash-loop. On a
+  # CP node it uses a LOCAL apiserver and carries no download load. CP nodes are
+  # untainted (allowSchedulingOnControlPlanes), so no tolerations are needed.
+  nodeSelector:
+    kubernetes.io/os: linux
+    node-role.kubernetes.io/control-plane: ""
+  # Defense-in-depth: relax leader-election (defaults 15s/10s/2s) so a transient
+  # apiserver/KubePrism blip doesn't kill the operator even on a CP node.
+  extraArgs:
+    - --leader-election-lease-duration=30s
+    - --leader-election-renew-deadline=20s
+    - --leader-election-retry-period=4s
 rollOutCiliumPods: true
 routingMode: native
 securityContext:
