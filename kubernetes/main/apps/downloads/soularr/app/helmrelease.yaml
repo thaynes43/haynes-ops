@@ -45,9 +45,12 @@ spec:
             resources:
               requests:
                 cpu: 10m
-                memory: 128Mi
+                memory: 256Mi
               limits:
-                memory: 1Gi
+                # Soularr loads Lidarr's full wanted list into memory each run
+                # + slskd match results; 1Gi OOMKilled once the list battery
+                # (25 lists / 6k+ artists / 450+ backfill albums) landed.
+                memory: 4Gi
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
