@@ -1,0 +1,103 @@
+# Studio + special-genre list collections — restored from the LIVE 2023 config
+# (MovieLists.yml). radarr_tag / radarr_add_missing stripped (ARR-SAFE).
+#
+# TRAKT GAP: the deployed config.yml has no trakt block, so every trakt_list
+# collection is preserved but COMMENTED below. Add a trakt block to the kometa
+# externalsecret to re-enable them. imdb_search / imdb_list need no auth and are
+# active.
+templates:
+  Studio:
+    sort_title: "!C <<collection_name>>"
+  Special Genre:
+    sort_title: "!D <<collection_name>>"
+    collection_order: alpha
+
+collections:
+#####################################
+#         Studio Collections        #
+#####################################
+  Disney Animation:
+    template: {name: Studio}
+    imdb_search:
+      type: movie
+      company: co0074039
+      sort_by: release.desc
+      limit: 0
+    summary: "A collection of Disney Animation movies."
+    collection_order: custom
+    sync_mode: sync
+    url_poster: https://theposterdb.com/api/assets/11845
+  # Pixar Animation — needs trakt (trakt_list). Alternative: imdb_search company co0086397.
+  # Pixar Animation:
+  #   template: {name: Studio}
+  #   trakt_list: https://trakt.tv/users/linaspurinis/lists/pixar-movies
+  #   summary: "A collection of Pixar Animation movies."
+  #   collection_order: release
+  #   url_poster: https://theposterdb.com/api/assets/2190
+  Dreamworks Pictures:
+    template: {name: Studio}
+    imdb_search:
+      type: movie
+      company: co0819670
+      sort_by: release.desc
+      limit: 0
+    summary: "A collection of Dreamworks Pictures movies."
+    collection_order: custom
+    sync_mode: sync
+    url_poster: https://theposterdb.com/api/assets/57647
+  A24:
+    template: {name: Studio}
+    imdb_search:
+      type: movie
+      company: co0390816
+      sort_by: release.desc
+      limit: 0
+    summary: "A collection of A24 movies."
+    collection_order: custom
+    sync_mode: sync
+    url_poster: https://theposterdb.com/api/assets/139297
+  Roald Dahl:
+    template: {name: Studio}
+    imdb_list: https://www.imdb.com/list/ls046555751/
+    summary: "A collection of movies based off of the works of Roald Dahl."
+    collection_order: release
+    url_poster: https://theposterdb.com/api/assets/557888
+#####################################
+#      Special Genre Collections    #
+#####################################
+  # Top Ten Downloaded This Week — needs trakt (trakt_list).
+  # Top Ten Downloaded This Week:
+  #   template: {name: Special Genre}
+  #   trakt_list: https://trakt.tv/users/hdlists/lists/top-ten-pirated-movies-of-the-week-torrent-freak-com
+  #   summary: "A collection of movies that are the top downloaed of the week! Check back every week for what is popular."
+  #   url_poster: https://theposterdb.com/api/assets/374490
+  # Mind Fuck Movies — needs trakt (trakt_list).
+  # Mind Fuck Movies:
+  #   template: {name: Special Genre}
+  #   trakt_list: https://trakt.tv/users/hdlists/lists/mindfuck-movies
+  #   summary: "A collection of movies that will mess with your mind!"
+  #   url_poster: https://haynesnetwork.com/wp-content/uploads/2023/09/mindfuck.png
+  # Outer Space & Exploration Movies — needs trakt (trakt_list).
+  # Outer Space & Exploration Movies:
+  #   template: {name: Special Genre}
+  #   trakt_list: https://trakt.tv/users/hdlists/lists/outer-space-space-exploration-movies
+  #   summary: "Movies that feature outer space and exploration."
+  #   url_poster: https://haynesnetwork.com/wp-content/uploads/2023/09/Space-3.jpg
+  # Superhero Movies — needs trakt (trakt_list).
+  # Superhero Movies:
+  #   template: {name: Special Genre}
+  #   trakt_list: https://trakt.tv/users/hdlists/lists/superhero-movies-from-1980-to-today
+  #   summary: "Superhero movies released from 1980 until today."
+  #   url_poster: https://haynesnetwork.com/wp-content/uploads/2023/09/Super-Hero-3.jpg
+  # Standup Comedy — needs trakt (trakt_list).
+  # Standup Comedy:
+  #   template: {name: Special Genre}
+  #   trakt_list: https://trakt.tv/users/diverzija/lists/standup-comedy
+  #   summary: "A standup comedy collection from Trakt that looked pretty good!"
+  #   url_poster: https://haynesnetwork.com/wp-content/uploads/2023/09/Stand-Up.png
+  J-Horror:
+    template: {name: Special Genre}
+    imdb_list: https://www.imdb.com/list/ls023154794/
+    summary: "The best J-Horror movies around."
+    collection_order: release
+    url_poster: https://theposterdb.com/api/assets/51475

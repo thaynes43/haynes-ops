@@ -1,0 +1,77 @@
+# TV franchise / list collections — restored from the LIVE 2023 config (Shows.yml).
+# sonarr_tag stripped (ARR-SAFE). TVDb list builders need no auth (Kometa ships a
+# bundled TVDb key) and are active. The trakt-based ones (Adventure Time, the
+# Trakt charts) are preserved but COMMENTED — add a trakt block to config.yml to
+# re-enable.
+templates:
+  Shows:
+    sort_title: "!010B <<collection_name>>"
+    optional:
+      - tvdb_list_details
+      - tvdb_show
+    tvdb_list_details: <<tvdb_list_details>>
+    tvdb_show: <<tvdb_show>>
+    collection_order: custom
+    sync_mode: sync
+
+collections:
+#####################################
+#     General Shows Collections     #
+#####################################
+  # Adventure Time — needs trakt (trakt_list_details).
+  # Adventure Time:
+  #   template: {name: Shows, trakt_list_details: https://trakt.tv/users/drachenplatinum/lists/adventure-time}
+  #   url_poster: https://theposterdb.com/api/assets/273808
+  Arrowverse:
+    template: {name: Shows, tvdb_list_details: https://www.thetvdb.com/lists/arrowverse}
+  Avatar The Last Airbender:
+    template: {name: Shows, tvdb_list_details: https://www.thetvdb.com/lists/8116}
+  Band of Brothers:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/band-of-brothers}
+    url_poster: https://theposterdb.com/api/assets/63449
+  The Boys:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/the-boys}
+    sort_title: "!010B Boys"
+  Breaking Bad:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/breaking-bad}
+  Family Guy:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/family-guy}
+  Full House:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/full-house}
+  Game of Thrones:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/game-of-thrones}
+  Gilmore Girls:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/gilmore-girls}
+    url_poster: https://theposterdb.com/api/assets/361463
+  Marvel Cinematic Universe:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/marvel-cinematic-universe}
+  One Chicago:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/one-chicago}
+  Shondaverse:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/shondaverse}
+    url_poster: https://theposterdb.com/api/assets/371504
+  Sons of Anarchy:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/sons-of-anarchy}
+  Star Wars:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/star-wars}
+  Walking Dead:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/the-walking-dead, tvdb_show: 427464}
+  Yellowstone:
+    template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/yellowstone}
+
+#####################################
+#         Collection Builders       #
+#####################################
+  # Trakt charts — need a trakt block in config.yml.
+  # Trakt Trending:
+  #   sort_title: "!010C Trakt Trending"
+  #   trakt_chart: {chart: trending, limit: 18}
+  #   url_poster: https://theposterdb.com/api/assets/136358
+  # Trakt Popular:
+  #   sort_title: "!010C Trakt Popular"
+  #   trakt_chart: {chart: popular, limit: 18}
+  #   url_poster: https://theposterdb.com/api/assets/241646
+  # Trakt Recommended:
+  #   sort_title: "!010C Trakt Recommended"
+  #   trakt_chart: {chart: recommended, limit: 18}
+  #   url_poster: https://theposterdb.com/api/assets/204278

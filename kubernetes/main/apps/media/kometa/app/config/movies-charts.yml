@@ -1,10 +1,27 @@
-# Chart collections rebuilt from scratch (2026): the old config's
-# tmdb_popular/trakt_chart pulls had no language gate and flooded collections
-# (and, with add_missing, the radarr library) with international titles.
-# tmdb_discover filters SERVER-SIDE (with_original_language / vote_count.gte)
-# so nothing slow or foreign ever reaches Kometa. Display-only: no arr flags.
+# Chart / builder collections — modernized from the LIVE 2023 config
+# (MovieBuilders.yml). The old builders (tmdb_popular / trakt_chart) had NO
+# language gate and, with add_missing:true, flooded Radarr with international
+# titles — the core reason for this migration.
+#
+# MODERNIZATION:
+#   * tmdb_discover charts filter SERVER-SIDE (with_original_language: en,
+#     vote_count.gte) so foreign/low-vote titles never reach Kometa.
+#   * builders that can't filter server-side (imdb_chart, tmdb_now_playing) get
+#     CLIENT-SIDE filters (original_language / tmdb_vote_count).
+#   * curated quality lists (IMDb Top 250) stay unfiltered — acclaimed foreign
+#     films belong there.
+# ARR-SAFE: display-only, no radarr flags; add_missing/search false globally.
+#
+# TRAKT GAP: Trakt charts are preserved but COMMENTED (no trakt block in
+# config.yml). Add trakt to the externalsecret to re-enable them.
+templates:
+  Chart:
+    collection_order: custom
+    sync_mode: sync
+
 collections:
   Popular Now:
+    template: {name: Chart}
     sort_title: "!020 Popular Now"
     summary: "Currently popular English-language movies (in this library)"
     tmdb_discover:
@@ -12,10 +29,9 @@ collections:
       with_original_language: en
       vote_count.gte: 300
       limit: 60
-    sync_mode: sync
-    collection_order: custom
 
   Top Rated:
+    template: {name: Chart}
     sort_title: "!021 Top Rated"
     summary: "All-time top-rated English-language movies (in this library)"
     tmdb_discover:
@@ -23,5 +39,65 @@ collections:
       with_original_language: en
       vote_count.gte: 2000
       limit: 100
-    sync_mode: sync
-    collection_order: custom
+
+  Top Grossing:
+    template: {name: Chart}
+    sort_title: "!022 Top Grossing"
+    summary: "Highest-grossing English-language movies (in this library)"
+    tmdb_discover:
+      sort_by: revenue.desc
+      with_original_language: en
+      vote_count.gte: 300
+      limit: 100
+
+  In Theaters:
+    template: {name: Chart}
+    sort_title: "!023 In Theaters"
+    summary: "English-language movies now playing in theaters (in this library)"
+    tmdb_now_playing: 100
+    tmdb_region: US
+    filters:
+      - original_language: en
+      - tmdb_vote_count.gte: 25
+
+  IMDB Popular:
+    template: {name: Chart}
+    sort_title: "!024 IMDB Popular"
+    summary: "IMDb's most popular English-language movies (in this library)"
+    imdb_chart: popular_movies
+    filters:
+      - original_language: en
+      - tmdb_vote_count.gte: 300
+
+  IMDB Top 250:
+    template: {name: Chart}
+    sort_title: "!025 IMDB Top 250"
+    summary: "IMDb's Top 250 movies of all time (in this library)"
+    imdb_chart: top_movies
+
+  # ---- Trakt charts: need a trakt block in config.yml. Re-enable with the
+  #      original_language/vote filters below once trakt is configured. ----
+  # Trakt Trending:
+  #   template: {name: Chart}
+  #   sort_title: "!026 Trakt Trending"
+  #   trakt_chart:
+  #     chart: trending
+  #     limit: 30
+  #   filters:
+  #     - original_language: en
+  # Trakt Popular:
+  #   template: {name: Chart}
+  #   sort_title: "!027 Trakt Popular"
+  #   trakt_chart:
+  #     chart: popular
+  #     limit: 30
+  #   filters:
+  #     - original_language: en
+  # Trakt Recommended:
+  #   template: {name: Chart}
+  #   sort_title: "!028 Trakt Recommended"
+  #   trakt_chart:
+  #     chart: recommended
+  #     limit: 30
+  #   filters:
+  #     - original_language: en

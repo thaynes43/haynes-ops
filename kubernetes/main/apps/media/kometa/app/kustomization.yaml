@@ -10,9 +10,14 @@ resources:
 configMapGenerator:
   - name: kometa-config-files
     files:
+      - movies-franchises.yml=./config/movies-franchises.yml
+      - movies-people.yml=./config/movies-people.yml
+      - movies-lists.yml=./config/movies-lists.yml
       - movies-charts.yml=./config/movies-charts.yml
       - movies-collections.yml=./config/movies-collections.yml
+      - shows-franchises.yml=./config/shows-franchises.yml
       - shows-collections.yml=./config/shows-collections.yml
+      - music.yml=./config/music.yml
 generatorOptions:
   disableNameSuffixHash: true
   annotations:

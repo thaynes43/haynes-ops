@@ -1,0 +1,27 @@
+# Music collections — restored verbatim from the LIVE 2023 config (Music.yml).
+# NOTE: plexops currently exposes only "HOps Movies" and "HOps TV Shows" — there
+# is no Music library. This file is preserved so nothing is lost; the "HOps Music"
+# library is COMMENTED in config.yml (externalsecret.yaml). Uncomment it there
+# once a music library exists in Plex to activate these dynamic collections.
+templates:
+  genre collection:
+    smart_filter:
+      limit: 100
+      sort_by: plays.desc
+      all:
+        album_genre: <<value>>
+  mood collection:
+    smart_filter:
+      limit: 100
+      sort_by: plays.desc
+      all:
+        album_mood: <<value>>
+dynamic_collections:
+  Genres:         # mapping name does not matter just needs to be unique
+    type: album_genre
+    title_format: Top 100 <<key_name>> <<library_type>>s
+    template: genre collection
+  Moods:         # mapping name does not matter just needs to be unique
+    type: album_mood
+    title_format: Top 100 <<key_name>> Albums
+    template: mood collection

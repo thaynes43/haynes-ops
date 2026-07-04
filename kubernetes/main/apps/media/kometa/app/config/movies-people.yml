@@ -1,0 +1,357 @@
+# Director / Actor collections — restored from the LIVE 2023 config (MoviePeople.yml).
+#
+# MODERNIZATION: the old config built these with `tmdb_director_details` /
+# `tmdb_actor_details`, which are NOT valid Kometa builders (nightly) — they add
+# no items, so these collections would have been empty. Rebuilt on the supported
+# `tmdb_discover` person builders, keyed by the user's exact TMDb PERSON IDs:
+#   directors -> with_crew (their directing/crew filmography)
+#   actors    -> with_cast (their acting filmography)
+# `tmdb_profile` + `tmdb_biography` set the collection poster + summary from the
+# person (the intent of the old *_details keys). sort_by popularity.desc + a
+# generous limit ensures the person's library titles are captured.
+#
+# ARR-SAFE: radarr_tag / radarr_add_missing stripped. add_missing/search false
+# globally, so these organize EXISTING library items only (missing titles are
+# never sent to Radarr).
+#
+# Commented-out people below are preserved exactly as the user disabled them.
+# Multi-ID people (Coen Brothers) use comma = AND on with_crew (their joint films).
+templates:
+  Director:
+    sort_title: "!Y <<collection_name>>"
+    collection_order: release.desc
+    tmdb_discover:
+      with_crew: <<tmdb>>
+      sort_by: popularity.desc
+      limit: 250
+    tmdb_profile: <<tmdb>>
+    tmdb_biography: <<tmdb>>
+  Actor:
+    sort_title: "!Z <<collection_name>>"
+    collection_order: release.desc
+    tmdb_discover:
+      with_cast: <<tmdb>>
+      sort_by: popularity.desc
+      limit: 250
+    tmdb_profile: <<tmdb>>
+    tmdb_biography: <<tmdb>>
+
+collections:
+######################################################
+#                 Producers/Directors                #
+######################################################
+  Alfred Hitchcock:
+    template: {name: Director, tmdb: 2636}
+  Ari Aster:
+    template: {name: Director, tmdb: 1145520}
+  Christopher Nolan:
+    template: {name: Director, tmdb: 525}
+  Coen Brothers:
+    template: {name: Director, tmdb: "1223,1224"}
+    summary: "Joel Coen and Ethan Coen, collectively referred to as the Coen Brothers, are American film directors, producers, screenwriters, and editors. Their films span many genres and styles, which they frequently subvert or parody. Their most acclaimed works include: Raising Arizona (1987), Miller's Crossing (1990), Fargo (1996), The Big Lebowski (1998), O Brother, Where Art Thou? (2000), No Country for Old Men (2007), Burn After Reading (2008), A Serious Man (2009), True Grit (2010), Inside Llewyn Davis (2013), and The Ballad of Buster Scruggs (2018)."
+  David Lynch:
+    template: {name: Director, tmdb: 5602}
+  Edgar Wright:
+    template: {name: Director, tmdb: 11090}
+  James Cameron:
+    template: {name: Director, tmdb: 2710}
+  James Gunn:
+    template: {name: Director, tmdb: 15218}
+  Jon Favreau:
+    template: {name: Director, tmdb: 15277}
+  Jordan Peele:
+    template: {name: Director, tmdb: 291263}
+  M. Night Shyamalan:
+    template: {name: Director, tmdb: 11614}
+  Martin Scorsese:
+    template: {name: Director, tmdb: 1032}
+  Michael Bay:
+    template: {name: Director, tmdb: 865}
+  Quentin Tarantino:
+    template: {name: Director, tmdb: 138}
+  Ridley Scott:
+    template: {name: Director, tmdb: 578}
+  Stanley Kubrick:
+    template: {name: Director, tmdb: 240}
+  Steven Spielberg:
+    template: {name: Director, tmdb: 488}
+  Tim Burton:
+    template: {name: Director, tmdb: 510}
+  Wes Anderson:
+    template: {name: Director, tmdb: 5655}
+  Zack Snyder:
+    template: {name: Director, tmdb: 15217}
+
+######################################################
+#                       Actor                        #
+######################################################
+  Adam Sandler:
+    template: {name: Actor, tmdb: 19292}
+  #Al Pacino:
+  #  template: {name: Actor, tmdb: 1158}
+  #Amy Adams:
+  #  template: {name: Actor, tmdb: 9273}
+  #Angelina Jolie:
+  #  template: {name: Actor, tmdb: 11701}
+  #Anne Hathaway:
+  #  template: {name: Actor, tmdb: 1813}
+  #Anthony Hopkins:
+  #  template: {name: Actor, tmdb: 4173}
+  #Antonio Banderas:
+  #  template: {name: Actor, tmdb: 3131}
+  #Arnold Schwarzenegger:
+  #  template: {name: Actor, tmdb: 1100}
+  Ben Affleck:
+    template: {name: Actor, tmdb: 880}
+  #Ben Stiller:
+  #  template: {name: Actor, tmdb: 7399}
+  #Bill Murray:
+  #  template: {name: Actor, tmdb: 1532}
+  #Brad Pitt:
+  #  template: {name: Actor, tmdb: 287}
+  #Brendan Fraser:
+  #  template: {name: Actor, tmdb: 18269}
+  Bruce Lee:
+    template: {name: Actor, tmdb: 19429}
+  Bruce Willis:
+    template: {name: Actor, tmdb: 62}
+  #Cameron Diaz:
+  #  template: {name: Actor, tmdb: 6941}
+  #Carrie Fisher:
+  #  template: {name: Actor, tmdb: 4}
+  #Cate Blanchett:
+  #  template: {name: Actor, tmdb: 112}
+  #Catherine Zeta-Jones:
+  #  template: {name: Actor, tmdb: 1922}
+  #Channing Tatum:
+  #  template: {name: Actor, tmdb: 38673}
+  #Charlie Chaplin:
+  #  template: {name: Actor, tmdb: 13848}
+  #Charlize Theron:
+  #  template: {name: Actor, tmdb: 6885}
+  Christian Bale:
+    template: {name: Actor, tmdb: 3894}
+  Chris Evans:
+    template: {name: Actor, tmdb: 16828}
+  Chris Hemsworth:
+    template: {name: Actor, tmdb: 74568}
+  Chris Pratt:
+    template: {name: Actor, tmdb: 73457}
+  Chris Rock:
+    template: {name: Actor, tmdb: 2632}
+  Christopher Walken:
+    template: {name: Actor, tmdb: 4690}
+  Chuck Norris:
+    template: {name: Actor, tmdb: 51576}
+  Clint Eastwood:
+    template: {name: Actor, tmdb: 190}
+  Daniel Craig:
+    template: {name: Actor, tmdb: 8784}
+  #Dave Bautista:
+  #  template: {name: Actor, tmdb: 543530}
+  #Dave Chappelle:
+  #  template: {name: Actor, tmdb: 4169}
+  Denzel Washington:
+    template: {name: Actor, tmdb: 5292}
+  #Diane Keaton:
+  #  template: {name: Actor, tmdb: 3092}
+  #Don Cheadle:
+  #  template: {name: Actor, tmdb: 1896}
+  #Dustin Hoffman:
+  #  template: {name: Actor, tmdb: 4483}
+  Dwayne Johnson:
+    template: {name: Actor, tmdb: 18918}
+  Eddie Murphy:
+    template: {name: Actor, tmdb: 776}
+  #Edward Norton:
+  #  template: {name: Actor, tmdb: 819}
+  #Elliot Page:
+  #  template: {name: Actor, tmdb: 27578}
+  #Emily Blunt:
+  #  template: {name: Actor, tmdb: 5081}
+  Emma Stone:
+    template: {name: Actor, tmdb: 54693}
+  Emma Watson:
+    template: {name: Actor, tmdb: 10990}
+  #Ewan McGregor:
+  #  template: {name: Actor, tmdb: 3061}
+  Gene Wilder:
+    template: {name: Actor, tmdb: 3460}
+  George Clooney:
+    template: {name: Actor, tmdb: 1461}
+  Gerard Butler:
+    template: {name: Actor, tmdb: 17276}
+  Harrison Ford:
+    template: {name: Actor, tmdb: 3}
+  #Hayao Miyazaki:
+  #  template: {name: Actor, tmdb: 608}
+  Hugh Jackman:
+    template: {name: Actor, tmdb: 6968}
+  #Ian McKellen:
+  #  template: {name: Actor, tmdb: 1327}
+  #Ice Cube:
+  #  template: {name: Actor, tmdb: 9778}
+  #J.J. Abrams:
+  #  template: {name: Actor, tmdb: 15344}
+  Jack Black:
+    template: {name: Actor, tmdb: 70851}
+  Jack Nicholson:
+    template: {name: Actor, tmdb: 514}
+  Jackie Chan:
+    template: {name: Actor, tmdb: 18897}
+  #James Franco:
+  #  template: {name: Actor, tmdb: 17051}
+  #Jamie Foxx:
+  #  template: {name: Actor, tmdb: 134}
+  #Jason Bateman:
+  #  template: {name: Actor, tmdb: 23532}
+  #Jason Statham:
+  #  template: {name: Actor, tmdb: 976}
+  #Jeff Bridges:
+  #  template: {name: Actor, tmdb: 1229}
+  #Jeff Goldblum:
+  #  template: {name: Actor, tmdb: 4785}
+  #Jennifer Aniston:
+  #  template: {name: Actor, tmdb: 4491}
+  Jenna Ortega:
+    template: {name: Actor, tmdb: 974169}
+  Jennifer Lawrence:
+    template: {name: Actor, tmdb: 72129}
+  #Jesse Eisenberg:
+  #  template: {name: Actor, tmdb: 44735}
+  #Jessica Alba:
+  #  template: {name: Actor, tmdb: 56731}
+  #Jet Li:
+  #  template: {name: Actor, tmdb: 1336}
+  Jim Carrey:
+    template: {name: Actor, tmdb: 206}
+  John Candy:
+    template: {name: Actor, tmdb: 7180}
+  John Travolta:
+    template: {name: Actor, tmdb: 8891}
+  #John Wayne:
+  #  template: {name: Actor, tmdb: 4165}
+  Johnny Depp:
+    template: {name: Actor, tmdb: 85}
+  Julia Roberts:
+    template: {name: Actor, tmdb: 1204}
+  Kevin Bacon:
+    template: {name: Actor, tmdb: 4724}
+  #Kevin Costner:
+  #  template: {name: Actor, tmdb: 1269}
+  #Kevin Hart:
+  #  template: {name: Actor, tmdb: 55638}
+  #Kevin Smith:
+  #  template: {name: Actor, tmdb: 19303}
+  Leonardo DiCaprio:
+    template: {name: Actor, tmdb: 6193}
+  Liam Neeson:
+    template: {name: Actor, tmdb: 3896}
+  Lucy Liu:
+    template: {name: Actor, tmdb: 140}
+  Mark Wahlberg:
+    template: {name: Actor, tmdb: 13240}
+  Martin Short:
+    template: {name: Actor, tmdb: 519}
+  Matt Damon:
+    template: {name: Actor, tmdb: 1892}
+  #Matthew McConaughey:
+  #  template: {name: Actor, tmdb: 10297}
+  #Megan Fox:
+  #  template: {name: Actor, tmdb: 19537}
+  Mel Brooks:
+    template: {name: Actor, tmdb: 14639}
+  Mel Gibson:
+    template: {name: Actor, tmdb: 2461}
+  Melissa McCarthy:
+    template: {name: Actor, tmdb: 55536}
+  Meryl Streep:
+    template: {name: Actor, tmdb: 5064}
+  #Michael Caine:
+  #  template: {name: Actor, tmdb: 3895}
+  Michael Keaton:
+    template: {name: Actor, tmdb: 2232}
+  Mike Myers:
+    template: {name: Actor, tmdb: 12073}
+  Mila Kunis:
+    template: {name: Actor, tmdb: 18973}
+  #Milla Jovovich:
+  #  template: {name: Actor, tmdb: 63}
+  Morgan Freeman:
+    template: {name: Actor, tmdb: 192}
+  Natalie Portman:
+    template: {name: Actor, tmdb: 524}
+  Nicolas Cage:
+    template: {name: Actor, tmdb: 2963}
+  #Nicole Kidman:
+  #  template: {name: Actor, tmdb: 2227}
+  #Orlando Bloom:
+  #  template: {name: Actor, tmdb: 114}
+  #Owen Wilson:
+  #  template: {name: Actor, tmdb: 887}
+  #Patrick Stewart:
+  #  template: {name: Actor, tmdb: 2387}
+  Reese Witherspoon:
+    template: {name: Actor, tmdb: 368}
+  Robert De Niro:
+    template: {name: Actor, tmdb: 380}
+  Robert Downey Jr.:
+    template: {name: Actor, tmdb: 3223}
+  Robin Williams:
+    template: {name: Actor, tmdb: 2157}
+  #Rosario Dawson:
+  #  template: {name: Actor, tmdb: 5916}
+  #Ryan Gosling:
+  #  template: {name: Actor, tmdb: 30614}
+  Ryan Reynolds:
+    template: {name: Actor, tmdb: 10859}
+  Samuel L. Jackson:
+    template: {name: Actor, tmdb: 2231}
+  Sandra Bullock:
+    template: {name: Actor, tmdb: 18277}
+  Sacha Baron Cohen:
+    template: {name: Actor, tmdb: 6730}
+  Scarlett Johansson:
+    template: {name: Actor, tmdb: 1245}
+  Sean Connery:
+    template: {name: Actor, tmdb: 738}
+  #Seth Rogen:
+  #  template: {name: Actor, tmdb: 19274}
+  #Shia LaBeouf:
+  #  template: {name: Actor, tmdb: 10959}
+  #Steve Buscemi:
+  #  template: {name: Actor, tmdb: 884}
+  Steve Carell:
+    template: {name: Actor, tmdb: 4495}
+  Steve Martin:
+    template: {name: Actor, tmdb: 67773}
+  #Steven Seagal:
+  #  template: {name: Actor, tmdb: 23880}
+  Sylvester Stallone:
+    template: {name: Actor, tmdb: 16483}
+  Taika Waititi:
+    template: {name: Actor, tmdb: 55934}
+  Tom Cruise:
+    template: {name: Actor, tmdb: 500}
+  Timothée Chalamet:
+    template: {name: Actor, tmdb: 1190668}
+  Tom Hanks:
+    template: {name: Actor, tmdb: 31}
+  Tom Holland:
+    template: {name: Actor, tmdb: 1136406}
+  #Tommy Lee Jones:
+  #  template: {name: Actor, tmdb: 2176}
+  Vin Diesel:
+    template: {name: Actor, tmdb: 12835}
+  #Vince Vaughn:
+  #  template: {name: Actor, tmdb: 4937}
+  #Wesley Snipes:
+  #  template: {name: Actor, tmdb: 10814}
+  Will Ferrell:
+    template: {name: Actor, tmdb: 23659}
+  Will Smith:
+    template: {name: Actor, tmdb: 2888}
+  Woody Harrelson:
+    template: {name: Actor, tmdb: 57755}
+  Zendaya:
+    template: {name: Actor, tmdb: 505710}
