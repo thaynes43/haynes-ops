@@ -25,8 +25,13 @@ spec:
               protocol: ANY
           rules:
             dns:
+              # Cilium `*` does NOT cross label boundaries — "*.cluster.local" never
+              # matched the multi-label Prometheus FQDN, so triage's Prometheus checks
+              # were silently blind (proven live 2026-07-04). Exact matchName fixes it
+              # without widening the DNS-tunnel-exfil surface.
               - matchPattern: "*.cluster.local"
               - matchPattern: "*.svc"
+              - matchName: "kube-prometheus-stack-prometheus.observability.svc.cluster.local"
               - matchName: "github.com"          # apex — *.github.com does NOT match it
               - matchPattern: "*.github.com"
               - matchPattern: "*.githubusercontent.com"

@@ -49,9 +49,19 @@ crit="$(curl -sf --max-time 15 "$PROM/api/v1/query" --data-urlencode 'query=ALER
   | jq -r '[.data.result[].metric.alertname] | unique | join(",")' 2>/dev/null)"
 [ -n "$crit" ] && REG="${REG:+$REG; }Critical alerts: ${crit}"
 # Pods crashlooping/failed now AND 10m ago (persisted past a cycle).
-q='( (kube_pod_container_status_waiting_reason{reason=~"CrashLoopBackOff|ImagePullBackOff|CreateContainerError"}==1) or (kube_pod_status_phase{phase=~"Failed|Unknown"}==1) ) and ( (kube_pod_container_status_waiting_reason{reason=~"CrashLoopBackOff|ImagePullBackOff|CreateContainerError"}==1) or (kube_pod_status_phase{phase=~"Failed|Unknown"}==1) ) offset 10m'
-pods="$(curl -sf --max-time 15 "$PROM/api/v1/query" --data-urlencode "query=$q" 2>/dev/null | jq -r '[.data.result[].metric.pod] | unique | join(",")' 2>/dev/null)"
-[ -n "$pods" ] && REG="${REG:+$REG; }Pods unhealthy (persisted): ${pods}"
+# PromQL gotcha (bit us 2026-07-04): `offset` must directly follow a SELECTOR —
+# `(expr) offset 10m` is a parse error → Prometheus 400 → `curl -sf` empty → the
+# check silently read as healthy. Keep offset per-selector; log if the query fails.
+w='kube_pod_container_status_waiting_reason{reason=~"CrashLoopBackOff|ImagePullBackOff|CreateContainerError"}'
+p='kube_pod_status_phase{phase=~"Failed|Unknown"}'
+q="( (${w} == 1) or (${p} == 1) ) and ( (${w} offset 10m == 1) or (${p} offset 10m == 1) )"
+pods_json="$(curl -sf --max-time 15 "$PROM/api/v1/query" --data-urlencode "query=$q" 2>/dev/null)"
+if [ -z "$pods_json" ]; then
+  log "WARN: persisted-pods query failed (parse/timeout) — pods dimension blind this run."
+else
+  pods="$(echo "$pods_json" | jq -r '[.data.result[].metric.pod] | unique | join(",")' 2>/dev/null)"
+  [ -n "$pods" ] && REG="${REG:+$REG; }Pods unhealthy (persisted): ${pods}"
+fi
 
 if [ -z "$REG" ]; then
   log "recent merge but cluster is healthy — no regression. exit."
