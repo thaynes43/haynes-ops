@@ -26,8 +26,15 @@ spec:
               protocol: ANY
           rules:
             dns:
+              # Cilium `*` does NOT cross label boundaries: "*.cluster.local" matches
+              # only single-label names under it, so multi-label service FQDNs were
+              # silently unresolvable (proven live 2026-07-04 — the gate's Prometheus
+              # + HA checks were BLIND since deploy). Exact matchNames for the two
+              # services keep the DNS-tunnel-exfil surface closed.
               - matchPattern: "*.cluster.local"
               - matchPattern: "*.svc"
+              - matchName: "kube-prometheus-stack-prometheus.observability.svc.cluster.local"
+              - matchName: "home-assistant.home-automation.svc.cluster.local"
               - matchName: "api.pushover.net"
     # 2. Kube API server — the ONLY cluster read path (Flux CRs via kubectl).
     - toEntities: [kube-apiserver]

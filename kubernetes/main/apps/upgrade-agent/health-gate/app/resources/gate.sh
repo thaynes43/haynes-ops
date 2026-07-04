@@ -59,14 +59,28 @@ fi
 
 if [ "$PROM_OK" -eq 0 ]; then
   # ---- Check 2: pods bad NOW and at offset (persisted past a cycle) => regression. ----
-  waiting='kube_pod_container_status_waiting_reason{reason=~"CrashLoopBackOff|ImagePullBackOff|ErrImagePull|CreateContainerError|CreateContainerConfigError"} == 1'
-  phase='kube_pod_status_phase{phase=~"Pending|Failed|Unknown"} == 1'
-  q_pods="( (${waiting}) or (${phase}) ) and ( (${waiting}) or (${phase}) ) offset ${OFFSET}"
-  gt0 "$(prom_count "$q_pods")" && page critical pods "$(prom_names "$q_pods" pod)" "Pod(s) unhealthy now AND ${OFFSET} ago (persisted): $(prom_names "$q_pods" pod)"
+  # PromQL gotcha (bit us 2026-07-04): `offset` must directly follow a SELECTOR —
+  # `(expr) offset 10m` is a parse error, Prometheus 400s, `curl -sf` returns empty,
+  # and the check silently read as green. Keep offset per-selector, and treat an
+  # empty (failed) query as BLIND (warn), never as healthy.
+  waiting_sel='kube_pod_container_status_waiting_reason{reason=~"CrashLoopBackOff|ImagePullBackOff|ErrImagePull|CreateContainerError|CreateContainerConfigError"}'
+  phase_sel='kube_pod_status_phase{phase=~"Pending|Failed|Unknown"}'
+  q_pods="( (${waiting_sel} == 1) or (${phase_sel} == 1) ) and ( (${waiting_sel} offset ${OFFSET} == 1) or (${phase_sel} offset ${OFFSET} == 1) )"
+  c_pods="$(prom_count "$q_pods")"
+  if [ -z "$c_pods" ]; then
+    page warning gate-blind pods "Pods persisted-unhealthy query failed (parse/timeout) — pods dimension is blind."
+  elif gt0 "$c_pods"; then
+    page critical pods "$(prom_names "$q_pods" pod)" "Pod(s) unhealthy now AND ${OFFSET} ago (persisted): $(prom_names "$q_pods" pod)"
+  fi
 
   # ---- Check 3: ExternalSecret Ready=False persisted past a cycle. ----
   q_eso='(externalsecret_status_condition{condition="Ready",status="False"} == 1) and (externalsecret_status_condition{condition="Ready",status="False"} offset '"$OFFSET"' == 1)'
-  gt0 "$(prom_count "$q_eso")" && page critical eso "$(prom_names "$q_eso" name)" "ExternalSecret(s) Ready=False, persisted ${OFFSET}: $(prom_names "$q_eso" name)"
+  c_eso="$(prom_count "$q_eso")"
+  if [ -z "$c_eso" ]; then
+    page warning gate-blind eso "ExternalSecret persisted query failed (parse/timeout) — ESO dimension is blind."
+  elif gt0 "$c_eso"; then
+    page critical eso "$(prom_names "$q_eso" name)" "ExternalSecret(s) Ready=False, persisted ${OFFSET}: $(prom_names "$q_eso" name)"
+  fi
 
   # ---- Check 4: any firing severity=critical (already 'for:'-debounced by the rules). ----
   q_crit='ALERTS{alertstate="firing",severity="critical"}'
@@ -79,11 +93,21 @@ if [ "$PROM_OK" -eq 0 ]; then
   elif [ "$ceph" = "1" ]; then
     log "note: ceph HEALTH_WARN (==1) — benign unless a NEW OSD/PG/mon fault (see runbook allowlist)."
   fi
+else
+  # Prometheus alone unreachable => checks 2-5 are dark. Blind is NOT green — warn.
+  # (Bit us 2026-07-04: a CNP DNS gap made Prometheus unresolvable since deploy and
+  # the gate quietly ran as a 2-check gate.)
+  page warning gate-blind prometheus "Prometheus unreachable — pods/ESO/alerts/Ceph dimensions are blind this cycle."
 fi
 
 # ---- Check 6: Home Assistant availability (only if HASS_TOKEN is set). ----
 if [ -n "${HASS_TOKEN:-}" ]; then
   hastate() { curl -sf --max-time 10 -H "Authorization: Bearer $HASS_TOKEN" "$HA/api/states/$1" 2>/dev/null | jq -r '.state // "ERR"' 2>/dev/null; }
+  # Blind is NOT green: if the HA API itself is unreachable, warn instead of silently
+  # skipping (hastate returns ""/ERR on curl failure, which pages nothing).
+  if ! curl -sf --max-time 10 -H "Authorization: Bearer $HASS_TOKEN" "$HA/api/" >/dev/null 2>&1; then
+    page warning gate-blind home-assistant "HA API unreachable — Zigbee/lock dimensions are blind this cycle."
+  else
   z2m="$(hastate binary_sensor.zigbee2mqtt_bridge_connection_state)"
   [ "$z2m" = "off" ] && page critical ha zigbee2mqtt "Zigbee2MQTT bridge connection == off (mesh down / Z2M-HA restart race)."
   for lk in front_door_lock side_door_lock bulkhead_lock mudroom_door_lock; do
@@ -91,6 +115,7 @@ if [ -n "${HASS_TOKEN:-}" ]; then
     case "$st" in unavailable|unknown) page critical ha "lock.$lk" "Door lock lock.$lk == $st." ;; esac
   done
   # Spa (Gecko in.touch3) is chronically flaky over RF — benign, deliberately NOT paged.
+  fi
 fi
 
 # ---- Dead-man's-switch: a successful cycle pings the heartbeat (if configured). ----

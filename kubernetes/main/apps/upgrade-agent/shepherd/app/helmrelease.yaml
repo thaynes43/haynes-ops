@@ -103,15 +103,17 @@ spec:
               readOnlyRootFilesystem: true
               capabilities:
                 drop: ["ALL"]
-      # ── Phase 4b.3 auto-summon (SUSPENDED groundwork) ──────────────────────────
-      # Deterministic (no-LLM) triage: on a schedule, summon MODE=remediate ONLY when a
-      # regression correlates with a recent merge to main. Inert until unsuspended +
-      # scheduled (the Tom-gated final flip). Reuses the shared SA/secrets/CNP/volumes.
+      # ── Phase 4b.3 auto-summon (LIVE 2026-07-03) ───────────────────────────────
+      # Deterministic (no-LLM) triage: every 30 min, summon MODE=remediate ONLY when a
+      # regression correlates with a recent merge to main (healthy path = $0, proven).
+      # Reuses the shared SA/secrets/CNP/volumes; spend-guarded in run-shepherd.sh.
+      # Kill switch (instant, no git):
+      #   kubectl -n upgrade-agent patch cronjob upgrade-shepherd-triage -p '{"spec":{"suspend":true}}'
       triage:
         type: cronjob
         cronjob:
-          suspend: true
-          schedule: "0 0 31 2 *"        # 31 Feb — never fires until the final flip
+          suspend: false
+          schedule: "*/30 * * * *"
           concurrencyPolicy: Forbid
           backoffLimit: 0
           successfulJobsHistory: 3

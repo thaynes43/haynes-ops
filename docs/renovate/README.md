@@ -491,8 +491,29 @@ EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/is
   (see "Phase-D auto-merge ramp"). Spend guard verified recording ($1.84/$50 MTD).
   One backlog artifact handled: PRs opened before Phase B lack the now-required
   `Diff Scope - Success` on their head SHA — close/reopen re-fires it (new PRs get it
-  automatically). Triage auto-summon (`upgrade-shepherd-triage`) enabled separately
-  after soak.
+  automatically). Triage auto-summon (`upgrade-shepherd-triage`) enabled on `*/30`
+  after validating both paths with one-off jobs: healthy path exits pre-LLM at $0
+  (recent merges + green cluster), and an induced benign regression (throwaway-ns
+  ImagePullBackOff persisted >10m right after a merge) summons `MODE=remediate`.
+  During the flux upgrade a REAL wedge surfaced — the cluster's image.toolkit CRDs
+  still stored `v1beta2` (etcd bookkeeping, invisible to repo-side vetting) — the flux
+  ks failed Ready **fail-safe** (nothing applied), remediated with the official
+  `flux migrate` (operator-approved break-glass); pre-flight check added to the flux
+  playbook.
+
+  **The induced-regression drill caught two REAL monitoring bugs** (both fixed in the
+  same PR, both of the "silent false-negative" class): (1) the persisted-pods PromQL
+  in gate.sh/triage.sh used `(expr) offset 10m` — a **parse error**; Prometheus 400'd,
+  `curl -sf` returned empty, and the check read as healthy forever (offset must follow
+  a selector). (2) Worse: the agents' CiliumNetworkPolicy DNS allowlist
+  (`*.cluster.local`) never matched multi-label service FQDNs (Cilium `*` doesn't
+  cross dots), so **the live health gate's Prometheus (pods/ESO/alerts/Ceph) and HA
+  checks had been silently blind since deploy** — it was effectively a 2-check
+  (Flux-only) gate. Fixed with exact `matchName` entries (keeps DNS-exfil closed) +
+  "blind is NOT green" warnings whenever Prometheus/HA are unreachable or a query
+  fails. Lesson (same class as the Phase-C `result==error` miss): **a monitoring
+  check must be proven able to FIRE, not just observed quiet** — the drill exists for
+  exactly this.
 
 - **2026-07-02** — **Tier-4 Phase C: all three Kyverno policies now ENFORCE.**
   After building the exception set to audit-clean (registry rewrite for normalized
