@@ -395,18 +395,31 @@ Structural backstops regardless of prompt: diff-scope (bot PRs must be pure bump
 `kubernetes/**`), required checks, non-admin bot, Kyverno enforce, the $50/mo spend
 guard, and the health gate + guardrail alerts.
 
-| Component | In ramp since | Notes |
-|---|---|---|
-| `coredns` | 2026-07-03 | clean rollback |
-| `traefik` | 2026-07-03 | clean; internal→external order per playbook |
-| `multus` | 2026-07-03 | clean, node-wide blast on breakage (gate catches) |
-| `device-plugins` | 2026-07-03 | clean; Plex-unschedulable failure mode |
-| `flux` | 2026-07-03 | first proven auto-merge (#1917, v2.9.0, 2026-07-03) |
+| Component | Class | In ramp since | Notes |
+|---|---|---|---|
+| `coredns` | stateless | 2026-07-03 | clean rollback |
+| `traefik` | stateless | 2026-07-03 | clean; internal→external order per playbook |
+| `multus` | stateless | 2026-07-03 | clean, node-wide blast on breakage (gate catches) |
+| `device-plugins` | stateless | 2026-07-03 | clean; Plex-unschedulable failure mode |
+| `flux` | stateless | 2026-07-03 | first proven auto-merge (#1917, v2.9.0, 2026-07-03) |
+| `immich` | **stateful** | 2026-07-05 | first stateful add; minor/patch image bumps only, backup-gated on `postgres16-pgvecto` (@daily ScheduledBackup); **majors stay author-only** (one-way PG migration — v2→v3 was hand-run). Health-gate + auto-revert catch a bad minor. |
 
-Explicitly **excluded** (never in the ramp without a design change): all majors, the
-HA pod group, cnpg, rook-ceph/ceph-csi-drivers, cilium, authentik, emqx,
-dragonfly-operator. Supporting-edit upgrades arrive as shepherd-authored `shepherd/*`
-PRs for **human merge** (diff-scope structurally blocks the bot auto-merging those).
+**Two ramp classes.** *Stateless* clean-tier components auto-merge any pure bump. A
+*stateful* leaf app (durable DB/PVC) auto-merges only **minor/patch** pure image bumps,
+and only after the **backup gate** (`--append-system-prompt` in `run-shepherd.sh`)
+confirms a recent <24h successful backup of its data store — else the shepherd HOLDs and
+the CNPG/VolSync backup-failure alert pages. A stateful **major** (one-way migration) is
+always shepherd-authored for **human merge**. Widen the stateful class one leaf app at a
+time, verifying its data store has a working scheduled backup first (else the gate HOLDs
+it forever). Next candidates in this class: `paperless`, media leaf apps — **not** the
+`*arr` set while their Unraid→cluster migration is in flight, and **not** SSO (`authentik`).
+
+Explicitly **excluded** (never in the ramp without a design change): operator/DB-engine
+bumps (cnpg, rook-ceph/ceph-csi-drivers, dragonfly-operator, emqx), cilium, the HA pod
+group, authentik, and all majors except where a stateful leaf app's major is explicitly
+author-only above. Supporting-edit upgrades arrive as shepherd-authored `shepherd/*`
+PRs for **human merge** (diff-scope structurally blocks the bot auto-merging those —
+until the operator-gated diff-scope widening lands).
 
 Kill switch: `kubectl -n upgrade-agent patch cronjob upgrade-shepherd -p '{"spec":{"suspend":true}}'`.
 
