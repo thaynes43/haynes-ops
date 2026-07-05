@@ -76,6 +76,14 @@
         'kubernetes/*/apps/office/**',
         'kubernetes/*/apps/photos/**',
         'kubernetes/*/apps/observability/**',
+        // home-automation added 2026-07-05 (hands-off directive: only cluster-breakers
+        // stay manual). All leaf apps — HA, esphome, z2m, zwave, music-assistant,
+        // appdaemon, go2rtc, ha-mcp, music-assistant — plain Deployments, no operator/
+        // CRD/StatefulSet. HA + z2m are the highest-blast members (a bad bump degrades
+        // the smart home, not the cluster); the flux-local gate + the HA watchdogs +
+        // nightly HA backups are the safety net. appdaemon is ghcr.io/thaynes43/* (also
+        // Tier-2 by the "our own images" rule).
+        'kubernetes/*/apps/home-automation/**',
       ],
       // 'digest' (2026-06-28): SHA-pinned image refreshes on the SAME tag are at
       // least as safe as minor/patch for these stateless single-pod apps, yet the
@@ -116,14 +124,13 @@
       ignoreTests: false,
       minimumReleaseAge: '3 days',
     },
-    // Carve-out: Immich ships breaking schema/DB migrations even on minor and
-    // documents manual upgrade steps — keep it MANUAL despite living in photos/.
-    // (Scoped to immich-app/* so it does NOT catch our ghcr.io/thaynes43/hass-immich-addon.)
-    {
-      description: 'Immich: breaking migrations -> never auto-merge',
-      matchDatasources: ['docker'],
-      matchPackageNames: ['/immich-app//'],
-      automerge: false,
-    },
+    // Immich carve-out REMOVED 2026-07-05 (hands-off directive). Immich minor/patch/
+    // digest now auto-merge via the photos leaf-app rule above — it is not cluster-
+    // breaking, and the safety net (flux-local + health gate + auto-revert + the daily
+    // postgres16-pgvecto backup + the CNPG backup-failure alerts) covers a bad minor
+    // migration. Immich MAJORS still never auto-merge here (the leaf rule is minor/
+    // patch/digest only) — the upgrade-shepherd owns immich majors (reads the release
+    // notes, backup-gates, and auto-merges a pure major or authors a supporting-edit PR
+    // for review). See kubernetes/main/apps/upgrade-agent/shepherd + docs/renovate/README.md.
   ],
 }

@@ -1,0 +1,106 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# PR disposition labeler — makes the auto-merge board visible on the PR list itself,
+# so "which merges itself vs which is waiting for me" is readable at a glance (the
+# renovate/type labels don't tell you). Labels each OPEN Renovate PR with exactly one:
+#
+#   disposition:auto-merge  — GitHub auto-merge is enabled (Renovate Tier-0/2); it merges
+#                             itself when checks go green. Nothing for you to do.
+#   disposition:shepherd    — a shepherd-ramp component (coredns/traefik/multus/
+#                             device-plugins/flux, or an immich major); the daily
+#                             upgrade-shepherd run vets + auto-merges it. Nothing for you.
+#   disposition:stranded    — waiting for YOU: a cluster-breaker, a non-ramp major, or
+#                             anything else outside both auto paths.
+#
+# Read-only classification; only manipulates its own three labels. Runs on a schedule
+# (catches Renovate enabling auto-merge after it re-evaluates) + on demand.
+name: PR Disposition
+
+on:
+  schedule:
+    - cron: '17 */2 * * *'   # every 2h at :17
+  workflow_dispatch: {}
+
+concurrency:
+  group: pr-disposition
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    name: Label open Renovate PRs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const OWNER = context.repo.owner, REPO = context.repo.repo;
+            // ── policy mirrors (keep in sync with .renovate/autoMerge.json5 + the
+            //    shepherd HR UPGRADE_AGENT_PREFILTER_GLOBS) ────────────────────────────
+            // Renovate Tier-2 auto-merges minor/patch/digest in these leaf-app domains:
+            const TIER2_DOMAINS = ['media','ai','downloads','frontend','office','photos','observability','home-automation'];
+            // ...and these curated kube-system/network leaves (by <domain>/<app>):
+            const CURATED_LEAVES = ['kube-system/metrics-server','kube-system/reloader','kube-system/reflector','kube-system/k8tz','kube-system/spegel','network/cloudflare-ddns'];
+            // Shepherd-ramp clean-tier prefixes (shepherd auto-merges these, incl. minor):
+            const RAMP_CLEAN = [
+              'kubernetes/main/apps/kube-system/coredns/','kubernetes/edge/apps/kube-system/coredns/',
+              'kubernetes/main/apps/network/traefik/','kubernetes/main/apps/network/multus/',
+              'kubernetes/main/apps/kube-system/generic-device-plugin/','kubernetes/main/apps/kube-system/intel-device-plugin/',
+              'kubernetes/main/apps/kube-system/nvidia-device-plugin/','kubernetes/main/flux/','kubernetes/edge/flux/',
+            ];
+            const IMMICH = 'kubernetes/main/apps/photos/immich/';
+            const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded'];
+            const isRenovate = (l) => /renovate/i.test(l || '');
+            const tier2Path = (p) => {
+              const m = p.match(/^kubernetes\/[^/]+\/apps\/([^/]+)\/(.+)$/);
+              if (!m) return false;
+              if (TIER2_DOMAINS.includes(m[1])) return true;
+              return CURATED_LEAVES.includes(m[1] + '/' + m[2].split('/')[0]);
+            };
+
+            const prs = await github.paginate(github.rest.pulls.list, { owner: OWNER, repo: REPO, state: 'open', per_page: 100 });
+            let n = 0;
+            for (const pr of prs) {
+              if (!isRenovate(pr.user && pr.user.login)) continue;
+              n++;
+              const files = await github.paginate(github.rest.pulls.listFiles, { owner: OWNER, repo: REPO, pull_number: pr.number, per_page: 100 });
+              const paths = files.map(f => f.filename);
+              const labelNames = (pr.labels || []).map(l => l.name);
+              const brtitle = (pr.head.ref + ' ' + pr.title).toLowerCase();
+              const isMajor = labelNames.includes('type/major');
+              const isImmich = paths.some(p => p.startsWith(IMMICH));
+              const inCleanRamp = paths.some(p => RAMP_CLEAN.some(r => p.startsWith(r)));
+              // Tier-2 auto-merge PREDICTION (Renovate will enable GH auto-merge on its
+              // next run even if pr.auto_merge is not set yet): every changed file is
+              // Tier-2-eligible, it's not a major, and nothing is held.
+              const allTier2 = paths.length > 0 && paths.every(tier2Path);
+              const ownImage = /thaynes43/.test(brtitle) || /kube-prometheus-stack/.test(brtitle);
+              const ghActions = paths.length > 0 && paths.every(p => p.startsWith('.github/'));
+
+              let want;
+              if (pr.auto_merge) {
+                want = 'disposition:auto-merge';                       // ground truth
+              } else if (isImmich && isMajor) {
+                want = 'disposition:shepherd';                         // immich major → shepherd
+              } else if (!isMajor && (allTier2 || ownImage || ghActions)) {
+                want = 'disposition:auto-merge';                       // Renovate Tier-0/2 (pending its next run)
+              } else if (!isMajor && inCleanRamp) {
+                want = 'disposition:shepherd';                         // clean-tier ramp → shepherd
+              } else {
+                want = 'disposition:stranded';                         // cluster-breaker / non-ramp major / other → you
+              }
+
+              for (const d of DISPOS) {
+                if (d !== want && labelNames.includes(d)) {
+                  try { await github.rest.issues.removeLabel({ owner: OWNER, repo: REPO, issue_number: pr.number, name: d }); } catch (e) {}
+                }
+              }
+              if (!labelNames.includes(want)) {
+                await github.rest.issues.addLabels({ owner: OWNER, repo: REPO, issue_number: pr.number, labels: [want] });
+              }
+              core.info(`#${pr.number} ${pr.title.slice(0,60)} -> ${want}`);
+            }
+            core.info(`Classified ${n} open Renovate PR(s).`);

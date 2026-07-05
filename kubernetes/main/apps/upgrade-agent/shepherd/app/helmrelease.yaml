@@ -15,8 +15,9 @@ spec:
         type: cronjob
         # PHASE D LIVE (2026-07-03): scheduled unattended auto-merge, ONE PR/day max,
         # scope-constrained by UPGRADE_AGENT_PROMPT below — the stateless clean-rollback
-        # tier PLUS stateful leaf apps (immich, 2026-07-05) whose minor/patch bumps are
-        # gated by the backup check + health gate + auto-revert (majors stay author-only).
+        # tier PLUS immich MAJORS (2026-07-05; backup-gated auto-merge for a pure major,
+        # author-only if it needs a supporting edit). Non-cluster-breaker LEAF apps
+        # (incl. immich minor/patch) auto-merge via Renovate Tier-2, not here.
         # Server-side safety: the bot is non-admin/non-bypass — `gh pr merge --auto`
         # only queues; GitHub merges only when Flux Local AND Diff Scope are green.
         # Kill switch (instant, no git):
@@ -91,30 +92,30 @@ spec:
                 AUTO-MERGE SCOPE (current ramp) — two classes:
                 (1) STATELESS clean-tier: coredns, traefik, multus, device-plugins, flux
                 — any pure version/chart/digest bump (incl. minor). No backup needed.
-                (2) STATEFUL leaf app: immich (kubernetes/main/apps/photos/immich). Only
-                MINOR or PATCH pure image bumps, and ONLY after the BACKUP GATE passes
-                (verify a recent <24h successful backup of its DB cluster
-                postgres16-pgvecto per the append-system-prompt rule; if none, HOLD). For
-                an immich MAJOR (one-way Postgres migration — v2->v3 was one), do NOT
-                auto-merge: author the PR on a NEW branch shepherd/immich-<version> with
-                the breaking-change + backup analysis for HUMAN merge.
-                In BOTH classes, nothing that needs a supporting values edit auto-merges.
+                (2) STATEFUL — immich MAJORS (kubernetes/main/apps/photos/immich).
+                Renovate auto-merges immich MINOR/PATCH itself now — if the only in-scope
+                immich PR is a minor/patch, LEAVE it (Renovate owns it, do not act). You
+                own immich MAJORS: after the BACKUP GATE passes (recent <24h backup of its
+                DB cluster postgres16-pgvecto per the append-system-prompt rule; if none,
+                HOLD), a major that is a PURE image bump needing NO supporting edit is
+                treated like class (1) and auto-merged; a major needing a supporting
+                values edit is authored for review (diff-scope holds it for a human).
                 Survey open Renovate PRs (gh pr list); pick the NEXT in-scope PR by the
                 runbook merge-order table. CONSULT .renovate/holds.json5 FIRST — skip
                 anything held. Read the release notes and the component playbook
                 (.agents/runbooks/tier4-component-playbooks.md). If it is an in-scope pure
-                bump needing NO supporting edit (and, for immich, a minor/patch that
-                clears the backup gate): enable auto-merge with
+                bump needing NO supporting edit (immich majors: one that clears the backup
+                gate): enable auto-merge with
                 gh pr merge <N> --auto --squash --delete-branch (GitHub merges only when
-                Flux Local AND Diff Scope are both green). If an IN-SCOPE component needs
-                a supporting edit, or is an immich major: author it on a NEW branch
-                shepherd/<pkg>-<version>, open a PR for HUMAN merge, and do NOT enable
-                auto-merge on it. Everything out of scope (other majors, cnpg, rook-ceph,
-                ceph-csi-drivers, cilium, authentik, emqx, dragonfly-operator, paperless,
-                the *arr apps, the home-assistant pod group): leave untouched, just list
-                it in your summary. NEVER merge immediately, NEVER use --admin, NEVER push
-                to main, stay inside kubernetes/**. AT MOST ONE auto-merge per run, then
-                stop and summarize.
+                Flux Local AND Diff Scope are both green). If it needs a supporting edit:
+                author it on a NEW branch shepherd/<pkg>-<version>, open a PR (diff-scope
+                holds it for human review), do NOT enable auto-merge. Everything out of
+                scope — the cluster-breakers (cnpg, rook-ceph, ceph-csi-drivers, cilium,
+                authentik, emqx, dragonfly-operator, cert-manager, external-secrets) and
+                any non-ramp component's major: leave untouched, just list it in your
+                summary. NEVER merge immediately, NEVER use --admin, NEVER push to main,
+                stay inside kubernetes/**. AT MOST ONE auto-merge per run, then stop and
+                summarize.
               # ANTHROPIC_API_KEY comes from the LLM secret ONLY (never the bot secret).
               ANTHROPIC_API_KEY:
                 valueFrom:
