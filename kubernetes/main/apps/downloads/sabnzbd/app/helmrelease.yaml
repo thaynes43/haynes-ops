@@ -79,14 +79,14 @@ spec:
             resources:
               requests:
                 cpu: 100m
-                memory: 2Gi
+                memory: 4Gi
               limits:
-                # Capped so unpack/par2 bursts can't contend with neighbors.
                 cpu: 4000m
-                # 6Gi OOMKilled under a 450-job/17TB backfill queue (par2 on
-                # large remuxes + queue metadata); sized for library-rebuild
-                # class queues (1000+ jobs).
-                memory: 16Gi
+                # 16Gi still OOMKilled under the 450-job/17TB A-list backfill
+                # (par2 on 60-80GB UHD remuxes + queue metadata). Workers have
+                # 117-189GB; a 32Gi ceiling is proportionate. Idle use <1GB —
+                # this is a burst ceiling, not a reservation (request is 4GB).
+                memory: 32Gi
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:

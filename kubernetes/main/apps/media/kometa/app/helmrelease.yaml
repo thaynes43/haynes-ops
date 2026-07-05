@@ -66,9 +66,10 @@ spec:
                 memory: 1Gi
               limits:
                 cpu: 2000m
-                # 4Gi OOMKilled during the full-badge overlay pass (ratings
-                # compositing across the whole library, 2026-07-03)
-                memory: 8Gi
+                # 4Gi OOMKilled on the full-badge overlay pass; 8Gi held but the
+                # post-drain overlay run (whole library + audio-collection
+                # reorder) is heavier. 16Gi ceiling; workers have plenty.
+                memory: 16Gi
             securityContext: *sc
       overlays:
         type: cronjob
