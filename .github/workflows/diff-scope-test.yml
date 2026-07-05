@@ -1,0 +1,41 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# Regression guard for the diff-scope PRIMARY gate. Runs the adversarial suite
+# (scripts/diff-scope-test.sh) whenever a PR touches the gate or its test, so an edit
+# that silently weakens GATE A (sensitive denylist) or GATE B (pure-bump shape) fails
+# CI instead of shipping. The suite proves the auto-mergeable shape still passes AND
+# that every sensitive/supporting-edit shape is still forced to human review.
+#
+# Runs the PR-head version (unlike the gate itself, which runs from base for
+# tamper-proofing): this is a review aid for HUMAN edits to the gate — the bot cannot
+# reach scripts/diff-scope*.sh at all (diff-scope GATE A blocks it, and the bot has no
+# Workflows scope to touch this YAML).
+name: Diff Scope Test
+
+on:
+  pull_request:
+    branches: [main, edge]
+    paths:
+      - scripts/diff-scope.sh
+      - scripts/diff-scope-test.sh
+      - .github/workflows/diff-scope-test.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Diff Scope Test - Success
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Run the diff-scope adversarial suite
+        run: bash scripts/diff-scope-test.sh
