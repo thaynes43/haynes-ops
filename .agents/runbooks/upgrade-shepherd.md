@@ -84,6 +84,36 @@ run on the read-only **Omni Reader** SA kubeconfig
 - **One PR at a time** for the manual tier. Merge, reconcile, verify *green*, then
   the next. Lowest blast radius first; must-move-together pairs together (below).
 
+### Operating rules injected into every run (`--append-system-prompt`)
+
+`run-shepherd.sh` composes a `SAFETY_PROMPT` that is appended to **every** mode's
+system prompt — so these hold even under the scheduled-ramp `UPGRADE_AGENT_PROMPT`
+override in the HR env. Three rules beyond the cluster-read-only / merge-safety line:
+
+1. **PR authoring — body as a FILE, never a heredoc.** The shepherd authors the PR
+   body with the `Write` tool to `/tmp/pr-body.md`, then
+   `gh pr create --title "…" --body-file /tmp/pr-body.md`. A `--body "$(cat <<EOF…)"`
+   heredoc is a compound command that the `dontAsk` allowlist auto-denies — it silently
+   blocked the shepherd from opening immich #1966 (a human had to open it). The
+   file-then-`--body-file` shape stays inside the allowlisted `Write` + `gh pr create`
+   tools.
+2. **Backup gate (stateful upgrades).** Before merging / auto-merging / forward-fixing
+   any component with durable state (cnpg·postgres, rook-ceph, dragonfly, emqx, immich,
+   authentik, paperless, the `*arr` apps…), the shepherd first confirms a **recent
+   successful backup** exists — read-only, within its SA: `kubectl get backup -n database`
+   (newest `.status.phase=completed` <24h, or the Cluster `.status.lastSuccessfulBackup`)
+   for cnpg; `kubectl get replicationsource -A` (`.status.lastSyncTime` within schedule)
+   for volsync-backed apps. No healthy backup <24h → it **HOLDs** (`HOLD: backup safety
+   net compromised for <component>`) rather than proceeding, and the existing
+   `CNPGBackupFailed`/`CNPGBackupStale`/VolSync backup-failure alerts page the human. This
+   is the in-code version of *"see a backup within 24h and move forward, else a human is
+   needed"* — it keeps the SA read-only (verify, don't trigger) and pages only when the
+   safety net is actually broken.
+3. **Autonomy.** The Job runs unattended on a schedule — no human answers a mid-task
+   question. The shepherd finishes the allowlisted work or bails with **one** structured
+   line (`BREAK-GLASS: …` or `HOLD: …`); it never ends a turn with an un-executed plan or
+   an "I'll open the PR next" that then never happens.
+
 ---
 
 ## Mode 3 — breaking-change shepherd (the core loop)

@@ -201,6 +201,22 @@ if [ "$guard_rc" -ne 0 ]; then
   esac
 fi
 
+# ── Cross-cutting operating rules, injected into EVERY mode's system prompt so they hold
+# regardless of which task PROMPT is active (incl. the scheduled-ramp override in the HR
+# env). Built up on their OWN lines — apostrophes and braces inside a ${VAR:-default}
+# break bash quote parsing, and $( ) must be escaped as \$( ) so it isn't run here.
+SAFETY_PROMPT="SAFETY: read-only cluster default; ALL cluster changes go via a PR to kubernetes/**; NEVER kubectl apply/exec/delete; ${SAFETY_MERGE}; stay inside kubernetes/**."
+# (1) PR AUTHORING — the fix for the heredoc dontAsk denial that blocked the shepherd from
+# opening its own PRs (immich #1966): author the body as a FILE, never a command-sub.
+SAFETY_PROMPT="${SAFETY_PROMPT} PR AUTHORING: to open a PR, FIRST write the body to a file with the Write tool (e.g. /tmp/pr-body.md), THEN run 'gh pr create --title \"...\" --body-file /tmp/pr-body.md'. NEVER build the body with a heredoc or \$(cat ...) command substitution — that compound form is auto-denied and the PR will silently fail to open."
+# (2) BACKUP GATE — before touching anything with durable state, confirm the auto-backup
+# safety net is intact (read-only; the shepherd has kubectl get). A stale/failed backup
+# means a human is needed (the CNPG/VolSync backup-failure alerts already page), so HOLD.
+SAFETY_PROMPT="${SAFETY_PROMPT} BACKUP GATE: before you merge, enable auto-merge on, or forward-fix any component backed by a database or persistent volume (cnpg/postgres, rook-ceph, dragonfly, emqx, immich, authentik, paperless, the *arr apps, etc.), FIRST verify a recent SUCCESSFUL backup exists — for cnpg: 'kubectl get backup -n database' (newest .status.phase=completed within 24h) or the Cluster .status.lastSuccessfulBackup; for volsync-backed apps: 'kubectl get replicationsource -A' (.status.lastSyncTime within its schedule). If no healthy backup within 24h exists, do NOT proceed — stop with one line 'HOLD: backup safety net compromised for <component>'. Stateless components need no backup check."
+# (3) AUTONOMY — this Job runs unattended on a schedule; there is no human to answer a
+# mid-task question. Finish the allowlisted work or bail with ONE structured line.
+SAFETY_PROMPT="${SAFETY_PROMPT} AUTONOMY: you run UNATTENDED — no human is watching this run. For reversible, in-scope actions proceed without asking. NEVER end your turn with a question, a plan, or an 'I will…' you have not executed — either complete the allowlisted work now, or stop with a single 'BREAK-GLASS: <reason>' or 'HOLD: <reason>' line."
+
 log "MODE=$MODE model=$MODEL max_turns=$MAX_TURNS budget=\$$MAX_BUDGET cap=\$$MONTHLY_CAP"
 set +e
 OUT_FILE="$(mktemp 2>/dev/null || echo /tmp/claude-out.json)"
@@ -208,7 +224,7 @@ timeout "$RUN_TIMEOUT" claude -p "$PROMPT" \
   --permission-mode dontAsk \
   --allowedTools "${ALLOWED[@]}" \
   --disallowedTools "WebFetch" "WebSearch" \
-  --append-system-prompt "SAFETY: read-only cluster default; ALL cluster changes go via a PR to kubernetes/**; NEVER kubectl apply/exec/delete; ${SAFETY_MERGE}; stay inside kubernetes/**." \
+  --append-system-prompt "$SAFETY_PROMPT" \
   --max-turns "$MAX_TURNS" \
   --max-budget-usd "$MAX_BUDGET" \
   --model "$MODEL" \
