@@ -54,3 +54,34 @@ spec:
           for: 10m
           labels:
             severity: critical
+        # Backup safety net. WAL + base backups go daily (@daily ScheduledBackup)
+        # to s3://cnpg-haynesops. A silently failed/stopped backup removes the ONLY
+        # recovery path for a bad migration — and it is the layer that gates our
+        # hands-off stateful upgrades (a shepherd should only proceed if a recent
+        # backup exists). GOTCHA: the backup-timestamp metrics are reported by EVERY
+        # instance, but only the backup-holder has the real value — the other
+        # postgres16 instances report epoch 0 — so we MUST aggregate max by (job)
+        # (= per cluster) or the zero-reporters false-fire staleness forever.
+        - alert: CNPGBackupFailed
+          annotations:
+            summary: >-
+              CNPG {{ $labels.job }} — the most recent backup FAILED (a failure
+              newer than the last success). The S3 restore point is not advancing;
+              investigate barman/S3/credentials.
+          expr: |
+            max by (job) (cnpg_collector_last_failed_backup_timestamp{namespace="database"})
+              > max by (job) (cnpg_collector_last_available_backup_timestamp{namespace="database"})
+          for: 30m
+          labels:
+            severity: critical
+        - alert: CNPGBackupStale
+          annotations:
+            summary: >-
+              CNPG {{ $labels.job }} — no successful backup in over 28h (schedule is
+              @daily). Backups may have silently stopped; the DB restore safety net
+              is stale.
+          expr: |
+            (time() - max by (job) (cnpg_collector_last_available_backup_timestamp{namespace="database"})) > 100800
+          for: 1h
+          labels:
+            severity: critical
