@@ -402,24 +402,25 @@ guard, and the health gate + guardrail alerts.
 | `multus` | stateless | 2026-07-03 | clean, node-wide blast on breakage (gate catches) |
 | `device-plugins` | stateless | 2026-07-03 | clean; Plex-unschedulable failure mode |
 | `flux` | stateless | 2026-07-03 | first proven auto-merge (#1917, v2.9.0, 2026-07-03) |
-| `immich` | **stateful** | 2026-07-05 | first stateful add; minor/patch image bumps only, backup-gated on `postgres16-pgvecto` (@daily ScheduledBackup); **majors stay author-only** (one-way PG migration — v2→v3 was hand-run). Health-gate + auto-revert catch a bad minor. |
+| `immich` majors | **stateful** | 2026-07-05 | shepherd owns immich MAJORS only — backup-gated on `postgres16-pgvecto` (@daily ScheduledBackup), auto-merge a pure major / author-only if it needs a supporting edit. immich minor/patch auto-merge via **Renovate Tier-2** (the old "immich=manual" carve-out was removed 2026-07-05). |
 
-**Two ramp classes.** *Stateless* clean-tier components auto-merge any pure bump. A
-*stateful* leaf app (durable DB/PVC) auto-merges only **minor/patch** pure image bumps,
-and only after the **backup gate** (`--append-system-prompt` in `run-shepherd.sh`)
-confirms a recent <24h successful backup of its data store — else the shepherd HOLDs and
-the CNPG/VolSync backup-failure alert pages. A stateful **major** (one-way migration) is
-always shepherd-authored for **human merge**. Widen the stateful class one leaf app at a
-time, verifying its data store has a working scheduled backup first (else the gate HOLDs
-it forever). Next candidates in this class: `paperless`, media leaf apps — **not** the
-`*arr` set while their Unraid→cluster migration is in flight, and **not** SSO (`authentik`).
+**Operating principle (2026-07-05): auto-merge is the DEFAULT; only cluster-breakers are
+non-auto.** The shepherd (LLM vetting + backup gate + health gate + auto-revert) is the
+safety net, so every non-cluster-breaker bump auto-merges. Two mechanisms:
+- **Renovate Tier-2** auto-merges minor/patch/digest for all safe leaf-app domains
+  (`media, ai, downloads, frontend, office, photos, observability, home-automation`) +
+  curated kube-system/network utilities — flux-local-gated, no shepherd needed.
+- **The shepherd ramp (this table)** owns the cluster-adjacent components that need
+  careful vetting: the stateless clean-tier (coredns/traefik/multus/device-plugins/flux)
+  and immich majors. It also catches **majors** of ramp components.
 
-Explicitly **excluded** (never in the ramp without a design change): operator/DB-engine
-bumps (cnpg, rook-ceph/ceph-csi-drivers, dragonfly-operator, emqx), cilium, the HA pod
-group, authentik, and all majors except where a stateful leaf app's major is explicitly
-author-only above. Supporting-edit upgrades arrive as shepherd-authored `shepherd/*`
-PRs for **human merge** (diff-scope structurally blocks the bot auto-merging those —
-until the operator-gated diff-scope widening lands).
+**Cluster-breakers = the only non-auto set** (shepherd where possible, human last resort):
+cilium, coredns, flux, rook-ceph/ceph-csi (storage), the DB operators (cnpg,
+dragonfly-operator, emqx-operator), cert-manager, external-secrets, authentik (SSO),
+Talos/node. Plus: **majors** of anything get shepherd/human review, and **supporting-edit
+PRs** stay human-merge (the diff-scope security gate — the one accepted human-in-loop;
+see the diff-scope adversarial suite `scripts/diff-scope-test.sh` for why widening it is
+unsafe). Everything else auto-merges.
 
 Kill switch: `kubectl -n upgrade-agent patch cronjob upgrade-shepherd -p '{"spec":{"suspend":true}}'`.
 
