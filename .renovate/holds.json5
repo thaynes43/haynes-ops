@@ -56,5 +56,17 @@
       matchPackageNames: ['/emqx/emqx$/'],
       allowedVersions: '<6.2.1',
     },
+    {
+      description: [
+        'HELD cloudnative-pg chart: 0.30.0 and newer (operator 1.31.0+) — in-tree Barman backups removed.',
+        'Reason: CNPG operator 1.31.0 REMOVES native (in-tree) barmanObjectStore support (deprecation notice updated in the 1.30.0 release notes: removal moved from 1.30 to 1.31). Our cluster16.yaml + cluster16-pgvecto.yaml still back up to s3://cnpg-haynesops via in-tree barmanObjectStore. Taking chart 0.30.0 (= operator 1.31.0) WITHOUT first migrating to the Barman Cloud Plugin (ObjectStore CR + cluster plugin config) would SILENTLY STOP all WAL archiving + base backups. The chart minor tracks the operator minor 1:1 (0.29.0 = 1.30.0, 0.30.0 = 1.31.0), so 0.29.x patches (operator 1.30.x) stay allowed.',
+        'Issue: https://cloudnative-pg.io/documentation/1.30/release_notes/v1.30/ (in-tree barman removal in 1.31); https://github.com/cloudnative-pg/plugin-barman-cloud',
+        'Resume: MANUAL — lift ONLY after migrating cluster16*.yaml from in-tree barmanObjectStore to the Barman Cloud Plugin (ObjectStore CR + spec.plugins) and verifying a Backup completes on the plugin path. Then widen this bound by hand.',
+        'Recorded: 2026-07-05 by claude after taking chart 0.29.0 (operator 1.30.0, PR #1910). Related: .agents/runbooks/tier4-component-playbooks.md (cnpg backup-plugin migration watch); memory renovate-automation-roadmap.',
+      ],
+      matchDatasources: ['helm'],
+      matchPackageNames: ['cloudnative-pg'],
+      allowedVersions: '<0.30.0',
+    },
   ],
 }
