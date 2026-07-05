@@ -58,16 +58,24 @@
     // Gatus/Pushover/watchdog alert path that does NOT depend on Prometheus.
     // Watch item: prometheus-operator-crds (CRD-only bumps) — safe here only
     // because minor/patch CRD changes are additive; majors stay manual.
+    // Edge (2026-07-05): the `kubernetes/*/apps/…` glob (the `*` matches ONE
+    // segment) covers BOTH `main` and `edge`. Decision: edge PRs auto-merge on
+    // the SAME safe-leaf policy as main. Rationale: flux-local fully renders the
+    // edge cluster in its matrix on these (main-targeted) PRs and Diff Scope
+    // runs, so edge gets the same render + scope gates; we just can't RUNTIME-
+    // validate edge (it is powered off) and that is accepted — nothing runs
+    // there to break. Cluster-killers (cilium, coredns, flux) stay OFF this list
+    // for BOTH clusters, so a bad push can't wedge edge when it is next booted.
     {
-      description: 'Auto merge safe leaf-app domains (stateless, single-pod)',
+      description: 'Auto merge safe leaf-app domains (stateless, single-pod) — main + edge',
       matchFileNames: [
-        'kubernetes/main/apps/media/**',
-        'kubernetes/main/apps/ai/**',
-        'kubernetes/main/apps/downloads/**',
-        'kubernetes/main/apps/frontend/**',
-        'kubernetes/main/apps/office/**',
-        'kubernetes/main/apps/photos/**',
-        'kubernetes/main/apps/observability/**',
+        'kubernetes/*/apps/media/**',
+        'kubernetes/*/apps/ai/**',
+        'kubernetes/*/apps/downloads/**',
+        'kubernetes/*/apps/frontend/**',
+        'kubernetes/*/apps/office/**',
+        'kubernetes/*/apps/photos/**',
+        'kubernetes/*/apps/observability/**',
       ],
       // 'digest' (2026-06-28): SHA-pinned image refreshes on the SAME tag are at
       // least as safe as minor/patch for these stateless single-pod apps, yet the
@@ -87,15 +95,19 @@
     // authentik (SSO + DB migrations), multus (CNI), the device-plugins
     // (GPU/detection pipeline). Only stateless, single-pod utilities with no
     // such coupling go here. Same flux-local + 3-day bake. Ramp per-app.
+    // `kubernetes/*/apps/…` again covers main + edge (see the leaf-app note above).
+    // Edge currently has metrics-server, reloader, spegel of these; the rest match
+    // main only (harmless — no edge dir to match). cilium/coredns on edge are
+    // deliberately NOT here (cluster-killers, stay manual on both clusters).
     {
-      description: 'Auto merge safe cluster-infra leaves (explicit subpaths)',
+      description: 'Auto merge safe cluster-infra leaves (explicit subpaths) — main + edge',
       matchFileNames: [
-        'kubernetes/main/apps/kube-system/metrics-server/**',
-        'kubernetes/main/apps/kube-system/reloader/**',
-        'kubernetes/main/apps/kube-system/reflector/**',
-        'kubernetes/main/apps/kube-system/k8tz/**',
-        'kubernetes/main/apps/kube-system/spegel/**',
-        'kubernetes/main/apps/network/cloudflare-ddns/**',
+        'kubernetes/*/apps/kube-system/metrics-server/**',
+        'kubernetes/*/apps/kube-system/reloader/**',
+        'kubernetes/*/apps/kube-system/reflector/**',
+        'kubernetes/*/apps/kube-system/k8tz/**',
+        'kubernetes/*/apps/kube-system/spegel/**',
+        'kubernetes/*/apps/network/cloudflare-ddns/**',
       ],
       // 'digest' included for the same reason as the leaf-app rule above.
       matchUpdateTypes: ['minor', 'patch', 'digest'],
