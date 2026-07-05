@@ -210,6 +210,10 @@ collections:
   Monsterverse:
     imdb_list: https://www.imdb.com/list/ls060980695/
     summary: "A collection of all the MonsterVerse movies."
+    # TODO(poster): old config used a local file_poster
+    # (config/collection_posters/MonsterVerseCollection.png) that isn't available
+    # in this deployment. No url_poster set — the collection falls back to a Plex
+    # mosaic. Provide a ThePosterDB/haynesnetwork URL to restore a custom poster.
   Monsters, Inc.:
     template: {name: Movies, collection: 137696}
   Mortal Kombat:
@@ -341,6 +345,10 @@ collections:
     sort_title: "!E Twilight Saga"
   Unbreakable:
     template: {name: Movies, tmdb_movie: "9741,381288,450465"}
+    # TODO(poster): old config used a local file_poster
+    # (config/collection_posters/UnbreakableCollection.png) that isn't available
+    # in this deployment. No url_poster set — the collection falls back to a Plex
+    # mosaic. Provide a ThePosterDB/haynesnetwork URL to restore a custom poster.
   # V.C. Andrews — needs trakt (trakt_list); restore by adding trakt to config.yml.
   # V.C. Andrews:
   #   trakt_list: "https://trakt.tv/users/manofoz/lists/v-c-andrews-collection"
