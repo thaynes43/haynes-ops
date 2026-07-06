@@ -45,3 +45,19 @@ spec:
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
+        # haynesnetwork: signed by ITS OWN repo's release-please.yml OIDC identity — a
+        # dedicated rule so its Audit->Enforce flip is independent (ADR-020 / hnet OPS-006).
+        - imageReferences:
+            - "ghcr.io/thaynes43/haynesnetwork*"
+          failureAction: Audit
+          mutateDigest: false
+          verifyDigest: false
+          required: true
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subject: "https://github.com/thaynes43/haynesnetwork/.github/workflows/*"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
