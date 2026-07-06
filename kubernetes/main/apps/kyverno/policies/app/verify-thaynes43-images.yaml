@@ -45,8 +45,16 @@ spec:
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
-        # haynesnetwork: signed by ITS OWN repo's release-please.yml OIDC identity — a
-        # dedicated rule so its Audit->Enforce flip is independent (ADR-020 / hnet OPS-006).
+    # haynesnetwork: signed by ITS OWN repo's release-please.yml OIDC identity — a
+    # DEDICATED RULE (not an entry on verify-self-built) so its report result is
+    # unambiguous and its Audit->Enforce flip is independent (ADR-020 / hnet OPS-006).
+    - name: verify-haynesnetwork
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
         - imageReferences:
             - "ghcr.io/thaynes43/haynesnetwork*"
           failureAction: Audit
