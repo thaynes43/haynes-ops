@@ -1,0 +1,140 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: maintainerr
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      maintainerr:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        pod:
+          # Keep off the control-plane nodes (critical smart-home stack).
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: DoesNotExist
+        containers:
+          app:
+            # Upstream moved from jorenn92/* to the maintainerr org. GHCR
+            # container tags drop the `v` prefix used by the git release tags
+            # (git v3.17.0 -> image 3.17.0); `vX.Y.Z` here 404s on pull.
+            image:
+              repository: ghcr.io/maintainerr/maintainerr
+              tag: 3.17.0
+            env:
+              TZ: America/New_York
+              # Defaults are fine (UI_HOSTNAME=0.0.0.0, UI_PORT=6246). BASE_PATH
+              # is intentionally unset — served at the domain root, not a subpath.
+              UI_PORT: &port 6246
+            probes:
+              # Liveness pings /live (process-only, no DB) so a transient SQLite
+              # blip never triggers a restart loop.
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/health/live
+                    port: *port
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 5
+              # Readiness pings /ready (checks the DB) -> pod leaves rotation if
+              # the DB is unreachable, without a restart.
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/health/ready
+                    port: *port
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 5
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/health/live
+                    port: *port
+                  failureThreshold: 30
+                  periodSeconds: 10
+            resources:
+              requests:
+                cpu: 50m
+                memory: 256Mi
+              limits:
+                cpu: 1000m
+                memory: 1Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              # Maintainerr bundles a Next.js UI that writes inside /opt/app at
+              # runtime; the config PVC covers durable state but the rootfs can't
+              # be locked down like the *arrs (same posture as seerr).
+              readOnlyRootFilesystem: false
+    defaultPodOptions:
+      securityContext:
+        # Image runs as `node` (UID/GID 1000); /opt/data must be 1000:1000-writable.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+    service:
+      app:
+        forceRename: "{{ .Release.Name }}"
+        primary: true
+        ports:
+          http:
+            port: *port
+    ingress:
+      app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+          gethomepage.dev/href: &url "https://maintainerr.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Media
+          gethomepage.dev/name: Maintainerr
+          gethomepage.dev/description: Media cleanup rules
+          gethomepage.dev/icon: maintainerr
+          gethomepage.dev/app: maintainerr
+          gethomepage.dev/siteMonitor: *url
+        className: traefik-internal
+        hosts:
+          - host: maintainerr.haynesops.com
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+    persistence:
+      # SQLite DB + settings + logs live under /opt/data (DATA_DIR). Backed up
+      # by the volsync ReplicationSource (claim provisioned by volsync/aws).
+      config:
+        existingClaim: maintainerr
+        globalMounts:
+          - path: /opt/data
+      tmp:
+        type: emptyDir
