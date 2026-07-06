@@ -1,6 +1,13 @@
 # Custom movie collections — the survivors of the 2023 config cleanup.
 # Franchises/universes/studios/directors/actors/awards now come from Kometa
 # Defaults (see config.yml); only genuinely custom things live here.
+#
+# Christmas HNet keeps radarr_add_missing:false (tag-only) exactly as the old
+# MovieSeasonal.yml did — it's an IMDb list of every Christmas movie, so we do
+# NOT auto-acquire it; the `seasonal` Default in config.yml is the acquiring
+# seasonal source. The audio collections are plex_all filters over EXISTING,
+# already-analyzed media — there is nothing "missing" to add, so add_missing is
+# a no-op for them; radarr_tag is present only for traceability parity.
 collections:
   Christmas HNet:
     sort_title: "!001 Christmas HNet"
@@ -10,6 +17,8 @@ collections:
     url_poster: https://theposterdb.com/api/assets/48897
     # display-only during the Nov-Jan window; items persist year-round
     schedule: range(11/01-01/07)
+    radarr_add_missing: false
+    radarr_tag: "Kometa-Added,ChristmasHNet"
 
   # Audio-metadata regex collections (Spatial Surround / Dolby Atmos / DTS X),
   # restored verbatim from the LIVE old Kometa config (an earlier port read a
@@ -23,6 +32,7 @@ collections:
     url_poster: https://haynesnetwork.com/wp-content/uploads/2023/11/SurroundTestCollection.png
     collection_order: release.desc
     schedule: weekly(saturday)
+    radarr_tag: "Kometa-Added,SpacialSurround"
     filters:
       - filepath.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'
       - audio_track_title.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'
@@ -39,6 +49,7 @@ collections:
     url_poster: https://haynesnetwork.com/wp-content/uploads/2023/11/SurroundTestCollection.png
     collection_order: release.desc
     schedule: weekly(saturday)
+    radarr_tag: "Kometa-Added,Atmos"
     filters:
       - filepath.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'
       - audio_track_title.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'
@@ -53,6 +64,7 @@ collections:
     url_poster: https://haynesnetwork.com/wp-content/uploads/2023/11/SurroundTestCollection.png
     collection_order: release.desc
     schedule: weekly(saturday)
+    radarr_tag: "Kometa-Added,DTSX"
     filters:
       - filepath.regex: '(?i)\bdts[ ._-]?x\b'
       - audio_track_title.regex: '(?i)\bdts[ ._-]?x\b'

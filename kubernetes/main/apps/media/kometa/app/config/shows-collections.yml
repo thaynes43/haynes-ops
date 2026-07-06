@@ -1,10 +1,14 @@
-# Family curated TV collections — ported verbatim from the 2023 PMM config
-# (sonarr_tag/add_missing stripped: Kometa builds from EXISTING items only;
-# see the cutover checklist before ever re-enabling arr integration flags).
+# Family curated TV collections — ported from the 2023 PMM config (Shows.yml).
+# ACQUISITION ON: each is a curated list of specific series (tmdb_show/tvdb_show
+# IDs); with add_missing/search true globally, any listed show not in the library
+# is sent to Sonarr and searched. sonarr_tag applies the umbrella "Kometa-Added"
+# + the old per-collection tag (PMM-Added -> Kometa-Added) so each family list's
+# acquisitions are traceable.
 collections:
   Curated for Jackson:
     sort_title: "!010AA Curated for Jackson"
     url_poster: https://theposterdb.com/api/assets/82398
+    sonarr_tag: "Kometa-Added,ForJackson"
     tmdb_show:
       - 15260  # Adventure Time
       - 37606  # The Amazing World of Gumball
@@ -51,6 +55,7 @@ collections:
   Curated for Kellie:
     sort_title: "!010AA Curated for Kellie"
     url_poster: https://theposterdb.com/api/assets/411741
+    sonarr_tag: "Kometa-Added,ForKellie"
     tmdb_show:
       - 1418   # The Big Bang Theory
       - 2327   # Dawson's Creek
@@ -83,6 +88,7 @@ collections:
   Curated for Penelope:
     sort_title: "!010AA Curated for Penelope"
     url_poster: https://theposterdb.com/api/assets/243003
+    sonarr_tag: "Kometa-Added,ForPenelope"
     tmdb_show:
       - 39107  # Bubble Guppies
       - 100088 # The Last of Us
@@ -107,6 +113,7 @@ collections:
   Big Kid Cartoons:
     sort_title: "!010AB Big Kid Cartoons"
     url_poster: https://theposterdb.com/api/assets/342075
+    sonarr_tag: "Kometa-Added,BigKidCartoons"
     tvdb_show:
       - 371028 # Arcane
       - 110381 # Archer
@@ -123,6 +130,7 @@ collections:
   Kid Cartoons:
     sort_title: "!010AB Kid Cartoons"
     url_poster: https://theposterdb.com/api/assets/316188
+    sonarr_tag: "Kometa-Added,KidCartoons"
     tmdb_show:
       - 15260  # Adventure Time
       - 37606  # The Amazing World of Gumball
@@ -182,6 +190,7 @@ collections:
   Earth & Space Wonders:
     sort_title: "!010AC Earth & Space Wonders"
     url_poster: https://theposterdb.com/api/assets/121577
+    sonarr_tag: "Kometa-Added,EarthAndSpace"
     tvdb_show:
       - 417835 # Our Great National Parks
       - 74372  # The Blue Planet

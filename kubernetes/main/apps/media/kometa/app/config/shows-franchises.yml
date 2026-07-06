@@ -1,8 +1,11 @@
 # TV franchise / list collections — restored from the LIVE 2023 config (Shows.yml).
-# sonarr_tag stripped (ARR-SAFE). TVDb list builders need no auth (Kometa ships a
-# bundled TVDb key) and are active. The trakt-based ones (Adventure Time, the
-# Trakt charts) are preserved but COMMENTED — add a trakt block to config.yml to
-# re-enable.
+# ACQUISITION ON: these ADD missing series to Sonarr and SEARCH (add_missing/
+# search true globally in config.yml). sonarr_tag applies the umbrella
+# "Kometa-Added" + the "ShowCollection" category tag (the old HaynesTower
+# Shows-template tag, PMM-Added -> Kometa-Added) to every ADDED series. TVDb list
+# builders need no auth (Kometa ships a bundled TVDb key) and are active. The
+# trakt-based ones (Adventure Time, the Trakt charts) are preserved but COMMENTED
+# (with their old tag renamed) — add a trakt block to config.yml to re-enable.
 templates:
   Shows:
     sort_title: "!010B <<collection_name>>"
@@ -13,6 +16,7 @@ templates:
     tvdb_show: <<tvdb_show>>
     collection_order: custom
     sync_mode: sync
+    sonarr_tag: "Kometa-Added,ShowCollection"
 
 collections:
 #####################################
@@ -67,11 +71,14 @@ collections:
   #   sort_title: "!010C Trakt Trending"
   #   trakt_chart: {chart: trending, limit: 18}
   #   url_poster: https://theposterdb.com/api/assets/136358
+  #   sonarr_tag: "Kometa-Added,TraktTrending"
   # Trakt Popular:
   #   sort_title: "!010C Trakt Popular"
   #   trakt_chart: {chart: popular, limit: 18}
   #   url_poster: https://theposterdb.com/api/assets/241646
+  #   sonarr_tag: "Kometa-Added,TraktPopular"
   # Trakt Recommended:
   #   sort_title: "!010C Trakt Recommended"
   #   trakt_chart: {chart: recommended, limit: 18}
   #   url_poster: https://theposterdb.com/api/assets/204278
+  #   sonarr_tag: "Kometa-Added,TraktRecommended"

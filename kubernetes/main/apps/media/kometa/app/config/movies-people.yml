@@ -10,9 +10,12 @@
 # person (the intent of the old *_details keys). sort_by popularity.desc + a
 # generous limit ensures the person's library titles are captured.
 #
-# ARR-SAFE: radarr_tag / radarr_add_missing stripped. add_missing/search false
-# globally, so these organize EXISTING library items only (missing titles are
-# never sent to Radarr).
+# TAG-ONLY (no acquisition), exactly as the old HaynesTower stack did: both
+# templates carried radarr_add_missing:false so a director's/actor's ENTIRE
+# filmography is never dumped into Radarr. We restore that opt-out here and only
+# TAG (umbrella "Kometa-Added" + DirectorCollection/ActorCollection) so these
+# people collections are traceable without driving acquisition. (radarr_tag is
+# inert while add_missing is false — kept for parity + easy future enable.)
 #
 # Commented-out people below are preserved exactly as the user disabled them.
 # Multi-ID people (Coen Brothers) use comma = AND on with_crew (their joint films).
@@ -26,6 +29,8 @@ templates:
       limit: 250
     tmdb_profile: <<tmdb>>
     tmdb_biography: <<tmdb>>
+    radarr_add_missing: false
+    radarr_tag: "Kometa-Added,DirectorCollection"
   Actor:
     sort_title: "!Z <<collection_name>>"
     collection_order: release.desc
@@ -35,6 +40,8 @@ templates:
       limit: 250
     tmdb_profile: <<tmdb>>
     tmdb_biography: <<tmdb>>
+    radarr_add_missing: false
+    radarr_tag: "Kometa-Added,ActorCollection"
 
 collections:
 ######################################################

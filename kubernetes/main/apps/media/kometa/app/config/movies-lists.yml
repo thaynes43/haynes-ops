@@ -1,16 +1,22 @@
 # Studio + special-genre list collections — restored from the LIVE 2023 config
-# (MovieLists.yml). radarr_tag / radarr_add_missing stripped (ARR-SAFE).
+# (MovieLists.yml). TAG-ONLY (no acquisition): the old stack set
+# radarr_add_missing:false on both templates so, e.g., every A24 / Disney
+# Animation film isn't dumped into Radarr. We restore that opt-out and only TAG
+# (umbrella "Kometa-Added" + a per-collection tag). radarr_tag is inert while
+# add_missing is false — kept for parity + easy future enable.
 #
 # TRAKT GAP: the deployed config.yml has no trakt block, so every trakt_list
-# collection is preserved but COMMENTED below. Add a trakt block to the kometa
-# externalsecret to re-enable them. imdb_search / imdb_list need no auth and are
-# active.
+# collection is preserved but COMMENTED below (with its old tag, PMM->Kometa,
+# ready for re-enable). Add a trakt block to the kometa externalsecret to
+# re-enable them. imdb_search / imdb_list need no auth and are active.
 templates:
   Studio:
     sort_title: "!C <<collection_name>>"
+    radarr_add_missing: false
   Special Genre:
     sort_title: "!D <<collection_name>>"
     collection_order: alpha
+    radarr_add_missing: false
 
 collections:
 #####################################
@@ -27,6 +33,7 @@ collections:
     collection_order: custom
     sync_mode: sync
     url_poster: https://theposterdb.com/api/assets/11845
+    radarr_tag: "Kometa-Added,DisneyAnimation"
   # Pixar Animation — needs trakt (trakt_list). Alternative: imdb_search company co0086397.
   # Pixar Animation:
   #   template: {name: Studio}
@@ -34,6 +41,7 @@ collections:
   #   summary: "A collection of Pixar Animation movies."
   #   collection_order: release
   #   url_poster: https://theposterdb.com/api/assets/2190
+  #   radarr_tag: "Kometa-Added,PixarAnimation"
   Dreamworks Pictures:
     template: {name: Studio}
     imdb_search:
@@ -45,6 +53,7 @@ collections:
     collection_order: custom
     sync_mode: sync
     url_poster: https://theposterdb.com/api/assets/57647
+    radarr_tag: "Kometa-Added,DreamworksPictures"
   A24:
     template: {name: Studio}
     imdb_search:
@@ -56,12 +65,14 @@ collections:
     collection_order: custom
     sync_mode: sync
     url_poster: https://theposterdb.com/api/assets/139297
+    radarr_tag: "Kometa-Added,A24"
   Roald Dahl:
     template: {name: Studio}
     imdb_list: https://www.imdb.com/list/ls046555751/
     summary: "A collection of movies based off of the works of Roald Dahl."
     collection_order: release
     url_poster: https://theposterdb.com/api/assets/557888
+    radarr_tag: "Kometa-Added,RoaldDahl"
 #####################################
 #      Special Genre Collections    #
 #####################################
@@ -71,33 +82,39 @@ collections:
   #   trakt_list: https://trakt.tv/users/hdlists/lists/top-ten-pirated-movies-of-the-week-torrent-freak-com
   #   summary: "A collection of movies that are the top downloaed of the week! Check back every week for what is popular."
   #   url_poster: https://theposterdb.com/api/assets/374490
+  #   radarr_tag: "Kometa-Added,TopTenArrThisWeek"
   # Mind Fuck Movies — needs trakt (trakt_list).
   # Mind Fuck Movies:
   #   template: {name: Special Genre}
   #   trakt_list: https://trakt.tv/users/hdlists/lists/mindfuck-movies
   #   summary: "A collection of movies that will mess with your mind!"
   #   url_poster: https://haynesnetwork.com/wp-content/uploads/2023/09/mindfuck.png
+  #   radarr_tag: "Kometa-Added,MindFuck"
   # Outer Space & Exploration Movies — needs trakt (trakt_list).
   # Outer Space & Exploration Movies:
   #   template: {name: Special Genre}
   #   trakt_list: https://trakt.tv/users/hdlists/lists/outer-space-space-exploration-movies
   #   summary: "Movies that feature outer space and exploration."
   #   url_poster: https://haynesnetwork.com/wp-content/uploads/2023/09/Space-3.jpg
+  #   radarr_tag: "Kometa-Added,OuterSpace"
   # Superhero Movies — needs trakt (trakt_list).
   # Superhero Movies:
   #   template: {name: Special Genre}
   #   trakt_list: https://trakt.tv/users/hdlists/lists/superhero-movies-from-1980-to-today
   #   summary: "Superhero movies released from 1980 until today."
   #   url_poster: https://haynesnetwork.com/wp-content/uploads/2023/09/Super-Hero-3.jpg
+  #   radarr_tag: "Kometa-Added,SuperHeroMovie"
   # Standup Comedy — needs trakt (trakt_list).
   # Standup Comedy:
   #   template: {name: Special Genre}
   #   trakt_list: https://trakt.tv/users/diverzija/lists/standup-comedy
   #   summary: "A standup comedy collection from Trakt that looked pretty good!"
   #   url_poster: https://haynesnetwork.com/wp-content/uploads/2023/09/Stand-Up.png
+  #   radarr_tag: "Kometa-Added,StandupComedy"
   J-Horror:
     template: {name: Special Genre}
     imdb_list: https://www.imdb.com/list/ls023154794/
     summary: "The best J-Horror movies around."
     collection_order: release
     url_poster: https://theposterdb.com/api/assets/51475
+    radarr_tag: "Kometa-Added,JHorror"
