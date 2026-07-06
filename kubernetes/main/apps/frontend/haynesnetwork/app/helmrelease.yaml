@@ -133,6 +133,34 @@ spec:
                 memory: 128Mi
               limits:
                 memory: 512Mi
+      # Metadata harvest every 6h (PLAN-004 / ADR-018): *arr ratings/genres/posters,
+      # Tautulli watch-stats, TMDB/TVDB fallback for tombstones — per-source degradation.
+      sync-metadata:
+        type: cronjob
+        pod:
+          restartPolicy: Never
+        cronjob:
+          schedule: "15 */6 * * *"
+          backoffLimit: 1
+          concurrencyPolicy: Forbid
+          failedJobsHistory: 2
+          successfulJobsHistory: 1
+        containers:
+          main:
+            image: *mainImage
+            command:
+              - tsx
+              - /sync/src/scripts/sync.ts
+              - --mode=metadata-refresh
+            envFrom:
+              - secretRef:
+                  name: haynesnetwork-secret
+            resources:
+              requests:
+                cpu: 25m
+                memory: 128Mi
+              limits:
+                memory: 768Mi
       # Full reconcile nightly: upserts everything + tombstones (guarded).
       sync-full:
         type: cronjob
