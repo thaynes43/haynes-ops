@@ -4,8 +4,11 @@
 # summary). These are COMPLEMENTS to the `universe` Default (kept in config.yml),
 # not replacements — the user curated these 145 by hand and they stay.
 #
-# ARR-SAFE: radarr_tag stripped from the template. add_missing/search are false
-# globally, so these only ever organize EXISTING library items.
+# ACQUISITION ON: these franchises ADD missing entries to Radarr and SEARCH
+# (add_missing/search are true globally in config.yml). radarr_tag applies the
+# umbrella "Kometa-Added" + the "MovieCollection" category tag (the old
+# HaynesTower Movies-template tag, PMM-Added -> Kometa-Added) to every ADDED
+# item so Kometa's franchise acquisitions are traceable.
 #
 # NOTE: collection names are preserved verbatim, including the source typos
 # ("Teanage Mutant Ninja Turtles", "Wrreck-It Ralf", "Mama Mia!") — rename in
@@ -23,6 +26,7 @@ templates:
     tmdb_list: <<tmdb_list>>
     imdb_list: <<imdb_list>>
     collection_order: release
+    radarr_tag: "Kometa-Added,MovieCollection"
 
 collections:
   28 Days/Weeks Later:
