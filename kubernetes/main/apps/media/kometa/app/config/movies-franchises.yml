@@ -329,17 +329,9 @@ collections:
     template: {name: Movies, collection: "1582,401562,1156855"}
   Terminator:
     template: {name: Movies, collection: 528}
-  Top Gun:
-    template: {name: Movies, collection: 531330}
-  Toy Story:
-    template: {name: Movies, collection: 10194}
-  Transformers:
-    template: {name: Movies, collection: "8650,939352"}
-  The Transporter:
-    template: {name: Movies, collection: 9518}
-    sort_title: "!E Transporter"
-  Tremors:
-    template: {name: Movies, collection: 91799}
+  # Top Gun / Toy Story / Transformers / The Transporter / Tremors REMOVED
+  # 2026-07-06: redundant with the franchise Default (same TMDb collections,
+  # Default supplies summaries/posters). "Defaults own franchises" — see below.
   Trolls:
     template: {name: Movies, collection: 489724}
   Tron:
@@ -359,14 +351,10 @@ collections:
   #   summary: "The complete collection of V.C. Andrews movies."
   #   url_poster: https://haynesnetwork.com/wp-content/uploads/2023/09/vcandrewsanthology.png
   #   sort_title: "!E V.C. Andrews"
-  Venom:
-    template: {name: Movies, collection: 558216}
-  Wizarding World:
-    template: {name: Movies, collection: "1241,435259"}
-    summary: "A collection of all the Wizarding World movies, including the Harry Potter and Fantastic Beasts series."
-  Wrreck-It Ralf:
-    template: {name: Movies, collection: 404825}
-  X-Men:
-    template: {name: Movies, collection: "748,453993"}
-  Zombieland:
-    template: {name: Movies, collection: 537982}
+  # Venom / Wizarding World / Wrreck-It Ralf (typo) / X-Men / Zombieland REMOVED
+  # 2026-07-06 "Defaults own franchises": Venom/Zombieland duplicated the Default
+  # exactly; the X-Men and Wizarding-World merges are superseded by the Default's
+  # cleaner split (X-Men + Deadpool; Harry Potter + Fantastic Beasts); Wrreck-It
+  # Ralf was a misspelling of the Default's "Wreck-It Ralph". The two live
+  # curated-only Plex collections (Wrreck-It Ralf, Wizarding World) are deleted
+  # out-of-band via the Plex API.
