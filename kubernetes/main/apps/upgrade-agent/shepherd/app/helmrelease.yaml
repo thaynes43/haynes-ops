@@ -39,7 +39,7 @@ spec:
           mint-token:
             image:
               repository: ghcr.io/thaynes43/upgrade-shepherd
-              tag: 0.1.0@sha256:afc88385606560ae21b3963e4baf53a82a84a9091bc02cf5bae147b4b4577e50
+              tag: 0.1.0@sha256:8b8bc5e2ab9d5cb81ca4f90115f17881c83e68504fd569280d1588a62177a7df
             command:
               - /bin/bash
               - -c
@@ -61,7 +61,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/upgrade-shepherd
-              tag: 0.1.0@sha256:afc88385606560ae21b3963e4baf53a82a84a9091bc02cf5bae147b4b4577e50
+              tag: 0.1.0@sha256:8b8bc5e2ab9d5cb81ca4f90115f17881c83e68504fd569280d1588a62177a7df
             command: ["/bin/bash", "/opt/shepherd/run-shepherd.sh"]
             env:
               UPGRADE_AGENT_MODE: auto     # Phase D: vet + `gh pr merge --auto` (server-side gated)
@@ -154,7 +154,7 @@ spec:
           mint-token:
             image:
               repository: ghcr.io/thaynes43/upgrade-shepherd
-              tag: 0.1.0@sha256:afc88385606560ae21b3963e4baf53a82a84a9091bc02cf5bae147b4b4577e50
+              tag: 0.1.0@sha256:8b8bc5e2ab9d5cb81ca4f90115f17881c83e68504fd569280d1588a62177a7df
             command:
               - /bin/bash
               - -c
@@ -173,7 +173,7 @@ spec:
           triage:
             image:
               repository: ghcr.io/thaynes43/upgrade-shepherd
-              tag: 0.1.0@sha256:afc88385606560ae21b3963e4baf53a82a84a9091bc02cf5bae147b4b4577e50
+              tag: 0.1.0@sha256:8b8bc5e2ab9d5cb81ca4f90115f17881c83e68504fd569280d1588a62177a7df
             command: ["/bin/bash", "/opt/shepherd/triage.sh"]
             env:
               UPGRADE_AGENT_MODEL: sonnet
