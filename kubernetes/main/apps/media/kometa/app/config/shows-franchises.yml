@@ -60,6 +60,9 @@ collections:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/star-wars}
   Walking Dead:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/the-walking-dead, tvdb_show: 427464}
+    # two builders (list + show) → collection_order:custom (from template) is
+    # invalid; order by release instead so the flagship 427464 stays included.
+    collection_order: release
   Yellowstone:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/yellowstone}
 
