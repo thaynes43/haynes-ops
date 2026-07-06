@@ -42,14 +42,14 @@ collections:
   #   collection_order: release
   #   url_poster: https://theposterdb.com/api/assets/2190
   #   radarr_tag: "Kometa-Added,PixarAnimation"
-  Dreamworks Pictures:
+  DreamWorks Pictures:
     template: {name: Studio}
     imdb_search:
       type: movie
       company: co0819670
       sort_by: release.desc
       limit: 0
-    summary: "A collection of Dreamworks Pictures movies."
+    summary: "A collection of DreamWorks Pictures movies."
     collection_order: custom
     sync_mode: sync
     url_poster: https://theposterdb.com/api/assets/57647
