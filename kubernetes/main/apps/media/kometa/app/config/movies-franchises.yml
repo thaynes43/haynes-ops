@@ -50,23 +50,15 @@ collections:
     template: {name: Movies, collection: 9744}
   Flowers in the Attic:
     template: {name: Movies, collection: 293981}
-  Ghostbusters:
-    template: {name: Movies, collection: 2980, tmdb_movie: 43074}
   The Girl - Millennium Collection:
     template: {name: Movies, collection: 575987}
-  Godzilla:
-    template: {name: Movies, collection: 535313, tmdb_movie: 293167}
   Goosebumps:
     template: {name: Movies, collection: 508783}
   The Grudge:
     template: {name: Movies, collection: 1974}
     sort_title: "!E Grudge"
-  Hannibal:
-    template: {name: Movies, collection: 9743, tmdb_movie: 1248}
   LEGO DC Comics Super Heroes:
     template: {name: Movies, collection: 386162}
-  Lego Movie:
-    template: {name: Movies, collection: 325470, tmdb_movie: "274862,324849"}
   Mean Girls:
     template: {name: Movies, collection: 99606}
   Monsterverse:
@@ -76,16 +68,8 @@ collections:
     # (config/collection_posters/MonsterVerseCollection.png) that isn't available
     # in this deployment. No url_poster set — the collection falls back to a Plex
     # mosaic. Provide a ThePosterDB/haynesnetwork URL to restore a custom poster.
-  The Muppets:
-    template: {name: Movies, collection: 256377, tmdb_movie: "11176,10208"}
-    sort_title: "!E Muppets"
   My Big Fat Greek Wedding:
     template: {name: Movies, collection: 389767}
-  A Nightmare on Elm Street:
-    template: {name: Movies, collection: 8581, tmdb_movie: 23437}
-    sort_title: "!E Nightmare on Elm Street"
-  Oceans:
-    template: {name: Movies, collection: 304, tmdb_movie: 402900}
   Pacific Rim:
     template: {name: Movies, collection: 363369}
   Peter Rabbit:
@@ -93,8 +77,6 @@ collections:
   The Princess Diaries:
     template: {name: Movies, collection: 107674}
     sort_title: "!E Princess Diaries"
-  Resident Evil:
-    template: {name: Movies, collection: 17255, tmdb_movie: 460458}
   Ring:
     template: {name: Movies, collection: 93369}
     sort_title: "!E Ring Z"
