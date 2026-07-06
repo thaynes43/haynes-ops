@@ -1,0 +1,41 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/kyverno/main/api/kyverno/v1/clusterpolicy.json
+# haynesnetwork image signature ENFORCEMENT (ADR-020 / hnet OPS-006 stage 2).
+# Its OWN ClusterPolicy (not a rule on verify-thaynes43-images) because spec-level
+# validationFailureAction defaults to Audit and — observed live on Kyverno v1.18.1,
+# 2026-07-06 — overrides the per-verifyImages-entry `failureAction: Enforce`, leaving
+# unsigned images admitted with only a warning. A dedicated policy makes Enforce
+# unambiguous without touching the shared Audit policy for the other self-built images.
+# fail-open on webhook infrastructure failure (failurePolicy: Ignore); verification
+# itself is fail-closed (unsigned/unverifiable at admission => denied).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-haynesnetwork-images
+spec:
+  background: false
+  validationFailureAction: Enforce
+  webhookConfiguration:
+    failurePolicy: Ignore
+  rules:
+    - name: verify-haynesnetwork
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/thaynes43/haynesnetwork*"
+          failureAction: Enforce
+          mutateDigest: false
+          verifyDigest: false
+          required: true
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subject: "https://github.com/thaynes43/haynesnetwork/.github/workflows/*"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
