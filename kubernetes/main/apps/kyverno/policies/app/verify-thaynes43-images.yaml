@@ -57,7 +57,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/thaynes43/haynesnetwork*"
-          failureAction: Audit
+          failureAction: Enforce
           mutateDigest: false
           verifyDigest: false
           required: true
