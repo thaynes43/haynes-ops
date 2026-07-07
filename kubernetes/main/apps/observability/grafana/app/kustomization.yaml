@@ -8,3 +8,18 @@ resources:
   - ./helmrepository.yaml
   - ./externalsecret.yaml
   - ./helmrelease.yaml
+# Custom dashboards delivered as sidecar-watched ConfigMaps (label
+# grafana_dashboard). The grafana sidecar (searchNamespace: ALL) auto-imports
+# them into the folder named by the grafana_folder annotation. JSON is kept
+# token-free ($__range/$__rate_interval removed) so Flux postBuild.substitute
+# can't blank Grafana's built-in variables.
+configMapGenerator:
+  - name: grafana-dashboard-media-pipeline
+    files:
+      - dashboards/media-pipeline-resilience.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "true"
+      annotations:
+        grafana_folder: Media
