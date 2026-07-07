@@ -23,3 +23,12 @@ configMapGenerator:
         grafana_dashboard: "true"
       annotations:
         grafana_folder: Media
+  - name: grafana-dashboard-media-storage
+    files:
+      - dashboards/media-storage-utilization.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "true"
+      annotations:
+        grafana_folder: Media
