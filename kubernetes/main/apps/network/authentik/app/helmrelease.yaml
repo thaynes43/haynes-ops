@@ -41,6 +41,16 @@ spec:
         password: ""
     server:
       replicas: 3
+      # PLAN-011: haynesnetwork brand assets mounted read-only so brand fields
+      # can reference them as media values (e.g. hnet/logo-%(theme)s.svg).
+      volumes:
+        - name: brand-assets
+          configMap:
+            name: authentik-brand-assets
+      volumeMounts:
+        - name: brand-assets
+          mountPath: /media/public/hnet
+          readOnly: true
       initContainers:
         - name: init-db
           image: ghcr.io/home-operations/postgres-init:18.4
