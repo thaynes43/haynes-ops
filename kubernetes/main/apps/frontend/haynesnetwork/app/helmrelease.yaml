@@ -46,7 +46,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/haynesnetwork
-              tag: v0.17.0
+              tag: v0.18.0
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -196,6 +196,40 @@ spec:
               - tsx
               - /sync/src/scripts/sync.ts
               - --mode=trash-batch-sweep
+            envFrom:
+              - secretRef:
+                  name: haynesnetwork-secret
+              - secretRef:
+                  name: haynesnetwork-webhook
+                  optional: true
+            resources:
+              requests:
+                cpu: 25m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
+      # Space-policy propose-only sweep (DESIGN-014 D-08 / ADR-031): reads *arr /diskspace +
+      # Maintainerr, proposes leaving_soon batches when an array is over target. No-op unless
+      # space_policy.enabled; writes no sync_runs row. Shipped suspended — owner arms it by
+      # unsuspending once the first run is validated.
+      sync-space-policy:
+        type: cronjob
+        pod:
+          restartPolicy: Never
+        cronjob:
+          schedule: "17 * * * *"
+          suspend: true
+          backoffLimit: 1
+          concurrencyPolicy: Forbid
+          failedJobsHistory: 2
+          successfulJobsHistory: 1
+        containers:
+          main:
+            image: *mainImage
+            command:
+              - tsx
+              - /sync/src/scripts/sync.ts
+              - --mode=space-policy
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
