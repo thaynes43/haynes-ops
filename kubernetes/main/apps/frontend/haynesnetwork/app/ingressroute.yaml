@@ -15,10 +15,31 @@ spec:
     - websecure
   routes:
     - kind: Rule
-      match: Host(`haynesnetwork.com`, `www.haynesnetwork.com`) && PathPrefix(`/`)
+      match: (Host(`haynesnetwork.com`) || Host(`www.haynesnetwork.com`)) && PathPrefix(`/`)
       services:
         - kind: Service
           name: haynesnetwork
           port: 3000
   tls:
     secretName: certificate-haynesnetwork
+---
+# Warm staging fallback (kept through the cutover validation window; retire later).
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: haynesnetwork-staging
+  annotations:
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`haynesnetwork.haynesops.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: haynesnetwork
+          port: 3000
+  tls:
+    secretName: certificate-haynesops
