@@ -280,12 +280,18 @@ a second CronJob (`upgrade-shepherd-triage`) does the auto-summon.
 
 ### `UPGRADE_AGENT_MODE` — the four modes
 
-| Mode | Tools | Merge? | Use |
-|---|---|---|---|
-| `dryrun` (default) | read-only | no | report a plan, make nothing |
-| `shepherd` | + edit/PR | no (human merges) | 4b.1 supervised PR authoring |
-| `auto` | + `gh pr merge --auto` | **queues** (server-side) | 4b.3 hands-off auto-merge |
-| `remediate` | + edit/PR/merge | queues | Mode-2 regression fix/rollback |
+| Mode | Tools | Merge? | Model | Use |
+|---|---|---|---|---|
+| `dryrun` (default) | read-only | no | sonnet | report a plan, make nothing |
+| `shepherd` | + edit/PR | no (human merges) | sonnet | 4b.1 supervised PR authoring |
+| `auto` | + `gh pr merge --auto` | **queues** (server-side) | sonnet | 4b.3 hands-off auto-merge |
+| `remediate` | + edit/PR/merge | queues | **opus** (2026-07-06; `UPGRADE_AGENT_REMEDIATE_MODEL`) | Mode-2 regression fix/rollback — rare, \$5-capped, diagnosis-bound |
+
+**Durable verdicts (2026-07-06):** every run leaves its final summary line at
+`/tmp/shepherd-summary.txt`; after a remediate, triage records it as `note` on the
+coordination-state entry and the **gate appends it to its page body**
+(`… | shepherd: BREAK-GLASS: <reason>`), so the WHY reaches the phone without
+digging Job logs.
 
 **Merge safety is server-side, not the allowlist.** The bot is non-admin + non-bypass,
 so `gh pr merge --auto` only *queues*; GitHub merges **only when Flux Local *and* Diff
@@ -297,11 +303,11 @@ merge` — the Phase-B required checks are the boundary.
 
 The scheduled `auto` run is deterministically pre-filtered so a **quiet day costs \$0**.
 Before any clone or LLM call, `run-shepherd.sh` (`prefilter_should_run`) lists open
-**Renovate** PRs and checks each one's changed files against
-`UPGRADE_AGENT_PREFILTER_GLOBS` — the ramp's repo path prefixes, set on the scheduled
-cronjob env in the shepherd HR. If **no** open Renovate PR touches a ramp path it logs
-`pre-filter: … skipping LLM ($0)` and exits `0` — no clone, no LLM, no spend record.
-Only when a ramp PR exists does it fall through to the (paid) survey+vet.
+**Renovate** PRs and checks each one's changed files against the ramp path prefixes.
+If **no** open Renovate PR touches a ramp path (or every in-scope one is already
+vetted, below) it logs `pre-filter: … skipping LLM ($0)` and exits `0` — no clone, no
+LLM, no spend record. Only when unvetted ramp work exists does it fall through to the
+(paid) survey+vet.
 
 - **It never decides mergeability.** The LLM still fully vets every in-scope PR (holds,
   release notes, supporting-edit detection). The filter only decides *whether there is
@@ -309,15 +315,27 @@ Only when a ramp PR exists does it fall through to the (paid) survey+vet.
   LLM owns the *judgement*.
 - **Fails OPEN.** Any `gh`/`jq` error → it returns "run the LLM" (never silently skips
   real work); the identical old behaviour on error.
-- **The ramp is defined in TWO places that must stay in lockstep:**
-  `UPGRADE_AGENT_PREFILTER_GLOBS` (path prefixes — what the filter matches) and
-  `UPGRADE_AGENT_PROMPT` (component names — what the LLM is allowed to merge), both in
+- **The ramp is ONE env var (2026-07-06):** `UPGRADE_AGENT_RAMP` — a component list in
   [`shepherd/app/helmrelease.yaml`](../../kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml).
-  **Widen the ramp by editing BOTH in the same commit** (add the component's path
-  prefix + its name), then re-run `/kyverno-verify`.
-- **Gating:** the filter runs only when `MODE=auto` **and** `UPGRADE_AGENT_PREFILTER_GLOBS`
-  is non-empty (i.e. the scheduled cronjob). A manual/targeted summon must **clear the
-  var** to bypass it (see the summon recipe's `UPGRADE_AGENT_PREFILTER_GLOBS:""`).
+  The component→path map lives in `run-shepherd.sh` (`ramp_globs_for`) and derives the
+  filter globs; at run start a consistency check asserts every ramp component is also
+  named in `UPGRADE_AGENT_PROMPT` and has a path mapping — **any drift makes the
+  scheduled run REFUSE to vet (fail closed, exit 2) and the gate pages
+  `shepherd/ramp-mismatch`** (proven able to fire 2026-07-06). Widen the ramp by adding
+  the component to `UPGRADE_AGENT_RAMP` + naming it in the prompt (+ a map row for a
+  brand-new component), then `/kyverno-verify`. (`UPGRADE_AGENT_PREFILTER_GLOBS` still
+  exists as an explicit override for tests.)
+- **VET-ONCE markers (2026-07-06):** after fully vetting a PR (any verdict), the
+  shepherd posts a PR comment whose first line is `<!-- shepherd-vet sha=<head> -->`;
+  the pre-filter skips in-scope PRs already vetted at their **current** head SHA, so a
+  PR baking through `minimumReleaseAge` is paid for once, not daily. A Renovate rebase
+  moves the SHA and re-arms the vet automatically.
+- **Orphan-PR report (2026-07-06):** every scheduled run also writes a deterministic
+  digest of open Renovate PRs >7 days old to the `upgrade-orphan-report` ConfigMap;
+  the **gate** pages it weekly (`renovate/orphans`, warning) so nothing ages silently.
+- **Gating:** the filter runs only when `MODE=auto` **and** a ramp is configured. A
+  manual/targeted summon must **clear `UPGRADE_AGENT_RAMP`** (and
+  `UPGRADE_AGENT_PREFILTER_GLOBS` if set) to bypass it — see the summon recipe.
 
 ### Summon (manual, any mode)
 
@@ -325,13 +343,13 @@ Only when a ramp PR exists does it fall through to the (paid) survey+vet.
 # dryrun (read-only, free-ish):
 kubectl -n upgrade-agent create job shep-$(date +%s) --from=cronjob/upgrade-shepherd
 # a specific mode (create-job can't set env; inject via jq). NOTE: clear
-# UPGRADE_AGENT_PREFILTER_GLOBS so a TARGETED summon is never pre-filtered out (else a
+# UPGRADE_AGENT_RAMP so a TARGETED summon is never pre-filtered out (else a
 # PR outside the ramp — e.g. a cnpg negative-proof test — would be skipped before the LLM):
 kubectl -n upgrade-agent create job shep-$(date +%s) --from=cronjob/upgrade-shepherd \
   --dry-run=client -o json \
   | jq '.spec.template.spec.containers |= map(if .name=="app"
         then .env |= (map(if .name=="UPGRADE_AGENT_MODE" then .value="auto"
-                          elif .name=="UPGRADE_AGENT_PREFILTER_GLOBS" then .value="" else . end)
+                          elif .name=="UPGRADE_AGENT_RAMP" then .value="" else . end)
                       + [{name:"UPGRADE_AGENT_PROMPT",value:"<task>"}]) else . end)' \
   | kubectl apply -f -
 ```
@@ -437,6 +455,7 @@ Merge lowest-risk first. Each row links its full section in
 
 ### Cross-references
 
+- Alert enrichment (ANY critical, not just upgrades — the Track-B1 responder): [`alert-responder.md`](./alert-responder.md)
 - Batch process & per-component patterns: [`renovate-upgrade-batches.md`](./renovate-upgrade-batches.md)
 - Read-only cluster access: [`omni-service-account.md`](./omni-service-account.md)
 - Bot identity / threat model: [`tier4-bot-setup.md`](../../docs/renovate/tier4-bot-setup.md)

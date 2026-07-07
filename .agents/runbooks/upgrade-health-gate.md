@@ -26,6 +26,17 @@ Component-specific verification (per-package breaking patterns, the exact entiti
 
 Run cheapest-to-most-expensive, each diffed against the prior cycle's snapshot. "Page only on **new**" is the rule throughout — pre-existing noise is curated into the exclude/allowlists below, not paged.
 
+> **2026-07-06 additions to the deployed `gate.sh`** (this doc's checks are the design;
+> the ConfigMap script is authoritative): (a) the shared signature/collect logic is now
+> **single-sourced** from the `upgrade-coordination-lib` ConfigMap (missing lib ⇒ the
+> gate pages `gate-blind coordination-lib`, never runs half-configured); (b) coordination
+> pages append the **shepherd's recorded verdict** (`… | shepherd: BREAK-GLASS: <why>`)
+> read from the state entry's `note` field; (c) **Check 1b** reads the
+> `upgrade-orphan-report` CM the scheduled shepherd writes — pages `renovate/orphans`
+> (warning, ≤1/week) for Renovate PRs aging >7d unowned, and `shepherd/ramp-mismatch`
+> (critical, ≤1/day) when the scheduled run refused to vet on RAMP/prompt drift. Both
+> page paths + their dedupe were proven able to FIRE on 2026-07-06.
+
 ### 1. Flux GitOps reconcile state
 
 Every Kustomization + HelmRelease + Source `Ready=True`, **and** the `flux-system` GitRepository revision has advanced to the merged commit **on its own** (the gate must not force-reconcile).

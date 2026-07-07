@@ -375,21 +375,38 @@ read+page, so it can ship on the Omni SA kubeconfig alone.
 ## Phase-D auto-merge ramp
 
 The scheduled shepherd (CronJob `upgrade-shepherd`, daily 09:00 ET, `MODE=auto`) may
-**auto-merge pure version/chart/digest bumps only**, for the components listed here.
-The ramp is defined in **two lockstep env vars** in
+**auto-merge pure version/chart/digest bumps** (plus the one typed supporting-edit
+shape below), for the components listed here. Since 2026-07-06 the ramp is **one env
+var** in
 [`shepherd/app/helmrelease.yaml`](../../kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml):
-`UPGRADE_AGENT_PROMPT` (component names the LLM may merge) and
-`UPGRADE_AGENT_PREFILTER_GLOBS` (repo path prefixes the deterministic pre-filter
-matches). **Widen the ramp by editing BOTH in the same commit**, one component at a
-time, operator-approved, with a fresh `/kyverno-verify` after each.
+`UPGRADE_AGENT_RAMP` (component list). The component→path map lives in
+`run-shepherd.sh` (`ramp_globs_for`) and derives the pre-filter globs; a run-start
+consistency check asserts every ramp component is also named in
+`UPGRADE_AGENT_PROMPT` — **drift makes the scheduled run refuse to vet (fail closed)
+and the gate pages `shepherd/ramp-mismatch`** (page path proven 2026-07-06). Widen one
+component at a time, operator-approved, `/kyverno-verify` after each.
 
-**Cost control — the pre-filter:** before the scheduled run spends a cent, a
+**Cost control — the pre-filter + vet-once:** before the scheduled run spends a cent, a
 deterministic check (`prefilter_should_run` in `run-shepherd.sh`) lists open Renovate
 PRs and matches their changed files against the ramp path prefixes. **No in-scope PR ⇒
 it exits $0 with no clone and no LLM call** — most days cost nothing. It never decides
 mergeability (the LLM still fully vets every in-scope PR); it only gates *whether there
-is work worth looking at*, and fails open (runs the LLM) on any error. This is what
-keeps the daily cadence from burning ~$0.77/day surveying an empty-of-ramp queue.
+is work worth looking at*, and fails open (runs the LLM) on any error. **Vet-once
+(2026-07-06):** the shepherd records each vet as a `<!-- shepherd-vet sha=<head> -->`
+PR comment; the pre-filter skips PRs already vetted at their current head SHA (a
+Renovate rebase re-arms), so a PR baking through `minimumReleaseAge` is paid for once,
+not daily. The scheduled run also refreshes the **orphan-PR digest** (open Renovate PRs
+>7d → `upgrade-orphan-report` CM → the gate pages weekly) so unowned PRs never age
+silently.
+
+**Typed supporting-edit auto-merge (2026-07-06, pattern 1):** diff-scope admits exactly
+one supporting-edit shape — restoring `automountServiceAccountToken: true` (+ bare
+`defaultPodOptions:` parent) in a `kubernetes/**` helmrelease.yaml whose **base**
+already declares `serviceAccount:` (the app-template-v5 landmine). Worst case admitted:
+a pod mounts the SA it already declares — identity-minting and RBAC edits still
+hard-fail, an explicit `false→true` flip still gates, adversarial suite 26/26
+(`scripts/diff-scope-test.sh`). The generic shape stays closed; future patterns are
+added one at a time, each with its own adversarial cases.
 
 Structural backstops regardless of prompt: diff-scope (bot PRs must be pure bumps in
 `kubernetes/**`), required checks, non-admin bot, Kyverno enforce, the $50/mo spend
@@ -505,6 +522,25 @@ EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/is
   runbook for the failing component.
 
 ## Changelog
+
+- **2026-07-06** — **Agent-ops batch (PRs #1980/#1981/#1983, all live + drilled).**
+  (1) **Vet-once markers**: the shepherd records each vet as a `shepherd-vet sha=<head>`
+  PR comment; the pre-filter skips already-vetted head SHAs (rebase re-arms) — kills the
+  ~$0.5–0.8/day re-vet while a PR bakes. (2) **Durable verdicts**: the run's final
+  summary line flows run-shepherd → triage (`note` on the coordination state) → the
+  gate's page body — BREAK-GLASS reasons now reach the phone. (3) **Single ramp
+  definition**: `UPGRADE_AGENT_RAMP` + an in-script path map replace the two-place
+  glob/prompt lockstep; drift = fail-closed run + `shepherd/ramp-mismatch` page (drilled
+  live, incl. dedupe). (4) **Orphan-PR digest**: scheduled runs write aging-PR reports;
+  the gate pages weekly. (5) **Shared coordination lib** single-sourced as the
+  `upgrade-coordination-lib` CM (byte-identical-block convention retired). (6)
+  **Remediate → opus** (`UPGRADE_AGENT_REMEDIATE_MODEL`). (7) **alert-responder**
+  (Track B1, [runbook](../../.agents/runbooks/alert-responder.md)): in-cluster read-only
+  Claude Code diagnosis of ANY critical alert, paged as a priority-0 follow-up —
+  enrich-don't-act; E2E drill proved pickup→claim→diagnosis→page at $0.18 + at-most-once
+  on re-run. (8) **diff-scope typed pattern 1**: the app-template automount restore is
+  auto-mergeable when the base HR already declares `serviceAccount:`; suite 26/26.
+  All four cronjobs live; every new page path was proven able to FIRE (the 07-03 lesson).
 
 - **2026-07-04** — **Phase D cost control: deterministic pre-filter (quiet day = $0).**
   The first unattended 09:00 ET run behaved correctly (surveyed 11 PRs, none in the
