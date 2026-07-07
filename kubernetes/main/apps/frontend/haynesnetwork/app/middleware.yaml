@@ -1,0 +1,10 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: haynesnetwork-www-redirect
+spec:
+  redirectRegex:
+    regex: "^https://www\\.haynesnetwork\\.com/(.*)"
+    replacement: "https://haynesnetwork.com/${1}"
+    permanent: true

@@ -13,4 +13,3 @@ resources:
   - ./traefik/config/ks.yaml
   - ./authentik/ks.yaml
   - ./cloudflare-tunnel/ks.yaml
-  - ./cloudflare-ddns/ks.yaml
