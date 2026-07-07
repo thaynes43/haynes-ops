@@ -1,0 +1,54 @@
+---
+# The responder diagnoses READ-ONLY — it reuses the gate's read-only ClusterRole
+# `upgrade-health-gate` (get/list/watch only; no secrets/exec/log/write) via its own
+# binding, exactly like the shepherd does. It holds NO repo-write credential at all
+# (its repo clone is anonymous read-only), so its total write surface is Pushover
+# pages + the two runtime ConfigMaps below.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: &app alert-responder
+  labels:
+    app.kubernetes.io/instance: *app
+    app.kubernetes.io/name: *app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: upgrade-health-gate # the shared read-only role (defined by the gate)
+subjects:
+  - kind: ServiceAccount
+    name: *app
+    namespace: upgrade-agent
+---
+# Runtime state, both confined to this namespace (same rationale as the shepherd's
+# spend Role — `create` cannot be name-restricted):
+#   * alert-responder-state — at-most-once incident ledger (fingerprint+startsAt)
+#   * alert-responder-spend — the monthly spend counter (separate envelope from the
+#     shepherd so an alert storm can't eat the upgrade budget)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: alert-responder-state
+  namespace: upgrade-agent
+  labels:
+    app.kubernetes.io/name: alert-responder
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-responder-state
+  namespace: upgrade-agent
+  labels:
+    app.kubernetes.io/name: alert-responder
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: alert-responder-state
+subjects:
+  - kind: ServiceAccount
+    name: alert-responder
+    namespace: upgrade-agent
