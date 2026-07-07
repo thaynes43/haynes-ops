@@ -63,7 +63,8 @@ spec:
                 cpu: 50m
                 memory: 256Mi
               limits:
-                memory: 512Mi
+                # Bumped 512Mi->1Gi: container was OOMKilled 2026-06-20 at 512Mi. Audit 2026-07-07.
+                memory: 1Gi
     defaultPodOptions:
       securityContext:
         # The upstream image sets USER to a string ("mcpuser"), not a numeric UID.

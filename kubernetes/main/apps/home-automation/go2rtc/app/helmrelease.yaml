@@ -49,6 +49,9 @@ spec:
             resources:
               requests:
                 cpu: 250m
+                # Explicit request: without it k8s defaults request=limit (2Gi),
+                # silently reserving 2Gi for a workload that uses ~25Mi. Audit 2026-07-07.
+                memory: 256Mi
               limits:
                 memory: 2Gi
     defaultPodOptions:
