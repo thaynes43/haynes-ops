@@ -82,6 +82,10 @@ spec:
         data:
           config.yaml: |-
             ingress:
+              - hostname: "haynesnetwork.com" # apex — the * wildcard matches exactly one label, so bare apex needs its own rule (OPS-005)
+                originRequest:
+                  noTLSVerify: true
+                service: https://traefik-external.network.svc.cluster.local:443
               - hostname: "*.haynesnetwork.com"
                 originRequest:
                   noTLSVerify: true

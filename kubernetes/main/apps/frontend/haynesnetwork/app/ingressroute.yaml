@@ -1,25 +1,24 @@
 ---
-# STAGED ROLLOUT (haynesnetwork PRD R-64): internal ingress for cluster
-# validation. At cutover this route is replaced by the traefik-external
-# root-domain route (haynesnetwork.com + www, certificate-haynesnetwork,
-# external-dns target ingress-ext.haynesnetwork.com) and BETTER_AUTH_URL
-# flips in the ExternalSecret. Authentik redirect URIs already cover both.
+# PUBLIC ROOT-DOMAIN ROUTE (haynesnetwork PRD R-64 — cutover executed 2026-07-07,
+# OPS-005): apex + www served via Cloudflare Tunnel -> traefik-external. www is
+# served directly (Better Auth TRUSTED_ORIGINS covers it since v0.16.0).
+# Rollback: git revert this coupled commit (staging cert/DNS/URIs left intact).
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: haynesnetwork
   annotations:
-    external-dns.alpha.kubernetes.io/target: internal.haynesops
-    kubernetes.io/ingress.class: traefik-internal
+    external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
+    kubernetes.io/ingress.class: traefik-external
 spec:
   entryPoints:
     - websecure
   routes:
     - kind: Rule
-      match: Host(`haynesnetwork.haynesops.com`) && PathPrefix(`/`)
+      match: Host(`haynesnetwork.com`, `www.haynesnetwork.com`) && PathPrefix(`/`)
       services:
         - kind: Service
           name: haynesnetwork
           port: 3000
   tls:
-    secretName: certificate-haynesops
+    secretName: certificate-haynesnetwork
