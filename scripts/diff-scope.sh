@@ -14,6 +14,14 @@
 # never trip it. GATE B (shape allowlist, fail-closed) requires masked-multiset
 # equality of removed vs added lines per file — only a pure version/digest/action-pin
 # bump satisfies it. Exit 0 = safe shape; exit 1 = human review required.
+#
+# TYPED SUPPORTING-EDIT ALLOWLIST (2026-07-06). Widening the generic shape is and
+# stays forbidden — instead, individually-vetted, machine-checkable edit shapes are
+# admitted ONE AT A TIME, each with adversarial cases in scripts/diff-scope-test.sh.
+# Pattern 1 (app-template v5 automount restore) is defined at the loop below; the
+# worst case it admits is bounded to "a pod mounts the ServiceAccount it ALREADY
+# declares" — it cannot mint an identity (adding serviceAccount*/RBAC still hard-fails)
+# and cannot grant that SA anything (rbac paths still hard-fail; Kyverno enforces).
 set -uo pipefail
 
 BASE_BRANCH="${DIFF_SCOPE_BASE_BRANCH:-main}"
@@ -79,8 +87,34 @@ for entry in "${NAME_STATUS[@]}"; do
   [[ "$path" == kubernetes/*/apps/kyverno/* ]] && violation "touches the Kyverno guardrail tree: ${path}"
   [[ "$path" == scripts/diff-scope.sh ]]      && violation "touches the diff-scope guard itself: ${path}"
 
+  # ---- TYPED SUPPORTING-EDIT ALLOWLIST — pattern 1: app-template automount restore.
+  #      app-template v5 flips automountServiceAccountToken to false; every HR that
+  #      already declares a serviceAccount needs `automountServiceAccountToken: true`
+  #      (re-)added alongside the chart bump — the exact playbook landmine. Qualify:
+  #        * the file is a kubernetes/** helmrelease.yaml (kyverno tree already fails
+  #          GATE A above), AND
+  #        * the BASE version of the file ALREADY declares `serviceAccount:` — so the
+  #          edit can only restore token-mounting for an identity that exists; a PR
+  #          that also ADDS the serviceAccount still hard-fails GATE A.
+  #      Then ONLY these exact added lines are excluded from GATE A content checks and
+  #      the GATE B multiset: `automountServiceAccountToken: true` and its bare parent
+  #      key `defaultPodOptions:`. Any other added/removed line still gates. A
+  #      true<-false FLIP still gates (the removed `false` line has no filtered pair —
+  #      deliberately: an explicit false is a defense-in-depth choice a human made).
+  TYPED_AUTOMOUNT_RE='^\+?[[:space:]]*automountServiceAccountToken:[[:space:]]*true$'
+  TYPED_PARENT_RE='^\+?[[:space:]]*defaultPodOptions:$'
+  typed_ok=0
+  if [ "$base" = "helmrelease.yaml" ] && [[ "$path" == kubernetes/* ]]; then
+    if git show "${RANGE%%..*}:${path}" 2>/dev/null | grep -qE '^[[:space:]]*serviceAccount:'; then
+      typed_ok=1
+    fi
+  fi
+
   # ---- GATE A: sensitive ADDED content (only '+' lines) ----
   added="$(git diff --no-color "${RANGE}" -- "$path" | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+  if [ "$typed_ok" = "1" ]; then
+    added="$(printf '%s\n' "$added" | grep -vE "$TYPED_AUTOMOUNT_RE" | grep -vE "$TYPED_PARENT_RE" || true)"
+  fi
   printf '%s\n' "$added" | grep -qEi "$SENSITIVE_ADD_RE"  && violation "adds security-sensitive field in ${path}"
   printf '%s\n' "$added" | grep -qE  "$SENSITIVE_KIND_RE" && violation "adds sensitive resource kind in ${path}"
   printf '%s\n' "$added" | grep -qE  "$SENSITIVE_WORD_RE" && violation "adds sensitive token in ${path}"
@@ -88,7 +122,11 @@ for entry in "${NAME_STATUS[@]}"; do
 
   # ---- GATE B: shape allowlist (masked-multiset equality of removed vs added) ----
   rm_lines="$(git diff --no-color "${RANGE}" -- "$path" | grep -E '^-'  | grep -vE '^---' | sed 's/^-//' | normalize | LC_ALL=C sort)"
-  add_lines="$(git diff --no-color "${RANGE}" -- "$path" | grep -E '^\+' | grep -vE '^\+\+\+' | sed 's/^+//' | normalize | LC_ALL=C sort)"
+  add_raw="$(git diff --no-color "${RANGE}" -- "$path" | grep -E '^\+' | grep -vE '^\+\+\+' | sed 's/^+//')"
+  if [ "$typed_ok" = "1" ]; then
+    add_raw="$(printf '%s\n' "$add_raw" | grep -vE "$TYPED_AUTOMOUNT_RE" | grep -vE "$TYPED_PARENT_RE" || true)"
+  fi
+  add_lines="$(printf '%s\n' "$add_raw" | normalize | LC_ALL=C sort)"
   [ "$rm_lines" != "$add_lines" ] && violation "diff exceeds allowed shape (not a pure version/digest bump): ${path}"
 done
 

@@ -101,7 +101,12 @@ spec:
                 gh pr merge <N> --auto --squash --delete-branch (GitHub merges only when
                 Flux Local AND Diff Scope are both green). If it needs a supporting edit:
                 author it on a NEW branch shepherd/<pkg>-<version>, open a PR (diff-scope
-                holds it for human review), do NOT enable auto-merge. Everything out of
+                holds it for human review), do NOT enable auto-merge — EXCEPT the one
+                TYPED shape diff-scope now admits (pattern 1): when the ONLY supporting
+                edit is restoring automountServiceAccountToken: true (plus its bare
+                defaultPodOptions: parent if absent) in a helmrelease.yaml that ALREADY
+                declares serviceAccount:, author bump+edit on one branch and DO enable
+                auto-merge; any other shape stays human-review. Everything out of
                 scope — the cluster-breakers (cnpg, rook-ceph, ceph-csi-drivers, cilium,
                 authentik, emqx, dragonfly-operator, cert-manager, external-secrets) and
                 any non-ramp component's major: leave untouched, just list it in your
