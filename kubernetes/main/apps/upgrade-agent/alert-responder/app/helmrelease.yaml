@@ -41,7 +41,11 @@ spec:
             env:
               ALERTMANAGER_URL: http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093
               PROMETHEUS_URL: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
-              LOKI_URL: http://loki-gateway.observability.svc.cluster.local:80
+              # NOT loki-gateway: this chart deploys gateway.replicas: 0 (Service with
+              # ZERO endpoints — DNS resolves, CNP passes, every query times out =
+              # silent log-blind diagnosis; caught by adversarial review 2026-07-06).
+              # Every other consumer here talks to loki:3100 directly.
+              LOKI_URL: http://loki.observability.svc.cluster.local:3100
               RESPONDER_MODEL: sonnet
               RESPONDER_MAX_PER_RUN: "1"
               RESPONDER_MAX_BUDGET_USD: "2.00"

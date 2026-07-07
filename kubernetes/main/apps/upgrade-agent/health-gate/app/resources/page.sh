@@ -6,6 +6,12 @@ set -u
 SEV="${1:?severity}"; CHECK="${2:?check}"; COMP="${3:-unknown}"; SUM="${4:?summary}"
 : "${PUSHOVER_TOKEN:?PUSHOVER_TOKEN unset}"; : "${PUSHOVER_USER_KEY:?PUSHOVER_USER_KEY unset}"
 
+# Pushover rejects messages >1024 chars — and a rejected page is WORSE than a trimmed
+# one, because gate.sh stamps last_paged regardless and dedupes the retry for 6h. A
+# mass incident (20+ NotReady kustomizations, ESO outage) builds exactly such a body.
+# Clamp here so EVERY caller is covered (found by adversarial review 2026-07-06).
+SUM="${SUM:0:1000}"
+
 # critical -> priority 1 (breaks through quiet hours); else 0.
 prio=0; [ "$SEV" = "critical" ] && prio=1
 
