@@ -1,0 +1,89 @@
+---
+# CiliumNetworkPolicy for the responder pod: the exfil boundary for a prompt-injectable
+# LLM that reads ALERT CONTENT (labels/annotations can carry attacker-influenced text).
+# Egress ONLY to: DNS, apiserver (read-only SA), observability (Alertmanager/Prometheus/
+# Loki), GitHub (anonymous read-only runbook clone), Anthropic, Pushover. No ingress.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: alert-responder
+  namespace: upgrade-agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: alert-responder
+  egress:
+    # 1. DNS via CoreDNS. Cilium `*` does NOT cross label boundaries (proven live
+    #    2026-07-04: "*.cluster.local" never matched multi-label service FQDNs and
+    #    silently blinded the gate) — so every multi-label service name the responder
+    #    uses gets an exact matchName.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*.cluster.local"
+              - matchPattern: "*.svc"
+              - matchName: "kube-prometheus-stack-alertmanager.observability.svc.cluster.local"
+              - matchName: "kube-prometheus-stack-prometheus.observability.svc.cluster.local"
+              - matchName: "loki-gateway.observability.svc.cluster.local"
+              - matchName: "github.com"          # apex — *.github.com does NOT match it
+              - matchPattern: "*.github.com"
+              - matchPattern: "*.githubusercontent.com"
+              - matchName: "api.anthropic.com"
+              - matchName: "api.pushover.net"
+    # 2. Kube API server — read-only diagnosis (kubectl get/describe, flux get).
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # 3. Observability plane: Alertmanager (9093), Prometheus (9090), Loki gateway (80/8080)
+    #    + loki direct (3100) in case the gateway svc changes.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports:
+            - port: "9093"
+              protocol: TCP
+            - port: "9090"
+              protocol: TCP
+            - port: "3100"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+    # 4. GitHub — ANONYMOUS read-only shallow clone (runbook context). No credential
+    #    exists in this pod, so this cannot become a push path.
+    - toFQDNs:
+        - matchName: "github.com"
+        - matchPattern: "*.github.com"
+        - matchPattern: "*.githubusercontent.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # 5. Anthropic — the LLM API.
+    - toFQDNs:
+        - matchName: api.anthropic.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # 6. Pushover — the page channel (the whole point of the responder).
+    - toFQDNs:
+        - matchName: api.pushover.net
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+  # No ingress rules -> all ingress denied.

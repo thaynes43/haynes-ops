@@ -8,3 +8,4 @@ resources:
   # Flux-Kustomizations
   - ./health-gate/ks.yaml
   - ./shepherd/ks.yaml
+  - ./alert-responder/ks.yaml
