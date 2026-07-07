@@ -2,11 +2,11 @@
 # franchises" cleanup (2026-07-06). Originally ~145 hand-curated TMDb Collection
 # ID lists (built with tmdb_collection_details) ported from the LIVE 2023 config
 # (Movies.yml). The bulk that merely duplicated a Kometa franchise Default (same
-# TMDb collection, Default supplies canonical name/summary/poster) were removed;
-# what REMAINS here adds value the Default can't reproduce:
-#   * manual tmdb_movie augments (a film outside the TMDb collection) — e.g.
-#     Ghostbusters, Godzilla, Hannibal, Lego Movie, Nightmare on Elm St, Oceans,
-#     Resident Evil, The Muppets;
+# TMDb collection, Default supplies canonical name/summary/poster) were removed,
+# as were the 8 tmdb_movie augments (Ghostbusters, Godzilla, Hannibal, Lego
+# Movie, Nightmare on Elm St, Oceans, Resident Evil, The Muppets — dropped
+# 2026-07-06, user chose fully-defaults-own over realizing the extra films).
+# What REMAINS here adds value the Default can't reproduce:
 #   * pure manual lists (tmdb_movie / imdb_list only) — Unbreakable, Monsterverse,
 #     The Addams Family;
 #   * franchises the Default doesn't currently own (its collection isn't built in
@@ -70,8 +70,8 @@ collections:
     # mosaic. Provide a ThePosterDB/haynesnetwork URL to restore a custom poster.
   My Big Fat Greek Wedding:
     template: {name: Movies, collection: 389767}
-  Pacific Rim:
-    template: {name: Movies, collection: 363369}
+  # Pacific Rim REMOVED 2026-07-07 (QA sweep): the franchise Default owns it —
+  # live Plex collection matches the Default's canonical name with both films.
   Peter Rabbit:
     template: {name: Movies, collection: 595693}
   The Princess Diaries:
