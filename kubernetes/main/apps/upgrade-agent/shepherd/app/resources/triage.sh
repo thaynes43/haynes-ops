@@ -45,68 +45,14 @@ GH_TOKEN="$(cat /creds/gh_token 2>/dev/null || true)"
 [ -n "$GH_TOKEN" ] || { log "FATAL: /creds/gh_token missing (mint failed) — cannot attribute merges."; exit 1; }
 export GH_TOKEN   # so `gh` and `git` (via the clone URL) both see it
 
-# ═══════════════════════════════════════════════════════════════════════════════════════
-# SHARED coordination block — this block MUST stay byte-identical in BOTH
-#   shepherd/app/resources/triage.sh  AND  health-gate/app/resources/gate.sh
-# so the two independent CronJobs compute the SAME regression signature (the coordination
-# key). They ship in SEPARATE ConfigMaps/images, so it is duplicated inline; edit both.
-#
-# The coordination set is Flux (Kustomization/HelmRelease) NotReady + persisted-unhealthy
-# pods ONLY — the deploy-health signals an UPGRADE regresses through. Firing critical alerts
-# are DELIBERATELY NOT here: Alertmanager already pages every critical with full context, and
-# the gate must not be a second, context-poor alert relay (a self-healed soularr OOMKill once
-# double-paged as a vague "upgrade-gate: OOMKilled" — the reason this was removed 2026-07).
-# ═══════════════════════════════════════════════════════════════════════════════════════
-STATE_NS="${UPGRADE_AGENT_NAMESPACE:-upgrade-agent}"
-STATE_CM="${UPGRADE_REMEDIATION_STATE_CM:-upgrade-remediation-state}"
-SIG_OFFSET="${COORD_SIG_OFFSET:-10m}"
-# Canonical persisted-unhealthy-pods selectors. `offset` MUST directly follow a SELECTOR:
-# `(expr) offset 10m` is a Prometheus PARSE error -> 400 -> empty body -> a false-green.
-SIG_POD_WAITING='kube_pod_container_status_waiting_reason{reason=~"CrashLoopBackOff|ImagePullBackOff|ErrImagePull|CreateContainerError|CreateContainerConfigError"}'
-SIG_POD_PHASE='kube_pod_status_phase{phase=~"Pending|Failed|Unknown"}'
-SIG_POD_QUERY="( (${SIG_POD_WAITING} == 1) or (${SIG_POD_PHASE} == 1) ) and ( (${SIG_POD_WAITING} offset ${SIG_OFFSET} == 1) or (${SIG_POD_PHASE} offset ${SIG_OFFSET} == 1) )"
-
-# collect_regressions — populate the globals REG_IDS (sorted-unique regression identifiers,
-# one per line) and SIG_PODS_STATUS (ok|blind). Identifier forms (stable + sortable):
-#   flux/<Kind>/<ns>/<name>   pod/<ns>/<pod>
-# Requires $NOW (epoch) and $PROM set by the caller. Read-only; never writes anything.
-collect_regressions() {
-  SIG_PODS_STATUS=ok
-  local flux_ids pods_json pods_ids
-  flux_ids="$(kubectl get kustomizations.kustomize.toolkit.fluxcd.io,helmreleases.helm.toolkit.fluxcd.io -A -o json 2>/dev/null \
-    | jq -r --argjson now "$NOW" '.items[] | . as $i
-        | (.status.conditions[]? | select(.type=="Ready" and .status!="True")) as $c
-        | ($c.lastTransitionTime | sub("\\.[0-9]+";"") | fromdateiso8601) as $t
-        | select(($now - $t) > 600)
-        | "flux/\(.kind)/\($i.metadata.namespace)/\($i.metadata.name)"' 2>/dev/null)"
-  pods_json="$(curl -sf --max-time 15 "$PROM/api/v1/query" --data-urlencode "query=$SIG_POD_QUERY" 2>/dev/null)"
-  if [ -z "$pods_json" ]; then
-    SIG_PODS_STATUS=blind
-    pods_ids=""
-  else
-    pods_ids="$(printf '%s' "$pods_json" | jq -r '.data.result[] | "pod/\(.metric.namespace)/\(.metric.pod)"' 2>/dev/null)"
-  fi
-  REG_IDS="$(printf '%s\n%s\n' "$flux_ids" "$pods_ids" | sed '/^$/d' | LC_ALL=C sort -u)"
-}
-
-# sig_of — stable short (12-hex) signature of the newline-joined identifier list ($1).
-# sha256 via whichever tool exists; we slice the 64-hex out so the tool's output framing
-# does not matter (identical value in the debian gate image and the node shepherd image).
-sig_of() {
-  printf '%s' "$1" \
-    | { sha256sum 2>/dev/null || shasum -a 256 2>/dev/null || openssl dgst -sha256 2>/dev/null; } \
-    | grep -oE '[0-9a-f]{64}' | head -1 | cut -c1-12
-}
-
-# state_get — compact-JSON entry for signature $1, or "" (FAIL-SAFE for the gate: any error
-# => ""). Triage uses state_read() instead (it must distinguish unreadable from absent).
-state_get() {
-  kubectl -n "$STATE_NS" get configmap "$STATE_CM" -o json 2>/dev/null \
-    | jq -c --arg k "$1" '(.data[$k] // "") | if . == "" then empty else (fromjson? // {}) end' 2>/dev/null
-}
-# jget — read field $2 from a compact-JSON entry $1; empty string if absent.
-jget() { printf '%s' "$1" | jq -r --arg f "$2" '.[$f] // ""' 2>/dev/null; }
-# ═══════════════════════════════════════════ end shared block ═══════════════════════════
+# ── SHARED coordination logic — single-sourced from the upgrade-coordination-lib
+#    ConfigMap (see health-gate/app/resources/coordination-lib.sh; replaces the old
+#    byte-identical duplicated block). Missing lib => cannot compute the coordination
+#    signature => FAIL CLOSED (rule 2: never summon on unverifiable state). ──
+if ! . "${COORD_LIB:-/opt/coordination/coordination-lib.sh}" 2>/dev/null; then
+  log "FATAL: coordination-lib.sh missing/unreadable — cannot compute regression signatures; NOT summoning (the gate pages independently)."
+  exit 1
+fi
 
 # ── state READ for the summon decision — MUST distinguish "readable" from "unreadable" so
 #    the summon can FAIL CLOSED (rule 2): sets STATE_READ_STATUS = ok | absent | error and
@@ -135,21 +81,25 @@ entry_of() {  # $1=whole-CM JSON $2=sig -> compact-JSON entry or ""
 
 # ── state WRITE (triage owns class/attempted/result; create OR replace via the in-namespace
 #    configmaps Role). last_paged + first_seen are PRESERVED so the gate's page de-dupe holds. ──
-state_upsert() {  # <sig> <class> <attempted> <result> ; RETURNS the write rc (0=persisted).
+state_upsert() {  # <sig> <class> <attempted> <result> [note] ; RETURNS the write rc (0=persisted).
   # The caller MUST check the rc when it is CLAIMING an attempt (cost safety): if the
   # attempted=1 write did not land, the attempt is not durably recorded, so summoning
   # would risk a re-spend next cycle — the summon path fails CLOSED on a non-zero rc.
-  local sig="$1" class="$2" att="$3" res="${4:-none}"
+  # note (2026-07-06): the shepherd's final summary line (BREAK-GLASS/HOLD/report) —
+  # the gate puts it in the page body so a human sees WHY without digging Job logs.
+  # Empty note preserves any existing one.
+  local sig="$1" class="$2" att="$3" res="${4:-none}" note="${5:-}"
   [ -n "$res" ] || res=none
   local ttl rc
   ttl="$(( STATE_TTL_HOURS * 3600 ))"
   if kubectl -n "$STATE_NS" get configmap "$STATE_CM" >/dev/null 2>&1; then
     kubectl -n "$STATE_NS" get configmap "$STATE_CM" -o json 2>/dev/null \
-      | jq --arg k "$sig" --arg class "$class" --arg att "$att" --arg res "$res" \
+      | jq --arg k "$sig" --arg class "$class" --arg att "$att" --arg res "$res" --arg note "$note" \
            --argjson now "$NOW" --argjson ttl "$ttl" '
           .data = (.data // {})
           | ((.data[$k] // "{}") | (fromjson? // {})) as $e
           | .data[$k] = (($e + {class:$class, attempted:$att, result:$res,
+                note:(if $note == "" then ($e.note // "") else $note end),
                 first_seen:($e.first_seen // ($now|tostring)),
                 last_paged:($e.last_paged // "0")}) | tojson)
           | .data |= with_entries(
@@ -160,8 +110,8 @@ state_upsert() {  # <sig> <class> <attempted> <result> ; RETURNS the write rc (0
     rc=${PIPESTATUS[2]:-1}
   else
     kubectl -n "$STATE_NS" create configmap "$STATE_CM" --dry-run=client -o json 2>/dev/null \
-      | jq --arg k "$sig" --arg class "$class" --arg att "$att" --arg res "$res" --argjson now "$NOW" '
-          .data = { ($k): (({class:$class, attempted:$att, result:$res,
+      | jq --arg k "$sig" --arg class "$class" --arg att "$att" --arg res "$res" --arg note "$note" --argjson now "$NOW" '
+          .data = { ($k): (({class:$class, attempted:$att, result:$res, note:$note,
                 first_seen:($now|tostring), last_paged:"0"}) | tojson) }
         ' 2>/dev/null \
       | kubectl -n "$STATE_NS" create -f - >/dev/null 2>&1
@@ -332,6 +282,9 @@ if [ "$CLASS" = "upgrade" ]; then
   /bin/bash /opt/shepherd/run-shepherd.sh
   rc=$?
   log "run-shepherd.sh (remediate) exited rc=$rc — re-checking the regression."
+  # Durable verdict (2026-07-06): run-shepherd.sh leaves its final summary line at a
+  # well-known path; record it on the state entry so the gate's page says WHY.
+  NOTE="$(tr -d '\n\r' < /tmp/shepherd-summary.txt 2>/dev/null | cut -c1-300)"
   prs_after="$(gh pr list -R "$REPO" --state open --json number --jq '[.[].number]|sort' 2>/dev/null || echo '[]')"
   new_pr="$(jq -n --argjson a "${prs_before:-[]}" --argjson b "${prs_after:-[]}" '(($b - $a) | length)' 2>/dev/null || echo 0)"
   collect_regressions
@@ -345,7 +298,7 @@ if [ "$CLASS" = "upgrade" ]; then
     RESULT=failed
     log "post-remediate: still present and NO new PR (break-glass / no-op) — result=failed (the gate pages)."
   fi
-  state_upsert "$SIG" upgrade 1 "$RESULT"
+  state_upsert "$SIG" upgrade 1 "$RESULT" "$NOTE"
   exit 0
 fi
 

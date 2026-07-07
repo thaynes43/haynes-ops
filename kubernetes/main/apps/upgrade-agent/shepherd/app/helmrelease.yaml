@@ -66,26 +66,18 @@ spec:
             env:
               UPGRADE_AGENT_MODE: auto     # Phase D: vet + `gh pr merge --auto` (server-side gated)
               UPGRADE_AGENT_MODEL: sonnet
-              # Deterministic PRE-FILTER (cost control): the scheduled run invokes the
-              # paid LLM ONLY when an open Renovate PR touches one of these ramp path
-              # prefixes; a quiet day exits $0 with no clone + no LLM. This is the
-              # SECOND half of the ramp definition — keep it in lockstep with the
-              # component names in UPGRADE_AGENT_PROMPT below (widen BOTH together).
-              # Manual/targeted summons must clear this var to bypass the filter.
-              UPGRADE_AGENT_PREFILTER_GLOBS: >-
-                kubernetes/main/apps/kube-system/coredns/
-                kubernetes/edge/apps/kube-system/coredns/
-                kubernetes/main/apps/network/traefik/
-                kubernetes/main/apps/network/multus/
-                kubernetes/main/apps/kube-system/generic-device-plugin/
-                kubernetes/main/apps/kube-system/intel-device-plugin/
-                kubernetes/main/apps/kube-system/nvidia-device-plugin/
-                kubernetes/main/flux/
-                kubernetes/edge/flux/
-                kubernetes/main/apps/photos/immich/
-              # The auto-merge RAMP lives here: widen the component list one entry at a
-              # time as each proves quiet (docs/renovate/README.md tracks the ramp), and
-              # re-run /kyverno-verify after each widening.
+              # THE RAMP (single definition, 2026-07-06): a component list. The path
+              # map lives in run-shepherd.sh (ramp_globs_for) and derives the
+              # deterministic pre-filter globs; the run also asserts every component
+              # here is named in UPGRADE_AGENT_PROMPT below and REFUSES to vet (fail
+              # closed, gate pages) on drift — the old two-place glob/prompt lockstep
+              # footgun is gone. Widen one component at a time (docs/renovate/README.md
+              # tracks the ramp) + /kyverno-verify after each. Manual/targeted summons
+              # must clear this var (and UPGRADE_AGENT_PREFILTER_GLOBS if set) to
+              # bypass the pre-filter.
+              UPGRADE_AGENT_RAMP: coredns traefik multus device-plugins flux immich-major
+              # The LLM's merge scope + per-class rules live here — every ramp
+              # component above must be named in this prompt (checked at run start).
               UPGRADE_AGENT_PROMPT: >-
                 You are the Tier-4 upgrade shepherd in AUTO mode (scheduled, unattended).
                 Follow .agents/runbooks/upgrade-shepherd.md.
@@ -219,6 +211,14 @@ spec:
         defaultMode: 0555
         globalMounts:
           - path: /opt/shepherd
+      # Shared gate/triage coordination logic — single-sourced from the health-gate
+      # kustomization (this ks dependsOn it, so the CM exists first).
+      coordination-lib:
+        type: configMap
+        name: upgrade-coordination-lib
+        defaultMode: 0555
+        globalMounts:
+          - path: /opt/coordination
       # HOME + CLAUDE_CONFIG_DIR + the shallow clone (readOnlyRootFilesystem).
       tmp:
         type: emptyDir

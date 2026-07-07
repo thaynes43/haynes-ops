@@ -43,68 +43,14 @@ prom_val()   { curl -sf --max-time 15 "$PROM/api/v1/query" --data-urlencode "que
 prom_names() { curl -sf --max-time 15 "$PROM/api/v1/query" --data-urlencode "query=$1" 2>/dev/null | jq -r "[.data.result[].metric.$2] | unique | join(\",\")" 2>/dev/null; }
 gt0() { [ -n "$1" ] && [ "$1" -gt 0 ] 2>/dev/null; }
 
-# ═══════════════════════════════════════════════════════════════════════════════════════
-# SHARED coordination block — this block MUST stay byte-identical in BOTH
-#   shepherd/app/resources/triage.sh  AND  health-gate/app/resources/gate.sh
-# so the two independent CronJobs compute the SAME regression signature (the coordination
-# key). They ship in SEPARATE ConfigMaps/images, so it is duplicated inline; edit both.
-#
-# The coordination set is Flux (Kustomization/HelmRelease) NotReady + persisted-unhealthy
-# pods ONLY — the deploy-health signals an UPGRADE regresses through. Firing critical alerts
-# are DELIBERATELY NOT here: Alertmanager already pages every critical with full context, and
-# the gate must not be a second, context-poor alert relay (a self-healed soularr OOMKill once
-# double-paged as a vague "upgrade-gate: OOMKilled" — the reason this was removed 2026-07).
-# ═══════════════════════════════════════════════════════════════════════════════════════
-STATE_NS="${UPGRADE_AGENT_NAMESPACE:-upgrade-agent}"
-STATE_CM="${UPGRADE_REMEDIATION_STATE_CM:-upgrade-remediation-state}"
-SIG_OFFSET="${COORD_SIG_OFFSET:-10m}"
-# Canonical persisted-unhealthy-pods selectors. `offset` MUST directly follow a SELECTOR:
-# `(expr) offset 10m` is a Prometheus PARSE error -> 400 -> empty body -> a false-green.
-SIG_POD_WAITING='kube_pod_container_status_waiting_reason{reason=~"CrashLoopBackOff|ImagePullBackOff|ErrImagePull|CreateContainerError|CreateContainerConfigError"}'
-SIG_POD_PHASE='kube_pod_status_phase{phase=~"Pending|Failed|Unknown"}'
-SIG_POD_QUERY="( (${SIG_POD_WAITING} == 1) or (${SIG_POD_PHASE} == 1) ) and ( (${SIG_POD_WAITING} offset ${SIG_OFFSET} == 1) or (${SIG_POD_PHASE} offset ${SIG_OFFSET} == 1) )"
-
-# collect_regressions — populate the globals REG_IDS (sorted-unique regression identifiers,
-# one per line) and SIG_PODS_STATUS (ok|blind). Identifier forms (stable + sortable):
-#   flux/<Kind>/<ns>/<name>   pod/<ns>/<pod>
-# Requires $NOW (epoch) and $PROM set by the caller. Read-only; never writes anything.
-collect_regressions() {
-  SIG_PODS_STATUS=ok
-  local flux_ids pods_json pods_ids
-  flux_ids="$(kubectl get kustomizations.kustomize.toolkit.fluxcd.io,helmreleases.helm.toolkit.fluxcd.io -A -o json 2>/dev/null \
-    | jq -r --argjson now "$NOW" '.items[] | . as $i
-        | (.status.conditions[]? | select(.type=="Ready" and .status!="True")) as $c
-        | ($c.lastTransitionTime | sub("\\.[0-9]+";"") | fromdateiso8601) as $t
-        | select(($now - $t) > 600)
-        | "flux/\(.kind)/\($i.metadata.namespace)/\($i.metadata.name)"' 2>/dev/null)"
-  pods_json="$(curl -sf --max-time 15 "$PROM/api/v1/query" --data-urlencode "query=$SIG_POD_QUERY" 2>/dev/null)"
-  if [ -z "$pods_json" ]; then
-    SIG_PODS_STATUS=blind
-    pods_ids=""
-  else
-    pods_ids="$(printf '%s' "$pods_json" | jq -r '.data.result[] | "pod/\(.metric.namespace)/\(.metric.pod)"' 2>/dev/null)"
-  fi
-  REG_IDS="$(printf '%s\n%s\n' "$flux_ids" "$pods_ids" | sed '/^$/d' | LC_ALL=C sort -u)"
-}
-
-# sig_of — stable short (12-hex) signature of the newline-joined identifier list ($1).
-# sha256 via whichever tool exists; we slice the 64-hex out so the tool's output framing
-# does not matter (identical value in the debian gate image and the node shepherd image).
-sig_of() {
-  printf '%s' "$1" \
-    | { sha256sum 2>/dev/null || shasum -a 256 2>/dev/null || openssl dgst -sha256 2>/dev/null; } \
-    | grep -oE '[0-9a-f]{64}' | head -1 | cut -c1-12
-}
-
-# state_get — compact-JSON entry for signature $1, or "" (FAIL-SAFE for the gate: any error
-# => ""). Triage uses state_read() instead (it must distinguish unreadable from absent).
-state_get() {
-  kubectl -n "$STATE_NS" get configmap "$STATE_CM" -o json 2>/dev/null \
-    | jq -c --arg k "$1" '(.data[$k] // "") | if . == "" then empty else (fromjson? // {}) end' 2>/dev/null
-}
-# jget — read field $2 from a compact-JSON entry $1; empty string if absent.
-jget() { printf '%s' "$1" | jq -r --arg f "$2" '.[$f] // ""' 2>/dev/null; }
-# ═══════════════════════════════════════════ end shared block ═══════════════════════════
+# ── SHARED coordination logic — single-sourced from the upgrade-coordination-lib
+#    ConfigMap (see coordination-lib.sh; replaces the old byte-identical duplicated
+#    block). If the lib is missing the gate must NOT run half-configured — page blind. ──
+if ! . "${COORD_LIB:-/opt/coordination/coordination-lib.sh}" 2>/dev/null; then
+  "$GATE_DIR/page.sh" warning gate-blind coordination-lib \
+    "coordination-lib.sh missing/unreadable — gate cannot compute regression signatures; check the upgrade-coordination-lib ConfigMap mount."
+  exit 0
+fi
 
 # remediation_phase <class> <result> <first_seen> -> inflight | failed | fixed | none
 #   inflight = an upgrade fix is actively landing (Flux ~30m poll) -> suppress the gate
@@ -171,6 +117,7 @@ if [ -n "$REG_IDS" ]; then
   res="$(jget "$entry" result)"
   fseen="$(jget "$entry" first_seen)"
   lpaged="$(jget "$entry" last_paged)"
+  snote="$(jget "$entry" note)"        # shepherd's final summary line (triage records it)
   phase="$(remediation_phase "$cls" "$res" "$fseen")"
 
   # Human-readable remediation context for the page body.
@@ -179,6 +126,10 @@ if [ -n "$REG_IDS" ]; then
     fixed)  rnote="auto-remediation reported FIXED but the signal persists — human check needed" ;;
     *)      rnote="not attributable to a recent upgrade (no auto-remediation ran)" ;;
   esac
+  # Durable-verdict passthrough (2026-07-06): if the shepherd left a summary (its
+  # BREAK-GLASS/HOLD line or final report), put the WHY in the page instead of making
+  # the human dig Job logs. Trimmed — Pushover bodies cap at 1024 chars.
+  [ -n "$snote" ] && rnote="${rnote} | shepherd: ${snote:0:220}"
 
   want_flux=0; want_pod=0
   # Flux = sole catcher: page unless a fix is actively in flight.
@@ -214,6 +165,40 @@ if [ "$API_OK" -eq 0 ]; then
     page warning flux-blind haynes-ops "Cannot read the haynes-ops GitRepository status — Flux source dimension is blind."
   elif [ "$gr_ready" != "True" ]; then
     page critical flux haynes-ops "haynes-ops GitRepository Ready=$gr_ready — Flux can't fetch main (auth/repo failure)."
+  fi
+
+  # ---- Check 1b (2026-07-06): orphan-PR digest + ramp-mismatch tripwire. The shepherd's
+  #      scheduled run writes the deterministic ($0) report to the upgrade-orphan-report
+  #      ConfigMap; the gate — the Pushover owner — pages it: orphans at most weekly,
+  #      a ramp mismatch (prompt/glob-map drift, which silently blinds the pre-filter)
+  #      at most daily. The gate stamps its own page timestamps back into the CM
+  #      (name-scoped get+update, same pattern as the coordination CM). ----
+  orph="$(kubectl -n "$STATE_NS" get configmap upgrade-orphan-report -o json 2>/dev/null)"
+  if [ -n "$orph" ]; then
+    o_count="$(echo "$orph" | jq -r '.data.count // "0"')"
+    o_sum="$(echo "$orph"   | jq -r '.data.summary // ""')"
+    o_mm="$(echo "$orph"    | jq -r '.data.ramp_mismatch // ""')"
+    o_lp="$(echo "$orph"    | jq -r '.data.last_paged // "0"')"
+    o_lmp="$(echo "$orph"   | jq -r '.data.last_mismatch_paged // "0"')"
+    case "$o_lp"  in ''|*[!0-9]*) o_lp=0;;  esac
+    case "$o_lmp" in ''|*[!0-9]*) o_lmp=0;; esac
+    paged_mm=""; paged_orph=""
+    if [ -n "$o_mm" ] && [ "$(( NOW - o_lmp ))" -ge 86400 ]; then
+      page critical shepherd ramp-mismatch "Shepherd RAMP/prompt mismatch — the scheduled run REFUSED to vet (fail-closed):${o_mm}. Fix UPGRADE_AGENT_RAMP / the prompt in shepherd/app/helmrelease.yaml."
+      paged_mm=1
+    fi
+    if [ "$o_count" -gt 0 ] 2>/dev/null && [ "$(( NOW - o_lp ))" -ge 604800 ]; then
+      page warning renovate orphans "${o_count} Renovate PR(s) open >7d with no automation owner: ${o_sum:0:600}"
+      paged_orph=1
+    fi
+    if [ -n "$paged_mm$paged_orph" ]; then
+      # Stamp ONLY the timestamp(s) whose page actually fired this cycle.
+      echo "$orph" | jq --arg now "$NOW" --arg pm "$paged_mm" --arg po "$paged_orph" '
+          .data.last_paged          = (if $po != "" then $now else (.data.last_paged // "0") end)
+          | .data.last_mismatch_paged = (if $pm != "" then $now else (.data.last_mismatch_paged // "0") end)
+        ' 2>/dev/null | kubectl -n "$STATE_NS" replace -f - >/dev/null 2>&1 \
+        || log "orphan-report: WARN could not stamp page timestamps (may re-page next window)"
+    fi
   fi
 fi
 

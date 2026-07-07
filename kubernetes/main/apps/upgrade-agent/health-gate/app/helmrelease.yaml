@@ -67,6 +67,13 @@ spec:
         defaultMode: 0555
         globalMounts:
           - path: /opt/gate
+      # Shared gate/triage coordination logic — single-sourced (see coordination-lib.sh).
+      coordination-lib:
+        type: configMap
+        name: upgrade-coordination-lib
+        defaultMode: 0555
+        globalMounts:
+          - path: /opt/coordination
       tmp:
         type: emptyDir
         globalMounts:
