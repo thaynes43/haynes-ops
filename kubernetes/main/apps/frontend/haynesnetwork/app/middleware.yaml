@@ -6,5 +6,5 @@ metadata:
 spec:
   redirectRegex:
     regex: "^https://www\\.haynesnetwork\\.com/(.*)"
-    replacement: "https://haynesnetwork.com/${1}"
+    replacement: "https://haynesnetwork.com/$${1}"
     permanent: true
