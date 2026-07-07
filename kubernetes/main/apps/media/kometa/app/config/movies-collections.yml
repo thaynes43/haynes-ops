@@ -32,7 +32,7 @@ collections:
     url_poster: https://haynesnetwork.com/wp-content/uploads/2023/11/SurroundTestCollection.png
     collection_order: release.desc
     schedule: weekly(saturday)
-    radarr_tag: "Kometa-Added,SpacialSurround"
+    radarr_tag: "Kometa-Added,SpatialSurround"
     filters:
       - filepath.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'
       - audio_track_title.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'

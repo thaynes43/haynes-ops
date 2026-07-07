@@ -39,7 +39,7 @@ collections:
     sort_title: "!E Addams Family"
   The Brave Little Toaster:
     template: {name: Movies, collection: 141282}
-    sort_title: "!E Brave Little Toaster Collection"
+    sort_title: "!E Brave Little Toaster"
   Captain Underpants:
     template: {name: Movies, collection: 732397}
   Daddy Day Care:
