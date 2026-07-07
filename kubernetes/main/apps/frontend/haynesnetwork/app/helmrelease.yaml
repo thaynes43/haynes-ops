@@ -38,12 +38,17 @@ spec:
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
+              # Maintainerr webhook shared secret (ADR-023 D-07) — cluster-created secret,
+              # 1Password migration pending (owner). Optional: receiver 503s if absent.
+              - secretRef:
+                  name: haynesnetwork-webhook
+                  optional: true
           # 2. Apply Drizzle migrations (+ idempotent app_catalog seed) from
           #    the flattened migrator subtree baked into the app image.
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/haynesnetwork
-              tag: v0.10.0
+              tag: v0.11.0
               pullPolicy: IfNotPresent
             command:
               - tsx
