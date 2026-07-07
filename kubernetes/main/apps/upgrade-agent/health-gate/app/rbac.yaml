@@ -85,7 +85,11 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: [configmaps]
-    resourceNames: [upgrade-remediation-state]
+    # upgrade-orphan-report added 2026-07-06: the shepherd's scheduled run writes the
+    # deterministic orphan-PR/ramp-mismatch report there; the gate (the Pushover owner)
+    # pages it and stamps last_paged/last_mismatch_paged back. Same name-scoped
+    # get+update posture — still no create/delete/list/watch, no other ConfigMap.
+    resourceNames: [upgrade-remediation-state, upgrade-orphan-report]
     verbs: [get, update]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

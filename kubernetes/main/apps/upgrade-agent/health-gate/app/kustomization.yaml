@@ -14,6 +14,13 @@ configMapGenerator:
     files:
       - resources/gate.sh
       - resources/page.sh
+  # Single source of the gate/triage shared coordination logic (2026-07-06) — mounted
+  # by BOTH the gate pod and the shepherd/triage pods (the shepherd ks dependsOn this
+  # ks, so the CM exists before those pods reference it). Replaces the old
+  # "byte-identical duplicated block" convention.
+  - name: upgrade-coordination-lib
+    files:
+      - resources/coordination-lib.sh
 generatorOptions:
   # Stable name so the HelmRelease can mount it by name.
   disableNameSuffixHash: true
