@@ -92,6 +92,48 @@ h_crole()    { new_kind 'kind: ClusterRole'; }
 h_crd()      { new_kind 'kind: CustomResourceDefinition'; }
 h_es()       { new_kind 'kind: ExternalSecret'; }
 
+# ── TYPED PATTERN 1 fixtures (2026-07-06): app-template automount restore ──
+# An HR that ALREADY declares serviceAccount: in its BASE version qualifies for the
+# typed allowlist; everything else about the automount edit must still be exact.
+SAHR=kubernetes/main/apps/network/multus/app/helmrelease.yaml
+sa_hr() { # $1=tag-char $2=extra-lines (appended verbatim, may be empty)
+  w "$SAHR" "apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: multus
+spec:
+  values:
+    controllers:
+      multus:
+        containers:
+          app:
+            image:
+              repository: ghcr.io/k8snetworkplumbingwg/multus-cni
+              tag: v4.1.$1
+    serviceAccount:
+      create: true${2:+
+$2}"; }
+base_sa_hr()        { sa_hr 0 ''; }
+head_sa_bump_auto() { sa_hr 1 '    defaultPodOptions:
+      automountServiceAccountToken: true'; }
+head_sa_auto_only() { sa_hr 0 '    defaultPodOptions:
+      automountServiceAccountToken: true'; }
+head_sa_auto_sneak(){ sa_hr 1 '    defaultPodOptions:
+      automountServiceAccountToken: true
+      hostNetwork: true'; }
+base_sa_false()     { sa_hr 0 '    defaultPodOptions:
+      automountServiceAccountToken: false'; }
+head_sa_flip()      { sa_hr 0 '    defaultPodOptions:
+      automountServiceAccountToken: true'; }
+SANOTHR=kubernetes/main/apps/network/multus/app/extra.yaml
+base_sa_nothr() { w "$SANOTHR" 'spec:
+  serviceAccount:
+    create: true'; }
+head_sa_nothr() { w "$SANOTHR" 'spec:
+  serviceAccount:
+    create: true
+  automountServiceAccountToken: true'; }
+
 # The REAL supporting edits (the crux):
 head_apptmpl() { # app-template v5: must keep automountServiceAccountToken TRUE
   w "$IMMICH" 'apiVersion: helm.toolkit.fluxcd.io/v2
@@ -176,12 +218,23 @@ run_case "bump + unrelated replicas change" 1 base_hr head_repl "allowed shape"
 run_case "registry swap (no version change)" 1 base_hr head_repo "allowed shape"
 
 echo ""
-echo "── PROOF: the REAL manual-tier supporting edits ARE the sensitive shapes ──"
-echo "   (what a diff-scope 'widening' would have to admit — each collides with GATE A"
-echo "    by design; admitting them re-opens the hole the gate exists to close. Expected"
-echo "    verdict: REVIEW, not auto-merge.)"
-run_case "app-template v5 supporting edit"  1 base_hr   head_apptmpl "security-sensitive"
-run_case "rook CSI supporting edit"         1 base_rook head_rook    "security-sensitive"
+echo "── TYPED PATTERN 1 (2026-07-06): app-template automount restore ──"
+echo "   The ONLY admitted supporting-edit shape: add automountServiceAccountToken:true"
+echo "   (+ bare defaultPodOptions:) to a kubernetes/** helmrelease.yaml whose BASE"
+echo "   already declares serviceAccount:. Everything adjacent must still gate."
+run_case "typed: bump + automount restore (SA pre-exists)"  0 base_sa_hr    head_sa_bump_auto
+run_case "typed: automount restore alone (SA pre-exists)"   0 base_sa_hr    head_sa_auto_only
+run_case "typed: automount + sneaky hostNetwork"            1 base_sa_hr    head_sa_auto_sneak "security-sensitive"
+run_case "typed: explicit false->true flip still gates"     1 base_sa_false head_sa_flip       "allowed shape"
+run_case "typed: automount in a non-HR file still gates"    1 base_sa_nothr head_sa_nothr      "security-sensitive"
+
+echo ""
+echo "── PROOF: the OTHER manual-tier supporting edits stay the sensitive shapes ──"
+echo "   (the UNQUALIFIED automount shape — no serviceAccount in the base HR — and the"
+echo "    rook CSI SA edit still collide with GATE A by design. Only typed pattern 1"
+echo "    above is admitted; everything else stays REVIEW.)"
+run_case "app-template edit WITHOUT pre-existing SA" 1 base_hr   head_apptmpl "security-sensitive"
+run_case "rook CSI supporting edit"                  1 base_rook head_rook    "security-sensitive"
 
 echo ""
 echo "════════════════════════════════════════════════════════════════════"
