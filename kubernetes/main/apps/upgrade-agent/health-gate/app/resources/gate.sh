@@ -103,6 +103,10 @@ if [ "$API_OK" -ne 0 ] && [ "$PROM_OK" -ne 0 ]; then
   page warning gate-blind self "Gate cannot reach the API server OR Prometheus — health unknown."
   exit 0
 fi
+# Blind is NOT green — symmetric with the Prometheus-alone warning below: API-server
+# alone unreachable used to silently skip the Flux/GitRepository/orphan dimensions
+# (the gate's SOLE-catcher checks) while the heartbeat kept pinging (2026-07-06).
+[ "$API_OK" -ne 0 ] && page warning gate-blind apiserver "API server unreachable — Flux/GitRepository/orphan dimensions are blind this cycle (Prometheus checks continue)."
 
 # ---- Coordination decision (Flux NotReady + persisted pods, remediation-aware). ONE
 #      signature, per-dimension paging: Flux is the sole catcher (page unless a fix is in

@@ -31,7 +31,7 @@ spec:
               - matchPattern: "*.svc"
               - matchName: "kube-prometheus-stack-alertmanager.observability.svc.cluster.local"
               - matchName: "kube-prometheus-stack-prometheus.observability.svc.cluster.local"
-              - matchName: "loki-gateway.observability.svc.cluster.local"
+              - matchName: "loki.observability.svc.cluster.local"
               - matchName: "github.com"          # apex — *.github.com does NOT match it
               - matchPattern: "*.github.com"
               - matchPattern: "*.githubusercontent.com"
