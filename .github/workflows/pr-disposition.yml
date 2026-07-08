@@ -95,8 +95,8 @@ jobs:
                 want = 'disposition:auto-merge';                       // ground truth
               } else if (isImmich && isMajor) {
                 want = 'disposition:shepherd';                         // immich major → shepherd
-              } else if (!isMajor && (allTier2 || ownImage || ghActions)) {
-                want = 'disposition:auto-merge';                       // Renovate Tier-0/2 (pending its next run)
+              } else if (ghActions || (!isMajor && (allTier2 || ownImage))) {
+                want = 'disposition:auto-merge';                       // Renovate Tier-0/2 (GHA incl. majors since 2026-07-08; pending its next run)
               } else if (!isMajor && inCleanRamp) {
                 want = 'disposition:shepherd';                         // clean-tier ramp → shepherd
               } else if (!isMajor && paths.some(p => RAMP_INFRA.some(r => p.startsWith(r)))) {
