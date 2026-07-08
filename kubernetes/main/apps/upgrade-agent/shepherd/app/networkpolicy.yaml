@@ -32,6 +32,7 @@ spec:
               - matchPattern: "*.cluster.local"
               - matchPattern: "*.svc"
               - matchName: "kube-prometheus-stack-prometheus.observability.svc.cluster.local"
+              - matchName: "kube-prometheus-stack-alertmanager.observability.svc.cluster.local"
               - matchName: "github.com"          # apex — *.github.com does NOT match it
               - matchPattern: "*.github.com"
               - matchPattern: "*.githubusercontent.com"
@@ -44,13 +45,16 @@ spec:
               protocol: TCP
             - port: "6443"
               protocol: TCP
-    # 3. In-cluster Prometheus — mode-2 diagnosis queries.
+    # 3. In-cluster Prometheus (9090, mode-2 diagnosis) + Alertmanager (9093, the
+    #    upgrade-window silence POST from silence.sh — bounded, hardcoded matchers).
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: observability
       toPorts:
         - ports:
             - port: "9090"
+              protocol: TCP
+            - port: "9093"
               protocol: TCP
     # 4. GitHub — git clone/push, gh PRs, gh release view (release notes).
     - toFQDNs:
