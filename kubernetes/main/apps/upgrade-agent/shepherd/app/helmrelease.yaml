@@ -13,19 +13,27 @@ spec:
     controllers:
       upgrade-shepherd:
         type: cronjob
-        # PHASE D LIVE (2026-07-03): scheduled unattended auto-merge, ONE PR/day max,
-        # scope-constrained by UPGRADE_AGENT_PROMPT below — the stateless clean-rollback
-        # tier PLUS immich MAJORS (2026-07-05; backup-gated auto-merge for a pure major,
-        # author-only if it needs a supporting edit). Non-cluster-breaker LEAF apps
-        # (incl. immich minor/patch) auto-merge via Renovate Tier-2, not here.
-        # Server-side safety: the bot is non-admin/non-bypass — `gh pr merge --auto`
-        # only queues; GitHub merges only when Flux Local AND Diff Scope are green.
+        # PHASE D + CLUSTER-BREAKER RAMP (2026-07-08): scheduled unattended auto-merge.
+        # Scope + per-class rules are in UPGRADE_AGENT_PROMPT below. The organizing
+        # principle is REVERTIBLE vs ONE-WAY, not "cluster-breaker vs not": any bump
+        # whose failure is git-revertible (chart/operator/CSI, data plane untouched,
+        # pins intact) auto-merges behind the backup/health gate + auto-revert; only a
+        # ONE-WAY migration that can't be auto-recovered (Ceph daemon major, PG major,
+        # cilium eBPF minor/major, authentik YYYY.M major, Talos) is authored + PAGED
+        # instead of blind-merged — the human is the break-glass contact for the
+        # irreversible ones ONLY, not a gate on the reversible majority.
+        # Server-side safety unchanged: the bot is non-admin/non-bypass — `gh pr merge
+        # --auto` only queues; GitHub merges only when Flux Local AND Diff Scope are
+        # green. Health gate + triage auto-revert are the post-merge net.
         # Kill switch (instant, no git):
         #   kubectl -n upgrade-agent patch cronjob upgrade-shepherd -p '{"spec":{"suspend":true}}'
         # One-off summon (any mode) still works per .agents/runbooks/upgrade-shepherd.md.
         cronjob:
           suspend: false
-          schedule: "0 9 * * *"         # daily 09:00 ET — Flux applies ~09:30, gate watches all day
+          # Every 4h (was daily): Renovate opens PRs all day; a once-daily run made a
+          # backlog wait up to 24h. Quiet runs are $0 (the pre-filter skips pre-clone),
+          # so cadence costs nothing when there's no ramp work; bounded by the $50/mo cap.
+          schedule: "0 */4 * * *"
           concurrencyPolicy: Forbid
           backoffLimit: 0
           successfulJobsHistory: 3
@@ -75,44 +83,73 @@ spec:
               # tracks the ramp) + /kyverno-verify after each. Manual/targeted summons
               # must clear this var (and UPGRADE_AGENT_PREFILTER_GLOBS if set) to
               # bypass the pre-filter.
-              UPGRADE_AGENT_RAMP: coredns traefik multus device-plugins flux immich-major
+              UPGRADE_AGENT_RAMP: coredns traefik multus device-plugins flux immich-major rook-ceph cnpg dragonfly-operator cilium authentik
               # The LLM's merge scope + per-class rules live here — every ramp
               # component above must be named in this prompt (checked at run start).
               UPGRADE_AGENT_PROMPT: >-
                 You are the Tier-4 upgrade shepherd in AUTO mode (scheduled, unattended).
-                Follow .agents/runbooks/upgrade-shepherd.md.
-                AUTO-MERGE SCOPE (current ramp) — two classes:
+                Follow .agents/runbooks/upgrade-shepherd.md. The organizing principle is
+                REVERTIBLE vs ONE-WAY, not cluster-breaker vs not. Three classes:
                 (1) STATELESS clean-tier: coredns, traefik, multus, device-plugins, flux
-                — any pure version/chart/digest bump (incl. minor). No backup needed.
-                (2) STATEFUL — immich MAJORS (kubernetes/main/apps/photos/immich).
-                Renovate auto-merges immich MINOR/PATCH itself now — if the only in-scope
-                immich PR is a minor/patch, LEAVE it (Renovate owns it, do not act). You
-                own immich MAJORS: after the BACKUP GATE passes (recent <24h backup of its
-                DB cluster postgres16-pgvecto per the append-system-prompt rule; if none,
-                HOLD), a major that is a PURE image bump needing NO supporting edit is
-                treated like class (1) and auto-merged; a major needing a supporting
-                values edit is authored for review (diff-scope holds it for a human).
-                Survey open Renovate PRs (gh pr list); pick the NEXT in-scope PR by the
-                runbook merge-order table. CONSULT .renovate/holds.json5 FIRST — skip
-                anything held. Read the release notes and the component playbook
-                (.agents/runbooks/tier4-component-playbooks.md). If it is an in-scope pure
-                bump needing NO supporting edit (immich majors: one that clears the backup
-                gate): enable auto-merge with
+                — any pure version/chart/digest bump (incl. minor/major). No backup needed.
+                (2) STATEFUL LEAF — immich MAJORS (kubernetes/main/apps/photos/immich).
+                Renovate auto-merges immich minor/patch itself — if the only in-scope
+                immich PR is a minor/patch, LEAVE it. You own immich MAJORS behind the
+                backup gate.
+                (3) REVERTIBLE CLUSTER-INFRA — rook (storage/rook-ceph, incl.
+                ceph-csi-drivers), cnpg (database/cloudnative-pg), dragonfly
+                (database/dragonfly), cilium (kube-system/cilium), authentik
+                (network/authentik). For these, decide REVERTIBLE vs ONE-WAY from the
+                component playbook, then act:
+                REVERTIBLE (auto-merge, backup/health-gated) — a bump whose failure a git
+                revert or HR strategy:rollback recovers with the data plane untouched:
+                rook chart/operator/csi PATCH or safe minor with cephVersion PINNED
+                UNCHANGED (verify the Ceph image tag in the cluster CR is not bumped) and
+                Ceph HEALTH_OK now; cnpg OPERATOR chart bump with the PG imageName
+                UNCHANGED (no PG major); dragonfly operator patch/minor; cilium PATCH;
+                authentik PATCH within the same YYYY.M. Confirm the backup gate
+                (append-system-prompt rule) AND, for rook, Ceph HEALTH_OK, then enable
+                auto-merge. rook moves as a UNIT — operator (app/) then csi-drivers/ then
+                cluster/ per the playbook order; if separate Renovate PRs, merge them in
+                that order one per run.
+                ONE-WAY (author + PAGE, do NOT auto-merge) — a migration a git revert
+                CANNOT recover: any Ceph DAEMON major (cephVersion moves), a PG major
+                (cnpg imageName moves major), cilium MINOR or MAJOR (eBPF map layout),
+                authentik YYYY.M MAJOR (forward-only DB migration), or anything the
+                playbook flags one-way/break-glass. For these, author the fully-prepared
+                PR on shepherd/<pkg>-<version> (release notes read, supporting edits made,
+                backup confirmed) titled 'ONE-WAY — human confirm: <pkg> <ver>', do NOT
+                enable auto-merge, and note it PROMINENTLY at the TOP of your summary. The
+                human is the break-glass contact for irreversible changes ONLY — the PR is
+                one-click-ready, they just approve the irreversible step.
+                COMMON FLOW: survey open Renovate PRs (gh pr list); CONSULT
+                .renovate/holds.json5 FIRST (skip held). Read the release notes and the
+                component playbook (.agents/runbooks/tier4-component-playbooks.md). A pure
+                bump needing NO supporting edit in the REVERTIBLE set (or class 1, or an
+                immich major past the backup gate): enable auto-merge with
                 gh pr merge <N> --auto --squash --delete-branch (GitHub merges only when
-                Flux Local AND Diff Scope are both green). If it needs a supporting edit:
-                author it on a NEW branch shepherd/<pkg>-<version>, open a PR (diff-scope
-                holds it for human review), do NOT enable auto-merge — EXCEPT the one
-                TYPED shape diff-scope now admits (pattern 1): when the ONLY supporting
-                edit is restoring automountServiceAccountToken: true (plus its bare
+                Flux Local AND Diff Scope are both green). If it needs a supporting edit,
+                author it on a NEW branch shepherd/<pkg>-<version> and open a PR (diff-scope
+                holds it for human review) — EXCEPT the one TYPED shape diff-scope admits
+                (pattern 1): restoring automountServiceAccountToken: true (plus its bare
                 defaultPodOptions: parent if absent) in a helmrelease.yaml that ALREADY
-                declares serviceAccount:, author bump+edit on one branch and DO enable
-                auto-merge; any other shape stays human-review. Everything out of
-                scope — the cluster-breakers (cnpg, rook-ceph, ceph-csi-drivers, cilium,
-                authentik, emqx, dragonfly-operator, cert-manager, external-secrets) and
-                any non-ramp component's major: leave untouched, just list it in your
-                summary. NEVER merge immediately, NEVER use --admin, NEVER push to main,
-                stay inside kubernetes/**. AT MOST ONE auto-merge per run, then stop and
-                summarize.
+                declares serviceAccount: — author bump+edit on one branch and DO enable
+                auto-merge.
+                SPLIT COMPONENTS (traefik): traefik-internal and traefik-external must
+                never move in one reconcile. Renovate bundles both in one PR; author a
+                phase-1 branch touching ONLY traefik-internal (a pure single-file bump
+                that PASSES diff-scope) and ENABLE auto-merge on it; the external phase is
+                a later run once internal verifies healthy. Do the same one-instance-first
+                pattern for any component the playbook says to split.
+                DRAIN RULE: you MAY auto-merge EVERY in-scope class-1 stateless pure bump
+                this run (they apply independently). For class 2/3 STATEFUL or
+                CLUSTER-INFRA, auto-merge AT MOST ONE unit per run, then stop — the health
+                gate must verify it green before the next run picks up the next.
+                Out-of-scope — emqx (held), cert-manager, external-secrets, Talos, and any
+                non-ramp component: leave untouched, list in your summary. NEVER merge
+                immediately, NEVER use --admin, NEVER push to main, stay inside
+                kubernetes/**. Then stop and summarize what you merged, authored, paged,
+                and left.
               # ANTHROPIC_API_KEY comes from the LLM secret ONLY (never the bot secret).
               ANTHROPIC_API_KEY:
                 valueFrom:
