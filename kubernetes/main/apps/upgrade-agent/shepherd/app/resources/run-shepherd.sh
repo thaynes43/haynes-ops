@@ -88,11 +88,27 @@ ramp_globs_for() {
     device-plugins) printf '%s' "kubernetes/main/apps/kube-system/generic-device-plugin/ kubernetes/main/apps/kube-system/intel-device-plugin/ kubernetes/main/apps/kube-system/nvidia-device-plugin/" ;;
     flux)           printf '%s' "kubernetes/main/flux/ kubernetes/edge/flux/" ;;
     immich-major)   printf '%s' "kubernetes/main/apps/photos/immich/" ;;
+    # ── Revertible cluster-infra (2026-07-08) — the prompt's REVERTIBLE class. The
+    #    shepherd auto-merges PATCH/safe-minor bumps of these (data plane untouched,
+    #    pins intact) behind the backup/health gate; MAJORS that are one-way (Ceph
+    #    daemon major, PG major, cilium eBPF minor/major, authentik YYYY.M major) it
+    #    authors + PAGES instead of auto-merging (see the prompt). rook moves as a UNIT
+    #    (operator→csi-drivers→cluster).
+    rook-ceph)      printf '%s' "kubernetes/main/apps/storage/rook-ceph/rook-ceph/app/ kubernetes/main/apps/storage/rook-ceph/rook-ceph/csi-drivers/ kubernetes/main/apps/storage/rook-ceph/rook-ceph/cluster/" ;;
+    cnpg)           printf '%s' "kubernetes/main/apps/database/cloudnative-pg/" ;;
+    dragonfly-operator) printf '%s' "kubernetes/main/apps/database/dragonfly/" ;;
+    cilium)         printf '%s' "kubernetes/main/apps/kube-system/cilium/" ;;
+    authentik)      printf '%s' "kubernetes/main/apps/network/authentik/" ;;
     *)              printf '' ;;
   esac
 }
 ramp_prompt_token() {  # the substring that must appear in the LLM prompt for this component
-  case "$1" in immich-major) printf 'immich' ;; *) printf '%s' "$1" ;; esac
+  case "$1" in
+    immich-major)       printf 'immich' ;;
+    rook-ceph)          printf 'rook' ;;
+    dragonfly-operator) printf 'dragonfly' ;;
+    *)                  printf '%s' "$1" ;;
+  esac
 }
 
 # ── Orphan-PR report (deterministic, ~$0 — two gh calls) ── refreshed by every

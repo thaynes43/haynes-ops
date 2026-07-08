@@ -420,24 +420,33 @@ guard, and the health gate + guardrail alerts.
 | `device-plugins` | stateless | 2026-07-03 | clean; Plex-unschedulable failure mode |
 | `flux` | stateless | 2026-07-03 | first proven auto-merge (#1917, v2.9.0, 2026-07-03) |
 | `immich` majors | **stateful** | 2026-07-05 | shepherd owns immich MAJORS only — backup-gated on `postgres16-pgvecto` (@daily ScheduledBackup), auto-merge a pure major / author-only if it needs a supporting edit. immich minor/patch auto-merge via **Renovate Tier-2** (the old "immich=manual" carve-out was removed 2026-07-05). |
+| `rook-ceph` (incl. ceph-csi) | **revertible cluster-infra** | 2026-07-08 | chart/operator/csi PATCH + safe minor auto-merge IFF `cephVersion` pinned-unchanged (no Ceph daemon major) + Ceph HEALTH_OK; moves operator→csi→cluster as a unit. Ceph daemon MAJOR = one-way → authored 'ONE-WAY — human confirm'. |
+| `cnpg` | **revertible cluster-infra** | 2026-07-08 | OPERATOR chart bump auto-merge IFF PG `imageName` unchanged (no PG major). PG major = one-way (pg_upgrade) → authored for confirm. |
+| `dragonfly-operator` | **revertible cluster-infra** | 2026-07-08 | operator patch/minor auto-merge (in-memory flush on restart re-enqueues). |
+| `cilium` | **revertible cluster-infra** | 2026-07-08 | PATCH auto-merge; MINOR/MAJOR = one-way eBPF map layout → authored for confirm. |
+| `authentik` | **revertible cluster-infra** | 2026-07-08 | PATCH within same `YYYY.M` auto-merge; `YYYY.M` major = forward-only migration (one-way) → authored for confirm. |
 
-**Operating principle (2026-07-05): auto-merge is the DEFAULT; only cluster-breakers are
-non-auto.** The shepherd (LLM vetting + backup gate + health gate + auto-revert) is the
-safety net, so every non-cluster-breaker bump auto-merges. Two mechanisms:
-- **Renovate Tier-2** auto-merges minor/patch/digest for all safe leaf-app domains
-  (`media, ai, downloads, frontend, office, photos, observability, home-automation`) +
-  curated kube-system/network utilities — flux-local-gated, no shepherd needed.
-- **The shepherd ramp (this table)** owns the cluster-adjacent components that need
-  careful vetting: the stateless clean-tier (coredns/traefik/multus/device-plugins/flux)
-  and immich majors. It also catches **majors** of ramp components.
+**Operating principle (2026-07-08): the split is REVERTIBLE vs ONE-WAY, not
+cluster-breaker vs not.** "Cluster-breaker stays manual" was the wrong frame — a
+supervised Claude Code session merges these today with the exact steps the shepherd has
+(read notes, grep usage, backup, merge, verify, revert). The only real floor is
+recoverability:
+- **Revertible** (chart/operator/CSI bump, data plane untouched, pins intact) →
+  auto-merge, backup/health-gated, auto-revert on regression. Zero human. This now
+  includes rook/cnpg/dragonfly/cilium/authentik **patches** (see table) — not just the
+  stateless tier.
+- **One-way** (Ceph daemon major, PG major, cilium eBPF minor/major, authentik `YYYY.M`
+  major, Talos) → the shepherd still does 100% of the work and authors a one-click-ready
+  `ONE-WAY — human confirm` PR, but does NOT blind-merge the irreversible step. On
+  regression it can't auto-revert, so a human is the **break-glass contact for
+  irreversible changes only** — the same exposure you have with a supervised agent.
+- **Renovate Tier-2** still auto-merges minor/patch/digest for the safe leaf-app domains
+  independently of the shepherd.
 
-**Cluster-breakers = the only non-auto set** (shepherd where possible, human last resort):
-cilium, coredns, flux, rook-ceph/ceph-csi (storage), the DB operators (cnpg,
-dragonfly-operator, emqx-operator), cert-manager, external-secrets, authentik (SSO),
-Talos/node. Plus: **majors** of anything get shepherd/human review, and **supporting-edit
-PRs** stay human-merge (the diff-scope security gate — the one accepted human-in-loop;
-see the diff-scope adversarial suite `scripts/diff-scope-test.sh` for why widening it is
-unsafe). Everything else auto-merges.
+**The only genuinely non-auto set** is now: one-way majors (author + human-confirm),
+emqx (held), Talos (not a Flux flow), and **supporting-edit PRs** (diff-scope security
+gate — except the one typed pattern it admits; see `scripts/diff-scope-test.sh`).
+Everything reversible auto-merges.
 
 Kill switch: `kubectl -n upgrade-agent patch cronjob upgrade-shepherd -p '{"spec":{"suspend":true}}'`.
 
@@ -522,6 +531,21 @@ EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/is
   runbook for the failing component.
 
 ## Changelog
+
+- **2026-07-08** — **Cluster-breaker ramp: revertible-vs-one-way, + cadence.** Reframed
+  the floor from "cluster-breaker vs not" to "git-revertible vs one-way" (a supervised
+  session merges these with the same steps the shepherd has). Widened the ramp to the
+  **revertible cluster-infra** — rook-ceph (incl. ceph-csi), cnpg operator, dragonfly,
+  cilium, authentik — auto-merging PATCH/safe-minor behind the backup+Ceph-health gate
+  with pin-integrity guards (cephVersion/PG-imageName/authentik-YYYY.M unchanged); rook
+  moves operator→csi→cluster as a unit. **One-way** majors (Ceph daemon major, PG major,
+  cilium eBPF, authentik major, Talos) are authored as one-click `ONE-WAY — human confirm`
+  PRs — the human is the break-glass contact for irreversible changes only. **Cadence**:
+  once-daily → every 4h (quiet runs are $0 via the pre-filter) + a DRAIN rule (all class-1
+  stateless pure bumps per run; one stateful/infra unit per run, verify between). Fixes
+  the pile-up: PRs no longer wait up to 24h, and the one-per-run cap no longer strands a
+  backlog for days. Disposition labeler + ramp map/prompt updated in lockstep (consistency
+  check green). First live rook auto-merge proven supervised before trusting the cadence.
 
 - **2026-07-06** — **Agent-ops batch (PRs #1980/#1981/#1983, all live + drilled).**
   (1) **Vet-once markers**: the shepherd records each vet as a `shepherd-vet sha=<head>`

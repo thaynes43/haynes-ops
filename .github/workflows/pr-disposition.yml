@@ -52,6 +52,16 @@ jobs:
               'kubernetes/main/apps/kube-system/nvidia-device-plugin/','kubernetes/main/flux/','kubernetes/edge/flux/',
             ];
             const IMMICH = 'kubernetes/main/apps/photos/immich/';
+            // Revertible cluster-infra ramp (2026-07-08): shepherd auto-merges PATCH/
+            // safe-minor here (backup/health-gated + auto-revert); one-way MAJORS it
+            // authors for human confirm. Prefix list mirrors ramp_globs_for.
+            const RAMP_INFRA = [
+              'kubernetes/main/apps/storage/rook-ceph/rook-ceph/',
+              'kubernetes/main/apps/database/cloudnative-pg/',
+              'kubernetes/main/apps/database/dragonfly/',
+              'kubernetes/main/apps/kube-system/cilium/',
+              'kubernetes/main/apps/network/authentik/',
+            ];
             const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded'];
             const isRenovate = (l) => /renovate/i.test(l || '');
             const tier2Path = (p) => {
@@ -89,8 +99,14 @@ jobs:
                 want = 'disposition:auto-merge';                       // Renovate Tier-0/2 (pending its next run)
               } else if (!isMajor && inCleanRamp) {
                 want = 'disposition:shepherd';                         // clean-tier ramp → shepherd
+              } else if (!isMajor && paths.some(p => RAMP_INFRA.some(r => p.startsWith(r)))) {
+                want = 'disposition:shepherd';                         // revertible cluster-infra PATCH/minor → shepherd
               } else {
-                want = 'disposition:stranded';                         // cluster-breaker / non-ramp major / other → you
+                // remaining: one-way MAJORS (Ceph/PG/cilium/authentik) the shepherd
+                // authors for human confirm, plus non-kubernetes majors and anything
+                // off-ramp. Still "you" — but for ramp-infra majors the shepherd will
+                // hand you a one-click-ready 'ONE-WAY — human confirm' PR.
+                want = 'disposition:stranded';
               }
 
               for (const d of DISPOS) {
