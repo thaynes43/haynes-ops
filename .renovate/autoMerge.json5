@@ -8,12 +8,19 @@
   // platformAutomerge hands the merge to GitHub, which fires when flux-local passes
   // — independent of Mend's hosted run cadence — and leaves a visible merged-PR trail.
   packageRules: [
-    // Tier 0 — github-actions minor/patch. Now that the flux-local PR gate
-    // exists, require the check (ignoreTests:false) so auto-merge is gated.
+    // Tier 0 — github-actions, ALL update types incl. major (widened 2026-07-08).
+    // GHA bumps are trivially revertible (revert the workflow file) and, crucially,
+    // FAIL-SAFE: with ignoreTests:false a major that breaks a workflow turns that
+    // workflow's required check RED on its own PR, so it never auto-merges — it
+    // strands (correctly) instead of merging broken. Even a major to a SAFETY-GATE
+    // workflow (flux-local / diff-scope) can only make its check red, which halts
+    // all auto-merge (fail-closed), never waves something bad through. So there is no
+    // "the gate auto-merged a break in itself" hole. This is the revertible-vs-one-way
+    // principle applied to CI: revertible + self-gating => hands-off.
     {
-      description: 'Auto merge GitHub Actions (gated by flux-local)',
+      description: 'Auto merge GitHub Actions (incl. majors — gated + fail-safe)',
       matchManagers: ['github-actions'],
-      matchUpdateTypes: ['minor', 'patch'],
+      matchUpdateTypes: ['major', 'minor', 'patch', 'digest'],
       automerge: true,
       automergeType: 'pr',
       ignoreTests: false,
