@@ -132,7 +132,18 @@ spec:
                 bump needing NO supporting edit in the REVERTIBLE set (or class 1, or an
                 immich major past the backup gate): enable auto-merge with
                 gh pr merge <N> --auto --squash --delete-branch (GitHub merges only when
-                Flux Local AND Diff Scope are both green). If it needs a supporting edit,
+                Flux Local AND Diff Scope are both green).
+                UPGRADE-WINDOW SILENCE: immediately AFTER you enable auto-merge on a
+                REVERTIBLE CLUSTER-INFRA component (rook-ceph, cnpg, dragonfly-operator,
+                cilium, authentik), run '/opt/shepherd/silence.sh <component> 90' to
+                suppress that component's EXPECTED rollout-transient alerts (OSD/mgr churn,
+                Ceph backfill IO, pod restarts) for the reconcile+roll window — a normal
+                roll must NOT page the human. Do this ONLY for cluster-infra you just
+                auto-merged; NEVER for the stateless clean-tier (they self-heal fast) and
+                NEVER with any argument other than the component name (the matchers are
+                hardcoded in the script). Real regressions the health gate catches (Flux
+                NotReady, HEALTH_ERR) are deliberately NOT in the silenced set.
+                If it needs a supporting edit,
                 author it on a NEW branch shepherd/<pkg>-<version> and open a PR (diff-scope
                 holds it for human review) — EXCEPT the one TYPED shape diff-scope admits
                 (pattern 1): restoring automountServiceAccountToken: true (plus its bare
