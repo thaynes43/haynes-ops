@@ -18,6 +18,29 @@ spec:
     remediation:
       strategy: rollback
       retries: 3
+  # Drop the chronically-fragile CephPoolGrowthWarning rule (2026-07-08). It does
+  # predict_linear(ceph_pool_percent_used[2d]) joined on labels that ignore `pod`, so
+  # EVERY ceph-mgr restart (upgrades, failovers, drains) leaves the old + new mgr pod
+  # series in the 2-day window -> "many-to-many matching not allowed" -> the rule errors
+  # every eval -> PrometheusRuleFailures pages for ~2 days. It's a low-value 5-day
+  # pool-full forecast; we drop it rather than fight it (rook v1.20.2 upgrade paged it).
+  # FAIL-SAFE: the `test` op asserts the target is still CephPoolGrowthWarning; if a rook
+  # chart bump shifts the group/rule index, the patch fails -> the HR goes NotReady (the
+  # gate pages) instead of silently removing the wrong rule. Re-verify the index on a
+  # rook chart bump: kubectl -n rook-ceph get prometheusrule prometheus-ceph-rules -o json
+  #   | jq '.spec.groups[7].rules[0].alert'  (expect "CephPoolGrowthWarning").
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: PrometheusRule
+              name: prometheus-ceph-rules
+            patch: |
+              - op: test
+                path: /spec/groups/7/rules/0/alert
+                value: CephPoolGrowthWarning
+              - op: remove
+                path: /spec/groups/7/rules/0
   dependsOn:
     - name: rook-ceph-operator
       namespace: rook-ceph
