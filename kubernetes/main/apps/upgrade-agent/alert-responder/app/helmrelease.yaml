@@ -46,6 +46,12 @@ spec:
               # silent log-blind diagnosis; caught by adversarial review 2026-07-06).
               # Every other consumer here talks to loki:3100 directly.
               LOKI_URL: http://loki.observability.svc.cluster.local:3100
+              # Denylist (2026-07-09): the appdaemon Protect watchdog OWNS the UniFi
+              # Protect alerts end-to-end — it detects the event-stream freeze, auto-
+              # repairs (reloads the integration), and notifies itself. The responder
+              # adds nothing and just double-pages, so skip the whole Protect.* class.
+              # (Default set + Protect.*; keep in sync with respond.sh's default.)
+              RESPONDER_ALERT_DENYLIST: "^(Watchdog|InfoInhibitor|AlertmanagerReceiversNotConfigured|Protect.*)$"
               RESPONDER_MODEL: sonnet
               RESPONDER_MAX_PER_RUN: "1"
               RESPONDER_MAX_BUDGET_USD: "2.00"
