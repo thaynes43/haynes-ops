@@ -218,7 +218,7 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "17 * * * *"
-          suspend: true
+          suspend: false
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
