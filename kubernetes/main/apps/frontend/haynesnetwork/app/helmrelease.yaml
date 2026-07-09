@@ -46,7 +46,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/haynesnetwork
-              tag: v0.21.0
+              tag: v0.22.0
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -196,6 +196,39 @@ spec:
               - tsx
               - /sync/src/scripts/sync.ts
               - --mode=trash-batch-sweep
+            envFrom:
+              - secretRef:
+                  name: haynesnetwork-secret
+              - secretRef:
+                  name: haynesnetwork-webhook
+                  optional: true
+            resources:
+              requests:
+                cpu: 25m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
+      # Pushover outbox drain every 13 min (PLAN-016 / ADR-034 / DESIGN-015 D-05): drains DUE
+      # notification_outbox rows (sent_at IS NULL AND attempts<5 AND earliest_send_at<=now) to
+      # api.pushover.net, deep-linking …/trash?tab=<movies|tv>. Staggered off the other jobs.
+      # NOT suspended (active): a safe no-op that leaves rows queued when PUSHOVER_* env is absent.
+      sync-notify-outbox:
+        type: cronjob
+        pod:
+          restartPolicy: Never
+        cronjob:
+          schedule: "*/13 * * * *"
+          backoffLimit: 1
+          concurrencyPolicy: Forbid
+          failedJobsHistory: 2
+          successfulJobsHistory: 1
+        containers:
+          main:
+            image: *mainImage
+            command:
+              - tsx
+              - /sync/src/scripts/sync.ts
+              - --mode=notify-outbox
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
