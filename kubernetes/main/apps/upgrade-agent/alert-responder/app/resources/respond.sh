@@ -163,8 +163,8 @@ while [ "$i" -lt "$count" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
   cd "$WORKDIR" 2>/dev/null || cd /tmp
 
   ALERT_JSON="$(printf '%s' "$alert" | jq -c '{labels, annotations, startsAt}')"
-  PROMPT="You are the on-call ALERT RESPONDER for this Kubernetes homelab (GitOps/Flux, Talos). A critical alert is firing; Alertmanager already paged the human — your ONLY job is a fast, read-only diagnosis they read on their phone. Alert: ${ALERT_JSON}. Investigate with the allowlisted tools: kubectl get/describe, flux get, /opt/responder/prom-query.sh '<promql>' for metrics, /opt/responder/loki-query.sh '<logql>' [minutes] [limit] for logs (e.g. loki-query.sh '{namespace=\"x\",pod=~\"y.*\"}' 60). If a repo checkout is present, check .agents/runbooks/ and docs/ for a matching runbook and the recent git log for a plausible culprit change. Then STOP and output EXACTLY this report, under 900 characters total, no markdown headers: CAUSE: <most likely root cause, one or two sentences, state confidence> | EVIDENCE: <the two or three concrete observations that support it> | FIX: <the suggested action for the human — you must NOT perform it> | RUNBOOK: <repo path of the matching runbook, or none>."
-  SAFETY="SAFETY: you are STRICTLY READ-ONLY — never kubectl apply/delete/edit/exec/patch, never git push, never install anything; do not retry a denied command. Never include secret VALUES in output. You run UNATTENDED: no human answers questions; produce the report and stop. If the alert looks already resolved or you cannot diagnose it, still output the report with CAUSE: inconclusive."
+  PROMPT="You are the on-call ALERT RESPONDER for this Kubernetes homelab (GitOps/Flux, Talos). A critical alert is firing; Alertmanager ALREADY paged the human — your follow-up page is worth sending ONLY when it adds an action the human must take. Alert: ${ALERT_JSON}. Investigate with the allowlisted tools: kubectl get/describe, flux get, /opt/responder/prom-query.sh '<promql>' for metrics, /opt/responder/loki-query.sh '<logql>' [minutes] [limit] for logs (e.g. loki-query.sh '{namespace=\"x\",pod=~\"y.*\"}' 60). Check whether the alert is ALREADY RESOLVED (prom-query.sh 'ALERTS{alertname=\"<name>\",alertstate=\"firing\"}' — empty means cleared). If a repo checkout is present, check .agents/runbooks/ and docs/ for a matching runbook and the recent git log for a plausible culprit. Then STOP and output EXACTLY this report, under 900 characters total, no markdown headers, STARTING with ACTION: ACTION: <none|investigate|urgent> | CAUSE: <root cause, one or two sentences, state confidence> | EVIDENCE: <two or three concrete observations> | FIX: <suggested action for the human — you must NOT perform it> | RUNBOOK: <repo path or none>. Choose ACTION honestly: ACTION: none when NO human action is needed — the alert already self-healed, OR it is a KNOWN/DOCUMENTED self-healing cycle (a watchdog auto-repair, an accepted OOM-restart cycle, a component another system's watchdog owns and notifies for); ACTION: investigate when a human should look but it is not on fire; ACTION: urgent when immediate action is needed. Be decisive — if you are confident it self-healed or is a documented benign cycle, say ACTION: none (a no-action page is pure noise the human already got from Alertmanager)."
+  SAFETY="SAFETY: you are STRICTLY READ-ONLY — never kubectl apply/delete/edit/exec/patch, never git push, never install anything; do not retry a denied command. Never include secret VALUES in output. You run UNATTENDED: no human answers questions; produce the report and stop. If you cannot diagnose it, output ACTION: investigate | CAUSE: inconclusive."
 
   export DISABLE_TELEMETRY=1 CLAUDE_CODE_ENABLE_TELEMETRY=0 \
          DISABLE_ERROR_REPORTING=1 DISABLE_AUTOUPDATER=1 DISABLE_NON_ESSENTIAL_MODEL_CALLS=1
@@ -187,7 +187,21 @@ while [ "$i" -lt "$count" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
   REPORT="$(jq -r '.result // empty' "$OUT_FILE" 2>/dev/null | tr '\n\r' '  ' | cut -c1-950)"
   if [ -n "$REPORT" ]; then
     log "diagnosis ($aname): $REPORT"
-    page "${aname}${ans:+ (${ans})}" "${REPORT} [auto-diagnosis — verify before acting]"
+    # PAGE GATE (2026-07-09): the responder page is a FOLLOW-UP on top of the page
+    # Alertmanager already sent. Only send it when it ADDS an action — otherwise it is
+    # pure noise (a UniFi-Protect self-heal + a ceph-mgr known-OOM cycle both paged
+    # "no action required", which is what prompted this). Suppress when EITHER the LLM
+    # verdict is ACTION: none, OR the alert has self-resolved since we were summoned.
+    ACTION="$(printf '%s' "$REPORT" | grep -oiE 'ACTION:[[:space:]]*(none|investigate|urgent)' | head -1 | grep -oiE '(none|investigate|urgent)' | tr 'A-Z' 'a-z')"
+    still_firing="$(curl -sf --max-time 10 "$AM/api/v2/alerts?active=true&silenced=false" 2>/dev/null \
+      | jq -r --arg fp "$fp" 'if any(.[]?; .fingerprint==$fp) then "yes" else "no" end' 2>/dev/null)"
+    if [ "$ACTION" = "none" ]; then
+      log "PAGE-SUPPRESSED ($aname): ACTION=none (no human action needed; the original Alertmanager page already covers it). Diagnosis kept in logs only."
+    elif [ "$still_firing" = "no" ]; then
+      log "PAGE-SUPPRESSED ($aname): alert self-resolved during diagnosis — not paging (nothing to act on)."
+    else
+      page "${aname}${ans:+ (${ans})}" "${REPORT} [auto-diagnosis — verify before acting]"
+    fi
   else
     log "diagnosis produced no report (rc=$rc) — silent (the original Alertmanager page stands)."
   fi
