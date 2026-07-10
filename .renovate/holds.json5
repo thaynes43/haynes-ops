@@ -68,5 +68,17 @@
       matchPackageNames: ['cloudnative-pg'],
       allowedVersions: '<0.30.0',
     },
+    {
+      description: [
+        'HELD grafana/mcp-grafana: 0.17.1 only — fails its /healthz readiness probe.',
+        "Reason: v0.17.1 (auto-merged #2016) never becomes Ready — the Deployment stays 'InProgress', the app-template /healthz probe times out, Flux retried 4x, stalled, and auto-rolled-back to 0.17.0 (working). Left in git it re-auto-merges (observability is Tier-2) and loops the rollback + drops the in-cluster grafana MCP. Pinned back to 0.17.0.",
+        'Issue: readiness-probe/startup regression in 0.17.1; revisit whether /healthz moved or the app needs a probe change.',
+        'Resume: AUTO at 0.17.2+ (allowedVersions skips only 0.17.1); if 0.17.2 also fails the probe, a supporting edit to the probe path is needed, not just a version bump.',
+        'Recorded: 2026-07-10 by claude. Related: PR #2016; memory renovate-automation-roadmap.',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['grafana/mcp-grafana'],
+      allowedVersions: '<0.17.1 || >=0.17.2',
+    },
   ],
 }
