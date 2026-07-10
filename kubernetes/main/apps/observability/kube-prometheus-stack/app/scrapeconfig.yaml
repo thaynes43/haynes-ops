@@ -23,6 +23,34 @@ spec:
     - action: replace
       targetLabel: instance
       replacement: haynestower
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/scrapeconfig_v1alpha1.json
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: &name smartctl-exporter-haynestower
+spec:
+  # Owner-installed smartctl-exporter (privileged docker, v0.14.0) on the
+  # Unraid NAS. Its default --smartctl.powermode-check=standby deliberately
+  # skips spun-down array disks (a whole idle array at 2AM emits no per-device
+  # series), so smartctl_device_* fills in only for awake drives and grows as
+  # disks wake during daytime use. The device count (smartctl_devices) is
+  # always present. This standby-skip is owner-favoured — nothing here may
+  # force spin-up, and dashboards/queries MUST tolerate absent per-device
+  # series (sleeping disk = no data, by design).
+  staticConfigs:
+    - targets:
+        - haynestower.haynesnetwork:9633
+      labels:
+        role: nas
+  metricsPath: /metrics
+  relabelings:
+    - action: replace
+      targetLabel: job
+      replacement: *name
+    - action: replace
+      targetLabel: instance
+      replacement: haynestower
 # ---
 # The scrape configs below are intentionally disabled (kept for reference).
 # PiKVM is reachable but not monitored (accessed directly via http://pikvm);
