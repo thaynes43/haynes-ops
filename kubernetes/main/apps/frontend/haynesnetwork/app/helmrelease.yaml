@@ -46,7 +46,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/haynesnetwork
-              tag: v0.37.0
+              tag: v0.38.0
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -73,6 +73,12 @@ spec:
                   name: haynesnetwork-secret
               - secretRef:
                   name: haynesnetwork-webhook
+                  optional: true
+              # PLAN-026 (ADR-045) — the dedicated hnet-portal Authentik service-account token
+              # (AUTHENTIK_API_TOKEN). Cluster-created (like haynesnetwork-webhook), optional so the
+              # app boots before it lands; Reloader restarts the pod when it changes.
+              - secretRef:
+                  name: haynesnetwork-authentik-token
                   optional: true
             probes:
               liveness:
@@ -331,6 +337,40 @@ spec:
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
+            resources:
+              requests:
+                cpu: 25m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
+      # PLAN-026 (ADR-045 / DESIGN-023) — the authentik-users directory read sync: pages the Authentik
+      # users/groups API (read-only) and upserts the authentik_users mirror the /admin/users portal reads.
+      # Every 20 min (the directory changes slowly; the portal also refreshes on demand + re-reads on write).
+      sync-authentik-users:
+        type: cronjob
+        pod:
+          restartPolicy: Never
+        cronjob:
+          schedule: "7,27,47 * * * *"
+          backoffLimit: 1
+          concurrencyPolicy: Forbid
+          failedJobsHistory: 2
+          successfulJobsHistory: 1
+        containers:
+          main:
+            image: *mainImage
+            command:
+              - tsx
+              - /sync/src/scripts/sync.ts
+              - --mode=authentik-users
+            envFrom:
+              - secretRef:
+                  name: haynesnetwork-secret
+              # The hnet-portal service-account token (AUTHENTIK_API_TOKEN); AUTHENTIK_URL defaults in
+              # code to the in-cluster Service DNS. Optional so the job can be created before the secret.
+              - secretRef:
+                  name: haynesnetwork-authentik-token
+                  optional: true
             resources:
               requests:
                 cpu: 25m
