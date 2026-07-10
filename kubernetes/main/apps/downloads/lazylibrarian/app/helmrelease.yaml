@@ -33,8 +33,10 @@ spec:
                         operator: DoesNotExist
         containers:
           app:
+            # Docker Hub mirror of the LinuxServer image — lscr.io is not on the
+            # cluster's allowlisted-registry Kyverno policy; docker.io is.
             image:
-              repository: lscr.io/linuxserver/lazylibrarian
+              repository: docker.io/linuxserver/lazylibrarian
               tag: version-40a389ea
             env:
               TZ: America/New_York
