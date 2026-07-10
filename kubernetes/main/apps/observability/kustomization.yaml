@@ -16,3 +16,4 @@ resources:
   - ./mcp-grafana/ks.yaml
   - ./mcp-unifi/ks.yaml
   - ./unpoller/ks.yaml
+  - ./prometheus-pve-exporter/ks.yaml
