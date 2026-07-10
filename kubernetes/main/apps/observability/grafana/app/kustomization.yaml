@@ -32,3 +32,23 @@ configMapGenerator:
         grafana_dashboard: "true"
       annotations:
         grafana_folder: Media
+  # PLAN-018 metrics sub-tab deep-dive boards (curated *arr/downloader panels;
+  # the haynesnetwork app surfaces a trimmed subset and deep-links per group).
+  - name: grafana-dashboard-arr-library-overview
+    files:
+      - dashboards/arr-library-overview.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "true"
+      annotations:
+        grafana_folder: Media
+  - name: grafana-dashboard-downloads-clients-indexers
+    files:
+      - dashboards/downloads-clients-indexers.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "true"
+      annotations:
+        grafana_folder: Downloads
