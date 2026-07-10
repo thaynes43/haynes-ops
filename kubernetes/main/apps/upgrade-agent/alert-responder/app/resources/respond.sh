@@ -24,7 +24,11 @@ set -uo pipefail
 AM="${ALERTMANAGER_URL:-http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093}"
 SEVERITY="${RESPONDER_SEVERITY:-critical}"
 ALLOWLIST="${RESPONDER_ALERT_ALLOWLIST:-.*}"
-DENYLIST="${RESPONDER_ALERT_DENYLIST:-^(Watchdog|InfoInhibitor|AlertmanagerReceiversNotConfigured)$}"
+# Skip classes the responder can't ADD VALUE to (keep in sync with the HR env):
+# Watchdog-family + Protect.* (appdaemon watchdog owns it) + host-HARDWARE alerts
+# (Smart.*/Hardware.*/NodeRAIDDiskFailure — self-evident, unactionable-by-cluster, and
+# they RECUR so at-most-once doesn't help; were burning LLM $ on NAS drive wear-out).
+DENYLIST="${RESPONDER_ALERT_DENYLIST:-^(Watchdog|InfoInhibitor|AlertmanagerReceiversNotConfigured|Protect.*|Smart.*|Hardware.*|NodeRAIDDiskFailure)$}"
 MAX_PER_RUN="${RESPONDER_MAX_PER_RUN:-1}"
 MAX_AGE_HOURS="${RESPONDER_MAX_AGE_HOURS:-24}"
 STATE_TTL_HOURS="${RESPONDER_STATE_TTL_HOURS:-168}"

@@ -46,12 +46,16 @@ spec:
               # silent log-blind diagnosis; caught by adversarial review 2026-07-06).
               # Every other consumer here talks to loki:3100 directly.
               LOKI_URL: http://loki.observability.svc.cluster.local:3100
-              # Denylist (2026-07-09): the appdaemon Protect watchdog OWNS the UniFi
-              # Protect alerts end-to-end — it detects the event-stream freeze, auto-
-              # repairs (reloads the integration), and notifies itself. The responder
-              # adds nothing and just double-pages, so skip the whole Protect.* class.
-              # (Default set + Protect.*; keep in sync with respond.sh's default.)
-              RESPONDER_ALERT_DENYLIST: "^(Watchdog|InfoInhibitor|AlertmanagerReceiversNotConfigured|Protect.*)$"
+              # Denylist. Skip alert classes the responder can't ADD VALUE to:
+              #  - Protect.* (2026-07-09): the appdaemon Protect watchdog owns those
+              #    end-to-end (detect→auto-repair→notify); the responder just double-pages.
+              #  - Smart.*/Hardware.*/NodeRAIDDiskFailure (2026-07-10): HOST-HARDWARE
+              #    alerts (SMART wear, fan/mem/power/RAID) — the diagnosis is self-evident
+              #    from the alert, the cluster can't fix hardware, and they RECUR (each
+              #    re-fire is a new incident, so at-most-once doesn't stop them). They were
+              #    burning ~$0.15-0.20/diagnosis on unactionable NAS drive wear-out.
+              # Keep in sync with respond.sh's default.
+              RESPONDER_ALERT_DENYLIST: "^(Watchdog|InfoInhibitor|AlertmanagerReceiversNotConfigured|Protect.*|Smart.*|Hardware.*|NodeRAIDDiskFailure)$"
               RESPONDER_MODEL: sonnet
               RESPONDER_MAX_PER_RUN: "1"
               RESPONDER_MAX_BUDGET_USD: "2.00"
