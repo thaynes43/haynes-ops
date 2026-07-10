@@ -1,9 +1,11 @@
-# PLAN-011 Phase 2 — DRAFT MFA blueprint.  *** NOT ACTIVE ***
+# PLAN-011 Phase 2 — MFA enforcement blueprint. *** ACTIVE (promoted 2026-07-10, owner-present) ***
 #
-# This file is intentionally EXCLUDED from Authentik blueprint discovery: it is NOT
-# listed in app/kustomization.yaml's configMapGenerator, so it is never mounted onto
-# the worker and never applied. Activation is an owner-present Phase 2 step — see
-# ./README.md for the exact promote + dry-run + apply + rollback sequence.
+# Discovered + applied via the authentik-hnet-blueprints ConfigMap. This file OWNS the
+# order-30 authenticator-validation stage and its flow-stage-binding — those entries are
+# intentionally absent from 20-hnet-flows.yaml. Rollback: revert this promotion commit;
+# live-fast path = set the stage's not_configured_action back to `skip` via ak shell/API,
+# then revert. Owner ruling 2026-07-10: thaynes' Plex-source login path is ACCEPTED as-is
+# (Plex 2FA covers it); MFA guards the password path.
 #
 # Effect once active: native (internal-type) accounts — thaynes, akadmin, hnet-e2e,
 # any hand-created local user — must present a WebAuthn passkey or TOTP code AFTER the
@@ -24,10 +26,9 @@ metadata:
   name: hnet-mfa-enforcement
   labels:
     blueprints.goauthentik.io/description: >-
-      DRAFT / NOT-YET-ACTIVE (PLAN-011 Phase 2). Native-account MFA: WebAuthn/TOTP
+      PLAN-011 Phase 2 (ACTIVE 2026-07-10). Native-account MFA: WebAuthn/TOTP
       validation + enrollment after the password stage; exempts the mfa-exempt group
-      (automation/e2e). Plex-source logins unaffected. Do NOT add to
-      blueprints.configMaps until owner-present Phase 2.
+      (automation/e2e). Plex-source logins unaffected (login-only source flow).
 context: {}
 entries:
   # (1) Exemption group — automation / e2e accounts that must never be challenged.
