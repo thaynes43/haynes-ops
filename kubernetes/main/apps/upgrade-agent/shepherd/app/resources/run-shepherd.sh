@@ -99,6 +99,7 @@ ramp_globs_for() {
     dragonfly-operator) printf '%s' "kubernetes/main/apps/database/dragonfly/" ;;
     cilium)         printf '%s' "kubernetes/main/apps/kube-system/cilium/" ;;
     authentik)      printf '%s' "kubernetes/main/apps/network/authentik/" ;;
+    cert-manager)   printf '%s' "kubernetes/main/apps/cert-manager/cert-manager/" ;;
     *)              printf '' ;;
   esac
 }

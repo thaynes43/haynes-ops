@@ -36,6 +36,8 @@ case "$COMP" in
     MATCHERS='[{"name":"alertname","value":"KubePod(NotReady|CrashLooping)","isRegex":true,"isEqual":true},{"name":"namespace","value":"network","isRegex":false,"isEqual":true}]' ;;
   cilium)
     MATCHERS='[{"name":"alertname","value":"KubePod(NotReady|CrashLooping)","isRegex":true,"isEqual":true},{"name":"namespace","value":"kube-system","isRegex":false,"isEqual":true}]' ;;
+  cert-manager)
+    MATCHERS='[{"name":"alertname","value":"KubePod(NotReady|CrashLooping)","isRegex":true,"isEqual":true},{"name":"namespace","value":"cert-manager","isRegex":false,"isEqual":true}]' ;;
   *)
     log "silence.sh: '$COMP' has no rollout-transient set — no silence (fine for stateless clean-tier: coredns/traefik/multus/device-plugins/flux self-heal fast)."; exit 0 ;;
 esac

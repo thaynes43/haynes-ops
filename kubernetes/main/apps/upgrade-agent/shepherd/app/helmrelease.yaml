@@ -83,7 +83,7 @@ spec:
               # tracks the ramp) + /kyverno-verify after each. Manual/targeted summons
               # must clear this var (and UPGRADE_AGENT_PREFILTER_GLOBS if set) to
               # bypass the pre-filter.
-              UPGRADE_AGENT_RAMP: coredns traefik multus device-plugins flux immich-major rook-ceph cnpg dragonfly-operator cilium authentik
+              UPGRADE_AGENT_RAMP: coredns traefik multus device-plugins flux immich-major rook-ceph cnpg dragonfly-operator cilium authentik cert-manager
               # The LLM's merge scope + per-class rules live here — every ramp
               # component above must be named in this prompt (checked at run start).
               UPGRADE_AGENT_PROMPT: >-
@@ -99,8 +99,8 @@ spec:
                 (3) REVERTIBLE CLUSTER-INFRA — rook (storage/rook-ceph, incl.
                 ceph-csi-drivers), cnpg (database/cloudnative-pg), dragonfly
                 (database/dragonfly), cilium (kube-system/cilium), authentik
-                (network/authentik). For these, decide REVERTIBLE vs ONE-WAY from the
-                component playbook, then act:
+                (network/authentik), cert-manager (cert-manager/cert-manager). For
+                these, decide REVERTIBLE vs ONE-WAY from the component playbook, then act:
                 REVERTIBLE (auto-merge, backup/health-gated) — a bump whose failure a git
                 revert or HR strategy:rollback recovers with the data plane untouched:
                 rook chart/operator/csi PATCH (a rook PATCH does not move the Ceph daemon
@@ -111,7 +111,12 @@ spec:
                 it does, that bump is ONE-WAY → author for confirm, do not auto-merge);
                 cnpg OPERATOR chart bump with the PG imageName
                 UNCHANGED (no PG major); dragonfly operator patch/minor; cilium PATCH;
-                authentik PATCH within the same YYYY.M. Confirm the backup gate
+                authentik PATCH within the same YYYY.M; cert-manager PATCH only (a
+                cert-manager MINOR/MAJOR is NOT auto-merge — its Helm schema is strict
+                additionalProperties:false and minors REMOVE values keys, e.g. v1.21.0
+                dropped prometheus.servicemonitor.*, so a minor needs release-note +
+                values vetting → author it for human review, do not auto-merge).
+                Confirm the backup gate
                 (append-system-prompt rule) AND, for rook, Ceph HEALTH_OK, then enable
                 auto-merge. rook moves as a UNIT — operator (app/) then csi-drivers/ then
                 cluster/ per the playbook order; if separate Renovate PRs, merge them in
