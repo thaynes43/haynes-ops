@@ -100,6 +100,12 @@ spec:
           gethomepage.dev/icon: audiobookshelf
           gethomepage.dev/app: audiobookshelf
           gethomepage.dev/siteMonitor: *url
+          gethomepage.dev/widget.type: audiobookshelf
+          gethomepage.dev/widget.url: "http://audiobookshelf.media.svc.cluster.local:13378"
+          # app-template runs tpl on annotations; escape the Homepage var so Helm
+          # doesn't render it (same pattern as the Kavita widget).
+          gethomepage.dev/widget.key: '{{ "{{HOMEPAGE_VAR_ABS_API_TOKEN}}" }}'
+          gethomepage.dev/widget.fields: '["books", "booksDuration"]'
         className: traefik-internal
         hosts:
           - host: audiobookshelf.haynesops.com
