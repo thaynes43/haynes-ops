@@ -45,6 +45,13 @@ spec:
               SLSKD_HTTP_PORT: &port 5030
               SLSKD_NO_HTTPS: "true"
               SLSKD_NO_VERSION_CHECK: "true"
+              # First-party Prometheus metrics on the web port at /metrics
+              # (PLAN-018). NO_AUTH: the endpoint is internal-only (VPN pod,
+              # traefik-internal ingress) and Prometheus scrapes the ClusterIP
+              # directly; slskd's independent metrics auth otherwise defaults to
+              # the public slskd/slskd creds, which is no stronger than none.
+              SLSKD_METRICS: "true"
+              SLSKD_METRICS_NO_AUTH: "true"
               SLSKD_SLSK_LISTEN_PORT: 50300
               SLSKD_DOWNLOADS_DIR: /data/soulseek/complete
               SLSKD_INCOMPLETE_DIR: /data/soulseek/incomplete
@@ -139,6 +146,19 @@ spec:
         ports:
           http:
             port: *port
+    serviceMonitor:
+      app:
+        serviceName: slskd
+        endpoints:
+          # slskd serves metrics on the web port at /metrics (no separate
+          # metrics port). It doesn't bind HTTP until the initial share scan
+          # finishes (~40-70 min after a pod restart), so this target stays
+          # DOWN until then.
+          - port: http
+            scheme: http
+            path: /metrics
+            interval: 1m
+            scrapeTimeout: 30s
     ingress:
       app:
         annotations:
