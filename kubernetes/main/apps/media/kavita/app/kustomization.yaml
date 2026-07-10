@@ -6,4 +6,5 @@ components:
   - ../../../../../shared/components/gatus/gaurded
   - ../../../../../shared/components/volsync/aws
 resources:
+  - ./externalsecret.yaml
   - ./helmrelease.yaml
