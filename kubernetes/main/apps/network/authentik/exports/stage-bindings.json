@@ -1,0 +1,770 @@
+{
+  "pagination": {
+    "next": 0,
+    "previous": 0,
+    "count": 20,
+    "current": 1,
+    "total_pages": 1,
+    "start_index": 1,
+    "end_index": 20
+  },
+  "results": [
+    {
+      "pk": "4621f5b4-c5e9-41d6-be74-9963e02ae970",
+      "policybindingmodel_ptr_id": "711cde26-596a-4d1b-916a-28bd45102445",
+      "target": "45ec4bf4-ad99-46cd-ab07-6c744f72e1a2",
+      "stage": "417619a8-0e1e-4a93-85b2-61529bd87266",
+      "stage_obj": {
+        "pk": "417619a8-0e1e-4a93-85b2-61529bd87266",
+        "name": "default-authenticator-webauthn-setup",
+        "component": "ak-stage-authenticator-webauthn-form",
+        "verbose_name": "WebAuthn Authenticator Setup Stage",
+        "verbose_name_plural": "WebAuthn Authenticator Setup Stages",
+        "meta_model_name": "authentik_stages_authenticator_webauthn.authenticatorwebauthnstage",
+        "flow_set": [
+          {
+            "pk": "45ec4bf4-ad99-46cd-ab07-6c744f72e1a2",
+            "policybindingmodel_ptr_id": "70f5b687-98b8-4352-9910-7247f8439e7a",
+            "name": "default-authenticator-webauthn-setup",
+            "slug": "default-authenticator-webauthn-setup",
+            "title": "Setup WebAuthn",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-authenticator-webauthn-setup/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 0,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "5be00abd-a83a-42e9-8036-687dc7c2cee1",
+      "policybindingmodel_ptr_id": "7c99ca41-5972-4358-8dcd-163cd4f2f4fa",
+      "target": "8ba7e7a7-89ae-4f37-b35c-45e8ab602c62",
+      "stage": "b5683b2b-f105-4242-9fcf-16eb521f576a",
+      "stage_obj": {
+        "pk": "b5683b2b-f105-4242-9fcf-16eb521f576a",
+        "name": "default-invalidation-logout",
+        "component": "ak-stage-user-logout-form",
+        "verbose_name": "User Logout Stage",
+        "verbose_name_plural": "User Logout Stages",
+        "meta_model_name": "authentik_stages_user_logout.userlogoutstage",
+        "flow_set": [
+          {
+            "pk": "8ba7e7a7-89ae-4f37-b35c-45e8ab602c62",
+            "policybindingmodel_ptr_id": "047bb277-1c4c-4bf3-8d0f-510842665171",
+            "name": "Logout",
+            "slug": "default-invalidation-flow",
+            "title": "Default Invalidation Flow",
+            "designation": "invalidation",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-invalidation-flow/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 0,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "71436c2e-03a2-4b34-a0f0-52f52e270916",
+      "policybindingmodel_ptr_id": "43af8e9f-d922-40be-a19b-17a2d94c1be8",
+      "target": "f73705c8-71d0-45c0-b728-2f81d50ec7fb",
+      "stage": "71e5c598-6080-4658-aa24-8be40c5e4878",
+      "stage_obj": {
+        "pk": "71e5c598-6080-4658-aa24-8be40c5e4878",
+        "name": "default-provider-authorization-consent",
+        "component": "ak-stage-consent-form",
+        "verbose_name": "Consent Stage",
+        "verbose_name_plural": "Consent Stages",
+        "meta_model_name": "authentik_stages_consent.consentstage",
+        "flow_set": [
+          {
+            "pk": "f73705c8-71d0-45c0-b728-2f81d50ec7fb",
+            "policybindingmodel_ptr_id": "a505f0e0-29bf-42a9-be38-50b54812175d",
+            "name": "Authorize Application",
+            "slug": "default-provider-authorization-explicit-consent",
+            "title": "Redirecting to %(app)s",
+            "designation": "authorization",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-provider-authorization-explicit-consent/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 0,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "93deeed3-c60d-4653-b4e3-7372d0075ed5",
+      "policybindingmodel_ptr_id": "86ed0266-4081-4468-afcc-af3dda496b7e",
+      "target": "70164dd1-d91e-4ced-8d67-4de7f6db56e4",
+      "stage": "8a47bd14-a9a0-42a7-b41a-7ad22d1e87c3",
+      "stage_obj": {
+        "pk": "8a47bd14-a9a0-42a7-b41a-7ad22d1e87c3",
+        "name": "default-password-change-prompt",
+        "component": "ak-stage-prompt-form",
+        "verbose_name": "Prompt Stage",
+        "verbose_name_plural": "Prompt Stages",
+        "meta_model_name": "authentik_stages_prompt.promptstage",
+        "flow_set": [
+          {
+            "pk": "70164dd1-d91e-4ced-8d67-4de7f6db56e4",
+            "policybindingmodel_ptr_id": "6979dede-e61f-4e5f-871a-8fd20b73aed2",
+            "name": "Change Password",
+            "slug": "default-password-change",
+            "title": "Change password",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-password-change/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 0,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "a2ea0052-fce4-4833-9978-12cf15f6347b",
+      "policybindingmodel_ptr_id": "a6b7d302-0d58-48ed-b04c-08bd8dd6eeeb",
+      "target": "2b57cbf6-65ca-4bcb-b4f8-90081a83e143",
+      "stage": "b28eb628-1199-4dfb-969c-5fb35635e41c",
+      "stage_obj": {
+        "pk": "b28eb628-1199-4dfb-969c-5fb35635e41c",
+        "name": "default-authenticator-totp-setup",
+        "component": "ak-stage-authenticator-totp-form",
+        "verbose_name": "TOTP Authenticator Setup Stage",
+        "verbose_name_plural": "TOTP Authenticator Setup Stages",
+        "meta_model_name": "authentik_stages_authenticator_totp.authenticatortotpstage",
+        "flow_set": [
+          {
+            "pk": "2b57cbf6-65ca-4bcb-b4f8-90081a83e143",
+            "policybindingmodel_ptr_id": "c8501edd-5501-4f9c-a8c1-78e327c4559a",
+            "name": "default-authenticator-totp-setup",
+            "slug": "default-authenticator-totp-setup",
+            "title": "Set up Two-Factor authentication",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-authenticator-totp-setup/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 0,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "afe36051-74d3-4661-80a2-d42cb52f31e7",
+      "policybindingmodel_ptr_id": "f8b67bd6-db24-4417-890c-f22218147f47",
+      "target": "1135c377-c04d-40e7-bc26-4585fd9f0ed4",
+      "stage": "99cfea2a-4f75-4e81-afed-68521ee92244",
+      "stage_obj": {
+        "pk": "99cfea2a-4f75-4e81-afed-68521ee92244",
+        "name": "default-authenticator-static-setup",
+        "component": "ak-stage-authenticator-static-form",
+        "verbose_name": "Static Authenticator Setup Stage",
+        "verbose_name_plural": "Static Authenticator Setup Stages",
+        "meta_model_name": "authentik_stages_authenticator_static.authenticatorstaticstage",
+        "flow_set": [
+          {
+            "pk": "1135c377-c04d-40e7-bc26-4585fd9f0ed4",
+            "policybindingmodel_ptr_id": "c3f1ad52-b6d6-43e4-9fd3-45e702954421",
+            "name": "default-authenticator-static-setup",
+            "slug": "default-authenticator-static-setup",
+            "title": "Setup Static OTP Tokens",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-authenticator-static-setup/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 0,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "c97ab0a2-5364-430c-ab3b-9712911af012",
+      "policybindingmodel_ptr_id": "0d5c0b9f-ac33-4c14-80af-5350ff847957",
+      "target": "67b51e33-b342-4319-a6d9-3d080d6aed73",
+      "stage": "d81d77d2-f3f5-4712-ad34-938cfa4dc5bc",
+      "stage_obj": {
+        "pk": "d81d77d2-f3f5-4712-ad34-938cfa4dc5bc",
+        "name": "default-source-authentication-login",
+        "component": "ak-stage-user-login-form",
+        "verbose_name": "User Login Stage",
+        "verbose_name_plural": "User Login Stages",
+        "meta_model_name": "authentik_stages_user_login.userloginstage",
+        "flow_set": [
+          {
+            "pk": "67b51e33-b342-4319-a6d9-3d080d6aed73",
+            "policybindingmodel_ptr_id": "3803d246-88a6-4f57-b268-8562cd949375",
+            "name": "Welcome to authentik!",
+            "slug": "default-source-authentication",
+            "title": "Sign in to haynesnetwork",
+            "designation": "authentication",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-source-authentication/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 0,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "c9e3bda6-3a03-401b-abc4-22a3a00dfa8b",
+      "policybindingmodel_ptr_id": "676f885a-480c-4e3c-91ee-96309b2bb5c0",
+      "target": "f80cd9b5-8969-4f4f-91ab-8810b221198d",
+      "stage": "3dffddb0-d1e3-44ee-8c36-a6348320723e",
+      "stage_obj": {
+        "pk": "3dffddb0-d1e3-44ee-8c36-a6348320723e",
+        "name": "default-source-enrollment-prompt",
+        "component": "ak-stage-prompt-form",
+        "verbose_name": "Prompt Stage",
+        "verbose_name_plural": "Prompt Stages",
+        "meta_model_name": "authentik_stages_prompt.promptstage",
+        "flow_set": [
+          {
+            "pk": "f80cd9b5-8969-4f4f-91ab-8810b221198d",
+            "policybindingmodel_ptr_id": "52aebb38-cae5-4ab3-b4d7-f90f858554cb",
+            "name": "Welcome to authentik! Please select a username.",
+            "slug": "default-source-enrollment",
+            "title": "Welcome — choose your username",
+            "designation": "enrollment",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-source-enrollment/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 0,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "1b4cbfa1-3213-42f4-9487-8c4f0edec6b7",
+      "policybindingmodel_ptr_id": "96f39781-77f7-4ce8-ab97-6ef92a5b8d9b",
+      "target": "f80cd9b5-8969-4f4f-91ab-8810b221198d",
+      "stage": "ee6624e8-3f65-4a39-b2cf-fbc4ef5b3532",
+      "stage_obj": {
+        "pk": "ee6624e8-3f65-4a39-b2cf-fbc4ef5b3532",
+        "name": "default-source-enrollment-write",
+        "component": "ak-stage-user-write-form",
+        "verbose_name": "User Write Stage",
+        "verbose_name_plural": "User Write Stages",
+        "meta_model_name": "authentik_stages_user_write.userwritestage",
+        "flow_set": [
+          {
+            "pk": "f80cd9b5-8969-4f4f-91ab-8810b221198d",
+            "policybindingmodel_ptr_id": "52aebb38-cae5-4ab3-b4d7-f90f858554cb",
+            "name": "Welcome to authentik! Please select a username.",
+            "slug": "default-source-enrollment",
+            "title": "Welcome — choose your username",
+            "designation": "enrollment",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-source-enrollment/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 1,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "268ff760-bc24-4e99-9b37-17c1a98ec17e",
+      "policybindingmodel_ptr_id": "75297896-1059-4a3d-acdb-272fe0e924a1",
+      "target": "70164dd1-d91e-4ced-8d67-4de7f6db56e4",
+      "stage": "58aa6972-8d61-42ac-ae5b-697aab560a75",
+      "stage_obj": {
+        "pk": "58aa6972-8d61-42ac-ae5b-697aab560a75",
+        "name": "default-password-change-write",
+        "component": "ak-stage-user-write-form",
+        "verbose_name": "User Write Stage",
+        "verbose_name_plural": "User Write Stages",
+        "meta_model_name": "authentik_stages_user_write.userwritestage",
+        "flow_set": [
+          {
+            "pk": "34046fb6-5e8d-4690-8fbd-412974f7e67b",
+            "policybindingmodel_ptr_id": "b8efbc96-2294-4e86-ac53-a4b7aaa9a583",
+            "name": "default-oobe-setup",
+            "slug": "initial-setup",
+            "title": "Welcome to authentik!",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/initial-setup/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          },
+          {
+            "pk": "70164dd1-d91e-4ced-8d67-4de7f6db56e4",
+            "policybindingmodel_ptr_id": "6979dede-e61f-4e5f-871a-8fd20b73aed2",
+            "name": "Change Password",
+            "slug": "default-password-change",
+            "title": "Change password",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-password-change/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 1,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "4368bf8e-86ef-4ffa-88d1-65a5fb379e54",
+      "policybindingmodel_ptr_id": "a072fe99-3dbe-4f01-a0ab-3053dd604944",
+      "target": "f80cd9b5-8969-4f4f-91ab-8810b221198d",
+      "stage": "ee476bf9-53b1-4e1f-86e6-ff6b5719775e",
+      "stage_obj": {
+        "pk": "ee476bf9-53b1-4e1f-86e6-ff6b5719775e",
+        "name": "default-source-enrollment-login",
+        "component": "ak-stage-user-login-form",
+        "verbose_name": "User Login Stage",
+        "verbose_name_plural": "User Login Stages",
+        "meta_model_name": "authentik_stages_user_login.userloginstage",
+        "flow_set": [
+          {
+            "pk": "f80cd9b5-8969-4f4f-91ab-8810b221198d",
+            "policybindingmodel_ptr_id": "52aebb38-cae5-4ab3-b4d7-f90f858554cb",
+            "name": "Welcome to authentik! Please select a username.",
+            "slug": "default-source-enrollment",
+            "title": "Welcome — choose your username",
+            "designation": "enrollment",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-source-enrollment/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 2,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "65fed11b-5055-4ef4-84d1-4a8cc461cd66",
+      "policybindingmodel_ptr_id": "f16421e6-3acb-4fef-ac77-6c5376e94678",
+      "target": "34046fb6-5e8d-4690-8fbd-412974f7e67b",
+      "stage": "c5bda994-2939-4ebc-ab6b-9755afb0afd3",
+      "stage_obj": {
+        "pk": "c5bda994-2939-4ebc-ab6b-9755afb0afd3",
+        "name": "stage-default-oobe-password",
+        "component": "ak-stage-prompt-form",
+        "verbose_name": "Prompt Stage",
+        "verbose_name_plural": "Prompt Stages",
+        "meta_model_name": "authentik_stages_prompt.promptstage",
+        "flow_set": [
+          {
+            "pk": "34046fb6-5e8d-4690-8fbd-412974f7e67b",
+            "policybindingmodel_ptr_id": "b8efbc96-2294-4e86-ac53-a4b7aaa9a583",
+            "name": "default-oobe-setup",
+            "slug": "initial-setup",
+            "title": "Welcome to authentik!",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/initial-setup/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": true,
+      "re_evaluate_policies": false,
+      "order": 10,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "b2d13450-a7df-4d70-9dda-2d32cfee57b9",
+      "policybindingmodel_ptr_id": "ddd0d98f-80d4-448e-9087-220002abe8e2",
+      "target": "c8e7b494-606c-4772-9e5f-194b610bac40",
+      "stage": "08af63fb-b894-4c5a-bbbd-3dad23e2772f",
+      "stage_obj": {
+        "pk": "08af63fb-b894-4c5a-bbbd-3dad23e2772f",
+        "name": "default-authentication-identification",
+        "component": "ak-stage-identification-form",
+        "verbose_name": "Identification Stage",
+        "verbose_name_plural": "Identification Stages",
+        "meta_model_name": "authentik_stages_identification.identificationstage",
+        "flow_set": [
+          {
+            "pk": "c8e7b494-606c-4772-9e5f-194b610bac40",
+            "policybindingmodel_ptr_id": "4312da0f-ca0d-461e-89c2-bf11628e27ee",
+            "name": "Welcome to authentik!",
+            "slug": "default-authentication-flow",
+            "title": "Sign in to haynesnetwork",
+            "designation": "authentication",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-authentication-flow/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 10,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "15bcd49d-2249-42ad-a8ea-388589a17600",
+      "policybindingmodel_ptr_id": "1056d54e-10e6-4da5-a7de-86b3221957c9",
+      "target": "4a46e99d-fdd0-47f5-a3b4-08c38eeb3749",
+      "stage": "8c84c685-4c23-4ebc-a107-56ef601e3afd",
+      "stage_obj": {
+        "pk": "8c84c685-4c23-4ebc-a107-56ef601e3afd",
+        "name": "default-user-settings",
+        "component": "ak-stage-prompt-form",
+        "verbose_name": "Prompt Stage",
+        "verbose_name_plural": "Prompt Stages",
+        "meta_model_name": "authentik_stages_prompt.promptstage",
+        "flow_set": [
+          {
+            "pk": "4a46e99d-fdd0-47f5-a3b4-08c38eeb3749",
+            "policybindingmodel_ptr_id": "feec3e4f-c411-4438-94a7-865f29dabd9f",
+            "name": "User settings",
+            "slug": "default-user-settings-flow",
+            "title": "Update your info",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-user-settings-flow/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 20,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "be288347-1c1f-4f30-b4f5-891843c85723",
+      "policybindingmodel_ptr_id": "5c4894b8-a2c7-480b-9b4e-e08dfa20ab40",
+      "target": "34046fb6-5e8d-4690-8fbd-412974f7e67b",
+      "stage": "58aa6972-8d61-42ac-ae5b-697aab560a75",
+      "stage_obj": {
+        "pk": "58aa6972-8d61-42ac-ae5b-697aab560a75",
+        "name": "default-password-change-write",
+        "component": "ak-stage-user-write-form",
+        "verbose_name": "User Write Stage",
+        "verbose_name_plural": "User Write Stages",
+        "meta_model_name": "authentik_stages_user_write.userwritestage",
+        "flow_set": [
+          {
+            "pk": "34046fb6-5e8d-4690-8fbd-412974f7e67b",
+            "policybindingmodel_ptr_id": "b8efbc96-2294-4e86-ac53-a4b7aaa9a583",
+            "name": "default-oobe-setup",
+            "slug": "initial-setup",
+            "title": "Welcome to authentik!",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/initial-setup/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          },
+          {
+            "pk": "70164dd1-d91e-4ced-8d67-4de7f6db56e4",
+            "policybindingmodel_ptr_id": "6979dede-e61f-4e5f-871a-8fd20b73aed2",
+            "name": "Change Password",
+            "slug": "default-password-change",
+            "title": "Change password",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-password-change/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 20,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "e8b0bf97-4dfb-49bf-9a02-11de646e23bb",
+      "policybindingmodel_ptr_id": "fa5eb826-8f9c-44fd-bee5-c1e9fca41286",
+      "target": "c8e7b494-606c-4772-9e5f-194b610bac40",
+      "stage": "abf918bc-3d98-40cc-94ad-69b7d8e40fde",
+      "stage_obj": {
+        "pk": "abf918bc-3d98-40cc-94ad-69b7d8e40fde",
+        "name": "default-authentication-password",
+        "component": "ak-stage-password-form",
+        "verbose_name": "Password Stage",
+        "verbose_name_plural": "Password Stages",
+        "meta_model_name": "authentik_stages_password.passwordstage",
+        "flow_set": [
+          {
+            "pk": "c8e7b494-606c-4772-9e5f-194b610bac40",
+            "policybindingmodel_ptr_id": "4312da0f-ca0d-461e-89c2-bf11628e27ee",
+            "name": "Welcome to authentik!",
+            "slug": "default-authentication-flow",
+            "title": "Sign in to haynesnetwork",
+            "designation": "authentication",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-authentication-flow/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 20,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "3640815a-20a1-43fc-ba39-c5624329ea94",
+      "policybindingmodel_ptr_id": "ec801344-2452-48a8-9b8d-1054e713bd7c",
+      "target": "c8e7b494-606c-4772-9e5f-194b610bac40",
+      "stage": "3cdaa8fa-be22-415b-aac6-df08662a1c88",
+      "stage_obj": {
+        "pk": "3cdaa8fa-be22-415b-aac6-df08662a1c88",
+        "name": "default-authentication-mfa-validation",
+        "component": "ak-stage-authenticator-validate-form",
+        "verbose_name": "Authenticator Validation Stage",
+        "verbose_name_plural": "Authenticator Validation Stages",
+        "meta_model_name": "authentik_stages_authenticator_validate.authenticatorvalidatestage",
+        "flow_set": [
+          {
+            "pk": "c8e7b494-606c-4772-9e5f-194b610bac40",
+            "policybindingmodel_ptr_id": "4312da0f-ca0d-461e-89c2-bf11628e27ee",
+            "name": "Welcome to authentik!",
+            "slug": "default-authentication-flow",
+            "title": "Sign in to haynesnetwork",
+            "designation": "authentication",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-authentication-flow/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 30,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "219b167e-6f7c-4e79-bab8-5830cdc432d1",
+      "policybindingmodel_ptr_id": "d78f40af-52f6-41be-b727-6a248bf20d5b",
+      "target": "c8e7b494-606c-4772-9e5f-194b610bac40",
+      "stage": "ae85d3ba-5b0d-43af-a443-4cfb6b9fb69c",
+      "stage_obj": {
+        "pk": "ae85d3ba-5b0d-43af-a443-4cfb6b9fb69c",
+        "name": "default-authentication-login",
+        "component": "ak-stage-user-login-form",
+        "verbose_name": "User Login Stage",
+        "verbose_name_plural": "User Login Stages",
+        "meta_model_name": "authentik_stages_user_login.userloginstage",
+        "flow_set": [
+          {
+            "pk": "34046fb6-5e8d-4690-8fbd-412974f7e67b",
+            "policybindingmodel_ptr_id": "b8efbc96-2294-4e86-ac53-a4b7aaa9a583",
+            "name": "default-oobe-setup",
+            "slug": "initial-setup",
+            "title": "Welcome to authentik!",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/initial-setup/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          },
+          {
+            "pk": "c8e7b494-606c-4772-9e5f-194b610bac40",
+            "policybindingmodel_ptr_id": "4312da0f-ca0d-461e-89c2-bf11628e27ee",
+            "name": "Welcome to authentik!",
+            "slug": "default-authentication-flow",
+            "title": "Sign in to haynesnetwork",
+            "designation": "authentication",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-authentication-flow/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 100,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "33c13456-fe8b-4670-80d7-67c095f6aea8",
+      "policybindingmodel_ptr_id": "a26b7053-093e-4591-89b9-9901d3d63597",
+      "target": "34046fb6-5e8d-4690-8fbd-412974f7e67b",
+      "stage": "ae85d3ba-5b0d-43af-a443-4cfb6b9fb69c",
+      "stage_obj": {
+        "pk": "ae85d3ba-5b0d-43af-a443-4cfb6b9fb69c",
+        "name": "default-authentication-login",
+        "component": "ak-stage-user-login-form",
+        "verbose_name": "User Login Stage",
+        "verbose_name_plural": "User Login Stages",
+        "meta_model_name": "authentik_stages_user_login.userloginstage",
+        "flow_set": [
+          {
+            "pk": "34046fb6-5e8d-4690-8fbd-412974f7e67b",
+            "policybindingmodel_ptr_id": "b8efbc96-2294-4e86-ac53-a4b7aaa9a583",
+            "name": "default-oobe-setup",
+            "slug": "initial-setup",
+            "title": "Welcome to authentik!",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/initial-setup/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          },
+          {
+            "pk": "c8e7b494-606c-4772-9e5f-194b610bac40",
+            "policybindingmodel_ptr_id": "4312da0f-ca0d-461e-89c2-bf11628e27ee",
+            "name": "Welcome to authentik!",
+            "slug": "default-authentication-flow",
+            "title": "Sign in to haynesnetwork",
+            "designation": "authentication",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-authentication-flow/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": true,
+      "re_evaluate_policies": false,
+      "order": 100,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    },
+    {
+      "pk": "b536eb75-3c37-45e5-a10a-5d708b66a261",
+      "policybindingmodel_ptr_id": "ad355157-655f-41dc-9ebb-f69a6a1c6e7c",
+      "target": "4a46e99d-fdd0-47f5-a3b4-08c38eeb3749",
+      "stage": "124ae0ce-051b-4e14-b408-77eb4252f6a5",
+      "stage_obj": {
+        "pk": "124ae0ce-051b-4e14-b408-77eb4252f6a5",
+        "name": "default-user-settings-write",
+        "component": "ak-stage-user-write-form",
+        "verbose_name": "User Write Stage",
+        "verbose_name_plural": "User Write Stages",
+        "meta_model_name": "authentik_stages_user_write.userwritestage",
+        "flow_set": [
+          {
+            "pk": "4a46e99d-fdd0-47f5-a3b4-08c38eeb3749",
+            "policybindingmodel_ptr_id": "feec3e4f-c411-4438-94a7-865f29dabd9f",
+            "name": "User settings",
+            "slug": "default-user-settings-flow",
+            "title": "Update your info",
+            "designation": "stage_configuration",
+            "background_url": "/static/dist/assets/images/flow_background.jpg",
+            "policy_engine_mode": "any",
+            "compatibility_mode": false,
+            "export_url": "/api/v3/flows/instances/default-user-settings-flow/export/",
+            "layout": "stacked",
+            "denied_action": "message_continue"
+          }
+        ]
+      },
+      "evaluate_on_plan": false,
+      "re_evaluate_policies": true,
+      "order": 100,
+      "policy_engine_mode": "any",
+      "invalid_response_action": "retry"
+    }
+  ],
+  "autocomplete": {}
+}

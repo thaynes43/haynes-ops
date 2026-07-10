@@ -1,0 +1,217 @@
+context: {}
+entries:
+- attrs:
+    authentication: none
+    background: ''
+    compatibility_mode: false
+    denied_action: message_continue
+    designation: authentication
+    layout: stacked
+    name: Welcome to authentik!
+    policy_engine_mode: any
+    title: Sign in to haynesnetwork
+  conditions: []
+  identifiers:
+    pk: c8e7b494-606c-4772-9e5f-194b610bac40
+    slug: default-authentication-flow
+  model: authentik_flows.flow
+  permissions: []
+  state: present
+- attrs:
+    execution_logging: false
+    expression: "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
+      \    return True\n# If the user does not have a backend attached to it, they\
+      \ haven't\n# been authenticated yet and we need the password stage\nreturn not\
+      \ hasattr(flow_plan.context.get(\"pending_user\"), \"backend\")"
+    name: default-authentication-flow-password-stage
+  conditions: []
+  identifiers:
+    pk: c2c42fe2-9dcf-41ae-b87c-22ee91d0f5f0
+  model: authentik_policies_expression.expressionpolicy
+  permissions: []
+  state: present
+- attrs:
+    execution_logging: false
+    expression: "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
+      \    return True\n# if the authentication method is webauthn (passwordless),\
+      \ then we skip the authenticator\n# validation stage by returning false (true\
+      \ will execute the stage)\nreturn not (flow_plan.context.get(\"auth_method\"\
+      ) == \"auth_webauthn_pwl\")"
+    name: default-authentication-flow-authenticator-validate-stage
+  conditions: []
+  identifiers:
+    pk: 38f627a5-64ef-49f6-b137-a7b6560cffe6
+  model: authentik_policies_expression.expressionpolicy
+  permissions: []
+  state: present
+- attrs:
+    captcha_stage: null
+    case_insensitive_matching: true
+    enable_remember_me: false
+    enrollment_flow: null
+    password_stage: null
+    passwordless_flow: null
+    pretend_user_exists: true
+    recovery_flow: null
+    show_matched_user: true
+    show_source_labels: true
+    sources:
+    - 2c61a5af-0f75-47b6-a01a-3b9741c22891
+    user_fields:
+    - email
+    - username
+    webauthn_stage: null
+  conditions: []
+  identifiers:
+    name: default-authentication-identification
+    pk: 08af63fb-b894-4c5a-bbbd-3dad23e2772f
+  model: authentik_stages_identification.identificationstage
+  permissions: []
+  state: present
+- attrs:
+    configuration_stages: []
+    device_classes:
+    - static
+    - totp
+    - webauthn
+    - duo
+    - sms
+    email_otp_throttling_factor: 1.0
+    last_auth_threshold: seconds=0
+    not_configured_action: skip
+    sms_otp_throttling_factor: 1.0
+    static_otp_throttling_factor: 1.0
+    totp_otp_throttling_factor: 1.0
+    webauthn_allowed_device_types: []
+    webauthn_hints: []
+    webauthn_user_verification: preferred
+  conditions: []
+  identifiers:
+    name: default-authentication-mfa-validation
+    pk: 3cdaa8fa-be22-415b-aac6-df08662a1c88
+  model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+  permissions: []
+  state: present
+- attrs:
+    allow_show_password: false
+    backends:
+    - authentik.core.auth.InbuiltBackend
+    - authentik.sources.kerberos.auth.KerberosBackend
+    - authentik.sources.ldap.auth.LDAPBackend
+    - authentik.core.auth.TokenBackend
+    configure_flow: 70164dd1-d91e-4ced-8d67-4de7f6db56e4
+    failed_attempts_before_cancel: 5
+  conditions: []
+  identifiers:
+    name: default-authentication-password
+    pk: abf918bc-3d98-40cc-94ad-69b7d8e40fde
+  model: authentik_stages_password.passwordstage
+  permissions: []
+  state: present
+- attrs:
+    geoip_binding: no_binding
+    network_binding: no_binding
+    remember_device: days=30
+    remember_me_offset: seconds=0
+    session_duration: seconds=0
+    terminate_other_sessions: false
+  conditions: []
+  identifiers:
+    name: default-authentication-login
+    pk: ae85d3ba-5b0d-43af-a443-4cfb6b9fb69c
+  model: authentik_stages_user_login.userloginstage
+  permissions: []
+  state: present
+- attrs:
+    evaluate_on_plan: false
+    invalid_response_action: retry
+    policy_engine_mode: any
+    re_evaluate_policies: true
+  conditions: []
+  identifiers:
+    order: 10
+    pk: b2d13450-a7df-4d70-9dda-2d32cfee57b9
+    stage: 08af63fb-b894-4c5a-bbbd-3dad23e2772f
+    target: c8e7b494-606c-4772-9e5f-194b610bac40
+  model: authentik_flows.flowstagebinding
+  permissions: []
+  state: present
+- attrs:
+    evaluate_on_plan: false
+    invalid_response_action: retry
+    policy_engine_mode: any
+    re_evaluate_policies: true
+  conditions: []
+  identifiers:
+    order: 20
+    pk: e8b0bf97-4dfb-49bf-9a02-11de646e23bb
+    stage: abf918bc-3d98-40cc-94ad-69b7d8e40fde
+    target: c8e7b494-606c-4772-9e5f-194b610bac40
+  model: authentik_flows.flowstagebinding
+  permissions: []
+  state: present
+- attrs:
+    evaluate_on_plan: false
+    invalid_response_action: retry
+    policy_engine_mode: any
+    re_evaluate_policies: true
+  conditions: []
+  identifiers:
+    order: 30
+    pk: 3640815a-20a1-43fc-ba39-c5624329ea94
+    stage: 3cdaa8fa-be22-415b-aac6-df08662a1c88
+    target: c8e7b494-606c-4772-9e5f-194b610bac40
+  model: authentik_flows.flowstagebinding
+  permissions: []
+  state: present
+- attrs:
+    evaluate_on_plan: false
+    invalid_response_action: retry
+    policy_engine_mode: any
+    re_evaluate_policies: true
+  conditions: []
+  identifiers:
+    order: 100
+    pk: 219b167e-6f7c-4e79-bab8-5830cdc432d1
+    stage: ae85d3ba-5b0d-43af-a443-4cfb6b9fb69c
+    target: c8e7b494-606c-4772-9e5f-194b610bac40
+  model: authentik_flows.flowstagebinding
+  permissions: []
+  state: present
+- attrs:
+    enabled: true
+    failure_result: true
+    group: null
+    negate: false
+    timeout: 30
+    user: null
+  conditions: []
+  identifiers:
+    order: 10
+    pk: b497b661-01fc-478a-a750-0129fb85959e
+    policy: c2c42fe2-9dcf-41ae-b87c-22ee91d0f5f0
+    target: e8b0bf97-4dfb-49bf-9a02-11de646e23bb
+  model: authentik_policies.policybinding
+  permissions: []
+  state: present
+- attrs:
+    enabled: true
+    failure_result: true
+    group: null
+    negate: false
+    timeout: 30
+    user: null
+  conditions: []
+  identifiers:
+    order: 10
+    pk: b7c5fdfe-4040-438f-9fb7-989124f018ee
+    policy: 38f627a5-64ef-49f6-b137-a7b6560cffe6
+    target: 3640815a-20a1-43fc-ba39-c5624329ea94
+  model: authentik_policies.policybinding
+  permissions: []
+  state: present
+metadata:
+  labels:
+    blueprints.goauthentik.io/generated: 'true'
+  name: authentik Export - 2026-07-10 05:29:54.690143+00:00
+version: 1

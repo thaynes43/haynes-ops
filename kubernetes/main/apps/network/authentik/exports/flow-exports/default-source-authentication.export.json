@@ -1,0 +1,82 @@
+context: {}
+entries:
+- attrs:
+    authentication: require_unauthenticated
+    background: ''
+    compatibility_mode: false
+    denied_action: message_continue
+    designation: authentication
+    layout: stacked
+    name: Welcome to authentik!
+    policy_engine_mode: any
+    title: Sign in to haynesnetwork
+  conditions: []
+  identifiers:
+    pk: 67b51e33-b342-4319-a6d9-3d080d6aed73
+    slug: default-source-authentication
+  model: authentik_flows.flow
+  permissions: []
+  state: present
+- attrs:
+    execution_logging: false
+    expression: '# This policy ensures that this flow can only be used when the user
+
+      # is in a SSO Flow (meaning they come from an external IdP)
+
+      return ak_is_sso_flow'
+    name: default-source-authentication-if-sso
+  conditions: []
+  identifiers:
+    pk: 5d457f9a-ba0e-4ebd-8d44-ce0e0281ab9e
+  model: authentik_policies_expression.expressionpolicy
+  permissions: []
+  state: present
+- attrs:
+    geoip_binding: no_binding
+    network_binding: no_binding
+    remember_device: days=30
+    remember_me_offset: seconds=0
+    session_duration: seconds=0
+    terminate_other_sessions: false
+  conditions: []
+  identifiers:
+    name: default-source-authentication-login
+    pk: d81d77d2-f3f5-4712-ad34-938cfa4dc5bc
+  model: authentik_stages_user_login.userloginstage
+  permissions: []
+  state: present
+- attrs:
+    evaluate_on_plan: false
+    invalid_response_action: retry
+    policy_engine_mode: any
+    re_evaluate_policies: true
+  conditions: []
+  identifiers:
+    order: 0
+    pk: c97ab0a2-5364-430c-ab3b-9712911af012
+    stage: d81d77d2-f3f5-4712-ad34-938cfa4dc5bc
+    target: 67b51e33-b342-4319-a6d9-3d080d6aed73
+  model: authentik_flows.flowstagebinding
+  permissions: []
+  state: present
+- attrs:
+    enabled: true
+    failure_result: false
+    group: null
+    negate: false
+    timeout: 30
+    user: null
+  conditions: []
+  identifiers:
+    order: 0
+    pk: 64b20715-47d4-422b-986d-97f5d5effd91
+    policy: 5d457f9a-ba0e-4ebd-8d44-ce0e0281ab9e
+    target: 67b51e33-b342-4319-a6d9-3d080d6aed73
+  model: authentik_policies.policybinding
+  permissions: []
+  state: present
+metadata:
+  labels:
+    blueprints.goauthentik.io/generated: 'true'
+  name: authentik Export - 2026-07-10 05:29:55.954761+00:00
+version: 1

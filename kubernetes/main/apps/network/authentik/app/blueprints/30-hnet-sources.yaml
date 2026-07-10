@@ -1,0 +1,30 @@
+# PLAN-011 Phase 1 — haynesnetwork Authentik identity sources (config-as-code baseline).
+# DRIFT-ZERO (non-secret fields): reproduces the live Plex OAuth source. The plex_token is
+# deliberately NOT included — blueprints do partial updates, so omitting it preserves the
+# live secret. This is the source that routes 'Log in with Plex' users; note its
+# authentication_flow is default-source-authentication (login-only) — see Q-02 in the PR.
+version: 1
+metadata:
+  name: hnet-sources
+  labels:
+    blueprints.goauthentik.io/description: 'haynesnetwork identity sources (PLAN-011): the Plex OAuth source "HaynesTower". Drift-zero non-secret reproduction; plex_token/client_secret stay in Authentik/1P and are NOT managed as code.'
+context: {}
+entries:
+- model: authentik_sources_plex.plexsource
+  state: present
+  identifiers:
+    slug: haynestower
+  attrs:
+    name: Plex
+    enabled: true
+    promoted: true
+    authentication_flow: 67b51e33-b342-4319-a6d9-3d080d6aed73
+    enrollment_flow: f80cd9b5-8969-4f4f-91ab-8810b221198d
+    user_matching_mode: identifier
+    group_matching_mode: identifier
+    user_path_template: goauthentik.io/sources/%(slug)s
+    policy_engine_mode: any
+    allow_friends: true
+    allowed_servers:
+    - a5ec8cb29c425667637eabdb6a0615d6ccf68cc3
+    client_id: fQ0sgNhXa0PkoMKyaYf0gdOoQHmwsTIBCtfI7RY0

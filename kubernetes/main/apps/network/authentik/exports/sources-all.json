@@ -1,0 +1,58 @@
+{
+  "pagination": {
+    "next": 0,
+    "previous": 0,
+    "count": 2,
+    "current": 1,
+    "total_pages": 1,
+    "start_index": 1,
+    "end_index": 2
+  },
+  "results": [
+    {
+      "pk": "3510ec71-b1ce-4543-8dc4-c71c22935a38",
+      "name": "authentik Built-in",
+      "slug": "authentik-built-in",
+      "enabled": true,
+      "promoted": false,
+      "authentication_flow": null,
+      "enrollment_flow": null,
+      "user_property_mappings": [],
+      "group_property_mappings": [],
+      "component": "",
+      "verbose_name": "source",
+      "verbose_name_plural": "sources",
+      "meta_model_name": "authentik_core.source",
+      "policy_engine_mode": "any",
+      "user_matching_mode": "identifier",
+      "managed": "goauthentik.io/sources/inbuilt",
+      "user_path_template": "goauthentik.io/sources/%(slug)s",
+      "icon": "",
+      "icon_url": null,
+      "icon_themed_urls": null
+    },
+    {
+      "pk": "2c61a5af-0f75-47b6-a01a-3b9741c22891",
+      "name": "Plex",
+      "slug": "haynestower",
+      "enabled": true,
+      "promoted": true,
+      "authentication_flow": "67b51e33-b342-4319-a6d9-3d080d6aed73",
+      "enrollment_flow": "f80cd9b5-8969-4f4f-91ab-8810b221198d",
+      "user_property_mappings": [],
+      "group_property_mappings": [],
+      "component": "ak-source-plex-form",
+      "verbose_name": "Plex Source",
+      "verbose_name_plural": "Plex Sources",
+      "meta_model_name": "authentik_sources_plex.plexsource",
+      "policy_engine_mode": "any",
+      "user_matching_mode": "identifier",
+      "managed": null,
+      "user_path_template": "goauthentik.io/sources/%(slug)s",
+      "icon": "",
+      "icon_url": "/static/authentik/sources/plex.svg",
+      "icon_themed_urls": null
+    }
+  ],
+  "autocomplete": {}
+}

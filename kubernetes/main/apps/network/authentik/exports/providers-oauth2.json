@@ -1,0 +1,363 @@
+{
+  "pagination": {
+    "next": 0,
+    "previous": 0,
+    "count": 6,
+    "current": 1,
+    "total_pages": 1,
+    "start_index": 1,
+    "end_index": 6
+  },
+  "results": [
+    {
+      "pk": 37,
+      "name": "Provider for Grafana",
+      "authentication_flow": null,
+      "authorization_flow": "90ea7435-2b23-400b-8d40-1da18f46613b",
+      "invalidation_flow": "af712492-a78b-4267-afdc-1a9c78b43286",
+      "property_mappings": [
+        "f8cbc5a4-e2b0-49f9-aa9c-5acab9c6036a",
+        "57fbe55d-4337-45cb-8ad6-31ef4e8630bf",
+        "6c130fb7-d129-483e-9560-33f89388f528"
+      ],
+      "component": "ak-provider-oauth2-form",
+      "assigned_application_slug": "grafana",
+      "assigned_application_name": "Grafana",
+      "assigned_backchannel_application_slug": null,
+      "assigned_backchannel_application_name": null,
+      "verbose_name": "OAuth2/OpenID Provider",
+      "verbose_name_plural": "OAuth2/OpenID Providers",
+      "meta_model_name": "authentik_providers_oauth2.oauth2provider",
+      "client_type": "confidential",
+      "grant_types": [
+        "authorization_code",
+        "hybrid",
+        "implicit",
+        "client_credentials",
+        "password",
+        "urn:ietf:params:oauth:grant-type:device_code",
+        "refresh_token"
+      ],
+      "client_id": "1P://HaynesKube/grafana/OIDC_CLIENT_ID",
+      "client_secret": "1P://HaynesKube/grafana/OIDC_CLIENT_SECRET",
+      "access_code_validity": "minutes=1",
+      "access_token_validity": "minutes=5",
+      "refresh_token_validity": "days=30",
+      "refresh_token_threshold": "seconds=0",
+      "include_claims_in_id_token": true,
+      "signing_key": "303f47fc-c574-4f76-ae62-dbd562ff899c",
+      "encryption_key": null,
+      "redirect_uris": [
+        {
+          "matching_mode": "strict",
+          "url": "https://grafana.haynesops.com/login/generic_oauth",
+          "redirect_uri_type": "authorization"
+        }
+      ],
+      "logout_uri": "",
+      "logout_method": "backchannel",
+      "sub_mode": "hashed_user_id",
+      "issuer_mode": "per_provider",
+      "jwt_federation_sources": [],
+      "jwt_federation_providers": []
+    },
+    {
+      "pk": 108,
+      "name": "Provider for Headlamp",
+      "authentication_flow": null,
+      "authorization_flow": "90ea7435-2b23-400b-8d40-1da18f46613b",
+      "invalidation_flow": "af712492-a78b-4267-afdc-1a9c78b43286",
+      "property_mappings": [
+        "30ae727b-c5c6-4b62-902e-61ef845823bc",
+        "f8cbc5a4-e2b0-49f9-aa9c-5acab9c6036a",
+        "57fbe55d-4337-45cb-8ad6-31ef4e8630bf",
+        "6c130fb7-d129-483e-9560-33f89388f528",
+        "cbe69993-0c80-423c-a64e-9fe9e8c0f5f1"
+      ],
+      "component": "ak-provider-oauth2-form",
+      "assigned_application_slug": "headlamp",
+      "assigned_application_name": "Headlamp",
+      "assigned_backchannel_application_slug": null,
+      "assigned_backchannel_application_name": null,
+      "verbose_name": "OAuth2/OpenID Provider",
+      "verbose_name_plural": "OAuth2/OpenID Providers",
+      "meta_model_name": "authentik_providers_oauth2.oauth2provider",
+      "client_type": "confidential",
+      "grant_types": [
+        "authorization_code",
+        "client_credentials",
+        "password"
+      ],
+      "client_id": "1P://HaynesKube/headlamp/OIDC_CLIENT_ID",
+      "client_secret": "1P://HaynesKube/headlamp/OIDC_CLIENT_SECRET",
+      "access_code_validity": "minutes=1",
+      "access_token_validity": "hours=24",
+      "refresh_token_validity": "days=30",
+      "refresh_token_threshold": "seconds=0",
+      "include_claims_in_id_token": true,
+      "signing_key": null,
+      "encryption_key": null,
+      "redirect_uris": [
+        {
+          "matching_mode": "strict",
+          "url": "https://headlamp.haynesops.com/outpost.goauthentik.io/callback?X-authentik-auth-callback=true",
+          "redirect_uri_type": "authorization"
+        },
+        {
+          "matching_mode": "strict",
+          "url": "https://headlamp.haynesops.com?X-authentik-auth-callback=true",
+          "redirect_uri_type": "authorization"
+        }
+      ],
+      "logout_uri": "",
+      "logout_method": "backchannel",
+      "sub_mode": "hashed_user_id",
+      "issuer_mode": "per_provider",
+      "jwt_federation_sources": [],
+      "jwt_federation_providers": []
+    },
+    {
+      "pk": 39,
+      "name": "Provider for Immich",
+      "authentication_flow": null,
+      "authorization_flow": "90ea7435-2b23-400b-8d40-1da18f46613b",
+      "invalidation_flow": "af712492-a78b-4267-afdc-1a9c78b43286",
+      "property_mappings": [
+        "f8cbc5a4-e2b0-49f9-aa9c-5acab9c6036a",
+        "57fbe55d-4337-45cb-8ad6-31ef4e8630bf",
+        "6c130fb7-d129-483e-9560-33f89388f528"
+      ],
+      "component": "ak-provider-oauth2-form",
+      "assigned_application_slug": "immich",
+      "assigned_application_name": "Immich",
+      "assigned_backchannel_application_slug": null,
+      "assigned_backchannel_application_name": null,
+      "verbose_name": "OAuth2/OpenID Provider",
+      "verbose_name_plural": "OAuth2/OpenID Providers",
+      "meta_model_name": "authentik_providers_oauth2.oauth2provider",
+      "client_type": "confidential",
+      "grant_types": [
+        "authorization_code",
+        "hybrid",
+        "implicit",
+        "client_credentials",
+        "password",
+        "urn:ietf:params:oauth:grant-type:device_code",
+        "refresh_token"
+      ],
+      "client_id": "1P://HaynesKube/immich/OIDC_CLIENT_ID",
+      "client_secret": "1P://HaynesKube/immich/OIDC_CLIENT_SECRET",
+      "access_code_validity": "minutes=1",
+      "access_token_validity": "minutes=5",
+      "refresh_token_validity": "days=30",
+      "refresh_token_threshold": "seconds=0",
+      "include_claims_in_id_token": true,
+      "signing_key": "303f47fc-c574-4f76-ae62-dbd562ff899c",
+      "encryption_key": null,
+      "redirect_uris": [
+        {
+          "matching_mode": "strict",
+          "url": "app.immich:///oauth-callback",
+          "redirect_uri_type": "authorization"
+        },
+        {
+          "matching_mode": "strict",
+          "url": "https://immich.haynesnetwork.com/auth/login",
+          "redirect_uri_type": "authorization"
+        },
+        {
+          "matching_mode": "strict",
+          "url": "https://immich.haynesnetwork.com/user-settings",
+          "redirect_uri_type": "authorization"
+        }
+      ],
+      "logout_uri": "",
+      "logout_method": "backchannel",
+      "sub_mode": "hashed_user_id",
+      "issuer_mode": "per_provider",
+      "jwt_federation_sources": [],
+      "jwt_federation_providers": []
+    },
+    {
+      "pk": 4,
+      "name": "Provider for Open WebUI",
+      "authentication_flow": null,
+      "authorization_flow": "90ea7435-2b23-400b-8d40-1da18f46613b",
+      "invalidation_flow": "af712492-a78b-4267-afdc-1a9c78b43286",
+      "property_mappings": [
+        "f8cbc5a4-e2b0-49f9-aa9c-5acab9c6036a",
+        "57fbe55d-4337-45cb-8ad6-31ef4e8630bf",
+        "6c130fb7-d129-483e-9560-33f89388f528"
+      ],
+      "component": "ak-provider-oauth2-form",
+      "assigned_application_slug": "open-webui",
+      "assigned_application_name": "Open WebUI",
+      "assigned_backchannel_application_slug": null,
+      "assigned_backchannel_application_name": null,
+      "verbose_name": "OAuth2/OpenID Provider",
+      "verbose_name_plural": "OAuth2/OpenID Providers",
+      "meta_model_name": "authentik_providers_oauth2.oauth2provider",
+      "client_type": "confidential",
+      "grant_types": [
+        "authorization_code",
+        "hybrid",
+        "implicit",
+        "client_credentials",
+        "password",
+        "urn:ietf:params:oauth:grant-type:device_code",
+        "refresh_token"
+      ],
+      "client_id": "1P://HaynesKube/open-webui/OIDC_CLIENT_ID",
+      "client_secret": "1P://HaynesKube/open-webui/OIDC_CLIENT_SECRET",
+      "access_code_validity": "minutes=1",
+      "access_token_validity": "minutes=5",
+      "refresh_token_validity": "days=30",
+      "refresh_token_threshold": "seconds=0",
+      "include_claims_in_id_token": true,
+      "signing_key": "752dc3e5-382f-407c-aedb-baae71f40ccc",
+      "encryption_key": null,
+      "redirect_uris": [
+        {
+          "matching_mode": "strict",
+          "url": "https://ai.haynesnetwork.com/oauth/oidc/callback",
+          "redirect_uri_type": "authorization"
+        }
+      ],
+      "logout_uri": "",
+      "logout_method": "backchannel",
+      "sub_mode": "hashed_user_id",
+      "issuer_mode": "per_provider",
+      "jwt_federation_sources": [],
+      "jwt_federation_providers": []
+    },
+    {
+      "pk": 41,
+      "name": "Provider for Paperless",
+      "authentication_flow": null,
+      "authorization_flow": "90ea7435-2b23-400b-8d40-1da18f46613b",
+      "invalidation_flow": "af712492-a78b-4267-afdc-1a9c78b43286",
+      "property_mappings": [
+        "30ae727b-c5c6-4b62-902e-61ef845823bc",
+        "f8cbc5a4-e2b0-49f9-aa9c-5acab9c6036a",
+        "57fbe55d-4337-45cb-8ad6-31ef4e8630bf",
+        "6c130fb7-d129-483e-9560-33f89388f528",
+        "cbe69993-0c80-423c-a64e-9fe9e8c0f5f1"
+      ],
+      "component": "ak-provider-oauth2-form",
+      "assigned_application_slug": "paperless",
+      "assigned_application_name": "Paperless",
+      "assigned_backchannel_application_slug": null,
+      "assigned_backchannel_application_name": null,
+      "verbose_name": "OAuth2/OpenID Provider",
+      "verbose_name_plural": "OAuth2/OpenID Providers",
+      "meta_model_name": "authentik_providers_oauth2.oauth2provider",
+      "client_type": "confidential",
+      "grant_types": [
+        "authorization_code",
+        "client_credentials",
+        "password"
+      ],
+      "client_id": "1P://HaynesKube/paperless/OIDC_CLIENT_ID",
+      "client_secret": "1P://HaynesKube/paperless/OIDC_CLIENT_SECRET",
+      "access_code_validity": "minutes=1",
+      "access_token_validity": "hours=24",
+      "refresh_token_validity": "days=30",
+      "refresh_token_threshold": "seconds=0",
+      "include_claims_in_id_token": true,
+      "signing_key": null,
+      "encryption_key": null,
+      "redirect_uris": [
+        {
+          "matching_mode": "strict",
+          "url": "https://paperless.haynesnetwork.com/outpost.goauthentik.io/callback?X-authentik-auth-callback=true",
+          "redirect_uri_type": "authorization"
+        },
+        {
+          "matching_mode": "strict",
+          "url": "https://paperless.haynesnetwork.com?X-authentik-auth-callback=true",
+          "redirect_uri_type": "authorization"
+        }
+      ],
+      "logout_uri": "",
+      "logout_method": "backchannel",
+      "sub_mode": "hashed_user_id",
+      "issuer_mode": "per_provider",
+      "jwt_federation_sources": [],
+      "jwt_federation_providers": []
+    },
+    {
+      "pk": 109,
+      "name": "Provider for haynesnetwork",
+      "authentication_flow": null,
+      "authorization_flow": "90ea7435-2b23-400b-8d40-1da18f46613b",
+      "invalidation_flow": "8ba7e7a7-89ae-4f37-b35c-45e8ab602c62",
+      "property_mappings": [
+        "f3cba182-4f38-4fda-a8f1-9d5172ad2c97",
+        "f8cbc5a4-e2b0-49f9-aa9c-5acab9c6036a",
+        "57fbe55d-4337-45cb-8ad6-31ef4e8630bf",
+        "6c130fb7-d129-483e-9560-33f89388f528"
+      ],
+      "component": "ak-provider-oauth2-form",
+      "assigned_application_slug": "haynesnetwork",
+      "assigned_application_name": "haynesnetwork",
+      "assigned_backchannel_application_slug": null,
+      "assigned_backchannel_application_name": null,
+      "verbose_name": "OAuth2/OpenID Provider",
+      "verbose_name_plural": "OAuth2/OpenID Providers",
+      "meta_model_name": "authentik_providers_oauth2.oauth2provider",
+      "client_type": "confidential",
+      "grant_types": [
+        "authorization_code",
+        "refresh_token"
+      ],
+      "client_id": "1P://HaynesKube/haynesnetwork/OIDC_CLIENT_ID",
+      "client_secret": "1P://HaynesKube/haynesnetwork/OIDC_CLIENT_SECRET",
+      "access_code_validity": "minutes=1",
+      "access_token_validity": "hours=1",
+      "refresh_token_validity": "days=30",
+      "refresh_token_threshold": "seconds=0",
+      "include_claims_in_id_token": true,
+      "signing_key": "303f47fc-c574-4f76-ae62-dbd562ff899c",
+      "encryption_key": null,
+      "redirect_uris": [
+        {
+          "matching_mode": "strict",
+          "url": "http://localhost:3000/api/auth/oauth2/callback/authentik",
+          "redirect_uri_type": "authorization"
+        },
+        {
+          "matching_mode": "strict",
+          "url": "https://haynesnetwork.haynesops.com/api/auth/oauth2/callback/authentik",
+          "redirect_uri_type": "authorization"
+        },
+        {
+          "matching_mode": "strict",
+          "url": "https://haynesnetwork.com/api/auth/oauth2/callback/authentik",
+          "redirect_uri_type": "authorization"
+        },
+        {
+          "matching_mode": "strict",
+          "url": "https://www.haynesnetwork.com/api/auth/oauth2/callback/authentik",
+          "redirect_uri_type": "authorization"
+        },
+        {
+          "matching_mode": "strict",
+          "url": "https://haynesnetwork.com/login",
+          "redirect_uri_type": "logout"
+        },
+        {
+          "matching_mode": "strict",
+          "url": "https://haynesnetwork.haynesops.com/login",
+          "redirect_uri_type": "logout"
+        }
+      ],
+      "logout_uri": "",
+      "logout_method": "backchannel",
+      "sub_mode": "hashed_user_id",
+      "issuer_mode": "per_provider",
+      "jwt_federation_sources": [],
+      "jwt_federation_providers": []
+    }
+  ],
+  "autocomplete": {}
+}
