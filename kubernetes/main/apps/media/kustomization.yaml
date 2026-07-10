@@ -10,6 +10,7 @@ resources:
   - ./namespace.yaml
   # Flux-Kustomizations
   - ./bazarr/ks.yaml
+  - ./kavita/ks.yaml
   - ./kometa/ks.yaml
   - ./lidarr/ks.yaml
   - ./maintainerr/ks.yaml
