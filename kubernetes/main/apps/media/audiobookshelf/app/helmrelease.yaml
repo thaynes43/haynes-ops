@@ -1,0 +1,134 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: audiobookshelf
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      audiobookshelf:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        pod:
+          # Keep off the control-plane nodes (critical smart-home stack).
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: DoesNotExist
+        containers:
+          app:
+            image:
+              repository: ghcr.io/advplyr/audiobookshelf
+              tag: 2.35.1
+            env:
+              TZ: America/New_York
+              # ABS binds :80 by default; run rootless so override to an
+              # unprivileged port. /config + /metadata are the only writable dirs.
+              PORT: &port 13378
+            probes:
+              liveness: &probes
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthcheck
+                    port: *port
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 5
+              readiness: *probes
+              startup:
+                enabled: true
+                spec:
+                  httpGet:
+                    path: /healthcheck
+                    port: *port
+                  failureThreshold: 30
+                  periodSeconds: 10
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 2000m
+                memory: 4Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: false
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+    service:
+      app:
+        forceRename: "{{ .Release.Name }}"
+        primary: true
+        ports:
+          http:
+            port: *port
+    ingress:
+      app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+          gethomepage.dev/href: &url "https://audiobookshelf.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Media
+          gethomepage.dev/name: Audiobookshelf
+          gethomepage.dev/description: Audiobook & podcast server
+          gethomepage.dev/icon: audiobookshelf
+          gethomepage.dev/app: audiobookshelf
+          gethomepage.dev/siteMonitor: *url
+        className: traefik-internal
+        hosts:
+          - host: audiobookshelf.haynesops.com
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+    persistence:
+      # /config (SQLite DB) and /metadata (covers, backups, transcode cache) both
+      # live on the single backed-up PVC via subPaths.
+      config:
+        existingClaim: audiobookshelf
+        advancedMounts:
+          audiobookshelf:
+            app:
+              - path: /config
+                subPath: config
+              - path: /metadata
+                subPath: metadata
+      # Audio Books library — read-only serving mount. LazyLibrarian (RW) writes
+      # the files; ABS scans in place. Whole-export mount matches the *arr
+      # convention; library path is /data/cephfs-hdd/data/media/books/AudioBooks.
+      data-proxmox:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          audiobookshelf:
+            app:
+              - path: /data/cephfs-hdd
+                readOnly: true

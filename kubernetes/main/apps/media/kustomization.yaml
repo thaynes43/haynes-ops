@@ -9,6 +9,7 @@ resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
   # Flux-Kustomizations
+  - ./audiobookshelf/ks.yaml
   - ./bazarr/ks.yaml
   - ./kavita/ks.yaml
   - ./kometa/ks.yaml
