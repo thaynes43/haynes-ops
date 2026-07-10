@@ -1,6 +1,32 @@
-# Disabled — PiKVM is reachable but intentionally not monitored (accessed
-# directly via http://pikvm). Re-add ./scrapeconfig.yaml to the kustomization
-# resources and uncomment to re-enable.
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/scrapeconfig_v1alpha1.json
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: &name node-exporter-haynestower
+spec:
+  # Out-of-cluster node_exporter already running on the Unraid NAS
+  # (HaynesTower) — the estate's highest-value disk fleet (main Plex media
+  # share, ~20TB XFS per-array-disk under /mnt/diskNN, the 80% space target).
+  # Static scrape; the NAS is not a k8s node. role=nas + a distinct job keep
+  # it separate from the Talos node-exporter fleet in dashboards/queries.
+  staticConfigs:
+    - targets:
+        - haynestower.haynesnetwork:9100
+      labels:
+        role: nas
+  metricsPath: /metrics
+  relabelings:
+    - action: replace
+      targetLabel: job
+      replacement: *name
+    - action: replace
+      targetLabel: instance
+      replacement: haynestower
+# ---
+# The scrape configs below are intentionally disabled (kept for reference).
+# PiKVM is reachable but not monitored (accessed directly via http://pikvm);
+# the zigbee/zwave controllers are likewise left off.
 #---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/scrapeconfig_v1alpha1.json
 #apiVersion: monitoring.coreos.com/v1alpha1
