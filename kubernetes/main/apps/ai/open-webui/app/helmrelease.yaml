@@ -79,3 +79,15 @@ spec:
         value: "false"
       DEFAULT_USER_ROLE:
         value: "user"
+      # OIDC group sync (PLAN-021 / PLAN-026 portal model, 2026-07-10): request the `groups`
+      # scope and sync OWUI group membership from Authentik's groups claim on every login, so
+      # `family` (large-model access) follows Authentik — no per-platform user management. The
+      # Authentik-side `hnet-groups` scope mapping + `family` group are already live; membership
+      # is API/app-owned (NOT blueprinted) so the future haynesnetwork portal can write it.
+      # Group CREATION stays off — OWUI only syncs into groups that already exist (family exists).
+      OAUTH_SCOPES:
+        value: "openid email profile groups"
+      ENABLE_OAUTH_GROUP_MANAGEMENT:
+        value: "true"
+      OAUTH_GROUP_CLAIM:
+        value: "groups"
