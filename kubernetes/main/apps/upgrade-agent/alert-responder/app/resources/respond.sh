@@ -129,6 +129,12 @@ candidates="$(printf '%s' "$alerts" | jq -c --arg sev "$SEVERITY" --arg allow "$
     | select(.labels.severity == $sev)
     | select(.labels.alertname | test($allow))
     | select(.labels.alertname | test($deny) | not)
+    # scope=host opt-out (2026-07-10): the CLEAN, future-proof way to keep the responder
+    # out of an alert — host/hardware/appliance alerts (SMART, RAID, fan/power, NAS) that
+    # are self-evident + unactionable-by-cluster. The alert author labels the rule
+    # `scope: host` and the responder skips it (no LLM, no page); Alertmanager still routes
+    # it to Pushover normally. Anything without the label is unaffected.
+    | select((.labels.scope // "") != "host")
     | select(((.startsAt | sub("\\.[0-9]+";"") | fromdateiso8601? ) // $now) > ($now - $maxage))
   ] | sort_by(.startsAt) | reverse' 2>/dev/null)"
 count="$(printf '%s' "$candidates" | jq 'length' 2>/dev/null)" || count=0
