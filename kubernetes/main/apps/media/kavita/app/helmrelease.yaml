@@ -128,7 +128,3 @@ spec:
             app:
               - path: /data/cephfs-hdd
                 readOnly: true
-      tmp:
-        type: emptyDir
-        globalMounts:
-          - path: /tmp
