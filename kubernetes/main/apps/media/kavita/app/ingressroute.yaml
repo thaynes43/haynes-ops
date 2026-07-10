@@ -1,0 +1,29 @@
+---
+# PUBLIC ROUTE (PLAN-023 Phase 3, 2026-07-10): kavita.haynesnetwork.com served
+# via the in-cluster Cloudflare Tunnel (wildcard *.haynesnetwork.com already
+# routes to traefik-external — no tunnel change needed) -> traefik-external.
+# Kavita does its OWN Authentik OIDC (native OpenID Connect provider "kavita"),
+# so this is a plain pass-through — NO forward-auth middleware (unlike a
+# proxied app). The LAN route (kavita.haynesops.com / traefik-internal, in
+# helmrelease.yaml `ingress:`) is intentionally KEPT as the admin/break-glass
+# path (Kavita local login stays reachable; OIDC auto-login is OFF).
+# Rollback: git revert this file + its kustomization line, reconcile once.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: kavita-external
+  annotations:
+    external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
+    kubernetes.io/ingress.class: traefik-external
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`kavita.haynesnetwork.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: kavita
+          port: 5000
+  tls:
+    secretName: certificate-haynesnetwork

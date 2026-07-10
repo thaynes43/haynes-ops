@@ -1,0 +1,30 @@
+---
+# PUBLIC ROUTE (PLAN-023 Phase 3, 2026-07-10): audiobookshelf.haynesnetwork.com
+# served via the in-cluster Cloudflare Tunnel (wildcard *.haynesnetwork.com
+# already routes to traefik-external — no tunnel change needed) ->
+# traefik-external. ABS does its OWN Authentik OIDC (native OpenID Connect,
+# application "audiobookshelf"), so this is a plain pass-through — NO
+# forward-auth middleware. The LAN route (audiobookshelf.haynesops.com /
+# traefik-internal, in helmrelease.yaml `ingress:`) is intentionally KEPT as
+# the admin/break-glass path (ABS local login stays reachable; OIDC
+# auto-launch is OFF — escape hatch /login?autoLaunch=0).
+# Rollback: git revert this file + its kustomization line, reconcile once.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: audiobookshelf-external
+  annotations:
+    external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
+    kubernetes.io/ingress.class: traefik-external
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`audiobookshelf.haynesnetwork.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: audiobookshelf
+          port: 13378
+  tls:
+    secretName: certificate-haynesnetwork
