@@ -32,6 +32,11 @@ templates:
     imdb_list: <<imdb_list>>
     collection_order: release
     radarr_tag: "Kometa-Added,MovieCollection"
+    # theatrical-window guard (owner ruling 2026-07-10): TMDb Collections can list
+    # announced / in-production / still-theatrical entries — never search one until
+    # its home (physical/digital) release per TMDB. Explicit mirror of the global
+    # radarr.availability: released.
+    radarr_availability: released
 
 collections:
   The Addams Family:
