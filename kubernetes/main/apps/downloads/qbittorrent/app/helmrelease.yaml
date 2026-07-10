@@ -75,6 +75,50 @@ spec:
               capabilities:
                 drop: ["ALL"]
               readOnlyRootFilesystem: true
+          # Community qBittorrent exporter as a sidecar in the same pod so it
+          # reaches the WebUI over localhost — qBittorrent has
+          # WebUI\LocalHostAuth=false, so localhost is auth-bypassed and no
+          # credentials are needed (PLAN-018). It scrapes qbt on each request
+          # and reports qbittorrent_up=0 when unreachable.
+          # IMPORTANT: no readiness/startup probe. A sidecar readiness probe
+          # would gate POD readiness and 503 the VPN-gated WebUI (false Gatus
+          # page); only the app container's Mullvad egress check may gate
+          # readiness. TCP liveness restarts only this container if it wedges.
+          exporter:
+            image:
+              repository: ghcr.io/esanchezm/prometheus-qbittorrent-exporter
+              tag: v1.7.0
+            env:
+              QBITTORRENT_HOST: localhost
+              QBITTORRENT_PORT: *port
+              QBITTORRENT_SSL: "false"
+              EXPORTER_PORT: &metricsPort 8000
+              EXPORTER_LOG_LEVEL: INFO
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  tcpSocket:
+                    port: *metricsPort
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 5
+              readiness:
+                enabled: false
+              startup:
+                enabled: false
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                memory: 128Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: true
     defaultPodOptions:
       securityContext:
         runAsNonRoot: true
@@ -90,6 +134,17 @@ spec:
         ports:
           http:
             port: *port
+          metrics:
+            port: *metricsPort
+    serviceMonitor:
+      app:
+        serviceName: qbittorrent
+        endpoints:
+          - port: metrics
+            scheme: http
+            path: /metrics
+            interval: 1m
+            scrapeTimeout: 30s
     ingress:
       app:
         annotations:
