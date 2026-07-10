@@ -123,6 +123,11 @@
         'kubernetes/*/apps/kube-system/k8tz/**',
         'kubernetes/*/apps/kube-system/spegel/**',
         'kubernetes/*/apps/network/cloudflare-ddns/**',
+        // cloudflare-tunnel (2026-07-10): same class as cloudflare-ddns — a stateless
+        // app-template Deployment (cloudflared). Revertible + the bot can auto-revert
+        // it (not in the diff-scope-blocked trees), and a tunnel break is Gatus-visible
+        // + LAN/internal-unaffected. Was stranded only because it wasn't listed here.
+        'kubernetes/*/apps/network/cloudflare-tunnel/**',
       ],
       // 'digest' included for the same reason as the leaf-app rule above.
       matchUpdateTypes: ['minor', 'patch', 'digest'],

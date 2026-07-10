@@ -43,7 +43,7 @@ jobs:
             // Renovate Tier-2 auto-merges minor/patch/digest in these leaf-app domains:
             const TIER2_DOMAINS = ['media','ai','downloads','frontend','office','photos','observability','home-automation'];
             // ...and these curated kube-system/network leaves (by <domain>/<app>):
-            const CURATED_LEAVES = ['kube-system/metrics-server','kube-system/reloader','kube-system/reflector','kube-system/k8tz','kube-system/spegel','network/cloudflare-ddns'];
+            const CURATED_LEAVES = ['kube-system/metrics-server','kube-system/reloader','kube-system/reflector','kube-system/k8tz','kube-system/spegel','network/cloudflare-ddns','network/cloudflare-tunnel'];
             // Shepherd-ramp clean-tier prefixes (shepherd auto-merges these, incl. minor):
             const RAMP_CLEAN = [
               'kubernetes/main/apps/kube-system/coredns/','kubernetes/edge/apps/kube-system/coredns/',
