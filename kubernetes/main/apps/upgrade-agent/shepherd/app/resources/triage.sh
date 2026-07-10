@@ -187,8 +187,42 @@ id_attributable() {  # $1=identifier $2=slash-wrapped path list ; rc0 if a merge
   esac
 }
 
+# hr_upgrade_failed <ns> <name> — rc0 if Flux ITSELF marks this HelmRelease a failed
+# install/upgrade (Stalled=True, or a Released/Ready reason of UpgradeFailed/InstallFailed/
+# RetriesExceeded). A direct, timing-INDEPENDENT attribution: Flux is telling us "the
+# change to this release did not apply" — which is exactly an upgrade regression,
+# regardless of when the triggering merge landed.
+hr_upgrade_failed() {  # $1=ns $2=name
+  kubectl -n "$1" get helmrelease "$2" -o json 2>/dev/null \
+    | jq -e '[.status.conditions[]? | select(
+        (.type=="Stalled" and .status=="True")
+        or (((.type=="Released") or (.type=="Ready")) and ((.reason // "") | test("UpgradeFailed|InstallFailed|RetriesExceeded")))
+      )] | length > 0' >/dev/null 2>&1
+}
+
 attribute() {  # $1=sig (log only) $2=REG_IDS -> "upgrade" | "nonupgrade"
-  local ids="$2" dir paths wrapped id
+  local ids="$2" dir paths wrapped id ns name
+  # ── (1) FLUX-NATIVE upgrade-failure signal (timing-independent) ── A HelmRelease that
+  # Flux marks Stalled/UpgradeFailed is a failed upgrade BY DEFINITION, so attribute it
+  # WITHOUT the git-window heuristic. A slow retry/rollback cycle can push the persistent
+  # NotReady past TRIAGE_MERGE_LOOKBACK_HOURS so the merge falls out of `git log --since`
+  # — exactly how mcp-grafana 0.17.1 slipped through 2026-07-10 (merged 09:50, only
+  # persistently-failed hours later → nonupgrade → never remediated). This reads it
+  # straight from Flux's own status; no clone/timing needed.
+  while IFS= read -r id; do
+    case "$id" in
+      flux/HelmRelease/*)
+        ns="$(printf '%s' "$id" | cut -d/ -f3)"; name="$(printf '%s' "$id" | cut -d/ -f4-)"
+        if hr_upgrade_failed "$ns" "$name"; then
+          log "attribution: '$id' is Flux Stalled/UpgradeFailed => class=upgrade (Flux's own failed-upgrade signal; timing-independent)."
+          printf 'upgrade'; return 0
+        fi ;;
+    esac
+  done <<EOF
+$ids
+EOF
+  # ── (2) git-log path correlation (the original recent-merge heuristic) for everything
+  #        else — pod crashloops and non-HR regressions. ──
   dir="$(mktemp -d 2>/dev/null || echo "/tmp/triage-attrib.$$")"
   # Shallow, bounded (depth=50) clone JUST for path attribution. FAIL-SAFE: any failure
   # => nonupgrade (never summon on a guess; the gate still catches a Flux failure).
