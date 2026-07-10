@@ -16,6 +16,14 @@ spec:
           for: 15m
           labels:
             severity: critical
+        # KNOWN-FAILURE EXCLUSION (owner ruling 2026-07-10): haynestower nvme1+nvme2 are the
+        # Cache-staging pool — Crucial P3 SSDs deliberately ridden PAST rated endurance. Their
+        # SMART-status-fail + critical_warning=4 (bit 2, endurance) are KNOWN and unactionable;
+        # the owner does not want repeating reminders. NEW failure modes on these same drives
+        # still alert (MediaErrors / AvailableSpare / Temperature are untouched below; a critical
+        # warning with any value OTHER than 4 fires). Metrics carry no serial label, so the
+        # exclusion is keyed on instance+device (stable for this NAS; revisit if drives are
+        # swapped/renamed). All other drives are unaffected.
         - alert: SmartDeviceTestFailed
           annotations:
             summary: Mounted drive {{ $labels.device }} on device {{ $labels.instance }}
@@ -26,6 +34,11 @@ spec:
             or
               smartctl_device_status != 1
             )
+            unless (
+              smartctl_device_smart_status{instance="haynestower", device=~"nvme1|nvme2"}
+            or
+              smartctl_device_status{instance="haynestower", device=~"nvme1|nvme2"}
+            )
           for: 15m
           labels:
             severity: critical
@@ -33,7 +46,13 @@ spec:
           annotations:
             summary: Mounted drive {{ $labels.device }} on device {{ $labels.instance }}
               is in a critical state.
-          expr: smartctl_device_critical_warning != 0
+          # Suppress ONLY the known endurance warning (value 4) on the two staging NVMes; a
+          # different warning bit on them (value != 4) still fires as a NEW failure.
+          expr: |
+            smartctl_device_critical_warning != 0
+            unless (
+              smartctl_device_critical_warning{instance="haynestower", device=~"nvme1|nvme2"} == 4
+            )
           for: 15m
           labels:
             severity: critical

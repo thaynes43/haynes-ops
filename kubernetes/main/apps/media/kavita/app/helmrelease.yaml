@@ -61,13 +61,13 @@ spec:
             resources:
               requests:
                 cpu: 100m
-                memory: 1Gi
+                memory: 2Gi
               limits:
                 cpu: 4000m
-                # OOMKilled at 2Gi during the Comics library scan (62 GiB of CBR/CBZ
-                # image processing, 2026-07-10). Owner: "don't be stingy" — headroom
-                # for full-library scans.
-                memory: 8Gi
+                # OOMKilled at 2Gi (then tight at 8Gi) during Comics library scans (CBR/CBZ
+                # image processing). Owner 2026-07-10: bump the whole book stack generously —
+                # content scaling up fast, don't want to keep tuning. Ample node headroom (~100Gi).
+                memory: 16Gi
             securityContext:
               # Kavita's official image runs the dotnet app as the container user
               # (no s6/root init); all writable state lives under /kavita/config

@@ -63,10 +63,11 @@ spec:
             resources:
               requests:
                 cpu: 50m
-                memory: 128Mi
+                memory: 512Mi
               limits:
                 cpu: 1000m
-                memory: 1Gi
+                # Owner 2026-07-10: generous headroom for scaling comic library processing.
+                memory: 8Gi
             # Kapowarr entrypoint chowns /app/db + content dirs as root then drops
             # to PUID/PGID 1000; runs with default caps (not the rootless model).
             securityContext:
