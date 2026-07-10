@@ -13,5 +13,5 @@ spec:
     # MANUAL merge only — a bad Kyverno chart bump is a cluster-wide admission
     # outage. NEVER add kyverno/** to a Tier-2 autoMerge domain glob; held in
     # .renovate/holds.json5 against a future glob sweep.
-    tag: 3.8.1
+    tag: 3.8.2
   url: oci://ghcr.io/kyverno/charts/kyverno
