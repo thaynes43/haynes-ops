@@ -61,10 +61,13 @@ spec:
             resources:
               requests:
                 cpu: 100m
-                memory: 256Mi
+                memory: 1Gi
               limits:
-                cpu: 2000m
-                memory: 2Gi
+                cpu: 4000m
+                # OOMKilled at 2Gi during the Comics library scan (62 GiB of CBR/CBZ
+                # image processing, 2026-07-10). Owner: "don't be stingy" — headroom
+                # for full-library scans.
+                memory: 8Gi
             securityContext:
               # Kavita's official image runs the dotnet app as the container user
               # (no s6/root init); all writable state lives under /kavita/config
