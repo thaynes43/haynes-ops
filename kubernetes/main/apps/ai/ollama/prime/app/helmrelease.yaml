@@ -45,13 +45,21 @@ spec:
                 value: &modelPath "/models"
               - name: OLLAMA_KEEP_ALIVE
                 value: "5m"
+              # Large (70B-class) models live on the HDD-backed NFS mount (gasha01
+              # hdd-nfs-repl). A 42GB model exceeds ollama's default 5m load timeout
+              # when read cold from that NFS, so first-load 500s ("timed out waiting
+              # for llama-server to start"). Give slow cold loads room. (PLAN-021)
+              - name: OLLAMA_LOAD_TIMEOUT
+                value: "15m"
             resources:
               requests:
-                #nvidia.com/gpu: 1 # requesting 1 GPU TODO dig into how it works here https://github.com/jahanson/theshire/blob/main/kubernetes/apps/ai/ollama/app/helmrelease.yaml#L50 
+                #nvidia.com/gpu: 1 # requesting 1 GPU TODO dig into how it works here https://github.com/jahanson/theshire/blob/main/kubernetes/apps/ai/ollama/app/helmrelease.yaml#L50
                 cpu: 2000m
                 memory: 8Gi
               limits:
-                memory: 32Gi
+                # 70B Q4 (~42GB): ~35 layers on the 3090, ~45 layers (~25GB) on CPU
+                # plus KV/compute buffers. 32Gi was too tight; 48Gi gives headroom.
+                memory: 48Gi
                 #nvidia.com/gpu: 1 # requesting 1 GPU
     service:
       app:
