@@ -100,8 +100,9 @@ entries:
   - model: authentik_policies.policybinding
     state: present
     identifiers:
+      pk: 5415acce-c247-4a43-b458-10c969fe72dc
       target: 3640815a-20a1-43fc-ba39-c5624329ea94
-      policy: !KeyOf policy-mfa-exempt-skip
+      policy: !Find [authentik_policies_expression.expressionpolicy, [name, hnet-mfa-exempt-skip]]
       order: 20
     attrs:
       enabled: true
