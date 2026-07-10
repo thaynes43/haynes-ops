@@ -109,3 +109,20 @@ entries:
       negate: false
       timeout: 30
       failure_result: true
+
+  # (6+7) Human-friendly names for the enrollment chooser (owner feedback 2026-07-10):
+  #     the validate stage's device-type picker shows friendly_name when set — "WebAuthn
+  #     device" / "TOTP Device" confuse non-technical local users.
+  - model: authentik_stages_authenticator_webauthn.authenticatorwebauthnstage
+    state: present
+    identifiers:
+      name: default-authenticator-webauthn-setup
+    attrs:
+      friendly_name: "Passkey (recommended)"
+
+  - model: authentik_stages_authenticator_totp.authenticatortotpstage
+    state: present
+    identifiers:
+      name: default-authenticator-totp-setup
+    attrs:
+      friendly_name: "Authenticator app (6-digit codes)"
