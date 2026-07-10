@@ -26,7 +26,12 @@ spec:
           app:
             image:
               repository: grafana/mcp-grafana
-              tag: 0.17.1
+              # Re-pinned from 0.17.1 → 0.17.0: v0.17.1 added default DNS-rebinding
+              # protection (grafana/mcp-grafana#957) that 403s the kubelet probe's
+              # pod-IP Host header on /healthz, so the Deployment never goes Ready and
+              # Flux rolls back in a loop. Forward-fix (keep 0.17.1 + set --allowed-hosts
+              # and a probe Host header) tracked for a supervised follow-up.
+              tag: 0.17.0
             args:
               - -t
               - streamable-http
