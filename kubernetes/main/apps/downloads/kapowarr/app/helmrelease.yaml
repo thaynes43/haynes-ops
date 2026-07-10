@@ -1,0 +1,124 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kapowarr
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      kapowarr:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        pod:
+          # Keep off the control-plane nodes (critical smart-home stack).
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: DoesNotExist
+        containers:
+          app:
+            image:
+              repository: docker.io/mrcas/kapowarr
+              tag: v1.3.1
+            env:
+              TZ: America/New_York
+              PUID: "1000"
+              PGID: "1000"
+            probes:
+              liveness: &probes
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: &port 5656
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 5
+              readiness: *probes
+              startup:
+                enabled: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: *port
+                  failureThreshold: 30
+                  periodSeconds: 10
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                cpu: 1000m
+                memory: 1Gi
+            # Kapowarr entrypoint chowns /app/db + content dirs as root then drops
+            # to PUID/PGID 1000; runs with default caps (not the rootless model).
+            securityContext:
+              readOnlyRootFilesystem: false
+    defaultPodOptions:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+    service:
+      app:
+        forceRename: "{{ .Release.Name }}"
+        primary: true
+        ports:
+          http:
+            port: *port
+    ingress:
+      app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+          gethomepage.dev/href: &url "https://kapowarr.haynesops.com"
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Downloads
+          gethomepage.dev/name: Kapowarr
+          gethomepage.dev/description: Comics acquisition (direct download)
+          gethomepage.dev/icon: kapowarr
+          gethomepage.dev/app: kapowarr
+          gethomepage.dev/siteMonitor: *url
+        className: traefik-internal
+        hosts:
+          - host: kapowarr.haynesops.com
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+    persistence:
+      # Kapowarr keeps its SQLite DB at /app/db.
+      config:
+        existingClaim: kapowarr
+        globalMounts:
+          - path: /app/db
+      # RW gasha01 mount at the shared *arr mountpoint. In-app: root folder =
+      # /data/cephfs-hdd/data/media/books/Comics (Kavita serves it RO); download
+      # folder = /data/cephfs-hdd/data/torrents-k8s/comics (same filesystem so
+      # completed direct-downloads move atomically into the library).
+      data-proxmox:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          kapowarr:
+            app:
+              - path: /data/cephfs-hdd
+                readOnly: false

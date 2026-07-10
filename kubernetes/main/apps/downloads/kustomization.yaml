@@ -9,6 +9,7 @@ resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
   # Flux-Kustomizations
+  - ./kapowarr/ks.yaml
   - ./lazylibrarian/ks.yaml
   - ./prowlarr/ks.yaml
   - ./qbittorrent/ks.yaml
