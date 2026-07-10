@@ -101,6 +101,14 @@ spec:
           gethomepage.dev/icon: kavita
           gethomepage.dev/app: kavita
           gethomepage.dev/siteMonitor: *url
+          gethomepage.dev/widget.type: kavita
+          gethomepage.dev/widget.url: "http://kavita.media.svc.cluster.local:5000"
+          # app-template runs tpl on annotations; escape Homepage vars so Helm
+          # doesn't render them. Kavita widget authenticates with the admin
+          # username/password (same as web login).
+          gethomepage.dev/widget.username: '{{ "{{HOMEPAGE_VAR_KAVITA_USERNAME}}" }}'
+          gethomepage.dev/widget.password: '{{ "{{HOMEPAGE_VAR_KAVITA_PASSWORD}}" }}'
+          gethomepage.dev/widget.fields: '["seriesCount", "totalFiles"]'
         className: traefik-internal
         hosts:
           - host: kavita.haynesops.com
