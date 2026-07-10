@@ -41,6 +41,40 @@ spec:
                 value: CephPoolGrowthWarning
               - op: remove
                 path: /spec/groups/7/rules/0
+          # alert-responder scope (owner ruling 2026-07-10): tag the PHYSICAL-hardware
+          # ceph rules (group 'hardware': fans/PSU/DIMM/processor/network/storage — these
+          # read ceph_health_detail HARDWARE_* and represent unfixable, self-evident host
+          # faults) with `scope: host` so the LLM alert-responder SKIPS its redundant
+          # diagnosis. The Ceph OSD/mon/pool/PG cluster-health rules are deliberately NOT
+          # tagged — those still get diagnosed. Fail-safe: the group-name `test` op means a
+          # rook chart bump that shifts group[9] fails the patch -> HR NotReady (pages)
+          # rather than silently mislabeling. Re-verify on a rook bump: kubectl -n rook-ceph
+          # get prometheusrule prometheus-ceph-rules -o json | jq '.spec.groups[9].name'.
+          - target:
+              kind: PrometheusRule
+              name: prometheus-ceph-rules
+            patch: |
+              - op: test
+                path: /spec/groups/9/name
+                value: hardware
+              - op: add
+                path: /spec/groups/9/rules/0/labels/scope
+                value: host
+              - op: add
+                path: /spec/groups/9/rules/1/labels/scope
+                value: host
+              - op: add
+                path: /spec/groups/9/rules/2/labels/scope
+                value: host
+              - op: add
+                path: /spec/groups/9/rules/3/labels/scope
+                value: host
+              - op: add
+                path: /spec/groups/9/rules/4/labels/scope
+                value: host
+              - op: add
+                path: /spec/groups/9/rules/5/labels/scope
+                value: host
   dependsOn:
     - name: rook-ceph-operator
       namespace: rook-ceph

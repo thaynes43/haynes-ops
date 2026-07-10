@@ -16,6 +16,7 @@ spec:
           for: 15m
           labels:
             severity: critical
+            scope: host          # host/hardware — alert-responder skips LLM diagnosis
         # KNOWN-FAILURE EXCLUSION (owner ruling 2026-07-10): haynestower nvme1+nvme2 are the
         # Cache-staging pool — Crucial P3 SSDs deliberately ridden PAST rated endurance. Their
         # SMART-status-fail + critical_warning=4 (bit 2, endurance) are KNOWN and unactionable;
@@ -42,6 +43,7 @@ spec:
           for: 15m
           labels:
             severity: critical
+            scope: host          # host/hardware — alert-responder skips LLM diagnosis
         - alert: SmartDeviceCriticalWarning
           annotations:
             summary: Mounted drive {{ $labels.device }} on device {{ $labels.instance }}
@@ -56,6 +58,7 @@ spec:
           for: 15m
           labels:
             severity: critical
+            scope: host          # host/hardware — alert-responder skips LLM diagnosis
         #
         # Ref: https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus-smartctl-exporter/rules/rules.txt
         #
@@ -67,6 +70,7 @@ spec:
           for: 15m
           labels:
             severity: critical
+            scope: host          # host/hardware — alert-responder skips LLM diagnosis
         - alert: SmartDeviceAvailableSpareUnderThreadhold
           annotations:
             summary: Device {{ $labels.device }} on instance {{ $labels.instance }}
@@ -75,6 +79,7 @@ spec:
           for: 15m
           labels:
             severity: critical
+            scope: host          # host/hardware — alert-responder skips LLM diagnosis
         - alert: SmartDeviceInterfaceSlow
           annotations:
             summary: Device {{ $labels.device }} on instance {{ $labels.instance }}
@@ -84,3 +89,4 @@ spec:
           for: 15m
           labels:
             severity: critical
+            scope: host          # host/hardware — alert-responder skips LLM diagnosis

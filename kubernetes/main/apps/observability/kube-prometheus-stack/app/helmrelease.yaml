@@ -38,6 +38,10 @@ spec:
       disabled:
         NodeNetworkTransmitErrs: true
         NodeNetworkReceiveErrs: true
+        # Recreated in prometheusrule.yaml with `scope: host` (alert-responder skips LLM
+        # diagnosis on unfixable host RAID/disk faults — owner ruling 2026-07-10).
+        NodeRAIDDegraded: true
+        NodeRAIDDiskFailure: true
     alertmanager:
       ingress:
         enabled: true
