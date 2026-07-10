@@ -6,8 +6,8 @@
 # MODERNIZATION:
 #   * tmdb_discover charts filter SERVER-SIDE (with_original_language: en,
 #     vote_count.gte) so foreign/low-vote titles never reach Kometa.
-#   * builders that can't filter server-side (imdb_chart, tmdb_now_playing) get
-#     CLIENT-SIDE filters (original_language / tmdb_vote_count).
+#   * builders that can't filter server-side (imdb_chart) get CLIENT-SIDE
+#     filters (original_language / tmdb_vote_count).
 #   * curated quality lists (IMDb Top 250) stay unfiltered — acclaimed foreign
 #     films belong there.
 #
@@ -15,11 +15,20 @@
 # search true globally). radarr_tag applies the umbrella "Kometa-Added" + a
 # per-chart tag. The language/vote filters above are what make chart acquisition
 # SANE (the un-filtered 2023 charts are exactly what flooded Radarr with foreign
-# junk). ⚠ CONTINUOUS ACQUISITION: "Popular Now", "In Theaters" and "IMDB
-# Popular" refresh with new releases, so they keep pulling new English-language
-# titles on every daily run — not a one-time wave. "Top Rated" / "Top Grossing" /
-# "IMDB Top 250" are effectively static (one-time fill). To make any chart
-# display-only again, add `radarr_add_missing: false` to its block.
+# junk). ⚠ CONTINUOUS ACQUISITION: "Popular Now" and "IMDB Popular" refresh with
+# new releases, so they keep pulling new English-language titles on every daily
+# run — not a one-time wave. "Top Rated" / "Top Grossing" / "IMDB Top 250" are
+# effectively static (one-time fill). To make any chart display-only again, add
+# `radarr_add_missing: false` to its block.
+#
+# THEATRICAL-WINDOW GUARD (owner ruling 2026-07-10): this server does NOT acquire
+# currently-in-theaters titles. The "In Theaters" chart (tmdb_now_playing) was
+# REMOVED entirely (below), and the Chart template now carries
+# `radarr_availability: released` so that even if a remaining chart names a title
+# still in its theatrical window, Radarr will NOT search until that title's home
+# (physical/digital) release per TMDB dates. Global radarr.availability in
+# config.yml is already `released`; this per-template key makes the guard explicit
+# and survives any change to the global.
 #
 # TRAKT GAP: Trakt charts are preserved but COMMENTED (no trakt block in
 # config.yml). Add trakt to the externalsecret to re-enable them.
@@ -27,6 +36,10 @@ templates:
   Chart:
     collection_order: custom
     sync_mode: sync
+    # theatrical-window guard — never search a title until its home (physical/
+    # digital) release per TMDB (owner ruling 2026-07-10). Redundant-but-explicit
+    # with the global radarr.availability: released in config.yml.
+    radarr_availability: released
 
 collections:
   Popular Now:
@@ -65,17 +78,12 @@ collections:
       vote_count.gte: 300
       limit: 100
 
-  In Theaters:
-    template: {name: Chart}
-    sort_title: "!023 In Theaters"
-    summary: "English-language movies now playing in theaters (in this library)"
-    url_poster: https://theposterdb.com/api/assets/213600
-    radarr_tag: "Kometa-Added,InTheaters"
-    tmdb_now_playing: 100
-    tmdb_region: US
-    filters:
-      - original_language: en
-      - tmdb_vote_count.gte: 25
+  # In Theaters (tmdb_now_playing US top-100) REMOVED 2026-07-10 by owner ruling:
+  # this server does NOT acquire currently-in-theaters titles. It was the source
+  # of the 6:30 re-import of "Chum" (tmdb 1694978) the morning after the sweep
+  # deleted it (tagged Kometa-Added,intheaters in Radarr). Do NOT re-add —
+  # theatrical-window acquisition is out of scope for this server. The orphaned
+  # "In Theaters" Plex collection is deleted out-of-band (see PR notes).
 
   IMDB Popular:
     template: {name: Chart}
