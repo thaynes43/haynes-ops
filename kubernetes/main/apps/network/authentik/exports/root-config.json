@@ -1,0 +1,18 @@
+{
+  "error_reporting": {
+    "enabled": false,
+    "sentry_dsn": "https://151ba72610234c4c97c5bcff4e1cffd8@authentik.error-reporting.a7k.io/4504163677503489",
+    "environment": "k8s",
+    "send_pii": false,
+    "traces_sample_rate": 0.1
+  },
+  "capabilities": [
+    "can_asn",
+    "can_geo_ip",
+    "can_impersonate",
+    "is_enterprise"
+  ],
+  "cache_timeout": 300,
+  "cache_timeout_flows": 300,
+  "cache_timeout_policies": 300
+}

@@ -11,3 +11,18 @@ resources:
   - ./helmrelease.yaml
   - ./middleware.yaml
   - ./ingressroute.yaml
+# PLAN-011 Phase 1 — Authentik config-as-code baseline blueprints, delivered as a
+# ConfigMap the Helm chart mounts onto the worker at /blueprints/mounted/cm-authentik-
+# hnet-blueprints (only *.yaml keys are discovered). disableNameSuffixHash keeps the
+# name stable so helmrelease.yaml's blueprints.configMaps reference resolves.
+#   NOTE: blueprints/pending/40-hnet-mfa.yaml is deliberately NOT listed here, so it is
+#   never mounted or applied. Promoting it (owner-present, Phase 2) = add its file below
+#   + move it out of pending/. See blueprints/pending/README.md.
+configMapGenerator:
+  - name: authentik-hnet-blueprints
+    options:
+      disableNameSuffixHash: true
+    files:
+      - blueprints/10-hnet-brand.yaml
+      - blueprints/20-hnet-flows.yaml
+      - blueprints/30-hnet-sources.yaml

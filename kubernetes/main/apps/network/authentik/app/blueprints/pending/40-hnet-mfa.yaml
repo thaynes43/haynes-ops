@@ -1,0 +1,109 @@
+# PLAN-011 Phase 2 — DRAFT MFA blueprint.  *** NOT ACTIVE ***
+#
+# This file is intentionally EXCLUDED from Authentik blueprint discovery: it is NOT
+# listed in app/kustomization.yaml's configMapGenerator, so it is never mounted onto
+# the worker and never applied. Activation is an owner-present Phase 2 step — see
+# ./README.md for the exact promote + dry-run + apply + rollback sequence.
+#
+# Effect once active: native (internal-type) accounts — thaynes, akadmin, hnet-e2e,
+# any hand-created local user — must present a WebAuthn passkey or TOTP code AFTER the
+# password stage, enrolling on first challenge. Members of the `mfa-exempt` group
+# (hnet-e2e, hnet-e2e-member) skip the challenge. "Log in with Plex" users traverse
+# default-source-authentication (a login-only flow) and are NEVER challenged — see the
+# Q-02 evidence in the PR description.
+#
+# IMPORTANT — supersession: activating this blueprint takes ownership of the order-30
+# authenticator-validation stage AND its stage-binding, which are also reproduced (at
+# their current pre-MFA values) in ../20-hnet-flows.yaml. When promoting this file,
+# REMOVE those two entries from 20-hnet-flows.yaml (the `default-authentication-mfa-
+# validation` stage and the order-30 `authentik_flows.flowstagebinding`) so the two
+# blueprints do not flip-flop the stage config on each worker reconcile.
+---
+version: 1
+metadata:
+  name: hnet-mfa-enforcement
+  labels:
+    blueprints.goauthentik.io/description: >-
+      DRAFT / NOT-YET-ACTIVE (PLAN-011 Phase 2). Native-account MFA: WebAuthn/TOTP
+      validation + enrollment after the password stage; exempts the mfa-exempt group
+      (automation/e2e). Plex-source logins unaffected. Do NOT add to
+      blueprints.configMaps until owner-present Phase 2.
+context: {}
+entries:
+  # (1) Exemption group — automation / e2e accounts that must never be challenged.
+  - model: authentik_core.group
+    state: present
+    identifiers:
+      name: mfa-exempt
+    attrs:
+      name: mfa-exempt
+      is_superuser: false
+      users:
+        - !Find [authentik_core.user, [username, hnet-e2e]]
+        - !Find [authentik_core.user, [username, hnet-e2e-member]]
+
+  # (2) Skip policy — inspects the PENDING user's group membership. Fail-closed:
+  #     if a pending user cannot be resolved, enforce MFA (return True = run stage).
+  - model: authentik_policies_expression.expressionpolicy
+    state: present
+    id: policy-mfa-exempt-skip
+    identifiers:
+      name: hnet-mfa-exempt-skip
+    attrs:
+      name: hnet-mfa-exempt-skip
+      execution_logging: false
+      expression: |
+        # Bound to the order-30 authenticator-validation binding of
+        # default-authentication-flow. Return True = RUN the MFA stage (enforce);
+        # return False = SKIP it (exempt). Fail-closed on an unresolved user.
+        pending = request.context.get("pending_user")
+        if pending is None or not getattr(pending, "pk", None):
+            return True
+        return not ak_is_group_member(pending, name="mfa-exempt")
+
+  # (3) Reconfigure the EXISTING order-30 authenticator-validation stage to enforce +
+  #     enroll. pk targets the live stage exactly (no new stage created).
+  - model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+    state: present
+    identifiers:
+      pk: 3cdaa8fa-be22-415b-aac6-df08662a1c88
+      name: default-authentication-mfa-validation
+    attrs:
+      not_configured_action: configure        # force enrollment on first challenge (was: skip)
+      device_classes:
+        - totp                                 # backup authenticator
+        - webauthn                             # owner's 1Password passkey (primary factor)
+      configuration_stages:
+        - !Find [authentik_stages_authenticator_webauthn.authenticatorwebauthnstage, [name, default-authenticator-webauthn-setup]]
+        - !Find [authentik_stages_authenticator_totp.authenticatortotpstage, [name, default-authenticator-totp-setup]]
+      webauthn_user_verification: preferred
+
+  # (4) Flip the order-30 stage-binding to policy_engine_mode: all, so the shipped
+  #     webauthn-passwordless skip policy AND the exempt-skip policy must BOTH pass for
+  #     the stage to run (each returns "should this stage run?"). pk targets the live binding.
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      pk: 3640815a-20a1-43fc-ba39-c5624329ea94
+      target: c8e7b494-606c-4772-9e5f-194b610bac40   # default-authentication-flow
+      stage: 3cdaa8fa-be22-415b-aac6-df08662a1c88     # default-authentication-mfa-validation
+      order: 30
+    attrs:
+      evaluate_on_plan: false
+      invalid_response_action: retry
+      policy_engine_mode: all
+      re_evaluate_policies: true
+
+  # (5) Bind the exempt-skip policy to the order-30 binding. failure_result: true =
+  #     fail-closed (a policy error enforces MFA rather than skipping it).
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: 3640815a-20a1-43fc-ba39-c5624329ea94
+      policy: !KeyOf policy-mfa-exempt-skip
+      order: 20
+    attrs:
+      enabled: true
+      negate: false
+      timeout: 30
+      failure_result: true

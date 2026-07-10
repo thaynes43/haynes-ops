@@ -1,0 +1,110 @@
+{
+  "pagination": {
+    "next": 0,
+    "previous": 0,
+    "count": 8,
+    "current": 1,
+    "total_pages": 1,
+    "start_index": 1,
+    "end_index": 8
+  },
+  "results": [
+    {
+      "pk": "cbe69993-0c80-423c-a64e-9fe9e8c0f5f1",
+      "managed": "goauthentik.io/providers/proxy/scope-proxy",
+      "name": "authentik default OAuth Mapping: Proxy outpost",
+      "expression": "# This mapping is used by the authentik proxy. It passes extra user attributes,\n# which are used for example for the HTTP-Basic Authentication mapping.\nreturn {\n    \"ak_proxy\": {\n        \"user_attributes\": request.user.group_attributes(request),\n        \"is_superuser\": request.user.is_superuser,\n    }\n}",
+      "component": "ak-property-mapping-provider-scope-form",
+      "verbose_name": "Scope Mapping",
+      "verbose_name_plural": "Scope Mappings",
+      "meta_model_name": "authentik_providers_oauth2.scopemapping",
+      "scope_name": "ak_proxy",
+      "description": "authentik Proxy - User information"
+    },
+    {
+      "pk": "57fbe55d-4337-45cb-8ad6-31ef4e8630bf",
+      "managed": "goauthentik.io/providers/oauth2/scope-email",
+      "name": "authentik default OAuth Mapping: OpenID 'email'",
+      "expression": "return {\n    \"email\": request.user.email,\n    \"email_verified\": False\n}",
+      "component": "ak-property-mapping-provider-scope-form",
+      "verbose_name": "Scope Mapping",
+      "verbose_name_plural": "Scope Mappings",
+      "meta_model_name": "authentik_providers_oauth2.scopemapping",
+      "scope_name": "email",
+      "description": "Email address"
+    },
+    {
+      "pk": "30ae727b-c5c6-4b62-902e-61ef845823bc",
+      "managed": "goauthentik.io/providers/oauth2/scope-entitlements",
+      "name": "authentik default OAuth Mapping: Application Entitlements",
+      "expression": "entitlements = [entitlement.name for entitlement in request.user.app_entitlements(provider.application)]\nreturn {\n    \"entitlements\": entitlements,\n    \"roles\": entitlements,\n}",
+      "component": "ak-property-mapping-provider-scope-form",
+      "verbose_name": "Scope Mapping",
+      "verbose_name_plural": "Scope Mappings",
+      "meta_model_name": "authentik_providers_oauth2.scopemapping",
+      "scope_name": "entitlements",
+      "description": "Application entitlements"
+    },
+    {
+      "pk": "46a61fc8-a624-4543-841d-d8e7fa9f009c",
+      "managed": "goauthentik.io/providers/oauth2/scope-authentik_api",
+      "name": "authentik default OAuth Mapping: authentik API access",
+      "expression": "# This scope grants the application the ability to access the authentik API\n# on behalf of the authorizing user\nreturn {}",
+      "component": "ak-property-mapping-provider-scope-form",
+      "verbose_name": "Scope Mapping",
+      "verbose_name_plural": "Scope Mappings",
+      "meta_model_name": "authentik_providers_oauth2.scopemapping",
+      "scope_name": "goauthentik.io/api",
+      "description": "authentik API Access on behalf of your user"
+    },
+    {
+      "pk": "349b9258-59ee-457e-8d6a-d9794e5b4f82",
+      "managed": "goauthentik.io/providers/oauth2/scope-offline_access",
+      "name": "authentik default OAuth Mapping: OpenID 'offline_access'",
+      "expression": "# This scope grants the application a refresh token that can be used to refresh user data\n# and let the application access authentik without the users interaction\nreturn {}",
+      "component": "ak-property-mapping-provider-scope-form",
+      "verbose_name": "Scope Mapping",
+      "verbose_name_plural": "Scope Mappings",
+      "meta_model_name": "authentik_providers_oauth2.scopemapping",
+      "scope_name": "offline_access",
+      "description": "Access to request new tokens without interaction"
+    },
+    {
+      "pk": "f8cbc5a4-e2b0-49f9-aa9c-5acab9c6036a",
+      "managed": "goauthentik.io/providers/oauth2/scope-openid",
+      "name": "authentik default OAuth Mapping: OpenID 'openid'",
+      "expression": "# This scope is required by the OpenID-spec, and must as such exist in authentik.\n# The scope by itself does not grant any information\nreturn {}",
+      "component": "ak-property-mapping-provider-scope-form",
+      "verbose_name": "Scope Mapping",
+      "verbose_name_plural": "Scope Mappings",
+      "meta_model_name": "authentik_providers_oauth2.scopemapping",
+      "scope_name": "openid",
+      "description": ""
+    },
+    {
+      "pk": "6c130fb7-d129-483e-9560-33f89388f528",
+      "managed": "goauthentik.io/providers/oauth2/scope-profile",
+      "name": "authentik default OAuth Mapping: OpenID 'profile'",
+      "expression": "return {\n    # Because authentik only saves the user's full name, and has no concept of first and last names,\n    # the full name is used as given name.\n    # You can override this behaviour in custom mappings, i.e. `request.user.name.split(\" \")`\n    \"name\": request.user.name,\n    \"given_name\": request.user.name,\n    \"preferred_username\": request.user.username,\n    \"nickname\": request.user.username,\n    \"groups\": [group.name for group in request.user.groups.all()],\n}",
+      "component": "ak-property-mapping-provider-scope-form",
+      "verbose_name": "Scope Mapping",
+      "verbose_name_plural": "Scope Mappings",
+      "meta_model_name": "authentik_providers_oauth2.scopemapping",
+      "scope_name": "profile",
+      "description": "General Profile Information"
+    },
+    {
+      "pk": "f3cba182-4f38-4fda-a8f1-9d5172ad2c97",
+      "managed": null,
+      "name": "haynesnetwork OIDC: plex_user_id (Plex source numeric id)",
+      "expression": "# haynesnetwork OIDC scope mapping — emit the plex.tv numeric user id.\n# The one identity Authentik reliably holds for a source-linked account is the Plex source\n# connection's `identifier` (the plex.tv numeric user id, e.g. 12874060). The user's email/\n# username on the Authentik side (admin@haynesnetwork.com) do NOT equal their plex.tv identity,\n# so the app matches My Plex owner/friend by this numeric id. No connection -> omit the claim\n# (harmless: users who did not sign in through the Plex source, e.g. form login, get nothing).\nfrom authentik.sources.plex.models import UserPlexSourceConnection\n\nconnection = UserPlexSourceConnection.objects.filter(user=user).first()\nif not connection or not connection.identifier:\n    return {}\nreturn {\"plex_user_id\": connection.identifier}",
+      "component": "ak-property-mapping-provider-scope-form",
+      "verbose_name": "Scope Mapping",
+      "verbose_name_plural": "Scope Mappings",
+      "meta_model_name": "authentik_providers_oauth2.scopemapping",
+      "scope_name": "profile",
+      "description": "fix/plex-numeric-id — emits plex_user_id (plex.tv numeric user id) from the user's Plex source connection so My Plex recognizes the owner/friend by immutable id. No connection -> claim omitted."
+    }
+  ],
+  "autocomplete": {}
+}
