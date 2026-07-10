@@ -61,6 +61,7 @@ jobs:
               'kubernetes/main/apps/database/dragonfly/',
               'kubernetes/main/apps/kube-system/cilium/',
               'kubernetes/main/apps/network/authentik/',
+              'kubernetes/main/apps/cert-manager/cert-manager/',
             ];
             const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded'];
             const isRenovate = (l) => /renovate/i.test(l || '');

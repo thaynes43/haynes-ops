@@ -425,6 +425,7 @@ guard, and the health gate + guardrail alerts.
 | `dragonfly-operator` | **revertible cluster-infra** | 2026-07-08 | operator patch/minor auto-merge (in-memory flush on restart re-enqueues). |
 | `cilium` | **revertible cluster-infra** | 2026-07-08 | PATCH auto-merge; MINOR/MAJOR = one-way eBPF map layout → authored for confirm. |
 | `authentik` | **revertible cluster-infra** | 2026-07-08 | PATCH within same `YYYY.M` auto-merge; `YYYY.M` major = forward-only migration (one-way) → authored for confirm. |
+| `cert-manager` | **revertible cluster-infra** | 2026-07-09 | PATCH only auto-merge. MINOR/MAJOR authored for human review — the Helm schema is strict (`additionalProperties:false`) and minors REMOVE values keys (v1.21.0 dropped `prometheus.servicemonitor.*`), so they need release-note + values vetting. |
 
 **Operating principle (2026-07-08): the split is REVERTIBLE vs ONE-WAY, not
 cluster-breaker vs not.** "Cluster-breaker stays manual" was the wrong frame — a
@@ -531,6 +532,21 @@ EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/is
   runbook for the failing component.
 
 ## Changelog
+
+- **2026-07-09** — **cert-manager added to the ramp (PATCH only).** Sixth revertible
+  cluster-infra component. cert-manager minors are deliberately NOT auto-merged: the
+  chart's Helm schema is `additionalProperties:false` and minors remove values keys
+  (v1.21.0 dropped `prometheus.servicemonitor.*`), which hard-fails an upgrade if a
+  stale key lingers — so minors get release-note + values vetting and a human-review PR.
+  Also handled the stranded #2007 by hand (v1.20.3→v1.21.0 minor): vetted the three v1.21
+  breaking changes (none applied — we're already on v1.20.3 for the RBAC one, don't use
+  the token-RBAC pattern, and set none of the removed metrics values), merged, rolled
+  clean (all 5 pods Running, both ClusterIssuers Ready). Also fixed alert-responder
+  noise (PR #2010): it now only pages when its verdict is action-needed AND the alert is
+  still firing, and denylists the appdaemon-owned `Protect.*` class (was double-paging a
+  self-healed UniFi Protect freeze + a documented ceph-mgr OOM cycle). GHA majors now
+  auto-merge too (revertible + fail-safe: a breaking major reddens its own required check
+  and can't merge).
 
 - **2026-07-08** — **Cluster-breaker ramp: revertible-vs-one-way, + cadence.** Reframed
   the floor from "cluster-breaker vs not" to "git-revertible vs one-way" (a supervised
