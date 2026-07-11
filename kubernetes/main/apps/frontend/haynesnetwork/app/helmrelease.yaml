@@ -46,7 +46,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/haynesnetwork
-              tag: v0.39.1
+              tag: v0.40.0
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -399,6 +399,38 @@ spec:
               - tsx
               - /sync/src/scripts/sync.ts
               - --mode=books-sync
+            envFrom:
+              - secretRef:
+                  name: haynesnetwork-secret
+            resources:
+              requests:
+                cpu: 25m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
+      # Plex match (ADR-047 / DESIGN-025 — PLAN-028): resolves each *arr ledger media_item to its exact
+      # Plex {library, ratingKey} by shared GUID (tmdb/imdb/tvdb/musicbrainz) and UPSERTS the
+      # media_plex_matches cache — the Library access gate + "Watch on Plex" deep-link substrate.
+      # READ-ONLY against Plex + the DB (no *arr call, never writes to Plex); reconciles titles a
+      # fully-read library no longer serves. No sync_runs row (books-sync shape). Needs the three
+      # PLEX_*_TOKENs (+ DATABASE_URL) from haynesnetwork-secret; URLs default in code.
+      sync-plex-match:
+        type: cronjob
+        pod:
+          restartPolicy: Never
+        cronjob:
+          schedule: "52 * * * *"
+          backoffLimit: 1
+          concurrencyPolicy: Forbid
+          failedJobsHistory: 2
+          successfulJobsHistory: 1
+        containers:
+          main:
+            image: *mainImage
+            command:
+              - tsx
+              - /sync/src/scripts/sync.ts
+              - --mode=plex-match
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
