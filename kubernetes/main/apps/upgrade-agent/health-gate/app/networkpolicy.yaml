@@ -3,7 +3,8 @@
 # The cluster has no other netpols, so selecting ONLY the gate pod creates a
 # default-deny egress *for this pod alone*, additively. enable-l7-proxy=true is live,
 # so toFQDNs + the L7 DNS rule work. Gate egress is the tightest set: DNS, apiserver,
-# Prometheus, HA, Pushover. NO GitHub, NO Anthropic — the gate never pushes or LLMs.
+# Prometheus, Pushover. NO GitHub, NO Anthropic, NO Home-Assistant — the gate never
+# pushes, never LLMs, and no longer polls HA (device health is owned by hass-sandbox).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -34,7 +35,6 @@ spec:
               - matchPattern: "*.cluster.local"
               - matchPattern: "*.svc"
               - matchName: "kube-prometheus-stack-prometheus.observability.svc.cluster.local"
-              - matchName: "home-assistant.home-automation.svc.cluster.local"
               - matchName: "api.pushover.net"
     # 2. Kube API server — the ONLY cluster read path (Flux CRs via kubectl).
     - toEntities: [kube-apiserver]
@@ -52,16 +52,7 @@ spec:
         - ports:
             - port: "9090"
               protocol: TCP
-    # 4. Home Assistant REST (check 6).
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: home-automation
-            app.kubernetes.io/name: home-assistant
-      toPorts:
-        - ports:
-            - port: "8123"
-              protocol: TCP
-    # 5. Pushover — the INDEPENDENT external page channel (must not depend on the
+    # 4. Pushover — the INDEPENDENT external page channel (must not depend on the
     #    in-cluster Alertmanager the gate monitors).
     - toFQDNs:
         - matchName: api.pushover.net

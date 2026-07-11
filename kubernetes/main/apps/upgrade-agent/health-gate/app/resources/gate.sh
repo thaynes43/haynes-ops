@@ -18,8 +18,12 @@
 #   * Firing critical alerts                   -> NOT checked at all (removed 2026-07): pure
 #       Alertmanager duplication, and the source of context-poor "upgrade-gate: OOMKilled"
 #       pages for unrelated self-healed apps.
-#   * GitRepository / ExternalSecret / Ceph / Home-Assistant -> deploy/infra health the gate
-#       reads directly; UNCHANGED, contextual, always-on.
+#   * GitRepository / ExternalSecret / Ceph        -> deploy/infra health the gate reads
+#       directly; UNCHANGED, contextual, always-on.
+# HA/Zigbee/lock/device availability is NOT the gate's job — it is owned by the hass-sandbox
+# AppDaemon health-check suite + Alertmanager bridge. The gate deliberately does NOT poll HA
+# (removed 2026-07: an HA integration re-auth flipped every lock `unavailable` and the gate
+# paged ~5 unrelated criticals to the operator's phone — device health is not a deploy signal).
 # Every page names the specific resource(s) and states the remediation outcome. Coordination
 # pages de-dupe to once per REPAGE_SUPPRESS_HOURS per signature. If state is unreadable, the
 # Flux dimension FAILS SAFE (pages); the pod dimension fails silent (Alertmanager is the net).
@@ -27,7 +31,6 @@ set -uo pipefail
 
 GATE_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROM="${PROMETHEUS_URL:-http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090}"
-HA="${HA_URL:-http://home-assistant.home-automation.svc.cluster.local:8123}"
 OFFSET="${PERSIST_OFFSET:-10m}"
 REPAGE_SUPPRESS_HOURS="${REPAGE_SUPPRESS_HOURS:-6}"
 REMEDIATE_GRACE_MINUTES="${REMEDIATE_GRACE_MINUTES:-40}"
@@ -232,24 +235,6 @@ else
   # green — warn. (Bit us 2026-07-04: a CNP DNS gap made Prometheus unresolvable since
   # deploy and the gate quietly ran as a reduced gate.)
   page warning gate-blind prometheus "Prometheus unreachable — pods/ESO/Ceph dimensions are blind this cycle."
-fi
-
-# ---- Check 6: Home Assistant availability (only if HASS_TOKEN is set). ----
-if [ -n "${HASS_TOKEN:-}" ]; then
-  hastate() { curl -sf --max-time 10 -H "Authorization: Bearer $HASS_TOKEN" "$HA/api/states/$1" 2>/dev/null | jq -r '.state // "ERR"' 2>/dev/null; }
-  # Blind is NOT green: if the HA API itself is unreachable, warn instead of silently
-  # skipping (hastate returns ""/ERR on curl failure, which pages nothing).
-  if ! curl -sf --max-time 10 -H "Authorization: Bearer $HASS_TOKEN" "$HA/api/" >/dev/null 2>&1; then
-    page warning gate-blind home-assistant "HA API unreachable — Zigbee/lock dimensions are blind this cycle."
-  else
-  z2m="$(hastate binary_sensor.zigbee2mqtt_bridge_connection_state)"
-  [ "$z2m" = "off" ] && page critical ha zigbee2mqtt "Zigbee2MQTT bridge connection == off (mesh down / Z2M-HA restart race)."
-  for lk in front_door_lock side_door_lock bulkhead_lock mudroom_door_lock; do
-    st="$(hastate "lock.$lk")"
-    case "$st" in unavailable|unknown) page critical ha "lock.$lk" "Door lock lock.$lk == $st." ;; esac
-  done
-  # Spa (Gecko in.touch3) is chronically flaky over RF — benign, deliberately NOT paged.
-  fi
 fi
 
 # ---- Dead-man's-switch: a successful cycle pings the heartbeat (if configured). ----

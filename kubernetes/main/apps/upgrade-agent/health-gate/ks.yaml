@@ -23,6 +23,5 @@ spec:
   interval: 30m
   timeout: 5m
   # NO postBuild.substitute: Flux envsubst was rewriting the shell `${VAR:-default}`
-  # in gate.sh — emptying `${HASS_TOKEN:-}` (silently disabling the HA check) and
-  # hardcoding the other defaults (killing the env overrides). These manifests use
-  # YAML anchors, not `${APP}`, so no substitution is needed.
+  # defaults in gate.sh — hardcoding them and killing the env overrides. These manifests
+  # use YAML anchors, not `${APP}`, so no substitution is needed.
