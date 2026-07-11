@@ -119,6 +119,51 @@ spec:
               capabilities:
                 drop: ["ALL"]
               readOnlyRootFilesystem: true
+          # MyAnonaMouse dynamic-seedbox IP keeper (PLAN-031). In THIS pod on
+          # purpose: it shares the macvlan netns, so its dynamicSeedbox.php calls
+          # egress the exact Mullvad exit IP qBittorrent announces from — the IP we
+          # register is provably the IP MAM sees. It confirms the Mullvad exit before
+          # every call (fail-closed), self-throttles to <=1 call/hr, and persists the
+          # rotating mam_id cookie to /state (a subpath of the config PVC) so it
+          # survives restarts. See scripts/mam-update.sh for the full contract.
+          # IMPORTANT: no readiness/startup probe — only the app container's Mullvad
+          # egress check may gate pod readiness (same rule as the exporter sidecar).
+          mam-update:
+            image:
+              repository: docker.io/curlimages/curl
+              tag: 8.21.0
+            command: ["/bin/sh", "/scripts/mam-update.sh"]
+            env:
+              TZ: America/New_York
+              HOME: /tmp
+              STATE_DIR: /state
+              MAM_SEEDBOX_URL: https://t.myanonamouse.net/json/dynamicSeedbox.php
+              MAM_CHECK_URL: https://am.i.mullvad.net/json
+              INTERVAL: "3600"
+              MIN_GAP: "3600"
+              MAM_ID_SEED:
+                valueFrom:
+                  secretKeyRef:
+                    name: myanonamouse-secret
+                    key: MAM_ID_SEEDBOX
+            probes:
+              liveness:
+                enabled: false
+              readiness:
+                enabled: false
+              startup:
+                enabled: false
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 64Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: true
     defaultPodOptions:
       securityContext:
         runAsNonRoot: true
@@ -168,6 +213,27 @@ spec:
     persistence:
       config:
         existingClaim: qbittorrent
+        advancedMounts:
+          qbittorrent:
+            app:
+              - path: /config
+            # mam-update persists its rotating mam_id cookie + IP/rate-limit state
+            # under a subpath of the same PVC (backed up by volsync with the rest of
+            # /config). Isolated from qBittorrent's own config tree.
+            mam-update:
+              - path: /state
+                subPath: mam-update
+      # mam-update sidecar script (configMapGenerator; hash-suffixed name wired in
+      # via kustomizeconfig.yaml so edits roll the pod).
+      mam-update-script:
+        type: configMap
+        name: qbittorrent-mam-update
+        advancedMounts:
+          qbittorrent:
+            mam-update:
+              - path: /scripts/mam-update.sh
+                subPath: mam-update.sh
+                readOnly: true
       data-tower:
         type: nfs
         server: haynestower.haynesnetwork

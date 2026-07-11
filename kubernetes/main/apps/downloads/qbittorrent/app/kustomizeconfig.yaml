@@ -1,0 +1,10 @@
+---
+# Wire the hash-suffixed configMapGenerator name into the HelmRelease's
+# persistence reference so the mam-update sidecar always mounts the current
+# ConfigMap (and a script change rolls the pod).
+nameReference:
+  - kind: ConfigMap
+    version: v1
+    fieldSpecs:
+      - path: spec/values/persistence/mam-update-script/name
+        kind: HelmRelease
