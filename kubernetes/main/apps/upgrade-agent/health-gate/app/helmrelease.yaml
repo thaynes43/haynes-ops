@@ -32,7 +32,6 @@ spec:
             command: ["/bin/bash", "/opt/gate/gate.sh"]
             env:
               PROMETHEUS_URL: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
-              HA_URL: http://home-assistant.home-automation.svc.cluster.local:8123
               PERSIST_OFFSET: "10m"       # "still bad N ago" => persisted past one cycle => page
             envFrom:
               - secretRef:

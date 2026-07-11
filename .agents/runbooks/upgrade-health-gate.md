@@ -6,15 +6,16 @@ Verdict is one of:
 
 | Verdict | Meaning | Action |
 |---|---|---|
-| **healthy** | All six checks green vs. the prior cycle's snapshot. | Record snapshot, done. |
+| **healthy** | All five checks green vs. the prior cycle's snapshot. | Record snapshot, done. |
 | **benign-warn** | A check is non-green but matches a known-noise allowlist (transient pull, chronic spa, archived Ceph crash, ytdl-sub job). | Note it, re-poll the transients after one interval, do **not** page. |
 | **regression** | A check is non-green and **new** (broke across the reconcile window, or is tied to the changed component). | **Page via Pushover.** In phase 4a, rollback stays human (see [Rollback](#rollback)). |
 
-**Where it runs / credentials.** Read-and-page only — the gate **never mutates the cluster** (no `flux reconcile --with-source`, no `kubectl apply/exec/delete/annotate/scale`, no suspend/resume). It relies on Flux's own GitRepository **30-min poll** to pull new state (Flux is poll-only here — a `Receiver` exists but no GitHub webhook is wired, so pushes are not push-triggered). Three read paths, used in this priority:
+**Where it runs / credentials.** Read-and-page only — the gate **never mutates the cluster** (no `flux reconcile --with-source`, no `kubectl apply/exec/delete/annotate/scale`, no suspend/resume). It relies on Flux's own GitRepository **30-min poll** to pull new state (Flux is poll-only here — a `Receiver` exists but no GitHub webhook is wired, so pushes are not push-triggered). Two read paths, used in this priority:
 
 - **Omni Reader service-account kubeconfig** ([`omni-service-account.md`](omni-service-account.md)) — read-only `kubectl` + `flux get`. The **only** path for Flux reconcile state (gotk_* metrics are not scraped — see below). Denies `pods/exec`.
 - **Grafana MCP** — Prometheus (datasource uid `prometheus`) + Loki (uid `loki`). The no-cluster-creds fallback for the pod sweep, ESO, Alertmanager, and Ceph health when the Omni OIDC token is expired ([`kubectl-omni-oidc-expiry`](omni-service-account.md)).
-- **home-assistant MCP** — the **only** path to HA entity state; invisible to the cluster kubeconfig.
+
+The gate deliberately does **not** read Home Assistant. HA/Zigbee/lock/device availability is owned by the **hass-sandbox** AppDaemon health-check suite (`zigbee_health_checker`, device/battery checkers) via the Alertmanager bridge — device health is not a deploy signal and was removed 2026-07 after an HA integration re-auth flipped every lock `unavailable` and paged ~5 unrelated criticals.
 
 **Pages on regression** via the existing Pushover path (root Alertmanager route is `null`, only `severity=critical` pages — see the AM config under `kube-prometheus-stack`). A noisy phone channel is itself a precondition failure: alert-noise cleanup is a 4a prerequisite, since this gate is the de-facto safety net for unsupervised overnight Tier-2 auto-merges.
 
@@ -49,7 +50,7 @@ Every Kustomization + HelmRelease + Source `Ready=True`, **and** the `flux-syste
 | **Benign-warn** | Immediately post-merge a row may transiently show `Reconciliation in progress`, `running health checks`, or HR `upgrade in progress`. Operator charts that roll their own pods (CNPG instances, EMQX) briefly show the dependent app reconciling. **Re-poll after one reconcile interval** before judging — the gate waits for Flux's own poll, it does **not** run `flux reconcile --with-source` (a write the Reader SA is denied). |
 | **Regression** | Any `Ready=False` persisting past one interval: HR `install/upgrade retries exhausted` / `values don't meet the specifications of the schema` / `Helm upgrade failed`; ks `dependency ... is not ready` / `build failed`; or GitRepository **stuck on the OLD revision** (Renovate advanced `main` but Flux never pulled). |
 
-> **No Prometheus fallback for this check.** Flux `gotk_*` controller metrics are **not scraped** here (`gotk_reconcile_condition` returns no data — confirmed in [`omni-service-account.md`](omni-service-account.md) "Related gap"). The Flux dimension lives **only** on the Reader SA kubeconfig. If that token is dead, report Flux as **blind / escalate-to-human** — do **not** report it green. HA-MCP and Grafana-MCP signals still work.
+> **No Prometheus fallback for this check.** Flux `gotk_*` controller metrics are **not scraped** here (`gotk_reconcile_condition` returns no data — confirmed in [`omni-service-account.md`](omni-service-account.md) "Related gap"). The Flux dimension lives **only** on the Reader SA kubeconfig. If that token is dead, report Flux as **blind / escalate-to-human** — do **not** report it green. Grafana-MCP signals still work.
 
 ### 2. Cluster-wide unhealthy-pod sweep
 
@@ -103,23 +104,15 @@ The existing runtime safety net: root route is `null`, only `severity=critical` 
 
 > `kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph -s` is the human/break-glass detail view. `exec` is a `pods/exec` CREATE — **denied on the Reader SA** — so the scheduled gate uses the promql + cephcluster-CR read paths, never the toolbox exec.
 
-### 6. Home Assistant device availability
+### Not a gate check: Home Assistant device availability
 
-"Is the smart home still alive": Zigbee mesh + Schlage locks + spa. The **only** path is the HA MCP — the Reader SA / kubectl cannot see HA entity state.
-
-| | |
-|---|---|
-| **Method** | `ha-mcp` (`ha_get_state`, `ha_search_entities`). |
-| **Query** | **(1) Zigbee:** `binary_sensor.zigbee2mqtt_bridge_connection_state` (live == `on`) + a sweep of representative Zigbee entities for an `unavailable` swath. **(2) Locks:** `lock.front_door_lock` (the Schlage), `lock.side_door_lock`, `lock.bulkhead_lock`, `lock.mudroom_door_lock`. **(3) Spa:** `binary_sensor.back_yard_westford_spa_overall_connection` / Gecko in.touch3 `climate.back_yard_westford_spa_thermostat_1`. |
-| **Healthy** | `zigbee2mqtt_bridge_connection_state == 'on'`; locks `locked`/`unlocked` (not `unavailable`/`unknown`); spa connection as-was vs. the pre-reconcile snapshot. |
-| **Benign-warn** | Spa is **chronically** flaky (Gecko in.touch3 RF drop; memory: gecko-duplicate-config-entry, detection-pipeline) — often `overall_connection=off`, climate/fans/lights `unavailable`. Treat spa-unavailable as benign **unless** it transitions available→unavailable across the reconcile window (i.e. the upgrade caused it). A single Zigbee entity unavailable (battery/router/sleepy device) is noise. |
-| **Regression** | `zigbee2mqtt_bridge_connection_state` flips to `off`, OR a **broad swath** of Zigbee entities go `unavailable` together, OR a Schlage/door lock goes `unavailable`. This is the Tier-3 Z2M/HA restart race the gate exists to catch: a Z2M update broadcasts devices HA misses on startup, leaving entities unavailable until HA restarts (remediation = **HA restart, break-glass**, not a git revert). |
+HA/Zigbee/lock/device availability is **not** the gate's job. It is owned by the **hass-sandbox** AppDaemon health-check suite (`zigbee_health_checker`, the device/battery checkers) which pages via its own Alertmanager bridge. The gate deliberately does **not** poll HA — device state is not a deploy/upgrade signal, and reading it here produced context-poor false pages (an HA integration re-auth flipped every lock `unavailable` and fired ~5 unrelated criticals, removed 2026-07). If a Z2M/HA restart race or a lock outage needs attention, the hass-sandbox suite catches it, not this gate.
 
 ---
 
 ## Running it
 
-`scripts/checkHealth.sh` already does the heavy lifting for three of the six checks on the Reader SA:
+`scripts/checkHealth.sh` already does the heavy lifting for three of the five checks on the Reader SA:
 
 - **Check 1 (Flux)** — `print_non_ready` over `flux get helmreleases / kustomizations / sources all -A` prints only non-Ready rows (`(all ready)` when clean).
 - **Check 2 (pods)** — `kubectl get pods -A` swept for non-Running/Completed, with `flux-system` already excluded; also the per-node `flux-system` pod table.
@@ -128,7 +121,7 @@ The existing runtime safety net: root route is `null`, only `severity=critical` 
 
 What the **agent layers on top** of the script:
 
-1. **The other three checks** the script doesn't cover: ESO (check 3, Grafana MCP / `kubectl get externalsecrets`), Alertmanager criticals (check 4, Grafana MCP), and HA availability (check 6, **HA MCP only** — outside the cluster entirely).
+1. **The other two checks** the script doesn't cover: ESO (check 3, Grafana MCP / `kubectl get externalsecrets`) and Alertmanager criticals (check 4, Grafana MCP).
 2. **Judgment: benign-warn vs. regression.** The script prints raw non-Ready rows; the agent diffs them against the **prior cycle's snapshot** and the allowlists above, so only **newly-broken** state pages. Re-poll transients (post-merge reconcile-in-progress, <90s image pulls, new-ES sync lag) after one interval before deciding.
 3. **The Grafana-MCP fallback path** when the Omni OIDC token is expired — checks 2–5 have promql equivalents; **check 1 (Flux) does not** (gotk_* unscraped), so a dead Reader token means the Flux dimension is **blind → escalate to human**, never reported green.
 4. **The page.** On a confirmed regression, page via Pushover (existing `severity=critical` path). In phase 4a, **rollback stays human** — see below.
@@ -145,7 +138,7 @@ The scheduled gate is **read+page only** — it does **not** roll back in phase 
 2. **Revert via git:** `git revert <sha>` on a branch, OR re-pin the prior version in the HelmRelease / OCIRepository / image `tag:`. If the upgrade is permanently bad, **also add a hold** to `.renovate/holds.json5` (tightest `allowedVersions`) so Renovate stops re-proposing it.
 3. **Push as a real identity** — the **haynes-ops-bot** GitHub App, NOT `GITHUB_TOKEN` (only the App fires the `flux-local` check). `export GH_TOKEN="$(scripts/github-app-token.sh)"`. Open + merge the PR; `flux-local` gates it. See [`docs/renovate/tier4-bot-setup.md`](../../docs/renovate/tier4-bot-setup.md).
 4. **Let Flux reconcile on its poll interval** — do **NOT** `flux reconcile --with-source` (annotates a resource = a write the Reader SA is denied). Poll `flux get` until the GitRepository revision advances to the revert commit and the ks/HR returns `Ready=True` at that revision.
-5. **Re-run the full gate** and confirm green across all six checks.
+5. **Re-run the full gate** and confirm green across all five checks.
 
 ### Rollback caveats (when git revert is NOT enough)
 
@@ -156,7 +149,7 @@ The scheduled gate is **read+page only** — it does **not** roll back in phase 
 | **CNPG / stateful operators** | May need pod/PVC delete-and-reseed to recover replication after a bad upgrade — a privileged write, not a git revert. | Break-glass; gate pages, human/4b acts |
 | **Shared/centralized versions** | The app-template OCIRepository pinned once in `kubernetes/shared/components/common` — a revert affects **all** consumers at once. Weigh a forward-fix instead. | Human judgment |
 | **Stuck ks / HR** | May need suspend/resume or finalizer intervention to unwedge. | Break-glass |
-| **Dead Reader token** | Flux dimension goes blind (no Grafana fallback). HA-MCP + Grafana-MCP signals still work. | Escalate the Flux dimension to a human |
+| **Dead Reader token** | Flux dimension goes blind (no Grafana fallback). Grafana-MCP signals still work. | Escalate the Flux dimension to a human |
 
 ---
 
