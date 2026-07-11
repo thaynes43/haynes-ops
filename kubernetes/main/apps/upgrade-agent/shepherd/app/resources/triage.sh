@@ -187,6 +187,17 @@ id_attributable() {  # $1=identifier $2=slash-wrapped path list ; rc0 if a merge
   esac
 }
 
+# hr_admission_blocked <ns> <name> — rc0 if this HelmRelease failed on an ADMISSION-webhook
+# / policy DENIAL (Kyverno signature/PSS/registry, or native PSA). Such a failure is NOT
+# remediable by reverting the bump: the fix is build-side (sign the image) or a human
+# policy decision, and auto-reverting would undo legit work AND work around a security
+# policy. Excluded from attribution so triage never auto-summons a revert for it. (Caught
+# haynesnetwork v0.40.1 unsigned, 2026-07-11 — another agent's build, correctly blocked.)
+hr_admission_blocked() {  # $1=ns $2=name
+  kubectl -n "$1" get helmrelease "$2" -o json 2>/dev/null \
+    | jq -e '[.status.conditions[]?.message // "" | select(test("admission webhook|denied the request|no signatures found|blocked due to the following polic";"i"))] | length > 0' >/dev/null 2>&1
+}
+
 # hr_upgrade_failed <ns> <name> — rc0 if Flux ITSELF marks this HelmRelease a failed
 # install/upgrade (Stalled=True, or a Released/Ready reason of UpgradeFailed/InstallFailed/
 # RetriesExceeded). A direct, timing-INDEPENDENT attribution: Flux is telling us "the
@@ -201,7 +212,33 @@ hr_upgrade_failed() {  # $1=ns $2=name
 }
 
 attribute() {  # $1=sig (log only) $2=REG_IDS -> "upgrade" | "nonupgrade"
-  local ids="$2" dir paths wrapped id ns name
+  local ids="$2" dir paths wrapped id ns name filtered
+  # ── (0) EXCLUDE admission/policy-blocked HelmReleases from ALL attribution ── a Kyverno/
+  # PSA admission DENIAL (unsigned image, PSS, registry, RBAC) is not fixed by reverting
+  # the bump; auto-reverting would undo legit work and route around a security policy. Drop
+  # those ids up front so NEITHER path (Flux-native nor git-window) attributes them. The
+  # gate still pages the Flux failure so a human/the-build-agent handles it.
+  filtered=""
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    case "$id" in
+      flux/HelmRelease/*)
+        ns="$(printf '%s' "$id" | cut -d/ -f3)"; name="$(printf '%s' "$id" | cut -d/ -f4-)"
+        if hr_admission_blocked "$ns" "$name"; then
+          log "attribution: '$id' failed on an ADMISSION/policy denial (build/policy fix, not a revert) — excluding from auto-remediation; the gate pages it for a human."
+          continue
+        fi ;;
+    esac
+    filtered="${filtered}${id}
+"
+  done <<EOF
+$ids
+EOF
+  ids="$filtered"
+  if [ -z "$(printf '%s' "$ids" | tr -d '[:space:]')" ]; then
+    log "attribution: nothing auto-remediable after excluding admission-blocked HR(s) => class=nonupgrade."
+    printf 'nonupgrade'; return 0
+  fi
   # ── (1) FLUX-NATIVE upgrade-failure signal (timing-independent) ── A HelmRelease that
   # Flux marks Stalled/UpgradeFailed is a failed upgrade BY DEFINITION, so attribute it
   # WITHOUT the git-window heuristic. A slow retry/rollback cycle can push the persistent
