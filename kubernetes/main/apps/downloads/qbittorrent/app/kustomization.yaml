@@ -6,5 +6,17 @@ components:
   - ../../../../../shared/components/gatus/gaurded
   - ../../../../../shared/components/volsync/aws
 resources:
+  - ./externalsecret.yaml
   - ./helmrelease.yaml
   - ./multus-vpn.yaml
+configMapGenerator:
+  - name: qbittorrent-mam-update
+    files:
+      - scripts/mam-update.sh
+generatorOptions:
+  # The script uses ${VAR:-default} shell expansions — keep Flux post-build
+  # substitution out of it (matches the ytdl-sub/peloton precedent).
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+configurations:
+  - ./kustomizeconfig.yaml
