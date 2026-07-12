@@ -26,7 +26,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/appdaemon
-              tag: 1.6.0
+              tag: 1.7.0
             env:
               TZ: America/New_York
             envFrom:
@@ -64,6 +64,17 @@ spec:
         ports:
           http:
             port: *port
+          metrics:
+            port: 9100
+    serviceMonitor:
+      app:
+        serviceName: appdaemon
+        endpoints:
+          - port: metrics
+            scheme: http
+            path: /metrics
+            interval: 1m
+            scrapeTimeout: 30s
     persistence:
       config:
         type: emptyDir
