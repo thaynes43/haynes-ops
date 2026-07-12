@@ -66,3 +66,16 @@ configMapGenerator:
         grafana_dashboard: "true"
       annotations:
         grafana_folder: Hardware
+  # AppDaemon Health Checks: fed by the appdaemon_health_* metrics scraped from
+  # the health-check controller (hass-sandbox #96). Checker status matrix,
+  # repair rate + recovery-time percentiles, per-checker/device breakdowns,
+  # domain sensor values (humidity/battery/UPS/ComfyUI queue), pipeline up.
+  - name: grafana-dashboard-home-health
+    files:
+      - dashboards/home-health.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "true"
+      annotations:
+        grafana_folder: Home Assistant
