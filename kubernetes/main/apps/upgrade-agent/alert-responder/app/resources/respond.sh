@@ -29,6 +29,15 @@ ALLOWLIST="${RESPONDER_ALERT_ALLOWLIST:-.*}"
 # (Smart.*/Hardware.*/NodeRAIDDiskFailure — self-evident, unactionable-by-cluster, and
 # they RECUR so at-most-once doesn't help; were burning LLM $ on NAS drive wear-out).
 DENYLIST="${RESPONDER_ALERT_DENYLIST:-^(Watchdog|InfoInhibitor|AlertmanagerReceiversNotConfigured|Protect.*|Smart.*|Hardware.*|NodeRAIDDiskFailure)$}"
+# Namespace-SCOPED ignores (space-separated `alertname@namespace` pairs) — a surgical
+# skip for a KNOWN-benign recurring alert without a blanket alertname denylist that would
+# also hide the same alert elsewhere. 2026-07-12: OOMKilled@rook-ceph — the ceph-mgr has a
+# documented ~8wk memory-leak self-heal OOM cycle; the responder re-diagnosed it 7x this
+# month ($). A REAL OOMKilled on any OTHER namespace is still diagnosed; a genuine Ceph OOM
+# disaster still surfaces via the gate's Ceph HEALTH_ERR page + Alertmanager. Grow this
+# list as we identify other noisy recurrers (the state CM + Loki logs record every diagnosis
+# → alertname/cost, so we can see what else is triggering spend before a broader scope call).
+IGNORE_PAIRS="${RESPONDER_IGNORE_PAIRS:-OOMKilled@rook-ceph}"
 MAX_PER_RUN="${RESPONDER_MAX_PER_RUN:-1}"
 MAX_AGE_HOURS="${RESPONDER_MAX_AGE_HOURS:-24}"
 STATE_TTL_HOURS="${RESPONDER_STATE_TTL_HOURS:-168}"
@@ -124,11 +133,16 @@ if [ -z "$alerts" ]; then
   log "Alertmanager unreachable/empty response — nothing to do (Alertmanager pages independently; the gate covers blind spots)."
   exit 0
 fi
-candidates="$(printf '%s' "$alerts" | jq -c --arg sev "$SEVERITY" --arg allow "$ALLOWLIST" --arg deny "$DENYLIST" --argjson now "$NOW" --argjson maxage "$(( MAX_AGE_HOURS * 3600 ))" '
-  [ .[]
+candidates="$(printf '%s' "$alerts" | jq -c --arg sev "$SEVERITY" --arg allow "$ALLOWLIST" --arg deny "$DENYLIST" --arg ignore "$IGNORE_PAIRS" --argjson now "$NOW" --argjson maxage "$(( MAX_AGE_HOURS * 3600 ))" '
+  ($ignore | split(" ") | map(select(. != ""))) as $ignorepairs
+  | [ .[]
     | select(.labels.severity == $sev)
     | select(.labels.alertname | test($allow))
     | select(.labels.alertname | test($deny) | not)
+    # namespace-scoped ignore (2026-07-12): drop known-benign recurrers by
+    # alertname@namespace (e.g. OOMKilled@rook-ceph = the ceph-mgr self-heal cycle),
+    # WITHOUT a blanket alertname denylist. Uses the same ns resolution as the loop below.
+    | select((.labels.alertname + "@" + (.labels.namespace // .labels.exported_namespace // "")) as $p | ($ignorepairs | index($p)) == null)
     # scope=host opt-out (2026-07-10): the CLEAN, future-proof way to keep the responder
     # out of an alert — host/hardware/appliance alerts (SMART, RAID, fan/power, NAS) that
     # are self-evident + unactionable-by-cluster. The alert author labels the rule

@@ -56,6 +56,14 @@ spec:
               #    burning ~$0.15-0.20/diagnosis on unactionable NAS drive wear-out.
               # Keep in sync with respond.sh's default.
               RESPONDER_ALERT_DENYLIST: "^(Watchdog|InfoInhibitor|AlertmanagerReceiversNotConfigured|Protect.*|Smart.*|Hardware.*|NodeRAIDDiskFailure)$"
+              # Namespace-scoped ignores (alertname@namespace, space-separated) — surgical
+              # skips for KNOWN-benign recurrers without a blanket alertname denylist.
+              # 2026-07-12: OOMKilled@rook-ceph = the ceph-mgr documented ~8wk memory-leak
+              # self-heal OOM cycle (re-diagnosed 7x/month = $). A real OOMKilled in any
+              # OTHER namespace is still diagnosed; a genuine Ceph OOM still surfaces via the
+              # gate's Ceph HEALTH_ERR page. Grow this as we identify other noisy recurrers
+              # (state CM + Loki logs record every diagnosis, so we can see spend triggers).
+              RESPONDER_IGNORE_PAIRS: "OOMKilled@rook-ceph"
               RESPONDER_MODEL: sonnet
               RESPONDER_MAX_PER_RUN: "1"
               RESPONDER_MAX_BUDGET_USD: "2.00"
