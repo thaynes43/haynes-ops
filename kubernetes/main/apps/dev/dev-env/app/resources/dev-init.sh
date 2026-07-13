@@ -51,5 +51,9 @@ ln -sf /opt/dev-env/scripts/agent-run.sh "$HOME/.local/bin/agent-run"
 touch "$HOME/.bashrc"
 grep -q 'dev-env/scripts/bashrc.sh' "$HOME/.bashrc" 2>/dev/null \
   || printf '\n[ -f /opt/dev-env/scripts/bashrc.sh ] && . /opt/dev-env/scripts/bashrc.sh\n' >> "$HOME/.bashrc"
+# The PVC home has no skel files, so login shells (bash -l, ssh-style) would skip
+# .bashrc entirely — standard Debian bridge:
+[ -f "$HOME/.bash_profile" ] \
+  || printf '[ -f ~/.bashrc ] && . ~/.bashrc\n' > "$HOME/.bash_profile"
 
 log "done"
