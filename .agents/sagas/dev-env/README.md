@@ -1,7 +1,12 @@
 # Saga: dev-env — a 24/7 in-cluster agent development environment
 
-**Status:** scoping (2026-07-13). Decisions below marked OPEN are being worked through
-with Tom; record outcomes in the [Decision log](#decision-log).
+**Status:** executing (2026-07-13). All scoping decisions are recorded in the
+[Decision log](#decision-log).
+
+**Operating mode (Tom, 2026-07-13):** autonomous — the agent authors, self-reviews,
+merges, and verifies saga PRs end-to-end without waiting for human approval. Tom
+watches the PR stream remotely. Pause only for genuinely new decisions outside the
+recorded ones, or destructive/irreversible actions.
 
 ## Vision
 

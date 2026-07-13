@@ -1,6 +1,6 @@
 # 01 — dev-env container image + signed build workflow
 
-**Status:** in review (branch `dev-env/01-image`)
+**Status:** done (PR #2031, merged 2026-07-13; image `ghcr.io/thaynes43/dev-env:0.1.0@sha256:95e9919f3f10724b31cf4586227ae5aefd5fc9adbc7c49675a1c290eeca296e8`, cosign-signed, Kyverno policy live in-cluster)
 **Depends on:** nothing (first mover)
 **Parallel with:** 02 can be authored against the expected image name while this bakes
 
