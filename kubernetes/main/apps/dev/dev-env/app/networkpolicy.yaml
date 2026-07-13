@@ -47,6 +47,7 @@ spec:
               # via `claude mcp list` failures 2026-07-13).
               - matchName: "ha-mcp.home-automation.svc.cluster.local"
               - matchName: "mcp-grafana.observability.svc.cluster.local"
+              - matchName: "mcp-unifi.observability.svc.cluster.local"
               # git + gh + release notes + ghcr blobs
               - matchName: "github.com"
               - matchPattern: "*.github.com"
@@ -96,6 +97,14 @@ spec:
       toPorts:
         - ports:
             - port: "8000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: mcp-unifi
+      toPorts:
+        - ports:
+            - port: "3000"
               protocol: TCP
     # 2b. traefik-internal — playwright (headless chromium MCP) drives the cluster's
     #     own apps for UI/UX testing via their https://<app>.haynesops.com ingress.
