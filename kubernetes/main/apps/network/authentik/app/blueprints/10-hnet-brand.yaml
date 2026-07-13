@@ -17,7 +17,11 @@ entries:
     branding_title: haynesnetwork
     branding_logo: hnet/logo-%(theme)s.svg
     branding_favicon: hnet/favicon.png
-    branding_default_flow_background: hnet/bg-c-%(theme)s.svg
+    # PLAN-042 polish: authentik substitutes %(theme)s for branding_logo but serves
+    # branding_default_flow_background VERBATIM — the placeholder produced one doomed
+    # request (files/media/public/hnet/bg-c-%(theme)s.svg -> 404) on every flow-page
+    # load. Pinned to the dark variant (the shipped dark-green login look).
+    branding_default_flow_background: hnet/bg-c-dark.svg
     branding_custom_css: |-
       /* Outfit variable (SIL OFL 1.1, vendored from apps/web/fonts) as a data URI so the
          IdP page needs no cross-origin font fetch (CSP font-src allows data:). */
