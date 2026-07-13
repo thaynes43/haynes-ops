@@ -179,3 +179,4 @@ neighbors once prerequisites are met.
 | [07 — Shepherd dispatch integration](backlog/07-shepherd-dispatch.md) | 06 | |
 | [08 — multi-instance flavors](backlog/08-multi-instance.md) | 06 | ∥ 07 |
 | [09 — LAN control plane / UI](backlog/09-control-plane.md) | 07 | last |
+| [10 — Taskfile overhaul](backlog/10-taskfile-overhaul.md) | — | ∥ anytime; ideally before 02 so pod agents inherit trustworthy tasks |
