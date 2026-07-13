@@ -1,7 +1,10 @@
 # 03 — GitOps-managed agent configs (.claude / .codex)
 
-**Status:** in review (branch `dev-env/03-configs-deploy`; image 0.3.0 with
-playwright+chromium merged via PR #2035)
+**Status:** done (PRs #2035/#2036/#2037, merged 2026-07-13; verified live —
+`claude mcp list` shows home-assistant/grafana-mcp/playwright all Connected,
+dev-init links configs on boot, codex config.toml GitOps'd with auth untouched,
+pod→traefik ingress path proven for playwright UI testing). Follow-ups tracked
+below: unifi package pointer, codex MCP parity.
 **Depends on:** 02
 **Parallel with:** 04, 05
 
