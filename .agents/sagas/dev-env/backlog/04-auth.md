@@ -4,9 +4,23 @@
 authenticated; gh-refresher sidecar mints haynes-ops-bot tokens to /creds every
 40min (PEM env-isolated, agents read per-shell); auth-watch sidecar probes all
 three daily and pages Pushover (proved itself live on day one during the 422
-window). NOTE: the App installation covers ONLY thaynes43/haynes-ops — extend it
-in GitHub App settings before dispatching agents at hass-sandbox/haynesnetwork.
+window). GitHub identity is haynes-dev-bot (PR #2044, Decision #5 revised): a
+SEPARATE App installed on ALL 23 repos — verified live by a cross-repo dispatch
+that opened hass-sandbox PR #97 as app/haynes-dev-bot. haynes-ops-bot stays scoped
+to haynes-ops ops/failure work and its PEM is NOT in this pod.
 Optional left: 1Password hardening of the Claude credential.
+
+## 1Password gotchas (cost ~1h live, 2026-07-13)
+
+- 1P mobile paste appends **trailing spaces** to item titles AND field labels.
+  ESO does an EXACT match on both — `github-dev-bot ` and `GITHUB_BOT_APP_PRIVATE_KEY `
+  each failed silently-ish (`key not found` / `got 0 ItemFields`). Check for them first.
+- **1Password Connect caches**: after fixing an item, Connect can keep serving the OLD
+  copy — an ES force-sync annotation is NOT enough. `kubectl rollout restart
+  deploy/onepassword-connect -n external-secrets` forces a fresh vault sync.
+- Read what Connect actually sees (labels/titles only, never values) with a throwaway
+  curl pod using the `onepassword-connect-secret` token against
+  `/v1/vaults/<id>/items` — that's what turned two guesses into two facts.
 **Depends on:** 02
 **Parallel with:** 03, 05
 
