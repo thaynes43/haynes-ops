@@ -1,9 +1,12 @@
 # 04 — CLI auth + expiry watch
 
-**Status:** in progress — BOTH CLIs authenticated on subscription plans 2026-07-13
-(remote, phone-driven; smoke-tested end-to-end in-pod). Remaining: gh/bot identity
-wiring, the expiry-watch CronJob, and optional 1Password hardening of the Claude
-credential.
+**Status:** done (PRs #2041–#2043, 2026-07-13) — claude (Max) + codex (ChatGPT)
+authenticated; gh-refresher sidecar mints haynes-ops-bot tokens to /creds every
+40min (PEM env-isolated, agents read per-shell); auth-watch sidecar probes all
+three daily and pages Pushover (proved itself live on day one during the 422
+window). NOTE: the App installation covers ONLY thaynes43/haynes-ops — extend it
+in GitHub App settings before dispatching agents at hass-sandbox/haynesnetwork.
+Optional left: 1Password hardening of the Claude credential.
 **Depends on:** 02
 **Parallel with:** 03, 05
 

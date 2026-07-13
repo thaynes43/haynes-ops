@@ -1,6 +1,10 @@
 # 05 — kubectl RBAC tiers for the dev-env ServiceAccount
 
-**Status:** backlog — blocked on Decision log #1
+**Status:** done (PRs #2039/#2040, 2026-07-13) — dev-env-operator ClusterRole live
+and verified allow+deny in-pod (apps reads ✓, flux patch ✓, pod delete ✓; secrets,
+exec, deploy-delete denied ✓). Traps recorded: CRB roleRef is immutable (re-tier =
+new binding name), and Kyverno only denies *-verbs+*-resources together, so
+non-core wildcard READ is legal.
 **Depends on:** 02
 **Parallel with:** 03, 04
 

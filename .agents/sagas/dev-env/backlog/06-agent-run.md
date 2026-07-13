@@ -1,6 +1,9 @@
 # 06 — agent-run wrapper: worktree-per-task dispatch
 
-**Status:** backlog
+**Status:** done (PR #2041, 2026-07-13) — smoke-tested end-to-end: yolo claude
+dispatched via `agent-run run --repo haynes-ops --agent claude -p …` in an isolated
+worktree on the Max plan; guard prompt held (no commit/push); list/attach/reap
+verified. Interactive mode + codex path implemented; `--reap` keeps logs.
 **Depends on:** 03 (configs), 04 (auth)
 
 ## Goal
