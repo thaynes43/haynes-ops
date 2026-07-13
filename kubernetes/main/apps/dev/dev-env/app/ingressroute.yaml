@@ -1,0 +1,35 @@
+---
+# code-server, LAN-only (saga Decision #6): traefik-internal + the Authentik
+# embedded-outpost forward-auth middleware (provider/application/outpost assignment
+# is GitOps'd in kubernetes/main/apps/network/authentik/app/blueprints/50-dev-env.yaml).
+# Fail-closed: until the blueprint applies and the provider is on the outpost, the
+# middleware denies everything. NOT published through the Cloudflare Tunnel — remote
+# interaction with running agents is /remote-control (outbound via claude.ai).
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: dev-env
+  annotations:
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+    gethomepage.dev/enabled: "true"
+    gethomepage.dev/href: "https://dev-env.haynesops.com"
+    gethomepage.dev/group: Frontend
+    gethomepage.dev/name: Dev Env
+    gethomepage.dev/description: In-cluster agent dev environment (code-server)
+    gethomepage.dev/icon: vscode
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`dev-env.haynesops.com`) && PathPrefix(`/`)
+      middlewares:
+        - name: ak-outpost-authentik-embedded-outpost
+          namespace: network
+      services:
+        - kind: Service
+          name: dev-env
+          port: 8443
+  tls:
+    secretName: certificate-haynesops

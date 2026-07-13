@@ -1,0 +1,97 @@
+---
+# CiliumNetworkPolicy for the dev-env pod. Broader than the shepherd's BY DESIGN
+# (agents doing real dev work need package registries + both LLM vendors), but still
+# default-deny + ENUMERATED — this list is the exfil boundary for yolo-mode agents
+# holding subscription/git credentials (saga Hard news #1). Extend it deliberately,
+# one named destination at a time; watch Hubble drops during bring-up.
+#
+# Ingress: ONLY traefik-internal → 8443 (code-server runs --auth none behind the
+# Authentik forward-auth middleware, so nothing else may reach it directly).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env
+  namespace: dev
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: network
+            app.kubernetes.io/instance: traefik-internal-network
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+  egress:
+    # 1. DNS via CoreDNS — only cluster-internal + the exact external names below
+    #    (closes DNS-tunnel exfil, shepherd pattern; Cilium `*` does not cross label
+    #    boundaries, so apex domains need matchName alongside their matchPattern).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*.cluster.local"
+              - matchPattern: "*.svc"
+              # git + gh + release notes + ghcr blobs
+              - matchName: "github.com"
+              - matchPattern: "*.github.com"
+              - matchPattern: "*.githubusercontent.com"
+              - matchName: "ghcr.io"
+              # Anthropic: API + claude.ai (/remote-control relay) + statsig etc.
+              - matchName: "anthropic.com"
+              - matchPattern: "*.anthropic.com"
+              - matchName: "claude.ai"
+              - matchPattern: "*.claude.ai"
+              # OpenAI: Codex API + ChatGPT-plan auth/backend
+              - matchName: "openai.com"
+              - matchPattern: "*.openai.com"
+              - matchName: "chatgpt.com"
+              - matchPattern: "*.chatgpt.com"
+              # package registries (real dev work)
+              - matchName: "registry.npmjs.org"
+              - matchName: "pypi.org"
+              - matchName: "files.pythonhosted.org"
+              # code-server extension marketplace (Open VSX)
+              - matchName: "open-vsx.org"
+              - matchName: "openvsxorg.blob.core.windows.net"
+    # 2. Kube API server — in-cluster kubectl via kubernetes.default.svc (the whole
+    #    point of saga Decision #1).
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # 3. HTTPS to the enumerated external names (same set as the DNS rules).
+    - toFQDNs:
+        - matchName: "github.com"
+        - matchPattern: "*.github.com"
+        - matchPattern: "*.githubusercontent.com"
+        - matchName: "ghcr.io"
+        - matchName: "anthropic.com"
+        - matchPattern: "*.anthropic.com"
+        - matchName: "claude.ai"
+        - matchPattern: "*.claude.ai"
+        - matchName: "openai.com"
+        - matchPattern: "*.openai.com"
+        - matchName: "chatgpt.com"
+        - matchPattern: "*.chatgpt.com"
+        - matchName: "registry.npmjs.org"
+        - matchName: "pypi.org"
+        - matchName: "files.pythonhosted.org"
+        - matchName: "open-vsx.org"
+        - matchName: "openvsxorg.blob.core.windows.net"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

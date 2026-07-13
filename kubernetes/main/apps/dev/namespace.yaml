@@ -1,0 +1,13 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    # The dev-env pod carries credentials (subscription tokens, bot gh tokens) and
+    # runs yolo-mode agents — same tightened PSA boundary as upgrade-agent.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled

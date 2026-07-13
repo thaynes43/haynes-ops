@@ -1,7 +1,15 @@
 # 02 — PoC deployment (namespace, HelmRelease, PVC, ingress, egress)
 
-**Status:** backlog
-**Depends on:** 01 (image published)
+**Status:** in review (branch `dev-env/02-poc-deploy`)
+**Depends on:** 01 (image published) — done
+
+**Implementation notes (2026-07-13):** SSO is Authentik forward-auth via the EMBEDDED
+outpost (unused until now — headlamp/paperless ride the named internal/external
+outposts), GitOps'd as blueprint `network/authentik/app/blueprints/50-dev-env.yaml`
+which now OWNS the embedded outpost's provider list. The haynesops wildcard cert
+reaches namespace `dev` via the reflector allowlist on certificate-haynesops-prod.
+code-server runs `--auth none` — safe ONLY behind the middleware + the CNP ingress
+rule (traefik-internal pods only); never add another ingress path without auth.
 
 ## Goal
 
