@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "home-assistant": {
+      "type": "http",
+      "url": "http://ha-mcp.home-automation.svc.cluster.local:8086/${HA_MCP_SECRET_PATH}"
+    },
+    "grafana-mcp": {
+      "type": "http",
+      "url": "http://mcp-grafana.observability.svc.cluster.local:8000/mcp"
+    },
+    "playwright": {
+      "command": "mcp-server-playwright",
+      "args": ["--browser", "chromium", "--headless"]
+    }
+  }
+}

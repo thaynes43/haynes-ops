@@ -1,0 +1,11 @@
+# Codex config for the dev-env pod — GitOps-managed (edit in
+# kubernetes/main/apps/dev/dev-env/app/resources/config/codex/config.toml).
+# dev-init.sh copies this over ~/.codex/config.toml on every pod boot;
+# ~/.codex/auth.json (ChatGPT-plan credential) lives on the PVC and is never touched.
+
+# Worktree-per-task and never-push-main rules mirror the Claude-side CLAUDE.md.
+# MCP parity (home-assistant / grafana / playwright) is a saga plan 03 follow-up —
+# codex MCP wiring differs enough from claude's that it lands separately.
+
+[history]
+persistence = "save-all"

@@ -17,19 +17,24 @@ spec:
         # PVC is RWO and agent/tmux state doesn't survive a pod swap anyway.
         replicas: 1
         strategy: Recreate
+        annotations:
+          # Config/scripts ConfigMap changes roll the pod (dev-init re-links on boot).
+          reloader.stakater.com/auto: "true"
         containers:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.2.0@sha256:c5970b0b3d75af3380e4cb019237cf2118162d5461bb941fad92928f2046cbd9
+              tag: 0.3.0@sha256:3757e8b185a13b13dbe88f83377c902a60b615c5a95978ff8d3a865e2055b877
             command: ["/bin/bash", "-c"]
             args:
-              # tmux server first (agent sessions survive browser/exec disconnects;
-              # /remote-control + agent-run sessions live here), then code-server.
+              # dev-init links GitOps configs into $HOME, then tmux (agent sessions
+              # survive browser/exec disconnects; /remote-control + agent-run
+              # sessions live here), then code-server.
               # --auth none is safe ONLY because ingress is traefik-internal + the
               # Authentik forward-auth middleware AND the CNP restricts ingress to
               # traefik — do not add other ingress paths without adding auth.
               - >-
+                bash /opt/dev-env/scripts/dev-init.sh;
                 tmux new-session -d -s main 2>/dev/null || true;
                 exec code-server
                 --bind-addr 0.0.0.0:8443
@@ -45,6 +50,10 @@ spec:
               DISABLE_AUTOUPDATER: "1"
               DISABLE_ERROR_REPORTING: "1"
               DISABLE_TELEMETRY: "1"
+            envFrom:
+              # HA_MCP_SECRET_PATH — expanded into the MCP URL by dev-init.
+              - secretRef:
+                  name: dev-env-mcp-secret
             probes:
               liveness:
                 enabled: true
@@ -98,3 +107,21 @@ spec:
         type: emptyDir
         globalMounts:
           - path: /tmp
+      # GitOps'd agent configs + init script (auditable in PR diffs, shepherd
+      # pattern). dev-init.sh links/copies these into $HOME on every boot.
+      scripts:
+        type: configMap
+        name: dev-env-scripts
+        defaultMode: 0555
+        globalMounts:
+          - path: /opt/dev-env/scripts
+      config-claude:
+        type: configMap
+        name: dev-env-config-claude
+        globalMounts:
+          - path: /opt/dev-env/config/claude
+      config-codex:
+        type: configMap
+        name: dev-env-config-codex
+        globalMounts:
+          - path: /opt/dev-env/config/codex
