@@ -47,6 +47,8 @@ ARG CODEX_VERSION=0.144.3
 ARG TSX_VERSION=4.19.2
 # renovate: datasource=npm depName=pnpm
 ARG PNPM_VERSION=10.0.0
+# renovate: datasource=npm depName=@playwright/mcp
+ARG PLAYWRIGHT_MCP_VERSION=0.0.78
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -55,7 +57,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # (native npm modules, C extensions).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      ca-certificates curl git openssh-client jq openssl bash \
+      ca-certificates curl git openssh-client jq openssl bash gettext-base \
       tar gzip unzip bzip2 xz-utils \
       tmux ripgrep less procps rsync file make build-essential \
       python3 python3-venv python3-pip \
@@ -156,6 +158,20 @@ RUN npm install -g \
       "pnpm@${PNPM_VERSION}" \
  && npm cache clean --force
 
+# Playwright MCP + a baked chromium (agents do UI/UX testing of the cluster's own
+# apps — saga plan 03). Browsers + system deps install at BUILD time to a shared
+# path so the runtime pod needs no CDN egress and no root. --with-deps pulls the
+# chromium system libraries via apt.
+# Install the browser via the MCP's OWN playwright-core CLI so the chromium build
+# revision matches what the MCP expects (a bare `npx playwright install` can pull a
+# mismatched playwright version).
+RUN npm install -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
+ && PLAYWRIGHT_BROWSERS_PATH=/usr/local/lib/ms-playwright \
+      node "$(npm root -g)/@playwright/mcp/node_modules/playwright-core/cli.js" \
+      install --with-deps chromium \
+ && chmod -R a+rX /usr/local/lib/ms-playwright \
+ && npm cache clean --force && rm -rf /var/lib/apt/lists/*
+
 # github-app-token.sh (single source of truth) — used by the token-refresher
 # sidecar/initContainer to mint short-lived ghs_ tokens from the haynes-ops-bot PEM
 # (saga Decision #5). The agent containers never see the PEM, only /creds tokens.
@@ -173,5 +189,6 @@ WORKDIR /home/dev
 ENV HOME=/home/dev \
     CLAUDE_CONFIG_DIR=/home/dev/.claude \
     CODEX_HOME=/home/dev/.codex \
+    PLAYWRIGHT_BROWSERS_PATH=/usr/local/lib/ms-playwright \
     PATH=/opt/dev-env:/usr/local/bin:/usr/bin:/bin
 ENTRYPOINT ["/bin/bash"]
