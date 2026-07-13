@@ -26,6 +26,9 @@ spec:
     global:
       deploymentAnnotations:
         secret.reloader.stakater.com/reload: authentik-secret
+        # PLAN-042: restart pods when the web-lowering script changes so the
+        # initContainer re-runs it over the image's web dist.
+        configmap.reloader.stakater.com/reload: authentik-web-lowering
       envFrom:
         - secretRef:
             name: authentik-secret
@@ -52,14 +55,29 @@ spec:
       replicas: 3
       # PLAN-011: haynesnetwork brand assets mounted read-only so brand fields
       # can reference them as media values (e.g. hnet/logo-%(theme)s.svg).
+      # PLAN-042: web-dist-lowered (emptyDir) holds a CSS-nesting-LOWERED copy of
+      # the image's /web/dist, produced by the initContainers below, and is
+      # mounted OVER /web/dist so the server only ever serves lowered assets.
+      # Why: authentik >= 2025.12 ships native CSS nesting in flow-*.css AND in
+      # esbuild-embedded JS component styles; old WebKit (iOS/iPadOS ~16.6-18.3.x,
+      # macOS Safari ~17.6) crashes its renderer on StyleRuleNestedDeclarations
+      # (WebKit #290102, upstream goauthentik#19814 RCA 2026-06-30). Lowering to
+      # flat selectors (lightningcss, target safari >= 15) removes the crash.
       volumes:
         - name: brand-assets
           configMap:
             name: authentik-brand-assets
+        - name: web-lowering-script
+          configMap:
+            name: authentik-web-lowering
+        - name: web-dist-lowered
+          emptyDir: {}
       volumeMounts:
         - name: brand-assets
           mountPath: /media/public/hnet
           readOnly: true
+        - name: web-dist-lowered
+          mountPath: /web/dist
       initContainers:
         - name: init-db
           image: ghcr.io/home-operations/postgres-init:18.4
@@ -67,6 +85,45 @@ spec:
           envFrom:
             - secretRef:
                 name: authentik-secret
+        # PLAN-042 step 1/2: copy the image's own web dist into the emptyDir.
+        # The image reference is tpl-rendered by the chart (server.initContainers
+        # goes through tpl) to the SAME image the server container runs, so image
+        # bumps re-run this against the new dist automatically — no baked digests.
+        - name: web-dist-copy
+          image: '{{ default .Values.global.image.repository .Values.server.image.repository }}:{{ default (include "authentik.defaultTag" .) .Values.server.image.tag }}'
+          imagePullPolicy: IfNotPresent
+          command: [/bin/sh, -c]
+          args:
+            - cp -a /web/dist/. /lowered/
+          volumeMounts:
+            - name: web-dist-lowered
+              mountPath: /lowered
+        # PLAN-042 step 2/2: lower native CSS nesting to flat selectors across the
+        # copied dist — every *.css bundle AND the JS bundles' esbuild-embedded
+        # component styles. The script exits nonzero if ANY nesting marker
+        # remains (partial coverage does not fix the crash), which fails the pod
+        # and leaves the previous ReplicaSet serving — a loud, safe failure.
+        - name: web-dist-lower
+          image: docker.io/library/node:22-bookworm-slim
+          imagePullPolicy: IfNotPresent
+          command: [/bin/sh, -c]
+          args:
+            - |
+              set -eu
+              export HOME=/tmp/tools npm_config_cache=/tmp/tools/.npm
+              mkdir -p /tmp/tools && cd /tmp/tools
+              cp /script/lower-css-nesting.mjs .
+              for i in 1 2 3; do
+                npm install --no-audit --no-fund --loglevel=error lightningcss@1.30.1 acorn@8.15.0 && break
+                echo "npm install failed (attempt $i)"; sleep 5
+              done
+              node lower-css-nesting.mjs /lowered
+          volumeMounts:
+            - name: web-dist-lowered
+              mountPath: /lowered
+            - name: web-lowering-script
+              mountPath: /script
+              readOnly: true
       metrics:
         serviceMonitor:
           enabled: true
