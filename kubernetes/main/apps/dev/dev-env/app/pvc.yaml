@@ -1,0 +1,19 @@
+---
+# The dev-env home (/home/dev): repo clones + worktrees, agent auth state
+# (~/.codex/auth.json etc.), npm/pip caches, code-server state. Deliberately NOT
+# VolSync'd (saga Decision #7): everything but auth state regenerates from
+# git/registries, and keeping subscription/git credentials OUT of restic/S3 is a
+# feature. Disaster recovery: PVC re-creates empty, dev-init re-links GitOps configs,
+# re-auth is two ~2-minute ceremonies (.agents/sagas/dev-env/backlog/04-auth.md).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dev-env-home
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: ceph-block

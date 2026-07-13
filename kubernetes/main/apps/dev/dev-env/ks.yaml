@@ -1,0 +1,26 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env
+  namespace: dev
+spec:
+  targetNamespace: dev
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: upgrade-health-gate # PoC reuses its read-only ClusterRole (backlog 05 = operator tier)
+      namespace: upgrade-agent
+  path: ./kubernetes/main/apps/dev/dev-env/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
+  # NO postBuild.substitute (shepherd precedent): future agent-run.sh scripts carry
+  # shell `${VAR}` syntax that Flux envsubst would mangle. YAML anchors only.

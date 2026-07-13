@@ -1,0 +1,42 @@
+# dev-env saga (.agents/sagas/dev-env/) — forward-auth SSO for the in-cluster dev
+# environment (code-server at dev-env.haynesops.com), config-as-code.
+#
+# Creates the Proxy Provider (forward_single) + Application and assigns the provider
+# to the EMBEDDED outpost. The embedded outpost carries no providers today (headlamp
+# rides proxy-provider-internal-outpost, paperless the external one — see
+# ../../exports/applications.json), so the `providers` list below clobbers nothing.
+# ⚠ This blueprint now OWNS the embedded outpost's provider list: assign any future
+# provider to it HERE (blueprints re-apply on an interval and will revert UI edits).
+version: 1
+metadata:
+  name: dev-env-proxy
+  labels:
+    blueprints.goauthentik.io/description: 'dev-env forward-auth: proxy provider + application + embedded-outpost assignment for the in-cluster agent dev environment (saga: .agents/sagas/dev-env/).'
+context: {}
+entries:
+- model: authentik_providers_proxy.proxyprovider
+  state: present
+  identifiers:
+    name: dev-env
+  attrs:
+    external_host: https://dev-env.haynesops.com
+    mode: forward_single
+    authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+    invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+- model: authentik_core.application
+  state: present
+  identifiers:
+    slug: dev-env
+  attrs:
+    name: Dev Env
+    provider: !Find [authentik_providers_proxy.proxyprovider, [name, dev-env]]
+    meta_launch_url: https://dev-env.haynesops.com
+    meta_description: In-cluster agent dev environment (code-server)
+    open_in_new_tab: true
+- model: authentik_outposts.outpost
+  state: present
+  identifiers:
+    managed: goauthentik.io/outposts/embedded
+  attrs:
+    providers:
+    - !Find [authentik_providers_proxy.proxyprovider, [name, dev-env]]

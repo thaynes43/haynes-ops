@@ -1,0 +1,21 @@
+---
+# PoC tier (saga backlog 02): READ-ONLY cluster access via the gate's shared
+# ClusterRole (get/list/watch; no secrets/exec/log/write) — the same reuse the
+# shepherd does. The decided end-state is the OPERATOR tier (read-all + targeted
+# writes: pod delete, rollout-restart patch, Flux reconcile annotations, Job create,
+# CronJob suspend) — that lands as its own reviewed change in backlog 05, NOT here.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: &app dev-env
+  labels:
+    app.kubernetes.io/instance: *app
+    app.kubernetes.io/name: *app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: upgrade-health-gate # the shared read-only role (defined by the gate)
+subjects:
+  - kind: ServiceAccount
+    name: *app
+    namespace: dev

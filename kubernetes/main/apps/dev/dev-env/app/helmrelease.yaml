@@ -1,0 +1,90 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: dev-env
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  values:
+    controllers:
+      dev-env:
+        # The 24/7 agent workhorse (saga .agents/sagas/dev-env/): code-server +
+        # tmux-hosted agent CLI sessions on a persistent home. Recreate: the home
+        # PVC is RWO and agent/tmux state doesn't survive a pod swap anyway.
+        replicas: 1
+        strategy: Recreate
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/dev-env
+              tag: 0.1.0@sha256:95e9919f3f10724b31cf4586227ae5aefd5fc9adbc7c49675a1c290eeca296e8
+            command: ["/bin/bash", "-c"]
+            args:
+              # tmux server first (agent sessions survive browser/exec disconnects;
+              # /remote-control + agent-run sessions live here), then code-server.
+              # --auth none is safe ONLY because ingress is traefik-internal + the
+              # Authentik forward-auth middleware AND the CNP restricts ingress to
+              # traefik — do not add other ingress paths without adding auth.
+              - >-
+                tmux new-session -d -s main 2>/dev/null || true;
+                exec code-server
+                --bind-addr 0.0.0.0:8443
+                --auth none
+                --disable-telemetry
+                --disable-update-check
+                /home/dev
+            env:
+              HOME: /home/dev
+              CLAUDE_CONFIG_DIR: /home/dev/.claude
+              CODEX_HOME: /home/dev/.codex
+              # The image pins CLI versions (Renovate-bumped); no self-updates.
+              DISABLE_AUTOUPDATER: "1"
+              DISABLE_ERROR_REPORTING: "1"
+              DISABLE_TELEMETRY: "1"
+            probes:
+              liveness:
+                enabled: true
+              readiness:
+                enabled: true
+            resources:
+              requests:
+                cpu: 500m
+                memory: 2Gi
+              limits:
+                memory: 8Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+    defaultPodOptions:
+      automountServiceAccountToken: true   # in-cluster kubectl via the dev-env SA
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000                      # PVC ownership for /home/dev
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+    serviceAccount:
+      dev-env: {}
+    service:
+      app:
+        controller: dev-env
+        ports:
+          http:
+            port: 8443
+    persistence:
+      home:
+        existingClaim: dev-env-home
+        globalMounts:
+          - path: /home/dev
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
