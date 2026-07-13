@@ -1,8 +1,34 @@
 # 04 — CLI auth + expiry watch
 
-**Status:** backlog
+**Status:** in progress — BOTH CLIs authenticated on subscription plans 2026-07-13
+(remote, phone-driven; smoke-tested end-to-end in-pod). Remaining: gh/bot identity
+wiring, the expiry-watch CronJob, and optional 1Password hardening of the Claude
+credential.
 **Depends on:** 02
 **Parallel with:** 03, 05
+
+## The proven re-auth ceremony (2026-07-13, works fully remote)
+
+Both credentials live on the PVC and self-refresh; this is only needed after a PVC
+loss or a revocation. Requires: an agent session with kubectl (drives tmux in the
+pod) + Tom on any browser (phone works).
+
+- **Claude (Max)**: in the pod, `tmux send-keys -t main:0 "claude" Enter` → first-run
+  wizard → pick "Claude account with subscription" → widen the window
+  (`tmux resize-window -x 500`) and capture the `https://claude.com/cai/oauth/authorize?…`
+  URL from the pane → Tom opens it, approves, and pastes back the `code#state` string →
+  `tmux send-keys -l '<pasted>'` + Enter → `~/.claude/.credentials.json` (0600) appears.
+  Verify: `claude -p "Reply with exactly: POD-AUTH-OK" --model haiku`.
+- **Codex (ChatGPT)**: one-time prereq — enable device-code authorization in ChatGPT
+  Security Settings. Then `codex login --device-auth` in a tmux window → relay the
+  printed URL + `XXXX-XXXXX` code → Tom enters it on his phone → poll
+  `codex login status` until "Logged in using ChatGPT" → `~/.codex/auth.json` (0600).
+  Codes expire in 15 min — mint freely, they're cheap. Verify:
+  `codex exec --skip-git-repo-check "Reply with exactly: CODEX-POD-AUTH-OK"`.
+- **Gotchas hit live**: `CODEX_HOME` dir must exist before `codex login` (dev-init
+  will own this, plan 03); the login TUI hard-wraps URLs (resize the tmux window
+  before capturing); the pod needed `ndots: 1` + `claude.com` egress (fixed in PR
+  #2034) before `claude` would even start.
 
 ## Goal
 
