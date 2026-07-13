@@ -6,6 +6,25 @@ components:
 resources:
   - ./pvc.yaml
   - ./rbac.yaml
+  - ./externalsecret.yaml
   - ./networkpolicy.yaml
   - ./ingressroute.yaml
   - ./helmrelease.yaml
+configMapGenerator:
+  # GitOps'd agent configuration (saga plan 03) — the declarative half of
+  # ~/.claude and ~/.codex; mutable auth/state stays on the PVC (dev-init.sh
+  # enforces the split).
+  - name: dev-env-scripts
+    files:
+      - resources/dev-init.sh
+  - name: dev-env-config-claude
+    files:
+      - resources/config/claude/CLAUDE.md
+      - resources/config/claude/mcp.json
+  - name: dev-env-config-codex
+    files:
+      - resources/config/codex/config.toml
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    app.kubernetes.io/name: dev-env

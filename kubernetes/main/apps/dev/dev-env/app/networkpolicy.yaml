@@ -67,6 +67,40 @@ spec:
               # code-server extension marketplace (Open VSX)
               - matchName: "open-vsx.org"
               - matchName: "openvsxorg.blob.core.windows.net"
+              # our own apps' internal ingress names (playwright UI/UX testing —
+              # traffic goes to the traefik-internal pods, rule 2b)
+              - matchName: "haynesops.com"
+              - matchPattern: "*.haynesops.com"
+              - matchName: "haynesnetwork.com"
+              - matchPattern: "*.haynesnetwork.com"
+    # 2a. Cluster-local MCP servers (saga plan 03): HA + Grafana — the agents'
+    #     introspection tools, reached via svc FQDNs, never the public ingress.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: home-automation
+            app.kubernetes.io/name: ha-mcp
+      toPorts:
+        - ports:
+            - port: "8086"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: mcp-grafana
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    # 2b. traefik-internal — playwright (headless chromium MCP) drives the cluster's
+    #     own apps for UI/UX testing via their https://<app>.haynesops.com ingress.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: network
+            app.kubernetes.io/instance: traefik-internal-network
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
     # 2. Kube API server — in-cluster kubectl via kubernetes.default.svc (the whole
     #    point of saga Decision #1).
     - toEntities: [kube-apiserver]

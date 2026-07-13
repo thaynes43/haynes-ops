@@ -1,8 +1,18 @@
 # 03 — GitOps-managed agent configs (.claude / .codex)
 
-**Status:** backlog
+**Status:** in review (branch `dev-env/03-configs-deploy`; image 0.3.0 with
+playwright+chromium merged via PR #2035)
 **Depends on:** 02
 **Parallel with:** 04, 05
+
+**MCP first wave (Tom-approved 2026-07-13):** home-assistant (cluster-local
+ha-mcp.home-automation.svc:8086, secret path via the existing `ha-mcp` 1P item),
+grafana-mcp (cluster-local mcp-grafana.observability.svc:8000/mcp), playwright
+(headless chromium baked into image 0.3.0 — for UI/UX testing of cluster apps via
+traefik-internal). **mcp-unifi**: approved but STUBBED — the exact server
+package/config Tom previously used is unrecoverable from this Mac; do not guess a
+community package (supply-chain risk) — needs Tom's pointer, then wire like the
+others. **outline**: deferred (not selected). Codex MCP parity: follow-up.
 
 ## Goal
 
