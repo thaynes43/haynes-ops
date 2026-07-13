@@ -1,6 +1,6 @@
 # 01 — dev-env container image + signed build workflow
 
-**Status:** backlog
+**Status:** in review (branch `dev-env/01-image`)
 **Depends on:** nothing (first mover)
 **Parallel with:** 02 can be authored against the expected image name while this bakes
 
