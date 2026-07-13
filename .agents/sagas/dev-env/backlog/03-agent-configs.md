@@ -1,10 +1,12 @@
 # 03 — GitOps-managed agent configs (.claude / .codex)
 
-**Status:** done (PRs #2035/#2036/#2037, merged 2026-07-13; verified live —
-`claude mcp list` shows home-assistant/grafana-mcp/playwright all Connected,
-dev-init links configs on boot, codex config.toml GitOps'd with auth untouched,
-pod→traefik ingress path proven for playwright UI testing). Follow-ups tracked
-below: unifi package pointer, codex MCP parity.
+**Status:** done (PRs #2035–#2038, merged 2026-07-13; verified live —
+`claude mcp list` shows home-assistant/grafana-mcp/mcp-unifi/playwright ALL
+Connected, dev-init links configs on boot, codex config.toml GitOps'd with auth
+untouched, pod→traefik ingress path proven for playwright UI testing).
+mcp-unifi turned out to be in-cluster all along (observability/mcp-unifi, SSE
+transport at :3000/sse — /mcp 404s, probe before assuming paths). Remaining
+follow-up: codex MCP parity.
 **Depends on:** 02
 **Parallel with:** 04, 05
 
