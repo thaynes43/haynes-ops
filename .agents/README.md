@@ -23,3 +23,7 @@ Top-level agent instructions live in [`CLAUDE.md`](../CLAUDE.md); this folder ho
 - [talos-omni-gotchas.md](reference/talos-omni-gotchas.md) — **big silent traps** in Talos/Omni node & network config: case-sensitive `deviceSelector` MACs, `install.extraKernelArgs` no-op under UKI, lost VM identity on wipe, tiny `/boot`, VPN-NIC egress in maintenance. Read before editing the Omni cluster template or upgrading.
 - [repo-overview.md](reference/repo-overview.md) — Talos/Omni/Flux/home-ops context, repo structure, GitOps principles.
 - [cluster-inspection.md](reference/cluster-inspection.md) — how to inspect the cluster safely (read-only, never dump Secrets).
+
+## sagas/ — multi-plan initiatives
+Long-running efforts with a vision doc + an enumerated plan backlog agents execute over many sessions. Conventions in [sagas/README.md](sagas/README.md).
+- [dev-env](sagas/dev-env/README.md) — 24/7 in-cluster agent development environment (Claude Code / Codex / code-server workhorse pod; the Shepherd becomes a dispatcher).
