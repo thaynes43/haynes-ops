@@ -1,6 +1,10 @@
 # 02 — PoC deployment (namespace, HelmRelease, PVC, ingress, egress)
 
-**Status:** in review (branch `dev-env/02-poc-deploy`)
+**Status:** done (PR #2032, merged 2026-07-13; all acceptance criteria verified live —
+pod Ready, SSO redirect chain to Authentik live, read-only SA verified allow+deny,
+CNP egress verified allow+deny, git clone works, PVC survived a pod replacement,
+tmux respawns on boot. Remaining human check: Tom's first browser login through
+Authentik from the LAN.)
 **Depends on:** 01 (image published) — done
 
 **Implementation notes (2026-07-13):** SSO is Authentik forward-auth via the EMBEDDED
