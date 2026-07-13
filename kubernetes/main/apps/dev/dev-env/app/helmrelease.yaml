@@ -70,6 +70,52 @@ spec:
               readOnlyRootFilesystem: true
               capabilities:
                 drop: ["ALL"]
+          # Mints a fresh haynes-ops-bot ghs_ token to /creds every 40min (1h TTL).
+          # The PEM lives ONLY here; agents read /creds/gh_token per shell (bashrc).
+          gh-refresher:
+            image:
+              repository: ghcr.io/thaynes43/dev-env
+              tag: 0.3.0@sha256:3757e8b185a13b13dbe88f83377c902a60b615c5a95978ff8d3a865e2055b877
+            command: ["/bin/bash", "/opt/dev-env/scripts/gh-token-refresh.sh"]
+            env:
+              # Down-scope the minted token to what agent dev work needs.
+              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","checks":"read","actions":"read","issues":"write"}'
+            envFrom:
+              - secretRef:
+                  name: dev-env-bot-secret
+            resources:
+              requests: { cpu: 10m, memory: 32Mi }
+              limits: { memory: 128Mi }
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+          # Daily credential probe (claude/codex/gh) → Pushover page on failure
+          # (saga plan 04 expiry watch).
+          auth-watch:
+            image:
+              repository: ghcr.io/thaynes43/dev-env
+              tag: 0.3.0@sha256:3757e8b185a13b13dbe88f83377c902a60b615c5a95978ff8d3a865e2055b877
+            command: ["/bin/bash", "/opt/dev-env/scripts/auth-check.sh"]
+            env:
+              HOME: /home/dev
+              CLAUDE_CONFIG_DIR: /home/dev/.claude
+              CODEX_HOME: /home/dev/.codex
+              DISABLE_AUTOUPDATER: "1"
+              DISABLE_ERROR_REPORTING: "1"
+              DISABLE_TELEMETRY: "1"
+            envFrom:
+              - secretRef:
+                  name: dev-env-watch-secret
+            resources:
+              requests: { cpu: 10m, memory: 64Mi }
+              limits: { memory: 512Mi }
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
     defaultPodOptions:
       automountServiceAccountToken: true   # in-cluster kubectl via the dev-env SA
       # ndots:1 — external names resolve directly instead of first expanding through
@@ -99,14 +145,27 @@ spec:
           http:
             port: 8443
     persistence:
+      # Container scoping (advancedMounts): the gh-refresher holds the PEM env and
+      # deliberately CANNOT see the home PVC (agent state); agents CANNOT see the
+      # PEM (env-only, no mount). /creds is the only shared surface — the minted
+      # short-lived token.
       home:
         existingClaim: dev-env-home
-        globalMounts:
-          - path: /home/dev
+        advancedMounts:
+          dev-env:
+            app:
+              - path: /home/dev
+            auth-watch:
+              - path: /home/dev
       tmp:
         type: emptyDir
         globalMounts:
           - path: /tmp
+      creds:
+        type: emptyDir
+        medium: Memory
+        globalMounts:
+          - path: /creds
       # GitOps'd agent configs + init script (auditable in PR diffs, shepherd
       # pattern). dev-init.sh links/copies these into $HOME on every boot.
       scripts:
@@ -118,10 +177,14 @@ spec:
       config-claude:
         type: configMap
         name: dev-env-config-claude
-        globalMounts:
-          - path: /opt/dev-env/config/claude
+        advancedMounts:
+          dev-env:
+            app:
+              - path: /opt/dev-env/config/claude
       config-codex:
         type: configMap
         name: dev-env-config-codex
-        globalMounts:
-          - path: /opt/dev-env/config/codex
+        advancedMounts:
+          dev-env:
+            app:
+              - path: /opt/dev-env/config/codex

@@ -80,6 +80,8 @@ spec:
               - matchPattern: "*.haynesops.com"
               - matchName: "haynesnetwork.com"
               - matchPattern: "*.haynesnetwork.com"
+              # auth-watch pages via Pushover
+              - matchName: "api.pushover.net"
     # 2a. Cluster-local MCP servers (saga plan 03): HA + Grafana — the agents'
     #     introspection tools, reached via svc FQDNs, never the public ingress.
     - toEndpoints:
@@ -146,6 +148,7 @@ spec:
         - matchName: "files.pythonhosted.org"
         - matchName: "open-vsx.org"
         - matchName: "openvsxorg.blob.core.windows.net"
+        - matchName: "api.pushover.net"
       toPorts:
         - ports:
             - port: "443"

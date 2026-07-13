@@ -17,6 +17,10 @@ configMapGenerator:
   - name: dev-env-scripts
     files:
       - resources/dev-init.sh
+      - resources/bashrc.sh
+      - resources/agent-run.sh
+      - resources/gh-token-refresh.sh
+      - resources/auth-check.sh
   - name: dev-env-config-claude
     files:
       - resources/config/claude/CLAUDE.md
