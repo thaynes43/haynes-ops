@@ -46,11 +46,15 @@ spec:
               - matchPattern: "*.github.com"
               - matchPattern: "*.githubusercontent.com"
               - matchName: "ghcr.io"
-              # Anthropic: API + claude.ai (/remote-control relay) + statsig etc.
+              # Anthropic: API + claude.ai (/remote-control relay) + claude.com
+              # (platform.claude.com — claude-code startup checks, proven via Hubble
+              # 2026-07-13) + statsig etc.
               - matchName: "anthropic.com"
               - matchPattern: "*.anthropic.com"
               - matchName: "claude.ai"
               - matchPattern: "*.claude.ai"
+              - matchName: "claude.com"
+              - matchPattern: "*.claude.com"
               # OpenAI: Codex API + ChatGPT-plan auth/backend
               - matchName: "openai.com"
               - matchPattern: "*.openai.com"
@@ -82,6 +86,8 @@ spec:
         - matchPattern: "*.anthropic.com"
         - matchName: "claude.ai"
         - matchPattern: "*.claude.ai"
+        - matchName: "claude.com"
+        - matchPattern: "*.claude.com"
         - matchName: "openai.com"
         - matchPattern: "*.openai.com"
         - matchName: "chatgpt.com"

@@ -21,7 +21,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.1.0@sha256:95e9919f3f10724b31cf4586227ae5aefd5fc9adbc7c49675a1c290eeca296e8
+              tag: 0.2.0@sha256:c5970b0b3d75af3380e4cb019237cf2118162d5461bb941fad92928f2046cbd9
             command: ["/bin/bash", "-c"]
             args:
               # tmux server first (agent sessions survive browser/exec disconnects;
@@ -63,6 +63,16 @@ spec:
                 drop: ["ALL"]
     defaultPodOptions:
       automountServiceAccountToken: true   # in-cluster kubectl via the dev-env SA
+      # ndots:1 — external names resolve directly instead of first expanding through
+      # the cluster search domains (api.anthropic.com.dev.svc.cluster.local…), which
+      # the CNP DNS allowlist refuses (Cilium `*` is single-label) and Node/c-ares
+      # treats a REFUSED as fatal EREFUSED (claude-code startup failure, proven via
+      # Hubble 2026-07-13). In-cluster targets must use FQDNs (kubectl is unaffected
+      # — in-cluster config connects to KUBERNETES_SERVICE_HOST, an IP).
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
