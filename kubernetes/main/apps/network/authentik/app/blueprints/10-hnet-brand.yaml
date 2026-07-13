@@ -143,18 +143,32 @@ entries:
       }
 
       /* ---- buttons are pills (D-03) ---------------------------------------------*/
+      /* Compat-mode cascade note (flow compatibility_mode: true, 20-hnet-flows.yaml):
+         under the forced ShadyDOM/ShadyCSS path, PatternFly's per-component styles are
+         scoped by APPENDING the stage class (e.g. `.pf-c-button.pf-m-primary` becomes
+         `.pf-c-button.pf-m-primary.ak-stage-password`, specificity 0,3,0). That outranks
+         this brand sheet's unscoped `.pf-c-button.pf-m-primary` (0,2,0) / `.pf-c-button`
+         (0,1,0), which is why the primary button/pill/link accents flattened to PF blue.
+         The load-bearing colour + pill declarations below therefore carry `!important`:
+         author-important beats any author-normal PF rule regardless of the scope bump, and
+         it is a no-op under native shadow DOM (where this sheet is adopted per-root and
+         already won), so the brand survives a future compatibility_mode revert unchanged. */
       .pf-c-button {
         font-family: var(--hnet-font);
-        border-radius: 999px;
+        border-radius: 999px !important;
       }
       .pf-c-button.pf-m-primary {
-        background: var(--hnet-accent);
-        color: var(--hnet-accent-contrast);
-        border: 1px solid var(--hnet-accent);
+        background: var(--hnet-accent) !important;
+        color: var(--hnet-accent-contrast) !important;
+        border: 1px solid var(--hnet-accent) !important;
         font-size: 14px;
         font-weight: 600;
         min-height: 46px;
       }
+      /* The base rule's `!important` background already survives :hover/:focus/:active
+         (author-important outranks PF's author-normal state rules), so hover only needs
+         the brand's brightness lift — no background override here, which keeps the
+         identification-stage ghost button (below) transparent on hover. */
       .pf-c-button.pf-m-primary:hover {
         filter: brightness(1.06);
       }
@@ -175,8 +189,11 @@ entries:
         font-family: var(--hnet-font);
         color: var(--hnet-text);
       }
-      a {
-        color: var(--hnet-accent);
+      /* Link accents (e.g. "Not you?", footer links). `!important` for the same compat-mode
+         reason as the buttons; `:not(.pf-c-button)` so an <a>-rendered button keeps its own
+         (green-pill) treatment rather than being recoloured as a text link. */
+      a:not(.pf-c-button) {
+        color: var(--hnet-accent) !important;
       }
 
       /* ---- chrome: locale select + footer ---------------------------------------*/
@@ -302,16 +319,25 @@ entries:
       }
 
       /* 4. De-emphasize the local form's submit on the identification stage only
-         (the password stage's Continue keeps the full green primary). */
-      :host(ak-stage-identification) .pf-c-form .pf-c-button.pf-m-primary {
-        background: transparent;
-        color: var(--hnet-text);
-        border: 1px solid var(--hnet-border);
+         (the password stage's Continue keeps the full green primary). Two selector forms
+         so it survives BOTH render modes and outranks the `!important` base primary above:
+         `:host(...)` for native shadow DOM (this sheet is adopted per shadow root), and the
+         flat `.ak-stage-identification` scope-class form for the compat-mode ShadyDOM path
+         (a document-level `:host(...)` never matches, so the native form alone would leave
+         this button green under compat). `:not(.source-button)` keeps the promoted green
+         Plex button out of the de-emphasis. `!important` + the higher class count win over
+         the base primary's `!important`. */
+      :host(ak-stage-identification) .pf-c-form .pf-c-button.pf-m-primary,
+      .pf-c-button.pf-m-primary.ak-stage-identification:not(.source-button) {
+        background: transparent !important;
+        color: var(--hnet-text) !important;
+        border: 1px solid var(--hnet-border) !important;
         font-size: 13px;
         font-weight: 600;
         min-height: 42px;
       }
-      :host(ak-stage-identification) .pf-c-form .pf-c-button.pf-m-primary:hover {
+      :host(ak-stage-identification) .pf-c-form .pf-c-button.pf-m-primary:hover,
+      .pf-c-button.pf-m-primary.ak-stage-identification:not(.source-button):hover {
         filter: none;
         box-shadow: 0 0 0 3px color-mix(in srgb, var(--hnet-accent) 22%, transparent);
       }
