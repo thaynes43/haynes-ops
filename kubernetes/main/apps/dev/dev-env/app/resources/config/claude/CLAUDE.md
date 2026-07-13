@@ -24,7 +24,7 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 | claude | ✅ Max plan | credential on PVC, self-refreshes |
 | codex | ✅ ChatGPT plan | `~/.codex/auth.json`, self-refreshes |
 | kubectl / flux | ✅ in-cluster SA | READ-ONLY (get/list/watch) |
-| gh / git push | ❌ NOT YET | haynes-ops-bot wiring is saga plan 04 — `gh` calls will 401 |
+| gh / git push | ✅ haynes-dev-bot | App token, all repos, refreshed every 40min; commits/PRs author as the dev bot |
 | sops / age | ❌ deliberately absent | the age key never enters this pod without an explicit decision |
 | talosctl / omnictl | ❌ absent | node/Omni ops happen elsewhere (omni-service-account runbook) |
 | terraform/tofu providers | ❌ no cloud creds | plan/validate only |
