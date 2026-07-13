@@ -78,8 +78,11 @@ spec:
               tag: 0.3.0@sha256:3757e8b185a13b13dbe88f83377c902a60b615c5a95978ff8d3a865e2055b877
             command: ["/bin/bash", "/opt/dev-env/scripts/gh-token-refresh.sh"]
             env:
-              # Down-scope the minted token to what agent dev work needs.
-              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","checks":"read","actions":"read","issues":"write"}'
+              # Down-scope the minted token. NOTE: may only name permissions the App
+              # itself was GRANTED — requesting ungranted ones (e.g. actions/issues,
+              # tried 2026-07-13) makes the token mint 422. Extend the App's grants
+              # in GitHub settings first, then widen here.
+              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","checks":"read"}'
             envFrom:
               - secretRef:
                   name: dev-env-bot-secret
