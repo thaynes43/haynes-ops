@@ -11,8 +11,8 @@ spec:
     labels:
       app.kubernetes.io/name: *app
   dependsOn:
-    - name: upgrade-health-gate # PoC reuses its read-only ClusterRole (backlog 05 = operator tier)
-      namespace: upgrade-agent
+    - name: external-secrets-stores # dev-env-mcp ExternalSecret needs the 1P store
+      namespace: external-secrets
   path: ./kubernetes/main/apps/dev/dev-env/app
   prune: true
   sourceRef:
