@@ -39,8 +39,8 @@ cp -f "$CFG/codex/config.toml" "$HOME/.codex/config.toml"
 # ── git identity + credentials (saga Decision #5: haynes-ops-bot everywhere) ────
 # Commits author as the bot; pushes/clones read the fresh minted token per call via
 # the credential helper (never a static token in .gitconfig).
-git config --global user.name  "haynes-ops-bot[bot]"
-git config --global user.email "haynes-ops-bot[bot]@users.noreply.github.com"
+git config --global user.name  "haynes-dev-bot[bot]"
+git config --global user.email "haynes-dev-bot[bot]@users.noreply.github.com"
 git config --global credential."https://github.com".helper \
   '!f() { echo username=x-access-token; echo "password=$(cat /creds/gh_token)"; }; f'
 git config --global --replace-all safe.directory "$HOME/repos/*"

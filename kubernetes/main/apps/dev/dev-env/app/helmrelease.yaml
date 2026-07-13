@@ -70,7 +70,8 @@ spec:
               readOnlyRootFilesystem: true
               capabilities:
                 drop: ["ALL"]
-          # Mints a fresh haynes-ops-bot ghs_ token to /creds every 40min (1h TTL).
+          # Mints a fresh haynes-DEV-bot ghs_ token to /creds every 40min (1h TTL) —
+          # the dev identity, installed on All Repositories (Decision #5 revised).
           # The PEM lives ONLY here; agents read /creds/gh_token per shell (bashrc).
           gh-refresher:
             image:
@@ -80,9 +81,9 @@ spec:
             env:
               # Down-scope the minted token. NOTE: may only name permissions the App
               # itself was GRANTED — requesting ungranted ones (e.g. actions/issues,
-              # tried 2026-07-13) makes the token mint 422. Extend the App's grants
-              # in GitHub settings first, then widen here.
-              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","checks":"read"}'
+              # tried 2026-07-13) makes the token mint 422. haynes-dev-bot grants:
+              # contents/PRs/workflows write + checks read.
+              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","workflows":"write","checks":"read"}'
             envFrom:
               - secretRef:
                   name: dev-env-bot-secret
