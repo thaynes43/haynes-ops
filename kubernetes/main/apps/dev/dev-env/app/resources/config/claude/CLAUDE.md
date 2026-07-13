@@ -35,7 +35,9 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 - `grafana-mcp` — PromQL/LogQL, dashboards (cluster-local)
 - `playwright` — headless chromium for UI/UX testing of cluster apps
   (reach them via their `https://<app>.haynesops.com` internal ingress)
-- UniFi MCP: not wired yet (package pending — saga plan 03 stub)
+- `mcp-unifi` — read-only UniFi/UDM introspection (clients, RSSI, topology;
+  cluster-local SSE). Gotcha: per-site tools want the legacy site code `default`
+  (`internalReference`), not the UUID from `list_sites`.
 
 ## Sessions
 
