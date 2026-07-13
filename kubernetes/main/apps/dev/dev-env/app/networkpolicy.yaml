@@ -41,6 +41,12 @@ spec:
             dns:
               - matchPattern: "*.cluster.local"
               - matchPattern: "*.svc"
+              # Multi-label svc FQDNs need EXACT names — Cilium `*` is single-label,
+              # so `*.cluster.local` does NOT match name.ns.svc.cluster.local (the
+              # same trap the shepherd hit with the Prometheus FQDN; re-proven here
+              # via `claude mcp list` failures 2026-07-13).
+              - matchName: "ha-mcp.home-automation.svc.cluster.local"
+              - matchName: "mcp-grafana.observability.svc.cluster.local"
               # git + gh + release notes + ghcr blobs
               - matchName: "github.com"
               - matchPattern: "*.github.com"
