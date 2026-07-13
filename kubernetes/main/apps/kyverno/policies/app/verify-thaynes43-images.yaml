@@ -5,10 +5,10 @@
 # but NOT this — it requires a keyless cosign signature proving the image was built by
 # OUR GitHub Actions workflow (OIDC identity), not swapped by an attacker.
 #
-# SCOPE: only the images whose build workflows sign (upgrade-agent, upgrade-shepherd).
-# Other ghcr.io/thaynes43/* images (appdaemon, hass-immich-addon, todos-for-dues,
-# ytdl-sub-config-manager) are NOT covered yet — add them here as their builds gain
-# `cosign sign` (appdaemon is the next one, in hass-sandbox).
+# SCOPE: only the images whose build workflows sign (upgrade-agent, upgrade-shepherd,
+# dev-env). Other ghcr.io/thaynes43/* images (appdaemon, hass-immich-addon,
+# todos-for-dues, ytdl-sub-config-manager) are NOT covered yet — add them here as
+# their builds gain `cosign sign` (appdaemon is the next one, in hass-sandbox).
 #
 # PHASE: Audit first (observe the report), then flip to Enforce once the running/summoned
 # pods are all on signed digests. fail-open (failurePolicy: Ignore). background:false —
@@ -32,6 +32,7 @@ spec:
         - imageReferences:
             - "ghcr.io/thaynes43/upgrade-agent*"
             - "ghcr.io/thaynes43/upgrade-shepherd*"
+            - "ghcr.io/thaynes43/dev-env*"
           failureAction: Audit
           mutateDigest: false   # we pin tag@digest in the manifests; don't rewrite
           verifyDigest: false
