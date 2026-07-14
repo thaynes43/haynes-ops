@@ -28,6 +28,10 @@ configMapGenerator:
   - name: dev-env-config-codex
     files:
       - resources/config/codex/config.toml
+  # The workspace README code-server opens on (~/README.md) — the human walkthrough.
+  - name: dev-env-config-home
+    files:
+      - resources/config/home/README.md
 generatorOptions:
   disableNameSuffixHash: true
   labels:

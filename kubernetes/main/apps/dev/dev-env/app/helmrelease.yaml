@@ -197,3 +197,10 @@ spec:
           dev-env:
             app:
               - path: /opt/dev-env/config/codex
+      config-home:
+        type: configMap
+        name: dev-env-config-home
+        advancedMounts:
+          dev-env:
+            app:
+              - path: /opt/dev-env/config/home

@@ -45,6 +45,12 @@ git config --global credential."https://github.com".helper \
   '!f() { echo username=x-access-token; echo "password=$(cat /creds/gh_token)"; }; f'
 git config --global --replace-all safe.directory "$HOME/repos/*"
 
+# ── workspace README (the first thing code-server shows in the file tree) ───────
+# COPIED, not symlinked: a symlink into the read-only ConfigMap mount makes the editor
+# fail on save with a confusing EROFS. Git is the source of truth — a boot overwrites
+# local edits on purpose.
+[ -f "$CFG/home/README.md" ] && cp -f "$CFG/home/README.md" "$HOME/README.md"
+
 # ── playwright browsers: seed the PVC cache from the image's staging dir ────────
 # PLAYWRIGHT_BROWSERS_PATH is on the PVC so repos can add their OWN pinned chromium
 # revision (readOnlyRootFilesystem forbids writing an image path). Seed once; a repo's
