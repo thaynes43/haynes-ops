@@ -76,8 +76,11 @@ spec:
               - matchName: "openvsxorg.blob.core.windows.net"
               # playwright browser downloads — a repo pinning its own @playwright/test
               # version fetches a matching chromium revision (haynesnetwork e2e).
+              # cdn.playwright.dev REDIRECTS the actual zip to storage.googleapis.com
+              # (Chrome-for-Testing bucket) — without it the download dies EAI_AGAIN.
               - matchName: "cdn.playwright.dev"
               - matchPattern: "*.playwright.dev"
+              - matchName: "storage.googleapis.com"
               # our own apps' internal ingress names (playwright UI/UX testing —
               # traffic goes to the traefik-internal pods, rule 2b)
               - matchName: "haynesops.com"
@@ -155,6 +158,7 @@ spec:
         - matchName: "api.pushover.net"
         - matchName: "cdn.playwright.dev"
         - matchPattern: "*.playwright.dev"
+        - matchName: "storage.googleapis.com"
       toPorts:
         - ports:
             - port: "443"
