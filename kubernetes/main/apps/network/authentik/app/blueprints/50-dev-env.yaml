@@ -39,6 +39,10 @@ entries:
   attrs:
     external_host: https://dev-env.haynesops.com
     mode: forward_single
+    # Session cookie lifetime. Match headlamp (hours=24) — the authentik default
+    # (hours=1) forces an hourly re-auth redirect, which breaks code-server's
+    # long-lived WebSockets mid-session.
+    access_token_validity: hours=24
     authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
     invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
 - model: authentik_core.application
