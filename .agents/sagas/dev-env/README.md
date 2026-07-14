@@ -185,3 +185,4 @@ neighbors once prerequisites are met.
 | [08 — multi-instance flavors](backlog/08-multi-instance.md) | 06 | ∥ 07 |
 | [09 — LAN control plane / UI](backlog/09-control-plane.md) | 07 | last |
 | [10 — Taskfile overhaul](backlog/10-taskfile-overhaul.md) | — | ∥ anytime; ideally before 02 so pod agents inherit trustworthy tasks |
+| [11 — haynesnetwork build/run/test readiness](backlog/11-haynesnetwork-readiness.md) | 02 | done except e2e — Tom's gate before dispatching haynesnetwork backlog work |
