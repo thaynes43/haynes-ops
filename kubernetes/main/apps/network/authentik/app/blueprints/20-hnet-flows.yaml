@@ -5,11 +5,11 @@
 # The order-30 authenticator-validation stage AND its flow-stage-binding are OWNED by
 # 40-hnet-mfa.yaml (promoted 2026-07-10, PLAN-011 Phase 2) — they are intentionally absent
 # here so the two blueprints never flip-flop the stage config on reconcile.
-# DEVIATION from the drift-zero export (2026-07-12): compatibility_mode: true on all four
-# flows. The 2026.5.3 flow interface crashes the renderer in Safari/WebKit 18.x (iPad,
-# WKWebView, desktop Safari) before the first executor call — infinite spinner at login.
-# compatibility_mode injects window.ShadyDOM.force=true, which avoids the crashing native
-# shadow-DOM path; verified in WebKit 18.2 (crash 2/2 plain, form renders with the flag).
+# compatibility_mode history (PLAN-042): set true 2026-07-12 (571c7a65) as the emergency
+# workaround for the old-WebKit login crash; REVERTED to false 2026-07-13 after the real
+# fix landed — the server pods now serve CSS-nesting-LOWERED web assets (helmrelease.yaml
+# initContainers), which removes the actual crash trigger (WebKit #290102 via native CSS
+# nesting, upstream goauthentik#19814). Native rendering restores Plex-first ordering.
 version: 1
 metadata:
   name: hnet-login-flows
@@ -20,7 +20,7 @@ entries:
 - attrs:
     authentication: none
     background: ''
-    compatibility_mode: true
+    compatibility_mode: false
     denied_action: message_continue
     designation: authentication
     layout: stacked
@@ -197,7 +197,7 @@ entries:
 - attrs:
     authentication: require_unauthenticated
     background: ''
-    compatibility_mode: true
+    compatibility_mode: false
     denied_action: message_continue
     designation: authentication
     layout: stacked
@@ -271,7 +271,7 @@ entries:
 - attrs:
     authentication: none
     background: ''
-    compatibility_mode: true
+    compatibility_mode: false
     denied_action: message_continue
     designation: enrollment
     layout: stacked
@@ -444,7 +444,7 @@ entries:
 - attrs:
     authentication: none
     background: ''
-    compatibility_mode: true
+    compatibility_mode: false
     denied_action: message_continue
     designation: invalidation
     layout: stacked
