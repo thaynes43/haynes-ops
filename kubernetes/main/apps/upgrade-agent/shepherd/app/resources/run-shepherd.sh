@@ -203,7 +203,30 @@ prefilter_should_run() {
 export DISABLE_TELEMETRY=1 CLAUDE_CODE_ENABLE_TELEMETRY=0 \
        DISABLE_ERROR_REPORTING=1 DISABLE_AUTOUPDATER=1 DISABLE_NON_ESSENTIAL_MODEL_CALLS=1
 
-: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY unset (llm secret not mounted?)}"
+# ── AUTH PATH (2026-07-13, saga plan 07 Option A) ── PLAN-FIRST, API-FALLBACK.
+# The LLM turn runs HERE, in the contained shepherd pod — we changed the CREDENTIAL,
+# not the execution site. (Dispatching the turn into the dev-env pod would hand a
+# prompt-injectable agent — the shepherd READS RELEASE NOTES — that pod's 23-repo
+# write token and operator RBAC. See .agents/sagas/dev-env/backlog/07.)
+#
+#   plan → CLAUDE_CODE_OAUTH_TOKEN (Max subscription; $0 API spend)
+#   api  → ANTHROPIC_API_KEY (metered, spend-guarded) — the fallback
+#
+# CRITICAL: claude-code prefers ANTHROPIC_API_KEY when BOTH are set, so the plan path
+# must UNSET it — otherwise we'd silently keep billing the API while believing we're
+# on the plan. The key is stashed and restored for the fallback.
+AUTH_PATH="api"
+ANTHROPIC_API_KEY_STASH="${ANTHROPIC_API_KEY:-}"
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+  AUTH_PATH="plan"
+  unset ANTHROPIC_API_KEY
+  log "auth: Max plan (CLAUDE_CODE_OAUTH_TOKEN); API key held in reserve for fallback."
+elif [ -n "${ANTHROPIC_API_KEY_STASH}" ]; then
+  log "auth: API key (no plan token mounted)."
+else
+  log "FATAL: neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY is set."; exit 1
+fi
+
 [ -s /creds/gh_token ] || { log "FATAL: /creds/gh_token missing — initContainer token mint failed"; exit 1; }
 GH_TOKEN="$(cat /creds/gh_token)"; export GH_TOKEN
 # Assert the PEM did NOT leak into this (the LLM) container.
@@ -318,13 +341,28 @@ case "$MODE" in
     ;;
 esac
 
-# Populate month-to-date spend + enforce the cap on UNATTENDED runs only.
-spend_guard; guard_rc=$?
-if [ "$guard_rc" -ne 0 ]; then
-  case "$MODE" in
-    auto|remediate) log "run skipped by spend guard (monthly cap reached)"; exit 0 ;;
-    *) log "spend-guard: cap reached but MODE=$MODE is manual/human-summoned — proceeding." ;;
-  esac
+# MODEL on the plan path (2026-07-13): Max meters Opus in its OWN weekly bucket,
+# separate from the all-other-models bucket that Tom's interactive work draws from —
+# so running the shepherd on opus protects his interactive weekly headroom. (The
+# rolling 5-hour session window is shared across every model, but the scheduled runs
+# are 4-hourly and mostly land while he's away.) On the API fallback we stay on the
+# cheaper UPGRADE_AGENT_MODEL (sonnet) — opus there costs real money. remediate
+# already picks its own (opus) model and is left alone.
+if [ "$AUTH_PATH" = "plan" ] && [ "$MODE" != "remediate" ]; then
+  MODEL="${UPGRADE_AGENT_PLAN_MODEL:-opus}"
+fi
+
+# Spend guard governs the METERED path only — a plan-served run costs $0 in API spend,
+# so gating it on the API budget would pointlessly refuse free work. The guard still
+# protects the fallback (and every run before the plan token is mounted).
+if [ "$AUTH_PATH" = "api" ]; then
+  spend_guard; guard_rc=$?
+  if [ "$guard_rc" -ne 0 ]; then
+    case "$MODE" in
+      auto|remediate) log "run skipped by spend guard (monthly cap reached)"; exit 0 ;;
+      *) log "spend-guard: cap reached but MODE=$MODE is manual/human-summoned — proceeding." ;;
+    esac
+  fi
 fi
 
 # ── Cross-cutting operating rules, injected into EVERY mode's system prompt so they hold
@@ -349,21 +387,67 @@ if [ "$MODE" != "dryrun" ]; then
   SAFETY_PROMPT="${SAFETY_PROMPT} VET MARKER: when you FINISH vetting a Renovate PR — whatever the verdict (auto-merge enabled, declined, held, left-for-Renovate, or you authored a supporting-edit PR for it) — record the vet so it is never re-done at this state: get the head SHA with 'gh pr view <N> --json headRefOid', use the Write tool to author /tmp/vet-comment.md whose FIRST line is exactly '<!-- shepherd-vet sha=<HEAD_SHA> -->' followed by 'VERDICT: <one word>' and 2-4 sentences of reasoning, then run 'gh pr comment <N> --body-file /tmp/vet-comment.md'. Never build the comment inline. Conversely, SKIP (do not re-vet) any PR whose CURRENT head SHA already appears in a shepherd-vet comment — treat its recorded verdict as done."
 fi
 
-log "MODE=$MODE model=$MODEL max_turns=$MAX_TURNS budget=\$$MAX_BUDGET cap=\$$MONTHLY_CAP"
+log "MODE=$MODE auth=$AUTH_PATH model=$MODEL max_turns=$MAX_TURNS budget=\$$MAX_BUDGET cap=\$$MONTHLY_CAP"
+
+# One claude run. --max-budget-usd is a METERED-path concept; passing it on the plan
+# path is meaningless, so it is only added for api. Writes JSON to $1.
+run_claude() {
+  local out="$1" args=()
+  args=(-p "$PROMPT"
+        --permission-mode dontAsk
+        --allowedTools "${ALLOWED[@]}"
+        --disallowedTools "WebFetch" "WebSearch"
+        --append-system-prompt "$SAFETY_PROMPT"
+        --max-turns "$MAX_TURNS"
+        --model "$MODEL"
+        --output-format json)
+  [ "$AUTH_PATH" = "api" ] && args+=(--max-budget-usd "$MAX_BUDGET")
+  timeout "$RUN_TIMEOUT" claude "${args[@]}" | tee "$out"
+  return "${PIPESTATUS[0]}"
+}
+
+# A plan run that dies on a RATE LIMIT (5-hour window or weekly cap exhausted) must
+# not strand the work — least of all a remediate run, where a stalled fix means a
+# live regression stays broken (Decision #2). Fall back to the metered API key ONCE,
+# under the spend guard. An AUTH failure (expired/revoked token) also falls back, and
+# auth-watch pages so the token gets re-minted. Any OTHER failure is a real error and
+# is NOT retried — retrying a genuinely broken run would just double-spend.
 set +e
 OUT_FILE="$(mktemp 2>/dev/null || echo /tmp/claude-out.json)"
-timeout "$RUN_TIMEOUT" claude -p "$PROMPT" \
-  --permission-mode dontAsk \
-  --allowedTools "${ALLOWED[@]}" \
-  --disallowedTools "WebFetch" "WebSearch" \
-  --append-system-prompt "$SAFETY_PROMPT" \
-  --max-turns "$MAX_TURNS" \
-  --max-budget-usd "$MAX_BUDGET" \
-  --model "$MODEL" \
-  --output-format json | tee "$OUT_FILE"
-rc=${PIPESTATUS[0]}
+run_claude "$OUT_FILE"; rc=$?
+
+if [ "$AUTH_PATH" = "plan" ] && [ "$rc" -ne 0 ] && [ -n "$ANTHROPIC_API_KEY_STASH" ]; then
+  fallback_reason=""
+  if grep -qiE 'rate limit|usage limit|limit reached|too many requests|429' "$OUT_FILE" 2>/dev/null; then
+    fallback_reason="plan rate-limited"
+  elif grep -qiE 'unauthorized|invalid.*(token|api key)|authentication|401|/login' "$OUT_FILE" 2>/dev/null; then
+    fallback_reason="plan token rejected (re-run the setup-token ceremony)"
+  fi
+  if [ -n "$fallback_reason" ]; then
+    log "FALLBACK: $fallback_reason — retrying on the metered API key."
+    AUTH_PATH="api"
+    export ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY_STASH"
+    MODEL="${UPGRADE_AGENT_MODEL:-sonnet}"   # opus on the API costs real money
+    [ "$MODE" = "remediate" ] && MODEL="${UPGRADE_AGENT_REMEDIATE_MODEL:-opus}"
+    spend_guard; guard_rc=$?
+    if [ "$guard_rc" -ne 0 ] && { [ "$MODE" = "auto" ] || [ "$MODE" = "remediate" ]; }; then
+      log "fallback BLOCKED by the spend guard (monthly cap reached) — no run this cycle."
+    else
+      run_claude "$OUT_FILE"; rc=$?
+    fi
+  else
+    log "run failed (rc=$rc) for a reason that is NOT rate-limit/auth — not falling back."
+  fi
+fi
 set -e 2>/dev/null || true
-record_spend "$OUT_FILE"
+
+# Only a metered run has a dollar cost to record; a plan-served run is $0 by
+# construction, so the monthly counter stays flat (that IS the win being measured).
+if [ "$AUTH_PATH" = "api" ]; then
+  record_spend "$OUT_FILE"
+else
+  log "spend: \$0 this run (served by the Max plan)."
+fi
 # Durable verdict (2026-07-06): leave the final summary line at a well-known path for
 # the caller — triage records it in the coordination state and the GATE puts it in the
 # page body, so a human sees the BREAK-GLASS/HOLD reason without digging Job logs.

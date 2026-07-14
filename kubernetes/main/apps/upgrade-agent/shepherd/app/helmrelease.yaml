@@ -171,11 +171,23 @@ spec:
                 kubernetes/**. Then stop and summarize what you merged, authored, paged,
                 and left.
               # ANTHROPIC_API_KEY comes from the LLM secret ONLY (never the bot secret).
+              # It is now the FALLBACK: run-shepherd.sh prefers the Max-plan token and
+              # only reaches for the metered key on a rate-limit/auth failure (saga
+              # plan 07 Option A). The LLM turn still runs HERE, contained — only the
+              # credential changed.
               ANTHROPIC_API_KEY:
                 valueFrom:
                   secretKeyRef:
                     name: upgrade-shepherd-llm-secret
                     key: ANTHROPIC_API_KEY
+            envFrom:
+              # Max-plan credential (claude setup-token → 1Password). OPTIONAL on
+              # purpose: until the 1P item exists this secret is absent, the env var
+              # is unset, and the shepherd runs on the API key exactly as before —
+              # so this change is inert until the token lands.
+              - secretRef:
+                  name: upgrade-shepherd-plan-secret
+                  optional: true
             resources:
               requests:
                 cpu: 200m
