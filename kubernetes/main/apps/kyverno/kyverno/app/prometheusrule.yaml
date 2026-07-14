@@ -72,16 +72,19 @@ spec:
           annotations:
             summary: Kyverno enforce is repeatedly blocking admission (policy {{ $labels.policy_name }}).
             description: >-
-              An enforce-mode Kyverno policy denied >=3 admission requests in the last
-              hour. Most likely an exception gap denying a legitimate controller-spawned
-              (ephemeral) pod, which silently breaks the owning workload — or a real
-              blocked bad manifest. Find it: kubectl get events -A --field-selector
-              reason=PolicyViolation, or the kyverno-admission-controller logs. Fix by
-              adding a scoped PolicyException.
+              An enforce-mode Kyverno policy has been ACTIVELY denying admission for 15+
+              sustained minutes. Most likely an exception gap denying a legitimate
+              controller-spawned (ephemeral) pod, which silently breaks the owning
+              workload — or a real blocked bad manifest. Find it: kubectl get events -A
+              --field-selector reason=PolicyViolation, or the kyverno-admission-controller
+              logs. Fix by adding a scoped PolicyException. NOTE (2026-07-14): tuned from
+              [1h]/for:0m — image-signature deploy transients (GHCR sig propagation; see
+              haynesnetwork OPS-004 §1b/1c) burst-denied and paged despite self-healing
+              under helm remediation retries; short bursts no longer page.
           expr: |
             sum by (policy_name) (
-              increase(kyverno_policy_results_total{rule_execution_cause="admission_request", policy_validation_mode="enforce", rule_result="fail"}[1h])
+              increase(kyverno_policy_results_total{rule_execution_cause="admission_request", policy_validation_mode="enforce", rule_result="fail"}[10m])
             ) >= 3
-          for: 0m
+          for: 15m
           labels:
             severity: critical
