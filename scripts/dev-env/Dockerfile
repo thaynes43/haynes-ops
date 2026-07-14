@@ -46,7 +46,9 @@ ARG CODEX_VERSION=0.144.3
 # renovate: datasource=npm depName=tsx
 ARG TSX_VERSION=4.19.2
 # renovate: datasource=npm depName=pnpm
-ARG PNPM_VERSION=10.0.0
+# 11.9.0: haynesnetwork pins packageManager pnpm@11.9.0 + engines pnpm>=11 (pnpm 10
+# hard-refuses to install there). Keep >=11 unless every repo drops the pin.
+ARG PNPM_VERSION=11.9.0
 # renovate: datasource=npm depName=@playwright/mcp
 ARG PLAYWRIGHT_MCP_VERSION=0.0.78
 
@@ -165,11 +167,18 @@ RUN npm install -g \
 # Install the browser via the MCP's OWN playwright-core CLI so the chromium build
 # revision matches what the MCP expects (a bare `npx playwright install` can pull a
 # mismatched playwright version).
+#
+# Browsers are STAGED at /opt/dev-env/ms-playwright, not used in place: at runtime
+# PLAYWRIGHT_BROWSERS_PATH points at the PVC (~/.cache/ms-playwright) so a repo whose
+# own playwright pins a DIFFERENT chromium revision (haynesnetwork: @playwright/test
+# 1.61.x) can `playwright install` it alongside — impossible under
+# readOnlyRootFilesystem if the path lived in an image layer. dev-init seeds the PVC
+# cache from this staging dir on first boot, so the MCP works with zero downloads.
 RUN npm install -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
- && PLAYWRIGHT_BROWSERS_PATH=/usr/local/lib/ms-playwright \
+ && PLAYWRIGHT_BROWSERS_PATH=/opt/dev-env/ms-playwright \
       node "$(npm root -g)/@playwright/mcp/node_modules/playwright-core/cli.js" \
       install --with-deps chromium \
- && chmod -R a+rX /usr/local/lib/ms-playwright \
+ && chmod -R a+rX /opt/dev-env/ms-playwright \
  && npm cache clean --force && rm -rf /var/lib/apt/lists/*
 
 # github-app-token.sh (single source of truth) — used by the token-refresher
@@ -189,6 +198,6 @@ WORKDIR /home/dev
 ENV HOME=/home/dev \
     CLAUDE_CONFIG_DIR=/home/dev/.claude \
     CODEX_HOME=/home/dev/.codex \
-    PLAYWRIGHT_BROWSERS_PATH=/usr/local/lib/ms-playwright \
+    PLAYWRIGHT_BROWSERS_PATH=/home/dev/.cache/ms-playwright \
     PATH=/opt/dev-env:/usr/local/bin:/usr/bin:/bin
 ENTRYPOINT ["/bin/bash"]
