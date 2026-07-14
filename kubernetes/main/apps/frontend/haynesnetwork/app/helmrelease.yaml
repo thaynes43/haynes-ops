@@ -46,7 +46,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/haynesnetwork
-              tag: v0.50.1
+              tag: v0.51.0
               pullPolicy: IfNotPresent
             command:
               - tsx
