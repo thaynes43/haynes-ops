@@ -6,9 +6,13 @@
 #
 #   agent-run run  --repo <name> --agent claude|codex [--base <ref>] -p "<task>"
 #   agent-run run  --repo <name> --agent claude --interactive   # tmux session, no task
-#   agent-run list                                              # live tasks
+#                                                 [--safe]      # keep permission prompts
+#   agent-run list                                              # live tasks + attach cmds
 #   agent-run attach <task-id>                                  # tmux attach
 #   agent-run reap   <task-id> [--force]                        # kill + cleanup
+#
+# Agents run YOLO by default (claude --dangerously-skip-permissions / codex
+# --dangerously-bypass-approvals-and-sandbox): the pod IS the sandbox.
 set -uo pipefail
 
 REPOS="$HOME/repos" WORK="$HOME/work" OWNER="thaynes43"
@@ -23,7 +27,7 @@ cmd="${1:-help}"; shift || true
 
 case "$cmd" in
   run)
-    repo="" agent="" base="" prompt="" interactive=0
+    repo="" agent="" base="" prompt="" interactive=0 safe=0
     while [ $# -gt 0 ]; do
       case "$1" in
         --repo) repo="$2"; shift 2 ;;
@@ -31,6 +35,7 @@ case "$cmd" in
         --base) base="$2"; shift 2 ;;
         -p|--prompt) prompt="$2"; shift 2 ;;
         --interactive) interactive=1; shift ;;
+        --safe) safe=1; shift ;;
         *) die "unknown flag $1" ;;
       esac
     done
@@ -63,10 +68,23 @@ BLOCKED and the reason as your final message."
       codex)  run_cmd="codex exec --dangerously-bypass-approvals-and-sandbox \"\$AGENT_GUARD \$AGENT_PROMPT\"" ;;
     esac
 
+    # YOLO BY DEFAULT — interactive too. The whole point of this pod is that the
+    # sandbox IS the environment: an isolated worktree, a scoped SA, a default-deny
+    # egress policy. Approving every edit inside that is theater. `--safe` opts out
+    # (normal permission prompts) when you want to babysit something.
+    # NOTE: codex has no --yolo alias; the flag is the long dangerous- one.
+    yolo_flag=""
+    if [ "$safe" != 1 ]; then
+      case "$agent" in
+        claude) yolo_flag="--dangerously-skip-permissions" ;;
+        codex)  yolo_flag="--dangerously-bypass-approvals-and-sandbox" ;;
+      esac
+    fi
+
     tmux new-session -d -s "task-$id" -c "$wt" || die "tmux session failed"
     if [ "$interactive" = 1 ]; then
-      tmux send-keys -t "task-$id" "$token_env; cd $wt; $agent" Enter
-      log "interactive session ready: agent-run attach $id"
+      tmux send-keys -t "task-$id" "$token_env; cd $wt; $agent $yolo_flag" Enter
+      log "interactive session ready →  agent-run attach $id"
     else
       # Env-var indirection keeps the prompt out of shell-quoting hell; log to
       # $WORK/<id>.log for post-hoc review (reap keeps the log).
@@ -77,16 +95,29 @@ BLOCKED and the reason as your final message."
     printf '%s\n' "$id"
     ;;
   list)
-    printf 'TMUX SESSIONS:\n'; tmux ls 2>/dev/null | grep '^task-' || printf '  (none)\n'
+    # Print the TASK ID (not the raw tmux session name) plus a copy-pasteable command.
+    # The old version printed 'task-<id>', which people then passed to `attach` — and
+    # attach re-prefixed it into 'task-task-<id>' and failed. Show exactly what to type.
+    printf 'LIVE TASKS:\n'
+    ids="$(tmux ls -F '#{session_name}' 2>/dev/null | sed -n 's/^task-//p')"
+    if [ -z "$ids" ]; then
+      printf '  (none)\n'
+    else
+      for i in $ids; do printf '  %s\n      attach:  agent-run attach %s\n' "$i" "$i"; done
+    fi
     printf 'WORKTREES:\n'
     for r in "$REPOS"/*/; do [ -d "$r/.git" ] && git -C "$r" worktree list | grep "$WORK" || true; done
     ;;
   attach)
-    [ -n "${1:-}" ] || die "attach <task-id>"
-    exec tmux attach -t "task-$1"
+    id="${1:-}"; [ -n "$id" ] || die "attach <task-id>   (see: agent-run list)"
+    id="${id#task-}"   # tolerate pasting the tmux session name by mistake
+    tmux has-session -t "task-$id" 2>/dev/null \
+      || die "no live session '$id' — run 'agent-run list' to see what's running"
+    exec tmux attach -t "task-$id"
     ;;
   reap)
     id="${1:-}"; [ -n "$id" ] || die "reap <task-id> [--force]"
+    id="${id#task-}"   # same tolerance as attach
     force=""; [ "${2:-}" = "--force" ] && force="--force"
     tmux kill-session -t "task-$id" 2>/dev/null && log "session killed" || log "no session"
     repo="${id%%-[0-9]*}"
