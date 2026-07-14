@@ -6,6 +6,10 @@ metadata:
   name: authentik
 spec:
   interval: 30m
+  # PLAN-042: the server pods' web-lowering initContainers (node image pull +
+  # npm install + full-dist transform, rolling one pod at a time) need more
+  # than the 5m default helm wait.
+  timeout: 15m
   chart:
     spec:
       chart: authentik
@@ -94,7 +98,10 @@ spec:
           imagePullPolicy: IfNotPresent
           command: [/bin/sh, -c]
           args:
-            - cp -a /web/dist/. /lowered/
+            # cp -r, NOT -a: the container runs as the image's non-root user and
+            # -a's final utimensat on the emptyDir mount root ('/lowered/.')
+            # gets EPERM -> nonzero exit -> CrashLoop. Times are irrelevant here.
+            - cp -r /web/dist/. /lowered/
           volumeMounts:
             - name: web-dist-lowered
               mountPath: /lowered
