@@ -1,24 +1,35 @@
 # dev-env saga (.agents/sagas/dev-env/) — forward-auth SSO for the in-cluster dev
 # environment (code-server at dev-env.haynesops.com), config-as-code.
 #
-# Creates the Proxy Provider (forward_single) + Application and assigns the provider to
-# the INTERNAL outpost — the same one headlamp rides.
+# Creates the Proxy Provider (forward_single) + Application and a DEDICATED proxy
+# outpost (dev-env-outpost), matching the estate's one-outpost-per-app layout
+# (internal → headlamp, external → paperless). The Kubernetes service connection
+# makes Authentik generate the outpost's Deployment/Service/Middleware in the
+# `network` namespace: middleware `ak-outpost-dev-env-outpost`, referenced by the
+# dev-env IngressRoute (kubernetes/main/apps/dev/dev-env/app/ingressroute.yaml).
 #
-# ⚠ NOT the embedded outpost (tried first, 2026-07-13, and it FAILED): the embedded
-# outpost's authentik_host points at https://authentik.haynesops.com, which DOES NOT
-# EXIST — Authentik is only served at authentik.haynesnetwork.com — so the login
-# redirect dead-ended in "Safari can't find the server". proxy-provider-internal-outpost
-# is the proven path for *.haynesops.com apps.
+# ⚠ History — two prior attempts failed, differently than first diagnosed:
+#   1. Embedded outpost (2026-07-13): its authentik_host points at
+#      https://authentik.haynesops.com, which DOES NOT EXIST (Authentik is only
+#      served at authentik.haynesnetwork.com) → login redirect dead-ended. The
+#      entry at the bottom clears that leftover provider assignment.
+#   2. Piggyback on the internal outpost (2026-07-13): the entry identified the
+#      outpost by its k8s SLUG (proxy-provider-internal-outpost) instead of its
+#      real name ("Proxy Provider Internal Outpost"), so Authentik treated it as a
+#      CREATE, which failed serializer validation (type/config required) and left
+#      the whole blueprint status=error — the reassignment NEVER applied, and
+#      dev-env's forward-auth kept hitting an outpost that only knew headlamp
+#      (hence the callback landing on headlamp's host).
 #
-# ⚠ This blueprint OWNS proxy-provider-internal-outpost's provider list, and the list is
-# a FULL REPLACEMENT — "Provider for Headlamp" MUST stay in it or headlamp loses its
-# SSO on the next blueprint apply. Add any future internal-outpost provider HERE, not in
-# the UI (blueprints re-apply on an interval and revert UI edits).
+# A dedicated outpost also keeps this blueprint from owning the provider list of
+# the outpost headlamp rides — an outpost's `providers` list in a blueprint is a
+# FULL REPLACEMENT, so sharing one from here risks silently dropping headlamp's
+# SSO on any future edit.
 version: 1
 metadata:
   name: dev-env-proxy
   labels:
-    blueprints.goauthentik.io/description: 'dev-env forward-auth: proxy provider + application + embedded-outpost assignment for the in-cluster agent dev environment (saga: .agents/sagas/dev-env/).'
+    blueprints.goauthentik.io/description: 'dev-env forward-auth: proxy provider + application + dedicated outpost for the in-cluster agent dev environment (saga: .agents/sagas/dev-env/).'
 context: {}
 entries:
 - model: authentik_providers_proxy.proxyprovider
@@ -40,12 +51,35 @@ entries:
     meta_launch_url: https://dev-env.haynesops.com
     meta_description: In-cluster agent dev environment (code-server)
     open_in_new_tab: true
+# Dedicated outpost. `type` + `config` are REQUIRED on create (omitting them is
+# exactly how attempt 2 above broke). config mirrors the proven internal outpost
+# (authentik_host trailing slash included), swapping only the name-derived bits.
 - model: authentik_outposts.outpost
   state: present
   identifiers:
-    name: proxy-provider-internal-outpost
+    name: dev-env-outpost
   attrs:
+    type: proxy
+    service_connection: !Find [authentik_outposts.kubernetesserviceconnection, [name, Local Kubernetes Cluster]]
     providers:
-    # FULL REPLACEMENT — keep headlamp, or its SSO breaks on the next apply.
-    - !Find [authentik_providers_proxy.proxyprovider, [name, Provider for Headlamp]]
     - !Find [authentik_providers_proxy.proxyprovider, [name, dev-env]]
+    config:
+      authentik_host: https://authentik.haynesnetwork.com/
+      log_level: info
+      kubernetes_replicas: 1
+      kubernetes_namespace: network
+      kubernetes_service_type: ClusterIP
+      # Ingress objects stay disabled like the other outposts — routing is our
+      # IngressRoute; the outpost only provides the forwardAuth middleware.
+      kubernetes_disabled_components:
+      - ingress
+      kubernetes_ingress_class_name: traefik-internal
+      kubernetes_ingress_secret_name: certificate-haynesops
+# Evict dev-env from the embedded outpost (leftover from attempt 1). FULL
+# REPLACEMENT is what we want here: the embedded outpost natively serves nothing.
+- model: authentik_outposts.outpost
+  state: present
+  identifiers:
+    managed: goauthentik.io/outposts/embedded
+  attrs:
+    providers: []

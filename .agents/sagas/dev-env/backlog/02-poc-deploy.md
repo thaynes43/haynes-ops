@@ -7,10 +7,18 @@ tmux respawns on boot. Remaining human check: Tom's first browser login through
 Authentik from the LAN.)
 **Depends on:** 01 (image published) — done
 
-**Implementation notes (2026-07-13):** SSO is Authentik forward-auth via the EMBEDDED
-outpost (unused until now — headlamp/paperless ride the named internal/external
-outposts), GitOps'd as blueprint `network/authentik/app/blueprints/50-dev-env.yaml`
-which now OWNS the embedded outpost's provider list. The haynesops wildcard cert
+**Implementation notes (2026-07-13, revised after two failed SSO attempts):** SSO is
+Authentik forward-auth via a DEDICATED outpost (`dev-env-outpost` → middleware
+`ak-outpost-dev-env-outpost`), one outpost per app like headlamp/paperless, GitOps'd
+as blueprint `network/authentik/app/blueprints/50-dev-env.yaml`. Attempt 1 (embedded
+outpost) died on its dead authentik_host (authentik.haynesops.com doesn't exist);
+attempt 2 (piggyback on headlamp's internal outpost) NEVER APPLIED — the blueprint
+identified the outpost by its k8s slug instead of its real name ("Proxy Provider
+Internal Outpost"), turning the entry into an invalid CREATE (missing type/config),
+which put the whole blueprint in status=error and rolled back every entry, while the
+middleware kept routing dev-env logins through an outpost that only knew headlamp.
+Lesson: after editing a blueprint, verify `BlueprintInstance.status` (worker `ak
+shell` or admin UI) — an errored blueprint rolls back silently. The haynesops wildcard cert
 reaches namespace `dev` via the reflector allowlist on certificate-haynesops-prod.
 code-server runs `--auth none` — safe ONLY behind the middleware + the CNP ingress
 rule (traefik-internal pods only); never add another ingress path without auth.

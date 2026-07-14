@@ -1,10 +1,11 @@
 ---
-# code-server, LAN-only (saga Decision #6): traefik-internal + the Authentik
-# embedded-outpost forward-auth middleware (provider/application/outpost assignment
-# is GitOps'd in kubernetes/main/apps/network/authentik/app/blueprints/50-dev-env.yaml).
-# Fail-closed: until the blueprint applies and the provider is on the outpost, the
-# middleware denies everything. NOT published through the Cloudflare Tunnel — remote
-# interaction with running agents is /remote-control (outbound via claude.ai).
+# code-server, LAN-only (saga Decision #6): traefik-internal + Authentik forward-auth
+# via dev-env's DEDICATED outpost (provider/application/outpost are GitOps'd in
+# kubernetes/main/apps/network/authentik/app/blueprints/50-dev-env.yaml, which
+# generates the middleware referenced below). Fail-closed: until the blueprint
+# applies and the outpost pod exists, the route errors. NOT published through the
+# Cloudflare Tunnel — remote interaction with running agents is /remote-control
+# (outbound via claude.ai).
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -25,10 +26,12 @@ spec:
     - kind: Rule
       match: Host(`dev-env.haynesops.com`) && PathPrefix(`/`)
       middlewares:
-        # The INTERNAL outpost (same one headlamp uses). NOT the embedded outpost —
-        # its authentik_host points at the nonexistent authentik.haynesops.com and the
-        # login redirect dead-ends (hit live 2026-07-13).
-        - name: ak-outpost-proxy-provider-internal-outpost
+        # dev-env's own outpost (one outpost per app, like headlamp/paperless).
+        # NOT the embedded outpost (dead authentik_host) and NOT headlamp's internal
+        # outpost (an outpost only issues callbacks for providers assigned to it —
+        # routing dev-env through headlamp's outpost sent the login callback to
+        # headlamp.haynesops.com, hit live 2026-07-13).
+        - name: ak-outpost-dev-env-outpost
           namespace: network
       services:
         - kind: Service
