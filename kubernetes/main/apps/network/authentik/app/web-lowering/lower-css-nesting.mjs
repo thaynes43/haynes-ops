@@ -88,7 +88,12 @@ function walkAst(node, visit) {
   }
 }
 
-const escTemplate = (s) => s.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+// NOTE: this file is delivered through a Flux Kustomization with postBuild
+// substitution (envsubst), so it must contain no variable-like dollar tokens —
+// no template-literal interpolation and no literal dollar-brace sequences.
+const DOLLAR_BRACE = "$" + "{";
+const escTemplate = (s) =>
+  s.replace(/\\/g, "\\\\").replace(/`/g, "\\`").split(DOLLAR_BRACE).join("\\" + DOLLAR_BRACE);
 
 const stats = { cssFiles: 0, cssChanged: 0, jsFiles: 0, jsChanged: 0, literalsLowered: 0, skippedLiterals: [], parseErrors: [], compressedDeleted: 0 };
 
@@ -110,14 +115,14 @@ function processJs(code, file) {
   walkAst(ast, (node) => {
     if (node.type === "Literal" && typeof node.value === "string" && looksLikeCss(node.value)) {
       const lowered = tryLower(node.value, file);
-      if (lowered === null) stats.skippedLiterals.push(`${file}@${node.start}`);
+      if (lowered === null) stats.skippedLiterals.push(file + "@" + node.start);
       else if (lowered !== node.value) edits.push({ start: node.start, end: node.end, text: JSON.stringify(lowered) });
     } else if (node.type === "TemplateLiteral") {
       if (node.expressions.length === 0 && node.quasis.length === 1) {
         const cooked = node.quasis[0].value.cooked;
         if (typeof cooked === "string" && looksLikeCss(cooked)) {
           const lowered = tryLower(cooked, file);
-          if (lowered === null) stats.skippedLiterals.push(`${file}@${node.start}`);
+          if (lowered === null) stats.skippedLiterals.push(file + "@" + node.start);
           else if (lowered !== cooked) edits.push({ start: node.start, end: node.end, text: "`" + escTemplate(lowered) + "`" });
         }
       } else {
@@ -125,7 +130,7 @@ function processJs(code, file) {
         for (const q of node.quasis) {
           const cooked = q.value.cooked;
           if (typeof cooked === "string" && looksLikeCss(cooked)) {
-            stats.skippedLiterals.push(`${file}@${node.start} (interpolated)`);
+            stats.skippedLiterals.push(file + "@" + node.start + " (interpolated)");
             break;
           }
         }
@@ -167,7 +172,7 @@ for (const p of files(ROOT)) {
     try {
       lowered = lowerCss(src, rel);
     } catch (e) {
-      stats.parseErrors.push(`${rel}: ${e.message}`);
+      stats.parseErrors.push(rel + ": " + e.message);
       continue;
     }
     if (lowered !== src) {
@@ -195,7 +200,7 @@ for (const p of files(ROOT)) {
   if (ext === ".css") {
     const src = readFileSync(p, "utf-8");
     const n = markerCount(src);
-    if (n > 0) residual.push(`${rel}: ${n} markers`);
+    if (n > 0) residual.push(rel + ": " + n + " markers");
   } else if (ext === ".js" || ext === ".mjs") {
     const src = readFileSync(p, "utf-8");
     let ast = null;
@@ -208,14 +213,14 @@ for (const p of files(ROOT)) {
       }
     }
     if (!ast) {
-      residual.push(`${rel}: UNPARSEABLE`);
+      residual.push(rel + ": UNPARSEABLE");
       continue;
     }
     walkAst(ast, (node) => {
       const check = (s, where) => {
         if (typeof s === "string" && looksLikeCss(s)) {
           const n = markerCount(s);
-          residual.push(`${rel}@${where}: ${n} markers in embedded CSS`);
+          residual.push(rel + "@" + where + ": " + n + " markers in embedded CSS");
         }
       };
       if (node.type === "Literal" && typeof node.value === "string") check(node.value, node.start);
@@ -227,7 +232,7 @@ for (const p of files(ROOT)) {
 console.log(JSON.stringify({ ...stats, skippedLiterals: stats.skippedLiterals.slice(0, 20), parseErrors: stats.parseErrors.slice(0, 20), residualCount: residual.length, residual: residual.slice(0, 40) }, null, 2));
 
 if (residual.length > 0) {
-  console.error(`FAIL: ${residual.length} residual nesting site(s) — partial coverage does not fix WebKit #290102.`);
+  console.error("FAIL: " + residual.length + " residual nesting site(s) — partial coverage does not fix WebKit #290102.");
   process.exit(1);
 }
 console.log("OK: zero nesting markers in served CSS (files + JS-embedded).");
