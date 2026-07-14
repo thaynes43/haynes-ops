@@ -25,7 +25,10 @@ spec:
     - kind: Rule
       match: Host(`dev-env.haynesops.com`) && PathPrefix(`/`)
       middlewares:
-        - name: ak-outpost-authentik-embedded-outpost
+        # The INTERNAL outpost (same one headlamp uses). NOT the embedded outpost —
+        # its authentik_host points at the nonexistent authentik.haynesops.com and the
+        # login redirect dead-ends (hit live 2026-07-13).
+        - name: ak-outpost-proxy-provider-internal-outpost
           namespace: network
       services:
         - kind: Service

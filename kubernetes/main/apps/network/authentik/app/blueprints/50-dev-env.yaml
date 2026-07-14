@@ -1,12 +1,19 @@
 # dev-env saga (.agents/sagas/dev-env/) — forward-auth SSO for the in-cluster dev
 # environment (code-server at dev-env.haynesops.com), config-as-code.
 #
-# Creates the Proxy Provider (forward_single) + Application and assigns the provider
-# to the EMBEDDED outpost. The embedded outpost carries no providers today (headlamp
-# rides proxy-provider-internal-outpost, paperless the external one — see
-# ../../exports/applications.json), so the `providers` list below clobbers nothing.
-# ⚠ This blueprint now OWNS the embedded outpost's provider list: assign any future
-# provider to it HERE (blueprints re-apply on an interval and will revert UI edits).
+# Creates the Proxy Provider (forward_single) + Application and assigns the provider to
+# the INTERNAL outpost — the same one headlamp rides.
+#
+# ⚠ NOT the embedded outpost (tried first, 2026-07-13, and it FAILED): the embedded
+# outpost's authentik_host points at https://authentik.haynesops.com, which DOES NOT
+# EXIST — Authentik is only served at authentik.haynesnetwork.com — so the login
+# redirect dead-ended in "Safari can't find the server". proxy-provider-internal-outpost
+# is the proven path for *.haynesops.com apps.
+#
+# ⚠ This blueprint OWNS proxy-provider-internal-outpost's provider list, and the list is
+# a FULL REPLACEMENT — "Provider for Headlamp" MUST stay in it or headlamp loses its
+# SSO on the next blueprint apply. Add any future internal-outpost provider HERE, not in
+# the UI (blueprints re-apply on an interval and revert UI edits).
 version: 1
 metadata:
   name: dev-env-proxy
@@ -36,7 +43,9 @@ entries:
 - model: authentik_outposts.outpost
   state: present
   identifiers:
-    managed: goauthentik.io/outposts/embedded
+    name: proxy-provider-internal-outpost
   attrs:
     providers:
+    # FULL REPLACEMENT — keep headlamp, or its SSO breaks on the next apply.
+    - !Find [authentik_providers_proxy.proxyprovider, [name, Provider for Headlamp]]
     - !Find [authentik_providers_proxy.proxyprovider, [name, dev-env]]
