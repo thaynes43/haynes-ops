@@ -8,8 +8,10 @@ spec:
   interval: 30m
   # PLAN-042: the server pods' web-lowering initContainers (node image pull +
   # npm install + full-dist transform, rolling one pod at a time) need more
-  # than the 5m default helm wait.
-  timeout: 15m
+  # than the 5m default helm wait. 20m adds margin for cold image pulls on all
+  # three nodes. (The 15m->20m bump also mints a fresh HelmRelease generation
+  # after the exhausted-remediation rollbacks of 2026-07-13 evening.)
+  timeout: 20m
   chart:
     spec:
       chart: authentik
