@@ -245,11 +245,25 @@ spec:
               UPGRADE_AGENT_MODEL: sonnet
               TRIAGE_MERGE_LOOKBACK_HOURS: "3"
               # ANTHROPIC_API_KEY needed only if triage decides to summon remediate.
+              # Now the FALLBACK — triage runs run-shepherd.sh IN THIS CONTAINER (it
+              # does not spawn a Job), so the plan token must be mounted here too or
+              # the most EXPENSIVE path (remediate: opus, $5/run) would keep billing
+              # the API while the scheduled vets ran free.
               ANTHROPIC_API_KEY:
                 valueFrom:
                   secretKeyRef:
                     name: upgrade-shepherd-llm-secret
                     key: ANTHROPIC_API_KEY
+            envFrom:
+              # Plan-first for remediate too. Safe for the time-critical case
+              # (Decision #2 worried a rate-limited plan would stall a regression
+              # fix): run-shepherd.sh auto-falls-back to the metered key on a
+              # rate-limit/auth failure, so the fix still lands — it just costs money
+              # when the plan is exhausted. remediate keeps opus on BOTH paths;
+              # diagnosis quality is worth more than the quota.
+              - secretRef:
+                  name: upgrade-shepherd-plan-secret
+                  optional: true
             resources:
               requests:
                 cpu: 100m
