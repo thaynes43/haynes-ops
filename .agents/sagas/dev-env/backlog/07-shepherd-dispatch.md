@@ -1,51 +1,88 @@
 # 07 — Shepherd → dev-env dispatch integration
 
-**Status:** backlog — blocked on Decision log #2 (dispatch policy) and #3 (mechanism)
-**Depends on:** 06
+**Status:** DESIGN REVISED 2026-07-13 (evening) — needs Tom's call before wiring.
+**Depends on:** 06 (done)
 
-## Goal
+## The goal, restated
 
-The Shepherd stops being the workhorse and becomes the **coordinator**: its
-deterministic layers (pre-filter, spend guard, triage, ramp consistency) keep running
-as-is, but when a run needs an LLM it dispatches the task to the dev-env pod — moving
-the token burn from the metered API key to the subscription plan.
+Tom's motive (verbatim, session 2026-07-13): *"the Shepard becomes a
+coordinator/dispatcher and the dev env pod is the workhorse, this will save direct
+API usage calls and move them to my monthly plan."*
 
-## Mechanism options (Decision log #3)
+Two distinct wishes, and they are **separable**:
 
-1. **In-pod dispatch API** (recommended): a tiny HTTP service in the dev-env pod
-   (`POST /tasks` → wraps `agent-run`, `GET /tasks/<id>` → status/result/summary).
-   Clean audit boundary, rate-limitable, the Shepherd's CNP gains ONE in-cluster
-   egress rule. The Shepherd keeps zero new RBAC.
-2. `kubectl exec` from the Shepherd into the dev pod — no new service, but grants the
-   Shepherd `pods/exec` (a huge RBAC jump for a contained agent: exec = arbitrary
-   code in a pod holding subscription + git credentials). Dispreferred.
-3. Shepherd creates k8s Jobs from the dev-env image — loses the warm pod/PVC state,
-   needs Job-create RBAC + token secrets mounted into transient pods. Dispreferred.
+1. **Cost** — the Shepherd's LLM turns should burn the Max subscription, not the
+   metered `ANTHROPIC_API_KEY` ($50/mo cap).
+2. **Architecture** — the Shepherd coordinates; the dev-env executes.
 
-## Dispatch policy (Decision log #2)
+## The problem the identity split exposed
 
-- Which task classes go to the plan vs stay on the API key (e.g. scheduled vets →
-  plan; time-critical remediate → API key so a rate-limit window never blocks a
-  regression fix).
-- Rate-limit awareness: before dispatch, check plan-window headroom (or catch the
-  over-limit error and fall back to API). The `-p` JSON output should record which
-  auth path served the run.
-- Spend accounting: subscription runs cost $0 API — the spend-guard ConfigMap gains a
-  `dispatched_runs` counter instead so the monthly cap logic stays meaningful for the
-  API-key fallback path.
+Decision #3 (in-pod HTTP dispatch API) was made BEFORE the dev-env pod acquired
+its real powers. As of tonight the dev-env pod holds:
 
-## Containment note
+- `haynes-dev-bot` — **contents+workflows write on ALL 23 repos**
+- the **operator-tier** kubectl SA (pod delete, rollout restart, Flux patch, Jobs)
+- both subscription credentials
+- yolo-mode agents (`--dangerously-skip-permissions`) by design
 
-This wires the CONTAINED agent (shepherd) to the UNCONTAINED one (dev-env). The
-dispatch payload (prompt) must remain fully determined by the Shepherd's committed
-config — the dev-env side should enforce `agent-run` guardrails (worktree, branch-only
-pushes) regardless of what the dispatcher sends, so a compromised shepherd prompt
-can't escalate via dispatch.
+The Shepherd, by contrast, is deliberately the most *contained* thing in the
+cluster: read-only SA, tool allowlist that denies `gh pr merge` outside auto mode,
+default-deny egress to GitHub+Anthropic only, and an ops-bot token scoped to
+`haynes-ops` alone and non-admin (so GitHub itself gates merges on green checks).
 
-## Acceptance
+**Dispatching Shepherd work into the dev-env pod means the LLM turn executes with the
+dev-env pod's powers, not the Shepherd's.** `claude -p` runs tools locally — you
+cannot ship "just the inference" to another pod and keep the caller's containment.
 
-- A scheduled shepherd run with in-scope work completes end-to-end with zero
-  ANTHROPIC_API_KEY spend (verified in the JSON output + spend CM).
-- Kill switch: suspending the dev-env or the dispatch API cleanly falls back to the
-  API-key path (or refuses, per policy) — never silently drops the run.
-- The vet-marker / orphan-report / silence flows behave identically post-migration.
+And the Shepherd's input is *hostile by construction*: it reads *release notes off
+the internet* — a textbook prompt-injection surface. Today an injected Shepherd can,
+at worst, open a PR in one repo behind server-side check gating. Dispatched into the
+dev-env pod, an injected Shepherd would inherit push access to 23 repos (including
+`.github/workflows` — i.e. CI execution) plus cluster mutation verbs. **That is a
+material regression of the exact boundary the Tier-4 work spent months building.**
+
+## Recommendation: get the cost win WITHOUT the regression
+
+**Option A (recommended) — swap the Shepherd's credential, keep its containment.**
+Run the LLM turn where it runs today (the contained Shepherd pod), but authenticate
+with the Max subscription instead of the API key:
+
+- `claude setup-token` (confirmed present in claude-code 2.1.207) mints a long-lived
+  token for headless use → 1Password item `claude-code` → ExternalSecret →
+  `CLAUDE_CODE_OAUTH_TOKEN` in the Shepherd pod.
+- `run-shepherd.sh` prefers the OAuth token; falls back to `ANTHROPIC_API_KEY` when
+  it is absent/rejected/rate-limited (the plan-first, API-fallback policy of
+  Decision #2 — unchanged, just enforced in the Shepherd rather than a dispatcher).
+- Spend guard keeps governing the *fallback* path; plan-served runs record $0.
+- **Cost goal: achieved. Containment: unchanged. Blast radius: unchanged.**
+- Cost: Tom runs one `setup-token` ceremony (~1 min) and adds a 1P item.
+
+**Option B — dispatch, but into a CONTAINED flavor (this is plan 08's real job).**
+If Tom wants the coordinator/executor architecture for its own sake, the executor
+must NOT be the yolo dev pod. Stand up a second dev-env instance (`dev-env-ops`)
+with: read-only SA, the ops-bot token only (no dev-bot), the Shepherd's tool
+allowlist enforced pod-side from git, and the Shepherd's egress policy. The
+dispatch API then hands work to a pod no more powerful than the Shepherd itself.
+More moving parts; same containment; achieves both wishes.
+
+**Option C — dispatch into the dev-env pod as originally decided.** Cheapest to
+build, and the one I am NOT going to ship unasked: it trades a months-old security
+boundary for an architectural preference whose cost benefit Option A already
+delivers.
+
+## Ask
+
+Tom picks A, B, or C. Default if he says nothing: **A** (safe, achieves the stated
+money goal, one-minute ceremony). Nothing is wired until he calls it — the
+credential-swap PR is authored but held, because an ExternalSecret pointing at a
+1Password item that does not exist yet wedges the Flux kustomization NotReady (a
+trap already hit once tonight).
+
+## If A: acceptance
+
+- A scheduled Shepherd run completes with **zero** `ANTHROPIC_API_KEY` spend
+  (the run's JSON records which auth path served it; the spend ConfigMap stays flat).
+- Rate-limit exhaustion falls back to the API key rather than stalling a run
+  (a stalled remediate run must never delay a regression fix — Decision #2).
+- Kill switch and every existing guardrail (pre-filter, ramp check, vet markers,
+  spend guard, health gate) behave identically.
