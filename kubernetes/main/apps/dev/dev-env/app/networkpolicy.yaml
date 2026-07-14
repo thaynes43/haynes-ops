@@ -74,6 +74,10 @@ spec:
               # code-server extension marketplace (Open VSX)
               - matchName: "open-vsx.org"
               - matchName: "openvsxorg.blob.core.windows.net"
+              # playwright browser downloads — a repo pinning its own @playwright/test
+              # version fetches a matching chromium revision (haynesnetwork e2e).
+              - matchName: "cdn.playwright.dev"
+              - matchPattern: "*.playwright.dev"
               # our own apps' internal ingress names (playwright UI/UX testing —
               # traffic goes to the traefik-internal pods, rule 2b)
               - matchName: "haynesops.com"
@@ -149,6 +153,8 @@ spec:
         - matchName: "open-vsx.org"
         - matchName: "openvsxorg.blob.core.windows.net"
         - matchName: "api.pushover.net"
+        - matchName: "cdn.playwright.dev"
+        - matchPattern: "*.playwright.dev"
       toPorts:
         - ports:
             - port: "443"

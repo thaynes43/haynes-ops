@@ -45,6 +45,16 @@ git config --global credential."https://github.com".helper \
   '!f() { echo username=x-access-token; echo "password=$(cat /creds/gh_token)"; }; f'
 git config --global --replace-all safe.directory "$HOME/repos/*"
 
+# ── playwright browsers: seed the PVC cache from the image's staging dir ────────
+# PLAYWRIGHT_BROWSERS_PATH is on the PVC so repos can add their OWN pinned chromium
+# revision (readOnlyRootFilesystem forbids writing an image path). Seed once; a repo's
+# `playwright install` then adds revisions next to it.
+mkdir -p "$HOME/.cache/ms-playwright"
+if [ -d /opt/dev-env/ms-playwright ] && [ -z "$(ls -A "$HOME/.cache/ms-playwright" 2>/dev/null)" ]; then
+  cp -a /opt/dev-env/ms-playwright/. "$HOME/.cache/ms-playwright/" 2>/dev/null \
+    && log "seeded playwright browsers from image" || log "WARN playwright seed failed"
+fi
+
 # ── shell defaults + agent-run on PATH ──────────────────────────────────────────
 mkdir -p "$HOME/.local/bin"
 ln -sf /opt/dev-env/scripts/agent-run.sh "$HOME/.local/bin/agent-run"
