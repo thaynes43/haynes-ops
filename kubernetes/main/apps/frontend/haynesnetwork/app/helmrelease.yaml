@@ -17,7 +17,11 @@ spec:
   upgrade:
     cleanupOnFail: true
     remediation:
-      retries: 3
+      # 10 retries (was 3): kyverno's signature verify can transiently deny a FRESH
+      # release while GHCR propagates the .sig artifact (hit on v0.50.1 + v0.52.0,
+      # 2026-07-14). Spread attempts self-heal the race without operator action;
+      # a REAL unsigned image still stalls loudly at the end.
+      retries: 10
   uninstall:
     keepHistory: false
   values:
