@@ -341,15 +341,14 @@ case "$MODE" in
     ;;
 esac
 
-# MODEL on the plan path (2026-07-13): Max meters Opus in its OWN weekly bucket,
-# separate from the all-other-models bucket that Tom's interactive work draws from —
-# so running the shepherd on opus protects his interactive weekly headroom. (The
-# rolling 5-hour session window is shared across every model, but the scheduled runs
-# are 4-hourly and mostly land while he's away.) On the API fallback we stay on the
-# cheaper UPGRADE_AGENT_MODEL (sonnet) — opus there costs real money. remediate
-# already picks its own (opus) model and is left alone.
-if [ "$AUTH_PATH" = "plan" ] && [ "$MODE" != "remediate" ]; then
-  MODEL="${UPGRADE_AGENT_PLAN_MODEL:-opus}"
+# MODEL on the plan path (CORRECTED 2026-07-13 by Tom — verified against his account):
+# there is NO separate Opus quota bucket. All models draw the SAME pool, and a heavier
+# model simply eats MORE of the quota Tom's interactive work needs. So the plan path
+# keeps the CHEAP model (UPGRADE_AGENT_MODEL, sonnet) — the goal is the smallest
+# possible bite out of his headroom, not the biggest model we can get away with.
+# UPGRADE_AGENT_PLAN_MODEL can still override per-run if a vet ever needs more.
+if [ "$AUTH_PATH" = "plan" ] && [ "$MODE" != "remediate" ] && [ -n "${UPGRADE_AGENT_PLAN_MODEL:-}" ]; then
+  MODEL="$UPGRADE_AGENT_PLAN_MODEL"
 fi
 
 # Spend guard governs the METERED path only — a plan-served run costs $0 in API spend,
