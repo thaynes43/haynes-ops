@@ -193,7 +193,26 @@ for (const p of files(ROOT)) {
 }
 
 // ---- final scan: zero nesting markers must remain in served CSS -------------
+// The gate distinguishes REAL residual (fails the pod) from SUSPECTS (logged):
+//   residual = a string that STRICTLY parses as a CSS stylesheet and still
+//     contains nesting markers — the exact shape (Lit/esbuild-embedded valid
+//     component styles) whose StyleRuleNestedDeclarations crash old WebKit.
+//   suspect = marker-bearing CSS-ish text that lightningcss REJECTS as a
+//     stylesheet. Verified false positives in 2026.5.3: Lezer parser tables in
+//     the CodeMirror chunk (packed grammar data, not CSS) and Mermaid theme
+//     template fragments (runtime-flattened by stylis before injection, so no
+//     native nesting ever reaches the browser's CSS parser). Suspects are
+//     printed so image bumps can be audited from the pod log.
 const residual = [];
+const suspects = [];
+const parsesAsCss = (s) => {
+  try {
+    transform({ filename: "scan.css", code: Buffer.from(s), errorRecovery: false });
+    return true;
+  } catch {
+    return false;
+  }
+};
 for (const p of files(ROOT)) {
   const ext = extname(p);
   const rel = relative(ROOT, p);
@@ -220,7 +239,8 @@ for (const p of files(ROOT)) {
       const check = (s, where) => {
         if (typeof s === "string" && looksLikeCss(s)) {
           const n = markerCount(s);
-          residual.push(rel + "@" + where + ": " + n + " markers in embedded CSS");
+          if (parsesAsCss(s)) residual.push(rel + "@" + where + ": " + n + " markers in embedded CSS");
+          else suspects.push(rel + "@" + where + ": " + n + " marker-ish (not parseable as CSS; runtime-processed or non-CSS data)");
         }
       };
       if (node.type === "Literal" && typeof node.value === "string") check(node.value, node.start);
@@ -229,7 +249,7 @@ for (const p of files(ROOT)) {
   }
 }
 
-console.log(JSON.stringify({ ...stats, skippedLiterals: stats.skippedLiterals.slice(0, 20), parseErrors: stats.parseErrors.slice(0, 20), residualCount: residual.length, residual: residual.slice(0, 40) }, null, 2));
+console.log(JSON.stringify({ ...stats, skippedLiterals: stats.skippedLiterals.slice(0, 20), parseErrors: stats.parseErrors.slice(0, 20), residualCount: residual.length, residual: residual.slice(0, 40), suspectCount: suspects.length, suspects: suspects.slice(0, 40) }, null, 2));
 
 if (residual.length > 0) {
   console.error("FAIL: " + residual.length + " residual nesting site(s) — partial coverage does not fix WebKit #290102.");
