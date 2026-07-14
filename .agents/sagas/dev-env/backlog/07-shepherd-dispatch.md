@@ -1,7 +1,26 @@
 # 07 — Shepherd → dev-env dispatch integration
 
-**Status:** DESIGN REVISED 2026-07-13 (evening) — needs Tom's call before wiring.
+**Status:** **Option A DONE and VERIFIED LIVE 2026-07-13** (PRs #2049/#2050). A dryrun
+summon logged `auth=plan`, `model=sonnet`, `spend: $0 this run (served by the Max plan)`,
+`rc=0`. The shepherd's LLM turns now bill Tom's subscription, not the API balance —
+with containment untouched. Option B (a CONTAINED executor flavor, `dev-env-ops`) is
+still open if Tom wants the coordinator/executor architecture for capability reasons;
+it is no longer needed for cost.
 **Depends on:** 06 (done)
+
+## Corrections banked during implementation (2026-07-13)
+
+- **There is NO separate Opus quota bucket** on Tom's plan (he verified). My earlier
+  "run the shepherd on opus so it draws a different weekly pool" reasoning was WRONG —
+  all models draw one pool, so a heavier model just eats more of the headroom his
+  interactive work needs. The plan path therefore runs **sonnet**.
+- **claude-code prefers `ANTHROPIC_API_KEY` when BOTH creds are set** — the plan path
+  must UNSET it, or the shepherd silently keeps billing the API while the logs claim
+  it is on the plan. (Stashed and restored for the fallback.)
+- **The shepherd's egress CNP had to allow `claude.com`** — a subscription-authenticated
+  claude-code talks to it, and with only `api.anthropic.com` allowed the plan path fails
+  and *silently falls back to the metered key* — the exact opposite of the goal. Same
+  trap the dev-env pod hit the same evening.
 
 ## The goal, restated
 
