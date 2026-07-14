@@ -20,6 +20,12 @@ agent-run run --repo haynesnetwork --agent claude --interactive
 That drops you into a live Claude session inside a **fresh git worktree** on its own branch.
 Talk to it like you would anywhere else. Swap `--agent codex` for the ChatGPT plan.
 
+**Permissions are skipped by default** — `claude --dangerously-skip-permissions` /
+`codex --dangerously-bypass-approvals-and-sandbox`. You don't need to type those; the pod
+*is* the sandbox (isolated worktree, scoped ServiceAccount, default-deny egress), so
+approving every edit inside it would be theater. Add **`--safe`** if you want the normal
+permission prompts back for a particular task.
+
 To fire off a task and walk away instead:
 
 ```bash
@@ -46,10 +52,14 @@ That's it. Everything else is optional.
 ## 3. Managing tasks
 
 ```bash
-agent-run list              # what's running right now
+agent-run list              # what's running + the exact attach command to copy
 agent-run attach <task-id>  # jump back into a live session (scrollback intact)
 agent-run reap <task-id>    # kill it + delete the worktree (the log is kept)
 ```
+
+`list` prints the **task id** (e.g. `haynesnetwork-0714-010301`) and the ready-to-paste
+`agent-run attach …` line under it. If you paste the tmux session name (`task-…`) by
+mistake, `attach` strips the prefix for you.
 
 `reap` refuses to delete a worktree with uncommitted work — add `--force` if you mean it.
 
