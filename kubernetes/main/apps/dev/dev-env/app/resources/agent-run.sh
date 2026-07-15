@@ -8,8 +8,15 @@
 #   agent-run run  --repo <name> --agent claude --interactive   # tmux session, no task
 #                                                 [--safe]      # keep permission prompts
 #   agent-run list                                              # live tasks + attach cmds
-#   agent-run attach <task-id>                                  # tmux attach
-#   agent-run reap   <task-id> [--force]                        # kill + cleanup
+#   agent-run attach [<task-id>]                # jump into a session (no id → picker)
+#   agent-run detach [<task-id>]                # kick attached clients off (no id → picker)
+#   agent-run reap   [<task-id>] [--force]      # kill + cleanup (no id → picker)
+#
+# attach/detach/reap without an id open an arrow-key picker (↑/↓ + Enter, q
+# cancels) showing each task's start time; reap's picker also lists STRANDED
+# worktrees (pod restart killed tmux, PVC kept the worktree) so they don't
+# balloon the PVC. attach is nested-tmux aware: from inside tmux it switches
+# clients instead of tripping the "sessions should be nested with care" guard.
 #
 # Agents run YOLO by default (claude --dangerously-skip-permissions / codex
 # --dangerously-bypass-approvals-and-sandbox): the pod IS the sandbox.
@@ -18,6 +25,77 @@ set -uo pipefail
 REPOS="$HOME/repos" WORK="$HOME/work" OWNER="thaynes43"
 log() { printf 'agent-run: %s\n' "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }
+
+usage() {
+  cat >&2 <<'EOF'
+agent-run — worktree-per-task agent dispatcher
+  agent-run run  --repo <name> --agent claude|codex [--base <ref>] -p "<task>"
+  agent-run run  --repo <name> --agent claude --interactive [--safe]
+  agent-run list
+  agent-run attach [<task-id>]                # no id → arrow-key picker
+  agent-run detach [<task-id>]                # no id → picker (attached sessions only)
+  agent-run reap   [<task-id>] [--force]      # no id → picker (incl. stranded worktrees)
+EOF
+}
+
+# "haynesnetwork-0714-230456" → "07-14 23:04:56"; falls back to the worktree
+# dir mtime, then "?". (The id embeds creation time, so no tmux query needed —
+# works for stranded worktrees whose session is long gone.)
+when_of() {
+  local id="$1"
+  if [[ "$id" =~ ([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})$ ]]; then
+    printf '%s-%s %s:%s:%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" \
+      "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}"
+  elif [ -e "$WORK/$id" ]; then
+    date -d "@$(stat -c %Y "$WORK/$id")" '+%m-%d %H:%M:%S'
+  else
+    printf '?'
+  fi
+}
+
+# pick "title" row… — arrow-key menu drawn on /dev/tty (stdout stays clean so
+# callers can command-substitute the result). Echoes the selected row's first
+# field (the task id). Returns 1 on cancel or when there's nothing to show.
+pick() {
+  local title="$1"; shift
+  local rows=("$@") n=$# cur=0 j key seq
+  [ "$n" -gt 0 ] || { log "nothing to select"; return 1; }
+  { exec 3</dev/tty 4>/dev/tty; } 2>/dev/null \
+    || { log "no TTY for the picker — pass an explicit <task-id>"; return 1; }
+  draw() {
+    for ((j = 0; j < n; j++)); do
+      if [ "$j" -eq "$cur" ]; then printf '\033[K \033[7m▸ %s\033[0m\n' "${rows[j]}"
+      else printf '\033[K   %s\n' "${rows[j]}"; fi
+    done >&4
+  }
+  printf '%s  (↑/↓ or j/k, Enter selects, q cancels)\n' "$title" >&4
+  printf '\033[?25l' >&4
+  while :; do
+    draw
+    IFS= read -rsn1 key <&3 || key=q
+    case "$key" in
+      $'\x1b')
+        IFS= read -rsn2 -t 0.05 seq <&3 || seq=""
+        case "$seq" in
+          '[A') ((cur > 0)) && ((cur--)) ;;
+          '[B') ((cur < n - 1)) && ((cur++)) ;;
+          '') key=q ;;   # bare ESC = cancel
+        esac ;;
+      k) ((cur > 0)) && ((cur--)) ;;
+      j) ((cur < n - 1)) && ((cur++)) ;;
+      ''|$'\r') break ;; # Enter = select ('' when the tty maps CR→NL, \r when raw)
+    esac
+    [ "$key" = q ] && { printf '\033[?25h\n' >&4; return 1; }
+    printf '\033[%dA' "$n" >&4
+  done
+  printf '\033[?25h' >&4
+  printf '%s\n' "${rows[cur]%% *}"
+}
+
+# Emit "id|attached-count" for every live task session.
+live_tasks() {
+  tmux ls -F '#{session_name}|#{session_attached}' 2>/dev/null | sed -n 's/^task-//p'
+}
 
 # Every task shell needs the fresh bot token (bashrc handles interactive shells;
 # tmux run-shell strings need it inline).
@@ -99,26 +177,81 @@ BLOCKED and the reason as your final message."
     # The old version printed 'task-<id>', which people then passed to `attach` — and
     # attach re-prefixed it into 'task-task-<id>' and failed. Show exactly what to type.
     printf 'LIVE TASKS:\n'
-    ids="$(tmux ls -F '#{session_name}' 2>/dev/null | sed -n 's/^task-//p')"
-    if [ -z "$ids" ]; then
-      printf '  (none)\n'
-    else
-      for i in $ids; do printf '  %s\n      attach:  agent-run attach %s\n' "$i" "$i"; done
-    fi
+    found=0
+    while IFS='|' read -r sid att; do
+      found=1
+      printf '  %s  (started %s%s)\n      attach:  agent-run attach %s\n' \
+        "$sid" "$(when_of "$sid")" "$([ "${att:-0}" -gt 0 ] && echo ', attached')" "$sid"
+    done < <(live_tasks)
+    [ "$found" = 1 ] || printf '  (none)\n'
     printf 'WORKTREES:\n'
     for r in "$REPOS"/*/; do [ -d "$r/.git" ] && git -C "$r" worktree list | grep "$WORK" || true; done
     ;;
   attach)
-    id="${1:-}"; [ -n "$id" ] || die "attach <task-id>   (see: agent-run list)"
+    id="${1:-}"
+    if [ -z "$id" ]; then
+      rows=()
+      while IFS='|' read -r sid att; do
+        rows+=("$sid  started $(when_of "$sid")  $([ "${att:-0}" -gt 0 ] && echo '[attached]' || echo '[detached]')")
+      done < <(live_tasks)
+      id="$(pick 'attach to task:' ${rows[@]+"${rows[@]}"})" || exit 1
+    fi
     id="${id#task-}"   # tolerate pasting the tmux session name by mistake
     tmux has-session -t "task-$id" 2>/dev/null \
       || die "no live session '$id' — run 'agent-run list' to see what's running"
+    # Nested-tmux aware: inside tmux, attach would die with "sessions should be
+    # nested with care" — switch this client instead.
+    if [ -n "${TMUX:-}" ]; then
+      [ "$(tmux display-message -p '#S')" = "task-$id" ] \
+        && { log "you are already inside task-$id"; exit 0; }
+      exec tmux switch-client -t "task-$id"
+    fi
     exec tmux attach -t "task-$id"
     ;;
+  detach)
+    # Detach every client from a task's session — the session (and the agent in
+    # it) keeps running. This exists because code-server swallows Ctrl+B (its
+    # sidebar shortcut), so the in-tmux detach keystroke never arrives there.
+    id="${1:-}"
+    if [ -z "$id" ]; then
+      rows=()
+      while IFS='|' read -r sid att; do
+        [ "${att:-0}" -gt 0 ] || continue
+        rows+=("$sid  started $(when_of "$sid")  [$att attached]")
+      done < <(live_tasks)
+      id="$(pick 'detach clients from task:' ${rows[@]+"${rows[@]}"})" || exit 1
+    fi
+    id="${id#task-}"
+    tmux has-session -t "task-$id" 2>/dev/null \
+      || die "no live session '$id' — run 'agent-run list' to see what's running"
+    tmux detach-client -s "task-$id"
+    log "detached clients from task-$id (session keeps running)"
+    ;;
   reap)
-    id="${1:-}"; [ -n "$id" ] || die "reap <task-id> [--force]"
+    id="${1:-}" force="" picked=0
+    if [ "$id" = "--force" ]; then force="--force"; id=""; fi
+    [ "${2:-}" = "--force" ] && force="--force"
+    if [ -z "$id" ]; then
+      rows=()
+      while IFS='|' read -r sid _att; do
+        rows+=("$sid  started $(when_of "$sid")  [live session]")
+      done < <(live_tasks)
+      for wt in "$WORK"/*/; do
+        [ -d "$wt" ] || continue
+        wid="$(basename "$wt")"
+        tmux has-session -t "task-$wid" 2>/dev/null && continue
+        rows+=("$wid  started $(when_of "$wid")  [stranded — worktree only]")
+      done
+      id="$(pick 'reap task (kills session + deletes worktree; log kept):' ${rows[@]+"${rows[@]}"})" || exit 1
+      picked=1
+    fi
     id="${id#task-}"   # same tolerance as attach
-    force=""; [ "${2:-}" = "--force" ] && force="--force"
+    if [ "$picked" = 1 ]; then
+      # Picker mode reaps whatever Enter landed on — confirm before deleting.
+      printf 'reap %s? [y/N] ' "$id" >/dev/tty
+      IFS= read -r ans </dev/tty || ans=n
+      case "$ans" in y|Y|yes) : ;; *) log "aborted"; exit 1 ;; esac
+    fi
     tmux kill-session -t "task-$id" 2>/dev/null && log "session killed" || log "no session"
     repo="${id%%-[0-9]*}"
     if [ -d "$WORK/$id" ]; then
@@ -130,6 +263,6 @@ BLOCKED and the reason as your final message."
     log "reaped $id (log kept at $WORK/$id.log)"
     ;;
   *)
-    sed -n '3,10p' "$0"; exit 1
+    usage; exit 1
     ;;
 esac

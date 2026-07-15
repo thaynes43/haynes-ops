@@ -47,19 +47,33 @@ key: you tap **Ctrl+B**, *release*, then press one more key.
 
 That's it. Everything else is optional.
 
+> **⚠️ code-server steals Ctrl+B** (it's VS Code's "toggle sidebar" shortcut), so in the
+> integrated terminal here the detach keystroke usually never reaches tmux. Detach from
+> any *other* terminal instead: **`agent-run detach`** (picker) or
+> `tmux detach-client -s task-<task-id>`. Closing the browser tab also just detaches —
+> the agent keeps running either way. The only thing that actually *kills* a session is
+> `exit`/`Ctrl+D` at its shell prompt (or `agent-run reap`).
+
 ---
 
 ## 3. Managing tasks
 
 ```bash
-agent-run list              # what's running + the exact attach command to copy
-agent-run attach <task-id>  # jump back into a live session (scrollback intact)
-agent-run reap <task-id>    # kill it + delete the worktree (the log is kept)
+agent-run list               # what's running + start times + the attach command to copy
+agent-run attach [task-id]   # jump back into a live session (scrollback intact)
+agent-run detach [task-id]   # kick attached clients off — the session keeps running
+agent-run reap [task-id]     # kill it + delete the worktree (the log is kept)
 ```
+
+**Skip the id and you get an arrow-key picker** (↑/↓ or j/k, Enter selects, `q` cancels)
+showing each task's start time. `reap`'s picker also lists **stranded worktrees** — a pod
+restart kills tmux but the PVC keeps the worktree, so reap those leftovers before they
+balloon the PVC (it asks `y/N` before deleting).
 
 `list` prints the **task id** (e.g. `haynesnetwork-0714-010301`) and the ready-to-paste
 `agent-run attach …` line under it. If you paste the tmux session name (`task-…`) by
-mistake, `attach` strips the prefix for you.
+mistake, `attach` strips the prefix for you. `attach` is nested-tmux aware: from inside
+another task's session it switches you over instead of erroring.
 
 `reap` refuses to delete a worktree with uncommitted work — add `--force` if you mean it.
 
@@ -111,7 +125,8 @@ and open a PR when done.
 ## 7. Gotchas worth knowing
 
 - **A pod restart kills tmux** (image roll, node drain, OOM). Worktrees, branches, and logs
-  survive on the PVC — only the live pane is lost. `agent-run list` shows what's left.
+  survive on the PVC — only the live pane is lost. `agent-run list` shows what's left, and
+  the `agent-run reap` picker flags the stranded worktrees so you can clean them up.
 - **haynesnetwork is pre-warmed**: `pnpm install`, `build`, `typecheck`, and all **1,292 tests**
   (embedded Postgres) pass in this pod. Playwright browsers are installed.
 - **Memory is 24Gi.** The monorepo test suite OOM'd at 8Gi — if a build dies mysteriously,
