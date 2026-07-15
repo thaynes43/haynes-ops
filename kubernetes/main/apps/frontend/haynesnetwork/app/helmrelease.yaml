@@ -50,7 +50,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/haynesnetwork
-              tag: v0.58.0
+              tag: v0.59.0
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -222,6 +222,36 @@ spec:
       # notification_outbox rows (sent_at IS NULL AND attempts<5 AND earliest_send_at<=now) to
       # api.pushover.net, deep-linking …/trash?tab=<movies|tv>. Staggered off the other jobs.
       # NOT suspended (active): a safe no-op that leaves rows queued when PUSHOVER_* env is absent.
+      # ADR-060 follow-up (PLAN-048 tail, v0.59.0) — the NIGHTLY admin failure digest: reads OPEN
+      # activity_import_failures and enqueues ONE email-channel outbox row (none when clean); the
+      # sync-notify-outbox drainer delivers it over the F-04 SMTP relay. 21:05 local sits inside
+      # the default notify window and clear of every other job's minute.
+      sync-failure-digest:
+        type: cronjob
+        pod:
+          restartPolicy: Never
+        cronjob:
+          schedule: "5 21 * * *"
+          backoffLimit: 1
+          concurrencyPolicy: Forbid
+          failedJobsHistory: 2
+          successfulJobsHistory: 1
+        containers:
+          main:
+            image: *mainImage
+            command:
+              - tsx
+              - /sync/src/scripts/sync.ts
+              - --mode=failure-digest
+            envFrom:
+              - secretRef:
+                  name: haynesnetwork-secret
+            resources:
+              requests:
+                cpu: 25m
+                memory: 128Mi
+              limits:
+                memory: 256Mi
       sync-notify-outbox:
         type: cronjob
         pod:
