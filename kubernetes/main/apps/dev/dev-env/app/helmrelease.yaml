@@ -49,7 +49,10 @@ spec:
               # The image pins CLI versions (Renovate-bumped); no self-updates.
               DISABLE_AUTOUPDATER: "1"
               DISABLE_ERROR_REPORTING: "1"
-              DISABLE_TELEMETRY: "1"
+              # NO DISABLE_TELEMETRY here: /remote-control is Statsig-feature-flag
+              # gated, and that var disables flag evaluation entirely — setting it
+              # hides Remote Control (hit live 2026-07-14; saga Decision #6 depends
+              # on it). There is no flags-only knob as of claude-code 2.1.207.
             envFrom:
               # HA_MCP_SECRET_PATH — expanded into the MCP URL by dev-init.
               - secretRef:
