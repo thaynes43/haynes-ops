@@ -1,0 +1,18 @@
+---
+# Libretto is stateless-by-design (Kometa-style, no database): /config holds
+# recipes/ (owner-authored YAML, written only on explicit API save), state/
+# (runs.json, a losable rotating run log) and cache/ (losable TTL identifier
+# cache). Recipes are the only data that matters; plain PVC for pre-alpha —
+# VolSync backup is a follow-up once recipes accumulate.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: libretto
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: ceph-block
