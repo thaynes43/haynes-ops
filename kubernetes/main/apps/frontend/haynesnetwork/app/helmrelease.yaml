@@ -50,7 +50,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/haynesnetwork
-              tag: v0.62.1
+              tag: v0.63.0
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -535,6 +535,36 @@ spec:
               - tsx
               - /sync/src/scripts/sync.ts
               - --mode=plex-match
+            envFrom:
+              - secretRef:
+                  name: haynesnetwork-secret
+            resources:
+              requests:
+                cpu: 25m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
+      # PLAN-037 / ADR-064 — mirrors the HOps Plex server's collections (movies+TV, charts
+      # included) into the plex_collections read-model. Runs at :57, right after sync-plex-match
+      # (:52) so membership resolution always has fresh ratingKey matches. Standalone mode —
+      # writes no sync_runs row; its trail is the mirror tables.
+      sync-collections:
+        type: cronjob
+        pod:
+          restartPolicy: Never
+        cronjob:
+          schedule: "57 * * * *"
+          backoffLimit: 1
+          concurrencyPolicy: Forbid
+          failedJobsHistory: 2
+          successfulJobsHistory: 1
+        containers:
+          main:
+            image: *mainImage
+            command:
+              - tsx
+              - /sync/src/scripts/sync.ts
+              - --mode=collections-sync
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
