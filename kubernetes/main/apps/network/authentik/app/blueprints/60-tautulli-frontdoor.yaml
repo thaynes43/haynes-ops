@@ -1,0 +1,137 @@
+# Tautulli front door (DESIGN-041 D-07 / PLAN-058) — Authentik forward-auth in
+# front of the family-facing tautulli.haynesnetwork.com (the Unraid instance at
+# haynestower:8181; the LAN-internal tautulli-k8plex / tautulli-plexops stay as
+# they are, Q-08). Tautulli has no OIDC and no trusted-header support, so the
+# front door is a proxy provider with HTTP-Basic injection (the documented
+# authentik<->Tautulli integration), gated by group-bound access policies.
+#
+# ADDITIVE ONLY (OPS-009 blast radius): every entry below CREATES a new object —
+# provider, application, two policy bindings, dedicated outpost. Existing flows,
+# stages, providers, applications, brands, groups and the shared outposts are
+# never touched; the two !Find flow references are read-only lookups.
+#
+# Dedicated outpost, NOT the shared external (paperless) outpost: an outpost's
+# `providers` list in a blueprint is a FULL REPLACEMENT, so assigning tautulli
+# to the external outpost from here would make this blueprint own paperless's
+# SSO wiring and risk silently dropping it on any future edit — exactly the
+# failure class 50-dev-env.yaml documents. One outpost per app is the estate
+# layout (internal -> headlamp, external -> paperless, dev-env -> dev-env).
+# Authentik generates Deployment/Service/Middleware `ak-outpost-tautulli-outpost`
+# in `network`, referenced by ingress-routes/traefik-external/ingressroute-tautulli.yaml.
+#
+# WHO may log in (owner ruling 2026-07-17): admins + the Family tier ONLY.
+# Implemented as group policy-bindings on the application — `authentik Admins`
+# (the system admins group) and `family` (the portal-synced tier group,
+# ADR-045/hnet-portal-owned; referenced read-only here, never mutated). With
+# policy_engine_mode=any a member of EITHER group passes; everyone else gets
+# Authentik's access-denied interstitial. THIS is the generalizable per-app
+# pattern: to gate any future app, bind its allowed tier groups on its
+# application the same way (one binding per group, ascending `order`).
+#
+# Identity behind the door is Tautulli's ADMIN via injected HTTP Basic (Q-02
+# ruling: per-user Plex guest views retired). The provider names the attributes
+# (`tautulli_user` / `tautulli_password`); the VALUES are secrets and never
+# land in git — owner-side follow-ups before the middleware goes live:
+#   1. Unraid Tautulli: Settings -> Web Interface -> enable
+#      "Use Basic Authentication" (design D-07 step 1 — owner/Unraid action).
+#   2. Authentik admin UI: set attributes `tautulli_user` / `tautulli_password`
+#      (Tautulli's admin credentials, 1Password `HaynesKube` item) on the
+#      `family` and `authentik Admins` groups (or per-user for overrides —
+#      user attributes win over group attributes).
+# Until (1)+(2) are done, passers clear Authentik and land on Tautulli's own
+# login form — a soft-fail, not a lockout. Break-glass (D-01): the LAN/in-
+# cluster route bypasses the outpost and Tautulli's own admin login stays
+# intact underneath.
+version: 1
+metadata:
+  name: tautulli-frontdoor
+  labels:
+    blueprints.goauthentik.io/description: 'Tautulli forward-auth front door: proxy provider (HTTP-Basic injection) + application + admins/family group policy bindings + dedicated outpost (DESIGN-041 D-07).'
+context: {}
+entries:
+- model: authentik_providers_proxy.proxyprovider
+  state: present
+  identifiers:
+    name: tautulli
+  attrs:
+    external_host: https://tautulli.haynesnetwork.com
+    mode: forward_single
+    # Match headlamp/dev-env (hours=24) — the authentik default (hours=1) would
+    # bounce family members through a re-auth redirect every hour.
+    access_token_validity: hours=24
+    authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+    invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+    # HTTP-Basic injection (the documented Tautulli integration): the outpost
+    # sends `Authorization: Basic <tautulli_user>:<tautulli_password>` looked up
+    # from the passing user's attributes (group attributes inherit). Attribute
+    # NAMES only here; values are owner-set (see header).
+    basic_auth_enabled: true
+    basic_auth_user_attribute: tautulli_user
+    basic_auth_password_attribute: tautulli_password
+    # Carve-outs (D-07 step 4) — Tautulli's unauthenticated surfaces, which
+    # non-browser consumers hit without an Authentik session:
+    #   /newsletter + /image — self-hosted newsletter pages and their images
+    #   /status              — Tautulli's unauthenticated health endpoint (the
+    #                          Gatus/probe idiom used for the in-cluster twins)
+    #   /api                 — Tautulli's own apikey-gated API (upstream
+    #                          integration doc carve-out; keeps any existing
+    #                          apikey consumers of the public host working —
+    #                          still guarded by Tautulli's API key)
+    skip_path_regex: |
+      ^/newsletter
+      ^/image
+      ^/status
+      ^/api
+- model: authentik_core.application
+  state: present
+  identifiers:
+    slug: tautulli
+  attrs:
+    name: Tautulli
+    provider: !Find [authentik_providers_proxy.proxyprovider, [name, tautulli]]
+    meta_launch_url: https://tautulli.haynesnetwork.com
+    meta_description: Stats for the Unraid Plex
+    open_in_new_tab: true
+    # "any" = OR across the bindings below (member of EITHER group passes).
+    policy_engine_mode: any
+# Access policy: group bindings directly on the application — the per-app
+# pattern other apps copy (one binding per allowed tier group). Both groups are
+# referenced read-only; membership stays owned by the portal / Authentik.
+- model: authentik_policies.policybinding
+  state: present
+  identifiers:
+    target: !Find [authentik_core.application, [slug, tautulli]]
+    order: 0
+  attrs:
+    group: !Find [authentik_core.group, [name, authentik Admins]]
+- model: authentik_policies.policybinding
+  state: present
+  identifiers:
+    target: !Find [authentik_core.application, [slug, tautulli]]
+    order: 10
+  attrs:
+    group: !Find [authentik_core.group, [name, family]]
+# Dedicated outpost. `type` + `config` are REQUIRED on create (the 50-dev-env
+# attempt-2 lesson). config mirrors the proven dev-env/internal outposts,
+# swapping only the name-derived and external-facing bits; the ingress
+# component stays disabled — routing is our IngressRoute, the outpost only
+# provides the forwardAuth middleware.
+- model: authentik_outposts.outpost
+  state: present
+  identifiers:
+    name: tautulli-outpost
+  attrs:
+    type: proxy
+    service_connection: !Find [authentik_outposts.kubernetesserviceconnection, [name, Local Kubernetes Cluster]]
+    providers:
+    - !Find [authentik_providers_proxy.proxyprovider, [name, tautulli]]
+    config:
+      authentik_host: https://authentik.haynesnetwork.com/
+      log_level: info
+      kubernetes_replicas: 1
+      kubernetes_namespace: network
+      kubernetes_service_type: ClusterIP
+      kubernetes_disabled_components:
+      - ingress
+      kubernetes_ingress_class_name: traefik-external
+      kubernetes_ingress_secret_name: certificate-haynesnetwork
