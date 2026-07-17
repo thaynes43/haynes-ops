@@ -29,8 +29,10 @@ spec:
         # gated to the `authentik Admins` + `family` groups; /newsletter,
         # /image, /status and /api are carved out (unauthenticated surfaces).
         # Fail-closed: until the blueprint applies and the outpost pod exists,
-        # the route errors.
-        - name: ak-outpost-tautulli-outpost
+        # the route errors. Uses the CUSTOM twin of the generated middleware —
+        # the generated one omits Authorization from authResponseHeaders, which
+        # silently drops the injected HTTP-Basic credentials (2026-07-17).
+        - name: tautulli-forward-auth
           namespace: network
         - name: default-headers
   tls:
