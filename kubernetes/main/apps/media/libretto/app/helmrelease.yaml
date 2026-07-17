@@ -42,7 +42,7 @@ spec:
               # key here. Bump this tag per deploy; once releases start, pin
               # tag@digest and let Renovate drive bumps like the siblings.
               repository: ghcr.io/thaynes43/libretto
-              tag: sha-6094c54
+              tag: sha-40fa0d9
               pullPolicy: IfNotPresent
             env:
               TZ: America/New_York
