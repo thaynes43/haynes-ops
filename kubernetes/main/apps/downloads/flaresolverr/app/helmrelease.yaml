@@ -77,6 +77,8 @@ spec:
       securityContext:
         # Image runs as its own non-root `flaresolverr` user.
         runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
         seccompProfile: { type: RuntimeDefault }
     service:
       app:
