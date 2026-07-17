@@ -131,16 +131,21 @@ and open a PR when done.
   (embedded Postgres) pass in this pod. Playwright browsers are installed.
 - **Memory is 24Gi.** The monorepo test suite OOM'd at 8Gi — if a build dies mysteriously,
   check `kubectl top pod -n dev` before blaming the code.
-- **Driving an agent from your phone:** start it here with `--interactive`, then use
-  `/remote-control` in the Claude app. It doesn't need this page. Two ways this fails
-  *silently* (no "active" banner, no error — both hit live 2026-07-16/17):
-  1. `bridge.claudeusercontent.com` not in the egress allowlist (it is, since 2026-07-17) —
-     a refused DNS lookup kills the bridge WebSocket without a message.
-  2. Launching claude with a permission flag (`--dangerously-skip-permissions` or
-     `--permission-mode …`) disables `/remote-control` for that process. Bypass mode
-     inherited from `~/.claude/settings.json` is fine — which is why `agent-run
-     --interactive` launches plain `claude` (bypass still on, RC works). If a session
-     won't connect, check its launch flags first: `/exit`, relaunch plain, retry.
+- **Driving an agent from your phone (the default):** `agent-run run --repo <r> --agent
+  claude --interactive` starts the task as a **Remote Control host** — connect from the
+  Claude mobile app or claude.ai/code; `agent-run attach <id>` shows the status screen
+  with the QR code + URL. This uses the standalone `claude remote-control` registration
+  path (api.anthropic.com environments API), which is reliable; fresh worktrees are
+  pre-trusted by agent-run so nothing stops at a dialog. If a host ever fails to
+  connect, the reason is in `~/work/<id>.rc.log` — no more silent failures.
+- **Prefer a classic terminal TUI?** Add `--local`. You can still type `/remote-control`
+  inside it, but know that the *in-TUI* path is flaky server-side (intermittent 401s on
+  the code-session endpoints — anthropics/claude-code#30093 #30102 — and after 3 failed
+  attempts that process disables RC until restarted). The RC-host default exists
+  precisely so your workflow never depends on it. Historical silent-failure traps, all
+  handled now: bridge egress (`bridge.claudeusercontent.com` allowed in the CNP since
+  2026-07-17) and permission flags at launch disabling in-TUI RC (`--local` launches
+  flag-free; bypass comes from settings).
 
 ---
 

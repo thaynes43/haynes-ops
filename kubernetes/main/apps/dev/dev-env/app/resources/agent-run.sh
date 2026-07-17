@@ -5,7 +5,8 @@
 # kubernetes/main/apps/dev/dev-env/app/resources/agent-run.sh.
 #
 #   agent-run run  --repo <name> --agent claude|codex [--base <ref>] -p "<task>"
-#   agent-run run  --repo <name> --agent claude --interactive   # tmux session, no task
+#   agent-run run  --repo <name> --agent claude --interactive   # REMOTE-CONTROL host (phone/web drives it)
+#                                                 [--local]     # classic in-terminal TUI instead
 #                                                 [--safe]      # keep permission prompts
 #   agent-run list                                              # live tasks + attach cmds
 #   agent-run attach [<task-id>]                # jump into a session (no id → picker)
@@ -30,7 +31,9 @@ usage() {
   cat >&2 <<'EOF'
 agent-run — worktree-per-task agent dispatcher
   agent-run run  --repo <name> --agent claude|codex [--base <ref>] -p "<task>"
-  agent-run run  --repo <name> --agent claude --interactive [--safe]
+  agent-run run  --repo <name> --agent claude --interactive [--local] [--safe]
+                 # default: Remote Control host (drive from phone/claude.ai/code)
+                 # --local: classic in-terminal TUI instead
   agent-run list
   agent-run attach [<task-id>]                # no id → arrow-key picker
   agent-run detach [<task-id>]                # no id → picker (attached sessions only)
@@ -97,6 +100,26 @@ live_tasks() {
   tmux ls -F '#{session_name}|#{session_attached}' 2>/dev/null | sed -n 's/^task-//p'
 }
 
+# Pre-trust a fresh worktree in claude's state file: `claude remote-control`
+# REFUSES untrusted dirs outright, and the TUI stops at a trust dialog — both
+# kill "RC from the get-go" for worktrees that are, by construction, brand new.
+# Best-effort (atomic tmp+mv): on any failure the session just shows the normal
+# trust prompt. State file: $CLAUDE_CONFIG_DIR/.claude.json (this pod sets
+# CLAUDE_CONFIG_DIR), else ~/.claude.json.
+pretrust() {  # $1 = worktree path
+  local state="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.claude.json"
+  [ -f "$state" ] || state="$HOME/.claude.json"
+  [ -f "$state" ] || { log "WARN: no claude state file yet — accept the trust dialog on first attach"; return 0; }
+  local tmp="${state}.agent-run.$$"
+  if jq --arg wt "$1" \
+       '.projects[$wt] = ((.projects[$wt] // {}) + {hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true})' \
+       "$state" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    mv "$tmp" "$state"
+  else
+    rm -f "$tmp"; log "WARN: could not pre-trust $1 — accept the trust dialog on first attach"
+  fi
+}
+
 # Every task shell needs the fresh bot token (bashrc handles interactive shells;
 # tmux run-shell strings need it inline).
 token_env='export GH_TOKEN="$(cat /creds/gh_token 2>/dev/null)"'
@@ -105,7 +128,7 @@ cmd="${1:-help}"; shift || true
 
 case "$cmd" in
   run)
-    repo="" agent="" base="" prompt="" interactive=0 safe=0
+    repo="" agent="" base="" prompt="" interactive=0 safe=0 local_tui=0
     while [ $# -gt 0 ]; do
       case "$1" in
         --repo) repo="$2"; shift 2 ;;
@@ -113,6 +136,7 @@ case "$cmd" in
         --base) base="$2"; shift 2 ;;
         -p|--prompt) prompt="$2"; shift 2 ;;
         --interactive) interactive=1; shift ;;
+        --local) local_tui=1; shift ;;
         --safe) safe=1; shift ;;
         *) die "unknown flag $1" ;;
       esac
@@ -161,19 +185,37 @@ BLOCKED and the reason as your final message."
 
     tmux new-session -d -s "task-$id" -c "$wt" || die "tmux session failed"
     if [ "$interactive" = 1 ]; then
-      # Interactive claude launches with NO permission flag: the pod's GitOps'd
-      # ~/.claude/settings.json already defaults to bypassPermissions, and ANY
-      # permission flag at launch (--dangerously-skip-permissions or
-      # --permission-mode …) SILENTLY disables /remote-control — settings-
-      # inherited bypass does not (proven live 2026-07-17). --safe has to
-      # override the settings default explicitly, and costs /remote-control.
-      launch="$agent $yolo_flag"
       if [ "$agent" = claude ]; then
-        launch="claude"
-        [ "$safe" = 1 ] && launch="claude --permission-mode default"
+        pretrust "$wt"
+        if [ "$local_tui" = 1 ]; then
+          # --local: classic TUI, NO permission flag unless --safe — the pod
+          # settings default to bypass, and ANY permission flag at launch
+          # silently disables the in-TUI /remote-control (proven 2026-07-17).
+          # Know that the in-TUI /remote-control is ALSO flaky server-side
+          # (intermittent 401s, anthropics/claude-code#30093 #30102, and a
+          # 3-strikes-then-disabled-until-restart hook) — which is exactly why
+          # the RC-host mode below is the default, not this.
+          launch="claude"
+          [ "$safe" = 1 ] && launch="claude --permission-mode default"
+        else
+          # DEFAULT: Remote Control HOST from the get-go. The standalone
+          # subcommand registers through the api.anthropic.com environments
+          # API — the reliable path (the in-TUI slash command is not) — and
+          # phone/claude.ai-code drives the session; local attach shows the
+          # status/QR/URL screen. Failures self-document in the rc log.
+          rc_mode="--permission-mode bypassPermissions"
+          [ "$safe" = 1 ] && rc_mode="--permission-mode default"
+          launch="claude remote-control --name $id $rc_mode --debug-file $WORK/$id.rc.log"
+        fi
+      else
+        launch="$agent $yolo_flag"   # codex: RC is claude-only → local TUI
       fi
       tmux send-keys -t "task-$id" "$token_env; cd $wt; $launch" Enter
-      log "interactive session ready →  agent-run attach $id"
+      if [ "$agent" = claude ] && [ "$local_tui" != 1 ]; then
+        log "remote-control host starting → QR/URL: agent-run attach $id   rc log: $WORK/$id.rc.log"
+      else
+        log "interactive session ready →  agent-run attach $id"
+      fi
     else
       # Env-var indirection keeps the prompt out of shell-quoting hell; log to
       # $WORK/<id>.log for post-hoc review (reap keeps the log).
