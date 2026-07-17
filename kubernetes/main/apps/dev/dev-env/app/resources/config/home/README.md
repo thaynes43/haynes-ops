@@ -132,7 +132,10 @@ and open a PR when done.
 - **Memory is 24Gi.** The monorepo test suite OOM'd at 8Gi — if a build dies mysteriously,
   check `kubectl top pod -n dev` before blaming the code.
 - **Driving an agent from your phone:** start it here with `--interactive`, then use
-  `/remote-control` in the Claude app. It doesn't need this page.
+  `/remote-control` in the Claude app. It doesn't need this page. If the command does
+  *nothing* (no "active" banner, no error), the bridge WebSocket couldn't connect —
+  `bridge.claudeusercontent.com` must be in the egress allowlist (it is, since 2026-07-17;
+  a refused DNS lookup fails this silently).
 
 ---
 
