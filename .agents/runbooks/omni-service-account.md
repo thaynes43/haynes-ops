@@ -95,9 +95,13 @@ omnictl serviceaccount destroy haynes-ops-agent # revoke (e.g. if the key leaks)
 Rotate the key in 1Password whenever you renew. Destroying the SA immediately
 invalidates the key everywhere it's used.
 
-## Related gap (do later)
+## Related gap — CLOSED 2026-07-17
 
-Flux's own `gotk_*` controller metrics are **not** scraped by Prometheus here, so
-HelmRelease/Kustomization reconcile **errors** aren't visible remotely (only inferable
-from pod restart-times). Wire up the Flux ServiceMonitors / PodMonitors so reconcile
-health is observable without `kubectl`.
+~~Flux's own `gotk_*` controller metrics are not scraped~~ — the PodMonitor was always
+there; the real gap was that Flux ≥2.1 removed per-resource `gotk_reconcile_condition`
+from the controllers. Per-resource readiness now comes from kube-state-metrics
+customResourceState (kube-prometheus-stack values) as
+`gotk_resource_info{ready, exported_namespace, name, customresource_kind}`, which powers
+the `FluxReconciliationFailure` critical alert. Remote check without `kubectl`:
+`gotk_resource_info{ready=~"False|Unknown", suspended!="true"}` via Grafana MCP. The
+metric carries readiness only — condition *messages* still need `flux get`/`kubectl`.

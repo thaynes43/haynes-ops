@@ -12,7 +12,7 @@ Verdict is one of:
 
 **Where it runs / credentials.** Read-and-page only — the gate **never mutates the cluster** (no `flux reconcile --with-source`, no `kubectl apply/exec/delete/annotate/scale`, no suspend/resume). It relies on Flux's own GitRepository **30-min poll** to pull new state (Flux is poll-only here — a `Receiver` exists but no GitHub webhook is wired, so pushes are not push-triggered). Two read paths, used in this priority:
 
-- **Omni Reader service-account kubeconfig** ([`omni-service-account.md`](omni-service-account.md)) — read-only `kubectl` + `flux get`. The **only** path for Flux reconcile state (gotk_* metrics are not scraped — see below). Denies `pods/exec`.
+- **Omni Reader service-account kubeconfig** ([`omni-service-account.md`](omni-service-account.md)) — read-only `kubectl` + `flux get`. The primary path for Flux reconcile state (since 2026-07-17 `gotk_resource_info` in Prometheus is a secondary readiness signal — see below). Denies `pods/exec`.
 - **Grafana MCP** — Prometheus (datasource uid `prometheus`) + Loki (uid `loki`). The no-cluster-creds fallback for the pod sweep, ESO, Alertmanager, and Ceph health when the Omni OIDC token is expired ([`kubectl-omni-oidc-expiry`](omni-service-account.md)).
 
 The gate deliberately does **not** read Home Assistant. HA/Zigbee/lock/device availability is owned by the **hass-sandbox** AppDaemon health-check suite (`zigbee_health_checker`, device/battery checkers) via the Alertmanager bridge — device health is not a deploy signal and was removed 2026-07 after an HA integration re-auth flipped every lock `unavailable` and paged ~5 unrelated criticals.
@@ -50,7 +50,7 @@ Every Kustomization + HelmRelease + Source `Ready=True`, **and** the `flux-syste
 | **Benign-warn** | Immediately post-merge a row may transiently show `Reconciliation in progress`, `running health checks`, or HR `upgrade in progress`. Operator charts that roll their own pods (CNPG instances, EMQX) briefly show the dependent app reconciling. **Re-poll after one reconcile interval** before judging — the gate waits for Flux's own poll, it does **not** run `flux reconcile --with-source` (a write the Reader SA is denied). |
 | **Regression** | Any `Ready=False` persisting past one interval: HR `install/upgrade retries exhausted` / `values don't meet the specifications of the schema` / `Helm upgrade failed`; ks `dependency ... is not ready` / `build failed`; or GitRepository **stuck on the OLD revision** (Renovate advanced `main` but Flux never pulled). |
 
-> **No Prometheus fallback for this check.** Flux `gotk_*` controller metrics are **not scraped** here (`gotk_reconcile_condition` returns no data — confirmed in [`omni-service-account.md`](omni-service-account.md) "Related gap"). The Flux dimension lives **only** on the Reader SA kubeconfig. If that token is dead, report Flux as **blind / escalate-to-human** — do **not** report it green. Grafana-MCP signals still work.
+> **Prometheus fallback (since 2026-07-17):** per-resource Flux readiness IS now in Prometheus as `gotk_resource_info{ready,exported_namespace,name,customresource_kind}` (kube-state-metrics customResourceState — NOT the old `gotk_reconcile_condition`, which Flux ≥2.1 removed and which still returns no data). If the Reader SA token is dead, query `gotk_resource_info{ready=~"False|Unknown", suspended!="true"}` via Grafana MCP instead of reporting blind; prefer the kubectl path when available (it carries condition messages the metric lacks).
 
 ### 2. Cluster-wide unhealthy-pod sweep
 
@@ -123,7 +123,7 @@ What the **agent layers on top** of the script:
 
 1. **The other two checks** the script doesn't cover: ESO (check 3, Grafana MCP / `kubectl get externalsecrets`) and Alertmanager criticals (check 4, Grafana MCP).
 2. **Judgment: benign-warn vs. regression.** The script prints raw non-Ready rows; the agent diffs them against the **prior cycle's snapshot** and the allowlists above, so only **newly-broken** state pages. Re-poll transients (post-merge reconcile-in-progress, <90s image pulls, new-ES sync lag) after one interval before deciding.
-3. **The Grafana-MCP fallback path** when the Omni OIDC token is expired — checks 2–5 have promql equivalents; **check 1 (Flux) does not** (gotk_* unscraped), so a dead Reader token means the Flux dimension is **blind → escalate to human**, never reported green.
+3. **The Grafana-MCP fallback path** when the Omni OIDC token is expired — checks 2–5 have promql equivalents, and since 2026-07-17 check 1 (Flux) does too: `gotk_resource_info{ready=~"False|Unknown", suspended!="true"}` (readiness only, no condition messages). Only if BOTH the Reader token and Prometheus are dead is the Flux dimension **blind → escalate to human**, never reported green.
 4. **The page.** On a confirmed regression, page via Pushover (existing `severity=critical` path). In phase 4a, **rollback stays human** — see below.
 
 Component-specific verification (which entities/queries each package upgrade touches, per-package breaking patterns) is **not** here — it lives in **`tier4-component-playbooks.md`**.
@@ -156,7 +156,7 @@ The scheduled gate is **read+page only** — it does **not** roll back in phase 
 ## See also
 
 - [`renovate-upgrade-batches.md`](renovate-upgrade-batches.md) — per-component Verification + Rollback patterns this gate complements (curate-the-excludes, transient pull self-heal, operator-managed restarts, rook operator→csi→cluster order + cephVersion pin).
-- [`omni-service-account.md`](omni-service-account.md) — Reader SA constraints (read-only, no exec/reconcile, gotk_* unscraped) that bound what the gate can do.
+- [`omni-service-account.md`](omni-service-account.md) — Reader SA constraints (read-only, no exec/reconcile) that bound what the gate can do.
 - [`docs/renovate/README.md`](../../docs/renovate/README.md) Tier 4 — phase 4a (watch+page) vs. 4b (in-cluster CronJob + automated rollback via the App) split, and the shepherd's three invocation modes.
 - [`docs/renovate/tier4-bot-setup.md`](../../docs/renovate/tier4-bot-setup.md) — haynes-ops-bot GitHub App identity + token minting.
 - [`.renovate/holds.json5`](../../.renovate/holds.json5) — read **before** working any PR so the gate never re-investigates a known-bad upgrade (EMQX operator/broker holds).

@@ -17,16 +17,37 @@ spec:
           for: 15m
           labels:
             severity: critical
+        # gotk_resource_info comes from kube-state-metrics customResourceState (see
+        # kube-prometheus-stack values), NOT the Flux controllers — Flux ≥2.1 removed
+        # gotk_reconcile_condition, which left the previous expr querying a metric that
+        # cannot exist (alert dark; rewritten 2026-07-17 after the mcp-grafana stall).
+        # ready=~"False|Unknown": a Helm upgrade→rollback loop flips Ready False↔Unknown;
+        # matching only "False" would reset the `for:` clock on every flip. The max by()
+        # drops the churning `ready` label so the alert series identity stays stable.
         - alert: FluxReconciliationFailure
           annotations:
             summary: >-
-              {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }} reconciliation
-              has been failing for more than 15 minutes.
+              {{ $labels.customresource_kind }} {{ $labels.exported_namespace }}/{{ $labels.name }}
+              reconciliation has been failing for more than 15 minutes.
           expr: |
-            max(gotk_reconcile_condition{status="False",type="Ready"}) by (namespace, name, kind)
-              +
-            on(namespace, name, kind) (max(gotk_reconcile_condition{status="Deleted"})
-              by (namespace, name, kind)) * 2 == 1
+            max by (exported_namespace, name, customresource_kind) (
+              gotk_resource_info{ready=~"False|Unknown", suspended!="true"}
+            )
           for: 15m
+          labels:
+            severity: critical
+        # Absent-metric tripwire: if the KSM customResourceState pipeline breaks (RBAC,
+        # config regression, chart bump dropping the values), FluxReconciliationFailure
+        # goes dark SILENTLY again — exactly the failure mode this rewrite fixes. There
+        # are always Kustomizations in flux-system, so this series must always exist.
+        - alert: FluxResourceMetricsAbsent
+          annotations:
+            summary: >-
+              gotk_resource_info is absent — kube-state-metrics customResourceState is
+              broken and FluxReconciliationFailure is blind. Check KSM rbac.extraRules +
+              customResourceState in the kube-prometheus-stack values.
+          expr: |
+            absent(gotk_resource_info{customresource_kind="Kustomization"})
+          for: 30m
           labels:
             severity: critical
