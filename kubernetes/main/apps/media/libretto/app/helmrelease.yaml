@@ -35,12 +35,15 @@ spec:
         containers:
           app:
             image:
-              # Pre-alpha: track latest (pullPolicy Always so a pod restart
-              # picks up new pushes). Follow-up once releases start: pin
+              # Pre-alpha: pin the publish workflow's sha-<commit> tag — the
+              # node's pull path served a STALE `latest` resolution (2026-07-17:
+              # two Always-pull restarts kept landing sha-59a653d while GHCR's
+              # latest was sha-6094c54), so `latest` is not a reliable deploy
+              # key here. Bump this tag per deploy; once releases start, pin
               # tag@digest and let Renovate drive bumps like the siblings.
               repository: ghcr.io/thaynes43/libretto
-              tag: latest
-              pullPolicy: Always
+              tag: sha-6094c54
+              pullPolicy: IfNotPresent
             env:
               TZ: America/New_York
               # Targets — in-cluster service DNS (verified against the kavita /
