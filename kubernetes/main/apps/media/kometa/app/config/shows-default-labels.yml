@@ -1,0 +1,24 @@
+# TV label companion (belt-and-braces). These four TV collections carry Kometa's
+# managed label plus the LEGACY "Show Franchise Collections" section label but have
+# NO editable def in shows-franchises.yml / shows-collections.yml (Star Trek,
+# Doctor Who, Law & Order, NCIS). They are ORPHANS — absent from any TV run summary
+# (no TV franchise Default runs in this config), so a same-name blank_collection
+# append is NOT duplicate-skipped and cleanly adds the category label.
+#
+# The haynesnetwork app ALSO derives these four to Universe from the legacy
+# "Show Franchise Collections" section-label map, so this companion is redundant
+# insurance, not the sole mechanism. Loaded LAST in HOps TV Shows collection_files.
+# Append only — never label.sync.
+collections:
+  Doctor Who:
+    blank_collection: true
+    label: Universe
+  "Law & Order":
+    blank_collection: true
+    label: Universe
+  NCIS:
+    blank_collection: true
+    label: Universe
+  Star Trek:
+    blank_collection: true
+    label: Universe

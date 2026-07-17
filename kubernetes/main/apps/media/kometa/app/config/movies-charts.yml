@@ -36,6 +36,8 @@ templates:
   Chart:
     collection_order: custom
     sync_mode: sync
+    # haynesnetwork category chip — charts are curated lists (append)
+    label: List
     # theatrical-window guard — never search a title until its home (physical/
     # digital) release per TMDB (owner ruling 2026-07-10). Redundant-but-explicit
     # with the global radarr.availability: released in config.yml.

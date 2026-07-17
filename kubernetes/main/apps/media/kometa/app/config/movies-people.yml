@@ -31,6 +31,8 @@ templates:
     tmdb_biography: <<tmdb>>
     radarr_add_missing: false
     radarr_tag: "Kometa-Added,DirectorCollection"
+    # haynesnetwork category chip (append; beside Kometa's managed label)
+    label: Director
   Actor:
     sort_title: "!Z <<collection_name>>"
     collection_order: release.desc
@@ -42,6 +44,8 @@ templates:
     tmdb_biography: <<tmdb>>
     radarr_add_missing: false
     radarr_tag: "Kometa-Added,ActorCollection"
+    # haynesnetwork category chip (append; beside Kometa's managed label)
+    label: Actor
 
 collections:
 ######################################################
