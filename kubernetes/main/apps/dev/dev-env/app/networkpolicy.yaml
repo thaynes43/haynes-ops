@@ -62,6 +62,12 @@ spec:
               - matchPattern: "*.claude.ai"
               - matchName: "claude.com"
               - matchPattern: "*.claude.com"
+              # Remote Control bridge — claude-code 2.1.x dials
+              # wss://bridge.claudeusercontent.com; a refused DNS lookup makes
+              # /remote-control a SILENT no-op (hit live 2026-07-16, second
+              # session; the claude.ai relay only covers already-established
+              # connections).
+              - matchName: "bridge.claudeusercontent.com"
               # OpenAI: Codex API + ChatGPT-plan auth/backend
               - matchName: "openai.com"
               - matchPattern: "*.openai.com"
@@ -146,6 +152,7 @@ spec:
         - matchPattern: "*.claude.ai"
         - matchName: "claude.com"
         - matchPattern: "*.claude.com"
+        - matchName: "bridge.claudeusercontent.com"
         - matchName: "openai.com"
         - matchPattern: "*.openai.com"
         - matchName: "chatgpt.com"
