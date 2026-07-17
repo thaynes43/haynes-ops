@@ -7,12 +7,20 @@
 #   disposition:auto-merge  — GitHub auto-merge is enabled (Renovate Tier-0/2); it merges
 #                             itself when checks go green. Nothing for you to do.
 #   disposition:shepherd    — a shepherd-ramp component (coredns/traefik/multus/
-#                             device-plugins/flux, or an immich major); the daily
-#                             upgrade-shepherd run vets + auto-merges it. Nothing for you.
-#   disposition:stranded    — waiting for YOU: a cluster-breaker, a non-ramp major, or
-#                             anything else outside both auto paths.
+#                             device-plugins/flux, ramp-infra patch/minor, or an immich
+#                             major); the upgrade-shepherd run vets + auto-merges it.
+#                             Nothing for you — and this label is VERDICT-AWARE: once the
+#                             shepherd records a vet at the PR's current head, the label
+#                             follows the verdict instead of lying "handled".
+#   disposition:stranded    — needs ATTENTION: a shepherd HOLD (automation wanted to merge
+#                             but a gap blocked it — fix the gap), a cluster-breaker, or a
+#                             major that deserves release-note eyes before merging.
+#   disposition:manual-only — needs only a MINDLESS human merge: repo tooling outside
+#                             kubernetes/** (no health gate can ever own it), or a bump the
+#                             shepherd examined and ruled OUT-OF-SCOPE. Merge and move on
+#                             (2026-07-17, split out of stranded so the two are separable).
 #
-# Read-only classification; only manipulates its own three labels. Runs on a schedule
+# Read-only classification; only manipulates its own four labels. Runs on a schedule
 # (catches Renovate enabling auto-merge after it re-evaluates) + on demand.
 name: PR Disposition
 
@@ -63,7 +71,7 @@ jobs:
               'kubernetes/main/apps/network/authentik/',
               'kubernetes/main/apps/cert-manager/cert-manager/',
             ];
-            const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded'];
+            const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded', 'disposition:manual-only'];
             const isRenovate = (l) => /renovate/i.test(l || '');
             const tier2Path = (p) => {
               const m = p.match(/^kubernetes\/[^/]+\/apps\/([^/]+)\/(.+)$/);
@@ -91,9 +99,26 @@ jobs:
               const ownImage = /thaynes43/.test(brtitle) || /kube-prometheus-stack/.test(brtitle);
               const ghActions = paths.length > 0 && paths.every(p => p.startsWith('.github/'));
 
+              // Shepherd verdict at the CURRENT head, if any (the vet-once marker the
+              // shepherd leaves: first line '<!-- shepherd-vet sha=<oid> -->', then
+              // 'VERDICT: <word>'). A recorded verdict outranks path-based guesses —
+              // without this, a durable HOLD sits labeled "shepherd, nothing for you"
+              // forever (authentik #2005 sat 8 days that way).
+              let verdict = null;
+              const comments = await github.paginate(github.rest.issues.listComments, { owner: OWNER, repo: REPO, issue_number: pr.number, per_page: 100 });
+              for (const c of comments) {
+                const m = (c.body || '').match(/^<!-- shepherd-vet sha=([0-9a-f]{40}) -->\s*\n+\s*VERDICT:\s*([A-Za-z-]+)/);
+                if (m && m[1] === pr.head.sha) verdict = m[2].toUpperCase();   // chronological: latest wins
+              }
+              const nonK8s = paths.length > 0 && !ghActions && !paths.some(p => p.startsWith('kubernetes/'));
+
               let want;
               if (pr.auto_merge) {
                 want = 'disposition:auto-merge';                       // ground truth
+              } else if (verdict === 'HOLD') {
+                want = 'disposition:stranded';                         // shepherd wanted it but a gap blocked it — fix the gap
+              } else if (verdict && verdict !== 'AUTO-MERGE') {
+                want = 'disposition:manual-only';                      // examined and declined (OUT-OF-SCOPE etc.) — mindless merge
               } else if (isImmich && isMajor) {
                 want = 'disposition:shepherd';                         // immich major → shepherd
               } else if (ghActions || (!isMajor && (allTier2 || ownImage))) {
@@ -102,11 +127,13 @@ jobs:
                 want = 'disposition:shepherd';                         // clean-tier ramp → shepherd
               } else if (!isMajor && paths.some(p => RAMP_INFRA.some(r => p.startsWith(r)))) {
                 want = 'disposition:shepherd';                         // revertible cluster-infra PATCH/minor → shepherd
+              } else if (nonK8s) {
+                want = 'disposition:manual-only';                      // repo tooling — no health gate can ever own it
               } else {
                 // remaining: one-way MAJORS (Ceph/PG/cilium/authentik) the shepherd
-                // authors for human confirm, plus non-kubernetes majors and anything
-                // off-ramp. Still "you" — but for ramp-infra majors the shepherd will
-                // hand you a one-click-ready 'ONE-WAY — human confirm' PR.
+                // authors for human confirm, plus non-ramp majors and anything
+                // off-ramp. Needs your judgment — but for ramp-infra majors the shepherd
+                // will hand you a one-click-ready 'ONE-WAY — human confirm' PR.
                 want = 'disposition:stranded';
               }
 

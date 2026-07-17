@@ -68,6 +68,18 @@
       matchPackageNames: ['cloudnative-pg'],
       allowedVersions: '<0.30.0',
     },
+    {
+      description: [
+        'HELD docker.io/library/node majors: ride the 22 LTS ("Jod") line until its EOL — splash-screen build shim only.',
+        'Reason: the ONLY consumer is the authentik `web-dist-lower` initContainer (PLAN-042) — a build-time npm/lightningcss CSS-flattening shim for the splash screen. Runs at pod init, serves no traffic, works on Node 22; a major runtime bump there is churn with zero payoff. The `22-bookworm-slim` tag rolls new 22.x patch builds on image pull, so security fixes inside the LTS line still arrive with no PRs at all.',
+        'Issue: https://nodejs.org/en/about/previous-releases — Node 22 "Jod" is LTS, maintenance ends 2027-04-30; Node 24 is the next LTS (ends ~2028-04).',
+        'Resume: MANUAL — bump the initContainer tag to the then-current LTS (24-bookworm-slim) before 2027-04-30. If node ever gains a consumer outside the authentik helmrelease, split this hold per-consumer.',
+        'Recorded: 2026-07-17 by claude per user call (PR #2054 closed): pin to the LTS line until EOL rather than chase majors for a build-only script.',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['docker.io/library/node'],
+      allowedVersions: '<23',
+    },
     // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
     //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
     //   protection (Host/Origin validation on every route, 403 for non-loopback Host).
