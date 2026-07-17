@@ -117,6 +117,20 @@ fi
 #      signature, per-dimension paging: Flux is the sole catcher (page unless a fix is in
 #      flight); pods page ONLY for an upgrade regression remediate attempted+failed. ----
 collect_regressions
+# Diagnostic snapshot (log-only): every Flux resource currently NotReady with the age of
+# EACH failure condition. Exists because the cilium 1.19.6 wedge (2026-07-17) was live
+# across two gate cycles yet flux='' both times — either every anchor condition's
+# lastTransitionTime churns while helm-controller actively retries, or something else;
+# the conditions were rewritten before anyone could look. Next time this line IS the look.
+if [ "$API_OK" -eq 0 ] 2>/dev/null || kubectl version -o json >/dev/null 2>&1; then
+  watch_dbg="$(kubectl get kustomizations.kustomize.toolkit.fluxcd.io,helmreleases.helm.toolkit.fluxcd.io -A -o json 2>/dev/null \
+    | jq -r --argjson now "$NOW" '.items[] | . as $i
+        | select(.status.conditions[]? | select(.type=="Ready" and .status!="True"))
+        | "\(.kind)/\($i.metadata.namespace)/\($i.metadata.name)[" + ([.status.conditions[]?
+            | "\(.type)=\(.status)@\(($now - ((.lastTransitionTime|sub("\\.[0-9]+";"")|fromdateiso8601?) // $now)))s"] | join(",")) + "]"' 2>/dev/null \
+    | tr '\n' ' ')"
+  [ -n "$watch_dbg" ] && log "flux NotReady snapshot (condition ages, pre-persistence): $watch_dbg"
+fi
 if [ -n "$REG_IDS" ]; then
   SIG="$(sig_of "$REG_IDS")"
   flux_list="$(printf '%s\n' "$REG_IDS" | sed -n 's#^flux/##p' | tr '\n' ' ')"
