@@ -1,0 +1,98 @@
+# Re-authored award "Best Winners" collections — MOVED OUT of the oscars/golden
+# Kometa Defaults so they can carry the haynesnetwork `label: List` category chip.
+# A Default's static keyed collections cannot take a `label:` template variable,
+# and a same-name blank_collection companion is duplicate-skipped in-run (proven
+# by the 2026-07-17 dry-run), so these four are re-authored as custom defs here.
+# The matching Defaults now set `use_best_picture: false` + `use_best_director:
+# false` (config.yml) to turn OFF their built-in versions, so these customs own
+# the names with NO duplicate. The imdb_award builders are copied verbatim from
+# the Kometa Defaults (defaults/award/oscars.yml, defaults/award/golden.yml). The
+# yearly dynamic award collections (Oscars Winners <year> / Golden Globe <year>)
+# stay in the Defaults untouched and derive their category app-side from Kometa's
+# "Oscars Winners Awards" / "Golden Globes Awards" section labels.
+#
+# ACQUISITION PARITY: the oscars/golden Defaults run acquisition-ON
+# (radarr_add_missing + radarr_search, theatrical-window-guarded), and these
+# static winner collections inherited it. Preserved verbatim so behavior is
+# unchanged and no members are lost on the swap.
+collections:
+  Oscars Best Picture Winners:
+    label: List
+    sort_title: "!030 Oscars Best Picture Winners"
+    collection_order: release
+    imdb_award:
+      event_id: ev0000003
+      event_year: all
+      category_filter:
+        - best motion picture of the year
+        - best picture
+        - best picture, production
+        - best picture, unique and artistic production
+      winning: true
+    radarr_add_missing: true
+    radarr_search: true
+    radarr_availability: released
+    radarr_tag: "Kometa-Added,OscarsCollection"
+
+  Oscars Best Director Winners:
+    label: List
+    sort_title: "!031 Oscars Best Director Winners"
+    collection_order: release
+    imdb_award:
+      event_id: ev0000003
+      event_year: all
+      category_filter:
+        - best achievement in directing
+        - best director
+        - best director, comedy picture
+        - best director, dramatic picture
+      winning: true
+    radarr_add_missing: true
+    radarr_search: true
+    radarr_availability: released
+    radarr_tag: "Kometa-Added,OscarsCollection"
+
+  Golden Globes Best Picture Winners:
+    label: List
+    sort_title: "!032 Golden Globes Best Picture Winners"
+    collection_order: release
+    imdb_award:
+      event_id: ev0000292
+      event_year: all
+      category_filter:
+        - best animated feature film
+        - best animated film
+        - best foreign film
+        - best foreign language film
+        - best foreign-language foreign film
+        - best motion picture - animated
+        - best motion picture - comedy
+        - best motion picture - comedy or musical
+        - best motion picture - drama
+        - best motion picture - foreign language
+        - best motion picture - musical
+        - best motion picture - musical or comedy
+        - best motion picture - non-english language
+        - best motion picture, musical or comedy
+        - best picture
+      winning: true
+    radarr_add_missing: true
+    radarr_search: true
+    radarr_availability: released
+    radarr_tag: "Kometa-Added,GoldenGlobeCollection"
+
+  Golden Globes Best Director Winners:
+    label: List
+    sort_title: "!033 Golden Globes Best Director Winners"
+    collection_order: release
+    imdb_award:
+      event_id: ev0000292
+      event_year: all
+      category_filter:
+        - best director
+        - best director - motion picture
+      winning: true
+    radarr_add_missing: true
+    radarr_search: true
+    radarr_availability: released
+    radarr_tag: "Kometa-Added,GoldenGlobeCollection"

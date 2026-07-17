@@ -1,0 +1,13 @@
+# One-entry label companion. The movie "Star Wars" collection is an ORPHAN — it
+# carries only Kometa's managed label and is NOT built by any Default in-run, so a
+# same-name blank_collection append is NOT duplicate-skipped and cleanly adds our
+# category label onto the existing collection. (The related "Star Wars Universe"
+# and "Star Wars: Skywalker Saga" collections ARE built in-run by the universe /
+# franchise Defaults; they derive their category app-side from Kometa's
+# "Universe Collections" / "TMDb Collections" section labels, so they are NOT
+# here.) Loaded LAST in HOps Movies collection_files so the target already exists.
+# Append only — never label.sync (that would strip the managed "Kometa" label).
+collections:
+  Star Wars:
+    blank_collection: true
+    label: Universe

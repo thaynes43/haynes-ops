@@ -19,6 +19,7 @@ collections:
     schedule: range(11/01-01/07)
     radarr_add_missing: false
     radarr_tag: "Kometa-Added,ChristmasHNet"
+    label: List
 
   # Audio-metadata regex collections (Spatial Surround / Dolby Atmos / DTS X),
   # restored verbatim from the LIVE old Kometa config (an earlier port read a
@@ -33,6 +34,7 @@ collections:
     collection_order: release.desc
     schedule: weekly(saturday)
     radarr_tag: "Kometa-Added,SpatialSurround"
+    label: Audio
     filters:
       - filepath.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'
       - audio_track_title.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'
@@ -50,6 +52,7 @@ collections:
     collection_order: release.desc
     schedule: weekly(saturday)
     radarr_tag: "Kometa-Added,Atmos"
+    label: Audio
     filters:
       - filepath.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'
       - audio_track_title.regex: '(?i)^(?=.*\btrue[ ._-]?hd(\b|\d))(?=.*\batmos(\b|\d))'
@@ -65,6 +68,7 @@ collections:
     collection_order: release.desc
     schedule: weekly(saturday)
     radarr_tag: "Kometa-Added,DTSX"
+    label: Audio
     filters:
       - filepath.regex: '(?i)\bdts[ ._-]?x\b'
       - audio_track_title.regex: '(?i)\bdts[ ._-]?x\b'

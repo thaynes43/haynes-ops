@@ -32,6 +32,10 @@ templates:
     imdb_list: <<imdb_list>>
     collection_order: release
     radarr_tag: "Kometa-Added,MovieCollection"
+    # haynesnetwork category chip — every templated franchise here is a single
+    # ordered film line = Sequels (Monsterverse, the lone non-template def below,
+    # overrides to Universe). Append; beside Kometa's managed label.
+    label: Sequels
     # theatrical-window guard (owner ruling 2026-07-10): TMDb Collections can list
     # announced / in-production / still-theatrical entries — never search one until
     # its home (physical/digital) release per TMDB. Explicit mirror of the global
@@ -69,6 +73,8 @@ collections:
   Monsterverse:
     imdb_list: https://www.imdb.com/list/ls060980695/
     summary: "A collection of all the MonsterVerse movies."
+    # order-agnostic shared world umbrella-ing multiple sub-series = Universe
+    label: Universe
     # TODO(poster): old config used a local file_poster
     # (config/collection_posters/MonsterVerseCollection.png) that isn't available
     # in this deployment. No url_poster set — the collection falls back to a Plex

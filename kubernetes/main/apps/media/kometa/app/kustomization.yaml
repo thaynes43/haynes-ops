@@ -15,8 +15,11 @@ configMapGenerator:
       - movies-lists.yml=./config/movies-lists.yml
       - movies-charts.yml=./config/movies-charts.yml
       - movies-collections.yml=./config/movies-collections.yml
+      - movies-awards.yml=./config/movies-awards.yml
+      - movies-star-wars-labels.yml=./config/movies-star-wars-labels.yml
       - shows-franchises.yml=./config/shows-franchises.yml
       - shows-collections.yml=./config/shows-collections.yml
+      - shows-default-labels.yml=./config/shows-default-labels.yml
       - music.yml=./config/music.yml
 generatorOptions:
   disableNameSuffixHash: true

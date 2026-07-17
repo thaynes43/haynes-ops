@@ -26,45 +26,83 @@ collections:
   # Adventure Time:
   #   template: {name: Shows, trakt_list_details: https://trakt.tv/users/drachenplatinum/lists/adventure-time}
   #   url_poster: https://theposterdb.com/api/assets/273808
+  # haynesnetwork category chip is per-collection here (Shows template spans both
+  # Universe and Sequels). Universe = order-agnostic multi-series shared world;
+  # Sequels = a single ordered show line. Append; beside Kometa's managed label.
   Arrowverse:
     template: {name: Shows, tvdb_list_details: https://www.thetvdb.com/lists/arrowverse}
+    label: Universe
   Avatar The Last Airbender:
     template: {name: Shows, tvdb_list_details: https://www.thetvdb.com/lists/8116}
+    label: Universe
   Band of Brothers:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/band-of-brothers}
     url_poster: https://theposterdb.com/api/assets/63449
+    label: Sequels
   The Boys:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/the-boys}
     sort_title: "!010B Boys"
+    label: Universe
   Breaking Bad:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/breaking-bad}
+    label: Universe
   Family Guy:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/family-guy}
+    label: Sequels
   Full House:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/full-house}
+    label: Sequels
   Game of Thrones:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/game-of-thrones}
+    # owner ruling: GoT is a single ordered show line = Sequels; the shared world
+    # is "A Song of Ice and Fire" (Universe), defined below.
+    label: Sequels
   Gilmore Girls:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/gilmore-girls}
     url_poster: https://theposterdb.com/api/assets/361463
+    label: Sequels
   Marvel Cinematic Universe:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/marvel-cinematic-universe}
+    label: Universe
   One Chicago:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/one-chicago}
+    label: Universe
   Shondaverse:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/shondaverse}
     url_poster: https://theposterdb.com/api/assets/371504
+    label: Universe
   Sons of Anarchy:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/sons-of-anarchy}
+    label: Universe
   Star Wars:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/star-wars}
+    label: Universe
   Walking Dead:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/the-walking-dead, tvdb_show: 427464}
     # two builders (list + show) → collection_order:custom (from template) is
     # invalid; order by release instead so the flagship 427464 stays included.
     collection_order: release
+    label: Universe
   Yellowstone:
     template: {name: Shows, tvdb_list_details: https://thetvdb.com/lists/yellowstone}
+    label: Universe
+
+  # A Song of Ice and Fire — NEW umbrella (owner correction, 2026-07-17). The
+  # order-agnostic shared world over Game of Thrones + House of the Dragon (and
+  # any future spinoffs) = Universe. Built title-first with plex_search so it only
+  # ever contains shows ALREADY in the library (House of the Dragon is included
+  # automatically once present; no acquisition, nothing "missing" is added).
+  # minimum_items: 1 so the umbrella survives even if only one show is present.
+  A Song of Ice and Fire:
+    sort_title: "!010B A Song of Ice and Fire"
+    collection_order: alpha
+    minimum_items: 1
+    label: Universe
+    plex_search:
+      any:
+        title.is:
+          - Game of Thrones
+          - House of the Dragon
 
 #####################################
 #         Collection Builders       #

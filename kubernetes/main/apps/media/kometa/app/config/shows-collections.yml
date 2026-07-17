@@ -9,6 +9,7 @@ collections:
     sort_title: "!010AA Curated for Jackson"
     url_poster: https://theposterdb.com/api/assets/82398
     sonarr_tag: "Kometa-Added,ForJackson"
+    label: List
     tmdb_show:
       - 15260  # Adventure Time
       - 37606  # The Amazing World of Gumball
@@ -56,6 +57,7 @@ collections:
     sort_title: "!010AA Curated for Kellie"
     url_poster: https://theposterdb.com/api/assets/411741
     sonarr_tag: "Kometa-Added,ForKellie"
+    label: List
     tmdb_show:
       - 1418   # The Big Bang Theory
       - 2327   # Dawson's Creek
@@ -89,6 +91,7 @@ collections:
     sort_title: "!010AA Curated for Penelope"
     url_poster: https://theposterdb.com/api/assets/243003
     sonarr_tag: "Kometa-Added,ForPenelope"
+    label: List
     tmdb_show:
       - 39107  # Bubble Guppies
       - 100088 # The Last of Us
@@ -114,6 +117,7 @@ collections:
     sort_title: "!010AB Big Kid Cartoons"
     url_poster: https://theposterdb.com/api/assets/342075
     sonarr_tag: "Kometa-Added,BigKidCartoons"
+    label: List
     tvdb_show:
       - 371028 # Arcane
       - 110381 # Archer
@@ -131,6 +135,7 @@ collections:
     sort_title: "!010AB Kid Cartoons"
     url_poster: https://theposterdb.com/api/assets/316188
     sonarr_tag: "Kometa-Added,KidCartoons"
+    label: List
     tmdb_show:
       - 15260  # Adventure Time
       - 37606  # The Amazing World of Gumball
@@ -191,6 +196,7 @@ collections:
     sort_title: "!010AC Earth & Space Wonders"
     url_poster: https://theposterdb.com/api/assets/121577
     sonarr_tag: "Kometa-Added,EarthAndSpace"
+    label: List
     tvdb_show:
       - 417835 # Our Great National Parks
       - 74372  # The Blue Planet
