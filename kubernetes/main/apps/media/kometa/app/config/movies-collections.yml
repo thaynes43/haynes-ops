@@ -9,16 +9,6 @@
 # already-analyzed media — there is nothing "missing" to add, so add_missing is
 # a no-op for them; radarr_tag is present only for traceability parity.
 collections:
-  # ── TEMPORARY DRY-RUN (label-driven collections gate, 2026-07-17) ──────────────
-  # Proves that `blank_collection: true` + `label:` APPENDS our category label onto
-  # an EXISTING franchise-Default collection ("Back to the Future", built by the
-  # `franchise` Default earlier in collection_files) WITHOUT emptying it or stripping
-  # Kometa's managed labels. blank_collection = no builder, edit-only (append). This
-  # block is to be REVERTED once the gate is verified; it is NOT the full rollout.
-  Back to the Future:
-    blank_collection: true
-    label: Sequels
-  # ──────────────────────────────────────────────────────────────────────────────
   Christmas HNet:
     sort_title: "!001 Christmas HNet"
     imdb_list: https://www.imdb.com/list/ls000096828/
