@@ -68,17 +68,15 @@
       matchPackageNames: ['cloudnative-pg'],
       allowedVersions: '<0.30.0',
     },
-    {
-      description: [
-        'HELD grafana/mcp-grafana: 0.17.1 only — fails its /healthz readiness probe.',
-        "Reason: v0.17.1 (auto-merged #2016) never becomes Ready — the Deployment stays 'InProgress', the app-template /healthz probe times out, Flux retried 4x, stalled, and auto-rolled-back to 0.17.0 (working). Left in git it re-auto-merges (observability is Tier-2) and loops the rollback + drops the in-cluster grafana MCP. Pinned back to 0.17.0.",
-        'Issue: readiness-probe/startup regression in 0.17.1; revisit whether /healthz moved or the app needs a probe change.',
-        'Resume: AUTO at 0.17.2+ (allowedVersions skips only 0.17.1); if 0.17.2 also fails the probe, a supporting edit to the probe path is needed, not just a version bump.',
-        'Recorded: 2026-07-10 by claude. Related: PR #2016; memory renovate-automation-roadmap.',
-      ],
-      matchDatasources: ['docker'],
-      matchPackageNames: ['grafana/mcp-grafana'],
-      allowedVersions: '<0.17.1 || >=0.17.2',
-    },
+    // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
+    //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
+    //   protection (Host/Origin validation on every route, 403 for non-loopback Host).
+    //   Resolved durably in the helmrelease by passing `--allowed-hosts '*'` (service
+    //   sits behind the trusted traefik-internal proxy). The fix is version-independent,
+    //   so there is no bad VERSION left to blacklist — the accommodation, not a pin, is
+    //   the resolution. 0.17.2+ now flows under Tier-2 auto-merge. If a future release
+    //   renames/removes --allowed-hosts or flips the default --address to loopback-only,
+    //   the probe/clients break again → re-add a hold and adjust the helmrelease args.
+    //   Related: PR #2016 (0.17.1), #2081 (0.17.2); memory renovate-automation-roadmap.
   ],
 }

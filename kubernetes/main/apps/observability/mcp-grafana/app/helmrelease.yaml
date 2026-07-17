@@ -32,6 +32,18 @@ spec:
               - streamable-http
               - --endpoint-path
               - /mcp
+              # v0.17.1+ added DNS-rebinding protection: Host/Origin validation is
+              # enforced on EVERY route (/mcp, /sse, /healthz, /metrics) and rejects
+              # any Host outside the loopback allowlist with 403. That broke the
+              # kubelet httpGet /healthz probes (Host: <podIP>:8000), the in-cluster
+              # dev-env client (Host: <svc>.observability.svc:8000), AND the external
+              # Traefik ingress client (Host: mcp-grafana.haynesops.com) — none are
+              # loopback. This service is only reachable via the trusted traefik-internal
+              # reverse proxy (internal.haynesops), so per upstream guidance we disable
+              # the Host check with '*'. Removing this flag re-breaks the /healthz probe
+              # and every non-loopback client. See grafana/mcp-grafana v0.17.1 notes.
+              - --allowed-hosts
+              - "*"
             env:
               GRAFANA_URL: http://grafana.observability.svc.cluster.local
             envFrom:
