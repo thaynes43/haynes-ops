@@ -31,14 +31,34 @@ SIG_POD_QUERY="( (${SIG_POD_WAITING} == 1) or (${SIG_POD_PHASE} == 1) ) and ( ($
 # one per line) and SIG_PODS_STATUS (ok|blind). Identifier forms (stable + sortable):
 #   flux/<Kind>/<ns>/<name>   pod/<ns>/<pod>
 # Requires $NOW (epoch) and $PROM set by the caller. Read-only; never writes anything.
+#
+# FIRST-FAILURE ANCHORING (2026-07-17): the >600s persistence age is measured from the
+# OLDEST failure-indicating condition transition, NOT just Ready's. Ready's
+# lastTransitionTime churns during a Helm rollback loop (each retry flips Ready
+# Unknown->False, resetting the clock) — the mcp-grafana 0.17.2 incident looped
+# upgrade->rollback for 25 min and every gate cycle saw Ready as "~9 min old", so it
+# was never selected. Stable anchors that k8s condition semantics do NOT bump on
+# retries (status stays constant): Released=False (HR UpgradeFailed), Stalled=True
+# (HR RetriesExceeded), Healthy=False (Kustomization health check). A leftover
+# failure condition can only anchor while Ready!=True (the entry gate), and Flux
+# clears all three on recovery, so a healthy resource mid-reconcile (Ready=Unknown,
+# fresh) is still excluded. Per-timestamp parse errors drop that TIMESTAMP (never
+# abort the whole pipeline into a false-green — `fromdateiso8601?`); an item whose
+# every anchor is unparseable is skipped.
 collect_regressions() {
   SIG_PODS_STATUS=ok
   local flux_ids pods_json pods_ids
   flux_ids="$(kubectl get kustomizations.kustomize.toolkit.fluxcd.io,helmreleases.helm.toolkit.fluxcd.io -A -o json 2>/dev/null \
     | jq -r --argjson now "$NOW" '.items[] | . as $i
-        | (.status.conditions[]? | select(.type=="Ready" and .status!="True")) as $c
-        | ($c.lastTransitionTime | sub("\\.[0-9]+";"") | fromdateiso8601) as $t
-        | select(($now - $t) > 600)
+        | (.status.conditions // []) as $cs
+        | ($cs[]? | select(.type=="Ready" and .status!="True")) as $c
+        | ([ $c.lastTransitionTime,
+            ($cs[]? | select(.status=="False" and (.type=="Released" or .type=="Healthy")) | .lastTransitionTime),
+            ($cs[]? | select(.status=="True" and .type=="Stalled") | .lastTransitionTime)
+          ]
+          | map(select(type=="string") | (sub("\\.[0-9]+";"") | fromdateiso8601? // empty))
+          | min) as $t
+        | select($t != null and ($now - $t) > 600)
         | "flux/\(.kind)/\($i.metadata.namespace)/\($i.metadata.name)"' 2>/dev/null)"
   pods_json="$(curl -sf --max-time 15 "$PROM/api/v1/query" --data-urlencode "query=$SIG_POD_QUERY" 2>/dev/null)"
   if [ -z "$pods_json" ]; then

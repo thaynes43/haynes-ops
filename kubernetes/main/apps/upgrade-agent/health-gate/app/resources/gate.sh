@@ -9,9 +9,11 @@
 # regression SIGNATURE (computed IDENTICALLY, see the shared block) and coordinate through the
 # `upgrade-remediation-state` ConfigMap: triage writes class/attempted/result; the gate reads
 # them and only stamps last_paged. Per-dimension paging policy:
-#   * Flux Kustomization/HelmRelease NotReady  -> the gate is the ONLY catcher (gotk_* are not
-#       scraped into Alertmanager). PAGE it with full context whenever persisted, EXCEPT while
-#       remediate is actively landing a fix (suppress within the grace window).
+#   * Flux Kustomization/HelmRelease NotReady  -> PAGE it with full context whenever persisted,
+#       EXCEPT while remediate is actively landing a fix (suppress within the grace window).
+#       Since 2026-07-17 Alertmanager ALSO covers this (FluxReconciliationFailure via
+#       kube-state-metrics gotk_resource_info) — the gate stays as the Alertmanager-
+#       independent second catcher, not the only one.
 #   * Persisted-unhealthy pods                 -> Alertmanager's KubePodCrashLooping already
 #       covers general pod health. PAGE ONLY when the regression is upgrade-attributable AND
 #       auto-remediation was attempted and FAILED. A non-upgrade pod flap does NOT page here.
@@ -149,7 +151,7 @@ if [ -n "$REG_IDS" ]; then
     if [ "$lpaged" -gt 0 ] && [ "$(( NOW - lpaged ))" -lt "$(( REPAGE_SUPPRESS_HOURS * 3600 ))" ]; then
       log "coordination sig=$SIG phase=$phase: page(s) due but last_paged=$lpaged within ${REPAGE_SUPPRESS_HOURS}h — DEDUPED (flux='$flux_list' pod='$pod_list')"
     else
-      [ "$want_flux" = "1" ] && page critical flux "$SIG" "Flux deploy NotReady >10m (the gate is the ONLY catcher — gotk_* are not in Alertmanager): ${flux_list}[sig=$SIG] Remediation: ${rnote}."
+      [ "$want_flux" = "1" ] && page critical flux "$SIG" "Flux deploy NotReady >10m (first-failure anchored; Alertmanager's FluxReconciliationFailure should also have fired): ${flux_list}[sig=$SIG] Remediation: ${rnote}."
       [ "$want_pod" = "1" ]  && page critical pods "$SIG" "Pod(s) unhealthy >10m after an UPGRADE and auto-remediation FAILED (not the general crashloop Alertmanager covers): ${pod_list}[sig=$SIG] Remediation: ${rnote}."
       state_set_last_paged "$SIG" "$NOW"
     fi
