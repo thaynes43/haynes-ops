@@ -52,11 +52,15 @@ second category label on one collection.
    run (e.g. the movie "Star Wars", the four legacy TV orphans). Those are safe to
    append to and live in `movies-star-wars-labels.yml` / `shows-default-labels.yml`,
    loaded LAST so the target already exists.
-5. **To relabel a Default's STATIC keyed collection, turn it off and re-author it.**
-   Set `use_<key>: false` on the Default (e.g. `use_best_picture: false` on the
-   oscars/golden Defaults, config.yml) and re-create it as a custom def with an
-   inline `label:` (see `movies-awards.yml`). Preserve its acquisition settings so
-   no members are lost on the swap.
+5. **To relabel a Default's STATIC keyed collection, turn it off and re-author it —
+   and load the custom file BEFORE the Default.** Set `use_<key>: false` on the
+   Default (e.g. `use_best_picture: false` on the oscars/golden Defaults,
+   config.yml) and re-create it as a custom def with an inline `label:` (see
+   `movies-awards.yml`). Kometa registers collection NAMES at config-parse time and
+   duplicate-skips later same-name definitions even when the Default's copy is
+   toggled off (run-proven 2026-07-17), so the custom file must sit ABOVE the
+   Default in `collection_files` — first definition wins. Preserve the Default's
+   acquisition settings on the custom so no members are lost on the swap.
 6. **config.yml is PVC-seeded, collection files are live from git.** Editing a
    collection/overlay file under `config/` takes effect on the next run (they mount
    from the `kometa-config-files` ConfigMap at `/config/git`). Editing config.yml
