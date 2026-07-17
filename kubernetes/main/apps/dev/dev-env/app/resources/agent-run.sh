@@ -161,7 +161,18 @@ BLOCKED and the reason as your final message."
 
     tmux new-session -d -s "task-$id" -c "$wt" || die "tmux session failed"
     if [ "$interactive" = 1 ]; then
-      tmux send-keys -t "task-$id" "$token_env; cd $wt; $agent $yolo_flag" Enter
+      # Interactive claude launches with NO permission flag: the pod's GitOps'd
+      # ~/.claude/settings.json already defaults to bypassPermissions, and ANY
+      # permission flag at launch (--dangerously-skip-permissions or
+      # --permission-mode …) SILENTLY disables /remote-control — settings-
+      # inherited bypass does not (proven live 2026-07-17). --safe has to
+      # override the settings default explicitly, and costs /remote-control.
+      launch="$agent $yolo_flag"
+      if [ "$agent" = claude ]; then
+        launch="claude"
+        [ "$safe" = 1 ] && launch="claude --permission-mode default"
+      fi
+      tmux send-keys -t "task-$id" "$token_env; cd $wt; $launch" Enter
       log "interactive session ready →  agent-run attach $id"
     else
       # Env-var indirection keeps the prompt out of shell-quoting hell; log to

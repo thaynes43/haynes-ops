@@ -132,10 +132,15 @@ and open a PR when done.
 - **Memory is 24Gi.** The monorepo test suite OOM'd at 8Gi — if a build dies mysteriously,
   check `kubectl top pod -n dev` before blaming the code.
 - **Driving an agent from your phone:** start it here with `--interactive`, then use
-  `/remote-control` in the Claude app. It doesn't need this page. If the command does
-  *nothing* (no "active" banner, no error), the bridge WebSocket couldn't connect —
-  `bridge.claudeusercontent.com` must be in the egress allowlist (it is, since 2026-07-17;
-  a refused DNS lookup fails this silently).
+  `/remote-control` in the Claude app. It doesn't need this page. Two ways this fails
+  *silently* (no "active" banner, no error — both hit live 2026-07-16/17):
+  1. `bridge.claudeusercontent.com` not in the egress allowlist (it is, since 2026-07-17) —
+     a refused DNS lookup kills the bridge WebSocket without a message.
+  2. Launching claude with a permission flag (`--dangerously-skip-permissions` or
+     `--permission-mode …`) disables `/remote-control` for that process. Bypass mode
+     inherited from `~/.claude/settings.json` is fine — which is why `agent-run
+     --interactive` launches plain `claude` (bypass still on, RC works). If a session
+     won't connect, check its launch flags first: `/exit`, relaunch plain, retry.
 
 ---
 
