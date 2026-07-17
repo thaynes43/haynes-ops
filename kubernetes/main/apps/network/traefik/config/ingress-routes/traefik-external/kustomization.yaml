@@ -6,5 +6,6 @@ resources:
   - ./ingressroute-traefik-external-dashboard.yaml
   - ./ingressroute-overseerr.yaml
   - ./ingressroute-tautulli.yaml
+  - ./middleware-tautulli-forward-auth.yaml
   - ./ingressroute-plex.yaml
   - ./gatus-endpoint.yaml
