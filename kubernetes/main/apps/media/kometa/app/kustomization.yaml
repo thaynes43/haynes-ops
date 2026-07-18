@@ -21,6 +21,12 @@ configMapGenerator:
       - shows-collections.yml=./config/shows-collections.yml
       - shows-default-labels.yml=./config/shows-default-labels.yml
       - music.yml=./config/music.yml
+      # App-owned managed includes (ADR-072 / DESIGN-042). haynesnetwork owns these
+      # two files exclusively — it regenerates them from validated recipes and opens
+      # a bot PR (docs/ops/014-haynesops-collection-writes.md). Empty stubs here until
+      # the first app write; Flux mounts them at /config/git alongside the hand files.
+      - hnet-managed-movies.yml=./config/hnet-managed-movies.yml
+      - hnet-managed-tv.yml=./config/hnet-managed-tv.yml
 generatorOptions:
   disableNameSuffixHash: true
   annotations:
