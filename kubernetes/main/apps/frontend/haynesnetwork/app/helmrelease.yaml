@@ -315,7 +315,7 @@ spec:
       # MAM compliance governor every 15 min (PLAN-039 / ADR-054 / DESIGN-027): counts UNSATISFIED
       # torrents locally in qBittorrent (books-mam: still-downloading + complete-but-<72h-seeded —
       # zero MAM API surface, no qB credential) and, near the rank cap (unsatisfied >=
-      # MAM_UNSATISFIED_LIMIT − MAM_UNSATISFIED_BUFFER, defaults 20/5 → pause at 15), toggles the
+      # MAM_UNSATISFIED_LIMIT − MAM_UNSATISFIED_BUFFER, set 200/15 → pause at 185), toggles the
       # MyAnonaMouse Prowlarr indexer's enable flag (Prowlarr's fullSync LL application propagates
       # it to LazyLibrarian — verified live; usenet keeps flowing). Fail-closed on a count failure.
       # Upserts the single-row mam_gate_state + enqueues a transition / >48h-stuck Pushover row
@@ -340,6 +340,15 @@ spec:
               - tsx
               - /sync/src/scripts/sync.ts
               - --mode=mam-governor
+            env:
+              # MAM rank promotion → Elite VIP: unsatisfied limit 200, confirmed 2026-07-17 from the
+              # MAM Client Summary ("14 Unsatisfied (limit 200)"). resolveGovernorConfig was falling
+              # back to the New-Member code default (20) — stale since the 2026-07-11 join and never
+              # bumped after the VIP upgrade. Buffer 15 → pause-threshold 185: a 15-torrent safety
+              # margin below the 200 cap (keeps the fail-closed "close to but under the limit"
+              # intent). OPS-013 §10.1 tier table documents Elite VIP = 200.
+              MAM_UNSATISFIED_LIMIT: "200"
+              MAM_UNSATISFIED_BUFFER: "15"
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
