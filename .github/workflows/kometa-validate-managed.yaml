@@ -1,0 +1,55 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# ADR-072 / DESIGN-042 D-09 — the `--validate-file` CI GATE for the app-owned Kometa
+# managed includes. This is the check the haynesnetwork /collections auto-merge waits
+# on: until a green check reports on the PR head, the app leaves EVERY collection PR
+# for a human (getChecksConclusion == 'none' → no auto-merge; the safe default). See
+# docs/ops/014-haynesops-collection-writes.md (in the haynesnetwork repo).
+#
+# It runs ONLY on PRs that touch the two app-owned managed includes (the app's bot PRs
+# touch exactly one of them), validating them OFFLINE and secret-free so it is
+# green-capable on a public runner. The deeper Kometa `--validate-level full` pass
+# (Plex/TMDb/TVDb connectivity, mutates nothing) has no offline dry-run and needs
+# cluster credentials — it is deferred to the post-bootstrap canary (ADR-069 C-06).
+#
+# NOTE (DESIGN-042 D-10): App-authored PR events must TRIGGER this workflow for the
+# gate to report — the app writes with a GitHub App installation token for exactly
+# that reason (a raw GITHUB_TOKEN push would not trigger checks).
+name: Kometa Validate Managed Files
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/media/kometa/app/config/hnet-managed-movies.yml
+      - kubernetes/main/apps/media/kometa/app/config/hnet-managed-tv.yml
+      - scripts/kometa-validate-managed.py
+      - .github/workflows/kometa-validate-managed.yaml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Kometa Validate Managed Files - Success
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        # ubuntu-latest ships Python 3 + pip; PyYAML is preinstalled but pin it
+        # explicitly so the gate can never silently skip on a runner image change.
+        run: python3 -m pip install --disable-pip-version-check "pyyaml==6.0.2"
+
+      - name: Validate app-owned Kometa managed includes
+        run: |
+          python3 scripts/kometa-validate-managed.py \
+            kubernetes/main/apps/media/kometa/app/config/hnet-managed-movies.yml \
+            kubernetes/main/apps/media/kometa/app/config/hnet-managed-tv.yml
