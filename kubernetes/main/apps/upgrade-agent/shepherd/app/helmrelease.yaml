@@ -83,7 +83,7 @@ spec:
               # tracks the ramp) + /kyverno-verify after each. Manual/targeted summons
               # must clear this var (and UPGRADE_AGENT_PREFILTER_GLOBS if set) to
               # bypass the pre-filter.
-              UPGRADE_AGENT_RAMP: coredns traefik multus device-plugins flux immich-major rook-ceph cnpg dragonfly-operator cilium authentik cert-manager
+              UPGRADE_AGENT_RAMP: coredns traefik multus device-plugins flux immich-major rook-ceph cnpg dragonfly-operator cilium authentik cert-manager plex
               # The LLM's merge scope + per-class rules live here — every ramp
               # component above must be named in this prompt (checked at run start).
               UPGRADE_AGENT_PROMPT: >-
@@ -131,6 +131,22 @@ spec:
                 enable auto-merge, and note it PROMINENTLY at the TOP of your summary. The
                 human is the break-glass contact for irreversible changes ONLY — the PR is
                 one-click-ready, they just approve the irreversible step.
+                (4) PLEX (kubernetes/main/apps/media/plex) — a REVERTIBLE media leaf: a
+                pure image bump whose failure a tag revert recovers (no CNPG backup gate —
+                plex is not CNPG-backed). Renovate does NOT auto-merge plex (carved out in
+                autoMerge.json5) for ONE reason: a Plex pod restart DURING a Kometa run
+                corrupts Kometa's in-flight library write, so the merge must be timed. Before
+                enabling auto-merge on a plex PR you MUST run the KOMETA-IDLE PREFLIGHT:
+                'kubectl get pods -n media --no-headers | grep -i kometa | grep -vE
+                "Completed|Error"' AND 'kubectl get jobs -n media --no-headers | grep -i
+                kometa | grep -v "1/1"'. If EITHER shows an active kometa pod/job, HOLD (do
+                NOT merge) and note 'Kometa running — retry next run'. ALSO HOLD if a Kometa
+                run is imminent — within ~30 min BEFORE a cron start (collections daily
+                06:30, overlays Sat 01:00, operations Sun 01:00, all America/New_York; check
+                `date`). ONLY when Kometa is idle AND no run is imminent AND every check is
+                green, enable auto-merge (gh pr merge <N> --auto --squash --delete-branch).
+                Plex is class-1 pace (auto-merge freely when the preflight passes); do not
+                silence.sh it (it is not cluster-infra). See the plex playbook entry.
                 COMMON FLOW: survey open Renovate PRs (gh pr list); CONSULT
                 .renovate/holds.json5 FIRST (skip held). Read the release notes and the
                 component playbook (.agents/runbooks/tier4-component-playbooks.md). A pure

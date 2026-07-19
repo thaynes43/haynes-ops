@@ -839,3 +839,23 @@ Corrected procedure:
 7. **PREVENTION (codify):** keep any flux-manifests tag bump in a commit that touches ONLY flux.yaml L11, never co-mingled with flag-patch (L39-86) edits or CR apiVersion bumps, so a `git revert` is surgical.
 
 Caveats: no data loss in Flux itself; CRs persist across a controller revert — the only risk is API/CRD schema mismatch. A crashlooping source/kustomize-controller makes the GitOps self-revert impossible → break-glass (suspend + rollout-undo, NOT git alone) is mandatory. `task flux:bootstrap` re-installs the v2.6.4 FLOOR (a LARGER jump than the regression and possibly incompatible with CRs already migrated to a newer schema) — prefer `kubectl rollout undo` (minimal delta) and reserve re-bootstrap for when controller Deployments/RBAC themselves were pruned/destroyed. The flux.yaml flag-append patches are version-coupled — a `git revert` of a Renovate-style bump touches only the OCI tag (L11), so a hand-edited tag-only rollback that leaves NEW flag edits in place re-triggers the crashloop. The bootstrap ref (v2.6.4) is the renovate-ignored repopulation floor, untouched by a rollback. flux-system carries no PVCs → no VolSync data risk (see `.agents/rules/flux-pvc-prune-safety.md` for the general prune-on-rename caution).
+
+## plex
+
+**Class: REVERTIBLE media leaf — shepherd-owned SOLELY for a KOMETA-IDLE preflight (2026-07-19).** Renovate carves plex out of its own auto-merge (`.renovate/autoMerge.json5`: `automerge:false` on `/home-operations/plex$/`) and it is listed in the shepherd `UPGRADE_AGENT_RAMP`. A plex bump is a pure single-file tag/digest change; a tag revert recovers a bad bump. There is **no CNPG backup gate** (plex is not CNPG-backed) — its library/config DB lives on its own PVC.
+
+**Why shepherd-owned:** a Plex pod restart *during* a Kometa run corrupts Kometa's in-flight library write (Kometa drives Plex's API to build collections/overlays/metadata; the connection drops mid-write). Renovate can't check Kometa state; the shepherd can (it has read-only `pods`/`jobs` in `media`).
+
+**KOMETA-IDLE PREFLIGHT — run BEFORE enabling auto-merge on a plex PR:**
+1. `kubectl get pods -n media --no-headers | grep -i kometa | grep -vE "Completed|Error"` — any line ⇒ a Kometa pod is Running.
+2. `kubectl get jobs -n media --no-headers | grep -i kometa | grep -v "1/1"` — any line ⇒ a Kometa Job is active.
+3. If EITHER is non-empty ⇒ **HOLD** (do not merge); note `Kometa running — retry next run`. The shepherd retries on its next 4h run.
+4. **Imminent-run guard:** also HOLD if `date` (America/New_York) is within ~30 min BEFORE a Kometa cron start:
+   - `kometa-collections` — daily **06:30**
+   - `kometa-overlays` — **Sat 01:00**
+   - `kometa-operations` — **Sun 01:00** (the long one — ran 2h15m on 2026-07-19)
+5. Only when idle AND not imminent AND every check is green ⇒ `gh pr merge <N> --auto --squash --delete-branch`. Class-1 pace (merge freely once the preflight passes); do NOT `silence.sh` it (not cluster-infra).
+
+The shepherd's fixed 4h schedule (0/4/8/12/16/20 UTC) does not line up with the Kometa cron starts, so in practice the preflight mostly guards against a Kometa job that **overran** (like the 2026-07-19 `operations` run) rather than an imminent start.
+
+**Rollback:** revert the plex tag (single-file bump ⇒ surgical `git revert`), reconcile; Plex restarts onto the prior image, PVC untouched. Rare edge: if the new Plex version upgraded its library DB schema and the old binary rejects the migrated DB, restore the config PVC from its VolSync backup — uncommon for a same-minor patch (e.g. 1.43.2→1.43.3).

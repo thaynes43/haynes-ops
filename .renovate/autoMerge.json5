@@ -159,16 +159,16 @@
       matchPackageNames: ['/home-operations/qbittorrent$/'],
       automerge: false,
     },
-    // Plex carve-out (2026-07-18) — HELD pending Kometa-collision logic. A Plex image
-    // bump reconcile restarts the Plex pod; if it lands during a Kometa run (Kometa
-    // writes collections/metadata against Plex) the two can collide. Until idle-window
-    // logic exists (don't reconcile Plex while Kometa is running / schedule it in a
-    // Kometa-free window), Plex updates open a PR but DO NOT auto-merge — the owner
-    // merges by hand once the server is confirmed idle. Matches by package name so it
-    // beats the media/** leaf rule (last rule wins per-dep). See memory
-    // opsplex-launch-gotchas + unraid-arr-migration-plan.
+    // Plex — Renovate NEVER auto-merges it; the upgrade-shepherd OWNS it (2026-07-19).
+    // Why: a Plex pod restart DURING a Kometa run corrupts Kometa's in-flight library
+    // write, so the merge must be TIMED. `automerge:false` keeps Renovate's hands off;
+    // plex is in the shepherd RAMP (UPGRADE_AGENT_RAMP), which runs a KOMETA-IDLE
+    // PREFLIGHT before enabling auto-merge and holds to its next 4h run if a Kometa job
+    // is running or imminent. Matches by package name so it beats the media/** leaf rule
+    // (last rule wins per-dep). See the shepherd prompt PLEX clause +
+    // .agents/runbooks/tier4-component-playbooks.md; memory opsplex-launch-gotchas.
     {
-      description: 'HELD: plex — manual merge only until Kometa-collision idle logic exists',
+      description: 'plex — Renovate never auto-merges; upgrade-shepherd owns it (Kometa-idle preflight)',
       matchDatasources: ['docker'],
       matchPackageNames: ['/home-operations/plex$/'],
       automerge: false,

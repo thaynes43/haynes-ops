@@ -100,6 +100,11 @@ ramp_globs_for() {
     cilium)         printf '%s' "kubernetes/main/apps/kube-system/cilium/" ;;
     authentik)      printf '%s' "kubernetes/main/apps/network/authentik/" ;;
     cert-manager)   printf '%s' "kubernetes/main/apps/cert-manager/cert-manager/" ;;
+    # plex (2026-07-19) — a media leaf, but shepherd-owned so it can run the KOMETA-IDLE
+    # preflight before merging (a Plex restart mid-Kometa-run corrupts Kometa's library
+    # write). Renovate carves plex out of its own auto-merge; the shepherd merges it only
+    # when Kometa is idle. See the prompt's PLEX clause + the plex playbook entry.
+    plex)           printf '%s' "kubernetes/main/apps/media/plex/" ;;
     *)              printf '' ;;
   esac
 }

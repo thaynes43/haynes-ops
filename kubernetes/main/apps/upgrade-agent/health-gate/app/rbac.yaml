@@ -60,6 +60,13 @@ rules:
   - apiGroups: [postgresql.cnpg.io]
     resources: [backups, clusters, scheduledbackups]
     verbs: [get, list, watch]
+  # Kometa-idle preflight (2026-07-19) — the shepherd checks whether a Kometa Job is
+  # running in the `media` namespace before merging a Plex image bump (a Plex pod
+  # restart mid-Kometa-run corrupts Kometa's in-flight library write). Read-only
+  # jobs/cronjobs; the gate already has pods. No writes.
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

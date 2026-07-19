@@ -58,6 +58,9 @@ jobs:
               'kubernetes/main/apps/network/traefik/','kubernetes/main/apps/network/multus/',
               'kubernetes/main/apps/kube-system/generic-device-plugin/','kubernetes/main/apps/kube-system/intel-device-plugin/',
               'kubernetes/main/apps/kube-system/nvidia-device-plugin/','kubernetes/main/flux/','kubernetes/edge/flux/',
+              // plex (2026-07-19) is shepherd-owned (Renovate carves it out; the shepherd
+              // merges it after a Kometa-idle preflight) — label it shepherd, not auto-merge.
+              'kubernetes/main/apps/media/plex/',
             ];
             const IMMICH = 'kubernetes/main/apps/photos/immich/';
             // Revertible cluster-infra ramp (2026-07-08): shepherd auto-merges PATCH/
