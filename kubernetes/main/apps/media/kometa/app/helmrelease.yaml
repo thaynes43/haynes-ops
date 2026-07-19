@@ -89,7 +89,17 @@ spec:
       operations:
         type: cronjob
         cronjob:
-          schedule: "0 1 * * 0"
+          # DAILY (was weekly Sun 1am, 2026-07-19). operations runs mass_*_rating_update,
+          # which pulls MDBList per library item. Weekly + a synchronized 60-day rating-
+          # cache expiry batched ~6.4k lookups into ONE run and blew the free 1000/day
+          # MDBList quota (429s from item ~1000 on; dragged the run to 2h15m). Daily keeps
+          # the cache warm so each run only refreshes that day's expired items
+          # (~lib/cache_expiration ≈ 50-100/day, well under quota) AND re-caches them
+          # across different days, de-synchronizing the expiry. Runs at 03:00 — after the
+          # weekly overlays (Sat 01:00) and BEFORE the 06:30 collections (which consume the
+          # ratings). ~2h during the initial catch-up week, then minutes once the cache is
+          # warm. The plex upgrade preflight (shepherd) holds a Plex merge while this runs.
+          schedule: "0 3 * * *"
           timeZone: America/New_York
           concurrencyPolicy: Forbid
           successfulJobsHistory: 1
