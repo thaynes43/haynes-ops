@@ -72,6 +72,14 @@ spec:
               # (Cloudflare) return AAAA + A. Same undici Happy-Eyeballs
               # timeout todos-for-dues hit with Google OIDC — force IPv4.
               NODE_OPTIONS: --dns-result-order=ipv4first
+              # GB per-consumer daily call budget (env-tunable; code defaults 60/25/15). Raised
+              # 2026-07-19 after LazyLibrarian + Libretto moved to their own GCP-project keys: the
+              # app now owns its Google Books key's full ~1,000/day, so we use it. bookfix is the
+              # interactive-Fix reserve enforced in this app container; pairing/goodreads are
+              # enforced in their sync jobs below (same values set there).
+              GB_DAILY_CALL_BUDGET_PAIRING: "700"
+              GB_DAILY_CALL_BUDGET_GOODREADS: "200"
+              GB_DAILY_CALL_BUDGET_BOOKFIX: "100"
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
@@ -512,6 +520,12 @@ spec:
               - tsx
               - /sync/src/scripts/sync.ts
               - --mode=goodreads-sync
+            env:
+              # GB daily call budget (see the app container comment). Enforces goodreads
+              # enrichment + the book-fix retry pass; app now owns its own ~1,000/day GB key.
+              GB_DAILY_CALL_BUDGET_PAIRING: "700"
+              GB_DAILY_CALL_BUDGET_GOODREADS: "200"
+              GB_DAILY_CALL_BUDGET_BOOKFIX: "100"
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
@@ -602,6 +616,12 @@ spec:
               - tsx
               - /sync/src/scripts/sync.ts
               - --mode=format-pairing
+            env:
+              # GB daily call budget (see the app container comment). The pairing resolve drains
+              # the ~216-book cohort; at 700 legs/day on the app's own key it clears in ~1 day.
+              GB_DAILY_CALL_BUDGET_PAIRING: "700"
+              GB_DAILY_CALL_BUDGET_GOODREADS: "200"
+              GB_DAILY_CALL_BUDGET_BOOKFIX: "100"
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
