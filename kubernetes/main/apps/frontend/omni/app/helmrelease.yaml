@@ -39,7 +39,7 @@ spec:
           app:
             image:
               repository: ghcr.io/siderolabs/omni
-              tag: v1.8.1
+              tag: v1.9.3
               pullPolicy: IfNotPresent
             envFrom:
               - secretRef:
