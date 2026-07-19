@@ -8,6 +8,20 @@
   // platformAutomerge hands the merge to GitHub, which fires when flux-local passes
   // — independent of Mend's hosted run cadence — and leaves a visible merged-PR trail.
   packageRules: [
+    // ── minimumReleaseAge REMOVED 2026-07-18 (GHCR bake freeze) ────────────────
+    // The Tier-2 rules used to carry a 3-day `minimumReleaseAge` soak. Mend-hosted
+    // Renovate cannot obtain a release timestamp for the `docker` datasource on
+    // ghcr.io (multi-arch OCI images), so with internalChecksFilter:strict (default)
+    // the internal stability check NEVER passed for GHCR images — every GHCR Tier-2
+    // update sat in the dependency dashboard's "Pending Status Checks" with no
+    // branch/PR, indefinitely and silently, since ~2026-07-06. Docker Hub images
+    // (ollama/wyoming/mcp-grafana) were unaffected (timestamp readable), which is why
+    // "some merged, most didn't". Removing the soak restores hands-off GHCR
+    // auto-merge; the 3-day bake's safety is redundant with the flux-local gate +
+    // shepherd + health gate + auto-revert. If GHCR timestamp lookups are ever fixed
+    // host-side (a ghcr.io hostRules token on the Renovate runner), a bake can be
+    // reintroduced. See issue #1809 + memory renovate-automation-roadmap.
+    // ──────────────────────────────────────────────────────────────────────────
     // Tier 0 — github-actions, ALL update types incl. major (widened 2026-07-08).
     // GHA bumps are trivially revertible (revert the workflow file) and, crucially,
     // FAIL-SAFE: with ignoreTests:false a major that breaks a workflow turns that
@@ -26,7 +40,7 @@
       ignoreTests: false,
     },
     // Tier 2 — our own images. We build and test these before pushing, so a
-    // Renovate digest/tag bump is a no-brainer; only a short bake.
+    // Renovate digest/tag bump is a no-brainer (no soak — bake removed, see header).
     {
       description: 'Auto merge our own ghcr.io/thaynes43/* images',
       matchDatasources: ['docker'],
@@ -35,7 +49,6 @@
       automerge: true,
       automergeType: 'pr',
       ignoreTests: false,
-      minimumReleaseAge: '1 minute',
     },
     // Tier 2 — kube-prometheus-stack chart (observability has been quiet here).
     // Sourced via OCIRepository (oci://ghcr.io/.../charts/kube-prometheus-stack),
@@ -49,11 +62,10 @@
       automerge: true,
       automergeType: 'pr',
       ignoreTests: false,
-      minimumReleaseAge: '3 days',
     },
     // Tier 2 — safe stateless leaf-app domains on the main cluster. These apps
     // restart as a single pod with no operator/coupling/state-migration risk.
-    // Gated by flux-local + a 3-day bake. Ramp this list as each proves quiet.
+    // Gated by flux-local (3-day bake removed 2026-07-18, see header). Ramp as each proves quiet.
     //
     // observability/ added 2026-06-15: the whole domain is plain Deployments
     // (no StatefulSets, no operator CRs) — grafana's state lives in external
@@ -101,7 +113,6 @@
       automerge: true,
       automergeType: 'pr',
       ignoreTests: false,
-      minimumReleaseAge: '3 days',
     },
     // Tier 2 (2026-06-15) — curated cluster-infra leaves, allowlisted by
     // EXPLICIT SUBPATH (never whole-domain). kube-system and network each
@@ -109,7 +120,7 @@
     // overnight — cilium/coredns (CNI + cluster DNS), traefik (all ingress),
     // authentik (SSO + DB migrations), multus (CNI), the device-plugins
     // (GPU/detection pipeline). Only stateless, single-pod utilities with no
-    // such coupling go here. Same flux-local + 3-day bake. Ramp per-app.
+    // such coupling go here. Same flux-local gate (bake removed, see header). Ramp per-app.
     // `kubernetes/*/apps/…` again covers main + edge (see the leaf-app note above).
     // Edge currently has metrics-server, reloader, spegel of these; the rest match
     // main only (harmless — no edge dir to match). cilium/coredns on edge are
@@ -134,7 +145,6 @@
       automerge: true,
       automergeType: 'pr',
       ignoreTests: false,
-      minimumReleaseAge: '3 days',
     },
     // qBittorrent carve-out (2026-07-11) — MAM approved-clients compliance. MyAnonaMouse
     // requires the torrent client to be on its Approved Clients list with auto-update
@@ -147,6 +157,20 @@
       description: 'NEVER auto-merge qbittorrent — MAM approved-clients compliance (manual merge only)',
       matchDatasources: ['docker'],
       matchPackageNames: ['/home-operations/qbittorrent$/'],
+      automerge: false,
+    },
+    // Plex carve-out (2026-07-18) — HELD pending Kometa-collision logic. A Plex image
+    // bump reconcile restarts the Plex pod; if it lands during a Kometa run (Kometa
+    // writes collections/metadata against Plex) the two can collide. Until idle-window
+    // logic exists (don't reconcile Plex while Kometa is running / schedule it in a
+    // Kometa-free window), Plex updates open a PR but DO NOT auto-merge — the owner
+    // merges by hand once the server is confirmed idle. Matches by package name so it
+    // beats the media/** leaf rule (last rule wins per-dep). See memory
+    // opsplex-launch-gotchas + unraid-arr-migration-plan.
+    {
+      description: 'HELD: plex — manual merge only until Kometa-collision idle logic exists',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/home-operations/plex$/'],
       automerge: false,
     },
     // Immich carve-out REMOVED 2026-07-05 (hands-off directive). Immich minor/patch/

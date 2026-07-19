@@ -31,6 +31,13 @@
   // Use GitHub-native auto-merge: the PR merges itself the moment the required
   // flux-local check passes, without waiting for Renovate's next hosted run.
   platformAutomerge: true,
+  // Backlog-drain throttle (2026-07-18): overrides :disableRateLimiting so the
+  // one-time GHCR-bake-freeze backlog (~24 held updates) — and any future wave —
+  // lands in monitorable batches instead of all at once. Excess defers to the next
+  // scheduled (overnight) run; nothing is stranded. Raise/remove once the backlog is
+  // clear if fuller hands-off throughput is wanted.
+  prConcurrentLimit: 5,
+  prHourlyLimit: 3,
   timezone: 'America/New_York',
   schedule: [
     'after 10pm',
