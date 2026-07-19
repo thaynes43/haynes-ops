@@ -50,6 +50,16 @@ rules:
   - apiGroups: [volsync.backube]
     resources: [replicationsources]
     verbs: [get, list, watch]
+  # CNPG backup gate (added 2026-07-19) — the shepherd (which reuses this role) confirms
+  # a recent successful backup before auto-merging a stateful/DB-backed component. Some
+  # apps (e.g. authentik) have NO VolSync replicationsource of their own; their only
+  # durable state is the shared CNPG postgres cluster, so the gate must read the CNPG
+  # Backup .status.phase + Cluster .status.lastSuccessfulBackup. READ-ONLY status objects
+  # (get/list/watch) — no Secrets, no writes; keeps the role's posture. Unblocks the
+  # authentik #2005 backup-gate HOLD.
+  - apiGroups: [postgresql.cnpg.io]
+    resources: [backups, clusters, scheduledbackups]
+    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
