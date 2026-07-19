@@ -40,6 +40,18 @@ spec:
       replicas: 1
       serviceMonitor:
         enabled: true
+      # Chart default (64Mi/128Mi) OOMKilled during a large Renovate reconcile wave
+      # (2026-07-19, ~22 image bumps merged together): the background-controller
+      # re-scans every changed resource against all policies and churns policy reports,
+      # so a big batch spikes it past 128Mi (sawtooth, not a leak). Give generous
+      # headroom (limit well above the reports/admission controllers' 512Mi) so a
+      # future bulk reconcile can't OOM it.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 768Mi
     reportsController:
       replicas: 1
       serviceMonitor:
