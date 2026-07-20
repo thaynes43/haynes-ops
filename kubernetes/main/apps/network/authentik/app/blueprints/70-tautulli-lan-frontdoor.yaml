@@ -1,0 +1,187 @@
+# Tautulli LAN front doors (DESIGN-041 D-07 / Q-08 owner ruling 2026-07-20) —
+# Authentik forward-auth in front of the TWO in-cluster, LAN-internal Tautulli
+# instances (Q-03: they STAY on their internal *.haynesops.com ingress; only the
+# auth redirect goes through the public Authentik, which works from the LAN via
+# the internet path — the tautulli.haynesnetwork.com pilot proves the pattern):
+#   - tautulli-k8plex.haynesops.com  -> svc tautulli-k8plex.media:8181  (K8Plex)
+#   - tautulli.haynesops.com         -> svc tautulli.media:8181         (PlexOps)
+#
+# This mirrors 50-dev-env.yaml (the proven INTERNAL-host outpost recipe:
+# traefik-internal + certificate-haynesops), NOT 60-tautulli-frontdoor.yaml (the
+# EXTERNAL/public Unraid pilot). It differs from dev-env by adding HTTP-Basic
+# injection + admins-only access bindings, matching the 60-* pilot's injection
+# shape but with PER-APP attribute keys so the two instances can carry DIFFERENT
+# credentials.
+#
+# ADDITIVE ONLY (OPS-009 blast radius): every entry CREATES a new object — two
+# providers, two applications, two policy bindings, two dedicated outposts. No
+# existing flow/stage/provider/application/brand/group/outpost is touched; the
+# !Find references (flows, the `authentik Admins` group, the service connection)
+# are read-only lookups. The `authentik Admins` group is referenced ONLY as a
+# policy target — its attributes are NEVER managed here (blueprints REPLACE the
+# whole `attributes` dict, which would clobber the pilot's tautulli_user/password
+# and any other admin-group attributes; the doctrine keeps system groups
+# unmanaged). See the CREDENTIALS note below.
+#
+# Dedicated outpost PER APP (never fold these providers into a shared outpost — a
+# blueprint outpost `providers` list is a FULL REPLACEMENT; the 50-dev-env.yaml
+# header documents both failure modes). Authentik generates
+# Deployment/Service/Middleware `ak-outpost-tautulli-k8plex-outpost` and
+# `ak-outpost-tautulli-plexops-outpost` in `network`.
+#
+# WHO may log in (owner default for these ops surfaces, 2026-07-20): admins ONLY
+# — `authentik Admins`. (The pilot's admins+family stays pilot-only.) Everyone
+# else gets Authentik's access-denied interstitial.
+#
+# CURRENT app auth state (verified in-cluster 2026-07-20): both instances serve
+# their UI OPEN (GET / -> 303 /home -> 200, no login, no WWW-Authenticate). So
+# the front door + admins-only policy ALONE already yields an admins-only,
+# zero-click door with Tautulli reachable behind it — the injected Basic header
+# is simply ignored by an open Tautulli. The HTTP-Basic injection below is
+# forward-ready HARDENING: it takes effect only if/when Tautulli http_basic_auth
+# is enabled (media/tautulli/*/externalsecret.yaml stages that; live enablement
+# is a deliberate arm-time step). Injection is harmless while Tautulli is open.
+#
+# CREDENTIALS (values, not names, are secret — never in git). The provider names
+# the per-app attribute keys below; the VALUES are set owner-side on the
+# `authentik Admins` group in the Authentik UI (Directory -> Groups ->
+# authentik Admins -> Attributes), ADDING (never replacing) the existing pilot
+# keys. This paste is only meaningful once Tautulli http_basic_auth is enabled;
+# until then it can be skipped (open Tautulli ignores the header). 1Password
+# HaynesKube items `tautulli-k8plex` / `tautulli-plexops` hold the canonical
+# username/password.
+#   tautulli_k8plex_user / tautulli_k8plex_password
+#   tautulli_plexops_user / tautulli_plexops_password
+version: 1
+metadata:
+  name: tautulli-lan-frontdoor
+  labels:
+    blueprints.goauthentik.io/description: 'Tautulli LAN front doors: two forward-auth proxy providers (HTTP-Basic injection, per-app attr keys) + applications + admins-only policy bindings + two dedicated outposts, for the in-cluster tautulli-k8plex / tautulli (PlexOps) instances on *.haynesops.com (DESIGN-041 D-07 / Q-08).'
+context: {}
+entries:
+
+# ---------- K8Plex ----------
+- model: authentik_providers_proxy.proxyprovider
+  state: present
+  identifiers:
+    name: tautulli-k8plex
+  attrs:
+    external_host: https://tautulli-k8plex.haynesops.com
+    mode: forward_single
+    # Match headlamp/dev-env (hours=24); the authentik default (hours=1) would
+    # bounce admins through an hourly re-auth redirect.
+    access_token_validity: hours=24
+    authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+    invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+    # HTTP-Basic injection (forward-ready; ignored while Tautulli is open).
+    # PER-APP attribute keys so k8plex and plexops carry different creds.
+    basic_auth_enabled: true
+    basic_auth_user_attribute: tautulli_k8plex_user
+    basic_auth_password_attribute: tautulli_k8plex_password
+    # Carve-outs (D-07 step 4) — Tautulli's unauthenticated surfaces reachable
+    # via the ingress host. Health probes (/status) hit the pod directly and the
+    # homepage widget hits the in-cluster service, so both already bypass this
+    # gate; these keep any ingress-path consumer working.
+    skip_path_regex: |
+      ^/newsletter
+      ^/image
+      ^/status
+      ^/api
+- model: authentik_core.application
+  state: present
+  identifiers:
+    slug: tautulli-k8plex
+  attrs:
+    name: Tautulli (K8Plex)
+    provider: !Find [authentik_providers_proxy.proxyprovider, [name, tautulli-k8plex]]
+    meta_launch_url: https://tautulli-k8plex.haynesops.com
+    meta_description: K8Plex watch stats (LAN-internal)
+    open_in_new_tab: true
+    policy_engine_mode: any
+- model: authentik_policies.policybinding
+  state: present
+  identifiers:
+    target: !Find [authentik_core.application, [slug, tautulli-k8plex]]
+    order: 0
+  attrs:
+    group: !Find [authentik_core.group, [name, authentik Admins]]
+- model: authentik_outposts.outpost
+  state: present
+  identifiers:
+    name: tautulli-k8plex-outpost
+  attrs:
+    type: proxy
+    service_connection: !Find [authentik_outposts.kubernetesserviceconnection, [name, Local Kubernetes Cluster]]
+    providers:
+    - !Find [authentik_providers_proxy.proxyprovider, [name, tautulli-k8plex]]
+    # config mirrors dev-env (internal host): traefik-internal + certificate-
+    # haynesops. `type` + full `config` are REQUIRED on create (the 50-dev-env
+    # attempt-2 lesson). Ingress stays disabled — routing is the app's own
+    # Ingress; the outpost only provides the forwardAuth middleware.
+    config:
+      authentik_host: https://authentik.haynesnetwork.com/
+      log_level: info
+      kubernetes_replicas: 1
+      kubernetes_namespace: network
+      kubernetes_service_type: ClusterIP
+      kubernetes_disabled_components:
+      - ingress
+      kubernetes_ingress_class_name: traefik-internal
+      kubernetes_ingress_secret_name: certificate-haynesops
+
+# ---------- PlexOps ----------
+- model: authentik_providers_proxy.proxyprovider
+  state: present
+  identifiers:
+    name: tautulli-plexops
+  attrs:
+    external_host: https://tautulli.haynesops.com
+    mode: forward_single
+    access_token_validity: hours=24
+    authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+    invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+    basic_auth_enabled: true
+    basic_auth_user_attribute: tautulli_plexops_user
+    basic_auth_password_attribute: tautulli_plexops_password
+    skip_path_regex: |
+      ^/newsletter
+      ^/image
+      ^/status
+      ^/api
+- model: authentik_core.application
+  state: present
+  identifiers:
+    slug: tautulli-plexops
+  attrs:
+    name: Tautulli (PlexOps)
+    provider: !Find [authentik_providers_proxy.proxyprovider, [name, tautulli-plexops]]
+    meta_launch_url: https://tautulli.haynesops.com
+    meta_description: PlexOps watch stats (LAN-internal)
+    open_in_new_tab: true
+    policy_engine_mode: any
+- model: authentik_policies.policybinding
+  state: present
+  identifiers:
+    target: !Find [authentik_core.application, [slug, tautulli-plexops]]
+    order: 0
+  attrs:
+    group: !Find [authentik_core.group, [name, authentik Admins]]
+- model: authentik_outposts.outpost
+  state: present
+  identifiers:
+    name: tautulli-plexops-outpost
+  attrs:
+    type: proxy
+    service_connection: !Find [authentik_outposts.kubernetesserviceconnection, [name, Local Kubernetes Cluster]]
+    providers:
+    - !Find [authentik_providers_proxy.proxyprovider, [name, tautulli-plexops]]
+    config:
+      authentik_host: https://authentik.haynesnetwork.com/
+      log_level: info
+      kubernetes_replicas: 1
+      kubernetes_namespace: network
+      kubernetes_service_type: ClusterIP
+      kubernetes_disabled_components:
+      - ingress
+      kubernetes_ingress_class_name: traefik-internal
+      kubernetes_ingress_secret_name: certificate-haynesops

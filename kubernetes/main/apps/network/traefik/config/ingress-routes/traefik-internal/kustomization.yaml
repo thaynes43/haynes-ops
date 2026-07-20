@@ -5,3 +5,4 @@ kind: Kustomization
 resources:
   - ./ingressroute-traefik-internal-dashboard.yaml
   - ./gatus-endpoint.yaml
+  - ./middleware-tautulli-lan-forward-auth.yaml
