@@ -94,6 +94,14 @@ spec:
     ingress:
       app:
         annotations:
+          # Authentik forward-auth front door (DESIGN-041 D-07 / Q-08): admins-only
+          # gate via the dedicated tautulli-plexops outpost. The twin middleware
+          # re-adds the Authorization header the generated one drops (network ns,
+          # cross-namespace ref — traefik-internal has allowCrossNamespace: true).
+          # MERGE-AFTER-ARM: only merge once the Authentik `authentik Admins`
+          # attributes are set AND an admin has LAN-verified zero-click, else
+          # non-admins lose current open access with no in-cluster bypass.
+          traefik.ingress.kubernetes.io/router.middlewares: network-tautulli-plexops-forward-auth@kubernetescrd
           external-dns.alpha.kubernetes.io/target: internal.haynesops
           gethomepage.dev/href: &url "https://tautulli.haynesops.com"
           gethomepage.dev/enabled: "true"
