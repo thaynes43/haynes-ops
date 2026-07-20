@@ -282,9 +282,18 @@ reason as your final message."
           # API — the reliable path (the in-TUI slash command is not) — and
           # phone/claude.ai-code drives the session; local attach shows the
           # status/QR/URL screen. Failures self-document in the rc log.
+          #
+          # NB: the subcommand takes NO --model/--effort, and top-level flags
+          # placed BEFORE it make it reject its own --name (`claude $cg
+          # remote-control --name …` → "unknown option --name", verified live).
+          # So an RC host takes its model from the pod settings (Fable) and runs
+          # at the default effort — set a different effort with /effort in the
+          # session, or use --local for a flag-controlled TUI. NEVER splice $cg
+          # here.
+          [ -n "$cg" ] && log "note: --model/--effort don't apply to an RC host (model = pod default; use --local, or set /effort in-session)"
           rc_mode="--permission-mode bypassPermissions"
           [ "$safe" = 1 ] && rc_mode="--permission-mode default"
-          launch="claude$cg remote-control --name $id $rc_mode --debug-file $WORK/$id.rc.log"
+          launch="claude remote-control --name $id $rc_mode --debug-file $WORK/$id.rc.log"
         fi
       else
         launch="$agent $yolo_flag"   # codex: RC is claude-only → local TUI
