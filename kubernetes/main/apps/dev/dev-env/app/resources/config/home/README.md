@@ -63,6 +63,7 @@ agent-run list               # what's running + start times + the attach command
 agent-run attach [task-id]   # jump back into a live session (scrollback intact)
 agent-run detach [task-id]   # kick attached clients off — the session keeps running
 agent-run reap [task-id]     # kill it + delete the worktree (the log is kept)
+agent-run prune              # bulk-clean EVERY stranded worktree (dry-run; add --yes to do it)
 ```
 
 **Skip the id and you get an arrow-key picker** (↑/↓ or j/k, Enter selects, `q` cancels)
@@ -75,7 +76,24 @@ balloon the PVC (it asks `y/N` before deleting).
 mistake, `attach` strips the prefix for you. `attach` is nested-tmux aware: from inside
 another task's session it switches you over instead of erroring.
 
-`reap` refuses to delete a worktree with uncommitted work — add `--force` if you mean it.
+**When the backlog piles up** (an agent that spun up its own per-PR worktrees, or a wall of
+stranded ones after a pod bounce), `agent-run prune` clears them all at once. It prints a
+**dry-run plan** first; re-run with `--yes` to execute. Both `reap` and `prune` resolve the
+owning repo from git itself (so any worktree name works, in either repo) and are **safe by
+construction**: a worktree is removed only when it has **no uncommitted _tracked_ changes** —
+untracked scratch (`.claude/` locks, `node_modules`, build dirs) is discarded, but real WIP
+is kept and listed. A worktree that still holds tracked edits is skipped unless you add
+`--force` (`reap <id> --force` / `prune --yes --force`). Agents commit and open a PR before
+finishing, so a stranded worktree is essentially always safe to prune.
+
+**Branches are retired conservatively.** After removing a worktree, the branch is deleted only
+when git can prove _offline_ it holds nothing beyond the base (`git branch -d`). A branch with
+its own local commits — genuinely unpushed WIP, **or** a squash-merged branch whose remote was
+deleted (git can't tell these apart offline, and it never trusts a branch _name_ to mean
+"merged") — is **kept**, and prune prints the exact `git branch -D …` to drop it once you've
+confirmed it landed. So a clean prune may leave a few merged branch refs behind; that's the
+price of never orphaning an un-pushed commit. Sweep them when you're sure with
+`git -C ~/repos/<name> branch -D <branch>`.
 
 **Task logs** live at `~/work/<task-id>.log` even after a reap.
 
@@ -125,22 +143,32 @@ and open a PR when done.
 ## 7. Gotchas worth knowing
 
 - **A pod restart kills tmux** (image roll, node drain, OOM). Worktrees, branches, and logs
-  survive on the PVC — only the live pane is lost. `agent-run list` shows what's left, and
-  the `agent-run reap` picker flags the stranded worktrees so you can clean them up.
+  survive on the PVC — only the live pane is lost. `agent-run list` shows what's left (and a
+  count of stranded worktrees), and `agent-run prune` clears the whole backlog in one shot
+  (`agent-run reap`'s picker still handles them one at a time).
+- **Pick the model/effort per task.** The pod defaults to Fable; add `--model <m>` and/or
+  `--effort low|medium|high|xhigh|max` to `agent-run run` to override for that session
+  (works for `-p`, `--local`, and Remote-Control launches alike). `--effort ultracode` is a
+  harness session-mode, not a launch value — set it with `/effort` once you're in the session.
 - **haynesnetwork is pre-warmed**: `pnpm install`, `build`, `typecheck`, and all **1,292 tests**
   (embedded Postgres) pass in this pod. Playwright browsers are installed.
 - **Memory is 24Gi.** The monorepo test suite OOM'd at 8Gi — if a build dies mysteriously,
   check `kubectl top pod -n dev` before blaming the code.
-- **Driving an agent from your phone:** start it here with `--interactive`, then use
-  `/remote-control` in the Claude app. It doesn't need this page. Two ways this fails
-  *silently* (no "active" banner, no error — both hit live 2026-07-16/17):
-  1. `bridge.claudeusercontent.com` not in the egress allowlist (it is, since 2026-07-17) —
-     a refused DNS lookup kills the bridge WebSocket without a message.
-  2. Launching claude with a permission flag (`--dangerously-skip-permissions` or
-     `--permission-mode …`) disables `/remote-control` for that process. Bypass mode
-     inherited from `~/.claude/settings.json` is fine — which is why `agent-run
-     --interactive` launches plain `claude` (bypass still on, RC works). If a session
-     won't connect, check its launch flags first: `/exit`, relaunch plain, retry.
+- **Driving an agent from your phone (the default):** `agent-run run --repo <r> --agent
+  claude --interactive` starts the task as a **Remote Control host** — connect from the
+  Claude mobile app or claude.ai/code; `agent-run attach <id>` shows the status screen
+  with the QR code + URL. This uses the standalone `claude remote-control` registration
+  path (api.anthropic.com environments API), which is reliable; fresh worktrees are
+  pre-trusted by agent-run so nothing stops at a dialog. If a host ever fails to
+  connect, the reason is in `~/work/<id>.rc.log` — no more silent failures.
+- **Prefer a classic terminal TUI?** Add `--local`. You can still type `/remote-control`
+  inside it, but know that the *in-TUI* path is flaky server-side (intermittent 401s on
+  the code-session endpoints — anthropics/claude-code#30093 #30102 — and after 3 failed
+  attempts that process disables RC until restarted). The RC-host default exists
+  precisely so your workflow never depends on it. Historical silent-failure traps, all
+  handled now: bridge egress (`bridge.claudeusercontent.com` allowed in the CNP since
+  2026-07-17) and permission flags at launch disabling in-TUI RC (`--local` launches
+  flag-free; bypass comes from settings).
 
 ---
 
