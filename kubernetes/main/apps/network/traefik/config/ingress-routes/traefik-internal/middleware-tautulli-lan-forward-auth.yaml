@@ -1,0 +1,65 @@
+---
+# Custom twin forward-auth middlewares for the two LAN-internal Tautulli front
+# doors (DESIGN-041 D-07 / Q-08). The outpost-GENERATED middlewares
+# (ak-outpost-tautulli-k8plex-outpost / ak-outpost-tautulli-plexops-outpost,
+# owned by the Authentik controller) omit `Authorization` from
+# authResponseHeaders, so the outpost's injected HTTP-Basic credentials never
+# reach Tautulli (found live on the pilot 2026-07-17; the generated object is
+# unpatchable). These twins add the one header. Same outpost address, same trust
+# posture. Applied to the `network` namespace by the traefik-ingress Flux
+# Kustomization (targetNamespace: network); referenced cross-namespace from the
+# media-ns Tautulli Ingresses via the router.middlewares annotation
+# (traefik-internal has allowCrossNamespace: true).
+#
+# While Tautulli serves OPEN (its current state), the injected Authorization is
+# harmlessly ignored; these twins matter only once Tautulli http_basic_auth is
+# enabled. Wiring these onto the live Ingresses is a SEPARATE, merge-after-arm PR
+# (attaching an admins-only gate changes access) — see the PR that adds the
+# router.middlewares annotation.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: tautulli-k8plex-forward-auth
+  namespace: network
+spec:
+  forwardAuth:
+    address: http://ak-outpost-tautulli-k8plex-outpost.network:9000/outpost.goauthentik.io/auth/traefik
+    trustForwardHeader: true
+    authResponseHeaders:
+      - X-authentik-username
+      - X-authentik-groups
+      - X-authentik-entitlements
+      - X-authentik-email
+      - X-authentik-name
+      - X-authentik-uid
+      - X-authentik-jwt
+      - X-authentik-meta-jwks
+      - X-authentik-meta-outpost
+      - X-authentik-meta-provider
+      - X-authentik-meta-app
+      - X-authentik-meta-version
+      - Authorization
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: tautulli-plexops-forward-auth
+  namespace: network
+spec:
+  forwardAuth:
+    address: http://ak-outpost-tautulli-plexops-outpost.network:9000/outpost.goauthentik.io/auth/traefik
+    trustForwardHeader: true
+    authResponseHeaders:
+      - X-authentik-username
+      - X-authentik-groups
+      - X-authentik-entitlements
+      - X-authentik-email
+      - X-authentik-name
+      - X-authentik-uid
+      - X-authentik-jwt
+      - X-authentik-meta-jwks
+      - X-authentik-meta-outpost
+      - X-authentik-meta-provider
+      - X-authentik-meta-app
+      - X-authentik-meta-version
+      - Authorization
