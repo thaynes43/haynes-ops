@@ -134,16 +134,29 @@ tracked_dirty() {  # $1 = worktree path
   git -C "$1" status --porcelain=v1 2>/dev/null | grep -vcE '^(\?\?|!!)' || true
 }
 
-# Remove ONE worktree (forcing past disposable untracked scratch) and delete the
-# branch it had checked out — never a shared base branch. Caller must have already
-# cleared the tracked-dirty gate. $1 = worktree path, $2 = owning repo dir.
+# Remove ONE worktree (forcing past disposable untracked scratch), then retire the
+# branch it had checked out — SAFELY, OFFLINE. Caller has cleared the tracked-dirty
+# gate, but a clean tree can still hide committed-but-never-pushed commits, and once
+# the worktree (+ its HEAD reflog) is gone the branch ref is those commits' only
+# anchor. So delete ONLY when git can PROVE offline the branch holds nothing beyond
+# HEAD: `git branch -d` (deletes plain/FF-merged or already-at-base; refuses if the
+# branch has its own commits). On refusal — unpushed WIP OR squash-merged (upstream
+# deleted, history rewritten) — we do NOT force: a name-only "a PR merged" signal is
+# not proof THIS local tip landed (stacked commits / reused branch names both defeat
+# it), so we never escalate to -D. Keep the branch (weightless) and print the exact
+# drop command. Never touches a shared base branch. $1 = worktree, $2 = repo dir.
 drop_worktree() {
-  local wt="$1" repo="$2" br
+  local wt="$1" repo="$2" br tip
   br="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  tip="$(git -C "$wt" rev-parse --short HEAD 2>/dev/null)"
   git -C "$repo" worktree remove --force "$wt" || return 1
-  case "$br" in ""|HEAD|main|master) : ;;
-    *) git -C "$repo" branch -D "$br" >/dev/null 2>&1 || true ;;
-  esac
+  case "$br" in ""|HEAD|main|master) return 0 ;; esac
+  if git -C "$repo" branch -d "$br" >/dev/null 2>&1; then
+    log "branch $br deleted"
+  else
+    log "KEPT branch $br @ $tip — has local commit(s) not on HEAD (unpushed WIP, or squash-merged). Confirm it landed, then drop: git -C $repo branch -D $br"
+  fi
+  return 0
 }
 
 # Pre-trust a fresh worktree in claude's state file: `claude remote-control`
@@ -192,6 +205,11 @@ case "$cmd" in
     [ -n "$repo" ] || die "--repo required"
     case "$agent" in claude|codex) : ;; *) die "--agent must be claude|codex" ;; esac
     [ "$interactive" = 1 ] || [ -n "$prompt" ] || die "need -p or --interactive"
+    if [ -n "$effort" ]; then   # fail fast, before any clone/worktree side effects
+      case "$effort" in low|medium|high|xhigh|max) : ;;
+        *) die "--effort must be low|medium|high|xhigh|max (got '$effort'); 'ultracode' is a /effort session-mode — set it in-session" ;;
+      esac
+    fi
 
     # Canonical clone: fetch-only, never worked in directly.
     if [ ! -d "$REPOS/$repo/.git" ]; then
@@ -219,9 +237,12 @@ reason as your final message."
     # launches alike. Model otherwise defaults to the pod settings.json (Fable);
     # these MUST sit in top-level position (before the remote-control subcommand),
     # which is where claude reads them. No-op for codex.
+    # %q-escape the values: they ride through one more shell layer (tmux send-keys
+    # re-parses the launch string), and a legit value like 'claude-fable-5[1m]'
+    # carries glob metacharacters that would otherwise be pathname-expanded.
     cg=""
-    [ -n "$model" ]  && cg="$cg --model $model"
-    [ -n "$effort" ] && cg="$cg --effort $effort"
+    [ -n "$model" ]  && cg="$cg --model $(printf '%q' "$model")"
+    [ -n "$effort" ] && cg="$cg --effort $(printf '%q' "$effort")"
 
     case "$agent" in
       claude) run_cmd="claude$cg --dangerously-skip-permissions --append-system-prompt \"\$AGENT_GUARD\" -p \"\$AGENT_PROMPT\" --output-format text" ;;
@@ -300,9 +321,11 @@ reason as your final message."
     strand=0
     for wt in "$WORK"/*/; do
       [ -d "$wt" ] || continue
-      tmux has-session -t "task-$(basename "$wt")" 2>/dev/null || strand=$((strand + 1))
+      tmux has-session -t "task-$(basename "$wt")" 2>/dev/null && continue
+      owning_repo "$wt" >/dev/null 2>&1 && strand=$((strand + 1))   # count what prune acts on
     done
     [ "$strand" -gt 0 ] && printf 'STRANDED: %d worktree(s) with no live session → agent-run prune\n' "$strand"
+    true   # never let the trailing test set a nonzero exit for `agent-run list`
     ;;
   attach)
     id="${1:-}"
@@ -382,7 +405,7 @@ reason as your final message."
       fi
       ut="$(git -C "$wt" status --porcelain=v1 2>/dev/null | grep -cE '^\?\?' || true)"
       [ "${ut:-0}" -gt 0 ] && log "discarding $ut untracked scratch file(s) (.claude/ etc.) in $id"
-      drop_worktree "$wt" "$repo_dir" && log "worktree removed + branch deleted" \
+      drop_worktree "$wt" "$repo_dir" && log "worktree removed" \
         || die "worktree remove failed for $wt"
       git -C "$repo_dir" worktree prune 2>/dev/null || true
     else
@@ -405,7 +428,7 @@ reason as your final message."
         *) die "unknown flag $1 (usage: agent-run prune [--yes] [--force])" ;;
       esac
     done
-    plan=0 wip=0 removed=0
+    plan=0 wip=0 removed=0 forced=0 failed=0
     for wt in "$WORK"/*/; do
       [ -d "$wt" ] || continue
       wt="${wt%/}"; wid="$(basename "$wt")"
@@ -413,26 +436,32 @@ reason as your final message."
       repo_dir="$(owning_repo "$wt")" || { printf '  skip  %-34s (not a git worktree)\n' "$wid"; continue; }
       br="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)"
       td="$(tracked_dirty "$wt")"
-      if [ "${td:-0}" -gt 0 ] && [ -z "$pforce" ]; then
-        printf '  SKIP  %-34s %s  (%s tracked WIP — reap --force to discard)\n' "$wid" "$br" "$td"
-        wip=$((wip + 1)); continue
+      note="" is_wip=""
+      if [ "${td:-0}" -gt 0 ]; then
+        if [ -z "$pforce" ]; then
+          printf '  SKIP  %-34s %s  (%s tracked WIP — prune --yes --force to discard)\n' "$wid" "$br" "$td"
+          wip=$((wip + 1)); continue
+        fi
+        note="  ⚠ discards $td tracked WIP"; is_wip=1   # --force: shown, never hidden
       fi
       plan=$((plan + 1))
       if [ -n "$do_it" ]; then
         if drop_worktree "$wt" "$repo_dir"; then
-          printf '  REAP  %-34s %s\n' "$wid" "$br"; removed=$((removed + 1))
+          printf '  REAP  %-34s %s%s\n' "$wid" "$br" "$note"
+          removed=$((removed + 1)); [ -n "$is_wip" ] && forced=$((forced + 1))
         else
-          printf '  FAIL  %-34s %s  (worktree remove failed)\n' "$wid" "$br"
+          printf '  FAIL  %-34s %s  (worktree remove failed)\n' "$wid" "$br"; failed=$((failed + 1))
         fi
       else
-        printf '  reap  %-34s %s\n' "$wid" "$br"
+        printf '  reap  %-34s %s%s\n' "$wid" "$br" "$note"
+        [ -n "$is_wip" ] && forced=$((forced + 1))
       fi
     done
     for r in "$REPOS"/*/; do [ -d "$r/.git" ] && git -C "$r" worktree prune 2>/dev/null || true; done
     if [ -n "$do_it" ]; then
-      log "prune done: $removed removed, $wip left (WIP — add --force to include them)"
+      log "prune done: $removed removed ($forced force-discarded WIP), $failed failed, $wip skipped (WIP)"
     else
-      log "DRY-RUN: $plan would be reaped, $wip skipped (WIP). Execute:  agent-run prune --yes"
+      log "DRY-RUN: $plan would be reaped ($forced discarding tracked WIP), $wip skipped (WIP). Execute:  agent-run prune --yes${pforce:+ --force}"
     fi
     ;;
   *)

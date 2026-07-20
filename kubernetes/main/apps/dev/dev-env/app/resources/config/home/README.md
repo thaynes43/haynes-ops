@@ -86,6 +86,15 @@ is kept and listed. A worktree that still holds tracked edits is skipped unless 
 `--force` (`reap <id> --force` / `prune --yes --force`). Agents commit and open a PR before
 finishing, so a stranded worktree is essentially always safe to prune.
 
+**Branches are retired conservatively.** After removing a worktree, the branch is deleted only
+when git can prove _offline_ it holds nothing beyond the base (`git branch -d`). A branch with
+its own local commits — genuinely unpushed WIP, **or** a squash-merged branch whose remote was
+deleted (git can't tell these apart offline, and it never trusts a branch _name_ to mean
+"merged") — is **kept**, and prune prints the exact `git branch -D …` to drop it once you've
+confirmed it landed. So a clean prune may leave a few merged branch refs behind; that's the
+price of never orphaning an un-pushed commit. Sweep them when you're sure with
+`git -C ~/repos/<name> branch -D <branch>`.
+
 **Task logs** live at `~/work/<task-id>.log` even after a reap.
 
 ---
