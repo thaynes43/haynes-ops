@@ -37,7 +37,7 @@ spec:
               repository: ghcr.io/thaynes43/ytdrivarr
               # Pinned to the first published immutable tag from the publish workflow. Bump to a
               # release `vX.Y.Z` once release-please cuts one.
-              tag: sha-a343e7d
+              tag: sha-68df68e
             env:
               TZ: America/New_York
               PORT: &port 8080
