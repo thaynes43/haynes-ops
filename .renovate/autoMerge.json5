@@ -173,6 +173,24 @@
       matchPackageNames: ['/home-operations/plex$/'],
       automerge: false,
     },
+    // dev-env carve-out (2026-07-20) — the 24/7 agent workhorse pod. The Tier-2
+    // "our own images" rule above would auto-merge thaynes43/dev-env bumps, but the
+    // pod is replicas:1 strategy:Recreate — a rollout hard-kills the tmux server and
+    // every in-flight agent session, and the overnight Renovate schedule is exactly
+    // when unattended agents are busiest. Manual merge only: the bump PR still opens;
+    // whoever merges picks the moment and drains/warns sessions first. NOT in the
+    // shepherd ramp either — an external idle heuristic can't work here because the
+    // agents are near-always active and only THEY know if they're interruptible; if
+    // this ever goes hands-off it needs a drain/lock protocol the agents participate
+    // in (agents hold a busy-lock, merger waits for release), not a CPU-idle check.
+    // Matches by package name so it beats the Tier-2 image rule (last rule wins
+    // per-dep). See .agents/sagas/dev-env/.
+    {
+      description: 'NEVER auto-merge dev-env image — pod Recreate kills in-flight agent sessions (manual merge only)',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/thaynes43/dev-env$/'],
+      automerge: false,
+    },
     // Immich carve-out REMOVED 2026-07-05 (hands-off directive). Immich minor/patch/
     // digest now auto-merge via the photos leaf-app rule above — it is not cluster-
     // breaking, and the safety net (flux-local + health gate + auto-revert + the daily
