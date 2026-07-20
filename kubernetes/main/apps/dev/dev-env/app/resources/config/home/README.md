@@ -147,9 +147,11 @@ and open a PR when done.
   count of stranded worktrees), and `agent-run prune` clears the whole backlog in one shot
   (`agent-run reap`'s picker still handles them one at a time).
 - **Pick the model/effort per task.** The pod defaults to Fable; add `--model <m>` and/or
-  `--effort low|medium|high|xhigh|max` to `agent-run run` to override for that session
-  (works for `-p`, `--local`, and Remote-Control launches alike). `--effort ultracode` is a
-  harness session-mode, not a launch value — set it with `/effort` once you're in the session.
+  `--effort low|medium|high|xhigh|max` to `agent-run run` to override for a **`-p` or
+  `--local`** session. They do **not** apply to a Remote-Control host — the reliable `claude
+  remote-control` subcommand takes no such flags — so an RC host runs at the pod-default model
+  (Fable) and default effort; set a different effort with `/effort` once you've connected.
+  `--effort ultracode` is likewise a harness session-mode, not a launch value — set it in-session.
 - **haynesnetwork is pre-warmed**: `pnpm install`, `build`, `typecheck`, and all **1,292 tests**
   (embedded Postgres) pass in this pod. Playwright browsers are installed.
 - **Memory is 24Gi.** The monorepo test suite OOM'd at 8Gi — if a build dies mysteriously,
