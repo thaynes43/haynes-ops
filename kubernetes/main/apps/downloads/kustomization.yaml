@@ -17,4 +17,5 @@ resources:
   - ./sabnzbd/ks.yaml
   - ./slskd/ks.yaml
   - ./soularr/ks.yaml
+  - ./ytdrivarr/ks.yaml
   - ./ytdl-sub/ks.yaml

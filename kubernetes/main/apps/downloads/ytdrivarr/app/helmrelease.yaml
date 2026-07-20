@@ -1,0 +1,146 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ytdrivarr
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      ytdrivarr:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        pod:
+          # Keep off the control-plane nodes (critical smart-home stack), matching the *arrs.
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: DoesNotExist
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/ytdrivarr
+              # Pinned to the first published immutable tag from the publish workflow. Bump to a
+              # release `vX.Y.Z` once release-please cuts one.
+              tag: sha-a343e7d
+            env:
+              TZ: America/New_York
+              PORT: &port 8080
+              LOG_LEVEL: info
+              # ytdrivarr renders each Library's config here (DESIGN-045 D-14). The M2 cutover
+              # points the ytdl-sub downloaders at these projected files.
+              PROJECTION_ROOT: /projections
+              DATABASE_URL:
+                valueFrom:
+                  secretKeyRef:
+                    name: ytdrivarr-postgres16-app
+                    key: uri
+            envFrom:
+              - secretRef:
+                  name: ytdrivarr-secret
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /livez
+                    port: *port
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 5
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: *port
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 5
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /livez
+                    port: *port
+                  failureThreshold: 30
+                  periodSeconds: 5
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+    service:
+      app:
+        primary: true
+        ports:
+          http:
+            port: *port
+    ingress:
+      app:
+        annotations:
+          external-dns.alpha.kubernetes.io/target: internal.haynesops
+          gethomepage.dev/enabled: "true"
+          gethomepage.dev/group: Downloads
+          gethomepage.dev/name: ytdrivarr
+          gethomepage.dev/description: ytdl-content suite service
+          gethomepage.dev/icon: youtube
+        # LAN-only, NEVER a public host (DESIGN-045 D-17 / owner 2026-07-20). Matches the *arrs.
+        className: traefik-internal
+        hosts:
+          - host: ytdrivarr.haynesops.com
+            paths:
+              - path: /
+                service:
+                  identifier: app
+                  port: http
+    persistence:
+      # The downloader-mounted projection volume (NFS, the same media volume the ytdl-sub
+      # downloaders use). ytdrivarr projects <projectionPath> under /projections.
+      projections:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          ytdrivarr:
+            app:
+              - path: /projections
+                subPath: data/media
+      tmp:
+        type: emptyDir
+        advancedMounts:
+          ytdrivarr:
+            app:
+              - path: /tmp
