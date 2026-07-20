@@ -8,16 +8,22 @@
 #   agent-run run  --repo <name> --agent claude --interactive   # REMOTE-CONTROL host (phone/web drives it)
 #                                                 [--local]     # classic in-terminal TUI instead
 #                                                 [--safe]      # keep permission prompts
+#                                     [--model <m>] [--effort <l>]  # override the pod default (Fable)
 #   agent-run list                                              # live tasks + attach cmds
 #   agent-run attach [<task-id>]                # jump into a session (no id → picker)
 #   agent-run detach [<task-id>]                # kick attached clients off (no id → picker)
 #   agent-run reap   [<task-id>] [--force]      # kill + cleanup (no id → picker)
+#   agent-run prune  [--yes] [--force]          # bulk-clean ALL stranded worktrees (dry-run w/o --yes)
 #
 # attach/detach/reap without an id open an arrow-key picker (↑/↓ + Enter, q
 # cancels) showing each task's start time; reap's picker also lists STRANDED
 # worktrees (pod restart killed tmux, PVC kept the worktree) so they don't
-# balloon the PVC. attach is nested-tmux aware: from inside tmux it switches
-# clients instead of tripping the "sessions should be nested with care" guard.
+# balloon the PVC. `prune` clears the whole backlog at once. Both are safe by
+# construction: a worktree is removed only when it has no uncommitted TRACKED
+# changes (untracked scratch like `.claude/` is discarded) — agents commit +
+# PR before abandoning a worktree, so tracked-clean means the work is saved.
+# attach is nested-tmux aware: from inside tmux it switches clients instead of
+# tripping the "sessions should be nested with care" guard.
 #
 # Agents run YOLO by default (claude --dangerously-skip-permissions / codex
 # --dangerously-bypass-approvals-and-sandbox): the pod IS the sandbox.
@@ -32,12 +38,15 @@ usage() {
 agent-run — worktree-per-task agent dispatcher
   agent-run run  --repo <name> --agent claude|codex [--base <ref>] -p "<task>"
   agent-run run  --repo <name> --agent claude --interactive [--local] [--safe]
+                 [--model <m>] [--effort low|medium|high|xhigh|max]
                  # default: Remote Control host (drive from phone/claude.ai/code)
                  # --local: classic in-terminal TUI instead
+                 # --model/--effort override the pod default (Fable, session effort)
   agent-run list
   agent-run attach [<task-id>]                # no id → arrow-key picker
   agent-run detach [<task-id>]                # no id → picker (attached sessions only)
   agent-run reap   [<task-id>] [--force]      # no id → picker (incl. stranded worktrees)
+  agent-run prune  [--yes] [--force]          # bulk-clean stranded worktrees (dry-run without --yes)
 EOF
 }
 
@@ -100,6 +109,43 @@ live_tasks() {
   tmux ls -F '#{session_name}|#{session_attached}' 2>/dev/null | sed -n 's/^task-//p'
 }
 
+# Resolve the canonical repo working dir that OWNS a linked worktree — works for
+# ANY worktree name and either repo. (reap USED to guess the repo from the id
+# prefix via `${id%%-[0-9]*}`, which broke on agent-made worktrees like
+# 'hnet-award-order-fix' → a nonexistent repo path → git erroring → the
+# misleading "worktree dirty" die. Ask git who owns it instead.) The common dir
+# is '<repo>/.git', so strip the trailing '/.git'. Nonzero if not a git worktree.
+owning_repo() {  # $1 = worktree path → echoes repo dir
+  local gd
+  gd="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 1
+  [ -n "$gd" ] || return 1
+  printf '%s\n' "${gd%/.git}"
+}
+
+# Count uncommitted TRACKED changes (staged/unstaged edits, adds, deletes,
+# renames of files git tracks). This — NOT untracked files — is the real
+# "unsaved work" signal: agents commit + open a PR before a worktree is
+# abandoned, so a stranded worktree with zero tracked-dirty has everything
+# safely committed (and, per the branch's merged PR, landed). Untracked files
+# are runtime scratch — `.claude/` (scheduled_tasks.lock, settings.json),
+# node_modules, build dirs — which legitimately blocks a plain `git worktree
+# remove` yet is disposable. Prints an integer.
+tracked_dirty() {  # $1 = worktree path
+  git -C "$1" status --porcelain=v1 2>/dev/null | grep -vcE '^(\?\?|!!)' || true
+}
+
+# Remove ONE worktree (forcing past disposable untracked scratch) and delete the
+# branch it had checked out — never a shared base branch. Caller must have already
+# cleared the tracked-dirty gate. $1 = worktree path, $2 = owning repo dir.
+drop_worktree() {
+  local wt="$1" repo="$2" br
+  br="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  git -C "$repo" worktree remove --force "$wt" || return 1
+  case "$br" in ""|HEAD|main|master) : ;;
+    *) git -C "$repo" branch -D "$br" >/dev/null 2>&1 || true ;;
+  esac
+}
+
 # Pre-trust a fresh worktree in claude's state file: `claude remote-control`
 # REFUSES untrusted dirs outright, and the TUI stops at a trust dialog — both
 # kill "RC from the get-go" for worktrees that are, by construction, brand new.
@@ -128,7 +174,7 @@ cmd="${1:-help}"; shift || true
 
 case "$cmd" in
   run)
-    repo="" agent="" base="" prompt="" interactive=0 safe=0 local_tui=0
+    repo="" agent="" base="" prompt="" interactive=0 safe=0 local_tui=0 model="" effort=""
     while [ $# -gt 0 ]; do
       case "$1" in
         --repo) repo="$2"; shift 2 ;;
@@ -137,6 +183,8 @@ case "$cmd" in
         -p|--prompt) prompt="$2"; shift 2 ;;
         --interactive) interactive=1; shift ;;
         --local) local_tui=1; shift ;;
+        --model) model="$2"; shift 2 ;;
+        --effort) effort="$2"; shift 2 ;;
         --safe) safe=1; shift ;;
         *) die "unknown flag $1" ;;
       esac
@@ -162,11 +210,21 @@ case "$cmd" in
 
     guard="You are working in an isolated git worktree ($wt) on branch agent/$id. \
 Stay inside it. NEVER push to main — commit to agent/$id, push that branch, and \
-open a PR with 'gh pr create' when the task is complete. If blocked, write \
-BLOCKED and the reason as your final message."
+open a PR with 'gh pr create' when the task is complete. If the task needs extra \
+git worktrees, create them under $WORK and 'git worktree remove' each once its PR \
+merges — never leave stranded worktrees behind. If blocked, write BLOCKED and the \
+reason as your final message."
+
+    # Optional top-level claude flags — model/effort — apply to -p, --local, and RC
+    # launches alike. Model otherwise defaults to the pod settings.json (Fable);
+    # these MUST sit in top-level position (before the remote-control subcommand),
+    # which is where claude reads them. No-op for codex.
+    cg=""
+    [ -n "$model" ]  && cg="$cg --model $model"
+    [ -n "$effort" ] && cg="$cg --effort $effort"
 
     case "$agent" in
-      claude) run_cmd="claude --dangerously-skip-permissions --append-system-prompt \"\$AGENT_GUARD\" -p \"\$AGENT_PROMPT\" --output-format text" ;;
+      claude) run_cmd="claude$cg --dangerously-skip-permissions --append-system-prompt \"\$AGENT_GUARD\" -p \"\$AGENT_PROMPT\" --output-format text" ;;
       codex)  run_cmd="codex exec --dangerously-bypass-approvals-and-sandbox \"\$AGENT_GUARD \$AGENT_PROMPT\"" ;;
     esac
 
@@ -195,8 +253,8 @@ BLOCKED and the reason as your final message."
           # (intermittent 401s, anthropics/claude-code#30093 #30102, and a
           # 3-strikes-then-disabled-until-restart hook) — which is exactly why
           # the RC-host mode below is the default, not this.
-          launch="claude"
-          [ "$safe" = 1 ] && launch="claude --permission-mode default"
+          launch="claude$cg"
+          [ "$safe" = 1 ] && launch="claude$cg --permission-mode default"
         else
           # DEFAULT: Remote Control HOST from the get-go. The standalone
           # subcommand registers through the api.anthropic.com environments
@@ -205,7 +263,7 @@ BLOCKED and the reason as your final message."
           # status/QR/URL screen. Failures self-document in the rc log.
           rc_mode="--permission-mode bypassPermissions"
           [ "$safe" = 1 ] && rc_mode="--permission-mode default"
-          launch="claude remote-control --name $id $rc_mode --debug-file $WORK/$id.rc.log"
+          launch="claude$cg remote-control --name $id $rc_mode --debug-file $WORK/$id.rc.log"
         fi
       else
         launch="$agent $yolo_flag"   # codex: RC is claude-only → local TUI
@@ -239,6 +297,12 @@ BLOCKED and the reason as your final message."
     [ "$found" = 1 ] || printf '  (none)\n'
     printf 'WORKTREES:\n'
     for r in "$REPOS"/*/; do [ -d "$r/.git" ] && git -C "$r" worktree list | grep "$WORK" || true; done
+    strand=0
+    for wt in "$WORK"/*/; do
+      [ -d "$wt" ] || continue
+      tmux has-session -t "task-$(basename "$wt")" 2>/dev/null || strand=$((strand + 1))
+    done
+    [ "$strand" -gt 0 ] && printf 'STRANDED: %d worktree(s) with no live session → agent-run prune\n' "$strand"
     ;;
   attach)
     id="${1:-}"
@@ -306,14 +370,70 @@ BLOCKED and the reason as your final message."
       case "$ans" in y|Y|yes) : ;; *) log "aborted"; exit 1 ;; esac
     fi
     tmux kill-session -t "task-$id" 2>/dev/null && log "session killed" || log "no session"
-    repo="${id%%-[0-9]*}"
-    if [ -d "$WORK/$id" ]; then
-      git -C "$REPOS/$repo" worktree remove $force "$WORK/$id" \
-        && log "worktree removed" \
-        || die "worktree dirty — commit/push first or reap --force"
+    wt="$WORK/$id"
+    if [ -d "$wt" ]; then
+      repo_dir="$(owning_repo "$wt")" \
+        || die "$id is not a git worktree — if it's a stray dir, remove it by hand"
+      td="$(tracked_dirty "$wt")"
+      if [ "${td:-0}" -gt 0 ] && [ "$force" != "--force" ]; then
+        log "WON'T reap $id — $td uncommitted TRACKED change(s) (real WIP):"
+        git -C "$wt" status --porcelain=v1 2>/dev/null | grep -vE '^(\?\?|!!)' | sed 's/^/    /' >&2
+        die "commit/push first, or 'agent-run reap $id --force' to discard"
+      fi
+      ut="$(git -C "$wt" status --porcelain=v1 2>/dev/null | grep -cE '^\?\?' || true)"
+      [ "${ut:-0}" -gt 0 ] && log "discarding $ut untracked scratch file(s) (.claude/ etc.) in $id"
+      drop_worktree "$wt" "$repo_dir" && log "worktree removed + branch deleted" \
+        || die "worktree remove failed for $wt"
+      git -C "$repo_dir" worktree prune 2>/dev/null || true
+    else
+      log "no worktree dir for $id (already gone)"
     fi
-    git -C "$REPOS/$repo" branch -D "agent/$id" 2>/dev/null || true
     log "reaped $id (log kept at $WORK/$id.log)"
+    ;;
+  prune)
+    # Bulk-clean STRANDED worktrees under $WORK (dead session, PVC kept the dir) so
+    # they don't balloon the PVC — the reap picker one-at-a-time doesn't scale to a
+    # backlog. Default is a DRY-RUN plan; add --yes to execute. SAFE: skips any
+    # worktree with uncommitted TRACKED changes (real WIP) unless --force; untracked
+    # scratch (.claude/ etc.) is always discarded. Ends by pruning stale worktree
+    # admin entries in every repo.
+    do_it="" pforce=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --yes|-y) do_it=1; shift ;;
+        --force)  pforce=1; shift ;;
+        *) die "unknown flag $1 (usage: agent-run prune [--yes] [--force])" ;;
+      esac
+    done
+    plan=0 wip=0 removed=0
+    for wt in "$WORK"/*/; do
+      [ -d "$wt" ] || continue
+      wt="${wt%/}"; wid="$(basename "$wt")"
+      tmux has-session -t "task-$wid" 2>/dev/null && continue   # live → leave it
+      repo_dir="$(owning_repo "$wt")" || { printf '  skip  %-34s (not a git worktree)\n' "$wid"; continue; }
+      br="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+      td="$(tracked_dirty "$wt")"
+      if [ "${td:-0}" -gt 0 ] && [ -z "$pforce" ]; then
+        printf '  SKIP  %-34s %s  (%s tracked WIP — reap --force to discard)\n' "$wid" "$br" "$td"
+        wip=$((wip + 1)); continue
+      fi
+      plan=$((plan + 1))
+      if [ -n "$do_it" ]; then
+        if drop_worktree "$wt" "$repo_dir"; then
+          printf '  REAP  %-34s %s\n' "$wid" "$br"; removed=$((removed + 1))
+        else
+          printf '  FAIL  %-34s %s  (worktree remove failed)\n' "$wid" "$br"
+        fi
+      else
+        printf '  reap  %-34s %s\n' "$wid" "$br"
+      fi
+    done
+    for r in "$REPOS"/*/; do [ -d "$r/.git" ] && git -C "$r" worktree prune 2>/dev/null || true; done
+    if [ -n "$do_it" ]; then
+      log "prune done: $removed removed, $wip left (WIP — add --force to include them)"
+    else
+      log "DRY-RUN: $plan would be reaped, $wip skipped (WIP). Execute:  agent-run prune --yes"
+    fi
     ;;
   *)
     usage; exit 1

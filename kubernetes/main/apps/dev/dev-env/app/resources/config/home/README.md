@@ -63,6 +63,7 @@ agent-run list               # what's running + start times + the attach command
 agent-run attach [task-id]   # jump back into a live session (scrollback intact)
 agent-run detach [task-id]   # kick attached clients off — the session keeps running
 agent-run reap [task-id]     # kill it + delete the worktree (the log is kept)
+agent-run prune              # bulk-clean EVERY stranded worktree (dry-run; add --yes to do it)
 ```
 
 **Skip the id and you get an arrow-key picker** (↑/↓ or j/k, Enter selects, `q` cancels)
@@ -75,7 +76,15 @@ balloon the PVC (it asks `y/N` before deleting).
 mistake, `attach` strips the prefix for you. `attach` is nested-tmux aware: from inside
 another task's session it switches you over instead of erroring.
 
-`reap` refuses to delete a worktree with uncommitted work — add `--force` if you mean it.
+**When the backlog piles up** (an agent that spun up its own per-PR worktrees, or a wall of
+stranded ones after a pod bounce), `agent-run prune` clears them all at once. It prints a
+**dry-run plan** first; re-run with `--yes` to execute. Both `reap` and `prune` resolve the
+owning repo from git itself (so any worktree name works, in either repo) and are **safe by
+construction**: a worktree is removed only when it has **no uncommitted _tracked_ changes** —
+untracked scratch (`.claude/` locks, `node_modules`, build dirs) is discarded, but real WIP
+is kept and listed. A worktree that still holds tracked edits is skipped unless you add
+`--force` (`reap <id> --force` / `prune --yes --force`). Agents commit and open a PR before
+finishing, so a stranded worktree is essentially always safe to prune.
 
 **Task logs** live at `~/work/<task-id>.log` even after a reap.
 
@@ -125,8 +134,13 @@ and open a PR when done.
 ## 7. Gotchas worth knowing
 
 - **A pod restart kills tmux** (image roll, node drain, OOM). Worktrees, branches, and logs
-  survive on the PVC — only the live pane is lost. `agent-run list` shows what's left, and
-  the `agent-run reap` picker flags the stranded worktrees so you can clean them up.
+  survive on the PVC — only the live pane is lost. `agent-run list` shows what's left (and a
+  count of stranded worktrees), and `agent-run prune` clears the whole backlog in one shot
+  (`agent-run reap`'s picker still handles them one at a time).
+- **Pick the model/effort per task.** The pod defaults to Fable; add `--model <m>` and/or
+  `--effort low|medium|high|xhigh|max` to `agent-run run` to override for that session
+  (works for `-p`, `--local`, and Remote-Control launches alike). `--effort ultracode` is a
+  harness session-mode, not a launch value — set it with `/effort` once you're in the session.
 - **haynesnetwork is pre-warmed**: `pnpm install`, `build`, `typecheck`, and all **1,292 tests**
   (embedded Postgres) pass in this pod. Playwright browsers are installed.
 - **Memory is 24Gi.** The monorepo test suite OOM'd at 8Gi — if a build dies mysteriously,
