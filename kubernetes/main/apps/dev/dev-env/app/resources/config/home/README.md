@@ -161,8 +161,11 @@ and open a PR when done.
   Claude mobile app or claude.ai/code; `agent-run attach <id>` shows the status screen
   with the QR code + URL. This uses the standalone `claude remote-control` registration
   path (api.anthropic.com environments API), which is reliable; fresh worktrees are
-  pre-trusted by agent-run so nothing stops at a dialog. If a host ever fails to
-  connect, the reason is in `~/work/<id>.rc.log` — no more silent failures.
+  pre-trusted by agent-run so nothing stops at a dialog, and the host is launched
+  `--spawn=same-dir` so it registers immediately (no spawn-mode prompt) with phone/web
+  sessions reusing this worktree — press `w` in the host to switch to per-session
+  worktrees. If a host ever fails to connect, the reason is in `~/work/<id>.rc.log` — no
+  more silent failures.
 - **Prefer a classic terminal TUI?** Add `--local`. You can still type `/remote-control`
   inside it, but know that the *in-TUI* path is flaky server-side (intermittent 401s on
   the code-session endpoints — anthropics/claude-code#30093 #30102 — and after 3 failed

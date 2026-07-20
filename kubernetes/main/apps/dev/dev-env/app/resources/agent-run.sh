@@ -293,7 +293,12 @@ reason as your final message."
           [ -n "$cg" ] && log "note: --model/--effort don't apply to an RC host (model = pod default; use --local, or set /effort in-session)"
           rc_mode="--permission-mode bypassPermissions"
           [ "$safe" = 1 ] && rc_mode="--permission-mode default"
-          launch="claude remote-control --name $id $rc_mode --debug-file $WORK/$id.rc.log"
+          # --spawn=same-dir: newer claude prompts "[1] same-dir / [2] worktree"
+          # on startup and BLOCKS there un-registered (not phone-reachable) until
+          # answered. Pin same-dir so the host registers immediately AND so phone/
+          # web sessions reuse this worktree instead of spawning fresh ones (which
+          # would re-grow the very worktree sprawl reap/prune exist to control).
+          launch="claude remote-control --name $id --spawn same-dir $rc_mode --debug-file $WORK/$id.rc.log"
         fi
       else
         launch="$agent $yolo_flag"   # codex: RC is claude-only → local TUI
