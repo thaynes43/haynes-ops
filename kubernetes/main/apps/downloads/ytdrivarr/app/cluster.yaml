@@ -1,0 +1,34 @@
+---
+# yaml-language-server: $schema=https://gist.githubusercontent.com/thaynes43/21ef53eace2d3c6c8f00c8ee0fe4ec24/raw/b0fd8341723eee62b8a47127d40cb75f00056b67/empty-json-schema.json
+# ytdrivarr's OWN small Postgres 16 instance in `downloads` (DESIGN-045 Q-02 ruling — an own
+# instance, standalone-shaped, not the shared database-ns cluster). CNPG generates the
+# `ytdrivarr-postgres16-app` secret whose `uri` key the service consumes as DATABASE_URL.
+# NOTE (owner follow-up): no barmanObjectStore backup wired here yet (keeps the first cut
+# self-contained); add S3 backup + a second instance if HA/PITR is wanted.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ytdrivarr-postgres16
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.4-34
+  primaryUpdateStrategy: unsupervised
+  storage:
+    size: 10Gi
+    storageClass: openebs-hostpath
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: 128MB
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  monitoring:
+    enablePodMonitor: true
+  bootstrap:
+    initdb:
+      database: ytdrivarr
+      owner: ytdrivarr
