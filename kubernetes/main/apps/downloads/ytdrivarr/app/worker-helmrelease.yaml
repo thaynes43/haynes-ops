@@ -46,7 +46,7 @@ spec:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr-peloton-worker
               # PLACEHOLDER — the coordinator pins the real immutable sha at cutover.
-              tag: sha-PLACEHOLDER
+              tag: sha-cb6cabc@sha256:db055ed0e67962b7dddb1f343298a163685930cc004aeff16a4437eb90b519f3
             env:
               TZ: America/New_York
               LOG_LEVEL: info
