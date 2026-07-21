@@ -84,8 +84,9 @@ spec:
 
                 python3 /tmp/subst.py
                 
-                # Run ytdl-sub
-                ytdl-sub --log-level=debug --config=/config/config.yaml sub /config/subscriptions.yaml
+                # Run ytdl-sub. Standard (info) log level: debug logs the substituted yt-dlp
+                # command incl. the ${PELOTON_BEARER} Authorization header into the pod logs.
+                ytdl-sub --log-level=info --config=/config/config.yaml sub /config/subscriptions.yaml
             securityContext:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
