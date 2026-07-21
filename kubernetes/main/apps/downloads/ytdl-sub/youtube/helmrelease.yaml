@@ -50,23 +50,32 @@ spec:
                 memory: 6Gi
 
     persistence:
+      # M2 cutover (DESIGN-045 D-14): config now comes from ytdrivarr's PROJECTION, not a git
+      # configMap. ytdrivarr atomically renders config.yaml + subscriptions.yaml for the YouTube
+      # Library to `data/media/youtube/` on the shared NFS media volume; each */15 CronJob pod
+      # re-binds these subPath file mounts and reads the freshly-projected files. subPath on an
+      # EPHEMERAL pod is the right primitive: the pod is short-lived, so it always picks up the
+      # latest atomically-renamed file (no stale-inode problem a long-running pod would have).
+      # Rollback = revert this commit (restores the configMap mounts + generators).
       config:
-        name: ytdl-sub-youtube-config
-        type: configMap
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
         advancedMounts:
           ytdl-sub:
             app:
               - path: /config/config.yaml
-                subPath: config.yaml
+                subPath: data/media/youtube/config.yaml
                 readOnly: true
       subscriptions:
-        name: ytdl-sub-youtube-subscriptions
-        type: configMap
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
         advancedMounts:
           ytdl-sub:
             app:
               - path: /config/subscriptions.yaml
-                subPath: subscriptions.yaml
+                subPath: data/media/youtube/subscriptions.yaml
                 readOnly: true
       media:
         type: nfs
