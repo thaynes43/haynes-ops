@@ -1,0 +1,11 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./helmrelease.yaml
+# M2 music leg (DESIGN-045 D-12/D-14): like ytdl-sub-youtube post-cutover, this downloader carries
+# no config.yaml / subscriptions.yaml configMapGenerators — ytdrivarr PROJECTS both files for the
+# "YouTube Music" Library to the NFS media volume and the CronJob mounts them from there (see
+# helmrelease.yaml persistence.config / persistence.subscriptions). A `git revert` of the
+# introducing commit removes this CronJob cleanly; the video pipeline is unaffected.

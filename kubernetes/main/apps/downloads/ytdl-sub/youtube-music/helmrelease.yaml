@@ -1,0 +1,103 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ytdl-sub-youtube-music
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  values:
+    controllers:
+      ytdl-sub:
+        type: cronjob
+
+        pod:
+          restartPolicy: Never
+
+        cronjob:
+          #schedule: "0 0 5 12 2" # Disable cronjob by giving it a schedule that will never run
+          # OFFSET from ytdl-sub-youtube's "*/15" (:00/:15/:30/:45): the two downloaders share one
+          # YouTube account + cookies (throttle shared-fate), so they must never run concurrently.
+          schedule: "7,22,37,52 * * * *"
+          backoffLimit: 0
+          concurrencyPolicy: Forbid
+          failedJobsHistory: 1
+          successfulJobsHistory: 1
+
+        containers:
+          app:
+            image:
+              repository: ghcr.io/jmbannon/ytdl-sub
+              tag: 2026.07.16
+            command:
+              - bash
+              - -c
+            args:
+              - |
+                ytdl-sub --log-level=debug --config=/config/config.yaml sub /config/subscriptions.yaml
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                  - ALL
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                memory: 6Gi
+
+    persistence:
+      # M2 music leg (DESIGN-045 D-12/D-14): a clone of ytdl-sub-youtube for the first-class music
+      # library. config now comes from ytdrivarr's PROJECTION, not a git configMap — ytdrivarr
+      # atomically renders config.yaml + subscriptions.yaml for the "YouTube Music" Library
+      # (libraryKind music, "YouTube Releases" preset) to `data/media/youtube-music/` on the shared
+      # NFS media volume; each CronJob pod re-binds these subPath file mounts and reads the
+      # freshly-projected files. subPath on an EPHEMERAL pod always picks up the latest
+      # atomically-renamed file. Rollback = revert this commit + prune the youtube-music Flux
+      # Kustomization (the video pipeline is untouched by this change).
+      config:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          ytdl-sub:
+            app:
+              - path: /config/config.yaml
+                subPath: data/media/youtube-music/config.yaml
+                readOnly: true
+      subscriptions:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          ytdl-sub:
+            app:
+              - path: /config/subscriptions.yaml
+                subPath: data/media/youtube-music/subscriptions.yaml
+                readOnly: true
+      media:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          ytdl-sub:
+            app:
+              - path: /media/youtube-music
+                subPath: data/media/youtube-music
+                readOnly: false
+      tmp:
+        type: emptyDir
+        advancedMounts:
+          ytdl-sub:
+            app:
+              - path: /tmp
+                subPath: tmp
+              - path: /config
+                subPath: config
+              - path: /workdir
+                subPath: workdir
