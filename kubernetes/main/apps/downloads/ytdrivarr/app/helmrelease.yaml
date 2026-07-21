@@ -35,11 +35,12 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr
-              # v0.4.0 (pinned by immutable digest): AUTH_MODE=open makes the API keyless on the
-              # LAN-only ingress (owner ruling: "Sonarr and Radarr do not need tokens") — the console
-              # skips the key screen and opens straight to Sources; keyed callers still work. On top
-              # of the observed-state /health derivation (thaynes43/ytdrivarr#12) and the M3 Peloton port.
-              tag: v0.4.0@sha256:2572adea5c530f9c6c99f7df05a84471e3d71cb7ea017a34446bad173a8745d7
+              # v0.5.0 (pinned by immutable digest): the *arr-style operator console + the
+              # per-activity Peloton watch grain (thaynes43/ytdrivarr#20 — migration 0002 runs on
+              # this boot: the single Peloton Source splits into 12 per-activity Sources, entries
+              # reattributed by chip, numbering untouched) and the donor-parity emit window
+              # (thaynes43/ytdrivarr#17). Keyless-on-LAN posture unchanged (AUTH_MODE=open).
+              tag: v0.5.0@sha256:596f2a3e8ed72c5f06ffcb9b95d4cd82fe7d5caf2c84cff7be0d88cdaacec040
             env:
               TZ: America/New_York
               PORT: &port 8080
