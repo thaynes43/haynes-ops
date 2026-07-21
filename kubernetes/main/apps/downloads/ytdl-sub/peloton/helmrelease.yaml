@@ -55,7 +55,12 @@ spec:
                     print(f"Error: {token_path} is empty", file=sys.stderr)
                     sys.exit(1)
 
-                input_path = '/config-ro/subscriptions.yaml'
+                # M3 repoint: read ytdrivarr's PROJECTED subscriptions.yaml from the shared
+                # media NFS instead of the git-tracked configMap. The ytdrivarr core renders
+                # this file from Peloton entries reported by the worker (no more git PRs).
+                # Reversible: restore '/config-ro/subscriptions.yaml' and the subscriptions
+                # configMap mount to fall back to the git-tracked list.
+                input_path = '/media/peloton/subscriptions.yaml'
                 output_path = '/config/subscriptions.yaml'
 
                 try:
@@ -104,15 +109,10 @@ spec:
               - path: /config/config.yaml
                 subPath: config.yaml
                 readOnly: true
-      subscriptions:
-        name: ytdl-sub-peloton-subscriptions
-        type: configMap
-        advancedMounts:
-          ytdl-sub:
-            app:
-              - path: /config-ro/subscriptions.yaml
-                subPath: subscriptions.yaml
-                readOnly: true
+      # M3 repoint: the git-tracked subscriptions configMap is no longer mounted; the
+      # downloader now reads ytdrivarr's projected subscriptions.yaml from /media/peloton
+      # (see the substitution script above). The config/subscriptions.yaml file stays in
+      # git so this is a one-mount revert if needed.
       media:
         type: nfs
         server: gasha01.haynesnetwork
