@@ -35,10 +35,11 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr
-              # v0.3.0 + the two cutover-day fixes (pinned by immutable digest until the next
-              # release-please cut): re-aired same-title class dedup so donor bindings win the
-              # projection (thaynes43/ytdrivarr#11) on top of the M3 Peloton provider/transport.
-              tag: sha-9d73e15@sha256:2b1059440e5453c2f485b27c2ee9ac10bbfbdfbeca8bc3e61ecf9981de993dae
+              # v0.3.1 (pinned by immutable digest): out_of_process providers derive /health from
+              # observed state (last run + bearer freshness + worker liveness) instead of core-side
+              # env creds, so a healthy Peloton source no longer false-alarms "missing credentials"
+              # (thaynes43/ytdrivarr#12) — on top of the M3 Peloton provider/transport + cutover fixes.
+              tag: v0.3.1@sha256:693f4ac2ee1dbdd765b0cd113f306019ddda070768e083336dc51e9ed14d08bd
             env:
               TZ: America/New_York
               PORT: &port 8080
