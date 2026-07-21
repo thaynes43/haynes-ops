@@ -35,9 +35,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr
-              # Pinned to the first published immutable tag from the publish workflow. Bump to a
-              # release `vX.Y.Z` once release-please cuts one.
-              tag: sha-68df68e
+              # Bumped to the first release-please cut (v0.2.0) — carries the M2 YouTube provider +
+              # ytdl-sub subscriptions importer needed for the video-leg cutover (DESIGN-045 D-19).
+              tag: v0.2.0
             env:
               TZ: America/New_York
               PORT: &port 8080
