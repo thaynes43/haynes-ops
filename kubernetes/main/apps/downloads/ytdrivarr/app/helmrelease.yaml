@@ -35,15 +35,19 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr
-              # v0.3.1 (pinned by immutable digest): out_of_process providers derive /health from
-              # observed state (last run + bearer freshness + worker liveness) instead of core-side
-              # env creds, so a healthy Peloton source no longer false-alarms "missing credentials"
-              # (thaynes43/ytdrivarr#12) — on top of the M3 Peloton provider/transport + cutover fixes.
-              tag: v0.3.1@sha256:693f4ac2ee1dbdd765b0cd113f306019ddda070768e083336dc51e9ed14d08bd
+              # v0.4.0 (pinned by immutable digest): AUTH_MODE=open makes the API keyless on the
+              # LAN-only ingress (owner ruling: "Sonarr and Radarr do not need tokens") — the console
+              # skips the key screen and opens straight to Sources; keyed callers still work. On top
+              # of the observed-state /health derivation (thaynes43/ytdrivarr#12) and the M3 Peloton port.
+              tag: v0.4.0@sha256:2572adea5c530f9c6c99f7df05a84471e3d71cb7ea017a34446bad173a8745d7
             env:
               TZ: America/New_York
               PORT: &port 8080
               LOG_LEVEL: info
+              # Keyless on the LAN-only ingress: no X-Api-Key required for any request, so the console
+              # opens with no credential. A presented key is still accepted (never rejected), so
+              # haynesnetwork (ESO) and the Peloton worker keep working. Public reuse defaults to api-key.
+              AUTH_MODE: open
               # ytdrivarr renders each Library's config here (DESIGN-045 D-14). The M2 cutover
               # points the ytdl-sub downloaders at these projected files.
               PROJECTION_ROOT: /projections
