@@ -622,6 +622,11 @@ spec:
               GB_DAILY_CALL_BUDGET_PAIRING: "700"
               GB_DAILY_CALL_BUDGET_GOODREADS: "200"
               GB_DAILY_CALL_BUDGET_BOOKFIX: "100"
+              # Owner ruling 2026-07-21 (revisits the R1a 25/run lean): 1,097 unpaired works still
+              # await their first mint — at 25/run the backlog takes weeks. 100/run drains it in
+              # days; the GB call budget above + the breaker still cap actual resolve spend, so an
+              # over-budget mint lands honestly unmintable and retries.
+              PAIRING_MINT_CAP_PER_RUN: "100"
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
