@@ -1,0 +1,103 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+# The Peloton scraper WORKER (M3). An out-of-process Python/Selenium/Chromium worker that
+# long-polls the ytdrivarr core for scrape claims, drives onepeloton.com, mints a bearer,
+# and reports the entries + minted credential back to the core over HTTP (X-Api-Key). The
+# CORE owns ALL filesystem delivery: it writes bearer.txt/cookies.txt and projects
+# subscriptions.yaml onto the shared media volume (the core already mounts the whole
+# data/media tree at /projections). The worker therefore needs NO NFS mount of its own — it
+# only speaks HTTP to the core. This replaces the retiring git-PR-writing config-manager
+# CronJob. Headless by design: no service, no ingress.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ytdrivarr-peloton-worker
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      ytdrivarr-peloton-worker:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        # Single scraper; never two Chromium sessions racing the same Peloton login.
+        strategy: Recreate
+        pod:
+          # Keep off the control-plane nodes (critical smart-home stack), matching the *arrs.
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: DoesNotExist
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/ytdrivarr-peloton-worker
+              # PLACEHOLDER — the coordinator pins the real immutable sha at cutover.
+              tag: sha-PLACEHOLDER
+            env:
+              TZ: America/New_York
+              LOG_LEVEL: info
+              # Chromium/Selenium write under $HOME with a read-only root fs; point it at
+              # the writable emptyDir.
+              HOME: /tmp
+              # Carried over from the config-manager (scrape depth knob).
+              PELOTON_MAX_SCROLLS: "250"
+              # In-cluster ytdrivarr core (same namespace). The worker claims work here and
+              # reports entries back.
+              YTDRIVARR_CORE_URL: http://ytdrivarr.downloads.svc.cluster.local:8080
+            envFrom:
+              - secretRef:
+                  name: ytdrivarr-peloton-worker-secret
+            resources:
+              requests:
+                cpu: 250m
+                memory: 1Gi
+              limits:
+                # Chromium is heavy; matches the config-manager's proven 6Gi ceiling.
+                memory: 6Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+    persistence:
+      # NO media/NFS mount by design (M3): the worker reports the minted bearer + entries to
+      # the core over HTTP, and the CORE writes bearer.txt/cookies.txt and projects
+      # subscriptions.yaml to the shared media volume. The worker only needs scratch space
+      # for Chromium/Selenium.
+      tmp:
+        type: emptyDir
+        advancedMounts:
+          ytdrivarr-peloton-worker:
+            app:
+              - path: /tmp
+      # Chromium crashes with the default 64Mi /dev/shm; give it a real one.
+      dev-shm:
+        type: emptyDir
+        medium: Memory
+        sizeLimit: 1Gi
+        advancedMounts:
+          ytdrivarr-peloton-worker:
+            app:
+              - path: /dev/shm
