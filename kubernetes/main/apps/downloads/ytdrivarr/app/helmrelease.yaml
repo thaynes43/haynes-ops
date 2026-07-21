@@ -35,12 +35,12 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr
-              # v0.5.0 (pinned by immutable digest): the *arr-style operator console + the
-              # per-activity Peloton watch grain (thaynes43/ytdrivarr#20 — migration 0002 runs on
-              # this boot: the single Peloton Source splits into 12 per-activity Sources, entries
-              # reattributed by chip, numbering untouched) and the donor-parity emit window
-              # (thaynes43/ytdrivarr#17). Keyless-on-LAN posture unchanged (AUTH_MODE=open).
-              tag: v0.5.0@sha256:596f2a3e8ed72c5f06ffcb9b95d4cd82fe7d5caf2c84cff7be0d88cdaacec040
+              # v0.6.0 (pinned by immutable digest): adds the Prometheus /metrics endpoint the
+              # ServiceMonitor below scrapes and the "ytdrivarr" Grafana dashboard renders
+              # (thaynes43/ytdrivarr#19). Carries the *arr-style operator console + per-activity
+              # Peloton watch grain (thaynes43/ytdrivarr#20) and the donor-parity emit window
+              # (thaynes43/ytdrivarr#17), on top of AUTH_MODE=open and the M3 Peloton port.
+              tag: v0.6.0@sha256:e99c46427b874c391708bdb9b78aaf325eb5a672fcfb9863429dca8fc48481d8
             env:
               TZ: America/New_York
               PORT: &port 8080
@@ -115,6 +115,19 @@ spec:
         ports:
           http:
             port: *port
+    # Prometheus scrapes ytdrivarr's in-process /metrics on the same http port (the exposition
+    # carries no secrets; the app runs AUTH_MODE=open). The kube-prometheus-stack Prometheus in
+    # `observability` discovers ServiceMonitors cluster-wide (no release label needed). Feeds the
+    # "ytdrivarr" Grafana dashboard (the retired config-manager PR-body surface).
+    serviceMonitor:
+      app:
+        serviceName: ytdrivarr
+        endpoints:
+          - port: http
+            scheme: http
+            path: /metrics
+            interval: 1m
+            scrapeTimeout: 30s
     ingress:
       app:
         annotations:

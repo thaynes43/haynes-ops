@@ -52,6 +52,20 @@ configMapGenerator:
         grafana_dashboard: "true"
       annotations:
         grafana_folder: Downloads
+  # ytdrivarr — the ytdl-content suite service's own daily-review board (the
+  # retired config-manager PR-body surface): daily changes per provider + the
+  # per-activity existing/added/total vs cap table, Peloton scraper health
+  # (bearer age vs SLA, selector drift, links/scrolls), YouTube, and the
+  # pipeline (runs, queue, worker, projection). Fed by ytdrivarr's /metrics.
+  - name: grafana-dashboard-ytdrivarr
+    files:
+      - dashboards/ytdrivarr.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "true"
+      annotations:
+        grafana_folder: Downloads
   # PLAN-018 hardware deep-dive: the Unraid NAS (HaynesTower) — array capacity
   # vs the 80% target, per-disk fill, disk I/O, host CPU/mem/net/temps, and a
   # SMART section fed by the out-of-cluster node_exporter + smartctl-exporter
