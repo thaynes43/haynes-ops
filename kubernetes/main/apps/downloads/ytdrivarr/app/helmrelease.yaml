@@ -140,6 +140,13 @@ spec:
             app:
               - path: /projections
                 subPath: data/media
+              # Session-artifact delivery (M3, D-05): `deliverSession` writes bearer.txt /
+              # cookies.txt to the Library's ABSOLUTE mediaRoot verbatim (`/media/peloton`) —
+              # the core is expected to see the estate's downloader-view path. Same NFS dir the
+              # projection mount above already covers (data/media/peloton); this adds the
+              # /media/peloton window onto it so the report leg can deliver credentials.
+              - path: /media/peloton
+                subPath: data/media/peloton
       tmp:
         type: emptyDir
         advancedMounts:
