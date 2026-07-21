@@ -9,9 +9,9 @@ configMapGenerator:
   - name: ytdl-sub-peloton-config
     files:
       - config/config.yaml
-  - name: ytdl-sub-peloton-subscriptions
-    files:
-      - config/subscriptions.yaml
+  # M3 repoint: the ytdl-sub-peloton-subscriptions configMap is retired — the downloader
+  # now reads ytdrivarr's projected subscriptions.yaml from /media/peloton. The source
+  # config/subscriptions.yaml stays in git for a clean revert.
 generatorOptions:
   annotations:
     kustomize.toolkit.fluxcd.io/substitute: disabled
