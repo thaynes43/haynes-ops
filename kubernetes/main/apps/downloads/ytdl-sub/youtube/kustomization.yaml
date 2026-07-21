@@ -4,15 +4,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ./helmrelease.yaml
-configMapGenerator:
-  - name: ytdl-sub-youtube-config
-    files:
-      - config/config.yaml
-  - name: ytdl-sub-youtube-subscriptions
-    files:
-      - config/subscriptions.yaml
-generatorOptions:
-  annotations:
-    kustomize.toolkit.fluxcd.io/substitute: disabled
-configurations:
-  - kustomizeconfig.yaml
+# M2 cutover (DESIGN-045 D-14): the config.yaml / subscriptions.yaml configMapGenerators are gone —
+# ytdrivarr now PROJECTS both files to the NFS media volume and the downloader mounts them from
+# there (see helmrelease.yaml persistence.config / persistence.subscriptions). The old
+# `config/` files are retained in git as the pre-cutover snapshot and rollback reference; a
+# `git revert` of this commit restores the configMap path exactly.
