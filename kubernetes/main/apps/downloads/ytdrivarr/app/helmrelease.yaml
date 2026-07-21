@@ -35,11 +35,10 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr
-              # Bumped to v0.3.0 (M3) — adds the Peloton provider + out-of-process worker job API
-              # (claim/heartbeat/report/fail) and the discovery -> scrape -> report -> project
-              # transport the Peloton cutover rides on (DESIGN-045 D-03/D-19). The M2 YouTube
-              # libraries/sources are DB-backed and carry across the upgrade untouched.
-              tag: v0.3.0
+              # v0.3.0 + the two cutover-day fixes (pinned by immutable digest until the next
+              # release-please cut): re-aired same-title class dedup so donor bindings win the
+              # projection (thaynes43/ytdrivarr#11) on top of the M3 Peloton provider/transport.
+              tag: sha-9d73e15@sha256:2b1059440e5453c2f485b27c2ee9ac10bbfbdfbeca8bc3e61ecf9981de993dae
             env:
               TZ: America/New_York
               PORT: &port 8080
