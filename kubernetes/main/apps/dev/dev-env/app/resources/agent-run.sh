@@ -4,16 +4,29 @@
 # concurrent agents in the same repo never collide. GitOps-managed — edit in
 # kubernetes/main/apps/dev/dev-env/app/resources/agent-run.sh.
 #
-#   agent-run run  --repo <name> --agent claude|codex [--base <ref>] -p "<task>"
-#   agent-run run  --repo <name> --agent claude --interactive   # REMOTE-CONTROL host (phone/web drives it)
-#                                                 [--local]     # classic in-terminal TUI instead
-#                                                 [--safe]      # keep permission prompts
-#                                     [--model <m>] [--effort <l>]  # override the pod default (Fable)
+#   agent-run run  [<repo>] [--agent claude|codex] [--base <ref>] [-p "<task>"]
+#                  [--interactive] [--local] [--safe] [--model <m>] [--effort <l>]
+#   agent-run run                               # bare → walks you through it: repo picker
+#                                               # (my repos, newest activity first) → agent
+#                                               # picker → interactive? [Y/n] (n → task
+#                                               # prompt) → effort picker (claude)
 #   agent-run list                                              # live tasks + attach cmds
 #   agent-run attach [<task-id>]                # jump into a session (no id → picker)
 #   agent-run detach [<task-id>]                # kick attached clients off (no id → picker)
 #   agent-run reap   [<task-id>] [--force]      # kill + cleanup (no id → picker)
 #   agent-run prune  [--yes] [--force]          # bulk-clean ALL stranded worktrees (dry-run w/o --yes)
+#
+# `run` fills every omitted choice interactively (so nobody has to remember exact
+# repo names): the repo picker lists the owner's GitHub repos newest-pushed first
+# (offline fallback: local canonical clones by last fetch), the agent picker offers
+# claude|codex, with neither -p nor --interactive it asks which mode you want, and
+# claude runs get an effort picker. Flags always win — scripted/agent callers pass
+# them and see no prompts (and get the same defaults, e.g. effort=xhigh).
+# --interactive default is a REMOTE-CONTROL host (phone/web drives it); --local is
+# the classic in-terminal TUI; --safe keeps permission prompts. Claude effort
+# DEFAULTS TO xhigh in every mode (-p / --local via the --effort flag, RC hosts via
+# CLAUDE_CODE_EFFORT_LEVEL in the launch env); --model applies to -p/--local only —
+# an RC host's model is the pod settings default (Fable).
 #
 # attach/detach/reap without an id open an arrow-key picker (↑/↓ + Enter, q
 # cancels) showing each task's start time; reap's picker also lists STRANDED
@@ -36,12 +49,20 @@ die() { log "ERROR: $*"; exit 1; }
 usage() {
   cat >&2 <<'EOF'
 agent-run — worktree-per-task agent dispatcher
-  agent-run run  --repo <name> --agent claude|codex [--base <ref>] -p "<task>"
-  agent-run run  --repo <name> --agent claude --interactive [--local] [--safe]
-                 [--model <m>] [--effort low|medium|high|xhigh|max]
-                 # default: Remote Control host (drive from phone/claude.ai/code)
-                 # --local: classic in-terminal TUI instead
-                 # --model/--effort override the pod default (Fable, session effort)
+  agent-run run [<repo>] [flags]              # every omitted choice is asked interactively:
+                                              #   repo   → picker, my repos by latest activity
+                                              #   agent  → picker, claude | codex
+                                              #   mode   → interactive? [Y/n] (n → type a task prompt)
+                                              #   effort → picker (claude only)
+      --repo <name>                           # same as the positional <repo>
+      --agent claude|codex
+      --base <ref>                            # branch the worktree off this (default: origin/HEAD)
+      -p "<task>"                             # fire-and-forget; log at ~/work/<id>.log
+      --interactive                           # Remote Control host (drive from phone/claude.ai/code)
+      --local                                 # classic in-terminal TUI instead of RC host
+      --safe                                  # keep permission prompts (default: skipped — pod is the sandbox)
+      --effort low|medium|high|xhigh|max      # claude only; DEFAULT xhigh (RC hosts get it via env var)
+      --model <m>                             # override the pod default model; -p/--local only, not RC
   agent-run list
   agent-run attach [<task-id>]                # no id → arrow-key picker
   agent-run detach [<task-id>]                # no id → picker (attached sessions only)
@@ -107,6 +128,37 @@ pick() {
 # Emit "id|attached-count" for every live task session.
 live_tasks() {
   tmux ls -F '#{session_name}|#{session_attached}' 2>/dev/null | sed -n 's/^task-//p'
+}
+
+# Rows for the repo picker: "name  pushed MM-DD HH:MM", newest activity first.
+# GitHub is the source of truth (it shows repos not yet cloned to this pod). Two
+# lookup paths because the pod credential is a GitHub App installation token:
+# `gh repo list` (GraphQL) covers PATs and app tokens that can search, and REST
+# /installation/repositories is the endpoint purpose-built for app tokens. If
+# both fail (offline / no token) fall back to the local canonical clones,
+# ordered by last fetch — degraded but never empty on a working pod.
+repo_rows() {
+  local out name ts
+  [ -n "${GH_TOKEN:-}" ] || { [ -s /creds/gh_token ] && export GH_TOKEN="$(cat /creds/gh_token)"; }
+  out="$(gh repo list "$OWNER" --limit 100 --no-archived --json name,pushedAt \
+           --jq 'sort_by(.pushedAt) | reverse | .[] | "\(.name)|\(.pushedAt)"' 2>/dev/null)"
+  [ -n "$out" ] || out="$(gh api --paginate /installation/repositories \
+           --jq '.repositories[] | select(.archived | not) | "\(.name)|\(.pushed_at)"' 2>/dev/null \
+         | sort -t'|' -k2,2 -r)"
+  if [ -n "$out" ]; then
+    while IFS='|' read -r name ts; do
+      [ -n "$name" ] || continue
+      printf '%s  pushed %s\n' "$name" "$(date -d "$ts" '+%m-%d %H:%M' 2>/dev/null || printf '%s' "${ts%%T*}")"
+    done <<<"$out"
+  else
+    log "GitHub repo list unavailable — showing local clones only"
+    for r in "$REPOS"/*/; do
+      [ -d "$r/.git" ] || continue
+      printf '%s|%s\n' "$(stat -c %Y "$r/.git/FETCH_HEAD" 2>/dev/null || stat -c %Y "$r/.git")" "$(basename "$r")"
+    done | sort -t'|' -k1,1 -rn | while IFS='|' read -r _ name; do
+      printf '%s  (local clone)\n' "$name"
+    done
+  fi
 }
 
 # Resolve the canonical repo working dir that OWNS a linked worktree — works for
@@ -199,16 +251,67 @@ case "$cmd" in
         --model) model="$2"; shift 2 ;;
         --effort) effort="$2"; shift 2 ;;
         --safe) safe=1; shift ;;
-        *) die "unknown flag $1" ;;
+        -*) die "unknown flag $1" ;;
+        *) [ -z "$repo" ] || die "unexpected argument '$1' (repo already '$repo')"
+           repo="$1"; shift ;;   # positional shorthand: agent-run run <repo>
       esac
     done
-    [ -n "$repo" ] || die "--repo required"
-    case "$agent" in claude|codex) : ;; *) die "--agent must be claude|codex" ;; esac
-    [ "$interactive" = 1 ] || [ -n "$prompt" ] || die "need -p or --interactive"
-    if [ -n "$effort" ]; then   # fail fast, before any clone/worktree side effects
+    if [ -n "$effort" ]; then   # fail fast, before pickers and clone/worktree side effects
       case "$effort" in low|medium|high|xhigh|max) : ;;
         *) die "--effort must be low|medium|high|xhigh|max (got '$effort'); 'ultracode' is a /effort session-mode — set it in-session" ;;
       esac
+    fi
+
+    # Anything not pinned by a flag is asked interactively — bare `agent-run run`
+    # walks repo → agent → mode → effort, so nobody has to remember exact repo
+    # names. Pickers need a TTY; scripted callers pass flags and never see a prompt.
+    asked=0
+    if [ -z "$repo" ]; then
+      asked=1
+      mapfile -t rows < <(repo_rows)
+      repo="$(pick 'run an agent in repo:' ${rows[@]+"${rows[@]}"})" || die "--repo required"
+    fi
+    if [ -z "$agent" ]; then
+      asked=1
+      agent="$(pick 'agent:' \
+        'claude  Claude Code (Max plan)' \
+        'codex   Codex CLI (ChatGPT plan)')" || die "--agent must be claude|codex"
+    fi
+    case "$agent" in claude|codex) : ;; *) die "--agent must be claude|codex" ;; esac
+    if [ "$interactive" != 1 ] && [ -z "$prompt" ]; then
+      if { : </dev/tty; } 2>/dev/null; then
+        asked=1
+        printf 'interactive session (you drive it)? [Y/n] ' >/dev/tty
+        IFS= read -r ans </dev/tty || ans=""
+        case "$ans" in
+          n|N|no|NO)
+            printf 'task prompt> ' >/dev/tty
+            IFS= read -r prompt </dev/tty || prompt=""
+            [ -n "$prompt" ] || die "a fire-and-forget run needs a task prompt"
+            ;;
+          *) interactive=1 ;;
+        esac
+      else
+        die "need -p or --interactive"
+      fi
+    fi
+    # Effort is DETERMINISTIC now: claude runs default to xhigh unless --effort
+    # says otherwise. (Historically NOTHING set it — no flag reached RC hosts, no
+    # settings key, no env var — so every session silently ran at the model
+    # default, high for Fable.) In menu mode it's one more picker; a fully-
+    # flagged call stays prompt-free and just gets the xhigh default. Codex has
+    # no effort dial — skipped.
+    if [ "$agent" = claude ] && [ -z "$effort" ]; then
+      if [ "$asked" = 1 ]; then
+        effort="$(pick 'effort:' \
+          'xhigh   (dev-env default)' \
+          'max     (hardest problems, slowest)' \
+          "high    (claude's stock default)" \
+          'medium' \
+          'low')" || effort=xhigh
+      else
+        effort=xhigh
+      fi
     fi
 
     # Canonical clone: fetch-only, never worked in directly.
@@ -233,10 +336,11 @@ git worktrees, create them under $WORK and 'git worktree remove' each once its P
 merges — never leave stranded worktrees behind. If blocked, write BLOCKED and the \
 reason as your final message."
 
-    # Optional top-level claude flags — model/effort — apply to -p, --local, and RC
-    # launches alike. Model otherwise defaults to the pod settings.json (Fable);
-    # these MUST sit in top-level position (before the remote-control subcommand),
-    # which is where claude reads them. No-op for codex.
+    # Top-level claude flags — model/effort — for -p and --local launches; they
+    # MUST sit in top-level position (before any subcommand), which is where
+    # claude reads them. RC hosts can't take them (see the NB below): there,
+    # effort rides the CLAUDE_CODE_EFFORT_LEVEL env var instead and model stays
+    # the pod settings.json default (Fable). No-op for codex.
     # %q-escape the values: they ride through one more shell layer (tmux send-keys
     # re-parses the launch string), and a legit value like 'claude-fable-5[1m]'
     # carries glob metacharacters that would otherwise be pathname-expanded.
@@ -286,11 +390,12 @@ reason as your final message."
           # NB: the subcommand takes NO --model/--effort, and top-level flags
           # placed BEFORE it make it reject its own --name (`claude $cg
           # remote-control --name …` → "unknown option --name", verified live).
-          # So an RC host takes its model from the pod settings (Fable) and runs
-          # at the default effort — set a different effort with /effort in the
-          # session, or use --local for a flag-controlled TUI. NEVER splice $cg
-          # here.
-          [ -n "$cg" ] && log "note: --model/--effort don't apply to an RC host (model = pod default; use --local, or set /effort in-session)"
+          # NEVER splice $cg here. Model therefore comes from the pod settings
+          # (Fable). Effort DOES apply now: CLAUDE_CODE_EFFORT_LEVEL is set in
+          # the launch env below and sessions the host spawns inherit it (env
+          # precedence: /effort > --effort flag > this var > settings.json —
+          # code.claude.com/docs/en/env-vars). /effort in-session still wins.
+          [ -n "$model" ] && log "note: --model doesn't apply to an RC host (model = pod settings default; use --local for a flag-controlled TUI)"
           rc_mode="--permission-mode bypassPermissions"
           [ "$safe" = 1 ] && rc_mode="--permission-mode default"
           # --spawn=same-dir: newer claude prompts "[1] same-dir / [2] worktree"
@@ -299,13 +404,14 @@ reason as your final message."
           # web sessions reuse this worktree instead of spawning fresh ones (which
           # would re-grow the very worktree sprawl reap/prune exist to control).
           launch="claude remote-control --name $id --spawn same-dir $rc_mode --debug-file $WORK/$id.rc.log"
+          [ -n "$effort" ] && launch="CLAUDE_CODE_EFFORT_LEVEL=$(printf '%q' "$effort") $launch"
         fi
       else
         launch="$agent $yolo_flag"   # codex: RC is claude-only → local TUI
       fi
       tmux send-keys -t "task-$id" "$token_env; cd $wt; $launch" Enter
       if [ "$agent" = claude ] && [ "$local_tui" != 1 ]; then
-        log "remote-control host starting → QR/URL: agent-run attach $id   rc log: $WORK/$id.rc.log"
+        log "remote-control host starting (effort=${effort:-model-default}) → QR/URL: agent-run attach $id   rc log: $WORK/$id.rc.log"
       else
         log "interactive session ready →  agent-run attach $id"
       fi
