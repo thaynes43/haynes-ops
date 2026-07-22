@@ -35,12 +35,11 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr
-              # v0.6.1 (pinned by immutable digest): calibrates the bearer-freshness SLA to the
-              # nightly-mint cadence — the credential-age alarm now warns at ~30h (a missed nightly)
-              # and errors at ~52h (approaching real expiry) instead of 6h/12h, so a healthy
-              # once-nightly bearer no longer reads red every afternoon (thaynes43/ytdrivarr#23).
-              # Carries the Prometheus /metrics endpoint the dashboard renders (#19), the *arr-style
-              # operator console + per-activity watch grain (#20), on top of AUTH_MODE=open.
+              # v0.6.0 (pinned by immutable digest): adds the Prometheus /metrics endpoint the
+              # ServiceMonitor below scrapes and the "ytdrivarr" Grafana dashboard renders
+              # (thaynes43/ytdrivarr#19). Carries the *arr-style operator console + per-activity
+              # Peloton watch grain (thaynes43/ytdrivarr#20) and the donor-parity emit window
+              # (thaynes43/ytdrivarr#17), on top of AUTH_MODE=open and the M3 Peloton port.
               tag: v0.6.1@sha256:dad450c1c112654f8a35ada6566d6d260d46d7cdc9507a3641b640006ddd1888
             env:
               TZ: America/New_York
