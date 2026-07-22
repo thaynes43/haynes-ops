@@ -9,8 +9,9 @@ configMapGenerator:
     files:
       - config/config.yaml
   # M3 repoint: the ytdl-sub-peloton-subscriptions configMap is retired — the downloader
-  # now reads ytdrivarr's projected subscriptions.yaml from /media/peloton. The source
-  # config/subscriptions.yaml stays in git for a clean revert.
+  # now reads ytdrivarr's projected subscriptions.yaml from /media/peloton. The dead
+  # config/subscriptions.yaml snapshot was swept post-validation; only config.yaml (still
+  # mounted) remains. Rollback: revert the repoint PR (#2181) plus git history.
 generatorOptions:
   annotations:
     kustomize.toolkit.fluxcd.io/substitute: disabled

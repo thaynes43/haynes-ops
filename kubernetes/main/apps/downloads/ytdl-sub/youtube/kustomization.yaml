@@ -6,6 +6,6 @@ resources:
   - ./helmrelease.yaml
 # M2 cutover (DESIGN-045 D-14): the config.yaml / subscriptions.yaml configMapGenerators are gone —
 # ytdrivarr now PROJECTS both files to the NFS media volume and the downloader mounts them from
-# there (see helmrelease.yaml persistence.config / persistence.subscriptions). The old
-# `config/` files are retained in git as the pre-cutover snapshot and rollback reference; a
-# `git revert` of this commit restores the configMap path exactly.
+# there (see helmrelease.yaml persistence.config / persistence.subscriptions). The dead
+# pre-cutover `config/` snapshot was swept once the M3 cutover was validated; rollback is via
+# reverting the cutover PR (#2179) plus git history for the old configMap contents.
