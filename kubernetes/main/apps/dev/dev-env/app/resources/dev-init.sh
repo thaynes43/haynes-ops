@@ -36,6 +36,29 @@ fi
 # ── Codex: declarative config, auth untouched ───────────────────────────────────
 cp -f "$CFG/codex/config.toml" "$HOME/.codex/config.toml"
 
+# ── Codex: managed STANDALONE install (enables `codex remote-control`) ───────────
+# The npm codex can't run remote-control — it needs the standalone install at
+# ~/.codex/packages/standalone. The image can't carry it (the home PVC mounts over
+# ~/.codex), so install it here at boot, pinned to $CODEX_VERSION, onto the PVC.
+# Puts the launcher at ~/.local/bin/codex (leads PATH via the image ENV). Idempotent
+# (skips when already at the pin); the PVC persists it across pod rolls, so this is
+# a one-time cost per home volume. install.sh pulls from GitHub releases (allowed by
+# the egress policy). A failure only costs remote-control this boot — logged, not fatal.
+if [ -n "${CODEX_VERSION:-}" ]; then
+  have="$("$HOME/.local/bin/codex" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+  if [ "$have" = "$CODEX_VERSION" ]; then
+    log "codex standalone $CODEX_VERSION present"
+  else
+    log "installing codex standalone $CODEX_VERSION (have: ${have:-none})…"
+    if curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/install.sh" \
+         | sh -s -- --release "$CODEX_VERSION" >/tmp/codex-install.log 2>&1; then
+      log "codex standalone installed → $("$HOME/.local/bin/codex" --version 2>/dev/null || echo '?')"
+    else
+      log "WARN codex standalone install failed (see /tmp/codex-install.log) — remote-control unavailable this boot"
+    fi
+  fi
+fi
+
 # ── git identity + credentials (saga Decision #5: haynes-ops-bot everywhere) ────
 # Commits author as the bot; pushes/clones read the fresh minted token per call via
 # the credential helper (never a static token in .gitconfig).

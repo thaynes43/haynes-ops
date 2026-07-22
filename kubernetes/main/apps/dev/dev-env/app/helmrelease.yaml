@@ -24,7 +24,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.4.0@sha256:91b0ad5b184d26e5c210b4669a386b0661b97411f30b53846432ab242bd7c686
+              tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
             command: ["/bin/bash", "-c"]
             args:
               # dev-init links GitOps configs into $HOME, then tmux (agent sessions
@@ -84,7 +84,7 @@ spec:
           gh-refresher:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.4.0@sha256:91b0ad5b184d26e5c210b4669a386b0661b97411f30b53846432ab242bd7c686
+              tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
             command: ["/bin/bash", "/opt/dev-env/scripts/gh-token-refresh.sh"]
             env:
               # Down-scope the minted token. NOTE: may only name permissions the App
@@ -108,7 +108,7 @@ spec:
           auth-watch:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.4.0@sha256:91b0ad5b184d26e5c210b4669a386b0661b97411f30b53846432ab242bd7c686
+              tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
             command: ["/bin/bash", "/opt/dev-env/scripts/auth-check.sh"]
             env:
               HOME: /home/dev
