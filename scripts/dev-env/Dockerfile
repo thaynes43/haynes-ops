@@ -40,9 +40,9 @@ ARG CODE_SERVER_VERSION=4.96.4
 # renovate: datasource=github-releases depName=astral-sh/uv
 ARG UV_VERSION=0.5.24
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.207
+ARG CLAUDE_CODE_VERSION=2.1.217
 # renovate: datasource=npm depName=@openai/codex
-ARG CODEX_VERSION=0.144.3
+ARG CODEX_VERSION=0.145.0
 # renovate: datasource=npm depName=tsx
 ARG TSX_VERSION=4.19.2
 # renovate: datasource=npm depName=pnpm
