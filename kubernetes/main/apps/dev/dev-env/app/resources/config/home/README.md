@@ -12,7 +12,7 @@ Open a terminal and run:
 agent-run run
 ```
 
-That's the whole command. Everything you don't specify is asked with an arrow-key picker: **repo** (your GitHub repos, newest activity first — no need to remember exact names), **agent** (`claude` or `codex`), **mode** (interactive session, or type a task prompt for fire-and-forget), and **effort** for claude runs (default `xhigh`). The agent then starts in a **fresh git worktree** on its own branch, inside tmux.
+That's the whole command. Everything you don't specify is asked with an arrow-key picker: **repo** (your GitHub repos, newest activity first — no need to remember exact names), **agent** (`claude` or `codex`), **mode** (interactive session, or type a task prompt for fire-and-forget), **how to drive an interactive claude session** (a *remote-control host* you drive from your phone/web — the default — or a *local TUI* you type to in the terminal), and **effort** for claude runs (default `xhigh`). The agent then starts in a **fresh git worktree** on its own branch, inside tmux.
 
 Know what you want? Flags skip the pickers, and `agent-run run <repo>` is a positional shorthand:
 
@@ -21,7 +21,7 @@ agent-run run haynesnetwork --agent claude --interactive
 agent-run run --repo haynes-ops --agent claude --effort max -p "Bump the coredns chart and open a PR"
 ```
 
-An interactive run starts a **Remote Control host** by default — connect from the Claude mobile app or claude.ai/code; `agent-run attach <id>` shows the status screen with the QR code + URL. Add `--local` for a classic in-terminal TUI instead.
+**Two ways to drive an interactive claude session.** The default is a **Remote Control host** — headless in the pod, driven from the Claude mobile app or claude.ai/code (`agent-run attach <id>` shows the status screen with the QR code + URL). The alternative is a **classic in-terminal TUI you type to directly** — pass the **`--local`** flag, or answer *n* to the menu's `remote-control host? [Y/n]` question. (Codex is always a local TUI — it has no remote-control host.)
 
 **Permissions are skipped by default** (`claude --dangerously-skip-permissions` / `codex --dangerously-bypass-approvals-and-sandbox` — you don't type those). The pod *is* the sandbox: isolated worktree, scoped ServiceAccount, default-deny egress. Add **`--safe`** to keep the normal permission prompts for a task you want to babysit.
 
@@ -67,8 +67,8 @@ agent-run run [<repo>] [flags]              # every omitted choice becomes a pic
     --agent claude|codex
     --base <ref>                            # branch the worktree off this (default: origin/HEAD)
     -p "<task>"                             # fire-and-forget; log at ~/work/<id>.log
-    --interactive                           # Remote Control host (drive from phone/claude.ai/code)
-    --local                                 # classic in-terminal TUI instead of the RC host
+    --interactive                           # interactive session; default = Remote Control host (drive from phone/claude.ai/code)
+    --local                                 # classic in-terminal TUI you type to directly, instead of the RC host
     --safe                                  # keep permission prompts (default: skipped)
     --effort low|medium|high|xhigh|max      # claude only; default xhigh
     --model <m>                             # -p/--local only (an RC host always runs the pod default)
@@ -125,7 +125,7 @@ Every agent gets its own worktree, so two agents in the same repo never step on 
 
 - **A pod restart kills tmux** (image roll, node drain, OOM). Worktrees, branches, and logs survive on the PVC — only the live pane is lost. `agent-run list` shows what's left (and a count of stranded worktrees), and `agent-run prune` clears the whole backlog in one shot.
 - **Remote Control host mechanics (the `--interactive` default):** registration uses the standalone `claude remote-control` path (api.anthropic.com environments API), which is reliable; fresh worktrees are pre-trusted by agent-run so nothing stops at a dialog, and the host launches `--spawn=same-dir` so it registers immediately (no spawn-mode prompt) with phone/web sessions reusing the task's worktree — press `w` in the host to switch to per-session worktrees. If a host fails to connect, the reason is in `~/work/<id>.rc.log`.
-- **Prefer a classic terminal TUI?** Add `--local`. You can still type `/remote-control` inside it, but the *in-TUI* path is flaky server-side (intermittent 401s on the code-session endpoints — anthropics/claude-code#30093 #30102 — and after 3 failed attempts that process disables RC until restarted). The RC-host default exists precisely so your workflow never depends on it. Historical silent-failure traps, all handled now: bridge egress (`bridge.claudeusercontent.com` allowed in the CNP since 2026-07-17) and permission flags at launch disabling in-TUI RC (`--local` launches flag-free; bypass comes from settings).
+- **Prefer a classic terminal TUI you type to directly?** Add `--local` (or answer *n* to the menu's `remote-control host? [Y/n]` question). You can still type `/remote-control` inside it, but the *in-TUI* path is flaky server-side (intermittent 401s on the code-session endpoints — anthropics/claude-code#30093 #30102 — and after 3 failed attempts that process disables RC until restarted). The RC-host default exists precisely so your workflow never depends on it. Historical silent-failure traps, all handled now: bridge egress (`bridge.claudeusercontent.com` allowed in the CNP since 2026-07-17) and permission flags at launch disabling in-TUI RC (`--local` launches flag-free; bypass comes from settings).
 - **haynesnetwork is pre-warmed**: `pnpm install`, `build`, `typecheck`, and all **1,292 tests** (embedded Postgres) pass in this pod. Playwright browsers are installed.
 - **Memory is 24Gi.** The monorepo test suite OOM'd at 8Gi — if a build dies mysteriously, check `kubectl top pod -n dev` before blaming the code.
 

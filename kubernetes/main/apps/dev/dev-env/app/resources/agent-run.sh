@@ -9,7 +9,8 @@
 #   agent-run run                               # bare → walks you through it: repo picker
 #                                               # (my repos, newest activity first) → agent
 #                                               # picker → interactive? [Y/n] (n → task
-#                                               # prompt) → effort picker (claude)
+#                                               # prompt; claude Y → remote-control host?
+#                                               # [Y/n]) → effort picker (claude)
 #   agent-run list                                              # live tasks + attach cmds
 #   agent-run attach [<task-id>]                # jump into a session (no id → picker)
 #   agent-run detach [<task-id>]                # kick attached clients off (no id → picker)
@@ -19,8 +20,9 @@
 # `run` fills every omitted choice interactively (so nobody has to remember exact
 # repo names): the repo picker lists the owner's GitHub repos newest-pushed first
 # (offline fallback: local canonical clones by last fetch), the agent picker offers
-# claude|codex, with neither -p nor --interactive it asks which mode you want, and
-# claude runs get an effort picker. Flags always win — scripted/agent callers pass
+# claude|codex, with neither -p nor --interactive it asks which mode you want (and,
+# for a claude interactive session, remote-control host vs local TUI), and claude
+# runs get an effort picker. Flags always win — scripted/agent callers pass
 # them and see no prompts (and get the same defaults, e.g. effort=xhigh).
 # --interactive default is a REMOTE-CONTROL host (phone/web drives it); --local is
 # the classic in-terminal TUI; --safe keeps permission prompts. Claude effort
@@ -53,6 +55,7 @@ agent-run — worktree-per-task agent dispatcher
                                               #   repo   → picker, my repos by latest activity
                                               #   agent  → picker, claude | codex
                                               #   mode   → interactive? [Y/n] (n → type a task prompt)
+                                              #   drive  → remote-control host? [Y/n] (claude interactive)
                                               #   effort → picker (claude only)
       --repo <name>                           # same as the positional <repo>
       --agent claude|codex
@@ -289,7 +292,16 @@ case "$cmd" in
             IFS= read -r prompt </dev/tty || prompt=""
             [ -n "$prompt" ] || die "a fire-and-forget run needs a task prompt"
             ;;
-          *) interactive=1 ;;
+          *) interactive=1
+             # RC host (the default) vs classic in-terminal TUI (--local). Only
+             # claude has an RC host — codex interactive is always a local TUI —
+             # so ask for claude only, and skip if --local already pinned it.
+             if [ "$agent" = claude ] && [ "$local_tui" != 1 ]; then
+               printf 'remote-control host — drive from phone/web? [Y/n] ' >/dev/tty
+               IFS= read -r rc </dev/tty || rc=""
+               case "$rc" in n|N|no|NO) local_tui=1 ;; esac
+             fi
+             ;;
         esac
       else
         die "need -p or --interactive"
