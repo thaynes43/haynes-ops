@@ -40,7 +40,7 @@ spec:
               # (thaynes43/ytdrivarr#19). Carries the *arr-style operator console + per-activity
               # Peloton watch grain (thaynes43/ytdrivarr#20) and the donor-parity emit window
               # (thaynes43/ytdrivarr#17), on top of AUTH_MODE=open and the M3 Peloton port.
-              tag: v0.6.0@sha256:e99c46427b874c391708bdb9b78aaf325eb5a672fcfb9863429dca8fc48481d8
+              tag: v0.6.1@sha256:dad450c1c112654f8a35ada6566d6d260d46d7cdc9507a3641b640006ddd1888
             env:
               TZ: America/New_York
               PORT: &port 8080
