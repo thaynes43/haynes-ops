@@ -28,12 +28,13 @@
 # always win — scripted callers pass them and see no prompts (defaults: effort
 # xhigh, model = each tool's own default).
 #
-# model/effort plumbing: claude reads --model/--effort (top-level); codex reads
-# -m <model> + -c model_reasoning_effort=<level>. Effort DEFAULTS TO xhigh in every
-# mode. Exceptions: a claude RC host takes neither top-level flag (the subcommand
-# rejects them) so its model is the pod default (fable-5[1m]) and its effort rides
-# CLAUDE_CODE_EFFORT_LEVEL in the launch env. --local is the classic in-terminal
-# TUI; --safe keeps permission prompts.
+# model/effort plumbing: claude -p/--local read --model/--effort (top-level flags);
+# a claude RC host reads ANTHROPIC_MODEL + CLAUDE_CODE_EFFORT_LEVEL from its launch
+# env (the subcommand rejects those flags, but its spawned sessions inherit the env
+# vars — aliases like opus/sonnet work). codex reads -m <model> + -c
+# model_reasoning_effort=<level>. Effort DEFAULTS TO xhigh in every mode; unset model
+# → each tool's own default. --local is the classic in-terminal TUI; --safe keeps
+# permission prompts.
 #
 # NB codex remote-control: codex DOES have an in-pod RC equivalent (codex
 # remote-control / app-server), but it needs the STANDALONE codex install
@@ -80,7 +81,7 @@ agent-run — worktree-per-task agent dispatcher
       --local                                 # claude: classic in-terminal TUI instead of the RC host
       --safe                                  # keep permission prompts (default: skipped — pod is the sandbox)
       --model <m>                             # claude alias/id (fable|opus|sonnet|haiku|…) or codex slug;
-                                              #   claude -p/--local only (an RC host runs the pod default)
+                                              #   all claude modes (RC host via ANTHROPIC_MODEL env)
       --effort <level>                        # claude: low|medium|high|xhigh|max; codex: +ultra (model-dependent)
                                               #   DEFAULT xhigh (claude RC hosts get it via env var)
   agent-run list
@@ -348,13 +349,12 @@ case "$cmd" in
       fi
     fi
     # --- model picker (menu mode) ---
-    # Skip for a claude RC host: `claude remote-control` rejects a top-level
-    # --model, so an RC host always runs the pod-default model (fable-5[1m]).
-    # Every other tool+mode honors a chosen model, and the effort picker below
-    # then filters to that model's supported levels (only varies for codex).
-    claude_rc=0
-    [ "$interactive" = 1 ] && [ "$agent" = claude ] && [ "$local_tui" != 1 ] && claude_rc=1
-    if [ -z "$model" ] && [ "$asked" = 1 ] && [ "$claude_rc" != 1 ]; then
+    # Every tool+mode honors a chosen model. claude -p/--local take the --model
+    # flag; a claude RC host takes ANTHROPIC_MODEL in its launch env (the
+    # subcommand rejects a top-level --model flag, but the sessions it spawns
+    # inherit the env var — same path effort already uses). codex takes -m. The
+    # effort picker below then filters to the model's levels (only varies for codex).
+    if [ -z "$model" ] && [ "$asked" = 1 ]; then
       if [ "$agent" = claude ]; then
         model="$(pick 'model:' \
           'fable   Fable 5 · 1M ctx (dev-env default)' \
@@ -473,15 +473,14 @@ reason as your final message."
           # phone/claude.ai-code drives the session; local attach shows the
           # status/QR/URL screen. Failures self-document in the rc log.
           #
-          # NB: the subcommand takes NO --model/--effort, and top-level flags
-          # placed BEFORE it make it reject its own --name (`claude $cg
-          # remote-control --name …` → "unknown option --name", verified live).
-          # NEVER splice $cg here. Model therefore comes from the pod settings
-          # (Fable). Effort DOES apply now: CLAUDE_CODE_EFFORT_LEVEL is set in
-          # the launch env below and sessions the host spawns inherit it (env
-          # precedence: /effort > --effort flag > this var > settings.json —
-          # code.claude.com/docs/en/env-vars). /effort in-session still wins.
-          [ -n "$model" ] && log "note: --model doesn't apply to an RC host (model = pod settings default; use --local for a flag-controlled TUI)"
+          # NB: the subcommand takes NO top-level --model/--effort flags — placing
+          # them before it makes it reject its own --name (`claude $cg
+          # remote-control --name …` → "unknown option --name", verified live), so
+          # NEVER splice $cg here. Both apply via the LAUNCH ENV instead: the host's
+          # spawned sessions inherit ANTHROPIC_MODEL (model; accepts aliases like
+          # opus/sonnet, verified) and CLAUDE_CODE_EFFORT_LEVEL (effort). Precedence:
+          # in-session /model,/effort > these vars > settings.json
+          # (code.claude.com/docs/en/env-vars). Unset model → pod default fable-5[1m].
           rc_mode="--permission-mode bypassPermissions"
           [ "$safe" = 1 ] && rc_mode="--permission-mode default"
           # --spawn=same-dir: newer claude prompts "[1] same-dir / [2] worktree"
@@ -490,7 +489,10 @@ reason as your final message."
           # web sessions reuse this worktree instead of spawning fresh ones (which
           # would re-grow the very worktree sprawl reap/prune exist to control).
           launch="claude remote-control --name $id --spawn same-dir $rc_mode --debug-file $WORK/$id.rc.log"
-          [ -n "$effort" ] && launch="CLAUDE_CODE_EFFORT_LEVEL=$(printf '%q' "$effort") $launch"
+          rc_env=""
+          [ -n "$model" ]  && rc_env="$rc_env ANTHROPIC_MODEL=$(printf '%q' "$model")"
+          [ -n "$effort" ] && rc_env="$rc_env CLAUDE_CODE_EFFORT_LEVEL=$(printf '%q' "$effort")"
+          [ -n "$rc_env" ] && launch="${rc_env# } $launch"
         fi
       else
         # codex interactive = local in-terminal TUI. Its remote-control host
@@ -501,7 +503,7 @@ reason as your final message."
       fi
       tmux send-keys -t "task-$id" "$token_env; cd $wt; $launch" Enter
       if [ "$agent" = claude ] && [ "$local_tui" != 1 ]; then
-        log "remote-control host starting (effort=${effort:-model-default}) → QR/URL: agent-run attach $id   rc log: $WORK/$id.rc.log"
+        log "remote-control host starting (model=${model:-pod-default} effort=${effort:-default}) → QR/URL: agent-run attach $id   rc log: $WORK/$id.rc.log"
       elif [ "$agent" = codex ]; then
         log "codex local TUI ready (model=${model:-default} effort=${effort:-default}; remote-control needs the standalone install — deferred) →  agent-run attach $id"
       else

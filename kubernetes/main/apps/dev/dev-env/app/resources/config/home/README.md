@@ -1,143 +1,115 @@
-# dev-env — your in-cluster agent workspace
+# dev-env
 
-You're in a 24/7 pod in the `main` cluster (namespace `dev`). Everything here is GitOps-managed: this README lives at `kubernetes/main/apps/dev/dev-env/app/resources/config/home/README.md` in **haynes-ops** — edit it there, not here (a pod restart overwrites this copy).
+24/7 pod in cluster `main`, namespace `dev`. GitOps-managed: this file is `kubernetes/main/apps/dev/dev-env/app/resources/config/home/README.md` in **haynes-ops** — edit it there, not here (a pod restart overwrites this copy). `Ctrl+Shift+V` renders markdown; `` Ctrl+` `` opens a terminal.
 
-> **Tip:** `Ctrl+Shift+V` renders this markdown. `` Ctrl+` `` opens a terminal.
-
-## Quick start
-
-Open a terminal and run:
-
-```bash
-agent-run run
-```
-
-That's the whole command. Everything you don't specify is asked with an arrow-key picker, **tool-first** — you pick the **agent** (`claude` or `codex`) and every later step shows only that tool's options: **repo** (your GitHub repos, newest activity first — no need to remember exact names), **mode** (interactive session, or type a task prompt for fire-and-forget), **how to drive an interactive claude session** (a *remote-control host* you drive from your phone/web — the default — or a *local TUI* you type to in the terminal), **model** (claude: fable/opus/sonnet/haiku; codex: gpt-5.6 sol/terra/luna, 5.5, 5.2), and **effort** (filtered to the model you picked; default `xhigh`). The agent then starts in a **fresh git worktree** on its own branch, inside tmux.
-
-Know what you want? Flags skip the pickers, and `agent-run run <repo>` is a positional shorthand:
-
-```bash
-agent-run run haynesnetwork --agent claude --interactive
-agent-run run --repo haynes-ops --agent claude --effort max -p "Bump the coredns chart and open a PR"
-```
-
-**Two ways to drive an interactive claude session.** The default is a **Remote Control host** — headless in the pod, driven from the Claude mobile app or claude.ai/code (`agent-run attach <id>` shows the status screen with the QR code + URL). The alternative is a **classic in-terminal TUI you type to directly** — pass the **`--local`** flag, or answer *n* to the menu's `remote-control host? [Y/n]` question. **Codex** currently runs only as a local in-terminal TUI: its remote-control equivalent (`codex remote-control`) needs the standalone Codex install this pod doesn't ship yet, so it's deferred — details in [Model & effort](#model--effort).
-
-**Permissions are skipped by default** (`claude --dangerously-skip-permissions` / `codex --dangerously-bypass-approvals-and-sandbox` — you don't type those). The pod *is* the sandbox: isolated worktree, scoped ServiceAccount, default-deny egress. Add **`--safe`** to keep the normal permission prompts for a task you want to babysit.
-
-**Model & effort are picked per tool.** Effort defaults to **`xhigh`** for both claude and codex — deterministically, in every mode. The menu lets you pick the model, then shows only that model's effort levels (claude's are the same across models; codex's differ — only gpt-5.6 has `max`, only sol/terra add `ultra`). Override with `--model`/`--effort`, or mid-session with `/effort`. Details in [Model & effort](#model--effort) below.
-
-## tmux — the only 3 keys you need
-
-Agents run inside **tmux** so they survive you closing the browser. tmux uses a "prefix" key: you tap **Ctrl+B**, *release*, then press one more key.
-
-| Keys | What it does |
-|---|---|
-| **Ctrl+B**, then **d** | **Detach.** The agent keeps working. Close the tab, shut the laptop. |
-| **Ctrl+B**, then **[** | **Scroll back.** Arrows/PageUp to read history, **q** to stop scrolling. *(Mouse scroll won't work — this is the one that trips everyone.)* |
-| **Ctrl+B**, then **c** | New window (a second shell in the same session). |
-
-> **⚠️ code-server steals Ctrl+B** (it's VS Code's "toggle sidebar" shortcut), so in the integrated terminal here the detach keystroke usually never reaches tmux. Detach from any *other* terminal instead: **`agent-run detach`** (picker) or `tmux detach-client -s task-<task-id>`. Closing the browser tab also just detaches — the agent keeps running either way. The only thing that actually *kills* a session is `exit`/`Ctrl+D` at its shell prompt (or `agent-run reap`).
-
-## Managing tasks
-
-```bash
-agent-run list               # what's running + start times + the attach command to copy
-agent-run attach [task-id]   # jump back into a live session (scrollback intact)
-agent-run detach [task-id]   # kick attached clients off — the session keeps running
-agent-run reap [task-id]     # kill it + delete the worktree (the log is kept)
-agent-run prune              # bulk-clean EVERY stranded worktree (dry-run; add --yes to do it)
-```
-
-**Skip the id and you get an arrow-key picker** (↑/↓ or j/k, Enter selects, `q` cancels) showing each task's start time. `reap`'s picker also lists **stranded worktrees** — a pod restart kills tmux but the PVC keeps the worktree — and asks `y/N` before deleting.
-
-`list` prints the **task id** (e.g. `haynesnetwork-0714-010301`) and the ready-to-paste `agent-run attach …` line under it. If you paste the tmux session name (`task-…`) by mistake, `attach` strips the prefix for you. `attach` is nested-tmux aware: from inside another task's session it switches you over instead of erroring.
-
-**Task logs** live at `~/work/<task-id>.log` even after a reap; Remote-Control host diagnostics land in `~/work/<task-id>.rc.log`.
-
----
-
-# Reference
-
-## agent-run flag reference
+## Synopsis
 
 ```
-agent-run run [<repo>] [flags]              # every omitted choice becomes a picker/prompt (tool-first)
-    --repo <name>                           # same as the positional <repo>
-    --agent claude|codex
-    --base <ref>                            # branch the worktree off this (default: origin/HEAD)
-    -p "<task>"                             # fire-and-forget; log at ~/work/<id>.log
-    --interactive                           # claude: Remote Control host (drive from phone/claude.ai/code); codex: local TUI
-    --local                                 # claude: classic in-terminal TUI you type to directly, instead of the RC host
-    --safe                                  # keep permission prompts (default: skipped)
-    --model <m>                             # claude alias/id (fable|opus|sonnet|haiku|…) or codex slug (gpt-5.6-sol|…)
-                                            #   claude -p/--local only (an RC host always runs the pod default)
-    --effort <level>                        # claude: low|medium|high|xhigh|max; codex adds ultra (model-dependent); default xhigh
-agent-run list
-agent-run attach [<task-id>]                # no id → picker
-agent-run detach [<task-id>]                # no id → picker (attached sessions only)
-agent-run reap   [<task-id>] [--force]      # no id → picker (incl. stranded worktrees)
-agent-run prune  [--yes] [--force]          # bulk-clean stranded worktrees (dry-run without --yes)
+agent-run run [<repo>] [flags]           dispatch an agent in a fresh worktree
+agent-run list                           live tasks + attach commands
+agent-run attach [<task-id>]             enter a session (no id → picker)
+agent-run detach [<task-id>]             disconnect clients; session runs on
+agent-run reap   [<task-id>] [--force]   kill session + remove worktree
+agent-run prune  [--yes] [--force]       bulk-remove stranded worktrees
 ```
 
-The repo picker asks GitHub for your repos (newest-pushed first) via the bot token; if that's unreachable it falls back to the local clones in `~/repos`, most recently fetched first.
+Bare `agent-run run` prompts for every choice it isn't given, **tool-first**: repo → agent (claude|codex) → mode (`interactive? [Y/n]`; `n` → task prompt) → for a claude interactive session, `remote-control host? [Y/n]` → model → effort. Each step after the agent shows only that tool's options. Flags skip the matching prompt; a fully-flagged call runs unattended. `agent-run run <repo>` is positional shorthand for `--repo`.
 
-The menu picks the **model** first, then shows only that model's **effort** levels. Both apply to `-p` and the local TUI via each tool's own flags; the one exception is a claude RC host (below).
+## `run` flags
 
-- **claude models:** `fable` (pod default — the 1M-ctx `claude-fable-5[1m]` from `~/.claude/settings.json`), `opus`, `sonnet`, `haiku`, passed as `--model`. Effort levels are the same for all: `low|medium|high|xhigh|max`.
-- **codex models:** `gpt-5.6-sol` (default), `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.2`, passed as `-m`. Effort levels **differ by model**: every model has `low|medium|high|xhigh`; only the gpt-5.6 family adds `max`; only `sol`/`terra` add `ultra`. Effort is passed as `-c model_reasoning_effort=<level>`.
-- **Effort defaults to `xhigh`** for both tools, in every mode (valid for every current model). `-p`/local runs get the flag; a claude RC host gets `CLAUDE_CODE_EFFORT_LEVEL` exported into its environment, which the sessions it hosts inherit. Precedence (high → low): in-session `/effort` → flag → env var → settings/config → model default. `--effort ultracode` is not a launch value — ultracode is a harness session-mode; set it with `/effort` in-session.
-- **claude RC host is the exception:** the `claude remote-control` subcommand takes no top-level flags, so an RC host always runs the pod-default model (Fable); its effort still applies via the env var. Use `--local` for a flag-controlled model + effort.
-- **codex remote-control is deferred.** Codex *does* have an in-pod remote-control host (`codex remote-control` / `codex app-server`, driven from the ChatGPT app / Codex web) — the true analog of claude's RC host, **not** `codex cloud` (which runs in OpenAI's cloud, not this pod). But it requires the **standalone** Codex install (`~/.codex/packages/standalone`), and this pod ships the npm install, so `remote-control start` can't run here. Until the dev-env image bakes the standalone in (and the relay egress is allowlisted), codex interactive is a local TUI — model + effort still work there.
-- **History:** before 2026-07 nothing set effort at all — no flag reached RC hosts and no settings key existed — so every session silently ran at the model default (`high` for Fable). It's now deterministically `xhigh`.
+```
+--repo <name>       same as the positional <repo>
+--agent claude|codex
+--base <ref>        worktree base (default: origin/HEAD)
+-p "<task>"         fire-and-forget; output → ~/work/<id>.log
+--interactive       claude → remote-control host; codex → local TUI
+--local             claude → in-terminal TUI instead of the RC host
+--safe              keep permission prompts (default: bypassed)
+--model <m>         claude alias/id (fable|opus|sonnet|haiku) or codex slug (gpt-5.6-sol|…)
+--effort <level>    claude low|medium|high|xhigh|max; codex adds ultra; default xhigh
+```
 
-## How isolation works
+The repo picker lists the bot's GitHub repos by last push, falling back to `~/repos` by fetch time when offline. Permissions are bypassed by default (`--dangerously-skip-permissions` / `--dangerously-bypass-approvals-and-sandbox`): the pod is the sandbox — isolated worktree, scoped ServiceAccount, default-deny egress. `--safe` restores prompts.
 
-- `~/repos/<name>` — the **canonical clone**. Fetch-only. *Never work here directly.*
-- `~/work/<task-id>` — a **git worktree** per task, on branch `agent/<task-id>`.
+## Interactive modes
 
-Every agent gets its own worktree, so two agents in the same repo never step on each other. Agents are told (via `~/.claude/CLAUDE.md`) to stay in their worktree, **never push to `main`**, and open a PR when done.
+- **Remote-control host** — claude default. Headless in the pod, driven from the Claude app or claude.ai/code; `agent-run attach <id>` shows the QR/URL status screen, diagnostics in `~/work/<id>.rc.log`. Launched as `claude remote-control --spawn same-dir` (registers via the api.anthropic.com environments API; worktrees are pre-trusted so it never blocks on a dialog). Press `w` in the host for per-session worktrees.
+- **Local TUI** — `--local`, or `n` to the RC prompt. claude/codex runs in the tmux pane and you type to it. `/remote-control` inside the TUI works but is server-side flaky (401s — anthropics/claude-code#30093, #30102; self-disables after 3 failures); the RC-host default avoids that path.
+- **Codex** is local-TUI only. Its RC equivalent is `codex remote-control`/`app-server` (**not** `codex cloud`, which runs in OpenAI's cloud), which needs the standalone Codex install; this pod ships the npm install, so codex RC is deferred until the image bakes it in.
 
-## Cleanup: reap, prune, and branch retirement
+## Models & effort
 
-**When the backlog piles up** (an agent that spun up its own per-PR worktrees, or a wall of stranded ones after a pod bounce), `agent-run prune` clears them all at once. It prints a **dry-run plan** first; re-run with `--yes` to execute. Both `reap` and `prune` resolve the owning repo from git itself (so any worktree name works, in either repo) and are **safe by construction**: a worktree is removed only when it has **no uncommitted _tracked_ changes** — untracked scratch (`.claude/` locks, `node_modules`, build dirs) is discarded, but real WIP is kept and listed. A worktree that still holds tracked edits is skipped unless you add `--force` (`reap <id> --force` / `prune --yes --force`). Agents commit and open a PR before finishing, so a stranded worktree is essentially always safe to prune.
+Model is picked first; effort then offers only that model's levels. Default effort is **`xhigh`** in every mode (valid for all current models). Unset model → the tool's own default. `/model` and `/effort` override in-session.
 
-**Branches are retired conservatively.** After removing a worktree, the branch is deleted only when git can prove _offline_ it holds nothing beyond the base (`git branch -d`). A branch with its own local commits — genuinely unpushed WIP, **or** a squash-merged branch whose remote was deleted (git can't tell these apart offline, and it never trusts a branch _name_ to mean "merged") — is **kept**, and prune prints the exact `git branch -D …` to drop it once you've confirmed it landed. So a clean prune may leave a few merged branch refs behind; that's the price of never orphaning an un-pushed commit. Sweep them when you're sure with `git -C ~/repos/<name> branch -D <branch>`.
+- **claude** — `fable` (pod default `claude-fable-5[1m]`, 1M context), `opus`, `sonnet`, `haiku`. Effort `low|medium|high|xhigh|max`, uniform across models. `-p`/`--local` pass `--model`/`--effort` flags; an **RC host** instead gets `ANTHROPIC_MODEL` + `CLAUDE_CODE_EFFORT_LEVEL` in its launch env — the `remote-control` subcommand rejects the flags, but the sessions it spawns inherit the vars (aliases resolve). So model applies in **all** claude modes.
+- **codex** — `gpt-5.6-sol` (default), `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.2`. Effort differs by model: all take `low|medium|high|xhigh`; `max` only on gpt-5.6; `ultra` only on sol/terra. Passed as `-m <model> -c model_reasoning_effort=<level>` (codex has no `--effort` flag or `/effort` command — it folds effort into `/model`).
 
-## What's installed, and what's authenticated
+`ultracode` is a harness session-mode, not a launch value — set it with `/effort` in-session.
 
-| Tool | Auth | Notes |
-|---|---|---|
-| `claude` | ✅ Max plan | credential on the PVC, self-refreshing |
-| `codex` | ✅ ChatGPT plan | ditto |
-| `git` / `gh` | ✅ `haynes-dev-bot` | App token, **all 23 repos**, re-minted every 40 min. Commits/PRs author as the bot. |
-| `kubectl` / `flux` | ✅ in-cluster SA | **operator tier**: read everything (no secrets), plus pod delete, rollout restart, flux reconcile, Jobs, cronjob suspend. No exec, no secrets, no RBAC/node changes. |
-| `helm`, `kustomize`, `yq`, `jq`, `sops`, `age`, `task`, `tofu`, `restic` | — | installed |
-| `node` 24 + `pnpm` 11 + `tsx`, `python3` + `uv` | — | covers haynesnetwork, hass-sandbox, haynes-ops |
-| `talosctl` / `omnictl` | ❌ absent | node/Omni work happens on the Mac |
-| SOPS **age key** | ❌ deliberately absent | never leaves your machine without an explicit decision |
+## tmux
 
-**MCP servers** (already wired into `claude`, no setup): `home-assistant`, `grafana-mcp`, `mcp-unifi`, `playwright` (headless chromium — it can drive your own apps at `https://<app>.haynesops.com` for UI testing).
+Sessions run under tmux and survive a disconnect. Prefix is **Ctrl+B** (tap, release, then a key):
 
-## Rules the agents follow (and you should too)
+```
+Ctrl+B d    detach (agent keeps running)
+Ctrl+B [    scroll — arrows/PageUp, q to exit copy-mode (mouse scroll won't)
+Ctrl+B c    new window
+```
 
-- **GitOps.** Cluster changes go through a PR to `haynes-ops` and Flux applies them. The kubectl SA can restart and reconcile things, but it can't deploy — that's on purpose.
-- **Never push to `main`.** Branch + PR.
-- **Egress is a default-deny allowlist.** If a `curl`/`npm install` hangs, the domain probably isn't allowlisted — that's the CiliumNetworkPolicy doing its job, not a network glitch. Fix it in git (`kubernetes/main/apps/dev/dev-env/app/networkpolicy.yaml`), don't hunt for a proxy.
+code-server intercepts Ctrl+B (sidebar toggle) in its integrated terminal, so detach from another terminal: `agent-run detach`, or `tmux detach-client -s task-<id>`. Closing the tab detaches; only `exit`/`Ctrl+D` at the prompt (or `reap`) kills a session.
 
-## Gotchas worth knowing
+## Task management
 
-- **A pod restart kills tmux** (image roll, node drain, OOM). Worktrees, branches, and logs survive on the PVC — only the live pane is lost. `agent-run list` shows what's left (and a count of stranded worktrees), and `agent-run prune` clears the whole backlog in one shot.
-- **Remote Control host mechanics (the `--interactive` default):** registration uses the standalone `claude remote-control` path (api.anthropic.com environments API), which is reliable; fresh worktrees are pre-trusted by agent-run so nothing stops at a dialog, and the host launches `--spawn=same-dir` so it registers immediately (no spawn-mode prompt) with phone/web sessions reusing the task's worktree — press `w` in the host to switch to per-session worktrees. If a host fails to connect, the reason is in `~/work/<id>.rc.log`.
-- **Prefer a classic terminal TUI you type to directly?** Add `--local` (or answer *n* to the menu's `remote-control host? [Y/n]` question). You can still type `/remote-control` inside it, but the *in-TUI* path is flaky server-side (intermittent 401s on the code-session endpoints — anthropics/claude-code#30093 #30102 — and after 3 failed attempts that process disables RC until restarted). The RC-host default exists precisely so your workflow never depends on it. Historical silent-failure traps, all handled now: bridge egress (`bridge.claudeusercontent.com` allowed in the CNP since 2026-07-17) and permission flags at launch disabling in-TUI RC (`--local` launches flag-free; bypass comes from settings).
-- **haynesnetwork is pre-warmed**: `pnpm install`, `build`, `typecheck`, and all **1,292 tests** (embedded Postgres) pass in this pod. Playwright browsers are installed.
-- **Memory is 24Gi.** The monorepo test suite OOM'd at 8Gi — if a build dies mysteriously, check `kubectl top pod -n dev` before blaming the code.
+`list` prints each task id (e.g. `haynesnetwork-0714-010301`) with its paste-ready `attach` line and a stranded-worktree count. Omitting the id on `attach`/`detach`/`reap` opens a picker (↑/↓ or j/k, Enter, `q`). `attach` tolerates a `task-` prefix and switches clients when run from inside another session. Logs persist at `~/work/<id>.log` (kept through reap); RC diagnostics at `~/work/<id>.rc.log`.
 
-## Where things live
+## Isolation
 
-| | |
-|---|---|
-| This pod's manifests | `haynes-ops` → `kubernetes/main/apps/dev/dev-env/` |
-| Agent config + MCP servers | `.../app/resources/config/claude/` |
-| `agent-run`, boot script | `.../app/resources/` |
-| The saga (design, decisions, backlog) | `.agents/sagas/dev-env/` |
+- `~/repos/<name>` — canonical clone, fetch-only. Never work here.
+- `~/work/<id>` — per-task worktree on branch `agent/<id>`.
+
+One worktree per task, so concurrent agents in a repo never collide. Agents are instructed (`~/.claude/CLAUDE.md`) to stay in their worktree, never push `main`, and open a PR.
+
+## Cleanup
+
+`reap <id>` kills the session and removes its worktree; `prune` bulk-removes stranded worktrees (dead session, worktree left on the PVC) — dry-run by default, `--yes` executes. Both resolve the owning repo from git and remove a worktree only when it has **no uncommitted tracked changes**: untracked scratch is discarded, tracked WIP is kept and reported (`--force` overrides). A worktree's branch is deleted only when git proves offline it holds nothing beyond base (`git branch -d`); a branch with its own commits — unpushed WIP, or squash-merged with the remote gone — is kept, with the exact `git branch -D` printed. Sweep confirmed-merged refs with `git -C ~/repos/<name> branch -D <branch>`.
+
+Standalone clones made directly under `~/work` (not worktrees) are skipped by `prune` and must be removed by hand after checking for unpushed commits.
+
+## Toolchain & auth
+
+```
+claude              Max plan         credential on PVC, self-refreshing
+codex               ChatGPT plan     credential on PVC, self-refreshing
+git / gh            haynes-dev-bot   app token, all repos, re-minted ~40m; commits author as the bot
+kubectl / flux      in-cluster SA    operator tier: read (no secrets), pod delete, rollout restart,
+                                     flux reconcile, jobs, cronjob suspend. No exec/secrets/RBAC/node.
+helm kustomize yq jq sops age task tofu restic    installed
+node 24 / pnpm 11 / tsx / python3 / uv            installed
+talosctl / omnictl  absent           node/Omni work runs on the Mac
+SOPS age key        absent           deliberate — never leaves the Mac
+```
+
+MCP servers wired into claude (no setup): `home-assistant`, `grafana-mcp`, `mcp-unifi`, `playwright` (headless chromium; drives apps at `https://<app>.haynesops.com`).
+
+Tool versions are pinned at image build (`scripts/dev-env/Dockerfile`, Renovate-tracked). Updating is a version bump → image rebuild → helmrelease digest re-pin → redeploy; a pod restart alone does **not** update them.
+
+## Rules
+
+- Cluster changes go through a PR to `haynes-ops`; Flux applies them. The SA can restart/reconcile, not deploy.
+- Never push `main`. Branch + PR.
+- Egress is a default-deny allowlist. A hanging `curl`/`npm install` usually means the domain isn't allowlisted (CiliumNetworkPolicy) — fix `kubernetes/main/apps/dev/dev-env/app/networkpolicy.yaml`, don't hunt for a proxy.
+
+## Gotchas
+
+- A pod restart (image roll, node drain, OOM) kills tmux; worktrees, branches, and logs persist on the PVC. `list` shows survivors and the stranded count; `prune` clears them.
+- Memory is 24Gi — the monorepo suite OOM'd at 8Gi. Check `kubectl top pod -n dev` before blaming a build.
+- haynesnetwork is pre-warmed: `pnpm install`/`build`/`typecheck` and its 1,292-test suite (embedded Postgres) pass here; Playwright browsers installed.
+
+## Layout
+
+```
+kubernetes/main/apps/dev/dev-env/              manifests
+    app/resources/                             agent-run, boot script, bashrc
+    app/resources/config/{claude,codex,home}/  agent + MCP config, this README
+.agents/sagas/dev-env/                         design, decisions, backlog
+```
