@@ -41,6 +41,10 @@ ARG CODE_SERVER_VERSION=4.96.4
 ARG UV_VERSION=0.5.24
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
 ARG CLAUDE_CODE_VERSION=2.1.217
+# Codex is installed at BOOT as the managed STANDALONE (dev-init.sh), not via npm —
+# only the standalone can run `codex remote-control`. This pins that standalone
+# version; @openai/codex npm releases track the same numbers as the rust-v* GitHub
+# releases the standalone installer pulls, so the npm datasource still tracks it.
 # renovate: datasource=npm depName=@openai/codex
 ARG CODEX_VERSION=0.145.0
 # renovate: datasource=npm depName=tsx
@@ -155,7 +159,6 @@ RUN curl -fsSLo /tmp/uv.tar.gz \
 # Agent CLIs + TS tooling (haynesnetwork runs tsx).
 RUN npm install -g \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
-      "@openai/codex@${CODEX_VERSION}" \
       "tsx@${TSX_VERSION}" \
       "pnpm@${PNPM_VERSION}" \
  && npm cache clean --force
@@ -195,9 +198,14 @@ RUN usermod -l dev -d /home/dev node && groupmod -n dev node \
 
 USER dev
 WORKDIR /home/dev
+# CODEX_VERSION rides into the runtime env so dev-init.sh installs the matching
+# standalone. ~/.local/bin (the standalone codex launcher + agent-run) leads PATH
+# so codex resolves in EVERY context — login shells, tmux panes, and the non-login
+# auth-watch probe alike (npm codex is gone; the standalone is the only codex).
 ENV HOME=/home/dev \
     CLAUDE_CONFIG_DIR=/home/dev/.claude \
     CODEX_HOME=/home/dev/.codex \
+    CODEX_VERSION=${CODEX_VERSION} \
     PLAYWRIGHT_BROWSERS_PATH=/home/dev/.cache/ms-playwright \
-    PATH=/opt/dev-env:/usr/local/bin:/usr/bin:/bin
+    PATH=/home/dev/.local/bin:/opt/dev-env:/usr/local/bin:/usr/bin:/bin
 ENTRYPOINT ["/bin/bash"]
