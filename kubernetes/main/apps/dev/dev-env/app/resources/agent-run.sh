@@ -6,29 +6,40 @@
 #
 #   agent-run run  [<repo>] [--agent claude|codex] [--base <ref>] [-p "<task>"]
 #                  [--interactive] [--local] [--safe] [--model <m>] [--effort <l>]
-#   agent-run run                               # bare → walks you through it: repo picker
-#                                               # (my repos, newest activity first) → agent
-#                                               # picker → interactive? [Y/n] (n → task
-#                                               # prompt; claude Y → remote-control host?
-#                                               # [Y/n]) → effort picker (claude)
+#   agent-run run                               # bare → walks you through it, TOOL-FIRST:
+#                                               # repo → agent (claude|codex) → interactive?
+#                                               # [Y/n] (n → task prompt; claude Y →
+#                                               # remote-control host? [Y/n]) → model →
+#                                               # effort. Each step shows that tool's options.
 #   agent-run list                                              # live tasks + attach cmds
 #   agent-run attach [<task-id>]                # jump into a session (no id → picker)
 #   agent-run detach [<task-id>]                # kick attached clients off (no id → picker)
 #   agent-run reap   [<task-id>] [--force]      # kill + cleanup (no id → picker)
 #   agent-run prune  [--yes] [--force]          # bulk-clean ALL stranded worktrees (dry-run w/o --yes)
 #
-# `run` fills every omitted choice interactively (so nobody has to remember exact
-# repo names): the repo picker lists the owner's GitHub repos newest-pushed first
-# (offline fallback: local canonical clones by last fetch), the agent picker offers
-# claude|codex, with neither -p nor --interactive it asks which mode you want (and,
-# for a claude interactive session, remote-control host vs local TUI), and claude
-# runs get an effort picker. Flags always win — scripted/agent callers pass
-# them and see no prompts (and get the same defaults, e.g. effort=xhigh).
-# --interactive default is a REMOTE-CONTROL host (phone/web drives it); --local is
-# the classic in-terminal TUI; --safe keeps permission prompts. Claude effort
-# DEFAULTS TO xhigh in every mode (-p / --local via the --effort flag, RC hosts via
-# CLAUDE_CODE_EFFORT_LEVEL in the launch env); --model applies to -p/--local only —
-# an RC host's model is the pod settings default (Fable).
+# `run` fills every omitted choice interactively, TOOL-FIRST: pick the repo, then
+# the agent (claude|codex), and every later step shows only that tool's options.
+# repo picker = owner's GitHub repos newest-pushed first (offline fallback: local
+# clones by last fetch). With neither -p nor --interactive it asks the mode; a
+# claude interactive session then asks remote-control-host vs local TUI. Then a
+# MODEL picker (claude: fable/opus/sonnet/haiku; codex: gpt-5.6 sol/terra/luna,
+# 5.5, 5.2) and an EFFORT picker filtered to that model's levels (claude's are
+# uniform; codex's vary — only gpt-5.6 has max, only sol/terra add ultra). Flags
+# always win — scripted callers pass them and see no prompts (defaults: effort
+# xhigh, model = each tool's own default).
+#
+# model/effort plumbing: claude reads --model/--effort (top-level); codex reads
+# -m <model> + -c model_reasoning_effort=<level>. Effort DEFAULTS TO xhigh in every
+# mode. Exceptions: a claude RC host takes neither top-level flag (the subcommand
+# rejects them) so its model is the pod default (fable-5[1m]) and its effort rides
+# CLAUDE_CODE_EFFORT_LEVEL in the launch env. --local is the classic in-terminal
+# TUI; --safe keeps permission prompts.
+#
+# NB codex remote-control: codex DOES have an in-pod RC equivalent (codex
+# remote-control / app-server), but it needs the STANDALONE codex install
+# (~/.codex/packages/standalone) and this pod ships the npm install, so it can't
+# start here. Deferred until the image bakes the standalone in — codex interactive
+# stays a local TUI for now.
 #
 # attach/detach/reap without an id open an arrow-key picker (↑/↓ + Enter, q
 # cancels) showing each task's start time; reap's picker also lists STRANDED
@@ -51,21 +62,27 @@ die() { log "ERROR: $*"; exit 1; }
 usage() {
   cat >&2 <<'EOF'
 agent-run — worktree-per-task agent dispatcher
-  agent-run run [<repo>] [flags]              # every omitted choice is asked interactively:
+  agent-run run [<repo>] [flags]              # every omitted choice is asked interactively,
+                                              # TOOL-FIRST (each step shows that tool's options):
                                               #   repo   → picker, my repos by latest activity
                                               #   agent  → picker, claude | codex
                                               #   mode   → interactive? [Y/n] (n → type a task prompt)
                                               #   drive  → remote-control host? [Y/n] (claude interactive)
-                                              #   effort → picker (claude only)
+                                              #   model  → picker (claude: fable/opus/sonnet/haiku;
+                                              #            codex: gpt-5.6 sol/terra/luna, 5.5, 5.2)
+                                              #   effort → picker, filtered to the model's levels
       --repo <name>                           # same as the positional <repo>
       --agent claude|codex
       --base <ref>                            # branch the worktree off this (default: origin/HEAD)
       -p "<task>"                             # fire-and-forget; log at ~/work/<id>.log
-      --interactive                           # Remote Control host (drive from phone/claude.ai/code)
-      --local                                 # classic in-terminal TUI instead of RC host
+      --interactive                           # claude: Remote Control host (drive from phone/web);
+                                              #   codex: local TUI (its RC host needs the standalone install)
+      --local                                 # claude: classic in-terminal TUI instead of the RC host
       --safe                                  # keep permission prompts (default: skipped — pod is the sandbox)
-      --effort low|medium|high|xhigh|max      # claude only; DEFAULT xhigh (RC hosts get it via env var)
-      --model <m>                             # override the pod default model; -p/--local only, not RC
+      --model <m>                             # claude alias/id (fable|opus|sonnet|haiku|…) or codex slug;
+                                              #   claude -p/--local only (an RC host runs the pod default)
+      --effort <level>                        # claude: low|medium|high|xhigh|max; codex: +ultra (model-dependent)
+                                              #   DEFAULT xhigh (claude RC hosts get it via env var)
   agent-run list
   agent-run attach [<task-id>]                # no id → arrow-key picker
   agent-run detach [<task-id>]                # no id → picker (attached sessions only)
@@ -234,6 +251,22 @@ pretrust() {  # $1 = worktree path
   fi
 }
 
+# Codex reasoning-effort picker rows for the given model, xhigh first (the dev-env
+# default — every current codex model supports xhigh). The set differs by model:
+# only the gpt-5.6 family adds `max`, and only sol/terra add `ultra` (codex's
+# per-model supported_reasoning_levels in models.json). Blank/unknown model → the
+# common low|medium|high|xhigh set. pick() returns each row's first token as the value.
+codex_effort_rows() {
+  case "$1" in
+    gpt-5.6-sol|gpt-5.6-terra)
+      printf '%s\n' 'xhigh   (dev-env default)' 'ultra   (max reasoning + auto-delegation)' 'max' 'high' 'medium' 'low' ;;
+    gpt-5.6-luna)
+      printf '%s\n' 'xhigh   (dev-env default)' 'max' 'high' 'medium' 'low' ;;
+    *)
+      printf '%s\n' 'xhigh   (dev-env default)' 'high' 'medium' 'low' ;;
+  esac
+}
+
 # Every task shell needs the fresh bot token (bashrc handles interactive shells;
 # tmux run-shell strings need it inline).
 token_env='export GH_TOKEN="$(cat /creds/gh_token 2>/dev/null)"'
@@ -259,12 +292,6 @@ case "$cmd" in
            repo="$1"; shift ;;   # positional shorthand: agent-run run <repo>
       esac
     done
-    if [ -n "$effort" ]; then   # fail fast, before pickers and clone/worktree side effects
-      case "$effort" in low|medium|high|xhigh|max) : ;;
-        *) die "--effort must be low|medium|high|xhigh|max (got '$effort'); 'ultracode' is a /effort session-mode — set it in-session" ;;
-      esac
-    fi
-
     # Anything not pinned by a flag is asked interactively — bare `agent-run run`
     # walks repo → agent → mode → effort, so nobody has to remember exact repo
     # names. Pickers need a TTY; scripted callers pass flags and never see a prompt.
@@ -281,6 +308,19 @@ case "$cmd" in
         'codex   Codex CLI (ChatGPT plan)')" || die "--agent must be claude|codex"
     fi
     case "$agent" in claude|codex) : ;; *) die "--agent must be claude|codex" ;; esac
+    # Validate --effort against the SELECTED tool's levels — fail fast, before any
+    # clone/worktree side effects (the repo/agent pickers above are read-only).
+    # claude: low|medium|high|xhigh|max (harness levels, uniform across models).
+    # codex adds `ultra` (gpt-5.6 sol/terra only); a level a given model doesn't
+    # advertise is clamped server-side, so we don't hard-fail per-model here.
+    if [ -n "$effort" ]; then
+      case "$agent" in
+        claude) case "$effort" in low|medium|high|xhigh|max) : ;;
+          *) die "claude --effort must be low|medium|high|xhigh|max (got '$effort'); 'ultracode' is a /effort session-mode — set it in-session" ;; esac ;;
+        codex)  case "$effort" in low|medium|high|xhigh|max|ultra) : ;;
+          *) die "codex --effort must be low|medium|high|xhigh|max|ultra (got '$effort')" ;; esac ;;
+      esac
+    fi
     if [ "$interactive" != 1 ] && [ -z "$prompt" ]; then
       if { : </dev/tty; } 2>/dev/null; then
         asked=1
@@ -307,20 +347,53 @@ case "$cmd" in
         die "need -p or --interactive"
       fi
     fi
-    # Effort is DETERMINISTIC now: claude runs default to xhigh unless --effort
-    # says otherwise. (Historically NOTHING set it — no flag reached RC hosts, no
-    # settings key, no env var — so every session silently ran at the model
-    # default, high for Fable.) In menu mode it's one more picker; a fully-
-    # flagged call stays prompt-free and just gets the xhigh default. Codex has
-    # no effort dial — skipped.
-    if [ "$agent" = claude ] && [ -z "$effort" ]; then
+    # --- model picker (menu mode) ---
+    # Skip for a claude RC host: `claude remote-control` rejects a top-level
+    # --model, so an RC host always runs the pod-default model (fable-5[1m]).
+    # Every other tool+mode honors a chosen model, and the effort picker below
+    # then filters to that model's supported levels (only varies for codex).
+    claude_rc=0
+    [ "$interactive" = 1 ] && [ "$agent" = claude ] && [ "$local_tui" != 1 ] && claude_rc=1
+    if [ -z "$model" ] && [ "$asked" = 1 ] && [ "$claude_rc" != 1 ]; then
+      if [ "$agent" = claude ]; then
+        model="$(pick 'model:' \
+          'fable   Fable 5 · 1M ctx (dev-env default)' \
+          'opus    Opus 4.8' \
+          'sonnet  Sonnet 5' \
+          'haiku   Haiku 4.5')" || model=""
+        # The 'fable' alias resolves to the 200k-ctx model; the pod default is the
+        # 1M variant (settings.json → claude-fable-5[1m]). Keep the default choice
+        # as "leave unset" so the pod default stands; only a real switch sets --model.
+        [ "$model" = fable ] && model=""
+      else
+        model="$(pick 'model:' \
+          'gpt-5.6-sol    frontier agentic coding (default)' \
+          'gpt-5.6-terra  balanced everyday' \
+          'gpt-5.6-luna   fast & affordable' \
+          'gpt-5.5        prior frontier' \
+          'gpt-5.2        long-running agents')" || model=""
+      fi
+    fi
+
+    # --- effort (deterministic default xhigh; menu filters to the model's set) ---
+    # Historically NOTHING set effort — no flag reached RC hosts, no settings key,
+    # no env var — so every session silently ran at the model default. Now every
+    # run gets a level: a menu shows a picker (claude's levels are uniform across
+    # models; codex's are filtered to the selected model), a flagged call takes the
+    # xhigh default. xhigh is valid for every current claude AND codex model.
+    if [ -z "$effort" ]; then
       if [ "$asked" = 1 ]; then
-        effort="$(pick 'effort:' \
-          'xhigh   (dev-env default)' \
-          'max     (hardest problems, slowest)' \
-          "high    (claude's stock default)" \
-          'medium' \
-          'low')" || effort=xhigh
+        if [ "$agent" = claude ]; then
+          effort="$(pick 'effort:' \
+            'xhigh   (dev-env default)' \
+            'max     (hardest problems, slowest)' \
+            "high    (claude's stock default)" \
+            'medium' \
+            'low')" || effort=xhigh
+        else
+          mapfile -t erows < <(codex_effort_rows "$model")
+          effort="$(pick 'effort:' "${erows[@]}")" || effort=xhigh
+        fi
       else
         effort=xhigh
       fi
@@ -348,21 +421,22 @@ git worktrees, create them under $WORK and 'git worktree remove' each once its P
 merges — never leave stranded worktrees behind. If blocked, write BLOCKED and the \
 reason as your final message."
 
-    # Top-level claude flags — model/effort — for -p and --local launches; they
-    # MUST sit in top-level position (before any subcommand), which is where
-    # claude reads them. RC hosts can't take them (see the NB below): there,
-    # effort rides the CLAUDE_CODE_EFFORT_LEVEL env var instead and model stays
-    # the pod settings.json default (Fable). No-op for codex.
+    # Model/effort ride into the launch differently per tool. CLAUDE reads them as
+    # TOP-LEVEL flags (--model/--effort, before any subcommand — that's where claude
+    # looks); a claude RC host is the exception (see the NB below) and takes neither
+    # there. CODEX reads them as `-m <model>` + `-c model_reasoning_effort=<level>`,
+    # on both `codex exec` and the interactive TUI. Build each tool's flag string
+    # from the same resolved $model/$effort; the other stays empty.
     # %q-escape the values: they ride through one more shell layer (tmux send-keys
     # re-parses the launch string), and a legit value like 'claude-fable-5[1m]'
     # carries glob metacharacters that would otherwise be pathname-expanded.
-    cg=""
-    [ -n "$model" ]  && cg="$cg --model $(printf '%q' "$model")"
-    [ -n "$effort" ] && cg="$cg --effort $(printf '%q' "$effort")"
+    cg="" xc=""
+    if [ -n "$model" ];  then cg="$cg --model $(printf '%q' "$model")";  xc="$xc -m $(printf '%q' "$model")"; fi
+    if [ -n "$effort" ]; then cg="$cg --effort $(printf '%q' "$effort")"; xc="$xc -c model_reasoning_effort=$(printf '%q' "$effort")"; fi
 
     case "$agent" in
       claude) run_cmd="claude$cg --dangerously-skip-permissions --append-system-prompt \"\$AGENT_GUARD\" -p \"\$AGENT_PROMPT\" --output-format text" ;;
-      codex)  run_cmd="codex exec --dangerously-bypass-approvals-and-sandbox \"\$AGENT_GUARD \$AGENT_PROMPT\"" ;;
+      codex)  run_cmd="codex exec$xc --dangerously-bypass-approvals-and-sandbox \"\$AGENT_GUARD \$AGENT_PROMPT\"" ;;
     esac
 
     # YOLO BY DEFAULT — interactive too. The whole point of this pod is that the
@@ -419,11 +493,17 @@ reason as your final message."
           [ -n "$effort" ] && launch="CLAUDE_CODE_EFFORT_LEVEL=$(printf '%q' "$effort") $launch"
         fi
       else
-        launch="$agent $yolo_flag"   # codex: RC is claude-only → local TUI
+        # codex interactive = local in-terminal TUI. Its remote-control host
+        # (codex remote-control / app-server) needs the STANDALONE codex install
+        # this pod lacks (npm install → no ~/.codex/packages/standalone/current),
+        # so RC is deferred; model/effort still apply via -m / -c on the TUI.
+        launch="codex$xc $yolo_flag"
       fi
       tmux send-keys -t "task-$id" "$token_env; cd $wt; $launch" Enter
       if [ "$agent" = claude ] && [ "$local_tui" != 1 ]; then
         log "remote-control host starting (effort=${effort:-model-default}) → QR/URL: agent-run attach $id   rc log: $WORK/$id.rc.log"
+      elif [ "$agent" = codex ]; then
+        log "codex local TUI ready (model=${model:-default} effort=${effort:-default}; remote-control needs the standalone install — deferred) →  agent-run attach $id"
       else
         log "interactive session ready →  agent-run attach $id"
       fi

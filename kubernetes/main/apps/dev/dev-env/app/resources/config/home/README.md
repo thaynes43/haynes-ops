@@ -12,7 +12,7 @@ Open a terminal and run:
 agent-run run
 ```
 
-That's the whole command. Everything you don't specify is asked with an arrow-key picker: **repo** (your GitHub repos, newest activity first — no need to remember exact names), **agent** (`claude` or `codex`), **mode** (interactive session, or type a task prompt for fire-and-forget), **how to drive an interactive claude session** (a *remote-control host* you drive from your phone/web — the default — or a *local TUI* you type to in the terminal), and **effort** for claude runs (default `xhigh`). The agent then starts in a **fresh git worktree** on its own branch, inside tmux.
+That's the whole command. Everything you don't specify is asked with an arrow-key picker, **tool-first** — you pick the **agent** (`claude` or `codex`) and every later step shows only that tool's options: **repo** (your GitHub repos, newest activity first — no need to remember exact names), **mode** (interactive session, or type a task prompt for fire-and-forget), **how to drive an interactive claude session** (a *remote-control host* you drive from your phone/web — the default — or a *local TUI* you type to in the terminal), **model** (claude: fable/opus/sonnet/haiku; codex: gpt-5.6 sol/terra/luna, 5.5, 5.2), and **effort** (filtered to the model you picked; default `xhigh`). The agent then starts in a **fresh git worktree** on its own branch, inside tmux.
 
 Know what you want? Flags skip the pickers, and `agent-run run <repo>` is a positional shorthand:
 
@@ -21,11 +21,11 @@ agent-run run haynesnetwork --agent claude --interactive
 agent-run run --repo haynes-ops --agent claude --effort max -p "Bump the coredns chart and open a PR"
 ```
 
-**Two ways to drive an interactive claude session.** The default is a **Remote Control host** — headless in the pod, driven from the Claude mobile app or claude.ai/code (`agent-run attach <id>` shows the status screen with the QR code + URL). The alternative is a **classic in-terminal TUI you type to directly** — pass the **`--local`** flag, or answer *n* to the menu's `remote-control host? [Y/n]` question. (Codex is always a local TUI — it has no remote-control host.)
+**Two ways to drive an interactive claude session.** The default is a **Remote Control host** — headless in the pod, driven from the Claude mobile app or claude.ai/code (`agent-run attach <id>` shows the status screen with the QR code + URL). The alternative is a **classic in-terminal TUI you type to directly** — pass the **`--local`** flag, or answer *n* to the menu's `remote-control host? [Y/n]` question. **Codex** currently runs only as a local in-terminal TUI: its remote-control equivalent (`codex remote-control`) needs the standalone Codex install this pod doesn't ship yet, so it's deferred — details in [Model & effort](#model--effort).
 
 **Permissions are skipped by default** (`claude --dangerously-skip-permissions` / `codex --dangerously-bypass-approvals-and-sandbox` — you don't type those). The pod *is* the sandbox: isolated worktree, scoped ServiceAccount, default-deny egress. Add **`--safe`** to keep the normal permission prompts for a task you want to babysit.
 
-**Effort defaults to `xhigh`** for claude runs — deterministically, in every mode. Override with `--effort low|medium|high|xhigh|max` (or the picker), or mid-session with `/effort`. Details in [Model & effort](#model--effort) below.
+**Model & effort are picked per tool.** Effort defaults to **`xhigh`** for both claude and codex — deterministically, in every mode. The menu lets you pick the model, then shows only that model's effort levels (claude's are the same across models; codex's differ — only gpt-5.6 has `max`, only sol/terra add `ultra`). Override with `--model`/`--effort`, or mid-session with `/effort`. Details in [Model & effort](#model--effort) below.
 
 ## tmux — the only 3 keys you need
 
@@ -62,16 +62,17 @@ agent-run prune              # bulk-clean EVERY stranded worktree (dry-run; add 
 ## agent-run flag reference
 
 ```
-agent-run run [<repo>] [flags]              # every omitted choice becomes a picker/prompt
+agent-run run [<repo>] [flags]              # every omitted choice becomes a picker/prompt (tool-first)
     --repo <name>                           # same as the positional <repo>
     --agent claude|codex
     --base <ref>                            # branch the worktree off this (default: origin/HEAD)
     -p "<task>"                             # fire-and-forget; log at ~/work/<id>.log
-    --interactive                           # interactive session; default = Remote Control host (drive from phone/claude.ai/code)
-    --local                                 # classic in-terminal TUI you type to directly, instead of the RC host
+    --interactive                           # claude: Remote Control host (drive from phone/claude.ai/code); codex: local TUI
+    --local                                 # claude: classic in-terminal TUI you type to directly, instead of the RC host
     --safe                                  # keep permission prompts (default: skipped)
-    --effort low|medium|high|xhigh|max      # claude only; default xhigh
-    --model <m>                             # -p/--local only (an RC host always runs the pod default)
+    --model <m>                             # claude alias/id (fable|opus|sonnet|haiku|…) or codex slug (gpt-5.6-sol|…)
+                                            #   claude -p/--local only (an RC host always runs the pod default)
+    --effort <level>                        # claude: low|medium|high|xhigh|max; codex adds ultra (model-dependent); default xhigh
 agent-run list
 agent-run attach [<task-id>]                # no id → picker
 agent-run detach [<task-id>]                # no id → picker (attached sessions only)
@@ -81,10 +82,13 @@ agent-run prune  [--yes] [--force]          # bulk-clean stranded worktrees (dry
 
 The repo picker asks GitHub for your repos (newest-pushed first) via the bot token; if that's unreachable it falls back to the local clones in `~/repos`, most recently fetched first.
 
-## Model & effort
+The menu picks the **model** first, then shows only that model's **effort** levels. Both apply to `-p` and the local TUI via each tool's own flags; the one exception is a claude RC host (below).
 
-- **Model:** the pod default is **Fable** (`~/.claude/settings.json` on the PVC). `--model` overrides it for `-p` and `--local` runs only — the `claude remote-control` subcommand takes no top-level flags, so an RC host always runs the pod default.
-- **Effort:** `agent-run` pins claude runs to **`xhigh`** unless you choose otherwise. `-p`/`--local` runs get the top-level `--effort` flag; an RC host gets `CLAUDE_CODE_EFFORT_LEVEL` exported into its environment, which the sessions it hosts inherit. Precedence (high → low): in-session `/effort` → `--effort` flag → env var → settings.json → model default. `--effort ultracode` is not a launch value — ultracode is a harness session-mode; set it with `/effort` in-session.
+- **claude models:** `fable` (pod default — the 1M-ctx `claude-fable-5[1m]` from `~/.claude/settings.json`), `opus`, `sonnet`, `haiku`, passed as `--model`. Effort levels are the same for all: `low|medium|high|xhigh|max`.
+- **codex models:** `gpt-5.6-sol` (default), `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.2`, passed as `-m`. Effort levels **differ by model**: every model has `low|medium|high|xhigh`; only the gpt-5.6 family adds `max`; only `sol`/`terra` add `ultra`. Effort is passed as `-c model_reasoning_effort=<level>`.
+- **Effort defaults to `xhigh`** for both tools, in every mode (valid for every current model). `-p`/local runs get the flag; a claude RC host gets `CLAUDE_CODE_EFFORT_LEVEL` exported into its environment, which the sessions it hosts inherit. Precedence (high → low): in-session `/effort` → flag → env var → settings/config → model default. `--effort ultracode` is not a launch value — ultracode is a harness session-mode; set it with `/effort` in-session.
+- **claude RC host is the exception:** the `claude remote-control` subcommand takes no top-level flags, so an RC host always runs the pod-default model (Fable); its effort still applies via the env var. Use `--local` for a flag-controlled model + effort.
+- **codex remote-control is deferred.** Codex *does* have an in-pod remote-control host (`codex remote-control` / `codex app-server`, driven from the ChatGPT app / Codex web) — the true analog of claude's RC host, **not** `codex cloud` (which runs in OpenAI's cloud, not this pod). But it requires the **standalone** Codex install (`~/.codex/packages/standalone`), and this pod ships the npm install, so `remote-control start` can't run here. Until the dev-env image bakes the standalone in (and the relay egress is allowlisted), codex interactive is a local TUI — model + effort still work there.
 - **History:** before 2026-07 nothing set effort at all — no flag reached RC hosts and no settings key existed — so every session silently ran at the model default (`high` for Fable). It's now deterministically `xhigh`.
 
 ## How isolation works
