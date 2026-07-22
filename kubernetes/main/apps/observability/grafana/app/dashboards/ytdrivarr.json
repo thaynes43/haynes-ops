@@ -373,7 +373,7 @@
       "id": 11,
       "type": "timeseries",
       "title": "Bearer age vs freshness SLA",
-      "description": "How old the minted Peloton bearer is against its 6-hour freshness SLA. The bearer should be refreshed before the age line crosses the SLA line.",
+      "description": "How old the minted Peloton bearer is against its freshness SLA. The bearer is minted once nightly (~48h real validity); it should stay under the warn line (~30h, a missed nightly) and well under the error line (~52h, approaching real expiry).",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 23 },
       "options": {
@@ -388,7 +388,15 @@
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "freshness SLA" },
+            "matcher": { "id": "byName", "options": "warn SLA" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [8, 8] } },
+              { "id": "custom.fillOpacity", "value": 0 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "error SLA" },
             "properties": [
               { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
               { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [8, 8] } },
@@ -409,8 +417,15 @@
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "editorMode": "code",
           "expr": "ytdrivarr_bearer_sla_seconds{provider=\"peloton\"}",
-          "legendFormat": "freshness SLA",
+          "legendFormat": "warn SLA",
           "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "ytdrivarr_bearer_sla_error_seconds{provider=\"peloton\"}",
+          "legendFormat": "error SLA",
+          "refId": "C"
         }
       ]
     },
@@ -418,7 +433,7 @@
       "id": 12,
       "type": "stat",
       "title": "Credential freshness",
-      "description": "Fresh (within SLA), Aging (past 1x the SLA), Stale (past 2x), or Unknown (no bearer minted yet).",
+      "description": "Fresh (within SLA), Aging (past the warn SLA ~30h, a missed nightly mint), Stale (past the error SLA ~52h, approaching real expiry), or Unknown (no bearer minted yet).",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 7, "w": 6, "x": 12, "y": 23 },
       "options": {
@@ -489,8 +504,8 @@
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "yellow", "value": 21600 },
-              { "color": "red", "value": 43200 }
+              { "color": "yellow", "value": 108000 },
+              { "color": "red", "value": 187200 }
             ]
           }
         },
