@@ -5,25 +5,26 @@
 ## Synopsis
 
 ```
-agent-run run [<repo>] [flags]           dispatch an agent in a fresh worktree
+agent-run [<repo>] [flags]               dispatch an agent in a fresh worktree
 agent-run list                           live tasks + attach commands
 agent-run attach [<task-id>]             enter a session (no id → picker)
 agent-run detach [<task-id>]             disconnect clients; session runs on
 agent-run reap   [<task-id>] [--force]   kill session + remove worktree
 agent-run prune  [--yes] [--force]       bulk-remove stranded worktrees
+agent-run codex-remote [stop]            pod-level codex phone/web control
 ```
 
-Bare `agent-run run` prompts for every choice it isn't given, **tool-first**: repo → agent (claude|codex) → mode (`interactive? [Y/n]`; `n` → task prompt) → for a claude interactive session, `remote-control host? [Y/n]` → model → effort. Each step after the agent shows only that tool's options. Flags skip the matching prompt; a fully-flagged call runs unattended. `agent-run run <repo>` is positional shorthand for `--repo`.
+Bare `agent-run` prompts for every choice it isn't given, **tool-first**: repo → agent (claude|codex) → mode → model → effort. Each step after the agent shows only that tool's options. Flags skip the matching prompt; a fully-flagged call runs unattended. `agent-run <repo>` is positional shorthand for `--repo`. (`agent-run run …` still works as a hidden alias.)
 
-## `run` flags
+## Dispatch flags
 
 ```
 --repo <name>       same as the positional <repo>
 --agent claude|codex
 --base <ref>        worktree base (default: origin/HEAD)
--p "<task>"         fire-and-forget; output → ~/work/<id>.log
---interactive       claude → remote-control host; codex → local TUI
---local             claude → in-terminal TUI instead of the RC host
+-p "<task>"         fire-and-forget (mode=task); output → ~/work/<id>.log
+--interactive       claude → both (TUI here + phone/web); codex → local TUI
+--local             terminal TUI here only, no remote (implies --interactive)
 --safe              keep permission prompts (default: bypassed)
 --model <m>         claude alias/id (fable|opus|sonnet|haiku) or codex slug (gpt-5.6-sol|…)
 --effort <level>    claude low|medium|high|xhigh|max; codex adds ultra; default xhigh
@@ -33,15 +34,19 @@ The repo picker lists the bot's GitHub repos by last push, falling back to `~/re
 
 ## Interactive modes
 
-- **Remote-control host** — claude default. Headless in the pod, driven from the Claude app or claude.ai/code; `agent-run attach <id>` shows the QR/URL status screen, diagnostics in `~/work/<id>.rc.log`. Launched as `claude remote-control --spawn same-dir` (registers via the api.anthropic.com environments API; worktrees are pre-trusted so it never blocks on a dialog). Press `w` in the host for per-session worktrees.
-- **Local TUI** — `--local`, or `n` to the RC prompt. claude/codex runs in the tmux pane and you type to it. `/remote-control` inside the TUI works but is server-side flaky (401s — anthropics/claude-code#30093, #30102; self-disables after 3 failures); the RC-host default avoids that path.
-- **Codex** is local-TUI only. Its RC equivalent is `codex remote-control`/`app-server` (**not** `codex cloud`, which runs in OpenAI's cloud), which needs the standalone Codex install; this pod ships the npm install, so codex RC is deferred until the image bakes it in.
+The mode picker offers, per tool:
+
+- **`both`** (claude, default) — `claude --remote-control`: a terminal TUI you type to in the tmux pane **and** a session drivable from the Claude app / claude.ai/code at once (registers via the reliable api.anthropic.com/v1/code/sessions path). Detach the tmux session for headless-local, or drive it from your phone — so `both` covers every claude use; there's no separate headless mode.
+- **`local`** — the same terminal TUI, no remote session registered.
+- **`task`** — fire-and-forget (`-p`): runs headless, output to `~/work/<id>.log`.
+
+**Codex** interactive is `local`/`task` only — codex has no per-session remote like claude's `--remote-control`. Its phone/web control is a **pod-level** daemon: **`agent-run codex-remote`** starts it and prints a manual pairing code for the ChatGPT app / Codex web. It's one daemon per pod (the phone picks the working dir), so it bypasses the per-worktree isolation; **`agent-run codex-remote stop`** shuts it down.
 
 ## Models & effort
 
 Model is picked first; effort then offers only that model's levels. Default effort is **`xhigh`** in every mode (valid for all current models). Unset model → the tool's own default. `/model` and `/effort` override in-session.
 
-- **claude** — `fable` (pod default `claude-fable-5[1m]`, 1M context), `opus`, `sonnet`, `haiku`. Effort `low|medium|high|xhigh|max`, uniform across models. `-p`/`--local` pass `--model`/`--effort` flags; an **RC host** instead gets `ANTHROPIC_MODEL` + `CLAUDE_CODE_EFFORT_LEVEL` in its launch env — the `remote-control` subcommand rejects the flags, but the sessions it spawns inherit the vars (aliases resolve). So model applies in **all** claude modes.
+- **claude** — `fable` (pod default `claude-fable-5[1m]`, 1M context), `opus`, `sonnet`, `haiku`. Effort `low|medium|high|xhigh|max`, uniform across models. Passed as top-level `--model`/`--effort` flags, which compose with `--remote-control`, so they apply in **all** claude modes.
 - **codex** — `gpt-5.6-sol` (default), `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.2`. Effort differs by model: all take `low|medium|high|xhigh`; `max` only on gpt-5.6; `ultra` only on sol/terra. Passed as `-m <model> -c model_reasoning_effort=<level>` (codex has no `--effort` flag or `/effort` command — it folds effort into `/model`).
 
 `ultracode` is a harness session-mode, not a launch value — set it with `/effort` in-session.
@@ -60,7 +65,7 @@ code-server intercepts Ctrl+B (sidebar toggle) in its integrated terminal, so de
 
 ## Task management
 
-`list` prints each task id (e.g. `haynesnetwork-0714-010301`) with its paste-ready `attach` line and a stranded-worktree count. Omitting the id on `attach`/`detach`/`reap` opens a picker (↑/↓ or j/k, Enter, `q`). `attach` tolerates a `task-` prefix and switches clients when run from inside another session. Logs persist at `~/work/<id>.log` (kept through reap); RC diagnostics at `~/work/<id>.rc.log`.
+`list` prints each task id (e.g. `haynesnetwork-0714-010301`) with its paste-ready `attach` line and a stranded-worktree count. Omitting the id on `attach`/`detach`/`reap` opens a picker (↑/↓ or j/k, Enter, `q`). `attach` tolerates a `task-` prefix and switches clients when run from inside another session. Logs persist at `~/work/<id>.log` (kept through reap). The `both` mode's session is inspectable by attaching; `agent-run codex-remote`'s daemon runs in the `codex-remote` tmux session (`tmux attach -t codex-remote`).
 
 ## Isolation
 
