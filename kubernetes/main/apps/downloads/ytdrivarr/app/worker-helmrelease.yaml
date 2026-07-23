@@ -45,9 +45,10 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr-peloton-worker
-              # v0.3.0 worker + the login-form hydration stale-element hardening
-              # (thaynes43/ytdrivarr#9), pinned by immutable digest.
-              tag: sha-aaaca02@sha256:c3c82ceb7da2285a79ea74c055eb45deb93391f118fbc9b154cd951788cdfa55
+              # v0.6.2 worker: the login-form hydration stale-element hardening
+              # (thaynes43/ytdrivarr#9) + the login/bearer/scroll telemetry fix so the auth
+              # metrics stop reading zero (thaynes43/ytdrivarr#26), pinned by immutable digest.
+              tag: v0.6.2@sha256:ae688c3a46137b22c4543b248e7d6430e1ce7f631b2a31e3570531165035b4d1
             env:
               TZ: America/New_York
               LOG_LEVEL: info
