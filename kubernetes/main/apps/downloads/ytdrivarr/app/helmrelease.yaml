@@ -35,13 +35,13 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr
-              # v0.6.2 (pinned by immutable digest): the Prometheus /metrics endpoint the
-              # ServiceMonitor below scrapes + the "ytdrivarr" Grafana dashboard (thaynes43/ytdrivarr#19),
-              # the *arr operator console + per-activity Peloton watch grain (thaynes43/ytdrivarr#20)
-              # and the donor-parity emit window (thaynes43/ytdrivarr#17); v0.6.2 adds the pure
-              # recomposeLibrary refactor (thaynes43/ytdrivarr#31, dry-run PR1), on top of
-              # AUTH_MODE=open and the M3 Peloton port.
-              tag: v0.6.2@sha256:0b19b5fceb9db7c50395deb879d1e4e5ec3745b9c60a99a7e6d861997ed75ae3
+              # v0.7.0 (pinned by immutable digest): the Prometheus /metrics endpoint + "ytdrivarr"
+              # Grafana dashboard (thaynes43/ytdrivarr#19), the *arr operator console + per-activity
+              # Peloton watch grain (thaynes43/ytdrivarr#20), the donor-parity emit window
+              # (thaynes43/ytdrivarr#17) + recomposeLibrary refactor (thaynes43/ytdrivarr#31); v0.7.0
+              # adds the compute-only dry-run preview engine (thaynes43/ytdrivarr#32, dry-run PR2 —
+              # inert until the PR3 endpoint), on top of AUTH_MODE=open and the M3 Peloton port.
+              tag: v0.7.0@sha256:d3f9e8e18e758445888d465c0b6c3c7cf531290e49827b4d380ba6605e3bb068
             env:
               TZ: America/New_York
               PORT: &port 8080
