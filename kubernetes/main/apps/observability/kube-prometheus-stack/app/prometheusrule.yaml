@@ -83,3 +83,29 @@ spec:
           labels:
             severity: warning
             scope: host          # host/hardware — alert-responder skips LLM diagnosis
+    # A node's kernel boot time changed, i.e. the node rebooted. Talos nodes should
+    # only reboot on a deliberate upgrade/maintenance, so an UNPLANNED reboot means a
+    # hard reset or crash. These previously surfaced only indirectly — when talosm02
+    # hard-reset (2026-07-18 & 2026-07-24) the ONLY page was CephOSDDown, which
+    # disguised the real root cause. This fires directly on the reboot itself.
+    # `changes()>0` is a point event: it stays active only for the ~10m the boot-time
+    # step remains in the window, so a rolling Talos upgrade pages once per node
+    # instead of storming. severity=critical is required to page — Alertmanager's
+    # root receiver is "null" and only severity=critical routes to Pushover (same tier
+    # as CephOSDDown). Scoped to job="node-exporter" (the Talos fleet); the out-of-
+    # cluster NAS (job=node-exporter-haynestower) is intentionally excluded.
+    - name: node-reboot
+      rules:
+        - alert: NodeRebooted
+          annotations:
+            summary: Node {{ $labels.kubernetes_node }} rebooted.
+            description: >-
+              Node {{ $labels.kubernetes_node }} ({{ $labels.instance }}) rebooted
+              within the last 10 minutes (kernel boot time changed). If this was not a
+              planned Talos upgrade/maintenance it indicates an unplanned hard reset or
+              crash — check the node before dependent alerts (e.g. CephOSDDown) mask it.
+          expr: changes(node_boot_time_seconds{job="node-exporter"}[10m]) > 0
+          for: 0m
+          labels:
+            severity: critical
+            scope: host          # host/hardware event — alert-responder skips LLM diagnosis
