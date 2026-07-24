@@ -147,17 +147,30 @@ live_tasks() {
 # /installation/repositories is the endpoint purpose-built for app tokens. If
 # both fail (offline / no token) fall back to the local canonical clones,
 # ordered by last fetch — degraded but never empty on a working pod.
+# Hardening: re-read /creds/gh_token EVERY call — an inherited GH_TOKEN is a
+# 60-min app token that a >1h-old shell holds dead, and the sidecar re-mints the
+# file every 40min. And check gh's EXIT STATUS on the REST fallback: on HTTP
+# error `gh api` prints the raw JSON error body to stdout (skipping --jq) and
+# exits 1, so piping it straight to sort would turn "Bad credentials" into
+# picker rows — capture output only on success.
 repo_rows() {
   local out name ts
-  [ -n "${GH_TOKEN:-}" ] || { [ -s /creds/gh_token ] && export GH_TOKEN="$(cat /creds/gh_token)"; }
+  [ -s /creds/gh_token ] && export GH_TOKEN="$(cat /creds/gh_token)"
   out="$(gh repo list "$OWNER" --limit 100 --no-archived --json name,pushedAt \
            --jq 'sort_by(.pushedAt) | reverse | .[] | "\(.name)|\(.pushedAt)"' 2>/dev/null)"
-  [ -n "$out" ] || out="$(gh api --paginate /installation/repositories \
-           --jq '.repositories[] | select(.archived | not) | "\(.name)|\(.pushed_at)"' 2>/dev/null \
-         | sort -t'|' -k2,2 -r)"
+  if [ -z "$out" ]; then
+    if out="$(gh api --paginate /installation/repositories \
+             --jq '.repositories[] | select(.archived | not) | "\(.name)|\(.pushed_at)"' 2>/dev/null)"; then
+      out="$(sort -t'|' -k2,2 -r <<<"$out")"
+    else
+      out=""
+    fi
+  fi
   if [ -n "$out" ]; then
     while IFS='|' read -r name ts; do
-      [ -n "$name" ] || continue
+      # Require BOTH fields: a row missing its ts (malformed / stray error text)
+      # would let `date -d ''` silently emit today's midnight — never a real row.
+      [ -n "$name" ] && [ -n "$ts" ] || continue
       printf '%s  pushed %s\n' "$name" "$(date -d "$ts" '+%m-%d %H:%M' 2>/dev/null || printf '%s' "${ts%%T*}")"
     done <<<"$out"
   else
