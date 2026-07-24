@@ -65,7 +65,8 @@ spec:
               PAPERLESS_DATA_DIR: /library/data
               PAPERLESS_MEDIA_ROOT: /library/media
               PAPERLESS_EXPORT_DIR: /library/export
-              PAPERLESS_CONSUMER_POLLING: 60
+              # /library/consume is NFS (inotify-blind), so force polling; v3 renamed CONSUMER_POLLING -> CONSUMER_POLLING_INTERVAL
+              PAPERLESS_CONSUMER_POLLING_INTERVAL: 60
               PAPERLESS_CONSUMER_IGNORE_PATTERNS: '[".DS_STORE/*", "._*", ".stfolder/*", "@eaDir/*"]'
               PAPERLESS_TRUSTED_PROXIES: 10.42.0.0/16
               PAPERLESS_CONSUMER_DELETE_DUPLICATES: true
