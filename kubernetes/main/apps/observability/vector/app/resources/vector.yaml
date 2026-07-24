@@ -62,10 +62,16 @@ sinks:
       codec: json
     out_of_order_action: accept
     remove_label_fields: true
+    # vector >=0.57 rejects label templates that are bare field references (no
+    # literal prefix) unless this opt-out is set. Prefixing would corrupt the
+    # label values, and cardinality is bounded here (6 nodes x fixed Talos
+    # service set x levels), so the opt-out is safe for this sink.
+    dangerously_allow_unconfined_template_resolution: true
     labels:
       source: talos
       log_type: service
-      cluster: '{{ cluster }}'
+      # Constant per cluster (extraTags also set it) — static beats a template.
+      cluster: main
       node: '{{ hostname }}'
       talos_service: '{{ talos_service }}'
       level: '{{ level }}'
