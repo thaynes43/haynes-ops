@@ -337,6 +337,14 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "4,19,34,49 * * * *"
+          # TEMPORARY HOLD (lift after the penalty expires + hysteresis release ships): MAM issued
+          # an "Attempted to Download Past Unsatisfied limit" violation with a download block (blocked
+          # until roughly 2026-07-25 02:23 UTC). The gate is frozen CLOSED (Prowlarr indexer 17 stays
+          # disabled) so the governor cannot reopen it into the penalty window as the unsatisfied count
+          # ages below the 185 threshold and slams a tracker that is refusing downloads. A governor
+          # hysteresis fix is in flight; a later PR removes this suspend once that is deployed and the
+          # block has expired.
+          suspend: true
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
