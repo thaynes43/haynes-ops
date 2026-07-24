@@ -90,7 +90,8 @@ kubectl / flux      in-cluster SA    operator tier: read (no secrets), pod delet
                                      flux reconcile, jobs, cronjob suspend. No exec/secrets/RBAC/node.
 helm kustomize yq jq sops age task tofu restic    installed
 node 24 / pnpm 11 / tsx / python3 / uv            installed
-talosctl / omnictl  absent           node/Omni work runs on the Mac
+talosctl / omnictl  READ-ONLY        node triage: talosctl dmesg/logs/get (os:reader), omnictl status
+                                     (Omni Reader SA). No mutate — reboot/reset/apply denied by role.
 SOPS age key        absent           deliberate — never leaves the Mac
 ```
 

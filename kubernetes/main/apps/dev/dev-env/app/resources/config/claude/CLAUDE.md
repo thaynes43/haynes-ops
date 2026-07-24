@@ -26,7 +26,8 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 | kubectl / flux | ✅ in-cluster SA | READ-ONLY (get/list/watch) |
 | gh / git push | ✅ haynes-dev-bot | App token, all repos, refreshed every 40min; commits/PRs author as the dev bot |
 | sops / age | ❌ deliberately absent | the age key never enters this pod without an explicit decision |
-| talosctl / omnictl | ❌ absent | node/Omni ops happen elsewhere (omni-service-account runbook) |
+| talosctl | ✅ READ-ONLY | `os:reader` talosconfig at `$TALOSCONFIG`; direct-to-node `dmesg`/`logs`/`get`/`version` for hardware triage. Mutations (reboot/reset/apply/upgrade) are denied by the cert role — don't test by attempting them |
+| omnictl | ✅ READ-ONLY | Omni `Reader` SA (`OMNI_ENDPOINT` + `OMNI_SERVICE_ACCOUNT_KEY`); machine/cluster status. NOTE: main nodes are on SaaS Omni, self-hosted `omni.haynesops.com` is separate (backlog 10). Admin Omni ops stay elsewhere (omni-service-account runbook) |
 | terraform/tofu providers | ❌ no cloud creds | plan/validate only |
 
 ## MCP servers (GitOps-managed, `~/.config/dev-env/mcp.json`)

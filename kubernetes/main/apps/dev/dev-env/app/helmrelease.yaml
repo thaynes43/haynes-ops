@@ -24,6 +24,13 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
+              # ┌─ PR B PLACEHOLDER — DO NOT MERGE UNTIL FILLED ─────────────────────┐
+              # │ Bump ALL THREE containers to the 0.5.0 image built by PR A (#2239) │
+              # │ BEFORE merging: 0.5.0@sha256:<digest>. Digest via (anon GHCR       │
+              # │ token): GET https://ghcr.io/v2/thaynes43/dev-env/manifests/0.5.0.  │
+              # │ Until filled this stays 0.4.0, which LACKS talosctl/omnictl — an   │
+              # │ accidental merge would mount the creds but not the tools.          │
+              # └───────────────────────────────────────────────────────────────────┘
               tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
             command: ["/bin/bash", "-c"]
             args:
@@ -53,6 +60,23 @@ spec:
               # gated, and that var disables flag evaluation entirely — setting it
               # hides Remote Control (hit live 2026-07-14; saga Decision #6 depends
               # on it). There is no flags-only knob as of claude-code 2.1.207.
+              # ── Read-only node triage (saga backlog 10) ──
+              # talosctl reads each node's apid (dmesg/logs/get) with the os:reader
+              # talosconfig mounted below; omnictl reads Omni machine/cluster status
+              # with the Reader SA key. Both are read-only BY ROLE — no mutate reaches
+              # the pod even under a compromised agent.
+              TALOSCONFIG: /var/run/secrets/node-triage/talosconfig
+              # OMNI_ENDPOINT — the Omni that manages the nodes you triage. The MAIN
+              # cluster is on SaaS Omni today (backlog 10 topology caveat); if that's
+              # the target, the CNP also needs *.omni.siderolabs.io egress (PR A only
+              # added the in-cluster svc). talosctl covers triage on its own, so
+              # omnictl is optional — set this deliberately at deploy.
+              OMNI_ENDPOINT: https://haynes.omni.siderolabs.io
+              OMNI_SERVICE_ACCOUNT_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: dev-env-node-triage-secret
+                    key: omni-service-account-key
             envFrom:
               # HA_MCP_SECRET_PATH — expanded into the MCP URL by dev-init.
               - secretRef:
@@ -84,6 +108,13 @@ spec:
           gh-refresher:
             image:
               repository: ghcr.io/thaynes43/dev-env
+              # ┌─ PR B PLACEHOLDER — DO NOT MERGE UNTIL FILLED ─────────────────────┐
+              # │ Bump ALL THREE containers to the 0.5.0 image built by PR A (#2239) │
+              # │ BEFORE merging: 0.5.0@sha256:<digest>. Digest via (anon GHCR       │
+              # │ token): GET https://ghcr.io/v2/thaynes43/dev-env/manifests/0.5.0.  │
+              # │ Until filled this stays 0.4.0, which LACKS talosctl/omnictl — an   │
+              # │ accidental merge would mount the creds but not the tools.          │
+              # └───────────────────────────────────────────────────────────────────┘
               tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
             command: ["/bin/bash", "/opt/dev-env/scripts/gh-token-refresh.sh"]
             env:
@@ -108,6 +139,13 @@ spec:
           auth-watch:
             image:
               repository: ghcr.io/thaynes43/dev-env
+              # ┌─ PR B PLACEHOLDER — DO NOT MERGE UNTIL FILLED ─────────────────────┐
+              # │ Bump ALL THREE containers to the 0.5.0 image built by PR A (#2239) │
+              # │ BEFORE merging: 0.5.0@sha256:<digest>. Digest via (anon GHCR       │
+              # │ token): GET https://ghcr.io/v2/thaynes43/dev-env/manifests/0.5.0.  │
+              # │ Until filled this stays 0.4.0, which LACKS talosctl/omnictl — an   │
+              # │ accidental merge would mount the creds but not the tools.          │
+              # └───────────────────────────────────────────────────────────────────┘
               tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
             command: ["/bin/bash", "/opt/dev-env/scripts/auth-check.sh"]
             env:
@@ -207,3 +245,16 @@ spec:
           dev-env:
             app:
               - path: /opt/dev-env/config/home
+      # Read-only os:reader talosconfig (saga backlog 10) — app container ONLY, the
+      # same container-scoping the PEM/home get (gh-refresher + auth-watch never see
+      # it). Mounted as a single file; TALOSCONFIG (env above) points at it. Populated
+      # by the dev-env-node-triage ExternalSecret; defaultMode 0400 (owner read-only).
+      node-triage:
+        type: secret
+        name: dev-env-node-triage-secret
+        defaultMode: 0400
+        advancedMounts:
+          dev-env:
+            app:
+              - path: /var/run/secrets/node-triage/talosconfig
+                subPath: talosconfig
