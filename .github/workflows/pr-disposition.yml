@@ -74,6 +74,27 @@ jobs:
               'kubernetes/main/apps/network/authentik/',
               'kubernetes/main/apps/cert-manager/cert-manager/',
             ];
+            // ── Name-matched Renovate carve-outs (mirror the matchPackageNames rules
+            //    in .renovate/autoMerge.json5; KEEP IN SYNC) ─────────────────────────
+            // Renovate evaluates packageRules per-dep with LAST-RULE-WINS, so a
+            // name-matched `automerge:false` carve-out OVERRIDES the domain/leaf
+            // path-tier above. The tier2Path/ownImage PREDICTION is otherwise carve-out
+            // BLIND: it labeled these "auto-merge / Renovate owns it" when Renovate will
+            // never touch them (qbittorrent #2132 stranded 5 days on a "left-for-renovate"
+            // vet while its whole-package automerge:false meant Renovate never would).
+            // Conservative direction: when Renovate will NOT auto-merge, force manual-only
+            // (or shepherd where the shepherd owns it) — NEVER claim auto-merge. Matched by
+            // each package's unique app path.
+            const CARVEOUTS = [
+              // plex — automerge:false; the upgrade-shepherd owns it (Kometa-idle preflight).
+              { re: /^kubernetes\/[^/]+\/apps\/media\/plex\//, dispo: 'disposition:shepherd', skipMajor: true },
+              // dev-env — automerge:false, NEVER (pod Recreate kills in-flight agent
+              // sessions); not shepherd-owned → a mindless human merge at a chosen moment.
+              { re: /^kubernetes\/[^/]+\/apps\/dev\/dev-env\//, dispo: 'disposition:manual-only' },
+              // qbittorrent — PATCH auto-merges within the MAM-approved minor line (let the
+              // path-tier prediction handle it); MINOR/MAJOR/digest are automerge:false → manual.
+              { re: /^kubernetes\/[^/]+\/apps\/downloads\/qbittorrent\//, dispo: 'disposition:manual-only', patchAuto: true },
+            ];
             const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded', 'disposition:manual-only'];
             const isRenovate = (l) => /renovate/i.test(l || '');
             const tier2Path = (p) => {
@@ -115,6 +136,20 @@ jobs:
               }
               const nonK8s = paths.length > 0 && !ghActions && !paths.some(p => p.startsWith('kubernetes/'));
 
+              // Name-matched carve-out (see CARVEOUTS): a package Renovate will NOT
+              // auto-merge must not be captured by the path-tier auto-merge prediction
+              // below. Sits AFTER pr.auto_merge (ground truth) + a shepherd verdict (more
+              // specific) but BEFORE the path-tier guess. Update-type comes from Renovate's
+              // type/* labels.
+              let carve = null;
+              for (const c of CARVEOUTS) {
+                if (!paths.some(p => c.re.test(p))) continue;
+                if (c.skipMajor && isMajor) break;                    // e.g. plex major → fall through (unchanged: stranded)
+                if (c.patchAuto && labelNames.includes('type/patch')) break; // qbittorrent patch → path-tier auto-merge (correct)
+                carve = c.dispo;
+                break;
+              }
+
               let want;
               if (pr.auto_merge) {
                 want = 'disposition:auto-merge';                       // ground truth
@@ -122,6 +157,8 @@ jobs:
                 want = 'disposition:stranded';                         // shepherd wanted it but a gap blocked it — fix the gap
               } else if (verdict && verdict !== 'AUTO-MERGE') {
                 want = 'disposition:manual-only';                      // examined and declined (OUT-OF-SCOPE etc.) — mindless merge
+              } else if (carve) {
+                want = carve;                                         // name-matched automerge:false carve-out (.renovate/autoMerge.json5) — path-tier must not claim auto-merge
               } else if (isImmich && isMajor) {
                 want = 'disposition:shepherd';                         // immich major → shepherd
               } else if (ghActions || (!isMajor && (allTier2 || ownImage))) {

@@ -330,6 +330,20 @@ LLM, no spend record. Only when unvetted ramp work exists does it fall through t
   the pre-filter skips in-scope PRs already vetted at their **current** head SHA, so a
   PR baking through `minimumReleaseAge` is paid for once, not daily. A Renovate rebase
   moves the SHA and re-arms the vet automatically.
+- **Never conclude "Renovate owns it" without checking the carve-outs (2026-07-24).**
+  A `left-for-renovate` / "Tier-2 — Renovate auto-merges this, leave it" verdict is a
+  **merge decision** — treat it like one. Before recording it, grep the actual policy:
+  `grep -nA3 "$PKG" .renovate/autoMerge.json5`. Renovate applies `packageRules` per-dep
+  with **last-rule-wins**, so a name-matched `automerge:false` carve-out **overrides**
+  the broad `downloads/**` · `media/**` · "our own images" leaf-tiers — and the update
+  **type** matters (qbittorrent **patch** auto-merges, but **minor/major/digest** are
+  manual; plex and dev-env are `automerge:false` for **all** types). If Renovate will
+  NOT auto-merge this package+type, it needs a **human** → record `manual-only`, never
+  `left-for-renovate`. This is the qbittorrent **#2132** miss: a `left-for-renovate` vet
+  on a PATCH sat 5 days green while the then-current whole-package `automerge:false` meant
+  Renovate never would — a human had to notice and merge by hand. The deterministic
+  disposition labeler mirrors these same carve-outs
+  (`.github/workflows/pr-disposition.yml` → `CARVEOUTS`).
 - **Orphan-PR report (2026-07-06):** every scheduled run also writes a deterministic
   digest of open Renovate PRs >7 days old to the `upgrade-orphan-report` ConfigMap;
   the **gate** pages it weekly (`renovate/orphans`, warning) so nothing ages silently.
