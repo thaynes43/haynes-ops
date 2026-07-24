@@ -323,7 +323,7 @@ spec:
       # MAM compliance governor every 15 min (PLAN-039 / ADR-054 / DESIGN-027): counts UNSATISFIED
       # torrents locally in qBittorrent (books-mam: still-downloading + complete-but-<72h-seeded —
       # zero MAM API surface, no qB credential) and, near the rank cap (unsatisfied >=
-      # MAM_UNSATISFIED_LIMIT − MAM_UNSATISFIED_BUFFER, set 200/15 → pause at 185), toggles the
+      # MAM_UNSATISFIED_LIMIT − MAM_UNSATISFIED_BUFFER, set 200/20 → pause at 180, resume-floor 160), toggles the
       # MyAnonaMouse Prowlarr indexer's enable flag (Prowlarr's fullSync LL application propagates
       # it to LazyLibrarian — verified live; usenet keeps flowing). Fail-closed on a count failure.
       # Upserts the single-row mam_gate_state + enqueues a transition / >48h-stuck Pushover row
@@ -337,14 +337,6 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "4,19,34,49 * * * *"
-          # TEMPORARY HOLD (lift after the penalty expires + hysteresis release ships): MAM issued
-          # an "Attempted to Download Past Unsatisfied limit" violation with a download block (blocked
-          # until roughly 2026-07-25 02:23 UTC). The gate is frozen CLOSED (Prowlarr indexer 17 stays
-          # disabled) so the governor cannot reopen it into the penalty window as the unsatisfied count
-          # ages below the 185 threshold and slams a tracker that is refusing downloads. A governor
-          # hysteresis fix is in flight; a later PR removes this suspend once that is deployed and the
-          # block has expired.
-          suspend: true
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
@@ -357,14 +349,18 @@ spec:
               - /sync/src/scripts/sync.ts
               - --mode=mam-governor
             env:
-              # MAM rank promotion → Elite VIP: unsatisfied limit 200, confirmed 2026-07-17 from the
-              # MAM Client Summary ("14 Unsatisfied (limit 200)"). resolveGovernorConfig was falling
-              # back to the New-Member code default (20) — stale since the 2026-07-11 join and never
-              # bumped after the VIP upgrade. Buffer 15 → pause-threshold 185: a 15-torrent safety
-              # margin below the 200 cap (keeps the fail-closed "close to but under the limit"
-              # intent). OPS-013 §10.1 tier table documents Elite VIP = 200.
+              # MAM rank Elite VIP: unsatisfied limit 200 (confirmed 2026-07-17 from the MAM Client
+              # Summary; OPS-013 §10.1 tier table documents Elite VIP = 200). v0.90.0 adds resume
+              # hysteresis to the governor, so the toggle is no longer a single edge:
+              #   pause threshold = limit − buffer      = 180
+              #   resume floor    = limit − 2×buffer    = 160  (derived)
+              #   dead band 160 to 179 holds the current gate state (no flip either way)
+              # Buffer widened 15 → 20: the worst observed single-interval unsatisfied burst was +17,
+              # so with buffer 20 a climb caught at 179 peaks near 196, and a reopen from 159 peaks
+              # near 176 — both comfortably under the hard 200 cap. Governor design:
+              # https://github.com/thaynes43/haynesnetwork/blob/main/docs/adrs/077-mam-governor-resume-hysteresis.md
               MAM_UNSATISFIED_LIMIT: "200"
-              MAM_UNSATISFIED_BUFFER: "15"
+              MAM_UNSATISFIED_BUFFER: "20"
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
