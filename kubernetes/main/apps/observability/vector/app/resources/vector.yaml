@@ -1,0 +1,71 @@
+---
+# Vector aggregator for Talos host/service logs.
+#
+# Talos nodes forward machined-managed *service* logs (etcd, kubelet, machined,
+# apid, ...) as JSON-lines-over-UDP via `machine.logging.destinations`
+# (configured in kubernetes/main/bootstrap/omni/cluster-template.yaml). Each
+# datagram is one JSON object with the fields Talos always sets — `msg`,
+# `talos-level`, `talos-service`, `talos-time` — plus our `extraTags`
+# (`hostname`, `cluster`). We relabel and push to the in-cluster Loki.
+#
+# Kernel/kmsg logs (port 6050) are NOT captured yet: that needs the
+# `talos.logging.kernel=` *kernel arg*, which under UKI means an Omni
+# per-machine kernelArgs image rebuild + reboot. See
+# .agents/reference/talos-log-shipping.md for that follow-up.
+data_dir: /vector-data-dir
+
+api:
+  enabled: true
+  address: 0.0.0.0:8686
+
+sources:
+  talos_service:
+    type: socket
+    mode: udp
+    address: 0.0.0.0:6051
+    max_length: 102400
+    decoding:
+      codec: json
+    # Peer (node) source IP is stashed here; node identity really comes from the
+    # `hostname` extraTag, so this is only a debug fallback.
+    host_key: __host
+
+transforms:
+  talos_service_remap:
+    type: remap
+    inputs:
+      - talos_service
+    source: |-
+      # Promote hyphenated Talos keys to Loki-label-safe names.
+      if exists(."talos-service") { .talos_service = del(."talos-service") }
+      if exists(."talos-level") { .level = del(."talos-level") }
+      # hostname/cluster arrive via Talos extraTags; fall back to peer IP.
+      if !exists(.hostname) { .hostname = to_string(.__host) ?? "unknown" }
+      if !exists(.cluster) { .cluster = "main" }
+      .host_ip = to_string(.__host) ?? ""
+      del(.__host)
+      # Prefer Talos' own timestamp; keep vector's ingest time if it won't parse.
+      if exists(."talos-time") {
+        parsed, err = parse_timestamp(."talos-time", "%+")
+        if err == null { .timestamp = parsed }
+        del(."talos-time")
+      }
+
+sinks:
+  loki:
+    type: loki
+    inputs:
+      - talos_service_remap
+    # Same push endpoint promtail uses (Loki auth is disabled in this cluster).
+    endpoint: http://loki-headless.observability.svc.cluster.local:3100
+    encoding:
+      codec: json
+    out_of_order_action: accept
+    remove_label_fields: true
+    labels:
+      source: talos
+      log_type: service
+      cluster: '{{ cluster }}'
+      node: '{{ hostname }}'
+      talos_service: '{{ talos_service }}'
+      level: '{{ level }}'
