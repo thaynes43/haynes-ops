@@ -65,8 +65,12 @@ The pieces worth porting:
   Used by both repos for kubernetes (5), flux-operator (3), rook-ceph (2),
   talos (2). **Important semantic gotcha** — see "Tier 3" below.
 - **`minimumReleaseAge: 3 days`** (onedr0p) to bake third-party tags before
-  auto-merging. bjw-s has dropped this — they've earned the trust. We start
-  with onedr0p's bake time and revisit later.
+  auto-merging. bjw-s has dropped this — they've earned the trust. We started
+  with onedr0p's bake time, then **removed it 2026-07-18** (like bjw-s): Mend's
+  hosted Renovate can't read a release timestamp for GHCR multi-arch OCI images,
+  so the bake silently stranded every GHCR Tier-2 update in "Pending Status
+  Checks" indefinitely — the flux-local gate + shepherd + health gate cover the
+  safety it was meant to add. See the header comment in `.renovate/autoMerge.json5`.
 - **Renovate runtime options:** onedr0p self-hosts Renovate via a GitHub
   Actions cron (`.github/workflows/renovate.yaml`); bjw-s runs Renovate
   in-cluster as `renovate-operator` (a GitOps-managed HelmRelease at
@@ -83,24 +87,27 @@ The pieces worth porting:
 
 | Tier | Scope | Mode | Status |
 |------|-------|------|--------|
-| 0 | `github-actions` minor/patch | auto-merge | ✅ live |
+| 0 | `github-actions` all update types **incl. major** (widened 2026-07-08) | auto-merge | ✅ live |
 | 1 | `flux-local` PR gate | required check on all Renovate PRs | ✅ live (`.github/workflows/flux-local.yaml`) |
-| 2 | Curated allowlist: own `ghcr.io/thaynes43/*`, `kube-prometheus-stack`, safe stateless leaf-app domains (`media`, `ai`, `downloads`, `frontend`, `office`, `photos`, **`observability`** since 2026-06-15) + curated cluster-infra leaves by subpath (`kube-system/{metrics-server,reloader,reflector,k8tz,spegel}`, `network/cloudflare-ddns`) on minor/patch | auto-merge, flux-local-gated + bake | ✅ live (`.renovate/autoMerge.json5`) — **trust clock starts 2026-06-08** (see exit criteria) |
+| 2 | Curated allowlist: own `ghcr.io/thaynes43/*`, `kube-prometheus-stack`, safe stateless leaf-app domains (`media`, `ai`, `downloads`, `frontend`, `office`, `photos`, **`observability`** since 2026-06-15, **`home-automation`** since 2026-07-05) + curated cluster-infra leaves by subpath (`kube-system/{metrics-server,reloader,reflector,k8tz,spegel}`, `network/{cloudflare-ddns,cloudflare-tunnel}`) on minor/patch/**digest** | auto-merge, flux-local-gated (**3-day bake removed 2026-07-18**) | ✅ live (`.renovate/autoMerge.json5`) — **trust clock starts 2026-06-08** (see exit criteria) |
 | 3 | Grouped multi-component apps: `home-assistant` (HA + code-server + ha-mcp), Z2M | symmetric dashboard-approval groups (manual phase) | ✅ live 2026-06-09 (`.renovate/groups.json5`) |
-| 4 | `rook-ceph`, `cnpg`, Talos, Flux | dashboard-approval + post-reconcile health-gate agent + shepherd + guardrails | 🟢 **Phase D live 2026-07-03** — scheduled shepherd auto-merge (daily 09:00 ET, one PR/run) for pure bumps of the **clean-tier ramp set** (see "Phase-D auto-merge ramp" below); everything else gets a shepherd-authored PR for human merge or stays untouched. Phases A–C (Kyverno enforce, diff-scope required, push protection) live 2026-07-02. See [audit](tier4-audit-2026-07-02.md) + [handoff](tier4-phase-d-handoff.md). |
+| 4 | `rook-ceph`, `cnpg`, `cilium`, `authentik`, `cert-manager`, `dragonfly`, Talos, Flux, immich majors, plex | scheduled shepherd auto-merge (revertible bumps) + one-way authored-for-confirm + health-gate + guardrails | 🟢 **Phase D LIVE + ramped** — shepherd CronJob `suspend:false`, `MODE=auto`, **every 4h** (`0 */4 * * *`), triage `*/30`; **ramped to 13 components** (see "Phase-D auto-merge ramp" below). Revertible bumps auto-merge (drain rule: all class-1 stateless per run, ≤1 stateful/infra unit/run); one-way majors authored as `ONE-WAY — human confirm`. Phases A–C (Kyverno enforce, diff-scope required, push protection) live 2026-07-02. See [audit](tier4-audit-2026-07-02.md) + [handoff](tier4-phase-d-handoff.md) (historical — Phase D since enabled + ramped). |
 
 > **Resuming this roadmap (next session):** Tiers 0–3 are live; Tier 3 runs in
 > its **manual dashboard-approval phase** (updates for the HA pod and Z2M show
 > up as checkboxes on the Dependency Dashboard, not as auto-opened PRs — tick
-> to release them as one group PR). Next milestones: **(a)** Tier 2 promotion
-> review on/after **2026-07-06** (four quiet weeks from the 2026-06-08
-> deadlock fix), **(b)** build the Tier 4 phase-4a health-gate agent — its
-> runtime/credential decisions are locked in the
-> [Tier 4 section](#tier-4--stateful-operators-with-a-health-gate).
+> to release them as one group PR). Those next-milestone items are now **done**:
+> the Tier 2 promotion review passed and the Tier 4 health-gate agent + shepherd
+> shipped — **Phase D is live and ramped to 13 components** (see
+> [Phase-D auto-merge ramp](#phase-d-auto-merge-ramp)). Tier 3 (HA pod group + Z2M)
+> deliberately **stays manual** by name-match even though the rest of
+> `home-automation/**` now auto-merges as a Tier-2 leaf domain.
 
-Tiers 0–2 are live. **Tier 2 carve-out:** `immich-app/*` is excluded from
-auto-merge (breaking schema/DB migrations even on minor) despite living in
-`photos/`. Ramp the allowlist by adding packages/domains as each proves quiet.
+Tiers 0–2 are live. **Immich (carve-out REMOVED 2026-07-05):** immich
+minor/patch/digest now **auto-merge** via the `photos/` leaf-app rule; the
+upgrade-shepherd owns immich **majors** (backup-gated on `postgres16-pgvecto`).
+The old blanket `immich-app/*` never-auto-merge exclusion is gone. Ramp the
+allowlist by adding packages/domains as each proves quiet.
 The end state is **100% hands-off**, with a Tier 4 health-gate agent
 shepherding the risky merges (the manual merge→reconcile→verify→rollback loop,
 automated). That agent needs GitHub Actions (a `GITHUB_TOKEN`-merged PR does
@@ -176,8 +183,15 @@ twist:
   the merge. (Our existing GH-actions auto-merge rule sets `ignoreTests:
   true` because there's no test today — once Tier 1 lands we should flip
   it.)
-- **`minimumReleaseAge: 3 days`** on third-party packages, `1 minute` on our
-  own images.
+- **~~`minimumReleaseAge: 3 days`~~ (REMOVED 2026-07-18).** The 3-day bake was
+  dropped: Mend-hosted Renovate can't obtain a release timestamp for the GHCR
+  `docker` datasource (multi-arch OCI), so with `internalChecksFilter:strict` the
+  soak never passed for GHCR images and every GHCR Tier-2 update stranded silently
+  in the dependency dashboard's "Pending Status Checks". Removing it restores
+  hands-off GHCR auto-merge; the flux-local gate + shepherd + health gate + auto-
+  revert make the bake redundant. Reinstate only if GHCR timestamp lookups get a
+  host-side fix (a `ghcr.io` hostRules token on the Renovate runner). See the
+  `.renovate/autoMerge.json5` header.
 
 **Exit criteria:** four consecutive weeks with no auto-merge regression
 traced to a Tier 2 rule. Each new package added to the trust list resets the
@@ -213,6 +227,17 @@ authentik, multus, device-plugins.
 Home automation can't tier up by namespace because of sidecar coupling and
 companion-image coupling. The unit of update is the *pod*, not the file or
 the namespace.
+
+**Where this sits now (2026-07-05):** the whole `home-automation/**` domain was
+added to the Tier-2 auto-merge leaf list, so ordinary home-automation leaf apps
+(esphome, zwave-js-ui, music-assistant, appdaemon, go2rtc, …) auto-merge like any
+other stateless leaf. The Tier-3 rules in
+[`groups.json5`](../../.renovate/groups.json5) **still carve out the HA pod group
+and Z2M by name-match** — `groups.json5` extends *after* `autoMerge.json5`, so its
+`automerge:false` + `dependencyDashboardApproval:true` win per-dependency for those
+specific packages. Net: the domain is hands-off *except* the HA-pod group (HA +
+code-server + ha-mcp) and Zigbee2MQTT, which stay dashboard-approval/manual for the
+coupling reasons below.
 
 **Important semantic gotcha:** `minimumGroupSize` does **not** mean "always
 bundle these together." It means "only form the group PR if N+ matching
@@ -280,7 +305,7 @@ needs to catch automatically.
 
 ## Tier 4 — Stateful operators with a health gate
 
-> **Build status (2026-06-30): in progress.** The keystone pieces are live — the
+> **Build status: COMPLETE — Phase D live + ramped (see the ramp below).** The keystone pieces are live — the
 > [`haynes-ops-bot`](tier4-bot-setup.md) GitHub App (push/PR/merge identity +
 > [`scripts/github-app-token.sh`](../../scripts/github-app-token.sh)), the
 > [holds registry](#holds-registry--reasoned-release-blacklist), and the three
@@ -289,8 +314,15 @@ needs to catch automatically.
 > + 3 modes), the [**health gate**](../../.agents/runbooks/upgrade-health-gate.md)
 > checks, and the per-component
 > [**playbooks + rollback**](../../.agents/runbooks/tier4-component-playbooks.md).
-> Remaining: stand up the gate runtime (cloud scheduled routine / in-cluster
-> CronJob) and wire the shepherd as an invocable agent (phase 4a → 4b).
+> Done: the gate runtime + shepherd both run in-cluster (`upgrade-agent`
+> namespace); Phase D auto-merge has been live since ~2026-07-03 and ramped to 13
+> components (see the ramp below).
+
+> **Superseded by Phase D (below).** This is the *original* Tier-4 design. Under
+> the live Phase-D ramp, revertible `rook-ceph`/`cnpg`/`cilium`/`authentik`
+> **patches** and `flux` bumps now auto-merge behind the health gate, while only
+> *one-way* migrations stay human-confirmed. The narrative below is kept for
+> provenance.
 
 `rook-ceph`, `cnpg`, Talos, and Flux itself never auto-merge on tag alone.
 The plan is:
@@ -374,9 +406,9 @@ read+page, so it can ship on the Omni SA kubeconfig alone.
 
 ## Phase-D auto-merge ramp
 
-The scheduled shepherd (CronJob `upgrade-shepherd`, daily 09:00 ET, `MODE=auto`) may
-**auto-merge pure version/chart/digest bumps** (plus the one typed supporting-edit
-shape below), for the components listed here. Since 2026-07-06 the ramp is **one env
+The scheduled shepherd (CronJob `upgrade-shepherd`, **every 4h** `0 */4 * * *`,
+`MODE=auto`, `suspend:false`) may **auto-merge pure version/chart/digest bumps**
+(plus the one typed supporting-edit shape below), for the components listed here. Since 2026-07-06 the ramp is **one env
 var** in
 [`shepherd/app/helmrelease.yaml`](../../kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml):
 `UPGRADE_AGENT_RAMP` (component list). The component→path map lives in
@@ -426,6 +458,7 @@ guard, and the health gate + guardrail alerts.
 | `cilium` | **revertible cluster-infra** | 2026-07-08 | PATCH auto-merge; MINOR/MAJOR = one-way eBPF map layout → authored for confirm. |
 | `authentik` | **revertible cluster-infra** | 2026-07-08 | PATCH within same `YYYY.M` auto-merge; `YYYY.M` major = forward-only migration (one-way) → authored for confirm. |
 | `cert-manager` | **revertible cluster-infra** | 2026-07-09 | PATCH only auto-merge. MINOR/MAJOR authored for human review — the Helm schema is strict (`additionalProperties:false`) and minors REMOVE values keys (v1.21.0 dropped `prometheus.servicemonitor.*`), so they need release-note + values vetting. |
+| `plex` | **revertible media leaf** | 2026-07-19 | shepherd OWNS it (Renovate carves it out in `autoMerge.json5`); a pure image bump whose failure a tag revert recovers (not CNPG-backed). Auto-merge only behind a **Kometa-idle preflight** — a Plex restart during a Kometa run corrupts the in-flight library write. Class-1 pace once the preflight passes. |
 
 **Operating principle (2026-07-08): the split is REVERTIBLE vs ONE-WAY, not
 cluster-breaker vs not.** "Cluster-breaker stays manual" was the wrong frame — a
@@ -444,12 +477,63 @@ recoverability:
 - **Renovate Tier-2** still auto-merges minor/patch/digest for the safe leaf-app domains
   independently of the shepherd.
 
-**The only genuinely non-auto set** is now: one-way majors (author + human-confirm),
-emqx (held), Talos (not a Flux flow), and **supporting-edit PRs** (diff-scope security
-gate — except the one typed pattern it admits; see `scripts/diff-scope-test.sh`).
-Everything reversible auto-merges.
+**The genuinely non-auto set** is now: one-way majors (author + human-confirm),
+`cert-manager` minor/major (authored for review), the **name-matched carve-outs**
+(qbittorrent minor/major — MAM approved-clients; plex during a Kometa run; the
+dev-env image), the **Tier-3** HA-pod group + Z2M, the **holds** (emqx, cnpg
+≥0.30, node majors), Talos (not a Flux flow), and **supporting-edit PRs**
+(diff-scope security gate — except the one typed pattern it admits; see
+`scripts/diff-scope-test.sh`). Everything else reversible auto-merges — see
+[Current manual set](#current-manual-set--what-does-not-auto-merge) for the full
+enumeration.
 
 Kill switch: `kubectl -n upgrade-agent patch cronjob upgrade-shepherd -p '{"spec":{"suspend":true}}'`.
+
+## Current manual set — what does NOT auto-merge
+
+The complement of everything above. As of 2026-07-24 a package stays out of
+hands-off auto-merge for one of four reasons:
+
+**1. Name-matched carve-outs** (`.renovate/autoMerge.json5`, matched by package
+name so they beat the domain leaf rules — last rule wins per-dependency):
+
+- **qbittorrent** (`home-operations/qbittorrent`) — **MINOR-GATE** (relaxed from a
+  blanket never-auto-merge on 2026-07-23, PR #2227). MyAnonaMouse's Approved-Clients
+  policy is *per minor line* ("latest 5.2.x recommended"), so **patch** bumps inside
+  the already-approved minor line **auto-merge**, while a **minor/major** bump (e.g.
+  5.2 → 5.3) stays **manual** — the PR opens, the owner checks the new line against
+  MAM's approved-clients page, then merges by hand.
+- **plex** (`home-operations/plex`) — `automerge:false`; the **upgrade-shepherd owns
+  it** (in the ramp since 2026-07-19). A Plex pod restart *during* a Kometa run
+  corrupts Kometa's in-flight library write, so the merge must be timed — the
+  shepherd runs a **Kometa-idle preflight** before enabling auto-merge.
+- **dev-env image** (`thaynes43/dev-env`) — `automerge:false`, **never** auto-merges
+  and is **not** in the shepherd ramp. The pod is `replicas:1 strategy:Recreate`; a
+  rollout hard-kills the tmux server and every in-flight agent session, and the
+  overnight Renovate window is when unattended agents are busiest. Manual merge only
+  until a drain/busy-lock protocol the agents participate in exists.
+
+**2. Tier-3 dashboard-approval groups** (`.renovate/groups.json5`, by name-match;
+extends *after* the leaf rules so `automerge:false` wins for these even though the
+rest of `home-automation/**` auto-merges):
+
+- **HA pod group** — `home-assistant` + `coder/code-server` sidecar +
+  `homeassistant-ai/ha-mcp` companion, symmetric `dependencyDashboardApproval`.
+- **Zigbee2MQTT** (`koenkk/zigbee2mqtt`) — babysat (the HA-restart race).
+
+**3. Holds** (`.renovate/holds.json5`, version-blacklisted — see
+[Holds registry](#holds-registry--reasoned-release-blacklist) below):
+`emqx-operator` (2.3.2–2.x, auto-resume at 3.0.0), `emqx` broker (≥6.2.1, manual
+lift after operator 3.0.0), `cloudnative-pg` chart (≥0.30.0 / operator 1.31.0+,
+until the Barman-Cloud-plugin migration), `docker.io/library/node` majors (ride the
+22 LTS line until ~2027-04).
+
+**4. Manual-by-omission / one-way** — anything in no allowlist still opens ordinary
+PRs, and the shepherd authors (does not blind-merge) the irreversible steps:
+`cert-manager` **minor/major** (strict Helm schema drops values keys), one-way
+majors (Ceph daemon major, PG major, cilium minor/major eBPF, authentik `YYYY.M`
+major), **Talos** (not a Flux flow), `external-secrets`, `zwave-js-ui`, and every
+supporting-edit PR except the one typed pattern diff-scope admits.
 
 ## Holds registry — reasoned release blacklist
 
@@ -532,6 +616,30 @@ EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/is
   runbook for the failing component.
 
 ## Changelog
+
+- **2026-07-24** — **Docs refreshed to post-Phase-D reality.** Corrected drift that
+  had accumulated since the 2026-07-13 doc import: (1) **Tier 0** github-actions
+  auto-merges **all update types incl. major** (widened 2026-07-08, revertible +
+  fail-safe), not just minor/patch. (2) The **3-day `minimumReleaseAge` bake was
+  removed 2026-07-18** — Mend-hosted Renovate can't read a GHCR release timestamp
+  (multi-arch OCI), so the soak silently stranded every GHCR Tier-2 update; the
+  flux-local gate + shepherd + health gate cover its safety. Removed the
+  "flux-local-gated + bake" and "bake third-party tags" claims. (3) The **immich
+  `immich-app/*` carve-out was removed 2026-07-05** — immich minor/patch/digest
+  auto-merge via the `photos/` leaf; shepherd owns immich majors. (4) **Tier 3**
+  clarified: `home-automation/**` is a Tier-2 auto-merge leaf domain (since
+  2026-07-05); only the **HA pod group + Z2M** stay manual, carved out by name-match
+  in `groups.json5`. (5) **Phase D marked live + ramped** — CronJob `suspend:false`,
+  `MODE=auto`, **every 4h**, triage `*/30`, ramped to **13 components** (added the
+  missing `plex` row). (6) Added a
+  [Current manual set](#current-manual-set--what-does-not-auto-merge) section
+  enumerating every non-auto package. (7) **qbittorrent policy change (PR #2227,
+  2026-07-23):** relaxed from blanket never-auto-merge to a **minor-gate** — patches
+  within the MAM-approved minor line auto-merge; minor/major stay manual pending a
+  MAM approved-clients check. (8) Banner-marked
+  [`tier4-phase-d-handoff.md`](tier4-phase-d-handoff.md) **historical/superseded**
+  and **retired the `/phase-d` skill** (`.claude/commands/phase-d.md`) — its sole
+  purpose (executing the now-complete enablement) is done.
 
 - **2026-07-09** — **cert-manager added to the ramp (PATCH only).** Sixth revertible
   cluster-infra component. cert-manager minors are deliberately NOT auto-merged: the

@@ -1,3 +1,25 @@
+> ## ⚠️ HISTORICAL — SUPERSEDED. DO NOT RE-RUN THE STEPS BELOW.
+>
+> This document is the **cold-start enablement plan** for Tier-4 Phase D, written
+> 2026-07-03 while Phase D was still **inert**. **Phase D was enabled ~2026-07-13
+> and has since ramped to 13 components** (coredns, traefik, multus, device-plugins,
+> flux, immich-majors, rook-ceph, cnpg, dragonfly-operator, cilium, authentik,
+> cert-manager, plex). It is **live and load-bearing** — the shepherd CronJob runs
+> `suspend:false`, `MODE=auto`, every 4h, and autonomously merges revertible bumps
+> (e.g. it auto-merged flux PR #2226 on 2026-07-24).
+>
+> **Kept for design provenance only.** Current state, current behavior, and the live
+> ramp now live in **[`README.md`](README.md)** (see *Phase-D auto-merge ramp* and
+> *Current manual set*) and in the shepherd HelmRelease
+> **[`../../kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml`](../../kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml)**.
+>
+> **Do NOT re-run the §3 enablement steps** (the `suspend:false` flip, the "first
+> auto-merge" summon, the triage unsuspend) — they are already done; re-running them
+> would at best no-op and at worst disrupt a live automation. Read this only to
+> understand *why* the system is shaped the way it is.
+
+---
+
 # Phase D — auto-merge + auto-summon: cold-start handoff (2026-07-03)
 
 **Mission:** flip the Tier-4 upgrade automation from "safe stuff auto-merges, everything
