@@ -35,6 +35,13 @@ ARG TASK_VERSION=3.40.0
 ARG OPENTOFU_VERSION=1.9.0
 # renovate: datasource=github-releases depName=restic/restic extractVersion=^v(?<version>.+)$
 ARG RESTIC_VERSION=0.17.3
+# talosctl — read-only node triage (dmesg/logs/get) via apid; MUST track the cluster's
+# Talos version (nodes run v1.13.3). Same style as kubectl: the `v` lives in the ARG.
+# renovate: datasource=github-releases depName=siderolabs/talos
+ARG TALOSCTL_VERSION=v1.13.3
+# omnictl — read-only Omni machine/cluster status; tracks the self-hosted Omni image
+# (ghcr.io/siderolabs/omni). renovate: datasource=github-releases depName=siderolabs/omni
+ARG OMNICTL_VERSION=v1.9.3
 # renovate: datasource=github-releases depName=coder/code-server extractVersion=^v(?<version>.+)$
 ARG CODE_SERVER_VERSION=4.96.4
 # renovate: datasource=github-releases depName=astral-sh/uv
@@ -138,6 +145,19 @@ RUN curl -fsSLo /tmp/restic.bz2 \
       "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_amd64.bz2" \
  && bunzip2 /tmp/restic.bz2 \
  && install -m 0755 /tmp/restic /usr/local/bin/restic && rm -f /tmp/restic
+
+# talosctl + omnictl (single static binaries, siderolabs releases) — READ-ONLY node
+# triage (saga backlog 10). talosctl reads dmesg/logs/machine resources directly from
+# each node's apid (tcp/50000); omnictl reads Omni machine/cluster status. Read-only
+# is enforced by the CREDENTIAL role at runtime (os:reader talosconfig, Omni Reader
+# SA), NOT the binary — the tools themselves are full-featured, but the pod only ever
+# holds reader creds (PR B mounts them).
+RUN curl -fsSLo /usr/local/bin/talosctl \
+      "https://github.com/siderolabs/talos/releases/download/${TALOSCTL_VERSION}/talosctl-linux-amd64" \
+ && chmod +x /usr/local/bin/talosctl \
+ && curl -fsSLo /usr/local/bin/omnictl \
+      "https://github.com/siderolabs/omni/releases/download/${OMNICTL_VERSION}/omnictl-linux-amd64" \
+ && chmod +x /usr/local/bin/omnictl
 
 # code-server (standalone) — the browser IDE, fronted by traefik-internal +
 # Authentik (saga Decision #6); started by the HelmRelease, not baked as ENTRYPOINT.

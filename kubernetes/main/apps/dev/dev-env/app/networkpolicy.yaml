@@ -48,6 +48,12 @@ spec:
               - matchName: "ha-mcp.home-automation.svc.cluster.local"
               - matchName: "mcp-grafana.observability.svc.cluster.local"
               - matchName: "mcp-unifi.observability.svc.cluster.local"
+              # Omni (self-hosted, frontend ns) — node-triage omnictl reaches the
+              # in-cluster Omni management API by svc FQDN (backlog 10). NOTE: the
+              # MAIN cluster's nodes are managed by SaaS Omni
+              # (haynes.omni.siderolabs.io); this svc is a separate Omni. talosctl
+              # (direct to node apid, below) is the Omni-independent triage path.
+              - matchName: "omni.frontend.svc.cluster.local"
               # git + gh + release notes + ghcr blobs
               - matchName: "github.com"
               - matchPattern: "*.github.com"
@@ -121,6 +127,19 @@ spec:
         - ports:
             - port: "3000"
               protocol: TCP
+    # 2c. Omni (self-hosted Talos manager, frontend ns) — node-triage omnictl reads
+    #     machine/cluster status + events on the management API (8080) via svc FQDN,
+    #     never the public ingress (backlog 10). See the topology caveat on the DNS
+    #     matchName above: this reaches the SELF-HOSTED Omni; the main cluster's nodes
+    #     are on SaaS Omni, for which omnictl would instead need *.omni.siderolabs.io.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: frontend
+            app.kubernetes.io/name: omni
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
     # 2b. traefik-internal — playwright (headless chromium MCP) drives the cluster's
     #     own apps for UI/UX testing via their https://<app>.haynesops.com ingress.
     - toEndpoints:
@@ -139,6 +158,20 @@ spec:
             - port: "443"
               protocol: TCP
             - port: "6443"
+              protocol: TCP
+    # 4. Talos apid (tcp/50000) on the cluster nodes — read-only node triage
+    #    (backlog 10): talosctl with an os:reader talosconfig reads dmesg / service
+    #    logs / machine resources directly from each node (masters talosm01-03 are
+    #    bare metal and hard-reset 2026-07-18 & 2026-07-24 with no in-pod way to read
+    #    machine events). SELECT NODE ENTITIES, NOT A CIDR: the repo uses toEntities
+    #    for cluster infra and Cilium's policy-cidr-match-mode is unset, so a toCIDR
+    #    on 192.168.40.0/24 would SILENTLY fail to match — Cilium classifies node IPs
+    #    as host/remote-node identities, not CIDR. The port scopes this to apid; the
+    #    os:reader cert role gates it to reads server-side.
+    - toEntities: [remote-node, host]
+      toPorts:
+        - ports:
+            - port: "50000"
               protocol: TCP
     # 3. HTTPS to the enumerated external names (same set as the DNS rules).
     - toFQDNs:
