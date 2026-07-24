@@ -146,18 +146,30 @@
       automergeType: 'pr',
       ignoreTests: false,
     },
-    // qBittorrent carve-out (2026-07-11) — MAM approved-clients compliance. MyAnonaMouse
-    // requires the torrent client to be on its Approved Clients list with auto-update
-    // DISABLED; an unattended merge could deploy a version MAM hasn't approved yet and
-    // risk the account. The bump PR still opens — the owner checks the new version
-    // against MAM's approved-clients page, then merges by hand. Matches by package name
-    // so it beats the downloads/** leaf rule above (last rule wins per-dep). See
-    // haynesnetwork .agents/plans/031-books-acquisition-mam.md + the MAM rules scrape.
+    // qBittorrent carve-out (2026-07-11; relaxed to minor-gate 2026-07-23) — MAM
+    // approved-clients compliance. MyAnonaMouse requires the torrent client to be on
+    // its Approved Clients list; their current guidance is "latest 5.2.x recommended",
+    // i.e. the approval is per MINOR LINE, so PATCH bumps inside the already-approved
+    // line auto-merge. A MINOR/MAJOR bump (e.g. 5.2 → 5.3) can ship before MAM
+    // whitelists it, so those stay manual: the bump PR opens, the owner checks the new
+    // line against MAM's approved-clients page, then merges by hand. Both rules match
+    // by package name so they beat the downloads/** leaf rule above; the patch rule is
+    // LAST so it wins for patch updates (last rule wins per-dep). See haynesnetwork
+    // .agents/plans/031-books-acquisition-mam.md + the MAM rules scrape.
     {
-      description: 'NEVER auto-merge qbittorrent — MAM approved-clients compliance (manual merge only)',
+      description: 'qbittorrent minor/major/digest — manual merge only (check MAM approved-clients first)',
       matchDatasources: ['docker'],
       matchPackageNames: ['/home-operations/qbittorrent$/'],
       automerge: false,
+    },
+    {
+      description: 'qbittorrent patch — auto-merge within the MAM-approved minor line',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/home-operations/qbittorrent$/'],
+      matchUpdateTypes: ['patch'],
+      automerge: true,
+      automergeType: 'pr',
+      ignoreTests: false,
     },
     // Plex — Renovate NEVER auto-merges it; the upgrade-shepherd OWNS it (2026-07-19).
     // Why: a Plex pod restart DURING a Kometa run corrupts Kometa's in-flight library
