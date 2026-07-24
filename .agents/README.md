@@ -23,6 +23,7 @@ Top-level agent instructions live in [`CLAUDE.md`](../CLAUDE.md); this folder ho
 - [talos-omni-gotchas.md](reference/talos-omni-gotchas.md) — **big silent traps** in Talos/Omni node & network config: case-sensitive `deviceSelector` MACs, `install.extraKernelArgs` no-op under UKI, lost VM identity on wipe, tiny `/boot`, VPN-NIC egress in maintenance. Read before editing the Omni cluster template or upgrading.
 - [repo-overview.md](reference/repo-overview.md) — Talos/Omni/Flux/home-ops context, repo structure, GitOps principles.
 - [cluster-inspection.md](reference/cluster-inspection.md) — how to inspect the cluster safely (read-only, never dump Secrets).
+- [talos-log-shipping.md](reference/talos-log-shipping.md) — Talos host/**service** logs → vector aggregator (LB VIP `192.168.40.212:6051`) → Loki, so a node hard-reset leaves a trace. What ships live now (machine-config, no reboot) vs. the reboot-gated **kernel/kmsg** follow-up (UKI kernel-arg via Omni `kernelArgs`, omni#2382 caveat).
 
 ## sagas/ — multi-plan initiatives
 Long-running efforts with a vision doc + an enumerated plan backlog agents execute over many sessions. Conventions in [sagas/README.md](sagas/README.md).

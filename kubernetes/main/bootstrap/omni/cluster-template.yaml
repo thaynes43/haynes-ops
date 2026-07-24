@@ -117,6 +117,19 @@ patches:
   - idOverride: 400-cm-88d0b080-43be-11ef-9fe8-3b0f229ef000
     inline:
       machine:
+        # Ship machined service logs (etcd/kubelet/machined/apid/...) as
+        # JSON-lines-over-UDP to the in-cluster vector aggregator (LB VIP
+        # 192.168.40.212:6051 -> Loki). Machine-config only: applies live via
+        # `task omni:sync`, NO reboot. Kernel/kmsg (talos.logging.kernel arg)
+        # is a separate reboot-gated follow-up — see
+        # .agents/reference/talos-log-shipping.md.
+        logging:
+          destinations:
+            - endpoint: udp://192.168.40.212:6051/
+              format: json_lines
+              extraTags:
+                hostname: talosm01
+                cluster: main
         install:
           extraKernelArgs:
             - net.ifnames=0
@@ -246,6 +259,14 @@ patches:
   - idOverride: 400-cm-c1f22c00-4390-11ef-a299-436f6535c900
     inline:
       machine:
+        # Talos service-log shipping to the vector aggregator (see talosm01).
+        logging:
+          destinations:
+            - endpoint: udp://192.168.40.212:6051/
+              format: json_lines
+              extraTags:
+                hostname: talosm02
+                cluster: main
         install:
           extraKernelArgs:
             - nomodeset
@@ -370,6 +391,14 @@ patches:
   - idOverride: 400-cm-98290580-1909-11ef-944c-5fe147626300
     inline:
       machine:
+        # Talos service-log shipping to the vector aggregator (see talosm01).
+        logging:
+          destinations:
+            - endpoint: udp://192.168.40.212:6051/
+              format: json_lines
+              extraTags:
+                hostname: talosm03
+                cluster: main
         install:
           extraKernelArgs:
             - net.ifnames=0
@@ -493,6 +522,14 @@ patches:
   - idOverride: 400-cm-83596797-0281-4927-94fb-f34bb869b1de
     inline:
       machine:
+        # Talos service-log shipping to the vector aggregator (see talosm01).
+        logging:
+          destinations:
+            - endpoint: udp://192.168.40.212:6051/
+              format: json_lines
+              extraTags:
+                hostname: talosw01
+                cluster: main
         install:
           extraKernelArgs:
             - net.ifnames=0
@@ -607,6 +644,14 @@ patches:
   - idOverride: 400-cm-2fe46add-9e72-401c-8ec1-b5fb6837ffa0
     inline:
       machine:
+        # Talos service-log shipping to the vector aggregator (see talosm01).
+        logging:
+          destinations:
+            - endpoint: udp://192.168.40.212:6051/
+              format: json_lines
+              extraTags:
+                hostname: talosw02
+                cluster: main
         install:
           extraKernelArgs:
             - net.ifnames=0
@@ -721,6 +766,14 @@ patches:
   - idOverride: 400-cm-960513a6-7a1d-4ece-949d-54a022fe85e5
     inline:
       machine:
+        # Talos service-log shipping to the vector aggregator (see talosm01).
+        logging:
+          destinations:
+            - endpoint: udp://192.168.40.212:6051/
+              format: json_lines
+              extraTags:
+                hostname: talosw03
+                cluster: main
         install:
           extraKernelArgs:
             - net.ifnames=0
