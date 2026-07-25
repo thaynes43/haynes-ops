@@ -9,6 +9,15 @@ spec:
     kind: OCIRepository
     name: app-template
   interval: 30m
+  # 15m (2026-07-24): the image is ~1.07 GB, and a cold pull on a node that
+  # doesn't have it takes minutes — the 0.5.0 bump (#2240) measured 6m15s, past
+  # the default 5m, so the HR went Stalled/RetriesExceeded even though the
+  # rollout had SUCCEEDED (pod 3/3 on the new digest, nothing rolled back).
+  # Recovery was `flux reconcile helmrelease dev-env -n dev --reset` + a ks
+  # reconcile. 15m (not vector's 10m, #2242) because this image is far larger
+  # and only grows. NOTE: this is a timeout, not a retry budget — a genuinely
+  # broken rollout now takes 15m to report.
+  timeout: 15m
   values:
     controllers:
       dev-env:
