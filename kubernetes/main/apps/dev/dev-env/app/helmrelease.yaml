@@ -24,7 +24,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
+              tag: 0.5.0@sha256:ad33fe4e27eebdc6bd82eb456d1b4cd19a5abf87064badc235365fe6a20ec2e3
             command: ["/bin/bash", "-c"]
             args:
               # dev-init links GitOps configs into $HOME, then tmux (agent sessions
@@ -53,6 +53,20 @@ spec:
               # gated, and that var disables flag evaluation entirely — setting it
               # hides Remote Control (hit live 2026-07-14; saga Decision #6 depends
               # on it). There is no flags-only knob as of claude-code 2.1.207.
+              # ── Read-only node triage via SaaS Omni (saga backlog 10; 2026-07-25
+              # decision) ── omnictl authenticates headless with the Reader SA key and
+              # reads Omni machine/cluster status; talosctl reaches nodes through an
+              # Omni-proxied talosconfig fetched at runtime (`omnictl talosconfig`), so
+              # no talosconfig file is mounted. Read-only BY ROLE (Omni Reader SA) — no
+              # mutate reaches the pod even under a compromised agent. OMNI_ENDPOINT and
+              # OMNI_SERVICE_ACCOUNT_KEY are exactly what `omnictl serviceaccount create`
+              # printed (endpoint carries explicit :443).
+              OMNI_ENDPOINT: https://haynes.na-west-1.omni.siderolabs.io:443
+              OMNI_SERVICE_ACCOUNT_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: dev-env-node-triage-secret
+                    key: OMNI_SERVICE_ACCOUNT_KEY
             envFrom:
               # HA_MCP_SECRET_PATH — expanded into the MCP URL by dev-init.
               - secretRef:
@@ -84,7 +98,7 @@ spec:
           gh-refresher:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
+              tag: 0.5.0@sha256:ad33fe4e27eebdc6bd82eb456d1b4cd19a5abf87064badc235365fe6a20ec2e3
             command: ["/bin/bash", "/opt/dev-env/scripts/gh-token-refresh.sh"]
             env:
               # Down-scope the minted token. NOTE: may only name permissions the App
@@ -108,7 +122,7 @@ spec:
           auth-watch:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
+              tag: 0.5.0@sha256:ad33fe4e27eebdc6bd82eb456d1b4cd19a5abf87064badc235365fe6a20ec2e3
             command: ["/bin/bash", "/opt/dev-env/scripts/auth-check.sh"]
             env:
               HOME: /home/dev
