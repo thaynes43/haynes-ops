@@ -48,12 +48,16 @@ spec:
               - matchName: "ha-mcp.home-automation.svc.cluster.local"
               - matchName: "mcp-grafana.observability.svc.cluster.local"
               - matchName: "mcp-unifi.observability.svc.cluster.local"
-              # Omni (self-hosted, frontend ns) — node-triage omnictl reaches the
-              # in-cluster Omni management API by svc FQDN (backlog 10). NOTE: the
-              # MAIN cluster's nodes are managed by SaaS Omni
-              # (haynes.omni.siderolabs.io); this svc is a separate Omni. talosctl
-              # (direct to node apid, below) is the Omni-independent triage path.
+              # Omni (self-hosted, frontend ns) — an in-cluster Omni svc, kept for a
+              # possible future self-hosted route (backlog 10). It is NOT what manages
+              # the main nodes today.
               - matchName: "omni.frontend.svc.cluster.local"
+              # SaaS Omni — the instance that ACTUALLY registers the main nodes
+              # (talosm0x). Node triage runs through it: omnictl (Reader SA) + an
+              # Omni-proxied talosconfig fetched at runtime (`omnictl talosconfig`),
+              # so talosctl traffic egresses here too (backlog 10, decision 2026-07-25:
+              # SaaS tier denies break-glass, so LAN-direct os:reader is unavailable).
+              - matchName: "haynes.na-west-1.omni.siderolabs.io"
               # git + gh + release notes + ghcr blobs
               - matchName: "github.com"
               - matchPattern: "*.github.com"
@@ -199,6 +203,10 @@ spec:
         - matchName: "cdn.playwright.dev"
         - matchPattern: "*.playwright.dev"
         - matchName: "storage.googleapis.com"
+        # SaaS Omni — omnictl (Reader SA) + Omni-proxied talosctl for node triage
+        # (backlog 10, decision 2026-07-25). This is a WAN dependency: triage now
+        # needs Omni + internet reachable, unlike the LAN-direct route it replaces.
+        - matchName: "haynes.na-west-1.omni.siderolabs.io"
       toPorts:
         - ports:
             - port: "443"

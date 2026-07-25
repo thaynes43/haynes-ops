@@ -6,6 +6,38 @@ at a chosen moment). See "Split & handoff" below.
 **Depends on:** 04 (ExternalSecret/1Password auth pattern), 05 (RBAC read-tier precedent)
 **Parallel with:** nothing
 
+## Decision log
+
+### 2026-07-25 — proxy-through-SaaS-Omni, LAN-direct deferred
+
+The original design centered on a **LAN-direct `os:reader` talosconfig** (talosctl
+straight to each node's apid on `192.168.40.0/24:50000`, Omni-independent). That route
+is **unavailable on the user's SaaS Omni tier**: break-glass / raw talosconfig download
+returns **PermissionDenied even when freshly authed as the Admin user**, so no
+node-trusted client cert can be minted. LAN-direct is dead for now.
+
+**Adopted instead:** triage runs **through SaaS Omni**.
+- An Omni **service account `dev-env-node-triage` (role `Reader`)** — key in 1Password
+  item **`dev-env`**, field **`OMNI_SERVICE_ACCOUNT_KEY`**.
+- `omnictl` authenticates headless via `OMNI_ENDPOINT` +
+  `OMNI_SERVICE_ACCOUNT_KEY`. The endpoint is
+  **`https://haynes.na-west-1.omni.siderolabs.io:443`** (note `na-west-1`; explicit
+  `:443` — verbatim what `omnictl serviceaccount create` printed).
+- `talosctl` gets an **Omni-proxied talosconfig at runtime** (`omnictl talosconfig`),
+  so talosctl traffic **also routes through SaaS Omni** (WAN), not the LAN.
+
+**Tradeoff (accepted):** triage now **depends on WAN + Omni availability**. If Omni or
+the internet is down — or during an Omni-side incident — the pod cannot reach the
+nodes, which is exactly a moment you might want triage. The LAN-direct route did not
+have this dependency.
+
+**Preferred future upgrade (if Sidero support enables break-glass on this tier):**
+switch back to LAN-direct — re-add the `talosconfig` field to the 1Password item + the
+ExternalSecret mapping, mount it + set `TALOSCONFIG`, and the WAN dependency drops away.
+The CNP already keeps the Talos-apid node egress rule
+(`toEntities: [remote-node, host]` :50000) in place as pre-positioning, so that flip is
+a creds-only change, not a network-policy change.
+
 ## Goal
 
 Give the dev-env pod a **read-only node-triage surface** so an agent can investigate
@@ -130,69 +162,70 @@ image-build workflow, which is a build, not a rollout: the HelmRelease pins
 
 ### PR B — DRAFT, do not merge from inside the pod (it rolls the pod)
 
-1. ExternalSecret `dev-env-node-triage` (1Password item `dev-env-node-triage`:
-   `talosconfig`, `omni-service-account-key`).
-2. HelmRelease: mount `talosconfig` at `/creds/triage/talosconfig`, env
-   `TALOSCONFIG` + `OMNI_ENDPOINT` + `OMNI_SERVICE_ACCOUNT_KEY`; image tag bump to
-   `0.5.0@sha256:<PLACEHOLDER — from PR A's build>`.
-3. CLAUDE.md ConfigMap: flip the `talosctl`/`omnictl` tool-auth rows to
-   "✅ read-only" (ConfigMap change → reloader → belongs here, not PR A).
+**As implemented under the 2026-07-25 decision (proxy-through-SaaS-Omni):**
 
-**Why draft:** every item in PR B changes something the pod mounts (a new Secret volume
-+ envFrom, the CLAUDE.md ConfigMap) → reloader rolls the pod. A roll kills every
-in-flight tmux/agent session. So PR B is merged **deliberately, from outside the pod**,
-after warning/draining sessions.
+1. ExternalSecret `dev-env-node-triage` → Secret `dev-env-node-triage-secret`, one
+   field: `OMNI_SERVICE_ACCOUNT_KEY` from **1Password item `dev-env`**, property
+   **`OMNI_SERVICE_ACCOUNT_KEY`**. (No `talosconfig` field — a missing 1Password
+   property fails the whole ES sync, so LAN-direct's talosconfig is omitted until
+   break-glass is available.)
+2. HelmRelease: env `OMNI_ENDPOINT=https://haynes.na-west-1.omni.siderolabs.io:443`
+   (plain) + `OMNI_SERVICE_ACCOUNT_KEY` (valueFrom the secret); **no talosconfig
+   mount, no `TALOSCONFIG`** — talosctl gets an Omni-proxied config at runtime
+   (`omnictl talosconfig`). Image tag stays a clearly-marked PLACEHOLDER (bump all 3
+   containers to `0.5.0@sha256:<from PR A's build>` before merge).
+3. CLAUDE.md ConfigMap: `omnictl` → ✅ Reader SA (proxied); `talosctl` → ✅ via
+   Omni-proxied talosconfig (`omnictl talosconfig` at runtime). ConfigMap change →
+   reloader → belongs here, not PR A.
+
+**Why draft:** every item in PR B changes something the pod mounts (a new Secret
+consumed via `valueFrom`, the CLAUDE.md ConfigMap) → reloader rolls the pod. A roll
+kills every in-flight tmux/agent session. So PR B is merged **deliberately, from
+outside the pod**, after warning/draining sessions.
 
 ### User prerequisites (run from a workstation with admin creds)
 
-```bash
-# 1) Mint a READ-ONLY talosconfig for the pod (os:reader = dmesg/logs/get/version,
-#    no mutate). Run against the admin talosconfig for the main cluster.
-#    NOTE: verify flag names against `talosctl config new --help` on v1.13 —
-#    `--roles os:reader` is correct for v1.13, but confirm before relying on it.
-talosctl config new dev-env-reader.talosconfig --roles os:reader --crt-ttl 8760h
-#    Ensure the config's endpoints/nodes cover the node LAN IPs the pod will hit
-#    (192.168.40.0/24) — or the agent supplies `-e/-n <ip>` per call.
+The Omni Reader service account `dev-env-node-triage` and its key already exist (the
+user created them 2026-07-25). The only standing prerequisite:
 
-# 2) (Optional — only if enabling omnictl) Create an Omni Reader service account.
-#    Per .agents/runbooks/omni-service-account.md, against the Omni that manages the
-#    MAIN nodes (currently SaaS: https://haynes.omni.siderolabs.io):
-omnictl serviceaccount create --use-user-role=false --role Reader --ttl 8760h dev-env-node-triage
-#    -> prints OMNI_ENDPOINT + OMNI_SERVICE_ACCOUNT_KEY=<base64 key>. Save the key.
-
-# 3) Create 1Password item `dev-env-node-triage` (same vault as the other dev-env
-#    items) with fields the ExternalSecret expects:
-#      talosconfig               = full contents of dev-env-reader.talosconfig
-#      omni-service-account-key  = the OMNI_SERVICE_ACCOUNT_KEY value (omnictl only)
 ```
+1Password item `dev-env` (same vault as the other dev-env items), field:
+  OMNI_SERVICE_ACCOUNT_KEY = the base64 key `omnictl serviceaccount create` printed
+```
+
+(For reference, how the SA was made — see `.agents/runbooks/omni-service-account.md`:
+`omnictl serviceaccount create --use-user-role=false --role Reader --ttl 8760h
+dev-env-node-triage`, which prints `OMNI_ENDPOINT` +
+`OMNI_SERVICE_ACCOUNT_KEY=<base64 key>`.)
 
 ### Outside-agent deploy steps (merging PR B)
 
 1. Confirm PR A's build succeeded; grab the `0.5.0` digest (anon GHCR token → `GET
    https://ghcr.io/v2/thaynes43/dev-env/manifests/0.5.0` → 200; record the digest).
-2. Fill the `0.5.0@sha256:<PLACEHOLDER>` in PR B's HelmRelease with that digest.
-3. Confirm the 1Password item `dev-env-node-triage` exists (ExternalSecret will sync).
-4. Decide `OMNI_ENDPOINT` (SaaS `haynes.omni.siderolabs.io` for main nodes → also add
-   `*.omni.siderolabs.io` egress; or drop omnictl and ship talosctl-only).
-5. **Warn/drain the dev-env agent sessions (tmux session `main`)** — merging rolls the
+2. Fill the `0.5.0@sha256:<PLACEHOLDER>` in PR B's HelmRelease (all 3 containers).
+3. Confirm the 1Password item `dev-env` has field `OMNI_SERVICE_ACCOUNT_KEY` (the ES
+   will sync it to `dev-env-node-triage-secret`).
+4. **Warn/drain the dev-env agent sessions (tmux session `main`)** — merging rolls the
    pod and kills them.
-6. Mark PR B ready + merge `--squash --delete-branch`; watch
+5. Mark PR B ready + merge `--squash --delete-branch`; watch
    `kubectl rollout status deploy/dev-env -n dev`.
-7. Verify from a fresh pod shell: `talosctl -n <node-ip> version` and
-   `talosctl -n <node-ip> dmesg | tail` succeed; `kubectl get nodes` still works;
-   inspect the reader cert's role (`talosctl config info` / decode the client cert) to
-   confirm it is `os:reader` — **do NOT test by attempting a mutation** (a denied
-   `reboot` would be a destructive probe).
+6. Verify from a fresh pod shell (read-only):
+   - `omnictl get clusters` (or `omnictl get machinestatus`) returns — proves the
+     Reader SA + endpoint + egress work.
+   - `omnictl talosconfig /tmp/tc && talosctl --talosconfig /tmp/tc -n 192.168.40.93
+     dmesg | tail -3` — proves proxied talosctl reaches a master.
+   - `kubectl get nodes` still works. Do **not** probe by attempting a mutation.
 
 ## Acceptance
 
-- From a fresh pod shell: `talosctl -n <node> dmesg` and `talosctl -n <node> logs
-  <service>` return data for every node (masters included).
-- The mounted talosconfig is provably `os:reader` (cert role inspected, not by
-  attempting a mutation).
+- From a fresh pod shell: `omnictl get clusters` succeeds, and
+  `omnictl talosconfig /tmp/tc && talosctl --talosconfig /tmp/tc -n <node> dmesg`
+  returns data for the masters.
+- The Omni SA is provably `Reader` (mutations denied by Omni/Talos server-side — not
+  probed by attempting one).
 - `kubectl`/`flux`/existing MCP access is unaffected; no new mutating capability
   reached the pod.
-- (If omnictl enabled) `omnictl get machinestatus` returns for the main nodes against
-  the chosen `OMNI_ENDPOINT`.
+- WAN/Omni dependency understood: triage is unavailable if Omni or the internet is
+  down (the tradeoff recorded in the 2026-07-25 decision).
 </content>
 </invoke>
