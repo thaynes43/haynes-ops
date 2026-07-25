@@ -259,6 +259,44 @@ pretrust() {  # $1 = worktree path
 # only the gpt-5.6 family adds `max`, and only sol/terra add `ultra` (codex's
 # per-model supported_reasoning_levels in models.json). Blank/unknown model → the
 # common low|medium|high|xhigh set. pick() returns each row's first token as the value.
+# Claude's effort levels, read from the INSTALLED CLI rather than hardcoded here:
+# `claude --help` prints them as "(low, medium, high, xhigh, max)" under
+# `--effort <level>`. A Claude Code upgrade that adds or retires a level then
+# flows through to both the picker and --effort validation with no edit to this
+# script. Falls back to the known-good set if the help text ever changes shape.
+# Unlike codex, claude's levels are uniform across models — no per-model table.
+claude_effort_levels() {
+  local parsed
+  parsed="$(claude --help 2>/dev/null \
+    | grep -A1 -e '--effort <level>' | tr -d '\n' \
+    | grep -oE '\(([a-z]+, )+[a-z]+\)' | tr -d '() ')"
+  case "$parsed" in
+    *[a-z]*) printf '%s' "$parsed" ;;
+    *)       printf 'low,medium,high,xhigh,max' ;;
+  esac
+}
+
+# Picker rows for claude, xhigh first (the dev-env default). Levels are ordered
+# by the preference list below; anything the CLI reports that isn't in it is
+# appended verbatim, so a newly-added level still shows up (unlabelled).
+claude_effort_rows() {
+  local levels lvl note
+  levels=",$(claude_effort_levels),"
+  for lvl in xhigh max high medium low; do
+    case "$levels" in *",$lvl,"*) ;; *) continue ;; esac
+    case "$lvl" in
+      xhigh)  note='   (dev-env default)' ;;
+      max)    note='     (hardest problems, slowest)' ;;
+      high)   note="    (claude's stock default)" ;;
+      *)      note='' ;;
+    esac
+    printf '%s%s\n' "$lvl" "$note"
+  done
+  for lvl in ${levels//,/ }; do
+    case " xhigh max high medium low " in *" $lvl "*) ;; *) printf '%s\n' "$lvl" ;; esac
+  done
+}
+
 codex_effort_rows() {
   case "$1" in
     gpt-5.6-sol|gpt-5.6-terra)
@@ -321,13 +359,14 @@ case "$cmd" in
     case "$agent" in claude|codex) : ;; *) die "--agent must be claude|codex" ;; esac
     # Validate --effort against the SELECTED tool's levels — fail fast, before any
     # clone/worktree side effects (the repo/agent pickers above are read-only).
-    # claude: low|medium|high|xhigh|max (harness levels, uniform across models).
+    # claude: whatever `claude --help` advertises (uniform across models) — read
+    # live so this stays right across upgrades, same source as the picker.
     # codex adds `ultra` (gpt-5.6 sol/terra only); a level a given model doesn't
     # advertise is clamped server-side, so we don't hard-fail per-model here.
     if [ -n "$effort" ]; then
       case "$agent" in
-        claude) case "$effort" in low|medium|high|xhigh|max) : ;;
-          *) die "claude --effort must be low|medium|high|xhigh|max (got '$effort'); 'ultracode' is a /effort session-mode — set it in-session" ;; esac ;;
+        claude) case ",$(claude_effort_levels)," in *",$effort,"*) : ;;
+          *) die "claude --effort must be one of $(claude_effort_levels) (got '$effort'); 'ultracode' is a /effort session-mode — set it in-session" ;; esac ;;
         codex)  case "$effort" in low|medium|high|xhigh|max|ultra) : ;;
           *) die "codex --effort must be low|medium|high|xhigh|max|ultra (got '$effort')" ;; esac ;;
       esac
@@ -382,11 +421,16 @@ case "$cmd" in
     # the model's levels (only varies for codex).
     if [ -z "$model" ] && [ "$asked" = 1 ]; then
       if [ "$agent" = claude ]; then
+        # The VALUES here are aliases, not pinned ids: claude resolves `opus` /
+        # `sonnet` / `haiku` / `fable` to the LATEST model of that tier, so the
+        # options track new releases on their own. Only the human-readable half
+        # of each row can go stale — REFRESH it (names only, never the aliases)
+        # when a new tier lands:  claude --help | grep -A4 -- '--model'
         model="$(pick 'model:' \
-          'fable   Fable 5 · 1M ctx (dev-env default)' \
-          'opus    Opus 4.8' \
-          'sonnet  Sonnet 5' \
-          'haiku   Haiku 4.5')" || model=""
+          'fable   Fable 5 · 1M ctx, most capable (dev-env default)' \
+          'opus    Opus 5 · deep reasoning + agentic coding' \
+          'sonnet  Sonnet 5 · near-Opus quality, cheaper' \
+          'haiku   Haiku 4.5 · fastest, simple tasks')" || model=""
         # The 'fable' alias resolves to the 200k-ctx model; the pod default is the
         # 1M variant (settings.json → claude-fable-5[1m]). Keep the default choice
         # as "leave unset" so the pod default stands; only a real switch sets --model.
@@ -410,12 +454,8 @@ case "$cmd" in
     if [ -z "$effort" ]; then
       if [ "$asked" = 1 ]; then
         if [ "$agent" = claude ]; then
-          effort="$(pick 'effort:' \
-            'xhigh   (dev-env default)' \
-            'max     (hardest problems, slowest)' \
-            "high    (claude's stock default)" \
-            'medium' \
-            'low')" || effort=xhigh
+          mapfile -t erows < <(claude_effort_rows)
+          effort="$(pick 'effort:' "${erows[@]}")" || effort=xhigh
         else
           mapfile -t erows < <(codex_effort_rows "$model")
           effort="$(pick 'effort:' "${erows[@]}")" || effort=xhigh
