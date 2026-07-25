@@ -24,14 +24,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              # ┌─ PR B PLACEHOLDER — DO NOT MERGE UNTIL FILLED ─────────────────────┐
-              # │ Bump ALL THREE containers to the 0.5.0 image built by PR A (#2239) │
-              # │ BEFORE merging: 0.5.0@sha256:<digest>. Digest via (anon GHCR       │
-              # │ token): GET https://ghcr.io/v2/thaynes43/dev-env/manifests/0.5.0.  │
-              # │ Until filled this stays 0.4.0, which LACKS talosctl/omnictl — an   │
-              # │ accidental merge would mount the creds but not the tools.          │
-              # └───────────────────────────────────────────────────────────────────┘
-              tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
+              tag: 0.5.0@sha256:ad33fe4e27eebdc6bd82eb456d1b4cd19a5abf87064badc235365fe6a20ec2e3
             command: ["/bin/bash", "-c"]
             args:
               # dev-init links GitOps configs into $HOME, then tmux (agent sessions
@@ -105,14 +98,7 @@ spec:
           gh-refresher:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              # ┌─ PR B PLACEHOLDER — DO NOT MERGE UNTIL FILLED ─────────────────────┐
-              # │ Bump ALL THREE containers to the 0.5.0 image built by PR A (#2239) │
-              # │ BEFORE merging: 0.5.0@sha256:<digest>. Digest via (anon GHCR       │
-              # │ token): GET https://ghcr.io/v2/thaynes43/dev-env/manifests/0.5.0.  │
-              # │ Until filled this stays 0.4.0, which LACKS talosctl/omnictl — an   │
-              # │ accidental merge would mount the creds but not the tools.          │
-              # └───────────────────────────────────────────────────────────────────┘
-              tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
+              tag: 0.5.0@sha256:ad33fe4e27eebdc6bd82eb456d1b4cd19a5abf87064badc235365fe6a20ec2e3
             command: ["/bin/bash", "/opt/dev-env/scripts/gh-token-refresh.sh"]
             env:
               # Down-scope the minted token. NOTE: may only name permissions the App
@@ -136,14 +122,7 @@ spec:
           auth-watch:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              # ┌─ PR B PLACEHOLDER — DO NOT MERGE UNTIL FILLED ─────────────────────┐
-              # │ Bump ALL THREE containers to the 0.5.0 image built by PR A (#2239) │
-              # │ BEFORE merging: 0.5.0@sha256:<digest>. Digest via (anon GHCR       │
-              # │ token): GET https://ghcr.io/v2/thaynes43/dev-env/manifests/0.5.0.  │
-              # │ Until filled this stays 0.4.0, which LACKS talosctl/omnictl — an   │
-              # │ accidental merge would mount the creds but not the tools.          │
-              # └───────────────────────────────────────────────────────────────────┘
-              tag: 0.4.0@sha256:655a2dac6bffb1768b29e4e2e85f5fb5e72bab6337f49a2baeaac469136d8745
+              tag: 0.5.0@sha256:ad33fe4e27eebdc6bd82eb456d1b4cd19a5abf87064badc235365fe6a20ec2e3
             command: ["/bin/bash", "/opt/dev-env/scripts/auth-check.sh"]
             env:
               HOME: /home/dev
