@@ -104,10 +104,11 @@ spec:
           gethomepage.dev/widget.url: "http://seerr.media.svc.cluster.local:5055"
           # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it
           gethomepage.dev/widget.key: '{{ "{{HOMEPAGE_VAR_SEERR_API_KEY}}" }}'
-        # INTERNAL ONLY for now — the family-facing URL is still the Unraid
-        # instance behind the traefik-external ingressroute-overseerr
-        # (overseerr.haynesnetwork.com). Cutover flips that route here later;
-        # do NOT claim overseerr.haynesnetwork.com from this app.
+        # INTERNAL ONLY by design. The family-facing external URL
+        # (overseerr.haynesnetwork.com) cut over from the Unraid overseerr to
+        # this app on 2026-07-03 and is served by the traefik-external
+        # IngressRoute `overseerr` in the network namespace, which targets this
+        # app's Service directly. Keep that host there — do NOT add it here.
         className: traefik-internal
         hosts:
           - host: seerr.haynesops.com
