@@ -26,7 +26,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/upgrade-agent
-              tag: 0.1.0@sha256:250bac48b32ce14e6adc9607a215ef20c8524a3c6c6a380ed945dccbbb792a4b
+              tag: 0.1.0@sha256:da38e32259128c040e26f9e5e05b6612cacdb108872996554a25218921138857
             # Deterministic gate: run the ConfigMap-mounted script directly. No LLM,
             # no token, no git — read the six checks and page Pushover on a regression.
             command: ["/bin/bash", "/opt/gate/gate.sh"]
