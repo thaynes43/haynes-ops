@@ -60,23 +60,20 @@ spec:
               # gated, and that var disables flag evaluation entirely — setting it
               # hides Remote Control (hit live 2026-07-14; saga Decision #6 depends
               # on it). There is no flags-only knob as of claude-code 2.1.207.
-              # ── Read-only node triage (saga backlog 10) ──
-              # talosctl reads each node's apid (dmesg/logs/get) with the os:reader
-              # talosconfig mounted below; omnictl reads Omni machine/cluster status
-              # with the Reader SA key. Both are read-only BY ROLE — no mutate reaches
-              # the pod even under a compromised agent.
-              TALOSCONFIG: /var/run/secrets/node-triage/talosconfig
-              # OMNI_ENDPOINT — the Omni that manages the nodes you triage. The MAIN
-              # cluster is on SaaS Omni today (backlog 10 topology caveat); if that's
-              # the target, the CNP also needs *.omni.siderolabs.io egress (PR A only
-              # added the in-cluster svc). talosctl covers triage on its own, so
-              # omnictl is optional — set this deliberately at deploy.
-              OMNI_ENDPOINT: https://haynes.omni.siderolabs.io
+              # ── Read-only node triage via SaaS Omni (saga backlog 10; 2026-07-25
+              # decision) ── omnictl authenticates headless with the Reader SA key and
+              # reads Omni machine/cluster status; talosctl reaches nodes through an
+              # Omni-proxied talosconfig fetched at runtime (`omnictl talosconfig`), so
+              # no talosconfig file is mounted. Read-only BY ROLE (Omni Reader SA) — no
+              # mutate reaches the pod even under a compromised agent. OMNI_ENDPOINT and
+              # OMNI_SERVICE_ACCOUNT_KEY are exactly what `omnictl serviceaccount create`
+              # printed (endpoint carries explicit :443).
+              OMNI_ENDPOINT: https://haynes.na-west-1.omni.siderolabs.io:443
               OMNI_SERVICE_ACCOUNT_KEY:
                 valueFrom:
                   secretKeyRef:
                     name: dev-env-node-triage-secret
-                    key: omni-service-account-key
+                    key: OMNI_SERVICE_ACCOUNT_KEY
             envFrom:
               # HA_MCP_SECRET_PATH — expanded into the MCP URL by dev-init.
               - secretRef:
@@ -245,16 +242,3 @@ spec:
           dev-env:
             app:
               - path: /opt/dev-env/config/home
-      # Read-only os:reader talosconfig (saga backlog 10) — app container ONLY, the
-      # same container-scoping the PEM/home get (gh-refresher + auth-watch never see
-      # it). Mounted as a single file; TALOSCONFIG (env above) points at it. Populated
-      # by the dev-env-node-triage ExternalSecret; defaultMode 0400 (owner read-only).
-      node-triage:
-        type: secret
-        name: dev-env-node-triage-secret
-        defaultMode: 0400
-        advancedMounts:
-          dev-env:
-            app:
-              - path: /var/run/secrets/node-triage/talosconfig
-                subPath: talosconfig
