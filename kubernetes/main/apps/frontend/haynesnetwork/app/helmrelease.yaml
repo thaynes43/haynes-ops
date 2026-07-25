@@ -323,7 +323,7 @@ spec:
       # MAM compliance governor every 15 min (PLAN-039 / ADR-054 / DESIGN-027): counts UNSATISFIED
       # torrents locally in qBittorrent (books-mam: still-downloading + complete-but-<72h-seeded —
       # zero MAM API surface, no qB credential) and, near the rank cap (unsatisfied >=
-      # MAM_UNSATISFIED_LIMIT − MAM_UNSATISFIED_BUFFER, set 200/20 → pause at 180, resume-floor 160), toggles the
+      # MAM_UNSATISFIED_LIMIT − MAM_UNSATISFIED_BUFFER, set 200/50 → pause at 150, resume-floor 100), toggles the
       # MyAnonaMouse Prowlarr indexer's enable flag (Prowlarr's fullSync LL application propagates
       # it to LazyLibrarian — verified live; usenet keeps flowing). Fail-closed on a count failure.
       # Upserts the single-row mam_gate_state + enqueues a transition / >48h-stuck Pushover row
@@ -352,15 +352,23 @@ spec:
               # MAM rank Elite VIP: unsatisfied limit 200 (confirmed 2026-07-17 from the MAM Client
               # Summary; OPS-013 §10.1 tier table documents Elite VIP = 200). v0.90.0 adds resume
               # hysteresis to the governor, so the toggle is no longer a single edge:
-              #   pause threshold = limit − buffer      = 180
-              #   resume floor    = limit − 2×buffer    = 160  (derived)
-              #   dead band 160 to 179 holds the current gate state (no flip either way)
-              # Buffer widened 15 → 20: the worst observed single-interval unsatisfied burst was +17,
-              # so with buffer 20 a climb caught at 179 peaks near 196, and a reopen from 159 peaks
-              # near 176 — both comfortably under the hard 200 cap. Governor design:
+              #   pause threshold = limit − buffer      = 150
+              #   resume floor    = limit − 2×buffer    = 100  (derived)
+              #   dead band 100 to 149 holds the current gate state (no flip either way)
+              # BUFFER WIDENED 20 → 50 (2026-07-25 ~06:10 UTC, live incident response). The 20 was sized
+              # on "worst observed single-interval burst = +17". The first post-un-freeze backlog drain
+              # blew straight past that: 04:49 unsatisfied 90 → 05:49 108 (+18) → 06:04 **166 (+58 in one
+              # 15-min interval)**. At buffer 20 the pause edge is 180, so a +58 burst caught at 179 lands
+              # near 237 — well past the hard 200 cap and straight into another "Attempted to Download
+              # Past Unsatisfied limit" violation (the 2026-07-23 incident that cost a multi-day download
+              # block). Buffer 50 moves the pause edge to 150, which the 166 reading is already above, so
+              # the governor closes the gate on its next run instead of coasting through the dead band.
+              # This is deliberately conservative while the post-freeze surge drains; once bursts are
+              # characterized in steady state, retune (and amend ADR-077, whose +17 basis is now stale).
+              # Governor design:
               # https://github.com/thaynes43/haynesnetwork/blob/main/docs/adrs/077-mam-governor-resume-hysteresis.md
               MAM_UNSATISFIED_LIMIT: "200"
-              MAM_UNSATISFIED_BUFFER: "20"
+              MAM_UNSATISFIED_BUFFER: "50"
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
