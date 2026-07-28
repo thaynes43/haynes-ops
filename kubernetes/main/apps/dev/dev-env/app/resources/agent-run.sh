@@ -254,12 +254,118 @@ pretrust() {  # $1 = worktree path
   fi
 }
 
-# Codex reasoning-effort picker rows for the given model, xhigh first (the dev-env
-# default — every current codex model supports xhigh). The set differs by model:
-# only the gpt-5.6 family adds `max`, and only sol/terra add `ultra` (codex's
-# per-model supported_reasoning_levels in models.json). Blank/unknown model → the
-# common low|medium|high|xhigh set. pick() returns each row's first token as the value.
+# ---- picker row sources (pick() returns each row's first token as the value) ----
+#
+# Claude's effort levels, read from the INSTALLED CLI rather than hardcoded here:
+# `claude --help` prints them as "(low, medium, high, xhigh, max)" under
+# `--effort <level>`. A Claude Code upgrade that adds or retires a level then
+# flows through to both the picker and --effort validation with no edit to this
+# script. Falls back to the known-good set if the help text ever changes shape.
+# Unlike codex, claude's levels are uniform across models — no per-model table.
+claude_effort_levels() {
+  local parsed
+  parsed="$(claude --help 2>/dev/null \
+    | grep -A1 -e '--effort <level>' | tr -d '\n' \
+    | grep -oE '\(([a-z]+, )+[a-z]+\)' | tr -d '() ')"
+  case "$parsed" in
+    *[a-z]*) printf '%s' "$parsed" ;;
+    *)       printf 'low,medium,high,xhigh,max' ;;
+  esac
+}
+
+# Picker rows for claude, xhigh first (the dev-env default). Levels are ordered
+# by the preference list below; anything the CLI reports that isn't in it is
+# appended verbatim, so a newly-added level still shows up (unlabelled).
+claude_effort_rows() {
+  local levels lvl note
+  levels=",$(claude_effort_levels),"
+  for lvl in xhigh max high medium low; do
+    case "$levels" in *",$lvl,"*) ;; *) continue ;; esac
+    case "$lvl" in
+      xhigh)  note='   (dev-env default)' ;;
+      max)    note='     (hardest problems, slowest)' ;;
+      high)   note="    (claude's stock default)" ;;
+      *)      note='' ;;
+    esac
+    printf '%s%s\n' "$lvl" "$note"
+  done
+  for lvl in ${levels//,/ }; do
+    case " xhigh max high medium low " in *" $lvl "*) ;; *) printf '%s\n' "$lvl" ;; esac
+  done
+}
+
+# Codex's catalog, unlike claude's, IS machine-readable locally: codex maintains
+# ~/.codex/models_cache.json (slug, display_name, description, per-model
+# supported_reasoning_levels, visibility, priority), refreshes it from the server
+# as it runs, and the home PVC carries it across pod bounces. Codex model AND
+# effort rows generate from it, so new codex models/levels show up with no edit
+# to this script. The hardcoded fallbacks below only serve a home where codex has
+# never run; when the live list drifts from the fallback, the picker WARNs so the
+# fallback gets refreshed (dev-env PR) instead of rotting silently.
+CODEX_CACHE="${CODEX_HOME:-$HOME/.codex}/models_cache.json"
+
+codex_model_rows_fallback() {
+  printf '%s\n' \
+    'gpt-5.6-sol    GPT-5.6-Sol · latest frontier agentic coding' \
+    'gpt-5.6-terra  GPT-5.6-Terra · balanced everyday' \
+    'gpt-5.6-luna   GPT-5.6-Luna · fast & affordable' \
+    'gpt-5.5        GPT-5.5 · prior frontier' \
+    'gpt-5.4        GPT-5.4 · everyday coding' \
+    'gpt-5.4-mini   GPT-5.4-Mini · small & fast'
+}
+
+# Visible models in priority order: "slug  DisplayName · description".
+codex_model_rows() {
+  local live
+  live="$(jq -r '.models | map(select(.visibility == "list")) | sort_by(.priority)[]
+                 | .slug + "\t" + .display_name + " · " + (.description | rtrimstr("."))' \
+          "$CODEX_CACHE" 2>/dev/null | awk -F'\t' '{ printf "%-15s%s\n", $1, $2 }')"
+  if [ -z "$live" ]; then codex_model_rows_fallback; return; fi
+  if [ "$(printf '%s\n' "$live" | awk '{print $1}' | sort)" \
+    != "$(codex_model_rows_fallback | awk '{print $1}' | sort)" ]; then
+    log "WARN: codex fallback rows are stale vs models_cache.json — refresh codex_model_rows_fallback in agent-run.sh (held-draft dev-env PR)"
+  fi
+  printf '%s\n' "$live"
+}
+
+# Union of effort levels across all cached models — used for --effort validation
+# only; a level a given model doesn't advertise is clamped server-side.
+codex_effort_levels() {
+  local parsed
+  parsed="$(jq -r '[.models[].supported_reasoning_levels[].effort] | unique | join(",")' \
+    "$CODEX_CACHE" 2>/dev/null)"
+  case "$parsed" in
+    *[a-z]*) printf '%s' "$parsed" ;;
+    *)       printf 'low,medium,high,xhigh,max,ultra' ;;
+  esac
+}
+
+# Effort rows for the given model, xhigh first (the dev-env default), read from
+# the cache; levels the preference list doesn't know are appended unlabelled —
+# same contract as claude_effort_rows. Blank/unknown model or no cache → the
+# hardcoded per-model fallback table.
 codex_effort_rows() {
+  local levels lvl note
+  levels="$(jq -r --arg m "$1" \
+    'first(.models[] | select(.slug == $m)) | [.supported_reasoning_levels[].effort] | join(",")' \
+    "$CODEX_CACHE" 2>/dev/null)"
+  if [ -z "$levels" ]; then codex_effort_rows_fallback "$1"; return; fi
+  levels=",$levels,"
+  for lvl in xhigh ultra max high medium low; do
+    case "$levels" in *",$lvl,"*) ;; *) continue ;; esac
+    case "$lvl" in
+      xhigh) note='   (dev-env default)' ;;
+      ultra) note='   (max reasoning + auto-delegation)' ;;
+      *)     note='' ;;
+    esac
+    printf '%s%s\n' "$lvl" "$note"
+  done
+  for lvl in ${levels//,/ }; do
+    case " xhigh ultra max high medium low " in *" $lvl "*) ;; *) printf '%s\n' "$lvl" ;; esac
+  done
+}
+
+codex_effort_rows_fallback() {
   case "$1" in
     gpt-5.6-sol|gpt-5.6-terra)
       printf '%s\n' 'xhigh   (dev-env default)' 'ultra   (max reasoning + auto-delegation)' 'max' 'high' 'medium' 'low' ;;
@@ -321,15 +427,16 @@ case "$cmd" in
     case "$agent" in claude|codex) : ;; *) die "--agent must be claude|codex" ;; esac
     # Validate --effort against the SELECTED tool's levels — fail fast, before any
     # clone/worktree side effects (the repo/agent pickers above are read-only).
-    # claude: low|medium|high|xhigh|max (harness levels, uniform across models).
-    # codex adds `ultra` (gpt-5.6 sol/terra only); a level a given model doesn't
-    # advertise is clamped server-side, so we don't hard-fail per-model here.
+    # claude: whatever `claude --help` advertises (uniform across models) — read
+    # live so this stays right across upgrades, same source as the picker.
+    # codex: the union across models_cache.json (fallback: the known set); a level
+    # a given model doesn't advertise is clamped server-side, so no per-model fail.
     if [ -n "$effort" ]; then
       case "$agent" in
-        claude) case "$effort" in low|medium|high|xhigh|max) : ;;
-          *) die "claude --effort must be low|medium|high|xhigh|max (got '$effort'); 'ultracode' is a /effort session-mode — set it in-session" ;; esac ;;
-        codex)  case "$effort" in low|medium|high|xhigh|max|ultra) : ;;
-          *) die "codex --effort must be low|medium|high|xhigh|max|ultra (got '$effort')" ;; esac ;;
+        claude) case ",$(claude_effort_levels)," in *",$effort,"*) : ;;
+          *) die "claude --effort must be one of $(claude_effort_levels) (got '$effort'); 'ultracode' is a /effort session-mode — set it in-session" ;; esac ;;
+        codex)  case ",$(codex_effort_levels)," in *",$effort,"*) : ;;
+          *) die "codex --effort must be one of $(codex_effort_levels) (got '$effort')" ;; esac ;;
       esac
     fi
     # --- mode: how to drive it. Resolve from flags first (so no combination lands
@@ -382,22 +489,25 @@ case "$cmd" in
     # the model's levels (only varies for codex).
     if [ -z "$model" ] && [ "$asked" = 1 ]; then
       if [ "$agent" = claude ]; then
+        # The VALUES here are aliases, not pinned ids: claude resolves `opus` /
+        # `sonnet` / `haiku` / `fable` to the LATEST model of that tier, so the
+        # options track new releases on their own. Only the human-readable half
+        # of each row can go stale — REFRESH it (names only, never the aliases)
+        # when a new tier lands:  claude --help | grep -A4 -- '--model'
         model="$(pick 'model:' \
-          'fable   Fable 5 · 1M ctx (dev-env default)' \
-          'opus    Opus 4.8' \
-          'sonnet  Sonnet 5' \
-          'haiku   Haiku 4.5')" || model=""
+          'fable   Fable 5 · 1M ctx, most capable (dev-env default)' \
+          'opus    Opus 5 · deep reasoning + agentic coding' \
+          'sonnet  Sonnet 5 · near-Opus quality, cheaper' \
+          'haiku   Haiku 4.5 · fastest, simple tasks')" || model=""
         # The 'fable' alias resolves to the 200k-ctx model; the pod default is the
         # 1M variant (settings.json → claude-fable-5[1m]). Keep the default choice
         # as "leave unset" so the pod default stands; only a real switch sets --model.
         [ "$model" = fable ] && model=""
       else
-        model="$(pick 'model:' \
-          'gpt-5.6-sol    frontier agentic coding (default)' \
-          'gpt-5.6-terra  balanced everyday' \
-          'gpt-5.6-luna   fast & affordable' \
-          'gpt-5.5        prior frontier' \
-          'gpt-5.2        long-running agents')" || model=""
+        # Live from models_cache.json (priority order; top row is codex's own
+        # default tier). Cancel leaves $model empty → codex's default stands.
+        mapfile -t mrows < <(codex_model_rows)
+        model="$(pick 'model:' "${mrows[@]}")" || model=""
       fi
     fi
 
@@ -410,12 +520,8 @@ case "$cmd" in
     if [ -z "$effort" ]; then
       if [ "$asked" = 1 ]; then
         if [ "$agent" = claude ]; then
-          effort="$(pick 'effort:' \
-            'xhigh   (dev-env default)' \
-            'max     (hardest problems, slowest)' \
-            "high    (claude's stock default)" \
-            'medium' \
-            'low')" || effort=xhigh
+          mapfile -t erows < <(claude_effort_rows)
+          effort="$(pick 'effort:' "${erows[@]}")" || effort=xhigh
         else
           mapfile -t erows < <(codex_effort_rows "$model")
           effort="$(pick 'effort:' "${erows[@]}")" || effort=xhigh

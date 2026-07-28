@@ -44,3 +44,23 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 
 Run inside tmux (session `main`) so work survives disconnects. For phone-driven
 sessions, start `claude` and use `/remote-control`.
+
+## Model pickers (agent-run) — freshness contract
+
+`agent-run`'s pickers self-update wherever a machine-readable source exists:
+codex model + effort rows come live from `~/.codex/models_cache.json`, claude
+effort levels from `claude --help`, and the claude model *values* are aliases
+(`opus` resolves server-side to the latest Opus — an alias is never stale, only
+its label can be). Two surfaces still rot, and **agents are the tripwire for
+both**:
+
+- **Claude row labels** (no local manifest exists): if your own system prompt or
+  in-session `/model` shows a model family newer than the picker labels, the
+  labels are stale — never conclude the newer model is unavailable, and never
+  "fix" the alias values.
+- **Codex fallback rows**: `agent-run` prints a WARN when they drift from the
+  live cache.
+
+Either way the fix is the same: open a standard held-draft dev-env PR editing
+`kubernetes/main/apps/dev/dev-env/app/resources/agent-run.sh` (labels/fallbacks
+only). Draft because merging bounces this pod.
