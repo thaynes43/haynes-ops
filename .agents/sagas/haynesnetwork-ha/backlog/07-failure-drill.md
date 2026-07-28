@@ -1,6 +1,10 @@
 # 07 — Node-failure drill + runbook (prove it, measure it)
 
-**Status:** planned
+**Status:** in progress — Phase A (pod-level) PASSED 2026-07-28, both scenarios zero-downtime:
+[drill record](../drills/2026-07-28-phase-a-pod-kills.md). Phase B (a real node loss — owner
+reboots talosw02 via the Omni UI whenever convenient; the SLI records it automatically) remains
+open, and is the only outstanding work in this saga. NOTE the corrected traefik selector:
+`app.kubernetes.io/instance=traefik-external-network`.
 **Repo:** haynes-ops (runbook doc + drill execution; read-only on the app repo)
 **Depends on:** 02 (replicas), 03 (measurement — the drill should be WATCHED by the SLI)
 **Parallel with:** —
