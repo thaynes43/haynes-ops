@@ -40,7 +40,7 @@ spec:
               # preview stack — recomposeLibrary (#31), preview engine (#32), POST /api/v1/runs/preview
               # (#34); v0.9.0 adds config-override preview (thaynes43/ytdrivarr#36, dry-run PR4 —
               # preview an unsaved config change before it goes live), on AUTH_MODE=open + M3 Peloton.
-              tag: v0.9.0@sha256:5bb4b12d0aff2308ce2929482a35af9d23e10e1bfbba9b0c9ec7d4472218a466
+              tag: v0.9.1@sha256:e91097df2717780ec8ff60e639d4cc8df7779b9a227bacc58fe86c457f77ebf8
             env:
               TZ: America/New_York
               PORT: &port 8080
