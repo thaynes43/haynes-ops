@@ -1,6 +1,9 @@
 # 05 — Rate-limit storage: in-memory → database
 
-**Status:** planned
+**Status:** done — haynesnetwork PLAN-063 / [PR #500](https://github.com/thaynes43/haynesnetwork/pull/500),
+released v0.90.5. `rateLimit.storage: 'database'` (better-auth 1.6.23 atomic `incrementOne`),
+`rate_limit` table via migration 0072, DESIGN-002 D-14 amended (closes backlog-recon O-5). Shared
+two-instance test proves ONE combined limit with state living in Postgres.
 **Repo:** haynesnetwork (`packages/auth/src/config.ts`)
 **Depends on:** nothing (correct before or after 02; window where limits are ×2 is accepted)
 **Parallel with:** 01, 03, 06

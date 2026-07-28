@@ -1,6 +1,9 @@
 # 01 — Migrator advisory lock (serialize concurrent migrate init-containers)
 
-**Status:** planned
+**Status:** done — haynesnetwork PLAN-062 / [PR #499](https://github.com/thaynes43/haynesnetwork/pull/499),
+released v0.90.4 (deployed with the v0.90.5 roll). Session-level `pg_advisory_lock` on key
+0x686e6574 ("hnet") around the drizzle migrator; concurrency test proven a real guard (lock
+removed → the `CREATE SCHEMA drizzle` race reproduces); deploy runbook amended.
 **Repo:** haynesnetwork (mints a numbered plan in `.agents/plans/` per that repo's process)
 **Depends on:** nothing
 **Parallel with:** 03, 05, 06
