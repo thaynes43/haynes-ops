@@ -15,3 +15,21 @@ spec:
         - pikvm.haynesnetwork
         - tubeszb-zigbee01.haynesnetwork
         - tubeszb-zwave01.haynesnetwork
+---
+# haynesnetwork.com apex front-page uptime probe (saga haynesnetwork-ha, plan 03).
+# Second, independent alarm path alongside the Gatus apex check: http_2xx feeds
+# probe_success into Prometheus, already covered by the BlackboxProbeFailed rule
+# (probe_success == 0 for 15m, critical). Gatus and Prometheus live on different
+# nodes, so either one alone can page.
+kind: Probe
+apiVersion: monitoring.coreos.com/v1
+metadata:
+  name: haynesnetwork
+spec:
+  module: http_2xx
+  prober:
+    url: blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://haynesnetwork.com
