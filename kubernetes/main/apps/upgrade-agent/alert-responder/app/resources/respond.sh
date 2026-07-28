@@ -41,7 +41,8 @@ IGNORE_PAIRS="${RESPONDER_IGNORE_PAIRS:-OOMKilled@rook-ceph}"
 MAX_PER_RUN="${RESPONDER_MAX_PER_RUN:-1}"
 MAX_AGE_HOURS="${RESPONDER_MAX_AGE_HOURS:-24}"
 STATE_TTL_HOURS="${RESPONDER_STATE_TTL_HOURS:-168}"
-MODEL="${RESPONDER_MODEL:-sonnet}"
+MODEL="${RESPONDER_MODEL:-sonnet}"                    # plan-path model (opus per 2026-07-28 call)
+FALLBACK_MODEL="${RESPONDER_FALLBACK_MODEL:-sonnet}"  # metered-path model (opus on the API costs real money)
 MAX_TURNS="${RESPONDER_MAX_TURNS:-25}"
 MAX_BUDGET="${RESPONDER_MAX_BUDGET_USD:-2.00}"
 MONTHLY_CAP="${RESPONDER_MONTHLY_CAP_USD:-15}"
@@ -55,6 +56,34 @@ WORKDIR="${HOME}/repo"
 NOW="$(date -u +%s)"
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
+
+# Quiet claude-code's phone-home (the egress CNP would block it anyway).
+export DISABLE_TELEMETRY=1 CLAUDE_CODE_ENABLE_TELEMETRY=0 \
+       DISABLE_ERROR_REPORTING=1 DISABLE_AUTOUPDATER=1 DISABLE_NON_ESSENTIAL_MODEL_CALLS=1
+
+# ── AUTH PATH (2026-07-28, saga plan 07 Option A extended to the responder) ──
+# PLAN-FIRST, API-FALLBACK — the run-shepherd.sh pattern verbatim. The LLM turn
+# runs HERE, in the contained responder pod (alert labels/annotations are a
+# prompt-injection surface; dispatching into dev-env would hand that surface the
+# dev pod's write powers — see .agents/sagas/dev-env/backlog/07).
+#
+#   plan → CLAUDE_CODE_OAUTH_TOKEN (Max subscription; $0 API spend), model=$MODEL
+#   api  → ANTHROPIC_API_KEY (metered, spend-guarded), model=$FALLBACK_MODEL
+#
+# CRITICAL: claude-code prefers ANTHROPIC_API_KEY when BOTH are set, so the plan
+# path must UNSET it — otherwise we'd silently keep billing the API while
+# believing we're on the plan. The key is stashed and restored for the fallback.
+AUTH_PATH="api"
+ANTHROPIC_API_KEY_STASH="${ANTHROPIC_API_KEY:-}"
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+  AUTH_PATH="plan"
+  unset ANTHROPIC_API_KEY
+  log "auth: Max plan (CLAUDE_CODE_OAUTH_TOKEN); API key held in reserve for fallback."
+elif [ -n "${ANTHROPIC_API_KEY_STASH}" ]; then
+  log "auth: API key (no plan token mounted)."
+else
+  log "FATAL: neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY is set."; exit 1
+fi
 
 page() {  # $1=title-suffix $2=message ; priority 0 (the ORIGINAL critical already
           # paged at prio 1 via Alertmanager — this is the follow-up diagnosis).
@@ -173,7 +202,10 @@ while [ "$i" -lt "$count" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
     log "incident $key ($aname) already handled — skip."
     continue
   fi
-  spend_guard || exit 0
+  # Spend guard governs the METERED path only — a plan-served diagnosis is $0, so a
+  # high (stale) monthly counter must not block it. The guard still protects the
+  # fallback (checked again before any fallback retry below).
+  if [ "$AUTH_PATH" = "api" ]; then spend_guard || exit 0; fi
   if ! state_claim "$key" "$aname"; then
     log "incident $key ($aname): could NOT durably claim — FAIL CLOSED, not summoning (Alertmanager already paged the human)."
     continue
@@ -190,24 +222,57 @@ while [ "$i" -lt "$count" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
   PROMPT="You are the on-call ALERT RESPONDER for this Kubernetes homelab (GitOps/Flux, Talos). A critical alert is firing; Alertmanager ALREADY paged the human — your follow-up page is worth sending ONLY when it adds an action the human must take. Alert: ${ALERT_JSON}. Investigate with the allowlisted tools: kubectl get/describe, flux get, /opt/responder/prom-query.sh '<promql>' for metrics, /opt/responder/loki-query.sh '<logql>' [minutes] [limit] for logs (e.g. loki-query.sh '{namespace=\"x\",pod=~\"y.*\"}' 60). Check whether the alert is ALREADY RESOLVED (prom-query.sh 'ALERTS{alertname=\"<name>\",alertstate=\"firing\"}' — empty means cleared). If a repo checkout is present, check .agents/runbooks/ and docs/ for a matching runbook and the recent git log for a plausible culprit. Then STOP and output EXACTLY this report, under 900 characters total, no markdown headers, STARTING with ACTION: ACTION: <none|investigate|urgent> | CAUSE: <root cause, one or two sentences, state confidence> | EVIDENCE: <two or three concrete observations> | FIX: <suggested action for the human — you must NOT perform it> | RUNBOOK: <repo path or none>. Choose ACTION honestly: ACTION: none when NO human action is needed — the alert already self-healed, OR it is a KNOWN/DOCUMENTED self-healing cycle (a watchdog auto-repair, an accepted OOM-restart cycle, a component another system's watchdog owns and notifies for); ACTION: investigate when a human should look but it is not on fire; ACTION: urgent when immediate action is needed. Be decisive — if you are confident it self-healed or is a documented benign cycle, say ACTION: none (a no-action page is pure noise the human already got from Alertmanager)."
   SAFETY="SAFETY: you are STRICTLY READ-ONLY — never kubectl apply/delete/edit/exec/patch, never git push, never install anything; do not retry a denied command. Never include secret VALUES in output. You run UNATTENDED: no human answers questions; produce the report and stop. If you cannot diagnose it, output ACTION: investigate | CAUSE: inconclusive."
 
-  export DISABLE_TELEMETRY=1 CLAUDE_CODE_ENABLE_TELEMETRY=0 \
-         DISABLE_ERROR_REPORTING=1 DISABLE_AUTOUPDATER=1 DISABLE_NON_ESSENTIAL_MODEL_CALLS=1
-  : "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY unset}"
   OUT_FILE="$(mktemp 2>/dev/null || echo /tmp/responder-out.json)"
-  timeout "$RUN_TIMEOUT" claude -p "$PROMPT" \
-    --permission-mode dontAsk \
-    --allowedTools Read Grep Glob \
-      "Bash(kubectl get:*)" "Bash(kubectl describe:*)" "Bash(flux get:*)" \
-      "Bash(grep:*)" "Bash(cat:*)" "Bash(git log:*)" "Bash(git show:*)" \
-      "Bash(/opt/responder/prom-query.sh:*)" "Bash(/opt/responder/loki-query.sh:*)" \
-    --disallowedTools "WebFetch" "WebSearch" \
-    --append-system-prompt "$SAFETY" \
-    --max-turns "$MAX_TURNS" \
-    --max-budget-usd "$MAX_BUDGET" \
-    --model "$MODEL" \
-    --output-format json > "$OUT_FILE" 2>/dev/null
-  rc=$?
-  record_spend "$OUT_FILE"
+  ERR_FILE="${OUT_FILE}.err"
+  run_claude() {  # $1=out-file $2=err-file ; model + budget flag follow AUTH_PATH
+    local m="$MODEL"; local -a args
+    [ "$AUTH_PATH" = "api" ] && m="$FALLBACK_MODEL"
+    args=(-p "$PROMPT"
+      --permission-mode dontAsk
+      --allowedTools Read Grep Glob
+        "Bash(kubectl get:*)" "Bash(kubectl describe:*)" "Bash(flux get:*)"
+        "Bash(grep:*)" "Bash(cat:*)" "Bash(git log:*)" "Bash(git show:*)"
+        "Bash(/opt/responder/prom-query.sh:*)" "Bash(/opt/responder/loki-query.sh:*)"
+      --disallowedTools "WebFetch" "WebSearch"
+      --append-system-prompt "$SAFETY"
+      --max-turns "$MAX_TURNS"
+      --model "$m"
+      --output-format json)
+    [ "$AUTH_PATH" = "api" ] && args+=(--max-budget-usd "$MAX_BUDGET")
+    timeout "$RUN_TIMEOUT" claude "${args[@]}" > "$1" 2>"$2"
+  }
+  run_claude "$OUT_FILE" "$ERR_FILE"; rc=$?
+  # A plan run that dies on a RATE LIMIT / AUTH failure falls back ONCE to the
+  # metered key ($FALLBACK_MODEL, spend-guarded) — a 2am diagnosis must not stall
+  # because the 5-hour plan window is exhausted. Any OTHER failure is a real error
+  # and is NOT retried (a genuinely broken run would just double-spend).
+  if [ "$AUTH_PATH" = "plan" ] && [ "$rc" -ne 0 ] && [ -n "$ANTHROPIC_API_KEY_STASH" ]; then
+    fallback_reason=""
+    if grep -qiE 'rate limit|usage limit|limit reached|too many requests|429' "$OUT_FILE" "$ERR_FILE" 2>/dev/null; then
+      fallback_reason="plan rate-limited"
+    elif grep -qiE 'unauthorized|invalid.*(token|api key)|authentication|401|/login' "$OUT_FILE" "$ERR_FILE" 2>/dev/null; then
+      fallback_reason="plan token rejected (re-run the setup-token ceremony)"
+    fi
+    if [ -n "$fallback_reason" ]; then
+      log "FALLBACK: $fallback_reason — retrying on the metered API key ($FALLBACK_MODEL)."
+      AUTH_PATH="api"
+      export ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY_STASH"
+      if spend_guard; then
+        run_claude "$OUT_FILE" "$ERR_FILE"; rc=$?
+      else
+        log "fallback BLOCKED by the spend guard (monthly cap reached) — no diagnosis this incident (the original Alertmanager page stands)."
+      fi
+    else
+      log "run failed (rc=$rc) for a reason that is NOT rate-limit/auth — not falling back."
+    fi
+  fi
+  # Only a metered run has a dollar cost to record; a plan-served run is $0 by
+  # construction (that IS the win being measured).
+  if [ "$AUTH_PATH" = "api" ]; then
+    record_spend "$OUT_FILE"
+  else
+    log "spend: \$0 this run (served by the Max plan)."
+  fi
   REPORT="$(jq -r '.result // empty' "$OUT_FILE" 2>/dev/null | tr '\n\r' '  ' | cut -c1-950)"
   if [ -n "$REPORT" ]; then
     log "diagnosis ($aname): $REPORT"

@@ -64,13 +64,28 @@ spec:
               # gate's Ceph HEALTH_ERR page. Grow this as we identify other noisy recurrers
               # (state CM + Loki logs record every diagnosis, so we can see spend triggers).
               RESPONDER_IGNORE_PAIRS: "OOMKilled@rook-ceph"
-              RESPONDER_MODEL: sonnet
+              # Model policy (2026-07-28, Tom's call): best available Opus on the
+              # plan path — `opus` is an ALIAS that resolves server-side to the
+              # latest Opus, so it never goes stale. Deliberately NOT Fable: its
+              # plan quota is less predictable and could max out early. The metered
+              # FALLBACK drops to sonnet (opus on the API costs real money and the
+              # $2 per-run cap would clip an opus diagnosis mid-run).
+              RESPONDER_MODEL: opus
+              RESPONDER_FALLBACK_MODEL: sonnet
               RESPONDER_MAX_PER_RUN: "1"
+              # Caps govern the METERED path only — a plan-served run is $0.
               RESPONDER_MAX_BUDGET_USD: "2.00"
               RESPONDER_MONTHLY_CAP_USD: "15"
             envFrom:
               - secretRef:
                   name: alert-responder-secret
+              # Max-plan credential (2026-07-28, saga plan 07 Option A extended to
+              # the responder). Same secret the shepherd uses (same namespace, same
+              # 1P item). OPTIONAL on purpose: if the secret is ever absent the env
+              # var is unset and respond.sh runs on the API key exactly as before.
+              - secretRef:
+                  name: upgrade-shepherd-plan-secret
+                  optional: true
             resources:
               requests:
                 cpu: 100m

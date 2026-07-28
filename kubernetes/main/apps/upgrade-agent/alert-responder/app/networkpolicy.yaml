@@ -36,6 +36,15 @@ spec:
               - matchPattern: "*.github.com"
               - matchPattern: "*.githubusercontent.com"
               - matchName: "api.anthropic.com"
+              # Max-plan auth (2026-07-28, saga plan 07 Option A extended to the
+              # responder) — a subscription-authenticated claude-code ALSO talks to
+              # claude.com; with only api.anthropic.com allowed the plan path fails
+              # and silently falls back to the metered key (the exact trap the
+              # shepherd + dev-env pod hit 2026-07-13). Same vendor, no new boundary.
+              - matchName: "claude.com"
+              - matchPattern: "*.claude.com"
+              - matchName: "claude.ai"
+              - matchPattern: "*.claude.ai"
               - matchName: "api.pushover.net"
     # 2. Kube API server — read-only diagnosis (kubectl get/describe, flux get).
     - toEntities: [kube-apiserver]
@@ -72,9 +81,14 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-    # 5. Anthropic — the LLM API.
+    # 5. Anthropic — the LLM API, plus the Max-plan auth endpoints (claude.com /
+    #    claude.ai) used when the run is served by the subscription token.
     - toFQDNs:
         - matchName: api.anthropic.com
+        - matchName: "claude.com"
+        - matchPattern: "*.claude.com"
+        - matchName: "claude.ai"
+        - matchPattern: "*.claude.ai"
       toPorts:
         - ports:
             - port: "443"
