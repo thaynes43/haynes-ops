@@ -27,10 +27,34 @@ spec:
   values:
     controllers:
       main:
-        replicas: 1
+        # haynesnetwork-ha saga (haynes-ops) plan 02, decision 2 (owner-ratified 2026-07-28):
+        # run 3 replicas so no single node failure or drain takes the front page down. Was 1
+        # (the tightest SPOF on the serving path). Safe at 3+: DB-backed sessions, zero
+        # filesystem state, background work confined to the sync CronJobs, ~10 pg conns/pod
+        # vs shared max 400. Concurrent migrate init-containers are serialized by the app's
+        # pg_advisory_lock (v0.90.5+, saga plan 01).
+        replicas: 3
         strategy: RollingUpdate
         annotations:
           reloader.stakater.com/auto: "true"
+        # Keep two main pods serving through any voluntary disruption (node drain/upgrade).
+        # Native app-template per-controller PDB: its selector auto-scopes to
+        # app.kubernetes.io/controller=main, so the ~18 sync CronJob pods are never counted.
+        podDisruptionBudget:
+          minAvailable: 2
+        # Spread the 3 replicas across distinct nodes. The labelSelector MUST include
+        # controller=main: every haynesnetwork pod (incl. the CronJobs) shares the name +
+        # instance labels, so without it the CronJob pods would be counted toward per-node skew.
+        pod:
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: haynesnetwork
+                  app.kubernetes.io/instance: haynesnetwork
+                  app.kubernetes.io/controller: main
         initContainers:
           # 1. Create the app's database + role inside cluster16 if missing.
           #    Idempotent; same pattern as todos-for-dues/authentik/paperless.
