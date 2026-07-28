@@ -27,6 +27,59 @@ SIG_POD_WAITING='kube_pod_container_status_waiting_reason{reason=~"CrashLoopBack
 SIG_POD_PHASE='kube_pod_status_phase{phase=~"Pending|Failed|Unknown"}'
 SIG_POD_QUERY="( (${SIG_POD_WAITING} == 1) or (${SIG_POD_PHASE} == 1) ) and ( (${SIG_POD_WAITING} offset ${SIG_OFFSET} == 1) or (${SIG_POD_PHASE} offset ${SIG_OFFSET} == 1) )"
 
+# ── STALE-CORPSE FILTER (2026-07-28) ── a terminal Failed pod is dropped from the
+# coordination set when it is demonstrably HISTORY, not a live regression:
+#   A. superseded — its owning CronJob has a NEWER Job that succeeded
+#   B. ancient    — Failed and older than COORD_STALE_POD_HOURS (default 24h)
+# Why: failedJobsHistory retention keeps Error/Init:Error pods in the API for days;
+# the phase query counted them forever, so one ghost list (11 pods, 4–17 days old)
+# re-paged critical every 6h and re-summoned remediate (07-24/25/28 — each run
+# concluded "stale pre-existing pods, no regression"). Live signals are untouched:
+# CrashLoop/ImagePull waiting pods are actively restarting (not phase=Failed),
+# Pending/Unknown have no ceiling, and a CronJob whose LATEST run failed still
+# counts (rule A requires a newer SUCCESS). Any lookup error KEEPS the pod —
+# fail-noisy, never fail-blind. A pod already deleted from the API is dropped (it
+# can still satisfy the query via the offset side while KSM series linger).
+COORD_STALE_POD_HOURS="${COORD_STALE_POD_HOURS:-24}"
+pod_is_stale_corpse() {  # $1=ns $2=pod ; rc0 = drop from the coordination set
+  local ns="$1" pod="$2" out rc pj phase start job cj jobs newer_ok
+  out="$(kubectl -n "$ns" get pod "$pod" -o json 2>&1)"; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    case "$out" in
+      *NotFound*|*"not found"*) return 0 ;;   # gone from the API -> not a live signal
+      *) return 1 ;;                          # unreadable -> keep (fail-noisy)
+    esac
+  fi
+  pj="$out"
+  phase="$(printf '%s' "$pj" | jq -r '.status.phase // ""' 2>/dev/null)"
+  [ "$phase" = "Failed" ] || return 1         # only terminal corpses are filterable
+  # A. superseded — owning CronJob has a newer succeeded Job
+  job="$(printf '%s' "$pj" | jq -r '[.metadata.ownerReferences[]? | select(.kind=="Job") | .name][0] // ""' 2>/dev/null)"
+  if [ -n "$job" ]; then
+    jobs="$(kubectl -n "$ns" get jobs -o json 2>/dev/null)"
+    if [ -n "$jobs" ]; then
+      cj="$(printf '%s' "$jobs" | jq -r --arg j "$job" '[.items[] | select(.metadata.name==$j) | .metadata.ownerReferences[]? | select(.kind=="CronJob") | .name][0] // ""' 2>/dev/null)"
+      if [ -n "$cj" ]; then
+        # RFC3339 creationTimestamps compare correctly as strings (same format, Z).
+        newer_ok="$(printf '%s' "$jobs" | jq -r --arg j "$job" --arg cj "$cj" '
+          ([.items[] | select(.metadata.name==$j) | .metadata.creationTimestamp][0] // "") as $t0
+          | [ .items[]
+              | select(any(.metadata.ownerReferences[]?; .kind=="CronJob" and .name==$cj))
+              | select($t0 != "" and .metadata.creationTimestamp > $t0)
+              | select((.status.succeeded // 0) >= 1) ] | length' 2>/dev/null)"
+        [ "${newer_ok:-0}" -gt 0 ] 2>/dev/null && return 0
+      fi
+    fi
+  fi
+  # B. ancient — Failed longer than the ceiling (a live cron failure re-fails on
+  # FRESH pods each schedule, so an old corpse only means retention, not regression)
+  start="$(printf '%s' "$pj" | jq -r '(.status.startTime // .metadata.creationTimestamp // "") | sub("\\.[0-9]+";"") | fromdateiso8601? // 0' 2>/dev/null)"
+  if [ "${start:-0}" -gt 0 ] 2>/dev/null && [ "$(( NOW - start ))" -gt "$(( COORD_STALE_POD_HOURS * 3600 ))" ]; then
+    return 0
+  fi
+  return 1
+}
+
 # collect_regressions — populate the globals REG_IDS (sorted-unique regression identifiers,
 # one per line) and SIG_PODS_STATUS (ok|blind). Identifier forms (stable + sortable):
 #   flux/<Kind>/<ns>/<name>   pod/<ns>/<pod>
@@ -66,6 +119,23 @@ collect_regressions() {
     pods_ids=""
   else
     pods_ids="$(printf '%s' "$pods_json" | jq -r '.data.result[] | "pod/\(.metric.namespace)/\(.metric.pod)"' 2>/dev/null)"
+  fi
+  # Drop stale corpses (see pod_is_stale_corpse above). Per-candidate kubectl is fine:
+  # the set is normally 0–12 entries on a 30-min cadence.
+  if [ -n "$pods_ids" ]; then
+    local _kept="" _id _ns _pod
+    while IFS= read -r _id; do
+      [ -z "$_id" ] && continue
+      _ns="${_id#pod/}"; _pod="${_ns#*/}"; _ns="${_ns%%/*}"
+      if pod_is_stale_corpse "$_ns" "$_pod"; then
+        type log >/dev/null 2>&1 && log "coordination: dropped stale corpse pod ${_ns}/${_pod} (superseded/ancient/gone)"
+      else
+        _kept="${_kept}${_id}"$'\n'
+      fi
+    done <<EOF
+$pods_ids
+EOF
+    pods_ids="$_kept"
   fi
   REG_IDS="$(printf '%s\n%s\n' "$flux_ids" "$pods_ids" | sed '/^$/d' | LC_ALL=C sort -u)"
 }
