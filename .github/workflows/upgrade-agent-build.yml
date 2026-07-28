@@ -11,7 +11,15 @@ on:
       - main
     paths:
       - 'scripts/upgrade-agent/**'
-      - '.github/workflows/upgrade-agent-build.yml'
+      # NOTE (2026-07-28): this workflow deliberately does NOT list its own file
+      # here. When it did, ANY edit to the workflow — including Renovate's Tier-0
+      # auto-merged action bumps (e.g. the cosign v2.6.4/v3.1.2 pair, 07-25) —
+      # rebuilt the image from unchanged source, re-pushed the same tag with a new
+      # digest, and Renovate then opened a pointless digest-drift PR. Trade-off: a
+      # workflow-file change no longer proves itself post-merge — after deliberately
+      # editing this workflow, run it once by hand (`gh workflow run <file>`); a
+      # broken action bump now surfaces at the next dispatch/source build instead
+      # of immediately.
   workflow_dispatch:
 
 permissions:
