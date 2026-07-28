@@ -1,8 +1,8 @@
 # haynesnetwork-ha — replicas, node-failure resilience, and measured uptime for the front page
 
 **Status:** executing (2026-07-28) — plans 01–06 ALL DONE (3 replicas across 3 nodes, uptime SLI
-live and green, badge on the front page as of v0.91.0, edge hardened); only 07 (the owner-scheduled
-failure drill) remains
+live and green, badge on the front page as of v0.91.0, edge hardened); drill Phase A (pod-level)
+PASSED zero-downtime; ONLY drill Phase B remains (owner reboots talosw02 via Omni at leisure)
 **Operating mode:** autonomous per the dev-env precedent — agents author, review, merge, and verify
 saga PRs end-to-end; pause only for genuinely new decisions outside the recorded ones or
 destructive/irreversible actions. App-side legs follow the haynesnetwork repo's own docs-first
@@ -81,6 +81,7 @@ badges), kube-prometheus-stack + Alertmanager→Pushover. All status tooling is 
 | 4 | 2026-07-28 | The front-page badge is **rendered app-side from the in-cluster Gatus API** (server-side fetch → tRPC → token-themed `@hnet/ui` component). No public exposure of gatus/kromgo/grafana, no third-party badge iframe. | DECIDED (owner 2026-07-28) |
 | 5 | 2026-07-28 | Migrator serialization via **`pg_advisory_lock` in the app's migrate script**, not a Flux-ordered migration Job — keeps the GitOps surface unchanged and the init-container pattern intact. | DECIDED (owner 2026-07-28) |
 | 6 | 2026-07-28 | Homepage content expansion is a **future separate saga** (owner directive) — nothing beyond the uptime badge lands on the page from this saga. | DECIDED (owner) |
+| 7 | 2026-07-28 | **SLO: the front page serves ≥ 99.9% over rolling 30 days** (~43 min/month error budget) — the target the badge and drills are judged against. Alerting unchanged (gatus 3-consecutive-failures → Pushover; `BlackboxProbeFailed` 15m critical). Owner delegated the number in-session. | DECIDED (owner) |
 
 ## Plan backlog
 
