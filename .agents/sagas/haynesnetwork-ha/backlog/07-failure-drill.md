@@ -17,6 +17,10 @@ any one node and watch the dashboards shrug" — this plan is where we watch.
 
 ## Approach (high level)
 
+Rollout-order fact (from plan 06): `traefik-internal`'s Flux Kustomization has
+`dependsOn: traefik-external` (external installs the shared traefik CRDs), so any drill step that
+reconciles the edge serializes external-before-internal — script the drill accordingly.
+
 Owner-scheduled window (this one is deliberately NOT fully autonomous — it perturbs the live
 estate; get an explicit go in-session). Scripted sequence, observing Gatus + kubectl throughout:
 

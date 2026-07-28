@@ -1,6 +1,10 @@
 # 06 — Edge hardening: traefik PDB + spread (+ metrics stretch)
 
-**Status:** planned
+**Status:** done (core; metrics stretch not taken) — [PR #2279](https://github.com/thaynes43/haynes-ops/pull/2279).
+Native chart values on both instances: hostname topologySpread (maxSkew 1, DoNotSchedule,
+instance-scoped selector) + PDB minAvailable 2 (ALLOWED DISRUPTIONS 1 live). Rolled with zero
+blip. Finding: traefik-internal's Kustomization `dependsOn: traefik-external` (shared CRDs), so
+edge rollouts always serialize external-first — see plan 07.
 **Repo:** haynes-ops (`kubernetes/main/apps/network/traefik/{traefik-external,traefik-internal}/`)
 **Depends on:** nothing
 **Parallel with:** 01, 03, 05

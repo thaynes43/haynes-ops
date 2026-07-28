@@ -1,6 +1,13 @@
 # 03 — Uptime SLI: Gatus apex check + blackbox Probe + alerting
 
-**Status:** planned
+**Status:** done — [PR #2280](https://github.com/thaynes43/haynes-ops/pull/2280), live-verified:
+gatus endpoint `external_haynesnetwork` UP (apex via public resolver, 1m interval, pushover 3/3),
+blackbox Probe `haynesnetwork` feeding `probe_success=1` under `BlackboxProbeFailed`. Bespoke
+`gatus.io/enabled` ConfigMap co-located with the app (the shared component cannot express the apex
+or a strict `== 200`). Badge contract for plan 04: in-cluster base
+`http://gatus.observability.svc.cluster.local:80`, uptime ratio (plain-text float 0..1) at
+`/api/v1/endpoints/external_haynesnetwork/uptimes/{1h|24h|7d|30d}`; the `/statuses` JSON's
+top-level `uptime` is null — use the dedicated uptimes endpoints.
 **Repo:** haynes-ops (`kubernetes/main/apps/observability/gatus/` + frontend app kustomization)
 **Depends on:** nothing
 **Parallel with:** 01, 05, 06
