@@ -1,6 +1,10 @@
 # 02 — App replicas: 3 + topology spread + PDB
 
-**Status:** planned
+**Status:** done — [PR #2282](https://github.com/thaynes43/haynes-ops/pull/2282). replicas 3 on 3
+distinct nodes (talosm01/talosm03/talosw01), native app-template 5.0.1 per-controller PDB
+minAvailable 2, hostname topologySpread scoped by `controller: main` so CronJob pods are excluded.
+Zero gatus red during the rollout; the three concurrent migrate init-containers serialized cleanly
+on the plan-01 advisory lock.
 **Repo:** haynes-ops (`kubernetes/main/apps/frontend/haynesnetwork/app/helmrelease.yaml`)
 **Depends on:** 01 (soft — a plain 1→2 bump is safe without it; cold multi-pod starts are not)
 **Parallel with:** —
