@@ -40,7 +40,23 @@ spec:
       podAnnotations: {}
       additionalContainers: []
       initContainers: []
-      
+
+    # Guarantee the 3 replicas stay spread across distinct nodes (was scheduler
+    # luck) so a drain/reschedule can't co-locate the edge onto one node.
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: '{{ template "traefik.name" . }}'
+            app.kubernetes.io/instance: '{{ template "traefik.instance-name" . }}'
+
+    # Keep >=2 replicas serving through any voluntary disruption (node drain).
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 2
+
     ports:
       web:
         http:
