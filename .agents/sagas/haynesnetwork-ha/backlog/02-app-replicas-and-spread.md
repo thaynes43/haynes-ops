@@ -1,4 +1,4 @@
-# 02 — App replicas: 2 + topology spread + PDB
+# 02 — App replicas: 3 + topology spread + PDB
 
 **Status:** planned
 **Repo:** haynes-ops (`kubernetes/main/apps/frontend/haynesnetwork/app/helmrelease.yaml`)
@@ -14,13 +14,14 @@ The front page survives the loss of any single node with zero-to-blip user-visib
 `haynesnetwork-main` is 1 replica on talosw01 — the tightest SPOF on the whole serving path. The
 statelessness audit (saga README, Current state) found no correctness blockers for 2+ replicas:
 DB-backed sessions, no filesystem state, background work confined to CronJobs, connection budget
-trivial (10/pod vs shared max 400).
+trivial (10/pod vs shared max 400; three replicas = 30).
 
 ## Approach (high level)
 
-In the app-template values: `replicas: 2`; a `topologySpreadConstraints` on hostname
-(`maxSkew: 1`, `whenUnsatisfiable: DoNotSchedule`) so the two replicas never co-locate; a
-`PodDisruptionBudget` `minAvailable: 1` so drains keep one serving. Verify the rollout serializes
+In the app-template values: `replicas: 3` (owner ruling, decision 2); a
+`topologySpreadConstraints` on hostname (`maxSkew: 1`, `whenUnsatisfiable: DoNotSchedule`) so the
+three replicas land on three distinct nodes; a `PodDisruptionBudget` `minAvailable: 2` so drains
+keep two serving. Verify the rollout serializes
 migrations (maxSurge math), then kubectl-watch a drain of the node hosting one replica while
 curling the apex. CronJobs are untouched (single-writer by `concurrencyPolicy: Forbid`).
 
@@ -29,6 +30,6 @@ scale — no action.
 
 ## Acceptance
 
-- 2 pods on 2 distinct nodes; PDB active; rolling deploy stays green.
+- 3 pods on 3 distinct nodes; PDB active; rolling deploy stays green.
 - Drain of either hosting node: apex keeps answering (Gatus shows no red once 03 lands).
 - The deploy runbook's rollout-watch section still holds (no runbook drift).

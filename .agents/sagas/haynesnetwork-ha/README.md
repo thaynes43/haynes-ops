@@ -1,6 +1,6 @@
 # haynesnetwork-ha — replicas, node-failure resilience, and measured uptime for the front page
 
-**Status:** planned (2026-07-28) — exploration done, backlog ready to execute
+**Status:** ready (2026-07-28) — exploration done, decisions ratified by the owner, backlog executable
 **Operating mode:** autonomous per the dev-env precedent — agents author, review, merge, and verify
 saga PRs end-to-end; pause only for genuinely new decisions outside the recorded ones or
 destructive/irreversible actions. App-side legs follow the haynesnetwork repo's own docs-first
@@ -74,10 +74,10 @@ badges), kube-prometheus-stack + Alertmanager→Pushover. All status tooling is 
 | # | Date | Decision | Status |
 |---|------|----------|--------|
 | 1 | 2026-07-28 | Saga lives in haynes-ops (dev-env precedent); app-side legs mint numbered plans in `haynesnetwork/.agents/plans/` and are cross-linked from the backlog table. | DECIDED (convention) |
-| 2 | 2026-07-28 | Target **replicas: 2** with a `topologySpreadConstraint` across nodes + PDB `minAvailable: 1`. Two survives any single node loss on a 6-node pool; 3 is not justified by load. Revisit upward only on evidence. | PROPOSED |
-| 3 | 2026-07-28 | **Gatus is the uptime source of record** for haynesnetwork.com (external HTTP check on the apex via public resolver, uptime history + badge math + pushover alerting in one tool). A blackbox `Probe` + PrometheusRule is an optional secondary, not required for the badge. | PROPOSED |
-| 4 | 2026-07-28 | The front-page badge is **rendered app-side from the in-cluster Gatus API** (server-side fetch → tRPC → token-themed `@hnet/ui` component). No public exposure of gatus/kromgo/grafana, no third-party badge iframe. | PROPOSED |
-| 5 | 2026-07-28 | Migrator serialization via **`pg_advisory_lock` in the app's migrate script**, not a Flux-ordered migration Job — keeps the GitOps surface unchanged and the init-container pattern intact. | PROPOSED |
+| 2 | 2026-07-28 | Target **replicas: 3** with a `topologySpreadConstraint` across nodes + PDB `minAvailable: 2` — owner ruling 2026-07-28 (over the proposed 2): survives a double fault and keeps two serving through any drain. | DECIDED (owner) |
+| 3 | 2026-07-28 | **Run BOTH probes** (owner ruling 2026-07-28, home-operations precedent): Gatus is the uptime source of record (apex check, history, badge math, direct Pushover) AND a blackbox `Probe` feeds `probe_success` into Prometheus under the existing `BlackboxProbeFailed` critical rule — two independent alarm paths across the single-replica monitoring plane. | DECIDED (owner) |
+| 4 | 2026-07-28 | The front-page badge is **rendered app-side from the in-cluster Gatus API** (server-side fetch → tRPC → token-themed `@hnet/ui` component). No public exposure of gatus/kromgo/grafana, no third-party badge iframe. | DECIDED (owner 2026-07-28) |
+| 5 | 2026-07-28 | Migrator serialization via **`pg_advisory_lock` in the app's migrate script**, not a Flux-ordered migration Job — keeps the GitOps surface unchanged and the init-container pattern intact. | DECIDED (owner 2026-07-28) |
 | 6 | 2026-07-28 | Homepage content expansion is a **future separate saga** (owner directive) — nothing beyond the uptime badge lands on the page from this saga. | DECIDED (owner) |
 
 ## Plan backlog
@@ -85,7 +85,7 @@ badges), kube-prometheus-stack + Alertmanager→Pushover. All status tooling is 
 | Plan | Title | Repo | Depends on | Parallel? |
 |------|-------|------|------------|-----------|
 | [01](backlog/01-migrator-advisory-lock.md) | Migrator advisory lock (serialize concurrent migrate init-containers) | haynesnetwork | — | yes |
-| [02](backlog/02-app-replicas-and-spread.md) | App replicas: 2 + topology spread + PDB | haynes-ops | 01 (soft) | after 01 |
+| [02](backlog/02-app-replicas-and-spread.md) | App replicas: 3 + topology spread + PDB | haynes-ops | 01 (soft) | after 01 |
 | [03](backlog/03-uptime-sli-gatus.md) | Uptime SLI: Gatus apex check + alerting | haynes-ops | — | yes |
 | [04](backlog/04-front-page-uptime-badge.md) | Front-page uptime badge (app dashboard) | haynesnetwork | 03 | — |
 | [05](backlog/05-shared-rate-limit-storage.md) | Rate-limit storage: in-memory → database | haynesnetwork | — | yes |

@@ -1,4 +1,4 @@
-# 03 — Uptime SLI: Gatus apex check + alerting
+# 03 — Uptime SLI: Gatus apex check + blackbox Probe + alerting
 
 **Status:** planned
 **Repo:** haynes-ops (`kubernetes/main/apps/observability/gatus/` + frontend app kustomization)
@@ -25,9 +25,10 @@ via public resolver, condition `[STATUS] == 200`, sensible interval, pushover al
 failure/resolve thresholds. This exercises the full WAN path (Cloudflare edge → tunnel → traefik →
 pod) — exactly what "the front page is up" means.
 
-Optional secondary (decide in-session, cheap): a blackbox `Probe` (module `http_2xx`) on the apex,
-which the existing `BlackboxProbeFailed` critical rule covers automatically, giving
-`probe_success` in Prometheus alongside Gatus's `gatus_results_*` series.
+Also REQUIRED (owner ruling, decision 3 — two independent alarm paths): a blackbox `Probe`
+(module `http_2xx`) on the apex, which the existing `BlackboxProbeFailed` critical rule covers
+automatically, giving `probe_success` in Prometheus alongside Gatus's `gatus_results_*` series.
+Gatus and Prometheus live on different nodes; either one alone can page.
 
 ## Acceptance
 
@@ -35,3 +36,4 @@ which the existing `BlackboxProbeFailed` critical rule covers automatically, giv
   in Prometheus; a forced failure (scale app to 0 in a test window — owner-visible action, do it
   inside plan 07's drill instead if timing allows) pushes a Pushover alert and a resolve.
 - Uptime percentage for 24h/7d/30d retrievable from the Gatus API (the badge contract for 04).
+- `probe_success{...haynesnetwork...}` visible in Prometheus and covered by `BlackboxProbeFailed`.
