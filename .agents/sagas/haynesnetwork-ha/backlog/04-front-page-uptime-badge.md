@@ -1,6 +1,12 @@
 # 04 — Front-page uptime badge (app dashboard)
 
-**Status:** planned
+**Status:** done — haynesnetwork PLAN-064 / ADR-079 /
+[PR #502](https://github.com/thaynes43/haynesnetwork/pull/502), released v0.91.0. Shields-style
+pill under the Home greeting (Uptime label + status dot + 30d percent, tooltip with 24h/7d/30d);
+SSR-baked via `metrics.uptime` (60s memo, 3s deadline) over a keyless GatusClient; honest muted
+"unmeasured" state; coordinator UX-reviewed via screenshot matrix. No netpol change was needed
+(no policies exist in frontend/observability). Env contract defaults are correct in-cluster
+(`GATUS_URL`, `GATUS_UPTIME_ENDPOINT_KEY`) — no helmrelease change.
 **Repo:** haynesnetwork (mints a numbered plan in `.agents/plans/`; docs-first — likely a small
 ADR/design note since it adds a dashboard surface + a new upstream read)
 **Depends on:** 03 (the Gatus endpoint must exist and have history)

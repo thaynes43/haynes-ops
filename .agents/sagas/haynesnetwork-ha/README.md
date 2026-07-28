@@ -1,7 +1,8 @@
 # haynesnetwork-ha — replicas, node-failure resilience, and measured uptime for the front page
 
-**Status:** executing (2026-07-28) — plans 01, 03, 05, 06 DONE (uptime SLI live, edge hardened,
-app replica-ready and released as v0.90.5); next up: 02 (replicas 3), 04 (badge), then 07 (drill)
+**Status:** executing (2026-07-28) — plans 01–06 ALL DONE (3 replicas across 3 nodes, uptime SLI
+live and green, badge on the front page as of v0.91.0, edge hardened); only 07 (the owner-scheduled
+failure drill) remains
 **Operating mode:** autonomous per the dev-env precedent — agents author, review, merge, and verify
 saga PRs end-to-end; pause only for genuinely new decisions outside the recorded ones or
 destructive/irreversible actions. App-side legs follow the haynesnetwork repo's own docs-first
