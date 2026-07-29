@@ -111,10 +111,15 @@ spec:
             command: ["/bin/bash", "/opt/dev-env/scripts/gh-token-refresh.sh"]
             env:
               # Down-scope the minted token. NOTE: may only name permissions the App
-              # itself was GRANTED — requesting ungranted ones (e.g. actions/issues,
-              # tried 2026-07-13) makes the token mint 422. haynes-dev-bot grants:
-              # contents/PRs/workflows write + checks read.
-              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","workflows":"write","checks":"read"}'
+              # itself was GRANTED — requesting ungranted ones makes the token mint
+              # 422 (proven 2026-07-13 with actions/issues) and after the old token's
+              # 1h expiry gh goes DARK in the pod. ORDER MATTERS: only add a
+              # permission here AFTER granting it on the App (github.com/settings/apps
+              # → haynes-dev-bot → Permissions & events) AND approving the update on
+              # the installation. issues:write added 2026-07-28 (agents were blocked
+              # from commenting/closing #1809). haynes-dev-bot grants: contents/PRs/
+              # workflows/issues write + checks read.
+              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","workflows":"write","issues":"write","checks":"read"}'
             envFrom:
               - secretRef:
                   name: dev-env-bot-secret
