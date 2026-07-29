@@ -20,3 +20,6 @@ Active sagas:
 
 - [dev-env](dev-env/README.md) — 24/7 in-cluster agent development environment
   (Claude Code / Codex / code-server workhorse pod; Shepherd becomes a dispatcher).
+- [haynesnetwork-ha](haynesnetwork-ha/README.md) — replicas + node-failure resilience for the
+  haynesnetwork.com front page, uptime as a measured metric (Gatus SLI), and a front-page
+  uptime badge.

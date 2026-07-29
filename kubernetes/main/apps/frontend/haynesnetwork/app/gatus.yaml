@@ -1,0 +1,37 @@
+---
+# Bespoke Gatus endpoint for the haynesnetwork.com APEX front page (saga
+# haynesnetwork-ha, plan 03 — uptime SLI). The shared external-check component
+# (kubernetes/shared/components/gatus/external) can only template a
+# <subdomain>.<domain> URL and only asserts "[STATUS] < 500"; the front page is
+# the bare apex and we want a strict 200, so this endpoint is written out in full.
+#
+# The k8s-sidecar on gatus-0 watches gatus.io/enabled ConfigMaps cluster-wide and
+# loads this into /config automatically. Alerting (pushover token/thresholds) is
+# supplied globally by gatus buddy.yaml default-alert.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: haynesnetwork-gatus-ep
+  labels:
+    gatus.io/enabled: "true"
+data:
+  config.yaml: |
+    endpoints:
+      - name: haynesnetwork
+        group: external
+        url: "https://haynesnetwork.com/api/health"
+        interval: 1m
+        client:
+          # Public resolver so the check exercises the real WAN path
+          # (Cloudflare edge -> tunnel -> traefik-external -> pod), not any
+          # in-cluster split-horizon shortcut. Matches the shared external
+          # component's pattern.
+          dns-resolver: tcp://1.1.1.1:53
+        conditions:
+          - "[STATUS] == 200"
+        alerts:
+          - type: pushover
+            description: "haynesnetwork.com apex health check failed"
+            send-on-resolved: true
+            failure-threshold: 3
+            success-threshold: 3

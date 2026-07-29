@@ -48,7 +48,7 @@ spec:
               # v0.6.2 worker: the login-form hydration stale-element hardening
               # (thaynes43/ytdrivarr#9) + the login/bearer/scroll telemetry fix so the auth
               # metrics stop reading zero (thaynes43/ytdrivarr#26), pinned by immutable digest.
-              tag: v0.9.0@sha256:1952335c62ccfe790ec06e31f4b0c6e353c9e5884d60b63785855c0a2696c096
+              tag: v0.9.1@sha256:23bac62c67619edca37495629cb762f19920add66917ec02e314d599b1b749af
             env:
               TZ: America/New_York
               LOG_LEVEL: info
