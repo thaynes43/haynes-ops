@@ -72,6 +72,7 @@ if [ "$have" = "$CNPG_PLUGIN_VERSION" ]; then
   log "kubectl-cnpg $CNPG_PLUGIN_VERSION present"
 else
   log "installing kubectl-cnpg $CNPG_PLUGIN_VERSION (have: ${have:-none})…"
+  mkdir -p "$HOME/.local/bin"  # fresh-PVC boot: this runs before the shell-defaults mkdir below
   if curl -fsSL "https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v${CNPG_PLUGIN_VERSION}/kubectl-cnpg_${CNPG_PLUGIN_VERSION}_linux_x86_64.tar.gz" \
        | tar -xz -C "$HOME/.local/bin" kubectl-cnpg 2>/tmp/cnpg-plugin-install.log; then
     chmod +x "$HOME/.local/bin/kubectl-cnpg"
