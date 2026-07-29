@@ -59,6 +59,28 @@ if [ -n "${CODEX_VERSION:-}" ]; then
   fi
 fi
 
+# ── kubectl-cnpg: pinned plugin install (CNPG instance surgery) ─────────────────
+# `kubectl cnpg destroy <cluster> <n>` is the sanctioned fix for the recurring
+# diverged-standby wedge (deletes the instance's PVC + pod so the operator
+# re-clones; PVC delete is granted namespace-scoped in the database app's
+# dev-env-rbac.yaml). Pin tracks the in-cluster operator minor — bump together.
+# Same contract as codex above: GitHub releases → ~/.local/bin on the PVC,
+# idempotent, non-fatal (fallback is plain PVC+pod delete).
+CNPG_PLUGIN_VERSION="${CNPG_PLUGIN_VERSION:-1.30.0}"
+have="$("$HOME/.local/bin/kubectl-cnpg" version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+if [ "$have" = "$CNPG_PLUGIN_VERSION" ]; then
+  log "kubectl-cnpg $CNPG_PLUGIN_VERSION present"
+else
+  log "installing kubectl-cnpg $CNPG_PLUGIN_VERSION (have: ${have:-none})…"
+  if curl -fsSL "https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v${CNPG_PLUGIN_VERSION}/kubectl-cnpg_${CNPG_PLUGIN_VERSION}_linux_x86_64.tar.gz" \
+       | tar -xz -C "$HOME/.local/bin" kubectl-cnpg 2>/tmp/cnpg-plugin-install.log; then
+    chmod +x "$HOME/.local/bin/kubectl-cnpg"
+    log "kubectl-cnpg installed → $("$HOME/.local/bin/kubectl-cnpg" version 2>/dev/null || echo '?')"
+  else
+    log "WARN kubectl-cnpg install failed (see /tmp/cnpg-plugin-install.log) — fall back to PVC+pod delete"
+  fi
+fi
+
 # ── git identity + credentials (saga Decision #5: haynes-ops-bot everywhere) ────
 # Commits author as the bot; pushes/clones read the fresh minted token per call via
 # the credential helper (never a static token in .gitconfig).

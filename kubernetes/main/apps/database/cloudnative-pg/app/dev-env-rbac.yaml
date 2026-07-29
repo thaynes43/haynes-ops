@@ -1,0 +1,30 @@
+---
+# CNPG instance surgery for the dev-env agent (2026-07-29). The recurring
+# diverged-standby wedge (a replica that replayed past a failover fork point can
+# never re-join — CNPG only rewinds demoted primaries) is fixed by destroy +
+# re-clone, which deletes the instance's PVC and pod. Pod delete is already in
+# the dev-env-operator ClusterRole; PVC delete is deliberately NOT cluster-wide —
+# it is granted here, scoped to this namespace, so the agent can never delete a
+# media/HA volume. Lives with the database app (not dev-env) because dev-env's
+# Flux targetNamespace would rewrite the Role's namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-cnpg-remediation
+rules:
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    verbs: [delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-cnpg-remediation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-cnpg-remediation
+subjects:
+  - kind: ServiceAccount
+    name: dev-env
+    namespace: dev

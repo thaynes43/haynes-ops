@@ -10,7 +10,10 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
   Create `git worktree add ~/work/<task-slug> -b agent/<task-slug>` and work there.
   Multiple agents share this pod; the canonical clones are fetch-only.
 - **GitOps strictly** for the haynes-ops repo: cluster changes go through git + Flux.
-  The kubectl ServiceAccount here is read-only (operator tier pending, saga plan 05)
+  The kubectl ServiceAccount is OPERATOR tier (saga plan 05): broad read minus
+  secrets, plus targeted runtime writes only (pod delete / rollout restart, flux
+  reconcile + suspend, batch Jobs, CronJob suspend, and PVC delete **scoped to the
+  `database` namespace** for CNPG destroy+re-clone). Deploys still go through git
   — do not fight RBAC denials, they are the design.
 - **Never push to main.** Branch + PR, always.
 - Egress is a default-deny allowlist (CiliumNetworkPolicy `dev-env`). If a fetch
@@ -23,7 +26,7 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 |---|---|---|
 | claude | ✅ Max plan | credential on PVC, self-refreshes |
 | codex | ✅ ChatGPT plan | `~/.codex/auth.json`, self-refreshes |
-| kubectl / flux | ✅ in-cluster SA | READ-ONLY (get/list/watch) |
+| kubectl / flux | ✅ in-cluster SA | OPERATOR tier: read all-but-secrets; writes limited to pod delete, rollout restart, flux reconcile/suspend, Jobs, CronJob suspend + PVC delete in `database` only (`kubectl cnpg destroy`, plugin at `~/.local/bin/kubectl-cnpg`). No exec/secrets/RBAC |
 | gh / git push | ✅ haynes-dev-bot | App token, all repos, refreshed every 40min; commits/PRs author as the dev bot |
 | sops / age | ❌ deliberately absent | the age key never enters this pod without an explicit decision |
 | omnictl | ✅ READ-ONLY (Reader SA, proxied) | Omni `Reader` service account via `$OMNI_ENDPOINT` + `$OMNI_SERVICE_ACCOUNT_KEY` (SaaS `haynes.na-west-1.omni.siderolabs.io`); `omnictl get clusters/machinestatus` etc. Mutations denied by the Reader role — don't test by attempting them |
