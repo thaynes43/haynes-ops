@@ -3,12 +3,12 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: &app dragonfly-operator
+  name: dragonfly-operator
 spec:
   interval: 30m
   chartRef:
     kind: OCIRepository
-    name: app-template
+    name: dragonfly-operator
   install:
     remediation:
       retries: 3
@@ -18,83 +18,40 @@ spec:
       strategy: rollback
       retries: 3
   values:
-    controllers:
-      dragonfly-operator:
-        replicas: 1
-        strategy: RollingUpdate
-        containers:
-          app:
-            image:
-              repository: ghcr.io/dragonflydb/operator
-              tag: v1.6.1@sha256:b11411142935f92ed0ec30a5ddeb31680e09ab66beecb827cb0224f1c4238638
-            command: [/manager]
-            args:
-              - --health-probe-bind-address=:8081
-              - --metrics-bind-address=:8080
-            probes:
-              liveness:
-                enabled: true
-                custom: true
-                spec:
-                  httpGet:
-                    path: /healthz
-                    port: &port 8081
-                  initialDelaySeconds: 15
-                  periodSeconds: 20
-                  timeoutSeconds: 1
-                  failureThreshold: 3
-              readiness:
-                enabled: true
-                custom: true
-                spec:
-                  httpGet:
-                    path: /readyz
-                    port: *port
-                  initialDelaySeconds: 5
-                  periodSeconds: 10
-                  timeoutSeconds: 1
-                  failureThreshold: 3
-            resources:
-              requests:
-                cpu: 10m
-              limits:
-                memory: 128Mi
-            securityContext:
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: true
-              capabilities: { drop: [ALL] }
-        pod:
-          securityContext:
-            runAsUser: 1000
-            runAsGroup: 1000
-            runAsNonRoot: true
-          topologySpreadConstraints:
-            - maxSkew: 1
-              topologyKey: kubernetes.io/hostname
-              whenUnsatisfiable: DoNotSchedule
-              labelSelector:
-                matchLabels:
-                  app.kubernetes.io/name: *app
-    service:
-      app:
-        controller: *app
-        ports:
-          http:
-            port: *port
-          metrics:
-            port: 8080
+    # The retired app-template Deployment was also named "dragonfly-operator";
+    # spec.selector is immutable, so the chart's Deployment needs a different
+    # name — helm removes the old one and creates this one in the same upgrade.
+    fullnameOverride: dragonfly-operator-controller
+    crds:
+      # Templated CRD: upgraded on every chart bump (no build-time remote fetch,
+      # no hand-synced crd.yaml), kept on uninstall via helm.sh/resource-policy.
+      install: true
+      keep: true
+    # No kube-rbac-proxy sidecar — metrics stay plain HTTP :8080 for the
+    # ServiceMonitor below, same as the previous app-template setup.
+    rbacProxy:
+      enabled: false
+    manager:
+      image:
+        repository: ghcr.io/dragonflydb/operator
+      extraArgs:
+        # Only defaulted by the chart when the rbac-proxy is enabled.
+        - --metrics-bind-address=:8080
+      resources:
+        requests:
+          cpu: 10m
+        limits:
+          memory: 128Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: { drop: [ALL] }
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
     serviceMonitor:
-      app:
-        serviceName: *app
-        endpoints:
-          - port: metrics
-            scheme: http
-            path: /metrics
-            interval: 1m
-            scrapeTimeout: 10s
-    defaultPodOptions:
-      # app-template v5 defaults automountServiceAccountToken to false; the
-      # dragonfly-operator needs the SA token (ClusterRole) to reconcile its CRs.
-      automountServiceAccountToken: true
-    serviceAccount:
-      dragonfly-operator: {}
+      enabled: true
+      interval: 1m
