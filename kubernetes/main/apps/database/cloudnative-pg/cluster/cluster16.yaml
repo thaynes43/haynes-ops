@@ -10,6 +10,18 @@ spec:
   maxSyncReplicas: 0
   imageName: ghcr.io/cloudnative-pg/postgresql:16.4-34
   primaryUpdateStrategy: unsupervised
+  # A short network blip (e.g. the ~2min UDM auto-update reboot, 2026-07-29)
+  # must not trigger a failover: the timeline switch can wedge a standby that
+  # replayed past the fork point (CNPG never rewinds standbys → manual
+  # destroy + re-clone is the only way back).
+  failoverDelay: 120
+  # Only count a replica Ready while it is actually streaming and near-current,
+  # so a wedged/lagging replica drops out of the -r/-ro Services instead of
+  # serving stale reads while the Cluster reports healthy.
+  probes:
+    readiness:
+      type: streaming
+      maximumLag: 64Mi
   storage:
     size: 100Gi
     storageClass: openebs-hostpath
