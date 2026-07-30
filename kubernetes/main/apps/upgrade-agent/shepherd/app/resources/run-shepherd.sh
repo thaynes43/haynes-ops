@@ -22,6 +22,11 @@ set -uo pipefail
 
 MODE="${UPGRADE_AGENT_MODE:-dryrun}"
 MODEL="${UPGRADE_AGENT_MODEL:-sonnet}"
+# MAX_TURNS is a METERED-path (api) spend control only — a plan-served run costs $0,
+# so capping its turns just strands finished work (2026-07-30: the cilium one-way vet
+# authored PR #2310 then died at turn 40 doing post-PR diligence → Error pod, triage
+# noise, no page). On the plan path the run is bounded by RUN_TIMEOUT instead; the
+# api fallback re-applies the turn cap automatically (see run_claude).
 MAX_TURNS="${UPGRADE_AGENT_MAX_TURNS:-40}"
 MAX_BUDGET="${UPGRADE_AGENT_MAX_BUDGET_USD:-5.00}"
 RUN_TIMEOUT="${UPGRADE_AGENT_TIMEOUT:-20m}"
@@ -292,10 +297,14 @@ cd "${WORKDIR}"
 
 # ── Tool allowlist + task, per mode. dontAsk auto-denies anything NOT listed. ──
 READONLY_TOOLS=(Read Grep Glob
-  "Bash(git log:*)" "Bash(git diff:*)" "Bash(git show:*)" "Bash(git status:*)"
+  "Bash(git log:*)" "Bash(git diff:*)" "Bash(git show:*)" "Bash(git status:*)" "Bash(git fetch:*)"
   "Bash(gh pr list:*)" "Bash(gh pr view:*)" "Bash(gh pr diff:*)" "Bash(gh pr checks:*)"
-  "Bash(gh release view:*)" "Bash(gh release list:*)" "Bash(gh api repos/thaynes43/*)"
-  "Bash(kubectl get:*)" "Bash(kubectl describe:*)" "Bash(flux get:*)" "Bash(grep:*)" "Bash(cat:*)")
+  # gh api repos/* (2026-07-30): release-note diligence reads UPSTREAM repos too
+  # (cilium CRD listings burned 8 denials in the 07-30 run). Mutation risk is
+  # contained by the installation-scoped bot token (thaynes43/haynes-ops only) +
+  # the GitHub-only egress CNP.
+  "Bash(gh release view:*)" "Bash(gh release list:*)" "Bash(gh api repos/*)"
+  "Bash(kubectl get:*)" "Bash(kubectl describe:*)" "Bash(kubectl version:*)" "Bash(flux get:*)" "Bash(grep:*)" "Bash(cat:*)")
 WRITE_TOOLS=(Edit Write
   "Bash(git switch:*)" "Bash(git checkout -b:*)" "Bash(git add:*)" "Bash(git commit:*)"
   "Bash(git push:*)" "Bash(gh pr create:*)" "Bash(gh pr comment:*)")
@@ -376,7 +385,7 @@ fi
 SAFETY_PROMPT="SAFETY: read-only cluster default; ALL cluster changes go via a PR to kubernetes/**; NEVER kubectl apply/exec/delete; ${SAFETY_MERGE}; stay inside kubernetes/**."
 # (1) PR AUTHORING — the fix for the heredoc dontAsk denial that blocked the shepherd from
 # opening its own PRs (immich #1966): author the body as a FILE, never a command-sub.
-SAFETY_PROMPT="${SAFETY_PROMPT} PR AUTHORING: to open a PR, FIRST write the body to a file with the Write tool (e.g. /tmp/pr-body.md), THEN run 'gh pr create --title \"...\" --body-file /tmp/pr-body.md'. NEVER build the body with a heredoc or \$(cat ...) command substitution — that compound form is auto-denied and the PR will silently fail to open."
+SAFETY_PROMPT="${SAFETY_PROMPT} PR AUTHORING: to open a PR, FIRST write the body to a file with the Write tool (e.g. /tmp/pr-body.md), THEN run 'gh pr create --title \"...\" --body-file /tmp/pr-body.md'. NEVER build the body with a heredoc or \$(cat ...) command substitution — that compound form is auto-denied and the PR will silently fail to open. The same trap applies to commits and gh api: write the message to a file and use 'git commit -F /tmp/commit-msg.txt' (NEVER -m with a \$(...) substitution), and pass gh api paths UNQUOTED (quoting the path defeats the allowlist matcher and the call is denied)."
 # (2) BACKUP GATE — before touching anything with durable state, confirm the auto-backup
 # safety net is intact (read-only; the shepherd has kubectl get). A stale/failed backup
 # means a human is needed (the CNPG/VolSync backup-failure alerts already page), so HOLD.
@@ -391,10 +400,16 @@ if [ "$MODE" != "dryrun" ]; then
   SAFETY_PROMPT="${SAFETY_PROMPT} VET MARKER: when you FINISH vetting a Renovate PR — whatever the verdict (auto-merge enabled, declined, held, left-for-Renovate, or you authored a supporting-edit PR for it) — record the vet so it is never re-done at this state: get the head SHA with 'gh pr view <N> --json headRefOid', use the Write tool to author /tmp/vet-comment.md whose FIRST line is exactly '<!-- shepherd-vet sha=<HEAD_SHA> -->' followed by 'VERDICT: <one word>' and 2-4 sentences of reasoning, then run 'gh pr comment <N> --body-file /tmp/vet-comment.md'. Never build the comment inline. Conversely, SKIP (do not re-vet) any PR whose CURRENT head SHA already appears in a shepherd-vet comment — treat its recorded verdict as done."
 fi
 
-log "MODE=$MODE auth=$AUTH_PATH model=$MODEL max_turns=$MAX_TURNS budget=\$$MAX_BUDGET cap=\$$MONTHLY_CAP"
+if [ "$AUTH_PATH" = "plan" ]; then
+  log "MODE=$MODE auth=$AUTH_PATH model=$MODEL max_turns=unbounded(timeout=$RUN_TIMEOUT; api fallback=$MAX_TURNS) budget=\$$MAX_BUDGET cap=\$$MONTHLY_CAP"
+else
+  log "MODE=$MODE auth=$AUTH_PATH model=$MODEL max_turns=$MAX_TURNS budget=\$$MAX_BUDGET cap=\$$MONTHLY_CAP"
+fi
 
-# One claude run. --max-budget-usd is a METERED-path concept; passing it on the plan
-# path is meaningless, so it is only added for api. Writes JSON to $1.
+# One claude run. --max-turns and --max-budget-usd are METERED-path spend controls;
+# a plan-served run is $0, so its only bound is RUN_TIMEOUT (capping turns there just
+# strands finished work — see MAX_TURNS above). AUTH_PATH is read at CALL time, so the
+# api fallback rerun automatically regains both caps. Writes JSON to $1.
 run_claude() {
   local out="$1" args=()
   args=(-p "$PROMPT"
@@ -402,10 +417,9 @@ run_claude() {
         --allowedTools "${ALLOWED[@]}"
         --disallowedTools "WebFetch" "WebSearch"
         --append-system-prompt "$SAFETY_PROMPT"
-        --max-turns "$MAX_TURNS"
         --model "$MODEL"
         --output-format json)
-  [ "$AUTH_PATH" = "api" ] && args+=(--max-budget-usd "$MAX_BUDGET")
+  [ "$AUTH_PATH" = "api" ] && args+=(--max-turns "$MAX_TURNS" --max-budget-usd "$MAX_BUDGET")
   timeout "$RUN_TIMEOUT" claude "${args[@]}" | tee "$out"
   return "${PIPESTATUS[0]}"
 }
