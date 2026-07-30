@@ -29,6 +29,19 @@ spec:
                 nodeAffinityType:
                   - requiredDuringSchedulingIgnoredDuringExecution
             - name: RemovePodsViolatingNodeTaints
+              args:
+                # Transient node-lifecycle taints are already handled by the
+                # taint-eviction controller WITH the pods' tolerationSeconds grace
+                # (default 300s). Without this exclusion the descheduler re-judges
+                # them with ZERO grace: a <60s control-plane heartbeat blip
+                # (2026-07-29 20:25 ET) tainted every node and the descheduler's
+                # sweep landed inside the window, evicting dev-env (killed a live
+                # agent session), the cloudnative-pg operator, and others — the
+                # Gatus multi-service outage was descheduler evictions, not the
+                # blip itself.
+                excludedTaints:
+                  - node.kubernetes.io/not-ready
+                  - node.kubernetes.io/unreachable
             - name: RemovePodsViolatingTopologySpreadConstraint
               args:
                 constraints:
