@@ -168,6 +168,29 @@ spec:
         options:
           - name: ndots
             value: "1"
+      # Node-blip survival (2026-07-29 20:25 ET incident): a <60s control-plane
+      # heartbeat stall tainted every node and killed the live agent session.
+      # Interactive singleton on an RWO PVC — eviction NEVER helps (the
+      # replacement can't attach until the old node releases the volume), so:
+      # - NoExecute tolerationSeconds 3600 replaces the 300s defaults: rides out
+      #   any blip/flap up to 1h; genuine node death still self-recovers after.
+      # - NoSchedule tolerations stop the descheduler treating a transient taint
+      #   as a violation (belt-and-braces with the descheduler excludedTaints fix).
+      tolerations:
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 3600
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 3600
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoSchedule
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoSchedule
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
