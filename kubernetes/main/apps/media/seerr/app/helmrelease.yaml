@@ -37,7 +37,7 @@ spec:
               # Seerr = the unified Overseerr/Jellyseerr successor; migrated
               # in place from jellyseerr 2.7.3 (automatic on first start).
               repository: ghcr.io/seerr-team/seerr
-              tag: v3.4.0
+              tag: v3.4.1
             env:
               TZ: America/New_York
               PORT: &port 5055
