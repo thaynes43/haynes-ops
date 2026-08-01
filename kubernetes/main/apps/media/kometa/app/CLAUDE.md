@@ -68,3 +68,13 @@ second category label on one collection.
    only seeds `/config/config.yml` when it is ABSENT. To apply a config.yml change,
    force a re-seed by deleting `/config/config.yml` on the `kometa` PVC before the
    next run.
+7. **`collection_order` must be a NATIVE Plex sort (`release` / `alpha` / `custom`
+   for list-order) on anything large.** Non-native sorts (`release.desc`, any
+   plex_search-style sort) make Kometa enforce the order itself with one Plex move
+   API call per item, logged as "(N/total) Moving X after Y". The per-move cost
+   grows with collection size (~4s at 247 items, ~13s at 1,374), so a big
+   collection can add HOURS to a run — the 2026-07-25 collections run spent 7.5 of
+   its 8.3 hours reordering Spatial Surround + Dolby Atmos. Full doctrine comment
+   in `config/movies-collections.yml`. Watch runs for "Moving" lines (Loki:
+   `{namespace="media", pod=~"kometa-.*"} |= "Moving "`) — a spike means a
+   non-native order snuck back in or a list order cascaded.

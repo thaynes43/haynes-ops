@@ -21,3 +21,43 @@ spec:
           for: 5m
           labels:
             severity: critical
+        # Runaway-RUN alerts: the failure rule above never fires on a run that
+        # is merely absurdly slow (the 2026-07-25 collections run took 8h19m —
+        # a mass collection reorder, see config/movies-collections.yml ORDER
+        # DOCTRINE — and nobody was paged). Thresholds are ~2x the healthy
+        # ceiling per cadence: collections ~40-55m, overlays ~1-2h weekly,
+        # operations ~3-4m steady-state. kube_job_status_active guards the
+        # expression to in-flight jobs only.
+        - alert: KometaCollectionsRunTooLong
+          annotations:
+            summary: >-
+              {{ $labels.job_name }} has been running over 2h (healthy: ~45m).
+              Likely a mass collection reorder or a stuck upstream API.
+          expr: |
+            (time() - kube_job_status_start_time{namespace="media", job_name=~"kometa-collections-.*"}) > 2 * 3600
+            and on (namespace, job_name) kube_job_status_active{namespace="media"} > 0
+          for: 5m
+          labels:
+            severity: critical
+        - alert: KometaOverlaysRunTooLong
+          annotations:
+            summary: >-
+              {{ $labels.job_name }} has been running over 4h (healthy: 1-2h).
+              Overlay redraw volume may be runaway.
+          expr: |
+            (time() - kube_job_status_start_time{namespace="media", job_name=~"kometa-overlays-.*"}) > 4 * 3600
+            and on (namespace, job_name) kube_job_status_active{namespace="media"} > 0
+          for: 5m
+          labels:
+            severity: critical
+        - alert: KometaOperationsRunTooLong
+          annotations:
+            summary: >-
+              {{ $labels.job_name }} has been running over 1h (healthy: ~5m
+              once the MDBList cache is warm). Check for MDBList 429s.
+          expr: |
+            (time() - kube_job_status_start_time{namespace="media", job_name=~"kometa-operations-.*"}) > 3600
+            and on (namespace, job_name) kube_job_status_active{namespace="media"} > 0
+          for: 5m
+          labels:
+            severity: critical
