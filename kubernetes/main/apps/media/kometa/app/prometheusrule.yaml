@@ -42,10 +42,12 @@ spec:
         - alert: KometaOverlaysRunTooLong
           annotations:
             summary: >-
-              {{ $labels.job_name }} has been running over 4h (healthy: 1-2h).
-              Overlay redraw volume may be runaway.
+              {{ $labels.job_name }} has been running over 2h (healthy: ~75m
+              nightly — a fixed per-item pass that scales with library size,
+              not churn). Drift means the pass grew: shrink it (drop the
+              ratings overlay first) rather than raising this threshold.
           expr: |
-            (time() - kube_job_status_start_time{namespace="media", job_name=~"kometa-overlays-.*"}) > 4 * 3600
+            (time() - kube_job_status_start_time{namespace="media", job_name=~"kometa-overlays-.*"}) > 2 * 3600
             and on (namespace, job_name) kube_job_status_active{namespace="media"} > 0
           for: 5m
           labels:
