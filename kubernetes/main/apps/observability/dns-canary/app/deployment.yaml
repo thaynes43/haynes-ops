@@ -14,6 +14,11 @@ spec:
       labels:
         app.kubernetes.io/name: dns-canary
     spec:
+      # Must share a node with the flux controllers (the pods whose DNS path it
+      # shadows). They were evicted talosw02 -> talosw01 on 2026-08-01 before
+      # this canary first deployed; the scheduler is not aware of that intent.
+      nodeSelector:
+        kubernetes.io/hostname: talosw01
       containers:
         - name: canary
           image: ghcr.io/nicolaka/netshoot:v0.16
