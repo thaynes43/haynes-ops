@@ -20,6 +20,11 @@ spec:
   values:
     controllers:
       sabnzbd:
+        # 2026-08-01: scaled to 0 to break the talosw02 DiskPressure eviction
+        # loop — ~460GB of failed/stranded downloads accumulated in the
+        # hostpath incomplete PVs. Restore to 1 after incomplete is purged
+        # and min-free-space guardrails are set in SAB.
+        replicas: 0
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
