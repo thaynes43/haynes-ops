@@ -33,6 +33,27 @@ spec:
           labels:
             severity: critical
             scope: host          # host/hardware — alert-responder skips LLM diagnosis
+    # 2026-08-01 sabnzbd/talosw02 incident: kubelet starts evicting at 15%
+    # free (imagefs), but the stock NodeFilesystemAlmostOutOfSpace only fires
+    # at 5%/3% — the eviction storm hits long before any page. These fire
+    # ABOVE the eviction threshold so a human is paged while there is still
+    # runway (the incident filled 66%→20% free in ~2h).
+    - name: node-filesystem-eviction-runway
+      rules:
+        - alert: NodeVarSpaceLow
+          annotations:
+            summary: '{{ $labels.instance }} /var has {{ printf "%.0f" $value }}% free — kubelet evicts at 15%. Check for runaway writers (download scratch, WAL, logs).'
+          expr: 100 * node_filesystem_avail_bytes{job="node-exporter", mountpoint="/var"} / node_filesystem_size_bytes{job="node-exporter", mountpoint="/var"} < 25
+          for: 15m
+          labels:
+            severity: warning
+        - alert: NodeVarEvictionImminent
+          annotations:
+            summary: '{{ $labels.instance }} /var has {{ printf "%.0f" $value }}% free — kubelet DiskPressure evictions begin at 15%. Stop the writer now.'
+          expr: 100 * node_filesystem_avail_bytes{job="node-exporter", mountpoint="/var"} / node_filesystem_size_bytes{job="node-exporter", mountpoint="/var"} < 18
+          for: 5m
+          labels:
+            severity: critical
     # Replaces the stock NodeNetworkTransmitErrs/ReceiveErrs (disabled in the
     # HelmRelease defaultRules) — same expr but excludes virtual/tunnel devices
     # (siderolink WireGuard, cilium_*, lxc*, veth*, etc.) that throw benign

@@ -20,9 +20,8 @@ spec:
   values:
     controllers:
       sabnzbd-fast:
-        # 2026-08-01: scaled to 0 to break the talosw02 DiskPressure eviction
-        # loop — see sabnzbd/app/helmrelease.yaml for details.
-        replicas: 0
+        # download_free=150G guardrail in sabnzbd.ini — see
+        # sabnzbd/app/helmrelease.yaml for the 2026-08-01 incident notes.
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
