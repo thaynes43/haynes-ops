@@ -18,3 +18,4 @@ resources:
   - ./mcp-unifi/ks.yaml
   - ./unpoller/ks.yaml
   - ./prometheus-pve-exporter/ks.yaml
+  - ./dns-canary/ks.yaml
