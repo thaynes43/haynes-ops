@@ -1,0 +1,60 @@
+---
+# Nightly SAB scratch janitor (2026-08-01 talosw02 DiskPressure incident).
+# Failed/orphaned downloads accumulate in the hostpath incomplete PV forever
+# unless something deletes them — ~460GB of dead scratch (across both SAB
+# instances) pinned /var at kubelet's eviction threshold and evicted half the
+# node. SAB owns the cleanup: purge failed history WITH files, then sweep
+# orphaned incomplete folders (dirs no queue/history entry references — every
+# re-add of the same NZB leaves one behind). Retries stay enabled in the
+# *arrs; this only removes the corpses they leave.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sabnzbd-scratch-cleanup
+spec:
+  schedule: "30 4 * * *"
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: cleanup
+              image: docker.io/curlimages/curl:8.21.0
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                - name: APIKEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: sabnzbd-secret
+                      key: SABNZBD__API_KEY
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  base="http://sabnzbd.downloads.svc.cluster.local:8080/api"
+                  echo "purge failed history (+files):"
+                  curl -fsS "$base?mode=history&name=delete&value=failed&del_files=1&apikey=$APIKEY&output=json"
+                  echo
+                  echo "sweep orphaned incomplete folders:"
+                  curl -fsS "$base?mode=status&name=delete_all_orphan&apikey=$APIKEY&output=json"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
