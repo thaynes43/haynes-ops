@@ -80,6 +80,18 @@
       matchPackageNames: ['docker.io/library/node'],
       allowedVersions: '<23',
     },
+    {
+      description: [
+        'HELD coredns chart: 1.47.0 (CoreDNS 1.14.6) — Go-resolver A-lookups intermittently get empty answers.',
+        'Reason: since the 1.47.0 roll (2026-07-30 04:01 ET, #2305) Go clients cluster-wide (flux source-controller, kyverno admission, loki, alertmanager, authentik outposts) intermittently receive NOERROR with an EMPTY A answer while AAAA resolves — the v4-only cluster then dials [v6]:443 → ENETUNREACH (~470/day). Real impact: kyverno cosign fetches fail → admission BLOCKS frontend Pods/Jobs. Reproduced with a stdlib-Go canary (90s episodes of dur_ms<5 server-answered empty-A); dig-shaped probes stayed clean for 50k+ queries because the autopath+cache path only fires on ndots search-expanded parallel A/AAAA queries, which dig never sends. Suspected cache/prefetch/serve_stale/autopath regression in CoreDNS 1.14.6.',
+        'Issue: TBD — reverted 2026-08-04 to confirm causality; file upstream once the rate collapse is measured.',
+        'Resume: MANUAL — lift after an upstream fix ships in a chart release AND the go-canary (PR #2335) soaks clean against it; or delete this hold in a roll-forward PR if the revert exonerates 1.47.0.',
+        'Recorded: 2026-08-04 by claude (dev-env agent). Related: PR #2332 #2334 #2335; memory dns-canary-mission-state.',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['ghcr.io/coredns/charts/coredns'],
+      allowedVersions: '<1.47.0',
+    },
     // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
     //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
     //   protection (Host/Origin validation on every route, 403 for non-loopback Host).
