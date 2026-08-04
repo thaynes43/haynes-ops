@@ -8,3 +8,4 @@ configMapGenerator:
   - name: dns-canary-script
     files:
       - canary.sh=./resources/canary.sh
+      - main.go=./resources/main.go
