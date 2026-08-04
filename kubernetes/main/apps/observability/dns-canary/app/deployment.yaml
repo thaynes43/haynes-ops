@@ -42,7 +42,48 @@ spec:
           volumeMounts:
             - name: script
               mountPath: /opt/canary
+        # Second probe path: the Go stdlib resolver (parallel A+AAAA, search
+        # expansion) that every affected client uses and dig cannot emulate.
+        - name: go-canary
+          image: docker.io/library/golang:1.24-alpine
+          command: ["go", "run", "/opt/canary/main.go"]
+          env:
+            - name: HOME
+              value: /tmp
+            - name: GOCACHE
+              value: /tmp/gocache
+            - name: GOPATH
+              value: /tmp/go
+            - name: CGO_ENABLED
+              value: "0"
+            - name: GODEBUG
+              value: netdns=go
+            - name: GOTOOLCHAIN
+              value: local
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: script
+              mountPath: /opt/canary
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: script
           configMap:
             name: dns-canary-script
+        - name: tmp
+          emptyDir: {}
