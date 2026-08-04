@@ -84,7 +84,7 @@
       description: [
         'HELD coredns chart: 1.47.0 (CoreDNS 1.14.6) — Go-resolver A-lookups intermittently get empty answers.',
         'Reason: since the 1.47.0 roll (2026-07-30 04:01 ET, #2305) Go clients cluster-wide (flux source-controller, kyverno admission, loki, alertmanager, authentik outposts) intermittently receive NOERROR with an EMPTY A answer while AAAA resolves — the v4-only cluster then dials [v6]:443 → ENETUNREACH (~470/day). Real impact: kyverno cosign fetches fail → admission BLOCKS frontend Pods/Jobs. Reproduced with a stdlib-Go canary (90s episodes of dur_ms<5 server-answered empty-A); dig-shaped probes stayed clean for 50k+ queries because the autopath+cache path only fires on ndots search-expanded parallel A/AAAA queries, which dig never sends. Suspected cache/prefetch/serve_stale/autopath regression in CoreDNS 1.14.6.',
-        'Issue: TBD — reverted 2026-08-04 to confirm causality; file upstream once the rate collapse is measured.',
+        'Issue: none upstream yet — CONFIRMED causal 2026-08-04 (revert dropped ~470 errs/day to zero across all meters, 7h+; full evidence + draft upstream issue: https://github.com/thaynes43/haynes-ops/pull/2332#issuecomment-5178557837). Tom to file at coredns/coredns (bot token cannot); paste the issue URL here when filed.',
         'Resume: MANUAL — lift after an upstream fix ships in a chart release AND the go-canary (PR #2335) soaks clean against it; or delete this hold in a roll-forward PR if the revert exonerates 1.47.0.',
         'Recorded: 2026-08-04 by claude (dev-env agent). Related: PR #2332 #2334 #2335; memory dns-canary-mission-state.',
       ],
