@@ -39,9 +39,17 @@ spec:
                 # agent session), the cloudnative-pg operator, and others — the
                 # Gatus multi-service outage was descheduler evictions, not the
                 # blip itself.
+                # Same failure class (2026-08-04 04:08 ET): a ~20s API-server
+                # blip dipped Cilium agent readiness on two workers, the
+                # operator re-applied its agent-not-ready taint, and the sweep
+                # evicted 16 running pods (Prometheus, Alertmanager, Loki,
+                # Authentik, a mid-run Kometa job). The taint exists to gate
+                # scheduling of NEW pods; running pods keep a working datapath
+                # through an agent blip, so evicting them for it is pure harm.
                 excludedTaints:
                   - node.kubernetes.io/not-ready
                   - node.kubernetes.io/unreachable
+                  - node.cilium.io/agent-not-ready
             - name: RemovePodsViolatingTopologySpreadConstraint
               args:
                 constraints:
