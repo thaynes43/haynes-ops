@@ -132,6 +132,9 @@ spec:
               - matchName: "sigoalumni.org"
               - matchPattern: "*.sigoalumni.org"
               - matchPattern: "*.run.app"
+              # Cloud Run URLs are <svc>-<hash>-<region>.a.run.app — two labels; Cilium
+              # `*` is single-label (same trap as the svc FQDNs above)
+              - matchPattern: "*.a.run.app"
               # OpenTofu provider registry (metadata only — binaries come from
               # github releases via *.githubusercontent.com, already allowed)
               - matchName: "registry.opentofu.org"
@@ -254,6 +257,7 @@ spec:
         - matchName: "sigoalumni.org"
         - matchPattern: "*.sigoalumni.org"
         - matchPattern: "*.run.app"
+        - matchPattern: "*.a.run.app"
         - matchName: "registry.opentofu.org"
       toPorts:
         - ports:
