@@ -386,6 +386,13 @@ SAFETY_PROMPT="SAFETY: read-only cluster default; ALL cluster changes go via a P
 # (1) PR AUTHORING — the fix for the heredoc dontAsk denial that blocked the shepherd from
 # opening its own PRs (immich #1966): author the body as a FILE, never a command-sub.
 SAFETY_PROMPT="${SAFETY_PROMPT} PR AUTHORING: to open a PR, FIRST write the body to a file with the Write tool (e.g. /tmp/pr-body.md), THEN run 'gh pr create --title \"...\" --body-file /tmp/pr-body.md'. NEVER build the body with a heredoc or \$(cat ...) command substitution — that compound form is auto-denied and the PR will silently fail to open. The same trap applies to commits and gh api: write the message to a file and use 'git commit -F /tmp/commit-msg.txt' (NEVER -m with a \$(...) substitution), and pass gh api paths UNQUOTED (quoting the path defeats the allowlist matcher and the call is denied)."
+# (1b) GH AUTH (2026-08-05) — the 08-05 12:00Z auto run rabbit-holed on minting a
+# token: it tried only NON-allowlisted probes (scripts/github-app-token.sh, gh auth
+# status, gh --version, env), concluded "gh is blocked by the sandbox" and HELDed
+# asking a human to repair a sandbox that wasn't broken — the same run's pre-filter
+# had just used gh fine, and the launcher exports GH_TOKEN before the LLM starts.
+# State the auth facts so no run re-derives that wrong turn.
+SAFETY_PROMPT="${SAFETY_PROMPT} GH AUTH: gh is ALREADY authenticated — the launcher minted a token and exported GH_TOKEN before you started; never verify, mint, or hunt for credentials. scripts/github-app-token.sh, 'gh auth', 'gh --version', 'env' and 'printenv' are NOT on the allowlist, and their denial tells you NOTHING about whether gh works — do not conclude gh or the sandbox is broken from them. Just run the allowlisted gh subcommands your task names directly (with -R ${REPO} when outside the repo checkout). Only if one of THOSE exact allowlisted commands is denied, stop with a HOLD quoting the denied command verbatim."
 # (2) BACKUP GATE — before touching anything with durable state, confirm the auto-backup
 # safety net is intact (read-only; the shepherd has kubectl get). A stale/failed backup
 # means a human is needed (the CNPG/VolSync backup-failure alerts already page), so HOLD.
