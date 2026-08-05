@@ -3,6 +3,15 @@
 # Media-automation CronJobs fail silently otherwise: KubeJobFailed is
 # warning-severity and only severity=critical pages Pushover. User call
 # (2026-07-03): start critical, prune back if noisy.
+#
+# Pruned back 2026-08-05: kube_job_status_failed counts failed PODS and never
+# decrements, so a single crashed attempt whose retry SUCCEEDED (overlays
+# 2026-08-04: pod died 8m in, retry finished the full pass 18s later) paged
+# critical and kept firing ~25h until the job object was pruned. Split:
+# critical only on TERMINAL job failure (condition Failed=True — retries
+# exhausted, data genuinely stale); a survived pod crash is a non-paging
+# warning for pattern-spotting. Both are age-capped to the job's own 24h
+# cadence so a lingering job object can't out-fire its next scheduled run.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -15,12 +24,30 @@ spec:
           annotations:
             summary: >-
               {{ $labels.namespace }}/{{ $labels.job_name }} media-automation
-              job failed — collections/overlays/guide-sync may be stale.
+              job failed terminally (retries exhausted) —
+              collections/overlays/guide-sync may be stale.
           expr: |
-            kube_job_status_failed{namespace="media", job_name=~"(kometa|recyclarr).*"} > 0
+            kube_job_failed{namespace="media", condition="true", job_name=~"(kometa|recyclarr).*"} > 0
+            and on (namespace, job_name)
+            (time() - kube_job_status_start_time{namespace="media"}) < 24 * 3600
           for: 5m
           labels:
             severity: critical
+        - alert: MediaAutomationJobRetried
+          annotations:
+            summary: >-
+              {{ $labels.namespace }}/{{ $labels.job_name }} lost a pod attempt
+              but the Job is retrying (or already succeeded) — no action needed
+              unless this repeats night after night.
+          expr: |
+            kube_job_status_failed{namespace="media", job_name=~"(kometa|recyclarr).*"} > 0
+            unless on (namespace, job_name)
+            kube_job_failed{namespace="media", condition="true"} > 0
+            and on (namespace, job_name)
+            (time() - kube_job_status_start_time{namespace="media"}) < 24 * 3600
+          for: 5m
+          labels:
+            severity: warning
         # Runaway-RUN alerts: the failure rule above never fires on a run that
         # is merely absurdly slow (the 2026-07-25 collections run took 8h19m —
         # a mass collection reorder, see config/movies-collections.yml ORDER
