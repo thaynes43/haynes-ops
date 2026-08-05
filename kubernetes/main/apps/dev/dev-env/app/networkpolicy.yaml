@@ -105,6 +105,33 @@ spec:
               - matchPattern: "*.haynesnetwork.com"
               # auth-watch pages via Pushover
               - matchName: "api.pushover.net"
+              # ---- sigoalumni.org buildout (sigo-alumni backlog/tooling, 2026-08-05) ----
+              # gcloud SDK tarball + component downloads
+              - matchName: "dl.google.com"
+              # Google OAuth: interactive `gcloud auth login` + token exchange
+              - matchName: "accounts.google.com"
+              - matchName: "oauth2.googleapis.com"
+              # GCP control plane the sigo-alumni-prod bootstrap touches (tofu + gcloud):
+              # projects, API enablement, SAs + keyless signing, secrets, AR, Cloud Run.
+              # State bucket is storage.googleapis.com (already allowed above).
+              - matchName: "cloudresourcemanager.googleapis.com"
+              - matchName: "serviceusage.googleapis.com"
+              - matchName: "iam.googleapis.com"
+              - matchName: "iamcredentials.googleapis.com"
+              - matchName: "secretmanager.googleapis.com"
+              - matchName: "artifactregistry.googleapis.com"
+              - matchName: "run.googleapis.com"
+              # Workspace content/roles APIs (Calendar+Drive ride www.googleapis.com;
+              # Sheets and Admin SDK have their own hosts)
+              - matchName: "www.googleapis.com"
+              - matchName: "sheets.googleapis.com"
+              - matchName: "admin.googleapis.com"
+              # Outline wiki MCP (mcp-outline → wiki API) + playwright against the
+              # public sigoalumni.org properties; *.run.app is the Cloud Run demo URL
+              # until DNS cutover.
+              - matchName: "sigoalumni.org"
+              - matchPattern: "*.sigoalumni.org"
+              - matchPattern: "*.run.app"
     # 2a. Cluster-local MCP servers (saga plan 03): HA + Grafana — the agents'
     #     introspection tools, reached via svc FQDNs, never the public ingress.
     - toEndpoints:
@@ -207,6 +234,23 @@ spec:
         # (backlog 10, decision 2026-07-25). This is a WAN dependency: triage now
         # needs Omni + internet reachable, unlike the LAN-direct route it replaces.
         - matchName: "haynes.na-west-1.omni.siderolabs.io"
+        # ---- sigoalumni.org buildout (same set as the DNS rules above) ----
+        - matchName: "dl.google.com"
+        - matchName: "accounts.google.com"
+        - matchName: "oauth2.googleapis.com"
+        - matchName: "cloudresourcemanager.googleapis.com"
+        - matchName: "serviceusage.googleapis.com"
+        - matchName: "iam.googleapis.com"
+        - matchName: "iamcredentials.googleapis.com"
+        - matchName: "secretmanager.googleapis.com"
+        - matchName: "artifactregistry.googleapis.com"
+        - matchName: "run.googleapis.com"
+        - matchName: "www.googleapis.com"
+        - matchName: "sheets.googleapis.com"
+        - matchName: "admin.googleapis.com"
+        - matchName: "sigoalumni.org"
+        - matchPattern: "*.sigoalumni.org"
+        - matchPattern: "*.run.app"
       toPorts:
         - ports:
             - port: "443"
