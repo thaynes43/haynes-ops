@@ -14,7 +14,21 @@
     },
     "playwright": {
       "command": "playwright-mcp",
-      "args": ["--browser", "chromium", "--headless"]
+      "args": [
+        "--browser",
+        "chromium",
+        "--headless"
+      ]
+    },
+    "outline": {
+      "command": "uvx",
+      "args": [
+        "mcp-outline"
+      ],
+      "env": {
+        "OUTLINE_API_KEY": "${OUTLINE_API_KEY}",
+        "OUTLINE_API_URL": "https://wiki.sigoalumni.org/api"
+      }
     }
   }
 }

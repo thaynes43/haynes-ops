@@ -58,6 +58,9 @@ spec:
               # The image pins CLI versions (Renovate-bumped); no self-updates.
               DISABLE_AUTOUPDATER: "1"
               DISABLE_ERROR_REPORTING: "1"
+              # ADC for gcloud/tofu/client libs — sigo GCP SA key mounted from
+              # dev-env-gcp-secret (sigo-alumni backlog/tooling item 04).
+              GOOGLE_APPLICATION_CREDENTIALS: /etc/gcp/sa_key.json
               # NO DISABLE_TELEMETRY here: /remote-control is Statsig-feature-flag
               # gated, and that var disables flag evaluation entirely — setting it
               # hides Remote Control (hit live 2026-07-14; saga Decision #6 depends
@@ -261,3 +264,13 @@ spec:
           dev-env:
             app:
               - path: /opt/dev-env/config/home
+      # Sigo GCP SA key (agent container ONLY — the sidecars have no business in
+      # GCP). Non-expiring credential; scope lives GCP-side (Owner on
+      # sigo-alumni-prod only, down-scope + rotate post-launch).
+      gcp-sa:
+        type: secret
+        name: dev-env-gcp-secret
+        advancedMounts:
+          dev-env:
+            app:
+              - path: /etc/gcp
