@@ -117,9 +117,12 @@ spec:
               # permission here AFTER granting it on the App (github.com/settings/apps
               # → haynes-dev-bot → Permissions & events) AND approving the update on
               # the installation. issues:write added 2026-07-28 (agents were blocked
-              # from commenting/closing #1809). haynes-dev-bot grants: contents/PRs/
-              # workflows/issues write + checks read.
-              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","workflows":"write","issues":"write","checks":"read"}'
+              # from commenting/closing #1809). actions:read added 2026-08-05 (CI-log
+              # reads on private repos — sigo-alumni; bridged live by the temporary
+              # gh-scope-bridge Job in ns dev until this deploys — DELETE that Job
+              # after the pod rolls). haynes-dev-bot grants: contents/PRs/workflows/
+              # issues write + checks/actions read.
+              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","workflows":"write","issues":"write","checks":"read","actions":"read"}'
             envFrom:
               - secretRef:
                   name: dev-env-bot-secret
