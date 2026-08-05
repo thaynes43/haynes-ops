@@ -20,7 +20,19 @@ spec:
         - alert: OOMKilled
           annotations:
             summary: Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} has been OOMKilled {{ $value }} times in the last 10 minutes.
-          expr: (kube_pod_container_status_restarts_total - kube_pod_container_status_restarts_total offset 10m >= 1) and ignoring (reason) min_over_time(kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}[10m]) == 1
+          # ceph-mgr excluded 2026-08-05 (user call: page only when a human is
+          # needed). The ACTIVE mgr's known memory leak (documented at the mgr
+          # resources block in rook-ceph/cluster/helmrelease.yaml, 2026-06-19)
+          # now OOM-cycles ~daily — this rule paged critical 15 days straight
+          # for it. The OOM restart IS the self-heal: mgr is active/standby HA
+          # and failover is seamless; no human action exists short of chasing
+          # the leaking module upstream. NOTE the leak has accelerated far past
+          # the ~0.05Gi/day measured in June (daily OOM at a 4Gi limit) — worth
+          # an upstream look, but not a page. A genuinely dead mgr still pages
+          # via the bundled CephMgrPrometheusModuleInactive / CephHealthError.
+          expr: |
+            ((kube_pod_container_status_restarts_total - kube_pod_container_status_restarts_total offset 10m >= 1) and ignoring (reason) min_over_time(kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}[10m]) == 1)
+            unless on (namespace, pod, container) kube_pod_container_info{namespace="rook-ceph", container="mgr"}
           labels:
             severity: critical
     - name: zfs
