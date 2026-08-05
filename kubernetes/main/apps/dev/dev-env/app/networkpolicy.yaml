@@ -132,6 +132,9 @@ spec:
               - matchName: "sigoalumni.org"
               - matchPattern: "*.sigoalumni.org"
               - matchPattern: "*.run.app"
+              # OpenTofu provider registry (metadata only — binaries come from
+              # github releases via *.githubusercontent.com, already allowed)
+              - matchName: "registry.opentofu.org"
     # 2a. Cluster-local MCP servers (saga plan 03): HA + Grafana — the agents'
     #     introspection tools, reached via svc FQDNs, never the public ingress.
     - toEndpoints:
@@ -251,6 +254,7 @@ spec:
         - matchName: "sigoalumni.org"
         - matchPattern: "*.sigoalumni.org"
         - matchPattern: "*.run.app"
+        - matchName: "registry.opentofu.org"
       toPorts:
         - ports:
             - port: "443"
