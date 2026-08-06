@@ -126,6 +126,10 @@ spec:
               - matchName: "us-east1-run.googleapis.com"
               # Cloud SQL admin (tofu provisions the frontpage Postgres instance)
               - matchName: "sqladmin.googleapis.com"
+              # Cloud Run log reads (debugging deployed services from the pod)
+              - matchName: "logging.googleapis.com"
+              # Uptime checks + alert policies for the demo site (2026-08-06)
+              - matchName: "monitoring.googleapis.com"
               # Workspace SMTP relay (magic-link mail; members-portal, 2026-08-06)
               - matchName: "smtp-relay.gmail.com"
               # Workspace content/roles APIs (Calendar+Drive ride www.googleapis.com;
@@ -264,6 +268,8 @@ spec:
         - matchName: "run.googleapis.com"
         - matchName: "us-east1-run.googleapis.com"
         - matchName: "sqladmin.googleapis.com"
+        - matchName: "logging.googleapis.com"
+        - matchName: "monitoring.googleapis.com"
         - matchName: "smtp-relay.gmail.com"
         - matchName: "www.googleapis.com"
         - matchName: "sheets.googleapis.com"
