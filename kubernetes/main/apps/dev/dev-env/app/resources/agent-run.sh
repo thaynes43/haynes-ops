@@ -525,7 +525,7 @@ case "$cmd" in
         # when a new tier lands:  claude --help | grep -A4 -- '--model'
         model="$(pick 'model:' \
           'fable   Fable 5 · 1M ctx, most capable (dev-env default)' \
-          'opus    Opus 5 · deep reasoning + agentic coding' \
+          'opus    Opus 4.8 · deep reasoning + agentic coding' \
           'sonnet  Sonnet 5 · near-Opus quality, cheaper' \
           'haiku   Haiku 4.5 · fastest, simple tasks')" || model=""
         # The 'fable' alias resolves to the 200k-ctx model; the pod default is the
