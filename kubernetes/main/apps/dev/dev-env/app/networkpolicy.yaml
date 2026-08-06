@@ -138,6 +138,10 @@ spec:
               # until DNS cutover.
               - matchName: "sigoalumni.org"
               - matchPattern: "*.sigoalumni.org"
+              # student-site takeover audit (sigo-alumni backlog/student-site):
+              # fetch the legacy chapter site + crest assets for the rebuild
+              - matchName: "sigmaphiomicron.com"
+              - matchPattern: "*.sigmaphiomicron.com"
               - matchPattern: "*.run.app"
               # Cloud Run URLs are <svc>-<hash>-<region>.a.run.app — two labels; Cilium
               # `*` is single-label (same trap as the svc FQDNs above)
@@ -266,6 +270,8 @@ spec:
         - matchName: "admin.googleapis.com"
         - matchName: "sigoalumni.org"
         - matchPattern: "*.sigoalumni.org"
+        - matchName: "sigmaphiomicron.com"
+        - matchPattern: "*.sigmaphiomicron.com"
         - matchPattern: "*.run.app"
         - matchPattern: "*.a.run.app"
         - matchName: "registry.opentofu.org"
