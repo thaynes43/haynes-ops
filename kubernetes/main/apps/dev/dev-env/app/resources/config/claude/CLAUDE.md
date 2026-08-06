@@ -60,7 +60,14 @@ both**:
 - **Claude row labels** (no local manifest exists): if your own system prompt or
   in-session `/model` shows a model family newer than the picker labels, the
   labels are stale — never conclude the newer model is unavailable, and never
-  "fix" the alias values.
+  "fix" the alias values. **This cuts both ways:** a label can also be newer
+  than *your training data* — a prior agent may have refreshed it after a
+  launch you don't know about. Never revert a label downward to match your
+  priors; verify live first (`claude --model <full-id> -p 'model id?'` — cheap
+  and definitive). An agent wrongly reverted Opus 5→4.8 this way on 2026-08-06.
+  Also: alias repoints can lag a launch by days (`opus` served 4.8 while
+  `claude-opus-5` was already live), so during a rollout window the label may
+  legitimately be one tier ahead of what the alias serves.
 - **Codex fallback rows**: `agent-run` prints a WARN when they drift from the
   live cache.
 

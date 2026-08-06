@@ -523,9 +523,16 @@ case "$cmd" in
         # options track new releases on their own. Only the human-readable half
         # of each row can go stale — REFRESH it (names only, never the aliases)
         # when a new tier lands:  claude --help | grep -A4 -- '--model'
+        # ⚠ Agents: these labels may be NEWER than your training data. Before
+        # "correcting" one downward, probe the full id live (e.g.
+        # `claude --model claude-opus-5 -p 'model id?'`) — an agent reverted
+        # Opus 5→4.8 on 2026-08-06 because its cutoff predated the launch.
+        # Alias repoints can also LAG a launch by days (opus served 4.8 while
+        # claude-opus-5 was already live) — a label one tier ahead of the
+        # alias during a rollout window is correct, not stale.
         model="$(pick 'model:' \
           'fable   Fable 5 · 1M ctx, most capable (dev-env default)' \
-          'opus    Opus 4.8 · deep reasoning + agentic coding' \
+          'opus    Opus 5 · deep reasoning + agentic coding' \
           'sonnet  Sonnet 5 · near-Opus quality, cheaper' \
           'haiku   Haiku 4.5 · fastest, simple tasks')" || model=""
         # The 'fable' alias resolves to the 200k-ctx model; the pod default is the
