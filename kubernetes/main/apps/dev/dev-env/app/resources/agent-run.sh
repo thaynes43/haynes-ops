@@ -58,6 +58,25 @@ REPOS="$HOME/repos" WORK="$HOME/work" OWNER="thaynes43"
 log() { printf 'agent-run: %s\n' "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }
 
+# did_you_mean <word> <candidate...> — echoes the closest candidate within edit
+# distance 2, else nothing. awk does the Levenshtein; bash arrays are misery.
+did_you_mean() {
+  local w="$1"; shift
+  printf '%s\n' "$@" | awk -v w="$w" '
+    function min3(a,b,c,  r) { r=a; if(b<r)r=b; if(c<r)r=c; return r }
+    BEGIN { best=99 }
+    {
+      n=length(w); m=length($0)
+      for(i=0;i<=n;i++) d[i,0]=i
+      for(j=0;j<=m;j++) d[0,j]=j
+      for(i=1;i<=n;i++) for(j=1;j<=m;j++)
+        d[i,j]=min3(d[i-1,j]+1, d[i,j-1]+1,
+                    d[i-1,j-1]+(substr(w,i,1)!=substr($0,j,1)))
+      if(d[n,m]<best) { best=d[n,m]; bestw=$0 }
+    }
+    END { if(best<=2) print bestw }'
+}
+
 usage() {
   cat >&2 <<'EOF'
 agent-run — worktree-per-task agent dispatcher
@@ -387,7 +406,16 @@ case "${1:-}" in
   run)                                          shift; cmd=run ;;
   list|attach|detach|reap|prune|codex-remote)   cmd="$1"; shift ;;
   help|-h|--help)                               usage; exit 0 ;;
-  *)                                            cmd=run ;;   # bare / repo / -flag → run (keep $@)
+  *)
+    # Bare word, not a flag, no such local clone: before treating it as the
+    # repo shorthand, catch subcommand typos — `detatch` used to sail through
+    # the whole run walkthrough and die at clone time with a misleading error.
+    # A real repo whose name shadows a typo is forced with --repo <name>.
+    if [ -n "${1:-}" ] && [ "${1#-}" = "${1:-}" ] && [ ! -d "$REPOS/$1/.git" ]; then
+      sug="$(did_you_mean "$1" run list attach detach reap prune codex-remote help)"
+      [ -n "$sug" ] && die "unknown command '$1' — did you mean '$sug'? (for a repo really named '$1', use --repo $1)"
+    fi
+    cmd=run ;;   # bare / repo / -flag → run (keep $@)
 esac
 
 case "$cmd" in
@@ -404,7 +432,8 @@ case "$cmd" in
         --model) model="$2"; shift 2 ;;
         --effort) effort="$2"; shift 2 ;;
         --safe) safe=1; shift ;;
-        -*) die "unknown flag $1" ;;
+        -*) sug="$(did_you_mean "$1" --repo --agent --base -p --prompt --interactive --local --model --effort --safe)"
+            die "unknown flag $1${sug:+ — did you mean '$sug'?}" ;;
         *) [ -z "$repo" ] || die "unexpected argument '$1' (repo already '$repo')"
            repo="$1"; shift ;;   # positional shorthand: agent-run run <repo>
       esac
