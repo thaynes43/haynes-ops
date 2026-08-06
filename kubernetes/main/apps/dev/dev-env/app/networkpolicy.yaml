@@ -121,6 +121,9 @@ spec:
               - matchName: "secretmanager.googleapis.com"
               - matchName: "artifactregistry.googleapis.com"
               - matchName: "run.googleapis.com"
+              # gcloud run describe/deploy use the REGIONAL endpoint, not the
+              # global one (hit live 2026-08-05: NameResolutionError)
+              - matchName: "us-east1-run.googleapis.com"
               # Workspace content/roles APIs (Calendar+Drive ride www.googleapis.com;
               # Sheets and Admin SDK have their own hosts)
               - matchName: "www.googleapis.com"
@@ -251,6 +254,7 @@ spec:
         - matchName: "secretmanager.googleapis.com"
         - matchName: "artifactregistry.googleapis.com"
         - matchName: "run.googleapis.com"
+        - matchName: "us-east1-run.googleapis.com"
         - matchName: "www.googleapis.com"
         - matchName: "sheets.googleapis.com"
         - matchName: "admin.googleapis.com"
