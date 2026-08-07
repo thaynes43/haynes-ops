@@ -26,7 +26,7 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 |---|---|---|
 | claude | ✅ Max plan | credential on PVC, self-refreshes |
 | codex | ✅ ChatGPT plan | `~/.codex/auth.json`, self-refreshes |
-| kubectl / flux | ✅ in-cluster SA | OPERATOR tier: read all-but-secrets; writes limited to pod delete, rollout restart, flux reconcile/suspend, Jobs, CronJob suspend + PVC delete in `database` only (`kubectl cnpg destroy`, plugin at `~/.local/bin/kubectl-cnpg`). No exec/secrets/RBAC |
+| kubectl / flux | ✅ in-cluster SA | OPERATOR tier: read all-but-secrets; writes limited to pod delete, **pod exec**, rollout restart, flux reconcile/suspend, Jobs, CronJob suspend + PVC delete in `database` only (`kubectl cnpg destroy`, plugin at `~/.local/bin/kubectl-cnpg`). No secrets/RBAC (exec into a secret-mounting pod can read that pod's secrets — accepted, 2026-08-06) |
 | gh / git push | ✅ haynes-dev-bot | App token, all repos, refreshed every 40min; commits/PRs author as the dev bot |
 | sops / age | ❌ deliberately absent | the age key never enters this pod without an explicit decision |
 | omnictl | ✅ READ-ONLY (Reader SA, proxied) | Omni `Reader` service account via `$OMNI_ENDPOINT` + `$OMNI_SERVICE_ACCOUNT_KEY` (SaaS `haynes.na-west-1.omni.siderolabs.io`); `omnictl get clusters/machinestatus` etc. Mutations denied by the Reader role — don't test by attempting them |
