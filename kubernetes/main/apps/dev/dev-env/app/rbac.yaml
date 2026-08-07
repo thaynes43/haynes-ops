@@ -8,9 +8,11 @@
 #         together).
 #   WRITE: the targeted GitOps-legal mutations ONLY — restart pods, rollout-restart
 #         workloads, Flux reconcile/suspend (patch = annotations + spec.suspend),
-#         create/delete Jobs (volsync unlock), suspend CronJobs. NO exec, NO secrets,
-#         NO RBAC/node/namespace/CRD mutation. Writes go through git; this is the
-#         "restart/reconcile/verify" loop, not a deploy path.
+#         create/delete Jobs (volsync unlock), suspend CronJobs, and pod exec
+#         (added 2026-08-06 per Tom — parity with the WSL/workstation agent
+#         workflow; e.g. `ceph crash archive-all` via the rook toolbox). NO
+#         secrets, NO RBAC/node/namespace/CRD mutation. Writes go through git;
+#         this is the "restart/reconcile/verify" loop, not a deploy path.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -77,6 +79,12 @@ rules:
   - apiGroups: [""]
     resources: [pods]
     verbs: [delete]
+  # `kubectl exec` (= create on the exec subresource). Secrets stay withheld at
+  # the API, but note exec into a pod that MOUNTS a secret reads it anyway —
+  # accepted trade-off (2026-08-06): the WSL workflow always had this.
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
   # `kubectl rollout restart` = patching the restartedAt annotation.
   - apiGroups: [apps]
     resources: [deployments, statefulsets, daemonsets]

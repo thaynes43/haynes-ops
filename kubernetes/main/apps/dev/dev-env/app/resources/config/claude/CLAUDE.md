@@ -26,7 +26,7 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 |---|---|---|
 | claude | ✅ Max plan | credential on PVC, self-refreshes |
 | codex | ✅ ChatGPT plan | `~/.codex/auth.json`, self-refreshes |
-| kubectl / flux | ✅ in-cluster SA | OPERATOR tier: read all-but-secrets; writes limited to pod delete, rollout restart, flux reconcile/suspend, Jobs, CronJob suspend + PVC delete in `database` only (`kubectl cnpg destroy`, plugin at `~/.local/bin/kubectl-cnpg`). No exec/secrets/RBAC |
+| kubectl / flux | ✅ in-cluster SA | OPERATOR tier: read all-but-secrets; writes limited to pod delete, **pod exec**, rollout restart, flux reconcile/suspend, Jobs, CronJob suspend + PVC delete in `database` only (`kubectl cnpg destroy`, plugin at `~/.local/bin/kubectl-cnpg`). No secrets/RBAC (exec into a secret-mounting pod can read that pod's secrets — accepted, 2026-08-06) |
 | gh / git push | ✅ haynes-dev-bot | App token, all repos, refreshed every 40min; commits/PRs author as the dev bot |
 | sops / age | ❌ deliberately absent | the age key never enters this pod without an explicit decision |
 | omnictl | ✅ READ-ONLY (Reader SA, proxied) | Omni `Reader` service account via `$OMNI_ENDPOINT` + `$OMNI_SERVICE_ACCOUNT_KEY` (SaaS `haynes.na-west-1.omni.siderolabs.io`); `omnictl get clusters/machinestatus` etc. Mutations denied by the Reader role — don't test by attempting them |
@@ -60,7 +60,14 @@ both**:
 - **Claude row labels** (no local manifest exists): if your own system prompt or
   in-session `/model` shows a model family newer than the picker labels, the
   labels are stale — never conclude the newer model is unavailable, and never
-  "fix" the alias values.
+  "fix" the alias values. **This cuts both ways:** a label can also be newer
+  than *your training data* — a prior agent may have refreshed it after a
+  launch you don't know about. Never revert a label downward to match your
+  priors; verify live first (`claude --model <full-id> -p 'model id?'` — cheap
+  and definitive). An agent wrongly reverted Opus 5→4.8 this way on 2026-08-06.
+  Also: alias repoints can lag a launch by days (`opus` served 4.8 while
+  `claude-opus-5` was already live), so during a rollout window the label may
+  legitimately be one tier ahead of what the alias serves.
 - **Codex fallback rows**: `agent-run` prints a WARN when they drift from the
   live cache.
 
