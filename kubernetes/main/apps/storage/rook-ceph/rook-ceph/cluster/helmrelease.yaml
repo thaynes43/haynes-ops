@@ -75,6 +75,31 @@ spec:
               - op: add
                 path: /spec/groups/9/rules/5/labels/scope
                 value: host
+          # NAS false-positive (owner ruling 2026-08-06): CephNodeDiskspaceWarning is a
+          # per-filesystem predict_linear ("full within 5d") that also evaluates the
+          # Unraid NAS's node-exporter series. Unraid's high-water allocator fills ONE
+          # data disk toward the next step (75% → 87.5%) then rotates to another disk,
+          # so a mover burst on the current fill-target trips the prediction while the
+          # array holds ~100TB free — the disk never actually fills (it fired for
+          # /mnt/disk17 at 85% used / 3TB free). Scope the rule to non-NAS hosts: the
+          # `role: nas` label rides on the NAS scrape config; k8s nodes carry no role
+          # label. Array-level NAS capacity backstop lives in
+          # observability/kube-prometheus-stack/app/prometheusrule.yaml (nas-capacity).
+          # Same fail-safe as above: the test op pins the rule index, so a rook chart
+          # bump that shifts it fails the patch -> HR NotReady (pages) instead of
+          # silently rewriting the wrong rule. Re-verify on a rook bump: kubectl -n
+          # rook-ceph get prometheusrule prometheus-ceph-rules -o json
+          #   | jq '.spec.groups[6].rules[4].alert'  (expect "CephNodeDiskspaceWarning").
+          - target:
+              kind: PrometheusRule
+              name: prometheus-ceph-rules
+            patch: |
+              - op: test
+                path: /spec/groups/6/rules/4/alert
+                value: CephNodeDiskspaceWarning
+              - op: replace
+                path: /spec/groups/6/rules/4/expr
+                value: predict_linear(node_filesystem_free_bytes{device=~"/.*", role!="nas"}[2d], 3600 * 24 * 5) * on(cluster, instance) group_left(nodename) node_uname_info < 0
   dependsOn:
     - name: rook-ceph-operator
       namespace: rook-ceph
