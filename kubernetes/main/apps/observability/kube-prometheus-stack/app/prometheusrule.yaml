@@ -142,3 +142,41 @@ spec:
           labels:
             severity: critical
             scope: host          # host/hardware event — alert-responder skips LLM diagnosis
+    # NAS capacity backstop (owner ruling 2026-08-06, same ruling as the rook-ceph
+    # postRenderer that scopes CephNodeDiskspaceWarning to role!="nas"): Unraid's
+    # per-disk fill level is meaningless for capacity planning — the high-water
+    # allocator deliberately runs disks to 87.5% and a predict_linear on the current
+    # fill-target always cries wolf. What actually needs a human is ARRAY-level
+    # exhaustion (buy/swap disks, prune shares) or a single disk draining below any
+    # high-water step (allocator misconfig or a share pinned to a full disk — writes
+    # to it will start failing). Both are critical because only severity=critical
+    # routes to Pushover, and both are genuinely human-actionable; thresholds are far
+    # below normal operation (array holds ~98TB free of 526TB as of this ruling;
+    # high-water never takes a disk below ~2.5TB free).
+    - name: nas-capacity
+      rules:
+        - alert: NASArrayFreeSpaceLow
+          annotations:
+            summary: "NAS {{ $labels.instance }} array free space low: {{ $value | humanize1024 }}B left."
+            description: >-
+              Total free space across the Unraid array's data disks dropped below 10TiB.
+              This is array-level exhaustion, not a per-disk high-water artifact — plan
+              disk additions/replacements or prune shares.
+          expr: sum by (instance) (node_filesystem_avail_bytes{role="nas", fstype="xfs", mountpoint=~"/mnt/disk[0-9]+"}) < 10 * 1024^4
+          for: 1h
+          labels:
+            severity: critical
+            scope: host          # self-evident capacity fact — alert-responder skips LLM diagnosis
+        - alert: NASDataDiskAbsoluteFull
+          annotations:
+            summary: "NAS disk {{ $labels.mountpoint }} nearly full: {{ $value | humanize1024 }}B left."
+            description: >-
+              An individual Unraid data disk fell below 100GB free — below any
+              high-water allocation step, so the allocator should never have let this
+              happen. Likely a share pinned/included on this disk or a split-level
+              constraint; writes targeting it will start failing.
+          expr: node_filesystem_avail_bytes{role="nas", fstype="xfs", mountpoint=~"/mnt/disk[0-9]+"} < 100e9
+          for: 30m
+          labels:
+            severity: critical
+            scope: host          # self-evident capacity fact — alert-responder skips LLM diagnosis
