@@ -46,7 +46,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/todos-for-dues
-              tag: v0.8.1
+              tag: v1.0.0
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -59,15 +59,28 @@ spec:
             image: *mainImage
             env:
               NODE_ENV: production
+              # Reported by /api/health. Keep in lockstep with the image tag
+              # anchor above (&mainImage) on every bump.
+              APP_VERSION: v1.0.0
               PORT: "3000"
               HOSTNAME: "0.0.0.0"
               # The cluster has no IPv6 egress to the internet. Node 18+'s
               # built-in fetch (undici) does Happy Eyeballs and tries IPv6
-              # first by default — Google's OAuth endpoints return both
-              # AAAA and A records, so the OIDC token exchange was timing
-              # out with ETIMEDOUT before the IPv4 fallback finished. This
-              # forces the system resolver to return IPv4 addresses first.
+              # first by default — the portal's Cloud Run origin (like the
+              # old Google OAuth endpoints) returns both AAAA and A records,
+              # so the OIDC discovery/token exchange would time out with
+              # ETIMEDOUT before the IPv4 fallback finished. This forces the
+              # system resolver to return IPv4 addresses first.
               NODE_OPTIONS: --dns-result-order=ipv4first
+              # Portal SSO (todos-for-dues ADR-013): the sigoalumni.org
+              # members portal is the only identity source. Client id +
+              # discovery URL are plain config; only the client secret is a
+              # secret (ExternalSecret, see externalsecret.yaml).
+              OIDC_CLIENT_ID: todos-for-dues
+              # TODO(cutover): -> https://sigoalumni.org/.well-known/openid-configuration
+              # once the portal serves from the apex at launch; today it's the
+              # portal's Cloud Run origin.
+              OIDC_DISCOVERY_URL: https://frontpage-dgmpniyoga-ue.a.run.app/.well-known/openid-configuration
               # Resend FROM address. Must be on a domain whose SPF + DKIM
               # records have been added in the Resend dashboard. The
               # SaaS-repo default (`noreply@todos-for-dues.app`) is a
