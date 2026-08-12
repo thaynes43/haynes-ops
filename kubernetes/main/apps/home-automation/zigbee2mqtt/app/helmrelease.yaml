@@ -65,8 +65,22 @@ spec:
               - secretRef:
                   name: zigbee2mqtt-secret
             probes:
+              # HTTP liveness (not the chart's default TCP): z2m's node process
+              # wedged mid-OTA twice on 2026-08-12 — event loop frozen, log stream
+              # stopped mid-line, but the TCP listener still accepted connections
+              # so the default probe never failed and the outage required a manual
+              # restart. A frozen event loop can't answer HTTP, so this self-heals
+              # in ~2 min. See memory: z2m-process-freeze-during-ota.
               liveness:
                 enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: 80
+                  periodSeconds: 30
+                  timeoutSeconds: 10
+                  failureThreshold: 4
               readiness:
                 enabled: true
               startup:
