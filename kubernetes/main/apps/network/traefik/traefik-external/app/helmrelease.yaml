@@ -3,13 +3,9 @@ kind: HelmRelease
 metadata:
   name: traefik-external
 spec:
-  chart:
-    spec:
-      chart: traefik
-      version: 41.2.0
-      sourceRef:
-        kind: HelmRepository
-        name: traefik-external
+  chartRef:
+    kind: OCIRepository
+    name: traefik-external-oci
   interval: 15m
   timeout: 5m
   releaseName: traefik-external
