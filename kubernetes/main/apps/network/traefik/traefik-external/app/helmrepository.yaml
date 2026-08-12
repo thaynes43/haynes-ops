@@ -1,9 +1,17 @@
 ---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/source.toolkit.fluxcd.io/helmrepository_v1beta1.json
+# UNUSED as of 2026-08-12: the HelmRelease pulls the chart via the
+# traefik-external-oci OCIRepository now (helm.traefik.io started returning 404
+# upstream and was replaced). This manifest is retained ONLY because the
+# traefik-external Flux Kustomization runs prune:false — deleting the file
+# would strand the live HelmRepository in a failing state and keep the
+# FluxReconciliationFailure page firing. Remove this file and
+# `kubectl delete helmrepository traefik-external -n network` in the same
+# change once cluster access allows it.
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: traefik-external
 spec:
   interval: 15m
-  url: https://helm.traefik.io/traefik
+  url: https://traefik.github.io/charts
