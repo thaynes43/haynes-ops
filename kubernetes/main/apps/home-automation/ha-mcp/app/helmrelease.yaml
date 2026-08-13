@@ -43,16 +43,28 @@ spec:
                     name: ha-mcp-secret
                     key: MCP_SECRET_PATH
             probes:
+              # Exec probe over loopback instead of tcpSocket: a wedged event
+              # loop still accepts TCP (see the 2026-08-12 z2m/open-webui
+              # incidents) but cannot answer HTTP. ha-mcp has no health route --
+              # any HTTP status (404 included) proves liveness, so HTTPError is
+              # suppressed. Loopback is also immune to node/network blips like
+              # 2026-08-13 10:31 ET, which false-failed network-path checks.
               liveness: &probes
                 enabled: true
                 custom: true
                 spec:
-                  tcpSocket:
-                    port: &port 8086
-                  initialDelaySeconds: 5
-                  periodSeconds: 10
-                  timeoutSeconds: 1
-                  failureThreshold: 3
+                  exec:
+                    command:
+                      - python3
+                      - -c
+                      - |
+                        import urllib.request, urllib.error, contextlib
+                        with contextlib.suppress(urllib.error.HTTPError):
+                            urllib.request.urlopen("http://localhost:8086/", timeout=5)
+                  initialDelaySeconds: 10
+                  periodSeconds: 30
+                  timeoutSeconds: 10
+                  failureThreshold: 4
               readiness: *probes
             securityContext:
               allowPrivilegeEscalation: false
@@ -76,5 +88,5 @@ spec:
         controller: ha-mcp
         ports:
           http:
-            port: *port
+            port: 8086
 
