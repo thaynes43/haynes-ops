@@ -1,0 +1,26 @@
+---
+# sigoalumni.org via Cloudflare Tunnel `sigoalumni-homelab` -> traefik-external
+# (sigo-alumni ADR 0004 wave 1). Mirrors the haynesnetwork apex route, except:
+# - NO external-dns annotation: the DNS cutover is a deliberate, separate step
+#   (and external-dns's cloudflare instance filters to haynesnetwork.com anyway).
+# - tls: {} (Traefik default cert): no sigoalumni.org certificate exists in the
+#   cluster — minting one needs DNS-01 records in the sigo zone, out of scope
+#   pre-cutover. cloudflared reaches this origin with noTLSVerify (same mode as
+#   the haynesnetwork tunnel), so the default cert is fine for the edge leg.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: sigoalumni
+  annotations:
+    kubernetes.io/ingress.class: traefik-external
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`sigoalumni.org`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: sigoalumni
+          port: 8080
+  tls: {}
