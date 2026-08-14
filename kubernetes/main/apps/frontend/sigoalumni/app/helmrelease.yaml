@@ -1,0 +1,215 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+#
+# sigoalumni.org front page — homelab replicas (sigo-alumni ADR 0004 wave 1,
+# backlog/infra/homelab-hosting/05). Runs the SAME image the Cloud Run service
+# `frontpage` serves, against the SAME Cloud SQL database (shared-DB phase, no
+# data migration) via a cloud-sql-proxy native sidecar. Receives NO public
+# traffic yet: no ingressroute on purpose — the DNS/tunnel flip is a separate,
+# explicitly-not-here step. In-cluster access: sigoalumni.frontend.svc:8080.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: &app sigoalumni
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  maxHistory: 2
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  uninstall:
+    keepHistory: false
+  values:
+    controllers:
+      main:
+        # 3 replicas so no single node failure or drain takes the (future)
+        # serving path down — same HA posture as haynesnetwork. Safe at 3:
+        # DB-backed sessions, zero filesystem state; the image's startup
+        # migrate.js serializes concurrent migrations with a session-level
+        # pg_advisory_lock (losers block, then no-op).
+        replicas: 3
+        strategy: RollingUpdate
+        annotations:
+          reloader.stakater.com/auto: "true"
+        # Keep two pods serving through any voluntary disruption (node drain).
+        # Native app-template per-controller PDB auto-scopes to controller=main.
+        podDisruptionBudget:
+          minAvailable: 2
+        pod:
+          # AR is a private registry — pull with the homelab-ar-reader SA key
+          # (ExternalSecret sigoalumni-ar-pull).
+          imagePullSecrets:
+            - name: sigoalumni-ar-pull
+          # Spread the 3 replicas across distinct nodes. The labelSelector MUST
+          # include controller=main (haynesnetwork caveat): every pod of this
+          # release shares the name + instance labels, so any future extra
+          # controller (cronjob etc.) would otherwise count toward per-node skew.
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: *app
+                  app.kubernetes.io/instance: *app
+                  app.kubernetes.io/controller: main
+        initContainers:
+          # Cloud SQL Auth Proxy as a NATIVE sidecar (restartPolicy Always):
+          # kubelet starts it and waits for its startup probe BEFORE the app
+          # container runs, so the image's boot-time migrate.js always finds
+          # 127.0.0.1:5432 listening (no first-boot race), and it outlives the
+          # app container for clean shutdown ordering.
+          cloud-sql-proxy:
+            image:
+              repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
+              tag: 2.25.2
+              pullPolicy: IfNotPresent
+            restartPolicy: Always
+            args:
+              - --credentials-file=/secrets/cloudsql/key.json
+              - --address=127.0.0.1
+              - --port=5432
+              - --health-check
+              - --http-address=0.0.0.0
+              - --http-port=9801
+              - --structured-logs
+              - sigo-alumni-prod:us-east1:frontpage-pg
+            probes:
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /startup
+                    port: 9801
+                  periodSeconds: 2
+                  timeoutSeconds: 3
+                  failureThreshold: 30
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 128Mi
+        containers:
+          app:
+            image:
+              # Pinned to the EXACT tag the Cloud Run service serves today
+              # (spec.template image, described 2026-08-14) = sigoalumni-org
+              # main commit f5c169a. CI does not deploy here; bump deliberately.
+              repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
+              tag: f5c169af426fb9c299a2ed36a5cfd52d2d4a0c77
+              pullPolicy: IfNotPresent
+            env:
+              # ── Plain env copied 1:1 from the Cloud Run service ──────────
+              # Same public origin ON PURPOSE: the homelab serves the same
+              # site behind the same hostname once traffic flips (ADR 0004).
+              BETTER_AUTH_URL: https://sigoalumni.org
+              BOOTSTRAP_ADMIN_EMAILS: manofoz@gmail.com,admin@sigoalumni.org
+              GOOGLE_OAUTH_CLIENT_ID: 30320160364-49mqt159c4rvegcqbt7lvmt6pru5kt4k.apps.googleusercontent.com
+              # Workspace photo folders + events calendar (IDs are not secrets;
+              # the SA's Workspace share is the access control).
+              PHOTOS_PUBLIC_FOLDER_ID: 1DcbLiutwYcCQOFRw8jaSdpQ7N5ahRv8Z
+              PHOTOS_FRONTPAGE_FOLDER_ID: 1kkrXlWS3sX2ywvhvqJBvb6gYXttx6YE1
+              PHOTOS_MEMBERS_FOLDER_ID: 1qitzjJtfcUhhMmulrvQ5J5x9oLziqtwA
+              EVENTS_CALENDAR_ID: fd2537569f85b3cb0138b6729091ad91190704b6beffaadd0e357250e8967f0c@group.calendar.google.com
+              # NOTE (Google auth gap, wave 1): on Cloud Run the Workspace
+              # integrations (Drive photos, Calendar, Sheets, Meet minting via
+              # MEET_IMPERSONATION_SUBJECT) authenticate KEYLESSLY as the
+              # frontpage-runtime SA through the metadata server; terraform
+              # states that SA never gets a downloaded key. Homelab pods have
+              # no metadata server and no ADC, so these features fail closed /
+              # degrade gracefully here (designed behavior — env.example: the
+              # app boots with none of it set). Restoring them needs an owner
+              # decision on a credential (e.g. an impersonated_service_account
+              # ADC file targeting frontpage-runtime) — tracked separately.
+              MEET_IMPERSONATION_SUBJECT: admin@sigoalumni.org
+              # Gmail authenticated submission (smtp.gmail.com, NOT the
+              # IP-vetted relay — see sigoalumni-org terraform for history).
+              SMTP_RELAY_HOST: smtp.gmail.com
+              SMTP_USER: admin@sigoalumni.org
+              MAIL_FROM: "Sigo Alumni <admin@sigoalumni.org>"
+              # Knowledge Base projection (read-only Outline client).
+              OUTLINE_API_URL: https://wiki.sigoalumni.org/api
+              # OIDC provider (sigo-alumni ADR 0007) — todos-for-dues client.
+              OIDC_DUES_REDIRECT_URIS: https://todos-for-dues.haynesops.com/api/auth/oauth2/callback/sigo-portal
+              # ── Homelab-only addition ────────────────────────────────────
+              # No IPv6 egress in this cluster; public endpoints the app calls
+              # (wiki.sigoalumni.org via Cloudflare, Google OAuth/APIs, Gmail
+              # submission) answer AAAA + A, and undici's Happy Eyeballs would
+              # time out on v6 first. Same fix as todos-for-dues/haynesnetwork.
+              NODE_OPTIONS: --dns-result-order=ipv4first
+            envFrom:
+              - secretRef:
+                  name: sigoalumni-secret
+            # PROBES: the image has NO dedicated health route yet (Cloud Run
+            # only tcp-probes port 8080; a deeper DB-touching health route
+            # ships separately in sigoalumni-org). Until then: readiness +
+            # startup GET / (SSR of the real front page — degrades to 200 even
+            # when upstreams are down, so it gates on "can serve", not on
+            # Google/DB health); liveness stays tcpSocket (Cloud Run parity —
+            # never restart-loop pods on upstream slowness).
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  tcpSocket:
+                    port: 8080
+                  initialDelaySeconds: 15
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: 8080
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: 8080
+                  initialDelaySeconds: 5
+                  periodSeconds: 5
+                  timeoutSeconds: 5
+                  failureThreshold: 24
+            resources:
+              requests:
+                cpu: 50m
+                memory: 256Mi
+              limits:
+                # Cloud Run parity (512Mi limit there).
+                memory: 512Mi
+    persistence:
+      cloudsql-sa:
+        type: secret
+        name: sigoalumni-cloudsql-sa
+        # Sidecar-only mount: the app container never sees the SA key.
+        advancedMounts:
+          main:
+            cloud-sql-proxy:
+              - path: /secrets/cloudsql
+                readOnly: true
+    service:
+      main:
+        controller: main
+        ports:
+          http:
+            port: 8080

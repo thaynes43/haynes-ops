@@ -1,0 +1,40 @@
+---
+# GCP Secret Manager store for the sigo-alumni-prod project (sigo-alumni ADR 0004
+# wave 1 — homelab deployment of sigoalumni.org). Bootstrap chain:
+#   1Password item `sigo-dev-env` (field GCP_SM_READER_KEY = key JSON for the
+#   eso-sm-reader@sigo-alumni-prod SA, project-level secretmanager.secretAccessor)
+#     -> ExternalSecret below (via the onepassword-connect store)
+#     -> k8s Secret gcp-sm-sigo-credentials (this namespace)
+#     -> ClusterSecretStore gcp-sm-sigo (GCP SM provider auth).
+# App ExternalSecrets (e.g. frontend/sigoalumni) then read SM secrets directly.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: gcp-sm-sigo-credentials
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: onepassword-connect
+  target:
+    name: gcp-sm-sigo-credentials
+    creationPolicy: Owner
+  data:
+    - secretKey: key.json
+      remoteRef:
+        key: sigo-dev-env
+        property: GCP_SM_READER_KEY
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: gcp-sm-sigo
+spec:
+  provider:
+    gcpsm:
+      projectID: sigo-alumni-prod
+      auth:
+        secretRef:
+          secretAccessKeySecretRef:
+            name: gcp-sm-sigo-credentials
+            key: key.json
+            namespace: external-secrets
