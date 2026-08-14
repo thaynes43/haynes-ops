@@ -134,6 +134,9 @@ spec:
               - matchName: "oslogin.googleapis.com"
               # Cloudflare API — zone migration, DNS-as-code, later LB/tunnel steering (2026-08-09)
               - matchName: "api.cloudflare.com"
+              # Cloudflare remote MCP servers (official agent tooling; OAuth by Tom post-org-account)
+              - matchName: "mcp.cloudflare.com"
+              - matchPattern: "*.mcp.cloudflare.com"
               - matchPattern: "*.tunnel.cloudproxy.app"
               # Cloud Run log reads (debugging deployed services from the pod)
               - matchName: "logging.googleapis.com"
@@ -281,6 +284,8 @@ spec:
         - matchName: "tunnel.cloudproxy.app"
         - matchName: "oslogin.googleapis.com"
         - matchName: "api.cloudflare.com"
+        - matchName: "mcp.cloudflare.com"
+        - matchPattern: "*.mcp.cloudflare.com"
         - matchPattern: "*.tunnel.cloudproxy.app"
         - matchName: "logging.googleapis.com"
         - matchName: "monitoring.googleapis.com"
