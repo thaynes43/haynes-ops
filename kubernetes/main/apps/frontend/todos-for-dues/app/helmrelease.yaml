@@ -77,10 +77,9 @@ spec:
               # discovery URL are plain config; only the client secret is a
               # secret (ExternalSecret, see externalsecret.yaml).
               OIDC_CLIENT_ID: todos-for-dues
-              # TODO(cutover): -> https://sigoalumni.org/.well-known/openid-configuration
-              # once the portal serves from the apex at launch; today it's the
-              # portal's Cloud Run origin.
-              OIDC_DISCOVERY_URL: https://frontpage-dgmpniyoga-ue.a.run.app/.well-known/openid-configuration
+              # Cutover 2026-08-14: the portal serves from the apex; issuer
+              # moved off the Cloud Run origin at the sigoalumni.org launch.
+              OIDC_DISCOVERY_URL: https://sigoalumni.org/.well-known/openid-configuration
               # Resend FROM address. Must be on a domain whose SPF + DKIM
               # records have been added in the Resend dashboard. The
               # SaaS-repo default (`noreply@todos-for-dues.app`) is a
