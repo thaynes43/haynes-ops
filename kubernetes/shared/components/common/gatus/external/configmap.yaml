@@ -17,4 +17,10 @@ data:
         conditions:
           - "[STATUS] < ${GATUS_STATUS_MAX:-500}"
         alerts:
+          # 10 consecutive 1m failures before paging: routine Renovate image
+          # rollouts (multi-GB pulls) dip endpoints for a few minutes and were
+          # paging nightly. Real outages persist and still page (~10 min in);
+          # broken upgrades are the shepherd's job, not the pager's.
           - type: pushover
+            failure-threshold: 10
+            success-threshold: 2

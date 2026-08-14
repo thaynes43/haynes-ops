@@ -17,4 +17,7 @@ data:
         conditions:
           - "[STATUS] < ${GATUS_STATUS_MAX:-500}"
         alerts:
+          # 10x1m failures before paging — see external/configmap.yaml.
           - type: pushover
+            failure-threshold: 10
+            success-threshold: 2

@@ -48,6 +48,10 @@ spec:
             value: "debug"
     extraArgs:
       - --ignore-ingress-tls-spec
+      # The UDM's API stalls for >5s under load (image-pull storms, busy WAN);
+      # the default 5s webhook read timeout turned every stall into a fatal ->
+      # CrashLoopBackOff (21 restarts in the week to 2026-08-13). Ride it out.
+      - --webhook-provider-read-timeout=60s
     policy: sync
     sources: ["crd", "ingress", "traefik-proxy"]
     excludeDomains: ["haynesnetwork.com"]
