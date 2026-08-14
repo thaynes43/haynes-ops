@@ -46,7 +46,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/todos-for-dues
-              tag: v1.0.0
+              tag: v1.1.0
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -61,7 +61,7 @@ spec:
               NODE_ENV: production
               # Reported by /api/health. Keep in lockstep with the image tag
               # anchor above (&mainImage) on every bump.
-              APP_VERSION: v1.0.0
+              APP_VERSION: v1.1.0
               PORT: "3000"
               HOSTNAME: "0.0.0.0"
               # The cluster has no IPv6 egress to the internet. Node 18+'s
