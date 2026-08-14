@@ -102,11 +102,13 @@ spec:
         containers:
           app:
             image:
-              # Pinned to the EXACT tag the Cloud Run service serves today
-              # (spec.template image, described 2026-08-14) = sigoalumni-org
-              # main commit f5c169a. CI does not deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 21b6a87 (2026-08-14):
+              # brings the /api/healthz DB-touching route (#64) and the
+              # cloud-platform ADC scope fix (#65) the impersonated Workspace
+              # credential below depends on. CI does not deploy here; bump
+              # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: f5c169af426fb9c299a2ed36a5cfd52d2d4a0c77
+              tag: 21b6a87f1b095438594cf292d34669824b3dc142
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
@@ -121,16 +123,15 @@ spec:
               PHOTOS_FRONTPAGE_FOLDER_ID: 1kkrXlWS3sX2ywvhvqJBvb6gYXttx6YE1
               PHOTOS_MEMBERS_FOLDER_ID: 1qitzjJtfcUhhMmulrvQ5J5x9oLziqtwA
               EVENTS_CALENDAR_ID: fd2537569f85b3cb0138b6729091ad91190704b6beffaadd0e357250e8967f0c@group.calendar.google.com
-              # NOTE (Google auth gap, wave 1): on Cloud Run the Workspace
-              # integrations (Drive photos, Calendar, Sheets, Meet minting via
-              # MEET_IMPERSONATION_SUBJECT) authenticate KEYLESSLY as the
-              # frontpage-runtime SA through the metadata server; terraform
-              # states that SA never gets a downloaded key. Homelab pods have
-              # no metadata server and no ADC, so these features fail closed /
-              # degrade gracefully here (designed behavior — env.example: the
-              # app boots with none of it set). Restoring them needs an owner
-              # decision on a credential (e.g. an impersonated_service_account
-              # ADC file targeting frontpage-runtime) — tracked separately.
+              # Workspace auth (Drive photos, Calendar, Sheets, Meet minting):
+              # on Cloud Run the pods authenticate keylessly as frontpage-runtime
+              # via the metadata server. Homelab pods have no metadata server, so
+              # GOOGLE_APPLICATION_CREDENTIALS points at an impersonation-chain
+              # ADC (see externalsecret.yaml #4): a low-privilege keyed SA mints
+              # tokens AS frontpage-runtime, which itself stays keyless. Needs
+              # image >= 21b6a87 (cloud-platform scope in lib/google/auth.ts —
+              # older images 403 on the impersonated generateAccessToken).
+              GOOGLE_APPLICATION_CREDENTIALS: /secrets/workspace-adc/adc.json
               MEET_IMPERSONATION_SUBJECT: admin@sigoalumni.org
               # Gmail authenticated submission (smtp.gmail.com, NOT the
               # IP-vetted relay — see sigoalumni-org terraform for history).
@@ -150,13 +151,13 @@ spec:
             envFrom:
               - secretRef:
                   name: sigoalumni-secret
-            # PROBES: the image has NO dedicated health route yet (Cloud Run
-            # only tcp-probes port 8080; a deeper DB-touching health route
-            # ships separately in sigoalumni-org). Until then: readiness +
-            # startup GET / (SSR of the real front page — degrades to 200 even
-            # when upstreams are down, so it gates on "can serve", not on
-            # Google/DB health); liveness stays tcpSocket (Cloud Run parity —
-            # never restart-loop pods on upstream slowness).
+            # PROBES: readiness = GET /api/healthz (DB-touching route, image
+            # >= 21b6a87): a pod whose DB path is broken stops receiving
+            # traffic — correct for a DB-backed-sessions app. Startup STAYS
+            # GET / ("can serve": listening implies boot migrations are done)
+            # so a DB outage makes new pods unready instead of startup-probe
+            # restart-looping them; liveness stays tcpSocket (Cloud Run parity
+            # — never restart-loop pods on upstream slowness).
             probes:
               liveness:
                 enabled: true
@@ -173,7 +174,7 @@ spec:
                 custom: true
                 spec:
                   httpGet:
-                    path: /
+                    path: /api/healthz
                     port: 8080
                   initialDelaySeconds: 5
                   periodSeconds: 10
@@ -206,6 +207,16 @@ spec:
           main:
             cloud-sql-proxy:
               - path: /secrets/cloudsql
+                readOnly: true
+      workspace-adc:
+        type: secret
+        name: sigoalumni-workspace-adc
+        # App-only mount (GOOGLE_APPLICATION_CREDENTIALS): the proxy sidecar
+        # keeps its own key and never sees this one.
+        advancedMounts:
+          main:
+            app:
+              - path: /secrets/workspace-adc
                 readOnly: true
     service:
       main:
