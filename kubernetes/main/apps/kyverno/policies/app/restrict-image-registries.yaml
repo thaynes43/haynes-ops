@@ -37,7 +37,7 @@ spec:
           A container image is from a non-allowlisted registry. Allowed: ghcr.io,
           docker.io, quay.io, registry.k8s.io, gcr.io, mirror.gcr.io, k8s.gcr.io,
           public.ecr.aws, mcr.microsoft.com, cgr.dev, registry.gitlab.com, reg.kyverno.io,
-          nvcr.io.
+          nvcr.io, us-east1-docker.pkg.dev.
         foreach:
           - list: request.object.spec.containers
             deny:
@@ -59,6 +59,12 @@ spec:
                       - registry.gitlab.com
                       - reg.kyverno.io
                       - nvcr.io
+                      # Google Artifact Registry, us-east1 — the sigoalumni.org
+                      # front page image (frontend/sigoalumni, ADR 0004 wave 1)
+                      # is pulled from the private sigo-alumni-prod repo there.
+                      # Host-level like every other entry; org/repo-swap and
+                      # provenance are the other two policies' jobs (see header).
+                      - us-east1-docker.pkg.dev
           - list: request.object.spec.initContainers
             deny:
               conditions:
