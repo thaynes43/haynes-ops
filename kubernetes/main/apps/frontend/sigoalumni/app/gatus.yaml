@@ -1,0 +1,29 @@
+---
+# Bespoke Gatus endpoint (same mechanism as haynesnetwork's): the shared
+# gatus components (external/gaurded) can only template a public
+# <subdomain>.<domain> URL, and this deployment deliberately has NO public
+# hostname yet (ADR 0004 wave 1 — no traffic steering). Check the in-cluster
+# Service directly instead; strict 200 because GET / degrades gracefully to
+# 200 even with upstreams down (anything else means the pods can't serve).
+# The k8s-sidecar on gatus-0 watches gatus.io/enabled ConfigMaps cluster-wide.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sigoalumni-gatus-ep
+  labels:
+    gatus.io/enabled: "true"
+data:
+  config.yaml: |
+    endpoints:
+      - name: sigoalumni
+        group: internal
+        url: "http://sigoalumni.frontend.svc.cluster.local:8080/"
+        interval: 1m
+        conditions:
+          - "[STATUS] == 200"
+        alerts:
+          - type: pushover
+            description: "sigoalumni homelab replicas (pre-cutover) failing in-cluster check"
+            send-on-resolved: true
+            failure-threshold: 3
+            success-threshold: 3
