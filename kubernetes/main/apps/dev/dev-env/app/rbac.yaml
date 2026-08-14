@@ -89,6 +89,12 @@ rules:
   - apiGroups: [apps]
     resources: [deployments, statefulsets, daemonsets]
     verbs: [patch]
+  # Force an ExternalSecrets refresh (annotate = patch) so agents never wait out
+  # the 1h tick after Tom writes a 1Password field (2026-08-14, dues OIDC secret
+  # lag). Values stay unreadable — secrets themselves remain withheld above.
+  - apiGroups: [external-secrets.io]
+    resources: [externalsecrets]
+    verbs: [patch]
   # `flux reconcile` = annotating; suspend/resume = spec.suspend patch. Sources too
   # (--with-source).
   - apiGroups: [kustomize.toolkit.fluxcd.io]

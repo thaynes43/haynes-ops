@@ -136,6 +136,9 @@ spec:
               - matchName: "api.cloudflare.com"
               # Cloudflare developer docs (agent-setup prompts, API refs) — read-only docs host
               - matchName: "developers.cloudflare.com"
+              # Cloudflare remote MCP servers (official agent tooling; OAuth by Tom post-org-account)
+              - matchName: "mcp.cloudflare.com"
+              - matchPattern: "*.mcp.cloudflare.com"
               - matchPattern: "*.tunnel.cloudproxy.app"
               # Cloud Run log reads (debugging deployed services from the pod)
               - matchName: "logging.googleapis.com"
@@ -284,6 +287,8 @@ spec:
         - matchName: "oslogin.googleapis.com"
         - matchName: "api.cloudflare.com"
         - matchName: "developers.cloudflare.com"
+        - matchName: "mcp.cloudflare.com"
+        - matchPattern: "*.mcp.cloudflare.com"
         - matchPattern: "*.tunnel.cloudproxy.app"
         - matchName: "logging.googleapis.com"
         - matchName: "monitoring.googleapis.com"
