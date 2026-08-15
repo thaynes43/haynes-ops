@@ -144,6 +144,15 @@ spec:
               - matchName: "logging.googleapis.com"
               # Uptime checks + alert policies for the demo site (2026-08-06)
               - matchName: "monitoring.googleapis.com"
+              # Failover watchdog pipeline (sigo-alumni ADR 0004, 2026-08-14): tofu
+              # creates a 2nd-gen Cloud Function (Eventarc Pub/Sub trigger) + a
+              # Cloud Scheduler heartbeat; the function source builds via Cloud
+              # Build. The pod calls these control-plane APIs to apply + poll.
+              - matchName: "pubsub.googleapis.com"
+              - matchName: "cloudfunctions.googleapis.com"
+              - matchName: "eventarc.googleapis.com"
+              - matchName: "cloudscheduler.googleapis.com"
+              - matchName: "cloudbuild.googleapis.com"
               # Workspace SMTP relay (magic-link mail; members-portal, 2026-08-06)
               - matchName: "smtp-relay.gmail.com"
               # Workspace content/roles APIs (Calendar+Drive ride www.googleapis.com;
