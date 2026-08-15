@@ -55,6 +55,13 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: outline-backup
+  annotations:
+    # The inline shell scripts below use ${VAR}/$(...)/$((...)) that must reach
+    # the container shell verbatim. Flux postBuild runs envsubst in STRICT mode
+    # over every resource (this Kustomization substitutes ${APP}), which would
+    # otherwise fail on e.g. ${TS}. This CronJob needs NO Flux variables, so opt
+    # it out of substitution entirely (same mechanism as qbittorrent/ytdl-sub).
+    kustomize.toolkit.fluxcd.io/substitute: disabled
 spec:
   # 03:00 America/New_York (cluster convention; every other estate CronJob uses
   # this tz). NOTE: the VM's own cron ran 0 3 * * * in Etc/UTC (= 23:00 ET); the
