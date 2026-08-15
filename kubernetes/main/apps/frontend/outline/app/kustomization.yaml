@@ -10,3 +10,4 @@ resources:
   - ./ingressroute.yaml
   - ./gatus.yaml
   - ./backup-cronjob.yaml
+  - ./prometheusrule.yaml

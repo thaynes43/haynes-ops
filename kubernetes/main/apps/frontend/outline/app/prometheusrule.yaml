@@ -1,0 +1,30 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+# The wiki's nightly dual-tier backup (backup-cronjob.yaml) must never fail
+# silently: the VM-era cron did exactly that for 5 days (PATH bug, found
+# 2026-08-14) and KubeJobFailed is warning-severity — only severity=critical
+# pages Pushover. Mirrors the media-cronjobs idiom: critical ONLY on TERMINAL
+# job failure (condition Failed=True — retries exhausted, backup genuinely
+# missing), age-capped to the job's own 24h cadence so a lingering job object
+# can't out-fire the next scheduled run.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: outline-backup
+spec:
+  groups:
+    - name: outline-backup.rules
+      rules:
+        - alert: OutlineBackupFailed
+          annotations:
+            summary: >-
+              {{ $labels.namespace }}/{{ $labels.job_name }} wiki backup failed
+              terminally (retries exhausted) — tonight's GCS+Drive backup is
+              MISSING; the newest restorable dump is aging.
+          expr: |
+            kube_job_failed{namespace="frontend", condition="true", job_name=~"outline-backup.*"} > 0
+            and on (namespace, job_name)
+            (time() - kube_job_status_start_time{namespace="frontend"}) < 24 * 3600
+          for: 5m
+          labels:
+            severity: critical
