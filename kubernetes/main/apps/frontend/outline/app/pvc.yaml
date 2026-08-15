@@ -1,0 +1,19 @@
+---
+# Attachment blobs (FILE_STORAGE=local). CephFS RWX so all 3 Outline replicas
+# share one /var/lib/outline/files mount — S3 was deliberately rejected
+# (apps/Outline README). Data is tiny (52K / 3 blobs today); 2Gi is generous
+# headroom. prune:disabled protects the blobs from an accidental Flux prune —
+# on the cluster these are the ONLY copy until the CNPG/GCS backup CronJob lands
+# in a later stage (the VM's GCS files tarball remains the pre-cutover source).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: outline-files
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: ceph-filesystem
