@@ -51,7 +51,7 @@ spec:
     # This init container idempotently creates the grafana DB + role first.
     extraInitContainers:
       - name: init-db
-        image: ghcr.io/home-operations/postgres-init:18.4
+        image: ghcr.io/home-operations/postgres-init:18.6
         envFrom:
           - secretRef:
               name: grafana-postgres-secret
