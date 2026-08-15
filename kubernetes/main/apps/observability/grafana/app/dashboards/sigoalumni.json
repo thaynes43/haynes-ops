@@ -1,0 +1,875 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["sigoalumni", "frontend", "uptime", "sli", "infra-06"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "sigoalumni",
+  "uid": "sigoalumni",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Uptime SLI — Gatus (in-house, high-resolution)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Uptime — last 1h",
+      "description": "Gatus success ratio over the trailing 1h, per check. external = WAN-path /api/healthz (DB-truthful, key external_sigoalumni); internal = in-cluster GET / (key internal_sigoalumni). Ratio = successful results / total results (increase of gatus_results_total). A brand-new check only has data since it was deployed, so wide windows read the partial window honestly rather than back-filling.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 3,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 95 },
+              { "color": "green", "value": 99.9 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum by (key) (increase(gatus_results_total{key=~\"external_sigoalumni|internal_sigoalumni\", success=\"true\"}[1h])) / clamp_min(sum by (key) (increase(gatus_results_total{key=~\"external_sigoalumni|internal_sigoalumni\"}[1h])), 1) * 100",
+          "legendFormat": "{{key}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Uptime — last 24h",
+      "description": "Gatus success ratio over the trailing 24h, per check (external_sigoalumni WAN /api/healthz, internal_sigoalumni in-cluster GET /).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 3,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 95 },
+              { "color": "green", "value": 99.9 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum by (key) (increase(gatus_results_total{key=~\"external_sigoalumni|internal_sigoalumni\", success=\"true\"}[24h])) / clamp_min(sum by (key) (increase(gatus_results_total{key=~\"external_sigoalumni|internal_sigoalumni\"}[24h])), 1) * 100",
+          "legendFormat": "{{key}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Uptime — last 7d",
+      "description": "Gatus success ratio over the trailing 7d, per check (external_sigoalumni WAN /api/healthz, internal_sigoalumni in-cluster GET /).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 3,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 95 },
+              { "color": "green", "value": 99.9 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum by (key) (increase(gatus_results_total{key=~\"external_sigoalumni|internal_sigoalumni\", success=\"true\"}[7d])) / clamp_min(sum by (key) (increase(gatus_results_total{key=~\"external_sigoalumni|internal_sigoalumni\"}[7d])), 1) * 100",
+          "legendFormat": "{{key}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Uptime — last 30d",
+      "description": "Gatus success ratio over the trailing 30d, per check (external_sigoalumni WAN /api/healthz, internal_sigoalumni in-cluster GET /). Feeds the ADR 0004 SLA record alongside the GCP uptime checks.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 3,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 95 },
+              { "color": "green", "value": 99.9 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum by (key) (increase(gatus_results_total{key=~\"external_sigoalumni|internal_sigoalumni\", success=\"true\"}[30d])) / clamp_min(sum by (key) (increase(gatus_results_total{key=~\"external_sigoalumni|internal_sigoalumni\"}[30d])), 1) * 100",
+          "legendFormat": "{{key}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Uptime ratio — 1h rolling, per check",
+      "description": "Rolling 1h Gatus success ratio over time for both sigoalumni checks. external = WAN-path /api/healthz (DB-truthful); internal = in-cluster GET /. Dips below 100 mark windows containing a failed result. NB the WAN check's measurement plane runs in THIS cluster (gatus-0), so a lab-wide outage shows as missing data, not 0 — the GCP uptime checks are the outside view for that case.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "max": 100,
+          "min": 0,
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 6 },
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "min"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum by (key) (increase(gatus_results_total{key=~\"external_sigoalumni|internal_sigoalumni\", success=\"true\"}[1h])) / clamp_min(sum by (key) (increase(gatus_results_total{key=~\"external_sigoalumni|internal_sigoalumni\"}[1h])), 1) * 100",
+          "legendFormat": "{{key}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "External probe — blackbox (outside-in, WAN)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Probe up",
+      "description": "blackbox http_2xx probe of https://sigoalumni.org (probe_success). Second, independent alarm path alongside Gatus; covered automatically by the BlackboxProbeFailed rule (probe_success == 0 for 15m, critical). This is a process-level 2xx of GET /, not the DB-truthful /api/healthz signal.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red", "index": 0 } } },
+            { "type": "value", "options": { "1": { "text": "UP", "color": "green", "index": 1 } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 14 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "probe_success{instance=\"https://sigoalumni.org\"}",
+          "legendFormat": "probe_success",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "HTTP status code",
+      "description": "Last HTTP status code returned to the blackbox probe for https://sigoalumni.org (probe_http_status_code). Green when a 2xx.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 200 },
+              { "color": "yellow", "value": 300 },
+              { "color": "red", "value": 400 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 14 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "probe_http_status_code{instance=\"https://sigoalumni.org\"}",
+          "legendFormat": "status",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Probe duration",
+      "description": "End-to-end blackbox probe duration for https://sigoalumni.org (probe_duration_seconds) — the full WAN round trip (Cloudflare edge -> tunnel -> traefik-external -> pod).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "min": 0,
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 14 },
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "probe_duration_seconds{instance=\"https://sigoalumni.org\"}",
+          "legendFormat": "probe duration",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Request plane — Cloudflare Tunnel (sigoalumni-homelab)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 19 },
+      "panels": []
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Request rate (cloudflared)",
+      "description": "Requests/s served by the dedicated sigoalumni Cloudflare Tunnel (cloudflared_tunnel_total_requests, job cloudflare-tunnel-sigoalumni). NOTE: Traefik metrics are NOT scraped in this cluster (no traefik_* series exist in Prometheus, and the traefik-external HelmRelease exports none), so the tunnel — which every sigoalumni.org request traverses — is the request-plane source of truth here rather than traefik_service_requests_total.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "min": 0,
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 },
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum(rate(cloudflared_tunnel_total_requests{job=\"cloudflare-tunnel-sigoalumni\"}[5m]))",
+          "legendFormat": "requests/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Responses by status code (cloudflared)",
+      "description": "Response rate by HTTP status code at the sigoalumni tunnel (cloudflared_tunnel_response_by_code, label status_code). The truthful status distribution for sigoalumni.org in the absence of traefik_* metrics.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "min": 0,
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 },
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum by (status_code) (rate(cloudflared_tunnel_response_by_code{job=\"cloudflare-tunnel-sigoalumni\"}[5m]))",
+          "legendFormat": "{{status_code}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Active edge connections",
+      "description": "Sum of active HA connections the sigoalumni tunnel holds to the Cloudflare edge (cloudflared_tunnel_ha_connections, summed across replicas). cloudflared maintains 4 per replica when healthy; a drop toward 0 means the tunnel is losing its edge.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 4 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 26 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum(cloudflared_tunnel_ha_connections{job=\"cloudflare-tunnel-sigoalumni\"})",
+          "legendFormat": "edge connections",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Tunnel request errors",
+      "description": "Error rate reported by the sigoalumni tunnel (cloudflared_tunnel_request_errors). Sustained non-zero here means cloudflared could not proxy requests to the origin (traefik-external / pods).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "min": 0,
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 18, "x": 6, "y": 26 },
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "sum(rate(cloudflared_tunnel_request_errors{job=\"cloudflare-tunnel-sigoalumni\"}[5m]))",
+          "legendFormat": "errors/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "row",
+      "title": "Serving & DB health",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "panels": []
+    },
+    {
+      "id": 17,
+      "type": "stat",
+      "title": "Replicas available",
+      "description": "Available replicas of the sigoalumni Deployment (kube_deployment_status_replicas_available{deployment=\"sigoalumni\"}, ns frontend). Desired is 3; red at 0, yellow below 3.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 3 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 32 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "kube_deployment_status_replicas_available{deployment=\"sigoalumni\"}",
+          "legendFormat": "available",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Replicas — available vs desired",
+      "description": "Available (kube_deployment_status_replicas_available) vs desired (kube_deployment_spec_replicas) for the sigoalumni Deployment. Failover drill signal: available dropping while desired holds = pods unhealthy.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "decimals": 0,
+          "min": 0,
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "desired" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "dash": [8, 6], "fill": "dash" } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 5, "w": 9, "x": 6, "y": 32 },
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "min"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "kube_deployment_status_replicas_available{deployment=\"sigoalumni\"}",
+          "legendFormat": "available",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "kube_deployment_spec_replicas{deployment=\"sigoalumni\"}",
+          "legendFormat": "desired",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "cloud-sql-proxy connections (log-derived)",
+      "description": "cloud-sql-proxy has no /metrics endpoint scraped here, so connection activity is derived from its stdout in Loki: accepts/s = rate of 'Accepted connection' lines; errors/s = rate of error/refused/failed lines. A healthy DB path shows a steady accept rate and a flat-zero error line.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "min": 0,
+          "unit": "cps"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "errors/s" },
+            "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } } ]
+          }
+        ]
+      },
+      "gridPos": { "h": 5, "w": 9, "x": 15, "y": 32 },
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "sum(rate({app=\"sigoalumni\", container=\"cloud-sql-proxy\"} |= \"Accepted connection\" [5m]))",
+          "legendFormat": "accepts/s",
+          "queryType": "range",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "sum(rate({app=\"sigoalumni\", container=\"cloud-sql-proxy\"} |~ \"(?i)(error|refused|failed|denied|could not|timeout)\" [5m]))",
+          "legendFormat": "errors/s",
+          "queryType": "range",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Logs — Loki starter queries",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 37 },
+      "panels": []
+    },
+    {
+      "id": 21,
+      "type": "text",
+      "title": "Loki starter query set (copy into Explore, datasource: Loki)",
+      "description": "The canonical sigoalumni LogQL starter set. Live versions render in the three panels below; these are the copy-paste sources for ad-hoc Explore work.",
+      "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 38 },
+      "options": {
+        "mode": "markdown",
+        "content": "### sigoalumni — Loki starter queries\n\nDatasource: **Loki**. Log streams: app + cloud-sql-proxy share the pod under `{app=\"sigoalumni\"}` (split by `container`); the dedicated tunnel is `{app=\"cloudflare-tunnel-sigoalumni\"}`.\n\n**1. App error lines (Next.js container)**\n```logql\n{app=\"sigoalumni\", container=\"app\"} |~ `(?i)(error|exception|unhandled|fatal|ECONNREFUSED|ETIMEDOUT|failed)`\n```\n\n**2. cloud-sql-proxy connection errors** — line-filter form (robust), or JSON form for structured severity:\n```logql\n{app=\"sigoalumni\", container=\"cloud-sql-proxy\"} |~ `(?i)(error|refused|failed|denied|could not|timeout)`\n# structured: proxy logs are JSON with a severity field\n{app=\"sigoalumni\", container=\"cloud-sql-proxy\"} | json | severity=~`ERROR|WARNING|CRITICAL`\n```\n\n**3. cloudflared tunnel disconnects (sigoalumni tunnel)**\n```logql\n{app=\"cloudflare-tunnel-sigoalumni\"} |~ `(?i)(terminated|retrying connection|unregistered|failed to serve|serve tunnel error|lost connection|connection error|ERR )`\n```\n\n**Rate helpers** (metric queries — use as timeseries):\n```logql\nsum(rate({app=\"sigoalumni\", container=\"app\"} |~ `(?i)(error|exception|fatal)` [5m]))\nsum(rate({app=\"sigoalumni\", container=\"cloud-sql-proxy\"} |= \"Accepted connection\" [5m]))\n```\n"
+      }
+    },
+    {
+      "id": 22,
+      "type": "logs",
+      "title": "App error lines (container=app)",
+      "description": "Error/exception lines from the sigoalumni Next.js app container.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 46 },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{app=\"sigoalumni\", container=\"app\"} |~ \"(?i)(error|exception|unhandled|fatal|ECONNREFUSED|ETIMEDOUT|failed)\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "logs",
+      "title": "cloud-sql-proxy connection errors (container=cloud-sql-proxy)",
+      "description": "Error/refused/failed lines from the cloud-sql-proxy sidecar — the DB path health signal.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 46 },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{app=\"sigoalumni\", container=\"cloud-sql-proxy\"} |~ \"(?i)(error|refused|failed|denied|could not|timeout)\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "logs",
+      "title": "cloudflared tunnel disconnects (sigoalumni tunnel)",
+      "description": "Disconnect / retry / serve-error lines from the dedicated sigoalumni Cloudflare Tunnel.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 55 },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{app=\"cloudflare-tunnel-sigoalumni\"} |~ \"(?i)(terminated|retrying connection|unregistered|failed to serve|serve tunnel error|lost connection|connection error|ERR )\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

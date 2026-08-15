@@ -93,3 +93,18 @@ configMapGenerator:
         grafana_dashboard: "true"
       annotations:
         grafana_folder: Home Assistant
+  # sigoalumni observability (sigo-alumni backlog infra/06): uptime SLI (Gatus
+  # 1h/24h/7d/30d for the external WAN /api/healthz + internal in-cluster
+  # checks), blackbox probe_success/duration, the Cloudflare-Tunnel request
+  # plane (traefik_* is NOT scraped in this cluster, so the dedicated
+  # sigoalumni tunnel is the request-rate/status source of truth), replica +
+  # cloud-sql-proxy health, and the Loki starter query set (text + live logs).
+  - name: grafana-dashboard-sigoalumni
+    files:
+      - dashboards/sigoalumni.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "true"
+      annotations:
+        grafana_folder: Frontend

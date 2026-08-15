@@ -27,3 +27,55 @@ data:
             send-on-resolved: true
             failure-threshold: 3
             success-threshold: 3
+---
+# External Gatus check on the REAL WAN path for sigoalumni.org, now that the
+# site serves homelab-primary through the `sigoalumni-homelab` Cloudflare Tunnel
+# (sigo-alumni backlog infra/06). Mirrors haynesnetwork's bespoke apex endpoint,
+# but targets /api/healthz instead of a process-only 200:
+#
+#   * Honest-SLI rule (sigo-alumni ADR 0004): /api/healthz is DB-touching, so a
+#     200 means the app can actually reach Cloud SQL through the cloud-sql-proxy
+#     sidecar — not merely that the Next.js process is up. haynesnetwork's
+#     forensics showed a process-only SLI is blind to functional outages; this
+#     check is deliberately DB-truthful for the same reason.
+#   * Public resolver (dns-resolver: tcp://1.1.1.1:53) so the probe exercises the
+#     real path (Cloudflare edge -> sigoalumni-homelab tunnel -> traefik-external
+#     -> pod), never an in-cluster split-horizon shortcut. Same as the shared
+#     external component and haynesnetwork's apex check.
+#   * BLIND SPOT (ACCEPTED): this WAN-path check traverses Cloudflare edge ->
+#     tunnel -> back into THIS SAME cluster (gatus-0 runs here), so the
+#     measurement plane dies with the lab — if the homelab is down, Gatus is
+#     down and cannot record the outage. The GCP uptime checks (already live) are
+#     the outside-the-house view that survives a lab-wide failure; Gatus is the
+#     in-house high-resolution view. Both feed the SLA record.
+#
+# Separate ConfigMap from the internal check above so each endpoint keeps its own
+# rationale; the k8s-sidecar on gatus-0 loads both (label gatus.io/enabled) and
+# Gatus merges them. group "external" + name "sigoalumni" => metric key
+# `external_sigoalumni` (the internal one is `internal_sigoalumni`).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sigoalumni-gatus-ep-external
+  labels:
+    gatus.io/enabled: "true"
+data:
+  config.yaml: |
+    endpoints:
+      - name: sigoalumni
+        group: external
+        url: "https://sigoalumni.org/api/healthz"
+        interval: 1m
+        client:
+          # Public resolver -> real WAN path (Cloudflare edge -> tunnel -> pod).
+          dns-resolver: tcp://1.1.1.1:53
+        conditions:
+          # DB-truthful: /api/healthz touches Cloud SQL, so a 200 proves
+          # functional serving, not just a live process (ADR 0004 honest-SLI).
+          - "[STATUS] == 200"
+        alerts:
+          - type: pushover
+            description: "sigoalumni.org apex /api/healthz (WAN path, DB-truthful) failed"
+            send-on-resolved: true
+            failure-threshold: 3
+            success-threshold: 3
