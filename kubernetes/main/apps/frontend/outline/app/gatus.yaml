@@ -1,0 +1,29 @@
+---
+# Internal Gatus check (same mechanism as sigoalumni's internal endpoint): this
+# deployment has NO public hostname until the Stage-3 cutover, so probe the
+# in-cluster Service directly rather than the WAN path. /_health is DB + Redis
+# truthful (SELECT 1 + redis.ping), so a 200 proves the pods can actually serve,
+# not merely that the process is up. The k8s-sidecar on gatus-0 watches
+# gatus.io/enabled ConfigMaps cluster-wide. A matching external check on
+# https://wiki.sigoalumni.org is intentionally deferred to Stage 3 (post-DNS).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: outline-gatus-ep
+  labels:
+    gatus.io/enabled: "true"
+data:
+  config.yaml: |
+    endpoints:
+      - name: outline
+        group: internal
+        url: "http://outline.frontend.svc.cluster.local:3000/_health"
+        interval: 1m
+        conditions:
+          - "[STATUS] == 200"
+        alerts:
+          - type: pushover
+            description: "outline wiki homelab (pre-cutover) failing in-cluster /_health"
+            send-on-resolved: true
+            failure-threshold: 3
+            success-threshold: 3

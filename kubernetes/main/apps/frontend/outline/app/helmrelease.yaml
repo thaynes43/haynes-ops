@@ -1,0 +1,135 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+#
+# Outline wiki — homelab (ADR 0004 wave 2, backlog/infra/homelab-hosting/07).
+# Image PINNED to the VM's proven 1.9.2 digest (tag label `latest` is what the
+# VM pulls; the @sha256 digest is authoritative). DB = shared CNPG cluster16,
+# Redis = shared Dragonfly /3, attachments = CephFS RWX PVC. Migrations are NOT
+# run here — the outline-db-migrate Job owns them; app pods carry --no-migrate.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: &app outline
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  maxHistory: 2
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  uninstall:
+    keepHistory: false
+  values:
+    defaultPodOptions:
+      # The Outline image runs as user nodejs (uid/gid 1001). fsGroup makes the
+      # shared CephFS attachments volume group-writable by that user.
+      securityContext:
+        fsGroup: 1001
+    controllers:
+      main:
+        # 3 replicas for HA (survive a node drain). Safe multi-replica because
+        # state is shared: DB on CNPG, sessions/collaboration coordination on
+        # the shared Dragonfly, attachments on the RWX PVC, and migrations run
+        # once in a dedicated Job (app pods --no-migrate). Fallback to
+        # replicas: 1 (a 5-user wiki tolerates it) if collab/session friction
+        # shows up — see the migration plan.
+        replicas: 3
+        strategy: RollingUpdate
+        annotations:
+          reloader.stakater.com/auto: "true"
+        # Keep two pods serving through any voluntary disruption (node drain).
+        # app-template's native per-controller PDB auto-scopes to controller=main.
+        podDisruptionBudget:
+          minAvailable: 2
+        pod:
+          # Spread the 3 replicas across distinct nodes. labelSelector MUST
+          # include controller=main: every pod of this release shares the
+          # name + instance labels, so the one-shot migration Job's pod (also
+          # labelled name=outline via commonMetadata) would otherwise count
+          # toward per-node skew.
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: *app
+                  app.kubernetes.io/instance: *app
+                  app.kubernetes.io/controller: main
+        containers:
+          app:
+            image:
+              # 1.9.2 — digest-pinned to the exact image the VM runs.
+              repository: docker.getoutline.com/outlinewiki/outline
+              tag: latest@sha256:32d76719c378931dd65d93945930ca380d8376a0337d98a991fcc12b266f33cf
+              pullPolicy: IfNotPresent
+            # Preserve the image ENTRYPOINT (docker-entrypoint.sh) and append
+            # --no-migrate so app pods never run migrations (the Job owns them).
+            args:
+              - node
+              - build/server/index.js
+              - --no-migrate
+            envFrom:
+              - secretRef:
+                  name: outline-secret
+            # /_health is DB + Redis truthful (SELECT 1 + redis.ping → 200/500),
+            # so an unready pod is one that genuinely can't serve.
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /_health
+                    port: 3000
+                  initialDelaySeconds: 15
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /_health
+                    port: 3000
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /_health
+                    port: 3000
+                  initialDelaySeconds: 5
+                  periodSeconds: 5
+                  timeoutSeconds: 5
+                  # ~2.5 min: covers first boot waiting on the migration Job.
+                  failureThreshold: 30
+            resources:
+              requests:
+                cpu: 100m
+                memory: 512Mi
+              limits:
+                memory: 1Gi
+    service:
+      main:
+        controller: main
+        ports:
+          http:
+            port: 3000
+    persistence:
+      files:
+        existingClaim: outline-files
+        globalMounts:
+          - path: /var/lib/outline/files

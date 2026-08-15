@@ -1,0 +1,53 @@
+---
+# Single migration Job — the ONLY place DB schema work happens, so the 3 app
+# replicas never race on migrations (backlog/infra/homelab-hosting/07). Outline
+# auto-migrates on boot (server/utils/startup.js → migrations.up under a Redis
+# MutexLock), so the app pods are started with `--no-migrate`: they fail-closed
+# (Logger.fatal → exit 1) until this Job has applied the schema, then boot clean.
+#
+#   initContainer 01-init-db : postgres-init creates DB `outline` + role `outline`
+#                              idempotently on cluster16 (superuser = postgres).
+#   container      migrate    : `yarn db:migrate` (sequelize db:migrate) applies
+#                              every pending migration exactly once, then exits 0.
+#
+# On an EMPTY DB (Stage 1) this creates the full schema; the Stage-2 pg restore
+# loads it into that schema. Image PINNED to the VM's proven 1.9.2 digest.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: outline-db-migrate
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: outline
+        app.kubernetes.io/component: db-migrate
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: 01-init-db
+          image: ghcr.io/home-operations/postgres-init:18.4.0@sha256:ebd9d30add17acdf935d73eb004758c7dfd9388aaa605fda70ad74378ab92aec
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: outline-secret
+            - secretRef:
+                name: outline-cnpg-superuser
+      containers:
+        - name: migrate
+          image: docker.getoutline.com/outlinewiki/outline@sha256:32d76719c378931dd65d93945930ca380d8376a0337d98a991fcc12b266f33cf
+          imagePullPolicy: IfNotPresent
+          # Preserve the image ENTRYPOINT (docker-entrypoint.sh); it execs
+          # `yarn db:migrate` in WORKDIR /opt/outline.
+          args: ["yarn", "db:migrate"]
+          envFrom:
+            - secretRef:
+                name: outline-secret
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 512Mi

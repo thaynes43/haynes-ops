@@ -1,0 +1,28 @@
+---
+# wiki.sigoalumni.org via the Cloudflare Tunnel `sigoalumni-homelab` ->
+# traefik-external (ADR 0004 wave 2). HARMLESS PRE-DNS: adding this route does
+# NOT steer any traffic — the tunnel public hostname + the DNS record are a
+# deliberate, separate Stage-3 cutover step. Mirrors the sigoalumni apex route:
+# - NO external-dns annotation: the DNS cutover is out of scope here (and
+#   external-dns's cloudflare instance filters to haynesnetwork.com anyway).
+# - tls: {} (Traefik default cert): no sigoalumni.org certificate exists in the
+#   cluster (minting one needs DNS-01 in the sigo zone, out of scope pre-cutover).
+#   cloudflared reaches this origin with noTLSVerify, so the default cert is fine
+#   for the edge leg.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: outline
+  annotations:
+    kubernetes.io/ingress.class: traefik-external
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`wiki.sigoalumni.org`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: outline
+          port: 3000
+  tls: {}

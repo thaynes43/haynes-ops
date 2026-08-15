@@ -16,3 +16,4 @@ resources:
   - ./todos-for-dues/ks.yaml
   - ./haynesnetwork/ks.yaml
   - ./sigoalumni/ks.yaml
+  - ./outline/ks.yaml

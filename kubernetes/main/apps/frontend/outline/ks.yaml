@@ -1,0 +1,41 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/fluxcd-community/flux2-schemas/main/kustomization-kustomize-v1.json
+# Wiki (Outline) on homelab — ADR 0004 wave 2 (backlog/infra/homelab-hosting/07).
+# Replaces the standalone GCE VM (outlinewiki/outline 1.9.2) with a cluster
+# deployment: image PINNED to the VM's proven 1.9.2 digest, DB on shared CNPG
+# postgres16, Redis on shared Dragonfly (/3), attachments on a CephFS RWX PVC,
+# migrations run once by a dedicated Job (app pods start with --no-migrate).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app outline
+  namespace: &namespace frontend
+spec:
+  targetNamespace: *namespace
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    # Secrets: gcp-sm-sigo (app secrets) + onepassword-connect (CNPG superuser)
+    # ClusterSecretStores are both provisioned by external-secrets-stores.
+    - name: external-secrets-stores
+      namespace: external-secrets
+    # DB lives on the shared CNPG cluster16 (postgres16-rw.database.svc).
+    - name: cloudnative-pg-cluster
+      namespace: database
+    # Redis lives on the shared Dragonfly instance (dragonfly.database.svc).
+    - name: dragonfly-cluster
+      namespace: database
+  path: ./kubernetes/main/apps/frontend/outline/app
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  prune: true
+  wait: false
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m
+  postBuild:
+    substitute:
+      APP: *app
