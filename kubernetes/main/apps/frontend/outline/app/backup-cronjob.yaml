@@ -94,7 +94,7 @@ spec:
             # 1) Produce the artifacts: pg_dump -Fc + tar of the attachments PVC,
             #    both named with one shared UTC timestamp, into the shared /work.
             - name: dump
-              image: ghcr.io/cloudnative-pg/postgresql:16.6-34@sha256:53be6d727c7b3cf0df2b147f7ce7cdd31d37fd285314294871a4ccc3837b6872
+              image: ghcr.io/cloudnative-pg/postgresql:17.2-34@sha256:61d2b391e3e324d05edc6c65c555989a7c544ddb72ef271b3abd4a35b57942b1
               imagePullPolicy: IfNotPresent
               command:
                 - /bin/bash
