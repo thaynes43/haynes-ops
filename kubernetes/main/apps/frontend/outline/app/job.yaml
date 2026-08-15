@@ -16,9 +16,16 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: outline-db-migrate
+  annotations:
+    # Jobs' spec.template is immutable: any manifest diff (or the controller's
+    # injected labels after a TTL-expiry recreate) wedges the kustomization
+    # with "field is immutable" — bit us 2026-08-15. force = Flux deletes and
+    # recreates instead of patching; safe because the migration is idempotent
+    # (sequelize no-ops when nothing is pending). TTL removed so the completed
+    # Job persists instead of churning a delete/recreate cycle every 24h.
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
   backoffLimit: 6
-  ttlSecondsAfterFinished: 86400
   template:
     metadata:
       labels:
