@@ -37,7 +37,10 @@ spec:
                 name: outline-cnpg-superuser
       containers:
         - name: migrate
-          image: docker.getoutline.com/outlinewiki/outline@sha256:32d76719c378931dd65d93945930ca380d8376a0337d98a991fcc12b266f33cf
+          # Same 1.9.2 image the VM runs, byte-identical digest, but pulled
+          # from docker.io (the getoutline.com registry is not on the Kyverno
+          # restrict-image-registries allowlist; docker.io is).
+          image: docker.io/outlinewiki/outline@sha256:32d76719c378931dd65d93945930ca380d8376a0337d98a991fcc12b266f33cf
           imagePullPolicy: IfNotPresent
           # Preserve the image ENTRYPOINT (docker-entrypoint.sh); it execs
           # `yarn db:migrate` in WORKDIR /opt/outline.
