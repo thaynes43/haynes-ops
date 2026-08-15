@@ -102,14 +102,14 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit fc61c04 (2026-08-15):
-              # verified @sigoalumni.org Workspace sign-ins auto-get a
-              # member-registry row (#69, migration 0011 workspace-account
-              # provenance) so the member-status feature works for them without
-              # changing the pinned status-API contract. CI does not deploy
-              # here; bump deliberately.
+              # Pinned to sigoalumni-org main commit cdbe4eb (2026-08-15):
+              # magic-link sign-in copy rewrite (#70) — professional
+              # transactional voice on the members sign-in page + email.
+              # Carries forward the #69 member-registry provenance work
+              # (migration 0011); no schema/API change here, copy only. CI does
+              # not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: fc61c04bf9f2eb7de9b3cf7dacc69379dc2db630
+              tag: cdbe4eb9ba2d588b3a79369b9e8012f063a6f112
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
