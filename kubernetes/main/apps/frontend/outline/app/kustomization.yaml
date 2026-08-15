@@ -9,3 +9,4 @@ resources:
   - ./helmrelease.yaml
   - ./ingressroute.yaml
   - ./gatus.yaml
+  - ./backup-cronjob.yaml

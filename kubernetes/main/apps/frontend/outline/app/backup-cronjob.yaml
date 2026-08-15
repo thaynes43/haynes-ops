@@ -1,0 +1,217 @@
+---
+# Drive service-account key for the cold-tier (rclone -> Workspace Shared Drive)
+# AND the hot-tier GCS auth. ONE service account (outline-vm@sigo-alumni-prod)
+# does both: it holds roles/storage.objectAdmin on the backups bucket and is a
+# member of the "Backups" Shared Drive's Outline/ folder. Sourced from GCP Secret
+# Manager (outline-drive-sa-key) via gcp-sm-sigo — the same store + secret the
+# retiring VM's load-secrets.sh read. The JSON is mounted as a file; rclone reads
+# it for both the :gcs: and :drive: backends. Never printed.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: outline-drive-sa
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: gcp-sm-sigo
+  target:
+    name: outline-drive-sa
+    creationPolicy: Owner
+  data:
+    - secretKey: drive-sa.json
+      remoteRef:
+        key: outline-drive-sa-key
+---
+# Nightly dual-tier backup — a faithful port of the retiring VM's
+# /opt/outline/scripts/backup.sh (backlog/infra/homelab-hosting/07, "Backup
+# continuity"). The VM cron was disabled at wave-2 cutover (2026-08-15); this
+# CronJob is now the sole producer of the GCS respin recipe + Drive cold tier.
+#
+# SEMANTICS MIRRORED FROM backup.sh (byte-for-byte where it matters so drill 2's
+# "newest object" logic and the VM restore recipe keep working):
+#   * naming:     outline-postgres-<TS>.dump / outline-files-<TS>.tar.gz,
+#                 TS = date -u +%Y%m%dT%H%M%SZ (a SINGLE shared TS for both files)
+#   * GCS layout: gs://sigo-alumni-prod-outline-backups/{postgres,files}/<name>
+#   * files tar:  tar -czf ... -C /var/lib/outline files  (top-level files/ dir)
+#   * retention:  COUNT-based (NOT age-based, so a silent stop never empties a
+#                 tier): GCS keep 90, Drive keep 30 — identical to the VM.
+#   * Drive:      rclone copy -> :drive:Outline/ on Shared Drive 0AB-lOEPrwe4jUk9PVA
+#
+# DELIBERATE DEVIATION from backup.sh: the VM used `gcloud storage` for GCS (auth
+# via the instance SA) + rclone for Drive. In-cluster there is no attached SA, and
+# no single maintained image bundles pg_dump 16 + gcloud + rclone. So rclone drives
+# BOTH tiers (its google-cloud-storage backend uploads to identical object paths),
+# authenticated by the one SA JSON. This collapses the storage side to ONE tool and
+# ONE pinned image; the bucket has uniform bucket-level access, so bucket_policy_only
+# keeps rclone from attempting per-object ACLs. Postgres 16 pg_dump comes from the
+# cluster's own CNPG image (exact server-version match).
+#
+# FAILURE VISIBILITY: both containers run set -e; the GCS (hot) tier is written
+# before the Drive (cold) tier, so a Drive outage never blocks the primary. Any
+# failed step -> non-zero exit -> failed Job (restartPolicy Never, backoffLimit 2)
+# -> visible in kube-state-metrics as kube_job_failed / kube_cronjob last-schedule.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: outline-backup
+spec:
+  # 03:00 America/New_York (cluster convention; every other estate CronJob uses
+  # this tz). NOTE: the VM's own cron ran 0 3 * * * in Etc/UTC (= 23:00 ET); the
+  # plan + this job standardize on 03:00 ET, a deeper-overnight low-traffic window.
+  schedule: "0 3 * * *"
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: outline
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          securityContext:
+            # CephFS attachments are group-owned by gid 1001 (the app's fsGroup);
+            # this grants both containers the supplemental group so they can read
+            # the blobs and write the shared /work volume.
+            fsGroup: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            # 1) Produce the artifacts: pg_dump -Fc + tar of the attachments PVC,
+            #    both named with one shared UTC timestamp, into the shared /work.
+            - name: dump
+              image: ghcr.io/cloudnative-pg/postgresql:16.4-34@sha256:5603c7625d717ac87afbb99b04ca59e44d0d0b8d4d0bc3ec1db7dc33f6d8c777
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  # PG* from outline-secret (INIT_POSTGRES_* + PGSSLMODE=disable);
+                  # password via env, never on the pg_dump command line.
+                  export PGHOST="$INIT_POSTGRES_HOST" PGUSER="$INIT_POSTGRES_USER" \
+                         PGDATABASE="$INIT_POSTGRES_DBNAME" PGPASSWORD="$INIT_POSTGRES_PASS"
+                  TS="$(date -u +%Y%m%dT%H%M%SZ)"
+                  printf '%s' "$TS" > /work/BACKUP_TS
+                  echo "[dump] pg_dump -Fc ${PGDATABASE}@${PGHOST} -> outline-postgres-${TS}.dump"
+                  pg_dump -Fc -f "/work/outline-postgres-${TS}.dump"
+                  test -s "/work/outline-postgres-${TS}.dump"
+                  echo "[dump] tar attachments -> outline-files-${TS}.tar.gz"
+                  tar -czf "/work/outline-files-${TS}.tar.gz" -C /var/lib/outline files
+                  test -s "/work/outline-files-${TS}.tar.gz"
+                  ls -l /work
+              envFrom:
+                - secretRef:
+                    name: outline-secret
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: files
+                  mountPath: /var/lib/outline/files
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            # 2) Ship both artifacts to GCS (hot) then Drive (cold); count-prune
+            #    each tier. One tool (rclone), one SA JSON for both backends.
+            - name: upload
+              image: docker.io/rclone/rclone:1.75.0@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac9d2fa659d51d60548
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  TS="$(cat /work/BACKUP_TS)"
+                  PG_DUMP="/work/outline-postgres-${TS}.dump"
+                  FILES_TGZ="/work/outline-files-${TS}.tar.gz"
+                  test -s "$PG_DUMP"; test -s "$FILES_TGZ"
+                  DRIVE="--drive-service-account-file=/creds/drive-sa.json --drive-team-drive=${DRIVE_TEAM_ID}"
+
+                  echo "[hot] GCS -> gs://${BUCKET}/{postgres,files}/"
+                  rclone copyto -v "$PG_DUMP"   ":gcs:${BUCKET}/postgres/outline-postgres-${TS}.dump"
+                  rclone copyto -v "$FILES_TGZ" ":gcs:${BUCKET}/files/outline-files-${TS}.tar.gz"
+
+                  echo "[cold] Drive -> :drive:Outline/"
+                  # shellcheck disable=SC2086
+                  rclone copy -v "$PG_DUMP"   :drive:Outline/ $DRIVE
+                  # shellcheck disable=SC2086
+                  rclone copy -v "$FILES_TGZ" :drive:Outline/ $DRIVE
+
+                  echo "[prune] GCS keep ${KEEP_GCS} (count-based)"
+                  for prefix in postgres files; do
+                    rclone lsf ":gcs:${BUCKET}/${prefix}/" > /work/gcs.list
+                    sort -r /work/gcs.list | tail -n +"$((KEEP_GCS + 1))" > /work/gcs.del || true
+                    while IFS= read -r f; do
+                      [ -n "$f" ] || continue
+                      echo "  rm gs://${BUCKET}/${prefix}/${f}"
+                      rclone deletefile ":gcs:${BUCKET}/${prefix}/${f}"
+                    done < /work/gcs.del
+                  done
+
+                  echo "[prune] Drive keep ${KEEP_DRIVE} (count-based)"
+                  for pat in 'outline-postgres-*.dump' 'outline-files-*.tar.gz'; do
+                    # shellcheck disable=SC2086
+                    rclone lsf :drive:Outline/ --include "$pat" $DRIVE > /work/drv.list
+                    sort -r /work/drv.list | tail -n +"$((KEEP_DRIVE + 1))" > /work/drv.del || true
+                    while IFS= read -r f; do
+                      [ -n "$f" ] || continue
+                      echo "  rm :drive:Outline/${f}"
+                      # shellcheck disable=SC2086
+                      rclone deletefile ":drive:Outline/${f}" $DRIVE
+                    done < /work/drv.del
+                  done
+
+                  echo "[$TS] backup complete (GCS + Drive)"
+              env:
+                - name: BUCKET
+                  value: sigo-alumni-prod-outline-backups
+                - name: DRIVE_TEAM_ID
+                  value: "0AB-lOEPrwe4jUk9PVA"
+                - name: KEEP_GCS
+                  value: "90"
+                - name: KEEP_DRIVE
+                  value: "30"
+                # rclone :gcs: backend auth (same SA JSON as :drive:). UBLA is on,
+                # so bucket_policy_only stops rclone attempting per-object ACLs.
+                - name: RCLONE_GCS_SERVICE_ACCOUNT_FILE
+                  value: /creds/drive-sa.json
+                - name: RCLONE_GCS_BUCKET_POLICY_ONLY
+                  value: "true"
+                # Keep rclone's config in a writable path (no config needed for the
+                # on-the-fly :gcs:/:drive: remotes; avoids a HOME-write warning).
+                - name: RCLONE_CONFIG
+                  value: /tmp/rclone.conf
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: drive-sa
+                  mountPath: /creds
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: work
+              emptyDir:
+                sizeLimit: 1Gi
+            - name: files
+              persistentVolumeClaim:
+                claimName: outline-files
+            - name: drive-sa
+              secret:
+                secretName: outline-drive-sa
