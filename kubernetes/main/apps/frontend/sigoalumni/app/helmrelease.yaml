@@ -141,7 +141,12 @@ spec:
               # Knowledge Base projection (read-only Outline client).
               OUTLINE_API_URL: https://wiki.sigoalumni.org/api
               # OIDC provider (sigo-alumni ADR 0007) — todos-for-dues client.
-              OIDC_DUES_REDIRECT_URIS: https://todos-for-dues.haynesops.com/api/auth/oauth2/callback/sigo-portal
+              # Comma-separated EXACT redirect URIs (lib/auth/oidc.ts
+              # parseRedirectURIs: raw.split(",") + trim; fail-closed — one bad
+              # entry poisons the whole list, no wildcards). 2026-08-14: appended
+              # the new canonical dues.sigoalumni.org callback while KEEPING the
+              # old haynesops.com one live in parallel (dues app in STEALTH).
+              OIDC_DUES_REDIRECT_URIS: https://todos-for-dues.haynesops.com/api/auth/oauth2/callback/sigo-portal,https://dues.sigoalumni.org/api/auth/oauth2/callback/sigo-portal
               # ── Homelab-only addition ────────────────────────────────────
               # No IPv6 egress in this cluster; public endpoints the app calls
               # (wiki.sigoalumni.org via Cloudflare, Google OAuth/APIs, Gmail
