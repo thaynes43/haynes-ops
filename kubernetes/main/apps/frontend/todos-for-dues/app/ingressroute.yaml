@@ -1,33 +1,17 @@
 ---
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
-metadata:
-  name: todos-for-dues
-  annotations:
-    external-dns.alpha.kubernetes.io/target: internal.haynesops
-    kubernetes.io/ingress.class: traefik-internal
-spec:
-  entryPoints:
-    - websecure
-  routes:
-    - kind: Rule
-      match: Host(`todos-for-dues.haynesops.com`) && PathPrefix(`/`)
-      services:
-        - kind: Service
-          name: todos-for-dues
-          port: 3000
-  tls:
-    secretName: certificate-haynesops
----
-# NEW CANONICAL PUBLIC HOSTNAME (dues.sigoalumni.org) via Cloudflare Tunnel
+# CANONICAL PUBLIC HOSTNAME (dues.sigoalumni.org) via Cloudflare Tunnel
 # `sigoalumni-homelab` -> traefik-external. Mirrors the portal's external route
 # (frontend/sigoalumni): tls: {} (Traefik default cert — no sigoalumni.org cert
 # exists in-cluster; cloudflared reaches this origin with noTLSVerify +
 # originServerName dues.sigoalumni.org). NO external-dns annotation: the DNS
 # CNAME to the tunnel is created deliberately via the Cloudflare API, and the
 # cluster's external-dns cloudflare instance filters to haynesnetwork.com anyway.
-# The internal todos-for-dues.haynesops.com route above stays live in parallel
-# until the owner blesses retiring it (app is in STEALTH — no links change).
+#
+# 2026-08-14: the legacy internal route (todos-for-dues.haynesops.com, class
+# traefik-internal) was RETIRED — the app is stealth with no published links and
+# the owner verified dues.sigoalumni.org. Deleting that route also removed its
+# UDM-local CNAME (external-dns-unifi, policy: sync). This external route is now
+# the app's only ingress.
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
