@@ -42,9 +42,12 @@ spec:
           # restrict-image-registries allowlist; docker.io is).
           image: docker.io/outlinewiki/outline@sha256:32d76719c378931dd65d93945930ca380d8376a0337d98a991fcc12b266f33cf
           imagePullPolicy: IfNotPresent
-          # Preserve the image ENTRYPOINT (docker-entrypoint.sh); it execs
-          # `yarn db:migrate` in WORKDIR /opt/outline.
-          args: ["yarn", "db:migrate"]
+          # The production image ships NO `yarn` on PATH, so invoke sequelize-cli
+          # directly (what `yarn db:migrate` == `sequelize db:migrate` runs).
+          # Explicit `node <bin>` bypasses docker-entrypoint.sh's command-vs-node
+          # heuristic; WORKDIR /opt/outline makes the relative path + .sequelizerc
+          # resolve. This applies every pending migration exactly once, then exits.
+          command: ["node", "node_modules/.bin/sequelize", "db:migrate"]
           envFrom:
             - secretRef:
                 name: outline-secret
