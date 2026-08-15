@@ -33,3 +33,25 @@ spec:
     staticConfig:
       static:
         - https://haynesnetwork.com
+---
+# sigoalumni.org apex uptime probe (sigo-alumni backlog infra/06). Mirrors the
+# haynesnetwork apex probe: http_2xx feeds probe_success into Prometheus as a
+# second, independent alarm path alongside the Gatus WAN-path check
+# (external_sigoalumni). The existing BlackboxProbeFailed rule in this app's
+# helmrelease.yaml is `probe_success == 0 for 15m` with NO target selector, so it
+# covers every probe_success series and picks up this new target automatically —
+# no rule edit needed. Gatus and Prometheus run on different nodes, so either one
+# alone can page. Note: blackbox probes GET / (a plain 2xx, process-level); the
+# DB-truthful signal is Gatus's /api/healthz check, not this probe.
+kind: Probe
+apiVersion: monitoring.coreos.com/v1
+metadata:
+  name: sigoalumni
+spec:
+  module: http_2xx
+  prober:
+    url: blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://sigoalumni.org
