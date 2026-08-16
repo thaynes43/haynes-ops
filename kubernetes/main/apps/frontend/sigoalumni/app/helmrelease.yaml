@@ -102,14 +102,15 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit e4bf5e0 (2026-08-15):
-              # pending-tier copy unification (#72) — retires the "Almost in"
-              # label for the standard-transactional voice ("Pending approval"
-              # badge, "Membership pending" standing). Carries forward the #71
-              # pending-screen rewrite; copy only, no schema/API change. CI does
-              # not deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 1e36c94 (2026-08-15):
+              # notify the board of new PENDING accounts (#73) — a sign-in that
+              # creates an account ending the grant chain with zero roles now
+              # emails admin@sigoalumni.org once (the members page promises that
+              # person a board review). Adds a notifyPendingAccount step + an
+              # account.pending audit row; no schema/API change. CI does not
+              # deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: e4bf5e0cca335c5f6e986392ed1570b08ae2ad10
+              tag: 1e36c945f82dc6c4f984f4b484346587b145b727
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
