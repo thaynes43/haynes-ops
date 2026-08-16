@@ -100,7 +100,11 @@ spec:
           gethomepage.dev/description: EBook & audiobook acquisition
           gethomepage.dev/icon: lazylibrarian
           gethomepage.dev/app: lazylibrarian
-          gethomepage.dev/siteMonitor: *url
+          # Internal URL, not *url: LazyLibrarian's CherryPy 303-redirects every
+          # request to a hardcoded http:// Location, and homepage v2's fetch
+          # refuses https->http downgrade redirects (v1 followed them), so the
+          # public-https monitor reads as down. http->http stays legal.
+          gethomepage.dev/siteMonitor: http://lazylibrarian.downloads.svc.cluster.local:5299
         className: traefik-internal
         hosts:
           - host: lazylibrarian.haynesops.com
