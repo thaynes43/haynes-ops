@@ -102,16 +102,17 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 731c1be (2026-08-15):
-              # /about full copy-quality voice pass (#78). This image also
-              # carries #77 (68aff41) — the footer 501(c)(7) line and the
-              # earlier /about spot-fixes — which the homelab skipped (the last
-              # pin, 96ea2e3, predated #77), so this one bump lands both. Still
-              # includes the brothers@ distro sync (#76) and the onboarding-gate
-              # UX fix (#75) from prior pins. No new env, no new migrations.
+              # Pinned to sigoalumni-org main commit 2f356bf (2026-08-15):
+              # /about adversarial audit pass (#79) — fixes claims the wiki
+              # contradicts (golf tournament is not Association-run) and
+              # tightens the #78 voice pass. Carries everything in the prior
+              # pin (731c1be: #78 voice pass, #77 footer). NOTE: main has
+              # moved past this to 19a3a07 (#80, roles-ux, another agent) —
+              # that bump supersedes this one when its owner lands it. No new
+              # env, no new migrations.
               # CI does not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 731c1be307d0c3ec9dabf1ab34da603b05b7341d
+              tag: 2f356bfc0e17c30eed03fd507c6a574096a16185
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
