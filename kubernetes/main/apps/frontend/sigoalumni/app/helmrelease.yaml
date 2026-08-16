@@ -102,17 +102,16 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 0cb06cd (2026-08-16):
-              # owner-testing chrome fixes (#85) — pending feedback on registry
-              # Add/remove ("Adding…"/"Removing…"), registry chip bouncing→
-              # "undeliverable", signed-out avatar sign-in affordance, account
-              # menu drops "Members area" + gains Light/Dark/Auto theme switcher
-              # (dark mode now class-driven with a no-flash boot script).
-              # Descends from the prior pin (993188f: #83 copy, #84 auth
-              # hardening). No new env, no new migrations. CI does not deploy
-              # here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 39e7fa5 (2026-08-16):
+              # layout-revalidation fix (#86) — status/grant server actions now
+              # revalidatePath("/members","layout") so the self-status nag and
+              # grant-queue count refresh on click instead of surviving in the
+              # client router cache until hard reload. Audit of all other
+              # actions: clean. Descends from the prior pin (0cb06cd: #85
+              # chrome fixes). No new env, no new migrations. CI does not
+              # deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 0cb06cd212146ba5741d606779310f03049f66ec
+              tag: 39e7fa5f2164698217af91e36987a572887b4d36
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
