@@ -139,6 +139,15 @@
         // it (not in the diff-scope-blocked trees), and a tunnel break is Gatus-visible
         // + LAN/internal-unaffected. Was stranded only because it wasn't listed here.
         'kubernetes/*/apps/network/cloudflare-tunnel/**',
+        // cloudflare-tunnel-sigoalumni (2026-08-16): second cloudflared tunnel
+        // (sigo-alumni site) — same stateless class as cloudflare-tunnel above.
+        // Renovate GROUPS same-package bumps across files into ONE PR and only
+        // auto-merges when EVERY touched file is eligible, so leaving one tunnel
+        // off this list stranded BOTH (#2447). Policy (Tom, 2026-08-16): new apps
+        // get their auto-merge tier at creation — no proving period; the safety
+        // net is validating directly after deploy (rollout + edge-registration +
+        // Gatus), not a quiet-time soak.
+        'kubernetes/*/apps/network/cloudflare-tunnel-sigoalumni/**',
         // external-secrets domain (2026-08-16): ESO operator + onepassword-connect.
         // FAIL-STATIC: a broken controller/connect only stops secret REFRESHES — the
         // k8s Secrets already materialized stay in place, so every consumer keeps
