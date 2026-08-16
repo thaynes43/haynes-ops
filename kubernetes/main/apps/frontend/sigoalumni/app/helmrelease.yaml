@@ -112,7 +112,7 @@ spec:
               # item-07 status column + user_roles). CI does not deploy here;
               # bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 19a3a071e17f74299842dbf6c2f8e447ecbeb816
+              tag: ab9b0d5654b0d35ecffdc0fc73a0d54afe596bd3
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
