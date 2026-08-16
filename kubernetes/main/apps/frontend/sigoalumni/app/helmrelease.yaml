@@ -102,17 +102,16 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 96ea2e3 (2026-08-15):
-              # brothers@ distro sync (members-portal 09, #76) on top of the #75
-              # onboarding-gate UX fix — every member_registry ADD/REMOVE
-              # propagates to the Google Group brothers@sigoalumni.org over the
-              # keyless DWD path (BROTHERS_GROUP_EMAIL below, scope
-              # admin.directory.group, subject admin@). The group is created at
-              # go-live, so until then every call 404s to a graceful, audited
-              # no-op — the hook is fully wired and inert. No new migrations.
+              # Pinned to sigoalumni-org main commit 731c1be (2026-08-15):
+              # /about full copy-quality voice pass (#78). This image also
+              # carries #77 (68aff41) — the footer 501(c)(7) line and the
+              # earlier /about spot-fixes — which the homelab skipped (the last
+              # pin, 96ea2e3, predated #77), so this one bump lands both. Still
+              # includes the brothers@ distro sync (#76) and the onboarding-gate
+              # UX fix (#75) from prior pins. No new env, no new migrations.
               # CI does not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 96ea2e348a985e7c989564c3676bca731f5cfbb3
+              tag: 731c1be307d0c3ec9dabf1ab34da603b05b7341d
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
