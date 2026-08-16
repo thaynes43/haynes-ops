@@ -102,16 +102,17 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 39e7fa5 (2026-08-16):
-              # layout-revalidation fix (#86) — status/grant server actions now
-              # revalidatePath("/members","layout") so the self-status nag and
-              # grant-queue count refresh on click instead of surviving in the
-              # client router cache until hard reload. Audit of all other
-              # actions: clean. Descends from the prior pin (0cb06cd: #85
-              # chrome fixes). No new env, no new migrations. CI does not
-              # deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 90d8693 (2026-08-16):
+              # unified Directory (#87, Tom's IA call) — one admin page replaces
+              # Groups + Registry (old routes redirect): pending-approval queue
+              # pinned with request context, server-side search + filter chips,
+              # dense one-line desktop rows, role-powers legend, bulk import in
+              # a collapsed block. Wire keys + permission gating byte-identical.
+              # Descends from the prior pin (39e7fa5: #86 layout revalidation).
+              # No new env, no new migrations. CI does not deploy here; bump
+              # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 39e7fa5f2164698217af91e36987a572887b4d36
+              tag: 90d8693edceabaa53dc92ae67b19bf0b1f7f3a50
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
