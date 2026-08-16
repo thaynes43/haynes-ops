@@ -102,15 +102,19 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 1c2dc8b (2026-08-16):
-              # sign-in code hardening (#90) — email goes link-only (no dead
-              # code, expiry line adjusts) if code storage hiccups; exact-match
-              # tests on the email-param threading. Descends from the prior pin
-              # (5a9eb6d: #89 cross-device code + migration 0015, boot-applied
-              # + verified). No new env, no new migrations. CI does not deploy
+              # Pinned to sigoalumni-org main commit 97daf3d (2026-08-16):
+              # code redemption FIX (#91) + admin account removal (#92).
+              # #91: redeem verifies in-process via auth.handler and copies the
+              # session cookie into the jar — the old server-action redirect to
+              # the verify API route was an RSC navigation that dropped the
+              # cookie (owner-reported, reproduced). #92: Directory account
+              # rows get Workspace-Admin-only account deletion (tx: sessions/
+              # roles/account/user + audit; roster row untouched; no-action FK
+              # actor pointers nulled). Descends from prior pin (1c2dc8b: #90
+              # hardening). No new env, no new migrations. CI does not deploy
               # here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 1c2dc8b09f667764ec13f3caef469111aa0ecbe8
+              tag: 97daf3d7671845be1776d93763dc2d6d69df74f2
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
