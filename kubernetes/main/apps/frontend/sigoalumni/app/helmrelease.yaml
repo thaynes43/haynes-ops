@@ -102,14 +102,14 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 9b38070 (2026-08-15):
-              # pending-tier members screen copy rewrite (#71) — professional
-              # voice on the "Membership pending" gate for not-yet-approved
-              # accounts. Carries forward the #70 magic-link copy and #69
-              # member-registry provenance work (migration 0011); no schema/API
-              # change here, copy only. CI does not deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit e4bf5e0 (2026-08-15):
+              # pending-tier copy unification (#72) — retires the "Almost in"
+              # label for the standard-transactional voice ("Pending approval"
+              # badge, "Membership pending" standing). Carries forward the #71
+              # pending-screen rewrite; copy only, no schema/API change. CI does
+              # not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 9b38070fbfb166dbba6bb70d2cd6c551500fb52e
+              tag: e4bf5e0cca335c5f6e986392ed1570b08ae2ad10
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
