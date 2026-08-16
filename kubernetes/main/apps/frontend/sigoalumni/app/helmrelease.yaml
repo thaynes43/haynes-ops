@@ -102,15 +102,16 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 1e36c94 (2026-08-15):
-              # notify the board of new PENDING accounts (#73) — a sign-in that
-              # creates an account ending the grant chain with zero roles now
-              # emails admin@sigoalumni.org once (the members page promises that
-              # person a board review). Adds a notifyPendingAccount step + an
-              # account.pending audit row; no schema/API change. CI does not
-              # deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit a87b985 (2026-08-15):
+              # unknown-email onboarding gate (#74) — an address with no
+              # registry row and no account gets a short access-request form
+              # instead of a magic link; the answers land in the new
+              # membership_requests table (migration 0012, applied by the
+              # image's boot migrate.js) and ride along on the #73 pending
+              # notice to admin@. Known emails sign in exactly as before. CI
+              # does not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 1e36c945f82dc6c4f984f4b484346587b145b727
+              tag: a87b985b334fade39218b508f579b6261cfbbaa4
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
