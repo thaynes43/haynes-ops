@@ -102,17 +102,17 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 19a3a07 (2026-08-16):
-              # roles & status UX (members-portal 10, #80) — two-dropdown groups
-              # page (display names Member/Event Moderator/Site Admin/Workspace
-              # Admin over UNCHANGED wire keys), server-side grant layering, the
-              # @sigoalumni.org Workspace-Admin gate, grant-queue + self-status
-              # nags. Descends from the prior pin (2f356bf: #79 /about audit,
-              # #78 voice, #77 footer). No new env, no new migrations (reuses the
-              # item-07 status column + user_roles). CI does not deploy here;
-              # bump deliberately.
+              # Pinned to sigoalumni-org main commit 993188f (2026-08-16):
+              # final-round pre-test fixes — #83 members copy (gate-era truth:
+              # "Any email works" dropped, one confirmation voice, role/status
+              # terminology aligned, footer legal name) + #84 auth hardening
+              # (magic-link throttle fails OPEN like emailIsKnown; 5s timeouts
+              # on Directory/DWD fetches so Google can't hang sign-in).
+              # Descends from the prior pin (ab9b0d5: #81 album label, #82
+              # notice fix, atop #80 roles & status UX). No new env, no new
+              # migrations. CI does not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: ab9b0d5654b0d35ecffdc0fc73a0d54afe596bd3
+              tag: 993188fb6f1a5202afdf4d3bea9c264780ddaa1e
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
