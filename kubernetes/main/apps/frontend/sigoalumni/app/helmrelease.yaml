@@ -102,17 +102,15 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 5a9eb6d (2026-08-16):
-              # cross-device sign-in code (#89, Tom's feature) — magic-link email
-              # also carries a 6-char code (TV-pairing style) redeemable on the
-              # requesting device's sent screen; same token underneath, 15m TTL,
-              # 5-attempt cap, hashed at rest. NEW MIGRATION 0015
-              # (magic_link_codes) — applied by the image's boot-time migrate.js
-              # (advisory-locked). No new env. Descends from the prior pin
-              # (a2ac233: #88 Directory table). CI does not deploy here; bump
-              # deliberately.
+              # Pinned to sigoalumni-org main commit 1c2dc8b (2026-08-16):
+              # sign-in code hardening (#90) — email goes link-only (no dead
+              # code, expiry line adjusts) if code storage hiccups; exact-match
+              # tests on the email-param threading. Descends from the prior pin
+              # (5a9eb6d: #89 cross-device code + migration 0015, boot-applied
+              # + verified). No new env, no new migrations. CI does not deploy
+              # here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 5a9eb6dcb6da63724231cb51a28965e8902aeb56
+              tag: 1c2dc8b09f667764ec13f3caef469111aa0ecbe8
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
