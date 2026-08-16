@@ -102,16 +102,17 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit a2ac233 (2026-08-16):
-              # Directory desktop table (#88, Tom's polish call) — fixed-column
-              # grid (Person/Source/Role/Status/action) with header row, row
-              # dividers + hover, horizontal scroll under 900px, aligned
-              # selects; mobile keeps the stacked blocks from one DOM.
-              # Descends from the prior pin (90d8693: #87 unified Directory).
-              # No new env, no new migrations. CI does not deploy here; bump
+              # Pinned to sigoalumni-org main commit 5a9eb6d (2026-08-16):
+              # cross-device sign-in code (#89, Tom's feature) — magic-link email
+              # also carries a 6-char code (TV-pairing style) redeemable on the
+              # requesting device's sent screen; same token underneath, 15m TTL,
+              # 5-attempt cap, hashed at rest. NEW MIGRATION 0015
+              # (magic_link_codes) — applied by the image's boot-time migrate.js
+              # (advisory-locked). No new env. Descends from the prior pin
+              # (a2ac233: #88 Directory table). CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: a2ac233d094499f2d5acde6cdcc0b4116b028cfe
+              tag: 5a9eb6dcb6da63724231cb51a28965e8902aeb56
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
