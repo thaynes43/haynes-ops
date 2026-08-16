@@ -102,18 +102,17 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 674492b (2026-08-15):
-              # onboarding-gate UX fix (#75) on top of the #74 access-request
-              # gate — the submit buttons now show an in-flight "Sending…" state
-              # and a per-email 60s throttle collapses re-submits, so a slow
-              # SMTP send no longer reads as a freeze that fires several links
-              # and then "too many tries". Also renames the request field
-              # class_year -> hw (migration 0013) + adds the send-throttle table
-              # (0014, both applied by the image's boot migrate.js), and emits
-              # single-line JSON auth-funnel logs (see the dashboard's Auth
-              # funnel section). CI does not deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 96ea2e3 (2026-08-15):
+              # brothers@ distro sync (members-portal 09, #76) on top of the #75
+              # onboarding-gate UX fix — every member_registry ADD/REMOVE
+              # propagates to the Google Group brothers@sigoalumni.org over the
+              # keyless DWD path (BROTHERS_GROUP_EMAIL below, scope
+              # admin.directory.group, subject admin@). The group is created at
+              # go-live, so until then every call 404s to a graceful, audited
+              # no-op — the hook is fully wired and inert. No new migrations.
+              # CI does not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 674492baab636481efbc1c856cde5804d2cb702e
+              tag: 96ea2e348a985e7c989564c3676bca731f5cfbb3
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
@@ -138,6 +137,12 @@ spec:
               # older images 403 on the impersonated generateAccessToken).
               GOOGLE_APPLICATION_CREDENTIALS: /secrets/workspace-adc/adc.json
               MEET_IMPERSONATION_SUBJECT: admin@sigoalumni.org
+              # brothers@ distro sync (members-portal 09, #76): every
+              # member_registry ADD is propagated into this Google Group over the
+              # keyless DWD path; REMOVE takes it out. Not a secret — the DWD
+              # grant is the access control. Safe to set pre-go-live: the group's
+              # absence 404s to an audited no-op until it is created at go-live.
+              BROTHERS_GROUP_EMAIL: brothers@sigoalumni.org
               # Gmail authenticated submission (smtp.gmail.com, NOT the
               # IP-vetted relay — see sigoalumni-org terraform for history).
               SMTP_RELAY_HOST: smtp.gmail.com
