@@ -102,17 +102,17 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 993188f (2026-08-16):
-              # final-round pre-test fixes — #83 members copy (gate-era truth:
-              # "Any email works" dropped, one confirmation voice, role/status
-              # terminology aligned, footer legal name) + #84 auth hardening
-              # (magic-link throttle fails OPEN like emailIsKnown; 5s timeouts
-              # on Directory/DWD fetches so Google can't hang sign-in).
-              # Descends from the prior pin (ab9b0d5: #81 album label, #82
-              # notice fix, atop #80 roles & status UX). No new env, no new
-              # migrations. CI does not deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 0cb06cd (2026-08-16):
+              # owner-testing chrome fixes (#85) — pending feedback on registry
+              # Add/remove ("Adding…"/"Removing…"), registry chip bouncing→
+              # "undeliverable", signed-out avatar sign-in affordance, account
+              # menu drops "Members area" + gains Light/Dark/Auto theme switcher
+              # (dark mode now class-driven with a no-flash boot script).
+              # Descends from the prior pin (993188f: #83 copy, #84 auth
+              # hardening). No new env, no new migrations. CI does not deploy
+              # here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 993188fb6f1a5202afdf4d3bea9c264780ddaa1e
+              tag: 0cb06cd212146ba5741d606779310f03049f66ec
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
