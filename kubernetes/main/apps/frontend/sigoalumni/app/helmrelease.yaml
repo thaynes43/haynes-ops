@@ -102,17 +102,17 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 2f356bf (2026-08-15):
-              # /about adversarial audit pass (#79) — fixes claims the wiki
-              # contradicts (golf tournament is not Association-run) and
-              # tightens the #78 voice pass. Carries everything in the prior
-              # pin (731c1be: #78 voice pass, #77 footer). NOTE: main has
-              # moved past this to 19a3a07 (#80, roles-ux, another agent) —
-              # that bump supersedes this one when its owner lands it. No new
-              # env, no new migrations.
-              # CI does not deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 19a3a07 (2026-08-16):
+              # roles & status UX (members-portal 10, #80) — two-dropdown groups
+              # page (display names Member/Event Moderator/Site Admin/Workspace
+              # Admin over UNCHANGED wire keys), server-side grant layering, the
+              # @sigoalumni.org Workspace-Admin gate, grant-queue + self-status
+              # nags. Descends from the prior pin (2f356bf: #79 /about audit,
+              # #78 voice, #77 footer). No new env, no new migrations (reuses the
+              # item-07 status column + user_roles). CI does not deploy here;
+              # bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 2f356bfc0e17c30eed03fd507c6a574096a16185
+              tag: 19a3a071e17f74299842dbf6c2f8e447ecbeb816
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
