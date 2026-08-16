@@ -139,6 +139,18 @@
         // it (not in the diff-scope-blocked trees), and a tunnel break is Gatus-visible
         // + LAN/internal-unaffected. Was stranded only because it wasn't listed here.
         'kubernetes/*/apps/network/cloudflare-tunnel/**',
+        // external-secrets domain (2026-08-16): ESO operator + onepassword-connect.
+        // FAIL-STATIC: a broken controller/connect only stops secret REFRESHES — the
+        // k8s Secrets already materialized stay in place, so every consumer keeps
+        // running; blast radius is "new/rotated secrets stop arriving", which is
+        // visible (ExternalSecret Ready=False, ClusterSecretStore invalid) long
+        // before it bites. The HR upgrades with `strategy: rollback` +
+        // `cleanupOnFail`, installCRDs minor bumps are additive, and flux-local
+        // renders the CRD/values diff on the PR. ESO 2.8.0→2.9.0 (#2383) sat green
+        // and stranded 7d for want of these lines. Majors stay manual (CRD/API
+        // surface, e.g. the v1beta1→v1 sweep class).
+        'kubernetes/*/apps/external-secrets/external-secrets/**',
+        'kubernetes/*/apps/external-secrets/onepassword-connect/**',
       ],
       // 'digest' included for the same reason as the leaf-app rule above.
       matchUpdateTypes: ['minor', 'patch', 'digest'],
