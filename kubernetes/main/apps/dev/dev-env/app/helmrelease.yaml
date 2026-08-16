@@ -91,14 +91,16 @@ spec:
             resources:
               # Workhorse sizing: 8Gi OOMKilled haynesnetwork's `pnpm test` (parallel
               # vitest × embedded Postgres across the monorepo) — and an OOMKill takes
-              # the tmux server with it, killing every in-flight agent session. Nodes
+              # the tmux server with it, killing every in-flight agent session. Then
+              # 24Gi OOMKilled too (2026-08-16, working set measured 21.9Gi peak —
+              # concurrent agent sessions, killed a live sigo-alumni session). Nodes
               # carry ~122Gi, so give real headroom for concurrent agent builds; the
               # limit is a ceiling, not a reservation.
               requests:
                 cpu: "1"
                 memory: 4Gi
               limits:
-                memory: 24Gi
+                memory: 64Gi
             securityContext:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
