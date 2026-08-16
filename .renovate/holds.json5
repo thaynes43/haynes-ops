@@ -58,6 +58,18 @@
     },
     {
       description: [
+        'HELD ghcr.io/cloudnative-pg/postgresql majors: track the running postgres16 cluster major — Postgres 17 lands only as a deliberate cluster migration, never a Renovate merge.',
+        'Reason: the image has two consumers that must move TOGETHER with the cluster: (1) cluster16.yaml `imageName` — a CNPG major upgrade is a real migration (dump/restore or blue-green per CNPG docs), not an in-place bump; (2) the Outline wiki backup CronJob dump initContainer (frontend/outline/app/backup-cronjob.yaml), pinned so pg_dump matches the cluster major. Minors/patches within 16 stay allowed for both.',
+        'Issue: sigo-alumni backlog/infra/homelab-hosting/07 (wiki wave-2 backup continuity); stranded PR #2449 (v17) closed under this hold.',
+        'Resume: MANUAL — lift only inside a planned postgres16→17 cluster-migration change that also bumps the outline dump image and verifies barman backups on the new major.',
+        'Recorded: 2026-08-16 by claude (sigo-alumni session) per user call: wiki/cluster Postgres stays on 16.',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['ghcr.io/cloudnative-pg/postgresql'],
+      allowedVersions: '<17.0.0',
+    },
+    {
+      description: [
         'HELD cloudnative-pg chart: 0.30.0 and newer (operator 1.31.0+) — in-tree Barman backups removed.',
         'Reason: CNPG operator 1.31.0 REMOVES native (in-tree) barmanObjectStore support (deprecation notice updated in the 1.30.0 release notes: removal moved from 1.30 to 1.31). Our cluster16.yaml + cluster16-pgvecto.yaml still back up to s3://cnpg-haynesops via in-tree barmanObjectStore. Taking chart 0.30.0 (= operator 1.31.0) WITHOUT first migrating to the Barman Cloud Plugin (ObjectStore CR + cluster plugin config) would SILENTLY STOP all WAL archiving + base backups. The chart minor tracks the operator minor 1:1 (0.29.0 = 1.30.0, 0.30.0 = 1.31.0), so 0.29.x patches (operator 1.30.x) stay allowed.',
         'Issue: https://cloudnative-pg.io/documentation/1.30/release_notes/v1.30/ (in-tree barman removal in 1.31); https://github.com/cloudnative-pg/plugin-barman-cloud',
