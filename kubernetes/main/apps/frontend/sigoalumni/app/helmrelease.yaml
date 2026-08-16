@@ -102,17 +102,16 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 90d8693 (2026-08-16):
-              # unified Directory (#87, Tom's IA call) — one admin page replaces
-              # Groups + Registry (old routes redirect): pending-approval queue
-              # pinned with request context, server-side search + filter chips,
-              # dense one-line desktop rows, role-powers legend, bulk import in
-              # a collapsed block. Wire keys + permission gating byte-identical.
-              # Descends from the prior pin (39e7fa5: #86 layout revalidation).
+              # Pinned to sigoalumni-org main commit a2ac233 (2026-08-16):
+              # Directory desktop table (#88, Tom's polish call) — fixed-column
+              # grid (Person/Source/Role/Status/action) with header row, row
+              # dividers + hover, horizontal scroll under 900px, aligned
+              # selects; mobile keeps the stacked blocks from one DOM.
+              # Descends from the prior pin (90d8693: #87 unified Directory).
               # No new env, no new migrations. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 90d8693edceabaa53dc92ae67b19bf0b1f7f3a50
+              tag: a2ac233d094499f2d5acde6cdcc0b4116b028cfe
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
