@@ -102,16 +102,18 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit a87b985 (2026-08-15):
-              # unknown-email onboarding gate (#74) — an address with no
-              # registry row and no account gets a short access-request form
-              # instead of a magic link; the answers land in the new
-              # membership_requests table (migration 0012, applied by the
-              # image's boot migrate.js) and ride along on the #73 pending
-              # notice to admin@. Known emails sign in exactly as before. CI
-              # does not deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 674492b (2026-08-15):
+              # onboarding-gate UX fix (#75) on top of the #74 access-request
+              # gate — the submit buttons now show an in-flight "Sending…" state
+              # and a per-email 60s throttle collapses re-submits, so a slow
+              # SMTP send no longer reads as a freeze that fires several links
+              # and then "too many tries". Also renames the request field
+              # class_year -> hw (migration 0013) + adds the send-throttle table
+              # (0014, both applied by the image's boot migrate.js), and emits
+              # single-line JSON auth-funnel logs (see the dashboard's Auth
+              # funnel section). CI does not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: a87b985b334fade39218b508f579b6261cfbbaa4
+              tag: 674492baab636481efbc1c856cde5804d2cb702e
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
