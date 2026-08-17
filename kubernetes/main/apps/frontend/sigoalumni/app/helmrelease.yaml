@@ -111,7 +111,7 @@ spec:
               # (97daf3d: #91 redeem fix + #92 account removal). No new env,
               # no new migrations. CI does not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 6cbaa32b6983f688b54f9c984d1915f9493c4c01
+              tag: 2b4482c7ca71ef1cb5dfc6c3f31fa0e6b8588e06
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
@@ -142,6 +142,7 @@ spec:
               # grant is the access control. Safe to set pre-go-live: the group's
               # absence 404s to an audited no-op until it is created at go-live.
               BROTHERS_GROUP_EMAIL: brothers@sigoalumni.org
+              LEGACY_GROUP_EMAIL: sigmaphiomicron@googlegroups.com
               # Gmail authenticated submission (smtp.gmail.com, NOT the
               # IP-vetted relay — see sigoalumni-org terraform for history).
               SMTP_RELAY_HOST: smtp.gmail.com
