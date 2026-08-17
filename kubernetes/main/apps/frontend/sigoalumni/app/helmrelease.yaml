@@ -102,19 +102,16 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 97daf3d (2026-08-16):
-              # code redemption FIX (#91) + admin account removal (#92).
-              # #91: redeem verifies in-process via auth.handler and copies the
-              # session cookie into the jar — the old server-action redirect to
-              # the verify API route was an RSC navigation that dropped the
-              # cookie (owner-reported, reproduced). #92: Directory account
-              # rows get Workspace-Admin-only account deletion (tx: sessions/
-              # roles/account/user + audit; roster row untouched; no-action FK
-              # actor pointers nulled). Descends from prior pin (1c2dc8b: #90
-              # hardening). No new env, no new migrations. CI does not deploy
-              # here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 0c95855 (2026-08-16):
+              # owner-testing polish (#93) — account removal updates in place
+              # (no redirect, scroll preserved; row vanishing = confirmation),
+              # sign-in reordered: email link primary on top, OAuth button
+              # below as secondary renamed "Sign in with a sigoalumni.org
+              # account" (it never was any-Google). Descends from prior pin
+              # (97daf3d: #91 redeem fix + #92 account removal). No new env,
+              # no new migrations. CI does not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 97daf3d7671845be1776d93763dc2d6d69df74f2
+              tag: 0c9585585e148dedd03eacb0094be831309e3dd1
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
