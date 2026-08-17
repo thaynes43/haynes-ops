@@ -111,7 +111,7 @@ spec:
               # (97daf3d: #91 redeem fix + #92 account removal). No new env,
               # no new migrations. CI does not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 0c9585585e148dedd03eacb0094be831309e3dd1
+              tag: 6cbaa32b6983f688b54f9c984d1915f9493c4c01
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
