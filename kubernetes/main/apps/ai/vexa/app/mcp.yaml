@@ -1,0 +1,49 @@
+---
+# The MCP front for Vexa's public API — the one component upstream's chart
+# does NOT deploy (compose-only per their changelog #1077). The gateway image
+# already fronts /mcp and proxies to its hardcoded default upstream
+# http://mcp:8010, so this Service is deliberately named bare `mcp`: same-
+# namespace DNS satisfies the default and no chart override is needed.
+# Stateless: every tool call forwards the caller's X-API-Key to the gateway.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vexa-mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vexa-mcp
+    spec:
+      containers:
+        - name: mcp
+          image: docker.io/vexaai/v012-mcp:v012
+          env:
+            - name: GATEWAY_URL
+              value: "http://vexa-vexa-gateway:8000"
+            - name: PORT
+              value: "8010"
+          ports:
+            - containerPort: 8010
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp
+spec:
+  selector:
+    app.kubernetes.io/name: vexa-mcp
+  ports:
+    - port: 8010
+      targetPort: 8010
