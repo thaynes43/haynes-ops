@@ -31,7 +31,7 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 | sops / age | ❌ deliberately absent | the age key never enters this pod without an explicit decision |
 | omnictl | ✅ READ-ONLY (Reader SA, proxied) | Omni `Reader` service account via `$OMNI_ENDPOINT` + `$OMNI_SERVICE_ACCOUNT_KEY` (SaaS `haynes.na-west-1.omni.siderolabs.io`); `omnictl get clusters/machinestatus` etc. Mutations denied by the Reader role — don't test by attempting them |
 | talosctl | ✅ READ-ONLY (via Omni-proxied talosconfig) | No LAN-direct cert (SaaS tier denies break-glass). Fetch a proxied config at runtime: `omnictl talosconfig /tmp/tc` then `talosctl --talosconfig /tmp/tc -n <node-ip> dmesg/logs`. Read-only either way; traffic routes through Omni (WAN) — backlog 10 |
-| terraform/tofu providers | ❌ no cloud creds | plan/validate only |
+| terraform/tofu providers | ✅ GCP only (ADC = dev-env-agent@sigo-alumni-prod, roles/owner) | plan+apply against sigo-alumni-prod (multiple applies proven 2026-08-14/15); other clouds still credential-less |
 
 ## MCP servers (GitOps-managed, `~/.config/dev-env/mcp.json`)
 
