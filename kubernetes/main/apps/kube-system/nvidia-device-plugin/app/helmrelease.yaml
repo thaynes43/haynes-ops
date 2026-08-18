@@ -26,8 +26,19 @@ spec:
       retries: 3
       strategy: rollback
   values:
-    nodeSelector:
-      feature.node.kubernetes.io/nvidia-a2000: "true"
+    # Any node whose Talos nvidia extensions are installed (a2000/2000-ada/3090
+    # today) — the old single-label selector matched only the A2000 box, and
+    # with no control-plane toleration the plugin has run NOWHERE for months;
+    # nvidia.com/gpu was advertised on no node. The plugin pod itself needs the
+    # nvidia RuntimeClass on Talos to see the devices.
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: extensions.talos.dev/nvidia-container-toolkit-lts
+                  operator: Exists
+    runtimeClassName: nvidia
     flags:
       migStrategy: single
       plugin:
