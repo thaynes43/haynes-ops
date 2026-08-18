@@ -670,6 +670,11 @@ spec:
               - tsx
               - /sync/src/scripts/sync.ts
               - --mode=books-collections-sync
+            env:
+              # Collection find-missing force-search pace (app default 25 per run).
+              # Raised to 50 (owner request) to drain collection gaps faster; the
+              # MAM governor (pause at 100 unsatisfied) stays the snatch backstop.
+              COLLECTION_FORCE_SEARCH_CAP_PER_RUN: "50"
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
