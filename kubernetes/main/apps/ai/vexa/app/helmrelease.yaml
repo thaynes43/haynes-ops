@@ -1,0 +1,44 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/fluxcd-community/flux2-schemas/main/helmrelease-helm-v2beta2.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: vexa
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: deploy/helm/charts/vexa
+      sourceRef:
+        kind: GitRepository
+        name: vexa-src
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      strategy: rollback
+  values:
+    # STOPGAP (2026-08-18): inline tokens in a public repo — acceptable only
+    # because every service is ClusterIP with no ingress (tokens are unusable
+    # without cluster network access). Rotate + move to SOPS/external-secrets
+    # before any ingress is added. Tracked in sigo-alumni backlog.
+    secrets:
+      adminApiToken: "567ffa0192bc16e8dfac2fa4df6b60613585da3f7b8f107e"
+      internalApiSecret: "3007ea2182b4b20dcddf4bfe8b2aad5639f89c22841a2ddf"
+    meetingApi:
+      replicaCount: 1
+      # Base URL; the bot's client appends /v1/audio/transcriptions.
+      transcriptionServiceUrl: "http://vexa-whisper:8000"
+    gateway:
+      replicaCount: 1
+    runtime:
+      backend: "k8s"
+    # Transcription-only deployment: no web UI, no agent platform (and none of
+    # their secret/PVC requirements). Enable later if the copilot is wanted.
+    terminal:
+      enabled: false
+    agentApi:
+      enabled: false
