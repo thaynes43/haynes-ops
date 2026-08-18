@@ -15,6 +15,10 @@ data:
         url: "https://${GATUS_SUBDOMAIN:-${APP}}.${GATUS_DOMAIN:-haynesops.com}${GATUS_PATH:-/}"
         interval: 1m
         conditions:
+          # Floor guards against the timeout case: no response resolves [STATUS] to 0, which
+          # would pass "< 500". SSO 401/403 still passes (>= 200). Mirrors components/common/gatus
+          # (PR #2407) — this older component tree was missed there.
+          - "[STATUS] >= 200"
           - "[STATUS] < ${GATUS_STATUS_MAX:-500}"
         alerts:
           - type: pushover

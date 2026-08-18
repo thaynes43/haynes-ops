@@ -15,6 +15,10 @@ data:
         client:
           dns-resolver: tcp://1.1.1.1:53
         conditions:
+          # A client timeout / connection failure resolves [STATUS] to 0, which passes "< 500";
+          # the floor makes a hung app (no response at all) count as DOWN. Mirrors the same fix
+          # in components/common/gatus (PR #2407) — this older component tree was missed there.
+          - "[STATUS] >= 200"
           - "[STATUS] < ${GATUS_STATUS_MAX:-500}"
         alerts:
           - type: pushover
