@@ -1,0 +1,56 @@
+---
+# OpenAI-compatible STT the Vexa bots transcribe against (the same
+# faster-whisper server Vexa's own lite deployment bundles). CPU on purpose:
+# per upstream, `small` keeps real-time pace on ~4-6 vCPU while `medium`+
+# sheds load without a GPU. Move to the 3090 (image swap + runtimeClass +
+# nvidia.com/gpu resource) once the device plugin advertises it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vexa-whisper
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vexa-whisper
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vexa-whisper
+    spec:
+      containers:
+        - name: whisper
+          image: docker.io/fedirz/faster-whisper-server:latest-cpu
+          env:
+            - name: WHISPER_MODEL
+              value: "Systran/faster-whisper-small.en"
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: "4"
+              memory: 2Gi
+            limits:
+              cpu: "8"
+              memory: 6Gi
+          volumeMounts:
+            - name: models
+              mountPath: /root/.cache/huggingface
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: models
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vexa-whisper
+spec:
+  selector:
+    app.kubernetes.io/name: vexa-whisper
+  ports:
+    - port: 8000
+      targetPort: 8000
