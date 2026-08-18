@@ -48,6 +48,7 @@ spec:
               - matchName: "ha-mcp.home-automation.svc.cluster.local"
               - matchName: "mcp-grafana.observability.svc.cluster.local"
               - matchName: "mcp-unifi.observability.svc.cluster.local"
+              - matchName: "vexa-vexa-gateway.ai.svc.cluster.local"
               # Omni (self-hosted, frontend ns) — an in-cluster Omni svc, kept for a
               # possible future self-hosted route (backlog 10). It is NOT what manages
               # the main nodes today.
@@ -201,6 +202,17 @@ spec:
       toPorts:
         - ports:
             - port: "3000"
+              protocol: TCP
+    # Vexa gateway (ai ns) — the meeting-bot MCP front (/mcp) + REST for
+    # transcript pulls from agent sessions (deployed 2026-08-18).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: ai
+            app.kubernetes.io/instance: vexa
+            app.kubernetes.io/component: gateway
+      toPorts:
+        - ports:
+            - port: "8000"
               protocol: TCP
     # 2c. Omni (self-hosted Talos manager, frontend ns) — node-triage omnictl reads
     #     machine/cluster status + events on the management API (8080) via svc FQDN,

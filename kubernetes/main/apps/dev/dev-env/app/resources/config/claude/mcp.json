@@ -29,6 +29,13 @@
         "OUTLINE_API_KEY": "${OUTLINE_API_KEY}",
         "OUTLINE_API_URL": "https://wiki.sigoalumni.org/api"
       }
+    },
+    "vexa": {
+      "type": "http",
+      "url": "http://vexa-vexa-gateway.ai.svc.cluster.local:8000/mcp",
+      "headers": {
+        "X-API-Key": "${VEXA_API_KEY}"
+      }
     }
   }
 }
