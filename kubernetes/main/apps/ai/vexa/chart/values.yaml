@@ -1,0 +1,461 @@
+# Default values for the Vexa v0.12 Helm chart.
+#
+# The v0.12 carved control plane = 5 long-running services (gateway · admin-api · meeting-api ·
+# runtime · agent-api) + infra (postgres · redis · minio + a minio-init bucket Job). The runtime
+# spawns the bot and the agent-worker ON DEMAND (they are NOT services here): with
+# runtime.backend=k8s it launches them as Pods under its ServiceAccount/RBAC; with backend=docker
+# (compose/desktop) via the host docker socket. Images are the compose `vexaai/v012-*` repos.
+#
+# Production overrides: set `global.imageTag` to a pinned YYMMDD-HHMM tag, fill `secrets`, and point
+# `database`/`redisConfig` at managed infra (postgres.enabled=false / redis.enabled=false).
+
+global:
+  imageTag: ""              # When set, overrides every service image tag (build-once promotion).
+  imagePullPolicy: Always
+  imagePullSecrets: []
+  clusterDomain: cluster.local
+
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  # Pod topology spread — applied to EVERY component Deployment (gateway, admin-api, meeting-api,
+  # runtime, agent-api, terminal). Empty by default → nothing rendered (single-node / k3s installs
+  # keep working unchanged). Each constraint you add here is stamped onto every component; when a
+  # constraint omits `labelSelector`, the chart injects THAT component's own pod selector
+  # (name + instance + component), so the constraint means "spread this component's replicas". A
+  # per-component `<component>.topologySpreadConstraints` overrides this global default for that one
+  # component. Use ScheduleAnyway (not DoNotSchedule) so a full/small cluster still schedules.
+  # Example — spread each component's replicas one-per-node, best-effort:
+  #   topologySpreadConstraints:
+  #     - maxSkew: 1
+  #       topologyKey: kubernetes.io/hostname
+  #       whenUnsatisfiable: ScheduleAnyway
+  topologySpreadConstraints: []
+  podSecurityContext: {}
+  # Hardened defaults: block privilege escalation, drop all caps. Images run non-root via their
+  # Dockerfile USER. Override per-component only if a workload genuinely needs a cap back.
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+# ---------- Shared secrets ----------
+# Recommended: override via --set-file / external secret tooling, or point existingSecretName at a
+# Secret carrying these keys: ADMIN_API_TOKEN, INTERNAL_API_SECRET, TRANSCRIPTION_SERVICE_TOKEN,
+# VEXA_SERVICE_AUTHORITY_SECRET, VEXA_SYSTEM_WEBHOOK_SECRET, VEXA_DISPATCH_SIGNING_KEY,
+# VEXA_BOT_API_KEY, ANTHROPIC_API_KEY,
+# ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, CLAUDE_CODE_OAUTH_TOKEN.
+secrets:
+  existingSecretName: ""
+  adminApiToken: "CHANGE_ME"        # admin-api auth + MeetingToken signing (== meeting-api ADMIN_TOKEN)
+  internalApiSecret: ""             # gateway↔admin-api↔meeting-api internal calls (default vexa-internal-secret)
+  transcriptionServiceToken: ""     # funded STT token threaded into spawned bots
+  serviceAuthoritySecret: ""        # exact-byte HMAC secret; required only when meetingApi.serviceAuthorityConfig is set
+  systemWebhookSecret: ""           # exact-byte HMAC secret; required only when meetingApi.systemWebhookUrl is set
+  dispatchSigningKey: ""            # agent-api signs per-dispatch tokens (default dev key; k8s prod → set this)
+  botApiKey: ""                     # agent-api → gateway "add bot from URL" key (optional)
+  nextauthSecret: ""                # terminal next-auth session signing (default dev key; set in prod)
+  # Model-provider auth (config.v1 `model_inference` capability, ADR-0026). ANTHROPIC_AUTH_TOKEN +
+  # ANTHROPIC_BASE_URL are the OpenRouter/subscription pair (compose sources them from .env as a
+  # single source of truth — here they live in the Secret). claudeCodeOauthToken
+  # (CLAUDE_CODE_OAUTH_TOKEN) is the claude CLI's subscription OAuth token — the env-delivered
+  # counterpart of the compose/lite-only HOST_CLAUDE_CREDENTIALS subscription-file mount, which has
+  # no k8s analog in this chart. On helm, workers get credentials ONLY via agent-api stamping these
+  # model-auth vars into every worker dispatch spec env (an explicit allowlist —
+  # control_plane/dispatch.py MODEL_AUTH_ENV_ALLOWLIST); the /health `model_inference` row reports
+  # which path (if any) is configured. Leave them all empty and the stack still boots — chat then
+  # fails at inference with the actionable auth error. If both a subscription token and ANTHROPIC_*
+  # are set, the claude CLI resolves precedence itself (env credentials win over any mounted
+  # credentials file); set exactly one to avoid ambiguity.
+  # SECURITY: spec-env values are readable on spawned worker Pods (`kubectl describe pod`) and in
+  # this chart-managed Secret. Prefer existingSecretName — a pre-created Secret carrying these
+  # keys — over inline values here (inline values persist in helm release manifests), and RBAC-
+  # scope pod/secret read access accordingly.
+  anthropicApiKey: ""
+  anthropicAuthToken: ""
+  anthropicBaseUrl: ""
+  claudeCodeOauthToken: ""
+
+# ---------- Shared backing config ----------
+database:
+  host: ""          # auto-filled when postgres.enabled=true, else REQUIRED
+  port: 5432
+  name: "vexa"
+  user: "postgres"
+  password: "postgres"
+  sslMode: "disable"
+
+redisConfig:
+  url: ""           # auto-filled when redis.enabled=true, else REQUIRED
+  host: ""
+  port: 6379
+
+# Model ids brokered into agents/bots (empty ⇒ provider default). Mirrors compose ANTHROPIC_*/VEXA_*.
+models:
+  anthropicModel: ""
+  anthropicOpusModel: ""
+  anthropicSonnetModel: ""
+  anthropicHaikuModel: ""
+  agentModel: ""        # VEXA_AGENT_MODEL
+  meetingModel: ""      # VEXA_MEETING_MODEL
+
+# ============ Components ============
+
+# The HTTP front door (compose: gateway → :8000).
+gateway:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: vexaai/v012-gateway
+    tag: v012
+  service:
+    type: ClusterIP
+    port: 8000
+    nodePort: ""
+  logLevel: "info"
+  # fastapi-guard edge layer: per-IP throttle + auto-ban at the gateway edge.
+  # ON by default with generous limits (600 req/min per IP); set enabled: false to opt out.
+  guard:
+    enabled: true
+    wsEnabled: false          # optional /ws connect guard (in-memory, per-process; opt-in)
+    enableRedis: true         # reuse REDIS_URL for guard state (vexa:guard: namespace)
+    rateLimitRpm: 600         # per-IP requests per minute (0 disables rate limiting)
+    rateLimitWindow: 60
+    autoBanThreshold: 10
+    autoBanDuration: 3600
+    ipWhitelist: ""           # comma-separated IPs that bypass the guard
+    ipBlacklist: ""           # comma-separated IPs to block (403)
+    trustedProxies: ""        # comma-separated trusted proxy IPs (enables X-Forwarded-For)
+    trustXForwardedProto: false
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  extraEnv: []
+  # Per-component override of global.topologySpreadConstraints (same shape). Omit `labelSelector`
+  # and the gateway's own pod selector is injected — spread gateway replicas across nodes:
+  #   topologySpreadConstraints:
+  #     - maxSkew: 1
+  #       topologyKey: kubernetes.io/hostname
+  #       whenUnsatisfiable: ScheduleAnyway
+
+# Identity / tokens (compose: admin-api → :8001).
+adminApi:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: vexaai/v012-admin-api
+    tag: v012
+  service:
+    type: ClusterIP
+    port: 8001
+  logLevel: "info"
+  # fastapi-guard edge layer: per-IP throttle + auto-ban at the gateway edge.
+  # ON by default with generous limits (600 req/min per IP); set enabled: false to opt out.
+  guard:
+    enabled: true
+    wsEnabled: false          # optional /ws connect guard (in-memory, per-process; opt-in)
+    enableRedis: true         # reuse REDIS_URL for guard state (vexa:guard: namespace)
+    rateLimitRpm: 600         # per-IP requests per minute (0 disables rate limiting)
+    rateLimitWindow: 60
+    autoBanThreshold: 10
+    autoBanDuration: 3600
+    ipWhitelist: ""           # comma-separated IPs that bypass the guard
+    ipBlacklist: ""           # comma-separated IPs to block (403)
+    trustedProxies: ""        # comma-separated trusted proxy IPs (enables X-Forwarded-For)
+    trustXForwardedProto: false
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  extraEnv: []
+
+# Meetings + recordings (compose: meeting-api → :8080).
+meetingApi:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: vexaai/v012-meeting-api
+    tag: v012
+  service:
+    type: ClusterIP
+    port: 8080
+  defaultBotName: ""        # server-side fallback when POST /bots omits bot_name
+  transcriptionServiceUrl: ""   # STT endpoint the spawned bot transcribes against (empty ⇒ capture only)
+  # Optional service-authority.v1 adapter JSON. Empty preserves stock OSS allow-all. A configured
+  # authority must use failure_policy=closed and mode=enforce|observe; the secret lives under
+  # secrets.serviceAuthoritySecret or the existing Secret key VEXA_SERVICE_AUTHORITY_SECRET.
+  serviceAuthorityConfig: ""
+  # Optional boot-frozen operator callback for terminal meeting facts. This is separate from
+  # customer webhook configuration; private HTTP requires the explicit deployment opt-in.
+  systemWebhookUrl: ""
+  systemWebhookAllowPrivateHttp: "false"
+  systemWebhookTimeoutSeconds: "10"
+  # Authenticated-bot mode (deployment-scoped; docs: /authenticated-bots): botAuthenticated "true"
+  # makes every spawned bot restore the provisioned browser session and join signed-in. The BOT_S3
+  # values are SCOPED userdata-store credentials, never the deployment's admin S3 creds.
+  botAuthenticated: "false"
+  botUserdataS3Path: ""
+  botS3Endpoint: ""
+  botS3Bucket: ""
+  botS3AccessKey: ""
+  botS3SecretKey: ""
+  minioSecure: "false"
+  logLevel: "info"
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+  extraEnv: []
+  # Per-component override of global.topologySpreadConstraints (same shape). Omit `labelSelector`
+  # and the meeting-api's own pod selector is injected. See global.topologySpreadConstraints.
+  # topologySpreadConstraints: []
+
+# Runtime kernel — spawns bot + agent-worker workloads (compose: runtime → :8090).
+runtime:
+  enabled: true
+  # backend selects the spawn substrate (runtime __main__._build_backend):
+  #   k8s    → Pods via kubectl under the runtime SA/RBAC (this chart's RBAC). The real cloud path.
+  #   docker → host /var/run/docker.sock (single-node k3s fallback; mounts the socket — see below).
+  #   process→ child processes (no containers).
+  backend: "k8s"
+  replicaCount: 1               # keep at 1 unless backend=k8s (Redis is the state-of-record)
+  image:
+    repository: vexaai/v012-runtime
+    tag: v012
+  service:
+    type: ClusterIP
+    port: 8090
+  # Images the runtime spawns. browserImage = the bot (published ~3.6GB, a reference, never built by
+  # this chart). agentImage/agentWorkerImage default to the v012 agent repos at global.imageTag.
+  browserImage: ""            # empty → follows global.imageTag (fallback vexaai/vexa-bot:v012)
+  agentImage: "vexaai/v012-agent-api:v012"
+  agentWorkerImage: "vexaai/v012-agent-worker:v012"
+  logLevel: "info"
+  speakerStream:
+    minAudioSec: ""
+    submitIntervalSec: ""
+    confirmThreshold: ""
+    maxBufferSec: ""
+    idleTimeoutSec: ""
+  # Active-phase remote-audio silence window. Empty uses the bot's 10-minute default.
+  aloneSilenceWindowMs: ""
+  resources:
+    requests: { cpu: 50m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 768Mi }
+  # Per-component override of global.topologySpreadConstraints (same shape). Applies to the runtime
+  # Deployment's OWN pods (not the bot/agent Pods it spawns — those carry runtime.tolerations/
+  # nodeSelector via the RUNTIME_K8S_* env below). Omit `labelSelector` and the runtime's own pod
+  # selector is injected. See global.topologySpreadConstraints.
+  # topologySpreadConstraints: []
+  # Scheduling for the Pods the runtime SPAWNS (backend=k8s). A `kubectl run` bot/agent Pod is NOT a
+  # child of the runtime Deployment, so it does NOT inherit global.nodeSelector/global.tolerations —
+  # on an all-tainted pool (dedicated / spot / GPU node pools) every spawn strands Pending and the
+  # meeting silently fails (#673). By DEFAULT (leave these unset) spawned Pods inherit the runtime's
+  # own constraints — global.tolerations / global.nodeSelector — so they schedule wherever the runtime
+  # itself can, with zero operator action. Set these ONLY to send spawned workloads to a DIFFERENT
+  # pool than the kernel (e.g. GPU bots): they are passed to the backend as RUNTIME_K8S_TOLERATIONS /
+  # RUNTIME_K8S_NODE_SELECTOR (JSON) and stamped onto every spawned Pod's spec.
+  # tolerations: []            # override global.tolerations for spawned Pods (list of toleration objects)
+  # nodeSelector: {}           # override global.nodeSelector for spawned Pods (node-label map)
+  extraEnv: []
+
+# Agent control plane — /invocations dispatch + /api/chat SSE (compose: agent-api → :8100).
+agentApi:
+  enabled: true
+  replicaCount: 1               # shares a workspace store with spawned workers; keep single for RWO PVC
+  image:
+    repository: vexaai/v012-agent-api
+    tag: v012
+  service:
+    type: ClusterIP
+    port: 8100
+  defaultSubject: "u_live"      # VEXA_AGENT_DEFAULT_SUBJECT single-user fallback until gateway fronts agent-api
+  logLevel: "info"
+  # Workspace store the worker mounts and agent-api reads. On k3s (local-path = RWO) keep agentApi at
+  # replicaCount 1; full agent-worker dispatch on k8s needs RWX storage (see README — follow-up).
+  workspaces:
+    size: 5Gi
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+  extraEnv: []
+
+# The user-facing web UI (Next.js custom server). Proxies /ws → gateway, REST/login → agent-api/admin-api.
+terminal:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: vexaai/v012-terminal
+    tag: v012
+  service:
+    type: ClusterIP
+    port: 3000
+    nodePort: ""
+  # External origin once an ingress/LB fronts the terminal (sets NEXTAUTH_URL/TERMINAL_URL for cookie
+  # security + OAuth callbacks). Empty for cluster-internal / port-forward access.
+  publicUrl: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+  # OAuth (Google/Microsoft) + other knobs: add here, e.g.
+  #   - name: GOOGLE_CLIENT_ID
+  #     value: "..."
+  extraEnv: []
+
+# DEPRECATED, OFF BY DEFAULT — the 0.10 dashboard as an opt-in component (#813). Hosted production
+# still runs this UI against the 0.12 core, and the authenticated-session / browser-session flows
+# are only walkable through it today; shipping it pinned here puts the UI users actually see back
+# on a release cadence. NOT covered by global.imageTag — it versions on its own pinned tag.
+# Deprecation exit: when the Terminal covers those flows, this block and its templates are deleted.
+dashboard:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: vexaai/dashboard
+    tag: 0.10.6.3.14
+  service:
+    type: ClusterIP
+    port: 3000
+    nodePort: ""
+  # External origin once an ingress/LB fronts the dashboard (NEXTAUTH_URL + public app URLs).
+  publicUrl: ""
+  # Public gateway origin as the BROWSER reaches it (NEXT_PUBLIC_* + websocket URL); empty for
+  # cluster-internal / port-forward access. publicWsUrl overrides the derived wss:// value.
+  publicApiUrl: ""
+  publicWsUrl: ""
+  allowRegistrations: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 1Gi }
+  extraEnv: []
+
+# Optional idempotent schema-sync Job (meeting-api owns init_db). Off by default; the services
+# create their schema on boot. Enable for an explicit pre-upgrade migration gate.
+migrations:
+  enabled: false
+  backoffLimit: 3
+  image:
+    repository: ""
+    tag: ""
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
+
+# ---------- Optional bundled dependencies ----------
+
+pgbouncer:
+  # Transaction-mode pooler in front of Postgres. Default off; enable against managed Postgres with a
+  # fixed slot budget or when scaling replicas. When on, every service's DB_HOST routes through it.
+  enabled: false
+  image: edoburu/pgbouncer:latest
+  replicaCount: 1
+  poolMode: transaction
+  defaultPoolSize: 20
+  maxClientConn: 1000
+  serverResetQuery: "DISCARD ALL"
+  authType: scram-sha-256
+  adminUsers: postgres
+  service:
+    port: 5432
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 128Mi }
+
+postgres:
+  enabled: true
+  image: postgres:17-alpine
+  credentialsSecretName: postgres-credentials
+  idleInTransactionTimeoutMs: 60000
+  service:
+    port: 5432
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: ""
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: 4000m, memory: 4Gi }
+
+redis:
+  enabled: true
+  # Valkey (BSD-3 fork of Redis 7.2.4) — engine parity with Lite/compose and off source-available
+  # Redis ≥7.4. Wire-compatible (RESP): the `redis.*` keys, redisConfig.url, and the durability
+  # helper are unchanged so existing values overrides keep working; only the engine swaps (#653).
+  image: valkey/valkey:8-alpine
+  service:
+    port: 6379
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClassName: ""
+  maxmemory: "1gb"
+  maxmemoryPolicy: "allkeys-lru"
+  # Durability paired invariant (enforced by vexa.validateRedisDurability): AOF on ⇒ BGSAVE failures
+  # are non-blocking. Don't set stopWritesOnBgsaveError=yes without appendonly=yes.
+  durability:
+    appendonly: "yes"
+    appendfsync: "everysec"
+    stopWritesOnBgsaveError: "no"
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+
+minio:
+  enabled: true
+  image:
+    repository: minio/minio
+    tag: latest
+  accessKey: vexa-access-key
+  secretKey: vexa-secret-key
+  bucket: vexa
+  persistence:
+    size: 10Gi
+    storageClassName: ""
+  service:
+    # ClusterIP keeps MinIO internal (prod fronts it via ingress). Switch to NodePort on dev/k3s to
+    # reach presigned download URLs browser-side, then set meetingApi presigning accordingly.
+    type: ClusterIP
+    port: 9000
+    nodePort: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 1Gi }
+
+# ---------- Ingress (optional; fronts the terminal web UI by default) ----------
+# The terminal is the human front door (it proxies /ws → gateway and /api → agent-api/admin-api
+# server-side). Add a second path to `gateway` if you also want the raw API exposed externally.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: "vexa.local"
+  tls: []
+  paths:
+    - path: /
+      pathType: Prefix
+      service: terminal
+      servicePort: 3000
+
+# ---------- PodDisruptionBudgets (optional) ----------
+# Stateless services default on (paired with replicaCount 2). Keys are the component value keys;
+# kebabcase maps to the component label (e.g. agentApi → agent-api). State-bearing infra stays off.
+podDisruptionBudgets:
+  gateway:
+    enabled: true
+    minAvailable: 1
+  adminApi:
+    enabled: true
+    minAvailable: 1
+  meetingApi:
+    enabled: true
+    minAvailable: 1
+  terminal:
+    enabled: true
+    minAvailable: 1
+  runtime:
+    enabled: false        # default replicaCount 1; only enable with backend=k8s + replicas>1
+    minAvailable: 1
+  agentApi:
+    enabled: false        # single-replica (shared workspace); don't block drains
+    minAvailable: 1

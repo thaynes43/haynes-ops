@@ -8,10 +8,14 @@ spec:
   interval: 30m
   chart:
     spec:
-      chart: deploy/helm/charts/vexa
+      # Vendored from Vexa-ai/vexa @ e0b356d6 (deploy/helm/charts/vexa) — no
+      # published Helm repo exists; vendoring keeps flux-local able to validate
+      # and pins the chart by copy. Re-vendor to upgrade.
+      chart: ./kubernetes/main/apps/ai/vexa/chart
       sourceRef:
         kind: GitRepository
-        name: vexa-src
+        name: haynes-ops
+        namespace: flux-system
   install:
     remediation:
       retries: 3
