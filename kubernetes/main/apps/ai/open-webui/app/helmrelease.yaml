@@ -49,6 +49,30 @@ spec:
       enabled: true
       existingClaim: open-webui
 
+    # Probes (2026-08-12): uvicorn hung during the 08-06 talosm02/Ceph event and the pod sat
+    # Running-but-dead for 6 days — with no probes there was no self-heal, and the gatus external
+    # check passed on timeout. Startup probe gives slow cold starts (~5 min) room before liveness arms.
+    startupProbe:
+      httpGet:
+        path: /health
+        port: http
+      periodSeconds: 5
+      failureThreshold: 60
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: http
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 4
+    readinessProbe:
+      httpGet:
+        path: /health/db
+        port: http
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 3
+
     extraEnvVars:
       GLOBAL_LOG_LEVEL:
         value: "DEBUG"
