@@ -1,9 +1,9 @@
 ---
 # OpenAI-compatible STT the Vexa bots transcribe against (the same
-# faster-whisper server Vexa's own lite deployment bundles). CPU on purpose:
-# per upstream, `small` keeps real-time pace on ~4-6 vCPU while `medium`+
-# sheds load without a GPU. Move to the 3090 (image swap + runtimeClass +
-# nvidia.com/gpu resource) once the device plugin advertises it.
+# faster-whisper server Vexa's own lite deployment bundles). On the 3090
+# (talosw01) since 2026-08-18 night: large-v3 at GPU speed — the dry run's
+# CPU `small` misheard plenty and the offline re-transcription crawled.
+# meeting-scribe/01.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,21 +18,26 @@ spec:
       labels:
         app.kubernetes.io/name: vexa-whisper
     spec:
+      runtimeClassName: nvidia
+      nodeSelector:
+        feature.node.kubernetes.io/nvidia-3090-gpu: "true"
       containers:
         - name: whisper
-          image: docker.io/fedirz/faster-whisper-server:latest-cpu
+          image: docker.io/fedirz/faster-whisper-server:latest-cuda
           env:
             - name: WHISPER_MODEL
-              value: "Systran/faster-whisper-small.en"
+              value: "Systran/faster-whisper-large-v3"
           ports:
             - containerPort: 8000
           resources:
             requests:
-              cpu: "4"
-              memory: 2Gi
+              cpu: "2"
+              memory: 4Gi
+              nvidia.com/gpu: "1"
             limits:
-              cpu: "8"
-              memory: 6Gi
+              cpu: "4"
+              memory: 10Gi
+              nvidia.com/gpu: "1"
           volumeMounts:
             - name: models
               mountPath: /root/.cache/huggingface

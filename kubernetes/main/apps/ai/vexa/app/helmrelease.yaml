@@ -40,6 +40,12 @@ spec:
       replicaCount: 1
     runtime:
       backend: "k8s"
+      # Stamped onto every SPAWNED bot pod (RUNTIME_K8S_NODE_SELECTOR): keep
+      # bots off control-plane nodes and next to whisper — the dry-run bot
+      # landed on a control-plane node amid the Redis-reachability blip
+      # (meeting-scribe saga). Revisit with a proper worker-role label.
+      nodeSelector:
+        kubernetes.io/hostname: talosw01
     # Transcription-only deployment: no web UI, no agent platform (and none of
     # their secret/PVC requirements). Enable later if the copilot is wanted.
     terminal:
