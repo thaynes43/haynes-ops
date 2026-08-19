@@ -102,20 +102,18 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 680829f (2026-08-19):
-              # Meet access choice (#111) — organizer picks who can join
-              # (Open default: no knocking for brothers or the scribe bot),
-              # applied to the Meet space on every save; root-caused because
-              # THIS pin sat at 3ff02c0 (#102) while #103–#110 only reached
-              # Cloud Run — the live site never ran the #107 open patch.
-              # Jump also brings: announce audience board option (#106),
-              # scribe dispatcher feed (#109). New env this pin needs:
-              # BOARD_GROUP_EMAIL (below) + SCRIBE_DISPATCH_TOKEN
-              # (externalsecret.yaml #3). New migration 0018 (boot migrate;
-              # Cloud Run already applied it to the shared DB). CI does not
-              # deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 7ee8159 (2026-08-19):
+              # notes-pipeline phase 1 (#112) — the completed-meetings feed
+              # (/api/internal/completed-meetings) the scribe dispatcher's stage-3
+              # completion detection matches captures against, plus the tier-2
+              # attendance provider (/api/internal/meeting-attendance) and the
+              # publish/failure email boundary (/api/internal/scribe-notify) the
+              # scribe-notes worker calls. All bearer SCRIBE_DISPATCH_TOKEN (env
+              # already present since #109). No new env, NO new migration —
+              # reads existing columns only. Descends from 680829f (#111 Meet
+              # access). CI does not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 680829f7bbb2c6b4883e26686adb2233670554d4
+              tag: 7ee81591dad54a48c4f655d07fd43ef0956dc534
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
