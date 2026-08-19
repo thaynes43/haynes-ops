@@ -36,6 +36,24 @@ spec:
       replicaCount: 1
       # Base URL; the bot's client appends /v1/audio/transcriptions.
       transcriptionServiceUrl: "http://vexa-whisper:8000"
+      # Recordings → rook RGW via the vexa-recordings OBC (bundled MinIO off:
+      # upstream archived 2026-04-25). Same MINIO_* env the chart would set,
+      # pointed at the cluster's native S3; creds from the OBC-minted Secret.
+      extraEnv:
+        - name: MINIO_ENDPOINT
+          value: "rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80"
+        - name: MINIO_BUCKET
+          value: "vexa-recordings"
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vexa-recordings
+              key: AWS_ACCESS_KEY_ID
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vexa-recordings
+              key: AWS_SECRET_ACCESS_KEY
     gateway:
       replicaCount: 1
     runtime:
@@ -51,4 +69,6 @@ spec:
     terminal:
       enabled: false
     agentApi:
+      enabled: false
+    minio:
       enabled: false

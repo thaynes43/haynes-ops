@@ -6,3 +6,4 @@ resources:
   - ./helmrelease.yaml
   - ./whisper.yaml
   - ./mcp.yaml
+  - ./recordings-bucket.yaml
