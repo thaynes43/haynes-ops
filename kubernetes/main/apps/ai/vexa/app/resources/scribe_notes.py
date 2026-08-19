@@ -28,7 +28,12 @@ Env:
   SCRIBE_NOTES_PUBLISH      "true" to write to Outline (default: false -> compose only)
   SCRIBE_NOTES_NOTIFY       "true" to send publish/failure notifications (default: false)
   SCRIBE_NOTES_OUT          where to write the composed page (default: /tmp/scribe-notes.md)
-  OUTLINE_API_URL           e.g. https://wiki.sigoalumni.org/api
+  OUTLINE_API_URL           e.g. http://outline.frontend.svc.cluster.local:3000/api
+                            (MUST be the in-cluster service — the public
+                            wiki.sigoalumni.org resolves to the Cloudflare
+                            edge, whose bot check 403s non-browser clients)
+  OUTLINE_PUBLIC_URL        human-facing base for notification links
+                            (default https://wiki.sigoalumni.org)
   OUTLINE_COLLECTION_ID     Outline "Meetings" collection id (publish placement root)
   OUTLINE_API_TOKEN         Outline "scribe-notes" token (publish only)
   PUSHOVER_TOKEN / PUSHOVER_USER_KEY   Pushover (notify only; optional)
@@ -716,6 +721,7 @@ def find_existing_note(client, collection_id, year_doc_id, date_str, code, page_
 
 def publish(page_title, markdown, meta, stats, code, mtg):
     url = os.environ.get("OUTLINE_API_URL", "https://wiki.sigoalumni.org/api").rstrip("/")
+    pub = os.environ.get("OUTLINE_PUBLIC_URL", "https://wiki.sigoalumni.org").rstrip("/")
     token = os.environ.get("OUTLINE_API_TOKEN")
     if not token:
         raise Fail("publish", "OUTLINE_API_TOKEN not set")
@@ -738,7 +744,7 @@ def publish(page_title, markdown, meta, stats, code, mtg):
     )
     if existing:
         eu = existing.get("url")
-        full = f"{url.replace('/api', '')}{eu}" if eu else url
+        full = f"{pub}{eu}" if eu else pub
         log(
             f"publish: already present ({how} match) under {type_title}/{year}: "
             f"{existing.get('title')!r} -> {full}; skipping create (idempotent no-op)"
@@ -747,7 +753,7 @@ def publish(page_title, markdown, meta, stats, code, mtg):
 
     doc = client.create(collection_id, year_doc_id, page_title, markdown, publish=True)
     doc_url = doc.get("url")
-    full = f"{url.replace('/api', '')}{doc_url}" if doc_url else url
+    full = f"{pub}{doc_url}" if doc_url else pub
     log(f"publish: created under {type_title}/{year}: {page_title!r} -> {full}")
     return full
 
