@@ -80,6 +80,10 @@ data:
     NOTES_DEBOUNCE_MIN = int(os.environ.get("NOTES_DEBOUNCE_MIN", "5"))
     NOTES_LOOKBACK_DAYS = int(os.environ.get("NOTES_LOOKBACK_DAYS", "7"))
     NOTES_MIN_DURATION_MIN = int(os.environ.get("NOTES_MIN_DURATION_MIN", "10"))
+    # Hard floor: meetings that ENDED before this ISO timestamp never get a
+    # notes job. Excludes pre-pipeline history (the 08-18/08-19 test and
+    # dry-run meetings) from the 7-day lookback.
+    NOTES_SINCE = os.environ.get("NOTES_SINCE", "")
     JOB_TEMPLATE = "/templates/scribe-notes-job.json"
     SA = "/var/run/secrets/kubernetes.io/serviceaccount"
 
@@ -202,6 +206,9 @@ data:
                     continue  # let final segments flush to Postgres
                 if age_min > NOTES_LOOKBACK_DAYS * 1440:
                     continue  # outside the lookback window
+                if NOTES_SINCE and end_s <= NOTES_SINCE:
+                    print(f"notes skip {code}: ended before NOTES_SINCE floor")
+                    continue
                 if dur_min < NOTES_MIN_DURATION_MIN:
                     print(f"notes skip {code}: {dur_min:.0f}m < {NOTES_MIN_DURATION_MIN}m (self-test)")
                     continue
