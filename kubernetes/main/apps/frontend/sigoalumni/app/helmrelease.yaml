@@ -102,16 +102,20 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 0c95855 (2026-08-16):
-              # owner-testing polish (#93) — account removal updates in place
-              # (no redirect, scroll preserved; row vanishing = confirmation),
-              # sign-in reordered: email link primary on top, OAuth button
-              # below as secondary renamed "Sign in with a sigoalumni.org
-              # account" (it never was any-Google). Descends from prior pin
-              # (97daf3d: #91 redeem fix + #92 account removal). No new env,
-              # no new migrations. CI does not deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 680829f (2026-08-19):
+              # Meet access choice (#111) — organizer picks who can join
+              # (Open default: no knocking for brothers or the scribe bot),
+              # applied to the Meet space on every save; root-caused because
+              # THIS pin sat at 3ff02c0 (#102) while #103–#110 only reached
+              # Cloud Run — the live site never ran the #107 open patch.
+              # Jump also brings: announce audience board option (#106),
+              # scribe dispatcher feed (#109). New env this pin needs:
+              # BOARD_GROUP_EMAIL (below) + SCRIBE_DISPATCH_TOKEN
+              # (externalsecret.yaml #3). New migration 0018 (boot migrate;
+              # Cloud Run already applied it to the shared DB). CI does not
+              # deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 3ff02c0480180f268277571a45fbd9ad8d48a34f
+              tag: 680829f7bbb2c6b4883e26686adb2233670554d4
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
@@ -143,6 +147,9 @@ spec:
               # absence 404s to an audited no-op until it is created at go-live.
               BROTHERS_GROUP_EMAIL: brothers@sigoalumni.org
               LEGACY_GROUP_EMAIL: sigmaphiomicron@googlegroups.com
+              # Board announce audience (#106) — the radio renders only when
+              # this is set; mirrors the Cloud Run service 1:1.
+              BOARD_GROUP_EMAIL: board@sigoalumni.org
               # Gmail authenticated submission (smtp.gmail.com, NOT the
               # IP-vetted relay — see sigoalumni-org terraform for history).
               SMTP_RELAY_HOST: smtp.gmail.com
