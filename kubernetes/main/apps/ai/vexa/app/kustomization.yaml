@@ -8,6 +8,7 @@ resources:
   - ./mcp.yaml
   - ./recordings-bucket.yaml
   - ./dispatcher.yaml
+  - ./scribe-notes.yaml
 configMapGenerator:
   # stt.py overlay for vexa-whisper: a copy of the in-image faster-whisper-server
   # router with a minimal diff that defaults `hotwords` from WHISPER_DEFAULT_HOTWORDS.
@@ -16,3 +17,22 @@ configMapGenerator:
   - name: vexa-whisper-stt-overlay
     files:
       - stt.py=./whisper-stt.py
+  # scribe-notes worker code + its pinned summarizer prompt (auditable in PR
+  # diffs, shepherd pattern), mounted at /app in the dispatcher-spawned Job. Stable
+  # name (disableNameSuffixHash): the runtime-created Job references this ConfigMap
+  # by name, which kustomize cannot rewrite (the Job isn't part of this kustomize
+  # build). Only these two generators opt out — the whisper overlay above keeps its
+  # roll-on-change hash.
+  - name: scribe-notes-worker
+    options:
+      disableNameSuffixHash: true
+    files:
+      - scribe_notes.py=./resources/scribe_notes.py
+      - summarize-prompt.md=./resources/summarize-prompt.md
+  # The Job manifest the dispatcher fills + POSTs (mounted at /templates in the
+  # dispatcher). JSON so python's stdlib parses it with no pyyaml dependency.
+  - name: scribe-notes-jobtemplate
+    options:
+      disableNameSuffixHash: true
+    files:
+      - scribe-notes-job.json=./resources/scribe-notes-job.json

@@ -1,0 +1,77 @@
+{
+  "apiVersion": "batch/v1",
+  "kind": "Job",
+  "metadata": {
+    "name": "scribe-notes",
+    "labels": { "app": "scribe-notes", "app.kubernetes.io/part-of": "vexa" }
+  },
+  "spec": {
+    "backoffLimit": 2,
+    "ttlSecondsAfterFinished": 604800,
+    "activeDeadlineSeconds": 1800,
+    "template": {
+      "metadata": { "labels": { "app": "scribe-notes" } },
+      "spec": {
+        "restartPolicy": "Never",
+        "automountServiceAccountToken": false,
+        "containers": [
+          {
+            "name": "scribe-notes",
+            "image": "ghcr.io/thaynes43/dev-env:0.5.0@sha256:7dce516a4f70eba3ce1a8ddd406b546762cfb084e50fdf36b2d9f18e214e5615",
+            "command": ["python3", "/app/scribe_notes.py"],
+            "env": [
+              { "name": "MEETING_DB_ID", "value": "" },
+              { "name": "MEET_CODE", "value": "" },
+              { "name": "EVENT_ID", "value": "" },
+              { "name": "SITE_ORIGIN", "value": "https://frontpage-dgmpniyoga-ue.a.run.app" },
+              { "name": "GATEWAY", "value": "http://vexa-vexa-gateway:8000" },
+              { "name": "OUTLINE_API_URL", "value": "https://wiki.sigoalumni.org/api" },
+              { "name": "SCRIBE_NOTES_MODEL", "value": "sonnet" },
+              { "name": "SCRIBE_NOTES_PROMPT", "value": "/app/summarize-prompt.md" },
+              { "name": "SCRIBE_NOTES_OUT", "value": "/tmp/scribe-notes.md" },
+              { "name": "SCRIBE_NOTES_PUBLISH", "value": "false" },
+              { "name": "SCRIBE_NOTES_NOTIFY", "value": "false" },
+              { "name": "HOME", "value": "/tmp" },
+              { "name": "CLAUDE_CONFIG_DIR", "value": "/tmp/claude" },
+              { "name": "DISABLE_TELEMETRY", "value": "1" },
+              { "name": "DISABLE_ERROR_REPORTING", "value": "1" },
+              { "name": "DISABLE_AUTOUPDATER", "value": "1" },
+              { "name": "DISABLE_NON_ESSENTIAL_MODEL_CALLS", "value": "1" },
+              { "name": "CLAUDE_CODE_ENABLE_TELEMETRY", "value": "0" }
+            ],
+            "envFrom": [
+              { "secretRef": { "name": "vexa-dispatcher-secret" } },
+              { "secretRef": { "name": "scribe-notes-llm-secret" } },
+              { "secretRef": { "name": "scribe-notes-plan-secret", "optional": true } },
+              { "secretRef": { "name": "scribe-notes-outline-secret", "optional": true } },
+              { "secretRef": { "name": "scribe-notes-pushover-secret", "optional": true } }
+            ],
+            "volumeMounts": [
+              { "name": "worker", "mountPath": "/app" },
+              { "name": "tmp", "mountPath": "/tmp" }
+            ],
+            "resources": {
+              "requests": { "cpu": "100m", "memory": "256Mi" },
+              "limits": { "cpu": "2", "memory": "2Gi" }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": { "drop": ["ALL"] }
+            }
+          }
+        ],
+        "volumes": [
+          { "name": "worker", "configMap": { "name": "scribe-notes-worker" } },
+          { "name": "tmp", "emptyDir": {} }
+        ],
+        "securityContext": {
+          "runAsNonRoot": true,
+          "runAsUser": 1000,
+          "runAsGroup": 1000,
+          "fsGroup": 1000,
+          "seccompProfile": { "type": "RuntimeDefault" }
+        }
+      }
+    }
+  }
+}
