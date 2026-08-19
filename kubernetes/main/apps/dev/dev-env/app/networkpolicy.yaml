@@ -120,6 +120,13 @@ spec:
               - matchName: "iam.googleapis.com"
               - matchName: "iamcredentials.googleapis.com"
               - matchName: "secretmanager.googleapis.com"
+              # Workspace read-side verification the meeting-scribe work needs
+              # (DWD-tokened, read-only): Meet conferenceRecords/participants
+              # + Directory group listing. Added 2026-08-19 after an agent
+              # tunneled these calls through an ai-ns pod via exec-piped
+              # tokens — banned; the allowlist is the sanctioned path.
+              - matchName: "meet.googleapis.com"
+              - matchName: "admin.googleapis.com"
               - matchName: "artifactregistry.googleapis.com"
               - matchName: "run.googleapis.com"
               # gcloud run describe/deploy use the REGIONAL endpoint, not the
