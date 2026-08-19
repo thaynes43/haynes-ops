@@ -6,7 +6,7 @@
     "labels": { "app": "scribe-notes", "app.kubernetes.io/part-of": "vexa" }
   },
   "spec": {
-    "backoffLimit": 2,
+    "backoffLimit": 0,
     "ttlSecondsAfterFinished": 604800,
     "activeDeadlineSeconds": 1800,
     "template": {
