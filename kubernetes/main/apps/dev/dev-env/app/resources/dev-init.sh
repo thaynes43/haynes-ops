@@ -84,9 +84,16 @@ fi
 
 # ── git identity + credentials (saga Decision #5: haynes-ops-bot everywhere) ────
 # Commits author as the bot; pushes/clones read the fresh minted token per call via
-# the credential helper (never a static token in .gitconfig).
+# the credential helper (never a static token in .gitconfig). The unset-all first is
+# load-bearing: a stray `gh auth setup-git` leaves a SECOND helper value on the PVC
+# gitconfig, plain `git config` refuses to replace a multi-valued key (so this line
+# silently no-ops every boot), and gh's helper then serves the shell's snapshotted
+# GH_TOKEN — a 60-min app token that any >1h-old shell holds dead (2026-08-19: broke
+# agent-run fetches from aged shells with "Invalid username or token").
 git config --global user.name  "haynes-dev-bot[bot]"
 git config --global user.email "haynes-dev-bot[bot]@users.noreply.github.com"
+git config --global --unset-all credential."https://github.com".helper 2>/dev/null || true
+git config --global --unset-all credential."https://gist.github.com".helper 2>/dev/null || true
 git config --global credential."https://github.com".helper \
   '!f() { echo username=x-access-token; echo "password=$(cat /creds/gh_token)"; }; f'
 git config --global --replace-all safe.directory "$HOME/repos/*"
