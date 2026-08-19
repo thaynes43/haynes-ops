@@ -102,20 +102,16 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 77bbf8d (2026-08-19):
-              # scribe-notify failure emails to admin@ only (#114). Descends
-              # from 7ee8159:
-              # notes-pipeline phase 1 (#112) — the completed-meetings feed
-              # (/api/internal/completed-meetings) the scribe dispatcher's stage-3
-              # completion detection matches captures against, plus the tier-2
-              # attendance provider (/api/internal/meeting-attendance) and the
-              # publish/failure email boundary (/api/internal/scribe-notify) the
-              # scribe-notes worker calls. All bearer SCRIBE_DISPATCH_TOKEN (env
-              # already present since #109). No new env, NO new migration —
-              # reads existing columns only. Descends from 680829f (#111 Meet
-              # access). CI does not deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit c565ba3 (2026-08-19):
+              # meeting-form time fields seed a real committed value instead of
+              # an empty input whose gray ghost time read as content but posted
+              # "" (#117). UI only — no new env, NO new migration. Descends from
+              # 0ba4ef4 (#115, terraform-only — no app change) and 77bbf8d
+              # (#114, scribe-notify failure emails to admin@; the scribe-notes
+              # internal API trio from #112 is unchanged). CI does not deploy
+              # here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 77bbf8d2b0346fe228478bd4ca441b998deb05d9
+              tag: c565ba3a7ec06681cb60fdddd59c765f27a27f04
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
