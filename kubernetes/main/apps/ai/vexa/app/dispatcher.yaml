@@ -257,6 +257,10 @@ spec:
                 # (2026-08-19); restore to 10 after the first real meeting.
                 - name: NOTES_MIN_DURATION_MIN
                   value: "6"
+                # Floor: pre-pipeline meetings (the 08-18/08-19 tests) never
+                # get notes jobs even inside the lookback window.
+                - name: NOTES_SINCE
+                  value: "2026-08-19T19:00:00Z"
               envFrom:
                 - secretRef:
                     name: vexa-dispatcher-secret
