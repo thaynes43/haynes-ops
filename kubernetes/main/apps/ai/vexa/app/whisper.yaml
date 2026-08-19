@@ -27,6 +27,17 @@ spec:
           env:
             - name: WHISPER_MODEL
               value: "Systran/faster-whisper-large-v3"
+            # Keep the model RESIDENT — never offload on idle. The 3090's 24GB
+            # VRAM is shared UNMANAGED with ollama-prime/comfyui on this node
+            # (they use runtimeClassName: nvidia with no device-plugin claim),
+            # so the default 300s idle offload makes whisper re-load its model
+            # mid-meeting and race them for VRAM → CUDA out-of-memory crashloop
+            # (observed 2026-08-19). Claim VRAM once at startup and hold it.
+            # WHISPER__TTL maps to WhisperConfig.ttl (pydantic env_nested_delimiter
+            # "__"); -1 = never unload. Verified against the running image
+            # 2026-08-19 (single-underscore WHISPER_TTL is ignored).
+            - name: WHISPER__TTL
+              value: "-1"
           ports:
             - containerPort: 8000
           resources:
@@ -36,7 +47,11 @@ spec:
               nvidia.com/gpu: "1"
             limits:
               cpu: "4"
-              memory: 10Gi
+              # 16Gi (was 10Gi): crash-spiral headroom. On a CUDA-OOM the
+              # server retries loading the model; the host peak during that
+              # spiral OOMKilled the pod (exit 137) at 10Gi on 2026-08-19.
+              # Idle host RSS is ~1.6Gi; node has 128Gi (~18% used).
+              memory: 16Gi
               nvidia.com/gpu: "1"
           volumeMounts:
             - name: models
