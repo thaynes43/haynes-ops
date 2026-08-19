@@ -81,12 +81,15 @@ metadata:
 spec:
   secretStoreRef:
     kind: ClusterSecretStore
-    name: onepassword-connect
+    name: gcp-sm-sigo
   target:
     name: scribe-notes-pushover-secret
     creationPolicy: Owner
   data:
+    # The org's one branded Pushover app (crest icon; Tom is rebranding it
+    # generic "Sigo"). Same app the cluster→cloud failover alerts use;
+    # creds live in GCP Secret Manager, not 1Password (Tom, 2026-08-19).
     - secretKey: PUSHOVER_TOKEN
-      remoteRef: { key: sigo-pushover, property: PUSHOVER_TOKEN }
+      remoteRef: { key: failover-pushover-app-token }
     - secretKey: PUSHOVER_USER_KEY
-      remoteRef: { key: sigo-pushover, property: PUSHOVER_USER_KEY }
+      remoteRef: { key: failover-pushover-user-key }
