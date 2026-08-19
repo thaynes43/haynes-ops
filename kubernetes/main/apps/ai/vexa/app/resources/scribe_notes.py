@@ -29,6 +29,7 @@ Env:
   SCRIBE_NOTES_NOTIFY       "true" to send publish/failure notifications (default: false)
   SCRIBE_NOTES_OUT          where to write the composed page (default: /tmp/scribe-notes.md)
   OUTLINE_API_URL           e.g. https://wiki.sigoalumni.org/api
+  OUTLINE_COLLECTION_ID     Outline "Meetings" collection id (publish placement root)
   OUTLINE_API_TOKEN         Outline "scribe-notes" token (publish only)
   PUSHOVER_TOKEN / PUSHOVER_USER_KEY   Pushover (notify only; optional)
   CLAUDE_CODE_OAUTH_TOKEN   Max-plan token (preferred)  ── shepherd auth pattern
@@ -38,6 +39,7 @@ Env:
 
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -568,28 +570,186 @@ def compose(meta, summary, tier1, tier2, attendance_known, generic_present, stat
 
 
 # ── Publish (Outline REST; gated) ─────────────────────────────────────────────
-def publish(title, markdown):
+# Placement (§5/§6): Meetings collection -> <type page> -> <year page> -> notes
+# page. Type = "Board Meetings" (default) or "Annual Meetings" (event title
+# ~/annual meeting/i). The year page (title YYYY) is created if missing; the type
+# pages are curated and must already exist. Pre-publish existence check makes a
+# re-run a no-op. All navigation is exact-(trimmed)-title within the collection,
+# via documents.list's parentDocumentId filter (deterministic — no fuzzy search).
+
+
+class Outline:
+    """Thin Outline REST client over http() + the scribe-notes token. Every call
+    raises Fail('publish', ...) on a non-2xx, preserving §8 failure semantics
+    (Outline unreachable -> Job retry, then fail + push)."""
+
+    def __init__(self, base_url, token):
+        self.base = base_url.rstrip("/")
+        self.headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+
+    def _post(self, endpoint, payload):
+        st, resp = http(
+            f"{self.base}/{endpoint}", self.headers, json.dumps(payload).encode(), "POST"
+        )
+        if st not in (200, 201):
+            raise Fail("publish", f"{endpoint} HTTP {st}")
+        try:
+            return json.loads(resp)
+        except Exception:
+            raise Fail("publish", f"{endpoint} returned non-JSON")
+
+    def list_children(self, collection_id, parent_id):
+        """Documents directly under parent_id within the collection. parent_id
+        None => the collection's root documents. Paginates fully."""
+        out, offset, limit = [], 0, 100
+        while True:
+            payload = {"collectionId": collection_id, "limit": limit, "offset": offset}
+            if parent_id is not None:
+                payload["parentDocumentId"] = parent_id
+            data = self._post("documents.list", payload)
+            batch = data.get("data") or []
+            for d in batch:
+                if parent_id is None and d.get("parentDocumentId"):
+                    continue  # a root list must not include nested docs
+                out.append(d)
+            if len(batch) < limit:
+                break
+            offset += len(batch)
+        return out
+
+    def get_text(self, doc_id):
+        data = self._post("documents.info", {"id": doc_id})
+        return (data.get("data") or {}).get("text") or ""
+
+    def create(self, collection_id, parent_id, title, text, publish=False):
+        payload = {
+            "collectionId": collection_id,
+            "title": title,
+            "text": text,
+            "publish": bool(publish),
+        }
+        if parent_id is not None:
+            payload["parentDocumentId"] = parent_id
+        data = self._post("documents.create", payload)
+        return data.get("data") or {}
+
+
+# ── Placement + idempotency helpers (pure-ish; unit-tested with a fake client) ─
+_VARIANT_RE = re.compile(r"\s*\((?:notes|minutes)\)\s*$", re.IGNORECASE)
+
+
+def _norm_title(s):
+    return (s or "").strip()
+
+
+def _base_title(t):
+    """Title minus a trailing '(notes)'/'(minutes)' variant label, so a match
+    holds even if the notes<->minutes branch flips between re-runs."""
+    return _VARIANT_RE.sub("", _norm_title(t))
+
+
+def code_marker(code):
+    """The stable substring searched for in an existing page's body."""
+    return f"scribe:code={code}"
+
+
+def marker_comment(code, mtg):
+    """Idempotency marker appended to the composed page. HTML comment => invisible
+    on the rendered page. Outline may strip HTML on import (the corpus carries
+    none), so the existence check does NOT rely on it alone — see find_existing_note."""
+    return f"<!-- scribe:code={code} mtg={mtg} -->"
+
+
+def meeting_type_title(event_title):
+    """Which type page parents this meeting (§5). Annual only when the event
+    title reads as an annual meeting; everything else is a board meeting."""
+    return (
+        "Annual Meetings"
+        if re.search(r"annual meeting", event_title or "", re.IGNORECASE)
+        else "Board Meetings"
+    )
+
+
+def find_child_by_title(client, collection_id, parent_id, title):
+    """Exact (trimmed) title match among the direct children of parent_id."""
+    want = _norm_title(title)
+    for d in client.list_children(collection_id, parent_id):
+        if _norm_title(d.get("title")) == want:
+            return d
+    return None
+
+
+def resolve_parent(client, collection_id, event_title, year):
+    """Meetings -> <type> -> <year>. The type page is curated and must exist; the
+    year page is created (published) if missing. Returns (year_doc_id, type_title)."""
+    type_title = meeting_type_title(event_title)
+    type_doc = find_child_by_title(client, collection_id, None, type_title)
+    if not type_doc:
+        raise Fail("publish", f"type page {type_title!r} not found in the Meetings collection")
+    year_doc = find_child_by_title(client, collection_id, type_doc["id"], year)
+    if not year_doc:
+        log(f"publish: year page {year!r} missing under {type_title!r} — creating it")
+        year_doc = client.create(collection_id, type_doc["id"], year, "", publish=True)
+    return year_doc["id"], type_title
+
+
+def find_existing_note(client, collection_id, year_doc_id, date_str, code, page_title):
+    """A page already published for THIS meeting inside the year subtree. Match =
+    same 'YYYY-MM-DD —' date prefix AND either (a) the run's code marker is in the
+    body [precise, disambiguates two meetings on one day, survives a notes/minutes
+    flip], or (b) the same base title [survives Outline stripping the marker].
+    Returns (doc, how) or (None, None)."""
+    prefix = f"{date_str} —"
+    want_base = _base_title(page_title)
+    for d in client.list_children(collection_id, year_doc_id):
+        if not _norm_title(d.get("title")).startswith(prefix):
+            continue
+        if code and code_marker(code) in (client.get_text(d["id"]) or ""):
+            return d, "code-marker"
+        if _base_title(d.get("title")) == want_base:
+            return d, "title"
+    return None, None
+
+
+def publish(page_title, markdown, meta, stats, code, mtg):
     url = os.environ.get("OUTLINE_API_URL", "https://wiki.sigoalumni.org/api").rstrip("/")
     token = os.environ.get("OUTLINE_API_TOKEN")
     if not token:
         raise Fail("publish", "OUTLINE_API_TOKEN not set")
-    # NOTE: parent placement (Meetings -> <type> -> <year>) + pre-publish
-    # existence check are wired in the supervised-publish step; phase-1 publish is
-    # gated off, so this is the minimal create used by the first supervised test.
-    body = json.dumps(
-        {"title": title, "text": markdown, "publish": True, "collectionId": os.environ.get("OUTLINE_COLLECTION_ID")}
-    ).encode()
-    st, resp = http(
-        f"{url}/documents.create",
-        {"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        body,
-        "POST",
+    collection_id = os.environ.get("OUTLINE_COLLECTION_ID")
+    if not collection_id:
+        raise Fail("publish", "OUTLINE_COLLECTION_ID not set")
+
+    zone = _zone(meta.get("timezone"))
+    start = parse_iso(meta.get("startAt")) or stats.get("start")
+    date_str = _date_str(start, zone)
+    if not start or date_str == "(date unknown)":
+        raise Fail("publish", "cannot place a page without a meeting start date")
+    year = date_str[:4]
+
+    client = Outline(url, token)
+    year_doc_id, type_title = resolve_parent(client, collection_id, meta.get("title"), year)
+
+    existing, how = find_existing_note(
+        client, collection_id, year_doc_id, date_str, code, page_title
     )
-    if st not in (200, 201):
-        raise Fail("publish", f"documents.create HTTP {st}")
-    data = json.loads(resp)
-    doc_url = data.get("data", {}).get("url")
-    return f"{url.replace('/api','')}{doc_url}" if doc_url else url
+    if existing:
+        eu = existing.get("url")
+        full = f"{url.replace('/api', '')}{eu}" if eu else url
+        log(
+            f"publish: already present ({how} match) under {type_title}/{year}: "
+            f"{existing.get('title')!r} -> {full}; skipping create (idempotent no-op)"
+        )
+        return full
+
+    doc = client.create(collection_id, year_doc_id, page_title, markdown, publish=True)
+    doc_url = doc.get("url")
+    full = f"{url.replace('/api', '')}{doc_url}" if doc_url else url
+    log(f"publish: created under {type_title}/{year}: {page_title!r} -> {full}")
+    return full
 
 
 # ── Notify (Pushover worker-side + email via the site) ────────────────────────
@@ -641,6 +801,7 @@ def notify(kind, title, page_url=None, stage=None):
 def main():
     code = os.environ.get("MEET_CODE", "")
     event_id = os.environ.get("EVENT_ID", "")
+    mtg = os.environ.get("MEETING_DB_ID", "")
     out_path = os.environ.get("SCRIBE_NOTES_OUT", "/tmp/scribe-notes.md")
     title = code or "meeting"
     try:
@@ -678,13 +839,17 @@ def main():
         page_title, markdown = compose(
             meta, summary, tier1, tier2, attendance is not None, had_generic_speaker(segments), stats
         )
+        # Idempotency marker at the end of the page (invisible HTML comment): the
+        # meet code + gateway meeting id let a re-run recognise its own prior page
+        # (§6). Appended here, not in compose(), so the page copy stays untouched.
+        markdown = f"{markdown}\n\n{marker_comment(code, mtg)}\n"
 
         with open(out_path, "w") as f:
             f.write(markdown)
         log(f"composed page ({len(markdown)} bytes) -> {out_path}  variant={'minutes' if summary['motions'] else 'notes'}")
 
         if os.environ.get("SCRIBE_NOTES_PUBLISH", "false").lower() == "true":
-            page_url = publish(page_title, markdown)
+            page_url = publish(page_title, markdown, meta, stats, code, mtg)
             log(f"published: {page_url}")
             notify("published", page_title, page_url=page_url)
         else:
