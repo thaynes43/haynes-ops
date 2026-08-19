@@ -8,3 +8,11 @@ resources:
   - ./mcp.yaml
   - ./recordings-bucket.yaml
   - ./dispatcher.yaml
+configMapGenerator:
+  # stt.py overlay for vexa-whisper: a copy of the in-image faster-whisper-server
+  # router with a minimal diff that defaults `hotwords` from WHISPER_DEFAULT_HOTWORDS.
+  # The default content-hash name suffix rolls the whisper Deployment whenever the
+  # overlay changes; the volume in whisper.yaml references the base name.
+  - name: vexa-whisper-stt-overlay
+    files:
+      - stt.py=./whisper-stt.py

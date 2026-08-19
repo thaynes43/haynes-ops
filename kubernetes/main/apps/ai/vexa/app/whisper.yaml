@@ -26,10 +26,23 @@ spec:
         feature.node.kubernetes.io/nvidia-a2000: "true"
       containers:
         - name: whisper
-          image: docker.io/fedirz/faster-whisper-server:latest-cuda
+          # Pinned by digest: latest-cuda is an unpinned floating tag, and the
+          # stt.py overlay below is written against THIS image's source layout.
+          # A silent upstream rebuild of latest-cuda could move/rename the file
+          # the overlay mounts over and break transcription, so we pin the exact
+          # digest that was running when the overlay was authored (2026-08-19).
+          # To adopt a new upstream image: re-copy stt.py from it, re-apply the
+          # minimal diff, and bump this digest in the same PR.
+          image: docker.io/fedirz/faster-whisper-server:latest-cuda@sha256:0b64050ad0b9244745746b652473ee42a8d5454d501877a252c3e65f631ffc99
           env:
             - name: WHISPER_MODEL
               value: "Systran/faster-whisper-large-v3"
+            # Static name-bias lexicon (meeting-scribe). The stt.py overlay
+            # defaults `hotwords` to this when a transcription request omits it;
+            # an explicit request-supplied hotwords still wins. Biases the model
+            # toward chapter/brother proper nouns. Approved by Tom 2026-08-19.
+            - name: WHISPER_DEFAULT_HOTWORDS
+              value: "ΣΦΟ, Sigo, Sigma Phi Omicron, Thomas Haynes, Zach Koch, Zak, Dennis Livoli, Liron Feldman, Matthew Sharp, Scott Scarbro, Rohan Solanki, Ryan Carreiro, Herns Farel"
             # Keep the model RESIDENT — never offload on idle. The A2000's
             # 12GB VRAM is shared UNMANAGED with ollama-assist01 on talosm01
             # (it uses runtimeClassName: nvidia with no device-plugin claim),
@@ -60,6 +73,15 @@ spec:
           volumeMounts:
             - name: models
               mountPath: /root/.cache/huggingface
+            # Overlay a single file (stt.py) over the in-image router source.
+            # subPath replaces just this file, leaving the rest of the routers
+            # package (__init__.py, misc.py, list_models.py) intact. Python
+            # recompiles from the mounted source on import (size differs from
+            # the cached .pyc), so the overlay takes effect on pod start.
+            - name: stt-overlay
+              mountPath: /root/faster-whisper-server/faster_whisper_server/routers/stt.py
+              subPath: stt.py
+              readOnly: true
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -67,6 +89,12 @@ spec:
       volumes:
         - name: models
           emptyDir: {}
+        - name: stt-overlay
+          configMap:
+            # Name is rewritten with a content-hash suffix by the
+            # configMapGenerator in kustomization.yaml, so any edit to the
+            # overlay rolls the Deployment automatically.
+            name: vexa-whisper-stt-overlay
 ---
 apiVersion: v1
 kind: Service
