@@ -435,7 +435,7 @@ def render_invited(audience):
     return "not recorded for this meeting"
 
 
-def compose(meta, summary, tier1, tier2, attendance_known, generic_present, stats):
+def compose(meta, summary, tier1, tier2, attendance_known, generic_present, stats, code, mtg):
     """Fill the §5 template deterministically. Notes vs minutes is decided HERE
     by the motion count — the LLM never chooses the label (§9)."""
     tz = meta.get("timezone")
@@ -461,8 +461,6 @@ def compose(meta, summary, tier1, tier2, attendance_known, generic_present, stat
     dur = stats.get("durationMin") or 0
 
     L = []
-    L.append(f"# {title}")
-    L.append("")
     L.append(":::warning")
     L.append(
         "**Pending review** — generated from the ΣΦΟ Scribe transcript. A board member "
@@ -491,19 +489,21 @@ def compose(meta, summary, tier1, tier2, attendance_known, generic_present, stat
     else:
         spoke = "*speaker attribution unavailable for this meeting*"
     L.append(f"**Present (spoke in the transcript):** {spoke}")
+    L.append("")
     if not attendance_known:
         silent = "not captured for this meeting (participant log unavailable)"
     else:
         names = [p.get("displayName") for p in (tier2 or []) if p.get("displayName")]
         silent = " · ".join(names) if names else "none recorded (everyone who joined also spoke)"
     L.append(f"**Present (joined without speaking):** {silent}")
+    L.append("")
     L.append(f"**Invited:** {render_invited(meta.get('audience'))}")
+    L.append("")
     if generic_present:
-        L.append("")
         L.append(
             "*Some remarks could not be attributed to a named speaker.*"
         )
-    L.append("")
+        L.append("")
     L.append(
         "*Sources: transcript speaker attribution; Meet participant log; announcement "
         "roster. Absence is not inferred — someone missing above may still have attended.*"
@@ -574,8 +574,8 @@ def compose(meta, summary, tier1, tier2, attendance_known, generic_present, stat
         L.append("")
     L.append("---")
     L.append(
-        "*Captured by ΣΦΟ Scribe; summarized from the full transcript. Event details "
-        "from sigoalumni.org.*"
+        f"*Captured by ΣΦΟ Scribe (meeting {code} · capture {mtg}); summarized from "
+        "the full transcript. Event details from sigoalumni.org.*"
     )
     return title, "\n".join(L)
 
@@ -662,18 +662,6 @@ def _base_title(t):
     return _VARIANT_RE.sub("", _norm_title(t))
 
 
-def code_marker(code):
-    """The stable substring searched for in an existing page's body."""
-    return f"scribe:code={code}"
-
-
-def marker_comment(code, mtg):
-    """Idempotency marker appended to the composed page. HTML comment => invisible
-    on the rendered page. Outline may strip HTML on import (the corpus carries
-    none), so the existence check does NOT rely on it alone — see find_existing_note."""
-    return f"<!-- scribe:code={code} mtg={mtg} -->"
-
-
 def meeting_type_title(event_title):
     """Which type page parents this meeting (§5). Annual only when the event
     title reads as an annual meeting; everything else is a board meeting."""
@@ -709,17 +697,18 @@ def resolve_parent(client, collection_id, event_title, year):
 
 def find_existing_note(client, collection_id, year_doc_id, date_str, code, page_title):
     """A page already published for THIS meeting inside the year subtree. Match =
-    same 'YYYY-MM-DD —' date prefix AND either (a) the run's code marker is in the
-    body [precise, disambiguates two meetings on one day, survives a notes/minutes
-    flip], or (b) the same base title [survives Outline stripping the marker].
+    same 'YYYY-MM-DD —' date prefix AND either (a) the footer provenance string
+    'meeting <code> · capture' is in the body [precise, disambiguates two meetings
+    on one day, survives a notes/minutes flip], or (b) the same base title [survives
+    an older page whose footer predates this provenance format].
     Returns (doc, how) or (None, None)."""
     prefix = f"{date_str} —"
     want_base = _base_title(page_title)
     for d in client.list_children(collection_id, year_doc_id):
         if not _norm_title(d.get("title")).startswith(prefix):
             continue
-        if code and code_marker(code) in (client.get_text(d["id"]) or ""):
-            return d, "code-marker"
+        if code and f"meeting {code} · capture" in (client.get_text(d["id"]) or ""):
+            return d, "provenance"
         if _base_title(d.get("title")) == want_base:
             return d, "title"
     return None, None
@@ -849,12 +838,8 @@ def main():
         summary = validate(summary, segments, tier1, tier2, invited_names)
 
         page_title, markdown = compose(
-            meta, summary, tier1, tier2, attendance is not None, had_generic_speaker(segments), stats
+            meta, summary, tier1, tier2, attendance is not None, had_generic_speaker(segments), stats, code, mtg
         )
-        # Idempotency marker at the end of the page (invisible HTML comment): the
-        # meet code + gateway meeting id let a re-run recognise its own prior page
-        # (§6). Appended here, not in compose(), so the page copy stays untouched.
-        markdown = f"{markdown}\n\n{marker_comment(code, mtg)}\n"
 
         with open(out_path, "w") as f:
             f.write(markdown)
