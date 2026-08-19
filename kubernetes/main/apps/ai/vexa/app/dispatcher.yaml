@@ -95,6 +95,16 @@ data:
         except urllib.error.HTTPError as e:
             return e.code, e.read()
 
+    def parse_dt(s):
+        # Parse a gateway/feed ISO instant (trailing "Z" + microseconds);
+        # returns None on missing/garbage so callers can guard.
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
     def create_notes_job(meeting_db_id, code, event_id):
         # Idempotent by Job name (AlreadyExists = already handled — same posture as
         # the Vexa 409). Fills the 3 per-meeting env values into the committed
@@ -124,13 +134,53 @@ data:
             else:
                 print(f"notes-job {name}: create failed HTTP {e.code}: {e.read()[:200]}", file=sys.stderr)
 
-    # 1) Dispatch: send the bot to meetings starting about now.
+    # Gateway meetings, fetched ONCE up front and reused by all three stages
+    # below (dispatch skip-guard, watchdog, notes) — don't double-fetch. A
+    # gateway hiccup must not block dispatch, so on failure we degrade to an
+    # empty list (dispatch then falls back to the Vexa 409 as before; the
+    # watchdog and notes stages simply find nothing and no-op).
+    now = datetime.now(timezone.utc)
+    gst, gbody = req(f"{GATEWAY}/meetings", {"X-API-Key": os.environ["VEXA_API_KEY"]})
+    if gst == 200:
+        all_meetings = json.loads(gbody).get("meetings", [])
+    else:
+        print(f"WARN meetings list HTTP {gst}", file=sys.stderr)
+        all_meetings = []
+
+    def already_captured(code, ev_start):
+        # This Meet code already has a capture for this window if a gateway
+        # meeting is active-ish (anything not completed/failed => a bot is live
+        # in the room now) OR completed with end_time at/after the event's start
+        # (this event already had its meeting). The feed only surfaces meetings
+        # starting about now, so a completed capture ending after startAt is
+        # unambiguously THIS window; a stale capture of a recurring code ended
+        # before startAt and is correctly ignored.
+        for g in all_meetings:
+            if g.get("native_meeting_id") != code:
+                continue
+            status = g.get("status")
+            if status not in ("completed", "failed"):
+                return True
+            if status == "completed" and ev_start is not None:
+                g_end = parse_dt(g.get("end_time"))
+                if g_end is not None and g_end >= ev_start:
+                    return True
+        return False
+
+    # 1) Dispatch: send the bot to meetings starting about now — but skip any
+    #    whose capture already happened this window (see already_captured).
+    #    Without this, a meeting that ended while its scheduled window is still
+    #    open is re-summoned to an empty room every run (the 409 guard the
+    #    gateway offers only covers ACTIVE meetings, not completed ones).
     st, body = req(f"{SITE}/api/internal/upcoming-meetings",
                    {"Authorization": "Bearer " + os.environ["SCRIBE_DISPATCH_TOKEN"]})
     if st != 200:
         print(f"ERROR upcoming-meetings HTTP {st}", file=sys.stderr); sys.exit(1)
     meetings = json.loads(body)["meetings"]
     for m in meetings:
+        if already_captured(m["code"], parse_dt(m.get("startAt"))):
+            print(f"dispatch skip {m['code']}: already captured this window")
+            continue
         st, body = req(f"{GATEWAY}/bots",
                        {"X-API-Key": os.environ["VEXA_API_KEY"], "Content-Type": "application/json"},
                        json.dumps({"platform": "google_meet", "native_meeting_id": m["code"],
@@ -138,12 +188,8 @@ data:
         outcome = "requested" if st in (200, 201) else ("already-there" if st == 409 else f"HTTP {st}")
         print(f"dispatch {m['code']} (event {m['id']}): {outcome}")
 
-    # 2) Watchdog: active meeting, past grace, zero segments -> restart collector host.
-    st, body = req(f"{GATEWAY}/meetings", {"X-API-Key": os.environ["VEXA_API_KEY"]})
-    if st != 200:
-        print(f"WARN meetings list HTTP {st}", file=sys.stderr); sys.exit(0)
-    now = datetime.now(timezone.utc)
-    all_meetings = json.loads(body).get("meetings", [])
+    # 2) Watchdog: active meeting, past grace, zero segments -> restart collector
+    #    host. Reuses all_meetings/now fetched above (no second gateway call).
     for mt in all_meetings:
         if mt.get("status") != "active" or not mt.get("start_time"):
             continue
@@ -253,10 +299,8 @@ spec:
                   value: "5"
                 - name: NOTES_LOOKBACK_DAYS
                   value: "7"
-                # Lowered 10 -> 6 for the supervised self-test window
-                # (2026-08-19); restore to 10 after the first real meeting.
                 - name: NOTES_MIN_DURATION_MIN
-                  value: "6"
+                  value: "10"
                 # Floor: pre-pipeline meetings (the 08-18/08-19 tests) never
                 # get notes jobs even inside the lookback window.
                 - name: NOTES_SINCE
