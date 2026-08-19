@@ -24,7 +24,7 @@ Env:
   GATEWAY                   e.g. http://vexa-vexa-gateway:8000  (transcript)
   SCRIBE_DISPATCH_TOKEN     bearer for the site internal endpoints
   VEXA_API_KEY              X-API-Key for the gateway
-  SCRIBE_NOTES_MODEL        claude model (default: sonnet)
+  SCRIBE_NOTES_MODEL        claude model (default: fable — board-facing prose)
   SCRIBE_NOTES_PUBLISH      "true" to write to Outline (default: false -> compose only)
   SCRIBE_NOTES_NOTIFY       "true" to send publish/failure notifications (default: false)
   SCRIBE_NOTES_OUT          where to write the composed page (default: /tmp/scribe-notes.md)
@@ -307,7 +307,7 @@ def summarize(meta, segments):
     local_cred = bool(os.environ.get("SCRIBE_NOTES_TRANSCRIPT_FILE"))
     if not have_plan and not have_api and not local_cred:
         raise Fail("summarize", "no CLAUDE_CODE_OAUTH_TOKEN and no ANTHROPIC_API_KEY")
-    model = os.environ.get("SCRIBE_NOTES_MODEL", "sonnet")
+    model = os.environ.get("SCRIBE_NOTES_MODEL", "fable")
 
     def attempt(use_api):
         auth = "api" if use_api else "plan"
@@ -488,8 +488,7 @@ def compose(meta, summary, tier1, tier2, attendance_known, generic_present, stat
     if generic_present:
         L.append("")
         L.append(
-            "*Some remarks were attributed only to an unnamed speaker; those names "
-            "are unverified.*"
+            "*Some remarks could not be attributed to a named speaker.*"
         )
     L.append("")
     L.append(

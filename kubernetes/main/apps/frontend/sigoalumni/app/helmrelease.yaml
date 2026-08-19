@@ -102,7 +102,9 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 7ee8159 (2026-08-19):
+              # Pinned to sigoalumni-org main commit 77bbf8d (2026-08-19):
+              # scribe-notify failure emails to admin@ only (#114). Descends
+              # from 7ee8159:
               # notes-pipeline phase 1 (#112) — the completed-meetings feed
               # (/api/internal/completed-meetings) the scribe dispatcher's stage-3
               # completion detection matches captures against, plus the tier-2
@@ -113,7 +115,7 @@ spec:
               # reads existing columns only. Descends from 680829f (#111 Meet
               # access). CI does not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 7ee81591dad54a48c4f655d07fd43ef0956dc534
+              tag: 77bbf8d2b0346fe228478bd4ca441b998deb05d9
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
