@@ -13,6 +13,15 @@ metadata:
   name: vexa-whisper
 spec:
   replicas: 1
+  # Recreate, not the default RollingUpdate: the pod claims the node's only
+  # nvidia.com/gpu, so a rolling surge pod can never schedule (the old pod holds
+  # the GPU) and the rollout deadlocks in Pending until the old pod is deleted by
+  # hand. Recreate tears the old pod down first, freeing the GPU for the new one.
+  # The stt.py overlay is configMapGenerator-hashed, so overlay edits roll this
+  # Deployment automatically — this keeps that roll from deadlocking. The brief
+  # gap is acceptable: whisper rollouts are already gated on no active meeting.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: vexa-whisper
