@@ -567,7 +567,10 @@ case "$cmd" in
       fi
     fi
 
-    # Canonical clone: fetch-only, never worked in directly.
+    # Canonical clone: fetch-only, never worked in directly. Fresh token first —
+    # same footgun as repo_rows(): an inherited GH_TOKEN outlives its 60-min mint,
+    # and a credential-helper hijack (gh auth setup-git) makes git present it.
+    [ -s /creds/gh_token ] && export GH_TOKEN="$(cat /creds/gh_token)"
     if [ ! -d "$REPOS/$repo/.git" ]; then
       log "cloning $OWNER/$repo…"
       GIT_TERMINAL_PROMPT=0 git clone "https://github.com/$OWNER/$repo" "$REPOS/$repo" \
