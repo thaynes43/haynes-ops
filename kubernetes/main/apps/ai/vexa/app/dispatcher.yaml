@@ -1,0 +1,171 @@
+---
+# scribe-dispatcher (meeting-scribe/02): every 2 minutes, ask the site which
+# published online meetings start about now and send ΣΦΟ Scribe. Also the
+# live-pipeline watchdog (meeting-scribe/01): an active meeting whose
+# transcript is still empty after grace gets ONE meeting-api restart (the
+# collector never re-consumes after losing Redis — dry-run 2026-08-18).
+# Site URL is the Cloud Run origin: the apex sits behind Cloudflare, which
+# cached this route's pre-deploy 404; the origin is uncached and stable.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: vexa-dispatcher
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: onepassword-connect
+  target:
+    name: vexa-dispatcher-secret
+    creationPolicy: Owner
+  data:
+    - secretKey: SCRIBE_DISPATCH_TOKEN
+      remoteRef: { key: sigo-dev-env, property: SCRIBE_DISPATCH_TOKEN }
+    - secretKey: VEXA_API_KEY
+      remoteRef: { key: sigo-dev-env, property: VEXA_API_KEY }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scribe-dispatcher
+---
+# Exactly the two verbs the watchdog's one mitigation needs; nothing else.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: scribe-dispatcher
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["vexa-vexa-meeting-api"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scribe-dispatcher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: scribe-dispatcher
+subjects:
+  - kind: ServiceAccount
+    name: scribe-dispatcher
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scribe-dispatcher
+data:
+  dispatch.py: |
+    import json, os, ssl, sys, urllib.request
+    from datetime import datetime, timezone
+
+    SITE = os.environ["SITE_ORIGIN"]
+    GATEWAY = "http://vexa-vexa-gateway:8000"
+    BOT_NAME = "ΣΦΟ Scribe"
+    GRACE_MIN = 5          # active this long with zero segments => stall
+    RESTART_COOLDOWN_MIN = 15
+
+    def req(url, headers=None, data=None, method=None):
+        r = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
+        try:
+            with urllib.request.urlopen(r, timeout=20) as resp:
+                return resp.status, resp.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+
+    # 1) Dispatch: send the bot to meetings starting about now.
+    st, body = req(f"{SITE}/api/internal/upcoming-meetings",
+                   {"Authorization": "Bearer " + os.environ["SCRIBE_DISPATCH_TOKEN"]})
+    if st != 200:
+        print(f"ERROR upcoming-meetings HTTP {st}", file=sys.stderr); sys.exit(1)
+    meetings = json.loads(body)["meetings"]
+    for m in meetings:
+        st, body = req(f"{GATEWAY}/bots",
+                       {"X-API-Key": os.environ["VEXA_API_KEY"], "Content-Type": "application/json"},
+                       json.dumps({"platform": "google_meet", "native_meeting_id": m["code"],
+                                   "bot_name": BOT_NAME}).encode(), "POST")
+        outcome = "requested" if st in (200, 201) else ("already-there" if st == 409 else f"HTTP {st}")
+        print(f"dispatch {m['code']} (event {m['id']}): {outcome}")
+
+    # 2) Watchdog: active meeting, past grace, zero segments -> restart collector host.
+    st, body = req(f"{GATEWAY}/meetings", {"X-API-Key": os.environ["VEXA_API_KEY"]})
+    if st != 200:
+        print(f"WARN meetings list HTTP {st}", file=sys.stderr); sys.exit(0)
+    now = datetime.now(timezone.utc)
+    for mt in json.loads(body).get("meetings", []):
+        if mt.get("status") != "active" or not mt.get("start_time"):
+            continue
+        started = datetime.fromisoformat(mt["start_time"].replace("Z", "+00:00"))
+        age_min = (now - started).total_seconds() / 60
+        if age_min < GRACE_MIN:
+            continue
+        st, body = req(f"{GATEWAY}/transcripts/{mt['platform']}/{mt['native_meeting_id']}",
+                       {"X-API-Key": os.environ["VEXA_API_KEY"]})
+        segs = len(json.loads(body).get("segments", [])) if st == 200 else -1
+        if segs != 0:
+            continue
+        print(f"STALL meeting {mt['native_meeting_id']}: active {age_min:.0f}m, 0 segments", file=sys.stderr)
+        # One guarded mitigation: rollout-restart meeting-api (collector lives there).
+        tok = open("/var/run/secrets/kubernetes.io/serviceaccount/token").read()
+        ns = open("/var/run/secrets/kubernetes.io/serviceaccount/namespace").read()
+        ctx = ssl.create_default_context(cafile="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+        base = f"https://kubernetes.default.svc/apis/apps/v1/namespaces/{ns}/deployments/vexa-vexa-meeting-api"
+        r = urllib.request.Request(base, headers={"Authorization": f"Bearer {tok}"})
+        with urllib.request.urlopen(r, timeout=20, context=ctx) as resp:
+            dep = json.load(resp)
+        last = dep["spec"]["template"]["metadata"].get("annotations", {}).get(
+            "kubectl.kubernetes.io/restartedAt", "1970-01-01T00:00:00+00:00")
+        if (now - datetime.fromisoformat(last.replace("Z", "+00:00"))).total_seconds() < RESTART_COOLDOWN_MIN * 60:
+            print("stall persists but restart is inside cooldown; skipping", file=sys.stderr)
+            continue
+        patch = json.dumps({"spec": {"template": {"metadata": {"annotations": {
+            "kubectl.kubernetes.io/restartedAt": now.isoformat()}}}}}).encode()
+        r = urllib.request.Request(base, data=patch, method="PATCH", headers={
+            "Authorization": f"Bearer {tok}",
+            "Content-Type": "application/strategic-merge-patch+json"})
+        with urllib.request.urlopen(r, timeout=20, context=ctx) as resp:
+            print(f"RESTARTED meeting-api (HTTP {resp.status}) — collector re-attaches", file=sys.stderr)
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scribe-dispatcher
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 60
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 110
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: scribe-dispatcher
+          restartPolicy: Never
+          containers:
+            - name: dispatch
+              image: docker.io/library/python:3.12-alpine
+              command: ["python3", "/app/dispatch.py"]
+              env:
+                - name: SITE_ORIGIN
+                  value: "https://frontpage-dgmpniyoga-ue.a.run.app"
+              envFrom:
+                - secretRef:
+                    name: vexa-dispatcher-secret
+              volumeMounts:
+                - name: script
+                  mountPath: /app
+              resources:
+                requests: { cpu: 25m, memory: 64Mi }
+                limits: { cpu: 200m, memory: 128Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+          volumes:
+            - name: script
+              configMap:
+                name: scribe-dispatcher
