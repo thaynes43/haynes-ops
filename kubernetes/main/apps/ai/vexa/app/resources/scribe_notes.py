@@ -127,8 +127,14 @@ def load_transcript(code):
         end = parse_iso(raw.get("end_time"))
     else:
         gw = os.environ["GATEWAY"].rstrip("/")
+        # Fetch by gateway meeting id, never by code: one code can map to
+        # several gateway meetings (re-dispatch strays) and the code route
+        # resolves to the LATEST one — 2026-08-19 an empty 40s stray shadowed
+        # the real 12-min meeting and failed the run at gather.
+        mid = os.environ.get("MEETING_DB_ID")
+        path = f"/transcripts/by-id/{mid}" if mid else f"/transcripts/google_meet/{code}"
         st, body = http(
-            f"{gw}/transcripts/google_meet/{code}",
+            f"{gw}{path}",
             {"X-API-Key": os.environ["VEXA_API_KEY"]},
         )
         if st != 200:
