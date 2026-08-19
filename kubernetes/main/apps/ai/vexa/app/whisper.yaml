@@ -1,9 +1,12 @@
 ---
 # OpenAI-compatible STT the Vexa bots transcribe against (the same
-# faster-whisper server Vexa's own lite deployment bundles). On the 3090
-# (talosw01) since 2026-08-18 night: large-v3 at GPU speed — the dry run's
-# CPU `small` misheard plenty and the offline re-transcription crawled.
-# meeting-scribe/01.
+# faster-whisper server Vexa's own lite deployment bundles). large-v3 at
+# GPU speed — the dry run's CPU `small` misheard plenty and the offline
+# re-transcription crawled. Runs on the RTX A2000 12GB (talosm01) as of
+# 2026-08-19: the 3090 (talosw01) is reserved for ComfyUI (camera→image
+# flow) and ollama-prime, so transcription gets the least-contended GPU.
+# talosm01 is a control-plane node — fine for whisper's bounded resources;
+# it already hosts ollama-assist01 on the same A2000. meeting-scribe/01.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,13 +23,25 @@ spec:
     spec:
       runtimeClassName: nvidia
       nodeSelector:
-        feature.node.kubernetes.io/nvidia-3090-gpu: "true"
+        feature.node.kubernetes.io/nvidia-a2000: "true"
       containers:
         - name: whisper
           image: docker.io/fedirz/faster-whisper-server:latest-cuda
           env:
             - name: WHISPER_MODEL
               value: "Systran/faster-whisper-large-v3"
+            # Keep the model RESIDENT — never offload on idle. The A2000's
+            # 12GB VRAM is shared UNMANAGED with ollama-assist01 on talosm01
+            # (it uses runtimeClassName: nvidia with no device-plugin claim),
+            # so the default 300s idle offload makes whisper re-load its model
+            # mid-meeting and race it for VRAM → CUDA out-of-memory crashloop
+            # (that failure mode crashed whisper on the busier 3090 on
+            # 2026-08-19). Claim VRAM once at startup and hold it. WHISPER__TTL
+            # maps to WhisperConfig.ttl (pydantic env_nested_delimiter "__");
+            # -1 = never unload. Verified against the running image 2026-08-19
+            # (single-underscore WHISPER_TTL is ignored).
+            - name: WHISPER__TTL
+              value: "-1"
           ports:
             - containerPort: 8000
           resources:
@@ -36,7 +51,11 @@ spec:
               nvidia.com/gpu: "1"
             limits:
               cpu: "4"
-              memory: 10Gi
+              # 16Gi (was 10Gi): crash-spiral headroom. On a CUDA-OOM the
+              # server retries loading the model; the host peak during that
+              # spiral OOMKilled the pod (exit 137) at 10Gi on 2026-08-19.
+              # Idle host RSS is ~1.6Gi; talosm01 has ~96Gi (~15% used).
+              memory: 16Gi
               nvidia.com/gpu: "1"
           volumeMounts:
             - name: models
