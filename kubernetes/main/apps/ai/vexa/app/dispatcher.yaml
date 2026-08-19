@@ -241,13 +241,15 @@ spec:
                 # scribe-notes worker. Thresholds are env so a self-test can use a
                 # lower minimum duration.
                 - name: NOTES_DISPATCH_ENABLED
-                  value: "false"
+                  value: "true"
                 - name: NOTES_DEBOUNCE_MIN
                   value: "5"
                 - name: NOTES_LOOKBACK_DAYS
                   value: "7"
+                # Lowered 10 -> 6 for the supervised self-test window
+                # (2026-08-19); restore to 10 after the first real meeting.
                 - name: NOTES_MIN_DURATION_MIN
-                  value: "10"
+                  value: "6"
               envFrom:
                 - secretRef:
                     name: vexa-dispatcher-secret
