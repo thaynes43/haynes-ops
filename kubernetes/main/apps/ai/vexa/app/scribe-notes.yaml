@@ -1,0 +1,92 @@
+---
+# scribe-notes worker (meeting-scribe/03 §4-§6) — secrets + cross-cutting RBAC.
+# The Job itself is created at runtime by the dispatcher (dispatcher.yaml stage 3)
+# from the scribe-notes-job.json template; its worker code + pinned prompt come
+# from the configMapGenerator in kustomization.yaml. Everything here is the
+# static plumbing that Job depends on. Same LLM-auth model as the upgrade
+# shepherd: a Max-plan token first, the metered Anthropic key as fallback.
+#
+# ── LLM: metered fallback key (REQUIRED — the Job's non-optional envFrom) ──────
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scribe-notes-llm
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: onepassword-connect
+  target:
+    name: scribe-notes-llm-secret
+    creationPolicy: Owner
+  data:
+    - secretKey: ANTHROPIC_API_KEY
+      remoteRef: { key: anthropic, property: ANTHROPIC_API_KEY }
+---
+# ── LLM: Max-plan token (PREFERRED, $0 API spend) ── same 1Password item the
+# shepherd uses (`claude setup-token` on Tom's Mac). Mounted optional in the Job,
+# so a rotated/absent token degrades to the metered key rather than wedging.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scribe-notes-plan
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: onepassword-connect
+  target:
+    name: scribe-notes-plan-secret
+    creationPolicy: Owner
+  data:
+    - secretKey: CLAUDE_CODE_OAUTH_TOKEN
+      remoteRef: { key: claude-code, property: CLAUDE_CODE_OAUTH_TOKEN }
+---
+# ── Outline publish token (OPTIONAL — inert until minted) ──────────────────────
+# The design wants a DEDICATED Outline API token named "scribe-notes" (least
+# privilege, revocable independently of the MCP token). Minting it requires the
+# Outline admin UI (https://wiki.sigoalumni.org -> Settings -> API Tokens), so it
+# cannot be created from GitOps. MANUAL STEP: mint that token, then store it in
+# 1Password item `sigo-dev-env` under property `OUTLINE_SCRIBE_NOTES_TOKEN`. Until
+# then this ExternalSecret does not sync and the Job mounts it optional — phase-1
+# publish is gated off anyway (SCRIBE_NOTES_PUBLISH=false), so nothing is blocked.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scribe-notes-outline
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: onepassword-connect
+  target:
+    name: scribe-notes-outline-secret
+    creationPolicy: Owner
+  data:
+    - secretKey: OUTLINE_API_TOKEN
+      remoteRef: { key: sigo-dev-env, property: OUTLINE_SCRIBE_NOTES_TOKEN }
+---
+# ── Pushover (OPTIONAL — inert until the branded app token lands) ──────────────
+# The design calls for the org's BRANDED "Sigo alumni" Pushover app. No such
+# token exists in 1Password today (the reachable Pushover creds are the estate
+# ops app in item `upgrade-gate`, used by the upgrade gate + dev-env watch — a
+# different identity we deliberately do not hijack). MANUAL STEP: create the
+# branded app in Pushover and store its token + user key in a 1Password item
+# `sigo-pushover` (properties PUSHOVER_TOKEN, PUSHOVER_USER_KEY). Until then this
+# ExternalSecret does not sync and the Job mounts it optional; the worker skips
+# Pushover and the site email is the notification channel. (One-line alternative
+# if you want Pushover working NOW: repoint both remoteRefs at
+# `{ key: upgrade-gate, property: PUSHOVER_TOKEN / PUSHOVER_USER_KEY }`.)
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scribe-notes-pushover
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: onepassword-connect
+  target:
+    name: scribe-notes-pushover-secret
+    creationPolicy: Owner
+  data:
+    - secretKey: PUSHOVER_TOKEN
+      remoteRef: { key: sigo-pushover, property: PUSHOVER_TOKEN }
+    - secretKey: PUSHOVER_USER_KEY
+      remoteRef: { key: sigo-pushover, property: PUSHOVER_USER_KEY }

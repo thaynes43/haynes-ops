@@ -28,7 +28,10 @@ kind: ServiceAccount
 metadata:
   name: scribe-dispatcher
 ---
-# Exactly the two verbs the watchdog's one mitigation needs; nothing else.
+# The watchdog's one mitigation (deployments get/patch on meeting-api) PLUS the
+# notes-pipeline stage-3 grant: create/get Jobs in this namespace so the
+# dispatcher can spawn a scribe-notes worker per completed meeting (§2: "dispatcher
+# SA gains jobs: create/get in ai; nothing else"). create takes no resourceName.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -38,6 +41,9 @@ rules:
     resources: ["deployments"]
     resourceNames: ["vexa-vexa-meeting-api"]
     verbs: ["get", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -66,6 +72,17 @@ data:
     GRACE_MIN = 5          # active this long with zero segments => stall
     RESTART_COOLDOWN_MIN = 15
 
+    # ── Notes-pipeline stage 3 (meeting-scribe/03 §2) config. Thresholds are env
+    #    so a self-test can validate with a lower minimum duration. DISPATCH stays
+    #    OFF by default — deploying stage 3 must not auto-spawn workers before Tom's
+    #    supervised self-test; flip NOTES_DISPATCH_ENABLED=true to arm it.
+    NOTES_ENABLED = os.environ.get("NOTES_DISPATCH_ENABLED", "false").lower() == "true"
+    NOTES_DEBOUNCE_MIN = int(os.environ.get("NOTES_DEBOUNCE_MIN", "5"))
+    NOTES_LOOKBACK_DAYS = int(os.environ.get("NOTES_LOOKBACK_DAYS", "7"))
+    NOTES_MIN_DURATION_MIN = int(os.environ.get("NOTES_MIN_DURATION_MIN", "10"))
+    JOB_TEMPLATE = "/templates/scribe-notes-job.json"
+    SA = "/var/run/secrets/kubernetes.io/serviceaccount"
+
     def req(url, headers=None, data=None, method=None):
         r = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
         try:
@@ -73,6 +90,35 @@ data:
                 return resp.status, resp.read()
         except urllib.error.HTTPError as e:
             return e.code, e.read()
+
+    def create_notes_job(meeting_db_id, code, event_id):
+        # Idempotent by Job name (AlreadyExists = already handled — same posture as
+        # the Vexa 409). Fills the 3 per-meeting env values into the committed
+        # template and POSTs it to the batch API with the pod SA token.
+        with open(JOB_TEMPLATE) as f:
+            job = json.load(f)
+        name = f"scribe-notes-{meeting_db_id}"
+        job["metadata"]["name"] = name
+        for c in job["spec"]["template"]["spec"]["containers"]:
+            for e in c.get("env", []):
+                if e["name"] == "MEETING_DB_ID": e["value"] = str(meeting_db_id)
+                elif e["name"] == "MEET_CODE": e["value"] = str(code)
+                elif e["name"] == "EVENT_ID": e["value"] = str(event_id)
+        tok = open(f"{SA}/token").read()
+        ns = open(f"{SA}/namespace").read()
+        ctx = ssl.create_default_context(cafile=f"{SA}/ca.crt")
+        url = f"https://kubernetes.default.svc/apis/batch/v1/namespaces/{ns}/jobs"
+        r = urllib.request.Request(url, data=json.dumps(job).encode(), method="POST",
+                                   headers={"Authorization": f"Bearer {tok}",
+                                            "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(r, timeout=20, context=ctx) as resp:
+                print(f"notes-job {name}: created (HTTP {resp.status})")
+        except urllib.error.HTTPError as e:
+            if e.code == 409:
+                print(f"notes-job {name}: already handled (idempotent)")
+            else:
+                print(f"notes-job {name}: create failed HTTP {e.code}: {e.read()[:200]}", file=sys.stderr)
 
     # 1) Dispatch: send the bot to meetings starting about now.
     st, body = req(f"{SITE}/api/internal/upcoming-meetings",
@@ -93,7 +139,8 @@ data:
     if st != 200:
         print(f"WARN meetings list HTTP {st}", file=sys.stderr); sys.exit(0)
     now = datetime.now(timezone.utc)
-    for mt in json.loads(body).get("meetings", []):
+    all_meetings = json.loads(body).get("meetings", [])
+    for mt in all_meetings:
         if mt.get("status") != "active" or not mt.get("start_time"):
             continue
         started = datetime.fromisoformat(mt["start_time"].replace("Z", "+00:00"))
@@ -126,6 +173,43 @@ data:
             "Content-Type": "application/strategic-merge-patch+json"})
         with urllib.request.urlopen(r, timeout=20, context=ctx) as resp:
             print(f"RESTARTED meeting-api (HTTP {resp.status}) — collector re-attaches", file=sys.stderr)
+
+    # 3) Completion detection (meeting-scribe/03 §2): a completed capture that
+    #    matches a site event, ended past debounce, inside the lookback, and long
+    #    enough to be a real meeting -> spawn a scribe-notes worker (idempotent by
+    #    Job name). Fallback transcription stays the manual runbook in phase 1.
+    if not NOTES_ENABLED:
+        pass  # stage 3 disarmed until Tom's supervised self-test
+    else:
+        st, body = req(f"{SITE}/api/internal/completed-meetings?windowHours={NOTES_LOOKBACK_DAYS * 24}",
+                       {"Authorization": "Bearer " + os.environ["SCRIBE_DISPATCH_TOKEN"]})
+        if st != 200:
+            print(f"WARN completed-meetings HTTP {st}", file=sys.stderr)
+        else:
+            by_code = {m["code"]: m for m in json.loads(body).get("meetings", []) if m.get("code")}
+            for mt in all_meetings:
+                if mt.get("status") != "completed":
+                    continue
+                start_s, end_s = mt.get("start_time"), mt.get("end_time")
+                if not start_s or not end_s:
+                    continue
+                start_dt = datetime.fromisoformat(start_s.replace("Z", "+00:00"))
+                end_dt = datetime.fromisoformat(end_s.replace("Z", "+00:00"))
+                age_min = (now - end_dt).total_seconds() / 60
+                dur_min = (end_dt - start_dt).total_seconds() / 60
+                code = mt.get("native_meeting_id")
+                if age_min < NOTES_DEBOUNCE_MIN:
+                    continue  # let final segments flush to Postgres
+                if age_min > NOTES_LOOKBACK_DAYS * 1440:
+                    continue  # outside the lookback window
+                if dur_min < NOTES_MIN_DURATION_MIN:
+                    print(f"notes skip {code}: {dur_min:.0f}m < {NOTES_MIN_DURATION_MIN}m (self-test)")
+                    continue
+                ev = by_code.get(code)
+                if not ev:
+                    print(f"notes skip {code}: no matching site event (ad-hoc/phase-2)")
+                    continue
+                create_notes_job(mt["id"], code, ev["id"])
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -152,12 +236,26 @@ spec:
               env:
                 - name: SITE_ORIGIN
                   value: "https://frontpage-dgmpniyoga-ue.a.run.app"
+                # Stage 3 (notes pipeline) — DISARMED until Tom's supervised
+                # self-test. Flip to "true" to let a completed meeting spawn a
+                # scribe-notes worker. Thresholds are env so a self-test can use a
+                # lower minimum duration.
+                - name: NOTES_DISPATCH_ENABLED
+                  value: "false"
+                - name: NOTES_DEBOUNCE_MIN
+                  value: "5"
+                - name: NOTES_LOOKBACK_DAYS
+                  value: "7"
+                - name: NOTES_MIN_DURATION_MIN
+                  value: "10"
               envFrom:
                 - secretRef:
                     name: vexa-dispatcher-secret
               volumeMounts:
                 - name: script
                   mountPath: /app
+                - name: jobtemplate
+                  mountPath: /templates
               resources:
                 requests: { cpu: 25m, memory: 64Mi }
                 limits: { cpu: 200m, memory: 128Mi }
@@ -169,3 +267,6 @@ spec:
             - name: script
               configMap:
                 name: scribe-dispatcher
+            - name: jobtemplate
+              configMap:
+                name: scribe-notes-jobtemplate
