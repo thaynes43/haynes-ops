@@ -1,0 +1,13 @@
+---
+# Meeting recordings live in the cluster's native object store (rook RGW),
+# not the chart's bundled MinIO — whose upstream was archived (read-only,
+# community EOL) on 2026-04-25 after the AGPL switch and console stripping.
+# The OBC provisions the bucket and mints a same-namespace Secret/ConfigMap
+# (both named after the claim) carrying endpoint + AWS-style keys.
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: vexa-recordings
+spec:
+  bucketName: vexa-recordings
+  storageClassName: ceph-bucket
