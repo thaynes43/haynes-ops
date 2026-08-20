@@ -45,7 +45,7 @@ spec:
         # Second probe path: the Go stdlib resolver (parallel A+AAAA, search
         # expansion) that every affected client uses and dig cannot emulate.
         - name: go-canary
-          image: docker.io/library/golang:1.26-alpine
+          image: docker.io/library/golang:1.27-alpine
           command: ["go", "run", "/opt/canary/main.go"]
           env:
             - name: HOME
