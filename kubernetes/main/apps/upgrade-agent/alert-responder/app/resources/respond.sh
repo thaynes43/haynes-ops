@@ -111,7 +111,8 @@ else
   log "FATAL: neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY is set."; exit 1
 fi
 
-HOUR_BUCKET="$(date -u +%Y-%m-%dT%H)"
+# `%Y-%m-%d-%H` (no colon/T): the bucket lands in a ConfigMap key, see sk().
+HOUR_BUCKET="$(date -u +%Y-%m-%d-%H)"
 page() {  # $1=title-suffix $2=message ; priority 0 (the ORIGINAL critical already
           # paged at prio 1 via Alertmanager — this is the follow-up diagnosis).
           # Rate-capped at MAX_PAGES_PER_HOUR (2026-08-20 storm guard): an alert
@@ -119,7 +120,7 @@ page() {  # $1=title-suffix $2=message ; priority 0 (the ORIGINAL critical alrea
           # diagnosis always lands in the logs either way.
   if [ "$DRY" = "1" ]; then log "DRY: would page '[responder] $1' :: $2"; return 0; fi
   local sent
-  sent="$(printf '%s' "$STATE_JSON" | jq -r --arg k "pages:$HOUR_BUCKET" \
+  sent="$(printf '%s' "$STATE_JSON" | jq -r --arg k "pages.$HOUR_BUCKET" \
     '(.[$k] // "{}") | (fromjson? // {}) | (.count // "0") | tonumber? // 0' 2>/dev/null)" || sent=0
   if [ "${sent:-0}" -ge "$MAX_PAGES_PER_HOUR" ] 2>/dev/null; then
     log "PAGE-CAPPED ($1): $sent pages already this hour (cap $MAX_PAGES_PER_HOUR) — diagnosis kept in logs only."
@@ -133,7 +134,7 @@ page() {  # $1=title-suffix $2=message ; priority 0 (the ORIGINAL critical alrea
     --form-string "message=$2" \
     --form-string "priority=0" >/dev/null \
     && { log "paged: [responder] $1"
-         state_write "$(jq -nc --arg k "pages:$HOUR_BUCKET" --argjson now "$NOW" --argjson n "$(( sent + 1 ))" \
+         state_write "$(jq -nc --arg k "pages.$HOUR_BUCKET" --argjson now "$NOW" --argjson n "$(( sent + 1 ))" \
            '{($k): ({count:($n|tostring), first_seen:($now|tostring)} | tojson)}')" \
            || log "WARN: could not record page count (cap may under-enforce this hour)"; } \
     || log "PAGE FAILED: [responder] $1"
@@ -170,6 +171,12 @@ record_spend() {
 # writer races us); all membership checks are in-memory, all writes go through
 # state_write (which merges + TTL-prunes + refreshes the in-memory copy).
 sig_of() { printf '%s' "$1" | sha256sum | grep -oE '[0-9a-f]{64}' | head -1 | cut -c1-12; }
+sk() {  # sanitize a constructed state key to the ConfigMap-legal charset.
+        # CM data keys must match [-._a-zA-Z0-9]+ — the API server REJECTS the
+        # whole write otherwise, which fails claims closed and silently disables
+        # diagnosis (bitten 2026-08-20 with `cool:<name>@<ns>` keys).
+  printf '%s' "$1" | tr -c 'a-zA-Z0-9._-' '_'
+}
 STATE_JSON='{}'
 STATE_RAW="$(kubectl -n "$NS" get configmap "$STATE_CM" -o json 2>&1)"; STATE_RC=$?
 if [ $STATE_RC -ne 0 ]; then
@@ -193,7 +200,9 @@ cooldown_active() {  # $1=alertname $2=ns ; rc0 = this pair (or an alertname-wid
                      # re-diagnosed minutes later is noise, not signal.
   [ "$STATE_JSON" = "__UNREADABLE__" ] && return 0
   local cd=$(( COOLDOWN_HOURS * 3600 ))
-  printf '%s' "$STATE_JSON" | jq -e --arg a "cool:$1@$2" --arg w "cool:$1@*" \
+  # `_all` is the storm (alertname-wide) marker — it cannot collide with a real
+  # namespace because DNS-1123 names never contain `_`.
+  printf '%s' "$STATE_JSON" | jq -e --arg a "$(sk "cool.$1.$2")" --arg w "$(sk "cool.$1._all")" \
       --argjson now "$NOW" --argjson cd "$cd" '
     [.[$a] // empty, .[$w] // empty] | map(fromjson? // {})
     | any(.[]; ((.first_seen // "0") | tonumber? // 0) > ($now - $cd))' >/dev/null 2>&1
@@ -310,7 +319,7 @@ while [ "$u" -lt "${u_count:-0}" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
   # Claim BEFORE the summon (crash-proof): every member key, plus the cooldown
   # marker — alertname-wide (`@*`) for a storm so late-joining victims of the same
   # root cause don't each mint a fresh diagnosis; alertname@ns for a singleton.
-  cool_key="cool:${aname}@*"; [ "$utype" = "single" ] && cool_key="cool:${aname}@${ans}"
+  cool_key="$(sk "cool.${aname}._all")"; [ "$utype" = "single" ] && cool_key="$(sk "cool.${aname}.${ans}")"
   additions="$(printf '%s' "$unit" | jq -c --arg ck "$cool_key" --argjson now "$NOW" '
     (.members | map({(.key): ({alertname:.aname, attempted:"1", first_seen:($now|tostring)} | tojson)}) | add)
     + {($ck): ({alertname:.aname, attempted:"1", first_seen:($now|tostring)} | tojson)}')"
