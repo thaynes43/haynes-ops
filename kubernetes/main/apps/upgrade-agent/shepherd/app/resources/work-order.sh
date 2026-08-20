@@ -34,10 +34,14 @@ key="wo-${pr}"
 now="$(date -u +%s)"
 
 title="$(gh pr view "$pr" -R "$REPO" --json title -q .title 2>/dev/null | head -c 140)"
+# NB: -c object text, NO `| tojson` — the CM value must be single-encoded JSON.
+# (tojson here + jq's own string output = DOUBLE encoding; the watcher's
+# fromjson would yield a string, .status would be null, and the order would sit
+# pending forever — hit live on the synthetic acceptance test 2026-08-20.)
 entry="$(jq -nc --arg pr "$pr" --arg repo "$REPO" --arg title "${title:-unknown}" \
     --arg class "$class" --arg reason "$reason" --arg now "$now" \
     '{pr:$pr, repo:$repo, title:$title, class:$class, reason:$reason,
-      status:"pending", created:$now, updated:$now} | tojson')"
+      status:"pending", created:$now, updated:$now}')"
 
 if kubectl -n "$NS" get cm "$CM" >/dev/null 2>&1; then
   existing="$(kubectl -n "$NS" get cm "$CM" -o json 2>/dev/null \
