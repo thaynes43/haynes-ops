@@ -6,7 +6,13 @@ metadata:
   name: rook-ceph-cluster
 spec:
   interval: 30m
-  timeout: 15m
+  # A chart bump that moves the Ceph image rolls every daemon (mons, mgr, mds,
+  # rgw, then OSDs one-by-one) — far more than 15m. 2026-08-20: the v1.20.5 bump
+  # (Ceph 20.2.2→20.2.4) hit the old 15m timeout mid-roll; the rollback
+  # remediation then reset the CephCluster spec to 20.2.2 while mons were
+  # already 20.2.4 — Ceph daemons cannot downgrade, so the operator wedged
+  # "waiting for monitors" and every ceph-dependent app went NotReady.
+  timeout: 60m
   chartRef:
     kind: OCIRepository
     name: rook-ceph-cluster
@@ -15,9 +21,12 @@ spec:
       retries: 3
   upgrade:
     cleanupOnFail: true
+    # NO rollback remediation: helm rollback re-applies the previous Ceph image,
+    # which is a downgrade Ceph does not support. On timeout/failure, leave the
+    # release failed (the operator keeps converging toward the new version) and
+    # let the FluxReconciliationFailure alert page instead.
     remediation:
-      strategy: rollback
-      retries: 3
+      retries: 0
   # Drop the chronically-fragile CephPoolGrowthWarning rule (2026-07-08). It does
   # predict_linear(ceph_pool_percent_used[2d]) joined on labels that ignore `pod`, so
   # EVERY ceph-mgr restart (upgrades, failovers, drains) leaves the old + new mgr pod
