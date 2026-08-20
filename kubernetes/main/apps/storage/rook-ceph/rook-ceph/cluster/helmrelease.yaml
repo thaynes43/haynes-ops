@@ -221,6 +221,44 @@ spec:
             memory: 128Mi
           limits:
             memory: 256Mi
+      # ── CephX key hygiene (2026-08-20, issue #2538) ──
+      # Ceph 20.2.4 flags the legacy `aes` cipher (CVE-2025-30156): the two
+      # ERR-level AUTH_INSECURE_{SERVICE_KEY_TYPE,SERVICE_TICKETS} checks put the
+      # cluster in HEALTH_ERR and block Rook's upgrade gate (the 2026-08-20
+      # storm). Rotating DAEMON keys to aes256k is the upstream-prescribed fix
+      # and does not affect client connections. To rotate again later (or after
+      # adding daemons), bump keyGeneration by 1 — never lower it.
+      security:
+        cephx:
+          daemon:
+            keyType: aes256k
+            keyRotationPolicy: KeyGeneration
+            keyGeneration: 1
+          # rbd-mirror-peer key is unused (no mirroring deployed) but counts
+          # toward AUTH_INSECURE_CLIENT_KEY_TYPE; rotating it is free.
+          rbdMirrorPeer:
+            keyType: aes256k
+            keyRotationPolicy: KeyGeneration
+            keyGeneration: 1
+          # csi: DELIBERATELY left at the chart default (aes). aes256k CSI keys
+          # require Linux kernel >= 7.0 on every node and Talos is on 6.18.x —
+          # a premature rotation would fail every NEW rbd/cephfs mount. When a
+          # 7.0+ Talos kernel lands: rotate csi with keyType aes256k +
+          # keepPriorKeyCountMax: 1, then drain each node to remount, then set
+          # allowedCiphers: [aes256k] and drop the mutes below (issue #2538).
+      healthCheck:
+        muteHealthWarning:
+          # Long-tail legacy-cipher WARNs that CANNOT clear until the CSI keys
+          # rotate (kernel >= 7.0, see security.cephx.csi above). Muted in git —
+          # declarative and permanent, unlike the runtime `ceph health mute`
+          # 4-week TTLs used during the 2026-08-20 incident (which would have
+          # silently expired ~09-17 and re-fired CephHealthWarning).
+          AUTH_INSECURE_CLIENT_KEY_TYPE:
+            policy: mute
+          AUTH_INSECURE_KEYS_ALLOWED:
+            policy: mute
+          AUTH_INSECURE_KEYS_CREATABLE:
+            policy: mute
     cephBlockPools:
       - name: ceph-blockpool
         spec:
