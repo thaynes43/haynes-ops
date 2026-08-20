@@ -1,0 +1,54 @@
+---
+# dev-env-ops = the shepherd's EXECUTOR (saga dev-env backlog 13, Option B of 07):
+# work-order sessions need the same bounded runtime-ops verbs the dev-env pod holds
+# (pod delete / rollout restart / flux reconcile+suspend / Jobs / CronJob suspend) to
+# shepherd an upgrade to healthy. Binds the EXISTING cluster-scoped `dev-env-operator`
+# ClusterRole (defined in kubernetes/main/apps/dev/dev-env/app/rbac.yaml — this app's
+# ks.yaml dependsOn dev-env for bootstrap ordering). Deploys still go through git:
+# the git surface here is the OPS bot (haynes-ops only, non-admin), NOT the dev bot.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-ops-operator
+  labels:
+    app.kubernetes.io/name: dev-env-ops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-operator
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-ops
+    namespace: upgrade-agent
+---
+# Work-order state: the watcher claims orders and sessions mark them done/failed by
+# rewriting entries in the `upgrade-work-orders` ConfigMap (same namespace-confined
+# CM-write shape as the shepherd's spend Role — `create`/`update` cannot be
+# name-restricted, so the boundary is the namespace).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-ops-state
+  namespace: upgrade-agent
+  labels:
+    app.kubernetes.io/name: dev-env-ops
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-ops-state
+  namespace: upgrade-agent
+  labels:
+    app.kubernetes.io/name: dev-env-ops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-ops-state
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-ops
+    namespace: upgrade-agent

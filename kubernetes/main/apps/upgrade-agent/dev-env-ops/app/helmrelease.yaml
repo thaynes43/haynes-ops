@@ -1,0 +1,167 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: dev-env-ops
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  # Same ~1GB image as dev-env — a cold pull takes minutes (see dev-env HR).
+  timeout: 15m
+  values:
+    controllers:
+      dev-env-ops:
+        # The shepherd's EXECUTOR (saga dev-env backlog 13): a headless second
+        # dev-env instance that turns shepherd work orders into long-lived,
+        # joinable claude sessions (tmux + Remote Control) which research an
+        # upgrade, author supporting edits via the OPS bot, merge behind green
+        # checks, watch the rollout, and fix fallout until healthy. QUIET on
+        # success; pages Pushover only on failure/hold (Tom 2026-08-20).
+        #
+        # Image tag is pinned INDEPENDENTLY of dev-env on purpose: this pod can
+        # take dev-env image bumps first (no interactive sessions to kill) and
+        # prove them before dev-env adopts the tag at a chosen bounce window.
+        replicas: 1
+        strategy: Recreate
+        annotations:
+          reloader.stakater.com/auto: "true"
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/dev-env
+              tag: 0.5.0@sha256:7dce516a4f70eba3ce1a8ddd406b546762cfb084e50fdf36b2d9f18e214e5615
+            command: ["/bin/bash", "-c"]
+            args:
+              # ops-init links config into $HOME, tmux hosts the sessions
+              # (survive watcher restarts within the pod's life), the watcher
+              # loop is PID 1. No code-server — headless by design.
+              - >-
+                bash /opt/dev-env-ops/ops-init.sh;
+                tmux new-session -d -s ops 2>/dev/null || true;
+                exec bash /opt/dev-env-ops/work-order-watch.sh
+            env:
+              HOME: /home/dev
+              CLAUDE_CONFIG_DIR: /home/dev/.claude
+              DISABLE_AUTOUPDATER: "1"
+              DISABLE_ERROR_REPORTING: "1"
+              # NO DISABLE_TELEMETRY: it kills Statsig flag evaluation and hides
+              # Remote Control entirely (dev-env saga Decision #6, hit 2026-07-14).
+              WORK_ORDER_CM: upgrade-work-orders
+              WORK_ORDER_POLL_SECONDS: "60"
+              # Scheduled/automated consumers stay on the cheaper tier — all
+              # models draw ONE plan pool (Tom-verified 2026-07-13, saga 07).
+              # A work order may override per-order via its `model` field.
+              OPS_SESSION_MODEL: opus
+              # Metered fallback if the plan token is absent/rejected (the
+              # session launcher prefers the plan token, respond.sh pattern).
+              ANTHROPIC_API_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: upgrade-shepherd-llm-secret
+                    key: ANTHROPIC_API_KEY
+            envFrom:
+              # Max-plan credential — shared with the shepherd (same 1P item).
+              - secretRef:
+                  name: upgrade-shepherd-plan-secret
+                  optional: true
+              # PUSHOVER_TOKEN / PUSHOVER_USER_KEY — failure pages only.
+              - secretRef:
+                  name: dev-env-ops-secret
+            probes:
+              liveness:
+                enabled: false
+              readiness:
+                enabled: false
+            resources:
+              # Sessions run one-at-a-time (watcher single-flight); helm-template
+              # diffs + git worktrees are the heavy part, not builds.
+              requests:
+                cpu: 200m
+                memory: 1Gi
+              limits:
+                memory: 8Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+          # Mints a fresh OPS-bot ghs_ token to /creds every 40min (1h TTL) —
+          # the SHEPHERD's identity (haynes-ops only, non-admin, no workflows
+          # write), NOT the dev bot. The PEM lives ONLY here; sessions read
+          # /creds/gh_token per shell.
+          gh-refresher:
+            image:
+              repository: ghcr.io/thaynes43/dev-env
+              tag: 0.5.0@sha256:7dce516a4f70eba3ce1a8ddd406b546762cfb084e50fdf36b2d9f18e214e5615
+            command: ["/bin/bash", "/opt/dev-env-ops/gh-token-refresh.sh"]
+            env:
+              # Same down-scope as the shepherd's mint (see its HR for the
+              # 422-on-ungranted-permission trap).
+              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","checks":"read"}'
+            envFrom:
+              - secretRef:
+                  name: upgrade-shepherd-bot-secret
+            resources:
+              requests: { cpu: 10m, memory: 32Mi }
+              limits: { memory: 128Mi }
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+    defaultPodOptions:
+      automountServiceAccountToken: true   # operator-tier kubectl via the dev-env-ops SA
+      # ndots:1 — same CNP/DNS interaction as dev-env (external names must not
+      # expand through cluster search domains; in-cluster targets use FQDNs).
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      # Ride out node blips like dev-env (RWO PVC — eviction never helps).
+      tolerations:
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 3600
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 3600
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+    serviceAccount:
+      dev-env-ops: {}
+    persistence:
+      # PEM/agent isolation, dev-env pattern: the gh-refresher holds the PEM env
+      # and cannot see the home PVC; sessions cannot see the PEM. /creds (memory)
+      # carries only the minted short-lived token.
+      home:
+        existingClaim: dev-env-ops-home
+        advancedMounts:
+          dev-env-ops:
+            app:
+              - path: /home/dev
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
+      creds:
+        type: emptyDir
+        medium: Memory
+        globalMounts:
+          - path: /creds
+      scripts:
+        type: configMap
+        name: dev-env-ops-scripts
+        defaultMode: 0555
+        globalMounts:
+          - path: /opt/dev-env-ops

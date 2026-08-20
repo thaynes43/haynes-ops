@@ -1,0 +1,32 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-ops
+  namespace: upgrade-agent
+spec:
+  targetNamespace: upgrade-agent
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: external-secrets-stores
+      namespace: external-secrets
+    # Reuses the shepherd's three secrets (bot PEM / plan token / metered key).
+    - name: upgrade-shepherd
+      namespace: upgrade-agent
+    # Reuses the dev-env-operator ClusterRole (cluster-scoped, defined by dev-env).
+    - name: dev-env
+      namespace: dev
+  path: ./kubernetes/main/apps/upgrade-agent/dev-env-ops/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 15m
+  # NO postBuild.substitute: Flux envsubst would rewrite the shell `${VAR:-default}`
+  # forms in the watcher scripts (same trap as the gate/shepherd/responder).

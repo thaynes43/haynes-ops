@@ -1,0 +1,107 @@
+---
+# CiliumNetworkPolicy for dev-env-ops: the exfil boundary for the shepherd's EXECUTOR —
+# a yolo-mode agent pod whose sessions read RELEASE NOTES (attacker-influenced text, the
+# saga-07 injection surface). Containment = ops-bot git scope (haynes-ops only) +
+# operator-tier SA + THIS egress allowlist. Egress ONLY to: DNS, apiserver,
+# observability (verification), GitHub (PRs/release notes), Anthropic/Claude (sessions +
+# Remote Control), Pushover (failure pages). NO ingress at all — headless; sessions are
+# joined via Claude Remote Control or `kubectl exec`+tmux, never a served port.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-ops
+  namespace: upgrade-agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-ops
+  egress:
+    # 1. DNS via CoreDNS. Cilium `*` does NOT cross label boundaries — multi-label
+    #    service FQDNs need exact matchNames (proven live 2026-07-04).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*.cluster.local"
+              - matchPattern: "*.svc"
+              - matchName: "kube-prometheus-stack-alertmanager.observability.svc.cluster.local"
+              - matchName: "kube-prometheus-stack-prometheus.observability.svc.cluster.local"
+              - matchName: "loki.observability.svc.cluster.local"
+              - matchName: "github.com"          # apex — *.github.com does NOT match it
+              - matchPattern: "*.github.com"
+              - matchPattern: "*.githubusercontent.com"
+              - matchName: "ghcr.io"
+              - matchName: "anthropic.com"
+              - matchPattern: "*.anthropic.com"
+              # Remote Control needs claude.ai/claude.com AND Statsig feature-flag
+              # evaluation (*.anthropic.com covers statsig.anthropic.com) — and the
+              # pod must NOT set DISABLE_TELEMETRY (hides Remote Control; hit live
+              # 2026-07-14, dev-env saga Decision #6).
+              - matchName: "claude.ai"
+              - matchPattern: "*.claude.ai"
+              - matchName: "claude.com"
+              - matchPattern: "*.claude.com"
+              - matchName: "bridge.claudeusercontent.com"
+              - matchName: "api.pushover.net"
+    # 2. Kube API server — operator-tier verbs (see rbac.yaml).
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # 3. Observability plane — post-merge verification (Alertmanager 9093,
+    #    Prometheus 9090, Loki 3100/80/8080).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports:
+            - port: "9093"
+              protocol: TCP
+            - port: "9090"
+              protocol: TCP
+            - port: "3100"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
+            - port: "8080"
+              protocol: TCP
+    # 4. GitHub — clone/push/PRs via the minted ops-bot token + release-note reads.
+    - toFQDNs:
+        - matchName: "github.com"
+        - matchPattern: "*.github.com"
+        - matchPattern: "*.githubusercontent.com"
+        - matchName: "ghcr.io"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # 5. Anthropic/Claude — API + Max-plan auth + Remote Control.
+    - toFQDNs:
+        - matchName: "anthropic.com"
+        - matchPattern: "*.anthropic.com"
+        - matchName: "claude.ai"
+        - matchPattern: "*.claude.ai"
+        - matchName: "claude.com"
+        - matchPattern: "*.claude.com"
+        - matchName: "bridge.claudeusercontent.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # 6. Pushover — FAILURE pages only (quiet-on-success contract).
+    - toFQDNs:
+        - matchName: api.pushover.net
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+  # No ingress rules -> all ingress denied.
