@@ -259,6 +259,13 @@ spec:
             policy: mute
           AUTH_INSECURE_KEYS_CREATABLE:
             policy: mute
+          # Set by Rook itself during the 2026-08-20 daemon rotation: mons carry
+          # --mon-auth-emergency-allowed-ciphers=aes so the four still-aes CSI
+          # clients keep authenticating after auth_service_cipher moved to
+          # aes256k. Expected and REQUIRED until the kernel-gated CSI rotation
+          # (issue #2538); clears when that lands and the flag is removed.
+          AUTH_EMERGENCY_CIPHERS_SET:
+            policy: mute
     cephBlockPools:
       - name: ceph-blockpool
         spec:
