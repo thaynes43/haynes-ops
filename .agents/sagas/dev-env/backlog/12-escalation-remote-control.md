@@ -3,6 +3,10 @@
 **Status:** proposed design — feasibility CONFIRMED 2026-07-28 (claude-code 2.1.217
 in the dev-env pod has `--remote-control [name]`; tmux supplies the TTY). Awaiting
 Tom's call on the notification path + a dev-env bounce window for the watcher.
+**2026-08-20 update:** the session-spawn mechanics landed in `dev-env-ops` (backlog
+13) for shepherd WORK ORDERS. When this failure-escalation path gets wired, its
+writers should file `class: other` work orders into the same CM and spawn in
+dev-env-ops — the dev-env watcher (PR C here) is superseded.
 **Depends on:** 06 (agent-run), 07 (Option A — decides what does NOT get dispatched)
 
 ## The wish (Tom, 2026-07-28)

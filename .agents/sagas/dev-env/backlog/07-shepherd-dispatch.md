@@ -3,9 +3,10 @@
 **Status:** **Option A DONE and VERIFIED LIVE 2026-07-13** (PRs #2049/#2050). A dryrun
 summon logged `auth=plan`, `model=sonnet`, `spend: $0 this run (served by the Max plan)`,
 `rc=0`. The shepherd's LLM turns now bill Tom's subscription, not the API balance —
-with containment untouched. Option B (a CONTAINED executor flavor, `dev-env-ops`) is
-still open if Tom wants the coordinator/executor architecture for capability reasons;
-it is no longer needed for cost.
+with containment untouched. **Option B CHOSEN and BUILT 2026-08-20** (Tom's call after
+the rook storm): the coordinator/executor architecture landed as `dev-env-ops` — see
+**backlog 13**. The injection boundary this doc argued for is preserved: the executor
+holds only the OPS bot + operator-tier verbs, never the dev bot.
 **Depends on:** 06 (done)
 
 ## Corrections banked during implementation (2026-07-13)

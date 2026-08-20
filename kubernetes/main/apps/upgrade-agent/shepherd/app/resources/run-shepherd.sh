@@ -319,6 +319,11 @@ MERGE_TOOLS=("Bash(gh pr merge:*)")
 # doesn't page. silence.sh hardcodes the matchers + max duration; the LLM passes ONLY a
 # component name (contained — it cannot silence arbitrary alerts). auto/remediate only.
 SILENCE_TOOLS=("Bash(/opt/shepherd/silence.sh:*)")
+# Work-order hand-off (2026-08-20, saga dev-env backlog 13): consequential upgrades
+# (embedded-component-image moves, majors needing research/supporting edits) go to
+# the dev-env-ops EXECUTOR as a session instead of a one-shot vet here. Contained
+# like silence.sh — the LLM passes a PR number + fixed-enum class + reason only.
+WORKORDER_TOOLS=("Bash(/opt/shepherd/work-order.sh:*)")
 
 # NB: set PROMPT/SAFETY defaults on their OWN line — NOT inline via ${VAR:-default}.
 # An apostrophe or brace inside a ${VAR:-default} breaks bash quote parsing.
@@ -330,12 +335,12 @@ case "$MODE" in
     [ -n "$PROMPT" ] || PROMPT="You are the Tier-4 upgrade shepherd. Follow .agents/runbooks/upgrade-shepherd.md exactly. Survey open manual-tier Renovate PRs (gh pr list); pick the NEXT one by the runbook merge-order. CONSULT .renovate/holds.json5 first (skip if held). Read the release notes (gh release view) and the component section in .agents/runbooks/tier4-component-playbooks.md. Make the required supporting helmrelease/values edits on a NEW branch shepherd/<pkg>-<version>, commit, push, and open a PR with gh pr create. Do NOT merge, do NOT push to main, do NOT touch anything outside kubernetes/**. One PR only, then stop and summarize."
     ;;
   auto)      # open a PR AND enable server-side auto-merge (Phase 4b.3)
-    ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}" "${MERGE_TOOLS[@]}" "${SILENCE_TOOLS[@]}")
+    ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}" "${MERGE_TOOLS[@]}" "${SILENCE_TOOLS[@]}" "${WORKORDER_TOOLS[@]}")
     SAFETY_MERGE="you MAY enable auto-merge with 'gh pr merge <N> --auto --squash --delete-branch' AFTER opening the PR; NEVER merge immediately, NEVER use --admin, NEVER push to main"
     [ -n "$PROMPT" ] || PROMPT="You are the Tier-4 upgrade shepherd in AUTO mode. Follow .agents/runbooks/upgrade-shepherd.md. Survey open manual-tier Renovate PRs (gh pr list); pick the NEXT one by the runbook merge-order. CONSULT .renovate/holds.json5 first (skip if held). Read the release notes and the component playbook. If supporting edits are needed, make them on a NEW branch shepherd/<pkg>-<version>, commit, push, and open a PR (gh pr create); then enable auto-merge with gh pr merge <N> --auto --squash --delete-branch. GitHub merges only when Flux Local AND Diff Scope are both green. Do NOT merge immediately, do NOT push to main, do NOT touch anything outside kubernetes/**. One PR only, then stop and summarize."
     ;;
   remediate) # mode 2: diagnose a regression, forward-fix or rollback+hold (Phase 4b.3)
-    ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}" "${MERGE_TOOLS[@]}" "${SILENCE_TOOLS[@]}")
+    ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}" "${MERGE_TOOLS[@]}" "${SILENCE_TOOLS[@]}" "${WORKORDER_TOOLS[@]}")
     # COST CONTROL (2026-07): remediate runs on a LOWER turn budget and MUST bail early.
     # triage already proved the regression is upgrade-attributable, so the LLM's only job is
     # a git fix OR a fast BREAK-GLASS verdict — never a max-turns investigation. Set the

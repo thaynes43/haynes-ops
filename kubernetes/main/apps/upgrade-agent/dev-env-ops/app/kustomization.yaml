@@ -5,18 +5,22 @@ kind: Kustomization
 components:
   - ../../../../../shared/components/common/repos/app-template
 resources:
+  - ./pvc.yaml
   - ./externalsecret.yaml
   - ./rbac.yaml
   - ./networkpolicy.yaml
   - ./helmrelease.yaml
 configMapGenerator:
-  - name: upgrade-shepherd-scripts
+  - name: dev-env-ops-scripts
     files:
-      - resources/run-shepherd.sh
-      - resources/triage.sh
-      - resources/silence.sh
-      - resources/work-order.sh
+      - resources/ops-init.sh
+      - resources/work-order-watch.sh
+      - resources/session-launch.sh
+      - resources/order-status.sh
+      - resources/gh-token-refresh.sh
+      - resources/ops-claude.md
 generatorOptions:
+  # Stable name so the HelmRelease can mount it by name.
   disableNameSuffixHash: true
   labels:
-    app.kubernetes.io/name: upgrade-shepherd
+    app.kubernetes.io/name: dev-env-ops
