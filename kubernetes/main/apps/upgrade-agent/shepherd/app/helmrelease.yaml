@@ -103,12 +103,17 @@ spec:
                 these, decide REVERTIBLE vs ONE-WAY from the component playbook, then act:
                 REVERTIBLE (auto-merge, backup/health-gated) — a bump whose failure a git
                 revert or HR strategy:rollback recovers with the data plane untouched:
-                rook chart/operator/csi PATCH (a rook PATCH does not move the Ceph daemon
-                major) with Ceph HEALTH_OK now — NOTE Ceph is deliberately NOT pinned in
-                this repo (ride-the-chart-default policy; see the ceph-tentacle memory +
-                playbook), so for a rook MINOR/MAJOR you MUST read the chart release notes
-                and confirm the bundled Ceph default does NOT cross a Ceph DAEMON major (if
-                it does, that bump is ONE-WAY → author for confirm, do not auto-merge);
+                rook chart/operator/csi bumps ONLY when the bundled Ceph image default is
+                UNCHANGED — Ceph is deliberately NOT pinned (ride-the-chart-default
+                policy), so for EVERY rook bump, patch included, you MUST confirm from the
+                chart release notes / values diff whether the bundled Ceph default moves
+                AT ALL. If it moves — even a Ceph point release — do NOT auto-merge: a
+                within-major Ceph move still rolls every storage daemon and can carry new
+                health-check semantics (2026-08-20: chart PATCH 1.20.4→1.20.5 moved Ceph
+                20.2.2→20.2.4, which shipped new ERR-severity auth checks, wedged the roll,
+                and took ~30 apps down); instead HAND IT OFF with
+                '/opt/shepherd/work-order.sh <N> embedded-image-move "<one-line reason>"'
+                (see WORK-ORDER HAND-OFF below);
                 cnpg OPERATOR chart bump with the PG imageName
                 UNCHANGED (no PG major); dragonfly operator patch/minor; cilium PATCH;
                 authentik PATCH within the same YYYY.M; cert-manager PATCH only (a
@@ -164,13 +169,27 @@ spec:
                 NEVER with any argument other than the component name (the matchers are
                 hardcoded in the script). Real regressions the health gate catches (Flux
                 NotReady, HEALTH_ERR) are deliberately NOT in the silenced set.
-                If it needs a supporting edit,
-                author it on a NEW branch shepherd/<pkg>-<version> and open a PR (diff-scope
-                holds it for human review) — EXCEPT the one TYPED shape diff-scope admits
-                (pattern 1): restoring automountServiceAccountToken: true (plus its bare
-                defaultPodOptions: parent if absent) in a helmrelease.yaml that ALREADY
-                declares serviceAccount: — author bump+edit on one branch and DO enable
-                auto-merge.
+                WORK-ORDER HAND-OFF (2026-08-20, saga dev-env backlog 13): some upgrades
+                need a SESSION, not a vet — deep research, supporting edits, then staying
+                alive through the roll to fix fallout. For those, run
+                '/opt/shepherd/work-order.sh <N> <class> "<one-line reason>"' (classes:
+                embedded-image-move | major | supporting-edits | one-way-support | other)
+                and do NOT auto-merge or author inline — the dev-env-ops executor opens a
+                long-lived session that owns the PR end-to-end and stays QUIET unless it
+                fails. Hand off when: the bundled/embedded component image moves (rook
+                Ceph default, cnpg PG imageName — any distance); OR a major needs
+                release-note-driven supporting edits; OR your research finds required
+                supporting edits beyond the one TYPED shape diff-scope admits. If
+                work-order.sh FAILS, the hand-off did not happen — treat the PR as HOLD
+                and say so in your summary. After filing an order, note it in the vet
+                marker so the PR is not re-vetted. EXCEPTION kept inline (no hand-off):
+                the one TYPED shape diff-scope admits (pattern 1): restoring
+                automountServiceAccountToken: true (plus its bare defaultPodOptions:
+                parent if absent) in a helmrelease.yaml that ALREADY declares
+                serviceAccount: — author bump+edit on one branch and DO enable
+                auto-merge. ONE-WAY migrations keep the author+PAGE human-confirm flow
+                above (the human still approves every irreversible step); use class
+                one-way-support only for their preparatory research work.
                 SPLIT COMPONENTS (traefik): traefik-internal and traefik-external must
                 never move in one reconcile. Renovate bundles both in one PR; author a
                 phase-1 branch touching ONLY traefik-internal (a pure single-file bump

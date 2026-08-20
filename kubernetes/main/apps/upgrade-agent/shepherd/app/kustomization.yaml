@@ -15,6 +15,7 @@ configMapGenerator:
       - resources/run-shepherd.sh
       - resources/triage.sh
       - resources/silence.sh
+      - resources/work-order.sh
 generatorOptions:
   disableNameSuffixHash: true
   labels:
