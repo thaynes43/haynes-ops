@@ -38,4 +38,11 @@ spec:
       requests:
         memory: 128Mi # unchangable
         cpu: 100m # unchangable
-      limits: {}
+      # `limits: {}` did NOT drop the chart's default 512Mi limit (helm map-merge
+      # keeps defaults an empty map doesn't override). At 512Mi the operator was
+      # OOMKilled 4x on 2026-08-20 while orchestrating the 20.2.2->20.2.4 daemon
+      # roll — an operator death mid-OSD-upgrade risks a half-applied roll, and
+      # today's storm shows how that ends. Steady-state usage fits comfortably;
+      # 1Gi covers upgrade churn.
+      limits:
+        memory: 1Gi
