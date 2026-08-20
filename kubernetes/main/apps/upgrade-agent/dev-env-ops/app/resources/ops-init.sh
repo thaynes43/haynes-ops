@@ -39,9 +39,10 @@ if [ ! -f "$HOME/.claude/.claude.json" ]; then
     && log "seeded .claude.json onboarding state"
 fi
 
-# Session operating contract — claude auto-loads $CLAUDE_CONFIG_DIR/../CLAUDE.md
-# conventions via the home dir; keep it at ~/.claude/CLAUDE.md like dev-env.
-cp /opt/dev-env-ops/ops-claude.md "$HOME/.claude/CLAUDE.md"
+# Session operating contract — claude auto-loads it from ~/.claude/CLAUDE.md
+# like dev-env. install -m, NOT cp: cp preserves the CM mount's 0555 mode and
+# the next boot's overwrite is then Permission-denied (hit live 2026-08-20).
+install -m 0644 /opt/dev-env-ops/ops-claude.md "$HOME/.claude/CLAUDE.md"
 
 # Ops-bot git identity + at-use-time token (fresh mint each op; 1h TTL).
 git config --global user.name "haynes-ops-bot[bot]" 2>/dev/null || true
