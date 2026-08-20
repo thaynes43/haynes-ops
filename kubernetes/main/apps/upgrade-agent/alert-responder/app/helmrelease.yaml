@@ -73,6 +73,13 @@ spec:
               RESPONDER_MODEL: opus
               RESPONDER_FALLBACK_MODEL: sonnet
               RESPONDER_MAX_PER_RUN: "1"
+              # Storm/loop guards (2026-08-20: a wedged rook-ceph-cluster HR fanned
+              # into ~30 FluxReconciliationFailure alerts; the responder paged 16
+              # near-identical diagnoses in 2.5h, one per run, and helm-retry flapping
+              # kept minting new incidents forever). Keep in sync with respond.sh.
+              RESPONDER_STORM_THRESHOLD: "3"    # >=3 same-alertname incidents => ONE grouped diagnosis+page
+              RESPONDER_COOLDOWN_HOURS: "6"     # same alertname@ns not re-diagnosed on resolve->refire flaps
+              RESPONDER_MAX_PAGES_PER_HOUR: "3" # hard page ceiling; excess diagnoses go to logs only
               # Caps govern the METERED path only — a plan-served run is $0.
               RESPONDER_MAX_BUDGET_USD: "2.00"
               RESPONDER_MONTHLY_CAP_USD: "15"

@@ -13,7 +13,12 @@ drains indefinitely, which is typically the opposite of what you
 want.
 */}}
 {{- range $name, $cfg := .Values.podDisruptionBudgets }}
-{{- if $cfg.enabled }}
+{{- /* Skip the PDB when the component itself is disabled (2026-08-20: terminal
+       was disabled in the release values but its default-enabled PDB still
+       rendered — an orphan PDB with minAvailable: 1 and zero matching pods
+       fires KubePdbNotEnoughHealthyPods forever). */}}
+{{- $comp := (index $.Values $name) | default dict }}
+{{- if and $cfg.enabled (dig "enabled" true $comp) }}
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

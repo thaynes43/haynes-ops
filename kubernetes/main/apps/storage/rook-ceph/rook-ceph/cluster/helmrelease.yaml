@@ -142,8 +142,17 @@ spec:
             enabled: true
           - name: pg_autoscaler
             enabled: true
+          # DISABLED 2026-08-20 (Ceph 20.2.4): the mgr prometheus module's 15s
+          # collection cycle now calls orchestrator node_proxy_fullreport, which
+          # the rook orchestrator module does not implement -> NotImplementedError
+          # crash report EVERY 15s (786 RECENT_MGR_MODULE_CRASH entries in ~3.5h).
+          # With the module off the collector logs a single graceful "Module not
+          # found" line instead. Cost: `ceph orch` views/dashboard orchestrator
+          # pages; the Rook operator itself never needed the module. Re-enable
+          # only if a future ceph image implements node_proxy_fullreport for the
+          # rook backend.
           - name: rook
-            enabled: true
+            enabled: false
       network:
         provider: host
         addressRanges:
