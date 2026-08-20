@@ -1,0 +1,32 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+# Something removed whole series from Sonarr at least five times in Aug 2026
+# (T.O.T.S., Los Pingüinos de Madagascar, The Rookie ×2, Monster) with no log
+# line, no notification, and no attribution — the removals orphaned 110 queue
+# items and were only discovered days later via an indexer duplicate-download
+# warning. Sonarr does not log series deletes at Info and no connect
+# notification was acceptable (owner: Pushover would be far too noisy), so the
+# audit trail is metric-based: exportarr's sonarr_series_total drops on any
+# removal and Alertmanager timestamps it. severity=warning is DELIBERATE — in
+# this cluster only critical pages Pushover; warning is a silent, timestamped
+# record for the audit dashboard.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sonarr-library-audit
+spec:
+  groups:
+    - name: sonarr-library-audit.rules
+      rules:
+        - alert: SonarrSeriesRemoved
+          annotations:
+            summary: >-
+              Sonarr's series count dropped by {{ $value | humanize }} in the
+              last 20m — a series was removed. If nobody did this on purpose,
+              find the caller NOW while proxy/access logs still cover the
+              window (removals are otherwise unattributable; see the hnet
+              2026-08-19 dupe-loop incident note).
+          expr: |
+            delta(sonarr_series_total[20m]) < 0
+          labels:
+            severity: warning
