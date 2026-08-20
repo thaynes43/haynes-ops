@@ -16,6 +16,16 @@
 #   - At most RESPONDER_MAX_PER_RUN (1) diagnosis per run; its own monthly spend CM
 #     (separate envelope from the shepherd — an alert storm can't eat the upgrade
 #     budget) + per-run --max-budget-usd.
+# STORM DISCIPLINE (2026-08-20, the rook-ceph page storm — 16 near-identical pages
+# in 2.5h while a wedged rook-ceph-cluster HR fanned into ~30 FluxReconciliationFailure
+# alerts):
+#   - STORM COLLAPSE: >= RESPONDER_STORM_THRESHOLD unhandled incidents of one
+#     alertname = ONE diagnosis of the shared root cause, ONE page, all claimed.
+#   - COOLDOWN: same alertname@ns (alertname-wide after a storm) is not re-diagnosed
+#     within RESPONDER_COOLDOWN_HOURS even when a resolve→refire mints a new
+#     startsAt — flapping is the root cause's problem, not a new incident.
+#   - PAGE CAP: at most RESPONDER_MAX_PAGES_PER_HOUR responder pages; excess
+#     diagnoses land in the logs only.
 # CONTAINMENT: read-only cluster SA (the shared upgrade-health-gate ClusterRole), NO
 # git/gh write credential AT ALL (the repo clone is anonymous read-only), egress CNP =
 # DNS/apiserver/observability/Anthropic/Pushover/GitHub only, dontAsk + allowlist.
@@ -41,6 +51,22 @@ IGNORE_PAIRS="${RESPONDER_IGNORE_PAIRS:-OOMKilled@rook-ceph}"
 MAX_PER_RUN="${RESPONDER_MAX_PER_RUN:-1}"
 MAX_AGE_HOURS="${RESPONDER_MAX_AGE_HOURS:-24}"
 STATE_TTL_HOURS="${RESPONDER_STATE_TTL_HOURS:-168}"
+# ── Storm/loop guards (2026-08-20, the rook-ceph page storm) ──
+# A single root cause (a wedged rook-ceph-cluster HR) fanned out into ~30
+# FluxReconciliationFailure alerts; each was its own fingerprint, so every 10-min
+# run claimed ONE new incident, re-derived the SAME root cause, and paged — 16
+# near-identical pages in 2.5h. Worse, each helm retry flapped alerts
+# resolve→refire, minting NEW startsAt values that re-armed at-most-once forever.
+#   STORM_THRESHOLD  — >= this many unhandled incidents of one alertname collapse
+#                      into ONE diagnosis + ONE page (all fingerprints claimed).
+#   COOLDOWN_HOURS   — after diagnosing alertname@ns (or a storm of alertname),
+#                      re-fires of the same pair are skipped for this long even
+#                      though a new startsAt makes them "new" incidents.
+#   MAX_PAGES_PER_HOUR — hard ceiling on responder pages; excess diagnoses are
+#                      logged only (Alertmanager's own page still stands).
+STORM_THRESHOLD="${RESPONDER_STORM_THRESHOLD:-3}"
+COOLDOWN_HOURS="${RESPONDER_COOLDOWN_HOURS:-6}"
+MAX_PAGES_PER_HOUR="${RESPONDER_MAX_PAGES_PER_HOUR:-3}"
 MODEL="${RESPONDER_MODEL:-sonnet}"                    # plan-path model (opus per 2026-07-28 call)
 FALLBACK_MODEL="${RESPONDER_FALLBACK_MODEL:-sonnet}"  # metered-path model (opus on the API costs real money)
 MAX_TURNS="${RESPONDER_MAX_TURNS:-25}"
@@ -85,9 +111,20 @@ else
   log "FATAL: neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY is set."; exit 1
 fi
 
+HOUR_BUCKET="$(date -u +%Y-%m-%dT%H)"
 page() {  # $1=title-suffix $2=message ; priority 0 (the ORIGINAL critical already
           # paged at prio 1 via Alertmanager — this is the follow-up diagnosis).
+          # Rate-capped at MAX_PAGES_PER_HOUR (2026-08-20 storm guard): an alert
+          # storm must never turn the responder into a second spam source — the
+          # diagnosis always lands in the logs either way.
   if [ "$DRY" = "1" ]; then log "DRY: would page '[responder] $1' :: $2"; return 0; fi
+  local sent
+  sent="$(printf '%s' "$STATE_JSON" | jq -r --arg k "pages:$HOUR_BUCKET" \
+    '(.[$k] // "{}") | (fromjson? // {}) | (.count // "0") | tonumber? // 0' 2>/dev/null)" || sent=0
+  if [ "${sent:-0}" -ge "$MAX_PAGES_PER_HOUR" ] 2>/dev/null; then
+    log "PAGE-CAPPED ($1): $sent pages already this hour (cap $MAX_PAGES_PER_HOUR) — diagnosis kept in logs only."
+    return 0
+  fi
   : "${PUSHOVER_TOKEN:?}" ; : "${PUSHOVER_USER_KEY:?}"
   curl -sf --max-time 10 https://api.pushover.net/1/messages.json \
     --form-string "token=${PUSHOVER_TOKEN}" \
@@ -95,7 +132,10 @@ page() {  # $1=title-suffix $2=message ; priority 0 (the ORIGINAL critical alrea
     --form-string "title=[responder] $1" \
     --form-string "message=$2" \
     --form-string "priority=0" >/dev/null \
-    && log "paged: [responder] $1" \
+    && { log "paged: [responder] $1"
+         state_write "$(jq -nc --arg k "pages:$HOUR_BUCKET" --argjson now "$NOW" --argjson n "$(( sent + 1 ))" \
+           '{($k): ({count:($n|tostring), first_seen:($now|tostring)} | tojson)}')" \
+           || log "WARN: could not record page count (cap may under-enforce this hour)"; } \
     || log "PAGE FAILED: [responder] $1"
 }
 
@@ -126,34 +166,62 @@ record_spend() {
 }
 
 # ── incident state (at-most-once per fingerprint+startsAt, TTL-pruned) ──
+# Read ONCE per run into STATE_JSON (the cron is concurrencyPolicy: Forbid, so no
+# writer races us); all membership checks are in-memory, all writes go through
+# state_write (which merges + TTL-prunes + refreshes the in-memory copy).
 sig_of() { printf '%s' "$1" | sha256sum | grep -oE '[0-9a-f]{64}' | head -1 | cut -c1-12; }
-state_has() {  # $1=key ; rc0 = already handled. Any read ERROR => treat as handled
+STATE_JSON='{}'
+STATE_RAW="$(kubectl -n "$NS" get configmap "$STATE_CM" -o json 2>&1)"; STATE_RC=$?
+if [ $STATE_RC -ne 0 ]; then
+  case "$STATE_RAW" in
+    *NotFound*|*"not found"*) STATE_JSON='{}' ;;  # verifiably no prior state
+    *) log "state: UNREADABLE ($STATE_RAW) — failing CLOSED (every incident treated as handled)."
+       STATE_JSON='__UNREADABLE__' ;;
+  esac
+else
+  STATE_JSON="$(printf '%s' "$STATE_RAW" | jq -c '.data // {}' 2>/dev/null)" || STATE_JSON='__UNREADABLE__'
+fi
+state_has() {  # $1=key ; rc0 = already handled. Unreadable state => handled
                # (FAIL CLOSED — protect spend; Alertmanager already paged the human).
-  local out rc
-  out="$(kubectl -n "$NS" get configmap "$STATE_CM" -o json 2>&1)"; rc=$?
-  if [ $rc -ne 0 ]; then
-    case "$out" in
-      *NotFound*|*"not found"*) return 1 ;;  # verifiably no prior state
-      *) log "state: UNREADABLE ($out) — failing CLOSED (skip)"; return 0 ;;
-    esac
-  fi
-  printf '%s' "$out" | jq -e --arg k "$1" '.data[$k] // empty' >/dev/null 2>&1
+  [ "$STATE_JSON" = "__UNREADABLE__" ] && return 0
+  printf '%s' "$STATE_JSON" | jq -e --arg k "$1" '.[$k] // empty' >/dev/null 2>&1
 }
-state_claim() {  # $1=key $2=alertname ; claim BEFORE the summon; rc!=0 => do NOT summon.
-  local ttl=$(( STATE_TTL_HOURS * 3600 ))
+cooldown_active() {  # $1=alertname $2=ns ; rc0 = this pair (or an alertname-wide
+                     # storm cooldown) was diagnosed within COOLDOWN_HOURS — skip.
+                     # This is the FLAP GUARD: a resolve→refire mints a new
+                     # startsAt (new incident key), but the same alertname@ns
+                     # re-diagnosed minutes later is noise, not signal.
+  [ "$STATE_JSON" = "__UNREADABLE__" ] && return 0
+  local cd=$(( COOLDOWN_HOURS * 3600 ))
+  printf '%s' "$STATE_JSON" | jq -e --arg a "cool:$1@$2" --arg w "cool:$1@*" \
+      --argjson now "$NOW" --argjson cd "$cd" '
+    [.[$a] // empty, .[$w] // empty] | map(fromjson? // {})
+    | any(.[]; ((.first_seen // "0") | tonumber? // 0) > ($now - $cd))' >/dev/null 2>&1
+}
+state_write() {  # $1 = JSON object {key: value-string, ...} merged into .data with
+                 # TTL pruning. rc!=0 => the write did NOT durably land (claims must
+                 # then FAIL CLOSED). Refreshes STATE_JSON on success.
+  local ttl=$(( STATE_TTL_HOURS * 3600 )) add="$1"
+  if [ "$STATE_JSON" = "__UNREADABLE__" ]; then return 1; fi
   if kubectl -n "$NS" get configmap "$STATE_CM" >/dev/null 2>&1; then
     kubectl -n "$NS" get configmap "$STATE_CM" -o json 2>/dev/null \
-      | jq --arg k "$1" --arg a "$2" --argjson now "$NOW" --argjson ttl "$ttl" '
-          .data = (.data // {})
-          | .data[$k] = ({alertname:$a, attempted:"1", first_seen:($now|tostring)} | tojson)
+      | jq --argjson add "$add" --argjson now "$NOW" --argjson ttl "$ttl" '
+          .data = ((.data // {}) + $add)
           | .data |= with_entries(
-                select(.key == $k
+                select(.key as $ek | ($add | has($ek))
                        or ((((.value | (fromjson? // {}) | (.first_seen // "0") | tonumber?) // 0)) > ($now - $ttl))))
         ' 2>/dev/null | kubectl -n "$NS" replace -f - >/dev/null 2>&1
   else
-    kubectl -n "$NS" create configmap "$STATE_CM" \
-      --from-literal="$1"="{\"alertname\":\"$2\",\"attempted\":\"1\",\"first_seen\":\"$NOW\"}" >/dev/null 2>&1
-  fi
+    jq -nc --argjson add "$add" --arg cm "$STATE_CM" --arg ns "$NS" \
+      '{apiVersion:"v1", kind:"ConfigMap", metadata:{name:$cm, namespace:$ns}, data:$add}' \
+      | kubectl -n "$NS" create -f - >/dev/null 2>&1
+  fi || return 1
+  STATE_JSON="$(printf '%s' "$STATE_JSON" | jq -c --argjson add "$add" '. + $add' 2>/dev/null)" \
+    || STATE_JSON='__UNREADABLE__'
+}
+claim_entry() {  # $1=alertname ; emit the standard claim/cooldown entry VALUE (a JSON string)
+  jq -nc --arg a "$1" --argjson now "$NOW" \
+    '{alertname:$a, attempted:"1", first_seen:($now|tostring)} | tojson'
 }
 
 # ── 1. Poll Alertmanager (the $0 path). ──
@@ -187,10 +255,15 @@ if [ "${count:-0}" -eq 0 ] 2>/dev/null; then
 fi
 log "${count} in-scope ${SEVERITY} alert(s) active."
 
-# ── 2. Pick new incidents (newest first), at most MAX_PER_RUN. ──
-handled=0
+# ── 2. Build the eligible set (unhandled + not cooling), then collapse storms. ──
+# STORM COLLAPSE (2026-08-20): >= STORM_THRESHOLD unhandled incidents sharing one
+# alertname become ONE work unit — one diagnosis of the COMMON root cause, one
+# page, ALL fingerprints claimed. Without this, a single wedged dependency (the
+# rook-ceph-cluster HR) fans into ~30 FluxReconciliationFailure incidents and the
+# responder re-diagnoses the same root once per run, forever.
+elig='[]'
 i=0
-while [ "$i" -lt "$count" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
+while [ "$i" -lt "$count" ]; do
   alert="$(printf '%s' "$candidates" | jq -c ".[$i]")"
   i=$((i + 1))
   aname="$(printf '%s' "$alert" | jq -r '.labels.alertname // "unknown"')"
@@ -202,15 +275,50 @@ while [ "$i" -lt "$count" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
     log "incident $key ($aname) already handled — skip."
     continue
   fi
+  if cooldown_active "$aname" "$ans"; then
+    log "incident $key ($aname@$ans) inside the ${COOLDOWN_HOURS}h cooldown — skip (flap guard: a resolve→refire is not a new problem)."
+    continue
+  fi
+  elig="$(printf '%s' "$elig" | jq -c --argjson a "$alert" --arg key "$key" --arg aname "$aname" --arg ans "$ans" --arg fp "$fp" \
+    '. + [{key:$key, aname:$aname, ans:$ans, fp:$fp, alert:$a}]')"
+done
+# Work units: storm groups first (largest first), then singletons (newest first —
+# elig preserves the candidates sort).
+units="$(printf '%s' "$elig" | jq -c --argjson t "$STORM_THRESHOLD" '
+  (group_by(.aname) | map(select(length >= $t)) | sort_by(-length)
+     | map({type:"storm", aname:(.[0].aname), members:.})) as $storms
+  | ($storms | map(.members[].key)) as $stormkeys
+  | ($storms + (map(select(.key as $k | ($stormkeys | index($k)) | not))
+                  | map({type:"single", aname, ans, members:[.]})))')"
+u_count="$(printf '%s' "$units" | jq 'length' 2>/dev/null)" || u_count=0
+
+handled=0
+u=0
+while [ "$u" -lt "${u_count:-0}" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
+  unit="$(printf '%s' "$units" | jq -c ".[$u]")"
+  u=$((u + 1))
+  utype="$(printf '%s' "$unit" | jq -r '.type')"
+  aname="$(printf '%s' "$unit" | jq -r '.aname')"
+  ans="$(printf '%s' "$unit" | jq -r '.members[0].ans // ""')"
+  n="$(printf '%s' "$unit" | jq -r '.members | length')"
+  alert="$(printf '%s' "$unit" | jq -c '.members[0].alert')"
+  fps="$(printf '%s' "$unit" | jq -c '[.members[].fp]')"
   # Spend guard governs the METERED path only — a plan-served diagnosis is $0, so a
   # high (stale) monthly counter must not block it. The guard still protects the
   # fallback (checked again before any fallback retry below).
   if [ "$AUTH_PATH" = "api" ]; then spend_guard || exit 0; fi
-  if ! state_claim "$key" "$aname"; then
-    log "incident $key ($aname): could NOT durably claim — FAIL CLOSED, not summoning (Alertmanager already paged the human)."
+  # Claim BEFORE the summon (crash-proof): every member key, plus the cooldown
+  # marker — alertname-wide (`@*`) for a storm so late-joining victims of the same
+  # root cause don't each mint a fresh diagnosis; alertname@ns for a singleton.
+  cool_key="cool:${aname}@*"; [ "$utype" = "single" ] && cool_key="cool:${aname}@${ans}"
+  additions="$(printf '%s' "$unit" | jq -c --arg ck "$cool_key" --argjson now "$NOW" '
+    (.members | map({(.key): ({alertname:.aname, attempted:"1", first_seen:($now|tostring)} | tojson)}) | add)
+    + {($ck): ({alertname:.aname, attempted:"1", first_seen:($now|tostring)} | tojson)}')"
+  if ! state_write "$additions"; then
+    log "unit $aname (${utype} n=$n): could NOT durably claim — FAIL CLOSED, not summoning (Alertmanager already paged the human)."
     continue
   fi
-  log "incident $key ($aname ns=$ans): claimed — summoning read-only diagnosis."
+  log "unit $aname (${utype} n=$n ns=$ans): claimed — summoning read-only diagnosis."
 
   # ── 3. Anonymous read-only clone for the committed runbooks (repo is public; NO
   #      credential exists in this pod). Best-effort — diagnosis proceeds without it. ──
@@ -219,7 +327,15 @@ while [ "$i" -lt "$count" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
   cd "$WORKDIR" 2>/dev/null || cd /tmp
 
   ALERT_JSON="$(printf '%s' "$alert" | jq -c '{labels, annotations, startsAt}')"
-  PROMPT="You are the on-call ALERT RESPONDER for this Kubernetes homelab (GitOps/Flux, Talos). A critical alert is firing; Alertmanager ALREADY paged the human — your follow-up page is worth sending ONLY when it adds an action the human must take. Alert: ${ALERT_JSON}. Investigate with the allowlisted tools: kubectl get/describe, flux get, /opt/responder/prom-query.sh '<promql>' for metrics, /opt/responder/loki-query.sh '<logql>' [minutes] [limit] for logs (e.g. loki-query.sh '{namespace=\"x\",pod=~\"y.*\"}' 60). Check whether the alert is ALREADY RESOLVED (prom-query.sh 'ALERTS{alertname=\"<name>\",alertstate=\"firing\"}' — empty means cleared). If a repo checkout is present, check .agents/runbooks/ and docs/ for a matching runbook and the recent git log for a plausible culprit. Then STOP and output EXACTLY this report, under 900 characters total, no markdown headers, STARTING with ACTION: ACTION: <none|investigate|urgent> | CAUSE: <root cause, one or two sentences, state confidence> | EVIDENCE: <two or three concrete observations> | FIX: <suggested action for the human — you must NOT perform it> | RUNBOOK: <repo path or none>. Choose ACTION honestly: ACTION: none when NO human action is needed — the alert already self-healed, OR it is a KNOWN/DOCUMENTED self-healing cycle (a watchdog auto-repair, an accepted OOM-restart cycle, a component another system's watchdog owns and notifies for); ACTION: investigate when a human should look but it is not on fire; ACTION: urgent when immediate action is needed. Be decisive — if you are confident it self-healed or is a documented benign cycle, say ACTION: none (a no-action page is pure noise the human already got from Alertmanager)."
+  if [ "$utype" = "storm" ]; then
+    # Compact label set for every storm member (capped) — the diagnosis must name
+    # the ONE shared root cause, not re-investigate each victim.
+    STORM_LABELS="$(printf '%s' "$unit" | jq -c '[.members[:25][].alert.labels | del(.severity, .prometheus, .container, .endpoint, .instance, .job, .service, .pod)]')"
+    ALERT_CONTEXT="ALERT STORM: ${n} critical alerts are firing with the SAME alertname (${aname}) — they almost certainly share ONE root cause (e.g. a common dependency). Identify the single failing component; do NOT diagnose each victim separately. Representative alert: ${ALERT_JSON}. All affected instances (label sets, first 25): ${STORM_LABELS}."
+  else
+    ALERT_CONTEXT="Alert: ${ALERT_JSON}."
+  fi
+  PROMPT="You are the on-call ALERT RESPONDER for this Kubernetes homelab (GitOps/Flux, Talos). A critical alert is firing; Alertmanager ALREADY paged the human — your follow-up page is worth sending ONLY when it adds an action the human must take. ${ALERT_CONTEXT} Investigate with the allowlisted tools: kubectl get/describe, flux get, /opt/responder/prom-query.sh '<promql>' for metrics, /opt/responder/loki-query.sh '<logql>' [minutes] [limit] for logs (e.g. loki-query.sh '{namespace=\"x\",pod=~\"y.*\"}' 60). Check whether the alert is ALREADY RESOLVED (prom-query.sh 'ALERTS{alertname=\"<name>\",alertstate=\"firing\"}' — empty means cleared). If a repo checkout is present, check .agents/runbooks/ and docs/ for a matching runbook and the recent git log for a plausible culprit. Then STOP and output EXACTLY this report, under 900 characters total, no markdown headers, STARTING with ACTION: ACTION: <none|investigate|urgent> | CAUSE: <root cause, one or two sentences, state confidence> | EVIDENCE: <two or three concrete observations> | FIX: <suggested action for the human — you must NOT perform it> | RUNBOOK: <repo path or none>. Choose ACTION honestly: ACTION: none when NO human action is needed — the alert already self-healed, OR it is a KNOWN/DOCUMENTED self-healing cycle (a watchdog auto-repair, an accepted OOM-restart cycle, a component another system's watchdog owns and notifies for); ACTION: investigate when a human should look but it is not on fire; ACTION: urgent when immediate action is needed. Be decisive — if you are confident it self-healed or is a documented benign cycle, say ACTION: none (a no-action page is pure noise the human already got from Alertmanager)."
   SAFETY="SAFETY: you are STRICTLY READ-ONLY — never kubectl apply/delete/edit/exec/patch, never git push, never install anything; do not retry a denied command. Never include secret VALUES in output. You run UNATTENDED: no human answers questions; produce the report and stop. If you cannot diagnose it, output ACTION: investigate | CAUSE: inconclusive."
 
   OUT_FILE="$(mktemp 2>/dev/null || echo /tmp/responder-out.json)"
@@ -282,14 +398,17 @@ while [ "$i" -lt "$count" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
     # "no action required", which is what prompted this). Suppress when EITHER the LLM
     # verdict is ACTION: none, OR the alert has self-resolved since we were summoned.
     ACTION="$(printf '%s' "$REPORT" | grep -oiE 'ACTION:[[:space:]]*(none|investigate|urgent)' | head -1 | grep -oiE '(none|investigate|urgent)' | tr 'A-Z' 'a-z')"
+    # For a storm, "still firing" = ANY member fingerprint still active.
     still_firing="$(curl -sf --max-time 10 "$AM/api/v2/alerts?active=true&silenced=false" 2>/dev/null \
-      | jq -r --arg fp "$fp" 'if any(.[]?; .fingerprint==$fp) then "yes" else "no" end' 2>/dev/null)"
+      | jq -r --argjson fps "$fps" 'if any(.[]?; .fingerprint as $f | $fps | index($f)) then "yes" else "no" end' 2>/dev/null)"
     if [ "$ACTION" = "none" ]; then
       log "PAGE-SUPPRESSED ($aname): ACTION=none (no human action needed; the original Alertmanager page already covers it). Diagnosis kept in logs only."
     elif [ "$still_firing" = "no" ]; then
       log "PAGE-SUPPRESSED ($aname): alert self-resolved during diagnosis — not paging (nothing to act on)."
     else
-      page "${aname}${ans:+ (${ans})}" "${REPORT} [auto-diagnosis — verify before acting]"
+      title="${aname}${ans:+ (${ans})}"
+      [ "$utype" = "storm" ] && title="${aname} ×${n} — storm, one root cause"
+      page "$title" "${REPORT} [auto-diagnosis — verify before acting]"
     fi
   else
     log "diagnosis produced no report (rc=$rc) — silent (the original Alertmanager page stands)."
