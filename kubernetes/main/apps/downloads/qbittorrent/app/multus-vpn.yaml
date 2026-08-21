@@ -1,4 +1,22 @@
 ---
+# Pod egress path: macvlan child on the node's eth1 (the VLAN-3 "VPNLan" NIC,
+# vmbr2 on the Proxmox workers), static 192.168.30.249, all public ranges
+# routed to 192.168.30.1 (the UDM), which policy-routes VPNLan out the
+# wg0-chicago Mullvad tunnel. RFC1918 stays on the cluster default route.
+#
+# 2026-08-21 (Talos roll): the pod landed on talosw02 and sat NotReady for ~1h
+# (VPN egress dead), which read as "w02/w03 can't route". DISPROVEN the same
+# day: probe Jobs with this exact attachment on both w02 and w03 confirmed the
+# Mullvad exit — the path works from ALL THREE workers; the outage was a
+# transient of the roll window (pre-reboot w02 state; cleared by its reboot).
+# So there is deliberately NO node pin here. To re-verify a node, run a
+# short-lived Job in this namespace with nodeSelector on the suspect node,
+# `k8s.v1.cni.cncf.io/networks: static-vpn-qbittorrent` in pod annotations, and
+# `curl https://am.i.mullvad.net/json` — expect "mullvad_exit_ip": true.
+# (Safe while qb runs elsewhere: keep it short — it shares IP .249.)
+# If a pod is stuck NotReady on one node, `kubectl delete pod` to reschedule.
+# Detection: readiness probe (helmrelease.yaml) + QbittorrentVpnDown
+# (prometheusrule.yaml, pages in ~10m) + Gatus (slower, ~1h threshold).
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
