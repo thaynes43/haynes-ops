@@ -1,0 +1,30 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+# qBittorrent's readiness probe IS the VPN check: the app container only reports
+# Ready while `am.i.mullvad.net/connected` confirms the pod egresses a Mullvad
+# exit (VPN dead OR leaking out the WAN -> NotReady). During the 2026-08-21
+# Talos roll the pod spent ~1h NotReady on talosw02 (VPN transient) and the only
+# page was Gatus's, ~50min in — this rule pages in ~10min instead. severity:
+# critical is DELIBERATE: in this cluster only critical pages Pushover.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: qbittorrent-vpn
+spec:
+  groups:
+    - name: qbittorrent-vpn.rules
+      rules:
+        - alert: QbittorrentVpnDown
+          annotations:
+            summary: >-
+              qBittorrent has had no Ready pod for 10m. Its readiness probe is
+              the Mullvad-egress check, so this means the VPN path is down or
+              leaking (or the pod can't start). Check which node it's on
+              (kubectl get pod -n downloads -o wide), its readiness events, and
+              the mam-update sidecar logs; a `kubectl delete pod` reschedule
+              has fixed VPN transients before (2026-08-21 roll).
+          expr: |
+            kube_deployment_status_replicas_ready{namespace="downloads", deployment="qbittorrent"} == 0
+          for: 10m
+          labels:
+            severity: critical

@@ -9,6 +9,7 @@ resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml
   - ./multus-vpn.yaml
+  - ./prometheusrule.yaml
 configMapGenerator:
   - name: qbittorrent-mam-update
     files:
