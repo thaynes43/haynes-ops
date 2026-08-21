@@ -1,0 +1,52 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/helm.toolkit.fluxcd.io/helmrelease_v2.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: gasha01-rbd
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: ceph-csi-rbd
+      version: 3.17.0
+      sourceRef:
+        kind: HelmRepository
+        name: ceph-csi
+        namespace: ceph-csi
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    # The EXTERNAL proxmox ceph (ceph mon dump run by owner 2026-08-21).
+    # All four mons sit on the flat 40.x LAN — the ceph *cluster/private*
+    # network (CephLan vlan-2) is replication-only and clients never touch it.
+    csiConfig:
+      - clusterID: 9b0628e1-1fe9-49d2-b65b-746d05215e3d
+        monitors:
+          - 192.168.40.9:6789
+          - 192.168.40.18:6789
+          - 192.168.40.60:6789
+          - 192.168.40.11:6789
+    # Distinct from rook's rook-ceph.rbd.csi.ceph.com so the two driver
+    # stacks can never shadow each other.
+    driverName: gasha01.rbd.csi.ceph.com
+    provisioner:
+      # chart default is 3; two is plenty and matches rook's controllerPlugin
+      replicaCount: 2
+    nodeplugin:
+      # hostNetwork nodeplugin: keep its liveness/metrics port clear of
+      # rook's csi nodeplugins on the same hosts.
+      httpMetrics:
+        containerPort: 8092
+    # Secret is ExternalSecret-managed (externalsecret.yaml), StorageClass is
+    # a plain manifest (storageclass.yaml) — chart creates neither.
+    secret:
+      create: false
+    storageClass:
+      create: false
