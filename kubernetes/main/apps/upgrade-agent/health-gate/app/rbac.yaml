@@ -106,7 +106,17 @@ rules:
     # deterministic orphan-PR/ramp-mismatch report there; the gate (the Pushover owner)
     # pages it and stamps last_paged/last_mismatch_paged back. Same name-scoped
     # get+update posture — still no create/delete/list/watch, no other ConfigMap.
-    resourceNames: [upgrade-remediation-state, upgrade-orphan-report]
+    #
+    # upgrade-work-orders added 2026-08-21 (backlog 12→13): the gate's ONE
+    # work-creating write — on a REPEAT page for the same regression signature
+    # (auto-remediation failed / nothing converged for REPAGE_SUPPRESS_HOURS) it
+    # files an esc-gate-* escalation entry via /opt/coordination/escalate.sh, and
+    # the dev-env-ops executor spawns the joinable session. Still name-scoped
+    # get+update: the gate cannot create the CM (the shepherd owns creation) and
+    # reaches no other ConfigMap. This deliberately narrows the old "the gate
+    # CANNOT create work" rule to "only after its own page went unanswered" —
+    # the escalation session is read-first and human-attended by design.
+    resourceNames: [upgrade-remediation-state, upgrade-orphan-report, upgrade-work-orders]
     verbs: [get, update]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

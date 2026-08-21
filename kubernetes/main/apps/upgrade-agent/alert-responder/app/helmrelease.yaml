@@ -121,6 +121,15 @@ spec:
         defaultMode: 0555
         globalMounts:
           - path: /opt/responder
+      # Shared coordination CM (health-gate kustomization; this ks dependsOn it) —
+      # the responder only EXECUTES escalate.sh from it (failure escalation,
+      # backlog 12→13); it does not source the gate/triage coordination logic.
+      coordination-lib:
+        type: configMap
+        name: upgrade-coordination-lib
+        defaultMode: 0555
+        globalMounts:
+          - path: /opt/coordination
       # HOME + CLAUDE_CONFIG_DIR + the anonymous shallow clone (readOnlyRootFilesystem).
       tmp:
         type: emptyDir

@@ -485,4 +485,27 @@ SUMMARY="$(jq -r '.result // empty' "$OUT_FILE" 2>/dev/null | tr '\n\r' '  ' | c
 printf '%s' "$SUMMARY" > /tmp/shepherd-summary.txt 2>/dev/null || true
 [ -n "$SUMMARY" ] && log "final: $SUMMARY"
 log "claude exited rc=$rc"
+
+# ── FAILURE ESCALATION (2026-08-21, backlog 12→13) ── a SCHEDULED (MODE=auto,
+# unattended) run that ends in a terminal BREAK-GLASS/HOLD verdict or dies rc!=0
+# files an esc-shepherd-* entry via the shared writer; the dev-env-ops executor
+# spawns a joinable fable/xhigh session and pages Tom WITH the session name.
+# Deliberately NOT for manual modes (a human summoned and is watching those) and
+# NOT for remediate (triage owns that outcome — it escalates on RESULT=failed
+# with the coordination signature; hooking here too would double-file).
+# Repeated identical HOLDs are rare by construction (the vet marker stops the
+# next run re-vetting the same head SHA); dedup in escalate.sh covers the rest.
+# BEST-EFFORT: escalation failure only logs — never changes this run's rc.
+if [ "$MODE" = "auto" ]; then
+  esc_reason=""
+  if printf '%s' "$SUMMARY" | grep -qE '(BREAK-GLASS|HOLD( NEEDED)?):'; then
+    esc_reason="terminal verdict: ${SUMMARY}"
+  elif [ "$rc" -ne 0 ]; then
+    esc_reason="auto run died rc=${rc} (${SUMMARY:-no summary — see Job logs})"
+  fi
+  if [ -n "$esc_reason" ]; then
+    bash /opt/coordination/escalate.sh shepherd "job:${HOSTNAME:-unknown} mode=auto" "$esc_reason" \
+      || log "escalate.sh could not file the esc-shepherd entry (best-effort; run outcome unchanged)"
+  fi
+fi
 exit "$rc"

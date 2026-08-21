@@ -168,6 +168,18 @@ if [ -n "$REG_IDS" ]; then
       [ "$want_flux" = "1" ] && page critical flux "$SIG" "Flux deploy NotReady >10m (first-failure anchored; Alertmanager's FluxReconciliationFailure should also have fired): ${flux_list}[sig=$SIG] Remediation: ${rnote}."
       [ "$want_pod" = "1" ]  && page critical pods "$SIG" "Pod(s) unhealthy >10m after an UPGRADE and auto-remediation FAILED (not the general crashloop Alertmanager covers): ${pod_list}[sig=$SIG] Remediation: ${rnote}."
       state_set_last_paged "$SIG" "$NOW"
+      # ── REPEAT-PAGE ESCALATION (2026-08-21, backlog 12→13) ── lpaged>0 means this
+      # exact signature already paged >= REPAGE_SUPPRESS_HOURS ago and NOTHING fixed
+      # it (auto-remediation failed or never applied) — file an esc-gate-* entry so
+      # the dev-env-ops executor spawns a joinable fable session and pages Tom WITH
+      # the session name. Dedup lives in escalate.sh (an open entry for this sig is
+      # not refiled). BEST-EFFORT: a write failure only logs — the page above is the
+      # primary signal and already went out.
+      if [ "$lpaged" -gt 0 ]; then
+        ESCALATE_SIG="$SIG" bash /opt/coordination/escalate.sh gate "gate sig=$SIG" \
+          "repeat page (unresolved >${REPAGE_SUPPRESS_HOURS}h): flux='${flux_list}' pods='${pod_list}' phase=${phase} — ${rnote}" \
+          || log "coordination: escalate.sh could not file esc-gate for sig=$SIG (best-effort; page already sent)"
+      fi
     fi
   else
     log "coordination sig=$SIG phase=$phase: nothing to page (in-flight fix, or non-upgrade pod flap handled by Alertmanager). flux='$flux_list' pod='$pod_list'"

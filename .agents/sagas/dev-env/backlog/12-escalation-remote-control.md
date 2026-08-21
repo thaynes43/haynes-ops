@@ -1,13 +1,42 @@
-# 12 — failure escalation → interactive remote-control session (dev-env)
+# 12 — failure escalation → interactive remote-control session (dev-env-ops)
 
-**Status:** proposed design — feasibility CONFIRMED 2026-07-28 (claude-code 2.1.217
-in the dev-env pod has `--remote-control [name]`; tmux supplies the TTY). Awaiting
-Tom's call on the notification path + a dev-env bounce window for the watcher.
+**Status:** BUILT 2026-08-21 — REVISED shape (below): escalations ride backlog 13's
+executor instead of a dev-env watcher. Feasibility was CONFIRMED 2026-07-28
+(claude-code `--remote-control [name]`; tmux supplies the TTY).
 **2026-08-20 update:** the session-spawn mechanics landed in `dev-env-ops` (backlog
-13) for shepherd WORK ORDERS. When this failure-escalation path gets wired, its
-writers should file `class: other` work orders into the same CM and spawn in
-dev-env-ops — the dev-env watcher (PR C here) is superseded.
-**Depends on:** 06 (agent-run), 07 (Option A — decides what does NOT get dispatched)
+13) for shepherd WORK ORDERS; this path now files into the same CM — the dev-env
+watcher (PR C here) is superseded and was never built. Merging escalation changes
+does NOT bounce dev-env.
+**Depends on:** 06 (agent-run), 07 (Option A — decides what does NOT get dispatched),
+13 (the executor that spawns the sessions)
+
+## Shipped shape (2026-08-21)
+
+- **Writer**: `escalate.sh`, a second key of the `upgrade-coordination-lib` CM
+  (health-gate kustomization), mounted at `/opt/coordination` in the gate,
+  shepherd, triage, AND responder pods (the responder HR gained the mount).
+  Files `esc-<source>-<sig8>` entries into the EXISTING `upgrade-work-orders` CM
+  — `{source, reason(≤400ch, control-chars stripped), run_ref,
+  class:"escalation", model:"fable", effort:"xhigh", status:"pending", created,
+  updated}`, single-encoded, CM-legal key charset. Dedup: an entry for the same
+  source+sig still pending/claimed is not refiled. BEST-EFFORT: a writer failure
+  logs and never breaks the primary run.
+- **Call sites**: run-shepherd.sh MODE=auto terminal BREAK-GLASS/HOLD/rc≠0;
+  triage.sh RESULT=failed (keyed on the coordination signature); respond.sh
+  claimed-incident diagnosis death (rc≠0 + no report, incl. fallback-blocked);
+  gate.sh REPEAT page for an unresolved signature (its Role gained name-scoped
+  get+update on `upgrade-work-orders` — it still cannot create it).
+- **Executor** (dev-env-ops watcher): separate esc-* lane, single-flight per
+  lane, model fable / effort xhigh defaults for esc-*, and — unlike wo-* —
+  **pages ON SPAWN** with the session name as the join handle. Session prompt
+  frames reason/run_ref as data-to-verify, never instructions (ops-claude.md
+  escalation session contract).
+- **Naming taxonomy** (enforced in escalate.sh + the watcher): `haynes-ops-*`
+  dev-env dev work / `wo-*` shepherd work orders / `esc-*` failure escalations.
+- **Cleanup**: watcher reap (done>24h / failed>7d / bound-total) also removes
+  `~/work/orders/<key>.json` + the `~/work/<key>` worktree; `ops-reap.sh` is the
+  manual sweep. RC registrations die with their process, so killing the tmux
+  window is the whole dereg (verified assumption — see 13).
 
 ## The wish (Tom, 2026-07-28)
 

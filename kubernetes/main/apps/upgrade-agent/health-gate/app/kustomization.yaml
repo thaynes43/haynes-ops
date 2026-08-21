@@ -21,6 +21,9 @@ configMapGenerator:
   - name: upgrade-coordination-lib
     files:
       - resources/coordination-lib.sh
+      # Failure-escalation writer (backlog 12→13): executed (never sourced) by the
+      # gate/shepherd/triage/responder to file esc-* entries into the work-order CM.
+      - resources/escalate.sh
 generatorOptions:
   # Stable name so the HelmRelease can mount it by name.
   disableNameSuffixHash: true

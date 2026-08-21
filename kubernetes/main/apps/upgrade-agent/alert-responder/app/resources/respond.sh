@@ -421,6 +421,20 @@ while [ "$u" -lt "${u_count:-0}" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
     fi
   else
     log "diagnosis produced no report (rc=$rc) — silent (the original Alertmanager page stands)."
+    # ── FAILURE ESCALATION (2026-08-21, backlog 12→13) ── the incident was CLAIMED
+    # (at-most-once burned) but the responder itself failed: run died rc!=0 after the
+    # plan path + any fallback (incl. fallback-blocked-by-spend-guard, where rc keeps
+    # the first run's failure) and produced NO report — the 2am page stays
+    # uninvestigated and nothing will retry. File an esc-responder-* entry keyed on
+    # alertname@ns (stable across re-fires) so the dev-env-ops executor spawns a
+    # joinable fable/xhigh session and pages Tom WITH the session name. Ordinary
+    # completed diagnoses (ACTION: none/investigate/urgent) NEVER escalate.
+    # BEST-EFFORT: a write failure only logs.
+    if [ "$rc" -ne 0 ]; then
+      ESCALATE_SIG="${aname}@${ans}" bash /opt/coordination/escalate.sh responder "job:${HOSTNAME:-unknown}" \
+        "diagnosis FAILED rc=${rc} for ${aname}@${ans:-?} (${utype} n=${n}): incident claimed but no diagnosis produced (plan+fallback exhausted or run died) — Alertmanager's page stands uninvestigated. See the alert-responder Job logs." \
+        || log "escalate.sh could not file the esc-responder entry (best-effort)"
+    fi
   fi
   handled=$((handled + 1))
 done
