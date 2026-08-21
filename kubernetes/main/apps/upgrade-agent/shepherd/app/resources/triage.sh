@@ -370,6 +370,17 @@ if [ "$CLASS" = "upgrade" ]; then
     log "post-remediate: still present and NO new PR (break-glass / no-op) — result=failed (the gate pages)."
   fi
   state_upsert "$SIG" upgrade 1 "$RESULT" "$NOTE"
+  # ── FAILURE ESCALATION (2026-08-21, backlog 12→13) ── remediate ran and did NOT
+  # produce a fix (break-glass / no-op / crash): file an esc-shepherd-* entry keyed
+  # on the COORDINATION signature (stable across gate/triage cycles for this exact
+  # regression set, so re-fires dedup) — the dev-env-ops executor spawns a joinable
+  # fable/xhigh session and pages Tom WITH the session name. The gate still pages
+  # the failure independently. BEST-EFFORT: a write failure only logs.
+  if [ "$RESULT" = "failed" ]; then
+    ESCALATE_SIG="$SIG" bash /opt/coordination/escalate.sh shepherd "job:${HOSTNAME:-unknown} triage/remediate sig=$SIG" \
+      "remediate FAILED for sig=$SIG — regression persists, no fix PR. Signals: $(printf '%s' "$REG_SUMMARY" | cut -c1-160). Shepherd verdict: ${NOTE:-none recorded}" \
+      || log "escalate.sh could not file the esc-shepherd entry (best-effort; state already recorded, the gate pages)"
+  fi
   exit 0
 fi
 

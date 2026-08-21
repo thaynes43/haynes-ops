@@ -17,6 +17,7 @@ configMapGenerator:
       - resources/work-order-watch.sh
       - resources/session-launch.sh
       - resources/order-status.sh
+      - resources/ops-reap.sh
       - resources/gh-token-refresh.sh
       - resources/ops-claude.md
 generatorOptions:

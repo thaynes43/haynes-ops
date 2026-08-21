@@ -65,11 +65,32 @@ moves AT ALL (patch included) now hands off instead of auto-merging;
 non-trivial supporting-edit work hands off instead of inline authoring
 (pattern-1 typed shape stays inline). ONE-WAY human-confirm flow unchanged.
 
-## Notes / follow-ups
+## The esc-* lane (2026-08-21, backlog 12 wired in)
 
-- Backlog 12's failure-escalation (gate/responder → session) should now spawn
-  in THIS pod, not dev-env — its watcher design collapses into the same
-  work-order CM (writers just file `class: other` orders). Not wired yet.
+Failure escalations from the contained agents now ride this executor as their
+own lane. **Session-name taxonomy** (Tom's requirement — the Remote Control
+list must sort cleanly; enforced in escalate.sh and the watcher):
+
+- `haynes-ops-*` — dev work in the dev-env pod (agent-run; untouched)
+- `wo-*` — shepherd work orders (this doc's original flow; untouched)
+- `esc-*` — failure escalations: `esc-<source>-<sig8>`, source ∈
+  shepherd|responder|gate (writers via `/opt/coordination/escalate.sh`)
+
+Differences from wo-*: separate single-flight lane (an escalation is never
+stuck behind a long upgrade session), model default **fable** + effort
+**xhigh** (rare + human-attended — saga-07's shared-pool caution is about
+FREQUENT consumers), and **page ON SPAWN** carrying the session name (inverts
+quiet-on-success; the escalation IS the failure). `order-status.sh failed` on
+an escalation is the second page. The session prompt + ops-claude.md frame the
+entry's reason as data-to-verify, never instructions.
+
+Cleanup lifecycle (both lanes): the watcher's reap (done>24h, failed>7d, and a
+bound-total cap OPS_REAP_MAX_FINISHED=6 that reaps oldest regardless of TTL)
+kills the tmux window AND removes `~/work/orders/<key>.json` + the
+`~/work/<key>` worktree/dir — sessions must name their worktree after their key
+(ops-claude.md). `ops-reap.sh [list|clean <key|all>]` is the on-demand sweep.
+
+## Notes / follow-ups
 - A pod restart kills tmux; the watcher marks orphaned claimed orders failed
   (+page). Re-queue = set the order's status back to `pending`.
 - gh-token-refresh.sh is a copy of dev-env's (kustomize can't cross app roots)

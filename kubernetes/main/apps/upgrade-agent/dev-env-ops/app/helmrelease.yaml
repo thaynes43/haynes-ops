@@ -55,6 +55,13 @@ spec:
               # models draw ONE plan pool (Tom-verified 2026-07-13, saga 07).
               # A work order may override per-order via its `model` field.
               OPS_SESSION_MODEL: opus
+              # esc-* failure escalations get the top model (Tom's call, backlog
+              # 12): rare + human-attended is exactly where Fable belongs — the
+              # shared-pool caution above is about FREQUENT consumers.
+              OPS_ESC_MODEL: fable
+              # Default reasoning effort for every session (per-order `effort`
+              # field overrides).
+              OPS_SESSION_EFFORT: xhigh
               # Metered fallback if the plan token is absent/rejected (the
               # session launcher prefers the plan token, respond.sh pattern).
               ANTHROPIC_API_KEY:
