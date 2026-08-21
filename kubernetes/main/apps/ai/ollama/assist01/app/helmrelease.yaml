@@ -82,13 +82,20 @@ spec:
                   identifier: app
                   port: http
     persistence:
+      # Models live on the gasha01 NFS/cephFS share (like assist02/prime) so they
+      # survive node re-images instead of being wiped with openebs-hostpath.
+      # (Flipped 2026-08-21: the old assist01-models hostpath PVC was empty —
+      # this instance had never pulled a model to it.)
       models:
-        enabled: true
-        existingClaim: assist01-models
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
         advancedMounts:
           ollama:
             app:
               - path: *modelPath
+                subPath: misc/ollama/assist01-models
+                readOnly: false
       config:
         enabled: true
         existingClaim: ollama-assist01
