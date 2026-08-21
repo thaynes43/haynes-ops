@@ -126,12 +126,7 @@ spec:
         hosts: ["prometheus.haynesops.com"]
         pathType: Prefix
       prometheusSpec:
-        # MIGRATION STOP (2026-08-21, remove in the follow-up PR): scaled to 0 so
-        # the owner can delete the old hostpath PVC; the TSDB snapshot is already
-        # staged on gasha01 NFS and gets copied into the new RBD volume after
-        # Prometheus restarts on it. While this is merged the Watchdog heartbeat
-        # to healthchecks.io is silent — pause that check or expect its page.
-        replicas: 0
+        replicas: 1
         scrapeInterval: 1m # Must match interval in Grafana Helm chart
         podMonitorSelectorNilUsesHelmValues: false
         probeSelectorNilUsesHelmValues: false
