@@ -1,0 +1,40 @@
+---
+# Observability storage-migration surgery for the dev-env agent (2026-08-21).
+# Migrating an operator-managed monitoring PVC to a new StorageClass (e.g. the
+# Prometheus/Loki move off openebs-hostpath onto the external-ceph gasha01-rbd
+# class) needs two destructive verbs the OPERATOR-tier ClusterRole withholds:
+# delete the old PVC, and delete the Helm-owned StatefulSet whose immutable
+# volumeClaimTemplate would otherwise pin the old class. Both are granted here,
+# SCOPED to this namespace only — exactly like the CNPG `database`-scoped grant
+# (see database/cloudnative-pg/app/dev-env-rbac.yaml) — so the agent can never
+# delete a media/HA/database volume or workload. Without this, the migration
+# had to borrow the headlamp cluster-admin SA (memory:
+# headlamp-clusteradmin-escape-hatch); this replaces that with an auditable,
+# namespace-bounded grant. Lives with the kube-prometheus-stack app (not
+# dev-env) because dev-env's Flux targetNamespace would rewrite the Role's
+# namespace; a namespaced Role here covers every observability app (Prometheus,
+# Loki, ...) regardless of which app's kustomization creates it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-observability-storage
+rules:
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    verbs: [delete, create]
+  - apiGroups: [apps]
+    resources: [statefulsets]
+    verbs: [delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-observability-storage
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-observability-storage
+subjects:
+  - kind: ServiceAccount
+    name: dev-env
+    namespace: dev
