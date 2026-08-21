@@ -34,6 +34,16 @@ spec:
       - resources:
           kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
           namespaces: [rook-ceph]
+      # Standalone ceph-csi for the EXTERNAL proxmox ceph (gasha01-rbd StorageClass,
+      # 2026-08-21): nodeplugin + provisioner need privileged/hostPath (/sys,
+      # /lib/modules, /dev, kubelet dirs) for the same reasons rook's csi pods do.
+      # Named, not whole-namespace, per this file's rule.
+      - resources:
+          kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
+          namespaces: [ceph-csi]
+          names:
+            - gasha01-rbd-ceph-csi-rbd-nodeplugin*
+            - gasha01-rbd-ceph-csi-rbd-provisioner*
       # kube-system: CNI, device plugins, spegel, NFD, and the control-plane STATIC pods
       # (mirror pods re-created on node reboot). Named, never whole-namespace.
       - resources:
