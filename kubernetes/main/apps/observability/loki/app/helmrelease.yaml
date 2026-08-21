@@ -26,8 +26,8 @@ spec:
       strategy: rollback
       retries: 3
   dependsOn:
-    - name: openebs
-      namespace: openebs-system
+    - name: gasha01-rbd
+      namespace: ceph-csi
   values:
     deploymentMode: SingleBinary
     loki:
@@ -58,13 +58,24 @@ spec:
               prefix: loki_index_
               period: 24h
       limits_config:
-        retention_period: 14d
+        # 90d (owner-sized 2026-08-21): ~47GB steady-state at the measured
+        # ~0.5GB/day — comfortably inside the 128Gi RBD volume below.
+        retention_period: 90d
     singleBinary:
       replicas: 1
       persistence:
         enabled: true
-        storageClass: openebs-hostpath
-        size: 100Gi
+        # External proxmox ceph via ceph-csi (unpinned from w03; survives node
+        # loss; independent of rook). Migration 2026-08-21 was a FRESH START —
+        # the old 14d of logs stayed on the deleted hostpath PVC by owner call
+        # (history preservation was only requested for metrics).
+        storageClass: gasha01-rbd
+        size: 128Gi
+    # Loki exported no metrics at all before 2026-08-21 (no ServiceMonitor —
+    # found during the retention audit); ingest rate is now scrapeable.
+    monitoring:
+      serviceMonitor:
+        enabled: true
     gateway:
       replicas: 0
     backend:

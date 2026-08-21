@@ -23,8 +23,11 @@ spec:
   dependsOn:
     - name: prometheus-operator-crds
       namespace: observability
+    # openebs still backs the Alertmanager PVCs; gasha01-rbd backs Prometheus.
     - name: openebs
       namespace: openebs-system
+    - name: gasha01-rbd
+      namespace: ceph-csi
   values:
     crds:
       enabled: false
@@ -123,6 +126,12 @@ spec:
         hosts: ["prometheus.haynesops.com"]
         pathType: Prefix
       prometheusSpec:
+        # MIGRATION STOP (2026-08-21, remove in the follow-up PR): scaled to 0 so
+        # the owner can delete the old hostpath PVC; the TSDB snapshot is already
+        # staged on gasha01 NFS and gets copied into the new RBD volume after
+        # Prometheus restarts on it. While this is merged the Watchdog heartbeat
+        # to healthchecks.io is silent — pause that check or expect its page.
+        replicas: 0
         scrapeInterval: 1m # Must match interval in Grafana Helm chart
         podMonitorSelectorNilUsesHelmValues: false
         probeSelectorNilUsesHelmValues: false
@@ -135,8 +144,13 @@ spec:
           - auto-gomemlimit
           - memory-snapshot-on-shutdown
           - new-service-discovery-manager
-        retention: 14d
-        retentionSize: 70GB
+        # Long-horizon retention on the external proxmox ceph (owner-sized
+        # 2026-08-21: 2Ti cap ≈ 3.5y rolling at the measured ~1.4GB/day).
+        # retentionSize is the binding cap — the time cap is deliberately above
+        # it so disk, not the calendar, decides. RBD thin-provisions; the
+        # volume is expandable (allowVolumeExpansion) if growth accelerates.
+        retention: 5y
+        retentionSize: 1800GB
         resources:
           requests:
             cpu: 500m
@@ -145,10 +159,10 @@ spec:
         storageSpec:
           volumeClaimTemplate:
             spec:
-              storageClassName: openebs-hostpath
+              storageClassName: gasha01-rbd
               resources:
                 requests:
-                  storage: 75Gi
+                  storage: 2Ti
     prometheus-node-exporter:
       fullnameOverride: node-exporter
       prometheus:
