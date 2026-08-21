@@ -11,6 +11,10 @@ metadata:
   name: ytdrivarr-postgres16
 spec:
   instances: 1
+  # Single-instance cluster: the operator-generated `-primary` PDB (minAvailable: 1)
+  # would make the pod eviction-proof and stall every node drain (2026-08-21 Talos
+  # roll). No PDB on a singleton — availability is the pod itself.
+  enablePDB: false
   imageName: ghcr.io/cloudnative-pg/postgresql:16.4-34
   primaryUpdateStrategy: unsupervised
   storage:

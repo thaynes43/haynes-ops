@@ -2,9 +2,10 @@
 PodDisruptionBudget templates.
 
 Rendered once per service block under .Values.podDisruptionBudgets
-when that block has `enabled: true`. Disabled by default on all
-services so `helm install` on a single-replica / single-node cluster
-doesn't block `kubectl drain` during development.
+when that block has `enabled: true`, the component itself is enabled,
+AND the component runs more than one replica. Disabled by default on
+all services so `helm install` on a single-replica / single-node
+cluster doesn't block `kubectl drain` during development.
 
 On multi-node production clusters, flip `enabled: true` per service
 and raise `replicaCount` + `minAvailable` together — a PDB with
@@ -17,8 +18,13 @@ want.
        was disabled in the release values but its default-enabled PDB still
        rendered — an orphan PDB with minAvailable: 1 and zero matching pods
        fires KubePdbNotEnoughHealthyPods forever). */}}
+{{- /* Also skip when the component runs a single replica (2026-08-21: gateway
+       and meetingApi were scaled to replicaCount: 1 in release values while
+       their default-enabled PDBs kept minAvailable: 1 — ALLOWED DISRUPTIONS 0,
+       so every node drain stalled until a human deleted the pod). A PDB on a
+       single replica protects nothing: the pod is the availability. */}}
 {{- $comp := (index $.Values $name) | default dict }}
-{{- if and $cfg.enabled (dig "enabled" true $comp) }}
+{{- if and $cfg.enabled (dig "enabled" true $comp) (gt (int (dig "replicaCount" 1 $comp)) 1) }}
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
