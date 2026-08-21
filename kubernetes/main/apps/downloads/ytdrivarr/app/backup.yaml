@@ -1,0 +1,45 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/external-secrets.io/externalsecret_v1beta1.json
+# S3 credentials for ytdrivarr-postgres16's barman backups — same 1Password
+# `aws` item the database-ns cloudnative-pg-secret pulls, mirrored into
+# `downloads` because CNPG resolves s3Credentials in the Cluster's own
+# namespace.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ytdrivarr-postgres16-backup
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: onepassword-connect
+  target:
+    name: ytdrivarr-postgres16-backup-secret
+    template:
+      engineVersion: v2
+      metadata:
+        labels:
+          cnpg.io/reload: "true"
+  data:
+    - secretKey: aws-access-key-id
+      remoteRef:
+        key: aws
+        property: AWS_ACCESS_KEY_ID
+    - secretKey: aws-secret-access-key
+      remoteRef:
+        key: aws
+        property: AWS_SECRET_ACCESS_KEY
+    - secretKey: aws-region
+      remoteRef:
+        key: aws
+        property: AWS_REGION
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: ytdrivarr-postgres16
+spec:
+  schedule: "@daily"
+  immediate: true
+  backupOwnerReference: self
+  cluster:
+    name: ytdrivarr-postgres16
