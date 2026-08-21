@@ -1,0 +1,47 @@
+---
+# ceph-csi against the EXTERNAL proxmox ceph cluster (gasha01/pve fleet,
+# fsid 9b0628e1, public network 192.168.40.0/24). Deliberately standalone —
+# NOT wired through rook's csi-operator machinery — so storage from the
+# proxmox array shares no fate with the in-cluster rook-ceph it was chosen
+# to be independent from (monitoring lives here so a rook incident can't
+# blind it). Privileged PSA: the rbd nodeplugin mounts block devices.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ceph-csi
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/notification.toolkit.fluxcd.io/provider_v1beta3.json
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: alert-manager
+  namespace: ceph-csi
+spec:
+  type: alertmanager
+  address: http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts/
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/notification.toolkit.fluxcd.io/alert_v1beta3.json
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: alert-manager
+  namespace: ceph-csi
+spec:
+  providerRef:
+    name: alert-manager
+  eventSeverity: error
+  eventSources:
+    - kind: HelmRelease
+      name: "*"
+  exclusionList:
+    - "error.*lookup github\\.com"
+    - "error.*lookup raw\\.githubusercontent\\.com"
+    - "dial.*tcp.*timeout"
+    - "waiting.*socket"
+  suspend: false

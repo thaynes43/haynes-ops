@@ -1,0 +1,27 @@
+---
+# Block storage from the proxmox ceph array (155T raw, HDD-backed). Unpinned
+# from any node — pods reschedule in minutes instead of waiting out a node
+# reboot — and independent of rook-ceph. Intended first tenants: Prometheus
+# TSDB + Loki (their databases are unsupported on NFS, which is why the
+# existing gasha01 NFS mounts don't cover them).
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gasha01-rbd
+provisioner: gasha01.rbd.csi.ceph.com
+parameters:
+  clusterID: 9b0628e1-1fe9-49d2-b65b-746d05215e3d
+  pool: k8s-rbd
+  imageFeatures: layering
+  csi.storage.k8s.io/fstype: ext4
+  csi.storage.k8s.io/provisioner-secret-name: gasha01-ceph-csi
+  csi.storage.k8s.io/provisioner-secret-namespace: ceph-csi
+  csi.storage.k8s.io/controller-expand-secret-name: gasha01-ceph-csi
+  csi.storage.k8s.io/controller-expand-secret-namespace: ceph-csi
+  csi.storage.k8s.io/node-stage-secret-name: gasha01-ceph-csi
+  csi.storage.k8s.io/node-stage-secret-namespace: ceph-csi
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+mountOptions:
+  - discard
