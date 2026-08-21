@@ -3,8 +3,10 @@
 # ytdrivarr's OWN small Postgres 16 instance in `downloads` (DESIGN-045 Q-02 ruling — an own
 # instance, standalone-shaped, not the shared database-ns cluster). CNPG generates the
 # `ytdrivarr-postgres16-app` secret whose `uri` key the service consumes as DATABASE_URL.
-# NOTE (owner follow-up): no barmanObjectStore backup wired here yet (keeps the first cut
-# self-contained); add S3 backup + a second instance if HA/PITR is wanted.
+# Barman S3 backups added 2026-08-21 (was the only unprotected durable state on
+# openebs-hostpath): daily ScheduledBackup + WAL archiving to the same
+# cnpg-haynesops bucket the database-ns clusters use (creds via
+# backup.yaml's ExternalSecret). Still single-instance by design.
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -32,6 +34,29 @@ spec:
       memory: 1Gi
   monitoring:
     enablePodMonitor: true
+  backup:
+    retentionPolicy: 30d
+    barmanObjectStore:
+      data:
+        compression: bzip2
+      wal:
+        compression: bzip2
+        maxParallel: 8
+      destinationPath: s3://cnpg-haynesops/
+      endpointURL: https://s3.us-east-2.amazonaws.com
+      # Note: serverName version needs to be incremented
+      # when recovering from an existing cnpg cluster
+      serverName: ytdrivarr-postgres16-v1
+      s3Credentials:
+        accessKeyId:
+          name: ytdrivarr-postgres16-backup-secret
+          key: aws-access-key-id
+        secretAccessKey:
+          name: ytdrivarr-postgres16-backup-secret
+          key: aws-secret-access-key
+        region:
+          name: ytdrivarr-postgres16-backup-secret
+          key: aws-region
   bootstrap:
     initdb:
       database: ytdrivarr
