@@ -1,0 +1,1082 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentaiton for my home-ops style repository so I can have an idea what past me did when something breaks. Hopefully someone else finds something useful here too!">
+      
+      
+        <meta name="author" content="Tom Haynes">
+      
+      
+        <link rel="canonical" href="https://haynesops.com/renovate/tier4-audit-2026-07-02/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Tier-4 hands-off upgrades — PART 1 hardening audit (2026-07-02) - HaynesOps</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tier-4-hands-off-upgrades-part-1-hardening-audit-2026-07-02" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="HaynesOps" class="md-header__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            HaynesOps
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Tier-4 hands-off upgrades — PART 1 hardening audit (2026-07-02)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5M7 15a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="HaynesOps" class="md-nav__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    HaynesOps
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../this-site/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    This Site
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    This Site
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cluster/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cluster Essentials
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cluster Essentials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cluster/rook-ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rook Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheat Sheets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cheat Sheets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/siderolabs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Siderolabs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/kubernetes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kubernetes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#fixes-already-landed-commit-2dfc71ed-verified-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixes already landed (commit 2dfc71ed, verified live)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fixes already landed (commit 2dfc71ed, verified live)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#f1-high-diff-scope-waved-through-version-shaped-edits-to-config-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F1 — [HIGH] diff-scope waved through version-shaped edits to config files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f2-medium-restrict-rbac-escalation-was-audit-blind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F2 — [MEDIUM] restrict-rbac-escalation was audit-blind
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-findings-surfaced-for-your-call-not-yet-actioned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open findings — surfaced for your call (not yet actioned)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Open findings — surfaced for your call (not yet actioned)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#o1-phase-c-blocker-restrict-image-registries-101-audit-fails-are-all-legit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        O1 — [Phase C blocker] restrict-image-registries: 101 audit fails are all legit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#o2-phase-c-rbac-escalation-enforce-needs-2-name-scoped-exceptions-or-it-wedges-flux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        O2 — [Phase C] rbac-escalation enforce needs 2 name-scoped exceptions or it wedges Flux
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#o3-phase-c-pod-security-baseline-361-fails-the-exception-set-to-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        O3 — [Phase C] pod-security-baseline: 361 fails = the exception set to build
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#o4-your-decision-anthropic-spend-cap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        O4 — [your decision] Anthropic spend cap
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#o5-recommend-not-required-cosign-image-provenance-for-ghcriothaynes43" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        O5 — [recommend, not required] cosign image provenance for ghcr.io/thaynes43/*
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checklist-items-verified-ok-no-change-needed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checklist items verified OK (no change needed)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-gaps-that-are-by-design-not-bugs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known gaps that are by-design, not bugs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-weighed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives weighed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scalability-toward-the-cluster-bot-vision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scalability toward the "cluster bot" vision
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="tier-4-hands-off-upgrades-part-1-hardening-audit-2026-07-02">Tier-4 hands-off upgrades — PART 1 hardening audit (2026-07-02)</h1>
+<p>Independent, skeptical audit of everything built so far (bot / holds / gate /
+shepherd / Kyverno Phase A / diff-scope), per
+<a href="../../HANDOFF-2026-07-01-tier4-hands-off.md"><code>HANDOFF-2026-07-01-tier4-hands-off.md</code></a>
+PART 1. Method was <strong>empirical over reasoning</strong>: 22 crafted malicious diffs run
+through <code>diff-scope.sh</code>, live Kyverno report/RBAC/webhook inspection on the running
+cluster, and live GitHub ruleset/branch-protection/repo-settings queries.</p>
+<p><strong>Bottom line:</strong> the architecture is sound and the two primary controls do what they
+claim — with <strong>two real holes I found and fixed</strong>, and a set of Phase-C landmines that
+would have broken workloads on a blind enforce. Details, ranked by severity.</p>
+<hr />
+<h2 id="fixes-already-landed-commit-2dfc71ed-verified-live">Fixes already landed (commit <code>2dfc71ed</code>, verified live)</h2>
+<h3 id="f1-high-diff-scope-waved-through-version-shaped-edits-to-config-files">F1 — [HIGH] diff-scope waved through version-shaped edits to config files</h3>
+<p><strong>The PRIMARY gate had a bypass.</strong> <code>diff-scope.sh</code> GATE B proves a diff is a "pure
+version bump" by masking version tokens (<code>1.40.0</code>→<code>VER</code>, <code>sha256:…</code>→<code>DIGEST</code>) and
+requiring the removed-line multiset to equal the added-line multiset. GATE A's
+path-denylist covered the Kyverno tree, <code>rbac</code>-named files, <code>scripts/diff-scope.sh</code>,
+and <code>.github/**</code>-non-workflow — but <strong>not <code>.renovate/**</code> or arbitrary root files</strong>.</p>
+<p>Because GATE B masks <em>any</em> version token on <em>any</em> line, an in-place edit to a config
+file that only changes a version range slips through as a "pure bump":</p>
+<div class="highlight"><pre><span></span><code># proven before the fix — exit 0 (auto-mergeable):
+-      allowedVersions: '&lt;6.2.1'
++      allowedVersions: '&lt;99.0.0'      # .renovate/holds.json5 — widens/lifts a hold
+</code></pre></div>
+<p><strong>Failure scenario:</strong> a prompt-injected shepherd (it reads attacker-influenceable
+release notes) in the future auto-merge mode edits <code>.renovate/holds.json5</code> to lift the
+EMQX hold (or any hold), diff-scope reports "pure version bump → safe to auto-merge",
+and the known-broken upgrade it was protecting against flows in unattended. Same shape
+lets it edit any version-pinned value in a non-manifest file.</p>
+<p><strong>Fix:</strong> GATE A now blocks <strong>any changed path (add/modify/delete) outside
+<code>kubernetes/**</code></strong>. Only image-tag/digest + chart-version bumps to <code>kubernetes/**</code>
+manifests are auto-mergeable; <code>.renovate/**</code>, <code>.github/**</code>, scripts, and root files
+fall to human review. diff-scope is author-scoped to the bot, so this never gates
+Renovate/human PRs, and the bot has no legitimate auto-merge edit outside <code>kubernetes/**</code>
+(the holds-protocol PR is <em>meant</em> to be human-reviewed).</p>
+<p><strong>Proof:</strong> 22-case adversarial suite — the widen-hold case now BLOCKs, <code>.renovate/</code>,
+<code>.github/</code>, and root-file edits all BLOCK, and a legit <code>kubernetes/**</code> tag bump still
+passes SAFE. 18/19 core cases pass; the 1 "miss" is a benign false-positive (adding a
+digest pin to a previously-unpinned tag → human review), which the shepherd never does.</p>
+<h3 id="f2-medium-restrict-rbac-escalation-was-audit-blind">F2 — [MEDIUM] restrict-rbac-escalation was audit-blind</h3>
+<p>The <code>restrict-rbac-escalation</code> policy matches ClusterRoleBinding/ClusterRole/
+RoleBinding/Role, but the Kyverno chart's reports-controller role <strong>lacks read on
+<code>rbac.authorization.k8s.io</code></strong>. Live logs: <code>clusterrolebindings … is forbidden … cannot
+list</code> + <code>failed to start watcher</code>. Result: <strong>zero PolicyReports for RBAC</strong> despite 3
+cluster-admin bindings existing on the cluster — the policy's audit was silently empty.</p>
+<p><strong>Important:</strong> the <strong>admission (enforce) path is unaffected</strong> — the resource webhook
+already intercepts CRB/CR/RB/Role, so enforce <em>will</em> deny a bad binding. This was an
+audit-<em>visibility</em> gap, not an enforcement gap. But it hid exactly the data Phase C
+needs (the violator set) and any future RBAC drift.</p>
+<p><strong>Fix:</strong> added an aggregated ClusterRole (<code>kyverno:reports-controller:rbac-read</code>,
+label <code>rbac.kyverno.io/aggregate-to-reports-controller: "true"</code>) granting get/list/watch
+on those four kinds. <strong>Proof:</strong> after reconcile the aggregate now lists the RBAC
+resources, the forbidden errors are gone, and restrict-rbac-escalation results began
+populating (was 0).</p>
+<hr />
+<h2 id="open-findings-surfaced-for-your-call-not-yet-actioned">Open findings — surfaced for your call (not yet actioned)</h2>
+<h3 id="o1-phase-c-blocker-restrict-image-registries-101-audit-fails-are-all-legit">O1 — [Phase C blocker] restrict-image-registries: 101 audit fails are all <em>legit</em></h3>
+<p>The 101 "fail"s are <strong>not attackers</strong> — they're real images whose string doesn't match
+the host pattern:
+- <code>reg.kyverno.io/*</code> (Kyverno's own images), <code>mirror.gcr.io/*</code> — not in the allowlist.
+- <strong>bare/implicit-docker.io images</strong> — <code>busybox:latest</code>, <code>node:lts-alpine</code>. Kyverno's
+  <code>pattern</code> match is literal; <code>busybox</code> does <strong>not</strong> start with <code>docker.io/</code>, so it
+  fails even though it <em>is</em> a docker.io image.</p>
+<p><strong>Consequence:</strong> flipping this policy to Enforce as-is would <strong>deny</strong> those workloads at
+apply. Two options for Phase C, your call:
+- <strong>(a) Fix the allowlist</strong> — add <code>reg.kyverno.io</code>, <code>mirror.gcr.io</code>, and handle
+  bare-image normalization (Kyverno can't auto-prefix <code>docker.io</code> in <code>pattern</code>; the
+  clean fix is a small mutate-normalize or switching to an image-name CEL check).
+- <strong>(b) De-prioritize it.</strong> Be honest about its value: a <em>host</em>-level allowlist of
+  <code>ghcr.io/* | docker.io/* | quay.io/*</code> barely constrains an attacker (anyone can push
+  to those hosts). The org-swap threat (<code>ghcr.io/home-operations/x</code> →
+  <code>ghcr.io/attacker/x</code>) is caught by <strong>diff-scope</strong>, not this policy. Its real residual
+  value is only blocking a <em>brand-new</em> registry host. I lean (a)-lite: allow the two
+  missing legit registries and enforce, but treat it as the weakest of the three
+  policies and rely on diff-scope + (recommended) cosign for the actual image trust.</p>
+<h3 id="o2-phase-c-rbac-escalation-enforce-needs-2-name-scoped-exceptions-or-it-wedges-flux">O2 — [Phase C] rbac-escalation enforce needs 2 name-scoped exceptions or it wedges Flux</h3>
+<p>Enforce fires on CREATE/UPDATE. Two existing privileged bindings are <strong>re-applied by
+Flux</strong> and would be denied on the next reconcile:
+- <code>cluster-reconciler-flux-system</code> → cluster-admin, managed by <strong>kustomize-controller</strong>
+  (the Flux bootstrap binding). Deny → the <code>flux</code> Kustomization wedges → GitOps stops.
+- <code>headlamp-admin</code> → cluster-admin, managed by <strong>helm-controller</strong> (chart RBAC).</p>
+<p>Fix in Phase C: <strong>PolicyExceptions by resource name</strong> (<code>cluster-reconciler-flux-system</code>,
+<code>headlamp-admin</code>) — <em>not</em> a requester/subject exclude (invalid under <code>background:true</code>)
+and <em>not</em> excluding kustomize-controller (that's the apply path a malicious PR takes;
+must stay covered). 0 namespaced RoleBindings to admin/edit/cluster-admin exist, so no
+RB exceptions needed.</p>
+<h3 id="o3-phase-c-pod-security-baseline-361-fails-the-exception-set-to-build">O3 — [Phase C] pod-security-baseline: 361 fails = the exception set to build</h3>
+<p>Expected Phase-A output. Big buckets: rook-ceph (251), kube-system (device-plugins,
+coredns), observability, ai/comfyui, plus invisible subchart pods. Phase C converts
+these into per-workload PolicyExceptions — critically the VolSync privileged movers by
+their <strong>label</strong> (<code>volsync.backube/privileged-movers: "true"</code>) across ~18 namespaces, not
+a name glob. This is enumeration work, not a decision.</p>
+<h3 id="o4-your-decision-anthropic-spend-cap">O4 — [your decision] Anthropic spend cap</h3>
+<p>The shepherd run caps at <code>--max-budget-usd 5.00</code> / <code>--max-turns 40</code> per run, but there's
+<strong>no hard monthly ceiling</strong> on the Anthropic key. For an unattended auto-summon loop
+(Phase D), recommend setting a console-level monthly spend limit as a backstop against a
+runaway summon loop. Your call on the number.</p>
+<h3 id="o5-recommend-not-required-cosign-image-provenance-for-ghcriothaynes43">O5 — [recommend, not required] cosign image provenance for <code>ghcr.io/thaynes43/*</code></h3>
+<p>The one gap neither diff-scope nor the registry policy closes: a <strong>pure tag bump to a
+malicious image on an already-allowed repo path</strong>. For the highest-trust/highest-risk
+set — our self-built images (<code>upgrade-agent</code>, <code>upgrade-shepherd</code>, <code>appdaemon</code>) — Kyverno
+<code>verifyImages</code> with keyless (GitHub OIDC) cosign attestation would prove the image was
+built by our CI, not swapped. Renovate <code>minimumReleaseAge</code> is the current partial
+mitigation. Recommend for Phase C+ once enforce is stable.</p>
+<hr />
+<h2 id="checklist-items-verified-ok-no-change-needed">Checklist items verified OK (no change needed)</h2>
+<ul>
+<li><strong>Author gate is sound.</strong> <code>github.event.pull_request.user.login</code> is the immutable PR
+  <em>creator</em>; only the bot's installation token can author as <code>haynes-ops-bot[bot]</code>. A
+  human can't spoof it and the bot can't author as someone else.</li>
+<li><strong>Auto-merge cannot bypass a red check even without <code>--auto</code>.</strong> The bot is non-admin,
+  non-bypass. An immediate <code>gh pr merge</code> (no <code>--auto</code>) fails on a pending/red required
+  check; <code>gh pr merge --admin</code> fails (not admin). <code>--auto</code> is a robustness nicety
+  (queue-then-merge), <strong>not</strong> the safety boundary — the required check + non-admin token
+  is. So the allowlist not being able to <em>require</em> <code>--auto</code> (prefix glob) is acceptable.</li>
+<li><strong><code>allow_auto_merge: true</code></strong> at the repo — Phase D <code>--auto</code> and Renovate
+  <code>platformAutomerge</code> both work.</li>
+<li><strong>Admin bypass = RepositoryRole id 5</strong>, already the lone <code>bypass_actors</code> entry on the
+  Main ruleset (14013135). The bot is not in it. Matches the Phase-B plan.</li>
+<li><strong>The gate is genuinely read-only.</strong> ClusterRole is get/list/watch only — no
+  secrets, no pods/exec, no pods/log, no write verb anywhere. It pages Pushover through
+  its own egress CNP (<code>api.pushover.net</code>), independent of the Alertmanager it monitors.</li>
+<li><strong>PEM isolation holds.</strong> Two separate ExternalSecrets; the PEM is only in the
+  init-container env; <code>run-shepherd.sh</code> asserts <code>GITHUB_BOT_APP_PRIVATE_KEY</code> is unset in
+  the LLM container and refuses to run otherwise. Token is 1h TTL, single-repo,
+  contents+PR:write + checks:read.</li>
+<li><strong>Kyverno admission webhook covers RBAC + workloads</strong> (clusterrolebindings,
+  clusterroles, rolebindings, roles, pods, deployments, …) with <code>failurePolicy: Ignore</code>
+  (fail-open, as designed — never wedge Flux). PolicyExceptions are locked to the
+  <code>kyverno</code> namespace (GHSA-qjvc-p88j-j9rm), so the shepherd can't commit a
+  self-exempting exception elsewhere.</li>
+<li><strong>diff-scope GATE B is robust against injection.</strong> Multiset-equality means you cannot
+  add a net-new line without removing a line that masks identically; malicious tokens
+  (<code>command:</code>, <code>hostNetwork:</code>, <code>privileged:</code>, a new sidecar, an env var) never mask to a
+  version token, so they always break equality → BLOCK. Mid-line injection
+  (<code>tag: 1.40.1 hostNetwork: true</code>) also breaks equality. Org-swap on the same host,
+  new ClusterRoleBinding, new Deployment file, <code>serviceAccountName</code>, <code>privileged: true</code>,
+  <code>replicas: 3</code> — all BLOCK.</li>
+</ul>
+<h2 id="known-gaps-that-are-by-design-not-bugs">Known gaps that are by-design, not bugs</h2>
+<ul>
+<li><strong>Edge cluster has no branch protection</strong> and <strong>flux-local does not run on edge PRs</strong>
+  (<code>flux-local.yaml</code> is <code>branches: [main]</code>). diff-scope <em>does</em> run on edge. Phase B must
+  add an edge ruleset (require-PR + require diff-scope; <strong>not</strong> flux-local yet — a
+  skipped required check hangs forever). Tracked in the Phase-B plan.</li>
+<li><strong><code>Flux Local - Success</code> passes on <em>skipped</em> jobs</strong> (a bot PR touching only
+  non-<code>kubernetes/**</code> earns a trivially-green flux-local). This is <em>why</em> diff-scope must
+  be a required check and <em>why</em> F1's path-tightening matters — together they close it.</li>
+<li><strong>Backdoored-image gap</strong> (O5) — a malicious pure-tag bump on an allowed path. Mitigated
+  by <code>minimumReleaseAge</code>; cosign recommended.</li>
+</ul>
+<hr />
+<h2 id="alternatives-weighed">Alternatives weighed</h2>
+<ul>
+<li><strong>Kyverno vs native Validating Admission Policy (CEL, GA on k8s 1.35):</strong> stay on
+  Kyverno. VAP saves a controller but loses PolicyReports (the audit-then-enforce
+  workflow this whole plan is built on), PolicyExceptions, and autogen-for-controllers.
+  Not worth a rewrite. Note VAP as a future option if Kyverno ever becomes a liability.</li>
+<li><strong>Cluster-wide default-deny egress:</strong> real value but a large, breakage-prone project.
+  The two agents already have tight egress CNPs; a non-privileged exfil workload is a
+  broader threat than this upgrade pipeline. Defer to the platform phase (below).</li>
+<li><strong>Canary auto-merge to edge first:</strong> edge is powered off, so it can't runtime-validate.
+  The health-gate + one-at-a-time + Flux HR <code>strategy: rollback</code> <em>is</em> the canary here.</li>
+<li><strong>Branch-restricted bot (<code>shepherd/*</code> only):</strong> App tokens can't be branch-scoped; a
+  ruleset could restrict branch creation, but push-protection already forces the PR path,
+  so marginal. Optional.</li>
+<li><strong>diff-scope as Kyverno/Conftest policy instead of bash regex:</strong> the bash multiset
+  approach tested out strong (22 cases). A policy engine on the rendered PR is more work
+  for similar guarantees. Keep bash; revisit only if it grows unwieldy.</li>
+</ul>
+<hr />
+<h2 id="scalability-toward-the-cluster-bot-vision">Scalability toward the "cluster bot" vision</h2>
+<p>The bigger question you raised: is this on the path to an in-cluster, conversational
+agent that can answer "why is Pushover firing", "why is this HA sensor broken", "add an
+automation per hass-sandbox rules" — one or more products, maybe its own repo?</p>
+<p><strong>What's already right and generalizes:</strong>
+- <strong>The deterministic-detector / summoned-LLM split</strong> is the correct backbone. A cheap
+  always-on LLM-free monitor that pages, plus an expensive LLM summoned on demand,
+  generalizes to <em>any</em> domain (networking, HA, storage). Keep this seam.
+- <strong>The containment primitives are domain-agnostic:</strong> read-only-SA-by-default + egress
+  CNP + PEM/secret isolation via init-container + PR-path-only writes + per-run token +
+  Kyverno admission backstop. A second agent reuses all of these.</p>
+<p><strong>What does NOT yet reach the vision (the honest gaps):</strong>
+1. <strong>The shepherd is headless one-shot (<code>claude -p … --output-format json</code>), not
+   conversational.</strong> "Ask it why X" needs a <em>bidirectional, durable</em> channel — the
+   operator sends a message, the agent replies, back and forth. Today the only operator
+   channel is one-way Pushover. This is the single biggest gap between "today's renovate
+   goal" and "the cluster bot." Closing it means a chat bridge (Pushover replies /
+   Telegram / Slack / this harness's remote-control channel) into a longer-lived agent
+   session, not a CronJob Job.
+2. <strong>diff-scope is upgrade-shaped and won't transfer.</strong> "Pure version bump" is meaningless
+   for an HA-automation or networking agent that makes arbitrary edits. Treat diff-scope
+   as <strong>one member of a family of per-capability scope gates</strong> — each new domain needs
+   its own "what may this agent auto-apply vs. must a human review" gate, or it defaults
+   to human-review. Don't try to reuse diff-scope for a different domain.
+3. <strong>The upgrade-agent tree is copy-paste-shaped.</strong> A second agent today means duplicating
+   the ns/SA/CNP/init-token/run-script scaffold. Before the second domain lands, factor
+   the shared runtime (token mint, read-only SA + egress CNP templates, the
+   "summon-a-Job-with-a-prompt" mechanism, a Pushover page+reply bridge) into a reusable
+   Kustomize component (<code>kubernetes/shared/components/agent-runtime/</code>) or a dedicated
+   repo, so each new agent is a thin manifest + prompt + tool-allowlist on top.</p>
+<p><strong>Separate repo — yes, but not yet.</strong> The agent runtime (image, run scripts, tool
+allowlists, prompt/runbook library, tests, semver tags) is a <em>product</em> with its own
+release cadence, distinct from the cluster's desired-state — exactly the
+<code>hass-sandbox → appdaemon</code> shape. <strong>Trigger to split:</strong> when the agent gains its
+<strong>second domain</strong> (beyond renovate upgrades) <em>or</em> its first conversational surface. Until
+then the shepherd image building out of haynes-ops is fine and not worth the churn.</p>
+<p><strong>Recommendation:</strong> finish 100%-hands-off renovate on the current design (it's close and
+the seams are right), and treat "conversational bridge + agent-runtime component" as the
+first milestone of the platform phase — that's the fork where a dedicated repo earns its
+keep.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024-2025 Thomas Haynes
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.path", "navigation.indexes", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
