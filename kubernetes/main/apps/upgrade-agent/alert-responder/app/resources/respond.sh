@@ -67,6 +67,28 @@ STATE_TTL_HOURS="${RESPONDER_STATE_TTL_HOURS:-168}"
 STORM_THRESHOLD="${RESPONDER_STORM_THRESHOLD:-3}"
 COOLDOWN_HOURS="${RESPONDER_COOLDOWN_HOURS:-6}"
 MAX_PAGES_PER_HOUR="${RESPONDER_MAX_PAGES_PER_HOUR:-3}"
+# ── AUTONOMOUS REMEDIATION HANDOFF (2026-08-23, Tom's "autonomy first" policy) ──
+# The responder stays ENRICH-DON'T-ACT — it still has no write powers and still
+# never touches the cluster. What changed is where a completed `ACTION: urgent`
+# diagnosis GOES: instead of a second Pushover page telling Tom to go fix it, it
+# is handed to the rem-* lane in dev-env-ops, which fixes it inside its own
+# containment and pages only if it can't. Tom, verbatim: "If the agent fixes the
+# issue NO ESCALATION or PAGE or RC SESSION is necessary."
+#   * ACTION: none / investigate  → unchanged behaviour (suppress / page).
+#   * ACTION: urgent              → file a rem-* order, DO NOT page.
+# FAIL OPEN, ALWAYS: if the order cannot be filed, nobody has the problem, so we
+# page exactly as before. Silence is only ever earned by successfully handing the
+# incident to something that will act on it.
+REMEDIATION_ENABLED="${RESPONDER_REMEDIATION_ENABLED:-1}"
+REMEDIATE_SH="${RESPONDER_REMEDIATE_SH:-/opt/coordination/remediate.sh}"
+# Stale-lane watchdog deadlines. A rem-* order nobody claims (executor pod down)
+# or a session that stops reporting (wedged/killed) would otherwise turn an
+# urgent alert into permanent silence — the exact failure this whole redesign
+# exists to prevent. The responder runs every 10min regardless of cluster state,
+# which makes it the natural watchdog; it needs no new powers to be one.
+REM_PENDING_DEADLINE_MIN="${RESPONDER_REM_PENDING_DEADLINE_MIN:-20}"
+REM_RUNNING_DEADLINE_MIN="${RESPONDER_REM_RUNNING_DEADLINE_MIN:-120}"
+WORK_ORDER_CM="${RESPONDER_WORK_ORDER_CM:-upgrade-work-orders}"
 MODEL="${RESPONDER_MODEL:-claude-opus-5}"      # plan path: always latest Opus (2026-08-23)
 FALLBACK_MODEL="${RESPONDER_FALLBACK_MODEL:-claude-sonnet-5}"  # metered: never Fable/Opus (2026-08-23)
 MAX_TURNS="${RESPONDER_MAX_TURNS:-25}"
@@ -232,6 +254,44 @@ claim_entry() {  # $1=alertname ; emit the standard claim/cooldown entry VALUE (
   jq -nc --arg a "$1" --argjson now "$NOW" \
     '{alertname:$a, attempted:"1", first_seen:($now|tostring)} | tojson'
 }
+
+# ── 0. REMEDIATION-LANE WATCHDOG (runs EVERY cycle, before the alert poll) ──
+# The handoff to the rem-* lane trades a page for a promise. This is what keeps
+# the promise honest: if an order is never claimed, or a session stops reporting,
+# escalate it so a human hears about the incident that was supposed to be handled
+# silently. Runs even on quiet cycles — a dead executor is most likely to be
+# discovered when nothing else is happening. Costs one kubectl GET, no LLM.
+rem_watchdog() {
+  local cm stale key o st age reason sig
+  cm="$(kubectl -n "$NS" get configmap "$WORK_ORDER_CM" -o json 2>/dev/null)" || return 0
+  stale="$(printf '%s' "$cm" | jq -r --argjson now "$NOW" \
+      --argjson pend "$(( REM_PENDING_DEADLINE_MIN * 60 ))" \
+      --argjson run "$(( REM_RUNNING_DEADLINE_MIN * 60 ))" '
+    (.data // {}) | to_entries[] | select(.key | startswith("rem-"))
+    | (.value | fromjson? // {}) as $o
+    | select(
+        ($o.status == "pending" and ((($o.created // "0")|tonumber? // 0) < ($now - $pend)))
+        or ($o.status == "claimed" and ((($o.updated // "0")|tonumber? // 0) < ($now - $run)))
+      )
+    | "\(.key)\t\($o.status)\t\((($now - (($o.updated // $o.created // "0")|tonumber? // 0))/60)|floor)\t\($o.sig // "")\t\($o.reason // "")"' 2>/dev/null)"
+  [ -n "$stale" ] || return 0
+  printf '%s\n' "$stale" | while IFS=$'\t' read -r key st age sig reason; do
+    [ -n "$key" ] || continue
+    log "REM-WATCHDOG: $key has been '$st' for ${age}min (deadline: pending ${REM_PENDING_DEADLINE_MIN}min / claimed ${REM_RUNNING_DEADLINE_MIN}min) — escalating; the incident it was handed is NOT resolved."
+    # Mark it terminal FIRST so a slow-but-alive session cannot also close it,
+    # and so this watchdog does not re-fire on the next cycle.
+    kubectl -n "$NS" get configmap "$WORK_ORDER_CM" -o json 2>/dev/null \
+      | jq --arg k "$key" --arg now "$NOW" '
+          .data[$k] = ((.data[$k] | fromjson? // {})
+            | .status="failed" | .note="stale-lane watchdog: no progress before the deadline" | .updated=$now | tojson)' \
+      | kubectl -n "$NS" replace -f - >/dev/null 2>&1 \
+      || log "REM-WATCHDOG: could not mark $key failed (escalating anyway)."
+    ESCALATE_SIG="${sig:-$key}" bash /opt/coordination/escalate.sh rem-watchdog "responder:${HOSTNAME:-unknown}" \
+      "An autonomous remediation stalled: ${key} sat '${st}' for ${age}min with no progress. The underlying condition (${reason}) was handed to the silent lane and therefore did NOT page — it is still unhandled. Check the dev-env-ops pod (watcher alive? tmux window? ~/work/orders/${key}.log) and treat the original alert as open." \
+      || log "REM-WATCHDOG: escalate.sh failed for $key (best-effort)."
+  done
+}
+if [ "$REMEDIATION_ENABLED" = "1" ]; then rem_watchdog; fi
 
 # ── 1. Poll Alertmanager (the $0 path). ──
 alerts="$(curl -sf --max-time 15 "$AM/api/v2/alerts?active=true&silenced=false&inhibited=false" 2>/dev/null)"
