@@ -58,9 +58,13 @@ it can look like a real incident and pull that agent (or Tom) in for nothing.
 **Before disruptive work, declare it:**
 
 ```bash
-declare-activity start "restarting z2m + emqx (broker migration test)" 45m
+# --scope is REQUIRED: the namespaces/apps/nodes your work can disturb.
+# --ttl defaults to 45m, caps at 8h (2h for the `cluster` wildcard).
+declare-activity start "restarting z2m + emqx (broker migration test)" \
+  --scope home-automation,zigbee2mqtt,emqx --ttl 45m
+# -> declared act-142317-91 ... (the id is printed, and `list` reprints it)
 # ... do the work ...
-declare-activity end
+declare-activity end act-142317-91   # ALWAYS end early when you finish
 ```
 
 Declarations are **scoped and TTL'd** on this pod's PVC; the remediation session

@@ -76,6 +76,14 @@ fi
 # Match = any hint appears in any scope token or vice versa (substring, both
 # directions, case-insensitive), or the declaration scope is the explicit
 # wildcard "cluster"/"*" (which the writer discourages but permits).
+#
+# NOTE the `. as $t` binding below — it is load-bearing. The original form wrote
+# `any(contains($x) or ($x | contains(.)))`, but after the `|` the `.` inside
+# contains() rebinds to $x, making that half `$x contains $x` — ALWAYS TRUE. Any
+# live declaration then matched EVERY alert: a blanket cluster-wide mute, the
+# exact failure mode declare-activity's mandatory --scope exists to prevent.
+# Latent until #2568 put `declare-activity` on PATH (nothing could declare
+# before), so it activates with that PR. Bind the scope token explicitly.
 matched='[]'
 if [ -n "$hints" ] && [ "$declared" != "[]" ]; then
   matched="$(printf '%s' "$declared" | jq -c --arg hints "$hints" '
@@ -84,7 +92,7 @@ if [ -n "$hints" ] && [ "$declared" != "[]" ]; then
         | ((.scope // []) | map(ascii_downcase)) as $s
         | select(
             ($s | any(. == "cluster" or . == "*"))
-            or ($h | any(. as $x | $s | any(contains($x) or ($x | contains(.)))))
+            or ($h | any(. as $x | $s | any(. as $t | ($t | contains($x)) or ($x | contains($t)))))
           ) ]' 2>/dev/null)" || matched='[]'
 fi
 [ -n "$matched" ] || matched='[]'

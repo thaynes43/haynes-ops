@@ -114,9 +114,14 @@ if [ -d /opt/dev-env/ms-playwright ] && [ -z "$(ls -A "$HOME/.cache/ms-playwrigh
     && log "seeded playwright browsers from image" || log "WARN playwright seed failed"
 fi
 
-# ── shell defaults + agent-run on PATH ──────────────────────────────────────────
+# ── shell defaults + scripts on PATH ────────────────────────────────────────────
 mkdir -p "$HOME/.local/bin"
 ln -sf /opt/dev-env/scripts/agent-run.sh "$HOME/.local/bin/agent-run"
+# declare-activity (2026-08-23): mounting it in the scripts ConfigMap does NOT make
+# it a command. Without this link the CLAUDE.md instructions telling agents to
+# declare disruptive work hit "command not found", the false-escalation guard is
+# silently absent, and the file just sits unreferenced in /opt/dev-env/scripts.
+ln -sf /opt/dev-env/scripts/declare-activity.sh "$HOME/.local/bin/declare-activity"
 touch "$HOME/.bashrc"
 grep -q 'dev-env/scripts/bashrc.sh' "$HOME/.bashrc" 2>/dev/null \
   || printf '\n[ -f /opt/dev-env/scripts/bashrc.sh ] && . /opt/dev-env/scripts/bashrc.sh\n' >> "$HOME/.bashrc"

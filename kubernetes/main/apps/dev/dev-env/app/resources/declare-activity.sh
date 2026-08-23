@@ -67,7 +67,7 @@ to_minutes() {  # 45 | 45m | 2h -> minutes
 }
 
 usage() {
-  sed -n '6,30p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '15,33p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-2}"
 }
 
