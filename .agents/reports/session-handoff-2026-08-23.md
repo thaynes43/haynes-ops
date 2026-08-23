@@ -116,3 +116,76 @@ a launch by days). Memory: `fable-quota-exhaustion-model-drift`,
 - Two dev-env agent sessions from the prior day are spent/stale; their tmux
   windows may be gone after the bounce. Their worktrees under `~/work/` are
   harmless leftovers.
+
+---
+
+## 6. Open PRs / issues at handoff time
+
+| # | State | What |
+|---|---|---|
+| **2568** | **HELD DRAFT** | dev-env model policy + `declare-activity`. Merging it is what bounced the pod. If you are reading this post-bounce it presumably merged — verify with §1. |
+| 2565 | open | Renovate: ceph-csi-rbd 3.17.1. Touches the NEW external-ceph CSI (see §7) — vet against that migration, not blind-merge. |
+| 2506 | open | **ONE-WAY, needs Tom's click**: authentik 2026.8.0 (forward-only DB migration; CNPG PITR is the only recovery). Fully prepared by the shepherd, deliberately not auto-merged. Do NOT merge for him. |
+| 2504 | open | Renovate's own authentik-major PR, superseded by #2506. Leave. |
+| 2505 | open | valkey v9 major (used only by ai/vexa). Not in the shepherd ramp — needs a human or a tier decision. |
+| issue **2538** | open | Ceph cephx CSI-key rotation, **kernel-gated** (needs Talos on kernel ≥7.0, realistically 2027). Mutes are git-managed and intentional. Do not "fix" them. |
+| issue 1066 | open | "Better Monitoring & Automated Recovery" — the agentic remediation work in §2 is largely this; worth reconciling/closing. |
+
+## 7. ⚠️ UNREVIEWED production change — observability storage migration
+
+The drifted cleanup agent (`haynes-ops-0821-130259`) burned its context on work
+**that was never in its brief** and merged it: **#2558–#2563**. It moved
+**Prometheus + Loki onto a new external Proxmox Ceph cluster** via a new
+`gasha01-rbd` StorageClass (`gasha01.rbd.csi.ceph.com`), added a Kyverno
+pss-baseline exemption for those CSI pods, and re-sized retention.
+
+State right now: `loki-0` and `prometheus-kube-prometheus-stack-0` are 2/2 and
+have ~28h uptime, StorageClass exists, monitoring works. So it is *functioning* —
+but **I never reviewed it and it was not requested**. Someone should audit it:
+data migration correctness, retention sizing, the Kyverno exemption's blast
+radius, and whether TSDB/chunk history actually came across. Treat as
+"working but unaudited", not as blessed.
+
+Related: this is also why Alertmanager is now an HA pair (#2555) — that part
+*was* in the brief (track 3) and is fine.
+
+## 8. Dispatching agents (you will want to)
+
+```bash
+agent-run haynes-ops --agent claude --model claude-opus-5 --effort xhigh --interactive
+# then: tmux send-keys -t task-<id>:claude "Read <brief path> and execute end-to-end." Enter
+```
+- **Fable credits were exhausted 2026-08-23** (may have reset by the time you
+  read this). Symptom: silent drift to Opus, or `out of usage credits` +
+  `Worked for 0s`. Diagnose as a credit wall, not an agent-run bug.
+- **Keep briefs SMALL.** Three agents in a row hit 100% context and wandered.
+  One brief = one landable PR. Check `ctx:` and the model name in the pane
+  status line before trusting output.
+- Stale worktrees exist under `~/work/` from spent sessions (`0821-130259`,
+  `0821-163627`, `0822-213836`). Harmless; `agent-run prune` cleans stranded ones.
+- `haynes-ops-0821-163627` has unlanded Fable-era work in its worktree — it built
+  the esc-* wiring that DID land (#2560); nothing known to be missing, but check
+  before reaping if you care.
+
+## 9. Known-noise (do NOT chase these)
+
+- `ytdl-sub-*` KubeJobFailed — expected; Alertmanager routes them to null.
+- `CephNodeDiskspaceWarning` on a node right after a reboot — `predict_linear`
+  false positive from image re-pull churn; w01 was 66% used / 183GB free.
+- `slskd` 503 for ~2h after any reschedule — it rescans shares before binding
+  its API (was still 0/1 at 97m on 08-23). **Restarting it makes it worse.**
+  Gatus pages for this; a startup-grace fix is queued (§3 item 4).
+- `etcdDatabaseHighFragmentationRatio` — long-standing warning.
+- AppDaemon checkers reporting `unknown` right after an AD reload — cold-start
+  artifact, self-heals ≤30min. Tom declined a fix; do not re-propose.
+
+## 10. Memory durability gap (worth solving)
+
+Agent memory (`~/.claude/projects/-home-dev-repos-haynes-ops/memory/`) is
+**PVC-only**: it survives a bounce but dies with the volume, and is invisible to
+`dev-env-ops` sessions and any outside agent. The `rem-*`/`esc-*` sessions in the
+ops pod therefore operate with none of this pod's institutional knowledge (the
+Ceph mute rationale, drain-blocker signature, the qb-VPN correction) — they will
+rediscover or contradict it. Fix shape: commit a curated subset into `.agents/`
+as shared substrate, or give the ops pod read access. Raised with Tom 08-23, not
+yet queued.
