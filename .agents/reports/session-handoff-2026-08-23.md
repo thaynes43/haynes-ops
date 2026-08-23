@@ -9,6 +9,59 @@ You are a fresh session in the dev-env pod. The previous session
 roll that merging **PR #2568** caused. Read this, run the verification block,
 then pick up the queue. Everything below is verified state, not plans.
 
+---
+
+> ## ⚠️ CORRECTIONS — applied 2026-08-23 by the successor session
+>
+> The queue below was picked up and largely cleared. Several statements in this
+> file were **wrong against live state**; they are corrected here rather than
+> deleted, so the reasoning stays auditable.
+>
+> - **§1 "the automation is a SEPARATE pod, untouched by the bounce" — WRONG.**
+>   `dev-env-ops` carries `reloader.stakater.com/auto`, and #2568's fix touched
+>   `dev-activity-check.sh` in its resources dir, so the ops pod rolled too.
+>   Expect it to roll on any `dev-env-ops/app/resources/**` change.
+> - **§3 item 1 (PDBs) — WRONG on every specific.** Not five blockers, **two**.
+>   #2553 had *already* fixed the CNPG singletons and vexa (`enablePDB: false`);
+>   nothing was "cleared by hand" (both survivors were 348 days old, untouched);
+>   and the names given were pod names, not PDB names. Of the two real ones,
+>   `postgres16-primary` is **correct by design** (CNPG forces a switchover —
+>   do NOT clear it), and `emqx-core` was the only genuine bug. **Both resolved:
+>   #2583** set `coreTemplate.spec.maxUnavailable: 1` (ALLOWED 0 → 1) and shipped
+>   a descheduler pressure-taint guard in the same PR, because that PDB had been
+>   the only thing making the sole MQTT broker eviction-proof.
+> - **§3 item 4 (slskd grace) — the PRESCRIPTION IS UNSAFE.** A raised Gatus
+>   failure-threshold does not work: Gatus's failure counter is in-memory and it
+>   restarts on every sidecar bump, and slskd's probe ANDs `/health` with the VPN
+>   check — so a long grace silences **VPN-leak detection on a P2P client**. The
+>   startup probe is 180 min, not the documented 30. Left open deliberately.
+> - **§3 item 2 (qb VPN) — RESOLVED, no action.** Reproduced the correct Mullvad
+>   exit from w02. There is no node-specific fault; do **not** add a nodeSelector.
+> - **§6 PR table — was already stale when written** and is more so now. Re-derive
+>   with `gh pr list`. #2506 was merged 08-23 on the owner's explicit
+>   authorization (this file's "do NOT merge for him" was overridden for that PR
+>   only — do not generalize it); it deployed clean but introduced an ongoing
+>   `property_mapping_exception` whose effect on real logins is **still
+>   unverified**. #2504 auto-closed as its duplicate.
+> - **§7 storage migration — audited.** The Kyverno exemption is the *safest*
+>   part (tightly name-scoped), not a headline risk. The real find was elsewhere:
+>   **Loki's StatefulSet was cascade-deleting its own 128Gi PVC** (chart default,
+>   invisible in the repo, PV on `reclaimPolicy: Delete`, zero backups) — fixed
+>   in **#2579**. Backups were then explicitly **declined** by the owner; do not
+>   re-propose them.
+> - **§9 known-noise — INCOMPLETE and partly misleading.** "ytdl-sub is routed to
+>   null" implies other jobs page. They do not: the root receiver is `"null"` and
+>   only `severity="critical"` reaches Pushover, while `KubeJobFailed` ships at
+>   `warning`. **Every** namespace's job failures are silent — `sync-ai-usage`
+>   failed hourly for 6+ days unnoticed. That gap is still open.
+> - **§10 memory durability — the premise was wrong.** "The ops pod has the repo
+>   cloned so it gets it for free" was **false**: `ops-init.sh` guarded the clone
+>   on `[ ! -d .git ]` and the PVC survives restarts, so it was frozen at Aug 20 —
+>   meaning `.renovate/holds.json5` *resolved*, to stale contents, and a work-order
+>   session could merge an explicitly-held upgrade. Fixed in **#2582**. Curated
+>   knowledge now lives in `.agents/runbooks/known-noise-and-non-remediation.md`
+>   (**`runbooks/`, not `rules/`** — `respond.sh` only searches the former).
+
 **First:** `~/.claude/.../memory/MEMORY.md` is loaded automatically — the
 memories referenced here have the detail. This file is the map, not the terrain.
 
