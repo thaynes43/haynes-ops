@@ -24,6 +24,10 @@ configMapGenerator:
       # Failure-escalation writer (backlog 12→13): executed (never sourced) by the
       # gate/shepherd/triage/responder to file esc-* entries into the work-order CM.
       - resources/escalate.sh
+      # Autonomous-remediation writer (2026-08-23 "autonomy first" policy):
+      # escalate.sh's quiet sibling — files rem-* orders that fix silently and
+      # only reach a human by promoting themselves to esc-*.
+      - resources/remediate.sh
 generatorOptions:
   # Stable name so the HelmRelease can mount it by name.
   disableNameSuffixHash: true

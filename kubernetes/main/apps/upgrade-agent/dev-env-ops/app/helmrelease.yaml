@@ -51,19 +51,50 @@ spec:
               # Remote Control entirely (dev-env saga Decision #6, hit 2026-07-14).
               WORK_ORDER_CM: upgrade-work-orders
               WORK_ORDER_POLL_SECONDS: "60"
-              # MODEL POLICY (2026-08-23, Tom): this pod is AUTOMATION (the
-              # shepherd/responder executor), not Tom's dev surface — so BOTH lanes
-              # run the LATEST OPUS, pinned explicitly (the `opus` alias lags a
-              # launch by days; bump on an Opus release after probing the id).
-              # Fable is reserved for Tom's own interactive dev-env work — and its
-              # plan quota ran out entirely on 2026-08-23, which is exactly why an
-              # automated lane must never depend on it.
-              # A work order may still override per-order via its `model` field.
-              OPS_SESSION_MODEL: claude-opus-5   # wo-* lane (shepherd work orders)
-              OPS_ESC_MODEL: claude-opus-5       # esc-* lane (failure escalations)
+              # Scheduled/automated consumers stay on the cheaper tier — all
+              # models draw ONE plan pool (Tom-verified 2026-07-13, saga 07).
+              # A work order may override per-order via its `model` field.
+              OPS_SESSION_MODEL: claude-opus-5
+              # esc-* failure escalations get the top model (Tom's call, backlog
+              # 12): rare + human-attended is exactly where Fable belongs — the
+              # shared-pool caution above is about FREQUENT consumers.
+              #
+              # 2026-08-23: was `fable`, changed to claude-opus-5 because Fable
+              # is OUT OF PLAN CREDITS and refuses every turn ("You're out of
+              # usage credits… /model to switch models" — probed live from this
+              # pod). An escalation spawned on a model that cannot answer is the
+              # worst failure this system has: Tom gets paged with a session
+              # name, joins, and finds a mute agent. session-launch.sh now also
+              # probes the model before spawning and falls back to
+              # OPS_FALLBACK_MODEL. Put `fable` back once credits are restored —
+              # the pre-flight probe makes that safe either way.
+              # See memory `fable-quota-exhaustion-model-drift`.
+              OPS_ESC_MODEL: claude-opus-5
+              # rem-* autonomous remediation: it CHANGES THINGS unattended, so it
+              # gets the strongest model rather than the cheapest. `opus` (the
+              # alias) currently serves 4.8 while claude-opus-5 is live, so this
+              # is pinned to the explicit id.
+              OPS_REM_MODEL: claude-opus-5
+              # Used when the lane's preferred model fails its pre-flight probe.
+              OPS_FALLBACK_MODEL: claude-opus-5
               # Default reasoning effort for every session (per-order `effort`
               # field overrides).
               OPS_SESSION_EFFORT: xhigh
+              # rem-* bounds: wall-clock and turns. A remediation that needs
+              # longer than this is, by definition, one Tom should hear about —
+              # the harness escalates on timeout rather than letting it run on.
+              OPS_REM_TIMEOUT: 40m
+              OPS_REM_MAX_TURNS: "120"
+              # Quiet digest (ops-digest.sh): batch the outcomes that did NOT
+              # page. Flush every 24h, or early once 8 outcomes pile up.
+              # Channel `pushover` = priority -1 (silent delivery); see the
+              # script header for why email is deliberately not wired here.
+              OPS_DIGEST_CHANNEL: pushover
+              OPS_DIGEST_INTERVAL_H: "24"
+              OPS_DIGEST_MAX_PENDING: "8"
+              # CM entry retention — the rem-* lane files one order per urgent
+              # alert, and a ConfigMap that hits ~1MiB fails EVERY later write.
+              OPS_ORDER_RETENTION_DAYS: "14"
               # Metered fallback if the plan token is absent/rejected (the
               # session launcher prefers the plan token, respond.sh pattern).
               ANTHROPIC_API_KEY:
@@ -174,3 +205,14 @@ spec:
         defaultMode: 0555
         globalMounts:
           - path: /opt/dev-env-ops
+      # Shared coordination CM (health-gate kustomization; this ks dependsOn it).
+      # Only escalate.sh is used here: order-status.sh executes it to PROMOTE an
+      # autonomous rem-* remediation into an esc-* escalation, so the esc naming/
+      # signature/dedup logic stays in exactly one place instead of being
+      # reimplemented in the executor.
+      coordination-lib:
+        type: configMap
+        name: upgrade-coordination-lib
+        defaultMode: 0555
+        globalMounts:
+          - path: /opt/coordination
