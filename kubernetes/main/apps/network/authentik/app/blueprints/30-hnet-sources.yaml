@@ -3,6 +3,16 @@
 # deliberately NOT included — blueprints do partial updates, so omitting it preserves the
 # live secret. This is the source that routes 'Log in with Plex' users; note its
 # authentication_flow is default-source-authentication (login-only) — see Q-02 in the PR.
+#
+# allow_friends: false — Plex retired the GET https://plex.tv/api/v2/friends endpoint (now
+# returns 410 Gone). Authentik's redeem_token() calls check_friends_overlap() -> get_friends()
+# UNCONDITIONALLY when allow_friends is true, and get_friends() does a bare raise_for_status()
+# with no error handling (unlike check_server_overlap()), so every 'Log in with Plex' attempt
+# 500'd before the server-overlap check ran. Disabling allow_friends skips the dead endpoint;
+# admission now rides on allowed_servers (server-overlap), which is the real access model here.
+# allowed_servers lists all three currently-live server machine IDs (HaynesTower / HaynesKube /
+# HaynesOps) — the prior single-entry value was stale drift; carrying all three forward keeps
+# this re-apply from regressing access for members of the other two servers.
 version: 1
 metadata:
   name: hnet-sources
@@ -24,7 +34,9 @@ entries:
     group_matching_mode: identifier
     user_path_template: goauthentik.io/sources/%(slug)s
     policy_engine_mode: any
-    allow_friends: true
+    allow_friends: false
     allowed_servers:
+    - 80b33acb1d207508990637ec151fe9abad8d3d7a
     - a5ec8cb29c425667637eabdb6a0615d6ccf68cc3
+    - c1b23d688afea4a39ec2c214776832c16be6504d
     client_id: fQ0sgNhXa0PkoMKyaYf0gdOoQHmwsTIBCtfI7RY0
