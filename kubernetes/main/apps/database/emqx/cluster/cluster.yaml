@@ -50,6 +50,29 @@ spec:
         reloader.stakater.com/auto: "true"
     spec:
       replicas: 1
+      # DRAIN UNBLOCKER (2026-08-23). add_pdb.go in operator 2.3.1 creates the
+      # emqx-core PDB *unconditionally*, copying nil min/max into an EMPTY spec.
+      # The k8s disruption controller then can't compute an expected count, leaves
+      # expectedCount=0, and clamps disruptionsAllowed to 0 — permanently. Live
+      # proof before this change: `kubectl -n database get pdb emqx-core -o
+      # jsonpath={.spec}` returned ONLY a selector, and status.disruptionsAllowed
+      # was 0. That vetoed EVERY node drain; the 2026-08-21 Talos roll had to
+      # `kubectl delete pod` past it by hand, and hand-deleting the PDB is futile
+      # because the operator's CreateOrUpdateList recreates it each reconcile.
+      # Setting maxUnavailable gives the controller a real budget -> allowed=1.
+      #
+      # NOT a blue-green trigger, which matters a great deal here: the broker is
+      # pinned to 6.2.0 because the operator's blue-green upgrade forms a transient
+      # 2-node cluster that the single-node COMMUNITY license aborts
+      # (SINGLE_NODE_LICENSE, emqx/emqx#17600). computeHash() and
+      # justCheckPodTemplate() both consider spec.template ONLY, and min/max never
+      # enter the pod template — so no new StatefulSet and no crash-loop.
+      #
+      # NOTE for the operator 3.0 lift: 3.0 REMOVES PDB support entirely (no
+      # add_pdb.go), and v3beta1's maxUnavailable is an unrelated replicant
+      # rolling-update knob. This key must be DELETED at that upgrade, not carried
+      # forward. (Auto-delete-when-unset arrives in 2.3.3-rc.1, not 3.0.)
+      maxUnavailable: 1
       envFrom:
         - secretRef:
             name: emqx-secret
