@@ -477,7 +477,33 @@ while [ "$u" -lt "${u_count:-0}" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
     else
       title="${aname}${ans:+ (${ans})}"
       [ "$utype" = "storm" ] && title="${aname} ×${n} — storm, one root cause"
-      page "$title" "${REPORT} [auto-diagnosis — verify before acting]"
+      # ── AUTONOMY-FIRST HANDOFF (2026-08-23) ── an ACTION: urgent diagnosis that is
+      # STILL FIRING goes to the rem-* lane to be FIXED, not to Tom to be read. The
+      # lane is headless: it triages, checks dev-env activity, fixes inside the ops
+      # containment, verifies, and closes silently — or promotes itself to esc-*
+      # (page + joinable session) when it cannot fix or tried and failed.
+      # FAILS OPEN: if the order cannot be filed we page exactly as before. Silence
+      # is only ever earned by successfully handing the incident to something that
+      # will act on it.
+      # ACTION: investigate still pages (a human should look, but nothing is on fire).
+      handed_off=0
+      if [ "$REMEDIATION_ENABLED" = "1" ] && [ "$ACTION" = "urgent" ] && [ -x "$REMEDIATE_SH" ]; then
+        # The full diagnosis rides REMEDIATE_DIAGNOSIS (1400 chars) and the alert
+        # labels ride REMEDIATE_ALERT (900) — NOT the reason field, which clamps at
+        # 400 and would truncate the FIX section mid-sentence (caught live by the
+        # 2026-08-23 synthetic run, which lost its final constraint that way).
+        if ESCALATE_SIG="${aname}@${ans}" \
+           REMEDIATE_DIAGNOSIS="$REPORT" \
+           REMEDIATE_ALERT="$(printf '%s' "$alert" | jq -c '{labels, annotations, startsAt}' 2>/dev/null)" \
+           bash "$REMEDIATE_SH" responder "job:${HOSTNAME:-unknown}" \
+             "${aname}${ans:+@${ans}} (${utype} n=${n}) FIRING; read-only diagnosis says ACTION: urgent. Fix inside your containment, verify, close silently; escalate only if you cannot fix or tried and failed."; then
+          handed_off=1
+          log "HANDED OFF ($aname): ACTION=urgent -> rem-* lane (autonomous remediation); NOT paging (it pages only if it cannot fix)."
+        else
+          log "handoff FAILED ($aname) — falling back to paging (fail-open)."
+        fi
+      fi
+      [ "$handed_off" = "1" ] || page "$title" "${REPORT} [auto-diagnosis — verify before acting]"
     fi
   else
     log "diagnosis produced no report (rc=$rc) — silent (the original Alertmanager page stands)."
