@@ -73,7 +73,7 @@ spec:
             command: ["/bin/bash", "/opt/shepherd/run-shepherd.sh"]
             env:
               UPGRADE_AGENT_MODE: auto     # Phase D: vet + `gh pr merge --auto` (server-side gated)
-              UPGRADE_AGENT_MODEL: sonnet
+              UPGRADE_AGENT_MODEL: claude-opus-5
               # THE RAMP (single definition, 2026-07-06): a component list. The path
               # map lives in run-shepherd.sh (ramp_globs_for) and derives the
               # deterministic pre-filter globs; the run also asserts every component
@@ -277,7 +277,7 @@ spec:
               tag: 0.1.0@sha256:8a54c321f71e04bf9237d6972373c3bbdbfb709207a3502ffb289b864a5e48e9
             command: ["/bin/bash", "/opt/shepherd/triage.sh"]
             env:
-              UPGRADE_AGENT_MODEL: sonnet
+              UPGRADE_AGENT_MODEL: claude-opus-5
               TRIAGE_MERGE_LOOKBACK_HOURS: "3"
               # ANTHROPIC_API_KEY needed only if triage decides to summon remediate.
               # Now the FALLBACK — triage runs run-shepherd.sh IN THIS CONTAINER (it
