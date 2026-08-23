@@ -42,6 +42,7 @@ configMapGenerator:
       - blueprints/50-dev-env.yaml
       - blueprints/60-tautulli-frontdoor.yaml
       - blueprints/70-tautulli-lan-frontdoor.yaml
+      - blueprints/80-infra-admin-gate.yaml
   # PLAN-042 Option A — CSS-nesting lowering of the served web assets (old-WebKit
   # login crash, upstream goauthentik#19814 / WebKit #290102). The server pod's
   # web-dist-lower initContainer (helmrelease.yaml) runs this script over a copy
