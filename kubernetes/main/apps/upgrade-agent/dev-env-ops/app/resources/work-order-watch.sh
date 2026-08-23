@@ -117,6 +117,14 @@ reap() {  # $1=key $2=why — kill the window (if any) + artifacts.
 spawn_session() {  # $1=key $2=order-json-string
   local key="$1" order="$2" lane=wo model effort src reason
   case "$key" in esc-*) lane=esc ;; rem-*) lane=rem ;; esac
+  # Refresh the canonical clone before every session. ops-init.sh fetches at boot,
+  # but this pod runs for days — a boot-only fetch still hands day-3 sessions a
+  # day-0 base. Sessions read .renovate/holds.json5 and .agents/runbooks/ to decide
+  # what they are allowed to merge, so a stale base is a correctness problem, not a
+  # convenience one. Non-fatal: a session that starts from a slightly older base is
+  # far better than no session at all when GitHub is briefly unreachable.
+  git -C "$REPO_CANON" fetch --prune origin main >/dev/null 2>&1 \
+    || log "warn: pre-spawn fetch failed for $key — base may be stale"
   mkdir -p "$ORDERS_DIR"
   printf '%s' "$order" > "$ORDERS_DIR/$key.json"
   # Per-order model/effort override, else lane defaults. Sanitized: these land
@@ -209,14 +217,41 @@ while true; do
   #    failed/escalated stay 7d (they ARE the joinable post-mortem). Reaping also
   #    cleans the session's PVC artifacts (idempotent — safe for entries whose
   #    window is already gone but whose worktree/order JSON lingers).
+  #
+  #    The entry SURVIVES this reap — it is only removed by 2c's retention sweep,
+  #    up to RETENTION_DAYS later. So this selector re-matched the same terminal
+  #    key on EVERY poll for its entire zombie window. Reaping is idempotent, so
+  #    nothing was corrupted, but two things were not free:
+  #      - `oplog reaped` fired once per 60s per terminal order (measured
+  #        2026-08-23: 152 `reaped` events vs 16 real ones in 24h — 90.5% noise),
+  #        which buries genuine events in the ops log and in the digest.
+  #      - clean_artifacts() re-ran every poll, so a worktree deliberately
+  #        recreated under ~/work/<key> to inspect a post-mortem was silently
+  #        deleted within 60s.
+  #    Fixed by stamping `reaped` on the entry and skipping already-stamped ones.
+  #    Consumers read named fields with // defaults, and the status-update path
+  #    round-trips unknown keys, so the extra field is inert everywhere else.
+  ttl_reaped=""
   for key in $(printf '%s' "$data" | jq -r --argjson now "$now" '
       to_entries[] | select((.value|fromjson? // {}) as $o
-        | ($o.status=="done"   and ((($o.updated // "0")|tonumber? // 0) < ($now - 86400)))
+        | (($o.reaped // "") == "")
+        and (($o.status=="done"   and ((($o.updated // "0")|tonumber? // 0) < ($now - 86400)))
         or (($o.status=="failed" or $o.status=="escalated")
-            and ((($o.updated // "0")|tonumber? // 0) < ($now - 604800))))
+            and ((($o.updated // "0")|tonumber? // 0) < ($now - 604800)))))
       | .key' 2>/dev/null); do
     reap "$key" "ttl"
+    ttl_reaped="$ttl_reaped $key"
   done
+  if [ -n "$ttl_reaped" ]; then
+    reaped_marks="$(printf '%s\n' $ttl_reaped | sed '/^$/d' | jq -R . | jq -sc .)"
+    kubectl -n "$NS" get cm "$CM" -o json 2>/dev/null \
+      | jq --argjson keys "$reaped_marks" --arg now "$now" '
+          reduce $keys[] as $k (.;
+            if (.data[$k] // "") == "" then .
+            else .data[$k] = (((.data[$k] | fromjson? // {}) + {reaped: $now}) | tojson) end)' \
+      | kubectl -n "$NS" replace -f - >/dev/null 2>&1 \
+      || log "warn: could not stamp reaped (retries next poll):$ttl_reaped"
+  fi
 
   # 2b. BOUND TOTALS: if more than REAP_MAX finished orders still hold windows,
   #     reap oldest-first (by updated) regardless of TTL — a runaway escalation
