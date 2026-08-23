@@ -46,10 +46,31 @@ spec:
                 # Authentik, a mid-run Kometa job). The taint exists to gate
                 # scheduling of NEW pods; running pods keep a working datapath
                 # through an agent blip, so evicting them for it is pure harm.
+                # Node-PRESSURE taints (2026-08-23). Same argument as the three
+                # above, plus a sharper one: kubelet already owns pressure
+                # eviction and picks victims deliberately (by QoS class and by
+                # actual resource usage). The descheduler re-judges the same
+                # taint with zero grace and evicts EVERY non-tolerating pod on
+                # the node indiscriminately — strictly worse victim selection
+                # for the identical condition.
+                #
+                # disk-pressure is not hypothetical here: talosw02 hit it when a
+                # sabnzbd scratch dir filled the node, and talosw02 is where
+                # emqx-core runs. This exclusion is the guard that ships
+                # alongside emqx-core's maxUnavailable in the same PR — that PDB
+                # was, until now, the only thing making the sole MQTT broker
+                # descheduler-immune (no priorityClass, no affinity, no
+                # topologySpread, and an RWO ceph-block PVC that passes nodeFit
+                # anywhere). Relaxing the PDB without this would trade a
+                # drain-blocker for an eviction path on a singleton broker whose
+                # restart also trips the known z2m Last-Will race.
                 excludedTaints:
                   - node.kubernetes.io/not-ready
                   - node.kubernetes.io/unreachable
                   - node.cilium.io/agent-not-ready
+                  - node.kubernetes.io/disk-pressure
+                  - node.kubernetes.io/memory-pressure
+                  - node.kubernetes.io/pid-pressure
             - name: RemovePodsViolatingTopologySpreadConstraint
               args:
                 constraints:
