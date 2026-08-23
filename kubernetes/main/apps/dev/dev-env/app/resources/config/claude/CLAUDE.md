@@ -48,6 +48,25 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 Run inside tmux (session `main`) so work survives disconnects. For phone-driven
 sessions, start `claude` and use `/remote-control`.
 
+## Model policy (Tom, 2026-08-23) — which model runs where
+
+| Surface | Model | Why |
+|---|---|---|
+| **Automated agents** — alert-responder, upgrade-shepherd, dev-env-ops (both lanes) | **latest Opus**, pinned explicitly (`claude-opus-5` today) | They merge upgrades and touch production unattended; being wrong costs more than the quota. Pinned not aliased — alias repoints lag a launch by days. |
+| **Tom's interactive dev-env work** | **latest Fable** when available | This is the surface Fable's plan quota is reserved for. |
+| **Subagents dispatched from a dev-env session** | **Opus** | Keeps Fable headroom for the driving session. |
+| **ANY pay-per-token API-key call** | **Sonnet 5** (`claude-sonnet-5`) | **NEVER Fable on API pricing, and never Opus.** Sonnet 5 is near-Opus at a fraction of the cost — and it can dispatch a pod claude-code agent (plan-served) for heavy lifting instead of billing tokens. |
+
+**Bump procedure on a new Opus/Fable launch:** probe first
+(`claude --model <full-id> -p 'reply with your model id'`), then update the pinned
+ids in `upgrade-agent/{alert-responder,shepherd,dev-env-ops}` HRs + their scripts'
+defaults. Agents are the tripwire — see the freshness contract below.
+
+**Quota exhaustion is a real failure mode:** on 2026-08-23 the plan's Fable
+credits ran out; sessions silently drifted to Opus and a fresh Fable dispatch
+refused its first turn (`out of usage credits` + `Worked for 0s`). That is a
+credit wall, not an agent-run bug — dispatch on `claude-opus-5` and tell Tom.
+
 ## Model pickers (agent-run) — freshness contract
 
 `agent-run`'s pickers self-update wherever a machine-readable source exists:
