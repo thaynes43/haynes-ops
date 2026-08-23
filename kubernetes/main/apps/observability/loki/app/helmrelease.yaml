@@ -58,8 +58,13 @@ spec:
               prefix: loki_index_
               period: 24h
       limits_config:
-        # 90d (owner-sized 2026-08-21): ~47GB steady-state at the measured
-        # ~0.5GB/day — comfortably inside the 128Gi RBD volume below.
+        # 90d (owner-sized 2026-08-21). Re-measured 2026-08-23:
+        # deriv(kubelet_volume_stats_used_bytes{persistentvolumeclaim="storage-loki-0"}[24h])
+        # = ~0.86 GB/day, not the ~0.5GB/day originally recorded here — so steady
+        # state is ~78GB at 90d, not ~47GB. Still comfortably inside the 128Gi RBD
+        # volume below, so this is an accuracy correction, not a capacity problem.
+        # Short-window figure (volume was ~2d old); re-check with deriv over [24h]
+        # after a couple of weeks of steady state.
         retention_period: 90d
     singleBinary:
       replicas: 1
@@ -71,6 +76,17 @@ spec:
         # (history preservation was only requested for metrics).
         storageClass: gasha01-rbd
         size: 128Gi
+        # DATA-LOSS GUARD (2026-08-23). The chart default is `true`, which renders
+        # persistentVolumeClaimRetentionPolicy{whenDeleted,whenScaled: Delete} —
+        # it was live and invisible here, because the knob never appeared in this
+        # file. Combined with the PVC's blockOwnerDeletion owner-ref to the STS and
+        # the gasha01-rbd PV's reclaimPolicy: Delete, ANY StatefulSet delete/recreate
+        # (or a chart change scaling singleBinary to 0) destroyed the 128Gi volume
+        # AND its backing RBD image, unrecoverably — there is no ReplicationSource
+        # in this namespace. Setting false omits the block entirely (the template
+        # gates on this bool), so k8s defaults to Retain/Retain, matching the
+        # prometheus STS. Do not remove without adding a backup first.
+        enableStatefulSetAutoDeletePVC: false
     # Loki exported no metrics at all before 2026-08-21 (no ServiceMonitor —
     # found during the retention audit); ingest rate is now scrapeable.
     monitoring:
