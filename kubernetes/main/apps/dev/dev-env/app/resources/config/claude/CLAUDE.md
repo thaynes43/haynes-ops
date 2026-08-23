@@ -48,6 +48,26 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 Run inside tmux (session `main`) so work survives disconnects. For phone-driven
 sessions, start `claude` and use `/remote-control`.
 
+## Declare disruptive work (avoid false escalations)
+
+An autonomous remediation agent (`dev-env-ops`, rem-* lane) now watches critical
+alerts and **fixes** them silently. If YOUR work trips an alert — restarting a
+stateful app, suspending Flux, draining a node, deleting pods, rolling storage —
+it can look like a real incident and pull that agent (or Tom) in for nothing.
+
+**Before disruptive work, declare it:**
+
+```bash
+declare-activity start "restarting z2m + emqx (broker migration test)" 45m
+# ... do the work ...
+declare-activity end
+```
+
+Declarations are **scoped and TTL'd** on this pod's PVC; the remediation session
+reads them and treats a matching alert as dev-caused rather than a fault. They
+are a hint, not a mute — an alert outside your declared scope still gets handled,
+and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
+
 ## Model policy (Tom, 2026-08-23) — which model runs where
 
 | Surface | Model | Why |

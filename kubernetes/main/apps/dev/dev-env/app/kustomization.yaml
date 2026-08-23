@@ -21,6 +21,10 @@ configMapGenerator:
       - resources/agent-run.sh
       - resources/gh-token-refresh.sh
       - resources/auth-check.sh
+      # declare-activity (2026-08-23): dev agents announce disruptive work so the
+      # dev-env-ops remediation lane can tell a real incident from dev fallout
+      # (Tom: "need a way for dev-env agents to try and avoid false escalations").
+      - resources/declare-activity.sh
   - name: dev-env-config-claude
     files:
       - resources/config/claude/CLAUDE.md
