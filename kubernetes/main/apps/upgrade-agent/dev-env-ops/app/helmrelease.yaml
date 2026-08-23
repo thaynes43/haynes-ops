@@ -51,14 +51,16 @@ spec:
               # Remote Control entirely (dev-env saga Decision #6, hit 2026-07-14).
               WORK_ORDER_CM: upgrade-work-orders
               WORK_ORDER_POLL_SECONDS: "60"
-              # Scheduled/automated consumers stay on the cheaper tier — all
-              # models draw ONE plan pool (Tom-verified 2026-07-13, saga 07).
-              # A work order may override per-order via its `model` field.
-              OPS_SESSION_MODEL: opus
-              # esc-* failure escalations get the top model (Tom's call, backlog
-              # 12): rare + human-attended is exactly where Fable belongs — the
-              # shared-pool caution above is about FREQUENT consumers.
-              OPS_ESC_MODEL: fable
+              # MODEL POLICY (2026-08-23, Tom): this pod is AUTOMATION (the
+              # shepherd/responder executor), not Tom's dev surface — so BOTH lanes
+              # run the LATEST OPUS, pinned explicitly (the `opus` alias lags a
+              # launch by days; bump on an Opus release after probing the id).
+              # Fable is reserved for Tom's own interactive dev-env work — and its
+              # plan quota ran out entirely on 2026-08-23, which is exactly why an
+              # automated lane must never depend on it.
+              # A work order may still override per-order via its `model` field.
+              OPS_SESSION_MODEL: claude-opus-5   # wo-* lane (shepherd work orders)
+              OPS_ESC_MODEL: claude-opus-5       # esc-* lane (failure escalations)
               # Default reasoning effort for every session (per-order `effort`
               # field overrides).
               OPS_SESSION_EFFORT: xhigh

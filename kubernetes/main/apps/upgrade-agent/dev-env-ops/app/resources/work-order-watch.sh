@@ -40,8 +40,8 @@ set -uo pipefail
 CM="${WORK_ORDER_CM:-upgrade-work-orders}"
 NS="${WORK_ORDER_NS:-upgrade-agent}"
 POLL="${WORK_ORDER_POLL_SECONDS:-60}"
-MODEL_DEFAULT="${OPS_SESSION_MODEL:-opus}"      # wo-* lane
-ESC_MODEL_DEFAULT="${OPS_ESC_MODEL:-fable}"     # esc-* lane
+MODEL_DEFAULT="${OPS_SESSION_MODEL:-claude-opus-5}"   # wo-* lane (automation: latest Opus, 2026-08-23)
+ESC_MODEL_DEFAULT="${OPS_ESC_MODEL:-claude-opus-5}"   # esc-* lane (automation: latest Opus, 2026-08-23)
 EFFORT_DEFAULT="${OPS_SESSION_EFFORT:-xhigh}"   # both lanes
 REAP_MAX="${OPS_REAP_MAX_FINISHED:-6}"
 ORDERS_DIR="${HOME}/work/orders"

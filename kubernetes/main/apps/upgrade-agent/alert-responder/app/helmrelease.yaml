@@ -64,14 +64,19 @@ spec:
               # gate's Ceph HEALTH_ERR page. Grow this as we identify other noisy recurrers
               # (state CM + Loki logs record every diagnosis, so we can see spend triggers).
               RESPONDER_IGNORE_PAIRS: "OOMKilled@rook-ceph"
-              # Model policy (2026-07-28, Tom's call): best available Opus on the
-              # plan path — `opus` is an ALIAS that resolves server-side to the
-              # latest Opus, so it never goes stale. Deliberately NOT Fable: its
-              # plan quota is less predictable and could max out early. The metered
-              # FALLBACK drops to sonnet (opus on the API costs real money and the
-              # $2 per-run cap would clip an opus diagnosis mid-run).
-              RESPONDER_MODEL: opus
-              RESPONDER_FALLBACK_MODEL: sonnet
+              # MODEL POLICY (2026-08-23, Tom): automated agents (responder,
+              # shepherd) ALWAYS run the LATEST OPUS on the plan path. Pinned to an
+              # explicit id rather than the `opus` alias — alias repoints LAG a
+              # launch by days (2026-08-06: `opus` served 4.8 while claude-opus-5
+              # was live) and "latest" is the whole point. Bump on an Opus launch;
+              # probe first: `claude --model <id> -p 'reply with your model id'`.
+              # Deliberately NOT Fable here (its plan quota is the surface Tom's own
+              # dev-env work needs — and it ran out entirely on 2026-08-23).
+              RESPONDER_MODEL: claude-opus-5
+              # METERED path = pay-per-token: NEVER Fable, NEVER Opus (Tom's rule
+              # 2026-08-23). Sonnet 5 is near-Opus quality at a fraction of the cost
+              # and can dispatch a pod claude-code agent for heavy lifting.
+              RESPONDER_FALLBACK_MODEL: claude-sonnet-5
               RESPONDER_MAX_PER_RUN: "1"
               # Storm/loop guards (2026-08-20: a wedged rook-ceph-cluster HR fanned
               # into ~30 FluxReconciliationFailure alerts; the responder paged 16

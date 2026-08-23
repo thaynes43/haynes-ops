@@ -21,7 +21,17 @@
 set -uo pipefail
 
 MODE="${UPGRADE_AGENT_MODE:-dryrun}"
-MODEL="${UPGRADE_AGENT_MODEL:-sonnet}"
+# MODEL POLICY (2026-08-23, Tom): the AUTOMATED agents (shepherd, responder) always
+# run the LATEST OPUS on the plan path. Pinned to an explicit id, NOT the `opus`
+# alias: alias repoints LAG a launch by days (2026-08-06: `opus` still served 4.8
+# while claude-opus-5 was live), and "latest" is the whole point here. Bump this on
+# an Opus launch — probe first: `claude --model <id> -p 'reply with your model id'`.
+MODEL="${UPGRADE_AGENT_MODEL:-claude-opus-5}"
+# METERED-PATH MODEL — the API key is pay-per-token, so it NEVER runs Opus or Fable
+# (Tom's rule 2026-08-23: no Fable on API pricing; use Sonnet 5). Sonnet 5 is
+# near-Opus quality at a fraction of the cost and can dispatch a pod claude-code
+# agent for heavy lifting if a fallback run needs more muscle.
+FALLBACK_MODEL="${UPGRADE_AGENT_FALLBACK_MODEL:-claude-sonnet-5}"
 # MAX_TURNS is a METERED-path (api) spend control only — a plan-served run costs $0,
 # so capping its turns just strands finished work (2026-07-30: the cilium one-way vet
 # authored PR #2310 then died at turn 40 doing post-PR diligence → Error pod, triage
@@ -350,7 +360,7 @@ case "$MODE" in
     # diagnosis-bound — a stronger model is the difference between a clean revert PR
     # and a wasted BREAK-GLASS. Overrides the HR-wide UPGRADE_AGENT_MODEL (sonnet),
     # which still governs the daily survey/auto runs.
-    MODEL="${UPGRADE_AGENT_REMEDIATE_MODEL:-opus}"
+    MODEL="${UPGRADE_AGENT_REMEDIATE_MODEL:-claude-opus-5}"
     SAFETY_MERGE="you MAY open a forward-fix or rollback PR and enable auto-merge with 'gh pr merge <N> --auto'; NEVER merge immediately, NEVER use --admin, NEVER push to main. BAIL EARLY (within a few turns) with one line 'BREAK-GLASS: <reason>' if a git-only fix is not clearly available (immutable field, wedged HelmRelease, stuck finalizer, one-way major, infra/KubePrism/etcd/node, or not caused by a recent upgrade); do NOT investigate to max-turns, do NOT retry denied cluster writes"
     [ -n "$PROMPT" ] || PROMPT="You are the Tier-4 upgrade shepherd in REMEDIATE mode (Mode 2). A recent upgrade may have regressed. Follow .agents/runbooks/upgrade-shepherd.md Mode 2. Diagnose READ-ONLY (flux get, kubectl describe/get) and identify the culprit merge (git log) FAST. If there is a clean git fix — git revert the bump / re-pin the prior version, or a documented supporting forward-fix from .agents/runbooks/tier4-component-playbooks.md — make it on a NEW branch, commit, push, open a PR, and enable auto-merge (gh pr merge <N> --auto). OTHERWISE STOP EARLY, within a few turns, with a single line 'BREAK-GLASS: <reason>' — do NOT keep investigating to max-turns. Bail to BREAK-GLASS when the fix would hit an immutable field, a wedged HelmRelease, a stuck finalizer, a one-way major, an infra/KubePrism/etcd/node fault, or when NO recent merge plausibly caused this. You have a read-only cluster SA: NEVER kubectl apply/exec/delete and do NOT retry a denied command. If a Flux HelmRelease is Stalled/UpgradeFailed on a chart/image bump (the release itself is broken, e.g. a version that fails its readiness probe and rollback-loops), the fix is to re-pin its tag/version in kubernetes/** to the last-working one (a pure bump — auto-mergeable) so git stops re-applying the broken version. A durable HOLD to stop it re-auto-merging lives in .renovate/holds.json5, which is OUTSIDE kubernetes/** and the diff-scope gate blocks the bot there — so do NOT edit .renovate/; instead put a clear 'HOLD NEEDED: <pkg> <version> — <one-line reason>' line at the TOP of your summary so a human adds the hold. Do NOT push to main, stay inside kubernetes/**."
     ;;
@@ -360,12 +370,13 @@ case "$MODE" in
     ;;
 esac
 
-# MODEL on the plan path (CORRECTED 2026-07-13 by Tom — verified against his account):
-# there is NO separate Opus quota bucket. All models draw the SAME pool, and a heavier
-# model simply eats MORE of the quota Tom's interactive work needs. So the plan path
-# keeps the CHEAP model (UPGRADE_AGENT_MODEL, sonnet) — the goal is the smallest
-# possible bite out of his headroom, not the biggest model we can get away with.
-# UPGRADE_AGENT_PLAN_MODEL can still override per-run if a vet ever needs more.
+# MODEL on the plan path. SUPERSEDES the 2026-07-13 "keep the cheap model" call:
+# Tom's 2026-08-23 ruling is that the automated agents (shepherd + responder) always
+# run the LATEST OPUS — these runs merge upgrades and touch production, and being
+# wrong costs far more than the quota does. (The 07-13 fact still holds — one shared
+# pool, no separate Opus bucket — it is the trade-off that changed.) Interactive
+# dev-env work is the surface that stays on Fable.
+# UPGRADE_AGENT_PLAN_MODEL can still override per-run.
 if [ "$AUTH_PATH" = "plan" ] && [ "$MODE" != "remediate" ] && [ -n "${UPGRADE_AGENT_PLAN_MODEL:-}" ]; then
   MODEL="$UPGRADE_AGENT_PLAN_MODEL"
 fi
@@ -457,8 +468,10 @@ if [ "$AUTH_PATH" = "plan" ] && [ "$rc" -ne 0 ] && [ -n "$ANTHROPIC_API_KEY_STAS
     log "FALLBACK: $fallback_reason — retrying on the metered API key."
     AUTH_PATH="api"
     export ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY_STASH"
-    MODEL="${UPGRADE_AGENT_MODEL:-sonnet}"   # opus on the API costs real money
-    [ "$MODE" = "remediate" ] && MODEL="${UPGRADE_AGENT_REMEDIATE_MODEL:-opus}"
+    # Metered path: Sonnet 5 for EVERY mode, remediate included (2026-08-23 rule —
+    # pay-per-token never runs Opus/Fable). A remediate fallback that needs more
+    # muscle should dispatch a pod claude-code agent, not bill Opus by the token.
+    MODEL="$FALLBACK_MODEL"
     spend_guard; guard_rc=$?
     if [ "$guard_rc" -ne 0 ] && { [ "$MODE" = "auto" ] || [ "$MODE" = "remediate" ]; }; then
       log "fallback BLOCKED by the spend guard (monthly cap reached) — no run this cycle."
