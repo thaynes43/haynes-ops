@@ -56,4 +56,20 @@ if [ ! -d "$HOME/repos/haynes-ops/.git" ]; then
     && log "cloned haynes-ops" \
     || log "WARN initial clone failed — sessions will clone on demand"
 fi
+
+# ...and REFRESH it. The clone guard above is `[ ! -d .git ]` and this PVC survives
+# pod restarts, so without this the clone stays frozen at whatever commit it was
+# first created from — forever. Found live 2026-08-23: the clone AND its origin/main
+# ref were both pinned at 2dcf42fd (Aug 20) on a pod that had restarted repeatedly.
+# That is a correctness bug, not just staleness: ops-claude.md directs every wo-*
+# session to consult .renovate/holds.json5 and .agents/runbooks/, and those files
+# RESOLVED — to their Aug-20 contents. A hold added after that date was invisible,
+# so a work-order session could merge an upgrade that had been explicitly held.
+# fetch (not `reset --hard`): this is a fetch-only canonical clone and sessions
+# branch worktrees from origin/main, so there is no working tree worth clobbering.
+if [ -d "$HOME/repos/haynes-ops/.git" ]; then
+  git -C "$HOME/repos/haynes-ops" fetch --prune origin main 2>/dev/null \
+    && log "fetched origin/main ($(git -C "$HOME/repos/haynes-ops" rev-parse --short origin/main 2>/dev/null))" \
+    || log "WARN fetch failed — clone may be stale; sessions must verify their base"
+fi
 log "init complete"
