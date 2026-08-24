@@ -1,0 +1,70 @@
+# LAN-only infrastructure apps — admin-only access gate.
+#
+# WHY: dev-env, headlamp and grafana had NO policy bindings on their Authentik
+# applications, so the access check was "any authenticated identity passes". That
+# is the wrong gate for the cluster dashboard, the agent dev pod and Grafana.
+# Enrollment auto-creates accounts (default-source-enrollment: prompt -> write ->
+# login, no approval step), so the set of identities that passed was every Plex
+# user who had ever signed in anywhere in the estate.
+#
+# NOT an internet exposure: all three are LAN-only (traefik-internal, on
+# *.haynesops.com, published by external-dns-unifi to the UDM only) and the
+# Cloudflare Tunnel forwards only haynesnetwork.com + *.haynesnetwork.com,
+# returning http_status:404 for everything else. Reaching them requires LAN or
+# VPN first. This closes the second layer, not a public hole.
+#
+# SCOPE RULE (owner ruling 2026-08-23): LAN-only infra apps stay OUT of the
+# haynesnetwork catalog/Portal and are gated to `authentik Admins` here; admins
+# are assumed to reach them over the LAN or VPN. Precedent already in the app:
+# the Grafana deep-links in the Metrics section are isAdmin-gated for exactly
+# this reason (haynesnetwork packages/metrics/src/grafana.ts).
+#
+# DELIBERATELY NOT GATED HERE: the household-facing apps (paperless, immich,
+# kavita, audiobookshelf, open-webui). Their bindings must be DERIVED from
+# haynesnetwork's role_app_grants so there is a single source of truth — binding
+# them by hand today would lock out users whose Authentik group membership has
+# drifted from their haynesnetwork role (5 such users at time of writing). That
+# reconciler is the follow-up; this file stays infra-only.
+#
+# PATTERN: copied from 60-tautulli-frontdoor.yaml — one policybinding per allowed
+# group, ascending `order`, application referenced read-only via !Find. All three
+# applications are already policy_engine_mode=any, so they are NOT modified here;
+# only bindings are added. Groups are referenced read-only — membership is owned
+# by the portal / Authentik and is unchanged by this blueprint.
+#
+# Applications referenced are all pre-existing: dev-env (created by
+# 50-dev-env.yaml), headlamp and grafana (UI-created, adopted here by slug).
+version: 1
+metadata:
+  name: infra-admin-gate
+  labels:
+    blueprints.goauthentik.io/description: 'LAN-only infra apps (dev-env, headlamp, grafana) gated to the authentik Admins group. Closes the "any authenticated user passes" default on the cluster dashboard, the agent dev pod and Grafana.'
+context: {}
+entries:
+# Dev Env — agent workhorse pod (code-server). Application object lives in
+# 50-dev-env.yaml; only the binding is added here.
+- model: authentik_policies.policybinding
+  state: present
+  identifiers:
+    target: !Find [authentik_core.application, [slug, dev-env]]
+    order: 0
+  attrs:
+    group: !Find [authentik_core.group, [name, authentik Admins]]
+# Headlamp — cluster dashboard.
+- model: authentik_policies.policybinding
+  state: present
+  identifiers:
+    target: !Find [authentik_core.application, [slug, headlamp]]
+    order: 0
+  attrs:
+    group: !Find [authentik_core.group, [name, authentik Admins]]
+# Grafana — observability. Safe to gate on `authentik Admins`: the grafana_admin
+# group (used for Grafana's own role mapping) holds the same two accounts, so no
+# identity that has access today loses it.
+- model: authentik_policies.policybinding
+  state: present
+  identifiers:
+    target: !Find [authentik_core.application, [slug, grafana]]
+    order: 0
+  attrs:
+    group: !Find [authentik_core.group, [name, authentik Admins]]
