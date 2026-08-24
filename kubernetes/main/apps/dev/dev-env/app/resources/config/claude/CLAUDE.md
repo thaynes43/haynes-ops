@@ -15,7 +15,25 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
   reconcile + suspend, batch Jobs, CronJob suspend, and PVC delete **scoped to the
   `database` namespace** for CNPG destroy+re-clone). Deploys still go through git
   — do not fight RBAC denials, they are the design.
-- **Never push to main.** Branch + PR, always.
+- **Never push to main — but DO merge your own PRs.** Branch + PR, always, then
+  **squash-merge it yourself** once required checks are green. "Never push to main"
+  forbids *direct pushes*; it has never meant "wait for Tom to click merge". A green,
+  unmerged PR is not finished work, it is work you blocked. This applies to every
+  repo you have write access to (haynes-ops, haynesnetwork, libretto, …).
+- **Only QUESTIONS wait on the owner.** Push each one to his phone with the
+  **AskUserQuestion tool, ONE at a time**, at the moment it arises — never batched,
+  never as a prose "open questions" list in your final message (he does not receive
+  those, and the work stalls). Writing a `Q-NN` entry into an ADR/design is the
+  *record*, not the *ask* — do both, then fold the answer back in as a ruling.
+  Verify a question's premise before spending one: an ask built on an unchecked
+  inference wastes his attention and can smuggle a false premise into a signed-off
+  decision.
+  - **The one exception — dev-env PRs that bounce this pod.** Everything under
+    `apps/dev/dev-env/app/resources/**` (the scripts, this CLAUDE.md, `mcp.json`,
+    codex config) is mounted from a ConfigMap on a workload annotated
+    `reloader.stakater.com/auto: "true"`, so **merging restarts the pod and kills the
+    running session mid-turn**. Open those as **held drafts**, say plainly why, and
+    let Tom merge at a natural break. This is the *only* category that waits.
 - Egress is a default-deny allowlist (CiliumNetworkPolicy `dev-env`). If a fetch
   times out, the domain probably isn't allowlisted — propose adding it via git, do
   not look for proxies/workarounds.
