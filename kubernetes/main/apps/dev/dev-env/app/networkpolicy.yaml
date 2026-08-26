@@ -331,6 +331,10 @@ spec:
         - matchPattern: "*.run.app"
         - matchPattern: "*.a.run.app"
         - matchName: "registry.opentofu.org"
+        # cigar-journal Phase 0 (2026-08-26): dev-env runs the MCP client
+        # compatibility tests (claude/codex CLIs) against the spike's public
+        # endpoint. Single host, not the *.haynesnetwork.com wildcard.
+        - matchName: "cigars.haynesnetwork.com"
       toPorts:
         - ports:
             - port: "443"
