@@ -1,0 +1,75 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+# Phase 0 of cigar-journal (thaynes43/cigar-journal docs/): a throwaway MCP
+# compatibility spike server claiming the app's permanent hostname. Replaced
+# by the real application image when Phase 1 lands; the spike runs authless
+# first (SPIKE_AUTH=none) and flips to oauth for the token-behavior tests.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: &app cigar-journal
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  maxHistory: 2
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  uninstall:
+    keepHistory: false
+  values:
+    controllers:
+      main:
+        replicas: 1
+        strategy: RollingUpdate
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/cigar-journal-spike
+              tag: sha-802201e
+              pullPolicy: IfNotPresent
+            env:
+              PORT: "8080"
+              SPIKE_AUTH: none
+              PUBLIC_ORIGIN: https://cigars.haynesnetwork.com
+              STATE_FILE: /tmp/spike-state.json
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8080
+                  initialDelaySeconds: 5
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8080
+                  initialDelaySeconds: 3
+                  periodSeconds: 10
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+            resources:
+              requests:
+                cpu: 25m
+                memory: 64Mi
+              limits:
+                memory: 256Mi
+    service:
+      main:
+        ports:
+          http:
+            port: 8080
