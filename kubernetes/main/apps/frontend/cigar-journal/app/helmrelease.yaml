@@ -36,9 +36,12 @@ spec:
               pullPolicy: IfNotPresent
             env:
               PORT: "8080"
-              SPIKE_AUTH: none
+              SPIKE_AUTH: oauth
               PUBLIC_ORIGIN: https://cigars.haynesnetwork.com
               STATE_FILE: /tmp/spike-state.json
+            envFrom:
+              - secretRef:
+                  name: cigar-journal-secret
             probes:
               liveness:
                 enabled: true
