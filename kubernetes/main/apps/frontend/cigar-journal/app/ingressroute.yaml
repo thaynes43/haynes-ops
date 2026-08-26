@@ -1,0 +1,24 @@
+---
+# cigars.haynesnetwork.com — permanent hostname for Cigar Journal, served by
+# the Phase 0 spike until the real app replaces the image. Same pattern as
+# the haynesnetwork apex: external-dns creates the CNAME to the tunnel edge,
+# wildcard cert covers the subdomain.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: cigar-journal
+  annotations:
+    external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
+    kubernetes.io/ingress.class: traefik-external
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`cigars.haynesnetwork.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: cigar-journal
+          port: 8080
+  tls:
+    secretName: certificate-haynesnetwork
