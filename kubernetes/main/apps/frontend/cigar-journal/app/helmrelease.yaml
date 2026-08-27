@@ -1,9 +1,8 @@
 ---
 # yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
-# Phase 0 of cigar-journal (thaynes43/cigar-journal docs/): a throwaway MCP
-# compatibility spike server claiming the app's permanent hostname. Replaced
-# by the real application image when Phase 1 lands; the spike runs authless
-# first (SPIKE_AUTH=none) and flips to oauth for the token-behavior tests.
+# Cigar Journal (thaynes43/cigar-journal) — replaces the Phase 0 spike at
+# the same hostname. One image, roles selected by command: web (default),
+# migrate (init container).
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -28,17 +27,45 @@ spec:
       main:
         replicas: 1
         strategy: RollingUpdate
+        annotations:
+          reloader.stakater.com/auto: "true"
+        initContainers:
+          init-db:
+            image:
+              repository: ghcr.io/home-operations/postgres-init
+              tag: "18.6"
+              pullPolicy: IfNotPresent
+            envFrom:
+              - secretRef:
+                  name: cigar-journal-secret
+          migrate:
+            image: &mainImage
+              repository: ghcr.io/thaynes43/cigar-journal
+              tag: v0.2.0
+              pullPolicy: IfNotPresent
+            # workingDir is required: node --import tsx resolves the loader
+            # from CWD, and tsx ships in /app/migrate/node_modules.
+            workingDir: /app/migrate
+            command:
+              - /sbin/tini
+              - "--"
+              - node
+              - --import
+              - tsx
+              - src/scripts/migrate.ts
+            envFrom:
+              - secretRef:
+                  name: cigar-journal-secret
         containers:
           app:
-            image:
-              repository: ghcr.io/thaynes43/cigar-journal-spike
-              tag: sha-802201e
-              pullPolicy: IfNotPresent
+            image: *mainImage
             env:
-              PORT: "8080"
-              SPIKE_AUTH: oauth
-              PUBLIC_ORIGIN: https://cigars.haynesnetwork.com
-              STATE_FILE: /tmp/spike-state.json
+              NODE_ENV: production
+              PORT: "3000"
+              HOSTNAME: "0.0.0.0"
+              # No IPv6 egress in this cluster; force A-record-first for any
+              # outbound fetch (same trap as todos-for-dues).
+              NODE_OPTIONS: --dns-result-order=ipv4first
             envFrom:
               - secretRef:
                   name: cigar-journal-secret
@@ -48,9 +75,9 @@ spec:
                 custom: true
                 spec:
                   httpGet:
-                    path: /healthz
-                    port: 8080
-                  initialDelaySeconds: 5
+                    path: /api/health
+                    port: 3000
+                  initialDelaySeconds: 15
                   periodSeconds: 30
                   timeoutSeconds: 5
                   failureThreshold: 3
@@ -59,20 +86,31 @@ spec:
                 custom: true
                 spec:
                   httpGet:
-                    path: /healthz
-                    port: 8080
-                  initialDelaySeconds: 3
+                    path: /api/health
+                    port: 3000
+                  initialDelaySeconds: 5
                   periodSeconds: 10
                   timeoutSeconds: 3
                   failureThreshold: 3
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/health
+                    port: 3000
+                  initialDelaySeconds: 5
+                  periodSeconds: 5
+                  timeoutSeconds: 3
+                  failureThreshold: 24
             resources:
               requests:
-                cpu: 25m
-                memory: 64Mi
-              limits:
+                cpu: 50m
                 memory: 256Mi
+              limits:
+                memory: 1Gi
     service:
       main:
         ports:
           http:
-            port: 8080
+            port: 3000
