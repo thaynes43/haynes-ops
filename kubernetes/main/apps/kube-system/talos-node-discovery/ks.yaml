@@ -1,0 +1,23 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app talos-node-discovery
+  namespace: kube-system
+spec:
+  targetNamespace: kube-system
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  path: ./kubernetes/main/apps/kube-system/talos-node-discovery/app
+  # Pruning this RBAC silently re-breaks node discovery and reinstates the
+  # Omni-WAN single point of failure for worker kubelets — never delete.
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: false
+  interval: 30m
+  timeout: 5m

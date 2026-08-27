@@ -1,0 +1,33 @@
+---
+# Talos cluster discovery (the `kubernetes` registry — the only one enabled in
+# bootstrap/omni/cluster-template.yaml) needs every node to list/watch Node
+# objects to learn its peers' addresses. The Kubernetes >=1.32 Node authorizer
+# only lets a kubelet read its OWN Node object, so discovery silently fails
+# (chronic dmesg spam: `KubernetesPullController ... nodes is forbidden`) and
+# each worker's KubePrism keeps a single upstream: the Omni SaaS LB over the
+# SideroLink WAN tunnel. Any WAN blip >~50s then flips every worker NotReady
+# and pages on ~a dozen apps (2026-08-27 08:41Z incident). Authorizers are
+# OR'd, so this grant restores discovery and populates workers' KubePrism with
+# the masters' LAN :6443 endpoints. Verify on a worker after apply:
+# `talosctl get kubeprismendpoints` gains master :6443 entries.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: talos-node-discovery
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: talos-node-discovery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: talos-node-discovery
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: system:nodes
