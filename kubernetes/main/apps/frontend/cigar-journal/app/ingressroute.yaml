@@ -13,6 +13,14 @@ spec:
   entryPoints:
     - websecure
   routes:
+    # /mcp → the MCP adapter service; Traefik prefers the longer rule, so
+    # everything else (incl. /.well-known and /oauth/*) falls through to web.
+    - kind: Rule
+      match: Host(`cigars.haynesnetwork.com`) && PathPrefix(`/mcp`)
+      services:
+        - kind: Service
+          name: cigar-journal-mcp
+          port: 8081
     - kind: Rule
       match: Host(`cigars.haynesnetwork.com`) && PathPrefix(`/`)
       services:

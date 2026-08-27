@@ -41,7 +41,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/cigar-journal
-              tag: v0.3.0
+              tag: v0.4.0
               pullPolicy: IfNotPresent
             # workingDir is required: node --import tsx resolves the loader
             # from CWD, and tsx ships in /app/migrate/node_modules.
@@ -109,8 +109,68 @@ spec:
                 memory: 256Mi
               limits:
                 memory: 1Gi
+      # MCP role: same image, long-running six-tool adapter (thaynes43/
+      # cigar-journal docs/mcp/tool-contract.md). Shares the origin with web —
+      # /mcp routes here, /.well-known + /oauth/* + everything else to web.
+      mcp:
+        replicas: 1
+        strategy: RollingUpdate
+        annotations:
+          reloader.stakater.com/auto: "true"
+        containers:
+          app:
+            image: *mainImage
+            workingDir: /app/mcp
+            command:
+              - /sbin/tini
+              - "--"
+              - node
+              - --import
+              - tsx
+              - src/index.ts
+            env:
+              PORT: "8081"
+              NODE_OPTIONS: --dns-result-order=ipv4first
+            envFrom:
+              - secretRef:
+                  name: cigar-journal-secret
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8081
+                  initialDelaySeconds: 5
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8081
+                  initialDelaySeconds: 3
+                  periodSeconds: 10
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+            resources:
+              requests:
+                cpu: 25m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
     service:
       main:
+        controller: main
         ports:
           http:
             port: 3000
+      mcp:
+        controller: mcp
+        ports:
+          http:
+            port: 8081
