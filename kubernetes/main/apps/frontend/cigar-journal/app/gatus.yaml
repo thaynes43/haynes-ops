@@ -1,0 +1,27 @@
+---
+# External health check for Cigar Journal via the real WAN path (Cloudflare
+# edge -> tunnel -> traefik-external -> pod), matching the haynesnetwork apex
+# pattern: public resolver + strict 200 on the process-only health route.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cigar-journal-gatus-ep
+  labels:
+    gatus.io/enabled: "true"
+data:
+  config.yaml: |
+    endpoints:
+      - name: cigar-journal
+        group: external
+        url: "https://cigars.haynesnetwork.com/api/health"
+        interval: 1m
+        client:
+          dns-resolver: tcp://1.1.1.1:53
+        conditions:
+          - "[STATUS] == 200"
+        alerts:
+          - type: pushover
+            description: "cigars.haynesnetwork.com health check failed"
+            send-on-resolved: true
+            failure-threshold: 3
+            success-threshold: 3
