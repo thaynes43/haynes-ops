@@ -21,4 +21,10 @@ data:
           - "[STATUS] >= 200"
           - "[STATUS] < ${GATUS_STATUS_MAX:-500}"
         alerts:
+          # 10x1m failures before paging — see external/configmap.yaml. Ported from
+          # components/common/gatus, which this older tree missed: the 2026-08-27
+          # worker-NotReady blip (4 min) paged 12 default-threshold endpoints here
+          # while every common-tree endpoint correctly stayed quiet.
           - type: pushover
+            failure-threshold: 10
+            success-threshold: 2
