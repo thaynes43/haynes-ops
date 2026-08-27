@@ -130,6 +130,9 @@ spec:
               - src/index.ts
             env:
               PORT: "8081"
+              # Cut SSE stream overhead per call; clients negotiating JSON get
+              # single-response mode (latency feedback 2026-08-27).
+              MCP_JSON_RESPONSE: "true"
               NODE_OPTIONS: --dns-result-order=ipv4first
             envFrom:
               - secretRef:
