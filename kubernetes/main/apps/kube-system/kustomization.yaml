@@ -11,6 +11,7 @@ resources:
   - ./metrics-server/ks.yaml
   - ./reloader/ks.yaml
   - ./kubelet-csr-approver/ks.yaml
+  - ./talos-node-discovery/ks.yaml
   - ./spegel/ks.yaml
   - ./reflector/ks.yaml
   - ./k8tz                            # Has own namespace, add entire dir
