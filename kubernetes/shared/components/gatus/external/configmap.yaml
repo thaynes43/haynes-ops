@@ -21,4 +21,10 @@ data:
           - "[STATUS] >= 200"
           - "[STATUS] < ${GATUS_STATUS_MAX:-500}"
         alerts:
+          # 10 consecutive 1m failures before paging: transient blips (image
+          # rollouts, the 2026-08-27 worker-NotReady window) self-resolve in
+          # minutes; real outages persist and still page (~10 min in). Ported
+          # from components/common/gatus/external, which this tree missed.
           - type: pushover
+            failure-threshold: 10
+            success-threshold: 2
