@@ -25,7 +25,7 @@ spec:
       match: Host(`cigars.haynesnetwork.com`) && PathPrefix(`/`)
       services:
         - kind: Service
-          name: cigar-journal
+          name: cigar-journal-main
           port: 3000
   tls:
     secretName: certificate-haynesnetwork
