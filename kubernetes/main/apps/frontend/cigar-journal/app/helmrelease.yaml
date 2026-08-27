@@ -41,7 +41,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/cigar-journal
-              tag: APP_TAG_PLACEHOLDER
+              tag: v0.2.0
               pullPolicy: IfNotPresent
             # workingDir is required: node --import tsx resolves the loader
             # from CWD, and tsx ships in /app/migrate/node_modules.
