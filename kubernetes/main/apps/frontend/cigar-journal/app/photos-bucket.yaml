@@ -1,0 +1,13 @@
+---
+# Smoke/product photos live in the cluster's native object store (rook RGW),
+# per cigar-journal ADR-007: one bucket, binding on the DB row, app-mediated
+# serving. The OBC provisions the bucket and mints a same-namespace
+# Secret/ConfigMap (both named after the claim) carrying endpoint + AWS-style
+# keys, wired into the app as PHOTOS_S3_*.
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: cigar-journal-photos
+spec:
+  bucketName: cigar-journal-photos
+  storageClassName: ceph-bucket
