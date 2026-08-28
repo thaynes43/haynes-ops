@@ -9,3 +9,10 @@
 
 [history]
 persistence = "save-all"
+
+# Cigar Journal production MCP (thaynes43/cigar-journal). CIGAR_JOURNAL_TOKEN
+# lives in the PVC-backed ~/.bashrc (opaque access token, owner-bound, 30d TTL,
+# minted 2026-08-27; revoke via the oauth_access_token row). Never in git.
+[mcp_servers.cigar-journal]
+url = "https://cigars.haynesnetwork.com/mcp"
+bearer_token_env_var = "CIGAR_JOURNAL_TOKEN"

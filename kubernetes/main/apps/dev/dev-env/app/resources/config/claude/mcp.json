@@ -36,6 +36,13 @@
       "headers": {
         "X-API-Key": "${VEXA_API_KEY}"
       }
+    },
+    "cigar-journal": {
+      "type": "http",
+      "url": "https://cigars.haynesnetwork.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${CIGAR_JOURNAL_TOKEN}"
+      }
     }
   }
 }
