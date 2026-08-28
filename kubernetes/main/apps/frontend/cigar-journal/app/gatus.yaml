@@ -25,3 +25,24 @@ data:
             send-on-resolved: true
             failure-threshold: 3
             success-threshold: 3
+      # MCP adapter (ingressroute: PathPrefix `/mcp` -> cigar-journal-mcp:8081).
+      # The process-only /healthz lives on the MCP service but is NOT WAN-routed
+      # — only /mcp reaches this service, so /healthz (and /mcp/../healthz, which
+      # normalizes to /healthz) falls through to the web app and 307s. Instead we
+      # probe /mcp itself: every /mcp request is bearer-gated (ADR-004/005), so an
+      # unauthenticated GET returns 401 + WWW-Authenticate. A 401 auth-challenge
+      # is proof the MCP endpoint is alive; a 5xx/timeout/307 is not.
+      - name: cigar-journal-mcp
+        group: external
+        url: "https://cigars.haynesnetwork.com/mcp"
+        interval: 1m
+        client:
+          dns-resolver: tcp://1.1.1.1:53
+        conditions:
+          - "[STATUS] == 401"
+        alerts:
+          - type: pushover
+            description: "cigars.haynesnetwork.com MCP endpoint health check failed"
+            send-on-resolved: true
+            failure-threshold: 3
+            success-threshold: 3
