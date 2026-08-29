@@ -150,6 +150,22 @@ spec:
               # single-response mode (latency feedback 2026-08-27).
               MCP_JSON_RESPONSE: "true"
               NODE_OPTIONS: --dns-result-order=ipv4first
+              PHOTOS_S3_ENDPOINT: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+              PHOTOS_S3_BUCKET:
+                valueFrom:
+                  configMapKeyRef:
+                    name: cigar-journal-photos
+                    key: BUCKET_NAME
+              PHOTOS_S3_ACCESS_KEY_ID:
+                valueFrom:
+                  secretKeyRef:
+                    name: cigar-journal-photos
+                    key: AWS_ACCESS_KEY_ID
+              PHOTOS_S3_SECRET_ACCESS_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: cigar-journal-photos
+                    key: AWS_SECRET_ACCESS_KEY
             envFrom:
               - secretRef:
                   name: cigar-journal-secret
