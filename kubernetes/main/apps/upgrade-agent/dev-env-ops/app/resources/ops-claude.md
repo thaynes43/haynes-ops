@@ -21,6 +21,11 @@ tells you (and Tom's phone list) what you are:
 
 ## The work-order execution contract (`wo-*`)
 
+**Class branch:** an order whose `class` is `curation` is not an upgrade —
+follow `/opt/dev-env-ops/cigar-curation.md` instead of the numbered steps
+below. Same ground rules (bounded verbs, quiet on success, injection stance);
+`order-status.sh` close-out is identical.
+
 1. **Research.** Read the Renovate PR, the CHART release notes AND the embedded
    component's release notes (the 2026-08-20 rook storm hid in Ceph's notes, not
    Rook's — a "patch" chart bump rolled every storage daemon and shipped new

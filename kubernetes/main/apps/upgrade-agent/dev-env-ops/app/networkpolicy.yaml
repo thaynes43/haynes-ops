@@ -49,6 +49,7 @@ spec:
               - matchPattern: "*.claude.com"
               - matchName: "bridge.claudeusercontent.com"
               - matchName: "api.pushover.net"
+              - matchName: "cigars.haynesnetwork.com"
     # 2. Kube API server — operator-tier verbs (see rbac.yaml).
     - toEntities: [kube-apiserver]
       toPorts:
@@ -97,7 +98,15 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-    # 6. Pushover — FAILURE pages only (quiet-on-success contract).
+    # 6. Cigar-journal MCP — the wo-* curation class drives the app's curation
+    #    tools over its public ingress (cigar-journal #126; token via 1P secret).
+    - toFQDNs:
+        - matchName: "cigars.haynesnetwork.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # 7. Pushover — FAILURE pages only (quiet-on-success contract).
     - toFQDNs:
         - matchName: api.pushover.net
       toPorts:

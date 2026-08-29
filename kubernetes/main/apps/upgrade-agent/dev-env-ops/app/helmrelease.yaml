@@ -152,6 +152,49 @@ spec:
               readOnlyRootFilesystem: true
               capabilities:
                 drop: ["ALL"]
+      # Files a daily cigar-catalog curation work order (cigar-journal #126,
+      # owner ruling 2026-08-29: curation runs here, not on dev-env). The
+      # watcher's single-flight wo-* lane serializes it behind any upgrade
+      # order; class `curation` routes the session to cigar-curation.md. The
+      # filer only writes the CM key when absent — re-pending a same-day
+      # claimed order would double-spawn its tmux window.
+      curation-order:
+        type: cronjob
+        cronjob:
+          schedule: "15 10 * * *"
+          concurrencyPolicy: Forbid
+          successfulJobsHistory: 1
+          failedJobsHistory: 1
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/dev-env
+              tag: 0.5.0@sha256:7dce516a4f70eba3ce1a8ddd406b546762cfb084e50fdf36b2d9f18e214e5615
+            command: ["/bin/bash", "-c"]
+            args:
+              - >-
+                set -euo pipefail;
+                key="wo-cigar-curate-$(date -u +%Y%m%d)";
+                if kubectl -n upgrade-agent get cm upgrade-work-orders -o json
+                | jq -e --arg k "$key" '.data | has($k)' >/dev/null; then
+                echo "order $key already filed — skipping"; exit 0; fi;
+                now="$(date -u +%FT%TZ)";
+                entry="$(jq -cn --arg now "$now" '{class:"curation",
+                source:"cron", title:"cigar catalog curation batch",
+                reason:"scheduled batch — follow /opt/dev-env-ops/cigar-curation.md",
+                status:"pending", created:$now, updated:$now}')";
+                kubectl -n upgrade-agent patch cm upgrade-work-orders
+                --type merge -p "$(jq -cn --arg k "$key" --arg v "$entry"
+                '{data:{($k):$v}}')";
+                echo "filed $key"
+            resources:
+              requests: { cpu: 10m, memory: 64Mi }
+              limits: { memory: 256Mi }
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
     defaultPodOptions:
       automountServiceAccountToken: true   # operator-tier kubectl via the dev-env-ops SA
       # ndots:1 — same CNP/DNS interaction as dev-env (external names must not
