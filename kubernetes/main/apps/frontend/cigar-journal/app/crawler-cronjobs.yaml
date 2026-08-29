@@ -1,0 +1,179 @@
+---
+# Vendor crawler cadence (cigar-journal ADR-006, go-live #93). Same image as the
+# HelmRelease, `crawl` role selected by the container command (see the ROLE
+# DISPATCH marker in the repo Dockerfile). Two schedules:
+#   * offers — weekly re-visit of known listings, appends offers rows (price,
+#     stock, seenAt) so the price-history spark + staleness window (#91) get
+#     points. No full catalog re-seed.
+#   * enrich — daily, drains the gap-fill queue in small bounded batches.
+#
+# BOTH SHIP SUSPENDED. The owner/coordinator unsuspends deliberately once the
+# vendor's crawl posture is confirmed (RBAC permits CronJob suspend toggling at
+# runtime — `kubectl -n frontend patch cronjob <name> -p '{"spec":{"suspend":false}}'`).
+#
+# Image tag is pinned here because a CronJob is a separate manifest and cannot
+# reach the HelmRelease's &mainImage anchor. Renovate's `kubernetes` manager
+# tracks this ghcr.io tag independently — keep it in step with the HelmRelease.
+#
+# Failure visibility (#93 observability): the crawl CLI exits 0 only on a
+# succeeded run and 1 on failure (Dockerfile ROLE DISPATCH; runIngest brackets
+# each run in a crawl_runs row). A failed run therefore surfaces as a failed Job
+# (restartPolicy Never, backoffLimit 1) in kube-state-metrics and the run's stderr
+# is a Loki-alertable log line.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cigar-journal-crawl-offers
+spec:
+  suspend: true
+  # Weekly, Sunday 08:00 UTC (= 01:00 America/Phoenix — Fox Cigar is an AZ vendor;
+  # this is their overnight low-traffic window). Off-peak UTC hour per #93; offers
+  # history only needs periodic points and the vendor is crawled gently. Owner may
+  # tighten to a shorter cadence once a few weeks of points exist.
+  schedule: "0 8 * * 0"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      # Polite fetcher rate-limits every request (>=2.5s); a full offers walk is
+      # bounded but slow. Guard a wedged run without cutting a legitimate crawl short.
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: cigar-journal
+            app.kubernetes.io/component: crawl-offers
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: crawl
+              image: ghcr.io/thaynes43/cigar-journal:v0.21.0
+              imagePullPolicy: IfNotPresent
+              # workingDir is required: `node --import tsx` resolves the loader from
+              # CWD, and tsx ships in /app/crawler/node_modules.
+              workingDir: /app/crawler
+              command:
+                - /sbin/tini
+                - "--"
+                - node
+                - --import
+                - tsx
+                - src/cli.ts
+                - --vendor
+                - fox-cigar
+                - --mode
+                - offers
+              env:
+                # No IPv6 egress in this cluster; force A-record-first for the
+                # crawler's outbound fetches (same trap the HR web/mcp roles hit).
+                NODE_OPTIONS: --dns-result-order=ipv4first
+                # Photo capture for newly matched cigars — mirrored from the HR.
+                PHOTOS_S3_ENDPOINT: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+                PHOTOS_S3_BUCKET:
+                  valueFrom:
+                    configMapKeyRef:
+                      name: cigar-journal-photos
+                      key: BUCKET_NAME
+                PHOTOS_S3_ACCESS_KEY_ID:
+                  valueFrom:
+                    secretKeyRef:
+                      name: cigar-journal-photos
+                      key: AWS_ACCESS_KEY_ID
+                PHOTOS_S3_SECRET_ACCESS_KEY:
+                  valueFrom:
+                    secretKeyRef:
+                      name: cigar-journal-photos
+                      key: AWS_SECRET_ACCESS_KEY
+              envFrom:
+                - secretRef:
+                    name: cigar-journal-secret
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 256Mi
+                limits:
+                  memory: 512Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cigar-journal-crawl-enrich
+spec:
+  suspend: true
+  # Daily, 09:00 UTC (= 02:00 America/Phoenix) — staggered an hour after the offers
+  # window so the Sunday overlap never runs both against the vendor at once. Drains
+  # at most --limit 10 gap-fill requests per run; a small, steady trickle.
+  schedule: "0 9 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      # Bounded to 10 drained requests; short. Guard against a wedged fetch.
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: cigar-journal
+            app.kubernetes.io/component: crawl-enrich
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: crawl
+              image: ghcr.io/thaynes43/cigar-journal:v0.21.0
+              imagePullPolicy: IfNotPresent
+              # workingDir is required: `node --import tsx` resolves the loader from
+              # CWD, and tsx ships in /app/crawler/node_modules.
+              workingDir: /app/crawler
+              command:
+                - /sbin/tini
+                - "--"
+                - node
+                - --import
+                - tsx
+                - src/cli.ts
+                - --vendor
+                - fox-cigar
+                - --mode
+                - enrich
+                - --limit
+                - "10"
+              env:
+                # No IPv6 egress in this cluster; force A-record-first for the
+                # crawler's outbound fetches (same trap the HR web/mcp roles hit).
+                NODE_OPTIONS: --dns-result-order=ipv4first
+                # Photo capture during gap-fill — mirrored from the HR.
+                PHOTOS_S3_ENDPOINT: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+                PHOTOS_S3_BUCKET:
+                  valueFrom:
+                    configMapKeyRef:
+                      name: cigar-journal-photos
+                      key: BUCKET_NAME
+                PHOTOS_S3_ACCESS_KEY_ID:
+                  valueFrom:
+                    secretKeyRef:
+                      name: cigar-journal-photos
+                      key: AWS_ACCESS_KEY_ID
+                PHOTOS_S3_SECRET_ACCESS_KEY:
+                  valueFrom:
+                    secretKeyRef:
+                      name: cigar-journal-photos
+                      key: AWS_SECRET_ACCESS_KEY
+              envFrom:
+                - secretRef:
+                    name: cigar-journal-secret
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 256Mi
+                limits:
+                  memory: 512Mi
