@@ -49,8 +49,8 @@ Copy `.github/workflows/upgrade-shepherd-build.yml`:
 ## Post-mortem 2026-08-29 — the ARG pins were never Renovate-managed
 
 The last acceptance box above ("Renovate opens PRs for tool ARG bumps — verify one
-datasource comment resolves") was **ticked without being checked, and it was false for
-13 months of image life.** Renovate's built-in `dockerfile` manager reads FROM/image
+datasource comment resolves") was **ticked without being checked, and it was false
+from the first build (2026-07-13) until 2026-08-29.** Renovate's built-in `dockerfile` manager reads FROM/image
 refs only; an `ARG FOO_VERSION=` pin needs a **regex custom manager**, and the two
 custom managers this repo had were both scoped `managerFilePatterns:
 kubernetes/**/*.yaml`. Dockerfiles were never scanned. Proof, from the Dependency
