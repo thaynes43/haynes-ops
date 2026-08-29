@@ -7,9 +7,9 @@
 #     points. No full catalog re-seed.
 #   * enrich — daily, drains the gap-fill queue in small bounded batches.
 #
-# BOTH SHIP SUSPENDED. The owner/coordinator unsuspends deliberately once the
-# vendor's crawl posture is confirmed (RBAC permits CronJob suspend toggling at
-# runtime — `kubectl -n frontend patch cronjob <name> -p '{"spec":{"suspend":false}}'`).
+# UNSUSPENDED 2026-08-29 (owner's vendor-expansion directive; Fox posture
+# live-verified 2026-08-28). New vendors join only after their own in-cluster
+# robots/ToS probe passes and the registry row flips crawl_enabled.
 #
 # Image tag is pinned here because a CronJob is a separate manifest and cannot
 # reach the HelmRelease's &mainImage anchor. Renovate's `kubernetes` manager
@@ -25,7 +25,7 @@ kind: CronJob
 metadata:
   name: cigar-journal-crawl-offers
 spec:
-  suspend: true
+  suspend: false
   # Weekly, Sunday 08:00 UTC (= 01:00 America/Phoenix — Fox Cigar is an AZ vendor;
   # this is their overnight low-traffic window). Off-peak UTC hour per #93; offers
   # history only needs periodic points and the vendor is crawled gently. Owner may
@@ -108,7 +108,7 @@ kind: CronJob
 metadata:
   name: cigar-journal-crawl-enrich
 spec:
-  suspend: true
+  suspend: false
   # Daily, 09:00 UTC (= 02:00 America/Phoenix) — staggered an hour after the offers
   # window so the Sunday overlap never runs both against the vendor at once. Drains
   # at most --limit 10 gap-fill requests per run; a small, steady trickle.
