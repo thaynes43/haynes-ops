@@ -52,7 +52,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: crawl
-              image: ghcr.io/thaynes43/cigar-journal:v0.23.0
+              image: ghcr.io/thaynes43/cigar-journal:v0.23.1
               imagePullPolicy: IfNotPresent
               # workingDir is required: `node --import tsx` resolves the loader from
               # CWD, and tsx ships in /app/crawler/node_modules.
@@ -133,7 +133,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: crawl
-              image: ghcr.io/thaynes43/cigar-journal:v0.23.0
+              image: ghcr.io/thaynes43/cigar-journal:v0.23.1
               imagePullPolicy: IfNotPresent
               # workingDir is required: `node --import tsx` resolves the loader from
               # CWD, and tsx ships in /app/crawler/node_modules.
