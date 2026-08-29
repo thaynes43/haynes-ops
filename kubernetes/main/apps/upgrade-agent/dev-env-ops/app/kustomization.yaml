@@ -23,6 +23,7 @@ configMapGenerator:
       - resources/dev-activity-check.sh
       - resources/gh-token-refresh.sh
       - resources/ops-claude.md
+      - resources/cigar-curation.md
 generatorOptions:
   # Stable name so the HelmRelease can mount it by name.
   disableNameSuffixHash: true
