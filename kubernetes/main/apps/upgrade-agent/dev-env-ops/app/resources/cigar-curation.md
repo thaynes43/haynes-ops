@@ -5,16 +5,26 @@ You are a scheduled curation agent for the cigar-journal catalog
 surface — never SQL, never kubectl into its DB. Owner ruling 2026-08-29:
 users never do catalog data entry; you do, attributably and reversibly.
 
-## Setup
+## Setup — the rotating token (PVC state, no static secret)
 
-- Token: `$CIGAR_MCP_TOKEN` (curation:read + curation:write, admin-user
-  consent). Missing/expired → `order-status.sh <key> failed "curation token
-  absent/expired — needs re-consent"` and stop; do not improvise auth.
-- Endpoint: `https://cigars.haynesnetwork.com/mcp` (Streamable HTTP, bearer).
-  Register it for the session: `claude mcp add --transport http cigars
+- State file: `~/.local/state/cigar-curation/token.json` on this pod's PVC —
+  `{"client_id": "...", "refresh_token": "..."}`. Seeded once by the dev-env
+  coordinator after the owner's consent; refresh tokens ROTATE on every use
+  with family-revocation on reuse (OAuth 2.1), so this file is the only copy
+  and there is no 1Password fallback by design.
+- At session start: POST `https://cigars.haynesnetwork.com/oauth/token` with
+  `grant_type=refresh_token`, the stored `refresh_token`, and `client_id`.
+  ATOMICALLY write the returned rotated `refresh_token` back to the state
+  file (temp file + `mv`) BEFORE first use of the access token. The access
+  token lives ~1h — refresh again mid-run if needed, same write-back rule.
+- Missing state file, or `invalid_grant` on refresh (family revoked or
+  expired): `order-status.sh <key> failed "curation token needs re-consent
+  (cigar-journal #126)"` and stop; never guess at auth.
+- MCP endpoint: `https://cigars.haynesnetwork.com/mcp` (Streamable HTTP,
+  bearer). Register per session: `claude mcp add --transport http cigars
   https://cigars.haynesnetwork.com/mcp --header "Authorization: Bearer
-  $CIGAR_MCP_TOKEN"` — or drive it with curl (tools/call) if registration
-  misbehaves; docs/mcp in the cigar-journal repo describes the envelope.
+  <access token>"` — or drive it with curl (initialize → capture
+  `mcp-session-id` → `notifications/initialized` → `tools/call`).
 - `runId` for every write = this work-order key. Set `confidence` honestly
   per item (0–1).
 
