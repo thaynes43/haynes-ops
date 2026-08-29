@@ -72,7 +72,7 @@ code-server intercepts Ctrl+B (sidebar toggle) in its integrated terminal, so de
 - `~/repos/<name>` — canonical clone, fetch-only. Never work here.
 - `~/work/<id>` — per-task worktree on branch `agent/<id>`.
 
-One worktree per task, so concurrent agents in a repo never collide. Agents are instructed (`~/.claude/CLAUDE.md`) to stay in their worktree, never push `main`, and open a PR.
+One worktree per task, so concurrent agents in a repo never collide. Agents are instructed (`~/.claude/CLAUDE.md`) to stay in their worktree, never push `main`, open a PR, and **merge it themselves once checks are green**.
 
 ## Cleanup
 
@@ -103,7 +103,8 @@ Tool versions are pinned at image build (`scripts/dev-env/Dockerfile`, Renovate-
 ## Rules
 
 - Cluster changes go through a PR to `haynes-ops`; Flux applies them. The SA can restart/reconcile, not deploy.
-- Never push `main`. Branch + PR.
+- Never push `main`. Branch + PR — then **squash-merge it yourself** once required checks pass. The rule bans *direct pushes*, not merging; a green unmerged PR is blocked work, not finished work.
+- **Only questions wait on Tom**, pushed to his phone via AskUserQuestion, one at a time, as they arise. The sole exception is a PR touching `apps/dev/dev-env/app/resources/**` — that ConfigMap is reloader-watched, so merging restarts this pod and ends the running session. Open those as held drafts.
 - Egress is a default-deny allowlist. A hanging `curl`/`npm install` usually means the domain isn't allowlisted (CiliumNetworkPolicy) — fix `kubernetes/main/apps/dev/dev-env/app/networkpolicy.yaml`, don't hunt for a proxy.
 
 ## Gotchas

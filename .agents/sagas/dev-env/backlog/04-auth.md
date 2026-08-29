@@ -8,7 +8,8 @@ window). GitHub identity is haynes-dev-bot (PR #2044, Decision #5 revised): a
 SEPARATE App installed on ALL 23 repos — verified live by a cross-repo dispatch
 that opened hass-sandbox PR #97 as app/haynes-dev-bot. haynes-ops-bot stays scoped
 to haynes-ops ops/failure work and its PEM is NOT in this pod.
-Optional left: 1Password hardening of the Claude credential.
+1Password hardening of the Claude credential shipped 2026-08-29 (rides held
+draft PR #2588) — see "Long-lived token hardening" below.
 
 ## 1Password gotchas (cost ~1h live, 2026-07-13)
 
@@ -46,6 +47,38 @@ pod) + Tom on any browser (phone works).
   will own this, plan 03); the login TUI hard-wraps URLs (resize the tmux window
   before capturing); the pod needed `ndots: 1` + `claude.com` egress (fixed in PR
   #2034) before `claude` would even start.
+
+## Long-lived token hardening (2026-08-29, rides PR #2588)
+
+**The incident that promoted this from "optional":** the Max credential expired
+mid-task (2026-08-29 ~09:04), stranding a live cigar-journal ship chain. Likely
+root cause: 5+ concurrent claude sessions share `~/.claude/.credentials.json`
+and can race the OAuth refresh-token rotation — one process rotates, a sibling
+replays the stale refresh token, the token family gets revoked. The in-session
+`/login` recovery ALSO hit the documented wrapped-URL gotcha (tmux hard-wraps
+the OAuth URL; capture it with `tmux capture-pane -p -J`, or drive the whole
+ceremony from a kubectl-equipped agent session — proven again live).
+
+**The fix:** `claude setup-token` long-lived token (~1yr, NO rotating refresh)
+→ 1Password `dev-env` item, TOP-LEVEL field `CLAUDE_CODE_OAUTH_TOKEN` →
+ExternalSecret `dev-env-claude` → `dev-env-claude-secret` → `envFrom` on BOTH
+the app container (agents) and auth-watch (the probe must exercise the
+credential agents actually use). Env var takes precedence over
+`.credentials.json` for interactive AND headless sessions, so the multi-session
+refresh race is out of the loop entirely, and auth survives PVC loss with zero
+human steps.
+
+**Re-mint ceremony (~1x/year, or when auth-watch pages):**
+
+1. On any machine with claude logged in (Tom's Mac): `claude setup-token` —
+   interactive OAuth, prints an `sk-ant-oat01-…` token.
+2. Paste it into the 1Password `dev-env` item, field `CLAUDE_CODE_OAUTH_TOKEN`
+   (TOP-LEVEL, watch for the mobile-paste trailing-space trap above).
+3. Connect can cache the old copy — if the ES doesn't pick it up,
+   `kubectl rollout restart deploy/onepassword-connect -n external-secrets`,
+   then force-sync the ES. Reloader rolls the dev-env pod on the secret change
+   (bounces live sessions — pick a quiet window).
+4. Verify in-pod: `claude -p "Reply with exactly: POD-AUTH-OK" --model haiku`.
 
 ## Goal
 

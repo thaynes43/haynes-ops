@@ -83,6 +83,12 @@ spec:
               # HA_MCP_SECRET_PATH — expanded into the MCP URL by dev-init.
               - secretRef:
                   name: dev-env-mcp-secret
+              # CLAUDE_CODE_OAUTH_TOKEN — long-lived Max token (saga plan 04
+              # hardening; see externalsecret.yaml). Takes precedence over the
+              # PVC ~/.claude/.credentials.json, ending the multi-session
+              # refresh-token race that expired auth mid-task 2026-08-29.
+              - secretRef:
+                  name: dev-env-claude-secret
             probes:
               liveness:
                 enabled: true
@@ -156,6 +162,11 @@ spec:
             envFrom:
               - secretRef:
                   name: dev-env-watch-secret
+              # Same CLAUDE_CODE_OAUTH_TOKEN the agents run on — the daily
+              # claude probe must test the credential that's actually in use,
+              # not a stale .credentials.json the env var now shadows.
+              - secretRef:
+                  name: dev-env-claude-secret
             resources:
               requests: { cpu: 10m, memory: 64Mi }
               limits: { memory: 512Mi }
