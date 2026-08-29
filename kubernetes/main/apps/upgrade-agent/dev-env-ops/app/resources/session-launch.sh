@@ -45,6 +45,23 @@ export GH_TOKEN="$(cat /creds/gh_token 2>/dev/null || true)"
 # path (relaunch without the plan secret mounts nothing and the key takes over).
 [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && unset ANTHROPIC_API_KEY
 
+# ── LANE AUTH (2026-08-29) ───────────────────────────────────────────────────
+# The long-lived plan token CANNOT register Remote Control (/v1/code/sessions):
+# the session comes up looking normal but silently never appears on Tom's
+# remote list — A/B-proven live on this pod AND dev-env the same day (dev-env
+# saga 04). For esc-* that is the worst failure this system has: Tom is paged
+# with a session name that is not on his list. Interactive lanes therefore
+# strip the plan token and ride ~/.claude/.credentials.json (Max login, present
+# on this pod; its expiry is probed daily by work-order-watch). Headless rem-*
+# has no registration and stays on the durable plan token. The model pre-flight
+# below runs with the SAME auth its lane will launch with — probing the wrong
+# credential validates nothing.
+auth_pfx=""
+case "$key" in
+  rem-*) : ;;  # plan token (or the metered fallback) — no Remote Control involved
+  *)     auth_pfx="env -u CLAUDE_CODE_OAUTH_TOKEN" ;;
+esac
+
 # ── MODEL PRE-FLIGHT (2026-08-23) ────────────────────────────────────────────
 # A model can be configured, current, and STILL refuse to serve: the Max plan
 # meters Fable separately and it ran dry on 2026-08-23 —
@@ -58,7 +75,7 @@ export GH_TOKEN="$(cat /creds/gh_token 2>/dev/null || true)"
 # See memory `fable-quota-exhaustion-model-drift`.
 probe_model() {  # $1=model ; rc0 = it will actually serve us
   local out
-  out="$(timeout 90 claude --model "$1" -p 'reply with ok' 2>&1)" || return 1
+  out="$(timeout 90 $auth_pfx claude --model "$1" -p 'reply with ok' 2>&1)" || return 1
   printf '%s' "$out" | grep -qiE 'out of usage credits|usage limit|rate limit|not available|unknown model|invalid model|/model to switch' && return 1
   [ -n "$out" ]
 }
@@ -136,7 +153,7 @@ If you do neither, the harness escalates for you and Tom gets paged — so a del
     ;;
 esac
 
-claude --remote-control "$key" --model "$model" --effort "$effort" \
+$auth_pfx claude --remote-control "$key" --model "$model" --effort "$effort" \
   --dangerously-skip-permissions "$prompt"
 rc=$?
 if [ "$rc" -ne 0 ]; then
