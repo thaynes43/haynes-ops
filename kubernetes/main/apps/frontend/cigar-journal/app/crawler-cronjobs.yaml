@@ -68,23 +68,27 @@ spec:
                 - fox-cigar
                 - --mode
                 - offers
+              # Raw CronJob needs core/v1 list-form env — the HR's map form is a
+              # bjw-s chart-values idiom and does not apply here.
               env:
                 # No IPv6 egress in this cluster; force A-record-first for the
                 # crawler's outbound fetches (same trap the HR web/mcp roles hit).
-                NODE_OPTIONS: --dns-result-order=ipv4first
+                - name: NODE_OPTIONS
+                  value: --dns-result-order=ipv4first
                 # Photo capture for newly matched cigars — mirrored from the HR.
-                PHOTOS_S3_ENDPOINT: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
-                PHOTOS_S3_BUCKET:
+                - name: PHOTOS_S3_ENDPOINT
+                  value: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+                - name: PHOTOS_S3_BUCKET
                   valueFrom:
                     configMapKeyRef:
                       name: cigar-journal-photos
                       key: BUCKET_NAME
-                PHOTOS_S3_ACCESS_KEY_ID:
+                - name: PHOTOS_S3_ACCESS_KEY_ID
                   valueFrom:
                     secretKeyRef:
                       name: cigar-journal-photos
                       key: AWS_ACCESS_KEY_ID
-                PHOTOS_S3_SECRET_ACCESS_KEY:
+                - name: PHOTOS_S3_SECRET_ACCESS_KEY
                   valueFrom:
                     secretKeyRef:
                       name: cigar-journal-photos
@@ -147,23 +151,27 @@ spec:
                 - enrich
                 - --limit
                 - "10"
+              # Raw CronJob needs core/v1 list-form env — the HR's map form is a
+              # bjw-s chart-values idiom and does not apply here.
               env:
                 # No IPv6 egress in this cluster; force A-record-first for the
                 # crawler's outbound fetches (same trap the HR web/mcp roles hit).
-                NODE_OPTIONS: --dns-result-order=ipv4first
+                - name: NODE_OPTIONS
+                  value: --dns-result-order=ipv4first
                 # Photo capture during gap-fill — mirrored from the HR.
-                PHOTOS_S3_ENDPOINT: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
-                PHOTOS_S3_BUCKET:
+                - name: PHOTOS_S3_ENDPOINT
+                  value: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+                - name: PHOTOS_S3_BUCKET
                   valueFrom:
                     configMapKeyRef:
                       name: cigar-journal-photos
                       key: BUCKET_NAME
-                PHOTOS_S3_ACCESS_KEY_ID:
+                - name: PHOTOS_S3_ACCESS_KEY_ID
                   valueFrom:
                     secretKeyRef:
                       name: cigar-journal-photos
                       key: AWS_ACCESS_KEY_ID
-                PHOTOS_S3_SECRET_ACCESS_KEY:
+                - name: PHOTOS_S3_SECRET_ACCESS_KEY
                   valueFrom:
                     secretKeyRef:
                       name: cigar-journal-photos
