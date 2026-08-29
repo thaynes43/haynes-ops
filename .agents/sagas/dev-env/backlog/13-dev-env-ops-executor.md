@@ -48,6 +48,12 @@ exited. A vet can't own that class; a session can.
 - Auth: plan-first (`upgrade-shepherd-plan-secret`), metered key fallback.
   Default model `opus` (one shared plan pool — 07's correction; per-order
   `model` field can override).
+  **Revised 2026-08-29:** plan-first holds for the headless rem-* lane ONLY.
+  The plan token cannot register Remote Control (A/B-proven live on this pod
+  and dev-env; dev-env saga 04) — wo-*/esc-* sessions launched with it come up
+  but never appear on Tom's remote list, so session-launch strips it for the
+  interactive lanes and they ride the pod's `~/.claude/.credentials.json` (Max
+  login), whose expiry work-order-watch now probes daily (page on failure).
 
 **Flow:** shepherd files `upgrade-work-orders` CM entry via
 `/opt/shepherd/work-order.sh <PR> <class> "<reason>"` (allowlisted like

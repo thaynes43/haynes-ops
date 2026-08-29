@@ -167,6 +167,7 @@ spawn_session() {  # $1=key $2=order-json-string
   fi
 }
 
+last_login_probe=0
 log "watcher up (cm=$NS/$CM poll=${POLL}s wo-model=$MODEL_DEFAULT esc-model=$ESC_MODEL_DEFAULT rem-model=$REM_MODEL_DEFAULT effort=$EFFORT_DEFAULT reap-max=$REAP_MAX retention=${RETENTION_DAYS}d digest=${DIGEST_INTERVAL_H}h/${DIGEST_MAX_PENDING})"
 oplog watchdog '-' what=watcher-up wo_model="$MODEL_DEFAULT" esc_model="$ESC_MODEL_DEFAULT" rem_model="$REM_MODEL_DEFAULT"
 while true; do
@@ -330,6 +331,25 @@ while true; do
        || [ $(( now - ${last_flush:-0} )) -ge $(( DIGEST_INTERVAL_H * 3600 )) ] 2>/dev/null; then
       log "digest: flushing ${undigested} undigested outcome(s)"
       bash /opt/dev-env-ops/ops-digest.sh flush || log "digest flush failed (entries stay pending)"
+    fi
+  fi
+
+  # 5. LOGIN WATCH (2026-08-29): interactive lanes ride ~/.claude/.credentials.json
+  #    because the plan token cannot register Remote Control (see session-launch.sh
+  #    LANE AUTH). Nothing else on this pod watches that login, and its failure mode
+  #    is the worst one: an esc-* page pointing at a session that cannot serve.
+  #    Probe daily with the SAME auth the lanes launch with (both env credentials
+  #    stripped — a valid API key must not mask a dead login). Page on auth failure
+  #    only; rate-limit noise is expected on a busy plan and is NOT an expiry.
+  if [ $(( now - last_login_probe )) -ge 86400 ]; then
+    last_login_probe="$now"
+    lp_out="$(timeout 120 env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY \
+      claude -p 'ok' --model haiku --max-turns 1 2>&1)" || true
+    if printf '%s' "$lp_out" | grep -qiE 'not logged in|/login|oauth|401|invalid.*(token|api key)'; then
+      page "claude login expired (interactive lanes)" "The Max login (~/.claude/.credentials.json) failed its daily probe — wo-*/esc-* Remote-Control sessions cannot serve until it is re-authed. Ceremony: dev-env saga 04-auth.md, run against the dev-env-ops pod's tmux."
+      oplog watchdog '-' what=login-expired
+    else
+      log "login probe ok (credentials.json serves interactive lanes)"
     fi
   fi
 
