@@ -631,7 +631,12 @@ reason as your final message."
         # bypass comes from the pod settings.json default (no launch flag); --safe restores
         # prompts via --permission-mode default (verified to coexist with --remote-control).
         if [ "$mode" = both ]; then
-          launch="claude$cg --remote-control $id"
+          # The long-lived CLAUDE_CODE_OAUTH_TOKEN env (saga 04 hardening) CANNOT
+          # register /v1/code/sessions — the session silently never appears on the
+          # phone/web remote list (A/B-proven in-pod 2026-08-29). Strip it for
+          # `both` only, falling back to ~/.claude/.credentials.json (Max login);
+          # local TUI, task mode, and auth-watch stay on the env token.
+          launch="env -u CLAUDE_CODE_OAUTH_TOKEN claude$cg --remote-control $id"
           [ "$safe" = 1 ] && launch="$launch --permission-mode default"
         else
           launch="claude$cg"

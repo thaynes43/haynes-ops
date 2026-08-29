@@ -20,9 +20,17 @@ while true; do
 
   # Claude (Max plan): a minimal real call. Auth errors mention login/OAuth/401;
   # rate-limit output mentions limit — treat only the former as failure.
+  # Probe BOTH auth paths: the CLAUDE_CODE_OAUTH_TOKEN env (headless/task mode)
+  # AND ~/.claude/.credentials.json (remote-control "both" sessions — the env
+  # token cannot register /v1/code/sessions, so agent-run strips it there,
+  # 2026-08-29). An expired login on either path strands agents.
   out="$(timeout 120 claude -p 'ok' --model haiku --max-turns 1 2>&1)" || true
   if printf '%s' "$out" | grep -qiE 'not logged in|/login|oauth|401|invalid.*(token|api key)'; then
-    fails="${fails}claude: auth invalid — rerun the ceremony in .agents/sagas/dev-env/backlog/04-auth.md\n"
+    fails="${fails}claude: env-token auth invalid — re-mint via the setup-token ceremony in .agents/sagas/dev-env/backlog/04-auth.md\n"
+  fi
+  out="$(timeout 120 env -u CLAUDE_CODE_OAUTH_TOKEN claude -p 'ok' --model haiku --max-turns 1 2>&1)" || true
+  if printf '%s' "$out" | grep -qiE 'not logged in|/login|oauth|401|invalid.*(token|api key)'; then
+    fails="${fails}claude: credentials.json login invalid (remote-control sessions) — rerun the /login ceremony in .agents/sagas/dev-env/backlog/04-auth.md\n"
   fi
 
   # Codex (ChatGPT plan)

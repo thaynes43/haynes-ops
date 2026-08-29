@@ -64,9 +64,23 @@ ceremony from a kubectl-equipped agent session — proven again live).
 ExternalSecret `dev-env-claude` → `dev-env-claude-secret` → `envFrom` on BOTH
 the app container (agents) and auth-watch (the probe must exercise the
 credential agents actually use). Env var takes precedence over
-`.credentials.json` for interactive AND headless sessions, so the multi-session
-refresh race is out of the loop entirely, and auth survives PVC loss with zero
-human steps.
+`.credentials.json`, so the refresh race is out of the loop for headless/task
+sessions, and auth survives PVC loss.
+
+**Limitation found the same day (A/B-proven in-pod):** the setup-token CANNOT
+register `/v1/code/sessions` — a `claude --remote-control <id>` launched with
+the env var set comes up looking normal but silently never appears on the
+phone/web remote list (no `/rc` badge in the status bar either; that badge is
+the in-pod tell). Same launch with `env -u CLAUDE_CODE_OAUTH_TOKEN` registers
+instantly. So agent-run strips the env var for mode=both, meaning:
+
+- **remote-control sessions still ride `~/.claude/.credentials.json`** — the
+  in-pod `/login` ceremony above stays load-bearing, and the multi-session
+  refresh race still exists for concurrent "both" sessions (much smaller
+  surface than before: task mode, local TUI, and auth-watch no longer touch
+  the file).
+- **auth-watch probes BOTH paths** (env token AND `env -u` credentials.json)
+  and its page names which one died.
 
 **Re-mint ceremony (~1x/year, or when auth-watch pages):**
 
