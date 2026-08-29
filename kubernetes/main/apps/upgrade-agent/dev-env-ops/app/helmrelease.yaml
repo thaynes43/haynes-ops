@@ -157,7 +157,12 @@ spec:
       # watcher's single-flight wo-* lane serializes it behind any upgrade
       # order; class `curation` routes the session to cigar-curation.md. The
       # filer only writes the CM key when absent — re-pending a same-day
-      # claimed order would double-spawn its tmux window. Timestamps are EPOCH
+      # claimed order would double-spawn its tmux window. The per-order model
+      # is the `opus` ALIAS (owner 2026-08-29: curation tracks latest Opus
+      # with zero bump chores; launch-window alias lag accepted for THIS lane
+      # only — upgrade/remediation lanes stay pinned per the 2026-08-23
+      # policy, and OPS_FALLBACK_MODEL stays pinned if the alias misbehaves).
+      # Timestamps are EPOCH
       # SECONDS (the watcher's sort/TTL selectors do `tonumber?`; ISO strings
       # silently read as 0 — hit live 2026-08-29). Manual requeue of a FAILED
       # order must also `tmux kill-window` its post-mortem window first: the
@@ -187,7 +192,7 @@ spec:
                 entry="$(jq -cn --argjson now "$now" '{class:"curation",
                 source:"cron", title:"cigar catalog curation batch",
                 reason:"scheduled batch — follow /opt/dev-env-ops/cigar-curation.md",
-                status:"pending", created:$now, updated:$now}')";
+                model:"opus", status:"pending", created:$now, updated:$now}')";
                 kubectl -n upgrade-agent patch cm upgrade-work-orders
                 --type merge -p "$(jq -cn --arg k "$key" --arg v "$entry"
                 '{data:{($k):$v}}')";
