@@ -34,6 +34,9 @@
 # with --remote-control); codex reads -m <model> + -c model_reasoning_effort=<level>.
 # Effort DEFAULTS TO xhigh; unset model → each tool's own default. --safe restores
 # permission prompts (--permission-mode default).
+# The claude model picker offers PINNED IDS, not aliases: alias→model resolution is
+# client-side in a version-pinned CLI, so an alias silently serves an older tier
+# whenever the image lags a launch (see the picker comment).
 #
 # NB codex phone/web: codex has no per-session remote like claude's --remote-control —
 # its remote is a single per-machine app-server daemon. So codex phone/web is a
@@ -89,7 +92,10 @@ agent-run — worktree-per-task agent dispatcher
       --interactive                           # claude → mode=both (TUI here + phone/web); codex → local TUI
       --local                                 # terminal TUI here only, no remote (implies --interactive)
       --safe                                  # keep permission prompts (default: skipped — pod is the sandbox)
-      --model <m>                             # claude alias/id (fable|opus|sonnet|haiku|…) or codex slug; all modes
+      --model <m>                             # claude MODEL ID (claude-opus-5, claude-fable-5[1m], …) or codex slug;
+                                              # all modes. Bare aliases (opus/fable/…) still work but resolve
+                                              # client-side against the PINNED CLI and can silently serve an
+                                              # older tier — prefer the id. See the model picker comment.
       --effort <level>                        # claude low|medium|high|xhigh|max; codex adds ultra; default xhigh
   agent-run list
   agent-run attach [<task-id>]                # no id → arrow-key picker
@@ -518,27 +524,34 @@ case "$cmd" in
     # the model's levels (only varies for codex).
     if [ -z "$model" ] && [ "$asked" = 1 ]; then
       if [ "$agent" = claude ]; then
-        # The VALUES here are aliases, not pinned ids: claude resolves `opus` /
-        # `sonnet` / `haiku` / `fable` to the LATEST model of that tier, so the
-        # options track new releases on their own. Only the human-readable half
-        # of each row can go stale — REFRESH it (names only, never the aliases)
-        # when a new tier lands:  claude --help | grep -A4 -- '--model'
-        # ⚠ Agents: these labels may be NEWER than your training data. Before
-        # "correcting" one downward, probe the full id live (e.g.
-        # `claude --model claude-opus-5 -p 'model id?'`) — an agent reverted
-        # Opus 5→4.8 on 2026-08-06 because its cutoff predated the launch.
-        # Alias repoints can also LAG a launch by days (opus served 4.8 while
-        # claude-opus-5 was already live) — a label one tier ahead of the
-        # alias during a rollout window is correct, not stale.
+        # The VALUES here are PINNED IDS, not aliases — deliberately (2026-08-29).
+        # `opus`/`sonnet`/`haiku`/`fable` resolve CLIENT-SIDE, against a table baked
+        # into the installed CLI, and this pod's CLI is version-pinned in the image
+        # (Dockerfile ARG CLAUDE_CODE_VERSION). So an alias tracks "latest tier the
+        # PINNED BINARY knows about", NOT "the latest tier that exists" — and when
+        # the image lags a launch it SILENTLY SERVES THE OLDER MODEL, with no
+        # warning anywhere. Proven in-pod on claude-code 2.1.217: `--model opus` →
+        # claude-opus-4-8, while `--model claude-opus-5` → claude-opus-5 on the very
+        # same binary. Full ids are resolved SERVER-SIDE, so they work even when
+        # they are newer than the CLI's alias table — which makes them strictly
+        # safer here: what you pick is what you get, and a stale image can never
+        # quietly downgrade a session.
+        # REFRESH both halves of a row when a new tier lands:
+        #   claude --help | grep -A4 -- '--model'      # what the CLI advertises
+        #   claude --model <id> -p 'model id?'          # what the API actually serves
+        # ⚠ Agents: these ids may be NEWER than your training data. Before
+        # "correcting" one downward, probe it live with the command above — an agent
+        # reverted Opus 5→4.8 on 2026-08-06 because its cutoff predated the launch.
         model="$(pick 'model:' \
-          'fable   Fable 5 · 1M ctx, most capable (dev-env default)' \
-          'opus    Opus 5 · deep reasoning + agentic coding' \
-          'sonnet  Sonnet 5 · near-Opus quality, cheaper' \
-          'haiku   Haiku 4.5 · fastest, simple tasks')" || model=""
-        # The 'fable' alias resolves to the 200k-ctx model; the pod default is the
-        # 1M variant (settings.json → claude-fable-5[1m]). Keep the default choice
-        # as "leave unset" so the pod default stands; only a real switch sets --model.
-        [ "$model" = fable ] && model=""
+          'claude-fable-5[1m]  Fable 5 · 1M ctx, most capable (dev-env default)' \
+          'claude-opus-5       Opus 5 · deep reasoning + agentic coding' \
+          'claude-sonnet-5     Sonnet 5 · near-Opus quality, cheaper' \
+          'claude-haiku-4-5    Haiku 4.5 · fastest, simple tasks')" || model=""
+        # No "leave it unset" row any more: ~/.claude/settings.json lives on the PVC,
+        # not in the ConfigMap, so ANY in-session `/model` rewrites the pod-wide
+        # default for every future session (that is how the documented
+        # claude-fable-5[1m] default became `opus` — i.e. Opus 4.8 — on 2026-08-29).
+        # Passing the id explicitly makes the picker's choice authoritative.
       else
         # Live from models_cache.json (priority order; top row is codex's own
         # default tier). Cancel leaves $model empty → codex's default stands.

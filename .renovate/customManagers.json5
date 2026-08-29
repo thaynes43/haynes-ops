@@ -18,6 +18,33 @@
     {
       customType: 'regex',
       description: [
+        'Dockerfile ARG version pins (scripts/**/Dockerfile)',
+        'The built-in `dockerfile` manager only reads FROM/image refs, so an',
+        '`ARG FOO_VERSION=1.2.3` preceded by a `# renovate: datasource=… depName=…`',
+        'comment needs THIS regex manager to be seen at all. Without it the',
+        'annotations are pure decoration: scripts/dev-env/Dockerfile carried 21 of',
+        'them and Renovate detected exactly two deps in the file (the two FROM',
+        'lines) — so every baked CLI silently froze at whatever a human last typed.',
+        'That is how the agent workhorse sat on claude-code 2.1.217 from 2026-07-22',
+        'to 2026-08-29 (35 releases behind), which mattered because claude resolves',
+        'the `opus` model ALIAS client-side: the pinned CLI served Opus 4.8 for',
+        'every `--model opus` session long after Opus 5 shipped. See the dev-env',
+        'image group in groups.json5 for how these land.',
+      ],
+      managerFilePatterns: [
+        '/(^|/)Dockerfile[^/]*$/',
+      ],
+      matchStrings: [
+        // NOT anchored to '# renovate:' at line start — one pin trails its comment
+        // mid-line ('… (ghcr.io/siderolabs/omni). renovate: …'). Intervening FULL
+        // comment lines between the annotation and the ARG are allowed too (pnpm
+        // carries two). Verified 25/25 annotated pins matched across scripts/*/Dockerfile.
+        'renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?[^\\n]*\\n(?:#[^\\n]*\\n)*ARG \\w+_VERSION=(?<currentValue>\\S+)',
+      ],
+    },
+    {
+      customType: 'regex',
+      description: [
         'Process custom dependencies',
       ],
       managerFilePatterns: [

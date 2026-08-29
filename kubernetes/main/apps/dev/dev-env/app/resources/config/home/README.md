@@ -46,7 +46,11 @@ The mode picker offers, per tool:
 
 Model is picked first; effort then offers only that model's levels. Default effort is **`xhigh`** in every mode (valid for all current models). Unset model → the tool's own default. `/model` and `/effort` override in-session.
 
-- **claude** — `fable` (pod default `claude-fable-5[1m]`, 1M context), `opus`, `sonnet`, `haiku`. Effort `low|medium|high|xhigh|max`, uniform across models. Passed as top-level `--model`/`--effort` flags, which compose with `--remote-control`, so they apply in **all** claude modes.
+- **claude** — `claude-fable-5[1m]` (pod default, 1M context), `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5`. Effort `low|medium|high|xhigh|max`, uniform across models. Passed as top-level `--model`/`--effort` flags, which compose with `--remote-control`, so they apply in **all** claude modes.
+
+  > **Pick the ID, not the alias.** `opus`/`sonnet`/`haiku`/`fable` are resolved **client-side**, from a table baked into the installed CLI — and this pod's CLI is version-pinned in the image. When the image lags a model launch the alias **silently serves the older tier**, with nothing in the banner, the status line, or the logs to say so. Proven on claude-code 2.1.217 (2026-08-29): `--model opus` → `claude-opus-4-8`, `--model claude-opus-5` → `claude-opus-5`, same binary. Full IDs resolve server-side, so they work even when newer than the CLI's alias table. To check what you actually got: the session banner's second line, or `claude --model <id> -p 'model id?'`.
+
+  > **`/model` in a session rewrites the pod-wide default.** `~/.claude/settings.json` lives on the PVC, not in the ConfigMap, so an in-session `/model` saves "as your default for new sessions" **for every future session in this pod**, not just yours. That is how the default silently became Opus 4.8 on 2026-08-29. Prefer `--model` at launch; if you do use `/model`, put `claude-fable-5[1m]` back afterwards.
 - **codex** — `gpt-5.6-sol` (default), `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.2`. Effort differs by model: all take `low|medium|high|xhigh`; `max` only on gpt-5.6; `ultra` only on sol/terra. Passed as `-m <model> -c model_reasoning_effort=<level>` (codex has no `--effort` flag or `/effort` command — it folds effort into `/model`).
 
 `ultracode` is a harness session-mode, not a launch value — set it with `/effort` in-session.
