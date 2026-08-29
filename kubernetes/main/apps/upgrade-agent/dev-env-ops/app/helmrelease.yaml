@@ -157,7 +157,12 @@ spec:
       # watcher's single-flight wo-* lane serializes it behind any upgrade
       # order; class `curation` routes the session to cigar-curation.md. The
       # filer only writes the CM key when absent — re-pending a same-day
-      # claimed order would double-spawn its tmux window.
+      # claimed order would double-spawn its tmux window. Timestamps are EPOCH
+      # SECONDS (the watcher's sort/TTL selectors do `tonumber?`; ISO strings
+      # silently read as 0 — hit live 2026-08-29). Manual requeue of a FAILED
+      # order must also `tmux kill-window` its post-mortem window first: the
+      # single-flight lane counts any live wo-* window as active and skips
+      # pending keys silently.
       curation-order:
         type: cronjob
         cronjob:
@@ -178,8 +183,8 @@ spec:
                 if kubectl -n upgrade-agent get cm upgrade-work-orders -o json
                 | jq -e --arg k "$key" '.data | has($k)' >/dev/null; then
                 echo "order $key already filed — skipping"; exit 0; fi;
-                now="$(date -u +%FT%TZ)";
-                entry="$(jq -cn --arg now "$now" '{class:"curation",
+                now="$(date -u +%s)";
+                entry="$(jq -cn --argjson now "$now" '{class:"curation",
                 source:"cron", title:"cigar catalog curation batch",
                 reason:"scheduled batch — follow /opt/dev-env-ops/cigar-curation.md",
                 status:"pending", created:$now, updated:$now}')";
