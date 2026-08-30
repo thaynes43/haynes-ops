@@ -1,0 +1,39 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+# Pages when the daily credential countdown (credential-expiry-cronjob.yaml)
+# exits non-zero. Mirrors the outline-backup idiom: KubeJobFailed is only
+# warning-severity and warnings do not page (root receiver is null), so a
+# silent-failure class needs its own severity=critical rule. Age-capped to the
+# job's own 24h cadence so a lingering Job object cannot out-fire the next run.
+#
+# The alert deliberately cannot distinguish "expiring soon" from "the check
+# itself broke" — both are exit 1. Both need the same human, and the Job log
+# names the credential and the reason on every run.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cigar-journal-credential-expiry
+spec:
+  groups:
+    - name: cigar-journal-credential-expiry.rules
+      rules:
+        - alert: CigarJournalCredentialExpiring
+          annotations:
+            summary: >-
+              {{ $labels.namespace }}/{{ $labels.job_name }} — a cigar-journal
+              credential is expiring, already expired, or uncheckable. Watched:
+              the dev-env-cli OAuth access token (dev-env's MCP client, lead 7d)
+              and RELEASE_PLEASE_TOKEN (the release-please PAT, lead 14d).
+            description: >-
+              `kubectl -n frontend logs job/{{ $labels.job_name }} -c expiry`
+              prints one `credential=… days_left=… status=…` line per credential
+              — that names which one and how long is left. Re-mint procedure:
+              cigar-journal issue #129 (OAuth token) and the repo's
+              Actions-secret settings (PAT).
+          expr: |
+            kube_job_failed{namespace="frontend", condition="true", job_name=~"cigar-journal-credential-expiry.*"} > 0
+            and on (namespace, job_name)
+            (time() - kube_job_status_start_time{namespace="frontend"}) < 24 * 3600
+          for: 5m
+          labels:
+            severity: critical
