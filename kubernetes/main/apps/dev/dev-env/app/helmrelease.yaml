@@ -89,6 +89,11 @@ spec:
               # refresh-token race that expired auth mid-task 2026-08-29.
               - secretRef:
                   name: dev-env-claude-secret
+              # CIGAR_JOURNAL_TOKEN — expanded by dev-init into the cigar-journal
+              # MCP Authorization header. Without it that header registers as an
+              # empty "Bearer " and the server 401s (see externalsecret.yaml).
+              - secretRef:
+                  name: dev-env-cigar-secret
             probes:
               liveness:
                 enabled: true
