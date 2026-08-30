@@ -60,6 +60,14 @@ entries:
     # Pinned so the id is known before the object exists (it is public — it
     # rides the authorize URL); only the secret has to be read back.
     client_id: cigar-journal
+    # REQUIRED, and easy to miss: authentik >= 2026.x gates every token request
+    # on this allow-list and its model default is [] — a provider created
+    # without it answers every authorize with "Invalid grant_type for provider"
+    # (invalid_request back to the app, seen live 2026-08-30 on the first apply).
+    # Exactly the code grant; no offline_access scope is requested, so no
+    # refresh_token grant either.
+    grant_types:
+    - authorization_code
     authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
     invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
     redirect_uris:
