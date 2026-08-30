@@ -1,0 +1,77 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+# Pages when the daily credential countdown (credential-expiry-cronjob.yaml)
+# exits non-zero. Mirrors the outline-backup idiom: KubeJobFailed is only
+# warning-severity and warnings do not page (root receiver is null), so a
+# silent-failure class needs its own severity=critical rule. Age-capped to the
+# job's own 24h cadence so a lingering Job object cannot out-fire the next run.
+#
+# The alert deliberately cannot distinguish "expiring soon" from "the check
+# itself broke" — both are exit 1. Both need the same human, and the Job log
+# names the credential and the reason on every run.
+#
+# NAMING IS LOAD-BEARING: the expr matches on job_name, so a hand-run Job must
+# be named `cigar-journal-credential-expiry-manual` (or any other prefix match)
+# or it cannot fire this alert:
+#   kubectl -n frontend create job --from=cronjob/cigar-journal-credential-expiry \
+#     cigar-journal-credential-expiry-manual
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cigar-journal-credential-expiry
+spec:
+  groups:
+    - name: cigar-journal-credential-expiry.rules
+      rules:
+        - alert: CigarJournalCredentialExpiring
+          annotations:
+            summary: >-
+              {{ $labels.namespace }}/{{ $labels.job_name }} — a cigar-journal
+              credential is expiring, already expired, or uncheckable. Watched:
+              the dev-env-cli OAuth access token (dev-env's MCP client, lead 7d)
+              and RELEASE_PLEASE_TOKEN (the release-please PAT, lead 14d).
+            description: >-
+              `kubectl -n frontend logs job/{{ $labels.job_name }} -c expiry`
+              prints one `credential=… days_left=… status=…` line per credential
+              — that names which one and how long is left. Re-mint procedure:
+              cigar-journal issue #129 (OAuth token) and the repo's
+              Actions-secret settings (PAT).
+          expr: |
+            kube_job_failed{namespace="frontend", condition="true", job_name=~"cigar-journal-credential-expiry.*"} > 0
+            and on (namespace, job_name)
+            (time() - kube_job_status_start_time{namespace="frontend"}) < 24 * 3600
+          for: 5m
+          labels:
+            severity: critical
+
+        # A monitor that stops running is indistinguishable, from the phone's
+        # point of view, from a healthy credential — and the alert above only
+        # fires on a Job that RAN and failed. This is the dead-man half: it
+        # fires when the CronJob is deleted (a path change in ks.yaml, a rename
+        # under prune: true), suspended, or simply stops being scheduled.
+        # kube_cronjob_status_last_schedule_time is used rather than
+        # ...last_successful_time so that a genuinely expiring credential (which
+        # fails the Job daily by design) does not also page through this rule.
+        # Residual gap, accepted: a CronJob that exists but has NEVER fired has
+        # no last_schedule_time series at all, so only the absent() arm covers
+        # it; that window closes at the first 08:00 run and is not worth a
+        # kube_cronjob_created join. 36h = one missed daily run plus slack.
+        - alert: CigarJournalCredentialMonitorStale
+          annotations:
+            summary: >-
+              The cigar-journal credential-expiry CronJob is gone, suspended, or
+              has not been scheduled in 36h — the dev-env-cli OAuth token and
+              RELEASE_PLEASE_TOKEN are unwatched.
+            description: >-
+              `kubectl -n frontend get cronjob cigar-journal-credential-expiry`
+              and `flux get kustomization cigar-journal -n frontend`. Silence
+              here means no countdown, not a healthy credential.
+          expr: |
+            absent(kube_cronjob_info{namespace="frontend", cronjob="cigar-journal-credential-expiry"})
+            or kube_cronjob_spec_suspend{namespace="frontend", cronjob="cigar-journal-credential-expiry"} > 0
+            or (time() - kube_cronjob_status_last_schedule_time{namespace="frontend", cronjob="cigar-journal-credential-expiry"}) > 36 * 3600
+          # Long enough to ride out a kube-state-metrics restart or a Flux
+          # re-apply without paging on a gap that self-heals.
+          for: 1h
+          labels:
+            severity: critical
