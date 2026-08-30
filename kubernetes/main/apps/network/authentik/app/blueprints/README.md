@@ -48,6 +48,13 @@ unmanaged.
 whether to adopt them into GitOps is the plan's open **Q-11** (provider secrets stay in
 1Password regardless). A sanitized snapshot lives in `../../exports/` for reference.
 
+New OIDC apps do not wait on Q-11: `90-cigar-journal-oidc.yaml` is the first OAuth2
+provider + application created *as* a blueprint (2026-08-30). Its `client_secret` is
+deliberately absent from the file — Authentik generates it on create and the partial
+update never touches it afterwards — and is copied once into 1Password, exactly like the
+UI-created six. That file also records the Subject-mode ruling (`user_uuid`, never
+email/username) for any future OIDC provider whose consumer keys accounts on `sub`.
+
 ## Pending file (NOT discovered)
 
 `pending/40-hnet-mfa.yaml` — the drafted native-account MFA blueprint. It is **not** in
