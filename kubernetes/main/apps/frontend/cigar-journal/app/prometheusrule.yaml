@@ -9,6 +9,12 @@
 # The alert deliberately cannot distinguish "expiring soon" from "the check
 # itself broke" — both are exit 1. Both need the same human, and the Job log
 # names the credential and the reason on every run.
+#
+# NAMING IS LOAD-BEARING: the expr matches on job_name, so a hand-run Job must
+# be named `cigar-journal-credential-expiry-manual` (or any other prefix match)
+# or it cannot fire this alert:
+#   kubectl -n frontend create job --from=cronjob/cigar-journal-credential-expiry \
+#     cigar-journal-credential-expiry-manual
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -35,5 +41,37 @@ spec:
             and on (namespace, job_name)
             (time() - kube_job_status_start_time{namespace="frontend"}) < 24 * 3600
           for: 5m
+          labels:
+            severity: critical
+
+        # A monitor that stops running is indistinguishable, from the phone's
+        # point of view, from a healthy credential — and the alert above only
+        # fires on a Job that RAN and failed. This is the dead-man half: it
+        # fires when the CronJob is deleted (a path change in ks.yaml, a rename
+        # under prune: true), suspended, or simply stops being scheduled.
+        # kube_cronjob_status_last_schedule_time is used rather than
+        # ...last_successful_time so that a genuinely expiring credential (which
+        # fails the Job daily by design) does not also page through this rule.
+        # Residual gap, accepted: a CronJob that exists but has NEVER fired has
+        # no last_schedule_time series at all, so only the absent() arm covers
+        # it; that window closes at the first 08:00 run and is not worth a
+        # kube_cronjob_created join. 36h = one missed daily run plus slack.
+        - alert: CigarJournalCredentialMonitorStale
+          annotations:
+            summary: >-
+              The cigar-journal credential-expiry CronJob is gone, suspended, or
+              has not been scheduled in 36h — the dev-env-cli OAuth token and
+              RELEASE_PLEASE_TOKEN are unwatched.
+            description: >-
+              `kubectl -n frontend get cronjob cigar-journal-credential-expiry`
+              and `flux get kustomization cigar-journal -n frontend`. Silence
+              here means no countdown, not a healthy credential.
+          expr: |
+            absent(kube_cronjob_info{namespace="frontend", cronjob="cigar-journal-credential-expiry"})
+            or kube_cronjob_spec_suspend{namespace="frontend", cronjob="cigar-journal-credential-expiry"} > 0
+            or (time() - kube_cronjob_status_last_schedule_time{namespace="frontend", cronjob="cigar-journal-credential-expiry"}) > 36 * 3600
+          # Long enough to ride out a kube-state-metrics restart or a Flux
+          # re-apply without paging on a gap that self-heals.
+          for: 1h
           labels:
             severity: critical
