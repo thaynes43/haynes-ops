@@ -1,0 +1,129 @@
+---
+# Operator service-token mint (cigar-journal ADR-010, issue #129). Same image as
+# the HelmRelease; the `token` role is selected by the container command (see the
+# ROLE DISPATCH marker in the repo Dockerfile). Mints the long-lived, audience-
+# bound, user-bound access token a browserless MCP client carries — replacing the
+# hand-INSERTed oauth_access_token row the dev-env pod runs on today.
+#
+# WHY A SUSPENDED CRONJOB AND NOT A JOB. A plain Job in this kustomization runs
+# ONCE, IMMEDIATELY, when Flux applies it — an unattended mint whose token nobody
+# captures, straight into the container log. And `suspend: true` on a plain Job is
+# worse: Flux's drift correction would re-assert it mid-run and delete the pod
+# after the INSERT but before the operator reads stdout, orphaning a live token.
+# A suspended CronJob never fires, and the operator instantiates a Job from it on
+# demand — that Job is unmanaged by Flux, so nothing can reconcile it away:
+#
+#   kubectl -n frontend create job cj-mint-$(date +%s) \
+#     --from=cronjob/cigar-journal-service-token
+#
+# That default run is a DRY RUN: the CLI writes nothing without --yes, so it
+# prints the plan and exits 0. To actually mint, `kubectl create job --from` can
+# override neither args nor env, so patch them the way the shepherd runbook does:
+#
+#   kubectl -n frontend create job cj-mint-$(date +%s) \
+#     --from=cronjob/cigar-journal-service-token --dry-run=client -o json \
+#     | jq '.spec.template.spec.containers[0].args += ["--yes"]' \
+#     | kubectl -n frontend create -f -
+#
+# Then IMMEDIATELY: `kubectl -n frontend logs job/<name>` to capture stdout (which
+# on a mint is EXACTLY the token, one line — the report goes to stderr), put it in
+# 1Password, and `kubectl delete job/<name>`.
+#
+# LOWER-EXPOSURE ALTERNATIVE, and the runbook's default: this Job's stdout is
+# collected into Loki for the whole retention window, an uncontrolled third copy
+# of the credential. Running the same entrypoint by exec streams it only to the
+# operator's terminal:
+#
+#   kubectl -n frontend exec -it deploy/cigar-journal-main -c app -- \
+#     sh -c 'cd /app/token && node --import tsx src/cli.ts list'
+#
+# `list` and `revoke --id <uuid>` ride the same entrypoint; substitute the args.
+#
+# IMAGE TAG: pinned here because a CronJob cannot reach the HelmRelease's
+# &mainImage anchor, and Renovate's `kubernetes` manager tracks this ghcr.io tag
+# independently — keep it in step with the HelmRelease. NOTE: v0.26.1 predates the
+# `token` role. This manifest cannot run until the normal release-please ->
+# publish-image -> HelmRelease bump path ships a release containing it; that path
+# owns versions, so the tag is NOT bumped here.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cigar-journal-service-token
+spec:
+  # This manifest is a TEMPLATE for on-demand Jobs, not a schedule. `suspend` is
+  # what keeps it inert; the annual date is only a placeholder the API requires.
+  # A never-fire expression like "0 0 31 2 *" would read better but could not be
+  # validated against this cluster's API server from here, and a rejected
+  # schedule fails the whole kustomization. Belt and braces: the default args
+  # below are a DRY RUN, so even an accidental unsuspend writes nothing.
+  suspend: true
+  schedule: "0 0 1 1 *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      # The mint is deliberately NOT idempotent — every run creates new material.
+      # A retry after a pod died post-INSERT would leave a second live token
+      # nobody holds, so there are no retries. `service-token list` finds orphans
+      # and `revoke --id` kills them.
+      backoffLimit: 0
+      # Bounds the in-cluster copy of the log if the operator forgets to delete
+      # the Job. It does NOT unsend the Loki copy — only the exec path avoids that.
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: cigar-journal
+            app.kubernetes.io/component: service-token
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: token
+              image: ghcr.io/thaynes43/cigar-journal:v0.26.1
+              imagePullPolicy: IfNotPresent
+              # workingDir is required: `node --import tsx` resolves the loader from
+              # CWD, and tsx ships in /app/token/node_modules.
+              workingDir: /app/token
+              command:
+                - /sbin/tini
+                - "--"
+                - node
+                - --import
+                - tsx
+                - src/cli.ts
+              # Args are split out so the jq patch above can append --yes without
+              # rewriting the command. Scopes are the MINIMUM the dev-env pod
+              # needs: deliberately no curation:read / curation:write, which would
+              # let it mutate the shared catalog under the owner's admin role for
+              # the token's whole life.
+              args:
+                - mint
+                - --client-name
+                - dev-env-pod
+                - --user-email
+                - manofoz@gmail.com
+                - --scope
+                - catalog:read
+                - --scope
+                - journal:read
+                - --scope
+                - journal:write
+                - --ttl-days
+                - "365"
+                - --reason
+                - dev-env pod MCP client (ADR-010)
+              # DATABASE_URL and BETTER_AUTH_URL both come from here. The CLI
+              # refuses to mint without BETTER_AUTH_URL — it is the RFC 8707
+              # audience, so a wrong origin fails fast instead of minting a token
+              # /mcp would reject.
+              envFrom:
+                - secretRef:
+                    name: cigar-journal-secret
+              resources:
+                requests:
+                  cpu: 25m
+                  memory: 128Mi
+                limits:
+                  memory: 256Mi
