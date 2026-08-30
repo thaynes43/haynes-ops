@@ -66,6 +66,11 @@ spec:
               # No IPv6 egress in this cluster; force A-record-first for any
               # outbound fetch (same trap as todos-for-dues).
               NODE_OPTIONS: --dns-result-order=ipv4first
+              # Authentik OIDC discovery (cigar-journal ADR-010). Plain env —
+              # a discovery URL is not a secret; the client id/secret ride
+              # cigar-journal-oidc-secret. The app enables SSO only when all
+              # three are present, so this alone changes nothing.
+              OIDC_DISCOVERY_URL: https://authentik.haynesnetwork.com/application/o/cigar-journal/.well-known/openid-configuration
               PHOTOS_S3_ENDPOINT: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
               PHOTOS_S3_BUCKET:
                 valueFrom:
@@ -85,6 +90,11 @@ spec:
             envFrom:
               - secretRef:
                   name: cigar-journal-secret
+              # Optional so the pod starts before the 1Password fields exist;
+              # absent credentials simply mean SSO is off (ADR-010 fail-closed).
+              - secretRef:
+                  name: cigar-journal-oidc-secret
+                  optional: true
             probes:
               liveness:
                 enabled: true
