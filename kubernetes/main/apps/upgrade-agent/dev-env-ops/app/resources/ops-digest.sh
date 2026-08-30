@@ -67,7 +67,14 @@ age=$(( now - ${last_flush:-0} ))
 build() {
   local body="" key o line verdict
   for key in $pending_keys; do
-    o="$(printf '%s' "$data" | jq -r --arg k "$key" '.[$k]' 2>/dev/null | jq -c 'fromjson? // {}' 2>/dev/null)"
+    # ONE jq invocation on purpose. `jq -r '.[$k]'` already UNWRAPS the JSON-string
+    # into raw object text, so piping that into `jq 'fromjson?'` hands fromjson an
+    # already-parsed OBJECT — which errors, `?` swallows it, and `// {}` yields {}.
+    # That silently blanked every entry: status null -> "[?]", note null -> "no note",
+    # for every order ever digested, while the pending-key filter above (which does
+    # its fromjson INSIDE one jq, on the string) still counted them. The digest said
+    # "1 handled" and told you nothing about what.
+    o="$(printf '%s' "$data" | jq -c --arg k "$key" '(.[$k] | fromjson?) // {}' 2>/dev/null)"
     [ -n "$o" ] || continue
     case "$(printf '%s' "$o" | jq -r '.status')" in
       done)      verdict="FIXED" ;;
