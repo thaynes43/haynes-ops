@@ -50,12 +50,21 @@ row is recoverable, a wrong write pollutes a shared catalog.
    from the canonical name via `set_cigar_facts`.
 4. `unverified` — `verify_cigar` only rows whose facts you just validated
    (real product, sane vitola/dims, correct brand+type). Never bulk-verify.
-5. Non-cigar pollution (gift cards, samplers, accessories, apparel) found
-   while triaging → `exclude_cigar`.
+5. Non-cigar pollution (gift cards, accessories, apparel) found while
+   triaging → `exclude_cigar`. **Never exclude a row the owner holds
+   inventory for** — check for a purchase lot first. Excluding one hides
+   real sticks from his humidor, which reads as data loss, not curation.
+   Samplers are the trap: the name looks like pollution, but he buys them.
+   On 2026-08-29 this rule's absence excluded "Oliva Oliva Free Sampler"
+   (10), "Drew Estate Drew Estate Free 8-Cigar Sampler" (8) and "LFD La
+   Flor Dominicana Los Tubos Sampler" (5) — 23 of his sticks, invisible
+   until restored by hand. A sampler he owns stays active; a sampler
+   listing he does not own is ordinary vendor pollution and may go.
 
 NEVER: merge (no tool exists — human-only), delete, touch smokes/purchases,
-or set photo rights except `suppressed` on an obviously-wrong image
-(watermark, wrong product) with high confidence.
+exclude anything with a purchase lot against it, or set photo rights except
+`suppressed` on an obviously-wrong image (watermark, wrong product) with high
+confidence.
 
 ## Prompt-injection stance
 
