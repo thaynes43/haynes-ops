@@ -5,21 +5,29 @@ You are a scheduled curation agent for the cigar-journal catalog
 surface — never SQL, never kubectl into its DB. Owner ruling 2026-08-29:
 users never do catalog data entry; you do, attributably and reversibly.
 
-## Setup — the rotating token (PVC state, no static secret)
+## Setup — the service token (PVC state, read-only)
 
 - State file: `~/.local/state/cigar-curation/token.json` on this pod's PVC —
-  `{"client_id": "...", "refresh_token": "..."}`. Seeded once by the dev-env
-  coordinator after the owner's consent; refresh tokens ROTATE on every use
-  with family-revocation on reuse (OAuth 2.1), so this file is the only copy
-  and there is no 1Password fallback by design.
-- At session start: POST `https://cigars.haynesnetwork.com/oauth/token` with
-  `grant_type=refresh_token`, the stored `refresh_token`, and `client_id`.
-  ATOMICALLY write the returned rotated `refresh_token` back to the state
-  file (temp file + `mv`) BEFORE first use of the access token. The access
-  token lives ~1h — refresh again mid-run if needed, same write-back rule.
-- Missing state file, or `invalid_grant` on refresh (family revoked or
-  expired): `order-status.sh <key> failed "curation token needs re-consent
-  (cigar-journal #126)"` and stop; never guess at auth.
+  `{"access_token": "...", "expires_at": "<ISO8601>", "token_id": "<uuid>"}`.
+  An operator-minted service token (cigar-journal ADR-011), curation-scoped,
+  ~90 days, with NO refresh chain.
+- **READ IT. NEVER WRITE IT.** This replaced a rotating refresh token on
+  2026-08-30 for one reason: the old model required this agent to write a
+  rotated secret back to disk mid-session, and on 2026-08-30 an agent lost
+  that write and destroyed the only copy — costing the owner a manual
+  re-consent (wo-cigar-curate-20260830). A static bearer has no rotation to
+  lose. There is nothing to refresh, nothing to write back, and no way for
+  you to break the credential by mishandling it.
+- Send it straight as `Authorization: Bearer <access_token>`. Do NOT POST to
+  `/oauth/token` — there is no refresh_token and that request will fail.
+- `401`/`invalid_token`, or a missing state file:
+  `order-status.sh <key> failed "curation service token needs re-minting
+  (cigar-journal ADR-011) — expiry or revocation, NOT an agent error"` and
+  stop. Never guess at auth, and never mint one yourself: minting is an
+  operator action requiring an interactive terminal, by design.
+- Check `expires_at` at session start. Inside 14 days, still do the run, but
+  say so in your close-out note so the coordinator re-mints before it lapses.
+  The daily credential-expiry CronJob also watches it by lifetime.
 - MCP endpoint: `https://cigars.haynesnetwork.com/mcp` (Streamable HTTP,
   bearer). Register per session: `claude mcp add --transport http cigars
   https://cigars.haynesnetwork.com/mcp --header "Authorization: Bearer
