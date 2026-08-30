@@ -47,7 +47,14 @@ ARG CODE_SERVER_VERSION=4.96.4
 # renovate: datasource=github-releases depName=astral-sh/uv
 ARG UV_VERSION=0.5.24
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.217
+# 2.1.251 (2026-08-29): catching up 35 releases of drift. 2.1.217 was pinned by
+# hand on 2026-07-22 and never moved again because NOTHING was watching this ARG
+# — the `# renovate:` line above it was decoration until customManagers.json5
+# grew a Dockerfile manager the same day. The drift was not cosmetic: claude
+# resolves the `opus` MODEL ALIAS client-side from a table baked into the binary,
+# so 2.1.217 served claude-opus-4-8 for every `--model opus` session (agent-run's
+# picker, and the dev-env-ops curation lane after #2663) long after Opus 5 shipped.
+ARG CLAUDE_CODE_VERSION=2.1.251
 # Codex is installed at BOOT as the managed STANDALONE (dev-init.sh), not via npm —
 # only the standalone can run `codex remote-control`. This pins that standalone
 # version; @openai/codex npm releases track the same numbers as the rust-v* GitHub

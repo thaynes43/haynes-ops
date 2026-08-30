@@ -75,5 +75,46 @@
       dependencyDashboardApproval: true,
       automerge: false,
     },
+    // ── Baked-image toolchains (Dockerfile ARG pins) ─────────────────────────
+    // These deps only exist because customManagers.json5 grew a Dockerfile ARG
+    // manager on 2026-08-29; before that all 25 annotated pins were invisible to
+    // Renovate and only ever moved when a human hand-edited them (claude-code sat
+    // at 2.1.217 for five weeks, silently serving Opus 4.8 to every `--model opus`
+    // session because claude resolves that alias CLIENT-SIDE in the pinned CLI).
+    // Grouped so the newly-visible backlog lands as ONE reviewable PR per image
+    // instead of ~25 singles, and because a baked toolchain ships as one image
+    // anyway.
+    //
+    // MERGING ONE IS A TWO-STEP, and step 2 is what actually deploys:
+    //   1. merge the ARG bump → dev-env-build.yml builds + cosign-signs a new tag
+    //   2. re-pin `tag:`/digest in the consuming helmrelease(s) → THAT rolls pods
+    // Nothing reaches a running pod on step 1 alone.
+    {
+      description: 'dev-env image toolchain (Dockerfile ARG pins) — one PR, manual merge',
+      groupName: 'dev-env image toolchain',
+      matchFileNames: [
+        'scripts/dev-env/Dockerfile',
+      ],
+      group: {
+        commitMessageTopic: '{{{groupName}}} group',
+      },
+      // Never auto-merge, for the same reason the dev-env IMAGE bump never does
+      // (autoMerge.json5): the workhorse is replicas:1 strategy:Recreate and the
+      // digest re-pin that follows hard-kills every in-flight agent session. Whoever
+      // merges picks the moment. Same pod, same bounce, same rule.
+      automerge: false,
+    },
+    {
+      description: 'upgrade-agent/shepherd image toolchains (Dockerfile ARG pins) — one PR, manual merge',
+      groupName: 'upgrade-agent image toolchains',
+      matchFileNames: [
+        'scripts/upgrade-agent/Dockerfile',
+        'scripts/upgrade-shepherd/Dockerfile',
+      ],
+      group: {
+        commitMessageTopic: '{{{groupName}}} group',
+      },
+      automerge: false,
+    },
   ],
 }
