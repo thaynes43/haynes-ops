@@ -159,20 +159,22 @@ PG_POD="${PG_POD:-$(kubectl get cluster -n "$PG_NAMESPACE" "$PG_CLUSTER" -o json
 [ -n "$PG_POD" ] || { echo "could not resolve the $PG_CLUSTER primary" >&2; exit 2; }
 echo "  primary: $PG_NAMESPACE/$PG_POD"
 
-# Real fixtures, chosen from live data so the filters (revoked_at, expires_at)
-# are exercised against real rows rather than a stub's canned output.
-LIVE_CLIENT="${LIVE_CLIENT:-d784af277ef8376ed9b621d8f0b5ffac}"   # dev-env-cli, has a live token
-# A registered client with zero live tokens -> the `expired` branch. Picked at
-# run time: which clients are dormant changes as the estate is used.
-DEAD_CLIENT="$(kubectl exec -i -n "$PG_NAMESPACE" "$PG_POD" -c postgres -- \
+# The Job no longer pins a client id — it selects every live token whose
+# lifetime exceeds OAUTH_MIN_LIFETIME_HOURS — so the fixture is the LABEL the
+# script will print for whatever long-lived credential exists right now.
+# Resolved at run time, exactly as the Job resolves it, so these assertions
+# survive the ADR-010 cutover from dev-env-cli to the new service client.
+LIVE_CRED="$(kubectl exec -i -n "$PG_NAMESPACE" "$PG_POD" -c postgres -- \
   psql -X -At -d "$PG_DB" <<SQL || true
-SELECT c.client_id FROM oauth_client c
- WHERE NOT EXISTS (SELECT 1 FROM oauth_access_token t
-                    WHERE t.client_id = c.client_id
-                      AND t.revoked_at IS NULL AND t.expires_at > now())
- ORDER BY c.client_id LIMIT 1;
+SELECT regexp_replace(coalesce(c.client_name, t.client_id), '\s+', '_', 'g')
+  FROM oauth_access_token t
+  LEFT JOIN oauth_client c ON c.client_id = t.client_id
+ WHERE t.revoked_at IS NULL AND t.expires_at > now()
+   AND t.expires_at - t.created_at > interval '24 hours'
+ ORDER BY t.expires_at DESC LIMIT 1;
 SQL
 )"
+echo "  live long-lived credential: ${LIVE_CRED:-<none>}"
 
 runner="$TMP/runner.sh"
 {
@@ -185,11 +187,11 @@ runner="$TMP/runner.sh"
   echo 'command -v psql >/dev/null || { echo "NO REAL PSQL IN THIS CONTAINER" >&2; exit 2; }'
   echo 'psql --version | sed "s/^/  /"'
   cat <<'RUNNER'
-# run_case <label> <pat-status> <client> <lead> <dsn>
+# run_case <label> <pat-status> <min-lifetime-hours> <lead> <dsn>
 run_case() {
   printf 'CASE\t%s\n' "$1"
   printf '%s' "$2" > "$W/pat-status"
-  ( export OAUTH_CLIENT_ID="$3" OAUTH_LEAD_DAYS="$4" PAT_LEAD_DAYS=14 DATABASE_URL="$5"
+  ( export OAUTH_MIN_LIFETIME_HOURS="$3" OAUTH_LEAD_DAYS="$4" PAT_LEAD_DAYS=14 DATABASE_URL="$5"
     bash "$W/db.sh" ) 2>&1 | sed 's/^/OUT\t/'
   printf 'EXIT\t%s\n' "${PIPESTATUS[0]}"
 }
@@ -198,17 +200,20 @@ RUNNER
   echo "BAD_DSN='postgresql://127.0.0.1:1/nope?connect_timeout=3'"
   # lead 0 / lead 99999 rather than a hardcoded day count, so the assertions do
   # not rot as the real token counts down.
-  echo "run_case oauth-ok           skip '$LIVE_CLIENT' 0     \"\$GOOD_DSN\""
-  echo "run_case oauth-expiring     skip '$LIVE_CLIENT' 99999 \"\$GOOD_DSN\""
-  echo "run_case oauth-client-missing skip '00000000000000000000000000000000' 7 \"\$GOOD_DSN\""
-  [ -n "$DEAD_CLIENT" ] && echo "run_case oauth-expired skip '$DEAD_CLIENT' 7 \"\$GOOD_DSN\""
-  echo "run_case oauth-db-unreachable skip '$LIVE_CLIENT' 7 \"\$BAD_DSN\""
+  echo "run_case oauth-ok             skip 24 0     \"\$GOOD_DSN\""
+  echo "run_case oauth-expiring       skip 24 99999 \"\$GOOD_DSN\""
+  # A threshold no real token can clear -> the empty result set, which must FAIL
+  # rather than read as "nothing is expiring". This is the branch the pinned
+  # client id used to reach as `expired` after a cutover, and the one that now
+  # fires only when there genuinely is no long-lived credential.
+  echo "run_case oauth-none-found     skip 100000 7 \"\$GOOD_DSN\""
+  echo "run_case oauth-db-unreachable skip 24 7 \"\$BAD_DSN\""
   for st in skip none ephemeral unknown-shape unauthorized unreachable; do
-    echo "run_case pat-$st '$st' '$LIVE_CLIENT' 0 \"\$GOOD_DSN\""
+    echo "run_case pat-$st '$st' 24 0 \"\$GOOD_DSN\""
   done
-  echo "run_case pat-ok '$(date -u -d '+400 days' '+%Y-%m-%d %H:%M:%S UTC')' '$LIVE_CLIENT' 0 \"\$GOOD_DSN\""
-  echo "run_case pat-expiring '$(date -u -d '+3 days' '+%Y-%m-%d %H:%M:%S UTC')' '$LIVE_CLIENT' 0 \"\$GOOD_DSN\""
-  echo "run_case pat-garbage 'not-a-date' '$LIVE_CLIENT' 0 \"\$GOOD_DSN\""
+  echo "run_case pat-ok '$(date -u -d '+400 days' '+%Y-%m-%d %H:%M:%S UTC')' 24 0 \"\$GOOD_DSN\""
+  echo "run_case pat-expiring '$(date -u -d '+3 days' '+%Y-%m-%d %H:%M:%S UTC')' 24 0 \"\$GOOD_DSN\""
+  echo "run_case pat-garbage 'not-a-date' 24 0 \"\$GOOD_DSN\""
 } > "$runner"
 
 kubectl exec -i -n "$PG_NAMESPACE" "$PG_POD" -c postgres -- bash -s < "$runner" > "$TMP/out.txt" 2>"$TMP/err.txt" || {
@@ -228,20 +233,22 @@ expect() {
   fi
 }
 
-# The blocker regression guard: with the -c form these three report
-# db-unreachable and exit 1 instead of reading the credential at all.
-O='credential=dev-env-cli days_left=[0-9-]+ lead=[0-9]+ status='
+# The blocker regression guard: with the -c form these report db-unreachable and
+# exit 1 instead of reading the credential at all.
+O="credential=${LIVE_CRED:-NO-LIVE-CREDENTIAL} days_left=[0-9-]+ lead=[0-9]+ status="
+N='credential=long-lived-oauth days_left=[0-9-]+ lead=[0-9]+ status='
 P='credential=RELEASE_PLEASE_TOKEN days_left=[0-9-]+ lead=[0-9]+ status='
 
-expect oauth-ok             "${O}ok"                    0
-expect oauth-expiring       "${O}expiring"              1
-expect oauth-client-missing "${O}client-missing"        1
-if [ -n "$DEAD_CLIENT" ]; then
-  expect oauth-expired      "${O}expired"               1
+if [ -n "$LIVE_CRED" ]; then
+  expect oauth-ok           "${O}ok"                    0
+  expect oauth-expiring     "${O}expiring"              1
 else
-  printf '  SKIP  oauth-expired (no registered client without a live token today)\n'
+  # Not a harness gap: no long-lived credential at all is itself the fault this
+  # Job pages about, so say so loudly rather than skipping quietly.
+  bad "oauth-ok / oauth-expiring" "no long-lived credential exists in $PG_DB right now"
 fi
-expect oauth-db-unreachable "${O}db-unreachable"        1
+expect oauth-none-found     "${N}none-found"            1
+expect oauth-db-unreachable "${N}db-unreachable"        1
 expect oauth-db-unreachable '\[psql\] '                 1
 
 expect pat-skip             "${P}not-configured"        0
@@ -255,30 +262,75 @@ expect pat-expiring         "${P}expiring"              1
 expect pat-garbage          "${P}unparseable-expiry"    1
 
 ##############################################################################
-# PHASE 3 — the aggregate. dev-env-cli happens to have exactly one live row
-# today, so no live-data case can tell min() from max(). This runs the SAME SQL
-# TEXT the Job runs, with the two tables swapped for a VALUES fixture holding
-# two unrevoked live rows 29 days apart — which is the state prod reaches the
-# moment a token is re-minted, since cigar-journal never revokes the superseded
-# row. min() answers ~0 days (and keeps paging for a month after the problem was
-# fixed); max() answers ~29.
+# PHASE 3 — the aggregate and the selection rule, on fixture rows the live
+# database cannot supply. Runs the SAME SQL TEXT the Job runs with only
+# oauth_access_token swapped for a VALUES table, so both claims are tested
+# against a real server rather than reasoned about:
+#
+#   1. max(), not min(). A rotation deliberately leaves two live rows (and
+#      cigar-journal never revokes a superseded one), so min() would count down
+#      the older row and keep paging for a month after a re-mint fixed things.
+#   2. The lifetime line. A 1h grant-issued row must not appear at all, or every
+#      ChatGPT session would show up as a credential to babysit.
 ##############################################################################
-section "phase 3: newest live token wins (max, not min)"
+section "phase 3: newest live token wins, and only long-lived ones count"
 
-awk '/if ! row=/{g=1} g && /SELECT/{f=1} f{print} f && /\);/{exit}' "$TMP/db.sh" \
-  | sed 's/);.*/);/' > "$TMP/agg.sql"
-sed -i \
-  -e "s#FROM oauth_client#FROM (VALUES (:'cid')) AS oauth_client(client_id)#" \
-  -e "s#FROM oauth_access_token#FROM (VALUES (:'cid', now() + interval '1 day', NULL::timestamptz), (:'cid', now() + interval '30 days', NULL::timestamptz)) AS oauth_access_token(client_id, expires_at, revoked_at)#" \
-  "$TMP/agg.sql"
+awk "/<<'SQL'/{f=1;next} f&&/^SQL\$/{exit} f{print}" "$TMP/db.sh" > "$TMP/agg.sql"
+[ -s "$TMP/agg.sql" ] || { echo "could not extract the SQL from $MANIFEST" >&2; exit 2; }
 
-agg_row="$(kubectl exec -i -n "$PG_NAMESPACE" "$PG_POD" -c postgres -- \
-  psql -X -At -F '|' -v ON_ERROR_STOP=1 -v cid=fixture -d "$PG_DB" < "$TMP/agg.sql" 2>&1)" || agg_row="ERROR: $agg_row"
-agg_days=$(( ${agg_row##*|} / 86400 )) 2>/dev/null || agg_days=-1
+# client_id, expires_at, created_at, revoked_at. Two long-lived rows 29 days
+# apart on one client, plus a 1h flow row on another that must be filtered out.
+FIXTURE="(VALUES \
+  ('rotating', now() + interval '1 day',   now() - interval '90 days', NULL::timestamptz), \
+  ('rotating', now() + interval '30 days', now() - interval '1 day',   NULL::timestamptz), \
+  ('flow',     now() + interval '59 min',  now() - interval '1 min',   NULL::timestamptz) \
+) AS t(client_id, expires_at, created_at, revoked_at)"
+sed -i "s#FROM oauth_access_token t#FROM $FIXTURE#" "$TMP/agg.sql"
+
+agg_out="$(kubectl exec -i -n "$PG_NAMESPACE" "$PG_POD" -c postgres -- \
+  psql -X -At -F '|' -v ON_ERROR_STOP=1 -v hours=24 -d "$PG_DB" < "$TMP/agg.sql" 2>&1)" \
+  || agg_out="ERROR: $agg_out"
+
+if [ "$(printf '%s\n' "$agg_out" | grep -c .)" = "1" ] && \
+   printf '%s' "$agg_out" | grep -q '^rotating|'; then
+  ok "the 1h flow row is below the 24h line and does not appear"
+else
+  bad "lifetime filter" "expected one 'rotating' row, got: $(printf '%s' "$agg_out" | tr '\n' '|')"
+fi
+agg_days=$(( ${agg_out##*|} / 86400 )) 2>/dev/null || agg_days=-1
 if [ "$agg_days" -ge 20 ]; then
   ok "two live rows 29d apart -> days_left=$agg_days (newest)"
 else
-  bad "two live rows 29d apart" "days_left=$agg_days (oldest row won; expected the newest). raw: $agg_row"
+  bad "two live rows 29d apart" "days_left=$agg_days (oldest row won; expected the newest). raw: $agg_out"
+fi
+
+##############################################################################
+# PHASE 4 — the cigar-journal#129 cutover, which is exactly the state that broke
+# the pinned-client_id version of this Job. ADR-010 revokes the legacy token but
+# KEEPS its client row for the audit trail, so a pinned watch sees a client that
+# still exists with no live token and reports `expired` every morning forever,
+# while the new 365-day credential goes unwatched. Selecting by lifetime instead
+# follows the credential across the cutover with no edit.
+##############################################################################
+section "phase 4: the ADR-010 cutover state"
+
+CUTOVER="(VALUES \
+  ('legacy-client', now() + interval '28 days', now() - interval '2 days', now()), \
+  ('service-client', now() + interval '365 days', now(), NULL::timestamptz) \
+) AS t(client_id, expires_at, created_at, revoked_at)"
+awk "/<<'SQL'/{f=1;next} f&&/^SQL\$/{exit} f{print}" "$TMP/db.sh" > "$TMP/cutover.sql"
+sed -i "s#FROM oauth_access_token t#FROM $CUTOVER#" "$TMP/cutover.sql"
+
+cut_out="$(kubectl exec -i -n "$PG_NAMESPACE" "$PG_POD" -c postgres -- \
+  psql -X -At -F '|' -v ON_ERROR_STOP=1 -v hours=24 -d "$PG_DB" < "$TMP/cutover.sql" 2>&1)" \
+  || cut_out="ERROR: $cut_out"
+
+cut_days=$(( ${cut_out##*|} / 86400 )) 2>/dev/null || cut_days=-1
+if [ "$(printf '%s\n' "$cut_out" | grep -c .)" = "1" ] && \
+   printf '%s' "$cut_out" | grep -q '^service-client|' && [ "$cut_days" -ge 360 ]; then
+  ok "post-cutover: the revoked legacy row is gone, the new token is watched ($cut_days days)"
+else
+  bad "post-cutover selection" "expected one 'service-client' row ~365 days out, got: $(printf '%s' "$cut_out" | tr '\n' '|')"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
