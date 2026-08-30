@@ -1,7 +1,7 @@
 ---
 # Vendor crawler cadence (cigar-journal ADR-006, go-live #93). Same image as the
 # HelmRelease, `crawl` role selected by the container command (see the ROLE
-# DISPATCH marker in the repo Dockerfile). Two schedules:
+# DISPATCH marker in the repo Dockerfile). FOUR schedules, one per (vendor, mode):
 #   * offers — weekly re-visit of known listings, appends offers rows (price,
 #     stock, seenAt) so the price-history spark + staleness window (#91) get
 #     points. No full catalog re-seed.
@@ -9,27 +9,68 @@
 #
 # UNSUSPENDED 2026-08-29 (owner's vendor-expansion directive; Fox posture
 # live-verified 2026-08-28). New vendors join only after their own in-cluster
-# robots/ToS probe passes and the registry row flips crawl_enabled.
+# robots/ToS probe passes — and after a CronJob pair lands HERE (see the
+# crawl_enabled note below).
+#
+# ONE CRONJOB PER VENDOR because `--vendor` takes exactly one adapter slug
+# (packages/crawler/src/cli.ts — there is no --all / --all-enabled mode). Per-vendor
+# also buys independent failure (one wedged vendor fails one Job and keeps its own
+# crawl_runs row), an activeDeadlineSeconds sized to that vendor's own catalog, and
+# an independent `suspend: true` emergency stop — which matters most for Cuban
+# Lou's (approval_status unapproved, no purchase link-out, US-embargo exposure note
+# in its adapter).
+#
+# CADENCE MODEL — measured, not guessed. The fetcher serializes EVERY request
+# (pages, sitemap, photos) through one limiter at >=2.5s + jitter, PER PROCESS.
+# Two seed runs both land at 2.75 s/request (Fox 2857 req / 2h11m; Cuban Lou's
+# 1047 req / 48m), so an offers re-walk costs:
+#   * Fox         2004 product URLs => ~92 min
+#   * Cuban Lou's  987 product URLs => ~45 min
+# (Offers re-walks are text-only in practice: capturePhoto short-circuits on an
+# existing product_photos row, and no linked Fox cigar is missing one.)
+# Because the limiter is per POD, two pods on one host double the effective rate,
+# and concurrencyPolicy Forbid guards a CronJob only against ITSELF, never across
+# CronJobs. Hence the two offers walks sit on different DAYS (Sun / Wed) rather
+# than different hours — a Fox overrun can never reach the Cuban Lou's window, so
+# the gap needs no re-deriving as either catalog grows — and both enrich runs moved
+# to 06:00/06:30, 85 min clear of any offers window. The old comment claimed 09:00
+# was "staggered an hour after the offers window"; at ~92 min that in fact put a
+# second pod on foxcigar.com mid-walk.
+#
+# vendors.crawl_enabled GATES NOTHING. Every consumer was grepped: it is only ever
+# written (cli.ts resolveVendor, approved-import.ts, purchase-writer.ts) and never
+# read — the crawler crawls whatever --vendor says. THIS FILE is the real crawl
+# gate. A vendor flipped crawl_enabled=true in the DB with no CronJob here is
+# silently never crawled; that is exactly the gap this four-job shape closes for
+# Cuban Lou's. Durable fix tracked as the --all-enabled backlog issue.
 #
 # Image tag is pinned here because a CronJob is a separate manifest and cannot
 # reach the HelmRelease's &mainImage anchor. Renovate's `kubernetes` manager
 # tracks this ghcr.io tag independently — keep it in step with the HelmRelease.
+# FOUR pins now: bump with a global replace, then verify
+#   grep -c '^ *image: ghcr.io/thaynes43/cigar-journal:v' crawler-cronjobs.yaml
+# expects 4. The leading-indent anchor is deliberate: an unanchored pattern also
+# matches this very comment and reports 5.
+# A bump PR that seds a single line leaves stale-image CronJobs behind.
 #
 # Failure visibility (#93 observability): the crawl CLI exits 0 only on a
 # succeeded run and 1 on failure (Dockerfile ROLE DISPATCH; runIngest brackets
 # each run in a crawl_runs row). A failed run therefore surfaces as a failed Job
 # (restartPolicy Never, backoffLimit 1) in kube-state-metrics and the run's stderr
-# is a Loki-alertable log line.
+# is a Loki-alertable log line. CAVEAT: a deadline kill is NOT bracketed — the
+# crawler installs no SIGTERM handler, so an activeDeadlineSeconds kill strands its
+# crawl_runs row at status='running' forever. Tripwire:
+#   select count(*) from crawl_runs
+#    where status='running' and started_at < now() - interval '4 hours';  -- 0
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: cigar-journal-crawl-offers
+  name: cigar-journal-crawl-offers-fox-cigar
 spec:
   suspend: false
   # Weekly, Sunday 08:00 UTC (= 01:00 America/Phoenix — Fox Cigar is an AZ vendor;
-  # this is their overnight low-traffic window). Off-peak UTC hour per #93; offers
-  # history only needs periodic points and the vendor is crawled gently. Owner may
-  # tighten to a shorter cadence once a few weeks of points exist.
+  # this is their overnight low-traffic window). Slot unchanged; only the deadline
+  # moved, see below.
   schedule: "0 8 * * 0"
   timeZone: Etc/UTC
   concurrencyPolicy: Forbid
@@ -40,14 +81,17 @@ spec:
     spec:
       backoffLimit: 1
       ttlSecondsAfterFinished: 86400
-      # Polite fetcher rate-limits every request (>=2.5s); a full offers walk is
-      # bounded but slow. Guard a wedged run without cutting a legitimate crawl short.
-      activeDeadlineSeconds: 3600
+      # ~92 min expected (2004 product URLs at 2.75 s/req). The previous 3600 would
+      # have killed the first-ever run at ~62% and stranded its crawl_runs row in
+      # 'running'. 9000 is ~1.6x expected and still under the measured 131 min full
+      # seed, which is a strict superset of an offers walk.
+      activeDeadlineSeconds: 9000
       template:
         metadata:
           labels:
             app.kubernetes.io/name: cigar-journal
             app.kubernetes.io/component: crawl-offers
+            vendor: fox-cigar
         spec:
           restartPolicy: Never
           containers:
@@ -106,13 +150,13 @@ spec:
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: cigar-journal-crawl-enrich
+  name: cigar-journal-crawl-offers-cuban-lous
 spec:
   suspend: false
-  # Daily, 09:00 UTC (= 02:00 America/Phoenix) — staggered an hour after the offers
-  # window so the Sunday overlap never runs both against the vendor at once. Drains
-  # at most --limit 10 gap-fill requests per run; a small, steady trickle.
-  schedule: "0 9 * * *"
+  # Weekly, Wednesday 08:00 UTC. Same overnight hour as the Fox walk but a different
+  # DAY, so a Fox overrun can never reach this window and the two never share a host
+  # anyway. 08:00 UTC is 01:00-04:00 across CONUS.
+  schedule: "0 8 * * 3"
   timeZone: Etc/UTC
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 600
@@ -122,13 +166,97 @@ spec:
     spec:
       backoffLimit: 1
       ttlSecondsAfterFinished: 86400
-      # Bounded to 10 drained requests; short. Guard against a wedged fetch.
+      # ~45 min expected (987 product URLs at 2.75 s/req); ~2x headroom.
+      activeDeadlineSeconds: 5400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: cigar-journal
+            app.kubernetes.io/component: crawl-offers
+            vendor: cuban-lous
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: crawl
+              image: ghcr.io/thaynes43/cigar-journal:v0.26.1
+              imagePullPolicy: IfNotPresent
+              # workingDir is required: `node --import tsx` resolves the loader from
+              # CWD, and tsx ships in /app/crawler/node_modules.
+              workingDir: /app/crawler
+              command:
+                - /sbin/tini
+                - "--"
+                - node
+                - --import
+                - tsx
+                - src/cli.ts
+                - --vendor
+                - cuban-lous
+                - --mode
+                - offers
+              # Raw CronJob needs core/v1 list-form env — the HR's map form is a
+              # bjw-s chart-values idiom and does not apply here.
+              env:
+                # No IPv6 egress in this cluster; force A-record-first for the
+                # crawler's outbound fetches (same trap the HR web/mcp roles hit).
+                - name: NODE_OPTIONS
+                  value: --dns-result-order=ipv4first
+                # Photo capture for newly matched cigars — mirrored from the HR.
+                - name: PHOTOS_S3_ENDPOINT
+                  value: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+                - name: PHOTOS_S3_BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: cigar-journal-photos
+                      key: BUCKET_NAME
+                - name: PHOTOS_S3_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: cigar-journal-photos
+                      key: AWS_ACCESS_KEY_ID
+                - name: PHOTOS_S3_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: cigar-journal-photos
+                      key: AWS_SECRET_ACCESS_KEY
+              envFrom:
+                - secretRef:
+                    name: cigar-journal-secret
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 256Mi
+                limits:
+                  memory: 512Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cigar-journal-crawl-enrich-fox-cigar
+spec:
+  suspend: false
+  # Daily, 06:00 UTC (= 23:00 America/Phoenix). Moved off 09:00, which lands INSIDE
+  # the ~92 min Fox offers walk — that put a second pod on foxcigar.com mid-crawl.
+  # The enrich pair now clears the 08:00 offers windows by ~85 min at worst.
+  schedule: "0 6 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      # Bounded to 10 drained requests (MAX_ENRICH_CANDIDATES 8 => <=82 fetches,
+      # ~3.8 min worst case; the measured run was 3 pages / 8s). Wedged-fetch guard.
       activeDeadlineSeconds: 1800
       template:
         metadata:
           labels:
             app.kubernetes.io/name: cigar-journal
             app.kubernetes.io/component: crawl-enrich
+            vendor: fox-cigar
         spec:
           restartPolicy: Never
           containers:
@@ -147,6 +275,92 @@ spec:
                 - src/cli.ts
                 - --vendor
                 - fox-cigar
+                - --mode
+                - enrich
+                - --limit
+                - "10"
+              # Raw CronJob needs core/v1 list-form env — the HR's map form is a
+              # bjw-s chart-values idiom and does not apply here.
+              env:
+                # No IPv6 egress in this cluster; force A-record-first for the
+                # crawler's outbound fetches (same trap the HR web/mcp roles hit).
+                - name: NODE_OPTIONS
+                  value: --dns-result-order=ipv4first
+                # Photo capture during gap-fill — mirrored from the HR.
+                - name: PHOTOS_S3_ENDPOINT
+                  value: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+                - name: PHOTOS_S3_BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: cigar-journal-photos
+                      key: BUCKET_NAME
+                - name: PHOTOS_S3_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: cigar-journal-photos
+                      key: AWS_ACCESS_KEY_ID
+                - name: PHOTOS_S3_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: cigar-journal-photos
+                      key: AWS_SECRET_ACCESS_KEY
+              envFrom:
+                - secretRef:
+                    name: cigar-journal-secret
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 256Mi
+                limits:
+                  memory: 512Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cigar-journal-crawl-enrich-cuban-lous
+spec:
+  suspend: false
+  # Daily, 06:30 UTC — 30 min behind the Fox enrich run (~8s typical, 3.8 min worst
+  # case), so the two never overlap. drainEnrichment claims rows with a SELECT then a
+  # separate UPDATE and no FOR UPDATE SKIP LOCKED, so an overlap would double-burn
+  # the shared per-request attempt budget.
+  schedule: "30 6 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      # Bounded to 10 drained requests (MAX_ENRICH_CANDIDATES 8 => <=82 fetches,
+      # ~3.8 min worst case; the measured run was 3 pages / 8s). Wedged-fetch guard.
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: cigar-journal
+            app.kubernetes.io/component: crawl-enrich
+            vendor: cuban-lous
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: crawl
+              image: ghcr.io/thaynes43/cigar-journal:v0.26.1
+              imagePullPolicy: IfNotPresent
+              # workingDir is required: `node --import tsx` resolves the loader from
+              # CWD, and tsx ships in /app/crawler/node_modules.
+              workingDir: /app/crawler
+              command:
+                - /sbin/tini
+                - "--"
+                - node
+                - --import
+                - tsx
+                - src/cli.ts
+                - --vendor
+                - cuban-lous
                 - --mode
                 - enrich
                 - --limit
