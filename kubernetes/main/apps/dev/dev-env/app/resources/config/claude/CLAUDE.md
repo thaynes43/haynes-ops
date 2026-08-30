@@ -60,11 +60,89 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 - `mcp-unifi` — read-only UniFi/UDM introspection (clients, RSSI, topology;
   cluster-local SSE). Gotcha: per-site tools want the legacy site code `default`
   (`internalReference`), not the UUID from `list_sites`.
+- `outline` — the sigoalumni wiki (stdio, `uvx mcp-outline`)
+- `vexa` — meeting bot: transcripts, recordings (cluster-local)
+- `cigar-journal` — the prod journal/catalog MCP at
+  `https://cigars.haynesnetwork.com/mcp`. **Currently 401s**: dev-init expands
+  `${CIGAR_JOURNAL_TOKEN}` with envsubst against the POD environment, and that
+  variable is not there — it lives only in the PVC `~/.bashrc`, which dev-init
+  never sources — so the header registers as an empty `Bearer ` (visible as a
+  whitespace warning in `claude mcp list`). Fix pending in haynes-ops#2673.
+  Until it lands, reach the API directly with
+  `curl -H "Authorization: Bearer $CIGAR_JOURNAL_TOKEN"` from a shell (which
+  DOES source `.bashrc`); it speaks streamable-HTTP MCP, so send `initialize`
+  first and carry the returned `Mcp-Session-Id`, or you get `400 no valid
+  session`. A 400 about sessions means auth PASSED.
+
+A placeholder only resolves if the variable is in the POD environment
+(ExternalSecret-fed, visible in `/proc/1/environ`) — dev-init's envsubst runs
+before any shell profile. A value exported from `~/.bashrc` reaches your shell
+and never reaches the MCP registration.
 
 ## Sessions
 
-Run inside tmux (session `main`) so work survives disconnects. For phone-driven
-sessions, start `claude` and use `/remote-control`.
+**Your own:** run inside tmux (session `main`) so work survives disconnects. For
+phone-driven work, start `claude` and use `/remote-control`.
+
+**Dispatching another: `agent-run`.** It is the only supported way to start one —
+it creates and branches the worktree, pins model + effort, and wires the tmux
+session. Bare `agent-run` walks every choice; flags skip the walkthrough.
+
+| mode | flag | what you get |
+|---|---|---|
+| task | `-p "<task>"` | headless, fire-and-forget; log at `~/work/<id>.log` |
+| local | `--local` | a terminal TUI in this pod only |
+| both | `--interactive` | that TUI **and** a phone/claude.ai-drivable session |
+
+```bash
+agent-run --repo <name> --agent claude --interactive \
+  --model 'claude-fable-5[1m]' --effort xhigh
+# -> task <repo>-<mmdd-HHMMSS>, tmux session task-<id>
+```
+
+Quote the model id — `claude-fable-5[1m]` carries glob metacharacters. Prefer the
+id over a bare alias (`fable`), which resolves CLIENT-side against the pinned CLI
+and can silently serve an older tier; see the freshness contract below.
+
+**`-p` cannot combine with `--interactive`/`--local`** — agent-run rejects the
+contradiction rather than guessing. So an interactive session starts with an
+empty prompt, and you hand it its first instruction by typing into its pane:
+
+```bash
+tmux send-keys -t task-<id> -l "<the whole prompt, ONE line>"
+tmux send-keys -t task-<id> Enter
+```
+
+`-l` sends the text literally; without it tmux interprets the payload. One line
+matters: an embedded newline is an Enter, which submits early and strands the
+rest of your prompt as a second turn.
+
+**Confirm it started before handing it work** — a dispatch can come up dead and
+look fine from the outside:
+
+```bash
+tmux capture-pane -p -t task-<id> | tail -20
+```
+
+Expect the banner (model, effort, `Claude Max`) and, for `both`, the
+`/remote-control is active` line with its claude.ai URL. `out of usage credits`
+with `Worked for 0s` is the plan's Fable wall, not an agent-run bug — redispatch
+on `claude-opus-5` and tell Tom.
+
+Managing them: `agent-run list` · `attach [<id>]` · `detach` · `reap [<id>]
+[--force]` · `prune [--yes]` (bulk-clean stranded worktrees; dry-run without
+`--yes`). Reap when a task is done — a stranded worktree outlives its session.
+
+Two behaviours worth knowing before they surprise you:
+
+- `both` deliberately strips `CLAUDE_CODE_OAUTH_TOKEN` and falls back to
+  `~/.claude/.credentials.json`. The long-lived env token cannot register
+  `/v1/code/sessions`, so a session started with it silently never appears on the
+  phone/web list. Keep the `/login` ceremony current or `both` breaks while
+  `task` and `local` keep working.
+- Cross-session messaging is OFF in this pod: `/tmp` is world-writable without
+  the sticky bit, so the socket directory cannot be created. Sessions coordinate
+  through git, work orders, and the PVC — not by messaging each other.
 
 ## Declare disruptive work (avoid false escalations)
 
