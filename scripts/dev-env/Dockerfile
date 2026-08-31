@@ -14,38 +14,38 @@
 FROM node:24-slim
 
 # renovate: datasource=github-releases depName=kubernetes/kubernetes
-ARG KUBECTL_VERSION=v1.35.5
+ARG KUBECTL_VERSION=v1.37.0
 # renovate: datasource=github-releases depName=fluxcd/flux2
-ARG FLUX_VERSION=2.4.0
+ARG FLUX_VERSION=2.9.4
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION=2.95.0
+ARG GH_VERSION=2.98.0
 # renovate: datasource=github-releases depName=helm/helm
-ARG HELM_VERSION=3.19.0
+ARG HELM_VERSION=3.21.4
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.+)$
-ARG KUSTOMIZE_VERSION=5.6.0
+ARG KUSTOMIZE_VERSION=5.8.1
 # renovate: datasource=github-releases depName=getsops/sops
-ARG SOPS_VERSION=3.10.2
+ARG SOPS_VERSION=3.13.3
 # renovate: datasource=github-releases depName=FiloSottile/age extractVersion=^v(?<version>.+)$
-ARG AGE_VERSION=1.2.1
+ARG AGE_VERSION=1.3.2
 # renovate: datasource=github-releases depName=mikefarah/yq extractVersion=^v(?<version>.+)$
-ARG YQ_VERSION=4.44.3
+ARG YQ_VERSION=4.53.6
 # renovate: datasource=github-releases depName=go-task/task extractVersion=^v(?<version>.+)$
-ARG TASK_VERSION=3.40.0
+ARG TASK_VERSION=3.53.1
 # renovate: datasource=github-releases depName=opentofu/opentofu extractVersion=^v(?<version>.+)$
-ARG OPENTOFU_VERSION=1.9.0
+ARG OPENTOFU_VERSION=1.12.6
 # renovate: datasource=github-releases depName=restic/restic extractVersion=^v(?<version>.+)$
-ARG RESTIC_VERSION=0.17.3
+ARG RESTIC_VERSION=0.19.1
 # talosctl — read-only node triage (dmesg/logs/get) via apid; MUST track the cluster's
 # Talos version (nodes run v1.13.3). Same style as kubectl: the `v` lives in the ARG.
 # renovate: datasource=github-releases depName=siderolabs/talos
-ARG TALOSCTL_VERSION=v1.13.3
+ARG TALOSCTL_VERSION=v1.13.9
 # omnictl — read-only Omni machine/cluster status; tracks the self-hosted Omni image
 # (ghcr.io/siderolabs/omni). renovate: datasource=github-releases depName=siderolabs/omni
-ARG OMNICTL_VERSION=v1.9.3
+ARG OMNICTL_VERSION=v1.10.5
 # renovate: datasource=github-releases depName=coder/code-server extractVersion=^v(?<version>.+)$
-ARG CODE_SERVER_VERSION=4.96.4
+ARG CODE_SERVER_VERSION=4.135.0
 # renovate: datasource=github-releases depName=astral-sh/uv
-ARG UV_VERSION=0.5.24
+ARG UV_VERSION=0.12.7
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
 # 2.1.251 (2026-08-29): catching up 35 releases of drift. 2.1.217 was pinned by
 # hand on 2026-07-22 and never moved again because NOTHING was watching this ARG
@@ -60,15 +60,15 @@ ARG CLAUDE_CODE_VERSION=2.1.251
 # version; @openai/codex npm releases track the same numbers as the rust-v* GitHub
 # releases the standalone installer pulls, so the npm datasource still tracks it.
 # renovate: datasource=npm depName=@openai/codex
-ARG CODEX_VERSION=0.145.0
+ARG CODEX_VERSION=0.151.0
 # renovate: datasource=npm depName=tsx
-ARG TSX_VERSION=4.19.2
+ARG TSX_VERSION=4.23.13
 # renovate: datasource=npm depName=pnpm
-# 11.9.0: haynesnetwork pins packageManager pnpm@11.9.0 + engines pnpm>=11 (pnpm 10
+# 11.24.0: haynesnetwork pins packageManager pnpm@11.24.0 + engines pnpm>=11 (pnpm 10
 # hard-refuses to install there). Keep >=11 unless every repo drops the pin.
-ARG PNPM_VERSION=11.9.0
+ARG PNPM_VERSION=11.24.0
 # renovate: datasource=npm depName=@playwright/mcp
-ARG PLAYWRIGHT_MCP_VERSION=0.0.78
+ARG PLAYWRIGHT_MCP_VERSION=0.0.79
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 

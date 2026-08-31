@@ -60,11 +60,87 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 - `mcp-unifi` — read-only UniFi/UDM introspection (clients, RSSI, topology;
   cluster-local SSE). Gotcha: per-site tools want the legacy site code `default`
   (`internalReference`), not the UUID from `list_sites`.
+- `outline` — the sigoalumni wiki (stdio, `uvx mcp-outline`)
+- `vexa` — meeting bot: transcripts, recordings (cluster-local)
+- `cigar-journal` — the prod journal/catalog MCP at
+  `https://cigars.haynesnetwork.com/mcp`. Auth works since haynes-ops#2673:
+  `CIGAR_JOURNAL_TOKEN` is ExternalSecret-fed into the POD environment, which is
+  where dev-init's envsubst reads it from. A 401 or a whitespace warning in
+  `claude mcp list` means that secret has gone missing again (check
+  `dev-env-cigar` in namespace `dev`). If you ever curl the endpoint directly:
+  it speaks streamable-HTTP MCP, so send `initialize` first and carry the
+  returned `Mcp-Session-Id`, or you get `400 no valid session`. A 400 about
+  sessions means auth PASSED.
+
+A placeholder only resolves if the variable is in the POD environment
+(ExternalSecret-fed, visible in `/proc/1/environ`) — dev-init's envsubst runs
+before any shell profile. A value exported from `~/.bashrc` reaches your shell
+and never reaches the MCP registration.
 
 ## Sessions
 
-Run inside tmux (session `main`) so work survives disconnects. For phone-driven
-sessions, start `claude` and use `/remote-control`.
+**Your own:** run inside tmux (session `main`) so work survives disconnects. For
+phone-driven work, start `claude` and use `/remote-control`.
+
+**Dispatching another: `agent-run`.** It is the only supported way to start one —
+it creates and branches the worktree, pins model + effort, and wires the tmux
+session. Bare `agent-run` walks every choice; flags skip the walkthrough.
+
+| mode | flag | what you get |
+|---|---|---|
+| task | `-p "<task>"` | headless, fire-and-forget; log at `~/work/<id>.log` |
+| local | `--local` | a terminal TUI in this pod only |
+| both | `--interactive` | that TUI **and** a phone/claude.ai-drivable session |
+
+```bash
+agent-run --repo <name> --agent claude --interactive \
+  --model 'claude-fable-5[1m]' --effort xhigh
+# -> task <repo>-<mmdd-HHMMSS>, tmux session task-<id>
+```
+
+Quote the model id — `claude-fable-5[1m]` carries glob metacharacters. Prefer the
+id over a bare alias (`fable`), which resolves CLIENT-side against the pinned CLI
+and can silently serve an older tier; see the freshness contract below.
+
+**`-p` cannot combine with `--interactive`/`--local`** — agent-run rejects the
+contradiction rather than guessing. So an interactive session starts with an
+empty prompt, and you hand it its first instruction by typing into its pane:
+
+```bash
+tmux send-keys -t task-<id> -l "<the whole prompt, ONE line>"
+tmux send-keys -t task-<id> Enter
+```
+
+`-l` sends the text literally; without it tmux interprets the payload. One line
+matters: an embedded newline is an Enter, which submits early and strands the
+rest of your prompt as a second turn.
+
+**Confirm it started before handing it work** — a dispatch can come up dead and
+look fine from the outside:
+
+```bash
+tmux capture-pane -p -t task-<id> | tail -20
+```
+
+Expect the banner (model, effort, `Claude Max`) and, for `both`, the
+`/remote-control is active` line with its claude.ai URL. `out of usage credits`
+with `Worked for 0s` is the plan's Fable wall, not an agent-run bug — redispatch
+on `claude-opus-5` and tell Tom.
+
+Managing them: `agent-run list` · `attach [<id>]` · `detach` · `reap [<id>]
+[--force]` · `prune [--yes]` (bulk-clean stranded worktrees; dry-run without
+`--yes`). Reap when a task is done — a stranded worktree outlives its session.
+
+Two behaviours worth knowing before they surprise you:
+
+- `both` deliberately strips `CLAUDE_CODE_OAUTH_TOKEN` and falls back to
+  `~/.claude/.credentials.json`. The long-lived env token cannot register
+  `/v1/code/sessions`, so a session started with it silently never appears on the
+  phone/web list. Keep the `/login` ceremony current or `both` breaks while
+  `task` and `local` keep working.
+- Cross-session messaging is OFF in this pod: `/tmp` is world-writable without
+  the sticky bit, so the socket directory cannot be created. Sessions coordinate
+  through git, work orders, and the PVC — not by messaging each other.
 
 ## Declare disruptive work (avoid false escalations)
 
@@ -96,8 +172,31 @@ and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
 |---|---|---|
 | **Automated agents** — alert-responder, upgrade-shepherd, dev-env-ops (both lanes) | **latest Opus**, pinned explicitly (`claude-opus-5` today) | They merge upgrades and touch production unattended; being wrong costs more than the quota. Pinned not aliased — alias repoints lag a launch by days. |
 | **Tom's interactive dev-env work** | **latest Fable** when available | This is the surface Fable's plan quota is reserved for. |
-| **Subagents dispatched from a dev-env session** | **Opus** | Keeps Fable headroom for the driving session. |
+| **Subagents dispatched from a dev-env session** | **Opus 5** (`claude-opus-5`) | Mandatory, in EVERY repo — see "Subagent dispatch rules" below. |
 | **ANY pay-per-token API-key call** | **Sonnet 5** (`claude-sonnet-5`) | **NEVER Fable on API pricing, and never Opus.** Sonnet 5 is near-Opus at a fraction of the cost — and it can dispatch a pod claude-code agent (plan-served) for heavy lifting instead of billing tokens. |
+
+### Subagent dispatch rules (Tom, 2026-08-30 — apply in EVERY repo)
+
+These bind every session in this pod regardless of which repo the worktree holds
+(a longer worked version lives in `haynesnetwork/.agents/KICKOFF.md`; this is
+the policy). They apply **doubly to Fable sessions**: your Fable budget is
+scarce, shared with Tom's interactive use, and you cannot see how much remains —
+treat it as nearly exhausted.
+
+- **Default every unit of work to an Opus 5 subagent** (`model: opus` /
+  `claude-opus-5`): exploration and research, reading subsystems, finding call
+  sites, writing and running tests, mechanical/boilerplate edits, doc
+  scaffolding, verification and deploy audits. When unsure whether a task needs
+  the driving model, it doesn't — dispatch it.
+- **Keep for the driving session** only what genuinely needs its judgment:
+  architecture and design ratification, subtle domain/algorithm code,
+  cross-repo/cross-plan coherence, and the final review of subagent output.
+- **Exception — never delegate down: UX design and written text an end user
+  will see** (UI copy, page layout/visual design choices, user-facing docs and
+  messages). Those stay on the driving Fable session; Fable-quality output on
+  user-visible surfaces is exactly what the budget is for.
+- Give each subagent a crisp, self-contained task and have it return findings
+  and results, not file dumps; fan independent work out in parallel.
 
 **Bump procedure on a new Opus/Fable launch:** probe first
 (`claude --model <full-id> -p 'reply with your model id'`), then update the pinned
