@@ -417,9 +417,10 @@ spec:
       # again after it. `k8tz.io/inject: "false"` is what makes the value survive that
       # CREATE. Keep it on all four. It belongs at the CONTROLLER level (sibling
       # of `type:`), NOT under `cronjob:`, and it lands only on CronJob metadata:
-      # k8tz never touched the jobTemplate here (no init container, no TZ env),
-      # so pod-level timezone injection still happens at Pod CREATE and is
-      # unaffected by this opt-out.
+      # k8tz never wrote into the jobTemplate here — the `migrate` init container
+      # on each job below is OURS (haynes-ops#2705), not an injected TZ shim, and
+      # there is still no TZ env — so pod-level timezone injection continues to
+      # happen at Pod CREATE and is unaffected by this opt-out.
       #
       # FAILURE VISIBILITY (#93 observability) AND ITS TWO BLIND SPOTS. The crawl
       # CLI exits 0 only on a succeeded run and 1 on failure (Dockerfile ROLE
@@ -482,6 +483,62 @@ spec:
           labels:
             app.kubernetes.io/component: crawl-offers
             vendor: fox-cigar
+        # SCHEMA GATE (haynes-ops#2705). These jobs share the app image with the web
+        # role but had no migration step, so a Job firing during a bump ran NEW
+        # crawler code against the OLD schema. Not hypothetical: v0.30.0 shipped
+        # matching v2, whose widened unmatched_reason CHECK arrives in migration
+        # 0027 — a walk landing between the CronJob's new tag and the web rollout's
+        # migrate init container would have written a value the live CHECK rejects.
+        # Ordering by hope (deploy before 06:00 UTC) is not a control; this is.
+        #
+        # SAFE FROM FIVE PODS AT ONCE, which is the whole reason this is an init
+        # container and not a suspend window. Identical runner to the deployment's
+        # `migrate` init container above (packages/db/src/scripts/migrate.ts):
+        # it takes the BLOCKING session-level `pg_advisory_lock(4927710238)` before
+        # it reads anything (:37-38), creates/reads the schema_migrations ledger
+        # INSIDE that lock and `continue`s past every id already recorded (:39-47),
+        # and unlocks in a `finally` (:60-63). So a second runner waits, wakes to an
+        # empty pending set, logs "no pending migrations" and exits 0. Session-level
+        # is load-bearing: DATABASE_URL points at the CNPG rw service directly
+        # (externalsecret.yaml), never a transaction pooler, which would split the
+        # lock and unlock across backends and silently void the mutual exclusion.
+        #
+        # ONE COST TO KNOW. activeDeadlineSeconds counts init-container time, so a
+        # migration that hangs (there is no lock_timeout on either side) burns the
+        # crawl's own budget and the Job dies DeadlineExceeded — which reads as a
+        # crawl failure, not a migration wait. Check init-container logs before
+        # believing a DeadlineExceeded crawl. In practice the four schedules are
+        # pairwise disjoint in (day, minute), so the concurrent case only arises
+        # when a rollout lands on a crawl start — precisely the case this fixes.
+        #
+        # NOT an alias of that block, deliberately. Anchoring it would put a YAML
+        # anchor three lines from the `tag:` under &mainImage, inside the context
+        # window of every image-bump diff. The copy is guarded instead:
+        # scripts/crawl-cronjob-invariants.sh walks initContainers as well as
+        # containers, so a stale pin here fails the one-image-pin assertion.
+        initContainers:
+          # Anchored and aliased by the other three jobs — same reasoning as the
+          # &crawlEnv / &crawlEnvFrom / &crawlResources blocks below: nothing about
+          # this step legitimately differs per vendor or mode, so the three copies
+          # are made structurally identical rather than identical by review.
+          migrate: &crawlMigrate
+            image: *mainImage
+            # workingDir is required: `node --import tsx` resolves the loader from
+            # CWD, and tsx ships in /app/migrate/node_modules.
+            workingDir: /app/migrate
+            command:
+              - /sbin/tini
+              - "--"
+              - node
+              - --import
+              - tsx
+              - src/scripts/migrate.ts
+            # No `resources:` — parity with the deployment's migrate init container.
+            # A pod's effective request is max(sum of containers, max of init
+            # containers), so the crawl container's 50m/256Mi still governs.
+            envFrom:
+              - secretRef:
+                  name: cigar-journal-secret
         containers:
           crawl:
             image: *mainImage
@@ -564,6 +621,8 @@ spec:
           labels:
             app.kubernetes.io/component: crawl-offers
             vendor: cuban-lous
+        initContainers:
+          migrate: *crawlMigrate
         containers:
           crawl:
             image: *mainImage
@@ -642,6 +701,8 @@ spec:
           labels:
             app.kubernetes.io/component: crawl-enrich
             vendor: fox-cigar
+        initContainers:
+          migrate: *crawlMigrate
         containers:
           crawl:
             image: *mainImage
@@ -707,6 +768,8 @@ spec:
           labels:
             app.kubernetes.io/component: crawl-enrich
             vendor: cuban-lous
+        initContainers:
+          migrate: *crawlMigrate
         containers:
           crawl:
             image: *mainImage
