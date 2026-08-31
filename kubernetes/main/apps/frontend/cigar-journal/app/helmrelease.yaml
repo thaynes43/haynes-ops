@@ -409,7 +409,7 @@ spec:
       crawl-offers-fox-cigar:
         type: cronjob
         cronjob:
-          # Unsuspended. The agent's 291 verdicts are decided_by='agent' in prod and
+          # Unsuspended. The agent's 591 verdicts are decided_by='agent' in prod and
           # the match.ts:70 guard returns them untouched (header), so a completed
           # walk re-derives only crawler-owned rows. That churn is the cost of Fox —
           # the only approved, purchase_linkout vendor — having a refresh path at
