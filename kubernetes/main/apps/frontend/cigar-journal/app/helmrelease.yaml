@@ -265,45 +265,61 @@ spec:
       # are claimed. `drainEnrichment` selects `status='pending' order by
       # created_at asc limit N` with no vendor predicate, and enrichment_requests
       # has no vendor column at all (packages/db/src/schema/enrichment-requests.ts).
-      # The per-request budget, EXHAUST_ATTEMPTS=2, is hardcoded in ingest.ts and
-      # shared across every enrich job. Consequences to schedule around:
-      #   * Two enrich runs on the SAME day spend both attempts in one morning —
-      #     vendor A misses (row back to 'pending', attempts=1), vendor B claims the
-      #     same row an hour later, attempts hits 2 and the row is 'exhausted'
-      #     forever (nothing ever re-selects an exhausted row). So AT MOST ONE
-      #     ENRICH DRAIN PER DAY, always.
-      #   * Only the Fox drain is live, so 'exhausted' means "Fox was tried twice on
-      #     consecutive days". It does NOT yet mean "every enabled vendor was
-      #     tried"; that needs both drains live AND EXHAUST_ATTEMPTS raised to the
-      #     vendor count (cigar-journal#158).
-      #   * A THIRD vendor breaks it again: at EXHAUST_ATTEMPTS=2 the third day
-      #     never gets the row, and a cigar that vendor C stocks is recorded as
-      #     fully tried. Raise EXHAUST_ATTEMPTS in lockstep with the vendor count,
-      #     or keep this at two.
+      # The open set is additionally filtered by the market predicate and by
+      # vendorNotRetired, so which rows a given vendor may claim is narrower than
+      # the queue — but the QUEUE itself still has no vendor column.
+      # CORRECTED 2026-08-31 (v0.29.0 / cigar-journal#192, #157). This note used to
+      # read "EXHAUST_ATTEMPTS=2 is a per-request budget shared across every enrich
+      # job, therefore AT MOST ONE ENRICH DRAIN PER DAY, always." That is no longer
+      # true and must not be used to justify a schedule: attempts now live in
+      # enrichment_attempts, UNIQUE(request_id, vendor_id), incremented by an atomic
+      # ON CONFLICT upsert. The budget is PER VENDOR and two vendors cannot burn or
+      # lose each other's. Consequences that survive:
+      #   * 'exhausted' means "this vendor was tried twice", never "every enabled
+      #     vendor was tried". Fleet-level exhaustion is #158 and still open.
+      #   * Two drains on one day is no longer a budget bug, but the two enrich jobs
+      #     are still kept on disjoint days — for the product_photos slot race, not
+      #     for attempts. The reasoning is on crawl-enrich-fox-cigar below; read it
+      #     before merging the two schedules back together.
       #   * The `vendor:` pod label on an enrich Job names the sitemap it searches,
       #     NOT the rows it drains. Do not build a per-vendor drain dashboard or
       #     alert on it.
       #
-      # WHY THE CUBAN LOU'S ENRICH DRAIN SHIPS SUSPENDED — a real defect, not
-      # caution. Enrich matching is name-similarity only (sim > 0.55 against the
-      # QUEUED cigar, ingest.ts tryEnrichCandidates) with NO vendor-focus predicate:
-      # `focus` is written by cli.ts:139 and read only by approved-import.ts:151/190;
-      # neither match.ts nor ingest.ts references it. So a `--vendor cuban-lous`
-      # (focus CC) drain answers an NC request, hangs a Habanos listing off a
-      # non-Cuban cigar, and — because tryEnrichCandidates then calls capturePhoto
-      # with that cigar's id — writes a Habanos product image onto it.
-      # product_photos is UNIQUE(cigar_id) with onConflictDoNothing and nothing in
-      # the crawler ever removes one, so that photo is permanent.
-      # purchase_linkout=false suppresses the buy link, not the price row or the
-      # image. Verified live, not hypothesised: similarity('Romeo y Julieta Mini
-      # White Original', 'Romeo y Julieta Mini') = 0.583 > 0.55, against Cuban Lou's
-      # listing /cuban-cigarillos/romeo-y-julieta-mini/. The only real fix is a
-      # focus predicate in the crawler, which neither a manifest nor a Helm value
-      # can supply — so the job ships suspended rather than documented
-      # (cigar-journal#170). UNSUSPEND PROCEDURE, two lines in one PR, once that
-      # predicate lands: flip crawl-enrich-cuban-lous `suspend` to false AND narrow
-      # crawl-enrich-fox-cigar from `0 6 * * *` to `0 6 * * 0,1,3,5`. Those two
-      # lists tile all seven days with no shared day.
+      # WHY THE CUBAN LOU'S ENRICH DRAIN WAS SUSPENDED, AND WHY IT NO LONGER IS.
+      # It shipped suspended for a real defect, not caution: enrich matching was
+      # name-similarity only (sim > 0.55 against the QUEUED cigar,
+      # ingest.ts tryEnrichCandidates) with NO vendor-focus predicate — `focus` was
+      # written by cli.ts and read only by approved-import.ts, so a
+      # `--vendor cuban-lous` (focus CC) drain answered an NC request, hung a
+      # Habanos listing off a non-Cuban cigar, and — because tryEnrichCandidates
+      # then called capturePhoto with that cigar's id — wrote a Habanos product
+      # image onto it. product_photos is UNIQUE(cigar_id) with onConflictDoNothing
+      # and nothing in the crawler ever removes one, so that photo was permanent.
+      # Verified live, not hypothesised: similarity('Romeo y Julieta Mini White
+      # Original', 'Romeo y Julieta Mini') = 0.583 > 0.55, against Cuban Lou's
+      # listing /cuban-cigarillos/romeo-y-julieta-mini/.
+      #
+      # FIXED AND DEPLOYED in cigar-journal v0.29.0 (PR #192, closes #170/#157/
+      # #155/#185), live here 2026-08-31. Three guards now stand where none did:
+      #   * The drain's open set and the write itself both apply the market
+      #     predicate (ingest.ts coversMarketSql / coversMarket, re-checked inside
+      #     the match transaction), and findCatalogMatch returns a three-way
+      #     none|match|refused so a refusal no longer falls through and mints a
+      #     duplicate. A refusal is recorded as listing_matches.unmatched_reason
+      #     = 'market_refusal' (migration 0025) and is visible in triage.
+      #   * capturePhoto is gated by photo authority (mayWriteCatalogPhoto),
+      #     restated as the INSERT's own WHERE, and returns wrote|refused|skipped
+      #     instead of void — so a refused capture no longer resolves the ask.
+      #   * Migration 0025 corrected this shop's registry row from focus='CC' to
+      #     focus='both' (it stocks Perdomo, Gurkha, CAO, Rocky Patel and more
+      #     alongside genuine Habanos) and deleted the one cross-market photo,
+      #     guarded on source_url.
+      # READ THIS BEFORE RELAXING THE SCHEDULE BELOW. Because the row is 'both',
+      # coversMarket('both', …) is unconditionally true — the market predicate is
+      # INERT for this vendor and never was the thing protecting the photo slot.
+      # Only the photo-authority half (`!focusedStockist`) does that, and it is
+      # snapshot-correct rather than serialized: it cannot see a link Fox has
+      # begun but not committed. The residual is stated openly at ingest.ts:273.
       #
       # ENRICH AND OFFERS FIGHT OVER THE SAME ROW. Enrich links listing L to the
       # queued cigar C on sim(C.canonicalName, L.name) > 0.55; the next offers walk
@@ -573,18 +589,30 @@ spec:
           k8tz.io/inject: "false"
         cronjob:
           suspend: false
-          # Daily 06:00 UTC (= 23:00 America/Phoenix). DAILY, not alternating: this
-          # is the only live enrich drain, so there is no second vendor to
-          # double-burn a request's shared EXHAUST_ATTEMPTS against, and a daily
-          # cadence spends both attempts on CONSECUTIVE MORNINGS — a transient Fox
-          # failure is retried tomorrow instead of exhausting the row. It also leaves
-          # no uncovered day; an every-other-day pair over a 7-day week cannot.
+          # Sun/Mon/Wed/Fri 06:00 UTC (= 23:00 America/Phoenix). NARROWED FROM DAILY
+          # 2026-08-31, in the same PR that unsuspended crawl-enrich-cuban-lous:
+          # `0,1,3,5` here + `2,4,6` there tiles all seven days with no shared day.
+          # Was daily while this was the ONLY live enrich drain, which bought a
+          # transient-failure retry the next morning; that is the cost paid for the
+          # second vendor. Both jobs are pinned at `0 6`, so a shared day is not a
+          # near-miss, it is a simultaneous start.
+          # WHY DISJOINT DAYS, now that #157 is fixed. The original reason — a
+          # SELECT-then-UPDATE claim and a snapshot-read `attempts + 1` that two
+          # same-day drains double-burned — is GONE: enrichment_attempts is now an
+          # atomic upsert keyed UNIQUE(request_id, vendor_id), so the budget is
+          # per-vendor and per-vendor increments cannot clobber each other. The
+          # lane lock does not replace the tiling either: it is keyed per
+          # (vendor, mode), so a Fox enrich and a Cuban Lou's enrich hold different
+          # keys and are concurrent BY DESIGN (run-record.ts, and stated at
+          # enrichment-coverage.ts:241). What disjoint days still buy is the one
+          # race whose artifact is permanent: Cuban Lou's is focus='both', its
+          # market predicate is inert, and if its INSERT commits before Fox's link
+          # transaction does, it wins the UNIQUE(cigar_id) product_photos slot on a
+          # cigar Fox stocks — forever. Cheap to avoid, unremovable if hit.
           # Moved off 09:00, which landed INSIDE the ~92 min Fox offers walk and put
           # a second pod on foxcigar.com mid-crawl. Latest start 06:10, hard stop
-          # 07:40, so it clears the 08:00 offers windows by 20 min. If the Cuban
-          # Lou's drain is ever unsuspended this MUST narrow to `0 6 * * 0,1,3,5` in
-          # the same PR (see its comment).
-          schedule: "0 6 * * *"
+          # 07:40, so it clears the 08:00 offers windows by 20 min.
+          schedule: "0 6 * * 0,1,3,5"
           timeZone: Etc/UTC
           concurrencyPolicy: Forbid
           startingDeadlineSeconds: 600
@@ -640,24 +668,29 @@ spec:
         annotations:
           k8tz.io/inject: "false"
         cronjob:
-          # SHIPS SUSPENDED, and unlike everything else here that is not a posture
-          # call — it is an unfixed cross-vendor defect. Enrich matching has no
-          # vendor-focus predicate, so this CC drain can answer an NC request, link a
-          # Habanos listing to a non-Cuban cigar, and permanently attach a Habanos
-          # photo to it (header, with the live 0.583-similarity example). Neither a
-          # manifest nor a Helm value can add that predicate; the fix is in
-          # packages/crawler, tracked as cigar-journal#170. UNSUSPEND only together
-          # with it, and in the same PR narrow crawl-enrich-fox-cigar to
-          # `0 6 * * 0,1,3,5`.
-          suspend: true
-          # Tue/Thu/Sat 06:00 UTC, pre-set as the alternating half of the enrich pair
-          # so the unsuspend is a one-line flip here plus one on the Fox job.
-          # `0,1,3,5` + `2,4,6` tiles all seven days with no shared day, which
-          # matters because drainEnrichment claims rows with a SELECT then a separate
-          # UPDATE and no FOR UPDATE SKIP LOCKED, and finalizeEnrichment writes
-          # `request.attempts + 1` from the snapshot read at SELECT time — two
-          # same-day drains double-burn or lose the shared per-request attempt budget
-          # outright (cigar-journal#157).
+          # UNSUSPENDED 2026-08-31. It shipped suspended for an unfixed cross-vendor
+          # defect (header), not a posture call; cigar-journal#192 landed the focus
+          # predicate and the photo-authority gate, and v0.29.0 deployed them here
+          # together with migration 0025's focus='both' correction. The ordering was
+          # required, not incidental: until 0025 ran, the live row still said 'CC'
+          # and every listing this lane touched would have asserted CC about cigars
+          # that are not.
+          suspend: false
+          # Tue/Thu/Sat 06:00 UTC — the alternating half of the enrich pair;
+          # crawl-enrich-fox-cigar narrowed to `0,1,3,5` in the same PR. See that
+          # job's comment for why the tiling survives the #157 fix: not the attempt
+          # budget (now atomic and per-vendor) and not the lane lock (keyed per
+          # (vendor, mode), so these two are concurrent by design), but the
+          # UNIQUE(cigar_id) product_photos slot, whose loser never gets it back.
+          # WHAT TO WATCH ON THE FIRST RUNS. This lane is focus='both', so its
+          # market predicate is inert and it is refused at the PHOTO gate instead.
+          # A photo_refused leaves the ask open and burns neither attempts nor
+          # errors, while the open set is `ORDER BY created_at LIMIT 10` — so the
+          # lane can pin on the same ten oldest Fox-stocked asks and re-fetch them
+          # every scheduled night without advancing. Not corruption, and it is what
+          # photoRefusedVendors exists to surface, but if the drain reports the same
+          # refusals three runs running, that is the head-of-line stall and not a
+          # coincidence. The operator lever is crawl_enabled=false.
           schedule: "0 6 * * 2,4,6"
           timeZone: Etc/UTC
           concurrencyPolicy: Forbid
