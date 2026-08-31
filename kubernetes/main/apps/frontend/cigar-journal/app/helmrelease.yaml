@@ -233,7 +233,9 @@ spec:
       # different cigar. A completed walk is a full re-derivation of crawler-owned
       # links, not a price append.
       #
-      # WHAT THE GUARD PROTECTS. Read against the live DB 2026-08-30 02:10Z:
+      # WHAT THE GUARD PROTECTS. These counts MOVE — the daily curation agent writes
+      # verdicts continuously, so re-read them rather than trusting the snapshot.
+      # Read against the live DB 2026-08-30 02:10Z:
       #   Fox Cigar   | agent   | unmatched |  291   <- returned untouched (match.ts:70)
       #   Fox Cigar   | crawler | auto      | 1487
       #   Fox Cigar   | crawler | unmatched |   14
@@ -252,8 +254,11 @@ spec:
       # becoming 'auto'. THE WALK HAS SINCE RUN FOR REAL: Sunday 2026-08-30 08:00Z
       # completed in 91m58s, status 'succeeded', 2004 pages fetched, 1787 auto
       # matches, 1789 offers written, 0 errors — inside the 9000 s deadline with
-      # 58 min to spare, and the 291 agent verdicts still read decided_by='agent'
-      # afterwards. Both offers walks therefore stay UNSUSPENDED.
+      # 58 min to spare. No agent verdict was clobbered: decided_by='agent' rows
+      # numbered 591 at 2026-08-31 00:38Z, and 300 of those were logged AFTER the
+      # walk finished, so the growth is the curation agent working, not the walk
+      # rewriting. The guard protects whatever the agent owns at run time, not a
+      # fixed count. Both offers walks therefore stay UNSUSPENDED.
       #
       # THE ENRICH QUEUE IS GLOBAL AND VENDOR-BLIND. `--vendor` picks only the
       # candidate sitemap to search; it does NOT scope which enrichment_requests
