@@ -208,6 +208,459 @@ spec:
                 memory: 128Mi
               limits:
                 memory: 512Mi
+      # ==================================================================
+      # VENDOR CRAWLER CADENCE (cigar-journal ADR-006, go-live #93)
+      # ==================================================================
+      # These four controllers were raw CronJob manifests in crawler-cronjobs.yaml
+      # until cigar-journal#159. They live here so the `image: *mainImage` anchor
+      # above is the SINGLE image pin for all six consumers — a separate manifest
+      # cannot reach a Helm values anchor, which is why the v0.27.1 bump
+      # (haynes-ops#2688, a one-line edit to that anchor) shipped two Deployments
+      # on the new tag and left four CronJobs on the old one, repaired by
+      # haynes-ops#2689. Same image as the web/mcp roles; the `crawl` role is
+      # selected by the container command (see the ROLE DISPATCH marker in the
+      # cigar-journal Dockerfile). FOUR schedules, one per (vendor, mode):
+      #   * offers — weekly re-visit of every known listing. NOT append-only.
+      #   * enrich — drains the gap-fill queue in small bounded batches.
+      #
+      # WHAT AN `offers` WALK ACTUALLY DOES — read this before changing a suspend
+      # flag. `walkListings` calls `findCatalogMatch` for EVERY listing on EVERY
+      # run, and `upsertListingMatch` rewrites cigar_id AND status on any row whose
+      # decided_by='crawler' and status<>'confirmed' (packages/crawler/src/core/
+      # ingest.ts `ingestListing`; core/match.ts:70). Crawler offers reach their
+      # cigar through listing_match_id (offers.cigar_id is null for them), so
+      # re-pointing a match drags that listing's entire price history onto a
+      # different cigar. A completed walk is a full re-derivation of crawler-owned
+      # links, not a price append.
+      #
+      # WHAT THE GUARD PROTECTS. These counts MOVE — the daily curation agent writes
+      # verdicts continuously, so re-read them rather than trusting the snapshot.
+      # Read against the live DB 2026-08-30 02:10Z:
+      #   Fox Cigar   | agent   | unmatched |  291   <- returned untouched (match.ts:70)
+      #   Fox Cigar   | crawler | auto      | 1487
+      #   Fox Cigar   | crawler | unmatched |   14
+      #   Cuban Lou's | crawler | auto      |   82
+      # The 291 are the curation agent's own verdicts, and they are safe: all 291
+      # audit_log `listing_match.set_status` actor='agent' rows join to a
+      # listing_matches row that reads decided_by='agent' / status='unmatched'
+      # today. (Migration 0017 had added decided_by with DEFAULT 'crawler' and so
+      # mislabelled them as crawler-owned; the coordinator repaired the column in
+      # prod on 2026-08-30. `select count(*) from listing_matches where
+      # decided_by='agent'` -> 291.) The 14 crawler-owned 'unmatched' Fox rows are
+      # genuine crawler verdicts and are correctly re-writable.
+      #
+      # The pre-flight simulation predicted a completed Fox walk would touch only
+      # crawler-owned rows — 52 of 1487 'auto' re-pointing, and all 14 'unmatched'
+      # becoming 'auto'. THE WALK HAS SINCE RUN FOR REAL: Sunday 2026-08-30 08:00Z
+      # completed in 91m58s, status 'succeeded', 2004 pages fetched, 1787 auto
+      # matches, 1789 offers written, 0 errors — inside the 9000 s deadline with
+      # 58 min to spare. No agent verdict was clobbered: decided_by='agent' rows
+      # numbered 591 at 2026-08-31 00:38Z, and 300 of those were logged AFTER the
+      # walk finished, so the growth is the curation agent working, not the walk
+      # rewriting. The guard protects whatever the agent owns at run time, not a
+      # fixed count. Both offers walks therefore stay UNSUSPENDED.
+      #
+      # THE ENRICH QUEUE IS GLOBAL AND VENDOR-BLIND. `--vendor` picks only the
+      # candidate sitemap to search; it does NOT scope which enrichment_requests
+      # are claimed. `drainEnrichment` selects `status='pending' order by
+      # created_at asc limit N` with no vendor predicate, and enrichment_requests
+      # has no vendor column at all (packages/db/src/schema/enrichment-requests.ts).
+      # The per-request budget, EXHAUST_ATTEMPTS=2, is hardcoded in ingest.ts and
+      # shared across every enrich job. Consequences to schedule around:
+      #   * Two enrich runs on the SAME day spend both attempts in one morning —
+      #     vendor A misses (row back to 'pending', attempts=1), vendor B claims the
+      #     same row an hour later, attempts hits 2 and the row is 'exhausted'
+      #     forever (nothing ever re-selects an exhausted row). So AT MOST ONE
+      #     ENRICH DRAIN PER DAY, always.
+      #   * Only the Fox drain is live, so 'exhausted' means "Fox was tried twice on
+      #     consecutive days". It does NOT yet mean "every enabled vendor was
+      #     tried"; that needs both drains live AND EXHAUST_ATTEMPTS raised to the
+      #     vendor count (cigar-journal#158).
+      #   * A THIRD vendor breaks it again: at EXHAUST_ATTEMPTS=2 the third day
+      #     never gets the row, and a cigar that vendor C stocks is recorded as
+      #     fully tried. Raise EXHAUST_ATTEMPTS in lockstep with the vendor count,
+      #     or keep this at two.
+      #   * The `vendor:` pod label on an enrich Job names the sitemap it searches,
+      #     NOT the rows it drains. Do not build a per-vendor drain dashboard or
+      #     alert on it.
+      #
+      # WHY THE CUBAN LOU'S ENRICH DRAIN SHIPS SUSPENDED — a real defect, not
+      # caution. Enrich matching is name-similarity only (sim > 0.55 against the
+      # QUEUED cigar, ingest.ts tryEnrichCandidates) with NO vendor-focus predicate:
+      # `focus` is written by cli.ts:139 and read only by approved-import.ts:151/190;
+      # neither match.ts nor ingest.ts references it. So a `--vendor cuban-lous`
+      # (focus CC) drain answers an NC request, hangs a Habanos listing off a
+      # non-Cuban cigar, and — because tryEnrichCandidates then calls capturePhoto
+      # with that cigar's id — writes a Habanos product image onto it.
+      # product_photos is UNIQUE(cigar_id) with onConflictDoNothing and nothing in
+      # the crawler ever removes one, so that photo is permanent.
+      # purchase_linkout=false suppresses the buy link, not the price row or the
+      # image. Verified live, not hypothesised: similarity('Romeo y Julieta Mini
+      # White Original', 'Romeo y Julieta Mini') = 0.583 > 0.55, against Cuban Lou's
+      # listing /cuban-cigarillos/romeo-y-julieta-mini/. The only real fix is a
+      # focus predicate in the crawler, which neither a manifest nor a Helm value
+      # can supply — so the job ships suspended rather than documented
+      # (cigar-journal#170). UNSUSPEND PROCEDURE, two lines in one PR, once that
+      # predicate lands: flip crawl-enrich-cuban-lous `suspend` to false AND narrow
+      # crawl-enrich-fox-cigar from `0 6 * * *` to `0 6 * * 0,1,3,5`. Those two
+      # lists tile all seven days with no shared day.
+      #
+      # ENRICH AND OFFERS FIGHT OVER THE SAME ROW. Enrich links listing L to the
+      # queued cigar C on sim(C.canonicalName, L.name) > 0.55; the next offers walk
+      # recomputes findCatalogMatch(L.name) and takes the GLOBAL argmax, which is
+      # often a different cigar, and rewrites the same crawler-owned row. The
+      # request is already 'fulfilled' by then, so nothing re-queues it. Live
+      # example: findCatalogMatch('Romeo y Julieta Mini') -> 'Romeo y Julieta Mini
+      # Red Aroma' at 0.724, beating the 0.583 an enrich drain would have used.
+      # This is pre-existing for Fox (both Fox jobs were already live); suspending
+      # the Cuban Lou's drain keeps it from being introduced for Cuban Lou's too.
+      # Durable fix is cigar-journal-side.
+      #
+      # UNSUSPENDED 2026-08-29 (owner's vendor-expansion directive; Fox posture
+      # live-verified 2026-08-28) — three of four, the Cuban Lou's drain excepted.
+      #
+      # New vendors join only after their own in-cluster robots/ToS probe passes —
+      # and after a controller pair lands HERE (see the crawl_enabled note below).
+      # Adding that pair is NOT a mechanical copy/paste: read the enrich-queue note
+      # above first.
+      #
+      # ONE CONTROLLER PER VENDOR because `--vendor` takes exactly one adapter slug
+      # (packages/crawler/src/cli.ts — there is no --all / --all-enabled mode).
+      # Per-vendor also buys independent failure (one wedged vendor fails one Job
+      # and keeps its own crawl_runs row), an activeDeadlineSeconds sized to that
+      # vendor's own catalog, and an independent `suspend: true` emergency stop —
+      # which the Cuban Lou's enrich drain is using right now, and which matters
+      # most for that vendor (approval_status unapproved, no purchase link-out,
+      # US-embargo exposure note in its adapter).
+      #
+      # CADENCE MODEL — measured, not guessed. The fetcher serializes EVERY request
+      # (pages, sitemap, photos) through one limiter at >=2.5s + jitter, PER
+      # PROCESS. Two seed runs both land at 2.75 s/request (Fox 2857 req / 2h11m;
+      # Cuban Lou's 1047 req / 48m), so an offers re-walk costs:
+      #   * Fox         2004 product URLs => ~92 min  (measured 91m58s, 2026-08-30)
+      #   * Cuban Lou's  987 product URLs => ~45 min
+      # (Offers re-walks are text-only in practice: capturePhoto short-circuits on
+      # an existing product_photos row, and no linked Fox cigar is missing one.)
+      # Because the limiter is per POD, two pods on one host double the effective
+      # rate, and concurrencyPolicy Forbid guards a CronJob only against ITSELF,
+      # never across CronJobs. So every pair here is separated by DAY or by a gap
+      # wider than both deadlines: the two offers walks sit on different days
+      # (Sun / Wed), at most one enrich drain runs per day, and no enrich window can
+      # reach an offers window — an enrich Job starts by 06:10 at the latest
+      # (startingDeadlineSeconds 600) and is hard stopped 5400 s later at 07:40,
+      # while an offers Job never starts before 08:00.
+      #
+      # vendors.crawl_enabled GATES NOTHING. Every consumer was grepped: it is only
+      # ever written (cli.ts resolveVendor, approved-import.ts, purchase-writer.ts)
+      # and never read — the crawler crawls whatever --vendor says. THIS BLOCK is
+      # the real crawl gate. A vendor flipped crawl_enabled=true in the DB with no
+      # controller here is silently never crawled. Durable fix: cigar-journal#156.
+      #
+      # THE IMAGE PIN IS THE ANCHOR ABOVE, and that is the entire point of this
+      # consolidation. `image: *mainImage` resolves to the one `tag:` on the
+      # &mainImage anchor, so a Renovate bump that edits that single line moves
+      # init-migrate, web, mcp and all four crawl jobs atomically. There is no
+      # longer a per-job pin to forget. The retired `grep -c ... expects 4` guard
+      # is replaced by scripts/crawl-cronjob-invariants.sh, which asserts that
+      # every controller resolves to the SAME image reference.
+      #
+      # WHAT THE CHART HIDES — the one thing that got WORSE in the move. Raw
+      # manifests made a deleted field visible as a deleted line; app-template
+      # substitutes a default instead:
+      #   * startingDeadlineSeconds omitted -> 30 (not absent). A >30 s controller
+      #     hiccup then makes a CronJob skip the fire entirely — for a weekly walk
+      #     that is a silently missed week.
+      #   * backoffLimit omitted -> 6 (not 1). A wedged crawl retries six times.
+      #   * successfulJobsHistory / failedJobsHistory omitted -> 1 (not 3).
+      #   * activeDeadlineSeconds omitted -> emitted NOWHERE, so a wedged crawl runs
+      #     forever. This is the field the whole deadline discussion is about.
+      # All four are therefore written out explicitly on EVERY job below, even where
+      # three jobs share a value. Do not "DRY" them into an anchor and do not delete
+      # one because it looks redundant. Note the chart's key spellings:
+      # successfulJobsHistory / failedJobsHistory carry NO "Limit" suffix, and every
+      # one of these lives under `cronjob:`, not under `pod:` or `containers:`.
+      # A misspelling is loud (values.schema.json is additionalProperties:false, so
+      # `helm template` and flux-local both fail); a MISSING key is silent, which is
+      # why scripts/crawl-cronjob-invariants.sh exists — run it from any PR that
+      # touches these four controllers.
+      #
+      # FAILURE VISIBILITY (#93 observability) AND ITS TWO BLIND SPOTS. The crawl
+      # CLI exits 0 only on a succeeded run and 1 on failure (Dockerfile ROLE
+      # DISPATCH; runIngest brackets each run in a crawl_runs row), so a failed run
+      # surfaces as a failed Job (restartPolicy Never, backoffLimit 1) in
+      # kube-state-metrics and the run's stderr is a Loki-alertable log line. Two
+      # things that does NOT catch:
+      #   * A deadline kill is not bracketed — the crawler installs no SIGTERM
+      #     handler, so an activeDeadlineSeconds kill strands its crawl_runs row at
+      #     'running' forever (cigar-journal#155). Tripwire:
+      #       select count(*) from crawl_runs
+      #        where status='running' and started_at < now() - interval '4 hours';  -- 0
+      #   * An enrich run that ENDS EARLY strands its claimed enrichment_requests
+      #     row at 'in_progress', which drainEnrichment never re-selects (it filters
+      #     status='pending'; cigar-journal#157). This does not need a deadline kill:
+      #     tryEnrichCandidates does not wrap fetcher.fetchText in try/catch and
+      #     drainEnrichment does not wrap tryEnrichCandidates, so the second
+      #     consecutive network/timeout failure on ONE vendor URL rethrows
+      #     (core/fetcher.ts:107-114) and ends the whole drain. runIngest then writes
+      #     crawl_runs status='failed', so the 'running' tripwire above provably does
+      #     NOT fire for this case. Its own tripwire, which nothing else covers:
+      #       select id, cigar_id, attempts from enrichment_requests
+      #        where status = 'in_progress';  -- expect none outside a live drain
+      crawl-offers-fox-cigar:
+        type: cronjob
+        cronjob:
+          # Unsuspended. The agent's 591 verdicts are decided_by='agent' in prod and
+          # the match.ts:70 guard returns them untouched (header), so a completed
+          # walk re-derives only crawler-owned rows. That churn is the cost of Fox —
+          # the only approved, purchase_linkout vendor — having a refresh path at
+          # all; without one every Fox cigar crosses PRICING_STALE_MS (30 d,
+          # packages/domain/src/reads.ts).
+          suspend: false
+          # Weekly, Sunday 08:00 UTC (= 01:00 America/Phoenix — Fox Cigar is an AZ
+          # vendor; this is their overnight low-traffic window).
+          schedule: "0 8 * * 0"
+          timeZone: Etc/UTC
+          concurrencyPolicy: Forbid
+          startingDeadlineSeconds: 600
+          successfulJobsHistory: 3
+          failedJobsHistory: 3
+          backoffLimit: 1
+          ttlSecondsAfterFinished: 86400
+          # 9000 s = 150 min. Measured walk is 91m58s (2026-08-30, 2004 product URLs
+          # at 2.75 s/req), so this is 1.63x observed and deliberately 19 min ABOVE
+          # the 131 min full seed rather than under it — a seed is a strict superset
+          # of an offers walk, so a run that reaches this deadline is wedged, not
+          # merely slow. The 3600 this job carried before go-live would have killed
+          # the first run at ~62% and stranded its crawl_runs row at 'running'.
+          activeDeadlineSeconds: 9000
+        pod:
+          # Never + backoffLimit 1 is what makes a failed crawl surface as a failed
+          # Job rather than a restart loop. The chart defaults restartPolicy to
+          # Never for cronjobs; stated explicitly because the failure-visibility
+          # contract above depends on it.
+          restartPolicy: Never
+          labels:
+            app.kubernetes.io/component: crawl-offers
+            vendor: fox-cigar
+        containers:
+          crawl:
+            image: *mainImage
+            # workingDir is required: `node --import tsx` resolves the loader from
+            # CWD, and tsx ships in /app/crawler/node_modules.
+            workingDir: /app/crawler
+            command:
+              - /sbin/tini
+              - "--"
+              - node
+              - --import
+              - tsx
+              - src/cli.ts
+              - --vendor
+              - fox-cigar
+              - --mode
+              - offers
+            # Anchored and reused by the other three jobs: these three blocks must
+            # never drift apart between vendors, and an anchor makes that structural
+            # rather than a review promise. The per-job values that legitimately
+            # DIFFER (schedule, suspend, deadlines, --vendor, --mode, labels) stay
+            # written out at their point of use.
+            env: &crawlEnv
+              # No IPv6 egress in this cluster; force A-record-first for the
+              # crawler's outbound fetches (same trap the web/mcp roles hit).
+              NODE_OPTIONS: --dns-result-order=ipv4first
+              # Photo capture for newly matched cigars — mirrored from the web role.
+              PHOTOS_S3_ENDPOINT: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+              PHOTOS_S3_BUCKET:
+                valueFrom:
+                  configMapKeyRef:
+                    name: cigar-journal-photos
+                    key: BUCKET_NAME
+              PHOTOS_S3_ACCESS_KEY_ID:
+                valueFrom:
+                  secretKeyRef:
+                    name: cigar-journal-photos
+                    key: AWS_ACCESS_KEY_ID
+              PHOTOS_S3_SECRET_ACCESS_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: cigar-journal-photos
+                    key: AWS_SECRET_ACCESS_KEY
+            envFrom: &crawlEnvFrom
+              - secretRef:
+                  name: cigar-journal-secret
+            resources: &crawlResources
+              requests:
+                cpu: 50m
+                memory: 256Mi
+              limits:
+                memory: 512Mi
+      crawl-offers-cuban-lous:
+        type: cronjob
+        cronjob:
+          # Unsuspended. The re-derive described in the header costs 1 re-pointed
+          # link out of 82 crawler-owned 'auto' rows here, and Cuban Lou's carries no
+          # curator/agent verdicts at all. This is the coverage gap the four-job
+          # shape exists to close — Cuban Lou's was seeded 2026-08-29 and had no path
+          # back onto the schedule. Re-check that 1-of-82 figure if the catalog moves.
+          suspend: false
+          # Weekly, Wednesday 08:00 UTC. Same overnight hour as the Fox walk but a
+          # different DAY, so a Fox overrun can never reach this window. 08:00 UTC is
+          # 01:00-04:00 across CONUS.
+          schedule: "0 8 * * 3"
+          timeZone: Etc/UTC
+          concurrencyPolicy: Forbid
+          startingDeadlineSeconds: 600
+          successfulJobsHistory: 3
+          failedJobsHistory: 3
+          backoffLimit: 1
+          ttlSecondsAfterFinished: 86400
+          # ~45 min expected (987 product URLs at 2.75 s/req); ~2x headroom.
+          activeDeadlineSeconds: 5400
+        pod:
+          restartPolicy: Never
+          labels:
+            app.kubernetes.io/component: crawl-offers
+            vendor: cuban-lous
+        containers:
+          crawl:
+            image: *mainImage
+            workingDir: /app/crawler
+            command:
+              - /sbin/tini
+              - "--"
+              - node
+              - --import
+              - tsx
+              - src/cli.ts
+              - --vendor
+              - cuban-lous
+              - --mode
+              - offers
+            env: *crawlEnv
+            envFrom: *crawlEnvFrom
+            resources: *crawlResources
+      crawl-enrich-fox-cigar:
+        type: cronjob
+        cronjob:
+          suspend: false
+          # Daily 06:00 UTC (= 23:00 America/Phoenix). DAILY, not alternating: this
+          # is the only live enrich drain, so there is no second vendor to
+          # double-burn a request's shared EXHAUST_ATTEMPTS against, and a daily
+          # cadence spends both attempts on CONSECUTIVE MORNINGS — a transient Fox
+          # failure is retried tomorrow instead of exhausting the row. It also leaves
+          # no uncovered day; an every-other-day pair over a 7-day week cannot.
+          # Moved off 09:00, which landed INSIDE the ~92 min Fox offers walk and put
+          # a second pod on foxcigar.com mid-crawl. Latest start 06:10, hard stop
+          # 07:40, so it clears the 08:00 offers windows by 20 min. If the Cuban
+          # Lou's drain is ever unsuspended this MUST narrow to `0 6 * * 0,1,3,5` in
+          # the same PR (see its comment).
+          schedule: "0 6 * * *"
+          timeZone: Etc/UTC
+          concurrencyPolicy: Forbid
+          startingDeadlineSeconds: 600
+          successfulJobsHistory: 3
+          failedJobsHistory: 3
+          backoffLimit: 1
+          ttlSecondsAfterFinished: 86400
+          # Wedge guard sized ABOVE the worst run the code can produce, NOT a
+          # capacity estimate and NOT a mid-drain kill: a kill here strands the
+          # claimed enrichment_requests row at 'in_progress' forever (header
+          # tripwire, cigar-journal#157), so the deadline must only ever fire on a
+          # genuinely stuck process. A healthy run is seconds — the 2026-08-30 Fox
+          # drain was 2 pages / 3 s. Ceiling: --limit 10 x MAX_ENRICH_CANDIDATES 8 =
+          # up to 80 page fetches, plus 10 photos, robots and the sitemap ~= 96
+          # serialized requests. The slowest per-request path that does NOT throw is
+          # one 15 s abort, a 1 s backoff and a slow-but-successful retry, ~36 s with
+          # throttles — about 58 min for all 96. (A true timeout storm cannot run
+          # longer: core/fetcher.ts:107-114 rethrows on the SECOND consecutive
+          # failure and nothing catches it, so the run ends at ~36 s. A 5xx storm is
+          # faster still — `status >= 500 && attempt === 0` is false on the retry, so
+          # fetchText returns the 503 and the loop continues at ~7 s per URL, ~11
+          # min.) 5400 s = 90 min is 1.5x the 58 min ceiling and still stops by
+          # 07:40, clearing the 08:00 offers windows.
+          activeDeadlineSeconds: 5400
+        pod:
+          restartPolicy: Never
+          labels:
+            app.kubernetes.io/component: crawl-enrich
+            vendor: fox-cigar
+        containers:
+          crawl:
+            image: *mainImage
+            workingDir: /app/crawler
+            command:
+              - /sbin/tini
+              - "--"
+              - node
+              - --import
+              - tsx
+              - src/cli.ts
+              - --vendor
+              - fox-cigar
+              - --mode
+              - enrich
+              - --limit
+              - "10"
+            env: *crawlEnv
+            envFrom: *crawlEnvFrom
+            resources: *crawlResources
+      crawl-enrich-cuban-lous:
+        type: cronjob
+        cronjob:
+          # SHIPS SUSPENDED, and unlike everything else here that is not a posture
+          # call — it is an unfixed cross-vendor defect. Enrich matching has no
+          # vendor-focus predicate, so this CC drain can answer an NC request, link a
+          # Habanos listing to a non-Cuban cigar, and permanently attach a Habanos
+          # photo to it (header, with the live 0.583-similarity example). Neither a
+          # manifest nor a Helm value can add that predicate; the fix is in
+          # packages/crawler, tracked as cigar-journal#170. UNSUSPEND only together
+          # with it, and in the same PR narrow crawl-enrich-fox-cigar to
+          # `0 6 * * 0,1,3,5`.
+          suspend: true
+          # Tue/Thu/Sat 06:00 UTC, pre-set as the alternating half of the enrich pair
+          # so the unsuspend is a one-line flip here plus one on the Fox job.
+          # `0,1,3,5` + `2,4,6` tiles all seven days with no shared day, which
+          # matters because drainEnrichment claims rows with a SELECT then a separate
+          # UPDATE and no FOR UPDATE SKIP LOCKED, and finalizeEnrichment writes
+          # `request.attempts + 1` from the snapshot read at SELECT time — two
+          # same-day drains double-burn or lose the shared per-request attempt budget
+          # outright (cigar-journal#157).
+          schedule: "0 6 * * 2,4,6"
+          timeZone: Etc/UTC
+          concurrencyPolicy: Forbid
+          startingDeadlineSeconds: 600
+          successfulJobsHistory: 3
+          failedJobsHistory: 3
+          backoffLimit: 1
+          ttlSecondsAfterFinished: 86400
+          # Same wedge-guard reasoning as crawl-enrich-fox-cigar above: sized above
+          # the ~58 min worst non-throwing run, never as a mid-drain kill.
+          activeDeadlineSeconds: 5400
+        pod:
+          restartPolicy: Never
+          labels:
+            app.kubernetes.io/component: crawl-enrich
+            vendor: cuban-lous
+        containers:
+          crawl:
+            image: *mainImage
+            workingDir: /app/crawler
+            command:
+              - /sbin/tini
+              - "--"
+              - node
+              - --import
+              - tsx
+              - src/cli.ts
+              - --vendor
+              - cuban-lous
+              - --mode
+              - enrich
+              - --limit
+              - "10"
+            env: *crawlEnv
+            envFrom: *crawlEnvFrom
+            resources: *crawlResources
     service:
       main:
         controller: main
