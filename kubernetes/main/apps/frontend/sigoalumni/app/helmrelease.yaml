@@ -102,16 +102,18 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit c565ba3 (2026-08-19):
-              # meeting-form time fields seed a real committed value instead of
-              # an empty input whose gray ghost time read as content but posted
-              # "" (#117). UI only — no new env, NO new migration. Descends from
-              # 0ba4ef4 (#115, terraform-only — no app change) and 77bbf8d
-              # (#114, scribe-notify failure emails to admin@; the scribe-notes
-              # internal API trio from #112 is unchanged). CI does not deploy
-              # here; bump deliberately.
+              # Pinned to sigoalumni-org main commit ae55203 (2026-08-31):
+              # first-big-event batch (#120 + #121). Public events show the
+              # basics to everyone; address/payment/attendance are Brother+
+              # only, redacted in the query (OG meta and the public .ics
+              # included). Payment field takes a Venmo handle → venmo.com/u
+              # link. Hero photo picks per request. Publishing an in-person
+              # event now sends the announce email, and the public calendar
+              # mirror drops the street address. NO new migration, no new
+              # env. Descends from 5ad36b5 (#119, terraform-only). CI does
+              # not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: c565ba3a7ec06681cb60fdddd59c765f27a27f04
+              tag: ae552032d2f945cadb010b6a79aaa9fae0867dc0
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
