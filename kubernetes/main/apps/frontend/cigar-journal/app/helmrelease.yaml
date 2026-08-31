@@ -384,6 +384,27 @@ spec:
       # why scripts/crawl-cronjob-invariants.sh exists — run it from any PR that
       # touches these four controllers.
       #
+      # THE TIMEZONE IS NOT THE CHART'S TO KEEP. Every schedule below is UTC and
+      # `timeZone: Etc/UTC` renders correctly — verified against 5.1.0, the value
+      # reaches the CronJob. It does not SURVIVE. The cluster runs the k8tz
+      # mutating webhook (kube-system/k8tz, injectAll + cronJobTimeZone), and it
+      # does not fill spec.timeZone when absent, it REWRITES it: helm-controller
+      # applied Etc/UTC on 2026-08-31 and all four CronJobs came up
+      # America/New_York. That is not cosmetic — it moves every window 4-5 h and
+      # collapses the separation the cadence model above is built on, putting the
+      # 06:00 enrich drains onto the 08:00 offers walks.
+      # The webhook rule is CREATE-only (batch/v1 cronjobs), which cuts both ways:
+      # a helm UPDATE restores Etc/UTC and is never re-stamped, but nothing
+      # re-asserts it either — spec.driftDetection is unset here, and
+      # helm-controller's default is off, so a stamped value is never corrected.
+      # The stamp is therefore permanent until the next CREATE — and permanent
+      # again after it. `k8tz.io/inject: "false"` is what makes the value survive that
+      # CREATE. Keep it on all four. It belongs at the CONTROLLER level (sibling
+      # of `type:`), NOT under `cronjob:`, and it lands only on CronJob metadata:
+      # k8tz never touched the jobTemplate here (no init container, no TZ env),
+      # so pod-level timezone injection still happens at Pod CREATE and is
+      # unaffected by this opt-out.
+      #
       # FAILURE VISIBILITY (#93 observability) AND ITS TWO BLIND SPOTS. The crawl
       # CLI exits 0 only on a succeeded run and 1 on failure (Dockerfile ROLE
       # DISPATCH; runIngest brackets each run in a crawl_runs row), so a failed run
@@ -408,6 +429,9 @@ spec:
       #        where status = 'in_progress';  -- expect none outside a live drain
       crawl-offers-fox-cigar:
         type: cronjob
+        # k8tz opt-out — without it the next CREATE rewrites timeZone (note above).
+        annotations:
+          k8tz.io/inject: "false"
         cronjob:
           # Unsuspended. The agent's 591 verdicts are decided_by='agent' in prod and
           # the match.ts:70 guard returns them untouched (header), so a completed
@@ -496,6 +520,9 @@ spec:
                 memory: 512Mi
       crawl-offers-cuban-lous:
         type: cronjob
+        # k8tz opt-out — without it the next CREATE rewrites timeZone (note above).
+        annotations:
+          k8tz.io/inject: "false"
         cronjob:
           # Unsuspended. The re-derive described in the header costs 1 re-pointed
           # link out of 82 crawler-owned 'auto' rows here, and Cuban Lou's carries no
@@ -541,6 +568,9 @@ spec:
             resources: *crawlResources
       crawl-enrich-fox-cigar:
         type: cronjob
+        # k8tz opt-out — without it the next CREATE rewrites timeZone (note above).
+        annotations:
+          k8tz.io/inject: "false"
         cronjob:
           suspend: false
           # Daily 06:00 UTC (= 23:00 America/Phoenix). DAILY, not alternating: this
@@ -606,6 +636,9 @@ spec:
             resources: *crawlResources
       crawl-enrich-cuban-lous:
         type: cronjob
+        # k8tz opt-out — without it the next CREATE rewrites timeZone (note above).
+        annotations:
+          k8tz.io/inject: "false"
         cronjob:
           # SHIPS SUSPENDED, and unlike everything else here that is not a posture
           # call — it is an unfixed cross-vendor defect. Enrich matching has no
