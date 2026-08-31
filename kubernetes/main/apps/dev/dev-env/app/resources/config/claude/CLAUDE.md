@@ -63,16 +63,14 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 - `outline` — the sigoalumni wiki (stdio, `uvx mcp-outline`)
 - `vexa` — meeting bot: transcripts, recordings (cluster-local)
 - `cigar-journal` — the prod journal/catalog MCP at
-  `https://cigars.haynesnetwork.com/mcp`. **Currently 401s**: dev-init expands
-  `${CIGAR_JOURNAL_TOKEN}` with envsubst against the POD environment, and that
-  variable is not there — it lives only in the PVC `~/.bashrc`, which dev-init
-  never sources — so the header registers as an empty `Bearer ` (visible as a
-  whitespace warning in `claude mcp list`). Fix pending in haynes-ops#2673.
-  Until it lands, reach the API directly with
-  `curl -H "Authorization: Bearer $CIGAR_JOURNAL_TOKEN"` from a shell (which
-  DOES source `.bashrc`); it speaks streamable-HTTP MCP, so send `initialize`
-  first and carry the returned `Mcp-Session-Id`, or you get `400 no valid
-  session`. A 400 about sessions means auth PASSED.
+  `https://cigars.haynesnetwork.com/mcp`. Auth works since haynes-ops#2673:
+  `CIGAR_JOURNAL_TOKEN` is ExternalSecret-fed into the POD environment, which is
+  where dev-init's envsubst reads it from. A 401 or a whitespace warning in
+  `claude mcp list` means that secret has gone missing again (check
+  `dev-env-cigar` in namespace `dev`). If you ever curl the endpoint directly:
+  it speaks streamable-HTTP MCP, so send `initialize` first and carry the
+  returned `Mcp-Session-Id`, or you get `400 no valid session`. A 400 about
+  sessions means auth PASSED.
 
 A placeholder only resolves if the variable is in the POD environment
 (ExternalSecret-fed, visible in `/proc/1/environ`) — dev-init's envsubst runs
@@ -174,8 +172,31 @@ and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
 |---|---|---|
 | **Automated agents** — alert-responder, upgrade-shepherd, dev-env-ops (both lanes) | **latest Opus**, pinned explicitly (`claude-opus-5` today) | They merge upgrades and touch production unattended; being wrong costs more than the quota. Pinned not aliased — alias repoints lag a launch by days. |
 | **Tom's interactive dev-env work** | **latest Fable** when available | This is the surface Fable's plan quota is reserved for. |
-| **Subagents dispatched from a dev-env session** | **Opus** | Keeps Fable headroom for the driving session. |
+| **Subagents dispatched from a dev-env session** | **Opus 5** (`claude-opus-5`) | Mandatory, in EVERY repo — see "Subagent dispatch rules" below. |
 | **ANY pay-per-token API-key call** | **Sonnet 5** (`claude-sonnet-5`) | **NEVER Fable on API pricing, and never Opus.** Sonnet 5 is near-Opus at a fraction of the cost — and it can dispatch a pod claude-code agent (plan-served) for heavy lifting instead of billing tokens. |
+
+### Subagent dispatch rules (Tom, 2026-08-30 — apply in EVERY repo)
+
+These bind every session in this pod regardless of which repo the worktree holds
+(a longer worked version lives in `haynesnetwork/.agents/KICKOFF.md`; this is
+the policy). They apply **doubly to Fable sessions**: your Fable budget is
+scarce, shared with Tom's interactive use, and you cannot see how much remains —
+treat it as nearly exhausted.
+
+- **Default every unit of work to an Opus 5 subagent** (`model: opus` /
+  `claude-opus-5`): exploration and research, reading subsystems, finding call
+  sites, writing and running tests, mechanical/boilerplate edits, doc
+  scaffolding, verification and deploy audits. When unsure whether a task needs
+  the driving model, it doesn't — dispatch it.
+- **Keep for the driving session** only what genuinely needs its judgment:
+  architecture and design ratification, subtle domain/algorithm code,
+  cross-repo/cross-plan coherence, and the final review of subagent output.
+- **Exception — never delegate down: UX design and written text an end user
+  will see** (UI copy, page layout/visual design choices, user-facing docs and
+  messages). Those stay on the driving Fable session; Fable-quality output on
+  user-visible surfaces is exactly what the budget is for.
+- Give each subagent a crisp, self-contained task and have it return findings
+  and results, not file dumps; fan independent work out in parallel.
 
 **Bump procedure on a new Opus/Fable launch:** probe first
 (`claude --model <full-id> -p 'reply with your model id'`), then update the pinned
