@@ -38,7 +38,7 @@ spec:
             # (git v3.17.0 -> image 3.17.0); `vX.Y.Z` here 404s on pull.
             image:
               repository: ghcr.io/maintainerr/maintainerr
-              tag: 3.25.0
+              tag: 3.26.0
             env:
               # rule evaluation over the ~5.5k-movie library needs headroom (live OOM 2026-07-06)
               NODE_OPTIONS: --max-old-space-size=1800
