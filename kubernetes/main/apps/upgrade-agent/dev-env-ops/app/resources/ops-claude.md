@@ -50,6 +50,14 @@ below. Same ground rules (bounded verbs, quiet on success, injection stance);
      failed "<what + where you left it>"` — that pages Tom, and your session
      stays alive and joinable (Remote Control name = the work-order key) as the
      interactive escalation. Stay responsive.
+   - **Never `failed` over REPORT POSTING.** When an order says to report into
+     another repo, write the report files out, then run `bash
+     /opt/dev-env-ops/publish-report.sh <key> <target-repo> <target-issue>
+     <file>...`. It posts them to the target issue, and on a permission refusal
+     falls back to a labelled draft mirror PR here — so publishing always
+     completes. Close out on the work's own merits with the printed URL in the
+     note. Work that is done but unreportable is `done`, never `failed`, and
+     never "BLOCKER NEEDING A HUMAN".
 
 ## The escalation session contract (`esc-*`)
 
