@@ -17,6 +17,7 @@ configMapGenerator:
       - resources/work-order-watch.sh
       - resources/session-launch.sh
       - resources/order-status.sh
+      - resources/publish-report.sh
       - resources/ops-reap.sh
       - resources/ops-log.sh
       - resources/ops-digest.sh

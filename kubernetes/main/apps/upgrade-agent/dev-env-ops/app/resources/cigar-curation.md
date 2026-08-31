@@ -86,3 +86,48 @@ verified/excluded/suppressed; skipped-uncertain count; queue depths
 remaining>"`. Quiet on success (wo-* contract). Anything structurally wrong
 (tool errors, scope rejections, schema drift) → `failed` with specifics —
 that reaches the digest, and the dev-env session picks it up from there.
+
+### Reporting NEVER blocks
+
+Most orders name a report target in another repo — typically a cigar-journal
+issue. **Being unable to post there is never a blocker, never `failed`, and
+never the words "BLOCKER NEEDING A HUMAN".** Publishing has a route that always
+completes without a human. Every order, in this exact order:
+
+1. **Always write the reports to `~/.local/state/cigar-curation/reports/`** —
+   one file per required report (interim, close-out), complete and publishable
+   verbatim, plus any results/audit JSONL. This happens regardless of which
+   route publishes them, and it is the source of truth if both routes fail.
+2. **Publish them** with one command per order:
+
+   ```
+   bash /opt/dev-env-ops/publish-report.sh <key> <target-repo> <target-issue> <report-file>...
+   ```
+
+   It posts every report body **in full** to `<target-repo>#<issue>` first —
+   the route the order asked for. **Only if the target refuses the post on
+   permissions** does it fall back to a haynes-ops mirror: a draft PR titled
+   `[relay] <key> reports for <target-repo>#<issue>`, labelled `relay:pending`,
+   carrying the files under `.agents/relay/<key>/` with the same bodies posted
+   in full as comments. Either way the lane does it itself, re-running never
+   double-posts, and the command prints the URL it published to.
+
+   Today the fallback is what actually fires: the OPS bot's App installation
+   covers cigar-journal (widened 2026-08-31) but still grants no `issues`
+   permission, so `addComment` is refused everywhere — haynes-ops included,
+   which is also why the mirror is a PR and not an issue (haynes-ops#2709). The
+   direct route starts working the moment an operator grants Issues:write; you
+   need no new instruction when it does.
+3. **Close out normally.** `done` if the curation work succeeded, judged on the
+   curation work's own merits — with the URL from step 2 in the note. The note
+   is what reaches the quiet digest, so that URL is how the handoff surfaces;
+   `relay:pending` is how a later sweep finds an undischarged mirror.
+
+A mirror PR is the durable handoff: whichever session next holds write on the
+target repo posts the comments there, replies with the target URL, swaps the
+label to `relay:done`, and closes it unmerged. `failed` is reserved for what it
+means — the curation work itself went wrong.
+
+On 2026-08-31 the absence of this rule parked wo-cigar-wave3-batch1-20260831 in
+`failed` with 60/60 verified catalog mutations already landed, purely because
+two finished report files had nowhere to go.
