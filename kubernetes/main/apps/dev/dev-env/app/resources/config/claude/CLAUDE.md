@@ -94,13 +94,17 @@ session. Bare `agent-run` walks every choice; flags skip the walkthrough.
 
 ```bash
 agent-run --repo <name> --agent claude --interactive \
-  --model 'claude-fable-5[1m]' --effort xhigh
+  --model claude-fable-5-1 --effort xhigh
 # -> task <repo>-<mmdd-HHMMSS>, tmux session task-<id>
 ```
 
-Quote the model id — `claude-fable-5[1m]` carries glob metacharacters. Prefer the
-id over a bare alias (`fable`), which resolves CLIENT-side against the pinned CLI
-and can silently serve an older tier; see the freshness contract below.
+Prefer the id over a bare alias (`fable`), which resolves CLIENT-side against the
+pinned CLI and can silently serve an older tier; see the freshness contract
+below. Quote any `[1m]`-suffixed id (e.g. `'claude-opus-4-6[1m]'`) — the brackets
+are glob metacharacters; Fable 5.1 needs no suffix, it runs the 1M window by
+default. Effort is per model: `low|medium|high|xhigh|max` (or `ultracode`) on
+Fable 5.1 / Opus 5 / Sonnet 5, no effort control at all on Haiku 4.5 — agent-run
+refuses a level the model can't honour instead of letting claude clamp it silently.
 
 **`-p` cannot combine with `--interactive`/`--local`** — agent-run rejects the
 contradiction rather than guessing. So an interactive session starts with an
@@ -123,9 +127,11 @@ tmux capture-pane -p -t task-<id> | tail -20
 ```
 
 Expect the banner (model, effort, `Claude Max`) and, for `both`, the
-`/remote-control is active` line with its claude.ai URL. `out of usage credits`
-with `Worked for 0s` is the plan's Fable wall, not an agent-run bug — redispatch
-on `claude-opus-5` and tell Tom.
+`/remote-control is active` line with its claude.ai URL. The status line must
+name the model you asked for (`Fable 5.1` for `claude-fable-5-1`) — if it shows
+an older tier, the alias table or the image is stale (freshness contract below).
+`out of usage credits` with `Worked for 0s` is the plan's Fable wall, not an
+agent-run bug — redispatch on `claude-opus-5` and tell Tom.
 
 Managing them: `agent-run list` · `attach [<id>]` · `detach` · `reap [<id>]
 [--force]` · `prune [--yes]` (bulk-clean stranded worktrees; dry-run without
@@ -171,7 +177,7 @@ and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
 | Surface | Model | Why |
 |---|---|---|
 | **Automated agents** — alert-responder, upgrade-shepherd, dev-env-ops (both lanes) | **latest Opus**, pinned explicitly (`claude-opus-5` today) | They merge upgrades and touch production unattended; being wrong costs more than the quota. Pinned not aliased — alias repoints lag a launch by days. |
-| **Tom's interactive dev-env work** | **latest Fable** when available | This is the surface Fable's plan quota is reserved for. |
+| **Tom's interactive dev-env work** | **latest Fable** — `claude-fable-5-1` (Fable 5.1) since 2026-09-01; the pod-wide default, re-asserted by dev-init on every boot | This is the surface Fable's plan quota is reserved for. Needs claude-code >=2.1.255 in the image — an older CLI rejects the id outright. |
 | **Subagents dispatched from a dev-env session** | **Opus 5** (`claude-opus-5`) | Mandatory, in EVERY repo — see "Subagent dispatch rules" below. |
 | **ANY pay-per-token API-key call** | **Sonnet 5** (`claude-sonnet-5`) | **NEVER Fable on API pricing, and never Opus.** Sonnet 5 is near-Opus at a fraction of the cost — and it can dispatch a pod claude-code agent (plan-served) for heavy lifting instead of billing tokens. |
 
@@ -198,9 +204,14 @@ treat it as nearly exhausted.
 - Give each subagent a crisp, self-contained task and have it return findings
   and results, not file dumps; fan independent work out in parallel.
 
-**Bump procedure on a new Opus/Fable launch:** probe first
-(`claude --model <full-id> -p 'reply with your model id'`), then update the pinned
-ids in `upgrade-agent/{alert-responder,shepherd,dev-env-ops}` HRs + their scripts'
+**Bump procedure on a new Opus/Fable launch:** check the CLI floor first (the
+Claude Code changelog names the version that added the model; an older pinned
+CLI rejects the id outright, so bump `scripts/dev-env/Dockerfile`
+`CLAUDE_CODE_VERSION` + re-pin the image if needed), probe
+(`claude --model <full-id> -p 'reply with your model id'`), then update the
+pinned ids: `agent-run.sh`'s model picker row, `dev-init.sh`'s
+`DEV_ENV_CLAUDE_MODEL` (pod default), and for Opus the
+`upgrade-agent/{alert-responder,shepherd,dev-env-ops}` HRs + their scripts'
 defaults. Agents are the tripwire — see the freshness contract below.
 
 **Quota exhaustion is a real failure mode:** on 2026-08-23 the plan's Fable
@@ -211,23 +222,30 @@ credit wall, not an agent-run bug — dispatch on `claude-opus-5` and tell Tom.
 ## Model pickers (agent-run) — freshness contract
 
 `agent-run`'s pickers self-update wherever a machine-readable source exists:
-codex model + effort rows come live from `~/.codex/models_cache.json`, claude
-effort levels from `claude --help`, and the claude model *values* are aliases
-(`opus` resolves server-side to the latest Opus — an alias is never stale, only
-its label can be). Two surfaces still rot, and **agents are the tripwire for
-both**:
+codex model + effort rows come live from `~/.codex/models_cache.json`; claude's
+effort *union* comes from `claude --help`, narrowed by a small per-model table
+in `agent-run.sh` (`claude_effort_levels`: Haiku 4.5 has no effort control, the
+4.6 tier lacks `xhigh`, everything newer gets the full union). The claude model
+rows are **pinned full ids**, not aliases (since 2026-08-29): aliases resolve
+CLIENT-side against the version-pinned CLI and silently serve an older tier
+when the image lags a launch, whereas a full id is resolved server-side. Two
+surfaces still rot, and **agents are the tripwire for both**:
 
-- **Claude row labels** (no local manifest exists): if your own system prompt or
-  in-session `/model` shows a model family newer than the picker labels, the
-  labels are stale — never conclude the newer model is unavailable, and never
-  "fix" the alias values. **This cuts both ways:** a label can also be newer
-  than *your training data* — a prior agent may have refreshed it after a
-  launch you don't know about. Never revert a label downward to match your
-  priors; verify live first (`claude --model <full-id> -p 'model id?'` — cheap
-  and definitive). An agent wrongly reverted Opus 5→4.8 this way on 2026-08-06.
-  Also: alias repoints can lag a launch by days (`opus` served 4.8 while
-  `claude-opus-5` was already live), so during a rollout window the label may
-  legitimately be one tier ahead of what the alias serves.
+- **Claude rows** (no local manifest exists): if your own system prompt or
+  in-session `/model` shows a model family newer than the picker rows, they are
+  stale — never conclude the newer model is unavailable. **This cuts both
+  ways:** a row can also be newer than *your training data* — a prior agent may
+  have refreshed it after a launch you don't know about. Never revert a row
+  downward to match your priors; verify live first
+  (`claude --model <full-id> -p 'model id?'` — cheap and definitive). An agent
+  wrongly reverted Opus 5→4.8 this way on 2026-08-06. Two more traps: alias
+  repoints lag a launch by days (`opus` served 4.8 while `claude-opus-5` was
+  already live), and a full id can be newer than the pinned CLI supports
+  (Fable 5.1 needs claude-code >=2.1.255; older CLIs reject it outright rather
+  than fall back) — so a new row may need an image bump first. The per-model
+  effort table only lists the reduced tiers; re-check it against the effort
+  table in code.claude.com/docs/en/model-config when a model launches with a
+  different level set.
 - **Codex fallback rows**: `agent-run` prints a WARN when they drift from the
   live cache.
 

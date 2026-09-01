@@ -18,10 +18,11 @@
 #
 # Bare `agent-run` fills every omitted choice interactively, TOOL-FIRST: repo picker
 # (owner's GitHub repos newest-pushed first; offline → local clones), agent (claude|
-# codex), then a MODE picker, a MODEL picker, and an EFFORT picker (codex effort is
-# filtered to the model — only gpt-5.6 has max, only sol/terra add ultra). Flags win —
-# scripted callers pass them and see no prompts (defaults: effort xhigh, model = each
-# tool's own default).
+# codex), then a MODE picker, a MODEL picker, and an EFFORT picker filtered to the
+# chosen model for BOTH tools (claude: haiku has no effort control, the 4.6 tier lacks
+# xhigh; codex: only gpt-5.6 has max, only sol/terra add ultra). Flags win — scripted
+# callers pass them and see no prompts (defaults: effort xhigh where the model takes
+# it, model = each tool's own default).
 #
 # MODE (how you drive it):
 #   both   claude only — a terminal TUI you type to HERE *and* drive from phone/
@@ -32,8 +33,9 @@
 #
 # model/effort plumbing: claude reads --model/--effort as top-level flags (they compose
 # with --remote-control); codex reads -m <model> + -c model_reasoning_effort=<level>.
-# Effort DEFAULTS TO xhigh; unset model → each tool's own default. --safe restores
-# permission prompts (--permission-mode default).
+# Effort DEFAULTS TO xhigh (clamped to the model's own set — see claude_effort_levels);
+# unset model → each tool's own default. --safe restores permission prompts
+# (--permission-mode default).
 # The claude model picker offers PINNED IDS, not aliases: alias→model resolution is
 # client-side in a version-pinned CLI, so an alias silently serves an older tier
 # whenever the image lags a launch (see the picker comment).
@@ -92,11 +94,13 @@ agent-run — worktree-per-task agent dispatcher
       --interactive                           # claude → mode=both (TUI here + phone/web); codex → local TUI
       --local                                 # terminal TUI here only, no remote (implies --interactive)
       --safe                                  # keep permission prompts (default: skipped — pod is the sandbox)
-      --model <m>                             # claude MODEL ID (claude-opus-5, claude-fable-5[1m], …) or codex slug;
-                                              # all modes. Bare aliases (opus/fable/…) still work but resolve
+      --model <m>                             # claude MODEL ID (claude-fable-5-1, claude-opus-5, …) or codex slug;
+                                              # all modes. Bare aliases (fable/opus/…) still work but resolve
                                               # client-side against the PINNED CLI and can silently serve an
                                               # older tier — prefer the id. See the model picker comment.
-      --effort <level>                        # claude low|medium|high|xhigh|max; codex adds ultra; default xhigh
+      --effort <level>                        # claude low|medium|high|xhigh|max (per model: haiku takes none,
+                                              # the 4.6 tier has no xhigh) or ultracode; codex adds ultra;
+                                              # default xhigh where the model supports it
   agent-run list
   agent-run attach [<task-id>]                # no id → arrow-key picker
   agent-run detach [<task-id>]                # no id → picker (attached sessions only)
@@ -281,13 +285,23 @@ pretrust() {  # $1 = worktree path
 
 # ---- picker row sources (pick() returns each row's first token as the value) ----
 #
-# Claude's effort levels, read from the INSTALLED CLI rather than hardcoded here:
-# `claude --help` prints them as "(low, medium, high, xhigh, max)" under
-# `--effort <level>`. A Claude Code upgrade that adds or retires a level then
-# flows through to both the picker and --effort validation with no edit to this
-# script. Falls back to the known-good set if the help text ever changes shape.
-# Unlike codex, claude's levels are uniform across models — no per-model table.
-claude_effort_levels() {
+# Claude's effort levels are PER MODEL (code.claude.com/docs/en/model-config →
+# "Effort levels"), even though `claude --help` prints ONE union list:
+#   Fable 5.1 / Fable 5 / Opus 5 / Sonnet 5 / Opus 4.8 / 4.7   low medium high xhigh max
+#   Opus 4.6 / Sonnet 4.6                                       low medium high max
+#   Haiku 4.5 / Sonnet 4.5 (and older)                          none — no effort control
+# The CLI never rejects a mismatch: an unsupported level silently CLAMPS DOWN to
+# the highest supported one below it (xhigh → high on 4.6) and on Haiku is
+# ignored outright (probed 2026-09-01: `--model claude-haiku-4-5 --effort xhigh`
+# runs fine, at Haiku's fixed reasoning). A uniform picker therefore promised
+# "xhigh" and the session banner then showed something else. Rows now come from
+# the model chosen just before — same contract as codex_effort_rows.
+# The union itself is still read from the INSTALLED CLI (`claude --help` prints
+# "(low, medium, high, xhigh, max)" under `--effort <level>`), so a Claude Code
+# upgrade that adds or retires a level flows through to the full-set models
+# with no edit here; the fallback is the known-good set. Only the two reduced
+# tiers are tabled below — an UNKNOWN (newer) model gets the full union.
+claude_effort_union() {
   local parsed
   parsed="$(claude --help 2>/dev/null \
     | grep -A1 -e '--effort <level>' | tr -d '\n' \
@@ -297,20 +311,51 @@ claude_effort_levels() {
     *)       printf 'low,medium,high,xhigh,max' ;;
   esac
 }
+claude_effort_levels() {   # $1 = model id or alias ('' → the CLI's default model → union)
+  case "${1:-}" in
+    haiku*|claude-haiku-*|claude-sonnet-4-[05]*|claude-opus-4-[015]*|claude-*-4-20*|claude-3*)
+                                           printf '' ;;
+    claude-opus-4-6*|claude-sonnet-4-6*)   printf 'low,medium,high,max' ;;
+    *)                                     claude_effort_union ;;
+  esac
+}
+# `ultracode` is a Claude Code SETTING layered on xhigh (xhigh per message +
+# dynamic multi-agent workflows), accepted by --effort at launch since 2.1.203
+# (probed 2026-09-01) — offered wherever the model takes xhigh.
+claude_effort_accepts() {  # $1 = model, $2 = level → rc0 if claude will honour it as asked
+  local levels=",$(claude_effort_levels "$1"),"
+  case "$2" in
+    ultracode) case "$levels" in *",xhigh,"*) return 0 ;; esac ;;
+    *)         case "$levels" in *",$2,"*)    return 0 ;; esac ;;
+  esac
+  return 1
+}
+# Default when nothing is flagged: xhigh where the model takes it, else the
+# highest level below it — the same clamp claude would apply, made explicit so
+# the log line says what actually runs. Empty for models without effort.
+claude_effort_default() {  # $1 = model
+  local l levels=",$(claude_effort_levels "$1"),"
+  for l in xhigh high medium low; do
+    case "$levels" in *",$l,"*) printf '%s' "$l"; return ;; esac
+  done
+}
 
-# Picker rows for claude, xhigh first (the dev-env default). Levels are ordered
-# by the preference list below; anything the CLI reports that isn't in it is
-# appended verbatim, so a newly-added level still shows up (unlabelled).
-claude_effort_rows() {
+# Picker rows for claude, xhigh first (the dev-env default), filtered to the
+# model's levels. Levels are ordered by the preference list below; anything the
+# CLI reports that isn't in it is appended verbatim, so a newly-added level
+# still shows up (unlabelled). No rows at all for a model without effort.
+claude_effort_rows() {  # $1 = model
   local levels lvl note
-  levels=",$(claude_effort_levels),"
-  for lvl in xhigh max high medium low; do
-    case "$levels" in *",$lvl,"*) ;; *) continue ;; esac
+  levels=",$(claude_effort_levels "$1"),"
+  [ "$levels" = ",," ] && return 0
+  for lvl in xhigh ultracode max high medium low; do
+    claude_effort_accepts "$1" "$lvl" || continue
     case "$lvl" in
-      xhigh)  note='   (dev-env default)' ;;
-      max)    note='     (hardest problems, slowest)' ;;
-      high)   note="    (claude's stock default)" ;;
-      *)      note='' ;;
+      xhigh)     note='       (dev-env default)' ;;
+      ultracode) note='   (xhigh + dynamic multi-agent workflows; spends quota fastest)' ;;
+      max)       note='         (hardest problems, slowest)' ;;
+      high)      note="        (claude's stock default)" ;;
+      *)         note='' ;;
     esac
     printf '%s%s\n' "$lvl" "$note"
   done
@@ -462,17 +507,13 @@ case "$cmd" in
     case "$agent" in claude|codex) : ;; *) die "--agent must be claude|codex" ;; esac
     # Validate --effort against the SELECTED tool's levels — fail fast, before any
     # clone/worktree side effects (the repo/agent pickers above are read-only).
-    # claude: whatever `claude --help` advertises (uniform across models) — read
-    # live so this stays right across upgrades, same source as the picker.
     # codex: the union across models_cache.json (fallback: the known set); a level
     # a given model doesn't advertise is clamped server-side, so no per-model fail.
-    if [ -n "$effort" ]; then
-      case "$agent" in
-        claude) case ",$(claude_effort_levels)," in *",$effort,"*) : ;;
-          *) die "claude --effort must be one of $(claude_effort_levels) (got '$effort'); 'ultracode' is a /effort session-mode — set it in-session" ;; esac ;;
-        codex)  case ",$(codex_effort_levels)," in *",$effort,"*) : ;;
-          *) die "codex --effort must be one of $(codex_effort_levels) (got '$effort')" ;; esac ;;
-      esac
+    # claude: per MODEL, so it is checked after the model picker below (a flagged
+    # --effort with a picked model has to wait for the pick).
+    if [ -n "$effort" ] && [ "$agent" = codex ]; then
+      case ",$(codex_effort_levels)," in *",$effort,"*) : ;;
+        *) die "codex --effort must be one of $(codex_effort_levels) (got '$effort')" ;; esac
     fi
     # --- mode: how to drive it. Resolve from flags first (so no combination lands
     # in a picker that contradicts a flag), then a single picker if unresolved.
@@ -542,16 +583,24 @@ case "$cmd" in
         # ⚠ Agents: these ids may be NEWER than your training data. Before
         # "correcting" one downward, probe it live with the command above — an agent
         # reverted Opus 5→4.8 on 2026-08-06 because its cutoff predated the launch.
+        # A full id can also be NEWER THAN THE PINNED CLI in the other direction:
+        # Fable 5.1 needs claude-code >=2.1.255 and an older CLI REJECTS the id
+        # outright ("Claude Code does not support this model") — no fallback, the
+        # session never starts. Bump the image (Dockerfile CLAUDE_CODE_VERSION)
+        # before adding such a row. Fable 5.1 runs the 1M window by default on the
+        # API, so no [1m] suffix (2026-09-01: claude-fable-5[1m] → claude-fable-5-1).
         model="$(pick 'model:' \
-          'claude-fable-5[1m]  Fable 5 · 1M ctx, most capable (dev-env default)' \
+          'claude-fable-5-1    Fable 5.1 · 1M ctx, most capable (dev-env default)' \
           'claude-opus-5       Opus 5 · deep reasoning + agentic coding' \
           'claude-sonnet-5     Sonnet 5 · near-Opus quality, cheaper' \
-          'claude-haiku-4-5    Haiku 4.5 · fastest, simple tasks')" || model=""
-        # No "leave it unset" row any more: ~/.claude/settings.json lives on the PVC,
-        # not in the ConfigMap, so ANY in-session `/model` rewrites the pod-wide
-        # default for every future session (that is how the documented
+          'claude-haiku-4-5    Haiku 4.5 · fastest, simple tasks — no effort control')" || model=""
+        # No "leave it unset" row: ~/.claude/settings.json lives on the PVC, not in
+        # the ConfigMap, so ANY in-session `/model` (Enter, not `s`) rewrites the
+        # pod-wide default for every future session (that is how the documented
         # claude-fable-5[1m] default became `opus` — i.e. Opus 4.8 — on 2026-08-29).
-        # Passing the id explicitly makes the picker's choice authoritative.
+        # dev-init re-asserts the declared default on every boot, but a live pod
+        # still drifts between boots; passing the id explicitly makes the picker's
+        # choice authoritative regardless.
       else
         # Live from models_cache.json (priority order; top row is codex's own
         # default tier). Cancel leaves $model empty → codex's default stands.
@@ -560,21 +609,32 @@ case "$cmd" in
       fi
     fi
 
-    # --- effort (deterministic default xhigh; menu filters to the model's set) ---
+    # --- effort (deterministic default xhigh; menu + validation filter to the model's set) ---
     # Historically NOTHING set effort — no flag reached RC hosts, no settings key,
     # no env var — so every session silently ran at the model default. Now every
-    # run gets a level: a menu shows a picker (claude's levels are uniform across
-    # models; codex's are filtered to the selected model), a flagged call takes the
-    # xhigh default. xhigh is valid for every current claude AND codex model.
-    if [ -z "$effort" ]; then
+    # run gets a level: a menu shows a picker filtered to the selected model (both
+    # tools), a flagged call takes the xhigh default. For claude the level is
+    # resolved HERE, after the model is known: an explicit --effort the model can't
+    # honour dies (claude would otherwise clamp it silently and the banner would
+    # contradict the flag), and a model with no effort control (haiku) gets none —
+    # a flagged level is dropped with a WARN rather than logged as if it applied.
+    if [ "$agent" = claude ]; then
+      if [ -z "$(claude_effort_levels "$model")" ]; then
+        [ -n "$effort" ] && log "WARN: $model has no effort control — claude ignores --effort there; dropping '$effort'"
+        effort=""
+      elif [ -n "$effort" ]; then
+        claude_effort_accepts "$model" "$effort" \
+          || die "claude --effort must be one of $(claude_effort_levels "$model") (or ultracode) for ${model:-the default model} — got '$effort'; claude would silently clamp it down"
+      elif [ "$asked" = 1 ]; then
+        mapfile -t erows < <(claude_effort_rows "$model")
+        effort="$(pick 'effort:' "${erows[@]}")" || effort="$(claude_effort_default "$model")"
+      else
+        effort="$(claude_effort_default "$model")"
+      fi
+    elif [ -z "$effort" ]; then
       if [ "$asked" = 1 ]; then
-        if [ "$agent" = claude ]; then
-          mapfile -t erows < <(claude_effort_rows)
-          effort="$(pick 'effort:' "${erows[@]}")" || effort=xhigh
-        else
-          mapfile -t erows < <(codex_effort_rows "$model")
-          effort="$(pick 'effort:' "${erows[@]}")" || effort=xhigh
-        fi
+        mapfile -t erows < <(codex_effort_rows "$model")
+        effort="$(pick 'effort:' "${erows[@]}")" || effort=xhigh
       else
         effort=xhigh
       fi
@@ -609,11 +669,15 @@ reason as your final message."
     # they compose with `--remote-control` too, so every claude mode uses $cg uniformly.
     # CODEX reads `-m <model>` + `-c model_reasoning_effort=<level>` (codex exec AND the
     # TUI). %q-escape the values: they ride through one more shell layer (tmux send-keys
-    # re-parses the launch string), and a legit value like 'claude-fable-5[1m]' carries
+    # re-parses the launch string), and a legit value like 'claude-opus-4-6[1m]' carries
     # glob metacharacters that would otherwise be pathname-expanded.
     cg="" xc=""
     if [ -n "$model" ];  then cg="$cg --model $(printf '%q' "$model")";  xc="$xc -m $(printf '%q' "$model")"; fi
     if [ -n "$effort" ]; then cg="$cg --effort $(printf '%q' "$effort")"; xc="$xc -c model_reasoning_effort=$(printf '%q' "$effort")"; fi
+    # What the log lines report — for claude an empty effort means the model has
+    # no effort control (resolved above), not "left at the tool default".
+    eff_lbl="${effort:-default}"
+    [ "$agent" = claude ] && [ -z "$effort" ] && eff_lbl="none ($model has no effort control)"
 
     case "$agent" in
       claude) run_cmd="claude$cg --dangerously-skip-permissions --append-system-prompt \"\$AGENT_GUARD\" -p \"\$AGENT_PROMPT\" --output-format text" ;;
@@ -662,16 +726,16 @@ reason as your final message."
       fi
       tmux send-keys -t "task-$id" "$token_env; cd $wt; $launch" Enter
       case "$agent:$mode" in
-        claude:both)  log "claude TUI + remote-control '$id' up (model=${model:-pod-default} effort=${effort:-default}) — this pane AND phone/web →  agent-run attach $id" ;;
-        claude:local) log "claude local TUI ready (model=${model:-pod-default} effort=${effort:-default}; no remote) →  agent-run attach $id" ;;
-        codex:*)      log "codex local TUI ready (model=${model:-default} effort=${effort:-default}; phone/web → agent-run codex-remote) →  agent-run attach $id" ;;
+        claude:both)  log "claude TUI + remote-control '$id' up (model=${model:-pod-default} effort=$eff_lbl) — this pane AND phone/web →  agent-run attach $id" ;;
+        claude:local) log "claude local TUI ready (model=${model:-pod-default} effort=$eff_lbl; no remote) →  agent-run attach $id" ;;
+        codex:*)      log "codex local TUI ready (model=${model:-default} effort=$eff_lbl; phone/web → agent-run codex-remote) →  agent-run attach $id" ;;
       esac
     else
       # Env-var indirection keeps the prompt out of shell-quoting hell; log to
       # $WORK/<id>.log for post-hoc review (reap keeps the log).
       tmux send-keys -t "task-$id" "AGENT_GUARD=$(printf '%q' "$guard") AGENT_PROMPT=$(printf '%q' "$prompt"); $token_env" Enter
       tmux send-keys -t "task-$id" "$run_cmd 2>&1 | tee $WORK/$id.log; echo TASK-EXIT:\$? >> $WORK/$id.log" Enter
-      log "dispatched. follow: agent-run attach $id   log: $WORK/$id.log"
+      log "dispatched (model=${model:-tool-default} effort=$eff_lbl). follow: agent-run attach $id   log: $WORK/$id.log"
     fi
     printf '%s\n' "$id"
     ;;

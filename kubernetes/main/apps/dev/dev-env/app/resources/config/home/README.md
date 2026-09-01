@@ -26,8 +26,8 @@ Bare `agent-run` prompts for every choice it isn't given, **tool-first**: repo �
 --interactive       claude → both (TUI here + phone/web); codex → local TUI
 --local             terminal TUI here only, no remote (implies --interactive)
 --safe              keep permission prompts (default: bypassed)
---model <m>         claude alias/id (fable|opus|sonnet|haiku) or codex slug (gpt-5.6-sol|…)
---effort <level>    claude low|medium|high|xhigh|max; codex adds ultra; default xhigh
+--model <m>         claude id (claude-fable-5-1|claude-opus-5|…; aliases fable|opus|sonnet|haiku work, see below) or codex slug (gpt-5.6-sol|…)
+--effort <level>    claude low|medium|high|xhigh|max|ultracode, per model (haiku: none); codex adds ultra; default xhigh
 ```
 
 The repo picker lists the bot's GitHub repos by last push, falling back to `~/repos` by fetch time when offline. Permissions are bypassed by default (`--dangerously-skip-permissions` / `--dangerously-bypass-approvals-and-sandbox`): the pod is the sandbox — isolated worktree, scoped ServiceAccount, default-deny egress. `--safe` restores prompts.
@@ -44,16 +44,26 @@ The mode picker offers, per tool:
 
 ## Models & effort
 
-Model is picked first; effort then offers only that model's levels. Default effort is **`xhigh`** in every mode (valid for all current models). Unset model → the tool's own default. `/model` and `/effort` override in-session.
+Model is picked first; effort then offers only that model's levels (both tools). Default effort is **`xhigh`** wherever the model supports it. Unset model → the tool's own default. `/model` and `/effort` override in-session (`s` in either picker = this session only).
 
-- **claude** — `claude-fable-5[1m]` (pod default, 1M context), `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5`. Effort `low|medium|high|xhigh|max`, uniform across models. Passed as top-level `--model`/`--effort` flags, which compose with `--remote-control`, so they apply in **all** claude modes.
+- **claude** — `claude-fable-5-1` (pod default: Fable 5.1, 1M context by default — no `[1m]` suffix), `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5`. Passed as top-level `--model`/`--effort` flags, which compose with `--remote-control`, so they apply in **all** claude modes. Effort is **per model** (Claude Code's own table — `claude --help` prints only the union):
+
+  | model | effort levels |
+  |---|---|
+  | Fable 5.1, Fable 5, Opus 5, Sonnet 5, Opus 4.8 / 4.7 | `low` `medium` `high` `xhigh` `max` (+ `ultracode`) |
+  | Opus 4.6, Sonnet 4.6 | `low` `medium` `high` `max` |
+  | Haiku 4.5, Sonnet 4.5 and older | none — no effort control |
+
+  Claude Code never rejects a mismatch: an unsupported level silently clamps down to the nearest supported one (`xhigh` → `high` on 4.6) and Haiku ignores `--effort` entirely. `agent-run` therefore refuses an explicit level the model can't honour, offers no effort step for Haiku, and logs `effort=none` for it — what the log says is what the banner shows. `ultracode` = `xhigh` + dynamic multi-agent workflows (a Claude Code setting, accepted at launch since 2.1.203); it spends quota fastest.
 
   > **Pick the ID, not the alias.** `opus`/`sonnet`/`haiku`/`fable` are resolved **client-side**, from a table baked into the installed CLI — and this pod's CLI is version-pinned in the image. When the image lags a model launch the alias **silently serves the older tier**, with nothing in the banner, the status line, or the logs to say so. Proven on claude-code 2.1.217 (2026-08-29): `--model opus` → `claude-opus-4-8`, `--model claude-opus-5` → `claude-opus-5`, same binary. Full IDs resolve server-side, so they work even when newer than the CLI's alias table. To check what you actually got: the session banner's second line, or `claude --model <id> -p 'model id?'`.
 
-  > **`/model` in a session rewrites the pod-wide default.** `~/.claude/settings.json` lives on the PVC, not in the ConfigMap, so an in-session `/model` saves "as your default for new sessions" **for every future session in this pod**, not just yours. That is how the default silently became Opus 4.8 on 2026-08-29. Prefer `--model` at launch; if you do use `/model`, put `claude-fable-5[1m]` back afterwards.
+  > **`/model` in a session rewrites the pod-wide default.** `~/.claude/settings.json` lives on the PVC, not in the ConfigMap, so an in-session `/model` saves "as your default for new sessions" **for every future session in this pod**, not just yours. That is how the default silently became Opus 4.8 on 2026-08-29. `dev-init` now re-asserts `claude-fable-5-1` on every pod boot (declared in `dev-init.sh`), but a running pod drifts until the next bounce — prefer `--model` at launch; if you do use `/model`, put `claude-fable-5-1` back afterwards (or pick with `s` for a session-only switch).
+
+  > **A full id can be newer than the pinned CLI.** Fable 5.1 needs claude-code ≥ 2.1.255; an older CLI rejects `claude-fable-5-1` outright (`Claude Code does not support this model`) instead of falling back. The image pins `CLAUDE_CODE_VERSION` (2.1.258 since 2026-09-01) — bump it before adding a newer tier to the picker.
 - **codex** — `gpt-5.6-sol` (default), `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.2`. Effort differs by model: all take `low|medium|high|xhigh`; `max` only on gpt-5.6; `ultra` only on sol/terra. Passed as `-m <model> -c model_reasoning_effort=<level>` (codex has no `--effort` flag or `/effort` command — it folds effort into `/model`).
 
-`ultracode` is a harness session-mode, not a launch value — set it with `/effort` in-session.
+`ultracode` (claude only) is accepted at launch — `--effort ultracode`, or the picker row — and in-session via `/effort`; codex has no equivalent.
 
 ## tmux
 
