@@ -41,7 +41,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/cigar-journal
-              tag: v0.32.1
+              tag: v0.33.0
               pullPolicy: IfNotPresent
             # workingDir is required: node --import tsx resolves the loader
             # from CWD, and tsx ships in /app/migrate/node_modules.
@@ -321,16 +321,24 @@ spec:
       # snapshot-correct rather than serialized: it cannot see a link Fox has
       # begun but not committed. The residual is stated openly at ingest.ts:273.
       #
-      # ENRICH AND OFFERS FIGHT OVER THE SAME ROW. Enrich links listing L to the
-      # queued cigar C on sim(C.canonicalName, L.name) > 0.55; the next offers walk
-      # recomputes findCatalogMatch(L.name) and takes the GLOBAL argmax, which is
-      # often a different cigar, and rewrites the same crawler-owned row. The
-      # request is already 'fulfilled' by then, so nothing re-queues it. Live
-      # example: findCatalogMatch('Romeo y Julieta Mini') -> 'Romeo y Julieta Mini
-      # Red Aroma' at 0.724, beating the 0.583 an enrich drain would have used.
-      # This is pre-existing for Fox (both Fox jobs were already live); suspending
-      # the Cuban Lou's drain keeps it from being introduced for Cuban Lou's too.
-      # Durable fix is cigar-journal-side.
+      # ENRICH AND OFFERS FIGHT OVER THE SAME ROW — HALF FIXED IN #236, READ WHICH
+      # HALF. The enrich side no longer links on a similarity floor: the v1 rule
+      # this paragraph used to describe (sim(C.canonicalName, L.name) > 0.55 in
+      # tryEnrichCandidates) was retired, and admission is now the structural
+      # coversAsk test in packages/crawler/src/core/match.ts, with trigram demoted
+      # to ranking a shortlist that structure has already admitted. #236 also added
+      # the theft guards: the drain never repoints a crawler link that already
+      # resolves to a different cigar, checked at admission and re-checked inside
+      # the write transaction.
+      #
+      # What is NOT fixed, and is the reason this heading still stands: the OTHER
+      # direction. An offers walk still recomputes findCatalogMatch(L.name), takes
+      # the GLOBAL argmax — often a different cigar — and rewrites the same
+      # crawler-owned row, and the request is 'fulfilled' by then so nothing
+      # re-queues it. The live example that motivated the suspension still shows
+      # the shape: findCatalogMatch('Romeo y Julieta Mini') -> 'Romeo y Julieta
+      # Mini Red Aroma' at 0.724. Pre-existing for Fox, and now shared by Cuban
+      # Lou's since that drain was unsuspended. Durable fix is cigar-journal-side.
       #
       # UNSUSPENDED 2026-08-29 (owner's vendor-expansion directive; Fox posture
       # live-verified 2026-08-28) — three of four, the Cuban Lou's drain excepted.
@@ -679,22 +687,48 @@ spec:
           failedJobsHistory: 3
           backoffLimit: 1
           ttlSecondsAfterFinished: 86400
-          # Wedge guard sized ABOVE the worst run the code can produce, NOT a
-          # capacity estimate and NOT a mid-drain kill: a kill here strands the
-          # claimed enrichment_requests row at 'in_progress' forever (header
-          # tripwire, cigar-journal#157), so the deadline must only ever fire on a
-          # genuinely stuck process. A healthy run is seconds — the 2026-08-30 Fox
-          # drain was 2 pages / 3 s. Ceiling: --limit 10 x MAX_ENRICH_CANDIDATES 8 =
-          # up to 80 page fetches, plus 10 photos, robots and the sitemap ~= 96
-          # serialized requests. The slowest per-request path that does NOT throw is
-          # one 15 s abort, a 1 s backoff and a slow-but-successful retry, ~36 s with
-          # throttles — about 58 min for all 96. (A true timeout storm cannot run
-          # longer: core/fetcher.ts:107-114 rethrows on the SECOND consecutive
-          # failure and nothing catches it, so the run ends at ~36 s. A 5xx storm is
-          # faster still — `status >= 500 && attempt === 0` is false on the retry, so
-          # fetchText returns the 503 and the loop continues at ~7 s per URL, ~11
-          # min.) 5400 s = 90 min is 1.5x the 58 min ceiling and still stops by
-          # 07:40, clearing the 08:00 offers windows.
+          # Wedge guard, RE-DERIVED for --limit 50 (cigar-journal#236). It is a
+          # bound on blast radius, not a capacity estimate.
+          #
+          # WHAT A KILL COSTS CHANGED, AND THE OLD NOTE HERE WAS STALE. It said a
+          # kill strands the claimed enrichment_requests row at 'in_progress'
+          # forever. The drain no longer claims the request at all: the attempts
+          # increment is an atomic upsert, so "a crash mid-drain simply leaves the
+          # row open" (packages/crawler/src/core/ingest.ts, finalizeEnrichment
+          # header, #157 defect 2), and reclaimStrandedRuns closes the crawl_runs
+          # row on the next start (#155). A deadline kill now TRUNCATES a drain and
+          # strands nothing; `ORDER BY created_at` means the next run resumes at the
+          # same head. That is what makes a larger --limit safe here.
+          #
+          # CEILING AT --limit 50. 50 looks x MAX_ENRICH_CANDIDATES 8 = 400 page
+          # fetches, plus up to 50 photos, plus robots and the sitemap = 452
+          # serialized requests. The loop reads every ranked candidate rather than
+          # stopping at the first over a floor, so ~5 pages/look is the observed
+          # shape (~250 requests). Every request pays the same 2500-2999 ms
+          # politeness interval (core/fetcher.ts MIN_INTERVAL_MS + JITTER_MS), and
+          # lastDispatch is stamped at DISPATCH, so response time is absorbed into
+          # the interval rather than added to it: 451 gaps x ~2.75 s = ~1240 s for
+          # the worst request count on a healthy vendor — 23% of this deadline.
+          #
+          # WHAT 5400 s DOES NOT COVER — stated plainly, because the old comment
+          # claimed a 1.5x ceiling this no longer has. 5400 s is ~11.9 s of average
+          # budget per request across the 452-request ceiling, ~4.3x the polite
+          # interval. It covers the healthy run (~1240 s) and a 5xx storm (a 5xx on
+          # the RETRY is returned rather than thrown — `status >= 500 && attempt ===
+          # 0` is false the second time — so the loop continues at two dispatches
+          # per URL, ~2500 s). It does NOT cover a vendor that aborts and then
+          # slow-succeeds on most requests: 15 s abort + 1 s backoff + a slow 200 is
+          # ~31 s per request, and 452 of those is ~3 h 53 m. Such a run is
+          # truncated at 90 min. That is the intended posture now that truncation is
+          # benign, not an oversight. A true timeout storm still cannot reach either
+          # figure: core/fetcher.ts rethrows on the SECOND consecutive failure and
+          # the enrich loop wraps nothing in try, so the run ends `failed` at ~31 s.
+          # One residual with no bound in code: the body read is untimed —
+          # clearTimeout fires when headers resolve, and res.text()/the fetchBinary
+          # reader have no deadline. This value is the only backstop for that.
+          #
+          # 90 min still clears the 08:00 offers windows: an enrich Job starts by
+          # 06:10 at the latest (startingDeadlineSeconds 600), so it stops by 07:40.
           activeDeadlineSeconds: 5400
         pod:
           restartPolicy: Never
@@ -719,7 +753,7 @@ spec:
               - --mode
               - enrich
               - --limit
-              - "10"
+              - "50"
             env: *crawlEnv
             envFrom: *crawlEnvFrom
             resources: *crawlResources
@@ -760,8 +794,9 @@ spec:
           failedJobsHistory: 3
           backoffLimit: 1
           ttlSecondsAfterFinished: 86400
-          # Same wedge-guard reasoning as crawl-enrich-fox-cigar above: sized above
-          # the ~58 min worst non-throwing run, never as a mid-drain kill.
+          # Same wedge-guard reasoning as crawl-enrich-fox-cigar above, re-derived
+          # for --limit 50: ~1240 s for the worst request count on a healthy vendor,
+          # and truncation rather than stranding on the paths it does not cover.
           activeDeadlineSeconds: 5400
         pod:
           restartPolicy: Never
@@ -786,7 +821,7 @@ spec:
               - --mode
               - enrich
               - --limit
-              - "10"
+              - "50"
             env: *crawlEnv
             envFrom: *crawlEnvFrom
             resources: *crawlResources
