@@ -102,18 +102,17 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit ae55203 (2026-08-31):
-              # first-big-event batch (#120 + #121). Public events show the
-              # basics to everyone; address/payment/attendance are Brother+
-              # only, redacted in the query (OG meta and the public .ics
-              # included). Payment field takes a Venmo handle → venmo.com/u
-              # link. Hero photo picks per request. Publishing an in-person
-              # event now sends the announce email, and the public calendar
-              # mirror drops the street address. NO new migration, no new
-              # env. Descends from 5ad36b5 (#119, terraform-only). CI does
-              # not deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit 830dbd4 (2026-08-31):
+              # member photo uploads (#122) — /members/photos/upload streams
+              # phone photos into the "Photos/Upload Inbox" shared-drive
+              # folder (SA has writer on that folder only; inbox is never
+              # served, the board curates). Needs PHOTOS_INBOX_FOLDER_ID
+              # (added below + declared in terraform); without it the route
+              # 404s fail-closed. NO new migration. Descends from ae55203
+              # (#120/#121, first-big-event batch). CI does not deploy here;
+              # bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: ae552032d2f945cadb010b6a79aaa9fae0867dc0
+              tag: 830dbd42c3b3029260dffc938d0b740abd2ed698
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
@@ -127,6 +126,9 @@ spec:
               PHOTOS_PUBLIC_FOLDER_ID: 1DcbLiutwYcCQOFRw8jaSdpQ7N5ahRv8Z
               PHOTOS_FRONTPAGE_FOLDER_ID: 1kkrXlWS3sX2ywvhvqJBvb6gYXttx6YE1
               PHOTOS_MEMBERS_FOLDER_ID: 1qitzjJtfcUhhMmulrvQ5J5x9oLziqtwA
+              # "Photos/Upload Inbox" — the one folder the runtime SA can WRITE
+              # to; member uploads land here, never listed or served (mp/15).
+              PHOTOS_INBOX_FOLDER_ID: 1IjV_4uoZCh0L-T3PhRUQYHBNGpShLiSx
               EVENTS_CALENDAR_ID: fd2537569f85b3cb0138b6729091ad91190704b6beffaadd0e357250e8967f0c@group.calendar.google.com
               # Workspace auth (Drive photos, Calendar, Sheets, Meet minting):
               # on Cloud Run the pods authenticate keylessly as frontpage-runtime
