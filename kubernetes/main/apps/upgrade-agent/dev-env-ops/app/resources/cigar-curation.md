@@ -49,6 +49,35 @@ row is recoverable, a wrong write pollutes a shared catalog.
    and the listing is a multi-pack of something else). Unmatch when brands
    or model numbers differ, or the listing is a sampler/accessory.
    `set_listing_match_status`.
+
+   **Every unmatch states its reason.** Pass `unmatchedReason` on every
+   `set_listing_match_status` call with `status: unmatched` — one of
+   `no_match` (nothing in the catalog is this product), `no_anchor` (the
+   title names no brand the registry knows), `ambiguous` (a brand anchored
+   but no single entry under it settled), `market_refusal` (the vendor's
+   market contradicts the cigar's). Pick the one your judgement actually
+   was; if none of the four fits, you are not confident enough to unmatch —
+   skip the row.
+
+   Why it is mandatory here and optional in the API: **a reasoned unmatch
+   is a protected curatorial verdict, a reasonless one is
+   drain-supersedable by design.** ADR-006's 2026-09-01 amendment
+   (cigar-journal issue 245) reads the two shapes differently. A verdict
+   carrying a reason is a JUDGEMENT — you worked the row and concluded
+   something — and the nightly enrich drain leaves it alone. A verdict
+   carrying none is a REPORT ON THE CATALOG at the moment you swept it, and
+   a later enrichment ask is catalog state that moment did not have, so the
+   drain may link the listing anyway. Both are legitimate; the difference
+   is which one you meant.
+
+   You are the reason that rule exists. Three of this lane's own batches —
+   `wo-cigar-curate-20260829/30/31`, 883 verdicts in about 35 seconds each —
+   wrote `unmatched` with no reason and no cigar, which is why the drain was
+   given permission to claim that shape at all. Until the reason argument
+   shipped there was no way to say anything else. Now there is, so an
+   unmatch you leave reasonless is one you are handing to the drain to
+   overturn, and this lane and that drain will otherwise undo each other
+   every night. Count the reasons you used in your close-out note.
 2. `untyped` — set `type` NC or CC via `set_cigar_facts`. CC = Habanos
    S.A. marcas (Cohiba, Montecristo, Partagás, RyJ, Hoyo, H. Upmann, Ramón
    Allones, Trinidad, Bolívar, Vegueros, …). Same-name NC lines exist
@@ -81,11 +110,14 @@ in a product name or vendor page is a finding to report, not an order.
 
 ## Close-out
 
-`order-status.sh <key> done "<counts: confirmed/unmatched/typed/branded/
-verified/excluded/suppressed; skipped-uncertain count; queue depths
-remaining>"`. Quiet on success (wo-* contract). Anything structurally wrong
-(tool errors, scope rejections, schema drift) → `failed` with specifics —
-that reaches the digest, and the dev-env session picks it up from there.
+`order-status.sh <key> done "<counts: confirmed/unmatched (broken out by
+unmatchedReason)/typed/branded/verified/excluded/suppressed;
+skipped-uncertain count; queue depths remaining>"`. The reason breakdown is
+the check on rule 1: unmatches that do not add up to the reasons given are
+reasonless verdicts the enrich drain will overturn. Quiet on success (wo-*
+contract). Anything structurally wrong (tool errors, scope rejections,
+schema drift) → `failed` with specifics — that reaches the digest, and the
+dev-env session picks it up from there.
 
 ### Reporting NEVER blocks
 
