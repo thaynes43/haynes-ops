@@ -54,7 +54,14 @@ ARG UV_VERSION=0.12.7
 # resolves the `opus` MODEL ALIAS client-side from a table baked into the binary,
 # so 2.1.217 served claude-opus-4-8 for every `--model opus` session (agent-run's
 # picker, and the dev-env-ops curation lane after #2663) long after Opus 5 shipped.
-ARG CLAUDE_CODE_VERSION=2.1.251
+# 2.1.258 (2026-09-01): Fable 5.1. `claude-fable-5-1` needs claude-code >=2.1.255 —
+# an older CLI REJECTS the id outright ("Claude Code does not support this model";
+# no fallback, the session never starts), so this bump is load-bearing for the
+# dev-env default model, not cosmetic. 2.1.257 repointed the `fable` alias to 5.1
+# and made --effort lift a model's default-effort hold per session; 2.1.258 fixes
+# a 2.1.255 launch regression and a remote-session "user messages must have
+# non-empty content" failure after a re-sent permission approval.
+ARG CLAUDE_CODE_VERSION=2.1.258
 # Codex is installed at BOOT as the managed STANDALONE (dev-init.sh), not via npm —
 # only the standalone can run `codex remote-control`. This pins that standalone
 # version; @openai/codex npm releases track the same numbers as the rust-v* GitHub
