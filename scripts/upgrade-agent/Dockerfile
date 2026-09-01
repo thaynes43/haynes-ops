@@ -11,7 +11,7 @@
 FROM debian:bookworm-slim
 
 # renovate: datasource=github-releases depName=kubernetes/kubernetes
-ARG KUBECTL_VERSION=v1.35.5
+ARG KUBECTL_VERSION=v1.37.0
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
