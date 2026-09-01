@@ -102,19 +102,16 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit e96544a (2026-08-31):
-              # member photo uploads (#122) — /members/photos/upload streams
-              # phone photos into the "Photos/Upload Inbox" shared-drive
-              # folder (SA has writer on that folder only; inbox is never
-              # served, the board curates). Needs PHOTOS_INBOX_FOLDER_ID
-              # (added below + declared in terraform); without it the route
-              # 404s fail-closed. NO new migration. Descends from ae55203
-              # (#120/#121, first-big-event batch). CI does not deploy here;
-              # bump deliberately. e96544a fixes the upload redirect (relative
-              # Location — req.url is the internal listen address behind the
-              # tunnel; #123).
+              # Pinned to sigoalumni-org main commit c192449 (2026-09-01):
+              # brothers-only "Details for brothers" field on events (#124,
+              # events/11) — room-block links etc., gated like the address
+              # (public SELECT blanks it; announce email + members area carry
+              # it). ONE new migration (0019, adds nullable member_details;
+              # runs at pod start, advisory-locked). No new env. Descends from
+              # e96544a (#122/#123, photo uploads + redirect fix). CI does not
+              # deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: e96544a6803ce16aecf472b059901d68e585ca30
+              tag: c192449def79160b9d192d75cc7e182e288ab085
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
