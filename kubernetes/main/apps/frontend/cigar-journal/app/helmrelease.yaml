@@ -41,7 +41,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/cigar-journal
-              tag: v0.35.0
+              tag: v0.36.0
               pullPolicy: IfNotPresent
             # workingDir is required: node --import tsx resolves the loader
             # from CWD, and tsx ships in /app/migrate/node_modules.
@@ -763,6 +763,22 @@ spec:
         annotations:
           k8tz.io/inject: "false"
         cronjob:
+          # RE-SUSPENDED 2026-09-01 — not a defect this time, an economics call.
+          # The gate run measured Cuban Lou's whole corpus at 82 listings (Fox
+          # holds 1,799) and found ZERO Habanos single-stick pages in it, and
+          # `packages/crawler/src/adapters/cuban-lous.ts` still declares
+          # `crawlEnabled: false`. So this lane spends CC ask budget — the scarce
+          # kind, since Fox is NC-only and cannot serve a CC ask at all — walking
+          # a catalogue that cannot answer one. cigar-journal#127 is where the CC
+          # photo-coverage gap this lane was enlisted to close is recorded.
+          #
+          # WHAT WOULD LIFT IT: a corpus that can serve the asks. Either Cuban
+          # Lou's passes a live probe and flips `crawlEnabled` true with real
+          # single-stick pages behind it, or another CC source is registered.
+          # Until then the asks are better left open than retired against a
+          # catalogue that was never going to have them.
+          #
+          # Its history, kept because it explains the shape of the block below:
           # UNSUSPENDED 2026-08-31. It shipped suspended for an unfixed cross-vendor
           # defect (header), not a posture call; cigar-journal#192 landed the focus
           # predicate and the photo-authority gate, and v0.29.0 deployed them here
@@ -770,7 +786,7 @@ spec:
           # required, not incidental: until 0025 ran, the live row still said 'CC'
           # and every listing this lane touched would have asserted CC about cigars
           # that are not.
-          suspend: false
+          suspend: true
           # Tue/Thu/Sat 06:00 UTC — the alternating half of the enrich pair;
           # crawl-enrich-fox-cigar narrowed to `0,1,3,5` in the same PR. See that
           # job's comment for why the tiling survives the #157 fix: not the attempt
