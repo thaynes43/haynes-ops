@@ -33,6 +33,33 @@ if command -v claude >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
   done
 fi
 
+# ── Claude: pod-wide default model (GitOps-declared) ────────────────────────────
+# ~/.claude/settings.json lives on the PVC, and an in-session `/model` (Enter, not
+# `s`) rewrites its `model` key — the default for EVERY future bare `claude`
+# session in this pod, not just the one that changed it (that is how the default
+# silently became Opus 4.8 on 2026-08-29). Re-assert the declared default on every
+# boot; only the `model` key is touched — permissions, statusLine, theme and the
+# per-model effort claude saves under modelSettings stay as they are on the PVC.
+# agent-run passes --model explicitly regardless, so this governs bare `claude`.
+# claude-fable-5-1 = Fable 5.1: 1M window by default on the API (no [1m] suffix);
+# needs claude-code >=2.1.255 (Dockerfile CLAUDE_CODE_VERSION) or the CLI rejects
+# the id outright. Model policy lives in config/claude/CLAUDE.md.
+DEV_ENV_CLAUDE_MODEL="${DEV_ENV_CLAUDE_MODEL:-claude-fable-5-1}"
+if command -v jq >/dev/null 2>&1; then
+  sj="$HOME/.claude/settings.json"
+  [ -s "$sj" ] || printf '{}\n' > "$sj"
+  if jq -e --arg m "$DEV_ENV_CLAUDE_MODEL" '.model == $m' "$sj" >/dev/null 2>&1; then
+    log "claude default model already $DEV_ENV_CLAUDE_MODEL"
+  elif jq --arg m "$DEV_ENV_CLAUDE_MODEL" '.model = $m' "$sj" > "$sj.tmp" 2>/dev/null \
+       && cat "$sj.tmp" > "$sj"; then   # cat, not mv: keeps the PVC file's mode/inode
+    rm -f "$sj.tmp"
+    log "claude default model → $DEV_ENV_CLAUDE_MODEL (settings.json 'model' re-asserted)"
+  else
+    rm -f "$sj.tmp"
+    log "WARN could not set claude default model in $sj (unparseable? left untouched)"
+  fi
+fi
+
 # ── Codex: declarative config, auth untouched ───────────────────────────────────
 cp -f "$CFG/codex/config.toml" "$HOME/.codex/config.toml"
 
