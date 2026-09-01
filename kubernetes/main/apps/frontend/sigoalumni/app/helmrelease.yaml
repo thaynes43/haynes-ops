@@ -102,7 +102,7 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 830dbd4 (2026-08-31):
+              # Pinned to sigoalumni-org main commit e96544a (2026-08-31):
               # member photo uploads (#122) — /members/photos/upload streams
               # phone photos into the "Photos/Upload Inbox" shared-drive
               # folder (SA has writer on that folder only; inbox is never
@@ -110,9 +110,11 @@ spec:
               # (added below + declared in terraform); without it the route
               # 404s fail-closed. NO new migration. Descends from ae55203
               # (#120/#121, first-big-event batch). CI does not deploy here;
-              # bump deliberately.
+              # bump deliberately. e96544a fixes the upload redirect (relative
+              # Location — req.url is the internal listen address behind the
+              # tunnel; #123).
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 830dbd42c3b3029260dffc938d0b740abd2ed698
+              tag: e96544a6803ce16aecf472b059901d68e585ca30
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
