@@ -32,7 +32,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.5.1@sha256:8c61a589f95b1d380ab44e689c52d8e6b8e3c7caafb0e9ea7c20de6ee9cff312
+              tag: 0.5.2@sha256:235f5aa781a1ebde1b15a48f66ef99b840842c6ba5ef72dac8245a624594ab28
             command: ["/bin/bash", "-c"]
             args:
               # ops-init links config into $HOME, tmux hosts the sessions
@@ -49,6 +49,11 @@ spec:
               DISABLE_ERROR_REPORTING: "1"
               # NO DISABLE_TELEMETRY: it kills Statsig flag evaluation and hides
               # Remote Control entirely (dev-env saga Decision #6, hit 2026-07-14).
+              # Sockets dir for claude's cross-session messaging — same reasoning
+              # as the dev-env HR: the /tmp emptyDir is 2777 without the sticky
+              # bit, so claude refuses it and runs without an inbox; /dev/shm is a
+              # sticky root-owned tmpfs. ops-init recreates it 0700 every boot.
+              XDG_RUNTIME_DIR: /dev/shm/run-1000
               WORK_ORDER_CM: upgrade-work-orders
               WORK_ORDER_POLL_SECONDS: "60"
               # Scheduled/automated consumers stay on the cheaper tier — all
@@ -59,17 +64,21 @@ spec:
               # 12): rare + human-attended is exactly where Fable belongs — the
               # shared-pool caution above is about FREQUENT consumers.
               #
-              # 2026-08-23: was `fable`, changed to claude-opus-5 because Fable
-              # is OUT OF PLAN CREDITS and refuses every turn ("You're out of
+              # 2026-08-23: was `fable`, parked on claude-opus-5 because Fable
+              # was OUT OF PLAN CREDITS and refused every turn ("You're out of
               # usage credits… /model to switch models" — probed live from this
               # pod). An escalation spawned on a model that cannot answer is the
               # worst failure this system has: Tom gets paged with a session
-              # name, joins, and finds a mute agent. session-launch.sh now also
+              # name, joins, and finds a mute agent. session-launch.sh therefore
               # probes the model before spawning and falls back to
-              # OPS_FALLBACK_MODEL. Put `fable` back once credits are restored —
-              # the pre-flight probe makes that safe either way.
-              # See memory `fable-quota-exhaustion-model-drift`.
-              OPS_ESC_MODEL: claude-opus-5
+              # OPS_FALLBACK_MODEL — which is what makes restoring Fable safe.
+              # 2026-09-01: restored as the PINNED id claude-fable-5-1 (Fable 5.1;
+              # credits are back — dev-env ran Fable all week). Pinned, not the
+              # `fable` alias: aliases resolve client-side in the image's CLI and
+              # lag launches. Needs claude-code >=2.1.255 in the image (0.5.2+):
+              # an older CLI rejects the id outright and the probe would fall back
+              # to Opus 5 every time. See memory `fable-quota-exhaustion-model-drift`.
+              OPS_ESC_MODEL: claude-fable-5-1
               # rem-* autonomous remediation: it CHANGES THINGS unattended, so it
               # gets the strongest model rather than the cheapest. `opus` (the
               # alias) currently serves 4.8 while claude-opus-5 is live, so this
@@ -135,7 +144,7 @@ spec:
           gh-refresher:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.5.1@sha256:8c61a589f95b1d380ab44e689c52d8e6b8e3c7caafb0e9ea7c20de6ee9cff312
+              tag: 0.5.2@sha256:235f5aa781a1ebde1b15a48f66ef99b840842c6ba5ef72dac8245a624594ab28
             command: ["/bin/bash", "/opt/dev-env-ops/gh-token-refresh.sh"]
             env:
               # Same down-scope as the shepherd's mint (see its HR for the
@@ -179,7 +188,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.5.1@sha256:8c61a589f95b1d380ab44e689c52d8e6b8e3c7caafb0e9ea7c20de6ee9cff312
+              tag: 0.5.2@sha256:235f5aa781a1ebde1b15a48f66ef99b840842c6ba5ef72dac8245a624594ab28
             command: ["/bin/bash", "-c"]
             args:
               - >-

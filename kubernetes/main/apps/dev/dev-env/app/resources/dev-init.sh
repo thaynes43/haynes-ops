@@ -11,6 +11,20 @@ log() { printf 'dev-init: %s\n' "$*"; }
 
 mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.config/dev-env" "$HOME/repos" "$HOME/work"
 
+# ── Runtime dir for claude's cross-session messaging sockets ────────────────────
+# XDG_RUNTIME_DIR (helmrelease env) points into /dev/shm — a fresh tmpfs every
+# container start, so recreate it here each boot. 0700 is load-bearing: claude
+# refuses a sockets dir any component of which is shared (group/world-writable
+# without the sticky bit) or not ours/root's — which is why neither the /tmp
+# emptyDir (root:dev 2777) nor the PVC home (root:dev 2775) can host it.
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  if mkdir -p "$XDG_RUNTIME_DIR" && chmod 0700 "$XDG_RUNTIME_DIR"; then
+    log "runtime dir $XDG_RUNTIME_DIR ready (cross-session messaging sockets)"
+  else
+    log "WARN could not prepare $XDG_RUNTIME_DIR — cross-session messaging will be off"
+  fi
+fi
+
 # ── Claude: global memory + MCP config ──────────────────────────────────────────
 # CLAUDE.md symlinks (live-updates with the ConfigMap); the MCP config is COPIED to
 # a stable path with env placeholders EXPANDED (claude reads ${VAR} in .mcp.json

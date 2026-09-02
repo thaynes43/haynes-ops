@@ -13,6 +13,15 @@
 # PHASE: Audit first (observe the report), then flip to Enforce once the running/summoned
 # pods are all on signed digests. fail-open (failurePolicy: Ignore). background:false —
 # verifyImages verifies at admission (it needs the request + reaches Fulcio/Rekor).
+#
+# STATUS (2026-09-01): NOT VERIFYING. The Cosign-type attestor below reads the legacy
+# signature tag (`sha256-<digest>.sig`). The build workflows moved to cosign v3 on
+# 2026-07-25 (Renovate bump of cosign-installer's cosign-release), and v3 writes only
+# the Sigstore bundle format (`sha256-<digest>` referrer tag on GHCR) with no legacy
+# switch — so every self-built image since then reports "no signatures found" here
+# (policyreports in dev + upgrade-agent). Audit hides it. Do NOT flip to Enforce until
+# either the workflows pin cosign v2 again or this rule moves to a bundle-aware
+# verifier; details next to `cosign-release` in .github/workflows/dev-env-build.yml.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:

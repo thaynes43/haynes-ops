@@ -6,6 +6,16 @@ log() { printf 'ops-init: %s %s\n' "$(date -u +%FT%TZ)" "$*"; }
 
 mkdir -p "$HOME/.claude" "$HOME/work/orders" "$HOME/repos"
 
+# ── Runtime dir for claude's cross-session messaging sockets (see the HR env) ──
+# /dev/shm is a fresh tmpfs every container start; claude needs it 0700 and ours.
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  if mkdir -p "$XDG_RUNTIME_DIR" && chmod 0700 "$XDG_RUNTIME_DIR"; then
+    log "runtime dir $XDG_RUNTIME_DIR ready (cross-session messaging sockets)"
+  else
+    log "WARN could not prepare $XDG_RUNTIME_DIR — cross-session messaging will be off"
+  fi
+fi
+
 # ── Claude auth bootstrap (2026-08-20, proven live during the synthetic test) ──
 # INTERACTIVE claude ignores CLAUDE_CODE_OAUTH_TOKEN (headless-only) and runs
 # the first-run wizard on a fresh PVC (theme → login → OAuth browser dance = an
