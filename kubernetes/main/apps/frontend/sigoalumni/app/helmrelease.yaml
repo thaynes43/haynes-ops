@@ -102,16 +102,16 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit c192449 (2026-09-01):
-              # brothers-only "Details for brothers" field on events (#124,
-              # events/11) — room-block links etc., gated like the address
-              # (public SELECT blanks it; announce email + members area carry
-              # it). ONE new migration (0019, adds nullable member_details;
-              # runs at pod start, advisory-locked). No new env. Descends from
-              # e96544a (#122/#123, photo uploads + redirect fix). CI does not
-              # deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit ef0ed9e (2026-09-02):
+              # real crest favicon + 1200×630 share card (sigoalumni-org #125).
+              # Static brand assets only — new app/favicon.ico and
+              # app/apple-icon.png, new public/og-image.png, app/icon.svg
+              # removed, and og:image/twitter:image now point at
+              # /og-image.png (summary_large_image). No migration, no new env.
+              # Descends from c192449 (#124, "Details for brothers"). CI does
+              # not deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: c192449def79160b9d192d75cc7e182e288ab085
+              tag: ef0ed9ebbc94f8fad5f0f38009c8524add31a3e9
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
