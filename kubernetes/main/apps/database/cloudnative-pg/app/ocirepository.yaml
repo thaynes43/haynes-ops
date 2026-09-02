@@ -1,0 +1,22 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/source.toolkit.fluxcd.io/ocirepository_v1.json
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: cloudnative-pg
+  namespace: database
+spec:
+  interval: 15m
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+  ref:
+    tag: 0.29.0
+  # The project's OCI publication of the same chart. The classic index at
+  # https://cloudnative-pg.github.io/charts began redirecting to
+  # https://cloudnative-pg.io/charts on 2026-09-02, and that hostname has no DNS
+  # record — reproduced from inside the cluster with the CI's own flux-local
+  # image ("lookup cloudnative-pg.io: server misbehaving"), which is what turned
+  # every Flux Local - Test (main) run red from ~15:30Z. Same chart, same
+  # version, served from ghcr.io like the rest of the OCI sources here.
+  url: oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg
