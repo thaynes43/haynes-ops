@@ -112,8 +112,8 @@ fi
 # lines and `---` separators for every non-match — which silently turns every
 # assertion below into a comparison against the empty string.
 mapfile -t jobs < <(yq ea -r '[.] | map(select(.kind=="CronJob")) | .[] | .metadata.name' "$WORK/rendered.yaml")
-if [[ ${#jobs[@]} -ne 4 ]]; then
-  echo; note "FAIL" "expected 4 crawl CronJobs, rendered ${#jobs[@]}: ${jobs[*]}"
+if [[ ${#jobs[@]} -ne 2 ]]; then
+  echo; note "FAIL" "expected 2 crawl CronJobs (the fleet pair, ADR-015), rendered ${#jobs[@]}: ${jobs[*]}"
   fail=1
 fi
 
