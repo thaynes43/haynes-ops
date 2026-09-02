@@ -65,6 +65,10 @@ Model is picked first; effort then offers only that model's levels (both tools).
 
 `ultracode` (claude only) is accepted at launch — `--effort ultracode`, or the picker row — and in-session via `/effort`; codex has no equivalent.
 
+## Cross-session messaging
+
+Claude sessions in this pod can find each other (`ListAgents`) and message each other (`SendMessage`). Their inbox sockets live under `$XDG_RUNTIME_DIR` (`/dev/shm/run-1000/cc-socks/`, a tmpfs dev-init recreates each boot) — the `/tmp` emptyDir can't host them (world-writable, no sticky bit). If a banner says "Cross-session messaging is off", `/status` names the directory it refused.
+
 ## tmux
 
 Sessions run under tmux and survive a disconnect. Prefix is **Ctrl+B** (tap, release, then a key):

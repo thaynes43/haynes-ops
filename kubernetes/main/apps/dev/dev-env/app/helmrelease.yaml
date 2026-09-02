@@ -58,6 +58,20 @@ spec:
               # The image pins CLI versions (Renovate-bumped); no self-updates.
               DISABLE_AUTOUPDATER: "1"
               DISABLE_ERROR_REPORTING: "1"
+              # Cross-session messaging (SendMessage/ListAgents between the claude
+              # sessions in this pod) needs a sockets dir whose EVERY path component
+              # is private (0700, ours) or sticky + root-owned. The /tmp emptyDir is
+              # root:dev 2777 with no sticky bit (kubelet's fsGroup treatment), so
+              # claude refuses /tmp/cc-socks AND its /tmp/cc-socks-1000 fallback and
+              # silently runs without an inbox (banner warning, hit 2026-09-01 on
+              # 2.1.258). A non-root pod cannot chmod +t a volume root, and the PVC
+              # home is root:dev 2775 (group-writable) so it is refused too. /dev/shm
+              # is a root-owned 1777 tmpfs (sticky) and claude honours XDG_RUNTIME_DIR
+              # for the sockets dir (probed: "Listening: /dev/shm/run-1000/cc-socks/
+              # <pid>.sock"); dev-init creates it 0700 on every boot (tmpfs, empty at
+              # start). NOT CLAUDE_CODE_TMPDIR: that would also move every internal
+              # temp file onto the 64Mi tmpfs.
+              XDG_RUNTIME_DIR: /dev/shm/run-1000
               # ADC for gcloud/tofu/client libs — sigo GCP SA key mounted from
               # dev-env-gcp-secret (sigo-alumni backlog/tooling item 04).
               GOOGLE_APPLICATION_CREDENTIALS: /etc/gcp/sa_key.json

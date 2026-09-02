@@ -44,7 +44,11 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
-          cosign-release: v3.1.3   # v2 writes legacy .sig tags (Kyverno-verifiable)
+          # v3 writes only Sigstore-bundle signatures, which the Kyverno policy
+          # cannot read (it looks for legacy .sig tags) — verification is silently
+          # failing in Audit. See the note in dev-env-build.yml; fix all three
+          # build workflows together.
+          cosign-release: v3.1.3
 
       - name: Build and push Docker image
         id: build

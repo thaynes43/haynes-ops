@@ -46,7 +46,20 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
-          cosign-release: v3.1.3   # v2 writes legacy .sig tags (Kyverno-verifiable)
+          # cosign v3 (since the 2026-07-25 Renovate bump) writes ONLY the Sigstore
+          # bundle format — an OCI referrer, which GHCR (no referrers API) stores as
+          # the `sha256-<digest>` tag — and has no legacy-format switch. Kyverno's
+          # Cosign-type verifyImages looks for the legacy `sha256-<digest>.sig` tag,
+          # so verify-thaynes43-images has reported "no signatures found" for every
+          # image built since: harmless while that policy is Audit, but it means
+          # image verification is NOT actually happening. Open as of 2026-09-01;
+          # the two fixes are (a) pin cosign v2.6.4 here plus a Renovate
+          # allowedVersions "<3" rule so .sig tags come back (cosign v2 rides the
+          # Rekor v1 API — check its sunset before choosing this), or (b) move the
+          # Kyverno rule to a bundle-aware verifier once one reads plain-signature
+          # bundles. Same situation in upgrade-shepherd-build.yml and
+          # upgrade-agent-build.yml — change all three together.
+          cosign-release: v3.1.3
 
       - name: Build and push Docker image
         id: build

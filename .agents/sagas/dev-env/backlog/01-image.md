@@ -44,7 +44,9 @@ Copy `.github/workflows/upgrade-shepherd-build.yml`:
 - Image pulls, `claude --version` / `codex --version` / `kubectl version --client` /
   `code-server --version` all work as uid 1000 with a mounted empty HOME.
 - Cosign verification passes against the workflow OIDC identity.
-- Renovate opens PRs for tool ARG bumps (verify one datasource comment resolves).
+- Renovate opens PRs for tool ARG bumps — **verified 2026-08-31**: #2683, the grouped
+  `dev-env image toolchain` PR, carried 19 ARG bumps from this Dockerfile (see the
+  post-mortem below for why the box was false for six weeks).
 
 ## Post-mortem 2026-08-29 — the ARG pins were never Renovate-managed
 
@@ -92,4 +94,5 @@ helmrelease is what rolls pods.** Nothing reaches a running pod on step 1 alone.
 
 **Verify the manager actually works** (don't tick this box on faith): after the next
 Renovate run, the Dependency Dashboard's `scripts/dev-env/Dockerfile` entry must list
-~20 deps, not 2.
+~20 deps, not 2. **Verified 2026-08-31:** Renovate opened #2683 with 19 of them in one
+grouped PR (merged, image 0.5.1 rebuilt + re-pinned in #2683's follow-up commits).
