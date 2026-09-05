@@ -57,9 +57,15 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 - `grafana-mcp` — PromQL/LogQL, dashboards (cluster-local)
 - `playwright` — headless chromium for UI/UX testing of cluster apps
   (reach them via their `https://<app>.haynesops.com` internal ingress)
-- `mcp-unifi` — read-only UniFi/UDM introspection (clients, RSSI, topology;
-  cluster-local SSE). Gotcha: per-site tools want the legacy site code `default`
-  (`internalReference`), not the UUID from `list_sites`.
+- `mcp-unifi` — UniFi/UDM introspection **and writes** (cluster-local SSE). Reads: clients,
+  RSSI, topology, radio config, WLANs. Writes are allowed (Tom, 2026-09-05): `reconnect_client`,
+  `set_ap_radio_channel`, `update_wlan`, and similar small, reversible changes may be applied
+  directly when they are the fix — always `dry_run: true` first, then `confirm: true`, and
+  verify from unpoller/AP metrics afterwards. Still confirm with Tom before anything that
+  takes a device or network down (`restart_device`, `upgrade_device`, firewall/VLAN/DHCP edits,
+  `block_client`). Gotcha: per-site tools want the legacy site code `default`
+  (`internalReference`), not the UUID from `list_sites`. Also gotcha: `list_wlans` returns
+  WLAN passphrases in `x_passphrase` — never echo that output into a PR, log, or message.
 - `outline` — the sigoalumni wiki (stdio, `uvx mcp-outline`)
 - `vexa` — meeting bot: transcripts, recordings (cluster-local)
 - `cigar-journal` — the prod journal/catalog MCP at
