@@ -7,6 +7,15 @@
 # MCP parity (home-assistant / grafana / playwright) is a saga plan 03 follow-up —
 # codex MCP wiring differs enough from claude's that it lands separately.
 
+# Defaults for sessions that don't pin model/effort themselves — the remote-control
+# daemon's phone/web threads and a bare `codex`. agent-run always passes
+# `-m` + `-c model_reasoning_effort=…`, so its pickers are unaffected. Tom,
+# 2026-09-06: GPT-6 Astra at max. `gpt-6-astra` needs codex >=0.153.4 (the model
+# catalog is served per client version; an older CLI does not know the slug) —
+# CODEX_VERSION in scripts/dev-env/Dockerfile is the pin.
+model = "gpt-6-astra"
+model_reasoning_effort = "max"
+
 [history]
 persistence = "save-all"
 

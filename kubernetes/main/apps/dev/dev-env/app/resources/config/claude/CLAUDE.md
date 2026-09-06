@@ -251,7 +251,12 @@ surfaces still rot, and **agents are the tripwire for both**:
   table in code.claude.com/docs/en/model-config when a model launches with a
   different level set.
 - **Codex fallback rows**: `agent-run` prints a WARN when they drift from the
-  live cache.
+  live cache. The live cache itself is served **per client version**: a codex
+  model launched after the image's `CODEX_VERSION` pin
+  (`scripts/dev-env/Dockerfile`) never appears in the cache, the picker, or the
+  remote-control phone picker until the pin is bumped (`gpt-6-astra` did not
+  exist to 0.151.0 and needed 0.153.4 — 2026-09-06). Bump first, then refresh
+  the fallbacks.
 
 Either way the fix is the same: open a standard held-draft dev-env PR editing
 `kubernetes/main/apps/dev/dev-env/app/resources/agent-run.sh` (labels/fallbacks
