@@ -16,6 +16,18 @@
 model = "gpt-6-astra"
 model_reasoning_effort = "max"
 
+# The pod IS the sandbox (CLAUDE.md): no inner sandbox, no approvals. This matters
+# most for remote-control threads — bubblewrap cannot create user namespaces in
+# this pod (CapEff 0 + seccomp; `codex sandbox linux -- true` fails), so a
+# workspace-write sandbox fails on EVERY command and codex escalates each one to a
+# phone approval (Tom, 2026-09-06: "needs approval for everything"). agent-run
+# passes --dangerously-bypass-approvals-and-sandbox explicitly; this covers the
+# daemon and a bare `codex`. NB the phone app sends its own explicit values at
+# thread start (on-request / workspace-write / effort high were observed), so
+# these are the host-side defaults, not a guarantee — see README.
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
 [history]
 persistence = "save-all"
 
