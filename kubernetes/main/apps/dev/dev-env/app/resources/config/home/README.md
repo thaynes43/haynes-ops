@@ -42,6 +42,18 @@ The mode picker offers, per tool:
 
 **Codex** interactive is `local`/`task` only — codex has no per-session remote like claude's `--remote-control`. Its phone/web control is a **pod-level** daemon: **`agent-run codex-remote`** starts it (it enrols under the ChatGPT account as a computer named after the pod's hostname and holds a websocket to chatgpt.com) and prints a **manual pairing code** valid ~10 minutes. On the phone, first time only: ChatGPT app → **Remote** → add a computer → enter the code (the pod has no desktop app, so there is no QR to scan). The enrolment lives on the PVC, so after a pod roll just re-run `agent-run codex-remote`. Threads started from the phone take their model/effort defaults from the GitOps `config.toml` (GPT-6 Astra at `max` since 2026-09-06; the phone's picker can change either per thread). It's one daemon per pod (the phone picks the working dir), so it bypasses the per-worktree isolation; **`agent-run codex-remote stop`** shuts it down.
 
+## Same rules, same MCP servers — for both agents
+
+One source each, rendered at boot by dev-init; nothing is maintained twice:
+
+| what | source (haynes-ops, `kubernetes/main/apps/dev/dev-env/app/resources/`) | claude gets | codex gets |
+|---|---|---|---|
+| ground rules | `config/claude/CLAUDE.md` | `~/.claude/CLAUDE.md` (symlink) | `~/.codex/AGENTS.md` = `config/codex/AGENTS.header.md` (a short codex preamble: tool-name translations, quota note, the scratch-dir trap) + that same CLAUDE.md |
+| per-repo rules | each repo's `CLAUDE.md` / `AGENTS.md` | `CLAUDE.md` | `AGENTS.md`, or `CLAUDE.md` where there is none (`project_doc_fallback_filenames`) |
+| MCP servers | `config/claude/mcp.json` | `claude mcp add-json` per server (env placeholders expanded) | `[mcp_servers.*]` appended to `~/.codex/config.toml` by `mcp-json-to-codex-toml.sh` — `${VAR}` values become by-name references (`bearer_token_env_var`, `env_http_headers`, `env_vars`), so no secret lands in the file |
+
+To add or change a server, edit `mcp.json` once (held-draft dev-env PR — it bounces the pod). Codex speaks streamable HTTP and stdio only, so a networked server must expose `/mcp` (mcp-unifi was switched from SSE for this on 2026-09-06). `codex mcp add` and hand-edits to `~/.codex/config.toml` do not survive a boot — by design.
+
 ## Models & effort
 
 Model is picked first; effort then offers only that model's levels (both tools). Default effort is **`xhigh`** wherever the model supports it. Unset model → the tool's own default. `/model` and `/effort` override in-session (`s` in either picker = this session only).
@@ -130,6 +142,8 @@ Tool versions are pinned at image build (`scripts/dev-env/Dockerfile`, Renovate-
 - A pod restart (image roll, node drain, OOM) kills tmux; worktrees, branches, and logs persist on the PVC. `list` shows survivors and the stranded count; `prune` clears them.
 - Memory is 24Gi — the monorepo suite OOM'd at 8Gi. Check `kubectl top pod -n dev` before blaming a build.
 - haynesnetwork is pre-warmed: `pnpm install`/`build`/`typecheck` and its 1,292-test suite (embedded Postgres) pass here; Playwright browsers installed.
+- `codex exec` from a non-TTY with an open stdin (a Claude Code Bash tool, `nohup`, a Job) hangs forever on `Reading additional input from stdin...` — always add `< /dev/null`. agent-run's task mode runs in tmux and is unaffected.
+- `~/.codex/config.toml` and `~/.codex/AGENTS.md` are rendered at boot from the GitOps sources (mcp.json, CLAUDE.md, AGENTS.header.md, config.toml). Hand edits and `codex mcp add` vanish on the next pod roll — change the source instead.
 
 ## Layout
 
