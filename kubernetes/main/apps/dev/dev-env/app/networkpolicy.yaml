@@ -84,6 +84,11 @@ spec:
               - matchPattern: "*.openai.com"
               - matchName: "chatgpt.com"
               - matchPattern: "*.chatgpt.com"
+              # OpenAI user-content CDN — codex's remote-control daemon syncs the
+              # account's installed plugin bundles from
+              # sdmnt*.oaiusercontent.com on every start (2026-09-06: five WARNs
+              # per start while it was blocked). Same trust domain as chatgpt.com.
+              - matchPattern: "*.oaiusercontent.com"
               # package registries (real dev work)
               - matchName: "registry.npmjs.org"
               - matchName: "pypi.org"
@@ -284,6 +289,7 @@ spec:
         - matchPattern: "*.openai.com"
         - matchName: "chatgpt.com"
         - matchPattern: "*.chatgpt.com"
+        - matchPattern: "*.oaiusercontent.com"
         - matchName: "registry.npmjs.org"
         - matchName: "pypi.org"
         - matchName: "files.pythonhosted.org"
