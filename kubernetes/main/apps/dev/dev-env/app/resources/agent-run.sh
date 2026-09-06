@@ -928,7 +928,11 @@ reason as your final message."
           [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
         done
         pkill -f '^[^ ]*/codex app-server ' 2>/dev/null || true
-        rm -f "$sock"
+        # This pod's PID 1 is code-server's node, which never reaps orphans: the
+        # killed daemon lingers as a ZOMBIE whose pid still exists, codex trusts
+        # the pid file, assumes the daemon is up and `start` waits for a socket
+        # that never comes (hit 2026-09-06). Drop the pid files ourselves.
+        rm -f "$HOME/.codex/app-server-daemon"/app-server*.pid "$sock"
         log "codex remote-control stopped (pod-level)"
         ;;
       start|"")
@@ -936,8 +940,13 @@ reason as your final message."
           log "codex remote-control already running — re-pairing"   # idempotent: one daemon per pod
         else
           # The PVC keeps ~/.codex across pod rolls, so a stale socket can block the
-          # bind — clear it when no live daemon owns it.
+          # bind — clear it when no live daemon owns it. Same for pid files that
+          # point at a dead or zombie process (see stop): codex would wait on them.
           [ -S "$sock" ] && ! pgrep -f '^[^ ]*/codex app-server ' >/dev/null 2>&1 && rm -f "$sock"
+          for pf in "$HOME/.codex/app-server-daemon"/app-server*.pid; do
+            pid="$(jq -r '.pid // empty' "$pf" 2>/dev/null)"; [ -n "$pid" ] || continue
+            case "$(ps -o stat= -p "$pid" 2>/dev/null)" in ''|Z*) rm -f "$pf" ;; esac
+          done
           tmux kill-session -t "$sess" 2>/dev/null || true
           tmux new-session -d -s "$sess" -c "$HOME" || die "tmux session failed"
           tmux send-keys -t "$sess" "$token_env; codex remote-control start" Enter  # token_env → phone-driven git/PRs auth
