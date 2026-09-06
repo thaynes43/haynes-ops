@@ -34,9 +34,11 @@ spec:
               UNIFI_LOCAL_PORT: "443"
               UNIFI_LOCAL_VERIFY_SSL: "false"
               UNIFI_DEFAULT_SITE: default
-              # Networked MCP service over SSE (endpoint path /sse), reachable
-              # via the internal IngressRoute so the session connects by URL.
-              MCP_SERVER_TRANSPORT: sse
+              # Networked MCP over streamable HTTP (endpoint path /mcp) — the current
+              # MCP transport, which BOTH agents in the dev-env pod speak (codex has
+              # no SSE client; upstream marks SSE legacy and its bridges race on
+              # init, enuno/unifi-mcp-server#96). Switched from sse 2026-09-06.
+              MCP_SERVER_TRANSPORT: streamable_http
               MCP_SERVER_HOST: 0.0.0.0
               MCP_SERVER_PORT: "3000"
             # UNIFI_API_KEY comes from the ExternalSecret.
