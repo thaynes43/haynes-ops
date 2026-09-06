@@ -66,8 +66,15 @@ ARG CLAUDE_CODE_VERSION=2.1.258
 # only the standalone can run `codex remote-control`. This pins that standalone
 # version; @openai/codex npm releases track the same numbers as the rust-v* GitHub
 # releases the standalone installer pulls, so the npm datasource still tracks it.
+# 0.153.4 (2026-09-04): GPT-6-Astra. Codex serves its model catalog PER CLIENT
+# VERSION, so on 0.151.0 `gpt-6-astra` does not exist at all — not in the
+# agent-run picker, not in the remote-control phone picker. 0.153.1 shipped the
+# model hidden; 0.153.4 is the first release that lists it in the picker and makes
+# it the bundled default. dev-init installs whatever this pins at boot, so the
+# 0.153.4 installed by hand on the PVC on 2026-09-06 reverts on the next pod roll
+# until this lands.
 # renovate: datasource=npm depName=@openai/codex
-ARG CODEX_VERSION=0.151.0
+ARG CODEX_VERSION=0.153.4
 # renovate: datasource=npm depName=tsx
 ARG TSX_VERSION=4.23.13
 # renovate: datasource=npm depName=pnpm
