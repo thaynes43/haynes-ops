@@ -57,6 +57,39 @@ Alertmanager route for `ytdl-sub-*` is effectively *decorative*. The root receiv
 at `severity: warning`. So **every** namespace's job failures are silent, not just
 these. Do not read that route as evidence that other jobs page — they do not.
 
+### `cigar-journal-crawl-*-fleet` Job failed with ONE vendor red
+The fleet CLI exits 1 when any vendor fails, by design (the `FAILURE VISIBILITY`
+note in the cigar-journal HelmRelease). A single vendor at `status=failed pages=0
+error: fetch failed` is that vendor's transport — DNS, TLS, connection reset —
+refusing the very first request (robots.txt), not the image. Since
+cigar-journal #313 (merged 2026-09-07, first tag after v0.44.1) the line carries
+the cause chain — `fetch failed (CERT_HAS_EXPIRED: certificate has expired)` —
+so the log names the transport fault itself; on an older tag it says only
+`fetch failed` and the probe below is how you learn the cause.
+
+- **Signature:** the fleet block at the end of the Job log (`fleet enrich
+  vendors=9 succeeded=8 failed=1`) names one vendor with `fetch failed` and every
+  other vendor succeeded in the same pod, so the cluster's egress is fine. Both
+  `backoffLimit` attempts read identically. The triage lane calls it
+  upgrade-attributable whenever a cigar-journal tag bump merged in its 3h
+  lookback — path coincidence, not mechanism. 2026-09-07 (`esc-shepherd-637a8804`):
+  2 Guys Cigars' certificate expired at 23:59:59 UTC, two hours before the 02:00
+  enrich run, on an evening with four tag bumps.
+- **Check:** read the pod log (`kubectl -n frontend logs <pod>` — the remediate
+  lane cannot; an `esc-*` session can). If the line already names the cause, stop
+  there. Then probe from inside `frontend` with the vendor's own image: a Job
+  cloned from the CronJob's `jobTemplate` with initContainers/volumes/envFrom
+  dropped, pod label `app.kubernetes.io/controller` changed so the gate cannot
+  attribute the probe to the workload, and `node -e` doing `tls.connect` +
+  `fetch` against the adapter's `url` plus a healthy vendor as control, printing
+  `error.cause.code`. Delete the probe Job afterwards.
+- **Do not** re-pin the tag on temporal correlation. A vendor outage keeps the
+  nightly Job red until the vendor recovers; the owner can set that vendor row's
+  `crawl_enabled=false` (the row wins over the adapter). Once diagnosed, delete
+  the Failed Job's `Error` corpse pods so the gate stops re-paging a verified
+  external outage — the Job object still records the failure and the log is in
+  the escalation report.
+
 ### `CephNodeDiskspaceWarning` immediately after a node reboot
 `predict_linear` extrapolates from image re-pull churn and forecasts a full disk that
 never arrives. Self-clears once the pull settles.
