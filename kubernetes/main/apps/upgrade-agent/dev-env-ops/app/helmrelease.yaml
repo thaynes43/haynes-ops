@@ -147,9 +147,13 @@ spec:
               tag: 0.5.2@sha256:235f5aa781a1ebde1b15a48f66ef99b840842c6ba5ef72dac8245a624594ab28
             command: ["/bin/bash", "/opt/dev-env-ops/gh-token-refresh.sh"]
             env:
-              # Same down-scope as the shepherd's mint (see its HR for the
-              # 422-on-ungranted-permission trap).
-              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","checks":"read"}'
+              # The shepherd's down-scope plus issues:write (see its HR for the
+              # 422-on-ungranted-permission trap): the OPS bot App carries
+              # Issues: read and write since 2026-09-06, verified by a mint from
+              # this container, so the curate lane posts its reports directly
+              # (haynes-ops#2709) and publish-report.sh's relay PR is the
+              # fallback it was designed to be.
+              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","checks":"read","issues":"write"}'
             envFrom:
               - secretRef:
                   name: upgrade-shepherd-bot-secret

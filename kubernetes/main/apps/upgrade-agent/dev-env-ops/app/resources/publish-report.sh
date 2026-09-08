@@ -22,17 +22,12 @@
 # from assumptions:
 #   * The App installation covers BOTH thaynes43/haynes-ops and
 #     thaynes43/cigar-journal (the owner widened it on 2026-08-31).
-#   * It still grants NO `issues` permission, on either repo. So route 1 returns
-#     "Resource not accessible by integration (addComment)" TODAY, and the
-#     fallback is what actually carries the report. Repo access and permission
-#     grants are separate things; adding the repo did not add Issues.
-#   * The down-scope in the gh-refresher (GITHUB_BOT_TOKEN_PERMISSIONS =
-#     contents:write, pull_requests:write, checks:read) cannot simply gain
-#     issues:write either: a token request for a permission the installation does
-#     not grant fails 422 and mints NOTHING, which would take out git push and PR
-#     merge for every lane. Verified by minting with issues:write — 422, no token.
-#     Route 1 starts working the moment an operator grants the App Issues:write
-#     AND that permission is added to the down-scope; this script needs no edit.
+#   * 2026-09-06: the App now grants Issues: read and write, a mint with
+#     issues:write succeeds from the gh-refresher container, and the
+#     down-scope (GITHUB_BOT_TOKEN_PERMISSIONS on that container) includes it.
+#     Route 1 is therefore the live path; route 2 remains for any future repo
+#     or permission gap. Repo access and permission grants are separate
+#     things — adding the repo alone did not add Issues (2026-08-31).
 #   * Pull requests are fully available: branch push, PR create, comments on a PR
 #     conversation, label create + apply. Hence the mirror is a DRAFT PULL
 #     REQUEST, not an issue — the bot cannot open an issue anywhere, haynes-ops
