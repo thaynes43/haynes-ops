@@ -32,7 +32,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.5.2@sha256:235f5aa781a1ebde1b15a48f66ef99b840842c6ba5ef72dac8245a624594ab28
+              tag: 0.5.3@sha256:ae7a787381305ef8a9e131fe28b6b64458968c6b21668f2e1de4a9bc7cf902f1
             command: ["/bin/bash", "-c"]
             args:
               # ops-init links config into $HOME, tmux hosts the sessions
@@ -144,7 +144,7 @@ spec:
           gh-refresher:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.5.2@sha256:235f5aa781a1ebde1b15a48f66ef99b840842c6ba5ef72dac8245a624594ab28
+              tag: 0.5.3@sha256:ae7a787381305ef8a9e131fe28b6b64458968c6b21668f2e1de4a9bc7cf902f1
             command: ["/bin/bash", "/opt/dev-env-ops/gh-token-refresh.sh"]
             env:
               # The shepherd's down-scope plus issues:write (see its HR for the
@@ -192,7 +192,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.5.2@sha256:235f5aa781a1ebde1b15a48f66ef99b840842c6ba5ef72dac8245a624594ab28
+              tag: 0.5.3@sha256:ae7a787381305ef8a9e131fe28b6b64458968c6b21668f2e1de4a9bc7cf902f1
             command: ["/bin/bash", "-c"]
             args:
               - >-
