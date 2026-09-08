@@ -69,7 +69,7 @@ jobs:
           file: ./scripts/dev-env/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/dev-env:0.5.3
+            ghcr.io/${{ github.repository_owner }}/dev-env:0.5.4
             ghcr.io/${{ github.repository_owner }}/dev-env:latest
 
       # Keyless sign by DIGEST (covers both tags — they share the manifest). Verified
