@@ -25,6 +25,9 @@ configMapGenerator:
       # dev-env-ops remediation lane can tell a real incident from dev fallout
       # (Tom: "need a way for dev-env agents to try and avoid false escalations").
       - resources/declare-activity.sh
+      # Renders claude's mcp.json as codex [mcp_servers.*] at boot (2026-09-06):
+      # one MCP list for both agents.
+      - resources/mcp-json-to-codex-toml.sh
   - name: dev-env-config-claude
     files:
       - resources/config/claude/CLAUDE.md
@@ -32,6 +35,9 @@ configMapGenerator:
   - name: dev-env-config-codex
     files:
       - resources/config/codex/config.toml
+      # Codex preamble; dev-init prepends it to the shared CLAUDE.md to make
+      # ~/.codex/AGENTS.md — the same rules for both agents, one source.
+      - resources/config/codex/AGENTS.header.md
   # The workspace README code-server opens on (~/README.md) — the human walkthrough.
   - name: dev-env-config-home
     files:

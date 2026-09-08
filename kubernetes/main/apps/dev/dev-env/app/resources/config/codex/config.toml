@@ -3,16 +3,42 @@
 # dev-init.sh copies this over ~/.codex/config.toml on every pod boot;
 # ~/.codex/auth.json (ChatGPT-plan credential) lives on the PVC and is never touched.
 
-# Worktree-per-task and never-push-main rules mirror the Claude-side CLAUDE.md.
-# MCP parity (home-assistant / grafana / playwright) is a saga plan 03 follow-up —
-# codex MCP wiring differs enough from claude's that it lands separately.
+# Rules and MCP servers are SHARED with claude, not duplicated (2026-09-06):
+#   - instructions: dev-init writes ~/.codex/AGENTS.md = AGENTS.header.md (codex
+#     preamble) + config/claude/CLAUDE.md (the pod ground rules); per repo, the
+#     fallback below makes codex read a CLAUDE.md wherever no AGENTS.md exists.
+#   - MCP servers: dev-init APPENDS `[mcp_servers.*]` tables rendered from
+#     config/claude/mcp.json by mcp-json-to-codex-toml.sh — edit mcp.json, never
+#     this file, to add or change a server (a hand-written table here would be
+#     duplicated by the generated one and codex rejects duplicate keys).
+
+# Defaults for sessions that don't pin model/effort themselves — the remote-control
+# daemon's phone/web threads and a bare `codex`. agent-run always passes
+# `-m` + `-c model_reasoning_effort=…`, so its pickers are unaffected. Tom,
+# 2026-09-06: GPT-6 Astra at max. `gpt-6-astra` needs codex >=0.153.4 (the model
+# catalog is served per client version; an older CLI does not know the slug) —
+# CODEX_VERSION in scripts/dev-env/Dockerfile is the pin.
+model = "gpt-6-astra"
+model_reasoning_effort = "max"
+
+# The pod IS the sandbox (CLAUDE.md): no inner sandbox, no approvals. This matters
+# most for remote-control threads — bubblewrap cannot create user namespaces in
+# this pod (CapEff 0 + seccomp; `codex sandbox linux -- true` fails), so a
+# workspace-write sandbox fails on EVERY command and codex escalates each one to a
+# phone approval (Tom, 2026-09-06: "needs approval for everything"). agent-run
+# passes --dangerously-bypass-approvals-and-sandbox explicitly; this covers the
+# daemon and a bare `codex`. NB the phone app sends its own explicit values at
+# thread start (on-request / workspace-write / effort high were observed), so
+# these are the host-side defaults, not a guarantee — see README.
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+# Project instructions: codex looks for AGENTS.md; most repos here carry only a
+# CLAUDE.md, so read that when AGENTS.md is absent (an AGENTS.md still wins).
+# The global AGENTS.md (~17 KiB) + a repo CLAUDE.md (haynes-ops: ~14 KiB) would
+# brush codex's 32 KiB default cap and get truncated silently — raise it.
+project_doc_fallback_filenames = ["CLAUDE.md"]
+project_doc_max_bytes = 131072
 
 [history]
 persistence = "save-all"
-
-# Cigar Journal production MCP (thaynes43/cigar-journal). CIGAR_JOURNAL_TOKEN
-# lives in the PVC-backed ~/.bashrc (opaque access token, owner-bound, 30d TTL,
-# minted 2026-08-27; revoke via the oauth_access_token row). Never in git.
-[mcp_servers.cigar-journal]
-url = "https://cigars.haynesnetwork.com/mcp"
-bearer_token_env_var = "CIGAR_JOURNAL_TOKEN"

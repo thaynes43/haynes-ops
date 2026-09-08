@@ -9,8 +9,8 @@
       "url": "http://mcp-grafana.observability.svc.cluster.local:8000/mcp"
     },
     "mcp-unifi": {
-      "type": "sse",
-      "url": "http://mcp-unifi.observability.svc.cluster.local:3000/sse"
+      "type": "http",
+      "url": "http://mcp-unifi.observability.svc.cluster.local:3000/mcp"
     },
     "playwright": {
       "command": "playwright-mcp",

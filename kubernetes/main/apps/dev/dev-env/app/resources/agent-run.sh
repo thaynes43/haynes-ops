@@ -20,9 +20,9 @@
 # (owner's GitHub repos newest-pushed first; offline → local clones), agent (claude|
 # codex), then a MODE picker, a MODEL picker, and an EFFORT picker filtered to the
 # chosen model for BOTH tools (claude: haiku has no effort control, the 4.6 tier lacks
-# xhigh; codex: only gpt-5.6 has max, only sol/terra add ultra). Flags win — scripted
-# callers pass them and see no prompts (defaults: effort xhigh where the model takes
-# it, model = each tool's own default).
+# xhigh; codex: max on gpt-6-astra + the gpt-5.6 tier, ultra only on astra/sol/terra).
+# Flags win — scripted callers pass them and see no prompts (defaults: effort xhigh
+# where the model takes it, model = each tool's own default).
 #
 # MODE (how you drive it):
 #   both   claude only — a terminal TUI you type to HERE *and* drive from phone/
@@ -374,13 +374,18 @@ claude_effort_rows() {  # $1 = model
 # fallback gets refreshed (dev-env PR) instead of rotting silently.
 CODEX_CACHE="${CODEX_HOME:-$HOME/.codex}/models_cache.json"
 
+# Fallback = the catalog codex 0.153.4 serves (snapshot 2026-09-06). NB the catalog
+# is served PER CLIENT VERSION: a model launched after the image's CODEX_VERSION
+# pin (scripts/dev-env/Dockerfile) is simply absent from the cache — gpt-6-astra
+# did not exist to 0.151.0 and needed 0.153.4. So a missing codex row can mean
+# "bump the pin", not "unavailable" — the same CLI-floor trap as claude's ids.
 codex_model_rows_fallback() {
   printf '%s\n' \
-    'gpt-5.6-sol    GPT-5.6-Sol · latest frontier agentic coding' \
+    'gpt-6-astra    GPT-6-Astra · most capable, complex demanding work' \
+    'gpt-5.6-sol    GPT-5.6-Sol · reliable agentic workhorse' \
     'gpt-5.6-terra  GPT-5.6-Terra · balanced everyday' \
     'gpt-5.6-luna   GPT-5.6-Luna · fast & affordable' \
-    'gpt-5.5        GPT-5.5 · prior frontier' \
-    'gpt-5.4        GPT-5.4 · everyday coding' \
+    'gpt-5.5        GPT-5.5 · prior generation' \
     'gpt-5.4-mini   GPT-5.4-Mini · small & fast'
 }
 
@@ -437,7 +442,7 @@ codex_effort_rows() {
 
 codex_effort_rows_fallback() {
   case "$1" in
-    gpt-5.6-sol|gpt-5.6-terra)
+    gpt-6-astra|gpt-5.6-sol|gpt-5.6-terra)
       printf '%s\n' 'xhigh   (dev-env default)' 'ultra   (max reasoning + auto-delegation)' 'max' 'high' 'medium' 'low' ;;
     gpt-5.6-luna)
       printf '%s\n' 'xhigh   (dev-env default)' 'max' 'high' 'medium' 'low' ;;
@@ -913,8 +918,21 @@ reason as your final message."
     case "$sub" in
       stop)
         tmux kill-session -t "$sess" 2>/dev/null || true
-        pkill -f 'app-server' 2>/dev/null || true   # `codex remote-control stop` HANGS — kill the daemon directly
-        rm -f "$sock"
+        # `codex remote-control stop` HANGS — kill the daemon directly, by the pid
+        # files it writes ({"pid":N,...}). NOT `pkill -f app-server`: -f matches ANY
+        # command line containing the string, and on 2026-09-06 it killed the
+        # calling shell (a compound command that merely mentioned app-server). The
+        # fallback pattern is anchored on codex's own binary path for that reason.
+        for pf in "$HOME/.codex/app-server-daemon"/app-server*.pid; do
+          pid="$(jq -r '.pid // empty' "$pf" 2>/dev/null)"
+          [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+        done
+        pkill -f '^[^ ]*/codex app-server ' 2>/dev/null || true
+        # This pod's PID 1 is code-server's node, which never reaps orphans: the
+        # killed daemon lingers as a ZOMBIE whose pid still exists, codex trusts
+        # the pid file, assumes the daemon is up and `start` waits for a socket
+        # that never comes (hit 2026-09-06). Drop the pid files ourselves.
+        rm -f "$HOME/.codex/app-server-daemon"/app-server*.pid "$sock"
         log "codex remote-control stopped (pod-level)"
         ;;
       start|"")
@@ -922,18 +940,35 @@ reason as your final message."
           log "codex remote-control already running — re-pairing"   # idempotent: one daemon per pod
         else
           # The PVC keeps ~/.codex across pod rolls, so a stale socket can block the
-          # bind — clear it when no live daemon owns it.
-          [ -S "$sock" ] && ! pgrep -f 'app-server' >/dev/null 2>&1 && rm -f "$sock"
+          # bind — clear it when no live daemon owns it. Same for pid files that
+          # point at a dead or zombie process (see stop): codex would wait on them.
+          [ -S "$sock" ] && ! pgrep -f '^[^ ]*/codex app-server ' >/dev/null 2>&1 && rm -f "$sock"
+          for pf in "$HOME/.codex/app-server-daemon"/app-server*.pid; do
+            pid="$(jq -r '.pid // empty' "$pf" 2>/dev/null)"; [ -n "$pid" ] || continue
+            case "$(ps -o stat= -p "$pid" 2>/dev/null)" in ''|Z*) rm -f "$pf" ;; esac
+          done
           tmux kill-session -t "$sess" 2>/dev/null || true
           tmux new-session -d -s "$sess" -c "$HOME" || die "tmux session failed"
           tmux send-keys -t "$sess" "$token_env; codex remote-control start" Enter  # token_env → phone-driven git/PRs auth
           for _ in $(seq 1 100); do [ -S "$sock" ] && break; sleep 0.2; done   # up to 20s for the daemon to bind the socket
           [ -S "$sock" ] || die "codex remote-control did not come up (no socket) — inspect: tmux attach -t $sess"
         fi
-        code="$(codex remote-control pair --json 2>/dev/null | jq -r '.manualPairingCode // empty')"
+        # The daemon enrols under the ChatGPT account as a "computer" named after the
+        # pod's hostname and holds a websocket to chatgpt.com; the enrolment (server +
+        # environment id) lives in ~/.codex's state DB on the PVC, so it survives pod
+        # rolls. The manual code below is the phone-side pairing (once per phone — the
+        # QR path needs a desktop app this pod doesn't have) and expires in ~10 min.
+        pair_json="$(codex remote-control pair --json 2>/dev/null)"
+        code="$(printf '%s' "$pair_json" | jq -r '.manualPairingCode // empty')"
         [ -n "$code" ] || die "pairing failed — inspect: tmux attach -t $sess"
+        exp="$(printf '%s' "$pair_json" | jq -r '.expiresAt // empty')"
+        ttl=""; [ -n "$exp" ] && ttl=" — valid ~$(( (exp - $(date +%s) + 59) / 60 )) min, re-run for a fresh one"
         printf '\n  CODEX REMOTE-CONTROL (pod-level — drive from the ChatGPT app / Codex web)\n'
-        printf '  pairing code:  %s\n\n' "$code"
+        printf '  shows up on the phone as:  %s\n' "$(hostname)"
+        printf '  pairing code:              %s%s\n\n' "$code" "$ttl"
+        printf '  Phone, first time only: ChatGPT app → Remote → add a computer → enter the\n'
+        printf '  code manually (no desktop app here, so no QR). Threads started from the\n'
+        printf '  phone take model/effort defaults from ~/.codex/config.toml (GitOps).\n\n'
         printf '  NOTE: pod-level — the phone picks the working dir, which BYPASSES\n'
         printf '        agent-run per-worktree isolation.   stop: agent-run codex-remote stop\n\n'
         ;;
