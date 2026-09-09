@@ -1,0 +1,59 @@
+# Incident 2026-09-09 — rolling switch reboots → Proxmox worker host down → 3.5 h partial outage
+
+**Status:** recovered by 07:45 EDT (11:45Z). Mitigation PR: see "Mitigations" below.
+**Author:** Claude (local session, driven by Tom from his phone). Times are UTC with EDT in
+parentheses. Evidence: Prometheus `node_boot_time_seconds`, Loki `{source="talos"}`, HA UniFi
+uptime sensors and TubesZB ESPHome sensors, zwave-js-ui store logs, pod `lastState` timestamps.
+
+## What Tom saw
+
+Pushover flood from Gatus, the healthchecks.io dead-man (Alertmanager Watchdog heartbeat) firing,
+`talosw02` powered off in Proxmox, AppDaemon health checks blank, Primary Closet door automation
+not firing. Tom powered `talosw02` back on manually at 11:13Z (07:13 EDT).
+
+## What actually happened (it was not "one node down")
+
+| UTC (EDT) | Event | Source |
+|---|---|---|
+| 07:18–07:48 (03:18–03:48) | **Every UniFi switch rebooted, one at a time, 3–7 min apart**: Pro Max 24 PoE 07:19, Shed Flex 07:21, Pro Max 48 PoE 07:25, Cloffice Flex 07:28, USW Aggregation 07:33, **Switch Pro Aggregation 07:37**, USW Flex 07:41, Pro Max 16 PoE 07:48. All now on `7.5.15.17146`. This is the signature of a UniFi scheduled device-firmware rollout. | HA `sensor.*_uptime`, `update.*` |
+| 07:18 (03:18) | First control-plane blip: kube-controller-manager on talosm03 lost leader election. HA's UniFi integration lost the UDM for 83 s. | pod lastState, HA history |
+| 07:24 (03:24) | **Z-Wave down.** zwave-js-ui lost `tcp://tubeszb-zwave01.haynesnetwork:6638` ("Serial port closed unexpectedly") and then failed to reopen it 574 times until 11:45Z. The ESP32 stayed pingable and its ESPHome `serial_connected` sensor stayed **on** the whole time → it was holding the dead TCP client from the old session and refusing the new one. | zwave-js-ui log, HA `binary_sensor.tubeszb_zw_serial_connected_2` |
+| 07:37–07:38 (03:37) | Switch Pro Aggregation rebooted. Bare-metal masters lost network for ~70 s: kube-scheduler (m01), kube-controller-manager (m02), cilium-operator, node-exporters restarted. etcd stayed healthy. | pod lastState, Loki |
+| 07:37–07:41 (03:37–03:41) | **All three Proxmox worker VMs went down.** `node_boot_time_seconds`: talosw03 07:39:09, talosw01 07:41:16 (fresh Talos boot in kernel log), **talosw02 did not come back**. Loki has no Talos shutdown-sequence logs for any worker → hard reset, not a graceful `qm shutdown`. Most likely the PVE host rebooted/self-fenced when it lost the aggregation switch; needs `journalctl -b -1` on the host to confirm. talosw02 evidently is not set to start on boot. | Prometheus, Loki, Tom |
+| 07:40 → 11:20 (03:40 → 07:20) | **Prometheus and Loki dead** (both single-replica, RWO Ceph RBD PVCs attached to talosw02). Alertmanager Watchdog stopped → healthchecks.io dead-man fired. Alertmanager-1 was also on talosw02 and alertmanager-0 on talosw03 (both on the same Proxmox host). | `count(up)` gap |
+| 07:40 → 11:17 | **EMQX dead** (`emqx-core-0`, single replica, PVC on talosw02) → Zigbee2MQTT crash-looped 51× (needs MQTT), every Zigbee automation dead, HA MQTT integration disconnected. | pod restarts, EMQX log |
+| 07:41 → 11:43 (03:41 → 07:43) | **AppDaemon blank.** The pod restarted with talosw01; its MQTT plugin could not reach EMQX and AppDaemon blocks *all* app initialisation on "Waiting for plugins to be ready" — health checks, health card, every AppDaemon automation — for 4 h. | AppDaemon log: `CRITICAL MQTT: Could not complete MQTT Plugin initialization` every 10 s |
+| 07:41 → 11:13 | plex, sabnzbd, sabnzbd-fast (PVCs on talosw02) stuck: Kubernetes never force-deletes pods or detaches volumes from a node that dies without a graceful shutdown, so nothing rescheduled. | VolumeAttachments still pointing at talosw02 |
+| 11:13 (07:13) | Tom powered talosw02 on. Node Ready 11:20, PVC pods restarted in place, Flux health checks cleared by ~11:40. | events |
+| 11:44:53 (07:44) | TubesZB Z-Wave ESP32 rebooted (unknown why — Tom, did you restart it?). zwave-js reconnected 11:45:05, driver ready 11:45:07. Nodes 21/42/43 (outdoor ZEN14 plugs) reported dead — those were already dead before today. | zwave-js-ui log, HA |
+| 11:43 (07:43) | AppDaemon apps finally initialised; health sensor repopulated. Remaining criticals: Living Room Wi-Fi fan unreachable (auto-repair running), Spa (muted). | `sensor.health_check_status` |
+| ~11:35 | sigoalumni.org confirmed still on the homelab tunnel (Cloudflare proxy IPs, `cf-ray` present, healthz 200); the GCP watchdog never steered to Cloud Run (its confirm-probe saw the tunnel back within minutes). Postgres primary (postgres16-1) was on a master; only a replica was on talosw02. | curl/dig, CNPG status |
+
+## Why the blast radius was so large
+
+1. **Half the cluster shares one physical failure domain.** talosw01/02/03 are all VMs on one Proxmox host, and that host also holds the only i915 iGPUs and the 3090. A host reboot is a 3-node outage every time.
+2. **Critical singletons happened to live on that host.** EMQX core, Prometheus, Loki, both Alertmanagers, Gatus, AppDaemon, ha-mcp were all on workers. Home Assistant, zwave, zigbee2mqtt were on bare-metal masters and survived (until their dependencies died).
+3. **No non-graceful-shutdown handling.** A hard-off node keeps its VolumeAttachments and Terminating pods forever; StatefulSets never reschedule. Recovery required a human to power the VM on.
+4. **talosw02 does not autostart** in Proxmox (the other two did).
+5. **Dependency chains amplify one broker outage**: EMQX → Zigbee2MQTT → every Zigbee automation; EMQX → AppDaemon MQTT plugin → *all* AppDaemon apps including the health checks that would have told Tom what was wrong.
+6. **Z-Wave over TCP has no stale-client recovery.** One switch reboot wedged the TubesZB for 4 h 20 min while the radio was fine; zwave-js-ui cannot reclaim the port and nothing restarted the ESP32.
+7. **Monitoring dies with the workload.** Prometheus, Loki and Gatus are in-cluster on the same host; only the external dead-man and Gatus→Pushover (Gatus was on talosw01, back after 4 min) reached the phone. Loki has a 3.5 h hole exactly where the forensics would be.
+
+## Mitigations
+
+### In this repo (PR opened by this session)
+- `kube-system/node-out-of-service` — CronJob that applies the Kubernetes non-graceful-shutdown taint (`node.kubernetes.io/out-of-service=nodeshutdown:NoExecute`) to a **worker** that has been NotReady > 8 min (guard: refuses if more than one node is unready — a partition, not a dead node), and removes it once the node is Ready again. Effect: PVC-backed StatefulSets/Deployments reschedule to a live node in minutes instead of waiting for a human.
+- **Critical tier prefers bare-metal masters**: soft nodeAffinity to `node-role.kubernetes.io/control-plane` for Prometheus, Loki, Gatus, AppDaemon, ha-mcp; Alertmanager pair and both cloudflared tunnels spread across `topology.kubernetes.io/zone` (m = bare metal, w = the Proxmox host). **EMQX core is deferred**: affinity on the EMQX CR is a pod-template change that blue-greens the broker (MQTT + Zigbee bounce), so do it in a planned window together with the `cluster.hocon` config fix and a `replicas: 3` evaluation.
+
+### Outside this repo (Tom)
+- **UniFi:** confirm in Settings → System → Updates that device auto-update ran at 03:18 today, then either disable automatic device firmware updates or move the window and exclude the aggregation/core switches. Every switch rebooting in a 30-minute window at 3 AM is what kicked this off.
+- **Proxmox:** on the PVE host run `uptime` and `journalctl -b -1 -e | tail -200` (look for `watchdog-mux`, `corosync`, `pve-ha-lrm`, `fence`) to confirm the reboot cause. If HA/corosync is enabled on a host that cannot keep quorum alone, disable HA or add a QDevice. Set `qm set <vmid-of-talosw02> --onboot 1` (and a startup delay) so it comes back like the other two.
+- **TubesZB Z-Wave:** add auto-repair to the AppDaemon zwave health checker (hass-sandbox): when the Z-Wave integration is unavailable for > 5 min but `binary_sensor.tubeszb_zwave01_haynesnetwork` is on, press `button.restart_the_esp32_device_2`, then restart the zwave pod if still down. Also check the ESPHome stream-server config for a client idle timeout / TCP keepalive so a dead client is dropped.
+- **AppDaemon:** make the MQTT plugin non-blocking or move health checks to a plugin-independent instance so a broker outage cannot blank the health dashboard.
+- **EMQX config drift:** the running broker still enforces `retainer.max_payload_size=1MB` / 1 MB max packet (Z2M `bridge/devices` publishes are discarded with `frame_is_too_large`) even though `emqx-configs` now says 256MB/4MB — EMQX keeps `data/configs/cluster.hocon` overrides on the PVC. Apply via the EMQX dashboard/API or `emqx ctl conf`. Longer term: EMQX core replicas 3 so MQTT survives any single node.
+- **Two stale pods** (`frontend/omni-…-fswhb`, `media/plexops-…-58rdx`, `UnexpectedAdmissionError`, 14–18 days old) predate the incident; delete them.
+
+## Open questions
+- Did the PVE host reboot (uptime), or did the VMs get reset some other way?
+- Did Tom restart the Z-Wave TubesZB at 07:44 EDT, or did it reboot itself?
+- Is UniFi device auto-update enabled, and on what schedule?

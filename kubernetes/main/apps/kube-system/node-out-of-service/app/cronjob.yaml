@@ -1,0 +1,113 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/batch/cronjob_v1.json
+# Watchdog for the "non-graceful node shutdown" remedy (incident 2026-09-09 — a hard
+# power-off of the talosw02 VM stranded prometheus-0/loki-0/emqx-core-0/alertmanager-1/
+# plex/sabnzbd for 3.5h, because Kubernetes will not force-delete pods or detach Ceph
+# RBD volumes from a node that died without a graceful shutdown). Every minute it
+# looks for a worker that has been not-Ready past THRESHOLD_SECONDS and stamps
+# node.kubernetes.io/out-of-service=nodeshutdown:NoExecute on it, then takes the taint
+# back off once the node reports Ready again. See ../README.md for the guard rails.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: node-out-of-service
+spec:
+  # Once a minute: the whole value of this is shortening a multi-hour stall, so the
+  # detection loop must be far finer-grained than THRESHOLD_SECONDS (480s).
+  schedule: "* * * * *"
+  # Forbid + a 30s starting deadline: a run that overshoots its minute must not stack
+  # a second copy racing it on the same taint. A missed tick is harmless — the next
+  # one is 60s away, and the decision is recomputed from scratch every time.
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 30
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # No retries: the run is idempotent and repeats in 60s anyway, so a retry only
+      # buys a duplicate pod. activeDeadlineSeconds keeps a wedged apiserver call from
+      # outliving the schedule interval (the script also caps each call at 15s).
+      backoffLimit: 0
+      activeDeadlineSeconds: 50
+      template:
+        metadata:
+          # Set here, not left to the ks.yaml commonMetadata: Flux's commonMetadata
+          # labels the CronJob object only and never reaches into a pod template, so
+          # without this the Job's pods carry nothing but the generated job-name and
+          # `kubectl logs -l app.kubernetes.io/name=...` (and the Loki stream label)
+          # would find nothing.
+          labels:
+            app.kubernetes.io/name: node-out-of-service
+        spec:
+          restartPolicy: Never
+          serviceAccountName: node-out-of-service
+          # Prefer (not require) a control-plane node: the failure this job exists to
+          # repair is a dead WORKER, so it must not be scheduled onto the host that
+          # just vanished. Preferred rather than required so it still runs if the
+          # control plane is momentarily unschedulable.
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: Exists
+          # Kyverno runs pod-security-baseline in enforce mode cluster-wide; this pod
+          # clears baseline with room to spare (restricted-grade, in fact) so it never
+          # needs a PolicyException.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: taint
+              # alpine/kubectl is the kubectl image already used elsewhere in this repo
+              # (frontend/headlamp). It is alpine-minirootfs + curl + kubectl: BusyBox
+              # ash, no bash and no jq — which is why the script is POSIX sh and reads
+              # everything through `kubectl -o jsonpath`. docker.io is on the Kyverno
+              # restrict-image-registries allowlist; the tag is pinned and Renovate
+              # bumps it via the `kubernetes` manager.
+              image: docker.io/alpine/kubectl:1.37.0
+              # The image ENTRYPOINT is kubectl itself, so command must override it.
+              command: ["/bin/sh", "/opt/node-out-of-service/node-out-of-service.sh"]
+              env:
+                # Defaults are baked into the script; overriding them here is how you
+                # tune the watchdog without touching the ConfigMap.
+                - name: THRESHOLD_SECONDS
+                  value: "480"
+                - name: MAX_UNREADY
+                  value: "1"
+                - name: DRY_RUN
+                  value: "false"
+                # kubectl parks its discovery cache under $HOME/.kube; with a read-only
+                # root filesystem it needs both pointed at the emptyDir.
+                - name: HOME
+                  value: /tmp
+                - name: KUBECACHEDIR
+                  value: /tmp/kube-cache
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  memory: 128Mi
+              volumeMounts:
+                - name: script
+                  mountPath: /opt/node-out-of-service
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: script
+              configMap:
+                name: node-out-of-service-script
+            - name: tmp
+              emptyDir: {}

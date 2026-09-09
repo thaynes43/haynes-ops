@@ -18,6 +18,7 @@ resources:
   #- ./metallb-system/ks.yaml
   - ./node-feature-discovery/ks.yaml
   - ./descheduler/ks.yaml
+  - ./node-out-of-service/ks.yaml
   - ./nvidia-device-plugin/ks.yaml
   - ./intel-device-plugin/ks.yaml
   - ./generic-device-plugin/ks.yaml

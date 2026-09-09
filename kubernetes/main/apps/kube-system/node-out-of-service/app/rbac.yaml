@@ -1,0 +1,36 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-out-of-service
+  namespace: kube-system
+---
+# The narrowest grant that lets `kubectl taint` work: read the node list, then
+# PATCH the one node's .spec.taints. Deliberately NOT granted:
+#   - `nodes/status` — the taint lives in .spec, so the status subresource is never
+#     touched; granting it would hand this SA the ability to forge node conditions.
+#   - `update` — `kubectl taint` issues a strategic-merge PATCH, never a full PUT.
+#   - `pods`/`volumeattachments` — the whole point of the taint is that the built-in
+#     GC and attach/detach controllers do the force-delete and detach themselves;
+#     this job never touches a workload directly.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-out-of-service
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: node-out-of-service
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: node-out-of-service
+subjects:
+  - kind: ServiceAccount
+    name: node-out-of-service
+    namespace: kube-system
