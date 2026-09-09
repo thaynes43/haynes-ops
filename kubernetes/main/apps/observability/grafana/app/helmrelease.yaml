@@ -228,6 +228,16 @@ spec:
           gnetId: 19105
           revision: 5
           datasource: Prometheus
+        proxmox:
+          # renovate: depName="Proxmox via Prometheus"
+          # The community prometheus-pve-exporter board (cluster/node/guest
+          # CPU, memory, disk, network from the pve_* series). The `instance`
+          # variable is the exporter pod, not a PVE node — pick a node with the
+          # panel's own node/guest legends.
+          gnetId: 10347
+          revision: 5
+          datasource:
+            - { name: DS_PROMETHEUS, value: Prometheus }
         smart:
           # renovate: depName="Dashboard for smartctl_exporter"
           gnetId: 20204

@@ -1,0 +1,120 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: prometheus-pve-exporter-rules
+spec:
+  groups:
+    - name: prometheus-pve-exporter.rules
+      rules:
+        # Why these exist (incident 2026-09-09): every Proxmox node fenced at
+        # 07:39Z when the aggregation switch rebooted. talosw01/talosw03/gasha01
+        # autostarted with their nodes; talosw02 (qemu/108 on twin-top) has no
+        # onboot and stayed off until a human pressed start at 11:13Z — 3.5 h
+        # with no in-cluster signal that a VM was simply powered off.
+        #
+        # Routing (kube-prometheus-stack alertmanager.yaml): severity=critical →
+        # Pushover (repeat_interval 12h); everything else → "null" (visible in
+        # the Alertmanager/Grafana UI only). scope=host tells the alert-responder
+        # this is host/hardware and to skip LLM diagnosis.
+        #
+        # Guests watched: the three Talos workers plus gasha01, the VM that IS
+        # the external Ceph (gasha01-rbd: Prometheus + Loki) and NFS
+        # (home-assistant, immich, appdaemon, ...) behind the cluster.
+        - alert: PVEVMStopped
+          annotations:
+            summary: >-
+              Proxmox VM {{ $labels.name }} ({{ $labels.id }} on {{ $labels.node }}) is not running.
+            description: >-
+              {{ $labels.name }} has been stopped for 5 min while its Proxmox node {{ $labels.node }}
+              is online, so nothing will bring it back on its own. Start it from the PVE UI or on
+              {{ $labels.node }}: qm start {{ $labels.id | reReplaceAll "qemu/" "" }}.
+          # Suppressed while the guest's own node is offline: that is
+          # PVENodeDown's alert, and a fenced node does not need a second page
+          # per VM it took down.
+          expr: |
+            (
+              pve_up
+                * on (id) group_left (name, node)
+              pve_guest_info{type="qemu", name=~"talosw0[1-3]|gasha01"}
+            ) == 0
+            unless on (node)
+              label_replace(pve_up{id=~"node/.+"} == 0, "node", "$1", "id", "node/(.+)")
+          for: 5m
+          labels:
+            severity: critical
+            scope: host
+        - alert: PVEVMNotOnboot
+          annotations:
+            summary: >-
+              Proxmox VM {{ $labels.name }} ({{ $labels.id }} on {{ $labels.node }}) will not start when its host boots.
+            description: >-
+              onboot is unset or 0 for {{ $labels.name }}, so the next reboot/fence of {{ $labels.node }}
+              leaves it powered off until someone presses start (talosw02, 2026-09-09: 3.5 h). Fix on
+              {{ $labels.node }}: qm set {{ $labels.id | reReplaceAll "qemu/" "" }} --onboot 1
+              (optionally --startup order=N,up=30). Pages every 12 h until fixed.
+          # pve_onboot_status comes from the per-node scrapes (see the
+          # ServiceMonitor): a guest with no series, or a 0, is not on boot.
+          # Same node-offline guard as above so a dead node's stale series
+          # cannot masquerade as a config problem.
+          expr: |
+            pve_guest_info{type="qemu", name=~"talosw0[1-3]|gasha01"}
+            unless on (id) (pve_onboot_status == 1)
+            unless on (node)
+              label_replace(pve_up{id=~"node/.+"} == 0, "node", "$1", "id", "node/(.+)")
+          for: 1h
+          labels:
+            severity: critical
+            scope: host
+        - alert: PVENodeDown
+          annotations:
+            summary: >-
+              Proxmox node {{ $labels.id | reReplaceAll "node/" "" }} is offline.
+            description: >-
+              The Proxmox cluster (via the pvedash LB) reports {{ $labels.id }} offline for 5 min.
+              Guests on it are down with it. Check power/IPMI, then `journalctl -b -1` on the
+              node once it is back (watchdog-mux / corosync / pve-ha-lrm = fenced).
+          expr: pve_up{id=~"node/.+"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            scope: host
+        - alert: PVENodeRebooted
+          annotations:
+            summary: >-
+              Proxmox node {{ $labels.id | reReplaceAll "node/" "" }} rebooted {{ $value | humanizeDuration }} ago.
+            description: >-
+              Node uptime reset. On 2026-09-09 all five nodes did this within 10 min of the
+              aggregation switch rebooting (corosync quorum loss → watchdog fence). Informational:
+              warning severity routes to null, so this is a marker in Alertmanager/Grafana, not a page.
+          expr: pve_uptime_seconds{id=~"node/.+"} < 15 * 60
+          for: 1m
+          labels:
+            severity: warning
+            scope: host
+        - alert: PVEExporterNoData
+          annotations:
+            summary: No Proxmox cluster metrics for 15 min.
+            description: >-
+              The exporter has not returned cluster series (pve_up{id="cluster/pve-cluster"}) for
+              15 min, so every PVE* alert above is blind. Check the exporter pod log
+              (observability/prometheus-pve-exporter), the pvedash LB (lxc/107 on pve04,
+              pvedash.haynesnetwork:443) and the prometheus@pve!exporter token (1Password "proxmox").
+          expr: absent_over_time(pve_up{id="cluster/pve-cluster"}[15m])
+          labels:
+            severity: critical
+            scope: host
+        - alert: PVENodeScrapeFailing
+          annotations:
+            summary: >-
+              Per-node Proxmox scrape of {{ $labels.pve_target }} failing for 15 min.
+            description: >-
+              The exporter cannot reach {{ $labels.pve_target }}'s pveproxy (:8006) although the
+              cluster may still list it online. pve_onboot_status for its guests goes stale, so
+              PVEVMNotOnboot may follow. Check DNS (<node>.haynesnetwork) and the node's pveproxy.
+          expr: up{job="prometheus-pve-exporter", pve_target!=""} == 0
+          for: 15m
+          labels:
+            severity: warning
+            scope: host

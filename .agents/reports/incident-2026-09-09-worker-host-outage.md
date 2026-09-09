@@ -62,3 +62,33 @@ not firing. Tom powered `talosw02` back on manually at 11:13Z (07:13 EDT).
 zwave-js-ui logged "Serial port closed unexpectedly" at 12:19:53Z with no switch event this time (cause unknown; the ESP32's ESPHome API also reconnected to HA at 12:20:01Z, so the ESP32 itself blipped). Tom power-cycled the dongle at 12:25:47Z; zwave-js connected at 12:26:02Z but the open failed (ZW0100) and every retry after that failed while the ESP32 kept reporting `serial connected: on`. A `kubectl rollout restart deploy/zwave` alone did NOT clear it (the new pod also failed; the pod's side of the old socket sat in FIN_WAIT2 — the ESP32 never acknowledged the close). Pressing `button.restart_the_esp32_device_2` in HA at 12:44:43Z did: driver ready ~12:44:55Z, nodes alive 12:45:00Z.
 
 Lesson: the remedy for a wedged TubesZB Z-Wave link is **restart the ESP32 while a zwave-js pod is already in its reconnect loop**; a pod restart by itself is not enough, and a power cycle can race the driver's first open. This is the auto-repair the AppDaemon zwave checker should implement.
+
+## Correction 13:56Z (09:56 EDT) — what the Proxmox exporter actually recorded
+
+`observability/prometheus-pve-exporter` has existed since #2032 (61 days) and scraped the
+`pvedash` LB the whole time; the "no Proxmox telemetry" premise was wrong — nobody had looked,
+and nothing alerted on it. Its `pve_uptime_seconds` / `pve_guest_info` series (Prometheus was
+back by 11:20Z; the values below are the boot times implied by uptime at 13:27Z) say:
+
+| PVE node | booted (UTC) | guests that matter |
+|---|---|---|
+| twin-bottom | 07:38:57 | talosw03 (qemu/113, back 07:39:25), **gasha01** (qemu/104, back 07:39:25 — the external Ceph/NFS VM) |
+| twin-top | 07:38:59 | **talosw02 (qemu/108) — not started until 11:13:28** |
+| pve04 | 07:38:59 | pvedash (lxc/107, the API LB the exporter uses), desktop VMs |
+| HaynesIntelligence | 07:41:04 | talosw01 (qemu/103, back 07:41:38, onboot=1), nas01 (lxc/101) |
+| pve-filet02 | 07:48:56 | nut01 (lxc/124) |
+
+So it was not "one Proxmox host": **all five PVE nodes rebooted within two minutes of the
+Switch Pro Aggregation reboot (07:37Z)** — the corosync-quorum-loss → watchdog-fence signature
+the "Mitigations → Proxmox" item guessed at. The three worker VMs are on three different
+nodes (w01 HaynesIntelligence, w02 twin-top, w03 twin-bottom), which is why w01/w03 came
+back at different times, and every VM with onboot set came back with its node. talosw02
+is the only Talos VM without it. gasha01 (Prometheus + Loki storage, the NFS server behind
+home-assistant/immich/appdaemon) also fenced and came back; its own onboot state is
+unknown from this data because the exporter's config collector only read the node that
+answered via the LB (HaynesIntelligence) — fixed by the per-node scrapes in the PVE alerting PR.
+
+Lesson for "why did nothing tell us": the data was there; there were no PrometheusRules on
+it and no dashboard. The PVE alerting PR adds `PVEVMStopped` / `PVEVMNotOnboot` /
+`PVENodeDown` / `PVENodeRebooted` / `PVEExporterNoData` and the community "Proxmox via
+Prometheus" board.

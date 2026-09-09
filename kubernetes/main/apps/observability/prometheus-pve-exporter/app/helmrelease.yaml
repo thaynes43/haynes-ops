@@ -29,9 +29,9 @@ spec:
               tag: 3.10.0
             env:
               TZ: America/New_York
-              # The Proxmox LB serves the API on 443 (self-signed), not the
-              # default 8006. The target host:port and module are set per
-              # scrape in the ServiceMonitor below; only auth comes from env.
+              # Targets (the pvedash LB on 443 and each node's pveproxy on
+              # 8006, all self-signed) are set per scrape in the ServiceMonitor
+              # below; only auth comes from env.
               PVE_VERIFY_SSL: "false"
             envFrom:
               # PVE_USER / PVE_TOKEN_NAME / PVE_TOKEN_VALUE (token auth).
@@ -80,9 +80,22 @@ spec:
         serviceName: prometheus-pve-exporter
         endpoints:
           # Scrape /pve (not the exporter's self /metrics): the exporter
-          # authenticates to target and returns pve_* series for the whole
-          # cluster. cluster/node collectors default on, so all five nodes
-          # report from this single target.
+          # authenticates to `target` and returns pve_* series. Two kinds of
+          # endpoint, because the exporter's collectors split in two:
+          #
+          #  * cluster=1 collectors (status/resources/node/cluster/version) read
+          #    /cluster/resources and describe EVERY node + guest — one scrape
+          #    via the pvedash LB (lxc/107 on pve04, HAProxy over all five
+          #    pveproxies, API on 443 not 8006) is enough.
+          #  * node=1 collectors (config → pve_onboot_status, subscription,
+          #    replication) only read the node that ANSWERED the request. Via
+          #    the LB that was silently one node (HaynesIntelligence), so
+          #    onboot was invisible for talosw02/talosw03/gasha01 — and talosw02's
+          #    missing onboot is what turned the 2026-09-09 PVE fence into a
+          #    3.5 h outage. Hence one node=1 endpoint per PVE node, straight at
+          #    its own pveproxy (:8006, self-signed → PVE_VERIFY_SSL=false).
+          #    `pve_target` keeps those five endpoints' series (and `up`)
+          #    distinct: they all share the exporter pod's `instance`.
           - port: metrics
             scheme: http
             path: /pve
@@ -91,6 +104,63 @@ spec:
             params:
               module: ["default"]
               target: ["pvedash.haynesnetwork:443"]
+              cluster: ["1"]
+              node: ["0"]
+          - &pve_node_endpoint
+            port: metrics
+            scheme: http
+            path: /pve
+            interval: 1m
+            scrapeTimeout: 30s
+            params:
+              module: ["default"]
+              target: ["haynesintelligence.haynesnetwork:8006"]
+              cluster: ["0"]
+              node: ["1"]
+            relabelings:
+              - action: replace
+                targetLabel: pve_target
+                replacement: HaynesIntelligence
+          - <<: *pve_node_endpoint
+            params:
+              module: ["default"]
+              target: ["twin-top.haynesnetwork:8006"]
+              cluster: ["0"]
+              node: ["1"]
+            relabelings:
+              - action: replace
+                targetLabel: pve_target
+                replacement: twin-top
+          - <<: *pve_node_endpoint
+            params:
+              module: ["default"]
+              target: ["twin-bottom.haynesnetwork:8006"]
+              cluster: ["0"]
+              node: ["1"]
+            relabelings:
+              - action: replace
+                targetLabel: pve_target
+                replacement: twin-bottom
+          - <<: *pve_node_endpoint
+            params:
+              module: ["default"]
+              target: ["pve04.haynesnetwork:8006"]
+              cluster: ["0"]
+              node: ["1"]
+            relabelings:
+              - action: replace
+                targetLabel: pve_target
+                replacement: pve04
+          - <<: *pve_node_endpoint
+            params:
+              module: ["default"]
+              target: ["pve-filet02.haynesnetwork:8006"]
+              cluster: ["0"]
+              node: ["1"]
+            relabelings:
+              - action: replace
+                targetLabel: pve_target
+                replacement: pve-filet02
     persistence:
       # gunicorn worker temp dir; keeps readOnlyRootFilesystem intact.
       tmp:
