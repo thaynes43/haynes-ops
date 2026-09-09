@@ -108,9 +108,19 @@ AppDaemon (`kubernetes/main/apps/home-automation/appdaemon`) runs a Docker image
 1. **hass-sandbox** — branch, edit `appdaemon/`, bump `VERSION` (semver; **compare against `main` first** — `git show main:VERSION` — don't double-bump), run tests (`source .venv/bin/activate && cd appdaemon && python -m pytest tests/ -q`). Per its `AGENTS.md`, PRs are created `--draft`.
 2. **Open + review** — `gh pr create --draft`, then `gh pr ready <N>` to trigger the `Claude Code Review` bot (**it only fires on `ready_for_review` and skips drafts**). Watch CI (`gh pr checks <N> --watch`: `test`, `build-and-push`, `docs-build`), read the bot review + docs audits, address anything actionable.
 3. **Merge** — `gh pr merge <N> --squash --delete-branch`. Merge to `main` runs `build-and-push`, which pushes `ghcr.io/thaynes43/appdaemon:<VERSION>`.
-4. **Verify the image** — anon GHCR pull token → `GET https://ghcr.io/v2/thaynes43/appdaemon/manifests/<VERSION>` returns `200` (`gh`'s token lacks `read:packages`; use the registry API).
-5. **This repo** — bump `tag:` in `appdaemon/app/helmrelease.yaml`, commit **only that file** (the working tree often carries unrelated WIP), `git push origin main` (rebase if Renovate advanced `main` while you worked).
+4. **Verify the image** — query the registry API with an anon GHCR pull token (`gh`'s token lacks `read:packages`); `200` means the tag is there. The `Accept` header **must** include the single-image manifest types — `ghcr.io/thaynes43/appdaemon` is single-arch, so an index-only `Accept` returns a **404 for an image that exists**. A 404 with a narrower `Accept` is the header, not registry lag; and `/v2/.../tags/list` is not a useful cross-check (it pages at 100 and comes back unsorted).
+
+   ```bash
+   TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:thaynes43/appdaemon:pull&service=ghcr.io" | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+   curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" \
+     -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
+     "https://ghcr.io/v2/thaynes43/appdaemon/manifests/<VERSION>"
+   ```
+
+5. **This repo** — `main` is protected by repository rules, so **you cannot push the bump directly** (`! [remote rejected] HEAD -> main (push declined due to repository rule violations)`). Branch (`agent/appdaemon-<version>`), bump `tag:` in `appdaemon/app/helmrelease.yaml`, commit **only that file** (the working tree often carries unrelated WIP), push the branch, `gh pr create` (ready, **not** draft), wait for the ~9 `flux-local` checks (`gh pr checks <N>` — all fast), then squash-merge it yourself: `gh pr merge <N> --squash --delete-branch`.
 6. **Reconcile + verify** — `flux reconcile kustomization appdaemon -n home-automation --with-source`, then `kubectl rollout status deploy/appdaemon -n home-automation` and confirm the pod runs `:<VERSION>`. For health-check changes, confirm behavior in logs: `kubectl logs -n home-automation -l app.kubernetes.io/name=appdaemon | grep -i <checker>`.
+
+Note: the AppDaemon **config** does not ride the image — the whole `appdaemon.yaml` lives inline in `appdaemon/app/externalsecret.yaml` (not a ConfigMap), and the ExternalSecret refreshes **hourly**. After merging a template edit, force it down promptly with `kubectl annotate externalsecret appdaemon -n home-automation force-sync=$(date +%s) --overwrite` (Reloader then rolls the pod). The rendered Secret is unreadable from here (no secrets RBAC), so verify from inside the pod: `kubectl exec -n home-automation deploy/appdaemon -- grep <key> /conf/appdaemon.yaml`.
 
 Note: prod apps in `apps-prod.yaml` carry `disable: true`; **the image build strips it**, so they are enabled in the deployed image (don't be misled into thinking a prod checker is off).
 
