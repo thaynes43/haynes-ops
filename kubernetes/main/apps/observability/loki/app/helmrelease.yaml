@@ -68,6 +68,15 @@ spec:
         retention_period: 90d
     singleBinary:
       replicas: 1
+      # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox host (see incident)
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
       persistence:
         enabled: true
         # External proxmox ceph via ceph-csi (unpinned from w03; survives node

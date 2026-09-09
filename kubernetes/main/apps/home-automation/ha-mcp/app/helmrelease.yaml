@@ -78,6 +78,15 @@ spec:
                 # Bumped 512Mi->1Gi: container was OOMKilled 2026-06-20 at 512Mi. Audit 2026-07-07.
                 memory: 1Gi
     defaultPodOptions:
+      # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox host (see incident)
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
       securityContext:
         # The upstream image sets USER to a string ("mcpuser"), not a numeric UID.
         # With runAsNonRoot=true kubelet cannot verify the user is non-root and fails

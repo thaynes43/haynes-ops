@@ -76,6 +76,15 @@ spec:
         # PVC is harmless.
         replicas: 2
         podAntiAffinity: hard
+        # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox host (see incident)
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: alertmanager
+                alertmanager: kube-prometheus-stack
         useExistingSecret: true
         configSecret: alertmanager-secret
         storage:
@@ -127,6 +136,15 @@ spec:
         pathType: Prefix
       prometheusSpec:
         replicas: 1
+        # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox host (see incident)
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                preference:
+                  matchExpressions:
+                    - key: node-role.kubernetes.io/control-plane
+                      operator: Exists
         scrapeInterval: 1m # Must match interval in Grafana Helm chart
         podMonitorSelectorNilUsesHelmValues: false
         probeSelectorNilUsesHelmValues: false
