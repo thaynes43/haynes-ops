@@ -56,3 +56,9 @@ not firing. Tom powered `talosw02` back on manually at 11:13Z (07:13 EDT).
 ## Open questions
 - Did the PVE host reboot (uptime), or did the VMs get reset some other way?
 - Is UniFi device auto-update enabled, and on what schedule?
+
+## Addendum 12:19–12:45Z (08:19–08:45 EDT) — Z-Wave wedged a second time
+
+zwave-js-ui logged "Serial port closed unexpectedly" at 12:19:53Z with no switch event this time (cause unknown; the ESP32's ESPHome API also reconnected to HA at 12:20:01Z, so the ESP32 itself blipped). Tom power-cycled the dongle at 12:25:47Z; zwave-js connected at 12:26:02Z but the open failed (ZW0100) and every retry after that failed while the ESP32 kept reporting `serial connected: on`. A `kubectl rollout restart deploy/zwave` alone did NOT clear it (the new pod also failed; the pod's side of the old socket sat in FIN_WAIT2 — the ESP32 never acknowledged the close). Pressing `button.restart_the_esp32_device_2` in HA at 12:44:43Z did: driver ready ~12:44:55Z, nodes alive 12:45:00Z.
+
+Lesson: the remedy for a wedged TubesZB Z-Wave link is **restart the ESP32 while a zwave-js pod is already in its reconnect loop**; a pod restart by itself is not enough, and a power cycle can race the driver's first open. This is the auto-repair the AppDaemon zwave checker should implement.
