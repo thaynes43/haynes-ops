@@ -122,6 +122,13 @@ app. To neuter it while leaving it deployed, set `DRY_RUN` to `"true"` in
   `-D <fmt> -d <ts>`, and BSD/macOS date wants `-j -f <fmt>`. The awk version behaves
   identically under gawk, mawk, BusyBox awk and BSD awk, and was unit-tested against
   Python across leap years, century boundaries and garbage input.
+- **In-cluster auth is explicit.** kubectl only falls back to the mounted service-account
+  token when its merged client config equals the built-in default; `--request-timeout`
+  (or any other override) makes it "a real config" pointing at `localhost:8080`, so the
+  first three Jobs on 2026-09-09 silently listed zero nodes. The script now writes a
+  minimal kubeconfig into `/tmp` that references the mounted `tokenFile`/`ca.crt` and
+  exports `KUBECONFIG` — only when no `KUBECONFIG` was supplied, so laptop runs are
+  unchanged.
 - **Kyverno** runs `pod-security-baseline`, `restrict-image-registries` and
   `restrict-rbac-escalation` in enforce mode. This pod clears baseline with room to
   spare (`runAsNonRoot`, `readOnlyRootFilesystem`, all capabilities dropped,

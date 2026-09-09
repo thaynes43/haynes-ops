@@ -56,6 +56,42 @@ log() {
     echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') $*"
 }
 
+# In-cluster auth must be EXPLICIT. kubectl only auto-detects the in-cluster service
+# account when the merged client config is byte-for-byte the built-in default
+# (http://localhost:8080); any override — and --request-timeout IS one — makes it
+# "a real config", so it never even looks at KUBERNETES_SERVICE_HOST and every call
+# dies against localhost:8080 (seen live 2026-09-09: the first three Jobs logged
+# nodes=0 while a plain `kubectl get nodes` in the same pod worked). So when the
+# service-account token is mounted and no KUBECONFIG was handed in, write a minimal
+# kubeconfig that points at the mounted token (tokenFile, so the secret never
+# lands on a command line or in this file) and use that. A laptop run with
+# KUBECONFIG set is untouched.
+SA_DIR="${SA_DIR:-/var/run/secrets/kubernetes.io/serviceaccount}"
+if [ -z "${KUBECONFIG:-}" ] && [ -n "${KUBERNETES_SERVICE_HOST:-}" ] && [ -r "${SA_DIR}/token" ]; then
+    umask 077
+    cat > "${TMPDIR:-/tmp}/node-out-of-service.kubeconfig" <<KCFG
+apiVersion: v1
+kind: Config
+clusters:
+- name: in-cluster
+  cluster:
+    server: https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT:-443}
+    certificate-authority: ${SA_DIR}/ca.crt
+users:
+- name: sa
+  user:
+    tokenFile: ${SA_DIR}/token
+contexts:
+- name: in-cluster
+  context:
+    cluster: in-cluster
+    user: sa
+current-context: in-cluster
+KCFG
+    KUBECONFIG="${TMPDIR:-/tmp}/node-out-of-service.kubeconfig"
+    export KUBECONFIG
+fi
+
 # Run a mutating kubectl, or print exactly what would have run under DRY_RUN.
 mutate() {
     if [ "${DRY_RUN}" = "true" ]; then
