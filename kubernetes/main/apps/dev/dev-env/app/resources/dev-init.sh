@@ -183,6 +183,9 @@ ln -sf /opt/dev-env/scripts/agent-run.sh "$HOME/.local/bin/agent-run"
 # declare disruptive work hit "command not found", the false-escalation guard is
 # silently absent, and the file just sits unreferenced in /opt/dev-env/scripts.
 ln -sf /opt/dev-env/scripts/declare-activity.sh "$HOME/.local/bin/declare-activity"
+# pve (2026-09-09, backlog 14): same trap as declare-activity — a mounted script is
+# not a command until it is linked.
+ln -sf /opt/dev-env/scripts/pve.sh "$HOME/.local/bin/pve"
 touch "$HOME/.bashrc"
 grep -q 'dev-env/scripts/bashrc.sh' "$HOME/.bashrc" 2>/dev/null \
   || printf '\n[ -f /opt/dev-env/scripts/bashrc.sh ] && . /opt/dev-env/scripts/bashrc.sh\n' >> "$HOME/.bashrc"
