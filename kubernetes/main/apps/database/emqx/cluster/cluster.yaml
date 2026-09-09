@@ -4,6 +4,19 @@ apiVersion: apps.emqx.io/v2beta1
 kind: EMQX
 metadata:
   name: emqx
+  annotations:
+    # PINNED to spec.config.data (same YAML anchor) — this disables the
+    # operator's runtime hot-apply on purpose. emqx-operator 2.3.1 re-prints
+    # config.data through go-hocon before PUT /api/v5/configs and EMQX 6.2.0
+    # rejects the result (`HTTP 400 parse_error "syntax error before: \"\""`,
+    # every reconcile, 2026-09-09) — the same raw text is accepted with 200.
+    # In June the same path silently clobbered retainer.max_payload_size back
+    # to 1MB. With annotation == spec the operator sees "nothing to apply" and
+    # the reconcile loop stays green. Consequence: a config.data edit reaches
+    # the broker ONLY via base.hocon at the reloader restart, and only for keys
+    # not already overridden in data/configs/cluster.hocon — so apply runtime
+    # keys through the API first, per .agents/runbooks/emqx-config-drift.md.
+    apps.emqx.io/last-emqx-configuration: *emqx_config
 spec:
   # Pinned to 6.2.0 — HELD, do not bump. 6.2.1+ crash-loops at boot with
   # SINGLE_NODE_LICENSE: the built-in single-node COMMUNITY (free) license aborts
@@ -34,7 +47,7 @@ spec:
   # 2026-09-09). `emqx ctl conf show retainer` is the truth, this file is the
   # intent — keep them equal. Editing this block restarts the core pod (reloader).
   config:
-    data: |
+    data: &emqx_config |
       mqtt {
         max_packet_size = 256MB
       }
