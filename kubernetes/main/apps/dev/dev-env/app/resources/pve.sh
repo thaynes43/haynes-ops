@@ -79,7 +79,9 @@ api() {
   fi
   code="${out##*$'\n'}"; out="${out%$'\n'*}"
   if [[ "$code" != 2* ]]; then
-    log "pve: HTTP $code on $m $p — $(printf '%s' "$out" | jq -r '.message // .errors // .' 2>/dev/null || printf '%s' "$out")"
+    local msg; msg="$(printf '%s' "$out" | jq -r '.message // .errors // empty' 2>/dev/null || true)"
+    [[ -n "$msg" ]] || msg="${out:-(empty body)}"
+    log "pve: HTTP $code on $m $p — $msg"
     return 1
   fi
   printf '%s' "$out"
@@ -93,12 +95,14 @@ write() {  # write METHOD PATH [k=v ...] — the --yes gate
   api "$@"
 }
 show() { if [[ $RAW -eq 1 ]]; then cat; else jq . ; fi; }
+# tbl — align TSV columns (the image has no `column`; written for mawk, not gawk)
+tbl() { awk -F'\t' '{ n=split($0,c,"\t"); rows[NR]=$0; for(i=1;i<=n;i++) if(length(c[i])>w[i]) w[i]=length(c[i]) }
+  END { for(r=1;r<=NR;r++){ n=split(rows[r],c,"\t"); line=""; for(i=1;i<=n;i++){ line=line c[i]; if(i<n){ pad=w[i]-length(c[i])+2; for(k=0;k<pad;k++) line=line " " } } print line } }'; }
 
-# vm_locate ID → "node type"  (type: qemu|lxc), from /cluster/resources
+# vm_locate ID → "node type"  (type: qemu|lxc) from /cluster/resources; empty if unknown
 vm_locate() {
-  api GET /cluster/resources type=vm \
-    | jq -r --argjson id "$1" '.data[] | select(.vmid==$id) | "\(.node) \(.type)"' \
-    | { read -r node type || true; [[ -n "${node:-}" ]] || die "no guest with id $1"; printf '%s %s' "$node" "$type"; }
+  local out; out="$(api GET /cluster/resources type=vm)" || return 1
+  jq -r --argjson id "$1" '.data[] | select(.vmid==$id) | "\(.node) \(.type)"' <<<"$out"
 }
 
 # ---- commands ---------------------------------------------------------------
@@ -107,15 +111,15 @@ case "$cmd" in
   ha)
     log "# HA resources (tier=$TIER via $PVE_API_URL)"
     api GET /cluster/ha/resources | jq -r '.data[] | [.sid, .state, (.group // "-"), (.comment // "")] | @tsv' \
-      | { printf 'SID\tSTATE\tGROUP\tCOMMENT\n'; cat; } | column -t -s $'\t'
+      | { printf 'SID\tSTATE\tGROUP\tCOMMENT\n'; cat; } | tbl
     log "# manager status"
     api GET /cluster/ha/status/current \
       | jq -r '.data[] | [.type, (.node // "-"), (.sid // "-"), (.status // .state // "-")] | @tsv' \
-      | { printf 'TYPE\tNODE\tSID\tSTATUS\n'; cat; } | column -t -s $'\t'
+      | { printf 'TYPE\tNODE\tSID\tSTATUS\n'; cat; } | tbl
     ;;
   nodes)
     api GET /nodes | jq -r '.data[] | [.node, .status, ((.uptime // 0)/86400*10|round/10|tostring)+"d", ((.cpu // 0)*100|round|tostring)+"%", (((.mem // 0)/(.maxmem // 1))*100|round|tostring)+"% mem"] | @tsv' \
-      | { printf 'NODE\tSTATUS\tUPTIME\tCPU\tMEM\n'; cat; } | column -t -s $'\t'
+      | { printf 'NODE\tSTATUS\tUPTIME\tCPU\tMEM\n'; cat; } | tbl
     ;;
   guests)
     with_onboot=0; [[ "${1:-}" == "--onboot" ]] && with_onboot=1
@@ -128,7 +132,7 @@ case "$cmd" in
       done <<<"$rows"
     else
       printf 'ID\tNAME\tTYPE\tNODE\tSTATUS\n'; printf '%s\n' "$rows"
-    fi | column -t -s $'\t'
+    fi | tbl
     ;;
   vm)
     [[ $# -ge 2 ]] || { usage; exit 1; }
@@ -137,7 +141,9 @@ case "$cmd" in
     if [[ $ANY -eq 0 && " ${WORKERS[*]} " != *" $id "* ]]; then
       die "guest $id is not a Talos worker (${WORKERS[*]}) — pass --any if you really mean it"
     fi
-    read -r node type <<<"$(vm_locate "$id")"
+    loc="$(vm_locate "$id")" || die "could not read /cluster/resources (see above)"
+    [[ -n "$loc" ]] || die "no guest with id $id"
+    read -r node type <<<"$loc"
     case "$action" in
       config)  api GET "/nodes/$node/$type/$id/config" | show ;;
       onboot)  [[ "${1:-}" =~ ^[01]$ ]] || die "onboot wants 0 or 1"
