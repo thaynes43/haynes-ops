@@ -1,4 +1,4 @@
-# 14 — Proxmox access (read + VM-scoped operator tier for the pod)
+# 14 — Proxmox access (read + operator tier for the pod)
 
 **Status:** in progress — split across **PR A** (mergeable now, zero pod-rollout) and
 **PR B** (DRAFT, wires the creds + `pve` helper into the pod; rolls the pod, so Tom merges
@@ -81,9 +81,10 @@ kept as the record of what was considered.
 
 ## Goal
 
-From inside the dev-env pod, an agent can (a) read the whole Proxmox cluster's state and
-(b) bring a Talos worker VM back or set it to autostart — without a workstation and
-without a root-equivalent standing credential.
+From inside the dev-env pod, an agent can (a) read the whole Proxmox cluster's state,
+(b) bring a Talos worker VM back or set it to autostart, and (c) take the helper guests
+off Proxmox HA so a network partition no longer fences the cluster — without a
+workstation and without Tom typing on a PVE node.
 
 ## Design
 
