@@ -50,6 +50,21 @@ spec:
         reloader.stakater.com/auto: "true"
     spec:
       replicas: 1
+      # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox
+      # cluster that fenced wholesale this morning (see the incident report);
+      # the broker was on talosw02 and took Zigbee2MQTT, every Zigbee automation
+      # and the whole of AppDaemon down with it for 3.5 h. Soft preference only.
+      # This IS a pod-template change → the operator blue-greens the core (new
+      # StatefulSet, transient 2-node cluster, ~1–2 min MQTT bounce, z2m restart
+      # after). Planned window; procedure in .agents/runbooks/emqx-config-drift.md.
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
       # DRAIN UNBLOCKER (2026-08-23). add_pdb.go in operator 2.3.1 creates the
       # emqx-core PDB *unconditionally*, copying nil min/max into an EMPTY spec.
       # The k8s disruption controller then can't compute an expected count, leaves
