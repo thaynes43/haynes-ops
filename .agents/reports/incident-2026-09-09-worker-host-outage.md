@@ -25,7 +25,7 @@ not firing. Tom powered `talosw02` back on manually at 11:13Z (07:13 EDT).
 | 07:41 → 11:43 (03:41 → 07:43) | **AppDaemon blank.** The pod restarted with talosw01; its MQTT plugin could not reach EMQX and AppDaemon blocks *all* app initialisation on "Waiting for plugins to be ready" — health checks, health card, every AppDaemon automation — for 4 h. | AppDaemon log: `CRITICAL MQTT: Could not complete MQTT Plugin initialization` every 10 s |
 | 07:41 → 11:13 | plex, sabnzbd, sabnzbd-fast (PVCs on talosw02) stuck: Kubernetes never force-deletes pods or detaches volumes from a node that dies without a graceful shutdown, so nothing rescheduled. | VolumeAttachments still pointing at talosw02 |
 | 11:13 (07:13) | Tom powered talosw02 on. Node Ready 11:20, PVC pods restarted in place, Flux health checks cleared by ~11:40. | events |
-| 11:44:53 (07:44) | TubesZB Z-Wave ESP32 rebooted (unknown why — Tom, did you restart it?). zwave-js reconnected 11:45:05, driver ready 11:45:07. Nodes 21/42/43 (outdoor ZEN14 plugs) reported dead — those were already dead before today. | zwave-js-ui log, HA |
+| 11:44:53 (07:44) | Tom power-cycled the TubesZB Z-Wave dongle; zwave-js reconnected 11:45:05, driver ready 11:45:07. Nodes 21/42/43 (outdoor ZEN14 plugs) reported dead — those were already dead before today. | zwave-js-ui log, HA |
 | 11:43 (07:43) | AppDaemon apps finally initialised; health sensor repopulated. Remaining criticals: Living Room Wi-Fi fan unreachable (auto-repair running), Spa (muted). | `sensor.health_check_status` |
 | ~11:35 | sigoalumni.org confirmed still on the homelab tunnel (Cloudflare proxy IPs, `cf-ray` present, healthz 200); the GCP watchdog never steered to Cloud Run (its confirm-probe saw the tunnel back within minutes). Postgres primary (postgres16-1) was on a master; only a replica was on talosw02. | curl/dig, CNPG status |
 
@@ -55,5 +55,4 @@ not firing. Tom powered `talosw02` back on manually at 11:13Z (07:13 EDT).
 
 ## Open questions
 - Did the PVE host reboot (uptime), or did the VMs get reset some other way?
-- Did Tom restart the Z-Wave TubesZB at 07:44 EDT, or did it reboot itself?
 - Is UniFi device auto-update enabled, and on what schedule?
