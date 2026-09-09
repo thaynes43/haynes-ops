@@ -51,22 +51,33 @@ with it is root-equivalent on the whole cluster, in the environment of yolo-mode
 That is the same class of decision as the age key ("never enters this pod without an
 explicit decision") and is **not** taken here by default.
 
+### 2026-09-09 — Q-1 ruling (Tom): standing access, `Sys.Console` included
+
+Asked in-session with the root-shell consequence spelled out. Tom: *"we will need to get it
+access so don't think past that."* Ruling: **dev-env holds a standing Proxmox operator
+token that includes `Sys.Console`.** It is root-equivalent on the PVE cluster and that is
+accepted, the same way `kubectl exec` into secret-mounting pods was accepted 2026-08-06.
+The rest of this item is written to that ruling; the earlier VM-scoped design below is
+kept as the record of what was considered.
+
 **Adopted:**
 
 - **READ tier — zero new provisioning.** Reuse the exporter's `prometheus@pve!exporter`
   token (PVEAuditor) from the existing 1Password `proxmox` item. Agents get full
   visibility: HA state, quorum, onboot per guest, node uptimes, VM placement.
-- **OPERATOR tier — VM-scoped, no shell.** A new PVE user `dev-env@pve` with a custom
-  role `DevEnvVMOperator` = `VM.Audit, VM.Config.Options, VM.PowerMgmt`, ACL'd on
-  **`/vms/103`, `/vms/108`, `/vms/113` only** (talosw01/02/03), plus `PVEAuditor` on `/`
-  for reads. Token `dev-env@pve!operator`, `privsep=0` (inherits the user's ACL). An agent
-  can fix onboot, start a dead worker, or hard-reset a wedged one — and cannot touch
-  gasha01, the dashboards, HA config, or a node shell.
-- **HA changes (the one-time fence fix) are a separate, non-standing act.** Either Tom
-  runs `ha-manager remove` ×4 (declined 2026-09-09), or a *temporary* `Sys.Console` token
-  is minted for a one-shot Job and deleted afterwards (the operator-key Job pattern from
-  the 2026-08-21 Talos roll). **Open question Q-1 to Tom:** temporary token + one-shot
-  Job, or accept a standing root-equivalent token? Recorded here; asked in-session.
+- **OPERATOR tier — standing, root-equivalent (Q-1 ruling).** PVE user `dev-env@pve`,
+  custom role `DevEnvOperator` = `Sys.Audit, Sys.Console, VM.Audit, VM.Config.Options,
+  VM.PowerMgmt` (+ `PVEAuditor` for the other read privileges), one ACL on `/`, token
+  `dev-env@pve!operator` with `privsep=0`. Agents can remove/adjust HA resources, set
+  onboot, start/stop/reset guests. Node reboots and shells are *possible* via
+  `Sys.Console` but off-limits by rule (runbook "Do not"), not by ACL.
+- **Accident guardrail, not a security boundary:** the `pve` helper's `vm` verbs refuse
+  ids other than the three Talos workers (103/108/113) unless `--any` is passed, so a
+  typo cannot stop gasha01. PVE's task log (`/cluster/tasks`, user `dev-env@pve`) is the
+  audit trail; revocation is deleting the token.
+- **The fence fix is a normal agent task** once PR B is deployed: `pve delete
+  /cluster/ha/resources/<sid> --yes` for the five resources, declared with
+  `declare-activity`, logged in the incident report.
 
 ## Goal
 
@@ -115,12 +126,13 @@ CLAUDE.md tool-auth row (PR B, it's a ConfigMap).
 
 - Read tier is the exporter's own token — no new blast radius; it already sits in
   `observability`.
-- Operator tier can act on three VM ids and nothing else. Worst case for a compromised
-  agent: stop/reset the Talos workers — the same thing `kubectl delete pod` at the
-  OPERATOR RBAC tier can already do to their workloads, and Kubernetes recovers.
-- `Sys.Console` (HA management, node shells) stays out of the pod's standing environment.
-  If Tom later rules otherwise, that is a one-line ACL change on the PVE side and a
-  decision entry here — the wiring does not change.
+- Operator tier is **root-equivalent on the PVE cluster** (`Sys.Console` → node shell
+  via `termproxy`). Accepted by Tom 2026-09-09 (Q-1). Worst case for a compromised agent
+  is the same as the pod already carries for the Kubernetes side at OPERATOR RBAC plus
+  exec-into-secret-pods: the CNP egress allowlist is the exfil boundary, the token has no
+  password login, and it is one `pveum user token remove` from gone.
+- The `pve` helper's worker-only guard on `vm` verbs exists to catch mistakes, not
+  attackers.
 
 ## Split & handoff
 
@@ -142,41 +154,35 @@ no container references do not trigger reloader.
 3. CLAUDE.md: tool-auth row `pve` (✅ READ via PVEAuditor; ✅ OPERATOR VM-scoped once
    the 1Password fields exist).
 
-### User prerequisites (Tom, ~5 min, PVE web UI on pvedash — phone works)
+### User prerequisites (Tom, once, ~3 min — a shell on any PVE node, or the web UI)
 
 Only needed for the OPERATOR tier; the READ tier works with nothing from Tom.
 
-1. Datacenter → Permissions → **Roles** → Create: `DevEnvVMOperator`, privileges
-   `VM.Audit`, `VM.Config.Options`, `VM.PowerMgmt`.
-2. Datacenter → Permissions → **Users** → Add: `dev-env`, realm `pve` (any password;
-   it is never used — token auth only).
-3. Datacenter → Permissions → **Add → User Permission**, three times: path `/vms/103`,
-   `/vms/108`, `/vms/113`; user `dev-env@pve`; role `DevEnvVMOperator`. And once more:
-   path `/`, role `PVEAuditor`.
-4. Datacenter → Permissions → **API Tokens** → Add: user `dev-env@pve`, token id
-   `operator`, **untick Privilege Separation**, no expiry. Copy the secret (shown once).
-5. 1Password item `dev-env` (same vault as the other dev-env fields), two TOP-LEVEL
-   fields, exact labels:
-   `PROXMOX_OPERATOR_TOKEN_ID = dev-env@pve!operator`
-   `PROXMOX_OPERATOR_TOKEN_SECRET = <the uuid>`
-
-Equivalent CLI on any node, if preferred:
-
 ```bash
-pveum role add DevEnvVMOperator -privs "VM.Audit VM.Config.Options VM.PowerMgmt"
+pveum role add DevEnvOperator -privs "Sys.Audit Sys.Console VM.Audit VM.Config.Options VM.PowerMgmt"
 pveum user add dev-env@pve
-for v in 103 108 113; do pveum acl modify /vms/$v -user dev-env@pve -role DevEnvVMOperator; done
+pveum acl modify / -user dev-env@pve -role DevEnvOperator
 pveum acl modify / -user dev-env@pve -role PVEAuditor
-pveum user token add dev-env@pve operator -privsep 0     # prints the secret once
+pveum user token add dev-env@pve operator -privsep 0     # prints the secret ONCE — copy it
+```
+
+Web UI equivalent: Datacenter → Permissions → Roles (create `DevEnvOperator` with those
+five privileges) → Users (add `dev-env`, realm `pve`) → Add User Permission on `/` twice
+(`DevEnvOperator`, `PVEAuditor`) → API Tokens (user `dev-env@pve`, id `operator`,
+**untick Privilege Separation**, no expiry).
+
+Then 1Password item `dev-env`, two TOP-LEVEL fields, exact labels:
+
+```
+PROXMOX_OPERATOR_TOKEN_ID     = dev-env@pve!operator
+PROXMOX_OPERATOR_TOKEN_SECRET = <the uuid pveum printed>
 ```
 
 ### Q-1 — the HA fix itself (needs `Sys.Console`)
 
-Recorded 2026-09-09; asked in-session. Options: **(a)** temporary token with
-`Sys.Console` on `/`, used by a one-shot Job to `DELETE /cluster/ha/resources/{ct:105,
-ct:106, ct:107, vm:104}` (and `vm:109`), then deleted; **(b)** grant `dev-env@pve`
-`Sys.Console` standing and accept root-equivalence; **(c)** Tom runs `ha-manager remove`
-himself. Ruling: _pending_.
+Recorded and asked 2026-09-09. Options were (a) temporary `Sys.Console` + one-shot Job,
+(b) standing `Sys.Console`, (c) Tom runs `ha-manager remove`. **Ruling (Tom): (b)** —
+*"we will need to get it access so don't think past that."*
 
 ## Acceptance
 
@@ -184,8 +190,7 @@ himself. Ruling: _pending_.
   `curl -k https://pvedash.haynesnetwork/api2/json/version` answers `401` (reachable,
   unauthenticated). `kubectl get es -n dev dev-env-proxmox` → `SecretSynced`.
 - PR B merged (post-bounce): `pve ha` lists the HA resources and quorum; `pve vm 108
-  config` shows `onboot: 1`; with the operator token present, `pve vm 108 config` via
-  `--ro` and non-`--ro` both work and a `pve vm 104 config` write is refused `403` by PVE
-  (out-of-scope guest).
-- The fence remedy in the runbook has been exercised once (Q-1 ruling applied) and
-  `pve ha` shows no `started` resources.
+  config` shows `onboot: 1`; `pve vm 104 stop --yes` is refused by the helper's
+  worker-only guard (no request made); `pve --any vm 104 config` reads.
+- The fence remedy in the runbook has been executed once and `pve ha` shows no
+  `started` resources; LRMs report `idle`.

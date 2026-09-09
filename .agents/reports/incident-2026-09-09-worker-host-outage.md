@@ -142,5 +142,6 @@ Zigbee port beside it — the Z-Wave dongle's Ethernet link is flapping on its o
 
 **Follow-through:** Tom's ruling is that the Proxmox fixes are not done by hand — dev-env gets
 Proxmox access instead (saga `dev-env` backlog 14, runbook `proxmox-access.md`). The
-"Outside this repo (Tom) — Proxmox" bullet above is superseded by that item; the HA removal
-itself needs `Sys.Console` and awaits Q-1 there.
+"Outside this repo (Tom) — Proxmox" bullet above is superseded by that item. Tom's Q-1 ruling
+(standing operator token, `Sys.Console` included) means an agent removes the five HA resources
+once backlog 14 PR B is deployed.

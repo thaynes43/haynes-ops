@@ -8,7 +8,7 @@ operating manual.
 | Tier | Credential | Can | Cannot |
 |---|---|---|---|
 | READ | `$PVE_TOKEN_ID` / `$PVE_TOKEN_SECRET` (`prometheus@pve!exporter`, PVEAuditor) | every `GET`: cluster/HA status, quorum, node uptimes, guest placement, `onboot` per guest | any write |
-| OPERATOR | `$PVE_OPERATOR_TOKEN_ID` / `$PVE_OPERATOR_TOKEN_SECRET` (`dev-env@pve!operator`), **present only after Tom fills the 1Password fields and the pod has bounced** | `onboot`, start/stop/reset on **talosw01 (103), talosw02 (108), talosw03 (113)** | anything on any other guest; HA config; node shells; node reboots — PVE answers `403` |
+| OPERATOR | `$PVE_OPERATOR_TOKEN_ID` / `$PVE_OPERATOR_TOKEN_SECRET` (`dev-env@pve!operator`), **present only after Tom fills the 1Password fields and the pod has bounced** | HA resources (remove/adjust), `onboot`, start/stop/reset on guests; PVE-side it is root-equivalent (`Sys.Console`, Tom's ruling 2026-09-09) | by **rule**, not ACL: node reboots, node shells, anything on guests other than the three Talos workers without `--any` (the helper refuses ids ≠ 103/108/113 as a typo guard) |
 
 `pve` uses the operator token when it is set, else the read token. `pve --ro …` forces
 the read token. Env is absent until PR B of backlog 14 has deployed; before that, the
@@ -57,31 +57,33 @@ Kubernetes side after 8 min; this is the Proxmox side.)
    that is a physical/UPS problem — page.
 3. `pve vm <id> start --yes`, then `kubectl get node -w` until Ready. Log it.
 
-## Remedy: the fence itself (one-time, needs `Sys.Console`)
+## Remedy: the fence itself (one-time; operator tier)
 
-The standing operator token **cannot** do this on purpose. Per backlog 14 Q-1, HA
-resources come off either by Tom (`ha-manager remove vm:104 ct:105 ct:106 ct:107
-vm:109`) or by a one-shot Job holding a temporary `Sys.Console` token:
+The standing operator token can do this (Q-1 ruling). It is a planned change, not an
+emergency: `declare-activity start "removing PVE HA resources" --scope proxmox --ttl 30m`,
+then:
 
+```bash
+pve ha                                                # before
+for sid in vm:104 ct:105 ct:106 ct:107 vm:109; do     # gasha01 nut2700 cephdash pvedash ubuntu01
+  pve delete /cluster/ha/resources/$sid --yes
+done
+pve ha                                                # after: no `service` rows
 ```
-DELETE /cluster/ha/resources/vm:104      # gasha01
-DELETE /cluster/ha/resources/ct:105      # nut2700
-DELETE /cluster/ha/resources/ct:106      # cephdash
-DELETE /cluster/ha/resources/ct:107      # pvedash
-DELETE /cluster/ha/resources/vm:109      # ubuntu01 (already `ignored`)
-```
 
-Guests keep running; only HA management stops. Verify with `pve ha`: no `service` rows,
-LRMs drift to `idle` within minutes, and from then on a network partition leaves nodes
-running with a read-only cluster config instead of rebooting them. After that, delete
-the temporary token (`pveum user token remove …`).
+Guests keep running; only HA management stops. LRMs drift to `idle` within minutes, and
+from then on a network partition leaves nodes running with a read-only cluster config
+instead of rebooting them. Log it in the incident report and `declare-activity end`.
 
 ## Do not
 
 - Do not probe write permissions by attempting real writes on real ids. To learn what a
   call needs, call it against a **non-existent** id (`vm:99999`) — PVE checks the
   privilege before the object and the `403` names it.
-- Do not reboot nodes from here even if a token ever allows it — a PVE node reboot is a
-  worker outage plus, on the twins, a Ceph mon down. That is Tom's call.
+- Do not reboot nodes or open node shells (`termproxy`) from here even though the
+  operator token allows it — a PVE node reboot is a worker outage plus, on the twins, a
+  Ceph mon down. That is Tom's call, every time.
+- Do not act on guests other than the three Talos workers without a reason you would
+  write in a PR; `--any` exists for reads and for the HA removal above.
 - Do not copy tokens out of other pods. The exporter pod holds the read token too; the
   sanctioned path is the pod env this runbook describes.
