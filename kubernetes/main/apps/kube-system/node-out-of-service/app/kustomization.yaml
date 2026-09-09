@@ -1,0 +1,15 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./rbac.yaml
+  - ./cronjob.yaml
+configMapGenerator:
+  # Hash-suffixed on purpose (the kustomize default, as in observability/dns-canary):
+  # editing the script mints a new ConfigMap name and kustomize rewrites the CronJob's
+  # volume reference, so the very next Job picks the change up. A pinned name would
+  # leave running Jobs reading a silently swapped script.
+  - name: node-out-of-service-script
+    files:
+      - node-out-of-service.sh=./resources/node-out-of-service.sh
