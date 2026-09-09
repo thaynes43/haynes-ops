@@ -52,6 +52,14 @@ spec:
               ZIGBEE2MQTT_CONFIG_HOMEASSISTANT_STATUS_TOPIC: homeassistant/status              
               ZIGBEE2MQTT_CONFIG_MQTT_INCLUDE_DEVICE_INFORMATION: "true"
               ZIGBEE2MQTT_CONFIG_MQTT_KEEPALIVE: 60
+              # 2026-09-09: z2m declares an MQTT 5 Maximum Packet Size (default
+              # 1 MiB) and subscribes to zigbee2mqtt/#, so EMQX had to DROP z2m's
+              # own 3.7 MB retained zigbee2mqtt/bridge/devices on the way back to
+              # it — every `frame_is_too_large` / packet_is_discarded in the
+              # broker log was this client limit, not a broker one (HA, same
+              # broker, dropped 0). 10 MiB clears it with room for growth.
+              # See .agents/runbooks/emqx-config-drift.md.
+              ZIGBEE2MQTT_CONFIG_MQTT_MAXIMUM_PACKET_SIZE: 10485760
               ZIGBEE2MQTT_CONFIG_MQTT_REJECT_UNAUTHORIZED: "true"
               ZIGBEE2MQTT_CONFIG_MQTT_SERVER: mqtt://emqx-listeners.database.svc.cluster.local:1883
               ZIGBEE2MQTT_CONFIG_MQTT_VERSION: 5
