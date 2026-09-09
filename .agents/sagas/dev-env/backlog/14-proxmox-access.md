@@ -51,6 +51,17 @@ with it is root-equivalent on the whole cluster, in the environment of yolo-mode
 That is the same class of decision as the age key ("never enters this pod without an
 explicit decision") and is **not** taken here by default.
 
+### 2026-09-09 — operator ExternalSecret pulled back out of main (it paged Tom ×3)
+
+PR A (#2804) shipped `dev-env-proxmox-operator` on the "SecretSyncedError is harmless"
+precedent written on `dev-env-gcp`. It is not harmless: the `dev-env` Kustomization has
+`wait: true` + `timeout: 5m`, so an ES that can never become Ready fails the Kustomization
+(`FluxReconciliationFailure`, critical → Pushover), `dev-env-ops` fails on its `dependsOn`
+(second page), and the upgrade-health-gate pages the ES after 10 m (third page). Reverted
+the same hour; the ES now lives in **PR B**, which is merged only after Tom's 1Password
+fields exist. Rule going forward, recorded on the gcp ES comment too: **an ExternalSecret
+is added only after its 1Password field exists.**
+
 ### 2026-09-09 — Q-1 ruling (Tom): standing access, `Sys.Console` included
 
 Asked in-session with the root-shell consequence spelled out. Tom: *"we will need to get it
@@ -104,8 +115,8 @@ pve-filet02 .13).
 - `ExternalSecret dev-env-proxmox` → `PVE_TOKEN_ID` / `PVE_TOKEN_SECRET` from the
   `proxmox` item (`PROXMOX_API_TOKEN_ID` / `PROXMOX_API_TOKEN_SECRET`). Syncs today.
 - `ExternalSecret dev-env-proxmox-operator` → `PVE_OPERATOR_TOKEN_ID` /
-  `PVE_OPERATOR_TOKEN_SECRET` from the `dev-env` item. **SecretSyncedError until Tom adds
-  the fields** — harmless (dev-env-gcp precedent); PR B consumes it `optional: true`.
+  `PVE_OPERATOR_TOKEN_SECRET` from the `dev-env` item. **Ships in PR B, not PR A** — see
+  the 2026-09-09 "pulled back out of main" entry below. PR B consumes it `optional: true`.
 
 ### `pve` helper (PR B — ConfigMap, rolls the pod)
 
@@ -141,7 +152,9 @@ CLAUDE.md tool-auth row (PR B, it's a ConfigMap).
 
 1. This design doc + `.agents/runbooks/proxmox-access.md` + incident report addendum.
 2. CNP: six DNS names + the two `toFQDNs` egress rules.
-3. Two ExternalSecrets (unreferenced by the Deployment → reloader is not involved).
+3. ExternalSecret `dev-env-proxmox` (READ tier; its 1Password fields already exist, so
+   it syncs at once). The OPERATOR ES was in PR A originally and had to be reverted —
+   see the decision log.
 
 **Why zero rollout:** nothing the pod mounts changes. CNPs apply live; new Secrets that
 no container references do not trigger reloader.
@@ -187,9 +200,9 @@ Recorded and asked 2026-09-09. Options were (a) temporary `Sys.Console` + one-sh
 
 ## Acceptance
 
-- PR A merged: from the dev-env pod, `getent hosts pvedash.haynesnetwork` resolves and
-  `curl -k https://pvedash.haynesnetwork/api2/json/version` answers `401` (reachable,
-  unauthenticated). `kubectl get es -n dev dev-env-proxmox` → `SecretSynced`.
+- PR A merged ✅ (2026-09-09 15:05Z): from the dev-env pod, `getent hosts
+  pvedash.haynesnetwork` resolves and `curl -k https://pvedash.haynesnetwork/api2/json/version`
+  answers `401`; `kubectl get es -n dev dev-env-proxmox` → `SecretSynced`. Verified.
 - PR B merged (post-bounce): `pve ha` lists the HA resources and quorum; `pve vm 108
   config` shows `onboot: 1`; `pve vm 104 stop --yes` is refused by the helper's
   worker-only guard (no request made); `pve --any vm 104 config` reads.
