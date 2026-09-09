@@ -104,3 +104,44 @@ limit, not the broker's). Cost: the operator's blue-green killed the old core be
 could stand alone → **MQTT down 14:19–14:30:45Z (12 min)**, recovered by giving the new core a
 fresh data volume; the retained store was rebuilt by the z2m restart. Details, timeline and the
 procedure for next time are in the runbook's "Lessons from the 2026-09-09 window".
+
+## Addendum 14:30Z (10:30 EDT) — root cause from the UniFi controller + Proxmox, and what changed
+
+Evidence gathered by the dev-env UniFi lane (`~/work/unifi-findings-2026-09-09.md` on the
+dev-env PVC has the full tables); this corrects two premises above.
+
+**1. It was the UniFi auto-firmware rollout — confirmed from the controller, not inferred.**
+Site setting `mgmt.auto_upgrade = true`, `auto_upgrade_hour = 3` (America/New_York). Six
+switches took `7.5.10.17129 → 7.5.15.17146` (the Pro Aggregation from `7.4.1.16850`), exact
+`startup_timestamp`s 07:18:37 → 07:47:03Z; the Shed Flex and Cloffice Flex got no firmware and
+rebooted as PoE collateral of their parents. The UDM SE did **not** reboot (up since 08-25 —
+its own console update, same 3 AM window). No AP rebooted. UniFi offers no per-device
+exclusion, so on Tom's go the setting was flipped `true → false` at ~14:25Z (read back from
+the controller). The event log itself is unreachable on Network 10.6.101 via API.
+
+**2. The three workers are on three different Proxmox hosts, not one — and all five hosts
+rebooted.** talosw01 = qemu/103 on HaynesIntelligence (agg. port 6), talosw02 = qemu/108 on
+twin-top (port 11), talosw03 = qemu/113 on twin-bottom (port 9). `pve_uptime_seconds` puts
+twin-bottom / pve04 / twin-top kernel starts at 07:38:21–22Z (within one second),
+HaynesIntelligence 07:40:27Z, pve-filet02 07:48:19Z. That is not a power event (PDUs kept
+26–327 d uptimes) — it is **Proxmox HA watchdog fencing on corosync quorum loss** when the
+aggregation switch every node is single-homed into rebooted at 07:37:10Z. "Half the cluster
+shares one physical failure domain" is true, but the domain is the *switch*, not a host.
+
+**3. HA is armed by five helper guests, none of them Talos.** `/cluster/ha/resources`:
+vm:104 gasha01, ct:105 nut2700, ct:106 cephdash, ct:107 pvedash (all `started`), vm:109
+ubuntu01 (`ignored`). The Talos VMs are not HA resources; they simply die with their hosts.
+Removing those five from HA disarms the fence — a network partition then leaves nodes running
+with a read-only cluster config. `pve_onboot_status` now reads 1 for every guest including
+talosw02.
+
+**4. TubesZB:** both dongles are PoE-powered from Switch Pro Max 48 PoE (Z-Wave port 12,
+Zigbee port 14) and power-cycled with its 07:24:55Z reboot — that is the 07:24Z wedge. The
+12:19Z wedge had no switch event; port 12 shows 9 link-downs since 07:25Z versus 0 on the
+Zigbee port beside it — the Z-Wave dongle's Ethernet link is flapping on its own.
+
+**Follow-through:** Tom's ruling is that the Proxmox fixes are not done by hand — dev-env gets
+Proxmox access instead (saga `dev-env` backlog 14, runbook `proxmox-access.md`). The
+"Outside this repo (Tom) — Proxmox" bullet above is superseded by that item. Tom's Q-1 ruling
+(standing operator token, `Sys.Console` included) means an agent removes the five HA resources
+once backlog 14 PR B is deployed.

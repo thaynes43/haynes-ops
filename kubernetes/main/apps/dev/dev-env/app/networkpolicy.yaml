@@ -109,6 +109,17 @@ spec:
               - matchPattern: "*.haynesops.com"
               - matchName: "haynesnetwork.com"
               - matchPattern: "*.haynesnetwork.com"
+              # Proxmox VE (saga backlog 14, incident 2026-09-09): the pvedash
+              # HAProxy LB (API on 443) + each node's own pveproxy (8006). These
+              # are LAN names in the UDM's `.haynesnetwork` zone (NOT the public
+              # haynesnetwork.com above) — six exact names, deliberately not
+              # `*.haynesnetwork`, which would name every device on the LAN.
+              - matchName: "pvedash.haynesnetwork"
+              - matchName: "haynesintelligence.haynesnetwork"
+              - matchName: "twin-top.haynesnetwork"
+              - matchName: "twin-bottom.haynesnetwork"
+              - matchName: "pve04.haynesnetwork"
+              - matchName: "pve-filet02.haynesnetwork"
               # auth-watch pages via Pushover
               - matchName: "api.pushover.net"
               # ---- sigoalumni.org buildout (sigo-alumni backlog/tooling, 2026-08-05) ----
@@ -271,6 +282,31 @@ spec:
       toPorts:
         - ports:
             - port: "50000"
+              protocol: TCP
+    # 5. Proxmox VE API (saga backlog 14; incident 2026-09-09 — the 5-node PVE
+    #    cluster fenced itself when the aggregation switch rebooted, and nothing
+    #    in this pod could reach Proxmox to see or fix it). pvedash LB on 443 +
+    #    the five nodes' pveproxy on 8006. Unlike the Talos node IPs in rule 4,
+    #    these are LAN hosts that are NOT cluster nodes, so Cilium gives them
+    #    `world` identity and toFQDNs matches them like any external name.
+    #    Reads ride the existing PVEAuditor token; writes are gated SERVER-SIDE by
+    #    the operator token's ACL (VM-scoped to the Talos workers) — the CNP only
+    #    opens the path.
+    - toFQDNs:
+        - matchName: "pvedash.haynesnetwork"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toFQDNs:
+        - matchName: "haynesintelligence.haynesnetwork"
+        - matchName: "twin-top.haynesnetwork"
+        - matchName: "twin-bottom.haynesnetwork"
+        - matchName: "pve04.haynesnetwork"
+        - matchName: "pve-filet02.haynesnetwork"
+      toPorts:
+        - ports:
+            - port: "8006"
               protocol: TCP
     # 3. HTTPS to the enumerated external names (same set as the DNS rules).
     - toFQDNs:
