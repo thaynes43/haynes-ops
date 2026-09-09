@@ -4,37 +4,19 @@ apiVersion: apps.emqx.io/v2beta1
 kind: EMQX
 metadata:
   name: emqx
-spec:
-  # Pinned to 6.2.0 — HELD, do not bump. 6.2.1+ crash-loops at boot with
-  # SINGLE_NODE_LICENSE: the built-in single-node COMMUNITY (free) license aborts
-  # emqx_license. Root cause is NOT the broker (and NOT 6.2.2, the earlier theory)
-  # — it's the emqx-OPERATOR blue-green upgrade forming a transient 2-node cluster
-  # that the single-node license rejects (maintainer-confirmed, emqx/emqx#17600).
-  # Fix = emqx-operator 3.0.0; lift this pin only AFTER the operator is on 3.0.0.
-  # Enforced + fully reasoned in .renovate/holds.json5. Rolled back 2026-06-15 (#1841).
-  image: docker.io/emqx/emqx:6.2.0
-  # NO COMMENTS INSIDE config.data. The operator re-serializes this HOCON and
-  # hot-applies it with PUT /api/v5/configs?mode=merge; with `#` comment lines
-  # in the block EMQX answered `HTTP 400 parse_error "syntax error before: \"\""`
-  # on every reconcile (2026-09-09), the hot-apply never landed and the operator's
-  # reconcile loop stayed red. Keep the block plain; explain things here.
-  #
-  # retainer (2026-09-09): 8MB — the retained zigbee2mqtt/bridge/devices payload is
-  # already 3.7MB and grows with the device count; 4MB left ~10% headroom.
-  # delivery_rate / max_publish_rate = infinity: Home Assistant re-fetches ~7,400
-  # retained homeassistant/# discovery configs on every reconnect, and the default
-  # 1000/s limiter ABORTS that fetch (retained_fetch_rate_limit_exceeded →
-  # entities/groups "unavailable" after a broker or HA restart). One broker, one
-  # house: no limiter.
-  #
-  # DRIFT WARNING — read .agents/runbooks/emqx-config-drift.md before trusting
-  # this block. The running broker keeps hot-applied overrides in
-  # data/configs/cluster.hocon on its PVC, and those WIN over this file at boot
-  # (that is how git said 4MB while the broker enforced 1MB from 2026-06-05 to
-  # 2026-09-09). `emqx ctl conf show retainer` is the truth, this file is the
-  # intent — keep them equal. Editing this block restarts the core pod (reloader).
-  config:
-    data: |
+  annotations:
+    # PINNED to spec.config.data (same YAML anchor) — this disables the
+    # operator's runtime hot-apply on purpose. emqx-operator 2.3.1 re-prints
+    # config.data through go-hocon before PUT /api/v5/configs and EMQX 6.2.0
+    # rejects the result (`HTTP 400 parse_error "syntax error before: \"\""`,
+    # every reconcile, 2026-09-09) — the same raw text is accepted with 200.
+    # In June the same path silently clobbered retainer.max_payload_size back
+    # to 1MB. With annotation == spec the operator sees "nothing to apply" and
+    # the reconcile loop stays green. Consequence: a config.data edit reaches
+    # the broker ONLY via base.hocon at the reloader restart, and only for keys
+    # not already overridden in data/configs/cluster.hocon — so apply runtime
+    # keys through the API first, per .agents/runbooks/emqx-config-drift.md.
+    apps.emqx.io/last-emqx-configuration: &emqx_config |
       mqtt {
         max_packet_size = 256MB
       }
@@ -66,6 +48,39 @@ spec:
         ]
         no_match: "deny"
       }
+spec:
+  # Pinned to 6.2.0 — HELD, do not bump. 6.2.1+ crash-loops at boot with
+  # SINGLE_NODE_LICENSE: the built-in single-node COMMUNITY (free) license aborts
+  # emqx_license. Root cause is NOT the broker (and NOT 6.2.2, the earlier theory)
+  # — it's the emqx-OPERATOR blue-green upgrade forming a transient 2-node cluster
+  # that the single-node license rejects (maintainer-confirmed, emqx/emqx#17600).
+  # Fix = emqx-operator 3.0.0; lift this pin only AFTER the operator is on 3.0.0.
+  # Enforced + fully reasoned in .renovate/holds.json5. Rolled back 2026-06-15 (#1841).
+  image: docker.io/emqx/emqx:6.2.0
+  # NO COMMENTS INSIDE config.data. The operator re-serializes this HOCON and
+  # hot-applies it with PUT /api/v5/configs?mode=merge; with `#` comment lines
+  # in the block EMQX answered `HTTP 400 parse_error "syntax error before: \"\""`
+  # on every reconcile (2026-09-09), the hot-apply never landed and the operator's
+  # reconcile loop stayed red. Keep the block plain; explain things here.
+  #
+  # retainer (2026-09-09): 8MB — the retained zigbee2mqtt/bridge/devices payload is
+  # already 3.7MB and grows with the device count; 4MB left ~10% headroom.
+  # delivery_rate / max_publish_rate = infinity: Home Assistant re-fetches ~7,400
+  # retained homeassistant/# discovery configs on every reconnect, and the default
+  # 1000/s limiter ABORTS that fetch (retained_fetch_rate_limit_exceeded →
+  # entities/groups "unavailable" after a broker or HA restart). One broker, one
+  # house: no limiter.
+  #
+  # DRIFT WARNING — read .agents/runbooks/emqx-config-drift.md before trusting
+  # this block. The running broker keeps hot-applied overrides in
+  # data/configs/cluster.hocon on its PVC, and those WIN over this file at boot
+  # (that is how git said 4MB while the broker enforced 1MB from 2026-06-05 to
+  # 2026-09-09). `emqx ctl conf show retainer` is the truth, this file is the
+  # intent — keep them equal. Editing this block restarts the core pod (reloader).
+  config:
+    # The HOCON text itself lives under metadata.annotations above (YAML
+    # anchors must be defined before use); this is the same string.
+    data: *emqx_config
   coreTemplate:
     metadata:
       annotations:

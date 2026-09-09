@@ -199,3 +199,25 @@ put the commentary in YAML comments above `config:`. Check with
 (retained `zigbee2mqtt/bridge/info` → `config.mqtt`), `send_msg.dropped.too_large: 0` on every
 client, no `frame_is_too_large` / `retain_failed_*` / `retained_fetch_rate_limit_exceeded` in the
 broker log, HA `subscriptions_cnt: 488`.
+
+## The operator's hot-apply is disabled on purpose (2026-09-09)
+
+`cluster.yaml` pins `metadata.annotations["apps.emqx.io/last-emqx-configuration"]` to
+`spec.config.data` with a YAML anchor. Why: emqx-operator 2.3.1 (`internal/controller/sync_emqx_config.go`)
+compares that annotation with `spec.config.data`; on a difference it parses the config with
+go-hocon, re-prints it (`internal/controller/config/emqx.go` `printObject`: root keys joined by
+`, `, empty strings as `""`) and PUTs it to `/api/v5/configs?mode=<spec.config.mode>`. On this
+config EMQX 6.2.0 answers `HTTP 400 parse_error "syntax error before: \"\""` — while the raw
+`base.hocon` PUT by hand gets `HTTP 200` — so the loop errored on every reconcile and the
+annotation never advanced. The same code path produced the 2026-06-05 tnx3 that reset
+`retainer.max_payload_size` to 1MB. Which token the printer mangles was not identified (no
+Go here; the operator only logs the printed config at debug level).
+
+With the annotation pinned, the operator sees nothing to apply and stays green. That means:
+- a `spec.config.data` change reaches the broker only through `base.hocon` at the reloader
+  restart, and only for keys NOT already present in `cluster.hocon` (the PVC override layer);
+- so for runtime-tunable keys (`retainer.*`, `mqtt.*`, listeners, …) apply through the API or
+  `emqx ctl conf load --merge` FIRST, then commit the same to git (the annotation follows via the
+  anchor) — exactly the "runtime first, then git" procedure above;
+- if you ever want the hot-apply back (a fixed operator), delete the annotation block and the
+  anchor; the operator records the current spec on its next reconcile and applies later diffs.
