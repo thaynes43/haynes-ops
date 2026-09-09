@@ -92,3 +92,15 @@ Lesson for "why did nothing tell us": the data was there; there were no Promethe
 it and no dashboard. The PVE alerting PR adds `PVEVMStopped` / `PVEVMNotOnboot` /
 `PVENodeDown` / `PVENodeRebooted` / `PVEExporterNoData` and the community "Proxmox via
 Prometheus" board.
+
+## Follow-up window 14:17–14:45Z (10:17–10:45 EDT) — EMQX hardening, one self-inflicted outage
+
+Lane A of the post-incident work: the EMQX core now prefers the bare-metal masters (#2801, running
+on talosm02), the retainer limits that broke HA's retained-discovery fetch are fixed live and in
+git (#2800: 8MB / unlimited delivery — the broker had been enforcing 1MB since 2026-06-05 because
+of a PVC-resident override, see `.agents/runbooks/emqx-config-drift.md`), and zigbee2mqtt's MQTT 5
+maximum packet size is 10 MiB (#2802 — the `frame_is_too_large` lines were z2m's own 1 MiB client
+limit, not the broker's). Cost: the operator's blue-green killed the old core before the new one
+could stand alone → **MQTT down 14:19–14:30:45Z (12 min)**, recovered by giving the new core a
+fresh data volume; the retained store was rebuilt by the z2m restart. Details, timeline and the
+procedure for next time are in the runbook's "Lessons from the 2026-09-09 window".

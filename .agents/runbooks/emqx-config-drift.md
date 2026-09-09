@@ -145,3 +145,57 @@ blue-green.
 Every blue-green leaves the previous StatefulSet at 0 replicas and, for some,
 its PVC (`kubectl get sts,pvc -n database | grep emqx-core`). Delete the 0/0
 StatefulSets and orphan PVCs once the new core has been stable for a day.
+
+## Lessons from the 2026-09-09 window (read before any pod-template change)
+
+**A pod-template change on this broker = a full MQTT outage, not a bounce.** The affinity
+change (#2801) made the operator blue-green the core. What actually happened, with times:
+
+| UTC | event |
+|---|---|
+| 14:17:33 | operator creates `emqx-core-8545588dbb` (new hash) on talosm02; pod Ready ~14:18 |
+| 14:18:03 | operator: `failed to start node evacuation: error accessing emqx-core-5db6f9b9c6-0 API` (the Community edition has no rebalance/evacuation API) |
+| 14:19:20 | operator scales the OLD StatefulSet to 0 anyway (`Delete Pod emqx-core-5db6f9b9c6-0`, PreStopHook failed) |
+| 14:21 | new pod fails liveness (18083); every restart after that hangs in `mria_mnesia: still waiting for table(s): [cluster_rpc_mfa,cluster_rpc_commit]` / `Table cluster_rpc_mfa is waiting for one of the nodes: [old node]` — its Mnesia schema still lists the dead old core as a table holder |
+| 14:19 → 14:30:45 | **MQTT down 12 min**: z2m/HA/AppDaemon disconnected |
+| 14:30 | recovery: `kubectl delete pvc emqx-core-data-emqx-core-8545588dbb-0 --wait=false` + `kubectl delete pod emqx-core-8545588dbb-0` → fresh data dir → node boots standalone (DNS discovery finds only itself) → Ready in 15 s |
+| 14:31 | retainer values re-applied via the API (fresh `cluster.hocon`); z2m/HA/AppDaemon reconnected on their own |
+| 14:39 | z2m restart (#2802) republished the ~7,100 retained discovery configs; 30 group `get` pokes via `POST /api/v5/publish` |
+
+The old PVC (`emqx-core-data-emqx-core-5db6f9b9c6-0`) was left untouched: it holds the pre-window
+retained store, the `cluster.hocon`, and the Mnesia schema, if anything ever needs to be dug out.
+
+What the fresh data dir cost: the retained store (rebuilt by the z2m restart, ~7,100 of the
+~7,450 messages came back — the rest were stale configs for removed devices plus a handful of
+non-z2m retained topics that reappear when their publishers next publish) and the dashboard's
+API keys created by hand, if any. Users: only the bootstrapped `admin`, which came back from
+`/opt/init-user.json`. Authz rules: none existed.
+
+**Next time** (any change to `spec.coreTemplate.spec`, `image`, or anything else in the pod
+template):
+
+1. Plan it as a ~10–15 min MQTT outage window, declared, with Tom's go.
+2. Merge, then watch `kubectl get pod -n database -l apps.emqx.io/db-role=core -w`. The moment the
+   NEW pod is Ready and BEFORE the operator kills the old one (it waited ~1m50s on 2026-09-09),
+   detach the old node cleanly so the new one owns the data:
+   `kubectl exec -n database <OLD pod> -c emqx -- emqx ctl cluster leave`
+   — that removes the old node from the schema on both sides; the operator's later scale-down is
+   then harmless. If you miss the window and the new pod loops on `waiting for table(s)`, do the
+   fresh-PVC recovery above (fast, deterministic) rather than trying to resurrect the old pod.
+3. After the new pod is Ready: re-check `emqx ctl conf show retainer` (fresh PVC = git's
+   base.hocon values until the operator hot-applies or you PUT), then restart z2m so the retained
+   discovery store is rebuilt, then the group `get` pokes.
+
+**The operator's hot-apply is fragile.** After #2800 every reconcile logged
+`failed to update emqx config through API ... HTTP 400 parse_error "syntax error before: \"\""`
+— the `#` comment lines inside `spec.config.data` broke the operator's re-serialized HOCON,
+so the CR annotation `apps.emqx.io/last-emqx-configuration` never advanced and the reconcile
+loop stayed in error (later sub-reconcilers such as stale-StatefulSet cleanup do not run while
+it errors). Keep `config.data` plain HOCON — no comments, quote strings like `"infinity"` — and
+put the commentary in YAML comments above `config:`. Check with
+`kubectl logs -n database deploy/emqx-operator-controller-manager -c manager | grep '"level":"error"'`.
+
+**Verified clean after the window:** z2m connects with `maximum_packet_size: 10485760`
+(retained `zigbee2mqtt/bridge/info` → `config.mqtt`), `send_msg.dropped.too_large: 0` on every
+client, no `frame_is_too_large` / `retain_failed_*` / `retained_fetch_rate_limit_exceeded` in the
+broker log, HA `subscriptions_cnt: 488`.
