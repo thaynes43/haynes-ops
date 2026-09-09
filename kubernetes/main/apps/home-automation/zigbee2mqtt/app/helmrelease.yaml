@@ -59,7 +59,7 @@ spec:
               # broker log was this client limit, not a broker one (HA, same
               # broker, dropped 0). 10 MiB clears it with room for growth.
               # See .agents/runbooks/emqx-config-drift.md.
-              ZIGBEE2MQTT_CONFIG_MQTT_MAXIMUM_PACKET_SIZE: 10485760
+              ZIGBEE2MQTT_CONFIG_MQTT_MAXIMUM_PACKET_SIZE: "10485760"  # quoted: Helm renders the bare int as 1.048576e+07 (z2m parsed it, but do not rely on it)
               ZIGBEE2MQTT_CONFIG_MQTT_REJECT_UNAUTHORIZED: "true"
               ZIGBEE2MQTT_CONFIG_MQTT_SERVER: mqtt://emqx-listeners.database.svc.cluster.local:1883
               ZIGBEE2MQTT_CONFIG_MQTT_VERSION: 5
