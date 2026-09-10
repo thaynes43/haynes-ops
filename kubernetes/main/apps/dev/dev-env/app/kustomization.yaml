@@ -38,6 +38,9 @@ configMapGenerator:
       # Codex preamble; dev-init prepends it to the shared CLAUDE.md to make
       # ~/.codex/AGENTS.md — the same rules for both agents, one source.
       - resources/config/codex/AGENTS.header.md
+      # Admin requirements (approval/sandbox floor the phone app cannot override);
+      # the HelmRelease also mounts this key at /etc/codex/requirements.toml.
+      - resources/config/codex/requirements.toml
   # The workspace README code-server opens on (~/README.md) — the human walkthrough.
   - name: dev-env-config-home
     files:
