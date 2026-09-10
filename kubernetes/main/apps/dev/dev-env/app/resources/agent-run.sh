@@ -14,7 +14,7 @@
 #   agent-run detach [<task-id>]                # kick attached clients off (no id → picker)
 #   agent-run reap   [<task-id>] [--force]      # kill + cleanup (no id → picker)
 #   agent-run prune  [--yes] [--force]          # bulk-clean ALL stranded worktrees (dry-run w/o --yes)
-#   agent-run codex-remote [up|stop]            # pod-level codex PHONE control (see NB; up = boot path)
+#   agent-run codex-remote [stop]               # pod-level codex phone/web control (see NB)
 #
 # Bare `agent-run` fills every omitted choice interactively, TOOL-FIRST: repo picker
 # (owner's GitHub repos newest-pushed first; offline → local clones), agent (claude|
@@ -41,10 +41,9 @@
 # whenever the image lags a launch (see the picker comment).
 #
 # NB codex phone/web: codex has no per-session remote like claude's --remote-control —
-# its remote is a single per-machine app-server daemon. So codex phone control is
-# POD-LEVEL: dev-init runs `agent-run codex-remote up` at boot (supervised daemon),
-# `agent-run codex-remote` prints a pairing code; the phone picks the dir, bypassing
-# per-worktree isolation. Mobile app only — no browser path. Not a per-task mode.
+# its remote is a single per-machine app-server daemon. So codex phone/web is a
+# POD-LEVEL `agent-run codex-remote` (starts the daemon + prints a pairing code; the
+# phone picks the dir, bypassing per-worktree isolation), not a per-task mode.
 #
 # attach/detach/reap without an id open an arrow-key picker (↑/↓ + Enter, q
 # cancels) showing each task's start time; reap's picker also lists STRANDED
@@ -107,7 +106,7 @@ agent-run — worktree-per-task agent dispatcher
   agent-run detach [<task-id>]                # no id → picker (attached sessions only)
   agent-run reap   [<task-id>] [--force]      # no id → picker (incl. stranded worktrees)
   agent-run prune  [--yes] [--force]          # bulk-clean stranded worktrees (dry-run without --yes)
-  agent-run codex-remote [up|stop]            # pod-level codex phone control (daemon + pairing code; up = no pairing)
+  agent-run codex-remote [stop]               # pod-level codex phone/web control (daemon + pairing code)
 EOF
 }
 
@@ -550,7 +549,7 @@ case "$cmd" in
             'task    fire-and-forget: type a prompt, walk away — logs to ~/work/<id>.log')" \
             || die "mode required (or pass -p / --interactive / --local)"
         else
-          mode="$(pick 'run codex — how to drive it?  (phone is pod-level → agent-run codex-remote)' \
+          mode="$(pick 'run codex — how to drive it?  (phone/web is pod-level → agent-run codex-remote)' \
             'local   terminal here (codex TUI)' \
             'task    fire-and-forget: type a prompt, walk away — logs to ~/work/<id>.log')" \
             || die "mode required (or pass -p / --interactive / --local)"
@@ -734,7 +733,7 @@ reason as your final message."
       case "$agent:$mode" in
         claude:both)  log "claude TUI + remote-control '$id' up (model=${model:-pod-default} effort=$eff_lbl) — this pane AND phone/web →  agent-run attach $id" ;;
         claude:local) log "claude local TUI ready (model=${model:-pod-default} effort=$eff_lbl; no remote) →  agent-run attach $id" ;;
-        codex:*)      log "codex local TUI ready (model=${model:-default} effort=$eff_lbl; phone → agent-run codex-remote) →  agent-run attach $id" ;;
+        codex:*)      log "codex local TUI ready (model=${model:-default} effort=$eff_lbl; phone/web → agent-run codex-remote) →  agent-run attach $id" ;;
       esac
     else
       # Env-var indirection keeps the prompt out of shell-quoting hell; log to
@@ -767,7 +766,7 @@ reason as your final message."
     done
     [ "$strand" -gt 0 ] && printf 'STRANDED: %d worktree(s) with no live session → agent-run prune\n' "$strand"
     tmux has-session -t codex-remote 2>/dev/null && [ -S "$HOME/.codex/app-server-control/app-server-control.sock" ] \
-      && printf 'CODEX REMOTE: active (pod-level, supervised) — agent-run codex-remote (pair a phone) | agent-run codex-remote stop\n'
+      && printf 'CODEX REMOTE: active (pod-level) — agent-run codex-remote (re-pair) | agent-run codex-remote stop\n'
     true   # never let the trailing test set a nonzero exit for `agent-run list`
     ;;
   attach)
@@ -908,106 +907,64 @@ reason as your final message."
     fi
     ;;
   codex-remote)
-    # Pod-level codex phone control. codex has NO per-session --remote-control like
-    # claude; its remote is a single per-machine app-server daemon (one socket, no
-    # --cwd). So this is pod-wide, not per-worktree: the phone picks the working dir,
-    # bypassing agent-run's per-worktree isolation. It is MOBILE-APP only (no browser
-    # path exists — the browser-drivable analogue is claude --interactive).
-    #   (none)|start  ensure the daemon is up (supervised) + print a pairing code
-    #   up            ensure it is up, no pairing output (dev-init runs this at boot)
-    #   stop          supervisor + daemon down (pid files / socket cleaned)
-    #   _supervise    internal: the loop tmux session `codex-remote` runs
-    # LIFECYCLE TRAPS (all hit live, 2026-09-06/10):
-    #  * The standalone daemon ships its own updater loop (`app-server daemon
-    #    pid-update-loop`): 5 min after start, then hourly, it installs the newest
-    #    release and restarts app-server. This pod's PID 1 is code-server's node, which
-    #    never reaps, so the old app-server stays a ZOMBIE, the updater waits on its pid
-    #    forever and the phone shows the computer greyed out (openai/codex#34721;
-    #    0.153.4→0.154.0 on 2026-09-10). Policy (Tom, 2026-09-10): codex updates ONLY
-    #    at pod restart via the CODEX_VERSION pin dev-init installs — never mid-day —
-    #    so the updater is OFF (`updater.autoUpdateEnabled=false` in
-    #    ~/.codex/app-server-daemon/settings.json).
-    #  * `codex remote-control start` REWRITES settings.json wholesale (drops that key)
-    #    and spawns a fresh updater every time → re-assert + kill AFTER each start.
-    #  * `pair` straight after a start races the relay enrolment and fails → retry.
-    #  * The phone shows the name stored at FIRST enrolment (state DB), not the pod's
-    #    hostname — `$(hostname)` in the old banner made a live entry look like a ghost.
-    #  * `codex remote-control stop` HANGS — kill by pid file. NOT `pkill -f app-server`:
-    #    -f matches ANY command line containing the string and killed the calling shell
-    #    on 2026-09-06; the fallback pattern is anchored on codex's binary path.
+    # Pod-level codex phone/web control. codex has NO per-session --remote-control
+    # like claude; its remote is a single per-machine app-server daemon (one socket,
+    # no --cwd). So this is pod-wide, not per-worktree: enable it, then drive codex
+    # from the ChatGPT app / Codex web, where the PHONE picks the working dir —
+    # which bypasses agent-run's per-worktree isolation. `stop` to shut it down.
     sub="${1:-start}"
-    self="$(readlink -f "$0")"   # absolute: the tmux session starts in $HOME, a relative $0 would not resolve
     sock="$HOME/.codex/app-server-control/app-server-control.sock"
-    dd="$HOME/.codex/app-server-daemon"
     sess="codex-remote"
-    cr_pid()   { jq -r '.pid // empty' "$dd/$1.pid" 2>/dev/null; }
-    cr_alive() { local st; st="$(ps -o stat= -p "${1:-0}" 2>/dev/null)"; [ -n "$st" ] && [ "${st#Z}" = "$st" ]; }   # exists, not a zombie
-    cr_up()    { [ -S "$sock" ] && cr_alive "$(cr_pid app-server)"; }
-    cr_settings() {   # assert remote control ON + auto-update OFF; merge, keep other keys
-      mkdir -p "$dd"
-      jq -n --argjson cur "$(cat "$dd/settings.json" 2>/dev/null || echo '{}')" \
-        '$cur * {remoteControlEnabled:true, updater:{autoUpdateEnabled:false}}' > "$dd/settings.json.tmp" 2>/dev/null \
-        && mv -f "$dd/settings.json.tmp" "$dd/settings.json" || rm -f "$dd/settings.json.tmp"
-    }
-    cr_kill_updater() { local p; p="$(cr_pid app-server-updater)"; [ -n "$p" ] && kill "$p" 2>/dev/null; rm -f "$dd/app-server-updater.pid"; }
-    cr_clean() {      # a stale socket, or pid files naming dead/zombie pids, block codex's own start
-      cr_alive "$(cr_pid app-server)" || rm -f "$dd/app-server.pid" "$sock"
-      cr_alive "$(cr_pid app-server-updater)" || rm -f "$dd/app-server-updater.pid"
-    }
-    cr_name() {       # phone-side computer name = server_name of the persisted enrolment
-      local db; db="$(ls -t "$HOME"/.codex/state_*.sqlite 2>/dev/null | head -1)"
-      [ -n "$db" ] && python3 -c 'import sqlite3,sys
-r=sqlite3.connect(sys.argv[1]).execute("select server_name from remote_control_enrollments order by updated_at desc limit 1").fetchone()
-print(r[0] if r and r[0] else "")' "$db" 2>/dev/null || true
-    }
     case "$sub" in
-      _supervise)
-        # Runs inside tmux session `codex-remote`: start when down, re-check every 30s.
-        while true; do
-          if ! cr_up; then
-            printf '%s codex-remote: daemon down — starting\n' "$(date '+%F %T')"
-            eval "$token_env"    # fresh token each start → phone-driven git/PRs auth
-            cr_clean; cr_settings
-            codex remote-control start < /dev/null 2>&1 | grep -v '^$' || true
-            sleep 3; cr_settings; cr_kill_updater
-            printf '%s codex-remote: up on %s, updater off\n' "$(date '+%F %T')" "$(codex --version 2>/dev/null < /dev/null)"
-          fi
-          sleep 30
-        done
-        ;;
       stop)
         tmux kill-session -t "$sess" 2>/dev/null || true
-        cr_kill_updater
-        p="$(cr_pid app-server)"; [ -n "$p" ] && kill "$p" 2>/dev/null || true
-        pkill -f '^[^ ]*/codex app-server ' 2>/dev/null || true
-        rm -f "$dd"/app-server*.pid "$sock"    # killed pids linger as zombies under this PID 1; codex would trust the files
-        log "codex remote-control stopped (pod-level; back at next boot or: agent-run codex-remote up)"
-        ;;
-      up|start|"")
-        if tmux has-session -t "$sess" 2>/dev/null && cr_up; then
-          [ "$sub" = up ] && { log "codex remote-control already up"; exit 0; }
-          log "codex remote-control already running — re-pairing"
-        else
-          tmux kill-session -t "$sess" 2>/dev/null || true
-          tmux new-session -d -s "$sess" -c "$HOME" "bash $self codex-remote _supervise" || die "tmux session failed"
-          for _ in $(seq 1 150); do cr_up && break; sleep 0.2; done   # up to 30s for the daemon to bind
-          cr_up || die "codex remote-control did not come up — inspect: tmux attach -t $sess"
-          [ "$sub" = up ] && { log "codex remote-control up (supervised, tmux $sess)"; exit 0; }
-        fi
-        # Manual pairing code for the phone (once per phone; the enrolment lives in
-        # ~/.codex's state DB on the PVC and survives pod rolls). ~10 min TTL.
-        code=""; pair_json=""
-        for _ in 1 2 3 4 5 6; do
-          pair_json="$(codex remote-control pair --json < /dev/null 2>/dev/null)"
-          code="$(printf '%s' "$pair_json" | jq -r '.manualPairingCode // empty' 2>/dev/null)"
-          [ -n "$code" ] && break; sleep 3
+        # `codex remote-control stop` HANGS — kill the daemon directly, by the pid
+        # files it writes ({"pid":N,...}). NOT `pkill -f app-server`: -f matches ANY
+        # command line containing the string, and on 2026-09-06 it killed the
+        # calling shell (a compound command that merely mentioned app-server). The
+        # fallback pattern is anchored on codex's own binary path for that reason.
+        for pf in "$HOME/.codex/app-server-daemon"/app-server*.pid; do
+          pid="$(jq -r '.pid // empty' "$pf" 2>/dev/null)"
+          [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
         done
+        pkill -f '^[^ ]*/codex app-server ' 2>/dev/null || true
+        # This pod's PID 1 is code-server's node, which never reaps orphans: the
+        # killed daemon lingers as a ZOMBIE whose pid still exists, codex trusts
+        # the pid file, assumes the daemon is up and `start` waits for a socket
+        # that never comes (hit 2026-09-06). Drop the pid files ourselves.
+        rm -f "$HOME/.codex/app-server-daemon"/app-server*.pid "$sock"
+        log "codex remote-control stopped (pod-level)"
+        ;;
+      start|"")
+        if tmux has-session -t "$sess" 2>/dev/null && [ -S "$sock" ]; then
+          log "codex remote-control already running — re-pairing"   # idempotent: one daemon per pod
+        else
+          # The PVC keeps ~/.codex across pod rolls, so a stale socket can block the
+          # bind — clear it when no live daemon owns it. Same for pid files that
+          # point at a dead or zombie process (see stop): codex would wait on them.
+          [ -S "$sock" ] && ! pgrep -f '^[^ ]*/codex app-server ' >/dev/null 2>&1 && rm -f "$sock"
+          for pf in "$HOME/.codex/app-server-daemon"/app-server*.pid; do
+            pid="$(jq -r '.pid // empty' "$pf" 2>/dev/null)"; [ -n "$pid" ] || continue
+            case "$(ps -o stat= -p "$pid" 2>/dev/null)" in ''|Z*) rm -f "$pf" ;; esac
+          done
+          tmux kill-session -t "$sess" 2>/dev/null || true
+          tmux new-session -d -s "$sess" -c "$HOME" || die "tmux session failed"
+          tmux send-keys -t "$sess" "$token_env; codex remote-control start" Enter  # token_env → phone-driven git/PRs auth
+          for _ in $(seq 1 100); do [ -S "$sock" ] && break; sleep 0.2; done   # up to 20s for the daemon to bind the socket
+          [ -S "$sock" ] || die "codex remote-control did not come up (no socket) — inspect: tmux attach -t $sess"
+        fi
+        # The daemon enrols under the ChatGPT account as a "computer" named after the
+        # pod's hostname and holds a websocket to chatgpt.com; the enrolment (server +
+        # environment id) lives in ~/.codex's state DB on the PVC, so it survives pod
+        # rolls. The manual code below is the phone-side pairing (once per phone — the
+        # QR path needs a desktop app this pod doesn't have) and expires in ~10 min.
+        pair_json="$(codex remote-control pair --json 2>/dev/null)"
+        code="$(printf '%s' "$pair_json" | jq -r '.manualPairingCode // empty')"
         [ -n "$code" ] || die "pairing failed — inspect: tmux attach -t $sess"
         exp="$(printf '%s' "$pair_json" | jq -r '.expiresAt // empty')"
         ttl=""; [ -n "$exp" ] && ttl=" — valid ~$(( (exp - $(date +%s) + 59) / 60 )) min, re-run for a fresh one"
-        name="$(cr_name)"; [ -n "$name" ] || name="$(hostname) (first enrolment — this name sticks)"
-        printf '\n  CODEX REMOTE-CONTROL (pod-level — drive from the ChatGPT mobile app)\n'
-        printf '  shows up on the phone as:  %s\n' "$name"
+        printf '\n  CODEX REMOTE-CONTROL (pod-level — drive from the ChatGPT app / Codex web)\n'
+        printf '  shows up on the phone as:  %s\n' "$(hostname)"
         printf '  pairing code:              %s%s\n\n' "$code" "$ttl"
         printf '  Phone, first time only: ChatGPT app → Remote → add a computer → enter the\n'
         printf '  code manually (no desktop app here, so no QR). Threads started from the\n'
@@ -1015,7 +972,7 @@ print(r[0] if r and r[0] else "")' "$db" 2>/dev/null || true
         printf '  NOTE: pod-level — the phone picks the working dir, which BYPASSES\n'
         printf '        agent-run per-worktree isolation.   stop: agent-run codex-remote stop\n\n'
         ;;
-      *) die "usage: agent-run codex-remote [up|stop]" ;;
+      *) die "usage: agent-run codex-remote [stop]" ;;
     esac
     ;;
   *)
