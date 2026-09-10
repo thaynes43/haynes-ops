@@ -84,7 +84,7 @@ material.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value =
 obj.data.materials.append(material)
 assert obj.type == 'MESH' and len(obj.data.vertices) == 8
 assert obj.active_material.name == 'AuthoringSmokeMaterial'
-assert bpy.context.preferences.addons['blender_authoring_addon'].preferences.telemetry_consent is False
+assert bpy.context.preferences.addons['addon'].preferences.telemetry_consent is False
 assert not bpy.context.preferences.system.use_online_access
 for service in ('polyhaven', 'hyper3d', 'sketchfab', 'polypizza', 'hunyuan3d'):
     assert not getattr(bpy.context.scene, 'blendermcp_use_' + service)

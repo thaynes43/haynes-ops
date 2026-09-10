@@ -1,5 +1,5 @@
 """Register the image's pinned addon in a software-rendered Blender desktop."""
-import importlib.util
+import importlib
 import os
 import sys
 
@@ -7,11 +7,15 @@ import addon_utils
 import bpy
 from bpy.app.handlers import persistent
 
-NAME = 'blender_authoring_addon'
-spec = importlib.util.spec_from_file_location(NAME, '/opt/dev-env/blender-mcp/addon.py')
-addon = importlib.util.module_from_spec(spec)
-sys.modules[NAME] = addon
-spec.loader.exec_module(addon)
+# Use the module's real filename so importlib.reload() can discover its spec.
+# Blender 4.5 enable() compares __time__ with the source mtime before register().
+# Seed that timestamp for this preloaded, immutable module so enable() retains
+# the LocalServer override installed below instead of reloading it away.
+NAME = 'addon'
+sys.path.insert(0, '/opt/dev-env/blender-mcp')
+addon = importlib.import_module(NAME)
+addon.__time__ = os.path.getmtime(addon.__file__)
+
 
 
 class LocalServer(addon.BlenderMCPServer):
@@ -31,8 +35,8 @@ class LocalServer(addon.BlenderMCPServer):
 
 
 addon.BlenderMCPServer = LocalServer
-addon_utils.enable(NAME, default_set=True, persistent=True)
-if NAME not in bpy.context.preferences.addons:
+enabled = addon_utils.enable(NAME, default_set=True, persistent=True)
+if enabled is not addon or addon.BlenderMCPServer is not LocalServer or NAME not in bpy.context.preferences.addons:
     raise RuntimeError('Pinned Blender MCP addon did not enable')
 prefs = bpy.context.preferences.addons[NAME].preferences
 prefs.telemetry_consent = False

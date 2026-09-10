@@ -23,6 +23,15 @@ START_TIMEOUT = 45
 
 def environment():
     env = os.environ.copy()
+    # Keep Blender's display/runtime isolated from any session driving the CLI.
+    # GHOST 4.5 tries Wayland first, then falls back to our Xvfb X11 display.
+    for name in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET'):
+        env.pop(name, None)
+    display_runtime = RUNTIME / 'desktop'
+    display_runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if display_runtime.is_symlink() or display_runtime.stat().st_uid != os.getuid():
+        raise RuntimeError(f'Unsafe desktop runtime directory: {display_runtime}')
+    display_runtime.chmod(0o700)
     for name in ('config', 'cache', 'data', 'candidates', 'blender-config'):
         (WORKSPACE / name).mkdir(parents=True, exist_ok=True)
     # Upstream's opt-in elicitation is separate from its telemetry environment gate.
@@ -34,6 +43,7 @@ def environment():
                                      'consent': False, 'via': 'dev-env-policy'}))
     temporary.replace(consent)
     env.update({
+        'XDG_RUNTIME_DIR': str(display_runtime),
         'XDG_CONFIG_HOME': str(WORKSPACE / 'config'),
         'XDG_CACHE_HOME': str(WORKSPACE / 'cache'),
         'XDG_DATA_HOME': str(WORKSPACE / 'data'),
@@ -201,6 +211,7 @@ def start(env):
         env['BLENDER_AUTHORING_TOKEN'] = state['token']
         state['blender'] = spawn(['/usr/local/bin/blender', '--factory-startup',
                                   '--disable-autoexec', '-noaudio', '--gpu-backend', 'opengl',
+                                  '--python-exit-code', '1',
                                   '--python', str(INSTALL / 'blender-bootstrap.py')], env, 'blender.log')
         write_state(state)
         while time.monotonic() < deadline:
@@ -223,8 +234,8 @@ def main():
     parser.add_argument('command', choices=('mcp', 'start', 'status', 'stop'))
     args = parser.parse_args()
     os.umask(0o077)
-    env = environment()
     with locked():
+        env = environment()
         if args.command == 'stop':
             state = read_state()
             stop_process(state.get('blender'))
