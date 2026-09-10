@@ -213,4 +213,30 @@ else
   log "codex remote-control skipped (no standalone codex or no ~/.codex/auth.json)"
 fi
 
+# ── Claude Code STANDBY session: a phone/web-drivable Fable session after every roll ──
+# A pod roll ends every claude session and nothing else can start one (Tom,
+# 2026-09-10: "no sessions for claude code will be active, nothing will be able to
+# start one"). So boot one: agent-run's `both` mode (terminal TUI + `claude
+# --remote-control`) on the ops repo, pinned to the interactive-surface model (Model
+# policy in CLAUDE.md). It registers at claude.ai/code and shows in the phone/web
+# session list within ~a minute; idle it costs nothing. Worktree + tmux session are
+# named like any task (haynes-ops-<mmdd-HHMMSS>); unused ones are reaped by
+# `agent-run prune`. Needs the Max login (~/.claude/.credentials.json — the env OAuth
+# token cannot register a remote session) and the bot token in /creds for the fetch;
+# the refresher sidecar mints that concurrently, so wait up to 90s for it. Non-fatal.
+# Verified 2026-09-10: the same command from a non-TTY shell came up with
+# "/remote-control is active" + a claude.ai URL.
+if [ -s "$HOME/.claude/.credentials.json" ] && [ -d "$HOME/repos/haynes-ops/.git" ]; then
+  for _ in $(seq 1 45); do [ -s /creds/gh_token ] && break; sleep 2; done
+  if [ -s /creds/gh_token ] \
+     && "$HOME/.local/bin/agent-run" --repo haynes-ops --agent claude --interactive \
+          --model "$DEV_ENV_CLAUDE_MODEL" --effort xhigh </dev/null >/tmp/claude-standby.log 2>&1; then
+    log "claude standby session up ($DEV_ENV_CLAUDE_MODEL xhigh, remote-control) → agent-run list"
+  else
+    log "WARN claude standby session did not start (see /tmp/claude-standby.log) — agent-run --repo haynes-ops --agent claude --interactive"
+  fi
+else
+  log "claude standby session skipped (no Max login or no ~/repos/haynes-ops)"
+fi
+
 log "done"
