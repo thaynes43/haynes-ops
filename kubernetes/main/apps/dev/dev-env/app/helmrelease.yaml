@@ -36,15 +36,34 @@ spec:
               tag: 0.5.4@sha256:80a2c0b8acc53e63a4174ca0f4b81fd1c40aaabff9eed2bffa587883237b9af1
             command: ["/bin/bash", "-c"]
             args:
-              # dev-init links GitOps configs into $HOME, then tmux (agent sessions
-              # survive browser/exec disconnects; /remote-control + agent-run
-              # sessions live here), then code-server.
+              # BOOT ORDER — each step must be fast or detached; nothing after
+              # dev-init may block the exec of code-server:
+              #   1. dev-init.sh   links GitOps configs into $HOME (synchronous, fast)
+              #   2. tmux server    hosts every agent session (survives browser/exec
+              #                     disconnects; /remote-control + agent-run live here)
+              #   3. post-ready.sh  DETACHED tmux window: waits for /healthz, then for
+              #                     the kubelet's own Ready + app.started, settles, and
+              #                     only then starts codex remote-control + the claude
+              #                     standby session. Output tees to /tmp/post-ready.log
+              #                     and the window is inspectable while it runs
+              #                     (`tmux capture-pane -pt main:post-ready`); the tmux
+              #                     server reaps it when it exits.
+              #   4. code-server    execs as the container's process — :8443 is what the
+              #                     startup and liveness probes watch.
+              # Why 3 is a detached window and not a dev-init step: PR #2824 ran those
+              # two launches synchronously inside dev-init, i.e. BEFORE :8443 existed,
+              # and with no startup probe the 30s liveness budget (3 × 10s) killed the
+              # container every minute — each restart minting another remote-control
+              # session + worktree (reverted in #2827; see post-ready.sh's header).
               # --auth none is safe ONLY because ingress is traefik-internal + the
               # Authentik forward-auth middleware AND the CNP restricts ingress to
               # traefik — do not add other ingress paths without adding auth.
               - >-
                 bash /opt/dev-env/scripts/dev-init.sh;
                 tmux new-session -d -s main 2>/dev/null || true;
+                tmux new-window -d -t main -n post-ready
+                "bash /opt/dev-env/scripts/post-ready.sh 2>&1 | tee -a /tmp/post-ready.log"
+                2>/dev/null || true;
                 exec code-server
                 --bind-addr 0.0.0.0:8443
                 --auth none
@@ -113,6 +132,26 @@ spec:
                 enabled: true
               readiness:
                 enabled: true
+              # STARTUP PROBE (2026-09-10 incident, PR #2824 → reverted in #2827):
+              # boot is dev-init + tmux BEFORE code-server binds :8443, and liveness
+              # (tcpSocket 8443, 10s, 3 failures) starts counting the moment the
+              # container does — so a boot longer than 30s WAS a kubelet kill, exit 137,
+              # every minute, and each restart minted another agent session + worktree.
+              # A startup probe suspends liveness until :8443 answers, so boot cost can
+              # never be read as a hang. 60 × 10s = a 10 min ceiling — enough for the
+              # worst real boot (a fresh/empty PVC re-downloading the codex standalone
+              # and kubectl-cnpg from GitHub, plus the playwright seed), and a genuinely
+              # dead container still restarts after it. Liveness/readiness unchanged:
+              # once started, a wedged code-server is still restarted on the old budget.
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  tcpSocket:
+                    port: 8443
+                  periodSeconds: 10
+                  failureThreshold: 60
+                  timeoutSeconds: 2
             resources:
               # Workhorse sizing: 8Gi OOMKilled haynesnetwork's `pnpm test` (parallel
               # vitest × embedded Postgres across the monorepo) — and an OOMKill takes

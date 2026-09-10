@@ -43,7 +43,7 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 | Tool | Auth | Notes |
 |---|---|---|
 | claude | ✅ Max plan | credential on PVC, self-refreshes |
-| codex | ✅ ChatGPT plan | `~/.codex/auth.json`, self-refreshes; same rules (`~/.codex/AGENTS.md`) + MCP servers as claude, rendered at boot; phone control = daemon up at boot (supervised); `agent-run codex-remote` pairs a phone |
+| codex | ✅ ChatGPT plan | `~/.codex/auth.json`, self-refreshes; same rules (`~/.codex/AGENTS.md`) + MCP servers as claude, rendered at boot; phone control = daemon brought up after every boot by `post-ready.sh` (supervised); `agent-run codex-remote` pairs a phone |
 | kubectl / flux | ✅ in-cluster SA | OPERATOR tier: read all-but-secrets; writes limited to pod delete, **pod exec**, rollout restart, flux reconcile/suspend, Jobs, CronJob suspend + PVC delete in `database` only (`kubectl cnpg destroy`, plugin at `~/.local/bin/kubectl-cnpg`). No secrets/RBAC (exec into a secret-mounting pod can read that pod's secrets — accepted, 2026-08-06) |
 | gh / git push | ✅ haynes-dev-bot | App token, all repos, refreshed every 40min; commits/PRs author as the dev bot |
 | sops / age | ❌ deliberately absent | the age key never enters this pod without an explicit decision |
@@ -126,12 +126,13 @@ agent-run --repo <name> --agent codex --model gpt-6-astra --effort max -p "<task
 # -> task <repo>-<mmdd-HHMMSS>, tmux session task-<id>
 ```
 
-**Codex from a phone:** the pod's single remote-control daemon starts at boot
-(dev-init → `agent-run codex-remote up`, supervised in tmux session `codex-remote`)
-and reuses the enrolment on the PVC, so after a pod roll the phone simply sees it
-come back. On the phone it is named after the pod that FIRST enrolled
-(`dev-env-574bdc9844-jhvfs`), never the current hostname — that entry is the live
-computer, not a ghost; its old threads are pre-roll history, start a new one. New
+**Codex from a phone:** the pod's single remote-control daemon starts after every
+boot (`post-ready.sh` → `agent-run codex-remote up`, supervised in tmux session
+`codex-remote`) and reuses the enrolment on the PVC, so after a pod roll the phone
+simply sees it come back — allow a few minutes, post-ready waits for the pod to be
+Ready first (see *After a pod roll* below). On the phone it is named after the pod
+that FIRST enrolled (`dev-env-574bdc9844-jhvfs`), never the current hostname — that
+entry is the live computer, not a ghost; its old threads are pre-roll history, start a new one. New
 phone: `agent-run codex-remote` prints a pairing code (~10 min) → ChatGPT app →
 Remote → add a computer → enter it. Threads started there run wherever the phone
 points them — for repo work, make a worktree first (Ground rules). `agent-run
@@ -146,6 +147,29 @@ claude `--interactive`. Codex updates ONLY at pod restart via the image's
 `CODEX_VERSION` pin (Tom, 2026-09-10): the daemon's own hourly self-updater is
 disabled because under this pod's PID 1 it strands a zombie app-server and a
 greyed-out phone entry (openai/codex#34721) — never re-enable it, bump the pin.
+
+**After a pod roll (`post-ready.sh`).** A roll ends every claude session, and only a
+shell inside this pod can start one, so the pod starts its own: a **standby** session
+on `haynes-ops` (`agent-run --interactive`, i.e. a TUI here *and* a phone/claude.ai
+session), plus the codex daemon above. It is launched by
+`/opt/dev-env/scripts/post-ready.sh` in the detached tmux window `main:post-ready`,
+**not** by dev-init: the launches wait for code-server's `/healthz`, then for the
+kubelet to report `Ready=True` + the app container `started`, then settle 60s — so
+expect them a few minutes after the pod comes up. Log: `/tmp/post-ready.log`.
+It is deliberately timid, and all three of these are normal, not faults:
+* **already there** — a live `task-haynes-ops-*` session running `--remote-control`
+  means it starts nothing (never two standbys);
+* **circuit breaker** — 3+ launches inside 30 minutes (`~/.cache/dev-env/post-ready-launches.log`,
+  on the PVC) and it launches nothing at all, logging `loop suspected`. That is the
+  guard against #2824's failure: launching at boot restart-looped the pod and minted
+  30+ orphan sessions/worktrees. If you see it, fix the restart loop
+  (`kubectl describe pod -n dev <pod>`) — do not bypass it;
+* **skipped** — no Max login (`~/.claude/.credentials.json`; the env OAuth token
+  cannot register a remote session), no `~/repos/haynes-ops`, or no `/creds/gh_token`
+  within 90s.
+
+Start one by hand any time with the `--interactive` command above; the standby is a
+convenience, not a dependency. An unused standby worktree is reaped by `agent-run prune`.
 
 **Model ids and effort.** Use full ids, never aliases (`fable`, `opus`): an alias
 resolves CLIENT-side against the pinned CLI and can silently serve an older tier

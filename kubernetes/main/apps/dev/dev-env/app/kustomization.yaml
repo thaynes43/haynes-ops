@@ -17,6 +17,10 @@ configMapGenerator:
   - name: dev-env-scripts
     files:
       - resources/dev-init.sh
+      # The after-boot lane (2026-09-10): codex remote-control + the claude standby
+      # session, launched from a detached tmux window once the KUBELET says the pod is
+      # ready. Never in dev-init — that is the boot path (see both scripts' headers).
+      - resources/post-ready.sh
       - resources/bashrc.sh
       - resources/agent-run.sh
       - resources/gh-token-refresh.sh
