@@ -43,7 +43,7 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 | Tool | Auth | Notes |
 |---|---|---|
 | claude | ✅ Max plan | credential on PVC, self-refreshes |
-| codex | ✅ ChatGPT plan | `~/.codex/auth.json`, self-refreshes; same rules (`~/.codex/AGENTS.md`) + MCP servers as claude, rendered at boot; phone control = `agent-run codex-remote` |
+| codex | ✅ ChatGPT plan | `~/.codex/auth.json`, self-refreshes; same rules (`~/.codex/AGENTS.md`) + MCP servers as claude, rendered at boot; phone control = daemon up at boot (supervised); `agent-run codex-remote` pairs a phone |
 | kubectl / flux | ✅ in-cluster SA | OPERATOR tier: read all-but-secrets; writes limited to pod delete, **pod exec**, rollout restart, flux reconcile/suspend, Jobs, CronJob suspend + PVC delete in `database` only (`kubectl cnpg destroy`, plugin at `~/.local/bin/kubectl-cnpg`). No secrets/RBAC (exec into a secret-mounting pod can read that pod's secrets — accepted, 2026-08-06) |
 | gh / git push | ✅ haynes-dev-bot | App token, all repos, refreshed every 40min; commits/PRs author as the dev bot |
 | sops / age | ❌ deliberately absent | the age key never enters this pod without an explicit decision |
@@ -126,13 +126,21 @@ agent-run --repo <name> --agent codex --model gpt-6-astra --effort max -p "<task
 # -> task <repo>-<mmdd-HHMMSS>, tmux session task-<id>
 ```
 
-**Codex from a phone:** `agent-run codex-remote` starts (or re-pairs) the pod's
-single remote-control daemon and prints the computer name plus a pairing code
-valid ~10 min. On the phone: ChatGPT app → Remote → add a computer → enter the
-code (once per phone; the enrolment persists on the PVC, so after a pod roll just
-re-run the command). Threads started there run wherever the phone points them —
-for repo work, make a worktree first (Ground rules). `agent-run codex-remote
-stop` shuts it down.
+**Codex from a phone:** the pod's single remote-control daemon starts at boot
+(dev-init → `agent-run codex-remote up`, supervised in tmux session `codex-remote`)
+and reuses the enrolment on the PVC, so after a pod roll the phone simply sees it
+come back. On the phone it is named after the pod that FIRST enrolled
+(`dev-env-574bdc9844-jhvfs`), never the current hostname — that entry is the live
+computer, not a ghost; its old threads are pre-roll history, start a new one. New
+phone: `agent-run codex-remote` prints a pairing code (~10 min) → ChatGPT app →
+Remote → add a computer → enter it. Threads started there run wherever the phone
+points them — for repo work, make a worktree first (Ground rules). `agent-run
+codex-remote stop` shuts it down until the next boot or `up`. Remote is
+**mobile-app only** — there is no browser path; the browser-drivable analogue is
+claude `--interactive`. Codex updates ONLY at pod restart via the image's
+`CODEX_VERSION` pin (Tom, 2026-09-10): the daemon's own hourly self-updater is
+disabled because under this pod's PID 1 it strands a zombie app-server and a
+greyed-out phone entry (openai/codex#34721) — never re-enable it, bump the pin.
 
 **Model ids and effort.** Use full ids, never aliases (`fable`, `opus`): an alias
 resolves CLIENT-side against the pinned CLI and can silently serve an older tier

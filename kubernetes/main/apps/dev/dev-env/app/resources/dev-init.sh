@@ -191,4 +191,26 @@ grep -q 'dev-env/scripts/bashrc.sh' "$HOME/.bashrc" 2>/dev/null \
 [ -f "$HOME/.bash_profile" ] \
   || printf '[ -f ~/.bashrc ] && . ~/.bashrc\n' > "$HOME/.bash_profile"
 
+# ── Codex remote-control: phone control up at boot; updates ONLY at pod restart ──
+# Policy (Tom, 2026-09-10): codex updates only here, at pod restart, via the
+# CODEX_VERSION install above — never mid-day. The standalone daemon ships an updater
+# loop (5 min after start, then hourly) that installs the newest release and restarts
+# app-server; under this pod's PID 1 (code-server's node, never reaps) the old
+# app-server lingers as a zombie, the updater waits on it forever and the phone shows
+# the computer greyed out (openai/codex#34721; hit 2026-09-10, 0.153.4→0.154.0).
+# `agent-run codex-remote up` asserts the daemon settings (remote control ON, updater
+# OFF), starts the daemon under a 30s supervisor (tmux session `codex-remote`; the
+# HelmRelease's `main` session joins the same server next) and is idempotent. The
+# enrolment + phone pairing live in ~/.codex's state DB on the PVC, so a roll needs
+# no new code; `agent-run codex-remote` prints one for a NEW phone. Non-fatal.
+if [ -x "$HOME/.local/bin/codex" ] && [ -s "$HOME/.codex/auth.json" ]; then
+  if "$HOME/.local/bin/agent-run" codex-remote up >/tmp/codex-remote-up.log 2>&1; then
+    log "codex remote-control up (supervised; updates ride CODEX_VERSION at boot)"
+  else
+    log "WARN codex remote-control did not come up (see /tmp/codex-remote-up.log) — agent-run codex-remote"
+  fi
+else
+  log "codex remote-control skipped (no standalone codex or no ~/.codex/auth.json)"
+fi
+
 log "done"
