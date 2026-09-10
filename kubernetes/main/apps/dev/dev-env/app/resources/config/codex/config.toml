@@ -28,11 +28,8 @@ model_reasoning_effort = "max"
 # phone approval (Tom, 2026-09-06: "needs approval for everything"). agent-run
 # passes --dangerously-bypass-approvals-and-sandbox explicitly; this covers the
 # daemon and a bare `codex`. NB the phone app sends its own explicit values at
-# thread start (on-request / workspace-write / effort high) AND writes them back
-# into this file on the PVC (2026-09-10 11:00:08), so these are host-side DEFAULTS
-# only — dev-init re-renders the file at boot, and the real floor is
-# requirements.toml (mounted at /etc/codex/requirements.toml), which the runtime
-# enforces on every thread regardless of what a client asks for.
+# thread start (on-request / workspace-write / effort high were observed), so
+# these are the host-side defaults, not a guarantee — see README.
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
 
