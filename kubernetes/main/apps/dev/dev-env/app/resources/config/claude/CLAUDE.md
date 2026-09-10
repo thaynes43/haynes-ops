@@ -135,8 +135,13 @@ computer, not a ghost; its old threads are pre-roll history, start a new one. Ne
 phone: `agent-run codex-remote` prints a pairing code (~10 min) → ChatGPT app →
 Remote → add a computer → enter it. Threads started there run wherever the phone
 points them — for repo work, make a worktree first (Ground rules). `agent-run
-codex-remote stop` shuts it down until the next boot or `up`. Remote is
-**mobile-app only** — there is no browser path; the browser-drivable analogue is
+codex-remote stop` shuts it down until the next boot or `up`. **No approvals,
+ever, from the phone either:** `/etc/codex/requirements.toml` (GitOps, mounted)
+pins approval `never` + sandbox `danger-full-access` for every thread — the
+phone app asks for on-request/workspace-write and even writes that into
+`~/.codex/config.toml`, but bubblewrap cannot run in this pod so that mode
+escalates every command; the requirements layer overrides it at session init.
+Remote is **mobile-app only** — there is no browser path; the browser-drivable analogue is
 claude `--interactive`. Codex updates ONLY at pod restart via the image's
 `CODEX_VERSION` pin (Tom, 2026-09-10): the daemon's own hourly self-updater is
 disabled because under this pod's PID 1 it strands a zombie app-server and a
