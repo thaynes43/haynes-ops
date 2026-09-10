@@ -191,6 +191,32 @@ grep -q 'dev-env/scripts/bashrc.sh' "$HOME/.bashrc" 2>/dev/null \
 [ -f "$HOME/.bash_profile" ] \
   || printf '[ -f ~/.bashrc ] && . ~/.bashrc\n' > "$HOME/.bash_profile"
 
+# ══ BOOT-TIME AGENT SESSIONS — BACKGROUNDED, NEVER IN THE FOREGROUND ═══════════
+# Everything below merely *starts long-lived agent sessions*; none of it is a
+# prerequisite for code-server, and it MUST NOT block dev-init's return.
+#
+# Why (regression 2026-09-10, #2824): the pod's args are
+#   bash dev-init.sh; tmux new-session -d -s main; exec code-server --bind-addr :8443
+# and the app-template liveness/readiness probes are TCP :8443 with
+# initialDelaySeconds 0 / periodSeconds 10 / failureThreshold 3. So the kubelet
+# kills the container ~30s after start unless code-server has already bound the
+# port (SIGTERM, then SIGKILL at the 30s grace → exit 137). #2824 added ~2 min of
+# work in front of `exec code-server` — the codex daemon's up-to-30s socket wait
+# plus the claude standby block's up-to-90s wait for /creds/gh_token — so
+# code-server was never reached and the pod crash-looped from 12:23 onward
+# ("Readiness probe failed: dial tcp :8443: connect: connection refused", 21
+# restarts). Backgrounding restores the invariant: dev-init returns in seconds,
+# code-server binds :8443 immediately, and these blocks finish on their own.
+#
+# The subshell outlives dev-init (bash does not HUP background jobs of a
+# non-interactive shell on exit) and is reparented to code-server's node when the
+# parent execs — the same lifetime the tmux sessions it creates already have. Each
+# block already redirects to the /tmp log it names, so nothing is lost. The short
+# lead-in sleep lets the foreground `tmux new-session -d -s main` create the tmux
+# server first, keeping the pre-#2824 ordering (these blocks then join it).
+{
+sleep 5
+
 # ── Codex remote-control: phone control up at boot; updates ONLY at pod restart ──
 # Policy (Tom, 2026-09-10): codex updates only here, at pod restart, via the
 # CODEX_VERSION install above — never mid-day. The standalone daemon ships an updater
@@ -239,4 +265,7 @@ else
   log "claude standby session skipped (no Max login or no ~/repos/haynes-ops)"
 fi
 
-log "done"
+log "boot agent sessions done (background)"
+} &
+
+log "done (agent sessions starting in the background — code-server comes up now)"
