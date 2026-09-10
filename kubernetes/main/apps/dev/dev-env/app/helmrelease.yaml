@@ -289,6 +289,19 @@ spec:
           dev-env:
             app:
               - path: /opt/dev-env/config/codex
+      # Codex admin requirements — codex reads ONLY the system path for these, and
+      # /etc is on the read-only rootfs, so it is a mount, not a dev-init copy. Forces
+      # every thread (the ChatGPT phone app's included) to approval never + sandbox
+      # danger-full-access: this pod is the sandbox and bubblewrap cannot run here.
+      config-codex-requirements:
+        type: configMap
+        name: dev-env-config-codex
+        advancedMounts:
+          dev-env:
+            app:
+              - path: /etc/codex/requirements.toml
+                subPath: requirements.toml
+                readOnly: true
       config-home:
         type: configMap
         name: dev-env-config-home
