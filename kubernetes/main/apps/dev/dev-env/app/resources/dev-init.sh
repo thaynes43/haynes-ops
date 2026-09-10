@@ -4,6 +4,19 @@
 # (~/.claude/.credentials.json, ~/.codex/auth.json, history, caches).
 # Mounted from the dev-env-scripts ConfigMap; source of truth is
 # kubernetes/main/apps/dev/dev-env/app/resources/ (auditable in PR diffs).
+#
+# BOOT ORDER (container args in helmrelease.yaml):
+#   dev-init.sh  →  tmux new-session -d -s main  →  tmux new-window post-ready  →  exec code-server
+# THIS SCRIPT IS THE SYNCHRONOUS, FAST HALF and must stay that way. Everything here
+# runs BEFORE code-server binds :8443, so its wall-clock time is the pod's startup
+# time: the startup probe allows a 10 min ceiling (tcpSocket 8443 × 60), after which
+# liveness (3 × 10s) takes over and a slow boot becomes a kubelet kill. Long or
+# optional work — anything that starts an agent session, waits on a sidecar, or talks
+# to the network beyond the pinned installs below — belongs in post-ready.sh, which
+# runs detached AFTER the kubelet reports the pod ready. That split exists because
+# PR #2824 ran two session launches synchronously here, blew past the (then
+# startup-probe-less) 30s liveness budget, and restart-looped the pod, minting a new
+# remote-control session + worktree every minute until it was reverted in #2827.
 set -uo pipefail
 
 CFG=/opt/dev-env/config

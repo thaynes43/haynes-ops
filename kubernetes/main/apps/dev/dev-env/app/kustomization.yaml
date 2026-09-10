@@ -17,6 +17,10 @@ configMapGenerator:
   - name: dev-env-scripts
     files:
       - resources/dev-init.sh
+      # The after-boot lane (2026-09-10): codex remote-control + the claude standby
+      # session, launched from a detached tmux window once the KUBELET says the pod is
+      # ready. Never in dev-init — that is the boot path (see both scripts' headers).
+      - resources/post-ready.sh
       - resources/bashrc.sh
       - resources/agent-run.sh
       - resources/gh-token-refresh.sh
@@ -38,6 +42,9 @@ configMapGenerator:
       # Codex preamble; dev-init prepends it to the shared CLAUDE.md to make
       # ~/.codex/AGENTS.md — the same rules for both agents, one source.
       - resources/config/codex/AGENTS.header.md
+      # Admin requirements (approval/sandbox floor the phone app cannot override);
+      # the HelmRelease also mounts this key at /etc/codex/requirements.toml.
+      - resources/config/codex/requirements.toml
   # The workspace README code-server opens on (~/README.md) — the human walkthrough.
   - name: dev-env-config-home
     files:
