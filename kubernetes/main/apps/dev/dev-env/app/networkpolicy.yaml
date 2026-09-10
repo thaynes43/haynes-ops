@@ -63,6 +63,8 @@ spec:
               - matchName: "github.com"
               - matchPattern: "*.github.com"
               - matchPattern: "*.githubusercontent.com"
+              # gh run view uses this nested host; Cilium * covers one DNS label.
+              - matchName: "results-receiver.actions.githubusercontent.com"
               - matchName: "ghcr.io"
               # Anthropic: API + claude.ai (/remote-control relay) + claude.com
               # (platform.claude.com — claude-code startup checks, proven via Hubble
@@ -313,6 +315,7 @@ spec:
         - matchName: "github.com"
         - matchPattern: "*.github.com"
         - matchPattern: "*.githubusercontent.com"
+        - matchName: "results-receiver.actions.githubusercontent.com"
         - matchName: "ghcr.io"
         - matchName: "anthropic.com"
         - matchPattern: "*.anthropic.com"
