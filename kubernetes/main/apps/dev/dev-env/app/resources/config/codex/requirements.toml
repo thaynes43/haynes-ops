@@ -19,4 +19,10 @@
 # turn_context must show approval_policy "never" + sandbox_policy danger-full-access,
 # and ~/.codex/logs_2.sqlite should carry a "disallowed by requirements" line.
 allowed_approval_policies = ["never"]
-allowed_sandbox_modes = ["danger-full-access"]
+# "read-only" MUST be in the set: codex 0.153.4 refuses to load its config otherwise
+# ("invalid value for `allowed_sandbox_modes`: `[DangerFullAccess]` is not in the
+# allowed set must include 'read-only' to allow any PermissionProfile") — which is why
+# `codex remote-control start` died at every boot on 2026-09-10 and the phone showed
+# nothing. Listing it does not weaken the floor: approval stays "never" and every
+# thread still defaults to danger-full-access from config.toml.
+allowed_sandbox_modes = ["read-only", "danger-full-access"]
