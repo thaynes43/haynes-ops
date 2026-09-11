@@ -5,6 +5,7 @@ Agent-facing operational docs for this repo — runbooks, safety rules, and refe
 Top-level agent instructions live in [`CLAUDE.md`](../CLAUDE.md); this folder holds the longer-form material it references.
 
 ## runbooks/ — step-by-step procedures
+- [blender-authoring.md](runbooks/blender-authoring.md) — local Blender MCP, software graphics, GLB/audio toolchain, smoke tests, and the held-draft activation boundary.
 - [talos-version-upgrade.md](runbooks/talos-version-upgrade.md) — bump Talos/Kubernetes via Omni, verify per node, and recover (re-image) a node that won't upgrade. Pairs with the gotchas reference below.
 - [renovate-upgrade-batches.md](runbooks/renovate-upgrade-batches.md) — clear a backlog of Renovate update PRs by merging in risk-tiered batches (safe → infra → breaking → storage), reconciling and verifying after each.
 - [volsync-restore.md](runbooks/volsync-restore.md) — VolSync (restic) PVC restore, including PVC-resize edge cases.
