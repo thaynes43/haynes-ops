@@ -1,6 +1,6 @@
 # Haynes Quest isolated private playtest release
 
-- Status: final application verification in progress; no review deployment is live yet.
+- Status: application final-head CI/merge/publication in progress; no review deployment is live yet.
 - Operations worktree: `/home/dev/work/quest-parody-promotion`, branch `agent/quest-parody-promotion`, base `d2acee8`.
 - Application: `thaynes43/haynes-quest#28`; final runtime `ff3ad87`, exact main image pending checked squash merge.
 - Scope: three new resources for `haynes-quest-playtest` plus entries in the existing app Kustomization. Normal demo resources and image remain unchanged. No dev-env, OAuth, new Secret, public ingress or Immich access.
@@ -25,9 +25,9 @@ Dev-env baseline: pod`dev-env-dfdd8c894-l724p`, UID`c3a94756-af35-405e-93bc-eb05
 
 ## Application proof and image selection
 
-Both original full keyboard/touch routes passed on Dcn: gear, combat/guard, bosses, two then one decoded fictional pictures, age0→4→7, deliberate hazard/fall recovery, gaps/runway/ferry and save/resume. Fable ran27 exploratory cases;26 passed, one exposed held-contact menus. Rootff3ad87 corrected implicit capture and fresh-input deduplication. WO043 on exact BPe client verified Help/album/sound/Save while holding the stick, then keyboard10.9ms later and fresh primary touch/mouse; zero errors and one saved journey. WO045 is final combined route/remaining-probe acceptance. Physical Safari/children remain untested.
+Both original full keyboard/touch routes passed on Dcn: gear, combat/guard, bosses, two then one decoded fictional pictures, age0→4→7, deliberate hazard/fall recovery, gaps/runway/ferry and save/resume. Fable ran27 exploratory cases;26 passed, one exposed held-contact menus. Rootff3ad87 corrected implicit capture and fresh-input deduplication. WO043 on exact BPe client verified Help/album/sound/Save while holding the stick, then keyboard10.9ms later and fresh primary touch/mouse; zero errors and one saved journey. WO046 closes final functional acceptance: keyboard exit0; the same touch save completed both chapters across a browser restart, with interrupted harness checks documented. A fresh touch probe reopened the completed save twice, decoded all3 pictures and retained age7/two chapters, exit0 with no page/request errors. Session-failure/retry, desktop menus and rapid attacks passed3/3. The final source removes invalid post-release position/checkpoint assertions while retaining actual ferry landing proof. Physical Safari/children remain untested.
 
-Local typecheck/lint and227 tests pass;9 PostgreSQL tests run against a dedicated CI service. Four-model catalog audit passed4pages/20clips/28MP4s/20stills/8posters/4touch orbits/4masters with zero failures. Exact artwork list is application`docs/assets/media/playtest/v001/artwork.json`.
+Local typecheck/lint/build/strict docs and227 tests pass; CI passes236 including9 dedicated PostgreSQL cases. Four-model catalog audit passed4pages/20clips/28MP4s/20stills/8posters/4touch orbits/4masters with zero failures. Exact artwork list is application`docs/assets/media/playtest/v001/artwork.json`.
 
 Require final application PR verify, container-check and Documentation build before squash merge. Then require the actual main SHA's verify/image/Documentation workflows: Buildx SBOM/provenance, GitHub provenance attestation and cosign signing. Read its tag anonymously from GHCR using a pull token kept out of output and Accept for OCI index/manifest plus Docker list/manifest; require200 and record Docker-Content-Digest.
 
