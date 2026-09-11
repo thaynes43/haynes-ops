@@ -30,9 +30,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Deployment continuation must replace both placeholders with
-              # the published merge-commit tag and digest before opening a PR.
-              tag: sha-REPLACE@sha256:REPLACE
+              # haynes-quest main commit 6263dc4 (PR #21), published by the
+              # successful Application workflow run 34564020967.
+              tag: sha-6263dc42443eb5c33943d26f668da386df4900d4@sha256:36b363a9e43912691d93a65c776cc9d958101a9d3a4379b7e1f4737e0a3f23b0
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development

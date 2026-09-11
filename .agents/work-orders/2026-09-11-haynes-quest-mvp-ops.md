@@ -1,11 +1,11 @@
 # Haynes Quest private MVP operations
 
-- **Status:** Database ready; deployment manifest prepared and awaiting image digest
+- **Status:** Image verified; deployment manifest ready for GitOps review
 - **Owner:** Codex ops lane under PLAN-004
 - **Branch:** database PRs from `agent/quest-mvp-ops`; deployment from
-  `agent/quest-mvp-deploy`
+  `agent/quest-private-deploy`
 - **Application repository:** `/home/dev/work/haynes-quest-overnight-mvp`
-- **Infrastructure repository:** `/home/dev/work/quest-mvp-ops`
+- **Infrastructure repository:** `/home/dev/work/quest-private-deploy`
 
 ## Objective
 
@@ -115,6 +115,16 @@ The unmerged deployment checkpoint on `agent/quest-mvp-deploy` defines:
   289,945-byte JPEG with a matching magic-byte signature. The probe zeroed each
   streamed chunk, wrote no image to disk, emitted no identifiers or metadata,
   and its one-shot Job was deleted.
+- 2026-09-11 immutable image: application PR #21 squash-merged as
+  `6263dc42443eb5c33943d26f668da386df4900d4`. Main Application workflow run
+  `34564020967` passed verification, published provenance, and completed the
+  keyless signing step. The exact `sha-6263dc42443eb5c33943d26f668da386df4900d4`
+  tag resolves anonymously to
+  `sha256:36b363a9e43912691d93a65c776cc9d958101a9d3a4379b7e1f4737e0a3f23b0`;
+  its Linux amd64 manifest, config blob, and first layer were also anonymously
+  retrievable. Independent attestation-bundle retrieval from this pod remains
+  unavailable because its Azure blob host is outside the egress allowlist; the
+  publishing workflow's provenance and signing steps are the recorded evidence.
 
 Do not record Secret values, personal fields, private media, or credentialed
 Immich response data in this work order.
