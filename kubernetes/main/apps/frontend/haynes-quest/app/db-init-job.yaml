@@ -18,6 +18,13 @@ spec:
         app.kubernetes.io/component: database-init
     spec:
       automountServiceAccountToken: false
+      # The exact Cilium DNS allowlist permits the service FQDN. With the
+      # cluster default ndots:5, libc first tries search-suffixed variants that
+      # are deliberately denied; resolve this four-dot FQDN directly instead.
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       enableServiceLinks: false
       restartPolicy: OnFailure
       securityContext:

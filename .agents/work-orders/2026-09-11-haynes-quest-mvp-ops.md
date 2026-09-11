@@ -49,6 +49,11 @@ credentials out of the fixture workload.
 - 2026-09-11 private-path audit: `traefik-internal` is a LoadBalancer on
   `192.168.40.203`; the repo documents `*.haynesops.com` as UniFi-published and
   LAN-only, and Cloudflare external-dns excludes `haynesops.com`.
+- 2026-09-11 database bootstrap: PR #2849 merged as `705d49b`. The first Job
+  stayed in its retry loop before database mutation because the pod's default
+  `ndots:5` issued search-suffixed DNS names outside the exact allowlist. A safe
+  probe confirmed the absolute service FQDN resolves. The follow-up pins
+  `ndots:1` on only this Job and keeps the DNS boundary exact.
 
 Do not record Secret values, personal fields, private media, or credentialed
 Immich response data in this work order.
