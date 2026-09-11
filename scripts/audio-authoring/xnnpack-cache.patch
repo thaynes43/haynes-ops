@@ -1,0 +1,65 @@
+diff --git a/optimized/tflite/scripts/rung_decoder.py b/optimized/tflite/scripts/rung_decoder.py
+index d0886ff..0847158 100644
+--- a/optimized/tflite/scripts/rung_decoder.py
++++ b/optimized/tflite/scripts/rung_decoder.py
+@@ -6,6 +6,7 @@ L=64 => 624ms/1.9GB vs fixed-256 2741ms/2.6GB vs varlen 2199ms/4.0GB. Needs lit
+ L=64 => 624ms/1.9GB vs fixed-256 2741ms/2.6GB vs varlen 2199ms/4.0GB. Needs litert>=2.2.0 (CompiledModel)."""
+ from __future__ import annotations
+ import numpy as np
++from xnnpack_cache import default_weight_cache_path
+ 
+ RUNGS = (2, 4, 8, 12, 16, 32, 64, 128, 256)   # doc only — rungs are auto-discovered from the file's
+                                               # s<N> signatures. Small rungs {2,4,8,12}(+1 SAME-L) make
+@@ -21,7 +22,7 @@ class RungDecoder:
+         path = str(path)
+         self.trim = trim                 # overlap/side; SAME-L=12, SAME-S=16
+         self._cap = max_rung             # cap the largest rung used -> lower peak RAM (slower); None=auto
+-        wc = (path + ".xnnwc") if weight_cache_path == "auto" else weight_cache_path
++        wc = default_weight_cache_path(path) if weight_cache_path == "auto" else weight_cache_path
+         self.m = CompiledModel.from_file(path, options=Options(cpu_options=CpuOptions(
+             num_threads=int(threads), xnnpack_weight_cache_path=str(wc) if wc else "")))
+         # map rung size -> signature index
+diff --git a/optimized/tflite/scripts/rung_encoder.py b/optimized/tflite/scripts/rung_encoder.py
+index 66de37a..4b42cb3 100644
+--- a/optimized/tflite/scripts/rung_encoder.py
++++ b/optimized/tflite/scripts/rung_encoder.py
+@@ -6,6 +6,7 @@ unlike the shipped dense-varlen encoder whose arena bloats to ~16GB@L256. Needs
+ unlike the shipped dense-varlen encoder whose arena bloats to ~16GB@L256. Needs litert>=2.2.0."""
+ from __future__ import annotations
+ import numpy as np
++from xnnpack_cache import default_weight_cache_path
+ 
+ RUNGS = (2, 4, 8, 12, 16, 32, 64, 128, 256)   # doc only — actual rungs are auto-discovered from the
+                                               # file's s<N> signatures. Small rungs {2,4,8,12}(+1 for
+@@ -24,7 +25,7 @@ class RungEncoder:
+         path = str(path)
+         self.trim = trim                 # overlap/side; SAME-L=12 (bit-exact), SAME-S=2
+         self._cap = max_rung             # cap the largest rung used -> lower peak RAM (slower); None=auto
+-        wc = (path + ".xnnwc") if weight_cache_path == "auto" else weight_cache_path
++        wc = default_weight_cache_path(path) if weight_cache_path == "auto" else weight_cache_path
+         self.m = CompiledModel.from_file(path, options=Options(cpu_options=CpuOptions(
+             num_threads=int(threads), xnnpack_weight_cache_path=str(wc) if wc else "")))
+         keys = {self.m.get_signature_by_index(i)["key"]: i for i in range(self.m.get_num_signatures())}
+diff --git a/optimized/tflite/scripts/xnnpack_cache.py b/optimized/tflite/scripts/xnnpack_cache.py
+new file mode 100644
+index 0000000..1a741bb
+--- /dev/null
++++ b/optimized/tflite/scripts/xnnpack_cache.py
+@@ -0,0 +1,17 @@
++"""Writable XNNPACK weight-cache paths for immutable model mounts."""
++from __future__ import annotations
++
++import hashlib
++import os
++from pathlib import Path
++
++
++CACHE_ROOT = Path("/tmp/audio-xnnpack")
++
++
++def default_weight_cache_path(model_path):
++    """Return a stable, collision-resistant cache path for a resolved model path."""
++    resolved = Path(model_path).resolve(strict=True)
++    path_identity = hashlib.sha256(os.fsencode(resolved)).hexdigest()
++    CACHE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
++    return CACHE_ROOT / f"{resolved.name}-{path_identity}.xnnwc"

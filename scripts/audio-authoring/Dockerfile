@@ -17,7 +17,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates ffmpeg git libsndfile1 \
  && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt weights-revision.patch /tmp/audio-build/
+COPY requirements.txt weights-revision.patch xnnpack-cache.patch /tmp/audio-build/
 RUN python -m venv /opt/audio-authoring/venv \
  && /opt/audio-authoring/venv/bin/pip install --no-cache-dir --disable-pip-version-check \
       -r /tmp/audio-build/requirements.txt \
@@ -27,6 +27,7 @@ RUN python -m venv /opt/audio-authoring/venv \
  && git -C /opt/audio-authoring/stable-audio-3 checkout --detach FETCH_HEAD \
  && test "$(git -C /opt/audio-authoring/stable-audio-3 rev-parse HEAD)" = "${STABLE_AUDIO_REVISION}" \
  && git -C /opt/audio-authoring/stable-audio-3 apply /tmp/audio-build/weights-revision.patch \
+ && git -C /opt/audio-authoring/stable-audio-3 apply /tmp/audio-build/xnnpack-cache.patch \
  && rm -rf /opt/audio-authoring/stable-audio-3/optimized/tflite/models/tflite \
  && ln -s /models/tflite /opt/audio-authoring/stable-audio-3/optimized/tflite/models/tflite \
  && rm -rf /opt/audio-authoring/stable-audio-3/.git \

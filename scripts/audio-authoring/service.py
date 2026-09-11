@@ -38,6 +38,7 @@ WEIGHTS_REPOSITORY = "stabilityai/stable-audio-3-optimized"
 WEIGHTS_REVISION = "da6edc54ddba10bfd79a077102ded687f80e882b"
 SOURCE_REPOSITORY = "Stability-AI/stable-audio-3"
 SOURCE_REVISION = "779434a908193105335fd8d833418603625b2859"
+SERVICE_VERSION = "0.1.1"
 MODEL_FILES = (
     "tflite/t5gemma/encoder_fp16.tflite",
     "tflite/sa3-sm-sfx/dit_fp32.tflite",
@@ -385,6 +386,7 @@ class Runtime:
             directory.mkdir(mode=0o700)
             job = {
                 "schema_version": 1,
+                "service_version": SERVICE_VERSION,
                 "model": dict(MODEL),
                 "id": identifier,
                 "status": "queued",
@@ -696,6 +698,7 @@ async def ready(_request):
     status_code = 200 if runtime.ready() else 503
     return JSONResponse({
         "ready": runtime.ready(),
+        "service_version": SERVICE_VERSION,
         "model_ready": runtime.model_manifest is not None,
         "model_error": runtime.model_error,
         "busy": runtime.current_process is not None,
