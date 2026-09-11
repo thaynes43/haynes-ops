@@ -1,50 +1,42 @@
-# Haynes Quest obby and parody promotion preparation
+# Haynes Quest isolated private playtest release
 
-- Status: preparation only; no cluster changes or rollout authorization claimed.
-- Operations worktree: `/home/dev/work/quest-parody-promotion`, branch `agent/quest-parody-promotion`, based on `d2acee8`.
-- Application candidate: `thaynes43/haynes-quest#28`, still draft while actual full keyboard/touch verification finishes. The bounded cast is four completed v001 characters with returning Peel Patrol and Drama Dragon in chapter two; no new model production or expanded setup blocks this playtest.
-- Scope: Haynes Quest image pin and this evidence record. No dev-env, OAuth, ingress, network, secret or database configuration changes are part of this promotion.
+- Status: final application verification in progress; no review deployment is live yet.
+- Operations worktree: `/home/dev/work/quest-parody-promotion`, branch `agent/quest-parody-promotion`, base `d2acee8`.
+- Application: `thaynes43/haynes-quest#28`; final runtime `ff3ad87`, exact main image pending checked squash merge.
+- Scope: three new resources for `haynes-quest-playtest` plus entries in the existing app Kustomization. Normal demo resources and image remain unchanged. No dev-env, OAuth, new Secret, public ingress or Immich access.
 
-## Release boundary
+## Authorized release boundary
 
-The user authorized end-to-end MVP delivery and checked PR merges. Haynes Quest AGENTS/TEAM additionally require Tom's review of exact final visual/audio versions before gameplay promotion. The earlier visual question predates rejection of the generic enemies and cannot approve that cast. Prepare the completed candidate, game/catalog evidence, checked application merge, published immutable image and concrete operations PR before requesting final exact-version approval. Ordinary application code/docs PRs do not wait on asset approval.
+Tom requested end-to-end MVP delivery, checked PR merges and a Fable5.1 agentic playtest before deeper inspection. Application WO044 ratifies a separate LAN-only candidate review at `https://haynes-quest-playtest.haynesops.com` under DESIGN007's explicit allowance: “Candidates may be shown in an isolated, clearly labeled review preview.” This makes the game reviewable before Tom chooses exact final artwork. It does not record owner approval or promote those candidates into the normal private demo.
 
-No image pin is changed yet: the final application commit and digest do not exist. Never substitute a guessed digest, mutable tag or the older published foundation image merely to advance this work order. Do not merge a candidate-game image before the exact asset decision is recorded.
+The application labels its two-chapter fictional playtest and pending artwork review. The exact15 GLBs remain candidates: two traveler stages, five environment/keepsake pieces, four equipment props and four completed parody models. No audio mapped. New v2 plans select six encounters using those four models; old v1 data is retained, but incomplete Nap/missing Diva art does not become graphically playable through data compatibility. Real family photos, admitted login, expanded parent curation, Besties and lifetime content remain open.
 
-## Verified current baseline
+## Verified baseline and isolation
 
-Read-only checks on September 11, 2026 at approximately 17:46 UTC:
+Normal URL `https://haynes-quest.haynesops.com` runs pod `haynes-quest-7d9b698574-nds6g`, image `sha-3502ac7120f6d7741a1a209415f4c9eeb33f826b@sha256:743bca475c2e19d2534ecd3be7f952e52d0d5adb5724599f1285218f91e87e37`. Preserve that deployment.
 
-- App Kustomization: `frontend/haynes-quest`, source `flux-system/haynes-ops`, path `./kubernetes/main/apps/frontend/haynes-quest/app`.
-- Running app pod: `haynes-quest-7d9b698574-nds6g`.
-- Current tag: `sha-3502ac7120f6d7741a1a209415f4c9eeb33f826b`.
-- Current image digest: `sha256:743bca475c2e19d2534ecd3be7f952e52d0d5adb5724599f1285218f91e87e37`.
-- Private fixture URL: `https://haynes-quest.haynesops.com`.
-- Runtime receives only its session/app database Secret; no Immich or database-init Secret mount. Existing `QUEST_FIXTURE_MODE=true` continues to select synthetic material.
-- dev-env pod: `dev-env-dfdd8c894-l724p`, UID `c3a94756-af35-405e-93bc-eb05c2979d3a`; all three reported container restart counts zero. This promotion must not restart it.
+Review uses its own HelmRelease/Deployment/Service/selectors, internal Traefik route and Cilium policy inside existing `frontend/haynes-quest`, sourced from `flux-system/haynes-ops` at `./kubernetes/main/apps/frontend/haynes-quest/app`. The LAN DNS route targets `internal.haynesops`; internal Traefik address192.168.40.203 and existing wildcard TLS cover the new host. Cloudflare DNS excludes haynesops.com. Ingress only from internal Traefik; egress only PostgreSQL5432 and bounded kube-dns lookup. Fixture mode remains true and origin matches the new hostname.
 
-## Concrete next steps
+Only existing `haynes-quest-secret` supplies session/database settings. No Immich or database-init Secret. Cookies have no Domain, giving normal host-only browser isolation and a fresh random fixture owner on the review host; every record operation checks ownership. Shared secret/database is not cryptographic tenant separation if a cookie is manually copied across hosts.
 
-1. Finish the application's two-chapter integration with four completed candidate characters, actual keyboard/touch course journeys, image decoding and exact catalog audit. Merge the checked application PR and verify publication/signing plus anonymous retrieval of its exact immutable manifest.
-2. Replace only the Haynes Quest image tag/digest and explanatory commit/run comments. Record exact candidate visual versions and their pending/approved decision. Validate the rendered app and required Flux Local checks in an operations PR.
-3. Once exact asset approval is present, declare scoped activity for `frontend,haynes-quest`, squash-merge the checked operations PR and reconcile only the app's GitOps target. Do not manually delete/restart the app pod.
-4. Verify source revision, Kustomization/Helm readiness, running image digest, private health/readiness, complete catalog media, actual new-game loop, decoded synthetic pictures and saved resume. Do not mistake stale existing journeys for newly created parody plans.
-5. End scoped activity promptly. Record measured evidence and unperformed physical Safari/child playtests honestly. Preserve rollback image above.
+The new app applies additive0003 to the shared database. Advisory lock730204004, checksums and per-file transactions serialize migration. New nullable/defaulted columns preserve old reads/inserts; cleanup workers use SKIP LOCKED. The migration persists after removing the review and may briefly wait on save traffic. This bounded MVP change is authorized; include both Quest names/frontend in the activity declaration.
 
-## Candidate review package
+Dev-env baseline: pod`dev-env-dfdd8c894-l724p`, UID`c3a94756-af35-405e-93bc-eb05c2979d3a`; all three container restarts0. Do not touch its resources or restart it.
 
-Application runtime head `236d221` includes the exact 15-GLB candidate list at `docs/assets/media/playtest/v001/artwork.json` and a short owner guide at `docs/assets/playtest.md`. Those 15 files comprise two traveler stages, five environment/keepsake pieces, four equipment props and four completed enemy/boss models. No audio is mapped. The current catalog v2 selects six encounters across two chapters while preserving original catalog v1 save data. The unshipped v1 candidate cast still contains incomplete Nap and missing Diva artwork; preserved data does not establish full graphical playability of that archived candidate. New playtests must use v2.
+## Application proof and image selection
 
-Local typecheck/lint/build and 218 tests pass; nine additional PostgreSQL tests run in CI. All four character pages/models, 20 clips, 28 MP4s, 20 stills, four touch orbits and four editable masters passed a combined browser audit without failure counters. The complete keyboard route passed on C6hLU3Dp; current DcnSUtWQ differs only by the mobile Save & leave accessible label. Full touch remains incomplete. Tom requested Fable5.1 agentic testing and polish under application WO042; exact task `haynes-quest-0911-152226` is running from application `f9e2b49`. Wait for its findings and root integration before choosing a release image. These are preparation facts, not asset approval, physical-device acceptance or a live release.
+Both original full keyboard/touch routes passed on Dcn: gear, combat/guard, bosses, two then one decoded fictional pictures, age0→4→7, deliberate hazard/fall recovery, gaps/runway/ferry and save/resume. Fable ran27 exploratory cases;26 passed, one exposed held-contact menus. Rootff3ad87 corrected implicit capture and fresh-input deduplication. WO043 on exact BPe client verified Help/album/sound/Save while holding the stick, then keyboard10.9ms later and fresh primary touch/mouse; zero errors and one saved journey. WO045 is final combined route/remaining-probe acceptance. Physical Safari/children remain untested.
 
-## Read-only release audit, 19:28 UTC
+Local typecheck/lint and227 tests pass;9 PostgreSQL tests run against a dedicated CI service. Four-model catalog audit passed4pages/20clips/28MP4s/20stills/8posters/4touch orbits/4masters with zero failures. Exact artwork list is application`docs/assets/media/playtest/v001/artwork.json`.
 
-Application PR checks are Application `verify` (including PostgreSQL16), `container-check`, and independent Documentation `build`. The process requires all green even though Quest currently declares no GitHub-required contexts. After squash merge, use the actual main SHA: its Application workflow runs `verify` then `image`, publishes `sha-<main SHA>` with Buildx provenance/SBOM, GitHub provenance attestation and keyless cosign signing. Require those jobs and Documentation to succeed.
+Require final application PR verify, container-check and Documentation build before squash merge. Then require the actual main SHA's verify/image/Documentation workflows: Buildx SBOM/provenance, GitHub provenance attestation and cosign signing. Read its tag anonymously from GHCR using a pull token kept out of output and Accept for OCI index/manifest plus Docker list/manifest; require200 and record Docker-Content-Digest.
 
-Read the exact tag anonymously from GHCR with a pull token kept out of output and an Accept header supporting OCI index/manifest plus Docker list/manifest. Require200, record `Docker-Content-Digest`, and pin `sha-<main SHA>@sha256:<digest>`. This retrieval procedure was independently re-proved against the older PR27 image; it does not prove the still-unpublished candidate.
+**The scaffold currently contains the old baseline image as an explicit placeholder. Root must replace it with the actual published candidate squash SHA and exact digest before opening this operations PR.** Never deploy the scaffold or guess a digest.
 
-For the opsPR, check diff scope and whitespace, render the app, and run Flux Local tests for both main and edge with Helm enabled. Inspect all nine jobs: Diff Scope; Flux Local Filter; main/edge Tests; four resource Diffs; Success. Required contexts currently are `Diff Scope - Success` and `Flux Local - Success`. The rendered diff should contain the Haynes Quest image change only.
+## Operations checks and rollout
 
-Independent `gh attestation verify` from this pod was attempted once against the older published image and failed DNS for `tmaproduction.blob.core.windows.net`, outside the egress allowlist. Do not retry through a workaround or claim independent cryptographic verification. Successful publish/attest/sign CI plus exact anonymous manifest retrieval are the established release evidence. Haynes Quest is not covered by the existing Kyverno image-verification rule; no admission-time signature enforcement is claimed.
+Kustomize rendering and assertions passed for three distinct new resources plus preserved existing resources. The installed local flux-local fails on the repository's existing cross-namespace chartRefs for unrelated external-secrets/reloader, and this pod has no Docker runtime for the CI8.4.0 container; this is not a passing full local Flux validation. Require all nine CI jobs: Diff Scope; Flux Local Filter; main/edge Tests; four resource Diffs; Success. Required contexts are Diff Scope - Success and Flux Local - Success. Inspect rendered diff for only the new review workload/service, route and policy; original workload/selectors must be unchanged.
 
-Fixture access remains bounded to synthetic identity/media and a seven-day fixture cookie. Real private setup/admission are not delivered by this image pin. Read-only checks again confirmed the old live digest above and the same dev-env UID with zero restarts.
+Independent gh attestation verify against an older image failed DNS for tmaproduction.blob.core.windows.net, outside the egress allowlist. No workaround or independent cryptographic/admission-enforcement claim. Successful publish/attest/sign CI plus exact anonymous manifest retrieval are the established image evidence.
+
+After checks, declare `frontend,haynes-quest,haynes-quest-playtest`, squash-merge and reconcile only `frontend/haynes-quest` with source. Verify Git/Helm readiness, exact running image, DNS/TLS/health, game and catalog media, actual newly created v2 journey and save/resume, stable normal app and unchanged dev-env UID/restarts. End activity promptly. Record final evidence and provide the working private review link with an included/open guide.
