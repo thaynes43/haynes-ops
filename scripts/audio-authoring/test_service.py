@@ -277,6 +277,7 @@ async def verify_restart(identifier: str) -> None:
     async with connected() as session:
         job = await call(session, "get_generation", {"job_id": identifier})
         assert job["status"] == "interrupted", job
+        assert job["model"]["source_revision"] == "prior-fixture-runtime", job
 
 
 def main() -> None:
@@ -313,6 +314,12 @@ def main() -> None:
                 assert response.status_code == 200
             restart_id = asyncio.run(exercise(workspace))
             stop_service(process)
+            record_path = workspace / "jobs" / restart_id / "job.json"
+            record = json.loads(record_path.read_text())
+            assert record["model"]["weights_revision"] == WEIGHTS_REVISION
+            # Older jobs must retain their originating model identity after upgrades.
+            record["model"]["source_revision"] = "prior-fixture-runtime"
+            record_path.write_text(json.dumps(record))
             process = start_service(models, workspace, log_path)
             asyncio.run(verify_restart(restart_id))
             stop_service(process)

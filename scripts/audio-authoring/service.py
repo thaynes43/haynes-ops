@@ -366,7 +366,7 @@ class Runtime:
             result["elapsed_seconds"] = elapsed
         if job.get("status") == "completed":
             result["download_url"] = f"/artifacts/{job['id']}/output.wav"
-        result["model"] = MODEL
+        result.setdefault("model", {"provenance": "not recorded by the originating runtime"})
         if TEST_MODE:
             result["test_backend"] = "deterministic fixture; NOT real generation proof"
         return result
@@ -385,6 +385,7 @@ class Runtime:
             directory.mkdir(mode=0o700)
             job = {
                 "schema_version": 1,
+                "model": dict(MODEL),
                 "id": identifier,
                 "status": "queued",
                 "prompt": prompt,
