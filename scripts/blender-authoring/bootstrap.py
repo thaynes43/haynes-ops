@@ -12,7 +12,7 @@ from bpy.app.handlers import persistent
 # Seed that timestamp for this preloaded, immutable module so enable() retains
 # the LocalServer override installed below instead of reloading it away.
 NAME = 'addon'
-sys.path.insert(0, '/opt/dev-env/blender-mcp')
+sys.path.insert(0, '/opt/blender-authoring/blender-mcp')
 addon = importlib.import_module(NAME)
 addon.__time__ = os.path.getmtime(addon.__file__)
 

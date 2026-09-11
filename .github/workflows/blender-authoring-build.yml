@@ -1,0 +1,78 @@
+name: Build and Push Blender Authoring Image
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/blender-authoring/**'
+      - '.github/workflows/blender-authoring-build.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/blender-authoring/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.3.0
+      - name: Build image for validation
+        uses: docker/build-push-action@v7
+        with:
+          context: ./scripts/blender-authoring
+          push: false
+          load: true
+          cache-from: type=gha,scope=blender-authoring-linux-amd64
+          cache-to: type=gha,mode=max,scope=blender-authoring-linux-amd64
+          tags: ghcr.io/${{ github.repository_owner }}/blender-authoring:0.1.0
+      - name: Smoke-test remote authoring without network or credentials
+        timeout-minutes: 8
+        run: |
+          docker run --rm --read-only --network none \
+            --cpus 4 --memory 8g --shm-size 64m \
+            --tmpfs /tmp:rw,exec,size=512m \
+            --tmpfs /workspace:rw,uid=1000,gid=1000,size=1g \
+            --user 1000:1000 \
+            --entrypoint /opt/blender-authoring/blender-mcp/.venv/bin/python \
+            ghcr.io/${{ github.repository_owner }}/blender-authoring:0.1.0 \
+            /opt/blender-authoring/test-service.py
+      - name: Log in to GitHub Container Registry
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish validated image
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        id: publish
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/blender-authoring
+        run: |
+          docker push "${IMAGE}:0.1.0"
+          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:0.1.0")"
+          echo "digest=${digest#*@}" >> "$GITHUB_OUTPUT"
+      - name: Install cosign
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Sign image
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/blender-authoring
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
