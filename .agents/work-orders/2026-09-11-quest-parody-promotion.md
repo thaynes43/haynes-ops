@@ -2,7 +2,7 @@
 
 - Status: preparation only; no cluster changes or rollout authorization claimed.
 - Operations worktree: `/home/dev/work/quest-parody-promotion`, branch `agent/quest-parody-promotion`, based on `d2acee8`.
-- Application candidate: `thaynes43/haynes-quest#28`, still draft while final cast/playthrough verification finishes.
+- Application candidate: `thaynes43/haynes-quest#28`, still draft while actual full keyboard/touch verification finishes. The bounded cast is four completed v001 characters with returning Peel Patrol and Drama Dragon in chapter two; no new model production or expanded setup blocks this playtest.
 - Scope: Haynes Quest image pin and this evidence record. No dev-env, OAuth, ingress, network, secret or database configuration changes are part of this promotion.
 
 ## Release boundary
@@ -25,8 +25,14 @@ Read-only checks on September 11, 2026 at approximately 17:46 UTC:
 
 ## Concrete next steps
 
-1. Finish the application's final six-candidate integration, actual keyboard/touch course journeys, image decoding and exact catalog audit. Merge the checked application PR and verify publication/signing plus anonymous retrieval of its exact immutable manifest.
+1. Finish the application's two-chapter integration with four completed candidate characters, actual keyboard/touch course journeys, image decoding and exact catalog audit. Merge the checked application PR and verify publication/signing plus anonymous retrieval of its exact immutable manifest.
 2. Replace only the Haynes Quest image tag/digest and explanatory commit/run comments. Record exact candidate visual versions and their pending/approved decision. Validate the rendered app and required Flux Local checks in an operations PR.
 3. Once exact asset approval is present, declare scoped activity for `frontend,haynes-quest`, squash-merge the checked operations PR and reconcile only the app's GitOps target. Do not manually delete/restart the app pod.
 4. Verify source revision, Kustomization/Helm readiness, running image digest, private health/readiness, complete catalog media, actual new-game loop, decoded synthetic pictures and saved resume. Do not mistake stale existing journeys for newly created parody plans.
 5. End scoped activity promptly. Record measured evidence and unperformed physical Safari/child playtests honestly. Preserve rollback image above.
+
+## Candidate review package
+
+Application head `c52ef22` includes the exact 15-GLB candidate list at `docs/assets/media/playtest/v001/artwork.json` and a short owner guide at `docs/assets/playtest.md`. Those 15 files comprise two traveler stages, five environment/keepsake pieces, four equipment props and four completed enemy/boss models. No audio is mapped. The current catalog v2 selects six encounters across two chapters while preserving original catalog v1 saves.
+
+Local typecheck/lint/209 application tests plus five actual-artifact tests pass; nine PostgreSQL tests run in CI. All four character pages/models, 20 clips, 28 MP4s, 20 stills, four touch orbits and four editable masters passed a combined browser audit without failure counters. Full actual route verification is ongoing. These are preparation facts, not asset approval, physical-device acceptance or a live release.
