@@ -1,0 +1,22 @@
+diff --git a/optimized/tflite/scripts/weights.py b/optimized/tflite/scripts/weights.py
+index ed7d9bf..4ca97c4 100644
+--- a/optimized/tflite/scripts/weights.py
++++ b/optimized/tflite/scripts/weights.py
+@@ -17,6 +17,7 @@ from __future__ import annotations
+ from pathlib import Path
+ 
+ REPO_ID = "stabilityai/stable-audio-3-optimized"
++REVISION = "da6edc54ddba10bfd79a077102ded687f80e882b"
+ # weights.py lives in <project>/scripts/; SCRIPT_DIR points at the project
+ # root so the local rel paths in the manifest ("models/tflite/foo.tflite")
+ # resolve against the actual project layout.
+@@ -227,7 +228,8 @@ def ensure_local(local_rel_path: str, verbose: bool = True) -> Path:
+             "Or run the install.py script in this directory."
+         ) from e
+ 
+-    cached = hf_hub_download(repo_id=REPO_ID, filename=hf_filename)
++    cached = hf_hub_download(repo_id=REPO_ID, filename=hf_filename,
++                             revision=REVISION)
+     target.parent.mkdir(parents=True, exist_ok=True)
+     # Expose the file at the project-relative path the runtime expects.
+     # Symlink when possible (keeps the HF cache canonical — one copy on disk);
