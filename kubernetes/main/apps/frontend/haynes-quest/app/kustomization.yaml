@@ -8,3 +8,6 @@ resources:
   - ./helmrelease.yaml
   - ./ingressroute.yaml
   - ./networkpolicy.yaml
+  - ./playtest-helmrelease.yaml
+  - ./playtest-ingressroute.yaml
+  - ./playtest-networkpolicy.yaml
