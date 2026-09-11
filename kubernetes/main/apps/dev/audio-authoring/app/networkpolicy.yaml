@@ -24,10 +24,10 @@ spec:
     - toEntities:
         - all
 ---
-# Anonymous model provisioning has its own narrow policy. With Xet disabled,
-# Hugging Face serves Xet-backed files through cas-bridge.xethub.hf.co; both the
-# Hub and publisher describe that exact HTTPS redirect path. If it changes, the
-# manual Job fails closed and its Cilium drops identify the new GitOps change.
+# Anonymous model provisioning has its own narrow policy. A HEAD request to the
+# pinned bundle's official Hugging Face resolve endpoint returns this exact CDN
+# hostname (verified during setup). Xet is disabled so downloads use HTTPS.
+# If the redirect changes, inspect it from the provisioner and update GitOps.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -51,10 +51,10 @@ spec:
           rules:
             dns:
               - matchName: huggingface.co
-              - matchName: cas-bridge.xethub.hf.co
+              - matchName: us.aws.cdn.hf.co
     - toFQDNs:
         - matchName: huggingface.co
-        - matchName: cas-bridge.xethub.hf.co
+        - matchName: us.aws.cdn.hf.co
       toPorts:
         - ports:
             - port: '443'
