@@ -73,10 +73,13 @@ spec:
             resources:
               requests:
                 cpu: 50m
-                memory: 256Mi
+                # Bumped 256Mi->512Mi with the limit bump below (2026-09-10).
+                memory: 512Mi
               limits:
                 # Bumped 512Mi->1Gi: container was OOMKilled 2026-06-20 at 512Mi. Audit 2026-07-07.
-                memory: 1Gi
+                # Bumped 1Gi->2Gi: OOMKilled 3x in 6 min at 1Gi on 2026-09-11 under
+                # concurrent history/logbook MCP queries (#2837). Baseline ~95Mi.
+                memory: 2Gi
     defaultPodOptions:
       # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox host (see incident)
       affinity:
