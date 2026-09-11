@@ -30,9 +30,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # haynes-quest main commit 6263dc4 (PR #21), published by the
-              # successful Application workflow run 34564020967.
-              tag: sha-6263dc42443eb5c33943d26f668da386df4900d4@sha256:36b363a9e43912691d93a65c776cc9d958101a9d3a4379b7e1f4737e0a3f23b0
+              # haynes-quest main commit 71c45b5 (PR #23), published by the
+              # successful Application workflow run 34568145769.
+              tag: sha-71c45b5fdba69cb38c59ccd336935218b322cd5c@sha256:2129b02e1d1804ffe3a89edc7e9e2e3eca9258cf18cdaca762130680d8f78675
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development

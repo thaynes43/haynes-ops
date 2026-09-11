@@ -1,6 +1,6 @@
 # Haynes Quest private MVP operations
 
-- **Status:** Private synthetic fixture deployed; restart persistence verified
+- **Status:** Final catalog image verified; GitOps rollout prepared
 - **Owner:** Codex ops lane under PLAN-004
 - **Branch:** database PRs from `agent/quest-mvp-ops`; deployment from
   `agent/quest-private-deploy`
@@ -57,7 +57,7 @@ defines:
   `https://haynes-quest.haynesops.com`, using the existing wildcard certificate;
 - runtime ingress from only the internal Traefik pods and egress to only DNS and
   the PostgreSQL writer service; and
-- application commit `6263dc42443eb5c33943d26f668da386df4900d4`, pinned as
+- application commit `71c45b5fdba69cb38c59ccd336935218b322cd5c`, pinned as
   its exact commit tag plus immutable registry digest.
 
 ## Deployment procedure
@@ -160,8 +160,18 @@ defines:
   removed. It left one inaccessible synthetic-only save at two of three
   memories because the application has no delete-save API. The complete rerun
   left one finished synthetic save. No live database mutation was used to erase
-  either record. The first deployed image is the playable MVP checkpoint; a
-  later immutable image bump may add the remaining candidate catalog artifacts.
+  either record. The first deployed image remains the playable MVP checkpoint;
+  the final catalog image is recorded below.
+- 2026-09-11 final catalog image: application PR #23 passed all 46 fresh
+  PostgreSQL 16 tests plus documentation and container checks, then
+  squash-merged as `71c45b5fdba69cb38c59ccd336935218b322cd5c`. Main Application
+  workflow run `34568145769` passed verification, published provenance, and
+  completed keyless signing. The exact
+  `sha-71c45b5fdba69cb38c59ccd336935218b322cd5c` tag resolves anonymously to
+  `sha256:2129b02e1d1804ffe3a89edc7e9e2e3eca9258cf18cdaca762130680d8f78675`;
+  its Linux amd64 manifest, config blob, and first layer were anonymously
+  retrievable. This image contains the completed nine-model catalog and four
+  reviewed cue WAV files, including the studio WAV MIME fix.
 
 Do not record Secret values, personal fields, private media, or credentialed
 Immich response data in this work order.
