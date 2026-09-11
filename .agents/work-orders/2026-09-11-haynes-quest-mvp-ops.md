@@ -171,7 +171,8 @@ defines:
   `sha256:2129b02e1d1804ffe3a89edc7e9e2e3eca9258cf18cdaca762130680d8f78675`;
   its Linux amd64 manifest, config blob, and first layer were anonymously
   retrievable. This image contains the completed nine-model catalog and four
-  reviewed cue WAV files, including the studio WAV MIME fix.
+  candidate cue WAV auditions, including the studio WAV MIME fix; listening
+  and Tom's approval remain pending.
 
 Do not record Secret values, personal fields, private media, or credentialed
 Immich response data in this work order.
