@@ -1,0 +1,16 @@
+---
+# CephFS permits later independent render Jobs to consume explicit saved scenes.
+# Protect editable sources from Flux inventory pruning. This is persistence, not
+# a backup: copy approved exports/source bundles to their project artifact store.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: blender-authoring-workspace
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: ceph-filesystem

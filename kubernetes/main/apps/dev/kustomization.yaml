@@ -6,3 +6,4 @@ resources:
   - ./namespace.yaml
   # Flux-Kustomizations
   - ./dev-env/ks.yaml
+  - ./blender-authoring/ks.yaml
