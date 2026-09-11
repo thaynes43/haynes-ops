@@ -85,6 +85,28 @@ def service_environment(models: Path, workspace: Path) -> dict[str, str]:
     return environment
 
 
+def test_xnnpack_cache_paths(root: Path) -> None:
+    scripts = INSTALL / "stable-audio-3" / "optimized" / "tflite" / "scripts"
+    sys.path.insert(0, str(scripts))
+    try:
+        from xnnpack_cache import default_weight_cache_path
+    finally:
+        sys.path.remove(str(scripts))
+
+    first_model = root / "first" / "codec.tflite"
+    second_model = root / "second" / "codec.tflite"
+    first_model.parent.mkdir()
+    second_model.parent.mkdir()
+    first_model.touch()
+    second_model.touch()
+
+    first = default_weight_cache_path(first_model)
+    second = default_weight_cache_path(second_model)
+    assert first.parent == Path("/tmp/audio-xnnpack")
+    assert first == default_weight_cache_path(first_model)
+    assert first != second
+
+
 def start_service(models: Path, workspace: Path, log_path: Path, ready: bool = True):
     with log_path.open("ab") as log:
         process = subprocess.Popen(
@@ -162,6 +184,7 @@ async def test_launch_cancel_race(workspace: Path) -> None:
         "peak_subprocess_rss_bytes": 0, "artifact": None, "audio": None, "error": None,
     }
     runtime.jobs[identifier] = job
+    assert "service_version" not in runtime._public(job)
     service.atomic_write_job(job)
     spawning = asyncio.Event()
     release = asyncio.Event()
@@ -215,6 +238,7 @@ async def exercise(workspace: Path) -> str:
         })
         assert time.monotonic() - started < 1.0
         assert first["status"] in {"queued", "running"}
+        assert first["service_version"] == "0.1.1"
         assert first["test_backend"].endswith("NOT real generation proof")
         completed = await wait_status(session, first["id"], {"completed"})
         assert completed["audio"]["duration_seconds"] == 5.0
@@ -297,6 +321,7 @@ def main() -> None:
             ensure_test_ffprobe(root)
             provision_fixture_models(models)
             os.environ.update(service_environment(models, workspace))
+            test_xnnpack_cache_paths(root)
             asyncio.run(test_launch_cancel_race(workspace))
 
             log_path = root / "service.log"
@@ -316,6 +341,7 @@ def main() -> None:
             stop_service(process)
             record_path = workspace / "jobs" / restart_id / "job.json"
             record = json.loads(record_path.read_text())
+            assert record["service_version"] == "0.1.1"
             assert record["model"]["weights_revision"] == WEIGHTS_REVISION
             # Older jobs must retain their originating model identity after upgrades.
             record["model"]["source_revision"] = "prior-fixture-runtime"
