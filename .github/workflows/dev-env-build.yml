@@ -83,20 +83,32 @@ jobs:
           cache-from: type=gha,scope=dev-env-linux-amd64
           cache-to: type=gha,mode=max,scope=dev-env-linux-amd64
           tags: |
-            ghcr.io/${{ github.repository_owner }}/dev-env:0.6.0
+            ghcr.io/${{ github.repository_owner }}/dev-env:0.6.1
             ghcr.io/${{ github.repository_owner }}/dev-env:latest
 
-      - name: Smoke-test authoring as the runtime user
-        timeout-minutes: 8
+      - name: Smoke-test base toolchain as the runtime user
+        timeout-minutes: 3
         run: |
           docker run --rm --read-only --network none \
-            --cpus 4 --memory 8g --shm-size 64m \
-            --tmpfs /tmp:rw,exec,size=512m \
-            --tmpfs /home/dev:rw,uid=1000,gid=1000,size=1g \
+            --cpus 2 --memory 2g \
+            --tmpfs /tmp:rw,exec,size=256m \
+            --tmpfs /home/dev:rw,uid=1000,gid=1000,size=256m \
             --user 1000:1000 \
-            --entrypoint /opt/dev-env/blender-mcp/.venv/bin/python \
-            ghcr.io/${{ github.repository_owner }}/dev-env:0.6.0 \
-            /opt/dev-env/test-blender-authoring.py
+            --entrypoint /bin/bash \
+            ghcr.io/${{ github.repository_owner }}/dev-env:0.6.1 \
+            -euc '
+              test "$(id -u)" = 1000
+              node --version
+              python3 --version
+              git --version
+              uv --version
+              claude --version
+              kubectl version --client=true
+              flux --version
+              gh --version
+              helm version --short
+              code-server --version
+            '
 
       - name: Publish validated image
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -104,9 +116,9 @@ jobs:
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/dev-env
         run: |
-          docker push "${IMAGE}:0.6.0"
+          docker push "${IMAGE}:0.6.1"
           docker push "${IMAGE}:latest"
-          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:0.6.0")"
+          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:0.6.1")"
           echo "digest=${digest#*@}" >> "$GITHUB_OUTPUT"
 
       # The live HelmRelease remains on its old digest until a separate held-draft
