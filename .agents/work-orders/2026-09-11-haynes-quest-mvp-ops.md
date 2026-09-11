@@ -1,9 +1,10 @@
 # Haynes Quest private MVP operations
 
-- **Status:** Final catalog image verified; GitOps rollout prepared
+- **Status:** Final catalog image deployed; live catalog server checks passed
 - **Owner:** Codex ops lane under PLAN-004
 - **Branch:** database PRs from `agent/quest-mvp-ops`; deployment from
-  `agent/quest-private-deploy`
+  `agent/quest-private-deploy`; catalog deployment from
+  `agent/quest-catalog-deploy`
 - **Application repository:** `/home/dev/work/haynes-quest-overnight-mvp`
 - **Infrastructure repository:** `/home/dev/work/quest-private-deploy`
 
@@ -44,7 +45,9 @@ credentials out of the fixture workload.
 ## Deployed fixture manifest
 
 Operations PR #2851, merged as `6622a9b0988c69de2c9dedd7e51626ed439d2aea`,
-defines:
+defines the fixture baseline. Catalog deployment PR #2853, merged as
+`026deb4584dac21532547ec174f3a8c36058d66d`, pins its current image. Together
+they define:
 
 - one app-template replica listening on port 3000 behind a ClusterIP Service;
 - `NODE_ENV=development`, `QUEST_FIXTURE_MODE=true`, the exact private
@@ -173,6 +176,21 @@ defines:
   retrievable. This image contains the completed nine-model catalog and four
   candidate cue WAV auditions, including the studio WAV MIME fix; listening
   and Tom's approval remain pending.
+- 2026-09-11 final catalog rollout: operations PR #2853 passed all nine Diff
+  Scope and Flux Local checks, then squash-merged as
+  `026deb4584dac21532547ec174f3a8c36058d66d`. Flux reconciled
+  `frontend/haynes-quest` to that exact revision. The Kustomization reports
+  Ready and Healthy, the HelmRelease upgraded successfully, and its one updated
+  pod is Ready with zero restarts and the exact catalog image digest.
+- 2026-09-11 live catalog server check: `/healthz` and `/readyz` reported `ok`
+  and `ready`, and `/studio/assets/catalog.html` returned HTTP 200. All nine GLB
+  catalog files returned HTTP 200 as `model/gltf-binary`; all four candidate
+  cue WAV files returned HTTP 200 as `audio/wav`. The deployment still mounts
+  only `haynes-quest-secret`, does not mount a service-account token, and runs
+  as UID/GID 1000 with a read-only root filesystem. Its valid network policy
+  still permits only database-name DNS and PostgreSQL-writer egress. This
+  rollout created no database records and did not delete or manually restart a
+  pod. Scoped activity `act-061004-45284` was ended after verification.
 
 Do not record Secret values, personal fields, private media, or credentialed
 Immich response data in this work order.
