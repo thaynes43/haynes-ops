@@ -1,0 +1,23 @@
+---
+# Synthetic fixture preview on the LAN-only ingress controller. The
+# haynesops.com zone is published to UniFi, excluded from Cloudflare external
+# DNS, and resolves this route to traefik-internal's RFC1918 LoadBalancer.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: haynes-quest
+  annotations:
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`haynes-quest.haynesops.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: haynes-quest
+          port: 3000
+  tls:
+    secretName: certificate-haynesops
