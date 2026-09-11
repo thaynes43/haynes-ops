@@ -1,6 +1,6 @@
 # Haynes Quest private MVP operations
 
-- **Status:** Image verified; deployment manifest ready for GitOps review
+- **Status:** Private synthetic fixture deployed; restart persistence verified
 - **Owner:** Codex ops lane under PLAN-004
 - **Branch:** database PRs from `agent/quest-mvp-ops`; deployment from
   `agent/quest-private-deploy`
@@ -41,9 +41,10 @@ credentials out of the fixture workload.
    LAN-only IngressRoute, health probes, runtime network policy, and immutable
    image digest. Verify the Secret boundary and `/studio/` on the live route.
 
-## Prepared deployment manifest
+## Deployed fixture manifest
 
-The unmerged deployment checkpoint on `agent/quest-mvp-deploy` defines:
+Operations PR #2851, merged as `6622a9b0988c69de2c9dedd7e51626ed439d2aea`,
+defines:
 
 - one app-template replica listening on port 3000 behind a ClusterIP Service;
 - `NODE_ENV=development`, `QUEST_FIXTURE_MODE=true`, the exact private
@@ -56,10 +57,10 @@ The unmerged deployment checkpoint on `agent/quest-mvp-deploy` defines:
   `https://haynes-quest.haynesops.com`, using the existing wildcard certificate;
 - runtime ingress from only the internal Traefik pods and egress to only DNS and
   the PostgreSQL writer service; and
-- a deliberate `sha-REPLACE@sha256:REPLACE` image placeholder so this branch
-  cannot be treated as deployable before the merge-commit image is published.
+- application commit `6263dc42443eb5c33943d26f668da386df4900d4`, pinned as
+  its exact commit tag plus immutable registry digest.
 
-## Deployment continuation
+## Deployment procedure
 
 1. Record the application squash-merge commit and successful image-workflow
    digest. Verify the `sha-<merge-commit>` manifest can be pulled from GHCR
@@ -125,6 +126,42 @@ The unmerged deployment checkpoint on `agent/quest-mvp-deploy` defines:
   retrievable. Independent attestation-bundle retrieval from this pod remains
   unavailable because its Azure blob host is outside the egress allowlist; the
   publishing workflow's provenance and signing steps are the recorded evidence.
+- 2026-09-11 fixture deployment: operations PR #2851 passed the Diff Scope and
+  full Flux Local 8.4.0 main/edge test and diff gates, then squash-merged as
+  `6622a9b0988c69de2c9dedd7e51626ed439d2aea`. Flux reconciled
+  `frontend/haynes-quest` to that exact revision. The Kustomization and
+  HelmRelease report Ready, with app-template 5.1.0 installed successfully.
+- 2026-09-11 live boundary: one ready application pod runs the exact pinned
+  digest with zero restarts. The rendered pod has only the four documented
+  plain environment variables and `haynes-quest-secret` in `envFrom`; service
+  account token automount is false, UID/GID are 1000, the root filesystem is
+  read-only, privilege escalation is false, and all capabilities are dropped.
+  The ClusterIP Service has one ready endpoint. The valid runtime Cilium policy
+  selects that pod and allows only internal-Traefik ingress plus DNS and
+  PostgreSQL-writer egress.
+- 2026-09-11 private route: the hostname resolves to internal Traefik at
+  `192.168.40.203`. `/`, `/healthz`, `/readyz`, `/studio/`, and
+  `/studio/assets/catalog.html` all returned success; the health payloads
+  reported `ok` and `ready`. The replacement pod emitted only its normal
+  listening message, and the deployment had no warning events.
+- 2026-09-11 process-replacement proof: a private signed-cookie session created
+  a three-memory chronological synthetic save and recovered the first two
+  memories. The state at revision 2 had age 4, the expected three abilities,
+  and the child appearance stage. After deleting only that application pod, a
+  different pod UID became Ready. The same cookie resolved the same player and
+  an identical save view, including stable IDs, manifest, recovered order,
+  revision, age, abilities, appearance, rule versions, and timestamps. The last
+  memory was then recovered and the journey finished at revision 4. A distinct
+  fresh session received 404 for both that save and its media.
+- 2026-09-11 audit cleanup and limit: private cookie files were truncated and
+  removed, no temporary Jobs were created, and the scoped activity declaration
+  was ended. The first audit script attempt stopped after a successful pod
+  replacement because of a local JSON-path assertion error; its cookie was also
+  removed. It left one inaccessible synthetic-only save at two of three
+  memories because the application has no delete-save API. The complete rerun
+  left one finished synthetic save. No live database mutation was used to erase
+  either record. The first deployed image is the playable MVP checkpoint; a
+  later immutable image bump may add the remaining candidate catalog artifacts.
 
 Do not record Secret values, personal fields, private media, or credentialed
 Immich response data in this work order.
