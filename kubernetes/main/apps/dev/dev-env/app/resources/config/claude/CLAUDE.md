@@ -79,8 +79,17 @@ stdio only — no SSE — so a networked server must expose a `/mcp` endpoint.
   loopback-only inside that pod. One scene author per work order; save candidates
   under `/workspace` and retrieve them through the service's `/artifacts/` route.
   See `.agents/runbooks/blender-authoring.md` in haynes-ops. Tom reviews final
-  game assets before use. GPU rendering and audio-model workers are separate
-  capacity/trial decisions; no audio weights are bundled.
+  game assets before use. GPU rendering is a later capacity/trial decision;
+  audio inference runs in its own service below.
+- `audio` — self-hosted Stable Audio Small-SFX on CPU, streamable HTTP at
+  `http://audio-authoring.dev.svc.cluster.local:8000/mcp`. Submit a bounded
+  `generate_sound` job, poll `get_generation`, cancel with `cancel_generation`,
+  and inspect `list_generations`. One generation runs at a time; four may wait.
+  Models are provisioned separately and inference is offline. Job history and
+  WAVs persist in the audio pod's own `/workspace`; use the returned
+  `/artifacts/<job-id>/output.wav` URL and checksum to retrieve a result.
+  See `.agents/runbooks/audio-authoring.md` in haynes-ops. Upgrades leave dev-env
+  running; final game audio versions still need Tom's review.
 - `outline` — the sigoalumni wiki (stdio, `uvx mcp-outline`)
 - `vexa` — meeting bot: transcripts, recordings (cluster-local)
 - `cigar-journal` — the prod journal/catalog MCP at

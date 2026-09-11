@@ -47,6 +47,10 @@
     "blender": {
       "type": "http",
       "url": "http://blender-authoring.dev.svc.cluster.local:8000/mcp"
+    },
+    "audio": {
+      "type": "http",
+      "url": "http://audio-authoring.dev.svc.cluster.local:8000/mcp"
     }
   }
 }

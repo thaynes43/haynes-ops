@@ -7,3 +7,4 @@ resources:
   # Flux-Kustomizations
   - ./dev-env/ks.yaml
   - ./blender-authoring/ks.yaml
+  - ./audio-authoring/ks.yaml

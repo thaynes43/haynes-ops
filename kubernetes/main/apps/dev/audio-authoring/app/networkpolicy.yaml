@@ -1,0 +1,61 @@
+---
+# The runtime is a private MCP service. Only dev-env may call it, and inference
+# is deliberately offline: model acquisition belongs to the provisioner below.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: audio-authoring-runtime
+  namespace: dev
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: audio-authoring
+      app.kubernetes.io/component: runtime
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev
+            app.kubernetes.io/name: dev-env
+      toPorts:
+        - ports:
+            - port: '8000'
+              protocol: TCP
+  egressDeny:
+    - toEntities:
+        - all
+---
+# Anonymous model provisioning has its own narrow policy. A HEAD request to the
+# pinned bundle's official Hugging Face resolve endpoint returns this exact CDN
+# hostname (verified during setup). Xet is disabled so downloads use HTTPS.
+# If the redirect changes, inspect it from the provisioner and update GitOps.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: audio-authoring-provision
+  namespace: dev
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: audio-authoring
+      app.kubernetes.io/component: provisioner
+  ingress: []
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: '53'
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: huggingface.co
+              - matchName: us.aws.cdn.hf.co
+    - toFQDNs:
+        - matchName: huggingface.co
+        - matchName: us.aws.cdn.hf.co
+      toPorts:
+        - ports:
+            - port: '443'
+              protocol: TCP

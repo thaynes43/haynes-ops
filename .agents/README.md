@@ -5,6 +5,7 @@ Agent-facing operational docs for this repo — runbooks, safety rules, and refe
 Top-level agent instructions live in [`CLAUDE.md`](../CLAUDE.md); this folder holds the longer-form material it references.
 
 ## runbooks/ — step-by-step procedures
+- [audio-authoring.md](runbooks/audio-authoring.md) — independent CPU sound generation, model provisioning, asynchronous MCP jobs, and persistent candidates.
 - [blender-authoring.md](runbooks/blender-authoring.md) — dedicated Blender MCP service, persistent artifacts, independent upgrades, GPU/audio follow-up, and initial agent registration.
 - [talos-version-upgrade.md](runbooks/talos-version-upgrade.md) — bump Talos/Kubernetes via Omni, verify per node, and recover (re-image) a node that won't upgrade. Pairs with the gotchas reference below.
 - [renovate-upgrade-batches.md](runbooks/renovate-upgrade-batches.md) — clear a backlog of Renovate update PRs by merging in risk-tiered batches (safe → infra → breaking → storage), reconciling and verifying after each.
