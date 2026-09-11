@@ -1,10 +1,11 @@
 # Haynes Quest private MVP operations
 
-- **Status:** In progress
+- **Status:** Image verified; deployment manifest ready for GitOps review
 - **Owner:** Codex ops lane under PLAN-004
-- **Branch:** `agent/quest-mvp-ops`
+- **Branch:** database PRs from `agent/quest-mvp-ops`; deployment from
+  `agent/quest-private-deploy`
 - **Application repository:** `/home/dev/work/haynes-quest-overnight-mvp`
-- **Infrastructure repository:** `/home/dev/work/quest-mvp-ops`
+- **Infrastructure repository:** `/home/dev/work/quest-private-deploy`
 
 ## Objective
 
@@ -40,6 +41,42 @@ credentials out of the fixture workload.
    LAN-only IngressRoute, health probes, runtime network policy, and immutable
    image digest. Verify the Secret boundary and `/studio/` on the live route.
 
+## Prepared deployment manifest
+
+The unmerged deployment checkpoint on `agent/quest-mvp-deploy` defines:
+
+- one app-template replica listening on port 3000 behind a ClusterIP Service;
+- `NODE_ENV=development`, `QUEST_FIXTURE_MODE=true`, the exact private
+  `QUEST_APP_ORIGIN`, and `PORT=3000`;
+- only `haynes-quest-secret` in `envFrom`, with no Immich or provisioning Secret;
+- startup and liveness probes on `/healthz` and readiness on `/readyz`;
+- a non-root, read-only container without a service-account token or Linux
+  capabilities;
+- a `traefik-internal` IngressRoute for
+  `https://haynes-quest.haynesops.com`, using the existing wildcard certificate;
+- runtime ingress from only the internal Traefik pods and egress to only DNS and
+  the PostgreSQL writer service; and
+- a deliberate `sha-REPLACE@sha256:REPLACE` image placeholder so this branch
+  cannot be treated as deployable before the merge-commit image is published.
+
+## Deployment continuation
+
+1. Record the application squash-merge commit and successful image-workflow
+   digest. Verify the `sha-<merge-commit>` manifest can be pulled from GHCR
+   without exposing a registry credential, then replace both placeholder parts.
+2. Rebase on current `haynes-ops` main, render and inspect the complete
+   Kustomization, open a deployment PR, require all checks to pass, and
+   squash-merge it.
+3. Declare scoped activity for `frontend,haynes-quest`, reconcile the Flux
+   Kustomization, and verify the HelmRelease, Deployment, Service, IngressRoute,
+   NetworkPolicy, exact image digest, probes, and allowed Secret reference.
+4. Verify `/healthz`, `/readyz`, `/studio/`, and the synthetic fixture journey.
+   Through the API, create a synthetic save, retain its signed cookie privately,
+   delete the running app pod, and prove the same session and save survive in the
+   replacement pod. Delete all private cookie and response files afterward.
+5. End the activity declaration immediately after validation. There are no open
+   activity declarations at this checkpoint.
+
 ## Evidence
 
 - 2026-09-11 preflight: all three Haynes Quest ExternalSecrets report
@@ -54,6 +91,40 @@ credentials out of the fixture workload.
   `ndots:5` issued search-suffixed DNS names outside the exact allowlist. A safe
   probe confirmed the absolute service FQDN resolves. The follow-up pins
   `ndots:1` on only this Job and keeps the DNS boundary exact.
+- 2026-09-11 database result: follow-up PR #2850 merged as `fb7bc56`;
+  `frontend/haynes-quest` reconciled Ready at that revision and the init Job
+  completed once with exit 0 and no restarts. An ephemeral check mounting only
+  `DATABASE_URL` authenticated as the expected non-superuser role, confirmed it
+  cannot create roles or databases, and confirmed it owns the dedicated
+  database. The validation Job was deleted.
+- 2026-09-11 integration database: a restricted disposable pod used fresh
+  PostgreSQL 16 emptyDir data and a random in-memory password. The server's real
+  Postgres integration suite passed 2/2 tests, including reconnect persistence,
+  concurrent recovery, and owner scoping. The Job and its data were deleted.
+- 2026-09-11 Immich schema smoke: an isolated one-shot Job mounted only
+  `haynes-quest-immich-secret` and used the existing Immich-only network policy.
+  Immich 3.1.0 returned the expected people pagination types and an eligible
+  person on the single bounded page. The person-filtered metadata search returned
+  an asset and the expected pagination type; `id`, `type`, `fileCreatedAt`,
+  `isArchived`, `isTrashed`, `isOffline`, `visibility`, and `people` were all
+  present with the expected JSON types. The Job was deleted without downloading
+  media or recording response bodies, identifiers, names, dates, or private fields.
+- 2026-09-11 Immich media smoke: the same bounded lookup selected only the first
+  eligible person and first person-filtered image, then streamed its preview
+  thumbnail with an 8-second timeout and 5 MiB ceiling. The response was a
+  289,945-byte JPEG with a matching magic-byte signature. The probe zeroed each
+  streamed chunk, wrote no image to disk, emitted no identifiers or metadata,
+  and its one-shot Job was deleted.
+- 2026-09-11 immutable image: application PR #21 squash-merged as
+  `6263dc42443eb5c33943d26f668da386df4900d4`. Main Application workflow run
+  `34564020967` passed verification, published provenance, and completed the
+  keyless signing step. The exact `sha-6263dc42443eb5c33943d26f668da386df4900d4`
+  tag resolves anonymously to
+  `sha256:36b363a9e43912691d93a65c776cc9d958101a9d3a4379b7e1f4737e0a3f23b0`;
+  its Linux amd64 manifest, config blob, and first layer were also anonymously
+  retrievable. Independent attestation-bundle retrieval from this pod remains
+  unavailable because its Azure blob host is outside the egress allowlist; the
+  publishing workflow's provenance and signing steps are the recorded evidence.
 
 Do not record Secret values, personal fields, private media, or credentialed
 Immich response data in this work order.
