@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Lazy, shared Blender desktop for the pod's local stdio MCP clients."""
-import argparse
+"""Private supervised Blender desktop for the authoring service."""
 import contextlib
 import fcntl
 import json
@@ -13,10 +12,11 @@ import subprocess
 import sys
 import time
 
-INSTALL = Path('/opt/dev-env')
+INSTALL = Path('/opt/blender-authoring')
 MCP = INSTALL / 'blender-mcp'
 RUNTIME = Path(f'/tmp/blender-authoring-{os.getuid()}')
-WORKSPACE = Path.home() / '.local/share/blender-authoring'
+WORKSPACE = Path('/workspace')
+CONFIG = RUNTIME / 'settings'
 STATE = RUNTIME / 'state.json'
 START_TIMEOUT = 45
 
@@ -32,22 +32,23 @@ def environment():
     if display_runtime.is_symlink() or display_runtime.stat().st_uid != os.getuid():
         raise RuntimeError(f'Unsafe desktop runtime directory: {display_runtime}')
     display_runtime.chmod(0o700)
-    for name in ('config', 'cache', 'data', 'candidates', 'blender-config'):
-        (WORKSPACE / name).mkdir(parents=True, exist_ok=True)
+    WORKSPACE.mkdir(parents=True, exist_ok=True)
+    for name in ('config', 'cache', 'data', 'blender-config'):
+        (CONFIG / name).mkdir(parents=True, exist_ok=True)
     # Upstream's opt-in elicitation is separate from its telemetry environment gate.
     # Persist the deployment's opt-out so connecting clients are never prompted.
-    consent = WORKSPACE / 'config/blender-mcp/consent_prompt.json'
+    consent = CONFIG / 'config/blender-mcp/consent_prompt.json'
     consent.parent.mkdir(parents=True, exist_ok=True)
     temporary = consent.with_suffix(f'.{os.getpid()}.tmp')
     temporary.write_text(json.dumps({'prompt_version': 1, 'action': 'decline',
-                                     'consent': False, 'via': 'dev-env-policy'}))
+                                     'consent': False, 'via': 'authoring-policy'}))
     temporary.replace(consent)
     env.update({
         'XDG_RUNTIME_DIR': str(display_runtime),
-        'XDG_CONFIG_HOME': str(WORKSPACE / 'config'),
-        'XDG_CACHE_HOME': str(WORKSPACE / 'cache'),
-        'XDG_DATA_HOME': str(WORKSPACE / 'data'),
-        'BLENDER_USER_CONFIG': str(WORKSPACE / 'blender-config'),
+        'XDG_CONFIG_HOME': str(CONFIG / 'config'),
+        'XDG_CACHE_HOME': str(CONFIG / 'cache'),
+        'XDG_DATA_HOME': str(CONFIG / 'data'),
+        'BLENDER_USER_CONFIG': str(CONFIG / 'blender-config'),
         'BLENDER_HOST': '127.0.0.1', 'BLENDER_PORT': '9876',
         'LIBGL_ALWAYS_SOFTWARE': '1', 'GALLIUM_DRIVER': 'llvmpipe',
         'BLENDER_MCP_DISABLE_TELEMETRY': '1', 'DISABLE_TELEMETRY': '1',
@@ -155,14 +156,12 @@ def locked():
         yield
 
 
-def spawn(command, env, log):
-    with (RUNTIME / log).open('ab', buffering=0) as output:
-        process = subprocess.Popen(command, env=env, stdin=subprocess.DEVNULL,
-                                   stdout=output, stderr=output, start_new_session=True,
-                                   cwd=WORKSPACE / 'candidates')
+def spawn(command, env):
+    process = subprocess.Popen(command, env=env, stdin=subprocess.DEVNULL,
+                               start_new_session=True, cwd=WORKSPACE)
     record = identity(process.pid)
     if not record:
-        raise RuntimeError(f'{command[0]} exited during startup; see {RUNTIME / log}')
+        raise RuntimeError(f'{command[0]} exited during startup; inspect container logs')
     return record
 
 
@@ -171,10 +170,10 @@ def start(env):
     if ready(state):
         return state
     if alive(state.get('blender')):
-        raise RuntimeError('Tracked Blender is alive but not ready. Inspect its log; '
+        raise RuntimeError('Tracked Blender is alive but not ready. Inspect container logs; '
                            'stop explicitly before restarting (unsaved scene may exist).')
     if alive(state.get('xvfb')):
-        raise RuntimeError('Tracked Xvfb is still alive. Run blender-authoring stop before restarting.')
+        raise RuntimeError('Tracked Xvfb is still alive. Save/release the work order and restart the authoring workload.')
     # Never adopt or terminate a listener that was not started by this launcher.
     with socket.socket() as probe:
         try:
@@ -196,7 +195,7 @@ def start(env):
             state['display'] = f':{number}'
             env.update(DISPLAY=state['display'], XAUTHORITY=str(auth))
             state['xvfb'] = spawn(['Xvfb', state['display'], '-screen', '0', '1280x720x24',
-                                   '-nolisten', 'tcp', '-auth', str(auth), '-noreset'], env, 'xvfb.log')
+                                   '-nolisten', 'tcp', '-auth', str(auth), '-noreset'], env)
             write_state(state)
             while alive(state['xvfb']) and time.monotonic() < deadline:
                 if Path(f'/tmp/.X11-unix/X{number}').exists():
@@ -212,7 +211,7 @@ def start(env):
         state['blender'] = spawn(['/usr/local/bin/blender', '--factory-startup',
                                   '--disable-autoexec', '-noaudio', '--gpu-backend', 'opengl',
                                   '--python-exit-code', '1',
-                                  '--python', str(INSTALL / 'blender-bootstrap.py')], env, 'blender.log')
+                                  '--python', str(INSTALL / 'bootstrap.py')], env)
         write_state(state)
         while time.monotonic() < deadline:
             if ready(state):
@@ -221,44 +220,10 @@ def start(env):
             if not alive(state['blender']) or not alive(state['xvfb']):
                 break
             time.sleep(0.2)
-        raise RuntimeError(f'Blender did not become ready within {START_TIMEOUT}s; logs: {RUNTIME}')
+        raise RuntimeError(f'Blender did not become ready within {START_TIMEOUT}s; inspect container logs')
     except BaseException:
         stop_process(state.get('blender'))
         stop_process(state.get('xvfb'))
         STATE.unlink(missing_ok=True)
         raise
 
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('mcp', 'start', 'status', 'stop'))
-    args = parser.parse_args()
-    os.umask(0o077)
-    with locked():
-        env = environment()
-        if args.command == 'stop':
-            state = read_state()
-            stop_process(state.get('blender'))
-            stop_process(state.get('xvfb'))
-            STATE.unlink(missing_ok=True)
-            print('Tracked Blender and Xvfb stopped.', file=sys.stderr)
-            return
-        if args.command == 'status':
-            state = read_state()
-            healthy = ready(state)
-            print(json.dumps({'ready': healthy, 'blender': state.get('blender'),
-                              'display': state.get('display'), 'workspace': str(WORKSPACE),
-                              'logs': str(RUNTIME)}))
-            raise SystemExit(0 if healthy else 1)
-        start(env)
-    if args.command == 'mcp':
-        # A client disconnect ends only its MCP process, never the shared scene.
-        os.execve(str(MCP / '.venv/bin/blender-mcp'), ['blender-mcp'], env)
-
-
-if __name__ == '__main__':
-    try:
-        main()
-    except (RuntimeError, OSError, subprocess.SubprocessError, ValueError) as error:
-        print(f'blender-authoring: {error}', file=sys.stderr)
-        raise SystemExit(1)

@@ -1,48 +1,52 @@
-# Blender authoring in dev-env
+# Blender authoring service
 
-## Purpose and activation boundary
+## Architecture
 
-Haynes Quest uses image-generated concepts followed by Blender models, rigs, animation, and GLB exports. The authoring image adds Blender 4.5.13 LTS, the commit-pinned Blender MCP bridge, Xvfb/software OpenGL, FFmpeg/ffprobe, glTF Transform, and the Khronos validator. This is developer tooling, not the game's runtime or an automatic character-generation service.
+Haynes Quest uses image-generated concepts followed by Blender models, rigs, animation, and GLB exports. Run Blender and its MCP adapter together in a dedicated `blender-authoring` workload in namespace `dev`. Their separate image, Flux Kustomization, and artifact PVC let authoring upgrades and restarts proceed without restarting the dev-env agent pod.
 
-The image build and its smoke test can be merged without rolling dev-env. Keep the live HelmRelease image/digest and the shared MCP registration in a separate **held-draft activation PR**: both are part of a pod restart that ends agent sessions. Tom merges that draft at a natural break under the pod's rules. Do not update generated Codex config or manually install a second MCP entry.
+The agent connects to `http://blender-authoring.dev.svc.cluster.local:8000/mcp` using native streamable HTTP. The addon's raw command socket stays on `127.0.0.1:9876` inside the authoring pod. MCP, preview bytes, and artifact downloads cross the service boundary; filesystem paths refer to the authoring pod, not the agent pod. No public ingress is provided. Cilium permits port 8000 only from dev-env, and the authoring pod has no external egress, Kubernetes token, or agent credentials.
 
-## Local controls after activation
+The standalone image contains Blender 4.5.13 LTS, commit-pinned Blender MCP source/addon, Xvfb/software OpenGL, FFmpeg/ffprobe, glTF Transform, and the Khronos validator. The first deployment requests no GPU. This is offline asset authoring, separate from the game's browser runtime and from future audio-model inference.
 
-```bash
-blender-authoring status
-blender-authoring start
-# Only stop when the current author has saved and released the shared scene:
-blender-authoring stop
-```
+The earlier dev-env image build in [PR #2831](https://github.com/thaynes43/haynes-ops/pull/2831) validated the local toolchain but was superseded by Tom's request for independent workloads. Do not activate that image to obtain Blender. [PR #2833](https://github.com/thaynes43/haynes-ops/pull/2833) now contains only initial remote MCP registration and agent guidance. It remains a held draft: the current boot-rendered MCP ConfigMap triggers a dev-env restart once, so Tom merges it at a natural break. Later Blender image/config upgrades do not touch dev-env resources.
 
-The MCP configuration invokes `blender-authoring mcp`, which lazily starts Blender under an authenticated Xvfb display and then serves stdio MCP. Diagnostics go to stderr/logs. A client disconnect leaves the shared scene running. Nothing starts on the pod's synchronous boot path, and no runtime package/model download is required.
+## Authoring and files
 
-One instance binds **127.0.0.1:9876**. It exposes no Kubernetes Service or public ingress. Scene commands are local code execution; use it only for trusted authoring tasks. The launcher refuses to adopt an unrelated listener and refuses to silently restart an unhealthy living scene because it may contain unsaved work. Inspect the logs and save/recover before an explicit stop.
+Run one active author per scene/work order. Native HTTP requests are serialized, but that does not assign a scene to a particular agent or isolate concurrent authors' intentions. Fresh Astra development agents receive an empty conversation context and a self-contained Haynes Quest work order with asset IDs, inputs, and acceptance evidence.
 
-All agents share the scene. Assign one active author per work order; parallel code/research work is fine, competing Blender edits are not. Start new Astra development agents with empty conversation context and self-contained work orders in Haynes Quest. Match asset/ability IDs and output paths to that work order.
+Save named `.blend` sources and candidate exports explicitly beneath `/workspace`. The CephFS `blender-authoring-workspace` PVC persists saved files across authoring pod replacement and allows later render Jobs to read explicit saved scenes. An unsaved scene is not durable. The PVC is protected against Flux inventory pruning; it is not itself a backup. Copy important editable sources and approved exports to the project's artifact storage.
 
-## Files, privacy, and review
-
-- Workspace: `~/.local/share/blender-authoring/`; candidate files under `candidates/`, Blender settings and caches alongside them on the home PVC.
-- Runtime identity/lock/logs: `/tmp/blender-authoring-<uid>/` (`1000` in the pod). These disappear at pod replacement; persisted candidate files do not.
-- Source/versions: `/opt/dev-env/blender-mcp/REVISION`, pinned upstream source/lock and local venv; `blender --version`, `ffmpeg -version`, `gltf-transform --version`.
-
-Telemetry, Blender online access, and the bridge's optional external asset/generation services are disabled. Reference images and `.blend`/GLB outputs use the same local filesystem, so viewport screenshot paths need no network transfer. Save named editable files explicitly; an unsaved scene cannot survive a pod replacement. Keep family photos/private artifacts out of public git.
-
-Tom reviews exact final visual/audio candidates before they enter gameplay. A successful smoke test is infrastructure evidence, not approval of its disposable test geometry or sound.
-
-## Validation
-
-The image workflow builds PRs without publishing and runs this command inside a fresh, isolated container as UID 1000, with a read-only rootfs, writable home/tmp, no network, and 64Mi shared memory:
+Retrieve a saved file using its workspace-relative path, for example:
 
 ```bash
-/opt/dev-env/blender-mcp/.venv/bin/python /opt/dev-env/test-blender-authoring.py
+curl --fail --output candidate.glb \
+  http://blender-authoring.dev.svc.cluster.local:8000/artifacts/candidates/example/candidate.glb
 ```
 
-It checks MCP initialization/tool listing, repeated-start identity, procedural scene/material creation, viewport PNG, `.blend` save/reopen, GLB export/import and independent validation, stop/restart/reconnect, and FFmpeg/ffprobe output. It refuses to disturb an existing authoring state. On a live pod, save/release any active scene before intentionally running this disposable smoke test; it stops the instance it creates when finished.
+The artifact route serves regular files under the workspace and rejects traversal, symlinks, and hidden state. MCP screenshots return image bytes directly. To provide an input reference from dev-env, read its bytes and write them to a named `/workspace/candidates/<work-order>/` file through an explicit Blender Python command; keep the transfer bounded. Never assume a dev-env path exists remotely.
 
-After Tom activates the image/config, verify a fresh Codex/Claude session lists the Blender MCP server, run the synthetic smoke with no active authoring session, then verify a saved candidate can be reopened from the PVC. Record the actual image digest and results. CI success does not establish live registration or iPad/iPhone/PC gameplay performance.
+Telemetry, Blender online access, and optional third-party asset/generation integrations are disabled. Use synthetic references for setup validation. Keep family photos and private artifacts out of public git, logs, and published image layers. Tom reviews exact final visual/audio candidate versions before gameplay use; the smoke test's disposable geometry and tones are not approved game assets.
 
-## Audio generation
+## Operation and validation
 
-FFmpeg prepares audio; it does not supply a learned text-to-sound model. Haynes Quest DESIGN-008 compares Stable Audio Small-SFX CPU inference with ElevenLabs' free/paid hosted API. Model/account selection, gated Hugging Face terms/access, protected download credentials, exact model CDN egress, and a measured quality/speed trial are separate work. No weights, audio-generation account, or paid subscription is included in this image.
+`GET /healthz` checks service/desktop process liveness. `GET /readyz` checks Blender responsiveness while idle and avoids interrupting active authoring operations. The workload uses Recreate with a single editor. Save and release the scene before any deliberate upgrade or restart. Declare scoped disruptive authoring work with `declare-activity` when it could trigger monitoring; the agent pod remains running.
+
+All persistent changes go through GitOps. After merging a deployment change:
+
+```bash
+flux reconcile kustomization blender-authoring -n dev --with-source
+kubectl rollout status deployment/blender-authoring -n dev
+curl --fail http://blender-authoring.dev.svc.cluster.local:8000/readyz
+```
+
+The image CI builds PRs without publishing and runs its integration smoke in a non-root, read-only container with no external network, a writable `/workspace` and `/tmp`, and 64Mi shared memory. It verifies native HTTP MCP initialization/tool listing, scene/material creation, screenshot bytes, `.blend` save/reopen, GLB roundtrip and Khronos validation, artifact transfers and rejected file escapes, service restart with saved-file recovery, and FFmpeg output. A passing image smoke establishes container behavior, not live cluster connectivity or browser gameplay performance.
+
+After first deployment, exercise the actual ClusterIP MCP endpoint from dev-env with a synthetic work-order directory, fetch its screenshot/GLB artifacts, validate the exported GLB, restart only the new authoring pod after saving, and reopen its saved file from the PVC. Record the running image digest and evidence before declaring service readiness. After initial MCP registration is merged, verify a fresh agent session discovers it. Do not change generated Codex configuration manually.
+
+## GPU and audio follow-up
+
+The main cluster currently advertises one RTX 3090 on `talosw01`, an A2000 on `talosm01`, and an RTX 2000 Ada on `talosm03`. Each has existing consumers; some select a GPU without declaring `nvidia.com/gpu` requests, so scheduler availability is not evidence of idle hardware. Inventory on 2026-09-11 found ComfyUI and ollama-prime on the 3090, Vexa/Ollama/speech workloads on the A2000, and Ollama/Whisper/Immich ML on the Ada. Tom also has a server capable of two 3090s; its intended availability needs establishing before placement.
+
+Use the CPU editor for the initial setup smoke. Add separately scheduled GPU render Jobs when measured previews/bakes justify them, with explicit device assignment and a coordinated usage window or dedicated capacity. Share immutable saved inputs with each Job and write outputs to its own directory. Do not send competing workers to the live editor scene.
+
+FFmpeg prepares audio; it does not generate learned sound effects. Haynes Quest DESIGN-008 proposes a self-hosted Stable Audio Small-SFX trial, with ElevenLabs as an optional hosted route. Keep model inference in a separate environment/workload so its CUDA/PyTorch/weight changes do not rebuild Blender or dev-env. Gated model access/terms, download credentials and egress, device placement, and measured clip quality/speed remain separate tasks. No model weights, paid subscription, or GPU reservation is included in this service.
