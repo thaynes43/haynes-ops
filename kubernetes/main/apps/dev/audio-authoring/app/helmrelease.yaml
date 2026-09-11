@@ -1,0 +1,119 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: audio-authoring
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  timeout: 15m
+  # A new models claim is empty until the suspended provisioner is run by hand.
+  # Let Helm create the offline workload without deadlocking on /readyz. The
+  # health probe keeps the waiting server alive while readiness reports whether
+  # the pinned model set is usable.
+  install:
+    disableWait: true
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      authoring:
+        replicas: 1
+        # Requests are queued in-process, so an overlapping rollout could accept
+        # work that disappears with the old pod.
+        strategy: Recreate
+        pod:
+          labels:
+            app.kubernetes.io/component: runtime
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/audio-authoring
+              # CI-validated, published, and signed runtime image.
+              tag: 0.1.0@sha256:2333f862d4108aca69d41c9eaba21df7710a105e8affb4d1a9787e65b5b647a1
+            env:
+              HF_HUB_OFFLINE: '1'
+              HF_HUB_DISABLE_TELEMETRY: '1'
+            probes:
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8000
+                  periodSeconds: 5
+                  timeoutSeconds: 3
+                  failureThreshold: 60
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8000
+                  periodSeconds: 20
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /readyz
+                    port: 8000
+                  periodSeconds: 10
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+            resources:
+              requests:
+                cpu: '1'
+                memory: 4Gi
+              limits:
+                cpu: '4'
+                memory: 16Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+    defaultPodOptions:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+    service:
+      app:
+        controller: authoring
+        ports:
+          http:
+            port: 8000
+    persistence:
+      workspace:
+        existingClaim: audio-authoring-workspace
+        globalMounts:
+          - path: /workspace
+      models:
+        existingClaim: audio-authoring-models
+        globalMounts:
+          - path: /models
+            readOnly: true
+      tmp:
+        type: emptyDir
+        sizeLimit: 1Gi
+        globalMounts:
+          - path: /tmp

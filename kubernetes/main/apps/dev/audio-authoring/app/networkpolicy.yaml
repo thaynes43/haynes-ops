@@ -1,0 +1,61 @@
+---
+# The runtime is a private MCP service. Only dev-env may call it, and inference
+# is deliberately offline: model acquisition belongs to the provisioner below.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: audio-authoring-runtime
+  namespace: dev
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: audio-authoring
+      app.kubernetes.io/component: runtime
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev
+            app.kubernetes.io/name: dev-env
+      toPorts:
+        - ports:
+            - port: '8000'
+              protocol: TCP
+  egressDeny:
+    - toEntities:
+        - all
+---
+# Anonymous model provisioning has its own narrow policy. With Xet disabled,
+# Hugging Face serves Xet-backed files through cas-bridge.xethub.hf.co; both the
+# Hub and publisher describe that exact HTTPS redirect path. If it changes, the
+# manual Job fails closed and its Cilium drops identify the new GitOps change.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: audio-authoring-provision
+  namespace: dev
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: audio-authoring
+      app.kubernetes.io/component: provisioner
+  ingress: []
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: '53'
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: huggingface.co
+              - matchName: cas-bridge.xethub.hf.co
+    - toFQDNs:
+        - matchName: huggingface.co
+        - matchName: cas-bridge.xethub.hf.co
+      toPorts:
+        - ports:
+            - port: '443'
+              protocol: TCP

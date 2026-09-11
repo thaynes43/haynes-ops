@@ -22,7 +22,15 @@ Use descriptive original prompts, a reproducible seed, and a small number of can
 
 All persistent changes go through checked GitOps PRs and Flux. Build and smoke-test a new image, publish/sign it, then pin its immutable digest in the deployment and provisioning template. The CI fixture tests the asynchronous control plane without weights or networking; a passing fixture test is not evidence of real inference.
 
-The provision CronJob is suspended and exists as a manual Job template. On first setup, reconcile the GitOps resources and launch the template once. Check its completion and model manifest before claiming readiness. Runtime `/healthz` reports service liveness; `/readyz` establishes that the pinned model bundle is available. Missing weights should prevent generation without sending the runtime online.
+The provision CronJob is suspended and exists as a manual Job template. On first setup, reconcile the GitOps resources and launch it once:
+
+```bash
+flux reconcile kustomization audio-authoring -n dev --with-source
+kubectl create job -n dev --from=cronjob/audio-authoring-provision \
+  audio-authoring-provision-$(date +%s)
+```
+
+Check the Job's completion and model manifest before claiming readiness. The service notices atomic manifest publication, verifies the files, and becomes ready without a provisioning restart. Before a later model revision changes this volume, quiesce inference and plan the corresponding runtime/image update; do not overwrite model files beneath active jobs. Runtime `/healthz` reports service liveness; `/readyz` establishes that the pinned model bundle is available. Missing weights should prevent generation without sending the runtime online.
 
 Before replacing an active worker, allow useful work to finish or cancel it explicitly. Declare scoped activity for disruptive tests, replace only the audio pod, then verify history and completed artifacts persist. Never restart dev-env to upgrade this independent service.
 
@@ -32,4 +40,4 @@ Initial agent registration is bundled with Blender registration and startup prov
 
 Exercise the actual service from dev-env: MCP initialization/tool listing, one real synthetic generation, asynchronous status, cancellation, WAV format/duration/checksum, and artifact confinement. Record the actual node, resource limits, generation elapsed time, and measured peak memory. Save the sample for listening review and state whether it has been auditioned. Replace only the audio pod and confirm history/artifacts persist while dev-env retains its UID and restart count.
 
-Live provisioning and inference are pending during source preparation. Add the pinned deployed image, PRs, and measured trial result here once verified. Final cue quality, browser decoding/lifecycle, and Tom's asset approval remain separate checks in Haynes Quest DESIGN-008.
+Source [PR #2840](https://github.com/thaynes43/haynes-ops/pull/2840) is merged. [Main build, container smoke, publication, and signing](https://github.com/thaynes43/haynes-ops/actions/runs/34551460186) passed; the initial runtime image is `ghcr.io/thaynes43/audio-authoring:0.1.0@sha256:2333f862d4108aca69d41c9eaba21df7710a105e8affb4d1a9787e65b5b647a1`. Anonymous registry inspection verified that digest against manifest bytes. Live provisioning and inference remain pending during deployment preparation. Add the pinned deployed image, PRs, and measured trial result here once verified. Final cue quality, browser decoding/lifecycle, and Tom's asset approval remain separate checks in Haynes Quest DESIGN-008.
