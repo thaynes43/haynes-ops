@@ -83,18 +83,6 @@ ARG TSX_VERSION=4.23.13
 ARG PNPM_VERSION=11.26.0
 # renovate: datasource=npm depName=@playwright/mcp
 ARG PLAYWRIGHT_MCP_VERSION=0.0.80
-# Blender 4.5 LTS is supported through July 2027. Keep the release series and
-# archive version together; verify the official checksum before extraction.
-ARG BLENDER_VERSION=4.5.13
-ARG BLENDER_SERIES=4.5
-# One immutable revision for the server, bundled add-on, and upstream uv.lock.
-ARG BLENDER_MCP_REVISION=5f8ddaf6e987c4aa0c3467fcc548838b28f64477
-# renovate: datasource=pypi depName=requests
-ARG BLENDER_REQUESTS_VERSION=2.34.2
-# renovate: datasource=npm depName=@gltf-transform/cli
-ARG GLTF_TRANSFORM_VERSION=4.5.0
-# Khronos currently publishes the validator under a prerelease version.
-ARG GLTF_VALIDATOR_VERSION=2.0.0-dev.3.10
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -243,45 +231,6 @@ RUN npm install -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
 WORKDIR /opt/dev-env
 COPY scripts/github-app-token.sh ./github-app-token.sh
 RUN chmod +x ./github-app-token.sh
-
-# Offline-at-runtime authoring tools for Haynes Quest. Blender uses a graphical
-# event loop under Xvfb for MCP commands/screenshots; --background alone cannot
-# drive this add-on. Explicit software GL needs no GPU device or extra Service.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      xvfb xauth ffmpeg libgl1-mesa-dri libglx-mesa0 libegl1 \
-      libx11-6 libxxf86vm1 libxfixes3 libxi6 libxrender1 libxrandr2 \
-      libxkbcommon0 libsm6 libice6 libdbus-1-3 \
- && rm -rf /var/lib/apt/lists/*
-RUN curl --retry 3 -fsSLo /tmp/blender.tar.xz \
-      "https://download.blender.org/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz" \
- && curl --retry 3 -fsSLo /tmp/blender.sha256 \
-      "https://download.blender.org/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}.sha256" \
- && awk -v file="blender-${BLENDER_VERSION}-linux-x64.tar.xz" \
-      '$2 == file || $2 == "*" file {print $1 "  /tmp/blender.tar.xz"; found=1} END {if (!found) exit 1}' \
-      /tmp/blender.sha256 | sha256sum -c - \
- && mkdir -p /opt/blender \
- && tar -xJf /tmp/blender.tar.xz -C /opt/blender --strip-components=1 \
- && ln -s /opt/blender/blender /usr/local/bin/blender \
- && rm -f /tmp/blender.tar.xz /tmp/blender.sha256 \
- && /opt/blender/${BLENDER_SERIES}/python/bin/python3.11 -m ensurepip \
- && /opt/blender/${BLENDER_SERIES}/python/bin/python3.11 -m pip install --no-cache-dir \
-      "requests==${BLENDER_REQUESTS_VERSION}" \
- && blender --version
-RUN git init /opt/dev-env/blender-mcp \
- && git -C /opt/dev-env/blender-mcp remote add origin https://github.com/ahujasid/blender-mcp.git \
- && git -C /opt/dev-env/blender-mcp fetch --depth 1 origin "${BLENDER_MCP_REVISION}" \
- && git -C /opt/dev-env/blender-mcp checkout --detach FETCH_HEAD \
- && test "$(git -C /opt/dev-env/blender-mcp rev-parse HEAD)" = "${BLENDER_MCP_REVISION}" \
- && cmp /opt/dev-env/blender-mcp/addon.py /opt/dev-env/blender-mcp/src/blender_mcp/bundled/addon.py \
- && uv sync --project /opt/dev-env/blender-mcp --python /usr/bin/python3 --frozen --no-dev --no-editable \
- && rm -rf /opt/dev-env/blender-mcp/.git \
- && printf '%s\n' "${BLENDER_MCP_REVISION}" > /opt/dev-env/blender-mcp/REVISION \
- && npm install -g "@gltf-transform/cli@${GLTF_TRANSFORM_VERSION}" "gltf-validator@${GLTF_VALIDATOR_VERSION}" \
- && npm cache clean --force
-COPY scripts/dev-env/blender-authoring.py scripts/dev-env/blender-bootstrap.py scripts/dev-env/test-blender-authoring.py /opt/dev-env/
-RUN chmod 0755 /opt/dev-env/blender-authoring.py \
- && ln -s /opt/dev-env/blender-authoring.py /usr/local/bin/blender-authoring
 
 # Non-root: rename the base image's uid-1000 'node' user to 'dev' with /home/dev —
 # the PVC mounts over /home/dev at runtime (dev-init.sh repopulates config links).
