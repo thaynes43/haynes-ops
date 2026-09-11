@@ -43,6 +43,16 @@
       "headers": {
         "Authorization": "Bearer ${CIGAR_JOURNAL_TOKEN}"
       }
+    },
+    "blender": {
+      "command": "/usr/local/bin/blender-authoring",
+      "args": [
+        "mcp"
+      ],
+      "env": {
+        "BLENDER_MCP_DISABLE_TELEMETRY": "1",
+        "DISABLE_TELEMETRY": "1"
+      }
     }
   }
 }

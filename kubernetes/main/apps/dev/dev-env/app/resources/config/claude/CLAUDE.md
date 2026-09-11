@@ -72,6 +72,15 @@ stdio only — no SSE — so a networked server must expose a `/mcp` endpoint.
   `block_client`). Gotcha: per-site tools want the legacy site code `default`
   (`internalReference`), not the UUID from `list_sites`. Also gotcha: `list_wlans` returns
   WLAN passphrases in `x_passphrase` — never echo that output into a PR, log, or message.
+- `blender` — local Blender under Xvfb/software OpenGL, lazily started by
+  `blender-authoring mcp`. No GPU, public endpoint, or runtime downloads; one shared
+  editable scene on loopback. Only one authoring task may edit that scene at a time.
+  `blender-authoring status` reports readiness; save/release the scene before an
+  explicit `blender-authoring stop`. Files persist under
+  `~/.local/share/blender-authoring/`; exact commands and smoke tests are in
+  `haynes-ops/.agents/runbooks/blender-authoring.md`. Tom reviews final Haynes Quest
+  visual/audio asset versions before gameplay use. The image includes FFmpeg,
+  glTF Transform, and Khronos validation; it does not include audio model weights.
 - `outline` — the sigoalumni wiki (stdio, `uvx mcp-outline`)
 - `vexa` — meeting bot: transcripts, recordings (cluster-local)
 - `cigar-journal` — the prod journal/catalog MCP at
