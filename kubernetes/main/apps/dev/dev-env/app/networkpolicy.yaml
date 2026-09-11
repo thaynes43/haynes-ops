@@ -26,6 +26,15 @@ spec:
             - port: "8443"
               protocol: TCP
   egress:
+    # Independent authoring workload; its updates do not restart this pod.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev
+            app.kubernetes.io/name: blender-authoring
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
     # 1. DNS via CoreDNS — only cluster-internal + the exact external names below
     #    (closes DNS-tunnel exfil, shepherd pattern; Cilium `*` does not cross label
     #    boundaries, so apex domains need matchName alongside their matchPattern).
@@ -49,6 +58,7 @@ spec:
               - matchName: "mcp-grafana.observability.svc.cluster.local"
               - matchName: "mcp-unifi.observability.svc.cluster.local"
               - matchName: "vexa-vexa-gateway.ai.svc.cluster.local"
+              - matchName: "blender-authoring.dev.svc.cluster.local"
               # Omni (self-hosted, frontend ns) — an in-cluster Omni svc, kept for a
               # possible future self-hosted route (backlog 10). It is NOT what manages
               # the main nodes today.

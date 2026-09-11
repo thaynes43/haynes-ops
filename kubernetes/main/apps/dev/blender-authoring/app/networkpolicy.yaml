@@ -1,0 +1,24 @@
+---
+# MCP executes trusted Blender authoring code; no public/LAN ingress, credentials,
+# addon socket Service, or runtime downloads. Only the agent pod may call it.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: blender-authoring
+  namespace: dev
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: blender-authoring
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev
+            app.kubernetes.io/name: dev-env
+      toPorts:
+        - ports:
+            - port: '8000'
+              protocol: TCP
+  egressDeny:
+    - toEntities:
+        - all
