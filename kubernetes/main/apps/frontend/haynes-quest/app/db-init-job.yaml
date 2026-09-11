@@ -1,0 +1,44 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: haynes-quest-db-init
+  annotations:
+    # Job pod templates are immutable. Recreate the Job if a future, reviewed
+    # provisioning revision changes this manifest; postgres-init is idempotent.
+    # Keep the completed Job so Flux does not recreate it on every reconcile.
+    kustomize.toolkit.fluxcd.io/force: enabled
+spec:
+  activeDeadlineSeconds: 600
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: haynes-quest
+        app.kubernetes.io/component: database-init
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      restartPolicy: OnFailure
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: init-db
+          image: ghcr.io/home-operations/postgres-init:18.6.0@sha256:b6d3af974df781c673d37e49bdddfa14a6f5be28b18d2cb7713f0449bea4057b
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                # Provisioning-only: no application container mounts this.
+                name: haynes-quest-db-init-secret
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

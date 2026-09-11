@@ -13,6 +13,8 @@ spec:
   dependsOn:
     - name: external-secrets-stores
       namespace: external-secrets
+    - name: cloudnative-pg-cluster
+      namespace: database
   path: ./kubernetes/main/apps/frontend/haynes-quest/app
   sourceRef:
     kind: GitRepository

@@ -30,3 +30,36 @@ spec:
         - ports:
             - port: "2283"
               protocol: TCP
+---
+# The provisioning Job can resolve and reach only the shared PostgreSQL writer.
+# Its administrator credential never enters an application pod.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: haynes-quest-db-init
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: haynes-quest
+      app.kubernetes.io/component: database-init
+  ingress: []
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: postgres16-rw.database.svc.cluster.local
+    - toServices:
+        - k8sService:
+            serviceName: postgres16-rw
+            namespace: database
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
