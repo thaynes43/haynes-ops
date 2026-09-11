@@ -17,6 +17,9 @@ from starlette.responses import JSONResponse, StreamingResponse
 import uvicorn
 
 logger = logging.getLogger('blender-authoring')
+# Upstream INFO includes full Python command parameters (possibly reference-image
+# bytes). Retain connection errors without copying authoring inputs into logs.
+logging.getLogger('BlenderMCPServer').setLevel(logging.WARNING)
 ARTIFACT_TYPES = {
     '.blend': 'application/octet-stream', '.glb': 'model/gltf-binary',
     '.gltf': 'model/gltf+json', '.bin': 'application/octet-stream',

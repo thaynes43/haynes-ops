@@ -192,7 +192,10 @@ def main():
                 asyncio.run(exercise(downloads))
                 validate_exports(downloads)
                 process.terminate()
-                assert process.wait(timeout=25) == 0
+                # Uvicorn re-raises the captured SIGTERM after lifespan cleanup.
+                # Either a clean exit or that exact requested signal is graceful;
+                # an unrelated failure is not. The state assertion proves cleanup.
+                assert process.wait(timeout=25) in (0, -signal.SIGTERM)
                 assert not state.exists()
                 process = start(log)
                 asyncio.run(verify_restart())
