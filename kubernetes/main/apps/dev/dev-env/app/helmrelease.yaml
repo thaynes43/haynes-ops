@@ -29,8 +29,10 @@ spec:
         annotations:
           # Config/scripts ConfigMap changes roll the pod (dev-init re-links on boot).
           reloader.stakater.com/auto: "true"
-          # Temporary staging guard: verify both maps before the single planned rollout.
-          configmaps.exclude.reloader.stakater.com/reload: "dev-env-config-claude,dev-env-config-codex"
+        pod:
+          annotations:
+            # Both startup ConfigMaps are already staged and verified.
+            haynesops.com/config-generation: "quest-authoring-2026-09-11"
         containers:
           app:
             image:
