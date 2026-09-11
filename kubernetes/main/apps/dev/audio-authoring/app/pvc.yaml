@@ -1,0 +1,30 @@
+---
+# Generated WAV artifacts live independently from immutable model weights so
+# later consumers can mount the workspace without gaining access to model state.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: audio-authoring-workspace
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: ceph-filesystem
+---
+# Models are populated only by the manual provision Job and mounted read-only by
+# the runtime. Protect the multi-GB download from Flux inventory pruning.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: audio-authoring-models
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: ceph-filesystem
