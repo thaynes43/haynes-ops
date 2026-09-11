@@ -1,0 +1,32 @@
+---
+# A future ephemeral validation Job may read app and Immich credentials. Keep its
+# egress limited to DNS resolution of, and API traffic to, Immich.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: haynes-quest-secret-check
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: haynes-quest-secret-check
+  ingress: []
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: immich-server.photos.svc.cluster.local
+    - toServices:
+        - k8sService:
+            serviceName: immich-server
+            namespace: photos
+      toPorts:
+        - ports:
+            - port: "2283"
+              protocol: TCP

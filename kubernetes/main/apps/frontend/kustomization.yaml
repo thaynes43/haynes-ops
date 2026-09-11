@@ -18,3 +18,4 @@ resources:
   - ./haynesnetwork/ks.yaml
   - ./sigoalumni/ks.yaml
   - ./outline/ks.yaml
+  - ./haynes-quest/ks.yaml
