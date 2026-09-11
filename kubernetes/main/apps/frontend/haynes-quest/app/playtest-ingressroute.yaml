@@ -1,0 +1,22 @@
+---
+# Candidate review route on the same LAN-only ingress and private DNS path as
+# the existing fixture. It does not add an external ingress or Cloudflare route.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: haynes-quest-playtest
+  annotations:
+    external-dns.alpha.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`haynes-quest-playtest.haynesops.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: haynes-quest-playtest
+          port: 3000
+  tls:
+    secretName: certificate-haynesops
