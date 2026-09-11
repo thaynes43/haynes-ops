@@ -30,10 +30,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Release-prep scaffold only: this is the existing baseline image,
-              # not the candidate. Replace it with the final published playtest
-              # squash commit and digest before opening or deploying the PR.
-              tag: sha-3502ac7120f6d7741a1a209415f4c9eeb33f826b@sha256:743bca475c2e19d2534ecd3be7f952e52d0d5adb5724599f1285218f91e87e37
+              # Haynes Quest PR28; checked main publication34645833033.
+              # Isolated candidate review: exact artwork approval remains pending.
+              tag: sha-9ccc7a8d89210f6da9ba12e031e124eade52ba6b@sha256:787262684dc67dbbea0f1cb3af36765f04691f24f65bd164ca345244d7216f8d
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development

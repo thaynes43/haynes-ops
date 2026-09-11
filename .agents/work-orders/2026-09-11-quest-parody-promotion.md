@@ -1,6 +1,6 @@
 # Haynes Quest isolated private playtest release
 
-- Status: application final-head CI/merge/publication in progress; no review deployment is live yet.
+- Status: application merged and image verified; final review-deployment PR/checks next. No review deployment is live yet.
 - Operations worktree: `/home/dev/work/quest-parody-promotion`, branch `agent/quest-parody-promotion`, base `d2acee8`.
 - Application: `thaynes43/haynes-quest#28`; final runtime `ff3ad87`, exact main image pending checked squash merge.
 - Scope: three new resources for `haynes-quest-playtest` plus entries in the existing app Kustomization. Normal demo resources and image remain unchanged. No dev-env, OAuth, new Secret, public ingress or Immich access.
@@ -31,7 +31,7 @@ Local typecheck/lint/build/strict docs and227 tests pass; CI passes236 including
 
 Require final application PR verify, container-check and Documentation build before squash merge. Then require the actual main SHA's verify/image/Documentation workflows: Buildx SBOM/provenance, GitHub provenance attestation and cosign signing. Read its tag anonymously from GHCR using a pull token kept out of output and Accept for OCI index/manifest plus Docker list/manifest; require200 and record Docker-Content-Digest.
 
-**The scaffold currently contains the old baseline image as an explicit placeholder. Root must replace it with the actual published candidate squash SHA and exact digest before opening this operations PR.** Never deploy the scaffold or guess a digest.
+The new review pin is now `sha-9ccc7a8d89210f6da9ba12e031e124eade52ba6b@sha256:787262684dc67dbbea0f1cb3af36765f04691f24f65bd164ca345244d7216f8d`. PR28 merged20:44:48UTC from exact ratified9b5011a after verify/container/docs passed, including236 tests. Main Application34645833033 verify/image and Documentation34645833027 passed; Buildx provenance/SBOM, GitHub attestation and cosign signature steps succeeded. Anonymous exact-tag fetch returned200 OCIindex with the same digest as build/attestation/sign. Report preserved at app`test-results/release-publication.json`. The normal3502 pin is unchanged.
 
 ## Operations checks and rollout
 
