@@ -29,6 +29,8 @@ spec:
         annotations:
           # Config/scripts ConfigMap changes roll the pod (dev-init re-links on boot).
           reloader.stakater.com/auto: "true"
+          # Temporary staging guard: verify both maps before the single planned rollout.
+          configmaps.exclude.reloader.stakater.com/reload: "dev-env-config-claude,dev-env-config-codex"
         containers:
           app:
             image:
