@@ -33,7 +33,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.6.0@sha256:22029f8ffb0652c1caca744db9e97c3e4d874a6bd5253a6555254b2b2d541ea1
+              tag: 0.5.4@sha256:80a2c0b8acc53e63a4174ca0f4b81fd1c40aaabff9eed2bffa587883237b9af1
             command: ["/bin/bash", "-c"]
             args:
               # BOOT ORDER — each step must be fast or detached; nothing after
@@ -176,7 +176,7 @@ spec:
           gh-refresher:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.6.0@sha256:22029f8ffb0652c1caca744db9e97c3e4d874a6bd5253a6555254b2b2d541ea1
+              tag: 0.5.4@sha256:80a2c0b8acc53e63a4174ca0f4b81fd1c40aaabff9eed2bffa587883237b9af1
             command: ["/bin/bash", "/opt/dev-env/scripts/gh-token-refresh.sh"]
             env:
               # Down-scope the minted token. NOTE: may only name permissions the App
@@ -208,7 +208,7 @@ spec:
           auth-watch:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.6.0@sha256:22029f8ffb0652c1caca744db9e97c3e4d874a6bd5253a6555254b2b2d541ea1
+              tag: 0.5.4@sha256:80a2c0b8acc53e63a4174ca0f4b81fd1c40aaabff9eed2bffa587883237b9af1
             command: ["/bin/bash", "/opt/dev-env/scripts/auth-check.sh"]
             env:
               HOME: /home/dev

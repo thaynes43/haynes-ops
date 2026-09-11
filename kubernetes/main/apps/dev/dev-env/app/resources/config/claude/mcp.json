@@ -45,14 +45,8 @@
       }
     },
     "blender": {
-      "command": "/usr/local/bin/blender-authoring",
-      "args": [
-        "mcp"
-      ],
-      "env": {
-        "BLENDER_MCP_DISABLE_TELEMETRY": "1",
-        "DISABLE_TELEMETRY": "1"
-      }
+      "type": "http",
+      "url": "http://blender-authoring.dev.svc.cluster.local:8000/mcp"
     }
   }
 }
