@@ -5,6 +5,18 @@ StorageClass.** ~5 minutes. Runnable by you or by a summoned agent (all read-onl
 
 ## Why this exists
 
+> **Correction, 2026-09-12 — these three are NOT in enforce mode.** Verified live:
+> `restrict-image-registries`, `restrict-rbac-escalation` and `pod-security-baseline`
+> all report `validationFailureAction: Audit`. Only **`verify-haynesnetwork-images`**
+> is `Enforce` — it is the one policy in the repo that sets the key explicitly, and
+> the field defaults to `Audit` when omitted. So today these three **report**
+> violations, they do not deny them, and the guardrail is weaker than the paragraph
+> below claims. Decide deliberately whether that is intended; if these should enforce,
+> they each need `validationFailureAction: Enforce` added. Until then, read every
+> "deny" below as "record". (`verify-thaynes43-images` is also Audit — which is why
+> the `upgrade-shepherd` image has been failing signature verification on every run
+> without blocking anything.)
+
 Kyverno's three enforce policies (`restrict-image-registries`, `restrict-rbac-escalation`,
 `pod-security-baseline`) deny non-conforming resources at admission. The dangerous gap is
 **ephemeral, controller-spawned pods** — a provisioner/operator creates a privileged
@@ -30,9 +42,31 @@ or transient cases that stay under the alert thresholds, plus the proactive
 
 ## The check (run all three blocks; all-green = nothing to do)
 
+> **READ THIS BEFORE TRUSTING A GREEN RESULT.** The `q()` helper below talks to
+> Prometheus through the apiserver proxy, and **the dev-env ServiceAccount is
+> forbidden from `services/proxy`** (OPERATOR tier grants `services: [get,list,watch]`,
+> not the proxy subresource). The old version of this runbook swallowed that with
+> `2>/dev/null`, so the query returned *empty* — which reads exactly like "0 blocks"
+> and produces a **false green**. That happened on 2026-09-12: this runbook reported
+> all-clear while the real answer was 15 enforce blocks in 31 days. `q()` now fails
+> loudly instead. If you see `FATAL: cannot reach Prometheus`, use the Grafana MCP
+> (`query_prometheus`, datasource uid `prometheus`) to run the same PromQL, or run
+> from a context that has proxy rights. **An empty result is never a pass.**
+
 ```bash
 PROXY="/api/v1/namespaces/observability/services/http:kube-prometheus-stack-prometheus:9090/proxy/api/v1"
-q() { kubectl get --raw "${PROXY}/query?query=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$1")" 2>/dev/null; }
+# Fails loudly rather than returning empty: an unreachable Prometheus must never be
+# mistaken for "nothing was blocked". Errors are shown, not discarded.
+q() {
+  local out rc
+  out="$(kubectl get --raw "${PROXY}/query?query=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$1")" 2>&1)"; rc=$?
+  if [ $rc -ne 0 ] || ! printf '%s' "$out" | grep -q '"status":"success"'; then
+    echo "FATAL: cannot reach Prometheus — this is NOT a pass. Re-run via the Grafana MCP." >&2
+    printf '%s\n' "$out" >&2
+    return 1
+  fi
+  printf '%s' "$out"
+}
 
 # ── 1. Did ENFORCE block anything real? (admission_request + enforce + fail — NOT audit,
 #       NOT background scan.) Use a window matching your cadence, e.g. [31d] if monthly.
