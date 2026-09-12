@@ -1,20 +1,23 @@
 # PLAN008 paused-status follow-up private release
 
 Date: 2026-09-12 UTC
-Status: Read-only baseline and release path prepared; application PR38 is not yet published, and no image pin, operations PR, cluster mutation, reconciliation or rollout has occurred.
+Status: Exact application publication verified and private image pin staged; no operations merge, cluster mutation, reconciliation or rollout has occurred.
 
 ## Scope
 
 This follow-up will deploy the reviewed paused-status clock repair only to the isolated `frontend/haynes-quest-playtest` workload. The future source change is limited to the publication comment and immutable image tag in `kubernetes/main/apps/frontend/haynes-quest/app/playtest-helmrelease.yaml`, plus this record. Normal Quest, Services, IngressRoutes, Cilium policies, Kustomizations, Secrets, database resources and every dev-env path must remain unchanged.
 
-The task worktree is `/home/dev/work/quest-plan008-paused-release` on `agent/quest-plan008-paused-release`. It was created at the initial PLAN008 operations merge `882ef5a847f0b7461234a2642a446480de248273`, then fast-forwarded before editing to current `origin/main` `024066546951c4cbd165b10db33a82798fac22ae`. The intervening Ceph-remediation and external-Traefik logging changes are unrelated and remain intact.
+The task worktree is `/home/dev/work/quest-plan008-paused-release` on `agent/quest-plan008-paused-release`. It was created at the initial PLAN008 operations merge `882ef5a847f0b7461234a2642a446480de248273`, then updated before the image edit to current `origin/main` `6772777e752450d1e74dfb897d2bd0be02b570d9`. The intervening Ceph-remediation, external-Traefik logging and LogQL documentation changes are unrelated and remain intact.
 
-Do not edit the image pin or open the operations PR until all of these exact inputs exist:
+The publication gate is complete:
 
-- application PR38 is squash-merged and its 40-hex main commit is recorded;
-- main-branch `Application` and `Documentation` push runs both complete successfully at that exact commit;
-- the Application run's tests, image build/push, provenance/SBOM, GitHub attestation and signing steps pass;
-- an anonymous GHCR read returns HTTP 200 for `sha-<merge>` and its header digest matches an independent hash of the exact manifest bytes.
+- application PR38 squash-merged as `6e71ba1556784efb340056e27be11e2bd7ae6c10`;
+- main-branch `Application` run 34707413422 and `Documentation` run 34707413477 both completed successfully at that exact commit;
+- the Application run's verification, dedicated PostgreSQL tests, image build/push, provenance/SBOM, GitHub attestation and signing steps passed;
+- an anonymous GHCR read returned HTTP 200 for the exact tag, and its digest header matched an independent hash of the exact 857-byte OCI index;
+- the checked immutable image is `ghcr.io/thaynes43/haynes-quest:sha-6e71ba1556784efb340056e27be11e2bd7ae6c10@sha256:3112a716b888a3e5dbcbfca35d5680a52f49c43ae3b9347e34408b86b954bf0f`.
+
+The sanitized publication record is `/home/dev/work/quest-plan008-records/test-results/release-tools/follow-up-publication.json`.
 
 ## Current read-only baseline
 
@@ -28,7 +31,7 @@ The sanitized baseline at `.private/test-results/plan008-paused-release/baseline
 
 ## Future validation and handoff
 
-After the exact application publication is available, fetch current `origin/main` again and confirm the branch has no unrelated diff. Require the current source tag to equal the live private Deployment image and `QUEST_EPHEMERAL_PLAYTEST` to remain `"true"` before patching. Use `apply_patch` to replace only the PR/publication comment and image tag; do not add, remove or reorder environment entries.
+Before opening the operations PR, confirm the branch has no unrelated diff. The current source tag must equal the live private Deployment image and `QUEST_EPHEMERAL_PLAYTEST` must remain `"true"`. The application manifest changes only the PR/publication comment and image tag; no environment entry is added, removed or reordered.
 
 Repeat the prior release gate against cached app-template 5.1.0: Helm lint; exact `ServiceAccount`, `Service` and `Deployment` identities; byte-identical non-Deployment renders; byte-identical Deployment renders after normalizing only the app image; exact candidate image; retained ephemeral flag; and a successful complete app Kustomize build. Source scope must contain only this work order and the private playtest HelmRelease. Compare the normal manifest, both routes, both policies, app Kustomization and Flux Kustomization byte-for-byte to the current base.
 
@@ -37,3 +40,11 @@ Open a standard operations PR only after those gates pass. Inspect the establish
 The PLAN008 lead owns the immediate pre-merge baseline, activity lifecycle, merge, scoped Flux reconciliation, rollout and hosted proof. Post-release, run the copied verifier with the new exact image and operations merge SHA. It must preserve normal Quest and dev-env identities, images and restart counts; stable routing/policy UIDs and specs; and require the new private controller generations, exact image/digest, Ready pod and zero restarts. Private pod, EndpointSlice and CiliumEndpoint identities may rotate.
 
 Activity `act-164947-373500` belongs to the lead's preceding rollout/test and was still active when this preparation began; this lane neither changes nor relies on it.
+
+## Candidate verification
+
+- The final application candidate passed 380 tests and the final local route on client `Dg49` (SHA-256 prefix `14fd`), including a real boss defeat followed by one artwork retry whose warning cleared while gameplay remained paused, plus the audio path. These are application evidence supplied by the PLAN008 lead; hosted proof remains a post-release gate.
+- Before the source edit, current `origin/main` and the live private Deployment both used the c5696e3/b5e6aee image, and the source ephemeral flag remained `"true"`.
+- app-template 5.1.0 lint passed. Base and candidate each render exactly `ServiceAccount/haynes-quest-playtest`, `Service/haynes-quest-playtest` and `Deployment/haynes-quest-playtest`. The non-Deployment renders are byte-identical; the Deployment renders become byte-identical after normalizing only the app image.
+- The unnormalized candidate contains the exact 6e71ba1/3112a71 image and retains the ephemeral flag. The complete app Kustomize build passed with SHA-256 `aca0a7a910fc1ec56f8371c9197b921f5e952167126134b473c30aa8c5005211`.
+- The candidate differs from base `6772777e752450d1e74dfb897d2bd0be02b570d9` only in this record and the private playtest HelmRelease. All seven protected normal, route, policy and Kustomization source files are byte-identical to that base. The application manifest diff contains only the PR/publication comment and immutable image tag.
