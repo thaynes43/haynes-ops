@@ -30,9 +30,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest PR35; checked main publication 34670404335.
+              # Haynes Quest PR37; checked main publication 34705837653.
               # Isolated candidate review: exact artwork approval remains pending.
-              tag: sha-b66b8ee2723480c6c1e0226af9018109489a1817@sha256:eb685f46f8682e2b73505e02e0a52e738879d4c142b42c6af83fe7d2ec858cdc
+              tag: sha-c5696e3b884059040bcf67d225697139979a3551@sha256:b5e6aee84795299699bc8f02304a5ddd1cb644f81bf458718bdaa9540e988fd5
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
