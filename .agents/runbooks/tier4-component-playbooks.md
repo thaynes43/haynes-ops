@@ -467,17 +467,19 @@ Cluster ingress — TWO `app-template`-free Helm releases (`traefik-internal` VI
 
 ```logql
 # every request for one host, newest first
-{app="traefik", container="traefik-external"} | json | RequestHost = "sigoalumni.org"
+{app="traefik", container="traefik-external"} |= "RequestHost" | json | RequestHost = "sigoalumni.org"
 
 # one member's journey through the members area (path + status + real client IP)
-{app="traefik", container="traefik-external"} | json
+{app="traefik", container="traefik-external"} |= "RequestHost" | json
   | RequestHost = "sigoalumni.org" | RequestPath =~ "/members.*"
   | line_format "{{.DownstreamStatus}} {{.RequestMethod}} {{.RequestPath}} <- {{.request_Cf_Connecting_Ip}} ray={{.request_Cf_Ray}}"
 
 # status mix for one host (is it 307-looping?)
 sum by (DownstreamStatus) (count_over_time(
-  {app="traefik", container="traefik-external"} | json | RequestHost = "sigoalumni.org" [5m]))
+  {app="traefik", container="traefik-external"} |= "RequestHost" | json | RequestHost = "sigoalumni.org" [5m]))
 ```
+
+The `|= "RequestHost"` prefilter is not optional-in-spirit: this stream also carries the ~23k lines/h of `--log.level=DEBUG` output, and `| json` on those yields `__error__="JSONParserErr"` — the label filter still drops them, but you pay for the parse and Grafana Explore shows a parse-error banner over the results. Filter first.
 
 Field notes: `DownstreamStatus` is what the client got, `OriginStatus` what the backend returned (they differ when a middleware rewrites). `ClientHost` is the **cloudflared pod IP** for tunnelled hosts — the real client is the `request_Cf-Connecting-Ip` header. Loki's `| json` flattens that key to `request_Cf_Connecting_Ip` (hyphens → underscores), so use the underscored form in `line_format`/`label_format`. `Duration` is nanoseconds. `StartUTC` is UTC; Grafana renders local. Cookies and `Authorization` are absent **by construction** (`fields.headers.defaultMode: drop`) — do not "fix" a missing header by flipping that.
 
