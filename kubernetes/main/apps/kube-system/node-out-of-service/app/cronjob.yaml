@@ -4,9 +4,10 @@
 # power-off of the talosw02 VM stranded prometheus-0/loki-0/emqx-core-0/alertmanager-1/
 # plex/sabnzbd for 3.5h, because Kubernetes will not force-delete pods or detach Ceph
 # RBD volumes from a node that died without a graceful shutdown). Every minute it
-# looks for a worker that has been not-Ready past THRESHOLD_SECONDS and stamps
-# node.kubernetes.io/out-of-service=nodeshutdown:NoExecute on it, then takes the taint
-# back off once the node reports Ready again. See ../README.md for the guard rails.
+# looks for ANY node — worker or control-plane since 2026-09-12 — whose Ready condition
+# has been Unknown past its class threshold, and stamps
+# node.kubernetes.io/out-of-service=nodeshutdown on it, then takes the taint back off
+# once the node reports Ready again. See ../README.md for the guard rails.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -41,18 +42,13 @@ spec:
         spec:
           restartPolicy: Never
           serviceAccountName: node-out-of-service
-          # Prefer (not require) a control-plane node: the failure this job exists to
-          # repair is a dead WORKER, so it must not be scheduled onto the host that
-          # just vanished. Preferred rather than required so it still runs if the
-          # control plane is momentarily unschedulable.
-          affinity:
-            nodeAffinity:
-              preferredDuringSchedulingIgnoredDuringExecution:
-                - weight: 100
-                  preference:
-                    matchExpressions:
-                      - key: node-role.kubernetes.io/control-plane
-                        operator: Exists
+          # No nodeAffinity (removed 2026-09-12). Its rationale — "the failure this job
+          # exists to repair is a dead WORKER" — stopped being true once control-plane
+          # nodes came into scope, and empirically it pinned every run onto talosm02,
+          # the node that has silently hard-reset four times. Nothing is lost by
+          # dropping it: the scheduler already refuses NotReady and tainted nodes, and
+          # this pod tolerates neither our taint nor an extended not-ready window, so
+          # the next tick always lands somewhere healthy and can untaint.
           # Kyverno runs pod-security-baseline in enforce mode cluster-wide; this pod
           # clears baseline with room to spare (restricted-grade, in fact) so it never
           # needs a PolicyException.
@@ -78,6 +74,15 @@ spec:
                 # tune the watchdog without touching the ConfigMap.
                 - name: THRESHOLD_SECONDS
                   value: "480"
+                # Control-plane nodes are in scope since 2026-09-12, on a longer window
+                # and with NoSchedule rather than NoExecute. Both taint consumers match
+                # on the key only, so NoSchedule still force-deletes the Terminating
+                # pods and force-detaches their volumes, while leaving the masters'
+                # DaemonSets alone. See ../README.md.
+                - name: CP_THRESHOLD_SECONDS
+                  value: "900"
+                - name: CP_TAINT_EFFECT
+                  value: "NoSchedule"
                 - name: MAX_UNREADY
                   value: "1"
                 - name: DRY_RUN
