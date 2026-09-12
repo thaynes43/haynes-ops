@@ -58,6 +58,56 @@ Preserve these source bytes except for the private HelmRelease:
 
 The ignored baseline also records canonical live `.spec` hashes for both Services, routes and policies. Recapture all baselines immediately before merge; do not treat these values as authority after `origin/main` or live state changes.
 
+## Repeatable read-only baseline and post-release verifier
+
+The ignored executable is `.private/test-results/plan008-private-release/tools/plan008-release-verify.mjs` (SHA-256 `3056b4f4fb67af9526454741ec2e465a4141fb154b3735d173f66e41ecd36a0d`). It performs only scoped Kubernetes GETs and TLS health/readiness GETs. It reads no Secret, unrestricted environment, session, cookie, application data or database state, and performs no mutation. Its JSON includes resource identities, image identities, canonical spec hashes, selected public environment check names and pass/fail summaries.
+
+Immediately before merging the operations PR, capture the authoritative before-state. Keep the original audit baseline for provenance and give the immediate baseline a separate name:
+
+```bash
+PLAN008_EVIDENCE=.private/test-results/plan008-private-release
+PLAN008_VERIFY_TOOL="$PLAN008_EVIDENCE/tools/plan008-release-verify.mjs"
+PLAN008_IMMEDIATE_BASELINE="$PLAN008_EVIDENCE/baseline-immediate.json"
+node "$PLAN008_VERIFY_TOOL" \
+  --mode capture \
+  --output "$PLAN008_IMMEDIATE_BASELINE"
+jq -e '
+  .mode == "read-only-cluster-baseline" and
+  .normalQuest.pod.ready == true and
+  .privateQuest.pod.ready == true and
+  .devEnv.pod.ready == true
+' "$PLAN008_IMMEDIATE_BASELINE"
+```
+
+After the operations PR is squash-merged and Flux plus the private rollout have settled, verify against that immediate baseline. `PLAN008_IMAGE` is the exact application `sha-<40 hex>@sha256:<64 hex>` value established by the publication gate. `PLAN008_OPS_SHA` must be the exact operations squash-merge commit, not the application commit or a branch head:
+
+```bash
+PLAN008_OPS_PR='<operations PR number>'
+PLAN008_OPS_SHA=$(gh pr view "$PLAN008_OPS_PR" \
+  --repo thaynes43/haynes-ops \
+  --json mergeCommit \
+  --jq '.mergeCommit.oid')
+[[ "$PLAN008_OPS_SHA" =~ ^[0-9a-f]{40}$ ]]
+PLAN008_POSTRELEASE="$PLAN008_EVIDENCE/postrelease-${PLAN008_OPS_SHA}.json"
+node "$PLAN008_VERIFY_TOOL" \
+  --mode verify \
+  --baseline "$PLAN008_IMMEDIATE_BASELINE" \
+  --expected-image "$PLAN008_IMAGE" \
+  --expected-revision "$PLAN008_OPS_SHA" \
+  --output "$PLAN008_POSTRELEASE"
+jq -e '
+  .passed == true and
+  .expected.image == $image and
+  .expected.revision == ("main@sha1:" + $revision) and
+  .summary.failed == []
+' --arg image "$PLAN008_IMAGE" --arg revision "$PLAN008_OPS_SHA" \
+  "$PLAN008_POSTRELEASE"
+```
+
+The 24 assertions require the private HelmRelease and Deployment controllers to be observed, Ready and deployed; the Deployment to use the exact expected image; and the sole Running private pod to use the expected runtime digest with zero restarts. They require the Flux source and Quest Kustomization to be Ready at the exact operations merge revision. They also compare normal Quest and dev-env controller generations, UIDs, images, pod UIDs, container digests and restart counts to the immediate baseline. Both Quest Services, IngressRoutes and CiliumNetworkPolicies retain their exact baseline UIDs and canonical live-spec hashes. The normal EndpointSlice and CiliumEndpoint retain their identity and target. The new private EndpointSlice must have exactly one Ready endpoint targeting the current private pod, and its Cilium endpoint must be Ready with the complete expected identity-label set. The verifier deliberately does not compare the private pod, EndpointSlice or CiliumEndpoint UID, or the private numeric Cilium identity, because those objects may rotate during the intended rollout.
+
+The verifier exits 0 only on a full pass, 1 for completed failed assertions and 2 for invalid input or collection failure. A current-state compatibility run against the original `baseline.json` passed all 24 assertions, and the same run against a newly generated schema-2 baseline passed all 24. A negative run with a syntactically valid false application image exited 1 and failed exactly the private Deployment-image and pod-digest assertions. These runs exercise the collector and comparison logic; they are not post-release proof.
+
 ## Candidate input gate and exact manifest patch
 
 Do not edit the manifest until the application PR is squash-merged and its exact main image exists. The root should fill these variables from reviewed evidence:
