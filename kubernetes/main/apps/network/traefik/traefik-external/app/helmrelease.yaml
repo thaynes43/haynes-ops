@@ -27,6 +27,62 @@ spec:
       - "--entryPoints.websecure.transport.respondingTimeouts.writeTimeout=0s"
       - "--entryPoints.websecure.http2.maxConcurrentStreams=1000"
 
+    # HTTP access log -> stdout (JSON) -> promtail -> Loki. EXTERNAL ONLY.
+    #
+    # Why: there was no per-request record anywhere in the external path. The
+    # apps behind this controller log no requests, and cloudflared at INFO
+    # emitted 6 lines for ~25k requests, so a member reporting "the members
+    # photos page is a roadblock" left zero evidence to triage. This is the
+    # one place that sees every external request with its host, path, status
+    # and timing.
+    #
+    # Unlike our other Proxy settings this uses the CHART's `accessLog:` keys
+    # rather than raw `additionalArguments` flags: it is a ~12-key nested
+    # block, and the chart's values.schema.json validates it so flux-local
+    # catches a typo pre-merge. Raw flags are only checked by the Proxy binary
+    # at boot -- on the controller that fronts ALL external ingress that is the
+    # wrong place to find out. The chart renders these to `--accesslog.*` args
+    # (see traefik-41.4.0 templates/_podtemplate.tpl).
+    accessLog:
+      enabled: true
+      # JSON so Loki can `| json` it; the CLF default needs a regex to parse.
+      format: json
+      # Async writer queue depth. Bounds the memory the log path can hold and
+      # keeps the request goroutine from blocking on the writer.
+      bufferingSize: 100
+      # addInternals stays false (chart default): no dashboard/ping/api noise.
+      # No filters: 3xx MUST be logged -- the 307 to /members is the symptom
+      # we are chasing, so status-code filtering would hide the evidence.
+      fields:
+        # keep = the standard request fields: ClientHost, ClientAddr,
+        # RequestAddr, RequestHost, RequestPath, RequestMethod, RequestScheme,
+        # RequestProtocol, DownstreamStatus, OriginStatus, Duration,
+        # RouterName, ServiceName, ServiceAddr, RetryAttempts, TLSVersion,
+        # StartUTC, ... None of them carry credentials.
+        defaultMode: keep
+        headers:
+          # Drop EVERY request header except the four named below. This is the
+          # privacy boundary: Cookie / Authorization / Set-Cookie are never
+          # written, and stay unwritten if a new header shows up upstream.
+          defaultMode: drop
+          names:
+            # Canonical MIME casing is required -- Traefik does an exact map
+            # lookup against Go's canonicalised header key
+            # (pkg/observability/types/logs.go AccessLogFields.KeepHeader).
+            # These land in the JSON as request_<Name>.
+            Referer: keep
+            User-Agent: keep
+            # Real client IP behind the Cloudflare tunnel; ClientHost is the
+            # cloudflared pod IP and is useless for identifying a member.
+            Cf-Connecting-Ip: keep
+            # Correlates a line here with the Cloudflare-side request.
+            Cf-Ray: keep
+          # NOTE: query parameters are kept (Traefik default) because
+          # `?callbackUrl=` on the sign-in redirect is exactly the triage
+          # signal we want. If a token-bearing query parameter is ever added
+          # to an external app, set fields.queryParameters.defaultMode: drop
+          # (Proxy >= v3.7.3, we run v3.7.12).
+
     #fullnameOverride: traefik-external ## Using releaseName instead
     deployment:
       enabled: true

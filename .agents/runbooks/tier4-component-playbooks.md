@@ -456,18 +456,37 @@ Cluster ingress — TWO `app-template`-free Helm releases (`traefik-internal` VI
 | Feature | Where | Why |
 |---|---|---|
 | `service.spec` block (`type: LoadBalancer`/`loadBalancerSourceRanges`/`externalIPs`) + `service.annotations` `lbipam.cilium.io/ips` (.203 internal / .206 external) | both `helmrelease.yaml` `service:` (~L78-89) | v40 moved all k8s Service fields under `service.spec` (already migrated). Re-verify on every major that LB type + pinned Cilium VIP survive — a silent schema drop takes ALL ingress offline and changes the external-DNS target. |
-| `additionalArguments` — raw Proxy CLI flags (`--log.level=DEBUG`, `--serversTransport.*`, `--entryPoints.websecure.transport.respondingTimeouts.*`, `--entryPoints.websecure.http2.maxConcurrentStreams`) | both `helmrelease.yaml` (~L22-32) | We config via raw flags, not chart `logs:`/`accessLog:`/file-provider values — this INSULATES us from the v41 chart-key breakages. Flip side: flags are validated by the bundled Proxy binary (v3.7.x in v41), not the chart schema, so flux-local won't catch a renamed/removed flag — check the Proxy v3 guide. |
+| `additionalArguments` — raw Proxy CLI flags (`--log.level=DEBUG`, `--serversTransport.*`, `--entryPoints.websecure.transport.respondingTimeouts.*`, `--entryPoints.websecure.http2.maxConcurrentStreams`) | both `helmrelease.yaml` (~L22-32) | Everything EXCEPT the access log is configured as raw flags, not chart `logs:`/file-provider values — this INSULATES us from the v41 chart-key breakages. Flip side: flags are validated by the bundled Proxy binary (v3.7.x in v41), not the chart schema, so flux-local won't catch a renamed/removed flag — check the Proxy v3 guide. |
+| `accessLog:` chart values — **`traefik-external` ONLY** (`enabled: true`, `format: json`, `bufferingSize: 100`, `fields.defaultMode: keep`, `fields.headers.defaultMode: drop` + 4 named `keep` headers) | `traefik-external/app/helmrelease.yaml` `accessLog:` (~L34-85) | The ONE deliberate exception to the raw-flag rule (added 2026-09-12): a ~12-key nested block, so we take the chart's `values.schema.json` validation — flux-local fails the PR on a typo instead of the edge controller failing to boot. Chart renders it to `--accesslog.*` (`templates/_podtemplate.tpl`). **`fields.headers.defaultMode: drop` is a privacy boundary — never flip it to `keep`/`redact`, that would start writing `Cookie`/`Authorization` into Loki.** Header map keys need canonical MIME casing (`Cf-Connecting-Ip`, not `cf-connecting-ip`): Traefik does an exact map lookup (`pkg/observability/types/logs.go` `AccessLogFields.KeepHeader`). `traefik-internal` is deliberately NOT logged (LAN traffic, no support-triage need). |
 | `providers.kubernetesCRD` + `providers.kubernetesIngress` (`allowExternalNameServices: true`, `allowCrossNamespace: true`, `publishedService.enabled`) | both `helmrelease.yaml` `providers:` (~L62-75) | Provider-key renames are a recurring major break (v40 `kubernetesIngressNginx`→`kubernetesIngressNGINX`). `allowExternalNameServices` gates the `service-haynestower` ExternalName route; `allowCrossNamespace` gates cross-namespace IngressRoutes — silent reset to `false` 404s those routes. |
 | `ingressRoute.dashboard.enabled: false` + our OWN `traefik.io/v1alpha1` IngressRoute CRs → `api@internal`, guarded by the basicauth Middleware | `config/ingress-routes/...dashboard.yaml`, `config/middleware/...basicauth.yaml` | A major that bumps the `traefik.io` CRD apiVersion or changes `api@internal` handling 404s the dashboard or fails CR validation. Confirm our v1alpha1 CRs still apply after the CRD upgrade. |
 | `ports.web.http.redirections` (web→websecure, priority 10), `ports.websecure.http3.enabled`, `ports.websecure.http.tls.enabled`, external `ports.websecure.port: 443` | both `helmrelease.yaml` `ports:` (~L43-58) | Strict-schema area; a renamed key silently drops the HTTP→HTTPS redirect or HTTP/3 (UDP 443). Service exposes 80/TCP, 443/TCP, 443/UDP — confirm all three persist. |
-| NO metrics / NO ServiceMonitor (`{__name__=~"traefik_.+"}` is empty here) | absent across the whole `traefik/` tree | Health checks CANNOT use `traefik_*` PromQL. Rely on kube-state-metrics pod readiness, Loki `app=traefik` logs, the LB-IP, flux/kubectl object status, and Gatus. |
+| NO metrics / NO ServiceMonitor (`{__name__=~"traefik_.+"}` is empty here) | absent across the whole `traefik/` tree | Health checks CANNOT use `traefik_*` PromQL. Rely on kube-state-metrics pod readiness, Loki `app=traefik` logs (incl. the `traefik-external` JSON access log — see *Access-log triage* below), the LB-IP, flux/kubectl object status, and Gatus. |
+
+**Access-log triage (`traefik-external`, JSON → Loki).** Added 2026-09-12 because nothing else in the external path records a request: the apps behind it log none and cloudflared at INFO emitted 6 lines for ~25k requests. One JSON line per external request, `app="traefik"` / `container="traefik-external"`, roughly +3-4k lines/h on top of the ~23k lines/h the DEBUG level already produces. `traefik-internal` is NOT access-logged.
+
+```logql
+# every request for one host, newest first
+{app="traefik", container="traefik-external"} | json | RequestHost = "sigoalumni.org"
+
+# one member's journey through the members area (path + status + real client IP)
+{app="traefik", container="traefik-external"} | json
+  | RequestHost = "sigoalumni.org" | RequestPath =~ "/members.*"
+  | line_format "{{.DownstreamStatus}} {{.RequestMethod}} {{.RequestPath}} <- {{.request_Cf_Connecting_Ip}} ray={{.request_Cf_Ray}}"
+
+# status mix for one host (is it 307-looping?)
+sum by (DownstreamStatus) (count_over_time(
+  {app="traefik", container="traefik-external"} | json | RequestHost = "sigoalumni.org" [5m]))
+```
+
+Field notes: `DownstreamStatus` is what the client got, `OriginStatus` what the backend returned (they differ when a middleware rewrites). `ClientHost` is the **cloudflared pod IP** for tunnelled hosts — the real client is the `request_Cf-Connecting-Ip` header. Loki's `| json` flattens that key to `request_Cf_Connecting_Ip` (hyphens → underscores), so use the underscored form in `line_format`/`label_format`. `Duration` is nanoseconds. `StartUTC` is UTC; Grafana renders local. Cookies and `Authorization` are absent **by construction** (`fields.headers.defaultMode: drop`) — do not "fix" a missing header by flipping that.
 
 **Known breaking patterns → required edit:**
 
 | Pattern | Required edit |
 |---|---|
 | v40 (DONE): k8s Service fields moved under `service.spec`; strict schema rejects old top-level `service.type/...` | Keep them nested under `service.spec` (done); keep `lbipam.cilium.io/ips` under `service.annotations`. Re-diff the service block on every major. |
-| v41: chart logging keys renamed (`logs.general`→`log`, `logs.access`→`accessLog`, camelCased filters/fields) | N/A — we set NO chart `logs:`/`accessLog:`; logging is the raw `--log.level=DEBUG` flag. Only bites if someone migrates flags to chart values. |
+| v41: chart logging keys renamed (`logs.general`→`log`, `logs.access`→`accessLog`, camelCased filters/fields) | Log LEVEL is still the raw `--log.level=DEBUG` flag (unaffected). The ACCESS log IS chart values as of 2026-09-12, at the v41 spelling `accessLog:` (top-level, camelCase `bufferingSize`/`defaultMode`) on `traefik-external` only — a future rename of that key WILL fail the strict schema, which flux-local catches pre-merge. Re-diff `accessLog` against the chart's `values.yaml` on every major. |
 | v41: `providers.file.content` string→object | N/A — no file provider. |
 | v40: `providers.kubernetesIngressNginx`→`kubernetesIngressNGINX` | N/A (not enabled). Mirror ANY future provider-key rename into our `kubernetesCRD`/`kubernetesIngress` blocks. |
 | v41: `image.registry/repository` default to null | Do NOT pin `image.repository` — leave unset so the chart resolves the image matching its Proxy version. |
