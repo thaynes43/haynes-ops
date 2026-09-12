@@ -102,16 +102,18 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit ef0ed9e (2026-09-02):
-              # real crest favicon + 1200×630 share card (sigoalumni-org #125).
-              # Static brand assets only — new app/favicon.ico and
-              # app/apple-icon.png, new public/og-image.png, app/icon.svg
-              # removed, and og:image/twitter:image now point at
-              # /og-image.png (summary_large_image). No migration, no new env.
-              # Descends from c192449 (#124, "Details for brothers"). CI does
-              # not deploy here; bump deliberately.
+              # Pinned to sigoalumni-org main commit bfc6c13 (2026-09-12):
+              # the signed-out members door now says so (sigoalumni-org #127,
+              # from the 2026-09-12 member support case). Gated routes bounce
+              # to /members?from=<key> and the door names the page that sent
+              # them; the signed-out header slot is a visible "Sign in" link
+              # instead of a wordless silhouette; an account with no name
+              # falls back to its email. Copy and markup only — no migration,
+              # no new env, no schema or route change. Descends from ef0ed9e
+              # (#125) via d830537 (#126, tests only). CI does not deploy
+              # here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: ef0ed9ebbc94f8fad5f0f38009c8524add31a3e9
+              tag: bfc6c13dee296fd19bfe2fb0089511b41c1d6358
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
