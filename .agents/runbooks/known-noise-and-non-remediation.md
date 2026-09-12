@@ -179,6 +179,28 @@ awaiting a call.
 
 ---
 
+## Not noise — remediated autonomously instead
+
+### `CephDaemonCrash`
+**Not noise, and not to be suppressed.** The daemon has usually recovered on its own,
+but the alert *cannot* self-clear: Ceph keeps `RECENT_CRASH` raised until someone runs
+`ceph crash archive <id>`, so a 21-second OSD abort re-pages every 12h for two weeks.
+Silencing it, null-routing it, or answering `ACTION: none` because "the pod is Running"
+all hide the next real crash.
+
+- **Signature:** `ceph_health_detail{name="RECENT_CRASH"} == 1` with the crashed pod
+  back `Running`/Ready and PGs active+clean.
+- **Do:** follow [`ceph-daemon-crash.md`](ceph-daemon-crash.md) — the responder answers
+  `ACTION: urgent` (the handoff verb), and the `rem-*` lane inspects each `ceph crash
+  ls-new` id, verifies recovery, and archives **per id**.
+- **Do NOT:** silence it, route it away, mark the order `done` without archiving, or
+  `ceph crash archive-all` (that swallows records nobody looked at — it is the human's
+  break-glass, not the lane's tool). A repeat signature, a daemon that stays down, or
+  more than three new records at once **escalates** instead of being archived.
+- **Check:** `kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph crash ls-new`
+
+---
+
 ## Deliberately NOT in this file
 
 **Ceph mgr memory.** An earlier note claimed the active mgr leaked ~3.3 GiB/day and

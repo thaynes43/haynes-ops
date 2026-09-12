@@ -77,11 +77,21 @@ blocked).
 **Report format the LLM must emit** (≤900 chars):
 
 ```
-CAUSE: … | EVIDENCE: … | FIX: … | RUNBOOK: <path|none>
+ACTION: <none|investigate|urgent> | CAUSE: … | EVIDENCE: … | FIX: … | RUNBOOK: <path|none>
 ```
 
 The wrapper pages that verbatim with the `[auto-diagnosis — verify before acting]`
 suffix. Empty report ⇒ no page (see step 5).
+
+### Runbook-covered handoffs — `urgent` is a verb, not a temperature
+
+`ACTION: urgent` on a still-firing alert is the **handoff** to the silent `rem-*`
+remediation lane ([agentic-remediation.md](agentic-remediation.md)), not a louder
+page — so the responder must answer `urgent` whenever a runbook under
+`.agents/runbooks/` says the lane may handle that alert unattended, even when
+nothing is on fire. Downgrading such an alert to `investigate` pages Tom to run a
+command the lane can run itself. The first runbook-covered alert is
+`CephDaemonCrash` → [ceph-daemon-crash.md](ceph-daemon-crash.md).
 
 ---
 
@@ -187,18 +197,24 @@ Three CronJobs share ns `upgrade-agent` and the read-only ClusterRole; they do
 |---|---|---|---|---|
 | **gate** ([upgrade-health-gate](upgrade-health-gate.md)) | post-reconcile, every cycle | **no** — deterministic | no — pages only | upgrade health tripwire → Pushover |
 | **triage** ([upgrade-shepherd](upgrade-shepherd.md) `upgrade-shepherd-triage`) | recent merge **AND** regression now | **no** — deterministic | auto-summons shepherd `remediate` | **upgrade-attributable** regressions only |
-| **responder** (this) | **any** firing `severity=critical` | **yes** — sonnet, read-only | **never** — enriches + pages | **any** critical, upgrade-related or not |
+| **responder** (this) | **any** firing `severity=critical` | **yes** — Opus 5 (Sonnet 5 on the API fallback), read-only | **no cluster write** — enriches, then pages *or* hands a still-firing `urgent` to the `rem-*` lane by filing a work order | **any** critical, upgrade-related or not |
 
 - **gate** = the deterministic upgrade safety net (no LLM, page on regression).
 - **triage** = the deterministic auto-summon of the shepherd's `remediate` mode when
   a regression is *plausibly caused by a recent merge*.
 - **responder** = the LLM enrichment layer for **any** critical (hardware, HA, Ceph,
-  a crash-loop with no merge behind it), **read-only, never remediates**.
+  a crash-loop with no merge behind it). **Read-only itself** — it never remediates
+  in-pod; since 2026-08-23 it *delegates* a still-firing `urgent` to the `rem-*`
+  lane ([agentic-remediation.md](agentic-remediation.md)) and pages only when that
+  handoff cannot be filed or the diagnosis is `investigate`.
 
-**The responder is deliberately NOT wired to the gate/triage coordination CM.** It
-is an independent read-only observer — it must not gate, block, or be blocked by the
-upgrade-flow state, exactly as the health-gate stays the independent Pushover
-tripwire and triage stays decoupled from it. Keep it that way.
+**The responder still lets nothing gate it.** It reads nothing from the gate/triage
+coordination state and is never blocked by an in-flight upgrade — exactly as the
+health-gate stays the independent Pushover tripwire and triage stays decoupled from
+it. What it *does* do since 2026-08-23 is **write**: a still-firing `urgent` files a
+`rem-*` order (and a diagnosis that produced no report files an `esc-responder-*`
+one) into `upgrade-work-orders` through the mounted `/opt/coordination/remediate.sh`
+/ `escalate.sh`. Keep the read side decoupled.
 
 ---
 
