@@ -79,7 +79,20 @@ spec:
                 # Bumped 512Mi->1Gi: container was OOMKilled 2026-06-20 at 512Mi. Audit 2026-07-07.
                 # Bumped 1Gi->2Gi: OOMKilled 3x in 6 min at 1Gi on 2026-09-11 under
                 # concurrent history/logbook MCP queries (#2837). Baseline ~95Mi.
-                memory: 2Gi
+                # Bumped 2Gi->4Gi after another OOMKill 2026-09-12 21:45Z. This is the FOURTH
+                # bump, so read the two real causes before reaching for a fifth:
+                #   1. A genuine slow leak. RSS climbs ~7-10Mi/hour, dead linear, uncorrelated
+                #      with request volume: 95Mi -> ~790Mi over ~3 days, never plateaus, resets
+                #      only on restart. Headroom is consumed just by uptime.
+                #   2. Unbounded per-request allocation. A single ha_get_logs(source="error_log")
+                #      with no `search` filter reads the whole HA log into memory and took the
+                #      container from a 108Mi baseline through 2Gi in under 4 minutes — that is
+                #      what actually killed it on 09-12, only ~4 min after a restart.
+                # 4Gi buys headroom for (2) and delays (1); neither is fixed here. The real fix
+                # is upstream: we are on 7.6.0 and latest stable is v8.4.3 (2026-09-04), but the
+                # Renovate PR is stuck behind prConcurrentLimit (see the rate-limited dashboard).
+                # Prefer landing that upgrade over a fifth bump.
+                memory: 4Gi
     defaultPodOptions:
       # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox host (see incident)
       affinity:
