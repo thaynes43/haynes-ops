@@ -1,6 +1,6 @@
 # PLAN008 Haynes Quest private release audit
 
-Date: 2026-09-12 UTC  
+Date: 2026-09-12 UTC
 Status: Read-only release baseline ready; application candidate is not ready, and no image pin, PR, activity declaration, reconciliation, rollout, or other live mutation has occurred.
 
 ## Scope
@@ -243,6 +243,8 @@ Until those inputs exist, the released `b66b8ee` private image remains the corre
 
 ## Audit verification
 
+- Read-only readiness reread at `2026-09-12T16:26:44Z`: the verifier passed all 24 assertions against both the original recorded baseline and a newly captured schema-2 baseline. Flux remains at `main@sha1:6b39ea6cb74880be0e274a5501ad5c067bab8d93`; private Quest remains on b66b8ee/digest eb685f46, normal Quest remains on 3502ac7/digest 743bca, and dev-env retains pod UID `c3a94756-af35-405e-93bc-eb05c2979d3a` with zero restarts. Stable routing and policy identities/spec hashes are unchanged. The release branch is two commits ahead of and zero behind current `origin/main`, with only this work order tracked.
+- Current workflow source still defines the expected eight Flux jobs plus `Diff Scope - Success`; merged PR2862's check rollup confirms those exact nine names all completed successfully. The GitHub App cannot read the branch-protection status-check endpoint (`403 Resource not accessible by integration`), so no independent branch-protection API claim is made; the work order continues to require both aggregate contexts and inspection of all nine results.
 - Narrow named-resource baseline reread: passed; recorded Git, Flux, Quest and dev-env identities still matched live state, both source image pins matched their Deployments, all four HTTPS health/readiness probes returned 200, and the ignored JSON parsed successfully.
 - `helm lint` of current private values against cached app-template 5.1.0: one chart passed, zero failed; only the informational missing-icon note.
 - `helm template`: passed with exactly `ServiceAccount/haynes-quest-playtest`, `Service/haynes-quest-playtest`, and `Deployment/haynes-quest-playtest`.
