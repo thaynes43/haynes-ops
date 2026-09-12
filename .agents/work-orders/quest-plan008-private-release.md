@@ -1,7 +1,7 @@
 # PLAN008 Haynes Quest private release audit
 
 Date: 2026-09-12 UTC
-Status: Read-only release baseline ready; application candidate is not ready, and no image pin, PR, activity declaration, reconciliation, rollout, or other live mutation has occurred.
+Status: Checked application publication ready and exact private image pin staged; no operations merge, activity declaration, reconciliation, rollout or other live mutation has occurred.
 
 ## Scope
 
@@ -108,16 +108,22 @@ The 24 assertions require the private HelmRelease and Deployment controllers to 
 
 The verifier exits 0 only on a full pass, 1 for completed failed assertions and 2 for invalid input or collection failure. A current-state compatibility run against the original `baseline.json` passed all 24 assertions, and the same run against a newly generated schema-2 baseline passed all 24. A negative run with a syntactically valid false application image exited 1 and failed exactly the private Deployment-image and pod-digest assertions. These runs exercise the collector and comparison logic; they are not post-release proof.
 
-## Candidate input gate and exact manifest patch
+## Completed candidate input gate and exact manifest patch
 
-Do not edit the manifest until the application PR is squash-merged and its exact main image exists. The root should fill these variables from reviewed evidence:
+Haynes Quest PR37 squash-merged as `c5696e3b884059040bcf67d225697139979a3551`. Main-branch `Application` run 34705837653 and `Documentation` run 34705837648 both completed successfully at that exact SHA. The application run passed its application verification, dedicated PostgreSQL tests, Buildx provenance/SBOM, GitHub build-provenance attestation and cosign signing steps. The sanitized publication record is `/home/dev/work/quest-mobile-reliability/test-results/release-tools/publication.json`.
+
+An anonymous registry request independently returned HTTP 200 and `Docker-Content-Digest: sha256:b5e6aee84795299699bc8f02304a5ddd1cb644f81bf458718bdaa9540e988fd5`. Hashing the exact 857 response bytes produced the same digest. The checked immutable application image is:
+
+`ghcr.io/thaynes43/haynes-quest:sha-c5696e3b884059040bcf67d225697139979a3551@sha256:b5e6aee84795299699bc8f02304a5ddd1cb644f81bf458718bdaa9540e988fd5`
+
+The release inputs are:
 
 ```bash
-PLAN008_APP_SHA='<40-hex application squash merge>'
-PLAN008_IMAGE_DIGEST='<64-hex digest, without sha256:>'
-PLAN008_APP_PR='<number>'
-PLAN008_APPLICATION_RUN='<number>'
-PLAN008_DOCUMENTATION_RUN='<number>'
+PLAN008_APP_SHA='c5696e3b884059040bcf67d225697139979a3551'
+PLAN008_IMAGE_DIGEST='b5e6aee84795299699bc8f02304a5ddd1cb644f81bf458718bdaa9540e988fd5'
+PLAN008_APP_PR='37'
+PLAN008_APPLICATION_RUN='34705837653'
+PLAN008_DOCUMENTATION_RUN='34705837648'
 [[ "$PLAN008_APP_SHA" =~ ^[0-9a-f]{40}$ ]]
 [[ "$PLAN008_IMAGE_DIGEST" =~ ^[0-9a-f]{64}$ ]]
 [[ "$PLAN008_APP_PR" =~ ^[0-9]+$ ]]
@@ -150,14 +156,14 @@ test "$plan008_live_image" = "ghcr.io/thaynes43/haynes-quest:${plan008_source_ta
 test "$(git show "origin/main:${PLAN008_MANIFEST}" | yq -r '.spec.values.controllers.main.containers.app.env.QUEST_EPHEMERAL_PLAYTEST')" = true
 ```
 
-Use `apply_patch` for the actual edit. It changes only:
+The application manifest edit changes only:
 
 ```diff
 -              # Haynes Quest PR35; checked main publication 34670404335.
-+              # Haynes Quest PR<PLAN008_APP_PR>; checked main publication <PLAN008_APPLICATION_RUN>.
++              # Haynes Quest PR37; checked main publication 34705837653.
                # Isolated candidate review: exact artwork approval remains pending.
 -              tag: sha-b66b8ee2723480c6c1e0226af9018109489a1817@sha256:eb685f46f8682e2b73505e02e0a52e738879d4c142b42c6af83fe7d2ec858cdc
-+              tag: sha-<PLAN008_APP_SHA>@sha256:<PLAN008_IMAGE_DIGEST>
++              tag: sha-c5696e3b884059040bcf67d225697139979a3551@sha256:b5e6aee84795299699bc8f02304a5ddd1cb644f81bf458718bdaa9540e988fd5
 ```
 
 Do not add, remove or reorder environment keys. Do not put placeholders into the manifest.
@@ -231,18 +237,19 @@ Normal Quest must retain its immediate pre-merge Deployment/pod UIDs, image, run
 
 The previous WO067 post-release verifier contains hard-coded pod and baseline values from before the current private rollout. Do not run it unchanged. Reuse its narrow checks only after replacing its baseline from the immediate PLAN008 JSON, retaining `QUEST_EPHEMERAL_PLAYTEST=true` as an invariant rather than an introduced difference, and adding the focused PLAN008 hosted behavior checks. No rollback, data deletion, pod restart or other remediation is pre-authorized by this audit.
 
-## Outstanding inputs
+## Remaining release gates
 
-- final reviewed Haynes Quest application PR and squash-merge SHA;
-- successful main `Application` and `Documentation` run IDs;
-- exact published `sha-<merge>` tag and independently matched immutable digest;
-- final application test/browser evidence for the physical Besties regression;
 - checked operations PR, rendered-diff review, merge revision, reconciliation and hosted proof.
+- immediate pre-merge baseline, lead scope review, activity declaration, merge and scoped reconciliation;
+- post-release verifier pass and hosted application proof against the exact deployed image.
 
-Until those inputs exist, the released `b66b8ee` private image remains the correct immutable pin.
+Until the checked operations PR is merged and reconciled, the released `b66b8ee` private image remains the correct live immutable pin.
 
 ## Audit verification
 
+- Publication gate: PR37, exact merge SHA and both successful main workflow runs independently matched through GitHub; the supplied sanitized registry record matches the exact tag and immutable digest staged in the manifest.
+- Candidate render gate: app-template 5.1.0 lint passed; base and candidate each render exactly `ServiceAccount/haynes-quest-playtest`, `Service/haynes-quest-playtest` and `Deployment/haynes-quest-playtest`. Non-Deployment renders are byte-identical, and Deployment renders become byte-identical after normalizing only the app image. The unnormalized candidate contains the exact c5696e3/b5e6aee image and retains `QUEST_EPHEMERAL_PLAYTEST=true`. The complete candidate Kustomize render passed with SHA-256 `f863ca3df66362e4ecd44926526670fcf2691f296e8e0da2064c87818b1cbe42`.
+- Candidate source gate: the current `origin/main` base and live private Deployment both retain the recorded b66b8ee/eb685f46 image before release. The candidate differs from `origin/main` only in this record and `playtest-helmrelease.yaml`; all seven protected normal, route, policy and Kustomization source files are byte-identical to `origin/main`. The manifest diff contains only the publication comment and immutable image tag.
 - Read-only readiness reread at `2026-09-12T16:26:44Z`: the verifier passed all 24 assertions against both the original recorded baseline and a newly captured schema-2 baseline. Flux remains at `main@sha1:6b39ea6cb74880be0e274a5501ad5c067bab8d93`; private Quest remains on b66b8ee/digest eb685f46, normal Quest remains on 3502ac7/digest 743bca, and dev-env retains pod UID `c3a94756-af35-405e-93bc-eb05c2979d3a` with zero restarts. Stable routing and policy identities/spec hashes are unchanged. The release branch is two commits ahead of and zero behind current `origin/main`, with only this work order tracked.
 - Current workflow source still defines the expected eight Flux jobs plus `Diff Scope - Success`; merged PR2862's check rollup confirms those exact nine names all completed successfully. The GitHub App cannot read the branch-protection status-check endpoint (`403 Resource not accessible by integration`), so no independent branch-protection API claim is made; the work order continues to require both aggregate contexts and inspection of all nine results.
 - Narrow named-resource baseline reread: passed; recorded Git, Flux, Quest and dev-env identities still matched live state, both source image pins matched their Deployments, all four HTTPS health/readiness probes returned 200, and the ignored JSON parsed successfully.
