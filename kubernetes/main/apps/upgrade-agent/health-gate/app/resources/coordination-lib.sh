@@ -29,15 +29,18 @@ SIG_POD_QUERY="( (${SIG_POD_WAITING} == 1) or (${SIG_POD_PHASE} == 1) ) and ( ($
 
 # ── STALE-CORPSE FILTER (2026-07-28) ── a terminal Failed pod is dropped from the
 # coordination set when it is demonstrably HISTORY, not a live regression:
-#   A. superseded — its owning CronJob has a NEWER Job that succeeded
-#   B. ancient    — Failed and older than COORD_STALE_POD_HOURS (default 24h)
+#   A0. own Job converged — the pod's OWN Job reports succeeded>=1 (2026-09-13)
+#   A.  superseded — its owning CronJob has a NEWER Job that succeeded
+#   B.  ancient    — Failed and older than COORD_STALE_POD_HOURS (default 24h)
 # Why: failedJobsHistory retention keeps Error/Init:Error pods in the API for days;
 # the phase query counted them forever, so one ghost list (11 pods, 4–17 days old)
 # re-paged critical every 6h and re-summoned remediate (07-24/25/28 — each run
 # concluded "stale pre-existing pods, no regression"). Live signals are untouched:
 # CrashLoop/ImagePull waiting pods are actively restarting (not phase=Failed),
 # Pending/Unknown have no ceiling, and a CronJob whose LATEST run failed still
-# counts (rule A requires a newer SUCCESS). Any lookup error KEEPS the pod —
+# counts (rule A requires a newer SUCCESS, and A0 requires the pod's own Job to have
+# actually converged — a Job that exhausts backoffLimit never sets succeeded, so a
+# genuinely failing job still pages). Any lookup error KEEPS the pod —
 # fail-noisy, never fail-blind. A pod already deleted from the API is dropped (it
 # can still satisfy the query via the offset side while KSM series linger).
 COORD_STALE_POD_HOURS="${COORD_STALE_POD_HOURS:-24}"
@@ -58,6 +61,25 @@ pod_is_stale_corpse() {  # $1=ns $2=pod ; rc0 = drop from the coordination set
   if [ -n "$job" ]; then
     jobs="$(kubectl -n "$ns" get jobs -o json 2>/dev/null)"
     if [ -n "$jobs" ]; then
+      # A0. the pod's OWN Job already converged (2026-09-13). A Job with
+      # backoffLimit>=1 that fails its first attempt and succeeds on the retry leaves
+      # the failed ATTEMPT behind as a Failed pod, forever, while the Job itself reads
+      # Complete 1/1. That corpse is an artifact of a SUCCESSFUL job, not a regression.
+      #
+      # Rule A below cannot catch this: it looks for a strictly NEWER Job from the same
+      # CronJob (creationTimestamp > $t0), and a same-Job retry is not a newer Job. Rule
+      # B cannot either — it waits out COORD_STALE_POD_HOURS (24h). So before this, every
+      # retried-then-succeeded cron Job paged critical for a full day and auto-remediation
+      # could never converge, because there was nothing wrong to fix.
+      #
+      # Observed: frontend/cigar-journal-crawl-enrich-fleet-29821080 — attempt 1
+      # (-6b7cw) exit 1, attempt 2 (-fk9dc) Completed, Job Complete 1/1, and the gate
+      # still paged "unhealthy >10m after an UPGRADE and auto-remediation FAILED".
+      own_ok="$(printf '%s' "$jobs" | jq -r --arg j "$job" \
+        '[.items[] | select(.metadata.name==$j) | (.status.succeeded // 0)][0] // 0' 2>/dev/null)"
+      if [ "${own_ok:-0}" -ge 1 ] 2>/dev/null; then
+        return 0
+      fi
       cj="$(printf '%s' "$jobs" | jq -r --arg j "$job" '[.items[] | select(.metadata.name==$j) | .metadata.ownerReferences[]? | select(.kind=="CronJob") | .name][0] // ""' 2>/dev/null)"
       if [ -n "$cj" ]; then
         # RFC3339 creationTimestamps compare correctly as strings (same format, Z).
