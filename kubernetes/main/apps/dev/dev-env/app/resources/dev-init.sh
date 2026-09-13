@@ -180,12 +180,36 @@ git config --global --replace-all safe.directory "$HOME/repos/*"
 
 # ── playwright browsers: seed the PVC cache from the image's staging dir ────────
 # PLAYWRIGHT_BROWSERS_PATH is on the PVC so repos can add their OWN pinned chromium
-# revision (readOnlyRootFilesystem forbids writing an image path). Seed once; a repo's
-# `playwright install` then adds revisions next to it.
+# revision (readOnlyRootFilesystem forbids writing an image path).
+#
+# MERGE, don't seed-once. This used to run only when the cache dir was EMPTY, which
+# made it a first-boot-only operation: the very first repo to run its own
+# `playwright install` left the directory non-empty forever, so every later image —
+# with a newer @playwright/mcp and therefore a NEWER chromium revision staged at
+# /opt/dev-env/ms-playwright — was silently never copied in. That is how the pod
+# ended up with chromium-1228/1234/1237 on the PVC while the image shipped
+# chromium-1243, and every mcp__playwright__browser_* call died with
+# "Executable doesn't exist at .../chromium_headless_shell-1243/..." (2026-09-09).
+#
+# Revision directories are immutable and content-addressed by build number, so
+# copying only the ones the PVC lacks is safe and idempotent: it adds the image's
+# revision without disturbing revisions a repo installed for its own pinned
+# playwright (haynesnetwork 1.61.x -> 1228, cigar-journal 1.62.x -> 1234).
 mkdir -p "$HOME/.cache/ms-playwright"
-if [ -d /opt/dev-env/ms-playwright ] && [ -z "$(ls -A "$HOME/.cache/ms-playwright" 2>/dev/null)" ]; then
-  cp -a /opt/dev-env/ms-playwright/. "$HOME/.cache/ms-playwright/" 2>/dev/null \
-    && log "seeded playwright browsers from image" || log "WARN playwright seed failed"
+if [ -d /opt/dev-env/ms-playwright ]; then
+  _pw_seeded=""
+  for _pw_src in /opt/dev-env/ms-playwright/*; do
+    [ -e "$_pw_src" ] || continue
+    _pw_name="$(basename "$_pw_src")"
+    [ -e "$HOME/.cache/ms-playwright/$_pw_name" ] && continue
+    if cp -a "$_pw_src" "$HOME/.cache/ms-playwright/$_pw_name" 2>/dev/null; then
+      _pw_seeded="$_pw_seeded $_pw_name"
+    else
+      log "WARN playwright seed failed for $_pw_name"
+    fi
+  done
+  [ -n "$_pw_seeded" ] && log "seeded playwright browsers from image:$_pw_seeded"
+  unset _pw_seeded _pw_src _pw_name
 fi
 
 # ── shell defaults + scripts on PATH ────────────────────────────────────────────
