@@ -161,14 +161,23 @@ shared, so a tunnel drop there takes out every VPNLan pod at once while the pods
 themselves are perfectly healthy. Deleting a pod cannot fix that, and the replacement
 fails the very same probe.
 
-- **The control group is the point.** VLAN 30 carries exactly two workloads —
-  `downloads/qbittorrent` and `downloads/slskd`, deliberately on different nodes. The
-  other macvlan pods (`home-automation`: esphome, home-assistant, zigbee2mqtt, zwave)
-  sit on the IoT/Sonos VLANs behind the *same* UDM. List them together:
+- **The control group is the point — but read the node column, do not assume it.**
+  VLAN 30 carries exactly two workloads, `downloads/qbittorrent` and `downloads/slskd`.
+  They are **not** pinned apart: both carry only `nodeSelector:
+  network.haynesops.com/vpn=true` and neither has anti-affinity or a topology spread,
+  so the scheduler may co-locate them and often does (both were on `talosw01` on
+  2026-09-13). The other macvlan pods (`home-automation`: esphome, home-assistant,
+  zigbee2mqtt, zwave) sit on the IoT/Sonos VLANs behind the *same* UDM, on the
+  control-plane nodes. List them all together, **with their nodes**:
   `kubectl get pods -A -o json | jq -r '.items[] | select(.metadata.annotations["k8s.v1.cni.cncf.io/networks"]) | "\(.metadata.namespace)/\(.metadata.name) \(.spec.nodeName)"'`
-  - **Both** VLAN-30 pods down on **different nodes** while the other VLANs are Ready
-    ⇒ gateway/tunnel, not the pod, not the node, not multus. Do **not** delete pods.
   - **One** pod down, its VLAN-30 peer fine ⇒ genuinely pod-side; the delete applies.
+  - **Both** down on **different nodes**, other VLANs Ready ⇒ gateway/tunnel. Not the
+    pod, not the node, not multus. Do **not** delete pods.
+  - **Both** down on the **same node** ⇒ **undetermined — the node is not yet ruled
+    out**, because the pair shares a failure domain here. Do not stop at "both are
+    down". Check the node (`kubectl get node <n>`, and whether its non-macvlan pods
+    are healthy), then settle it with the in-pod gateway probe below, which
+    distinguishes the two directly and does not depend on placement at all.
 - **Confirm at the gateway**, from inside the pod: `nc -z -w4 192.168.30.1 443` is
   open (the UDM is alive), yet `nc -z -w3 1.1.1.1 443` and every other public IP is
   dead, and DNS via `192.168.30.1` times out. That split — gateway reachable, forwards
