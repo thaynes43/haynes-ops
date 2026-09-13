@@ -74,8 +74,34 @@ spec:
             - name: RemovePodsViolatingTopologySpreadConstraint
               args:
                 constraints:
+                  # DoNotSchedule ONLY. `ScheduleAnyway` was removed 2026-09-13 — including it
+                  # asks the descheduler to enforce a constraint the SCHEDULER is explicitly
+                  # allowed to ignore, which is self-contradictory and produces an infinite
+                  # evict/replace loop rather than a better spread.
+                  #
+                  # What it did: Alertmanager's pod template carries
+                  #   topologyKey: topology.kubernetes.io/zone, maxSkew: 1,
+                  #   whenUnsatisfiable: ScheduleAnyway   <-- a PREFERENCE
+                  # plus a REQUIRED podAntiAffinity on kubernetes.io/hostname. After the
+                  # talosm02 reboot at 21:33Z both replicas landed in zone `w`, giving skew 2.
+                  # The scheduler accepted that (soft constraint, working as designed); the
+                  # descheduler then evicted a replica every 5 minutes to "fix" it; the
+                  # scheduler put it straight back in `w`. 57 evictions between 21:35 and
+                  # 02:20 — the loop cannot converge, because eviction does not change the
+                  # scoring that put the pod there.
+                  #
+                  # Why it mattered: Alertmanager is a 2-replica gossip pair. A replica dying
+                  # every 5 minutes never keeps a notification log long enough to dedup
+                  # against its peer, so criticals were delivered MULTIPLE TIMES to Pushover
+                  # during tonight's outage (~12-13 notifications for 3 distinct alerts) and
+                  # AlertmanagerClusterFailedToSendAlerts fired at 02:06. It also kept
+                  # AlertmanagerMembersInconsistent (critical) perpetually pending — it only
+                  # never fired because each eviction reset its `for: 15m` timer on a new pod
+                  # IP. That is a knife-edge, not a safeguard.
+                  #
+                  # Upstream's default for this plugin is [DoNotSchedule]. This restores it.
+                  # A hard constraint still gets enforced; a preference is now treated as one.
                   - DoNotSchedule
-                  - ScheduleAnyway
           plugins:
             balance:
               enabled:

@@ -4,6 +4,11 @@ Agent-facing operational docs for this repo — runbooks, safety rules, and refe
 
 Top-level agent instructions live in [`CLAUDE.md`](../CLAUDE.md); this folder holds the longer-form material it references.
 
+**[`HARDENING.md`](HARDENING.md) — safety defects found while doing other work.** Checks that
+can pass without having run, docs that assert a safety property the cluster does not have, and
+guards whose degraded state is fail-open. Append findings there as you hit them; a false green
+is worth more attention than a red.
+
 ## runbooks/ — step-by-step procedures
 - [plex-tonight.md](runbooks/plex-tonight.md) — refresh private Plex watch history and library evidence for movies, new shows, and series to resume.
 - [audio-authoring.md](runbooks/audio-authoring.md) — independent CPU sound generation, model provisioning, asynchronous MCP jobs, and persistent candidates.

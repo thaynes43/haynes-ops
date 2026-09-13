@@ -26,7 +26,7 @@ spec:
           app:
             image:
               repository: ghcr.io/homeassistant-ai/ha-mcp
-              tag: 7.6.0
+              tag: 8.4.3
             command: ["ha-mcp-web"]
             args: []
             env:
@@ -88,10 +88,18 @@ spec:
                 #      with no `search` filter reads the whole HA log into memory and took the
                 #      container from a 108Mi baseline through 2Gi in under 4 minutes — that is
                 #      what actually killed it on 09-12, only ~4 min after a restart.
-                # 4Gi buys headroom for (2) and delays (1); neither is fixed here. The real fix
-                # is upstream: we are on 7.6.0 and latest stable is v8.4.3 (2026-09-04), but the
-                # Renovate PR is stuck behind prConcurrentLimit (see the rate-limited dashboard).
-                # Prefer landing that upgrade over a fifth bump.
+                # KEEP 4Gi AFTER THE 8.4.3 UPGRADE (2026-09-12). The upgrade fixes exactly one
+                # of the two causes, and it is worth being precise about which:
+                #   - Cause (2), the unbounded log read, IS fixed. 8.4.0 "replaces the
+                #     unconditional 20,000-line Core log fetch with bounded windows on every
+                #     install type" — that is precisely the path that took the container from
+                #     108Mi through 2Gi in under four minutes on 09-12.
+                #   - Cause (1), the ~7-10Mi/hour linear RSS climb, is NOT addressed by any 8.x
+                #     release note, and there is no upstream issue for standalone-server RSS
+                #     growth. Do NOT expect the climb to stop.
+                # Two upstream fixes that would help most (history-query safeguards and a
+                # cross-session tool concurrency limit) merged 2026-09-07, AFTER 8.4.3 shipped
+                # 09-04, and are opt-in env vars anyway. Revisit on the next release.
                 memory: 4Gi
     defaultPodOptions:
       # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox host (see incident)

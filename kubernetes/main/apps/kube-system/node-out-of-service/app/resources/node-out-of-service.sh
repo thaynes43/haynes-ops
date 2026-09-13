@@ -36,14 +36,40 @@ if (set -o pipefail 2>/dev/null); then set -o pipefail; fi
 # briefly flapping (kubelet restart, brief network blip, Talos upgrade reboot).
 # 480s sits well above the ~5m pod-eviction-timeout, so normal churn never trips it.
 THRESHOLD_SECONDS="${THRESHOLD_SECONDS:-480}"
-# Blast-radius guard: if MORE than this many nodes are not-Ready at once, the far
-# likelier explanation is a partition or an apiserver problem, not N dead hosts —
-# so taint nothing and let a human look.
+# Control-plane nodes are IN SCOPE (2026-09-12) but get their own, longer window.
+# A bare-metal master's POST + Talos boot is slower than a VM's, and a false
+# positive on a master costs more, so give it more rope. This adds delay, not
+# information — it is the weakest of the guards below, not the main one.
+CP_THRESHOLD_SECONDS="${CP_THRESHOLD_SECONDS:-900}"
+# Blast-radius guard: if MORE than this many nodes have an UNADJUDICATED failure
+# at once, the far likelier explanation is a partition or an apiserver problem,
+# not N dead hosts — so taint nothing and let a human look. "Unadjudicated" =
+# not-Ready AND not already carrying our taint: a node we tainted days ago is a
+# decided case, not fresh evidence of a partition, and counting it would wedge
+# remediation for every node that fails afterwards.
 MAX_UNREADY="${MAX_UNREADY:-1}"
 DRY_RUN="${DRY_RUN:-false}"
 TAINT_KEY="${TAINT_KEY:-node.kubernetes.io/out-of-service}"
 TAINT_VALUE="${TAINT_VALUE:-nodeshutdown}"
 TAINT_EFFECT="${TAINT_EFFECT:-NoExecute}"
+# ...but NoSchedule on control-plane nodes. Both consumers of this taint —
+# podgc.gcTerminating and attachdetach/reconciler.hasOutOfServiceTaint — match on
+# the KEY only and ignore value and effect, and the upstream docs say either
+# effect is valid. So NoSchedule delivers the whole remedy (force-delete the
+# already-Terminating pods, force-detach their volumes) while avoiding two
+# NoExecute-only side effects on a master: evicting the ~11 DaemonSets that
+# tolerate not-ready/unreachable but not this taint (multus, both Ceph CSI
+# nodeplugins, node-exporter, promtail, ...), and the mirror-pod delete/recreate
+# loop a stuck taint would cause on a recovered master (tainteviction has no
+# readiness check — it acts on the taint alone, and kubelet just puts static pods
+# straight back). Flag: if a target workload is ever given an INFINITE unreachable
+# toleration, NoSchedule silently stops rescuing it — it relies on the default
+# 300s unreachable:NoExecute to set the DeletionTimestamp that podgc needs.
+CP_TAINT_EFFECT="${CP_TAINT_EFFECT:-NoSchedule}"
+# Auditable escape hatch. A node labelled this way is never tainted. Its empty
+# state is the SAFE default (nothing excluded), unlike the old hardcoded
+# control-plane deny-list whose empty state was fail-open.
+EXCLUDE_LABEL="${EXCLUDE_LABEL:-node-out-of-service.haynesops.com/exclude=true}"
 # Settle window before the taint comes off: a node reports Ready a beat before its
 # CSI plugin has re-registered, and pulling the taint early lets pods land on a node
 # that cannot yet attach their volumes.
@@ -123,8 +149,10 @@ iso8601_epoch() {
 }
 
 total=0
-skipped=0
-unready=0
+skipped=0   # nodes carrying EXCLUDE_LABEL
+unready=0   # not-Ready AND not already tainted — see MAX_UNREADY
+threshold="${THRESHOLD_SECONDS}"
+effect="${TAINT_EFFECT}"
 tainted_count=0
 untainted_count=0
 to_taint=""    # space-separated "name=age_seconds"
@@ -134,7 +162,7 @@ to_untaint=""  # space-separated "name=age_seconds"
 # unattended job that dies silently is indistinguishable from one that found nothing.
 # The trap is armed before the first API call so the counters are always defined.
 summary() {
-    log "summary: nodes=${total} control_plane_skipped=${skipped} not_ready=${unready} tainted=${tainted_count} untainted=${untainted_count} dry_run=${DRY_RUN}"
+    log "summary: nodes=${total} excluded=${skipped} unadjudicated_not_ready=${unready} tainted=${tainted_count} untainted=${untainted_count} dry_run=${DRY_RUN}"
 }
 trap summary EXIT
 
@@ -147,13 +175,36 @@ now="$(date -u +%s)"
 # rather than an error.
 nodes="$(kubectl --request-timeout="${REQUEST_TIMEOUT}" get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"|"}{range .status.conditions[?(@.type=="Ready")]}{.lastTransitionTime}{end}{"|"}{range .spec.taints[*]}{.key}{","}{end}{"\n"}{end}')"
 
-# ...and one name-only listing is the control-plane deny-list. This deliberately
+# ...and one name-only listing says which nodes are control-plane. This deliberately
 # does NOT come out of the listing above: the control-plane label's VALUE is the
 # empty string, and jsonpath renders an absent key and an empty-valued key
 # identically — so "is this a control-plane node" is answered server-side by the
-# label selector, where it cannot be misread. Tainting a control-plane node would
-# NoExecute the apiserver off it; that must never happen by accident.
+# label selector, where it cannot be misread.
+#
+# This is no longer a deny-list. It now only selects which THRESHOLD and EFFECT a
+# node gets. The old code skipped these nodes outright, justified by "tainting a
+# control-plane node would NoExecute the apiserver off it" — which is false. The
+# apiserver, scheduler and controller-manager are Talos-supervised static pods;
+# their API objects are mirror pods, and deleting a mirror pod is a pure API
+# operation that kubelet immediately undoes from the on-disk manifest (kubelet.go
+# HandlePodRemoves takes the wasMirror branch and never reaches deletePod).
+# Moreover the default unreachable:NoExecute toleration already deletes those same
+# mirror pods at T+300s, a full 180s BEFORE this job's old 480s window — so by the
+# time our taint lands, the eviction it supposedly caused has already happened, with
+# no ill effect. etcd is not a Kubernetes object on Talos at all (machined-managed,
+# `kubectl get pods -A | grep etcd` is empty), so quorum is untouchable from here.
 control_plane="$(kubectl --request-timeout="${REQUEST_TIMEOUT}" get nodes -l node-role.kubernetes.io/control-plane -o jsonpath='{range .items[*]}{.metadata.name}{" "}{end}')"
+# FAIL CLOSED. If this selector ever comes back empty — label rename, a filtered
+# response, an RBAC change — every master would silently fall into the worker class
+# and be tainted on the shorter window with NoExecute. Refuse to act instead.
+if [ -z "${control_plane}" ]; then
+    log "FATAL: control-plane label selector returned no nodes — refusing to act"
+    exit 1
+fi
+
+# Opt-out list. Unlike the control-plane selector this one is ALLOWED to be empty:
+# "nothing is excluded" is the safe default.
+excluded="$(kubectl --request-timeout="${REQUEST_TIMEOUT}" get nodes -l "${EXCLUDE_LABEL}" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{end}')"
 
 # Fed by here-doc, not a pipe: `... | while read` puts the loop in a subshell under
 # POSIX sh, and every counter below would be discarded when it exits.
@@ -161,18 +212,32 @@ while IFS='|' read -r name ready ltt taints; do
     [ -n "${name}" ] || continue
     total=$((total + 1))
 
-    case " ${control_plane} " in
+    tainted=false
+    case ",${taints}" in
+        *",${TAINT_KEY},"*) tainted=true ;;
+    esac
+
+    # The guard counter is computed for EVERY node, control-plane included, and
+    # BEFORE any skip. The old code did `continue` on control-plane nodes before
+    # this line, so a NotReady master was invisible to MAX_UNREADY: losing two of
+    # three masters — the textbook "possible partition/API issue" — did not trip
+    # the guard at all, and the job would still force-detach a worker's volumes
+    # mid-incident. Already-tainted nodes are excluded so one long-dead node does
+    # not permanently wedge remediation for everything that fails after it.
+    if [ "${ready}" != "True" ] && [ "${tainted}" = "false" ]; then
+        unready=$((unready + 1))
+    fi
+
+    case " ${excluded} " in
         *" ${name} "*)
             skipped=$((skipped + 1))
             continue
             ;;
     esac
 
-    [ "${ready}" = "True" ] || unready=$((unready + 1))
-
-    tainted=false
-    case ",${taints}" in
-        *",${TAINT_KEY},"*) tainted=true ;;
+    case " ${control_plane} " in
+        *" ${name} "*) threshold="${CP_THRESHOLD_SECONDS}"; effect="${CP_TAINT_EFFECT}" ;;
+        *)             threshold="${THRESHOLD_SECONDS}";    effect="${TAINT_EFFECT}" ;;
     esac
 
     since="$(iso8601_epoch "${ltt}")"
@@ -182,7 +247,20 @@ while IFS='|' read -r name ready ltt taints; do
     fi
     age=$((now - since))
 
-    if [ "${ready}" != "True" ] && [ "${tainted}" = "false" ] && [ "${age}" -gt "${THRESHOLD_SECONDS}" ]; then
+    # Ready=Unknown ONLY — never Ready=False. These are different claims and
+    # Kubernetes encodes the difference deliberately (nodelifecycle maps Unknown ->
+    # node.kubernetes.io/unreachable, False -> node.kubernetes.io/not-ready):
+    # Unknown means "kubelet stopped posting node status", i.e. nobody is home,
+    # while False means the kubelet is alive and self-reporting a problem — Cilium
+    # down on a master gives Ready=False with every container still running and
+    # still writing. Force-detaching a Ceph RBD image out from under a live writer
+    # is the documented data-corruption path, and upstream's precondition is
+    # explicit: "it should be verified that the node is already in shutdown or
+    # power off state". The old `!= "True"` test included False and was one Cilium
+    # outage away from doing exactly that. This narrows the window; it does not
+    # close it (a wedged kubelet that stops heartbeating with containers alive
+    # still reads Unknown) — upstream has no better signal either.
+    if [ "${ready}" = "Unknown" ] && [ "${tainted}" = "false" ] && [ "${age}" -gt "${threshold}" ]; then
         to_taint="${to_taint}${name}=${age} "
     elif [ "${ready}" = "True" ] && [ "${tainted}" = "true" ] && [ "${age}" -ge "${READY_SETTLE_SECONDS}" ]; then
         to_untaint="${to_untaint}${name}=${age} "
@@ -196,22 +274,38 @@ if [ "${unready}" -gt "${MAX_UNREADY}" ]; then
     to_taint=""
 fi
 
-for entry in ${to_taint}; do
-    name="${entry%%=*}"
-    age="${entry##*=}"
-    log "taint ${name}: Ready!=True for ${age}s (> THRESHOLD_SECONDS=${THRESHOLD_SECONDS}) — applying ${TAINT_KEY}=${TAINT_VALUE}:${TAINT_EFFECT}"
-    mutate taint node "${name}" "${TAINT_KEY}=${TAINT_VALUE}:${TAINT_EFFECT}"
-    tainted_count=$((tainted_count + 1))
-done
-
-# Removal runs even when the guard tripped: getting a recovered node back into
-# service is never the risky half, and a stuck taint keeps the node unschedulable.
+# REMOVAL RUNS FIRST, and unconditionally. Putting it second meant `set -e` aborted
+# the whole script the moment any single `kubectl taint` failed, so one erroring
+# node could leave a fully recovered node tainted indefinitely — directly
+# contradicting the README's promise that removal "runs even when the guard
+# tripped". That matters far more now that masters are in scope: a stuck taint on
+# a recovered master keeps the only nodes that can host the IoT-VLAN workloads
+# unusable. Each mutation is wrapped so its failure is a WARN, not an abort.
 for entry in ${to_untaint}; do
     name="${entry%%=*}"
     age="${entry##*=}"
     log "untaint ${name}: Ready for ${age}s (>= READY_SETTLE_SECONDS=${READY_SETTLE_SECONDS}) — removing ${TAINT_KEY}"
-    mutate taint node "${name}" "${TAINT_KEY}-"
-    untainted_count=$((untainted_count + 1))
+    if mutate taint node "${name}" "${TAINT_KEY}-"; then
+        [ "${DRY_RUN}" = "true" ] || untainted_count=$((untainted_count + 1))
+    else
+        log "WARN ${name}: untaint failed — will retry next tick"
+    fi
+done
+
+for entry in ${to_taint}; do
+    name="${entry%%=*}"
+    age="${entry##*=}"
+    # Recompute the class here so the log line names the threshold actually used.
+    case " ${control_plane} " in
+        *" ${name} "*) threshold="${CP_THRESHOLD_SECONDS}"; effect="${CP_TAINT_EFFECT}"; class="control-plane" ;;
+        *)             threshold="${THRESHOLD_SECONDS}";    effect="${TAINT_EFFECT}";    class="worker" ;;
+    esac
+    log "taint ${name} (${class}): Ready=Unknown for ${age}s (> ${threshold}s) — applying ${TAINT_KEY}=${TAINT_VALUE}:${effect}"
+    if mutate taint node "${name}" "${TAINT_KEY}=${TAINT_VALUE}:${effect}"; then
+        [ "${DRY_RUN}" = "true" ] || tainted_count=$((tainted_count + 1))
+    else
+        log "WARN ${name}: taint failed — will retry next tick"
+    fi
 done
 
 # summary() fires from the EXIT trap.

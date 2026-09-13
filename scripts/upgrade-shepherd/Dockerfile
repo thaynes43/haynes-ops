@@ -20,7 +20,7 @@ ARG FLUX_VERSION=2.9.5
 # renovate: datasource=github-releases depName=cli/cli
 ARG GH_VERSION=2.100.0
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.263
+ARG CLAUDE_CODE_VERSION=2.1.270
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
