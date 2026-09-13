@@ -90,6 +90,19 @@ kept as the record of what was considered.
   /cluster/ha/resources/<sid> --yes` for the five resources, declared with
   `declare-activity`, logged in the incident report.
 
+### 2026-09-09 — scope clarification (Tom): this is for the interactive/rc sessions, not a new headless lane
+
+"I didn't mean to say we needed a headless dev-env-ops like we do for other things. We need
+rc agents in dev-env that you run in to have access to Proxmox natively. Maybe Unraid down
+the road too for basic troubleshooting of logs. The changes would be made here and don't
+need to be rolled out or developed yet." So: `pve` in every session's PATH + the tokens in
+the pod env (PR B) is the whole deliverable — no CronJob, no rem-lane wiring, no automation.
+PR B stays held until Tom's evening ceremony; nothing further is built now.
+
+**Later, same shape: Unraid.** Read-only log/health access from the pod (API key or SSH
+key in 1Password → ExternalSecret → env; CNP egress to the Unraid host; a small `unraid`
+helper). Design-only note; not scheduled.
+
 ## Goal
 
 From inside the dev-env pod, an agent can (a) read the whole Proxmox cluster's state,
@@ -208,3 +221,26 @@ Recorded and asked 2026-09-09. Options were (a) temporary `Sys.Console` + one-sh
   worker-only guard (no request made); `pve --any vm 104 config` reads.
 - The fence remedy in the runbook has been executed once and `pve ha` shows no
   `started` resources; LRMs report `idle`.
+
+### 2026-09-13 — PR B landed WITHOUT the operator credential (read tier only)
+
+PR B (#2806) merged as part of clearing the open-PR backlog, but the **operator-tier
+ExternalSecret was deliberately left out**. Checked against 1Password Connect that day:
+the `dev-env` item has no `PROXMOX_OPERATOR_TOKEN_ID` / `PROXMOX_OPERATOR_TOKEN_SECRET`
+(only `CLOUDFLARE_PERSONAL_DNS_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `CIGAR_JOURNAL_TOKEN`),
+and `proxmox` holds only the READ-tier exporter token. Landing the ES against fields that
+do not exist is what failed the dev-env Kustomization and paged three times on
+2026-09-09 (pulled back out in #2807) — so it stays out until the credential is real.
+
+**Deployed now:** `pve` on every session's PATH, `PVE_API_URL`, and the READ tier
+(`dev-env-proxmox-secret`, already synced). `pve ha` / `nodes` / `guests` / `vm <id> config`
+work. Writes refuse with *"only the read token is present (operator token not deployed)"*.
+
+**Still open — the exact steps are in the comment at the bottom of
+`kubernetes/main/apps/dev/dev-env/app/externalsecret.yaml`:** create the `DevEnvOperator`
+role + `dev-env@pve!operator` token on a PVE node, add the two fields to 1Password, then
+append the ExternalSecret and bounce the pod once.
+
+**The fence cleanup is still pending** and needs the operator tier:
+`pve delete /cluster/ha/resources/{vm:104,ct:105,ct:106,ct:107,vm:109} --yes`, declared
+with `declare-activity` and logged in the incident report.
