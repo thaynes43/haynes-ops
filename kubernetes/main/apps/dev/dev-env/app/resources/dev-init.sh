@@ -220,6 +220,34 @@ ln -sf /opt/dev-env/scripts/agent-run.sh "$HOME/.local/bin/agent-run"
 # declare disruptive work hit "command not found", the false-escalation guard is
 # silently absent, and the file just sits unreferenced in /opt/dev-env/scripts.
 ln -sf /opt/dev-env/scripts/declare-activity.sh "$HOME/.local/bin/declare-activity"
+
+# ── stale corepack shims on the PVC shadow the image's pinned toolchain ─────────
+# $HOME/.local/bin comes FIRST on PATH, so a symlink left there by a one-off
+# `corepack enable` wins over /usr/local/bin forever — and corepack then serves
+# whatever it has cached on the PVC, ignoring the Dockerfile pin entirely.
+#
+# That is exactly what happened to pnpm. A `corepack enable` on 2026-08-10 left
+# ~/.local/bin/{pnpm,pnpx} pointing at corepack's dist, and from that day the
+# PNPM_VERSION ARG was decoration: on 2026-09-13 the image shipped pnpm 11.27.0
+# while `pnpm --version` in the pod answered 11.21.0 from the corepack cache. Same
+# silent-drift class as the claude-code 2.1.217 freeze — the pin looks applied in
+# the diff and never reaches the shell.
+#
+# Remove only symlinks that point into corepack, and only when the image actually
+# provides that command. Idempotent, and it never touches a real binary a repo
+# installed on purpose.
+for _cp_cmd in pnpm pnpx yarn npm; do
+  _cp_link="$HOME/.local/bin/$_cp_cmd"
+  [ -L "$_cp_link" ] || continue
+  case "$(readlink "$_cp_link")" in
+    *corepack*) ;;
+    *) continue ;;
+  esac
+  [ -x "/usr/local/bin/$_cp_cmd" ] || continue
+  rm -f "$_cp_link"
+  log "removed stale corepack shim ~/.local/bin/$_cp_cmd (was shadowing $(/usr/local/bin/$_cp_cmd --version 2>/dev/null || echo '?'))"
+done
+unset _cp_cmd _cp_link
 # pve (2026-09-09, backlog 14): same trap as declare-activity — a mounted script is
 # not a command until it is linked.
 ln -sf /opt/dev-env/scripts/pve.sh "$HOME/.local/bin/pve"

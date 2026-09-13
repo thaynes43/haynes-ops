@@ -85,6 +85,32 @@ job completes and nothing pages — it has simply been failing quietly. Either t
 should sign the image (matching what the policy expects) or the policy should not cover it.
 Right now it is neither enforced nor clean, which is the worst of both.
 
+### H-4 — A stale corepack shim on the PVC silently voided the pnpm pin
+
+**Found:** 2026-09-13, verifying the dev-env 0.6.2 image bump actually took.
+
+The image ships the pinned pnpm at `/usr/local/bin/pnpm`. But `$HOME/.local/bin` comes
+**first** on PATH, and a one-off `corepack enable` on 2026-08-10 left
+`~/.local/bin/{pnpm,pnpx}` pointing at corepack's dist. The PVC outlives every pod, so
+from that day corepack served whatever it had cached and the `PNPM_VERSION` ARG was
+decoration. On 2026-09-13 the image shipped **11.27.0** while `pnpm --version` in the
+pod answered **11.21.0**.
+
+This is the same silent-drift class as the claude-code 2.1.217 freeze: the bump looks
+applied in the diff, CI is green, the image genuinely contains the new version — and the
+shell never sees it. Nothing reports a problem, because nothing is comparing declared to
+actual.
+
+Fixed in `dev-init.sh`: any `~/.local/bin` symlink pointing into corepack is removed when
+the image provides that command. Idempotent, and it never touches a binary a repo
+installed deliberately.
+
+**Still open — the general form.** Nothing checks that a pinned tool in the image is the
+one a session actually resolves. Every `ARG *_VERSION` in `scripts/dev-env/Dockerfile` is
+shadowable the same way by anything on the PVC ahead of it on PATH. A boot-time check
+comparing `command -v <tool>` against the image's copy, logging a loud line on mismatch,
+would close the class rather than this one instance.
+
 ---
 
 ## Resolved
