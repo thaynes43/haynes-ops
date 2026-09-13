@@ -8,12 +8,41 @@ operating manual.
 | Tier | Credential | Can | Cannot |
 |---|---|---|---|
 | READ | `$PVE_TOKEN_ID` / `$PVE_TOKEN_SECRET` (`prometheus@pve!exporter`, PVEAuditor) | every `GET`: cluster/HA status, quorum, node uptimes, guest placement, `onboot` per guest | any write |
-| OPERATOR | `$PVE_OPERATOR_TOKEN_ID` / `$PVE_OPERATOR_TOKEN_SECRET` (`dev-env@pve!operator`), **present only after Tom fills the 1Password fields and the pod has bounced** | HA resources (remove/adjust), `onboot`, start/stop/reset on guests; PVE-side it is root-equivalent (`Sys.Console`, Tom's ruling 2026-09-09) | by **rule**, not ACL: node reboots, node shells, anything on guests other than the three Talos workers without `--any` (the helper refuses ids ≠ 103/108/113 as a typo guard) |
+| OPERATOR | `$PVE_OPERATOR_TOKEN_ID` / `$PVE_OPERATOR_TOKEN_SECRET` (`dev-env@pve!operator`), **not wired yet — see "Enabling OPERATOR" below; filling the 1Password fields alone is not enough** | HA resources (remove/adjust), `onboot`, start/stop/reset on guests; PVE-side it is root-equivalent (`Sys.Console`, Tom's ruling 2026-09-09) | by **rule**, not ACL: node reboots, node shells, anything on guests other than the three Talos workers without `--any` (the helper refuses ids ≠ 103/108/113 as a typo guard) |
 
 `pve` uses the operator token when it is set, else the read token. `pve --ro …` forces
 the read token. Env is absent until PR B of backlog 14 has deployed; before that, the
 API is reachable from the pod (CNP) but you hold no token — do not go looking for one in
 other pods.
+
+### Enabling OPERATOR — three steps, not two
+
+The operator env vars are populated by an ExternalSecret that **does not exist in the
+repo yet**. It is commented out on purpose in
+`kubernetes/main/apps/dev/dev-env/app/externalsecret.yaml`, because an ExternalSecret
+pointing at 1Password fields that do not exist goes `SecretSyncedError`, and the
+dev-env Kustomization is `wait: true` — which fails the whole app and pages. That is
+exactly what happened on 2026-09-09 and had to be reverted in #2807.
+
+So enabling operator tier takes **three** steps, in this order (the authoritative copy,
+with the exact `pveum` commands and the ExternalSecret body, is the comment block in
+`externalsecret.yaml`):
+
+1. On a PVE node, create the `DevEnvOperator` role, the `dev-env@pve` user and its
+   token — the secret prints **once**.
+2. Add `PROXMOX_OPERATOR_TOKEN_ID` and `PROXMOX_OPERATOR_TOKEN_SECRET` as **top-level
+   fields on the 1Password `dev-env` item**.
+3. **Only then** uncomment and commit the `dev-env-proxmox-operator` ExternalSecret,
+   and let the pod bounce once (reloader fires on Secret *updates*, not creation).
+
+Skipping step 3 is the trap this section exists for: filling in 1Password and bouncing
+the pod changes nothing, because nothing is reading those fields yet.
+
+**Naming gotcha:** the 1Password *field* names are `PROXMOX_OPERATOR_TOKEN_ID` /
+`PROXMOX_OPERATOR_TOKEN_SECRET`, but the *env vars* `pve.sh` reads are
+`PVE_OPERATOR_TOKEN_ID` / `PVE_OPERATOR_TOKEN_SECRET`. The ExternalSecret remaps between
+them, so `PROXMOX_*` will never appear in the pod environment — checking for it and
+finding nothing is expected, not a fault.
 
 ## The cluster
 
