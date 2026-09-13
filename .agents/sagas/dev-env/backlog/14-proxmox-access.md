@@ -90,6 +90,19 @@ kept as the record of what was considered.
   /cluster/ha/resources/<sid> --yes` for the five resources, declared with
   `declare-activity`, logged in the incident report.
 
+### 2026-09-09 — scope clarification (Tom): this is for the interactive/rc sessions, not a new headless lane
+
+"I didn't mean to say we needed a headless dev-env-ops like we do for other things. We need
+rc agents in dev-env that you run in to have access to Proxmox natively. Maybe Unraid down
+the road too for basic troubleshooting of logs. The changes would be made here and don't
+need to be rolled out or developed yet." So: `pve` in every session's PATH + the tokens in
+the pod env (PR B) is the whole deliverable — no CronJob, no rem-lane wiring, no automation.
+PR B stays held until Tom's evening ceremony; nothing further is built now.
+
+**Later, same shape: Unraid.** Read-only log/health access from the pod (API key or SSH
+key in 1Password → ExternalSecret → env; CNP egress to the Unraid host; a small `unraid`
+helper). Design-only note; not scheduled.
+
 ## Goal
 
 From inside the dev-env pod, an agent can (a) read the whole Proxmox cluster's state,

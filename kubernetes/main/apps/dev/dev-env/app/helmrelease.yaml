@@ -116,6 +116,11 @@ spec:
                   secretKeyRef:
                     name: dev-env-node-triage-secret
                     key: OMNI_SERVICE_ACCOUNT_KEY
+              # ── Proxmox VE (saga backlog 14; incident 2026-09-09) ── the pvedash
+              # HAProxy LB (lxc/107) fronting all five pveproxies; `pve --node <n>`
+              # goes to a node's own :8006 when the LB is what's down. Tokens come
+              # via the two optional envFrom refs below.
+              PVE_API_URL: https://pvedash.haynesnetwork
             envFrom:
               # HA_MCP_SECRET_PATH — expanded into the MCP URL by dev-init.
               - secretRef:
@@ -131,6 +136,20 @@ spec:
               # empty "Bearer " and the server 401s (see externalsecret.yaml).
               - secretRef:
                   name: dev-env-cigar-secret
+              # PVE_TOKEN_ID / PVE_TOKEN_SECRET — READ tier (the exporter's PVEAuditor
+              # token, 1Password `proxmox`). optional: a missing Secret must never
+              # keep the workhorse from starting.
+              - secretRef:
+                  name: dev-env-proxmox-secret
+                  optional: true
+              # PVE_OPERATOR_TOKEN_ID / _SECRET — OPERATOR tier (dev-env@pve!operator,
+              # root-equivalent by Tom's Q-1 ruling). The ExternalSecret sits in
+              # SecretSyncedError until Tom fills the 1Password fields, so this MUST be
+              # optional; the env appears at the first pod bounce after the Secret
+              # exists (reloader does not fire on Secret creation, only updates).
+              - secretRef:
+                  name: dev-env-proxmox-operator-secret
+                  optional: true
             probes:
               liveness:
                 enabled: true

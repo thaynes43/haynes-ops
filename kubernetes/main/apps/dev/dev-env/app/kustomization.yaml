@@ -32,6 +32,10 @@ configMapGenerator:
       # Renders claude's mcp.json as codex [mcp_servers.*] at boot (2026-09-06):
       # one MCP list for both agents.
       - resources/mcp-json-to-codex-toml.sh
+      # pve (2026-09-09, saga backlog 14): Proxmox VE API helper — read tier via the
+      # exporter's PVEAuditor token, operator tier via dev-env@pve!operator (both
+      # from the pod env, see helmrelease). dev-init links it to ~/.local/bin/pve.
+      - resources/pve.sh
   - name: dev-env-config-claude
     files:
       - resources/config/claude/CLAUDE.md
