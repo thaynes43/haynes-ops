@@ -148,10 +148,58 @@ disproven twice, most recently by reproducing the correct Mullvad exit from a se
 worker. Do **not** add a `nodeSelector` to pin it; that reduces scheduling freedom and
 made a previous node roll worse.
 
-- Transient failures are fixed by deleting the pod.
+- Transient failures are fixed by deleting the pod — **but only pod-side ones.** See
+  the discriminator below before you delete anything.
 - **The `QbittorrentVpnDown` alert also fires when the pod is merely unhealthy.** An
   alert firing is not evidence of a routing fault — confirm the actual exit IP before
   concluding anything about the VPN.
+
+**Discriminator: pod-side vs. gateway-side (do this first — it is two commands).**
+The readiness probe is a Mullvad-egress check through the VLAN-30 gateway
+`192.168.30.1` (the UDM, which policy-routes VPNLan out Mullvad). That gateway is
+shared, so a tunnel drop there takes out every VPNLan pod at once while the pods
+themselves are perfectly healthy. Deleting a pod cannot fix that, and the replacement
+fails the very same probe.
+
+- **The control group is the point.** VLAN 30 carries exactly two workloads —
+  `downloads/qbittorrent` and `downloads/slskd`, deliberately on different nodes. The
+  other macvlan pods (`home-automation`: esphome, home-assistant, zigbee2mqtt, zwave)
+  sit on the IoT/Sonos VLANs behind the *same* UDM. List them together:
+  `kubectl get pods -A -o json | jq -r '.items[] | select(.metadata.annotations["k8s.v1.cni.cncf.io/networks"]) | "\(.metadata.namespace)/\(.metadata.name) \(.spec.nodeName)"'`
+  - **Both** VLAN-30 pods down on **different nodes** while the other VLANs are Ready
+    ⇒ gateway/tunnel, not the pod, not the node, not multus. Do **not** delete pods.
+  - **One** pod down, its VLAN-30 peer fine ⇒ genuinely pod-side; the delete applies.
+- **Confirm at the gateway**, from inside the pod: `nc -z -w4 192.168.30.1 443` is
+  open (the UDM is alive), yet `nc -z -w3 1.1.1.1 443` and every other public IP is
+  dead, and DNS via `192.168.30.1` times out. That split — gateway reachable, forwards
+  nothing — *is* the fail-closed kill-switch doing its job. **No leak is occurring**,
+  which is why this is not an emergency.
+- **Do not use ICMP to judge the UDM.** `ping 192.168.30.1` is rate-limited and drops
+  whole 2-packet probes while egress is demonstrably fine (observed 02:05:01Z: 100%
+  loss to the gateway, `nc` to 1.1.1.1:443 open in the same second). A run of lost
+  pings is not a gateway reboot and not a tunnel drop. Judge the gateway by TCP 443
+  and the fault by whether public egress works.
+- **Gateway-side outages can self-heal** and the lane's job is then to confirm, not to
+  act. 2026-09-13 (`rem-responder-7f98616b`): VPNLan egress dropped ~01:35Z and was
+  back by 02:02:16Z, returning on the *same* exit IP `87.249.134.5` and the same server
+  `us-chi-wg-201` — the tunnel re-established rather than reconnecting elsewhere.
+  qBittorrent was `3/3` and the alert clear by 02:04:48Z with no action taken. Total
+  outage ~27 min against a 10-minute `for:`, so this alert will fire on a tunnel flap
+  that needs nobody. What happened *on* the UDM is not observable from inside the
+  cluster — the recovery was not attributed to any action, and none was taken.
+- **Re-query before escalating.** The window between the page and a triage that is
+  actually finished is comparable to the outage itself. Verify the exit IP
+  (`wget -qO- https://am.i.mullvad.net/json` → `mullvad_exit_ip: true`) at the end,
+  not just at the start.
+- **slskd restarting itself during a VPN outage is by design, not a symptom.** Its
+  liveness probe asserts the Soulseek session is logged-in/connecting precisely because
+  `/health` stays green while slskd sits in "Disconnecting" forever after a VPN flap.
+  Let it restart; later boots reuse the cached share db. This does **not** contradict
+  the "never restart slskd" entry above, which is about *you* restarting it.
+- **Escalate only if the gateway does not come back** (say, 30+ min of no forwarding
+  with the UDM still answering on 443). The UDM is not a Kubernetes object and is
+  outside the lane's egress — the fix is a human on the UniFi console re-establishing
+  the Mullvad WireGuard tunnel for VPNLan.
 
 ---
 
