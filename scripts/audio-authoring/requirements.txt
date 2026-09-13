@@ -1,7 +1,7 @@
 ai-edge-litert==2.2.0
 huggingface-hub==1.31.0
 mcp==1.30.0
-numpy==2.5.3
+numpy==2.4.6
 sentencepiece==0.2.2
 soundfile==0.14.0
 
