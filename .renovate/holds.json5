@@ -106,6 +106,18 @@
       matchPackageNames: ['ghcr.io/coredns/charts/coredns'],
       allowedVersions: '<1.47.0',
     },
+    {
+      description: [
+        'HELD numpy: 2.5.0 and newer — the whole 2.5.x line requires Python >=3.12 and the only consumer builds on 3.11.',
+        "Reason: scripts/audio-authoring/Dockerfile is `FROM python:3.11-slim`. Every numpy 2.5.x release declares Requires-Python >=3.12, so pip cannot resolve it at all: `ERROR: No matching distribution found for numpy==2.5.3` (pip lists 2.5.0-2.5.3 under 'Ignored the following versions that require a different python version'). This is not a runtime incompatibility that testing might excuse — the image build fails outright in ~30s. 2.4.6 is the newest release that still supports 3.11.",
+        'Issue: none upstream — this is our base-image floor, not a numpy defect. https://numpy.org/doc/stable/release/2.5.0-notes.html documents the 3.11 drop.',
+        'Resume: MANUAL — lift only in the same change that moves scripts/audio-authoring/Dockerfile off python:3.11-slim (>=3.12). Renovate offers the numpy bump and the base-image bump as UNRELATED updates and has no idea one gates the other, so they must be evaluated together.',
+        'Recorded: 2026-09-13 by claude. Related: PR #2890 (merged the bad bump on a failing check), #2891 (reverted it to 2.4.6), #2895 (Renovate re-proposed 2.5.3; closed under this hold).',
+      ],
+      matchDatasources: ['pypi'],
+      matchPackageNames: ['numpy'],
+      allowedVersions: '<2.5.0',
+    },
     // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
     //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
     //   protection (Host/Origin validation on every route, 403 for non-loopback Host).
