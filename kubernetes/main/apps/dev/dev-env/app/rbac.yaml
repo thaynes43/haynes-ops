@@ -85,6 +85,28 @@ rules:
   - apiGroups: [""]
     resources: [pods/exec]
     verbs: [create]
+  # Reach in-cluster HTTP APIs through the apiserver proxy (2026-09-12). This is
+  # how runbooks query Prometheus directly —
+  #   kubectl get --raw "/api/v1/namespaces/observability/services/http:<svc>:9090/proxy/api/v1/query?query=..."
+  # `get` covers proxied GETs, `create` covers proxied POSTs (Prometheus accepts
+  # both; a long PromQL expression has to go as a POST body).
+  #
+  # WHY THIS IS NOT A PRIVILEGE ESCALATION. It looks like one — proxy reaches any
+  # service through the apiserver, sidestepping the default-deny egress
+  # CiliumNetworkPolicy. But `pods/exec` two rules above already grants strictly
+  # more: exec runs arbitrary commands inside any pod, which reaches every service
+  # AND reads that pod's mounted secrets. Proxy is a strict subset of a capability
+  # this tier accepted on 2026-08-06. It was never a deliberate boundary — the
+  # operator tier (saga plan 05, #2039) simply never enumerated the subresource.
+  #
+  # WHAT IT FIXES. Without it these calls return 403, and runbooks that piped
+  # stderr to /dev/null turned that 403 into an EMPTY result, which read as
+  # "0 findings" — a false green. kyverno-enforce-verify.md reported all-clear on
+  # 2026-09-12 while the true answer was 15 enforce blocks in 31 days. The
+  # fail-loud guard added there stays regardless; this removes the cause.
+  - apiGroups: [""]
+    resources: [services/proxy, pods/proxy]
+    verbs: [get, create]
   # `kubectl rollout restart` = patching the restartedAt annotation.
   - apiGroups: [apps]
     resources: [deployments, statefulsets, daemonsets]
