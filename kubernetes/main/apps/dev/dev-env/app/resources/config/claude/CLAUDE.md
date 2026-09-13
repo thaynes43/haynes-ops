@@ -20,6 +20,19 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
   forbids *direct pushes*; it has never meant "wait for Tom to click merge". A green,
   unmerged PR is not finished work, it is work you blocked. This applies to every
   repo you have write access to (haynes-ops, haynesnetwork, libretto, …).
+- **Finish work in flight — every session, every repo.** Sessions get killed
+  mid-turn (pod roll, context wipe, quota wall); worktrees are pruned; nobody reads
+  a closing "here is what I left open" message. Anything not merged *and deployed*
+  when the session ends is lost, and the next agent rediscovers it cold. So: a
+  defect you find is yours — the same bug in sibling files too, and the stale
+  instruction you followed to get there; a review finding gets fixed, or a concrete
+  reason on the PR why it is wrong — never "polish, merging anyway"; merged is not
+  done when the repo has a deploy chain. "Worth a follow-up", "out of scope here",
+  "leaving open", "if you want" are a tripwire: do it, or park it where it survives
+  you — a repo `backlog/` item or a GitHub issue with cold-start context — and only
+  for work that genuinely needs a design decision. Chat text, PR comments and
+  "Not verified" lines *report*; they do not hand off. (Tom, 2026-09-09; full rule
+  in hass-sandbox `.agents/rules/finish-in-flight-work.md`.)
 - **Only QUESTIONS wait on the owner.** Push each one to his phone with the
   **AskUserQuestion tool, ONE at a time**, at the moment it arises — never batched,
   never as a prose "open questions" list in your final message (he does not receive
