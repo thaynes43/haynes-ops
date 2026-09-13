@@ -43,15 +43,15 @@ or transient cases that stay under the alert thresholds, plus the proactive
 ## The check (run all three blocks; all-green = nothing to do)
 
 > **READ THIS BEFORE TRUSTING A GREEN RESULT.** The `q()` helper below talks to
-> Prometheus through the apiserver proxy, and **the dev-env ServiceAccount is
-> forbidden from `services/proxy`** (OPERATOR tier grants `services: [get,list,watch]`,
-> not the proxy subresource). The old version of this runbook swallowed that with
-> `2>/dev/null`, so the query returned *empty* — which reads exactly like "0 blocks"
-> and produces a **false green**. That happened on 2026-09-12: this runbook reported
-> all-clear while the real answer was 15 enforce blocks in 31 days. `q()` now fails
-> loudly instead. If you see `FATAL: cannot reach Prometheus`, use the Grafana MCP
-> (`query_prometheus`, datasource uid `prometheus`) to run the same PromQL, or run
-> from a context that has proxy rights. **An empty result is never a pass.**
+> Prometheus through the apiserver proxy. Until 2026-09-12 the dev-env ServiceAccount
+> was forbidden from `services/proxy`, and this runbook swallowed that 403 with
+> `2>/dev/null` — so the query returned *empty*, which reads exactly like "0 blocks"
+> and produced a **false green**: it reported all-clear while the real answer was 15
+> enforce blocks in 31 days. The proxy grant landed in #2882 so the call now works
+> in-pod, and `q()` fails loudly rather than silently if it ever cannot run again.
+> **An empty result is never a pass.** If you do see `FATAL: cannot reach Prometheus`,
+> run the same PromQL through the Grafana MCP (`query_prometheus`, datasource uid
+> `prometheus`) — do not interpret the silence.
 
 ```bash
 PROXY="/api/v1/namespaces/observability/services/http:kube-prometheus-stack-prometheus:9090/proxy/api/v1"

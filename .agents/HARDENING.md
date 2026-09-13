@@ -18,7 +18,23 @@ Append new findings; do not delete resolved ones, mark them.
 
 ## Open
 
-### H-1 — Runbook Prometheus queries can return a false green (PARTIALLY FIXED)
+### H-1 — Runbook Prometheus queries can return a false green (**RESOLVED 2026-09-12**)
+
+> **Resolved by #2882**, which granted `services/proxy` + `pods/proxy` (`[get, create]`)
+> to the dev-env operator SA. Option 2 below was taken, not option 1 — the owner pointed
+> out the restriction was never his boundary: it came from the agent-authored saga plan 05
+> (#2039), which simply never enumerated the subresource. And it is not an escalation:
+> `pods/exec`, granted to the same SA and accepted 2026-08-06, is strictly more powerful
+> (arbitrary commands in any pod reaches every service *and* reads that pod's mounted
+> secrets). Verified after merge: `kubectl get --raw .../proxy/api/v1/query?query=up`
+> returns `status: success` in-pod, and the runbook's check 1 now returns the real
+> 15 blocks instead of an empty false green. The pod did not restart (only
+> `app/resources/**` feeds the reloader ConfigMap).
+>
+> **The fail-loud `q()` guard stays.** Removing the cause is not the same as removing the
+> class — a check must never be able to pass without having run, whatever the reason.
+> Still open from this entry: auditing the rest of `.agents/` for the same
+> `2>/dev/null`-swallows-a-failure pattern.
 
 **Found:** 2026-09-12, running `.agents/runbooks/kyverno-enforce-verify.md` after the
 Kyverno 3.9.1 bump.
