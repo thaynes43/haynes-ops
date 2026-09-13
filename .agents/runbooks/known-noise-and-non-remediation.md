@@ -88,7 +88,39 @@ so the log names the transport fault itself; on an older tag it says only
   `crawl_enabled=false` (the row wins over the adapter). Once diagnosed, delete
   the Failed Job's `Error` corpse pods so the gate stops re-paging a verified
   external outage — the Job object still records the failure and the log is in
-  the escalation report.
+  the escalation report. **Since #2903 (2026-09-13) that manual delete is only
+  needed for a Job that genuinely exhausted `backoffLimit`**: coordination rule
+  A0 now drops a Failed pod whose own Job reports `succeeded>=1`, so a
+  retried-then-succeeded cron Job no longer pages on its own corpse.
+
+### `cigar-journal-crawl-*-fleet` Job failed with MANY vendors red
+The entry above is the *single*-vendor case. When **several** vendors fail in the
+same pod with the **same** transport code, invert the reading: that is the
+cluster's own egress, not N simultaneous vendor outages.
+
+- **Signature — three things separate this from a vendor fault:** the failing
+  vendors share one cause chain (`fetch failed (EAI_AGAIN: getaddrinfo …)` is
+  DNS); their failures are **consecutive in time**, and vendors that ran **later
+  in the same pod** succeeded; and, decisively, the `backoffLimit` retry reads
+  **differently**. Identical attempts ⇒ vendor-side. Divergent attempts ⇒ a
+  transient cluster-side window that the retry simply outlived.
+- 2026-09-13 (`esc-shepherd-25103882`): attempt 1 lost 5 of 9 vendors to
+  `EAI_AGAIN` between 02:00:34Z and 02:01:18Z; the other 4 succeeded from
+  02:02:51Z **in that same pod**, and attempt 2 at 02:06:14Z ran `succeeded=9
+  failed=0`. The Job was `Complete 1/1` the whole time and no data was lost.
+  Cause was the upstream-DNS outage of `192.168.40.1` (CoreDNS's only upstream)
+  ~01:38–02:05Z — the same window that stalled `database/emqx` reconciliation
+  (`rem-responder-254d8642`) and dropped VPNLan egress (`rem-responder-7f98616b`).
+  Nothing in cigar-journal was broken, and no tag bump was implicated.
+- **Check:** `kubectl -n kube-system logs -l k8s-app=kube-dns --since=<window> |
+  grep "i/o timeout"` — upstream timeouts across **all three** CoreDNS pods
+  confirm it in one command. Before blaming the workload, look for other lanes'
+  orders in the same window; a cluster-wide resolver outage surfaces as several
+  unrelated-looking alerts at once. Note the honest signal is upstream
+  **latency/timeouts, not SERVFAIL** — grepping for SERVFAIL will say DNS is
+  fine when it is not. The single-upstream SPOF itself is tracked in **#2884**.
+- **Do not** re-pin the cigar-journal tag, delete the corpse pod, or open a fix
+  PR for this shape. There is nothing to remediate: the Job already converged.
 
 ### `CephNodeDiskspaceWarning` immediately after a node reboot
 `predict_linear` extrapolates from image re-pull churn and forecasts a full disk that
