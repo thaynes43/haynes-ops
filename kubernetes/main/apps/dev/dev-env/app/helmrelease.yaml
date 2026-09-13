@@ -143,10 +143,14 @@ spec:
                   name: dev-env-proxmox-secret
                   optional: true
               # PVE_OPERATOR_TOKEN_ID / _SECRET — OPERATOR tier (dev-env@pve!operator,
-              # root-equivalent by Tom's Q-1 ruling). The ExternalSecret sits in
-              # SecretSyncedError until Tom fills the 1Password fields, so this MUST be
-              # optional; the env appears at the first pod bounce after the Secret
-              # exists (reloader does not fire on Secret creation, only updates).
+              # root-equivalent by Tom's Q-1 ruling). NO ExternalSecret creates this
+              # Secret yet, on purpose: the 1Password fields do not exist (verified
+              # 2026-09-13), and an ES pointing at absent fields fails the whole
+              # Kustomization and pages — see the enable-steps comment at the bottom
+              # of externalsecret.yaml. `optional` is what lets this ref sit here
+              # harmlessly meanwhile; the env appears at the first pod bounce after
+              # the Secret exists (reloader does not fire on Secret creation, only
+              # updates). Until then `pve` runs READ-only and refuses writes.
               - secretRef:
                   name: dev-env-proxmox-operator-secret
                   optional: true

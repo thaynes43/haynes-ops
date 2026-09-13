@@ -68,14 +68,19 @@ fi
 # api METHOD PATH [k=v ...]  → prints the JSON body; non-2xx exits 1 with PVE's message.
 api() {
   local m="$1" p="$2"; shift 2
+  # ${args[@]+"${args[@]}"} not "${args[@]}": under `set -u` bash 3.2 treats an EMPTY
+  # array expansion as unbound and aborts with `args[@]: unbound variable`. The pod is
+  # bash 5.2 where the plain form is fine, but this helper gets run on a Mac (bash 3.2)
+  # often enough to be worth the guard — every no-parameter call (`pve nodes`, `pve ha`)
+  # hits it, and the failure looks like a PVE problem rather than a shell one.
   local args=() kv
   for kv in "$@"; do args+=(--data-urlencode "$kv"); done
   local url="${PVE_API_URL}/api2/json${p}"
   local out code
   if [[ "$m" == "GET" ]]; then
-    out="$(curl -sS -k -G "${args[@]}" -H "Authorization: PVEAPIToken=${TOKEN}" -w '\n%{http_code}' "$url")"
+    out="$(curl -sS -k -G ${args[@]+"${args[@]}"} -H "Authorization: PVEAPIToken=${TOKEN}" -w '\n%{http_code}' "$url")"
   else
-    out="$(curl -sS -k -X "$m" "${args[@]}" -H "Authorization: PVEAPIToken=${TOKEN}" -w '\n%{http_code}' "$url")"
+    out="$(curl -sS -k -X "$m" ${args[@]+"${args[@]}"} -H "Authorization: PVEAPIToken=${TOKEN}" -w '\n%{http_code}' "$url")"
   fi
   code="${out##*$'\n'}"; out="${out%$'\n'*}"
   if [[ "$code" != 2* ]]; then
