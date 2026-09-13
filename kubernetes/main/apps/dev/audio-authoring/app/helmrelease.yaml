@@ -38,7 +38,7 @@ spec:
             image:
               repository: ghcr.io/thaynes43/audio-authoring
               # CI-validated, published, and signed runtime image.
-              tag: 0.1.1@sha256:370be35723f8a66a4dbfe5f4ce4b4b9e1ff73c74e42d90bb28e942b2712f57bb
+              tag: 0.1.1@sha256:778c12d603c971f7fef4eb6546d0e356aa3e8b95d14b3d66ac1abd27ac28a625
             env:
               HF_HUB_OFFLINE: '1'
               HF_HUB_DISABLE_TELEMETRY: '1'
