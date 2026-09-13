@@ -37,7 +37,19 @@ spec:
         cronjob:
           schedule: "30 6 * * *"
           timeZone: America/New_York
-          concurrencyPolicy: Forbid
+          # Replace, not Forbid: a wedged run must never outlive its own schedule.
+          # Under Forbid a hung job runs forever (nothing bounds it) AND silently
+          # suppresses every subsequent run — the 2026-09-13 overlays run sat active
+          # for 9h against a 44m baseline and would have eaten the next night too.
+          # Replace makes the next kickoff its own deadline: k8s kills the stale run
+          # and starts fresh. No duration to pad, which matters because these runs
+          # legitimately vary.
+          concurrencyPolicy: Replace
+          # Backstop only, for the case where the next kickoff does NOT happen (a
+          # missed trigger leaves nothing to do the replacing). 23h on a daily
+          # schedule = kill ~1h before the next run would have, so it never truncates
+          # a run that Replace would have let finish.
+          activeDeadlineSeconds: 82800
           successfulJobsHistory: 1
           failedJobsHistory: 2
         pod: &pod
@@ -86,7 +98,19 @@ spec:
         cronjob:
           schedule: "0 4 * * *"
           timeZone: America/New_York
-          concurrencyPolicy: Forbid
+          # Replace, not Forbid: a wedged run must never outlive its own schedule.
+          # Under Forbid a hung job runs forever (nothing bounds it) AND silently
+          # suppresses every subsequent run — the 2026-09-13 overlays run sat active
+          # for 9h against a 44m baseline and would have eaten the next night too.
+          # Replace makes the next kickoff its own deadline: k8s kills the stale run
+          # and starts fresh. No duration to pad, which matters because these runs
+          # legitimately vary.
+          concurrencyPolicy: Replace
+          # Backstop only, for the case where the next kickoff does NOT happen (a
+          # missed trigger leaves nothing to do the replacing). 23h on a daily
+          # schedule = kill ~1h before the next run would have, so it never truncates
+          # a run that Replace would have let finish.
+          activeDeadlineSeconds: 82800
           successfulJobsHistory: 1
           failedJobsHistory: 2
         pod: *pod
@@ -112,7 +136,19 @@ spec:
           # upgrade preflight (shepherd) holds a Plex merge while this runs.
           schedule: "0 3 * * *"
           timeZone: America/New_York
-          concurrencyPolicy: Forbid
+          # Replace, not Forbid: a wedged run must never outlive its own schedule.
+          # Under Forbid a hung job runs forever (nothing bounds it) AND silently
+          # suppresses every subsequent run — the 2026-09-13 overlays run sat active
+          # for 9h against a 44m baseline and would have eaten the next night too.
+          # Replace makes the next kickoff its own deadline: k8s kills the stale run
+          # and starts fresh. No duration to pad, which matters because these runs
+          # legitimately vary.
+          concurrencyPolicy: Replace
+          # Backstop only, for the case where the next kickoff does NOT happen (a
+          # missed trigger leaves nothing to do the replacing). 23h on a daily
+          # schedule = kill ~1h before the next run would have, so it never truncates
+          # a run that Replace would have let finish.
+          activeDeadlineSeconds: 82800
           successfulJobsHistory: 1
           failedJobsHistory: 2
         pod: *pod
