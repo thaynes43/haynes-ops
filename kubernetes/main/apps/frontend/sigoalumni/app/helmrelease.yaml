@@ -102,18 +102,17 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit bfc6c13 (2026-09-12):
-              # the signed-out members door now says so (sigoalumni-org #127,
-              # from the 2026-09-12 member support case). Gated routes bounce
-              # to /members?from=<key> and the door names the page that sent
-              # them; the signed-out header slot is a visible "Sign in" link
-              # instead of a wordless silhouette; an account with no name
-              # falls back to its email. Copy and markup only — no migration,
-              # no new env, no schema or route change. Descends from ef0ed9e
-              # (#125) via d830537 (#126, tests only). CI does not deploy
-              # here; bump deliberately.
+              # Pinned to sigoalumni-org main commit b82b73d (2026-09-14):
+              # invite links (sigoalumni-org #128, brotherhood-reach/02). New
+              # table invite_links via migration 0020 (runs at container start
+              # under the migrator's advisory lock, additive only); new public
+              # route /invite/<token> (GET renders, the button POSTs the
+              # redeem); "Invite brothers" block on the admin Directory page
+              # (create a batch, send in pages of 25 from admin@, resend,
+              # revoke). No new env. Descends from bfc6c13 (#127). CI does not
+              # deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: bfc6c13dee296fd19bfe2fb0089511b41c1d6358
+              tag: b82b73df8c32708b9718d3672cdbc3b793a51244
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
