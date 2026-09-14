@@ -1,0 +1,181 @@
+---
+# Daily "legacy group work items" digest — one email to admin@sigoalumni.org
+# listing the addresses the board has to hand-apply to the legacy Google Group
+# (sigmaphiomicron@googlegroups.com).
+#
+# WHY THIS EXISTS. Tom's ruling (2026-09-14): no custom to-do UI on the site —
+# "email admin@sigoalumni.org work items for now (ideally batches) and then we
+# can reconcile against an export". The site syncs brothers@ over DWD, but it
+# cannot write the legacy googlegroups.com group, so every registry add/remove
+# leaves a manual task that nothing currently surfaces.
+#
+# WHY IT RUNS THE SITE IMAGE. It needs the site's Postgres AND the site's
+# mail credentials, and it reads the site's own tables. Running the same image
+# means no new registry, no new build, no second copy of the DB URL. The script
+# is NOT in the image, though — it is the ConfigMap in this directory, mounted
+# at /scripts (see kustomization.yaml).
+#
+# THE IMAGE PIN DOES NOT TRACK APP RELEASES. digest.js uses exactly one thing
+# from the image — /app/node_modules/pg — plus Node itself, so this tag only
+# needs bumping if `pg` moves or Node changes incompatibly, NOT on every site
+# deploy. It is pinned to whatever the Deployment carried when this landed
+# (0a4608d, 2026-09-14) purely so the two pull the same layers.
+#
+# DB ACCESS is the same path the Deployment uses and nothing else works here:
+# Cloud SQL is only reachable through the cloud-sql-proxy, so the proxy runs as
+# a NATIVE sidecar (initContainer + restartPolicy: Always). In a Job that is
+# the whole answer to "who stops the sidecar": kubelet starts it and waits for
+# its startup probe before the digest container runs, then terminates it once
+# the digest container exits, and a restartable init container's exit code does
+# not decide the pod's phase. --exit-zero-on-sigterm (verified present in
+# 2.25.4) makes that shutdown a 0 rather than the default 143, so nothing
+# downstream can read a normal finish as a failure.
+#
+# FAILURE SEMANTICS. digest.js writes its `legacy.digest-emailed` audit row
+# ONLY after the relay has 250'd the message, so a failed send leaves the
+# watermark where it was and tomorrow's run re-sends the same items. Exit 1 ->
+# failed Job -> visible as kube_job_failed. Logs carry counts only; member
+# addresses never leave the message body.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sigoalumni-legacy-digest
+  annotations:
+    # Defense in depth. This Kustomization declares no postBuild at all (see
+    # ../ks.yaml), so no envsubst runs over this path — but if one is ever
+    # added, digest.js's regexes and this manifest must reach the container
+    # verbatim. Same mechanism as cigar-journal / outline-backup.
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+spec:
+  # 08:00 America/New_York — a waking hour, matching cigar-journal's expiry
+  # job. The only thing this email can produce is Tom opening Google Groups,
+  # so it should land when he is awake, not in the overnight janitor window.
+  schedule: "0 8 * * *"
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  # A controller outage that straddles 08:00 should still fire the run rather
+  # than silently skip a day's work items.
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # One retry. Safe because the audit row is the idempotency key: attempt 1
+      # that failed BEFORE the 250 wrote nothing, so attempt 2 re-reads the same
+      # window and sends the same message. An attempt that got its 250 also
+      # wrote the row, so a retry after it would find an empty window and send
+      # nothing.
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: sigoalumni-legacy-digest
+        spec:
+          restartPolicy: Never
+          # The site image lives in a private Artifact Registry; this is the
+          # same pull credential the Deployment uses (ExternalSecret in
+          # ../app/externalsecret.yaml).
+          imagePullSecrets:
+            - name: sigoalumni-ar-pull
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            # Cloud SQL Auth Proxy, mirroring ../app/helmrelease.yaml's sidecar
+            # 1:1 (same image, same instance, same startup probe) apart from
+            # --exit-zero-on-sigterm, which only a Job needs.
+            - name: cloud-sql-proxy
+              image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.25.4
+              imagePullPolicy: IfNotPresent
+              restartPolicy: Always
+              args:
+                - --credentials-file=/secrets/cloudsql/key.json
+                - --address=127.0.0.1
+                - --port=5432
+                - --health-check
+                - --http-address=0.0.0.0
+                - --http-port=9801
+                - --structured-logs
+                - --exit-zero-on-sigterm
+                - sigo-alumni-prod:us-east1:frontpage-pg
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              # Gates the digest container: it cannot start until 127.0.0.1:5432
+              # is actually listening, so there is no first-connection race.
+              startupProbe:
+                httpGet:
+                  path: /startup
+                  port: 9801
+                periodSeconds: 2
+                timeoutSeconds: 3
+                failureThreshold: 30
+              volumeMounts:
+                - name: cloudsql-sa
+                  mountPath: /secrets/cloudsql
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+          containers:
+            - name: digest
+              image: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site:0a4608d462fb7dc29f7f26cd72c93aa039fead33
+              imagePullPolicy: IfNotPresent
+              command: ["node", "/scripts/digest.js"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                # Mail settings copied from the Deployment, which copies them
+                # from the Cloud Run service. SMTP_RELAY_PORT is deliberately
+                # unset in all three: 587 is the default in the site's own
+                # mailer (lib/email/send.ts) and in digest.js.
+                - name: SMTP_RELAY_HOST
+                  value: smtp.gmail.com
+                - name: SMTP_USER
+                  value: admin@sigoalumni.org
+                - name: MAIL_FROM
+                  value: "Sigo Alumni <admin@sigoalumni.org>"
+                # No IPv6 egress in this cluster and smtp.gmail.com answers
+                # AAAA + A, so without this Node's Happy Eyeballs tries v6
+                # first and the relay connect stalls. Same fix, same reason, as
+                # the Deployment.
+                - name: NODE_OPTIONS
+                  value: --dns-result-order=ipv4first
+                # Two keys instead of the Deployment's whole-secret envFrom:
+                # this pod has no business holding SESSION_SECRET or the OAuth
+                # client secrets. Both live in the SAME ExternalSecret-managed
+                # Secret the app reads (../app/externalsecret.yaml #3).
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: sigoalumni-secret
+                      key: DATABASE_URL
+                - name: SMTP_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: sigoalumni-secret
+                      key: SMTP_PASSWORD
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: script
+              configMap:
+                name: sigoalumni-legacy-digest-script
+            - name: cloudsql-sa
+              secret:
+                secretName: sigoalumni-cloudsql-sa

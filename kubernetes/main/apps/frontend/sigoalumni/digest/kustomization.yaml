@@ -1,0 +1,23 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./cronjob.yaml
+configMapGenerator:
+  # digest.js stays a real file on disk (lintable, testable, reviewable as a
+  # diff) rather than an inline `node -e` blob like the Cloud Run
+  # registry-import job it descends from. The generated name carries a content
+  # hash, so editing the script rolls the ConfigMap name and the CronJob's
+  # volume reference with it — a script change can never be picked up half-way.
+  - name: sigoalumni-legacy-digest-script
+    files:
+      - digest.js
+    options:
+      annotations:
+        # digest.js contains regex quantifiers and (in comments) placeholder
+        # syntax that a Flux postBuild envsubst pass would mangle. This
+        # Kustomization declares no postBuild at all, so none runs — this is
+        # the belt to that braces, and it keeps the opt-out attached to the
+        # resource that needs it if a variable is ever added upstream.
+        kustomize.toolkit.fluxcd.io/substitute: disabled
