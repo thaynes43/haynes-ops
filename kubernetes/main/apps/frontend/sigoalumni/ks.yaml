@@ -29,3 +29,46 @@ spec:
   postBuild:
     substitute:
       APP: *app
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/fluxcd-community/flux2-schemas/main/kustomization-kustomize-v1.json
+#
+# Second component of the same app: the daily "legacy group work items" digest
+# CronJob (see ./digest/cronjob.yaml for what it does and why).
+#
+# WHY ITS OWN Kustomization RATHER THAN A FILE IN ./app. The digest ships a
+# configMapGenerator over a JavaScript file, and ./app is the reconcile path
+# for the LIVE site — a kustomize or envsubst fault there would stop the site's
+# HelmRelease reconciling, i.e. block the next image pin. Splitting the janitor
+# out means the worst a bad digest commit can do is fail the digest. It also
+# lets this path run with NO postBuild at all (no ${...} substitution over the
+# script), which ./app cannot do because its HelmRelease uses ${APP}.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app sigoalumni-legacy-digest
+  namespace: &namespace frontend
+spec:
+  targetNamespace: *namespace
+  commonMetadata:
+    labels:
+      # Deliberately NOT app.kubernetes.io/name: sigoalumni. The HelmRelease's
+      # Service, PDB and topology spread all select on that name, and a CronJob
+      # pod has no business being considered by any of them.
+      app.kubernetes.io/name: *app
+  dependsOn:
+    # The app Kustomization owns the ExternalSecrets this CronJob reads
+    # (sigoalumni-secret, sigoalumni-cloudsql-sa, sigoalumni-ar-pull).
+    - name: sigoalumni
+      namespace: *namespace
+  path: ./kubernetes/main/apps/frontend/sigoalumni/digest
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  prune: true
+  wait: false
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m
+  # NO postBuild on purpose — see the header. Flux only runs envsubst when
+  # postBuild is declared, so digest.js reaches the cluster byte-for-byte.
