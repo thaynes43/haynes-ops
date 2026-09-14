@@ -193,6 +193,19 @@ patches:
         kubelet:
           extraArgs:
             rotate-server-certificates: "true"
+          # Image GC (haynes-ops #2913). Talos serves nodefs AND imagefs from /var, so the
+          # kubelet's stock image-GC trigger (imageGCHighThresholdPercent 85) coincides with
+          # the imagefs eviction line (15% free): nothing pruned an unused image until the
+          # node was already under DiskPressure, and imageMaximumGCAge defaulted to 0s (age
+          # GC off). talosw01 accumulated 28 ollama tags (92.6 GB, one in use) + 40 GB of
+          # dangling layers that way and was ~9 days from eviction. 75/65 runs GC while
+          # there is still runway; 168h evicts anything unused for a week (every Renovate
+          # bump leaves the previous tag behind). Same block on every machine below.
+          # Applied by `task omni:sync` — a kubelet restart, no reboot.
+          extraConfig:
+            imageGCHighThresholdPercent: 75
+            imageGCLowThresholdPercent: 65
+            imageMaximumGCAge: 168h
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -319,6 +332,11 @@ patches:
         kubelet:
           extraArgs:
             rotate-server-certificates: "true"
+          # Image GC — rationale on the first machine block (#2913).
+          extraConfig:
+            imageGCHighThresholdPercent: 75
+            imageGCLowThresholdPercent: 65
+            imageMaximumGCAge: 168h
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -456,6 +474,11 @@ patches:
         kubelet:
           extraArgs:
             rotate-server-certificates: "true"
+          # Image GC — rationale on the first machine block (#2913).
+          extraConfig:
+            imageGCHighThresholdPercent: 75
+            imageGCLowThresholdPercent: 65
+            imageMaximumGCAge: 168h
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -581,6 +604,11 @@ patches:
         kubelet:
           extraArgs:
             rotate-server-certificates: "true"
+          # Image GC — rationale on the first machine block (#2913).
+          extraConfig:
+            imageGCHighThresholdPercent: 75
+            imageGCLowThresholdPercent: 65
+            imageMaximumGCAge: 168h
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -701,6 +729,11 @@ patches:
         kubelet:
           extraArgs:
             rotate-server-certificates: "true"
+          # Image GC — rationale on the first machine block (#2913).
+          extraConfig:
+            imageGCHighThresholdPercent: 75
+            imageGCLowThresholdPercent: 65
+            imageMaximumGCAge: 168h
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -828,6 +861,11 @@ patches:
         kubelet:
           extraArgs:
             rotate-server-certificates: "true"
+          # Image GC — rationale on the first machine block (#2913).
+          extraConfig:
+            imageGCHighThresholdPercent: 75
+            imageGCLowThresholdPercent: 65
+            imageMaximumGCAge: 168h
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
