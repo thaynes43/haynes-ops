@@ -102,11 +102,14 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 0ca8672 (2026-09-14):
-              # POST /api/internal/invites (sigoalumni-org #131) — an in-cluster
-              # agent runs invite batches with the Directory's own code behind
-              # SCRIBE_DISPATCH_TOKEN (already in the pod env). On top of
-              # 519eaec: a brother invites a brother (sigoalumni-org #130,
+              # Pinned to sigoalumni-org main commit 49b9115 (2026-09-14):
+              # public roadmap + campaign pages (sigoalumni-org #132, PRD 0003
+              # in sigo-alumni) — /roadmap and /roadmap/reach, aggregate-only
+              # numbers from the site DB + the list sync's history CSV on
+              # Drive (runtime SA, read-only; optional env
+              # REACH_HISTORY_FOLDER_ID defaults in code), footer link,
+              # sitemap. No schema change. On top of 0ca8672: internal invites
+              # API (#131); 519eaec: a brother invites a brother (#130,
               # brotherhood-reach/06) — /members/invite for every Brother, no
               # board approval; migration 0021 adds the enum value
               # 'invited-by-brother' (ALTER TYPE … ADD VALUE IF NOT EXISTS,
@@ -116,7 +119,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 0ca8672f9b23032253dba7b78f2da3dd02fe17b6
+              tag: 49b9115546a11530c4441e72fa482bee317af5d1
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
