@@ -102,7 +102,13 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit a863709 (2026-09-14):
+              # Pinned to sigoalumni-org main commit 7d0314f (2026-09-14):
+              # reach campaign — "Brothers reached by year" chart (sigoalumni-org
+              # #134): seeded from the list sync's join-years.csv on Drive, plus
+              # the brothers the site captures itself; weekly numbers folded
+              # into a disclosure. No schema, env, or secret change. On top of
+              # a863709:
+              # (previous pin note follows)
               # the reach campaign's goal is now a number — 300 brothers on
               # brothers@ at addresses that don't bounce by 2026-12-31
               # (sigoalumni-org #133): "Reachable brothers" tile with progress,
@@ -125,7 +131,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: a863709722a0aa06c1874e95ac35b278b5456b0e
+              tag: 7d0314fb7a4866dbdc0d53b354802343ee5d26ea
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
