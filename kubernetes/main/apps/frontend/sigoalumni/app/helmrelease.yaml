@@ -102,7 +102,8 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit b82b73d (2026-09-14):
+              # Pinned to sigoalumni-org main commit 0a4608d (2026-09-14):
+              # #129, a redirect-param cleanup on top of b82b73d, which is
               # invite links (sigoalumni-org #128, brotherhood-reach/02). New
               # table invite_links via migration 0020 (runs at container start
               # under the migrator's advisory lock, additive only); new public
@@ -112,7 +113,7 @@ spec:
               # revoke). No new env. Descends from bfc6c13 (#127). CI does not
               # deploy here; bump deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: b82b73df8c32708b9718d3672cdbc3b793a51244
+              tag: 0a4608d462fb7dc29f7f26cd72c93aa039fead33
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
