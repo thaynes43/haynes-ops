@@ -103,11 +103,24 @@ spec:
                 allowPrivilegeEscalation: false
                 capabilities:
                   drop: ["ALL"]
-              # Gates the digest container: it cannot start until 127.0.0.1:5432
-              # is actually listening, so there is no first-connection race.
+              # Gates the digest container. /readiness, NOT /startup: the
+              # proxy's own help draws the line — /startup is "has finished
+              # starting up", /readiness is "...and the Proxy can connect to
+              # all registered instances". Only the second is the condition
+              # this pod depends on, and the difference bit on 2026-09-14: a
+              # run started fine, then failed its first query with
+              # `read ECONNRESET` because the proxy could not mint an ephemeral
+              # cert — `dial tcp [2607:f8b0:...]:443: network is unreachable`,
+              # i.e. it resolved oauth2.googleapis.com to IPv6 and this cluster
+              # has no IPv6 egress. NODE_OPTIONS=--dns-result-order=ipv4first
+              # cannot help: the proxy is a Go binary, not Node. The
+              # Deployment never shows this because its proxy is long-lived and
+              # retries behind an already-serving pod; a Job pod gets one shot.
+              # Gating on /readiness turns that flake into a wait (30 x 2s)
+              # before the digest container is started at all.
               startupProbe:
                 httpGet:
-                  path: /startup
+                  path: /readiness
                   port: 9801
                 periodSeconds: 2
                 timeoutSeconds: 3
