@@ -180,3 +180,32 @@ spec:
           labels:
             severity: critical
             scope: host          # self-evident capacity fact — alert-responder skips LLM diagnosis
+    # A CronJob that keeps failing is invisible behind the KubeJobFailed backlog: that
+    # alert fires forever per failed Job, so a genuinely dead job hides among ~20
+    # cosmetic ones (ytdl-sub-peloton was dead 2026-08-27 → 09-14 before anyone noticed,
+    # #2909). kube_cronjob_status_last_successful_time separates the two cleanly.
+    # Threshold = max(3 days, 3 × the schedule period), the period taken live from
+    # next_schedule − last_schedule: a weekly job gets 21d of slack, hourly/daily jobs
+    # and the `*/15` downloaders (whose runs take ~4h) trip at 3d. Suspended CronJobs
+    # are excluded — suspension is deliberate — and a CronJob that has NEVER succeeded
+    # has no last_successful_time series, so it cannot fire here (same residual gap
+    # CigarJournalCredentialMonitorStale accepts). Warning, not critical: a stale batch
+    # job never needs a human at 3am, it needs one at the next look at Alertmanager.
+    - name: cronjob-health
+      rules:
+        - alert: CronJobNotSucceeding
+          annotations:
+            summary: 'CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} has not completed successfully in {{ $value | humanizeDuration }}.'
+            description: >-
+              Every recent run failed, or none ran to completion. Read the newest Job's
+              logs: `kubectl -n {{ $labels.namespace }} get jobs --sort-by=.metadata.creationTimestamp | grep {{ $labels.cronjob }}`.
+              Its KubeJobFailed alerts are probably lost in the backlog (or null-routed).
+          expr: |
+            (
+              (time() - kube_cronjob_status_last_successful_time)
+                > clamp_min(3 * (kube_cronjob_next_schedule_time - kube_cronjob_status_last_schedule_time), 3 * 86400)
+            )
+            and on (namespace, cronjob) (kube_cronjob_spec_suspend == 0)
+          for: 30m
+          labels:
+            severity: warning
