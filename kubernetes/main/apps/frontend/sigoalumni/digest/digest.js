@@ -71,6 +71,25 @@ const TO = "admin@sigoalumni.org";
 const PER_LINE = 10;
 const SMTP_TIMEOUT_MS = 30000;
 
+// Getting a usable database connection is retried, because in this cluster the
+// FIRST attempt fails roughly a third of the time and it is not our bug to fix
+// here. The cloud-sql-proxy fetches its ephemeral cert LAZILY, on the first
+// client connection — and when it does, its Go dialer sometimes picks the
+// AAAA record for oauth2.googleapis.com:
+//
+//   dial tcp [2607:f8b0:4004:c07::5f]:443: connect: network is unreachable
+//
+// There is no IPv6 egress here. NODE_OPTIONS=--dns-result-order=ipv4first
+// fixes exactly this for the Node containers, but the proxy is a Go binary and
+// takes no such flag, and because the fetch is lazy the sidecar's /readiness
+// gate cannot cover it either (measured: 6 runs, 2 failed, both with that one
+// error, all on the same node). The proxy re-attempts the fetch on the next
+// client connection, so simply connecting again clears it: 4 attempts take the
+// residual failure rate to well under 1%, and backoffLimit: 1 sits behind
+// that. Cheap, local, and it needs no cluster change.
+const DB_CONNECT_ATTEMPTS = 4;
+const DB_RETRY_MS = 2000;
+
 // ── formatting ─────────────────────────────────────────────────────────────
 
 // Chat- and mail-facing dates are US Eastern, never raw UTC. Node 24 ships
@@ -287,6 +306,35 @@ function sendMail(msg) {
 
 // ── main ───────────────────────────────────────────────────────────────────
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Returns a client that has proven it can round-trip a query, not merely one
+// whose TCP connect returned. The proxy accepts the local connection before it
+// knows whether it can reach Cloud SQL, so `connect()` alone succeeds and the
+// first real query is what dies with ECONNRESET.
+async function connectWithRetry() {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= DB_CONNECT_ATTEMPTS; attempt++) {
+    const client = new Client({ connectionString: process.env.DATABASE_URL });
+    try {
+      await client.connect();
+      await client.query("select 1");
+      if (attempt > 1) console.log("[digest] db ready on attempt " + attempt);
+      return client;
+    } catch (e) {
+      lastErr = e;
+      // A half-open client is not reusable; drop it and build a fresh one.
+      try {
+        await client.end();
+      } catch (_) {
+        /* already gone */
+      }
+      if (attempt < DB_CONNECT_ATTEMPTS) await sleep(DB_RETRY_MS);
+    }
+  }
+  throw lastErr;
+}
+
 function uniq(emails) {
   const seen = new Set();
   const out = [];
@@ -299,8 +347,7 @@ function uniq(emails) {
 }
 
 async function main() {
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
-  await client.connect();
+  const client = await connectWithRetry();
   try {
     // to_char, not a raw timestamptz: the value has to come back with its
     // microseconds intact and go straight back into the next query as text.
@@ -412,7 +459,14 @@ async function main() {
     );
     return 0;
   } finally {
-    await client.end();
+    // Teardown must never turn finished work into a failed Job — in
+    // particular it must not mask a send that already happened and was
+    // already audited.
+    try {
+      await client.end();
+    } catch (_) {
+      /* the proxy may already be on its way down */
+    }
   }
 }
 

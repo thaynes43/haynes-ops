@@ -116,8 +116,13 @@ spec:
               # cannot help: the proxy is a Go binary, not Node. The
               # Deployment never shows this because its proxy is long-lived and
               # retries behind an already-serving pod; a Job pod gets one shot.
-              # Gating on /readiness turns that flake into a wait (30 x 2s)
-              # before the digest container is started at all.
+              # /readiness is still the right endpoint to gate on — it is the
+              # only one that claims the instance is reachable — but it does
+              # NOT cover that flake, and this comment previously implied it
+              # did. The cert fetch is LAZY: it happens on the first client
+              # connection, after readiness has long since returned 200. The
+              # retry that actually covers it lives in digest.js
+              # (DB_CONNECT_ATTEMPTS), with backoffLimit: 1 behind it.
               startupProbe:
                 httpGet:
                   path: /readiness
