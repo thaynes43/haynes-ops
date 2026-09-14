@@ -46,8 +46,27 @@ const crypto = require("crypto");
 const { Client } = require("/app/node_modules/pg");
 
 // The ruling's date. Only ever used for the first run, before any
-// `legacy.digest-emailed` row exists.
-const DEFAULT_WATERMARK = "2026-09-14T00:00:00Z";
+// `legacy.digest-emailed` row exists. Carries an explicit microsecond field so
+// it sorts against TS_FORMAT strings as plain text (see below).
+const DEFAULT_WATERMARK = "2026-09-14T00:00:00.000000Z";
+
+// EVERY timestamp in this script is a string in this one shape, produced by
+// Postgres and never round-tripped through a JS Date.
+//
+// WHY: Postgres `timestamptz` keeps MICROSECONDS; a JS Date keeps
+// milliseconds. Reading created_at into a Date and writing it back as the
+// `through` watermark silently drops the last three digits, so the very row
+// that set the watermark still satisfies `created_at > watermark` on the next
+// run and is emailed again — every day, forever. That is not hypothetical: the
+// first two production runs (2026-09-14) both re-sent the same removal,
+// because its created_at is 15:34:17.698982Z and the recorded watermark was
+// 15:34:17.698Z.
+//
+// So the window is compared in the database ($1::timestamptz against the exact
+// text Postgres itself formatted) and `through` is the max of these strings.
+// Fixed width + UTC means lexicographic order IS chronological order, so no
+// Date is needed to pick the maximum either.
+const TS_FORMAT = "'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'";
 const TO = "admin@sigoalumni.org";
 const PER_LINE = 10;
 const SMTP_TIMEOUT_MS = 30000;
@@ -56,7 +75,13 @@ const SMTP_TIMEOUT_MS = 30000;
 
 // Chat- and mail-facing dates are US Eastern, never raw UTC. Node 24 ships
 // full ICU, so America/New_York resolves (verified in the live image).
-function easternDate(d) {
+//
+// Takes a TS_FORMAT string. The microseconds are trimmed to milliseconds
+// explicitly rather than trusting an engine to be lenient about a six-digit
+// fraction — this is display only, so losing them here costs nothing (unlike
+// the watermark, which is exactly why that one never becomes a Date).
+function easternDate(iso) {
+  const d = new Date(String(iso).replace(/\.(\d{3})\d*Z$/, ".$1Z"));
   return d.toLocaleDateString("en-US", {
     timeZone: "America/New_York",
     month: "long",
@@ -277,13 +302,14 @@ async function main() {
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   try {
+    // to_char, not a raw timestamptz: the value has to come back with its
+    // microseconds intact and go straight back into the next query as text.
     const wmRow = await client.query(
-      "select max((detail->>'through')::timestamptz) as through" +
+      "select to_char(max((detail->>'through')::timestamptz) at time zone 'UTC'," +
+        " " + TS_FORMAT + ") as through" +
         " from audit_log where action = 'legacy.digest-emailed'"
     );
-    const watermark = wmRow.rows[0].through
-      ? new Date(wmRow.rows[0].through)
-      : new Date(DEFAULT_WATERMARK);
+    const watermark = wmRow.rows[0].through || DEFAULT_WATERMARK;
 
     // Adds. 'imported-from-group' rows came FROM the legacy group, so they are
     // already in it — nothing to hand-apply. Every other provenance (today
@@ -292,8 +318,11 @@ async function main() {
     // is included automatically rather than silently dropped.
     const addRows = (
       await client.query(
-        "select email, created_at from member_registry" +
-          " where created_at > $1 and provenance <> 'imported-from-group'" +
+        "select email," +
+          " to_char(created_at at time zone 'UTC', " + TS_FORMAT + ") as created_at_iso" +
+          " from member_registry" +
+          " where created_at > $1::timestamptz" +
+          " and provenance <> 'imported-from-group'" +
           " order by created_at",
         [watermark]
       )
@@ -306,11 +335,13 @@ async function main() {
     // re-examined forever, it is just not listed.
     const removeRows = (
       await client.query(
-        "select a.subject_id as email, a.created_at," +
+        "select a.subject_id as email," +
+          " to_char(a.created_at at time zone 'UTC', " + TS_FORMAT + ") as created_at_iso," +
           " (m.email is not null) as back_on_roster" +
           " from audit_log a" +
           " left join member_registry m on m.email = a.subject_id" +
-          " where a.action = 'registry.remove' and a.created_at > $1" +
+          " where a.action = 'registry.remove'" +
+          " and a.created_at > $1::timestamptz" +
           " order by a.created_at",
         [watermark]
       )
@@ -329,14 +360,16 @@ async function main() {
     }
 
     // High-water mark over everything EXAMINED, not everything listed, so a
-    // filtered-out row cannot pin the window open. Rows that commit late with
-    // an earlier created_at than this are the standard watermark race; at a
-    // daily cadence against a board-sized table it is theoretical, and the
-    // reconcile-against-an-export step the ruling already anticipates is the
-    // backstop.
+    // filtered-out row cannot pin the window open. String comparison is exact
+    // here: every value is TS_FORMAT, fixed width and UTC, so lexicographic
+    // order is chronological order AND no microsecond is lost (see TS_FORMAT).
+    // Rows that commit late with an earlier created_at than this are the
+    // standard watermark race; at a daily cadence against a board-sized table
+    // it is theoretical, and the reconcile-against-an-export step the ruling
+    // already anticipates is the backstop.
     let through = watermark;
     for (const r of addRows.concat(removeRows)) {
-      if (r.created_at > through) through = r.created_at;
+      if (r.created_at_iso > through) through = r.created_at_iso;
     }
 
     const msg = compose(addEmails, removeEmails, watermark);
@@ -363,7 +396,7 @@ async function main() {
         " values (null, 'legacy.digest-emailed', 'member_registry', 'digest', $1::jsonb)",
       [
         JSON.stringify({
-          through: through.toISOString(),
+          through: through,
           added: addEmails.length,
           removed: removeEmails.length,
         }),
@@ -375,7 +408,7 @@ async function main() {
         " removed=" +
         removeEmails.length +
         " through=" +
-        through.toISOString()
+        through
     );
     return 0;
   } finally {
