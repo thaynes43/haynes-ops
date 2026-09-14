@@ -102,8 +102,11 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 519eaec (2026-09-14):
-              # a brother invites a brother (sigoalumni-org #130,
+              # Pinned to sigoalumni-org main commit 0ca8672 (2026-09-14):
+              # POST /api/internal/invites (sigoalumni-org #131) — an in-cluster
+              # agent runs invite batches with the Directory's own code behind
+              # SCRIBE_DISPATCH_TOKEN (already in the pod env). On top of
+              # 519eaec: a brother invites a brother (sigoalumni-org #130,
               # brotherhood-reach/06) — /members/invite for every Brother, no
               # board approval; migration 0021 adds the enum value
               # 'invited-by-brother' (ALTER TYPE … ADD VALUE IF NOT EXISTS,
@@ -113,7 +116,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 519eaecf88e0d4f3d5369781333aaadbc5fb9dc3
+              tag: 0ca8672f9b23032253dba7b78f2da3dd02fe17b6
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
