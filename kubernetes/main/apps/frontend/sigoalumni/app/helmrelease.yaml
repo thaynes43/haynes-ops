@@ -102,7 +102,13 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 49b9115 (2026-09-14):
+              # Pinned to sigoalumni-org main commit a863709 (2026-09-14):
+              # the reach campaign's goal is now a number — 300 brothers on
+              # brothers@ at addresses that don't bounce by 2026-12-31
+              # (sigoalumni-org #133): "Reachable brothers" tile with progress,
+              # list counts labelled by list, goal line on the chart; the live
+              # count lists brothers@ over the existing DWD scope (MEMBER role
+              # only). On top of 49b9115:
               # public roadmap + campaign pages (sigoalumni-org #132, PRD 0003
               # in sigo-alumni) — /roadmap and /roadmap/reach, aggregate-only
               # numbers from the site DB + the list sync's history CSV on
@@ -119,7 +125,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 49b9115546a11530c4441e72fa482bee317af5d1
+              tag: a863709722a0aa06c1874e95ac35b278b5456b0e
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
