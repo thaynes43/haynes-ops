@@ -36,57 +36,170 @@ spec:
             args:
               - |
                 set -euo pipefail
-                
-                # Use python for template substitution
-                # We construct the placeholder string in parts to avoid Flux/Helm substitution
-                cat <<'EOF' > /tmp/subst.py
+                # The whole run lives in /tmp/run.py (emptyDir — the root fs is read-only): bearer
+                # substitution, a Peloton session preflight, then ytdl-sub with every line it prints
+                # scrubbed of the Authorization bearer. Rationale in the docstring (#2908, #2909).
+                cat <<'EOF' > /tmp/run.py
+                """ytdl-sub-peloton run wrapper: substitute the bearer, PROVE the session works, then
+                run ytdl-sub with the bearer scrubbed from everything it prints.
+
+                Why this exists (haynes-ops #2908 / #2909):
+                  * ytdl-sub's per-subscription exception handler dumps the whole yt-dlp argument
+                    dict — Authorization header included — at ERROR level, so `--log-level=info`
+                    (the July fix, #2198) never covered it. Every line ytdl-sub prints now passes
+                    through a redactor before it reaches stdout/Loki.
+                  * When Peloton rejects the delivered session (bearer.txt + cookies.txt, minted by
+                    the ytdrivarr worker), yt-dlp's `ignoreerrors` swallows the 401 on every class:
+                    177 subscriptions report "done, 0 new" and only the odd one raises. The Job
+                    looked like "one bad class"; it was 18 days of downloading nothing. The
+                    preflight below runs yt-dlp's own extraction (the exact auth path) against a
+                    few real classes and refuses to start the 4h run on a dead session.
+                  * With the session proven, a handful of classes failing (pulled from the library,
+                    a yt-dlp hiccup) must not fail the whole run — but a large share must.
+                """
+
                 import os
+                import re
+                import subprocess
                 import sys
+                import time
 
-                token_path = '/media/peloton/bearer.txt'
-                try:
-                    with open(token_path, 'r') as f:
-                        token = f.read().strip()
-                except Exception as e:
-                    print(f"Error reading {token_path}: {e}", file=sys.stderr)
-                    sys.exit(1)
+                TOKEN_PATH = '/media/peloton/bearer.txt'
+                COOKIES_PATH = '/media/peloton/cookies.txt'
+                SUBS_IN = '/media/peloton/subscriptions.yaml'
+                SUBS_OUT = '/config/subscriptions.yaml'
+                CONFIG = '/config/config.yaml'
+                # Same headers the subscriptions preset gives yt-dlp (http_headers).
+                HEADERS = [
+                    'Origin: https://members.onepeloton.com',
+                    'Referer: https://members.onepeloton.com/',
+                ]
+                PREFLIGHT_PROBES = 3
+                # Share of subscriptions allowed to fail before the run counts as failed.
+                TOLERATED_FAILURE_SHARE = 0.10
 
-                if not token:
-                    print(f"Error: {token_path} is empty", file=sys.stderr)
-                    sys.exit(1)
+                BEGIN_RE = re.compile(r'^\[ytdl-sub\] Beginning subscription download for (.+)$')
+                FAILED_RE = re.compile(r'^\[ytdl-sub\] The following error occurred for the subscription (.+):$')
+                BEARER_RE = re.compile(r'Bearer [A-Za-z0-9._~+/=-]{16,}')
+                DOWNLOAD_RE = re.compile(r'^\s*download:\s*(https://members\.onepeloton\.com/classes/player/\S+)')
 
-                # M3 repoint: read ytdrivarr's PROJECTED subscriptions.yaml from the shared
-                # media NFS instead of the git-tracked configMap. The ytdrivarr core renders
-                # this file from Peloton entries reported by the worker (no more git PRs).
-                # Reversible: restore '/config-ro/subscriptions.yaml' and the subscriptions
-                # configMap mount to fall back to the git-tracked list.
-                input_path = '/media/peloton/subscriptions.yaml'
-                output_path = '/config/subscriptions.yaml'
 
-                try:
-                    with open(input_path, 'r') as f:
-                        content = f.read()
-                except Exception as e:
-                    print(f"Error reading {input_path}: {e}", file=sys.stderr)
-                    sys.exit(1)
+                def log(msg):
+                    print(f'[wrapper] {msg}', flush=True)
 
-                # Construct the placeholder to avoid Flux substitution during deployment
-                placeholder = '$' + '{PELOTON_BEARER}'
-                content = content.replace(placeholder, token)
 
-                try:
-                    with open(output_path, 'w') as f:
-                        f.write(content)
-                except Exception as e:
-                    print(f"Error writing {output_path}: {e}", file=sys.stderr)
-                    sys.exit(1)
+                def die(msg, code=1):
+                    log(msg)
+                    sys.exit(code)
+
+
+                def read_token():
+                    try:
+                        token = open(TOKEN_PATH).read().strip()
+                    except OSError as exc:
+                        die(f'cannot read {TOKEN_PATH}: {exc}')
+                    if not token:
+                        die(f'{TOKEN_PATH} is empty')
+                    return token
+
+
+                def render_subscriptions(token):
+                    """ytdrivarr projects subscriptions.yaml with a literal placeholder; fill it in."""
+                    try:
+                        content = open(SUBS_IN).read()
+                    except OSError as exc:
+                        die(f'cannot read {SUBS_IN}: {exc}')
+                    placeholder = '$' + '{PELOTON_BEARER}'  # built in parts: keep it out of Flux/Helm substitution
+                    if placeholder not in content:
+                        die(f'{SUBS_IN} carries no {placeholder} placeholder — is ytdrivarr projecting the right file?')
+                    try:
+                        with open(SUBS_OUT, 'w') as handle:
+                            handle.write(content.replace(placeholder, token))
+                    except OSError as exc:
+                        die(f'cannot write {SUBS_OUT}: {exc}')
+                    return [m.group(1) for line in content.splitlines() if (m := DOWNLOAD_RE.match(line))]
+
+
+                def make_redactor(token):
+                    def redact(line):
+                        if token:
+                            line = line.replace(token, '<REDACTED>')
+                        return BEARER_RE.sub('Bearer <REDACTED>', line)
+                    return redact
+
+
+                def preflight(token, urls, redact):
+                    """Run yt-dlp's extraction (started_client_session -> ride details -> stream token)
+                    against a few real classes. Any one succeeding proves the session; all failing
+                    means every class would fail exactly like this, so the run is pointless."""
+                    if not urls:
+                        die('preflight: no class URLs found in the projected subscriptions')
+                    # first / middle / last: spread the probes across the library
+                    picks = sorted({urls[0], urls[len(urls) // 2], urls[-1]})[:PREFLIGHT_PROBES]
+                    minted = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(os.path.getmtime(TOKEN_PATH)))
+                    for url in picks:
+                        cmd = ['yt-dlp', '--simulate', '--quiet', '--no-warnings', '--ignore-no-formats-error',
+                               '--print', 'id', '--cookies', COOKIES_PATH]
+                        for header in HEADERS + ['Authorization: Bearer ' + token]:
+                            cmd += ['--add-header', header]
+                        cmd.append(url)
+                        try:
+                            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+                        except subprocess.TimeoutExpired:
+                            log(f'preflight: {url} timed out')
+                            continue
+                        if result.returncode == 0:
+                            log(f'preflight: Peloton session accepted (bearer.txt minted {minted}; probe {url})')
+                            return
+                        tail = (result.stderr.strip().splitlines() or [f'exit {result.returncode}'])[-1]
+                        log(f'preflight: {url} -> {redact(tail)}')
+                    die(f'preflight: Peloton rejected the delivered session on {len(picks)}/{len(picks)} probe '
+                        f'classes (bearer.txt minted {minted}). Not starting ytdl-sub — every class would fail '
+                        f'the same way. Fix the session on the ytdrivarr side (worker login / bearer mint), '
+                        f'not here.', 2)
+
+
+                def run_ytdl_sub(redact):
+                    cmd = ['ytdl-sub', '--log-level=info', f'--config={CONFIG}', 'sub', SUBS_OUT]
+                    env = dict(os.environ, PYTHONUNBUFFERED='1')
+                    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                            text=True, errors='replace', env=env)
+                    started, failed = [], []
+                    for line in proc.stdout:
+                        line = line.rstrip('\n')
+                        if m := BEGIN_RE.match(line):
+                            started.append(m.group(1))
+                        elif m := FAILED_RE.match(line):
+                            failed.append(m.group(1))
+                        print(redact(line), flush=True)
+                    return proc.wait(), started, failed
+
+
+                def main():
+                    token = read_token()
+                    redact = make_redactor(token)
+                    urls = render_subscriptions(token)
+                    preflight(token, urls, redact)
+                    rc, started, failed = run_ytdl_sub(redact)
+                    if rc == 0:
+                        log(f'ytdl-sub finished: {len(started)} subscriptions, 0 failed')
+                        return 0
+                    tolerated = max(1, int(len(started) * TOLERATED_FAILURE_SHARE))
+                    if started and len(failed) <= tolerated:
+                        log(f'WARNING: ytdl-sub exit {rc} — {len(failed)}/{len(started)} subscription(s) failed '
+                            f'(tolerating up to {tolerated}): ' + '; '.join(failed))
+                        log('treating the run as a partial success; the session preflight passed, so these '
+                            'are per-class failures, not a dead downloader')
+                        return 0
+                    log(f'ytdl-sub exit {rc} — {len(failed)}/{len(started)} subscription(s) failed, above the '
+                        f'tolerated {tolerated}: ' + '; '.join(failed[:10]))
+                    return rc or 1
+
+
+                if __name__ == '__main__':
+                    sys.exit(main())
                 EOF
-
-                python3 /tmp/subst.py
-                
-                # Run ytdl-sub. Standard (info) log level: debug logs the substituted yt-dlp
-                # command incl. the ${PELOTON_BEARER} Authorization header into the pod logs.
-                ytdl-sub --log-level=info --config=/config/config.yaml sub /config/subscriptions.yaml
+                exec python3 /tmp/run.py
             securityContext:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
