@@ -102,7 +102,13 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 7d0314f (2026-09-14):
+              # Pinned to sigoalumni-org main commit 1b832e1 (2026-09-14):
+              # sigoalumni-org #135 (page copy sanitized), #136 (invite email
+              # text approved by Tom), #137 (campaign reframed as "Improve
+              # communication", headline = deliverable addresses on the list
+              # we email; /roadmap/reach → /roadmap/communication redirect).
+              # No schema, env, or secret change. On top of 7d0314f:
+              # (previous pin note follows)
               # reach campaign — "Brothers reached by year" chart (sigoalumni-org
               # #134): seeded from the list sync's join-years.csv on Drive, plus
               # the brothers the site captures itself; weekly numbers folded
@@ -131,7 +137,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 7d0314fb7a4866dbdc0d53b354802343ee5d26ea
+              tag: 1b832e150c69a18097078ad90d9af89eb6ad1350
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
