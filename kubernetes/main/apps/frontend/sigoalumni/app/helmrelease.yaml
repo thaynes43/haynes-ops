@@ -102,7 +102,15 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 9bf875c (2026-09-15):
+              # Pinned to sigoalumni-org main commit c7daa8d (2026-09-15):
+              # the public roadmap is one vertical timeline (sigoalumni-org
+              # #140) — a single rail down /roadmap with an icon marker per
+              # milestone, the date or state in a left column, cards to the
+              # right, read planned → in progress → completed newest-first.
+              # Content-only page (no DB, no Drive); new front-end dependency
+              # lucide-react. No schema, env, or secret change.
+              # On top of 9bf875c:
+              # (previous pin note follows)
               # invitation OPT-OUTS (sigoalumni-org #139) — a brother who asks
               # not to be invited again is recorded in a new table and every
               # surface that mints a link (Directory paste, /members/invite,
@@ -150,7 +158,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 9bf875ccbeb1d14cbb7dfa292e5a025022a303d2
+              tag: c7daa8da8c82db1fc69d4aeaced463c02df3d8d5
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
