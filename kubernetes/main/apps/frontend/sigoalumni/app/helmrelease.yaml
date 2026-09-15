@@ -102,7 +102,14 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 22c5f53 (2026-09-15):
+              # Pinned to sigoalumni-org main commit ee375e8 (2026-09-15):
+              # one new PLANNED roadmap milestone (sigoalumni-org #142) —
+              # "Move sigoboard@gmail.com to a shared Workspace inbox", second
+              # in the planned group after "A single mailing list", with a new
+              # "inbox" marker glyph. Content-only page; no schema, env, or
+              # secret change.
+              # On top of 22c5f53:
+              # (previous pin note follows)
               # roadmap timeline polish (sigoalumni-org #141) — a row label no
               # longer repeats the group heading next to it: completed shows
               # its date, in progress shows "Since <date>" when it has one, and
@@ -168,7 +175,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 22c5f53cd942ed019546e937c85d3102ca066f5b
+              tag: ee375e87ffe7261522d44c3c4060df21c680b187
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
