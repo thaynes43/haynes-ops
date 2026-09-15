@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.11-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 ARG STABLE_AUDIO_REVISION=779434a908193105335fd8d833418603625b2859
 ENV DEBIAN_FRONTEND=noninteractive \
