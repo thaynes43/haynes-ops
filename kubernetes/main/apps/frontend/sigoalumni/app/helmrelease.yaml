@@ -102,7 +102,14 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit ee375e8 (2026-09-15):
+              # Pinned to sigoalumni-org main commit 8d75f59 (2026-09-15):
+              # /roadmap is reachable from inside the site (sigoalumni-org
+              # #143) — a fifth members-hub tile after Knowledge Base, and a
+              # closing paragraph on /about, both linking /roadmap. The main
+              # nav is deliberately untouched: it has to stay one line on a
+              # 360px phone. Content-only; no schema, env, or secret change.
+              # On top of ee375e8:
+              # (previous pin note follows)
               # one new PLANNED roadmap milestone (sigoalumni-org #142) —
               # "Move sigoboard@gmail.com to a shared Workspace inbox", second
               # in the planned group after "A single mailing list", with a new
@@ -175,7 +182,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: ee375e87ffe7261522d44c3c4060df21c680b187
+              tag: 8d75f590719c072d0ccff578d9a5ab2e07fbaf09
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
