@@ -102,7 +102,20 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit 1b832e1 (2026-09-14):
+              # Pinned to sigoalumni-org main commit 9bf875c (2026-09-15):
+              # invitation OPT-OUTS (sigoalumni-org #139) — a brother who asks
+              # not to be invited again is recorded in a new table and every
+              # surface that mints a link (Directory paste, /members/invite,
+              # the internal API) refuses him; recording also revokes the live
+              # links he still holds. MIGRATION 0022 creates invite_optouts
+              # (additive, no backfill; applied by scripts/migrate.js at
+              # container start like every other one). POST
+              # /api/internal/invites gains an `optOut` body shape; its create
+              # /send behaviour is unchanged. No env or secret change.
+              # On top of 69b5b4f: withdrawn invitations counted on the
+              # campaign tile (#138 — no schema, env or secret change).
+              # On top of 1b832e1:
+              # (previous pin note follows)
               # sigoalumni-org #135 (page copy sanitized), #136 (invite email
               # text approved by Tom), #137 (campaign reframed as "Improve
               # communication", headline = deliverable addresses on the list
@@ -137,7 +150,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 69b5b4fd03243e75df818eab3a1679b1e70ddbfd
+              tag: 9bf875ccbeb1d14cbb7dfa292e5a025022a303d2
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
