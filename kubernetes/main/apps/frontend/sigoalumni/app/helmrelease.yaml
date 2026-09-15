@@ -137,7 +137,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 1b832e150c69a18097078ad90d9af89eb6ad1350
+              tag: 69b5b4fd03243e75df818eab3a1679b1e70ddbfd
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
