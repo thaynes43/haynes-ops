@@ -102,7 +102,17 @@ spec:
         containers:
           app:
             image:
-              # Pinned to sigoalumni-org main commit c7daa8d (2026-09-15):
+              # Pinned to sigoalumni-org main commit 22c5f53 (2026-09-15):
+              # roadmap timeline polish (sigoalumni-org #141) — a row label no
+              # longer repeats the group heading next to it: completed shows
+              # its date, in progress shows "Since <date>" when it has one, and
+              # everything else shows no label at all. The rail no longer hangs
+              # a dashed stub above the first marker: the top row of the list
+              # draws no segment and the first milestone starts it at its own
+              # marker centre. Content-only page; no schema, env, or secret
+              # change.
+              # On top of c7daa8d:
+              # (previous pin note follows)
               # the public roadmap is one vertical timeline (sigoalumni-org
               # #140) — a single rail down /roadmap with an icon marker per
               # milestone, the date or state in a left column, cards to the
@@ -158,7 +168,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: c7daa8da8c82db1fc69d4aeaced463c02df3d8d5
+              tag: 22c5f53cd942ed019546e937c85d3102ca066f5b
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
