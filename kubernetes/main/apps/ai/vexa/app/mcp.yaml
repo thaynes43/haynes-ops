@@ -21,7 +21,11 @@ spec:
     spec:
       containers:
         - name: mcp
-          image: docker.io/vexaai/v012-mcp:v012
+          # Pinned by digest (2026-09-16). The floating `v012` tag drifted the
+          # meeting-api past its schema between 2026-09-12 and 2026-09-16; this
+          # Deployment reads the same API, so it is pinned on the same terms.
+          # Bump it together with the chart digests in helmrelease.yaml.
+          image: docker.io/vexaai/v012-mcp@sha256:72158d83293ce48c1cfd5c9bd8e2762e72a2da63d962fdbdbf7fe9b09daa8755
           env:
             - name: GATEWAY_URL
               value: "http://vexa-vexa-gateway:8000"
