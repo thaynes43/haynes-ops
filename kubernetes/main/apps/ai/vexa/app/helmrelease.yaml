@@ -24,6 +24,27 @@ spec:
     remediation:
       retries: 3
       strategy: rollback
+  # IMAGE DRIFT INCIDENT (2026-09-12 -> 2026-09-16). Every image in the vendored
+  # chart ships on the FLOATING `v012` tag with imagePullPolicy: Always, so an
+  # unrelated meeting-api restart silently pulled a newer upstream build whose
+  # `GET /meetings` calls the Postgres function meeting_event_time() (added by
+  # upstream's MIGRATION-0005). admin-api did NOT drift, so nothing ever created
+  # that function and every `GET /meetings` returned 500 for four days. These
+  # digests are the builds verified running on 2026-09-16; kustomize's images
+  # transformer rewrites the chart's `repository:tag` refs to `repository@digest`.
+  # TO BUMP: re-vendor the chart, update ALL of these digests together, and run
+  # upstream's MIGRATION-000N docs for the new build FIRST (schema before image).
+  postRenderers:
+    - kustomize:
+        images:
+          - name: vexaai/v012-meeting-api
+            digest: sha256:4e9c201f656788755458fd6f2b9fbf3bfe0722d5b17d4cebd82b874b5aee98e1
+          - name: vexaai/v012-gateway
+            digest: sha256:2e76319812f28adbb6bc328ac0a7484d3826924a9d38a9dd9599dd190fbb0f19
+          - name: vexaai/v012-admin-api
+            digest: sha256:49a8bd29268250cb37976c3170fde41c960f00d55f31ef4a42e17062b968b114
+          - name: vexaai/v012-runtime
+            digest: sha256:a1f6448fbb380b9433364e8b572ec25a12aa4f274bf403f1d83a89cbf5812f2d
   values:
     # STOPGAP (2026-08-18): inline tokens in a public repo — acceptable only
     # because every service is ClusterIP with no ingress (tokens are unusable
@@ -64,6 +85,12 @@ spec:
       # (meeting-scribe saga). Revisit with a proper worker-role label.
       nodeSelector:
         kubernetes.io/hostname: talosw01
+      # BROWSER_IMAGE for the bot Pods the runtime spawns. This is an env var on
+      # the runtime Deployment, NOT a container image field, so the postRenderers
+      # images transformer above cannot reach it — it is pinned here instead. The
+      # chart passes runtime.browserImage through verbatim (vexa.botImage helper),
+      # so a digest ref is expressible. Same digest discipline as the block above.
+      browserImage: "vexaai/vexa-bot@sha256:a7f8feae7870b722e3542fb7cb054ff7c092e62f4c5a6b6a3b63e52f8cd1fe47"
     # Transcription-only deployment: no web UI, no agent platform (and none of
     # their secret/PVC requirements). Enable later if the copilot is wanted.
     terminal:
@@ -71,4 +98,13 @@ spec:
     agentApi:
       enabled: false
     minio:
+      enabled: false
+    # Explicit + documented, not just the chart default. The vendored hook's
+    # command is `python -c "from meeting_api.database import init_db ..."` and
+    # `meeting_api.database` no longer exists in the pinned meeting-api image, so
+    # this pre-upgrade hook would ModuleNotFoundError on EVERY helm upgrade if it
+    # were ever switched on. Schema changes here are a deliberate out-of-band step
+    # following upstream's MIGRATION-000N docs (MIGRATION-0005 run by hand on
+    # 2026-09-16) until the chart is re-vendored together with its images.
+    migrations:
       enabled: false
