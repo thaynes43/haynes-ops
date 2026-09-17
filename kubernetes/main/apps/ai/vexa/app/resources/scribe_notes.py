@@ -25,6 +25,7 @@ Env:
   SCRIBE_DISPATCH_TOKEN     bearer for the site internal endpoints
   VEXA_API_KEY              X-API-Key for the gateway
   SCRIBE_NOTES_MODEL        claude model, full id (default: claude-fable-5-1 — board-facing prose)
+  SCRIBE_NOTES_PLAN_FALLBACK_MODEL  second plan model when the first is rate-limited (default: claude-opus-5)
   SCRIBE_NOTES_API_MODEL    model for the metered-API fallback (default: claude-sonnet-5, per model policy)
   SCRIBE_NOTES_PUBLISH      "true" to write to Outline (default: false -> compose only)
   SCRIBE_NOTES_NOTIFY       "true" to send publish/failure notifications (default: false)
@@ -368,14 +369,24 @@ def summarize(meta, segments):
     # is pinned to Sonnet 5 by the pod's model policy — Fable/Opus are never
     # billed per token.
     model = os.environ.get("SCRIBE_NOTES_MODEL", "claude-fable-5-1")
+    # Second plan model: still $0, used when the primary hits the plan's usage
+    # window (Fable's budget is the scarce one). Only after BOTH plan models
+    # fail does the run touch the metered key.
+    plan_fallback_model = os.environ.get("SCRIBE_NOTES_PLAN_FALLBACK_MODEL", "claude-opus-5")
     api_model = os.environ.get("SCRIBE_NOTES_API_MODEL", "claude-sonnet-5")
 
-    def attempt(use_api):
+    def attempt(use_api, use_model=None):
         auth = "api" if use_api else "plan"
-        use_model = api_model if use_api else model
+        use_model = use_model or (api_model if use_api else model)
         log(f"summarize: claude -p model={use_model} auth={auth}")
         rc, out = _run_claude(use_model, prompt, use_api)
         obj = _extract_json_object(out) if rc == 0 else None
+        if obj is None:
+            # Say WHY, in the log, every time — 2026-09-16's first real run fell
+            # back with only "rate-limit/auth" to go on and cost a night of
+            # guessing. Tail of stderr+stdout, whitespace collapsed.
+            tail = " ".join((out or "").split())[-600:]
+            log(f"summarize: no usable JSON from model={use_model} auth={auth} rc={rc}; output tail: {tail!r}")
         return rc, out, obj
 
     # Primary: the plan path unless the ONLY credential is the metered key.
@@ -384,14 +395,29 @@ def summarize(meta, segments):
     use_api = have_api and not have_plan
     rc, out, obj = attempt(use_api)
 
-    # Fallback A (shepherd): a plan run that failed for a rate-limit/auth reason
-    # falls back to the metered API key ONCE. After this, `use_api` is the live path.
+    rate = ("rate limit", "usage limit", "limit reached", "too many requests", "429", "out of usage credits")
+    auth = ("unauthorized", "invalid api key", "invalid token", "authentication", "401", "/login")
+
+    def failure_kind(text):
+        low = (text or "").lower()
+        if any(k in low for k in rate):
+            return "rate-limit"
+        if any(k in low for k in auth):
+            return "auth"
+        return None
+
+    # Fallback A1: the primary plan model hit its usage window -> the second
+    # plan model (still $0). Auth failures skip this: the token is the problem.
+    if obj is None and not use_api and failure_kind(out) == "rate-limit" and plan_fallback_model != model:
+        log(f"summarize: plan model {model} rate-limited — retrying on plan model {plan_fallback_model}")
+        rc, out, obj = attempt(False, plan_fallback_model)
+
+    # Fallback A2 (shepherd): both plan attempts failed for a rate-limit/auth
+    # reason -> the metered API key ONCE. After this, `use_api` is the live path.
     if obj is None and not use_api and have_api:
-        low = out.lower()
-        rate = ("rate limit", "usage limit", "limit reached", "too many requests", "429")
-        auth = ("unauthorized", "invalid api key", "invalid token", "authentication", "401", "/login")
-        if any(k in low for k in rate) or any(k in low for k in auth):
-            log("summarize: plan path failed (rate-limit/auth) — falling back to the metered API key")
+        kind = failure_kind(out)
+        if kind:
+            log(f"summarize: plan path failed ({kind}) — falling back to the metered API key on {api_model}")
             use_api = True
             rc, out, obj = attempt(use_api)
 

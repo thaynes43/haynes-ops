@@ -17,7 +17,7 @@
         "containers": [
           {
             "name": "scribe-notes",
-            "image": "ghcr.io/thaynes43/dev-env:0.5.1@sha256:e21de7f0ff18b97b1632c089e4b981eeccabe2f75ababab5bb8a1de51af23fe2",
+            "image": "ghcr.io/thaynes43/dev-env:0.6.2@sha256:8b962179b3b2dd394733cc83b8c3f9eef8f341f4b53aa02027eac7bd0d818c93",
             "command": ["python3", "/app/scribe_notes.py"],
             "env": [
               { "name": "MEETING_DB_ID", "value": "" },
