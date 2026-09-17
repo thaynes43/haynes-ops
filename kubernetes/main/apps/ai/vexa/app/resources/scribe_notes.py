@@ -378,8 +378,10 @@ def summarize(meta, segments):
         obj = _extract_json_object(out) if rc == 0 else None
         return rc, out, obj
 
-    # Primary: plan path if a plan token is mounted, else the metered API key.
-    use_api = not have_plan
+    # Primary: the plan path unless the ONLY credential is the metered key.
+    # A local dry run with neither env token rides the CLI's own file
+    # credential (Max plan) and is a plan run, not an API run.
+    use_api = have_api and not have_plan
     rc, out, obj = attempt(use_api)
 
     # Fallback A (shepherd): a plan run that failed for a rate-limit/auth reason
