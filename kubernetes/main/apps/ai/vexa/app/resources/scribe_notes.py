@@ -24,7 +24,8 @@ Env:
   GATEWAY                   e.g. http://vexa-vexa-gateway:8000  (transcript)
   SCRIBE_DISPATCH_TOKEN     bearer for the site internal endpoints
   VEXA_API_KEY              X-API-Key for the gateway
-  SCRIBE_NOTES_MODEL        claude model (default: fable — board-facing prose)
+  SCRIBE_NOTES_MODEL        claude model, full id (default: claude-fable-5-1 — board-facing prose)
+  SCRIBE_NOTES_API_MODEL    model for the metered-API fallback (default: claude-sonnet-5, per model policy)
   SCRIBE_NOTES_PUBLISH      "true" to write to Outline (default: false -> compose only)
   SCRIBE_NOTES_NOTIFY       "true" to send publish/failure notifications (default: false)
   SCRIBE_NOTES_OUT          where to write the composed page (default: /tmp/scribe-notes.md)
@@ -50,7 +51,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 try:
     from zoneinfo import ZoneInfo
@@ -194,6 +195,43 @@ def load_attendance(code):
     return att.get("participants", [])
 
 
+# Whisper's known caption-artifact hallucinations on silence/noise (all seen
+# live 2026-09-16: 1 in 12 segments). Matched case-insensitively against the
+# start of the segment text; a matched segment is dropped before summarizing.
+HALLUCINATION_PREFIXES = (
+    "thank you for watching", "thanks for watching", "thank you for joining",
+    "thank you so much for being here", "thank you very much for your time",
+    "thank you for your patience", "subtitles by", "and many more",
+    "see you in the next", "like and subscribe", "please subscribe",
+    "amara.org", "steamteamextra", "www.",
+)
+PRE_MEETING_GRACE_S = 60
+
+
+def clean_segments(segments, meta):
+    """Segments the summarizer should see: everything from one minute before
+    the event's scheduled start onward (pre-meeting arrivals are banter by
+    definition), minus whisper's caption hallucinations and segments with no
+    Latin text (silence transcribed into another script). Attendance (tier 1)
+    is still taken from the RAW list — someone who only spoke while people
+    were arriving was still present. Returns (kept, dropped_pre, dropped_junk)."""
+    start = parse_iso(meta.get("startAt"))
+    cutoff = (start - timedelta(seconds=PRE_MEETING_GRACE_S)) if start else None
+    kept, pre, junk = [], 0, 0
+    for s in segments:
+        at = parse_iso(s.get("startAt"))
+        if cutoff and at and at < cutoff:
+            pre += 1
+            continue
+        text = (s.get("text") or "").strip()
+        low = text.lower()
+        if not text or low.startswith(HALLUCINATION_PREFIXES) or sum(c.isascii() and c.isalpha() for c in text) < 2:
+            junk += 1
+            continue
+        kept.append(s)
+    return kept, pre, junk
+
+
 def is_bot(name):
     return (name or "").strip().lower() in BOT_NAMES
 
@@ -238,10 +276,15 @@ def _run_claude(model, prompt, use_api):
     else:
         # Plan path: unset the API key so a $0 plan run isn't silently billed.
         env.pop("ANTHROPIC_API_KEY", None)
+    # The prompt goes in on STDIN, never as an argv element: a real meeting's
+    # transcript (1,179 segments / 86 min on 2026-09-16) is ~400 KB and blew
+    # the kernel's per-argument limit ("[Errno 7] Argument list too long").
+    # claude -p reads piped stdin as the message body; the short positional
+    # just tells it where the instructions are.
     args = [
         "claude",
         "-p",
-        prompt,
+        "Follow the instructions in the input exactly and return only the JSON object.",
         "--permission-mode",
         "dontAsk",
         "--disallowedTools",
@@ -254,7 +297,7 @@ def _run_claude(model, prompt, use_api):
     ]
     try:
         p = subprocess.run(
-            args, env=env, capture_output=True, text=True, timeout=600
+            args, env=env, input=prompt, capture_output=True, text=True, timeout=600
         )
         return p.returncode, (p.stdout or "") + (p.stderr or "")
     except subprocess.TimeoutExpired:
@@ -320,17 +363,25 @@ def summarize(meta, segments):
     local_cred = bool(os.environ.get("SCRIBE_NOTES_TRANSCRIPT_FILE"))
     if not have_plan and not have_api and not local_cred:
         raise Fail("summarize", "no CLAUDE_CODE_OAUTH_TOKEN and no ANTHROPIC_API_KEY")
-    model = os.environ.get("SCRIBE_NOTES_MODEL", "fable")
+    # Full model ids, never aliases (an alias resolves client-side against the
+    # pinned CLI). Plan runs use the board-prose model; the metered-API fallback
+    # is pinned to Sonnet 5 by the pod's model policy — Fable/Opus are never
+    # billed per token.
+    model = os.environ.get("SCRIBE_NOTES_MODEL", "claude-fable-5-1")
+    api_model = os.environ.get("SCRIBE_NOTES_API_MODEL", "claude-sonnet-5")
 
     def attempt(use_api):
         auth = "api" if use_api else "plan"
-        log(f"summarize: claude -p model={model} auth={auth}")
-        rc, out = _run_claude(model, prompt, use_api)
+        use_model = api_model if use_api else model
+        log(f"summarize: claude -p model={use_model} auth={auth}")
+        rc, out = _run_claude(use_model, prompt, use_api)
         obj = _extract_json_object(out) if rc == 0 else None
         return rc, out, obj
 
-    # Primary: plan path if a plan token is mounted, else the metered API key.
-    use_api = not have_plan
+    # Primary: the plan path unless the ONLY credential is the metered key.
+    # A local dry run with neither env token rides the CLI's own file
+    # credential (Max plan) and is a plan run, not an API run.
+    use_api = have_api and not have_plan
     rc, out, obj = attempt(use_api)
 
     # Fallback A (shepherd): a plan run that failed for a rate-limit/auth reason
@@ -771,7 +822,7 @@ def notify(kind, title, page_url=None, stage=None):
                 {"token": ptok, "user": puser, "message": msg, "title": "ΣΦΟ Scribe"}
             ).encode()
             st, _ = http("https://api.pushover.net/1/messages.json", None, data, "POST", timeout=15)
-            log(f"pushover {kind}: HTTP {st}")
+            log(f"pushover notice ({kind}): HTTP {st}")
         except Exception as e:
             log(f"pushover failed: {e}")
     else:
@@ -793,7 +844,7 @@ def notify(kind, title, page_url=None, stage=None):
                 "POST",
                 timeout=30,
             )
-            log(f"email notify {kind}: HTTP {st}")
+            log(f"email notice ({kind}): HTTP {st}")
         except Exception as e:
             log(f"email notify failed: {e}")
 
@@ -834,8 +885,12 @@ def main():
                 p for p in attendance if (p.get("displayName", "").lower() not in t1l)
             ]
 
-        summary = summarize(meta, segments)
-        summary = validate(summary, segments, tier1, tier2, invited_names)
+        cleaned, n_pre, n_junk = clean_segments(segments, meta)
+        log(f"clean: {len(cleaned)} segments kept, {n_pre} pre-meeting dropped, {n_junk} caption-artifact/junk dropped")
+        if not cleaned:
+            raise Fail("gather", "no segments left after dropping pre-meeting and junk lines")
+        summary = summarize(meta, cleaned)
+        summary = validate(summary, cleaned, tier1, tier2, invited_names)
 
         page_title, markdown = compose(
             meta, summary, tier1, tier2, attendance is not None, had_generic_speaker(segments), stats, code, mtg
