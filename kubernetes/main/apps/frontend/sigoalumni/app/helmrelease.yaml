@@ -102,6 +102,18 @@ spec:
         containers:
           app:
             image:
+              # Pinned to sigoalumni-org main commit 4294d65 (2026-09-17):
+              # Board Meeting Minutes review-gate fix (sigoalumni-org #145).
+              # Live verification found the one real sample of ΣΦΟ Scribe
+              # output for an unreviewed page repeats its title as an H1 BEFORE
+              # the "Pending review" banner, and the byte-0-anchored predicate
+              # read that as reviewed — i.e. an unchecked page would have been
+              # listed and served the moment it sat under a configured year
+              # page. The gate now also matches the banner under leading
+              # headings (fence required there). Content-only; no schema, env,
+              # or secret change.
+              # On top of bf2d48f:
+              # (previous pin note follows)
               # Pinned to sigoalumni-org main commit bf2d48f (2026-09-17):
               # Board Meeting Minutes (sigoalumni-org #144) — a members-area
               # reading section at /members/board-minutes projected from the
@@ -194,7 +206,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: bf2d48f8e2f11ac0bad2af1699dc83327af68929
+              tag: 4294d65e7bec0bde0e6eb9c6bb05864a079b1d1e
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
