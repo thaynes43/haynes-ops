@@ -102,6 +102,18 @@ spec:
         containers:
           app:
             image:
+              # Pinned to sigoalumni-org main commit bf2d48f (2026-09-17):
+              # Board Meeting Minutes (sigoalumni-org #144) — a members-area
+              # reading section at /members/board-minutes projected from the
+              # Meetings collection in the wiki, independent of Knowledge Base
+              # exposure. A page still carrying the ΣΦΟ Scribe pipeline's
+              # "Pending review" banner is neither listed nor servable, so only
+              # board-verified notes reach members. New env this pin needs:
+              # OUTLINE_BOARD_MINUTES_PARENT_IDS (below) — the Cloud Run service
+              # declares the same value in the site repo's terraform. No schema
+              # change, no new secret.
+              # On top of 8d75f59:
+              # (previous pin note follows)
               # Pinned to sigoalumni-org main commit 8d75f59 (2026-09-15):
               # /roadmap is reachable from inside the site (sigoalumni-org
               # #143) — a fifth members-hub tile after Knowledge Base, and a
@@ -182,7 +194,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 8d75f590719c072d0ccff578d9a5ab2e07fbaf09
+              tag: bf2d48f8e2f11ac0bad2af1699dc83327af68929
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
@@ -227,6 +239,13 @@ spec:
               MAIL_FROM: "Sigo Alumni <admin@sigoalumni.org>"
               # Knowledge Base projection (read-only Outline client).
               OUTLINE_API_URL: https://wiki.sigoalumni.org/api
+              # Board Meeting Minutes (sigoalumni-org #144) — comma-separated
+              # Outline document IDs of the "year" pages whose DIRECT children
+              # are the meetings to publish. Wiki page ids, not secrets; the
+              # members session is the access control. Unset ⇒ the hub tile
+              # greys out and the page shows its not-ready wall. Today: the 2026
+              # page under Board Meetings.
+              OUTLINE_BOARD_MINUTES_PARENT_IDS: eeac065b-1164-47c4-8c68-073b547e0766
               # OIDC provider (sigo-alumni ADR 0007) — todos-for-dues client.
               # Comma-separated EXACT redirect URIs (lib/auth/oidc.ts
               # parseRedirectURIs: raw.split(",") + trim; fail-closed — one bad
