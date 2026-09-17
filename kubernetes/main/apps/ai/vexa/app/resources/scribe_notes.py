@@ -345,14 +345,19 @@ def summarize(meta, segments):
             "endAt": meta.get("endAt"),
             "description": meta.get("description"),
         },
+        # The model cites segments by a short sequential number `n`, never by the
+        # opaque gateway id: on 2026-09-16 (first real run) Fable cited three
+        # `ch-1:500:1789603738618`-style ids that existed nowhere in the
+        # transcript — mangled by one character — and the run died at validate.
+        # A small integer survives the round trip; validate() maps it back.
         "segments": [
             {
+                "n": i,
                 "speaker": s["speaker"],
                 "text": s["text"],
                 "startAt": s["startAt"],
-                "segment_id": s["segment_id"],
             }
-            for s in segments
+            for i, s in enumerate(segments, start=1)
         ],
     }
     prompt = pinned + "\n\n# INPUT\n\n```json\n" + json.dumps(payload, ensure_ascii=False) + "\n```\n"
@@ -442,16 +447,27 @@ def summarize(meta, segments):
 def validate(summary, segments, tier1, tier2, invited_names):
     """Enforce what code can check: every motion cites real segment_ids; unknown
     action-item owners are flagged, not named."""
-    seg_ids = {s["segment_id"] for s in segments if s.get("segment_id")}
+    # Refs arrive as the payload's sequential `n` (int or numeric string); the
+    # gateway segment_id is still accepted for a hand-fed summary. Unresolvable
+    # refs are dropped and logged; a motion left with NO real citation fails the
+    # run — no fabricated votes, ever (§4).
+    by_n = {str(i): s for i, s in enumerate(segments, start=1)}
+    by_id = {s["segment_id"]: s for s in segments if s.get("segment_id")}
     known = {n.lower() for n in tier1}
     known |= {p.get("displayName", "").lower() for p in (tier2 or [])}
     known |= {n.lower() for n in invited_names}
 
     for m in summary["motions"]:
-        refs = m.get("segmentRefs") or []
-        if not refs or not all(r in seg_ids for r in refs):
-            # No fabricated votes, ever (§4): an uncited motion fails the run.
-            raise Fail("validate", f"motion cites unknown segmentRefs {refs!r}")
+        refs = [str(r).strip() for r in (m.get("segmentRefs") or []) if str(r).strip()]
+        resolved, bad = [], []
+        for r in refs:
+            seg = by_n.get(r) or by_id.get(r)
+            (resolved if seg else bad).append(seg["segment_id"] if seg else r)
+        if bad:
+            log(f"validate: motion {m.get('text')!r} cited {len(bad)} unresolvable ref(s) {bad!r}; {len(resolved)} kept")
+        if not resolved:
+            raise Fail("validate", f"motion {m.get('text')!r} has no citation that resolves: {refs!r}")
+        m["segmentRefs"] = resolved
 
     for it in summary["actionItems"]:
         owner = (it.get("owner") or "").strip()
