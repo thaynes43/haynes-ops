@@ -23,4 +23,6 @@ filters:
   - name: "Tom"
     selector_type: "random"
     people: ["Tom Haynes"]
-    taken_after: "2023-01-01"
+    # Immich >= 3.2 rejects a datetime without a timezone (400 "Validation failed"),
+    # and the addon sends this value back verbatim via datetime.isoformat().
+    taken_after: "2023-01-01T00:00:00+00:00"
