@@ -31,6 +31,8 @@ Fix in `ollama/prime/app/helmrelease.yaml`: `OLLAMA_LOAD_TIMEOUT=15m` + memory l
 (the 70B puts ~35 layers on the 3090 and ~45 layers ≈ 25 GB on CPU). Cold first-load still takes
 several minutes on HDD-NFS; with `OLLAMA_KEEP_ALIVE=5m` and the shared single GPU, expect a cold-start
 delay on the large tier until the 2nd 3090 is repaired (GPU repair deferred, PLAN-021 part a).
+**Update 2026-09-18:** the second 3090 was replaced and both cards are live (`nvidia.com/gpu: 2` on
+talosw01). Nothing pins an app to a card yet — placement is haynes-ops#2960.
 
 Pull command (runs on the GPU node, writes to the NFS mount):
 
@@ -134,9 +136,15 @@ Config (Open WebUI Admin → Settings → Images, or `POST /api/v1/images/config
 `02_qwen_Image_edit_*` — its node ids `115:111`/`78`/`60` do **not** apply here. The node ids above
 were read directly from `image_qwen_Image_2512_API.json`.)
 
-Single-GPU note: the second 3090 is detached (GPU repair deferred, PLAN-021 part a). ComfyUI and
+**Superseded 2026-09-18 — kept for history.** Single-GPU note: the second 3090 is detached (GPU repair deferred, PLAN-021 part a). ComfyUI and
 Ollama share the one RTX 3090 on `talosw01`, so a large chat model resident in VRAM contends with
 image generation. No queue was added (owner ruling) — usage metrics will show if gating/GPU is needed.
+
+Two-GPU note (2026-09-18): talosw01 now passes through two RTX 3090s. ComfyUI took `cuda:0` = the
+replacement card (VM bus `01:00.0`, UUID `GPU-18bf6eab-…`, host `0000:01:00`, hostpci0) and holds
+~21 GB there; Ollama sees both (`NVIDIA_VISIBLE_DEVICES=all`) and places layers wherever VRAM is
+free, so the 70B no longer contends with ComfyUI. Which app gets which card, and whether Ollama
+should span both, is an open decision: haynes-ops#2960.
 
 ## Verification (2026-07-10)
 - **Models:** `ollama list` on ollama-prime shows the starter set. `llama3.1:8b` answered a chat
@@ -145,7 +153,8 @@ image generation. No queue was added (owner ruling) — usage metrics will show 
   above and enough GPU headroom — on the shared single 3090 it competes with ComfyUI for VRAM (only
   ~16 of 80 layers fit on the GPU while ComfyUI holds it, forcing ~64 layers onto CPU from HDD-NFS,
   which is very slow). Loads cleanly (~35 layers on GPU) when ComfyUI's VRAM is free. This shared-GPU
-  cold-start latency is the concrete motivation for the deferred GPU repair (PLAN-021 part a).
+  cold-start latency is the concrete motivation for the deferred GPU repair (PLAN-021 part a). *(Repair
+done 2026-09-18 — see the two-GPU note above.)*
 - **RBAC:** a throwaway non-admin OWUI user saw **8 public small models and 0 gated large models**;
   after being added to `family` it saw **all 5 gated large models**. Test user deleted afterward.
 - **Image-gen:** an OWUI `/api/v1/images/generations` call ("a red ceramic coffee mug on a wooden
