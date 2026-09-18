@@ -69,8 +69,20 @@ spec:
               limits:
                 memory: 256Mi
     defaultPodOptions:
-      # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox host (see incident)
       topologySpreadConstraints:
+        # 2026-09-17 (#2953): both replicas were found on talosw01 — the zone rule below is
+        # satisfied by co-location because every worker is zone "w". Hard per-node spread
+        # first, so draining or losing one node can never take the whole tunnel down.
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: *app
+              app.kubernetes.io/instance: *app
+              app.kubernetes.io/controller: *app
+        # 2026-09-09: soft preference to also straddle zones (bare-metal masters vs. the
+        # worker VMs, which each sit on a different Proxmox host).
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: ScheduleAnyway
