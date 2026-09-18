@@ -150,11 +150,21 @@ Tom re-running the node script.
      echo "$(hostname): dev-env ok — sudo: $cmds"
    }
    ( setup )      # subshell: the function's set -e must not leak into your interactive shell
-   for d in /etc/pve/nodes/*; do n=$(basename "$d"); [ "$n" = "$(hostname)" ] && continue
-     ssh -o BatchMode=yes -o ConnectTimeout=10 "root@$n" "PUBKEY='$PUBKEY'; $(declare -f setup); setup" \
-       || echo "!! $n failed — paste this block on $n directly"
-   done
+   # Fan-out over the cluster's own root SSH. /etc/pve/.members lists the LIVE members
+   # with IPs (/etc/pve/nodes/ keeps stale dirs of long-removed nodes — pve01..03 here —
+   # and node NAMES are not in DNS). `ssh -n` so ssh does not eat the loop's stdin;
+   # StrictHostKeyChecking=no because root's known_hosts on a PVE node does not carry
+   # the peers under these names/IPs (PVE's own tooling uses HostKeyAlias) — one-time,
+   # key-auth-only, on the LAN.
+   python3 -c 'import json;d=json.load(open("/etc/pve/.members"));[print(n,v["ip"]) for n,v in d["nodelist"].items() if v.get("online") and n!=d["nodename"]]' \
+   | while read -r n ip; do
+       ssh -n -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no "root@$ip" \
+         "PUBKEY='$PUBKEY'; $(declare -f setup); setup" \
+         || echo "## $n ($ip) failed — paste the setup block on it directly"
+     done
    ```
+   (Do not write `!!` inside double quotes in that shell — history expansion rewrites it,
+   which is what the first version of this block did.)
 4. **Operator API token, same shell** (backlog 14 PR B step 1 — 3 minutes, prints the secret ONCE):
    ```bash
    pveum role add DevEnvOperator -privs "Sys.Audit Sys.Console VM.Audit VM.Config.Options VM.PowerMgmt"
