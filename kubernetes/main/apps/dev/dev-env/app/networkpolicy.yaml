@@ -142,6 +142,9 @@ spec:
               - matchName: "twin-bottom.haynesnetwork"
               - matchName: "pve04.haynesnetwork"
               - matchName: "pve-filet02.haynesnetwork"
+              # HaynesTower (Unraid NAS) — SSH tier (backlog 14, 2026-09-17), same
+              # exact-name discipline as the PVE nodes above.
+              - matchName: "haynestower.haynesnetwork"
               # auth-watch pages via Pushover
               - matchName: "api.pushover.net"
               # ---- sigoalumni.org buildout (sigo-alumni backlog/tooling, 2026-08-05) ----
@@ -329,6 +332,23 @@ spec:
       toPorts:
         - ports:
             - port: "8006"
+              protocol: TCP
+    # 5b. SSH tier (backlog 14, 2026-09-17 — the GPU swap on HaynesIntelligence
+    #    needed dmidecode/lspci/journalctl on the HOST, which no PVE API call can
+    #    run, and PVE 8 lets only root@pam set a raw hostpci id). Port 22 to the five
+    #    PVE nodes (login as the sudo-allowlisted `dev-env` user) and to HaynesTower,
+    #    the Unraid NAS (root — Unraid's only SSH user). The key comes from 1Password
+    #    (dev-env-hw-ssh ES → HW_SSH_PRIVATE_KEY_B64); `hw-ssh` is the entry point.
+    - toFQDNs:
+        - matchName: "haynesintelligence.haynesnetwork"
+        - matchName: "twin-top.haynesnetwork"
+        - matchName: "twin-bottom.haynesnetwork"
+        - matchName: "pve04.haynesnetwork"
+        - matchName: "pve-filet02.haynesnetwork"
+        - matchName: "haynestower.haynesnetwork"
+      toPorts:
+        - ports:
+            - port: "22"
               protocol: TCP
     # 3. HTTPS to the enumerated external names (same set as the DNS rules).
     - toFQDNs:
