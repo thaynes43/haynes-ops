@@ -39,9 +39,6 @@ spec:
               tag: 2026.9.2
             env:
               TZ: America/New_York
-              HASS_HTTP_TRUSTED_PROXY_1: 192.168.40.0/24  # Lab Subnet
-              HASS_HTTP_TRUSTED_PROXY_2: 10.42.0.0/16     # Pod Subnet
-              HASS_HTTP_TRUSTED_PROXY_3: 192.168.0.0/24   # Default Subnet
             envFrom:
               - secretRef:
                   name: home-assistant-secret
