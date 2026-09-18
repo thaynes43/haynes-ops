@@ -36,6 +36,10 @@ configMapGenerator:
       # exporter's PVEAuditor token, operator tier via dev-env@pve!operator (both
       # from the pod env, see helmrelease). dev-init links it to ~/.local/bin/pve.
       - resources/pve.sh
+      # hw-ssh (2026-09-17, backlog 14 SSH tier): ssh wrapper for the non-Talos hardware
+      # (five PVE nodes as the sudo-allowlisted `dev-env` user, HaynesTower/Unraid as
+      # root). Key comes from the pod env (HW_SSH_PRIVATE_KEY_B64), see dev-init.sh.
+      - resources/hw-ssh.sh
   - name: dev-env-config-claude
     files:
       - resources/config/claude/CLAUDE.md

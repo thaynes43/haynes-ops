@@ -154,6 +154,13 @@ spec:
               - secretRef:
                   name: dev-env-proxmox-operator-secret
                   optional: true
+              # HW_SSH_PRIVATE_KEY_B64 — the hardware SSH key (backlog 14 SSH tier,
+              # 2026-09-17): dev-init decodes it to ~/.ssh/dev-env-hw for `hw-ssh`
+              # (PVE nodes as sudo-allowlisted `dev-env`, HaynesTower/Unraid as root).
+              # optional for the same reason as the two above.
+              - secretRef:
+                  name: dev-env-hw-ssh-secret
+                  optional: true
             probes:
               liveness:
                 enabled: true

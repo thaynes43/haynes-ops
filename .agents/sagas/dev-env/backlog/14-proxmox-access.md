@@ -244,3 +244,17 @@ append the ExternalSecret and bounce the pod once.
 **The fence cleanup is still pending** and needs the operator tier:
 `pve delete /cluster/ha/resources/{vm:104,ct:105,ct:106,ct:107,vm:109} --yes`, declared
 with `declare-activity` and logged in the incident report.
+
+### 2026-09-17 — SSH tier added; operator ES lands with it (GPU swap on HaynesIntelligence)
+
+Tom needed to know which of two Zotac 3090s in HaynesIntelligence to pull. The API could
+not answer it: `hardware/pci` has bus addresses but no slot designations, the read token has
+no `Sys.Syslog`, and even the operator token cannot run `dmidecode`/`lspci`/`journalctl` on
+the host or set a raw `hostpci` id (root@pam-only in PVE 8). Ruling (Tom): *"let's do
+HaynesTower (Unraid) while we are there so all my non-talos hardware can be managed by
+dev-env models."* So: one ed25519 key (1Password `dev-env` → `HW_SSH_PRIVATE_KEY_B64`,
+base64 one-line), `dev-env` Linux user + sudo allowlist on the five PVE nodes, root key on
+Unraid, CNP port 22 to the six names, `hw-ssh` wrapper, and the operator-tier ExternalSecret
+appended at last (both gated on Tom's fields; held-draft PR, bounces the pod). Runbook
+section "SSH tier" in `.agents/runbooks/proxmox-access.md` has the provisioning scripts.
+

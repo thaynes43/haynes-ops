@@ -251,6 +251,29 @@ unset _cp_cmd _cp_link
 # pve (2026-09-09, backlog 14): same trap as declare-activity — a mounted script is
 # not a command until it is linked.
 ln -sf /opt/dev-env/scripts/pve.sh "$HOME/.local/bin/pve"
+ln -sf /opt/dev-env/scripts/hw-ssh.sh "$HOME/.local/bin/hw-ssh"
+
+# ── hw-ssh key (2026-09-17, backlog 14 SSH tier) ─────────────────────────────────
+# One ed25519 key for the non-Talos hardware (PVE nodes as `dev-env` + sudo allowlist,
+# HaynesTower as root). It rides the pod env as ONE base64 line
+# (HW_SSH_PRIVATE_KEY_B64 ← 1Password `dev-env`, top-level field; base64 because a
+# multi-line PEM in a 1Password text field is exactly the kind of whitespace/label
+# fragility the cigar token hit) and is written to the PVC with a 0600 mode every
+# boot — ssh refuses a group/world-readable key, and a Secret volume mount would be
+# 0444 under fsGroup. Absent var = no file = `hw-ssh` explains itself; never fatal.
+if [ -n "${HW_SSH_PRIVATE_KEY_B64:-}" ]; then
+  mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+  if printf '%s' "$HW_SSH_PRIVATE_KEY_B64" | tr -d ' \n\r' | base64 -d > "$HOME/.ssh/dev-env-hw.tmp" 2>/dev/null \
+     && grep -q 'PRIVATE KEY' "$HOME/.ssh/dev-env-hw.tmp"; then
+    chmod 600 "$HOME/.ssh/dev-env-hw.tmp" && mv -f "$HOME/.ssh/dev-env-hw.tmp" "$HOME/.ssh/dev-env-hw"
+    log "hw-ssh key materialised → ~/.ssh/dev-env-hw ($(ssh-keygen -lf "$HOME/.ssh/dev-env-hw" 2>/dev/null | awk '{print $2}'))"
+  else
+    rm -f "$HOME/.ssh/dev-env-hw.tmp"
+    log "WARN: HW_SSH_PRIVATE_KEY_B64 is set but does not decode to a private key — check the 1Password field is the base64 of the KEY FILE, one line"
+  fi
+else
+  log "hw-ssh: HW_SSH_PRIVATE_KEY_B64 not in env — SSH tier inactive (1Password dev-env field + pod bounce enables it)"
+fi
 touch "$HOME/.bashrc"
 grep -q 'dev-env/scripts/bashrc.sh' "$HOME/.bashrc" 2>/dev/null \
   || printf '\n[ -f /opt/dev-env/scripts/bashrc.sh ] && . /opt/dev-env/scripts/bashrc.sh\n' >> "$HOME/.bashrc"

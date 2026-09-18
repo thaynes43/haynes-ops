@@ -87,3 +87,109 @@ instead of rebooting them. Log it in the incident report and `declare-activity e
   write in a PR; `--any` exists for reads and for the HA removal above.
 - Do not copy tokens out of other pods. The exporter pod holds the read token too; the
   sanctioned path is the pod env this runbook describes.
+
+## SSH tier (`hw-ssh`) — the hardware itself, PVE nodes + HaynesTower (2026-09-17)
+
+Why it exists: the 2026-09-17 GPU swap on HaynesIntelligence needed `dmidecode -t slot`,
+`lspci -vv` and the previous-boot `journalctl -b -1` on the **host** — no PVE API call runs
+host commands — and PVE 8 lets only `root@pam` set a raw `hostpci` id (a non-root token
+needs a resource mapping root creates first). Tom's ruling the same day: *"all my non-talos
+hardware can be managed by dev-env models"*, so the same key covers the Unraid NAS.
+
+| Host | Login | Tier |
+|---|---|---|
+| haynesintelligence, twin-top, twin-bottom, pve04, pve-filet02 (`.haynesnetwork`) | `dev-env`, key-only | sudo allowlist below; `sudo qm` makes it root-equivalent in practice — the tier of the operator token (Q-1) |
+| haynestower (`.haynesnetwork`, Unraid) | `root`, key-only | Unraid has no other SSH user |
+
+One ed25519 key, `~/.ssh/dev-env-hw`, written by dev-init from `HW_SSH_PRIVATE_KEY_B64`
+(1Password `dev-env`, top-level field = base64 of the private-key file on one line).
+
+```bash
+hw-ssh list
+hw-ssh haynesintelligence sudo dmidecode -t slot        # slot ↔ bus address
+hw-ssh haynesintelligence 'sudo journalctl -b -1 -p err' # previous boot's errors
+hw-ssh pve-all 'sudo qm list'                            # all five nodes
+hw-ssh haynestower 'tail -50 /var/log/syslog'
+hw-ssh haynesintelligence                                # interactive shell as dev-env (never `sudo -i`)
+```
+
+Rules: read first; `declare-activity` before `qm stop|start|set`, `pct`, `ha-manager`, or
+anything touching the Unraid array; never reboot a node or stop the array from here; never
+open an interactive root shell. Sudo allowlist (resolved per node at install time — a tool
+that is not installed is simply absent): `dmidecode lspci journalctl dmesg sensors smartctl
+nvme zpool zfs qm pct pvesh pvecm pvesm ha-manager ipmitool`. Extending it is a PR here plus
+Tom re-running the node script.
+
+### Provisioning (Tom, once)
+
+1. **Key** (laptop):
+   ```bash
+   ssh-keygen -t ed25519 -a 64 -N '' -C dev-env-hw -f ~/.ssh/dev-env-hw
+   base64 < ~/.ssh/dev-env-hw | tr -d '\n'; echo      # → 1Password field value (one line)
+   cat ~/.ssh/dev-env-hw.pub                           # → PUBKEY for the two scripts below
+   ```
+2. **1Password** item `dev-env`: add a TOP-LEVEL text field labelled exactly
+   `HW_SSH_PRIVATE_KEY_B64` = that base64 line. (Nested/section fields do not resolve.)
+3. **PVE — on any ONE node as root** (fans out to the whole cluster over the standard
+   root-to-root node SSH; idempotent, safe to re-run):
+   ```bash
+   PUBKEY='ssh-ed25519 AAAA…  dev-env-hw'        # ← paste the .pub line
+   setup() {
+     set -euo pipefail
+     id dev-env >/dev/null 2>&1 || useradd -m -s /bin/bash dev-env
+     install -d -m 700 -o dev-env -g dev-env /home/dev-env/.ssh
+     printf '%s\n' "$PUBKEY" > /home/dev-env/.ssh/authorized_keys
+     chown dev-env:dev-env /home/dev-env/.ssh/authorized_keys && chmod 600 /home/dev-env/.ssh/authorized_keys
+     passwd -l dev-env >/dev/null 2>&1 || true      # key-only
+     cmds=""
+     for c in dmidecode lspci journalctl dmesg sensors smartctl nvme zpool zfs qm pct pvesh pvecm pvesm ha-manager ipmitool; do
+       p="$(command -v "$c" 2>/dev/null || true)"; [ -n "$p" ] && cmds="${cmds:+$cmds, }$p"
+     done
+     printf 'dev-env ALL=(root) NOPASSWD: %s\n' "$cmds" > /etc/sudoers.d/dev-env
+     chmod 440 /etc/sudoers.d/dev-env && visudo -cf /etc/sudoers.d/dev-env >/dev/null
+     echo "$(hostname): dev-env ok — sudo: $cmds"
+   }
+   ( setup )      # subshell: the function's set -e must not leak into your interactive shell
+   for d in /etc/pve/nodes/*; do n=$(basename "$d"); [ "$n" = "$(hostname)" ] && continue
+     ssh -o BatchMode=yes -o ConnectTimeout=10 "root@$n" "PUBKEY='$PUBKEY'; $(declare -f setup); setup" \
+       || echo "!! $n failed — paste this block on $n directly"
+   done
+   ```
+4. **Operator API token, same shell** (backlog 14 PR B step 1 — 3 minutes, prints the secret ONCE):
+   ```bash
+   pveum role add DevEnvOperator -privs "Sys.Audit Sys.Console VM.Audit VM.Config.Options VM.PowerMgmt"
+   pveum user add dev-env@pve
+   pveum acl modify / -user dev-env@pve -role DevEnvOperator
+   pveum acl modify / -user dev-env@pve -role PVEAuditor
+   pveum user token add dev-env@pve operator -privsep 0
+   ```
+   then 1Password `dev-env`, two more TOP-LEVEL fields: `PROXMOX_OPERATOR_TOKEN_ID` =
+   `dev-env@pve!operator`, `PROXMOX_OPERATOR_TOKEN_SECRET` = the uuid it printed.
+5. **HaynesTower** (Unraid terminal — web UI `>_` or `ssh root@haynestower`; Settings →
+   Management Access → SSH must be *Yes*). `/boot/config/ssh/root.pubkeys` is what Unraid
+   re-installs to `/root/.ssh/authorized_keys` on every boot:
+   ```bash
+   mkdir -p /boot/config/ssh /root/.ssh && chmod 700 /root/.ssh
+   echo 'ssh-ed25519 AAAA…  dev-env-hw' >> /boot/config/ssh/root.pubkeys
+   cat /boot/config/ssh/root.pubkeys > /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+   ```
+6. Merge the held-draft dev-env PR (it bounces the pod). **Not before steps 2 and 4's
+   fields exist** — an ExternalSecret against a missing field fails the Kustomization and
+   pages (2026-09-09 ×3).
+
+### Verify (first session after the bounce)
+
+```bash
+hw-ssh list
+hw-ssh pve-all 'hostname; sudo -n dmidecode -t slot | grep -c Designation'
+hw-ssh haynestower 'uname -a; uptime'
+pve get /access/permissions --raw | grep -o 'Sys.Console'   # operator token live
+```
+`hw-ssh: no key at ~/.ssh/dev-env-hw` = field missing or pod not bounced; `Permission
+denied (publickey)` on one PVE node = the fan-out skipped it, re-run the block on that node;
+`sudo: a password is required` = sudoers file missing on that node.
+
+The GPU swap itself, once this is live: `hw-ssh haynesintelligence sudo dmidecode -t slot`
+gives slot ↔ `0000:41:00.0`; after the physical swap, `sudo qm set 103 -hostpci0
+0000:<new>:00,pcie=1` (VM stopped, `declare-activity` first), `sudo qm start 103`, then
+`kubectl get node talosw01` and `nvidia-smi -L` from a GPU pod should show two boards.
