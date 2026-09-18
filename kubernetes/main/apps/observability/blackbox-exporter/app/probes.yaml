@@ -55,3 +55,23 @@ spec:
     staticConfig:
       static:
         - https://sigoalumni.org
+---
+# gasha01 NFS export (VM 104 on twin-bottom; PVE Ceph hdd_repl_pool behind CephFS). About
+# 30 apps hard-mount gasha01.haynesnetwork:/hdd-nfs-repl (nfsvers=4.2, hard), so a stalled
+# export surfaces as hung pods, never as an NFS alert. tcp_connect on :2049 feeds
+# probe_success; the BlackboxProbeFailed rule in this app's helmrelease.yaml
+# (probe_success == 0 for 15m, critical) has no target selector and covers it without a
+# rule edit. Added 2026-09-17 by the HaynesIntelligence 3090-swap blast-radius audit
+# (#2954, item 5).
+kind: Probe
+apiVersion: monitoring.coreos.com/v1
+metadata:
+  name: gasha01-nfs
+spec:
+  module: tcp_connect
+  prober:
+    url: blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - gasha01.haynesnetwork:2049
