@@ -104,6 +104,18 @@ spec:
               # CM entry retention — the rem-* lane files one order per urgent
               # alert, and a ConfigMap that hits ~1MiB fails EVERY later write.
               OPS_ORDER_RETENTION_DAYS: "14"
+              # wo-* hung-session deadline (haynes-ops#2976). A session that
+              # HANGS never exits, so neither the orphan sweep (window gone) nor
+              # session-launch.sh's lane release (process returned) can see it:
+              # its order stays `claimed` and the single-flight wo lane is held
+              # until someone kills the window by hand. Past this many minutes
+              # with no `order-status.sh <key> working` heartbeat the watcher
+              # marks the order failed — which frees the lane and pages once —
+              # and deliberately LEAVES THE WINDOW for the post-mortem. 180 is
+              # wide margin: the curation playbook bounds a batch at ~45min and
+              # observed runs are 12-70min. esc-* is exempt (idling on a human
+              # is its normal state) and rem-* has respond.sh's rem_watchdog.
+              OPS_WO_STALE_MINUTES: "180"
               # Metered fallback if the plan token is absent/rejected (the
               # session launcher prefers the plan token, respond.sh pattern).
               ANTHROPIC_API_KEY:
@@ -177,10 +189,10 @@ spec:
       # policy, and OPS_FALLBACK_MODEL stays pinned if the alias misbehaves).
       # Timestamps are EPOCH
       # SECONDS (the watcher's sort/TTL selectors do `tonumber?`; ISO strings
-      # silently read as 0 — hit live 2026-08-29). Manual requeue of a FAILED
-      # order must also `tmux kill-window` its post-mortem window first: the
-      # single-flight lane counts any live wo-* window as active and skips
-      # pending keys silently.
+      # silently read as 0 — hit live 2026-08-29). Re-pending a FAILED order is
+      # now all a manual requeue needs: since haynes-ops#2974 the lane gate
+      # reads the ORDER's status, so a post-mortem window no longer counts as
+      # active and does not have to be killed first.
       curation-order:
         type: cronjob
         cronjob:

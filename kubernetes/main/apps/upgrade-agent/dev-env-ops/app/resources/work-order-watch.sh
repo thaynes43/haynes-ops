@@ -41,6 +41,12 @@
 # via order-status.sh; `working` is a non-terminal heartbeat that only bumps
 # `updated`). Re-queue = set status back to pending.
 #
+# A claimed order is closed out by its own session, or by one of three
+# watchdogs — one per way a session can stop serving:
+#   died, window gone   → the orphan sweep below (claimed, no window, >30min)
+#   exited, never told  → session-launch.sh's lane release (#2974)
+#   HUNG, never exits   → wo_watchdog below (#2976), wo-* only, OPS_WO_STALE_MINUTES
+#
 # CLEANUP LIFECYCLE: finished windows are reaped (done >24h — the transcript
 # stays joinable for a day; failed/escalated >7d — it IS the joinable
 # post-mortem), and the reap also removes the session's artifacts:
@@ -63,6 +69,7 @@ ESC_MODEL_DEFAULT="${OPS_ESC_MODEL:-claude-opus-5}"     # esc-* lane
 REM_MODEL_DEFAULT="${OPS_REM_MODEL:-claude-opus-5}"     # rem-* lane
 EFFORT_DEFAULT="${OPS_SESSION_EFFORT:-xhigh}"           # all lanes
 REAP_MAX="${OPS_REAP_MAX_FINISHED:-6}"
+WO_STALE_MIN="${OPS_WO_STALE_MINUTES:-180}"             # wo-* no-heartbeat deadline
 RETENTION_DAYS="${OPS_ORDER_RETENTION_DAYS:-14}"
 DIGEST_INTERVAL_H="${OPS_DIGEST_INTERVAL_H:-24}"
 DIGEST_MAX_PENDING="${OPS_DIGEST_MAX_PENDING:-8}"
@@ -126,6 +133,81 @@ lane_active() {  # $1=wo|esc|rem  $2=CM .data snapshot (defaults to this poll's 
     esac
   done
   return 1
+}
+
+# wo_stale <cm-data-json> <now-epoch> — the wo-* orders that are `claimed` and
+# have not been heard from for WO_STALE_MIN minutes. One key per line; pure (it
+# reads nothing and changes nothing), so the selftest can drive it directly.
+#
+# WHY (#2976, the shape #2974 left behind): #2974 closed out a session that
+# EXITS without reporting (session-launch.sh's lane release) and one whose
+# window is GONE (the orphan sweep below). Neither sees a session that HANGS —
+# wedged on a 529 retry loop, a login prompt, a tool call that never returns.
+# Its order stays `claimed` and its window stays live, so lane_active() reads
+# the wo lane busy forever and every later order sits `pending` in silence:
+# the 2026-09-17 stall again, but with a session that never even finishes.
+#
+# SCOPE — wo-* ONLY, deliberately:
+#   esc-*  EXEMPT. An escalation session idling for hours while it waits on a
+#          human IS its normal state, and failing it out would discard the
+#          joinable session Tom was paged with.
+#   rem-*  already covered by respond.sh's rem_watchdog (claimed >
+#          REM_RUNNING_DEADLINE_MIN → failed + escalate). Two watchdogs on one
+#          lane would race for the same order.
+#
+# DEADLINE. A session refreshes `updated` with `order-status.sh <key> working`
+# (ops-claude.md's heartbeat), so a healthy long job keeps itself alive. The
+# curation playbook bounds a batch at ~45min and observed runs are 12-70min, so
+# the 180min default is wide margin rather than a race. Tune with
+# OPS_WO_STALE_MINUTES (HelmRelease env) — never below the longest legitimate
+# silent stretch of a wo-* order.
+#
+# FAIL-SAFE, and it points one way: do nothing unless the order is positively
+# readable as claimed AND its `updated` parses as a number older than the
+# deadline. An unreadable CM this poll ({}), an entry whose JSON does not parse,
+# a missing or non-numeric `updated`, pending, a fresh heartbeat, or any
+# terminal status yields NOTHING. Holding a lane one more poll is cheap; failing
+# a live session's order out from under it is not.
+wo_stale() {
+  local snap="${1-}" now="${2-0}"
+  [ -n "$snap" ] || snap='{}'
+  printf '%s' "$snap" | jq -r --argjson now "${now:-0}" \
+      --argjson max "$(( ${WO_STALE_MIN:-180} * 60 ))" '
+    to_entries[]
+    | select(.key | startswith("wo-"))
+    | select((.value | fromjson? // {}) as $o
+        | ($o.status? // "") == "claimed"
+          and ((($o.updated? // "") | tonumber?) // 0) > 0
+          and ((($o.updated? // "") | tonumber?) // 0) < ($now - $max))
+    | .key' 2>/dev/null
+}
+
+# wo_watchdog <cm-data-json> <now-epoch> — act on wo_stale's verdict.
+#
+# ACTS EXACTLY ONCE per order: `failed` is terminal, so the selector can never
+# match that key again (the same one-shot property the rem watchdog relies on).
+#
+# It does NOT kill the window. Since #2974 a terminal order no longer holds its
+# lane, so marking the order `failed` is the whole fix: the lane frees on this
+# poll and the transcript stays joinable for the existing 7d post-mortem reap —
+# which is exactly what someone debugging a wedged session wants. Killing a
+# process we cannot prove is dead stays the one thing this must not do.
+#
+# Routed through order-status.sh so the wo-* `failed` policy lives in ONE place:
+# it pages once, which is what a lane held for three hours is worth. A window
+# that is GONE is not ours — that is the orphan sweep's 30min case, and skipping
+# it here is what keeps one dead session from producing two pages in one poll.
+wo_watchdog() {
+  local key
+  for key in $(wo_stale "$1" "$2"); do
+    win_exists "$key" || continue
+    log "wo-watchdog: $key has been claimed with no heartbeat for >${WO_STALE_MIN}min — presumed hung; marking failed so the wo lane frees (window left open for the post-mortem)."
+    oplog watchdog "$key" what=wo-stale deadline_min="$WO_STALE_MIN"
+    bash /opt/dev-env-ops/order-status.sh "$key" failed \
+      "stale-lane watchdog: no heartbeat for ${WO_STALE_MIN}m — session presumed hung; window left open for post-mortem. It never exited, so nothing else would ever close this order and the wo lane was held. Treat the work as INCOMPLETE and re-queue the order (set it back to pending) if it still matters; join tmux '${key}' on the dev-env-ops pod to see where it wedged." \
+      >/dev/null 2>&1 \
+      || log "wo-watchdog: could NOT close out $key — retries next poll."
+  done
 }
 
 # clean_artifacts <key> — the session's on-PVC leftovers: the order JSON, the
@@ -207,7 +289,7 @@ spawn_session() {  # $1=key $2=order-json-string
 }
 
 last_login_probe=0
-log "watcher up (cm=$NS/$CM poll=${POLL}s wo-model=$MODEL_DEFAULT esc-model=$ESC_MODEL_DEFAULT rem-model=$REM_MODEL_DEFAULT effort=$EFFORT_DEFAULT reap-max=$REAP_MAX retention=${RETENTION_DAYS}d digest=${DIGEST_INTERVAL_H}h/${DIGEST_MAX_PENDING})"
+log "watcher up (cm=$NS/$CM poll=${POLL}s wo-model=$MODEL_DEFAULT esc-model=$ESC_MODEL_DEFAULT rem-model=$REM_MODEL_DEFAULT effort=$EFFORT_DEFAULT reap-max=$REAP_MAX retention=${RETENTION_DAYS}d digest=${DIGEST_INTERVAL_H}h/${DIGEST_MAX_PENDING} wo-stale=${WO_STALE_MIN}m)"
 oplog watchdog '-' what=watcher-up wo_model="$MODEL_DEFAULT" esc_model="$ESC_MODEL_DEFAULT" rem_model="$REM_MODEL_DEFAULT"
 while true; do
   data="$(kubectl -n "$NS" get cm "$CM" -o json 2>/dev/null | jq -c '.data // {}' 2>/dev/null)" || data='{}'
@@ -252,6 +334,13 @@ while true; do
       esac
     fi
   done
+
+  # 1b. HUNG-SESSION WATCHDOG (#2976): a wo-* session that never exits holds its
+  #     lane forever — the orphan sweep needs the window GONE and the reap only
+  #     touches terminal orders, so nothing above can see it. Runs before the
+  #     spawn step so a freed lane is used on this same poll. wo-* only: esc-*
+  #     idling on a human is normal, rem-* has respond.sh's rem_watchdog.
+  wo_watchdog "$data" "$now"
 
   # 2. Reap finished sessions: done >24h keeps the transcript joinable for a day;
   #    failed/escalated stay 7d (they ARE the joinable post-mortem). Reaping also

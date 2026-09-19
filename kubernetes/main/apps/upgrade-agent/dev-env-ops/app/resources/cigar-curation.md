@@ -8,9 +8,11 @@ users never do catalog data entry; you do, attributably and reversibly.
 ## Setup — the service token (PVC state, read-only)
 
 - State file: `~/.local/state/cigar-curation/token.json` on this pod's PVC —
-  `{"access_token": "...", "expires_at": "<ISO8601>", "token_id": "<uuid>"}`.
-  An operator-minted service token (cigar-journal ADR-011), curation-scoped,
-  ~90 days, with NO refresh chain.
+  `{"access_token": "...", "expires_at": "<ISO8601>" | null, "token_id":
+  "<uuid>"}` (`token_id` optional). An operator-minted service token
+  (cigar-journal ADR-011), curation-scoped, with NO refresh chain.
+  `expires_at: null` means NO EXPIRY — valid until revoked (owner ruling
+  2026-09-19, ADR-011 amendment); a date means a dated token, ~90 days.
 - **READ IT. NEVER WRITE IT.** This replaced a rotating refresh token on
   2026-08-30 for one reason: the old model required this agent to write a
   rotated secret back to disk mid-session, and on 2026-08-30 an agent lost
@@ -25,9 +27,11 @@ users never do catalog data entry; you do, attributably and reversibly.
   (cigar-journal ADR-011) — expiry or revocation, NOT an agent error"` and
   stop. Never guess at auth, and never mint one yourself: minting is an
   operator action requiring an interactive terminal, by design.
-- Check `expires_at` at session start. Inside 14 days, still do the run, but
-  say so in your close-out note so the coordinator re-mints before it lapses.
-  The daily credential-expiry CronJob also watches it by lifetime.
+- Check `expires_at` at session start only when it IS a date: inside 14 days,
+  still do the run, but say so in your close-out note so the coordinator
+  re-mints before it lapses. `null` has nothing to check and nothing to report.
+  The daily credential-expiry CronJob watches it either way, reporting a
+  no-expiry token as `status=no-expiry`.
 - MCP endpoint: `https://cigars.haynesnetwork.com/mcp` (Streamable HTTP,
   bearer). Register per session: `claude mcp add --transport http cigars
   https://cigars.haynesnetwork.com/mcp --header "Authorization: Bearer
