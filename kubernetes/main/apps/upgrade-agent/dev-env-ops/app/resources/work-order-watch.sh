@@ -24,7 +24,10 @@
 # key; for rem-* only the tmux window is named (there is no registration).
 #
 # LANES: each lane is SINGLE-FLIGHT (at most one active wo-*, one esc-* and one
-# rem-* session; oldest pending first). wo single-flight is the shepherd's drain
+# rem-* session; oldest pending first). "Active" is a live SESSION, not a live
+# WINDOW — a finished session's window is kept on purpose (see CLEANUP
+# LIFECYCLE) and must not pin its lane; lane_active() settles that from the
+# order's status. wo single-flight is the shepherd's drain
 # rule (cluster-infra moves one unit at a time); esc single-flight serializes
 # same-root-cause escalations from different writers into one open session at a
 # time — and an escalation is never stuck behind a long-running upgrade session.
@@ -63,6 +66,7 @@ REAP_MAX="${OPS_REAP_MAX_FINISHED:-6}"
 RETENTION_DAYS="${OPS_ORDER_RETENTION_DAYS:-14}"
 DIGEST_INTERVAL_H="${OPS_DIGEST_INTERVAL_H:-24}"
 DIGEST_MAX_PENDING="${OPS_DIGEST_MAX_PENDING:-8}"
+BUSY_LOG_INTERVAL="${OPS_BUSY_LOG_INTERVAL:-1800}"      # per-lane "still busy" log rate limit
 ORDERS_DIR="${HOME}/work/orders"
 REPO_CANON="${HOME}/repos/haynes-ops"
 
@@ -87,7 +91,42 @@ update_status() {  # $1=key $2=status $3=note ; rc!=0 = did not durably land.
 }
 
 win_exists()  { tmux list-windows -t ops -F '#W' 2>/dev/null | grep -qx "$1"; }
-lane_active() { tmux list-windows -t ops -F '#W' 2>/dev/null | grep -q "^$1-"; }  # $1=wo|esc|rem
+
+# lane_active <lane> [cm-data-json] — rc0 when the lane holds a window that is
+# still WORKING. NOT "a window exists": windows deliberately outlive their
+# sessions (session-launch.sh ends in `exec bash` so the transcript stays
+# joinable, and the reap in step 2 keeps a done window 24h / a failed or
+# escalated one 7d), so a window is only evidence of a live session while its
+# ORDER is non-terminal. The order's status in the CM is the authority.
+#
+# WHY (2026-09-19): `wo-cigar-curate-20260917` finished, marked its order done,
+# and sat idle at its prompt. The plain window test counted it, so the wo lane
+# read busy for the whole 24h reap TTL and the next two DAILY curate orders
+# (-20260918, -20260919) were skipped without a word — the lane only recovered
+# when the window was killed by hand. Same stall on 2026-09-06 with a window
+# whose session had DIED: nothing closes a `claimed` order whose window still
+# exists, so that one would have pinned the lane until the pod restarted (the
+# other half of this fix is the close-out in session-launch.sh).
+#
+# FAIL-SAFE: anything we cannot positively read as terminal counts as ACTIVE —
+# an unreadable CM this poll ({}), a key removed by retention, pending, claimed,
+# or a status we do not recognise. Never double-spawn a lane on a guess.
+# Sets $LANE_HOLDER to the window that held the lane (and why), for the skip log.
+lane_active() {  # $1=wo|esc|rem  $2=CM .data snapshot (defaults to this poll's $data)
+  local lane="$1" snap="${2-${data-}}" w st
+  LANE_HOLDER=""
+  [ -n "$snap" ] || snap='{}'
+  for w in $(tmux list-windows -t ops -F '#W' 2>/dev/null | grep "^${lane}-"); do
+    st="$(printf '%s' "$snap" | jq -r --arg k "$w" \
+      '(.[$k] // "") | (fromjson? // {}) | .status // "unknown"' 2>/dev/null)"
+    case "$st" in
+      done|failed|escalated) ;;   # post-mortem artifact awaiting the reap — not a session
+      *) LANE_HOLDER="$w ($st)"   # pending/claimed/unknown — busy, or unverifiable
+         return 0 ;;
+    esac
+  done
+  return 1
+}
 
 # clean_artifacts <key> — the session's on-PVC leftovers: the order JSON, the
 # headless transcript, and the ~/work/<key> worktree/dir. Idempotent and quiet
@@ -296,16 +335,26 @@ while true; do
   fi
 
   # 3. Spawn per lane (wo-*, esc-*, rem-*): oldest pending, only when that lane
-  #    has no active window (single-flight per lane — see header). esc first so a
-  #    human-needed escalation is never queued behind autonomous work.
+  #    is not already running one (single-flight per lane — see lane_active).
+  #    esc first so a human-needed escalation is never queued behind autonomous work.
   for lane in esc wo rem; do
-    lane_active "$lane" && continue
     key="$(printf '%s' "$data" | jq -r --arg p "^${lane}-" '
         to_entries | map(select(.key | test($p))
                          | select((.value|fromjson? // {}) | .status=="pending"))
         | sort_by((.value|fromjson? // {}) | ((.created // "0")|tonumber? // 0))
         | .[0].key // empty' 2>/dev/null)"
     [ -n "$key" ] || continue
+    if lane_active "$lane"; then
+      # A skipped order used to be INVISIBLE: the 2026-09-17 stall pinned the wo
+      # lane for a day before anyone noticed two curate orders had gone nowhere.
+      # Rate-limited per lane so a legitimately busy one does not flood stdout.
+      busy_var="last_busy_log_${lane}"
+      if [ $(( now - ${!busy_var:-0} )) -ge "$BUSY_LOG_INTERVAL" ]; then
+        printf -v "$busy_var" '%s' "$now"
+        log "lane $lane busy — $key stays pending (held by $LANE_HOLDER)"
+      fi
+      continue
+    fi
     order="$(printf '%s' "$data" | jq -r --arg k "$key" '.[$k]' 2>/dev/null)"
     oplog filed "$key" source="$(printf '%s' "$order" | jq -r '.source // "?"' 2>/dev/null)" class="$(printf '%s' "$order" | jq -r '.class // "?"' 2>/dev/null)"
     if update_status "$key" claimed "session spawning"; then
