@@ -18,9 +18,17 @@
 #      no psql, the runner is piped into the CNPG primary via `kubectl exec -i`,
 #      which is where a real psql lives.
 #
-# The only edit made to the extracted scripts is the `WORK=/work` line, which is
-# repointed at a temp dir because /work is an emptyDir that only exists inside
-# the Job. The psql/curl argv is executed verbatim.
+# Two edits are made to the extracted scripts, and only two:
+#
+#   * `WORK=/work` is repointed at a temp dir, because /work is an emptyDir that
+#     only exists inside the Job.
+#   * for the fixture cases, `FROM oauth_access_token t` is swapped for a VALUES
+#     table, so rows the live database cannot supply (a NULL expires_at while
+#     the production column is still NOT NULL, a fully revoked credential set)
+#     can be driven through the real SQL and the real shell branching. Nothing
+#     is ever written to the database.
+#
+# The psql/curl argv is executed verbatim.
 #
 # The GitHub half stubs `curl` (there is no way to conjure a token of each shape
 # on demand) but stubs it at the HTTP boundary only: the header parsing, the
@@ -159,22 +167,35 @@ PG_POD="${PG_POD:-$(kubectl get cluster -n "$PG_NAMESPACE" "$PG_CLUSTER" -o json
 [ -n "$PG_POD" ] || { echo "could not resolve the $PG_CLUSTER primary" >&2; exit 2; }
 echo "  primary: $PG_NAMESPACE/$PG_POD"
 
-# The Job no longer pins a client id — it selects every live token whose
-# lifetime exceeds OAUTH_MIN_LIFETIME_HOURS — so the fixture is the LABEL the
-# script will print for whatever long-lived credential exists right now.
-# Resolved at run time, exactly as the Job resolves it, so these assertions
-# survive the ADR-010 cutover from dev-env-cli to the new service client.
-LIVE_CRED="$(kubectl exec -i -n "$PG_NAMESPACE" "$PG_POD" -c postgres -- \
-  psql -X -At -d "$PG_DB" <<SQL || true
-SELECT regexp_replace(coalesce(c.client_name, t.client_id), '\s+', '_', 'g')
+# The Job no longer pins a client id — it selects every live token that no grant
+# issued, whether it outlives OAUTH_MIN_LIFETIME_HOURS or has no expiry at all —
+# so the fixture is the LABEL the script will print for whatever long-lived
+# credential exists right now. Resolved at run time, exactly as the Job resolves
+# it, so these assertions survive the ADR-010 cutover from dev-env-cli to the
+# service clients AND the later re-mint of those with a NULL expires_at.
+#
+# The two shapes are resolved separately because they assert different lines: a
+# DATED credential counts down and can be pushed over the lead, a NO-EXPIRY one
+# prints days_left=- at any lead and never fails. The `IS NULL` predicate is
+# legal against today's NOT NULL column too (it is simply always false), so this
+# query answers on both schemas.
+LIVE_ROWS="$(kubectl exec -i -n "$PG_NAMESPACE" "$PG_POD" -c postgres -- \
+  psql -X -At -F '|' -d "$PG_DB" <<SQL || true
+SELECT bool_or(t.expires_at IS NULL),
+       regexp_replace(coalesce(c.client_name, t.client_id), '\s+', '_', 'g')
   FROM oauth_access_token t
   LEFT JOIN oauth_client c ON c.client_id = t.client_id
- WHERE t.revoked_at IS NULL AND t.expires_at > now()
-   AND t.expires_at - t.created_at > interval '24 hours'
- ORDER BY t.expires_at DESC LIMIT 1;
+ WHERE t.revoked_at IS NULL
+   AND (t.expires_at IS NULL
+        OR (t.expires_at > now()
+            AND t.expires_at - t.created_at > interval '24 hours'))
+ GROUP BY 2
+ ORDER BY 2;
 SQL
 )"
-echo "  live long-lived credential: ${LIVE_CRED:-<none>}"
+LIVE_DATED="$(printf '%s\n' "$LIVE_ROWS" | awk -F'|' '$1=="f"{print $2; exit}')"
+LIVE_NOEXP="$(printf '%s\n' "$LIVE_ROWS" | awk -F'|' '$1=="t"{print $2; exit}')"
+echo "  live long-lived credentials: dated=[${LIVE_DATED:-<none>}] no-expiry=[${LIVE_NOEXP:-<none>}]"
 
 runner="$TMP/runner.sh"
 {
@@ -187,14 +208,63 @@ runner="$TMP/runner.sh"
   echo 'command -v psql >/dev/null || { echo "NO REAL PSQL IN THIS CONTAINER" >&2; exit 2; }'
   echo 'psql --version | sed "s/^/  /"'
   cat <<'RUNNER'
-# run_case <label> <pat-status> <min-lifetime-hours> <lead> <dsn>
+# run_case <label> <pat-status> <min-lifetime-hours> <lead> <dsn> [fixture-FROM]
+#
+# With a 6th argument, `FROM oauth_access_token t` is swapped for a VALUES table
+# before the script runs — the same substitution phases 3 and 4 make on the bare
+# SQL, except that here the WHOLE script runs, so the shell branch and the exit
+# code are asserted too, on rows the live database cannot supply. Read-only:
+# a VALUES table creates nothing.
 run_case() {
   printf 'CASE\t%s\n' "$1"
   printf '%s' "$2" > "$W/pat-status"
+  cp "$W/db.sh" "$W/case.sh"
+  if [ -n "${6:-}" ]; then
+    sed -i "s#FROM oauth_access_token t#FROM ${6}#" "$W/case.sh"
+    # A silently unsubstituted fixture would run against the live table and the
+    # assertion would then be measuring the wrong thing. Fail the case loudly.
+    grep -q 'FROM oauth_access_token t' "$W/case.sh" && {
+      printf 'OUT\tFIXTURE SUBSTITUTION FAILED\n'; printf 'EXIT\t99\n'; return; }
+  fi
   ( export OAUTH_MIN_LIFETIME_HOURS="$3" OAUTH_LEAD_DAYS="$4" PAT_LEAD_DAYS=14 DATABASE_URL="$5"
-    bash "$W/db.sh" ) 2>&1 | sed 's/^/OUT\t/'
+    bash "$W/case.sh" ) 2>&1 | sed 's/^/OUT\t/'
   printf 'EXIT\t%s\n' "${PIPESTATUS[0]}"
 }
+
+# ── fixtures for the nullable-expires_at schema (owner ruling 2026-09-19) ─────
+# cigar-journal is making oauth_access_token.expires_at NULLABLE and re-minting
+# both service tokens with NULL — "no expiry, valid until revoked". Production's
+# column is still NOT NULL, so these rows cannot exist there yet; they stand in
+# for the table so the monitor can be proven correct on the new schema BEFORE
+# the app change deploys.
+FX_COLS="AS t(client_id, expires_at, created_at, revoked_at)"
+# One service token re-minted with no expiry. The lifetime predicate cannot see
+# a NULL row at all; the NULL arm of the WHERE clause must.
+FX_NOEXP="(VALUES \
+  ('dev-env-pod', NULL::timestamptz, now() - interval '30 days', NULL::timestamptz) \
+) $FX_COLS"
+# Mid-rotation, ONE client: the no-expiry re-mint beside the dated row it
+# supersedes and which nobody has revoked yet. The client must read no-expiry,
+# not a 3-day countdown — the max()-not-min() reasoning, one step further.
+FX_NOEXP_SUPERSEDES="(VALUES \
+  ('dev-env-pod', NULL::timestamptz,         now() - interval '1 day',   NULL::timestamptz), \
+  ('dev-env-pod', now() + interval '3 days', now() - interval '27 days', NULL::timestamptz) \
+) $FX_COLS"
+# Half-finished rotation across TWO clients: one re-minted, one still dated and
+# inside the lead. The dated one must keep counting down and keep failing — a
+# rotation is finished only when the old token is revoked.
+FX_NOEXP_PLUS_OTHER="(VALUES \
+  ('dev-env-pod',    NULL::timestamptz,         now() - interval '1 day',   NULL::timestamptz), \
+  ('dev-env-curate', now() + interval '3 days', now() - interval '87 days', NULL::timestamptz) \
+) $FX_COLS"
+# Everything dead: a revoked no-expiry token, a revoked dated one, and an
+# expired one. A revoked NULL row is NOT a live credential, so the result set is
+# empty and none-found must still fail.
+FX_ALL_DEAD="(VALUES \
+  ('dev-env-pod',    NULL::timestamptz,          now() - interval '1 day',   now()), \
+  ('dev-env-curate', now() + interval '30 days', now() - interval '60 days', now()), \
+  ('dev-env-cli',    now() - interval '1 day',   now() - interval '31 days', NULL::timestamptz) \
+) $FX_COLS"
 RUNNER
   echo "GOOD_DSN='postgresql:///${PG_DB}?host=${PG_SOCKET_DIR}'"
   echo "BAD_DSN='postgresql://127.0.0.1:1/nope?connect_timeout=3'"
@@ -202,12 +272,23 @@ RUNNER
   # not rot as the real token counts down.
   echo "run_case oauth-ok             skip 24 0     \"\$GOOD_DSN\""
   echo "run_case oauth-expiring       skip 24 99999 \"\$GOOD_DSN\""
-  # A threshold no real token can clear -> the empty result set, which must FAIL
-  # rather than read as "nothing is expiring". This is the branch the pinned
-  # client id used to reach as `expired` after a cutover, and the one that now
-  # fires only when there genuinely is no long-lived credential.
-  echo "run_case oauth-none-found     skip 100000 7 \"\$GOOD_DSN\""
+  # The empty result set, which must FAIL rather than read as "nothing is
+  # expiring". This is the branch the pinned client id used to reach as
+  # `expired` after a cutover, and the one that now fires only when there
+  # genuinely is no long-lived credential of EITHER kind.
+  #
+  # It is driven by a fixture rather than by an unclearable
+  # OAUTH_MIN_LIFETIME_HOURS: a NULL-expiry row bypasses the lifetime predicate
+  # by design, so once the service tokens are re-minted no threshold empties the
+  # live result set — which is the whole point of the change, and would have
+  # quietly turned this case into a no-op assertion.
+  echo "run_case oauth-none-found     skip 24 7 \"\$GOOD_DSN\" \"\$FX_ALL_DEAD\""
   echo "run_case oauth-db-unreachable skip 24 7 \"\$BAD_DSN\""
+  # The nullable-expires_at schema, end to end: SQL, shell branch, exit code.
+  echo "run_case oauth-no-expiry            skip 24 7     \"\$GOOD_DSN\" \"\$FX_NOEXP\""
+  echo "run_case oauth-no-expiry-any-lead   skip 24 99999 \"\$GOOD_DSN\" \"\$FX_NOEXP\""
+  echo "run_case oauth-no-expiry-supersedes skip 24 7     \"\$GOOD_DSN\" \"\$FX_NOEXP_SUPERSEDES\""
+  echo "run_case oauth-no-expiry-plus-other skip 24 7     \"\$GOOD_DSN\" \"\$FX_NOEXP_PLUS_OTHER\""
   for st in skip none ephemeral unknown-shape unauthorized unreachable; do
     echo "run_case pat-$st '$st' 24 0 \"\$GOOD_DSN\""
   done
@@ -235,21 +316,50 @@ expect() {
 
 # The blocker regression guard: with the -c form these report db-unreachable and
 # exit 1 instead of reading the credential at all.
-O="credential=${LIVE_CRED:-NO-LIVE-CREDENTIAL} days_left=[0-9-]+ lead=[0-9]+ status="
 N='credential=long-lived-oauth days_left=[0-9-]+ lead=[0-9]+ status='
 P='credential=RELEASE_PLEASE_TOKEN days_left=[0-9-]+ lead=[0-9]+ status='
 
-if [ -n "$LIVE_CRED" ]; then
-  expect oauth-ok           "${O}ok"                    0
-  expect oauth-expiring     "${O}expiring"              1
-else
+if [ -z "$LIVE_DATED" ] && [ -z "$LIVE_NOEXP" ]; then
   # Not a harness gap: no long-lived credential at all is itself the fault this
   # Job pages about, so say so loudly rather than skipping quietly.
-  bad "oauth-ok / oauth-expiring" "no long-lived credential exists in $PG_DB right now"
+  bad "live long-lived credential" "none of either kind exists in $PG_DB right now"
+fi
+
+# oauth-expiring runs at lead 99999, which pushes every DATED credential over
+# the line and fails the Job. With only no-expiry credentials live there is
+# nothing to push, and the run is correctly green.
+EXPIRING_EXIT=0
+if [ -n "$LIVE_DATED" ]; then EXPIRING_EXIT=1; fi
+
+if [ -n "$LIVE_DATED" ]; then
+  D="credential=${LIVE_DATED} days_left=[0-9]+ lead=[0-9]+ status="
+  expect oauth-ok         "${D}ok"        0
+  expect oauth-expiring   "${D}expiring"  "$EXPIRING_EXIT"
+else
+  printf '  SKIP  oauth-ok / oauth-expiring on a dated credential (none live right now)\n'
+fi
+if [ -n "$LIVE_NOEXP" ]; then
+  # No lead can make a no-expiry credential expiring, and it never fails.
+  X="credential=${LIVE_NOEXP} days_left=- lead=[0-9]+ status=no-expiry"
+  expect oauth-ok         "$X" 0
+  expect oauth-expiring   "$X" "$EXPIRING_EXIT"
+else
+  printf '  SKIP  live no-expiry credential (none exists yet; fixtures below cover it)\n'
 fi
 expect oauth-none-found     "${N}none-found"            1
 expect oauth-db-unreachable "${N}db-unreachable"        1
 expect oauth-db-unreachable '\[psql\] '                 1
+
+# The nullable schema, driven off fixtures. These assert the full contract the
+# owner ruled on 2026-09-19: a NULL expires_at is a live credential, it reports
+# days_left=- status=no-expiry, it does not fail, it wins over a superseded
+# dated row on the same client, and it does not rescue a dated token that is
+# still expiring under a DIFFERENT client.
+expect oauth-no-expiry            'credential=dev-env-pod days_left=- lead=7 status=no-expiry'      0
+expect oauth-no-expiry-any-lead   'credential=dev-env-pod days_left=- lead=99999 status=no-expiry'  0
+expect oauth-no-expiry-supersedes 'credential=dev-env-pod days_left=- lead=7 status=no-expiry'      0
+expect oauth-no-expiry-plus-other 'credential=dev-env-pod days_left=- lead=7 status=no-expiry'      1
+expect oauth-no-expiry-plus-other 'credential=dev-env-curate days_left=[0-9]+ lead=7 status=expiring' 1
 
 expect pat-skip             "${P}not-configured"        0
 expect pat-none             "${P}no-expiry"             0
@@ -272,6 +382,10 @@ expect pat-garbage          "${P}unparseable-expiry"    1
 #      the older row and keep paging for a month after a re-mint fixed things.
 #   2. The lifetime line. A 1h grant-issued row must not appear at all, or every
 #      ChatGPT session would show up as a credential to babysit.
+#
+# The third claim of the same family — a NULL expires_at outranks every dated
+# row on its client — is asserted end to end in phase 2 instead, because it has
+# a shell branch and an exit code to prove as well as an aggregate.
 ##############################################################################
 section "phase 3: newest live token wins, and only long-lived ones count"
 
@@ -310,7 +424,8 @@ fi
 # KEEPS its client row for the audit trail, so a pinned watch sees a client that
 # still exists with no live token and reports `expired` every morning forever,
 # while the new 365-day credential goes unwatched. Selecting by lifetime instead
-# follows the credential across the cutover with no edit.
+# follows the credential across the cutover with no edit. (The successor to that
+# 365-day token has no expiry at all; that shape is phase 2's fixture cases.)
 ##############################################################################
 section "phase 4: the ADR-010 cutover state"
 
