@@ -119,7 +119,7 @@ pod_is_stale_corpse() {  # $1=ns $2=pod ; rc0 = drop from the coordination set
 #
 # Observed 2026-09-19 (esc-shepherd-99e57e39): the credential monitor exited 1 at 12:00Z
 # (dev-env-cli, 7 days left — a true positive, already paged by its own alert at 08:07
-# ET). The owner's same-day fix to the ALERT TEXT (#2970, prometheusrule.yaml only)
+# ET). A same-day fix to the ALERT TEXT (#2970, prometheusrule.yaml only, dev session)
 # merged at 14:22Z, inside the lookback; the 14:30Z triage attributed the pod to it,
 # summoned remediate, which correctly broke glass ("needs a human token re-mint"), and
 # the no-PR outcome escalated — a second page for a condition the alert had already

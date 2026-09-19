@@ -258,8 +258,9 @@ name and the days left.
   `status=ok` for the rest, the `pat` init container exited 0, and the Job is the
   newest for its CronJob, one attempt (`backoffLimit: 0`). The triage lane called it
   upgrade-attributable because SOME merge touched the cigar-journal path in its 3h
-  lookback — 2026-09-19 (`esc-shepherd-99e57e39`) that merge was the owner's own fix
-  to the alert's description text (#2970), landed two hours AFTER the Job failed.
+  lookback — 2026-09-19 (`esc-shepherd-99e57e39`) that merge was the dev session's
+  fix to the alert's description text (#2970), made while triaging the page and
+  landed two hours AFTER the Job failed.
   Since #2971 the pod template carries
   `upgrade-agent.haynesnetwork.com/failure-is-the-alert` and coordination drops the
   Failed pod; a pod of this CronJob still sitting in a coordination set means that
