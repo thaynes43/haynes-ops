@@ -7,8 +7,11 @@
 #             or RC SESSION is necessary" (Tom, 2026-08-23). It still lands in
 #             the quiet digest.
 #   working   NOT terminal. A heartbeat for a long job: refreshes `updated` so
-#             the stale-lane watchdog does not mistake "still fixing" for
-#             "died". No page. Call it if you will be busy more than ~30min.
+#             the stale-lane watchdogs do not mistake "still fixing" for "died"
+#             — rem-* at 120min (respond.sh `rem_watchdog` → failed+escalate),
+#             wo-* at OPS_WO_STALE_MINUTES, 180 by default (work-order-watch.sh
+#             `wo_watchdog` → failed, which frees the lane and pages once).
+#             No page. Call it if you will be busy more than ~30min.
 #   escalate  terminal for this order, and the ONLY route from an autonomous
 #             remediation to a human: marks the order `escalated` and files a
 #             real esc-* order, which the watcher turns into a joinable Remote

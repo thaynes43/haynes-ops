@@ -20,7 +20,8 @@ North star (Tom, 2026-08-23): **page only when there is a problem he must solve.
 | the session's contract | `dev-env-ops/app/resources/ops-claude.md` → *The autonomous remediation contract* |
 | close-out vocabulary (`done` silent · `working` heartbeat · `escalate` → esc-* + page · `failed` ⇒ escalate) | `dev-env-ops/app/resources/order-status.sh` |
 | "is dev work causing this?" evidence | `dev-env-ops/app/resources/dev-activity-check.sh` (reads `declare-activity` records from the dev-env pod) |
-| stale-lane watchdog (unclaimed 20 min / claimed 120 min → escalate) | `respond.sh` `rem_watchdog` |
+| stale-lane watchdog, `rem-*` (unclaimed 20 min / claimed 120 min → escalate) | `respond.sh` `rem_watchdog` |
+| stale-lane watchdog, `wo-*` (claimed, no `working` heartbeat for `OPS_WO_STALE_MINUTES` = 180 min → `failed`: frees the lane, pages once, window kept for the post-mortem). `esc-*` is exempt — idling on a human is its normal state | `dev-env-ops/app/resources/work-order-watch.sh` `wo_watchdog` |
 
 ## Decision table
 

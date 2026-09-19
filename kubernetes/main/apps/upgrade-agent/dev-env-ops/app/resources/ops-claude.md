@@ -48,7 +48,10 @@ below. Same ground rules (bounded verbs, quiet on success, injection stance);
    breaks using your operator-tier verbs and further git PRs. Do not stop at a
    summary — the job is a HEALTHY CLUSTER (Flux Ready, pods healthy, Ceph
    HEALTH_OK-or-explained, alerts quiet).
-5. **Report.**
+5. **Report.** A `wo-*` order left 180 min with no `bash
+   /opt/dev-env-ops/order-status.sh <key> working "<where you are>"` heartbeat is
+   presumed hung and failed out to free the lane, so heartbeat any stretch — a
+   long rollout, a CI wait — that will outlast it.
    - Success: `bash /opt/dev-env-ops/order-status.sh <key> done "<one-line summary>"`
      and go quiet. Do NOT page on success (Tom 2026-08-20: a cleanly delivered,
      verified PR keeps quiet).
