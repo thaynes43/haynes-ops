@@ -19,13 +19,15 @@
 # WANT him do. Promotion (order-status.sh <key> escalate) files a real esc-*
 # order, so the escalation path is the SAME proven mechanism, not a second one.
 #
-# GUARANTEED OUTCOME (rem-* only, and this is the load-bearing safety property):
-# a remediation that dies, times out, or simply forgets to report must NOT
-# vanish silently — silence is how "the agent tried and gave up" becomes
-# invisible. After the headless run this script re-reads the order; if it is not
-# in a terminal state, the script escalates on the session's behalf. Case 4 of
-# the decision table ("tried and FAILED → escalate") is therefore enforced by
-# the harness, not by the goodwill of the model.
+# GUARANTEED OUTCOME (the load-bearing safety property): a session that dies,
+# times out, or simply forgets to report must NOT leave its order open — silence
+# is how "the agent tried and gave up" becomes invisible, and an open order also
+# pins its lane (the watcher's single-flight test reads the order's status).
+# Every lane therefore re-reads the order after the run and, if it is not
+# terminal, closes it on the session's behalf: rem-* ESCALATES (case 4 of the
+# decision table, "tried and FAILED → escalate" — enforced by the harness, not
+# by the goodwill of the model); wo-*/esc-* mark it `failed` quietly, since their
+# window is itself the joinable post-mortem and an unexpected death already pages.
 set -uo pipefail
 key="${1:?order key}"
 model="${2:-opus}"
@@ -156,6 +158,33 @@ esac
 $auth_pfx claude --remote-control "$key" --model "$model" --effort "$effort" \
   --dangerously-skip-permissions "$prompt"
 rc=$?
+
+# ── LANE RELEASE (2026-09-19) — the interactive twin of the rem-* guaranteed
+# outcome above. The window OUTLIVES the session by design (`exec bash` below
+# keeps the transcript joinable), and the watcher's single-flight test reads the
+# order's status, so an order still non-terminal here is never closed by anyone:
+# the orphan sweep only fires when the window is GONE, and the reap only touches
+# terminal orders. That is how a died-mid-session window pinned its lane on
+# 2026-09-06. Closing it out here is what frees the lane and hands the window to
+# the reap (failed keeps it joinable for 7d, which is what a post-mortem wants).
+# QUIET on purpose — this adds no page: an unexpected death already pages just
+# below, and a clean exit that merely forgot to report surfaces in the digest.
+st="$(kubectl -n "$NS" get cm "$CM" -o json 2>/dev/null \
+      | jq -r --arg k "$key" '(.data[$k] // "{}") | (fromjson? // {}) | .status // "unknown"')"
+case "$st" in
+  done|failed|escalated) ;;   # the session reported for itself — leave its verdict alone
+  *)
+    oplog watchdog "$key" what=no-self-report rc="$rc" status="$st"
+    kubectl -n "$NS" get cm "$CM" -o json 2>/dev/null \
+      | jq --arg k "$key" --arg now "$(date -u +%s)" --arg n \
+           "The session exited (rc=${rc}) without reporting an outcome, so the harness closed the order out — treat the work as INCOMPLETE and re-queue it (set the entry back to pending) if it still matters. The window stays joinable for the post-mortem: tmux '${key}' on the dev-env-ops pod." '
+          .data[$k] = ((.data[$k] | fromjson? // {}) | .status="failed" | .note=$n | .updated=$now | tojson)' 2>/dev/null \
+      | kubectl -n "$NS" replace -f - >/dev/null 2>&1 \
+      && oplog closed "$key" status=failed why=no-self-report rc="$rc" \
+      || oplog watchdog "$key" what=close-out-failed rc="$rc"
+    ;;
+esac
+
 if [ "$rc" -ne 0 ]; then
   # Quiet-on-success contract: only an unexpected death pages.
   oplog closed "$key" status=session-died rc="$rc"
@@ -166,5 +195,6 @@ if [ "$rc" -ne 0 ]; then
     --form-string "message=The claude session for ${key} exited unexpectedly (model ${model}). Attach: tmux window '${key}' on the dev-env-ops pod; order JSON in ~/work/orders/." \
     --form-string "priority=0" >/dev/null
 fi
-# Keep the window (and transcript scrollback) alive for post-mortem attach.
+# Keep the window (and transcript scrollback) alive for post-mortem attach. It no
+# longer holds the lane: lane_active() ignores a window whose order is terminal.
 exec bash
