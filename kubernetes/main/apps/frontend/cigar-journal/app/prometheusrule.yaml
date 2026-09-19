@@ -28,14 +28,17 @@ spec:
             summary: >-
               {{ $labels.namespace }}/{{ $labels.job_name }} — a cigar-journal
               credential is expiring, already expired, or uncheckable. Watched:
-              the dev-env-cli OAuth access token (dev-env's MCP client, lead 7d)
-              and RELEASE_PLEASE_TOKEN (the release-please PAT, lead 14d).
+              every unrevoked OAuth access token that lives longer than 24h
+              (the dev-env pod and curation-lane service tokens, lead 7d) and
+              RELEASE_PLEASE_TOKEN (the release-please PAT, lead 14d).
             description: >-
               `kubectl -n frontend logs job/{{ $labels.job_name }} -c expiry`
               prints one `credential=… days_left=… status=…` line per credential
-              — that names which one and how long is left. Re-mint procedure:
-              cigar-journal issue #129 (OAuth token) and the repo's
-              Actions-secret settings (PAT).
+              — that names which one and how long is left. OAuth token: rotate
+              per cigar-journal `docs/mcp/service-tokens.md` ("Rotate") — mint
+              with `kubectl exec -it`, update the 1Password field, then revoke
+              the old token id; a revoked token leaves the watch list. PAT: the
+              repo's Actions-secret settings.
           expr: |
             kube_job_failed{namespace="frontend", condition="true", job_name=~"cigar-journal-credential-expiry.*"} > 0
             and on (namespace, job_name)
