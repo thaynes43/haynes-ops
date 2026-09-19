@@ -15,6 +15,9 @@
 # are DELIBERATELY NOT here: Alertmanager already pages every critical with full context, and
 # the gate must not be a second, context-poor alert relay (a self-healed soularr OOMKill once
 # double-paged as a vague "upgrade-gate: OOMKilled" — the reason this was removed 2026-07).
+# The same principle covers a Job whose FAILURE is the transport of a critical alert (an
+# exit-1 countdown monitor): its pod template opts in with the annotation read by
+# pod_failure_is_the_alert below, and collect_regressions drops its Failed pods (2026-09-19).
 #
 # CONTRACT: the caller must set $NOW (epoch) and $PROM (Prometheus base URL) before
 # calling collect_regressions. Everything here is READ-ONLY.
@@ -102,6 +105,45 @@ pod_is_stale_corpse() {  # $1=ns $2=pod ; rc0 = drop from the coordination set
   return 1
 }
 
+# ── FAILURE-IS-THE-ALERT FILTER (2026-09-19) ── a terminal Failed pod is dropped from the
+# coordination set when its pod template declares that failing IS how it signals:
+#   upgrade-agent.haynesnetwork.com/failure-is-the-alert: <the critical alert that pages it>
+# Some CronJobs are monitors whose only output is their exit code — an exit-1 countdown
+# (frontend/cigar-journal-credential-expiry: "the Job's own terminal failure IS the
+# alert"; exit 1 at T-7d on a credential -> kube_job_failed ->
+# CigarJournalCredentialExpiring -> Pushover). Nothing is deployed wrong when such a pod
+# fails, so it is not a deploy-health signal: the gate would be the second, context-poor
+# relay the header rules out, and the triage lane's path attribution turns it into an
+# "upgrade regression" whenever ANY merge touches the app's path inside the 3h lookback
+# — a coincidence, not a mechanism.
+#
+# Observed 2026-09-19 (esc-shepherd-99e57e39): the credential monitor exited 1 at 12:00Z
+# (dev-env-cli, 7 days left — a true positive, already paged by its own alert at 08:07
+# ET). The owner's same-day fix to the ALERT TEXT (#2970, prometheusrule.yaml only)
+# merged at 14:22Z, inside the lookback; the 14:30Z triage attributed the pod to it,
+# summoned remediate, which correctly broke glass ("needs a human token re-mint"), and
+# the no-PR outcome escalated — a second page for a condition the alert had already
+# reported. Rules A0/A/B cannot cover this: the Job genuinely failed, it is the newest
+# Job of its CronJob, and it is hours old.
+#
+# Scope is deliberately narrow: the pod must be phase=Failed (a terminal exit). A
+# Pending/ImagePull/CrashLoop pod from the same CronJob is a real deploy fault and stays
+# in the set. Any lookup error KEEPS the pod (fail-noisy, like the corpse filter). The
+# annotation's value is the covering alert and is logged on every drop, so a wrong
+# opt-in is auditable; the contract for setting it is that EVERY terminal failure of
+# the pod already pages critical with context. It is NOT for a Job whose failure is a
+# genuine fault that merely alerts through kube_job_failed (outline-backup: a missing
+# backup IS broken state, and the shepherd may still have a bump to revert there).
+COORD_FAILURE_IS_THE_ALERT_KEY="${COORD_FAILURE_IS_THE_ALERT_KEY:-upgrade-agent.haynesnetwork.com/failure-is-the-alert}"
+pod_failure_is_the_alert() {  # $1=ns $2=pod ; rc0 = drop from the set (stdout: the covering alert)
+  local ns="$1" pod="$2" alert
+  alert="$(kubectl -n "$ns" get pod "$pod" -o json 2>/dev/null \
+    | jq -r --arg k "$COORD_FAILURE_IS_THE_ALERT_KEY" \
+        'select(.status.phase == "Failed") | .metadata.annotations[$k] // empty' 2>/dev/null)"
+  [ -n "$alert" ] || return 1   # not Failed, not annotated, or unreadable -> keep
+  printf '%s' "$alert"
+}
+
 # collect_regressions — populate the globals REG_IDS (sorted-unique regression identifiers,
 # one per line) and SIG_PODS_STATUS (ok|blind). Identifier forms (stable + sortable):
 #   flux/<Kind>/<ns>/<name>   pod/<ns>/<pod>
@@ -142,14 +184,17 @@ collect_regressions() {
   else
     pods_ids="$(printf '%s' "$pods_json" | jq -r '.data.result[] | "pod/\(.metric.namespace)/\(.metric.pod)"' 2>/dev/null)"
   fi
-  # Drop stale corpses (see pod_is_stale_corpse above). Per-candidate kubectl is fine:
-  # the set is normally 0–12 entries on a 30-min cadence.
+  # Drop pods whose failure is their alert (pod_failure_is_the_alert), then stale corpses
+  # (pod_is_stale_corpse). Per-candidate kubectl is fine: the set is normally 0–12
+  # entries on a 30-min cadence.
   if [ -n "$pods_ids" ]; then
-    local _kept="" _id _ns _pod
+    local _kept="" _id _ns _pod _alert
     while IFS= read -r _id; do
       [ -z "$_id" ] && continue
       _ns="${_id#pod/}"; _pod="${_ns#*/}"; _ns="${_ns%%/*}"
-      if pod_is_stale_corpse "$_ns" "$_pod"; then
+      if _alert="$(pod_failure_is_the_alert "$_ns" "$_pod")"; then
+        type log >/dev/null 2>&1 && log "coordination: dropped failure-is-the-alert pod ${_ns}/${_pod} (terminal exit is the transport of critical alert '${_alert}'; Alertmanager pages it — not a deploy-health signal)"
+      elif pod_is_stale_corpse "$_ns" "$_pod"; then
         type log >/dev/null 2>&1 && log "coordination: dropped stale corpse pod ${_ns}/${_pod} (superseded/ancient/gone)"
       else
         _kept="${_kept}${_id}"$'\n'
