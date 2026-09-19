@@ -242,6 +242,51 @@ fails the very same probe.
   outside the lane's egress — the fix is a human on the UniFi console re-establishing
   the Mullvad WireGuard tunnel for VPNLan.
 
+### `CigarJournalCredentialExpiring` with `status=expiring`
+The daily `cigar-journal-credential-expiry` CronJob exits 1 **by design** when a
+long-lived MCP token is inside its lead time; that failed Job IS the alert (its
+header: "the Job's own terminal failure IS the alert"). Nothing is broken while it
+pages — the token works until the printed expiry — and the only fix is an
+operator-minted replacement (cigar-journal `docs/mcp/service-tokens.md`, "Rotate").
+`mint --yes` refuses to run unless stdout is an interactive terminal, and only the
+owner can write the value into 1Password. No agent lane can do that step, and none
+should try. The owner has already been paged by the alert itself, with the client
+name and the days left.
+
+- **Signature:** the pod log (`kubectl -n frontend logs <pod> -c expiry`) prints
+  `credential=<client> days_left=N lead=7 status=expiring` for one client and
+  `status=ok` for the rest, the `pat` init container exited 0, and the Job is the
+  newest for its CronJob, one attempt (`backoffLimit: 0`). The triage lane called it
+  upgrade-attributable because SOME merge touched the cigar-journal path in its 3h
+  lookback — 2026-09-19 (`esc-shepherd-99e57e39`) that merge was the owner's own fix
+  to the alert's description text (#2970), landed two hours AFTER the Job failed.
+  Since #2971 the pod template carries
+  `upgrade-agent.haynesnetwork.com/failure-is-the-alert` and coordination drops the
+  Failed pod; a pod of this CronJob still sitting in a coordination set means that
+  annotation is missing from it.
+- **Do:** close `done` naming this entry, the client and `days_left` — a second page
+  adds nothing. The rotation's AGENT half comes after the owner's mint + 1Password
+  write (cigar-journal#129 has the exact ids): verify the consumer picked up the new
+  value (`service-token list` shows the new client `active`; an MCP `tools/list` from
+  the consumer — the dev-env pod — succeeds), THEN `revoke --id <old>` (no secret
+  material; runs without `-it`), then `kubectl -n frontend create job
+  --from=cronjob/cigar-journal-credential-expiry cigar-journal-credential-expiry-manual`
+  and confirm it exits 0. A revoked token leaves the watch list; that is what clears
+  the alert.
+- **Do NOT:** revoke the expiring token before the replacement is live in its
+  consumer — that turns a 7-day warning into an outage; suspend the CronJob or
+  silence the alert (the daily page is the reminder and stops on its own at the
+  revoke); mint a token yourself; re-pin a cigar-journal tag; delete or re-run the
+  failed pod as a "fix".
+- **Not this entry:** `status=db-unreachable`, `uncheckable`, `none-found`,
+  `unauthorized`, `ephemeral-token`, `unknown-token-shape`, `unparseable-expiry`.
+  Those mean the CHECK broke or a credential is already dead — a real fault behind
+  the same alert name; triage it (the `[psql]`-prefixed lines carry the database
+  error).
+- **Check:** `kubectl -n frontend exec deploy/cigar-journal-main -c app -- sh -c 'cd
+  /app/token && node --import tsx src/cli.ts list --all-clients'` — ids, days left
+  and state for every long-lived token, no secret material.
+
 ---
 
 ## Escalate — do not attempt these autonomously
