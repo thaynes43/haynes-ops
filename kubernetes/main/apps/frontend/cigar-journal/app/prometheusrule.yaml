@@ -28,7 +28,7 @@ spec:
             summary: >-
               {{ $labels.namespace }}/{{ $labels.job_name }} — a cigar-journal
               credential is expiring, already expired, or uncheckable. Watched:
-              every unrevoked OAuth access token that lives longer than 24h
+              every unrevoked long-lived OAuth access token, dated or no-expiry
               (the dev-env pod and curation-lane service tokens, lead 7d) and
               RELEASE_PLEASE_TOKEN (the release-please PAT, lead 14d).
             description: >-
@@ -63,7 +63,7 @@ spec:
           annotations:
             summary: >-
               The cigar-journal credential-expiry CronJob is gone, suspended, or
-              has not been scheduled in 36h — the dev-env-cli OAuth token and
+              has not been scheduled in 36h — the long-lived OAuth tokens and
               RELEASE_PLEASE_TOKEN are unwatched.
             description: >-
               `kubectl -n frontend get cronjob cigar-journal-credential-expiry`
