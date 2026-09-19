@@ -55,12 +55,18 @@ Repo/cluster navigation tips:
 
 All persistent cluster changes follow this GitOps workflow: edit files → commit → push → reconcile → verify.
 
-### 1. Commit and push
+### 1. Commit, open a PR, and merge after checks
+
+Use a task worktree on an `agent/<task>` branch. Never push directly to `main`.
+Review the rendered diff and wait for all required checks before squash-merging.
 
 ```bash
 git add <files>
 git commit -m "description"
-git push origin main
+git push -u origin HEAD
+gh pr create
+gh pr checks --watch
+gh pr merge --squash
 ```
 
 ### 2. Reconcile Flux
