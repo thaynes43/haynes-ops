@@ -30,9 +30,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest PR52 (level editor MVP); checked main publication 35484238763.
-              # Isolated candidate review: exact artwork approval remains pending.
-              tag: sha-e017c58fa79d3fd63fd899124ec7a8929ba067d7@sha256:6c6b12f6f7c776ab361c131af24770e0c746874d4cb091d6ec261c0135d9940c
+              # Haynes Quest PR54 (floating platforms and vertical obby sections); checked
+              # main publication 35490089572. Exact artwork approval remains pending.
+              tag: sha-c7f034af16ff39f0007d76697569db382a83d562@sha256:798d34aed190766547b2bc19e3cd8f398b45bf2bc35e1c0ed09888013fb48569
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
