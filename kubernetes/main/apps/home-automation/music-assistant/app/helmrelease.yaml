@@ -55,10 +55,19 @@ spec:
               limits:
                 memory: 8Gi
     defaultPodOptions:
+      # Runs the way upstream documents it (music-assistant.io "Installation": host network, /data,
+      # and NO user override, cap_drop or privileged; the image has no USER line, so that means root
+      # with the runtime's default capabilities). Owner ruling 2026-09-20: follow their documentation
+      # rather than a hand-trimmed capability set. The uid-568 hardening broke AirPlay 2 multi-room
+      # sync: "[PTP] Cannot bind UDP 319: Permission denied (privileged port; run as root for PTP)"
+      # -> "sync ... degraded and members may drift" (KEF + Sonos groups played out of sync).
+      # fsGroup and the RuntimeDefault seccomp profile stay: they do not conflict with upstream
+      # (Docker applies its default seccomp profile too). Going back to uid 568 later needs a chown
+      # of /data first: files written from now on are root-owned.
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 568
-        runAsGroup: 568
+        runAsNonRoot: false
+        runAsUser: 0
+        runAsGroup: 0
         fsGroup: 568
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile: { type: RuntimeDefault }
