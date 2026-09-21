@@ -1,0 +1,159 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: nvidia-gpu-exporter
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      strategy: rollback
+  values:
+    controllers:
+      app:
+        type: daemonset
+        pod:
+          # GPU access exactly like ollama/comfyui: the nvidia RuntimeClass plus
+          # NVIDIA_VISIBLE_DEVICES=all. No nvidia.com/gpu request and no
+          # `privileged`, so every card on the node stays visible (owner ruling:
+          # no per-app GPU pinning, #2960). NVIDIA_DRIVER_CAPABILITIES=utility is
+          # what makes the runtime inject the `nvidia-smi` binary this exporter
+          # shells out to.
+          runtimeClassName: nvidia
+          # One term per GPU node label -> nodeSelectorTerms are OR'd, which a
+          # plain nodeSelector cannot express. Matches (verified 2026-09-21):
+          #   nvidia-3090-gpu      -> talosw01 (2x RTX 3090, ComfyUI + ollama-prime)
+          #   nvidia-a2000         -> talosm01 (RTX A2000, ollama-assist01)
+          #   nvidia-2000-ada-gpu  -> talosm03 (RTX 2000 Ada, ollama-assist02)
+          # A new GPU node needs its NFD label added here AND its expected GPU
+          # count added to the GpuMissing rule in prometheusrule.yaml.
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: feature.node.kubernetes.io/nvidia-3090-gpu
+                        operator: In
+                        values: ["true"]
+                  - matchExpressions:
+                      - key: feature.node.kubernetes.io/nvidia-a2000
+                        operator: In
+                        values: ["true"]
+                  - matchExpressions:
+                      - key: feature.node.kubernetes.io/nvidia-2000-ada-gpu
+                        operator: In
+                        values: ["true"]
+          # Two of the three GPU nodes are control-plane members (talosm01,
+          # talosm03). They carry no NoSchedule taint today, but a tainted
+          # control plane would silently drop the exporter from them, so carry
+          # the toleration.
+          tolerations:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+        containers:
+          app:
+            image:
+              repository: ghcr.io/utkuozdemir/nvidia_gpu_exporter
+              tag: 1.15.1@sha256:7aee2d42836ad29d4adb2722b7cfdc806ec9cc8d45fd0b8971ebbad2d9f3d087
+            # No --query-field-names: AUTO (the default) discovers every field
+            # this driver reports, so a driver upgrade that adds fields needs no
+            # edit here.
+            args:
+              - --web.listen-address=:9835
+              # Currently the upstream default, pinned deliberately: it bounds a
+              # wedged driver, so a hung nvidia-smi surfaces as
+              # nvidia_smi_last_collect_success 0 instead of hanging the scrape.
+              - --collect.timeout=10s
+            env:
+              NVIDIA_VISIBLE_DEVICES: all
+              NVIDIA_DRIVER_CAPABILITIES: utility
+            probes:
+              # Process-level on purpose: a failing nvidia-smi must keep the pod
+              # scrapeable so the failure is visible as a metric, not as a
+              # CrashLoop that also removes the target.
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /-/healthy
+                    port: &port 9835
+                  initialDelaySeconds: 10
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /-/ready
+                    port: *port
+                  initialDelaySeconds: 10
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities: { drop: ["ALL"] }
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                # The exporter itself is ~25Mi; the headroom is for the
+                # nvidia-smi child it forks on each collection. An OOMKill here
+                # is a silent monitoring gap, so do not shave this.
+                memory: 256Mi
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        # 65534 is the uid baked into the upstream distroless image.
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: { type: RuntimeDefault }
+    service:
+      app:
+        controller: app
+        ports:
+          metrics:
+            port: *port
+    serviceMonitor:
+      app:
+        service:
+          identifier: app
+        endpoints:
+          - port: metrics
+            # 30s: the 3090s go from 74C to the driver's slowdown point in about
+            # 25s under load (#3052), so a 1m interval would miss the ramp.
+            interval: 30s
+            scrapeTimeout: 20s
+            # The exporter labels its series by GPU uuid only. Carry the node
+            # name so alerts and dashboards can say WHICH machine, and so the
+            # GpuMissing/GpuExporterDown rules can group and join by node.
+            # `node` matches kube-state-metrics, `kubernetes_node` matches this
+            # cluster's node-exporter/KSM relabeling convention.
+            relabelings:
+              - action: replace
+                sourceLabels: ["__meta_kubernetes_pod_node_name"]
+                targetLabel: node
+              - action: replace
+                sourceLabels: ["__meta_kubernetes_pod_node_name"]
+                targetLabel: kubernetes_node
+    persistence:
+      # readOnlyRootFilesystem is on; give nvidia-smi a writable scratch dir.
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp

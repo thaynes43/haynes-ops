@@ -1,0 +1,153 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nvidia-gpu-exporter-rules
+spec:
+  groups:
+    - name: nvidia-gpu-exporter.rules
+      rules:
+        # Why these exist (issue #3050, 2026-09-21 GPU audit): Prometheus had
+        # ZERO GPU series. The 3090 at host 0000:01:00.0 failed silently for
+        # ~11 days (08-30 -> 09-10, "vfio-pci ... inaccessible" then "broken
+        # device, retraining failed") and nothing noticed; its replacement runs
+        # into thermal slowdown under load (#3052) and nothing noticed that
+        # either.
+        #
+        # Routing (kube-prometheus-stack alertmanager.yaml): severity=critical
+        # -> Pushover; everything else -> "null" (Alertmanager/Grafana UI only).
+        # scope=host tells the alert-responder this is host/hardware and to skip
+        # LLM diagnosis — every rule here ends at a physical card.
+        #
+        # Paging philosophy: only a GPU that has actually gone away pages. The
+        # thermal rules are chassis-airflow facts already tracked in #3052 and
+        # stay at warning on purpose — do not promote them without a ruling.
+
+        # A GPU that "fell off the PCIe bus" simply stops being listed by
+        # nvidia-smi, so the count drops with no error anywhere. Expected counts
+        # (verified 2026-09-21 against `kubectl get nodes -l ...`):
+        #   talosw01 = 2  (2x RTX 3090 — ComfyUI + ollama-prime)
+        #   talosm01 = 1  (RTX A2000 — ollama-assist01)
+        #   talosm03 = 1  (RTX 2000 Ada — ollama-assist02)
+        # The label_replace(vector(0), ...) terms make the left side read 0
+        # rather than "no data" when a node reports nothing at all, so total
+        # silence (exporter unscheduled, nvidia-smi failing, driver gone) fires
+        # this too. Adding a GPU node means adding it in BOTH vectors here and
+        # in the helmrelease nodeAffinity.
+        - alert: GpuMissing
+          annotations:
+            summary: >-
+              {{ $labels.node }} is reporting fewer NVIDIA GPUs than it has.
+            description: >-
+              nvidia-smi on {{ $labels.node }} has listed fewer GPUs than expected for 10 minutes
+              (expected: talosw01 2, talosm01 1, talosm03 1). A card that falls off the PCIe bus
+              disappears exactly like this. Check `kubectl exec -n observability ds/nvidia-gpu-exporter
+              -- nvidia-smi -L` first, then the Talos node dmesg for NVRM/Xid 79 lines
+              (`talosctl -n <node-ip> dmesg | grep -i nvrm`) and the Proxmox host journal for
+              "vfio-pci ... inaccessible" / "retraining failed" on the card's PCI address.
+              Recovery is a host power-cycle and, if it recurs, reseating the card or its power
+              cables. GPU workloads (ComfyUI, ollama) keep running on whatever cards are left.
+          expr: |
+            (
+              (
+                count by (node) (nvidia_smi_gpu_info)
+                or label_replace(vector(0), "node", "talosw01", "", "")
+                or label_replace(vector(0), "node", "talosm01", "", "")
+                or label_replace(vector(0), "node", "talosm03", "", "")
+              )
+              < on (node)
+              (
+                label_replace(vector(2), "node", "talosw01", "", "")
+                or label_replace(vector(1), "node", "talosm01", "", "")
+                or label_replace(vector(1), "node", "talosm03", "", "")
+              )
+            )
+            unless on (node) (max by (node) (up{job="nvidia-gpu-exporter"}) == 0)
+          for: 10m
+          labels:
+            severity: critical
+            scope: host
+
+        # The other half of "the card fell off the bus": the exporter target
+        # itself is unreachable, so there is no GPU data to judge. Guarded on the
+        # node being Ready, because a node that is down already pages on its own
+        # and does not need a second page per exporter.
+        - alert: GpuExporterDown
+          annotations:
+            summary: >-
+              The NVIDIA GPU exporter on {{ $labels.node }} is not being scraped.
+            description: >-
+              Prometheus has failed to scrape nvidia-gpu-exporter on {{ $labels.node }} for 15
+              minutes while the node itself is Ready, so the GPUs on it are unmonitored — a card
+              could be failing right now and nothing would say so. Check
+              `kubectl get pods -n observability -l app.kubernetes.io/name=nvidia-gpu-exporter -o wide`
+              and that pod's logs. A pod that is Running but serving errors usually means
+              nvidia-smi is wedged: the fix is a node reboot.
+          expr: |
+            max by (node) (up{job="nvidia-gpu-exporter"}) == 0
+            and on (node)
+            (max by (node) (kube_node_status_condition{condition="Ready", status="true"}) == 1)
+          for: 15m
+          labels:
+            severity: critical
+            scope: host
+
+        # Warning on purpose (#3052): the chassis can only shed ~150 W per card
+        # at 88 C with the fan at 100 %, so ANY sustained render throttles. The
+        # driver applies the right per-model trip point, so this works for the
+        # A2000/2000 Ada too. Both the hw (trip point) and sw (max operating
+        # temp) reasons count, and both spellings are matched: driver 580.178.04
+        # reports clocks_event_reasons.*, older/other drivers report
+        # clocks_throttle_reasons.* (verified live 2026-09-21: 580 answers a
+        # clocks_throttle_reasons query with a clocks_event_reasons header, so
+        # only the first pair exists here today).
+        - alert: GpuThermalThrottling
+          annotations:
+            summary: >-
+              GPU {{ $labels.index }} ({{ $labels.name }}) on {{ $labels.node }} is thermally throttled.
+            description: >-
+              The NVIDIA driver has been cutting clocks on GPU {{ $labels.index }} of
+              {{ $labels.node }} for 10 minutes because the card is too hot. Renders and inference
+              run roughly 2.7-8x slower while this holds. This is the known chassis-airflow
+              condition tracked in issue #3052 (intake air passes the CPU radiator first) — it is
+              NOT a new fault and does not page. Only worth acting on if it starts happening at
+              idle or on a card that never used to do it: then check fans, dust and the GPU
+              temperature panel on the "NVIDIA GPUs" Grafana dashboard.
+          expr: |
+            (
+              max by (node, uuid) (
+                nvidia_smi_clocks_event_reasons_hw_thermal_slowdown
+                or nvidia_smi_clocks_event_reasons_sw_thermal_slowdown
+                or nvidia_smi_clocks_throttle_reasons_hw_thermal_slowdown
+                or nvidia_smi_clocks_throttle_reasons_sw_thermal_slowdown
+              ) == 1
+            )
+            * on (uuid) group_left (name, index) nvidia_smi_gpu_info
+          for: 10m
+          labels:
+            severity: warning
+            scope: host
+
+        # 90 C is above the observed throttling plateau (88 C) and below the
+        # 3090's 93 C shutdown, so this is the "hotter than the known-bad case"
+        # line rather than a restatement of GpuThermalThrottling.
+        - alert: GpuHot
+          annotations:
+            summary: >-
+              GPU {{ $labels.index }} ({{ $labels.name }}) on {{ $labels.node }} is at {{ $value | printf "%.0f" }} C.
+            description: >-
+              GPU {{ $labels.index }} of {{ $labels.node }} has been at or above 90 C for 10
+              minutes. The 3090s plateau at 88 C once the driver throttles them (#3052), so
+              anything sustained at 90 C or above is hotter than the known-bad case and is worth
+              a physical look: fan spinning, intake clear, dust, and whether a second heavy
+              workload landed on the same card. The card shuts itself down around 93 C.
+          expr: |
+            (
+              max by (node, uuid) (nvidia_smi_temperature_gpu) >= 90
+            )
+            * on (uuid) group_left (name, index) nvidia_smi_gpu_info
+          for: 10m
+          labels:
+            severity: warning
+            scope: host

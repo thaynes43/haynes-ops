@@ -80,6 +80,19 @@ configMapGenerator:
         grafana_dashboard: "true"
       annotations:
         grafana_folder: Hardware
+  # NVIDIA GPUs (issue #3050 — there was no GPU history at all): temperature,
+  # fan, clock-event/throttle reasons, clock vs max, power vs limit, utilisation
+  # and VRAM for every card on the three NVIDIA nodes, fed by the
+  # nvidia-gpu-exporter DaemonSet in this namespace.
+  - name: grafana-dashboard-nvidia-gpus
+    files:
+      - dashboards/nvidia-gpus.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "true"
+      annotations:
+        grafana_folder: Hardware
   # AppDaemon Health Checks: fed by the appdaemon_health_* metrics scraped from
   # the health-check controller (hass-sandbox #96). Checker status matrix,
   # repair rate + recovery-time percentiles, per-checker/device breakdowns,
