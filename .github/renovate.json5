@@ -31,13 +31,18 @@
   // Use GitHub-native auto-merge: the PR merges itself the moment the required
   // flux-local check passes, without waiting for Renovate's next hosted run.
   platformAutomerge: true,
-  // Backlog-drain throttle (2026-07-18): overrides :disableRateLimiting so the
-  // one-time GHCR-bake-freeze backlog (~24 held updates) — and any future wave —
-  // lands in monitorable batches instead of all at once. Excess defers to the next
-  // scheduled (overnight) run; nothing is stranded. Raise/remove once the backlog is
-  // clear if fuller hands-off throughput is wanted.
-  prConcurrentLimit: 5,
-  prHourlyLimit: 3,
+  // NO PR rate limits (2026-09-21, Tom). The 2026-07-18 backlog-drain throttle
+  // (prConcurrentLimit 5 / prHourlyLimit 3) stalled the whole repo twice — 09-11 and
+  // 09-21: Renovate counts EVERY open PR against the cap, including the
+  // disposition:manual-only / disposition:stranded ones that deliberately wait for a
+  // supervised merge, and Renovate has no way to exempt them. Five of those open =
+  // zero slots = 33 updates parked under "Rate-Limited" with no PR at all. Explicit
+  // zeros (not just relying on :disableRateLimiting above) so a preset reorder can
+  // never bring config:recommended's 10/2 limits back. Blast radius is governed by
+  // the disposition tiers + holds.json5, not by a queue. Do NOT re-add a cap.
+  prConcurrentLimit: 0,
+  prHourlyLimit: 0,
+  branchConcurrentLimit: 0,
   timezone: 'America/New_York',
   schedule: [
     'after 10pm',

@@ -147,7 +147,7 @@ task rook:*                          # Rook/Ceph disk operations
 ## CI/CD
 
 - **PR validation**: `flux-local` runs on PRs touching `kubernetes/` — tests and diffs both `main` and `edge` clusters
-- **Renovate**: Auto-updates container images, Helm charts, and GitHub Actions **nightly** (schedule `after 10pm`/`before 6am` America/New_York, repo-wide), auto-merging each PR via `platformAutomerge` the moment its `flux-local` check passes (throttled: 5 concurrent / 3 hourly). Ignores SOPS files and bootstrap dirs.
+- **Renovate**: Auto-updates container images, Helm charts, and GitHub Actions **nightly** (schedule `after 10pm`/`before 6am` America/New_York, repo-wide), auto-merging each PR via `platformAutomerge` the moment its `flux-local` check passes (no PR rate limits since 2026-09-21 — open manual-only/stranded PRs counted against the old 5-concurrent cap and starved every other update; blast radius is governed by the disposition tiers + `.renovate/holds.json5`). Ignores SOPS files and bootstrap dirs.
 
 ## Agent docs (`.agents/`)
 
