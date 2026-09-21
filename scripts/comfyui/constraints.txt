@@ -1,0 +1,14 @@
+# Pip constraints applied to ComfyUI's own requirements.txt.
+#
+# ComfyUI leaves the torch stack unpinned ("torch", "torchvision",
+# "torchaudio"), so a rebuild would silently float onto whatever is current.
+# These three are the versions proven against the 3090 node's 580.x driver.
+# The default-PyPI torch wheel is a CUDA build (CUDA 13.0, via the nvidia-*-cu13
+# dependency set); the Dockerfile asserts that at build time so a CPU-only wheel
+# can never ship.
+#
+# Bump deliberately, together, and re-check the driver: torch 2.12 needs a
+# driver that supports CUDA 13.0.
+torch==2.12.0
+torchvision==0.27.0
+torchaudio==2.11.0
