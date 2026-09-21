@@ -108,18 +108,6 @@
     },
     {
       description: [
-        'HELD numpy: 2.5.0 and newer — the whole 2.5.x line requires Python >=3.12 and the only consumer builds on 3.11.',
-        "Reason: scripts/audio-authoring/Dockerfile is `FROM python:3.11-slim`. Every numpy 2.5.x release declares Requires-Python >=3.12, so pip cannot resolve it at all: `ERROR: No matching distribution found for numpy==2.5.3` (pip lists 2.5.0-2.5.3 under 'Ignored the following versions that require a different python version'). This is not a runtime incompatibility that testing might excuse — the image build fails outright in ~30s. 2.4.6 is the newest release that still supports 3.11.",
-        'Issue: none upstream — this is our base-image floor, not a numpy defect. https://numpy.org/doc/stable/release/2.5.0-notes.html documents the 3.11 drop.',
-        'Resume: MANUAL — lift only in the same change that moves scripts/audio-authoring/Dockerfile off python:3.11-slim (>=3.12). Renovate offers the numpy bump and the base-image bump as UNRELATED updates and has no idea one gates the other, so they must be evaluated together.',
-        'Recorded: 2026-09-13 by claude. Related: PR #2890 (merged the bad bump on a failing check), #2891 (reverted it to 2.4.6), #2895 (Renovate re-proposed 2.5.3; closed under this hold).',
-      ],
-      matchDatasources: ['pypi'],
-      matchPackageNames: ['numpy'],
-      allowedVersions: '<2.5.0',
-    },
-    {
-      description: [
         'HELD postgres (plain docker.io library image): 18 and newer — the only consumer is vexa\'s bundled Postgres StatefulSet, which cannot cross a major in place.',
         'Reason: kubernetes/main/apps/ai/vexa/chart/values.yaml pins `postgres:17-alpine` on a bound 10Gi RWO PVC. The official image refuses to start on a PGDATA initialised by an older major, so a Renovate bump to 18 CrashLoopBackOffs the pod and takes vexa (meeting transcripts) down until it is reverted. There is no pg_upgrade tooling in the vendored chart. Minors/patches within 17 stay allowed. This is NOT the CNPG clusters — those are held separately above.',
         'Issue: none upstream — documented image behaviour (https://github.com/docker-library/docs/blob/master/postgres/README.md#pgdata). Stranded PR #1825 (v18, targeted archive/) closed without merging.',
@@ -152,5 +140,19 @@
     //   renames/removes --allowed-hosts or flips the default --address to loopback-only,
     //   the probe/clients break again → re-add a hold and adjust the helmrelease args.
     //   Related: PR #2016 (0.17.1), #2081 (0.17.2); memory renovate-automation-roadmap.
+    //
+    // LIFTED 2026-09-21: numpy '<2.5.0' hold removed — its resume condition is met.
+    //   The hold existed only because scripts/audio-authoring/Dockerfile (numpy's single
+    //   consumer in this repo) was `FROM python:3.11-slim` and every numpy 2.5.x declares
+    //   Requires-Python >=3.12, so pip could not resolve the bump at all. The same change
+    //   that removes this hold moves that Dockerfile to `python:3.14-slim` and pins
+    //   numpy==2.5.3 (cp314 manylinux_2_28 x86_64 wheels published), exactly as the hold's
+    //   'Resume: MANUAL — lift only in the same change that moves the Dockerfile off
+    //   python:3.11-slim' required. There is no bad numpy VERSION left to blacklist. If a
+    //   future numpy raises its Python floor past the image base again, the symptom is the
+    //   same instant build failure ("No matching distribution found") — bump the base image
+    //   in the same PR rather than re-adding a hold.
+    //   Related: PR #2890/#2891/#2895 (the original churn), #2915 (Renovate's python 3.14
+    //   base bump, superseded here); memory renovate-backlog-landmines-2026-09.
   ],
 }

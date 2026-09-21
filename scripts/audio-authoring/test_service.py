@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import timedelta
 import hashlib
 import io
 import json
@@ -20,7 +19,7 @@ import wave
 
 import httpx
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 
 
 INSTALL = Path(__file__).resolve().parent
@@ -142,10 +141,10 @@ def stop_service(process: subprocess.Popen) -> None:
 
 @asynccontextmanager
 async def connected():
-    async with streamablehttp_client(BASE + "/mcp") as (read, write, _):
-        async with ClientSession(
-            read, write, read_timeout_seconds=timedelta(seconds=15)
-        ) as session:
+    # mcp 2 renamed the transport factory and it now yields a (read, write) pair;
+    # read_timeout_seconds is a float rather than a timedelta.
+    async with streamable_http_client(BASE + "/mcp") as (read, write):
+        async with ClientSession(read, write, read_timeout_seconds=15) as session:
             await session.initialize()
             yield session
 
@@ -153,7 +152,7 @@ async def connected():
 async def call(session: ClientSession, name: str, arguments: dict) -> dict:
     result = await session.call_tool(name, arguments)
     text = "\n".join(block.text for block in result.content if block.type == "text")
-    assert not result.isError, text
+    assert not result.is_error, text
     return json.loads(text)
 
 
@@ -226,11 +225,11 @@ async def exercise(workspace: Path) -> str:
         }, names
 
         bad = await session.call_tool("generate_sound", {"prompt": "bad\nprompt"})
-        assert bad.isError
+        assert bad.is_error
         bad = await session.call_tool("generate_sound", {"prompt": "okay", "seconds": 31})
-        assert bad.isError
+        assert bad.is_error
         bad = await session.call_tool("generate_sound", {"prompt": "okay", "steps": 17})
-        assert bad.isError
+        assert bad.is_error
 
         started = time.monotonic()
         first = await call(session, "generate_sound", {
@@ -238,7 +237,7 @@ async def exercise(workspace: Path) -> str:
         })
         assert time.monotonic() - started < 1.0
         assert first["status"] in {"queued", "running"}
-        assert first["service_version"] == "0.1.1"
+        assert first["service_version"] == "0.2.0"
         assert first["test_backend"].endswith("NOT real generation proof")
         completed = await wait_status(session, first["id"], {"completed"})
         assert completed["audio"]["duration_seconds"] == 5.0
@@ -280,7 +279,7 @@ async def exercise(workspace: Path) -> str:
         overflow = await session.call_tool("generate_sound", {
             "prompt": "queue overflow fixture", "seconds": 5, "seed": 30,
         })
-        assert overflow.isError
+        assert overflow.is_error
         queued_cancel = await call(session, "cancel_generation", {"job_id": waiting[0]["id"]})
         assert queued_cancel["status"] == "cancelled"
         active_cancel = await call(session, "cancel_generation", {"job_id": slow["id"]})
@@ -337,11 +336,16 @@ def main() -> None:
                 response = client.post("/mcp", json=body, headers={**headers,
                     "host": "audio-authoring.dev.svc.cluster.local:8000"})
                 assert response.status_code == 200
+                # mcp 2 stopped substituting the SDK version here, so an unversioned
+                # server would silently advertise an empty string.
+                server_info = response.json()["result"]["serverInfo"]
+                assert server_info["name"] == "Haynes Quest Audio", server_info
+                assert server_info["version"] == "0.2.0", server_info
             restart_id = asyncio.run(exercise(workspace))
             stop_service(process)
             record_path = workspace / "jobs" / restart_id / "job.json"
             record = json.loads(record_path.read_text())
-            assert record["service_version"] == "0.1.1"
+            assert record["service_version"] == "0.2.0"
             assert record["model"]["weights_revision"] == WEIGHTS_REVISION
             # Older jobs must retain their originating model identity after upgrades.
             record["model"]["source_revision"] = "prior-fixture-runtime"
