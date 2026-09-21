@@ -232,9 +232,17 @@ def _run_unit_tests():
     log("running the provisioner unit tests")
     import pytest
 
-    code = pytest.main(
-        ["-q", "-p", "no:cacheprovider", os.path.join(HERE, "test_provision.py")]
-    )
+    # WORKDIR is /opt/ComfyUI, which ships its own pytest.ini (testpaths =
+    # tests tests-unit, addopts = -s, pythonpath = .). Run from our own
+    # directory so pytest's rootdir/config discovery cannot pick it up.
+    previous = os.getcwd()
+    os.chdir(HERE)
+    try:
+        code = pytest.main(
+            ["-q", "-p", "no:cacheprovider", os.path.join(HERE, "test_provision.py")]
+        )
+    finally:
+        os.chdir(previous)
     if code != 0:
         raise SystemExit("provisioner unit tests failed (pytest exit %s)" % code)
 

@@ -87,6 +87,11 @@ jobs:
           load: true
           tags: comfyui:test
 
+      - name: Report image size
+        run: |
+          docker images comfyui:test --format '{{.Repository}}:{{.Tag}}  {{.Size}}'
+          df -h /
+
       - name: Smoke-test on a read-only root filesystem, no network, no GPU, no models
         timeout-minutes: 25
         run: |

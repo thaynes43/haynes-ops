@@ -158,8 +158,20 @@ themselves.
 
 **Other flags:** `--install-workflows-to <dir>` copies the UI-format workflow
 JSONs into ComfyUI's user workflows directory (skipping API-format files) — what
-the old init container did with `cp`. `--dry-run` prints the plan as a table and
+the old init container did with `cp`. ComfyUI stores them under
+`<user dir>/<user id>/workflows`, and `app/user_manager.py` hard-codes the
+single-user id to `default`, so with the default `COMFYUI_USER_DIR` that is
+`/workspace/user/default/workflows`. `--dry-run` prints the plan as a table and
 exits without writing anything.
+
+As an init container:
+
+```
+entrypoint.py provision \
+  --workflows-dir /config/workflows \
+  --workflows-dir /config/api-workflows \
+  --install-workflows-to /workspace/user/default/workflows
+```
 
 **Env defaults:** `COMFYUI_MODELS_DIR` (`/opt/ComfyUI/models`),
 `COMFYUI_WORKFLOWS_DIR` (`/config/workflows`), `COMFYUI_MODEL_MANIFEST`
