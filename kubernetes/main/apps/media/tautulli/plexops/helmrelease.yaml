@@ -102,7 +102,6 @@ spec:
           # attributes are set AND an admin has LAN-verified zero-click, else
           # non-admins lose current open access with no in-cluster bypass.
           traefik.ingress.kubernetes.io/router.middlewares: network-tautulli-plexops-forward-auth@kubernetescrd
-          external-dns.alpha.kubernetes.io/target: internal.haynesops
           external-dns.kubernetes.io/target: internal.haynesops
           gethomepage.dev/href: &url "https://tautulli.haynesops.com"
           gethomepage.dev/enabled: "true"

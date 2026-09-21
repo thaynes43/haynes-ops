@@ -7,7 +7,6 @@ kind: IngressRoute
 metadata:
   name: cigar-journal
   annotations:
-    external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
     external-dns.kubernetes.io/target: ingress-ext.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
 spec:

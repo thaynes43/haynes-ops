@@ -94,7 +94,6 @@ spec:
     ingress:
       app:
         annotations:
-          external-dns.alpha.kubernetes.io/target: internal.haynesops
           external-dns.kubernetes.io/target: internal.haynesops
           # Homepage
           gethomepage.dev/href: &url "https://esphome.haynesops.com"
@@ -118,7 +117,6 @@ spec:
                   port: http
       code-server:
         annotations:
-          external-dns.alpha.kubernetes.io/target: internal.haynesops
           external-dns.kubernetes.io/target: internal.haynesops
           # Homepage
           gethomepage.dev/href: &codeUrl "https://esphome-code.haynesops.com"

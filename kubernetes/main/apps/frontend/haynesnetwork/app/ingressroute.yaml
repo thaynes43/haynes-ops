@@ -8,7 +8,6 @@ kind: IngressRoute
 metadata:
   name: haynesnetwork
   annotations:
-    external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
     external-dns.kubernetes.io/target: ingress-ext.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
 spec:
@@ -40,7 +39,6 @@ kind: IngressRoute
 metadata:
   name: haynesnetwork-staging
   annotations:
-    external-dns.alpha.kubernetes.io/target: internal.haynesops
     external-dns.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
 spec:

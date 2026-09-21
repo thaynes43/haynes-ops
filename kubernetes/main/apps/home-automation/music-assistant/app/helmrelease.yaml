@@ -82,7 +82,6 @@ spec:
     ingress:
       app:
         annotations:
-          external-dns.alpha.kubernetes.io/target: internal.haynesops
           external-dns.kubernetes.io/target: internal.haynesops
           # Homepage
           gethomepage.dev/href: &url "https://music-assistant.haynesops.com"

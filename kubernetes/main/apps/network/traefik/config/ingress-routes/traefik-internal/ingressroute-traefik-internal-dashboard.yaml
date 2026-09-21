@@ -3,7 +3,6 @@ kind: IngressRoute
 metadata:
   name: traefik-internal-dashboard
   annotations:
-    external-dns.alpha.kubernetes.io/target: internal.haynesops
     external-dns.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
     # Homepage

@@ -46,7 +46,6 @@ spec:
         ingress:
           enabled: true
           annotations:
-            external-dns.alpha.kubernetes.io/target: internal.haynesops
             external-dns.kubernetes.io/target: internal.haynesops
           className: traefik-internal
           hosts: ["hubble.haynesops.com"]
