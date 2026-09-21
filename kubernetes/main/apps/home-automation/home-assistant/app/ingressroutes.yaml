@@ -4,7 +4,6 @@ kind: IngressRoute
 metadata:
   name: home-assistant
   annotations:
-    external-dns.alpha.kubernetes.io/target: internal.haynesops
     external-dns.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
     # Homepage
@@ -40,7 +39,6 @@ kind: IngressRoute
 metadata:
   name: home-assistant-code
   annotations:
-    external-dns.alpha.kubernetes.io/target: internal.haynesops
     external-dns.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
     # Homepage

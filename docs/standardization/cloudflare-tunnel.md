@@ -6,6 +6,8 @@ This document is written as a step-by-step plan so it can be copied into Cursor 
 
 ### Status (2026-02-27)
 
+> **Annotation prefix note (2026-09-21).** external-dns v0.22.0 changed the default annotation prefix, and this repo migrated from `external-dns.alpha.kubernetes.io/` to **`external-dns.kubernetes.io/`** (issue #3002; phases #3044, #3045, #3046). The annotation keys below have been updated to the GA prefix — the values and the design are unchanged. Use the GA prefix for new apps; the alpha prefix is no longer read.
+
 - **Implemented**: tunnel connector deployed in-cluster, stable DNS target created (`ingress-ext.haynesnetwork.com`), and public app hostnames repointed to `ingress-ext` via External-DNS.
 - **Key learning**: Cloudflare “wizard” style tunnels (`docker run ... --token ...`) and “Published application” routes can make the tunnel **remotely managed** and override local `config.yaml` ingress rules (including forcing `http_status:404`). The working pattern is a **locally-managed token** built from **account tag + tunnel id + tunnel secret** (the same pattern used in the example repos).
 
@@ -24,7 +26,7 @@ This document is written as a step-by-step plan so it can be copied into Cursor 
 
 - External services use `IngressRoute` objects with:
   - `kubernetes.io/ingress.class: traefik-external`
-  - `external-dns.alpha.kubernetes.io/target: haynesnetwork.com`
+  - `external-dns.kubernetes.io/target: haynesnetwork.com`
 - `external-dns-cloudflare` is configured with `sources: ["crd", "ingress", "traefik-proxy"]` and `--cloudflare-proxied`.
 - This causes records like `authentik.haynesnetwork.com` to be published as `CNAME haynesnetwork.com`.
 - When Cloudflare returns `523`, it means the selected Cloudflare POP couldn’t reach the origin (today: your WAN IP path).
@@ -165,7 +167,7 @@ Rollback:
 ### 1.3 Create a stable DNS target name for external-dns (GitOps)
 
 Today, many `IngressRoute`s publish `CNAME haynesnetwork.com` because of:
-`external-dns.alpha.kubernetes.io/target: haynesnetwork.com`
+`external-dns.kubernetes.io/target: haynesnetwork.com`
 
 With a tunnel, we want external routes to publish:
 - `CNAME ingress-ext.haynesnetwork.com` (example name)
@@ -195,10 +197,10 @@ Important gotcha (Error 1033):
 ### 1.4 Update external `IngressRoute` targets to point at `ingress-ext`
 
 For each external `IngressRoute` currently using:
-`external-dns.alpha.kubernetes.io/target: haynesnetwork.com`
+`external-dns.kubernetes.io/target: haynesnetwork.com`
 
 Change to:
-`external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com`
+`external-dns.kubernetes.io/target: ingress-ext.haynesnetwork.com`
 
 Known locations (non-exhaustive; expand as you implement):
 - `kubernetes/main/apps/network/authentik/app/ingressroute.yaml`
@@ -343,7 +345,7 @@ Rollback:
 
 - Added `kubernetes/main/apps/network/cloudflare-tunnel/` (Flux `Kustomization` + app manifests)
 - Added `DNSEndpoint` for `ingress-ext.haynesnetwork.com`
-- Repointed public app records by changing `external-dns.alpha.kubernetes.io/target` from `haynesnetwork.com` → `ingress-ext.haynesnetwork.com` (Plex, Authentik, Immich, Paperless, Open WebUI, and Traefik external ingressroutes)
+- Repointed public app records by changing `external-dns.kubernetes.io/target` from `haynesnetwork.com` → `ingress-ext.haynesnetwork.com` (Plex, Authentik, Immich, Paperless, Open WebUI, and Traefik external ingressroutes)
 - Added `/cloudflare-tunnel.json` to `.gitignore` (local credentials artifact)
 
 ### Phase 2: monitoring foundation

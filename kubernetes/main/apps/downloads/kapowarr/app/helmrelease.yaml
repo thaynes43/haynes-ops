@@ -87,7 +87,6 @@ spec:
     ingress:
       app:
         annotations:
-          external-dns.alpha.kubernetes.io/target: internal.haynesops
           external-dns.kubernetes.io/target: internal.haynesops
           gethomepage.dev/href: &url "https://kapowarr.haynesops.com"
           gethomepage.dev/enabled: "true"

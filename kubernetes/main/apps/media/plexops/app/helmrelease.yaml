@@ -122,7 +122,6 @@ spec:
     ingress:
       app:
         annotations:
-          external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
           external-dns.kubernetes.io/target: ingress-ext.haynesnetwork.com
           # Homepage
           gethomepage.dev/href: &url "https://plexops.haynesnetwork.com"

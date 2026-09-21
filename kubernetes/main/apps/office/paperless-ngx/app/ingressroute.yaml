@@ -3,7 +3,6 @@ kind: IngressRoute
 metadata:
   name: paperless-ngx
   annotations:
-    external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
     external-dns.kubernetes.io/target: ingress-ext.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
     gethomepage.dev/href: "https://paperless.haynesnetwork.com"
