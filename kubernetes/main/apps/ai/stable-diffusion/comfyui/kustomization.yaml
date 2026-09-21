@@ -26,5 +26,6 @@ configMapGenerator:
     files:
       - ./resources/workflows/02_qwen_Image_edit_subgraphed.json
       - ./resources/workflows/image_qwen_Image_2512.json
+      - ./resources/workflows/image_qwen_image_2_1_image_edit.json
 generatorOptions:
   disableNameSuffixHash: true

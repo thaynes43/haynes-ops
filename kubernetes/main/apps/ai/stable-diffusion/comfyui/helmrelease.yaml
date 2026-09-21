@@ -129,8 +129,9 @@ spec:
               MODEL_MANIFEST: "/opt/comfyui-provisioning/models.txt"
               PROVISIONING_UPDATE_EXISTING: "false"
               # Pin ComfyUI code so a fresh openebs workspace self-heals to a
-              # version with the Qwen-Image-Edit nodes (bump here to upgrade).
-              COMFYUI_VERSION: "v0.24.1"
+              # version with the nodes the stored workflows need (bump here to
+              # upgrade). v0.37.0 is the floor for Qwen-Image-2.1.
+              COMFYUI_VERSION: "v0.37.0"
             envFrom:
               - secretRef:
                   name: comfyui-secret
