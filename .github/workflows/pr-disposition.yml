@@ -91,6 +91,9 @@ jobs:
               // dev-env — automerge:false, NEVER (pod Recreate kills in-flight agent
               // sessions); not shepherd-owned → a mindless human merge at a chosen moment.
               { re: /^kubernetes\/[^/]+\/apps\/dev\/dev-env\//, dispo: 'disposition:manual-only' },
+              // comfyui — automerge:false (our own image; a restart is a cold model load and a
+              // new ComfyUI version needs a render check) → supervised merge.
+              { re: /^kubernetes\/[^/]+\/apps\/ai\/stable-diffusion\/comfyui\//, dispo: 'disposition:manual-only' },
               // qbittorrent — PATCH auto-merges within the MAM-approved minor line (let the
               // path-tier prediction handle it); MINOR/MAJOR/digest are automerge:false → manual.
               { re: /^kubernetes\/[^/]+\/apps\/downloads\/qbittorrent\//, dispo: 'disposition:manual-only', patchAuto: true },

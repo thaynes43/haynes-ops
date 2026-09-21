@@ -11,14 +11,8 @@ components:
   - ../../../../../shared/components/common/repos/app-template
   - ../../../../../shared/components/common/gatus/guarded
 configMapGenerator:
-  - name: comfyui-configmap
-    options:
-      annotations:
-        kustomize.toolkit.fluxcd.io/substitute: disabled
-    files:
-      - config.ini=./resources/config.ini
-      - provisioning.sh=./resources/provisioning.sh
-      - models.txt=./resources/models.txt
+  # UI-format workflows: installed into ComfyUI's workflow browser AND the source
+  # of model URLs for provisioning (templates embed them in properties.models).
   - name: comfyui-workflows
     options:
       annotations:
@@ -27,5 +21,18 @@ configMapGenerator:
       - ./resources/workflows/02_qwen_Image_edit_subgraphed.json
       - ./resources/workflows/image_qwen_Image_2512.json
       - ./resources/workflows/image_qwen_image_2_1_image_edit.json
+  # API-format graphs, copies of what AppDaemon sends (hass-sandbox
+  # appdaemon/providers/ai_providers/comfyui/workflows/). Provisioning checks
+  # every model they reference is on the NAS and warns when one is not.
+  - name: comfyui-api-workflows
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+    files:
+      - ./resources/api-workflows/qwen_image_2_1_edit_API.json
+      - ./resources/api-workflows/qwen_image_edit_2509_single_image_API.json
+      - ./resources/api-workflows/02_qwen_Image_edit_subgraphed_API.json
+      - ./resources/api-workflows/02_qwen_Image_edit_subgraphed_three_images_API.json
+      - ./resources/api-workflows/image_qwen_Image_2512_API.json
 generatorOptions:
   disableNameSuffixHash: true

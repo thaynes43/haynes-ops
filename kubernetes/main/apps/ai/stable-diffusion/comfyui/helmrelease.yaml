@@ -29,163 +29,69 @@ spec:
         annotations:
           reloader.stakater.com/auto: "true"
         initContainers:
-          prepare-workspace:
-            image:
-              repository: busybox
-              tag: latest
-            command: ["sh", "-c"]
-            args:
-              - |
-                echo "Preparing workspace volume for non-root user (UID 1000)..."
-
-                if [ ! -d "/workspace/ComfyUI/user/default" ]; then
-                  echo "Creating /workspace/ComfyUI/user/default..."
-                  mkdir -p /workspace/ComfyUI/user/default
-                fi
-
-                if [ ! -d "/workspace/ComfyUI/user/default/workflows" ]; then
-                  echo "Creating /workspace/ComfyUI/user/default/workflows..."
-                  mkdir -p /workspace/ComfyUI/user/default/workflows
-                fi
-                
-                if [ ! -d "/workspace/ComfyUI/temp" ]; then
-                  echo "Creating /workspace/ComfyUI/temp..."
-                  mkdir -p /workspace/ComfyUI/temp
-                fi
-
-                if [ ! -d "/workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache" ]; then
-                  echo "Creating /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache..."
-                  mkdir -p /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/.cache
-                fi
-
-                if [ ! -d "/workspace/ComfyUI/models/checkpoints" ]; then
-                  echo "Creating /workspace/ComfyUI/models/checkpoints..."
-                  mkdir -p /workspace/ComfyUI/models/checkpoints
-                fi
-
-                if [ ! -d "/workspace/ComfyUI/models/loras" ]; then
-                  echo "Creating /workspace/ComfyUI/models/loras..."
-                  mkdir -p /workspace/ComfyUI/models/loras
-                fi
-
-                if [ ! -d "/workspace/ComfyUI/models/controlnet" ]; then
-                  echo "Creating /workspace/ComfyUI/models/controlnet..."
-                  mkdir -p /workspace/ComfyUI/models/controlnet
-                fi
-
-                if [ ! -d "/workspace/ComfyUI/models/vae" ]; then
-                  echo "Creating /workspace/ComfyUI/models/vae..."
-                  mkdir -p /workspace/ComfyUI/models/vae
-                fi
-
-                if [ ! -d "/workspace/ComfyUI/models/upscale_models" ]; then
-                  echo "Creating /workspace/ComfyUI/models/upscale_models..."
-                  mkdir -p /workspace/ComfyUI/models/upscale_models
-                fi
-
-                if [ ! -d "/workspace/storage/stable_diffusion/models/unet" ]; then
-                  echo "Creating /workspace/storage/stable_diffusion/models/unet..."
-                  mkdir -p /workspace/storage/stable_diffusion/models/unet
-                fi
-
-                if [ ! -d "/workspace/storage/stable_diffusion/models/vae" ]; then
-                  echo "Creating /workspace/storage/stable_diffusion/models/vae..."
-                  mkdir -p /workspace/storage/stable_diffusion/models/vae
-                fi
-
-                if [ ! -d "/workspace/storage/stable_diffusion/models/clip" ]; then
-                  echo "Creating /workspace/storage/stable_diffusion/models/clip..."
-                  mkdir -p /workspace/storage/stable_diffusion/models/clip
-                fi
-
-                if [ ! -d "/workspace/storage/stable_diffusion/models/esrgan" ]; then
-                  echo "Creating /workspace/storage/stable_diffusion/models/esrgan..."
-                  mkdir -p /workspace/storage/stable_diffusion/models/esrgan
-                fi
-
-                if [ -f "/workspace/storage/stable_diffusion/models/unet/flux1-dev.safetensors" ]; then
-                  echo "Removing stale legacy Flux model artifact..."
-                  rm -f /workspace/storage/stable_diffusion/models/unet/flux1-dev.safetensors
-                fi
-
-                if ls /opt/comfyui-workflows/*.json >/dev/null 2>&1; then
-                  echo "Installing bundled UI workflows into ComfyUI user workflows..."
-                  cp -f /opt/comfyui-workflows/*.json /workspace/ComfyUI/user/default/workflows/
-                fi
-
-                if [ ! -d "/workspace/home/user/.local/share/jupyter/runtime" ]; then
-                  echo "Creating /workspace/home/user/.local/share/jupyter/runtime..."
-                  mkdir -p /workspace/home/user/.local/share/jupyter/runtime
-                fi
-
-                echo "Setting ownership of /workspace to 1000:1000..."
-                chown -R 1000:1000 /workspace
-                
-                echo "Workspace preparation complete."
+          # Same image as the app. Downloads whatever the stored workflows need
+          # that is not on the NAS yet, and installs the UI workflows. Model URLs
+          # come from the workflow files themselves (official ComfyUI templates
+          # embed them); the API graphs AppDaemon sends are checked against the
+          # result. Non-strict: a Hugging Face outage must not stop ComfyUI
+          # starting with the models it already has. See scripts/comfyui/README.md.
           provision-models:
-            image:
-              repository: ghcr.io/ai-dock/comfyui
-              tag: v2-cuda-12.1.1-base-22.04-v0.2.7@sha256:ca4c95d4d4743d7d5683e57f5e0358fe586bc57578f66c2a844e9fa0650cc619
-            command: ["bash"]
-            args: ["/opt/comfyui-provisioning/provisioning.sh"]
-            env:
-              WORKSPACE: "/workspace"
-              MODEL_MANIFEST: "/opt/comfyui-provisioning/models.txt"
-              PROVISIONING_UPDATE_EXISTING: "false"
-              # Pin ComfyUI code so a fresh openebs workspace self-heals to a
-              # version with the nodes the stored workflows need (bump here to
-              # upgrade). v0.37.0 is the floor for Qwen-Image-2.1.
-              COMFYUI_VERSION: "v0.37.0"
-            envFrom:
+            image: &image
+              repository: ghcr.io/thaynes43/comfyui
+              # <ComfyUI version>-<image revision>; built by .github/workflows/comfyui-build.yml
+              tag: 0.37.0-1@sha256:b4f45c1154cd7aa898f737b471af1cafa649e21eefdf6a4a6b64f84b39d5293b
+            args:
+              - provision
+              - --workflows-dir
+              - /config/workflows
+              - --workflows-dir
+              - /config/api-workflows
+              - --install-workflows-to
+              - /workspace/ComfyUI/user/default/workflows
+            envFrom: &envFrom
               - secretRef:
                   name: comfyui-secret
+            securityContext: &securityContext
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities: { drop: ["ALL"] }
         pod:
           nodeSelector:
             feature.node.kubernetes.io/nvidia-3090-gpu: "true"
+          # GPUs come from the nvidia runtime + NVIDIA_VISIBLE_DEVICES=all baked
+          # into the image: no `privileged`, and no nvidia.com/gpu request, so
+          # both cards stay visible (owner ruling: no per-app GPU pinning).
           runtimeClassName: nvidia
         containers:
           app:
-            image:
-              repository: ghcr.io/ai-dock/comfyui
-              tag: v2-cuda-12.1.1-base-22.04-v0.2.7@sha256:ca4c95d4d4743d7d5683e57f5e0358fe586bc57578f66c2a844e9fa0650cc619
+            image: *image
+            args: ["serve"]
             env:
-              AUTO_UPDATE: "false"
-              DIRECT_ADDRESS_GET_WAN: "true"
-              SERVICEPORTAL_URL: "comfyui.haynesops.com"
-              WEB_ENABLE_AUTH: "false"
-              WORKSPACE: "/workspace"
-              PYTHONPATH: "/workspace/.python-deps"
-              CF_QUICK_TUNNELS: "false"
-              SERVERLESS: "false"
-              COMFYUI_DISABLE_EXTRA_NODES: "0"
-              # No server-wide dtype flag: --fp8_e4m3fn-unet forces fp8 onto EVERY
-              # diffusion model, including int8 checkpoints such as Qwen-Image-2.1
-              # ("model weight dtype torch.float8_e4m3fn" on an int8_convrot file).
-              # The fp8 Qwen-Image-Edit-2509 workflows AppDaemon can still send
-              # set weight_dtype=fp8_e4m3fn on their own UNETLoader instead
-              # (appdaemon >= 1.20.0).
+              # Existing PVC layout, so saved UI workflows and inputs carry over.
+              COMFYUI_USER_DIR: /workspace/ComfyUI/user
+              COMFYUI_INPUT_DIR: /workspace/ComfyUI/input
+              COMFYUI_OUTPUT_DIR: /workspace/ComfyUI/output
+              COMFYUI_TEMP_DIR: /workspace/ComfyUI/temp
+              # No server-wide dtype flag (--fp8_e4m3fn-unet mis-loads int8
+              # checkpoints such as Qwen-Image-2.1); workflows that need fp8
+              # set weight_dtype on their own loader.
               COMFYUI_ARGS: ""
-            envFrom:
-              - secretRef:
-                  name: comfyui-secret
-            securityContext:
-              privileged: true
+            envFrom: *envFrom
+            securityContext: *securityContext
             resources:
               requests:
-                #nvidia.com/gpu: 1
                 cpu: 500m
                 memory: 8Gi
               limits:
                 # Loading the qwen models (~20GB) spiked past 32Gi during the
                 # v0.24.1 upgrade and OOMKilled the pod; node has ~135GB.
                 memory: 48Gi
-                #nvidia.com/gpu: 1
     defaultPodOptions:
       securityContext:
-        runAsNonRoot: false
-        runAsUser: 0
-        runAsGroup: 0
-        fsGroup: 0
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile: { type: RuntimeDefault }
     service:
@@ -200,6 +106,10 @@ spec:
         existingClaim: comfyui-workspace
         globalMounts:
           - path: /workspace
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
       output:
         type: nfs
         server: gasha01.haynesnetwork
@@ -210,35 +120,25 @@ spec:
               - path: /workspace/ComfyUI/output
                 subPath: misc/comfyui
                 readOnly: false
-      # Models on the NFS/cephFS share so a node re-image doesn't wipe them
-      # (was ~50GB on openebs-hostpath). Only the small code+deps stay local
-      # and are re-bootstrapped by provisioning.
+      # Models live on the NAS (like Ollama's), mounted over the image's models
+      # dir for the init container too so provisioning sees what is already there.
       models:
         type: nfs
         server: gasha01.haynesnetwork
         path: /hdd-nfs-repl
-        # globalMounts (all containers incl. the provision-models init) so the
-        # provisioning model-download SKIPS files already on NFS instead of
-        # re-downloading ~20GB to local disk. advancedMounts skips init containers.
         globalMounts:
-          - path: /workspace/ComfyUI/models
+          - path: /opt/ComfyUI/models
             subPath: misc/comfyui/models
             readOnly: false
-      config:
-        type: configMap
-        name: comfyui-configmap
-        globalMounts:
-          - path: /opt/comfyui-provisioning
-            readOnly: true
-        advancedMounts:
-          comfyui:
-            app:
-              - path: /workspace/ComfyUI/custom_nodes/ComfyUI-Manager/config.ini
-                subPath: config.ini
-                readOnly: true
       workflows:
         type: configMap
         name: comfyui-workflows
         globalMounts:
-          - path: /opt/comfyui-workflows
+          - path: /config/workflows
+            readOnly: true
+      api-workflows:
+        type: configMap
+        name: comfyui-api-workflows
+        globalMounts:
+          - path: /config/api-workflows
             readOnly: true

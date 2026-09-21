@@ -42,6 +42,7 @@ spec:
             - "ghcr.io/thaynes43/upgrade-agent*"
             - "ghcr.io/thaynes43/upgrade-shepherd*"
             - "ghcr.io/thaynes43/dev-env*"
+            - "ghcr.io/thaynes43/comfyui*"
           failureAction: Audit
           mutateDigest: false   # we pin tag@digest in the manifests; don't rewrite
           verifyDigest: false
