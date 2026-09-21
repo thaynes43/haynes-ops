@@ -12,6 +12,10 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: comfyui-output-retention
+  annotations:
+    # The script below uses shell variables; keep Flux's postBuild envsubst
+    # (strict mode) away from them.
+    kustomize.toolkit.fluxcd.io/substitute: disabled
 spec:
   schedule: "15 5 * * *"
   timeZone: America/New_York
@@ -53,12 +57,12 @@ spec:
                   before=$(find . -maxdepth 1 -type f | wc -l)
                   n=0
                   for ext in png jpg jpeg webp; do
-                    c=$(find . -maxdepth 1 -type f -name "*.${ext}" -mtime "+${RETENTION_DAYS}" | wc -l)
-                    find . -maxdepth 1 -type f -name "*.${ext}" -mtime "+${RETENTION_DAYS}" -delete
+                    c=$(find . -maxdepth 1 -type f -name "*.$ext" -mtime "+$RETENTION_DAYS" | wc -l)
+                    find . -maxdepth 1 -type f -name "*.$ext" -mtime "+$RETENTION_DAYS" -delete
                     n=$((n + c))
                   done
                   after=$(find . -maxdepth 1 -type f | wc -l)
-                  echo "deleted ${n} image(s) older than ${RETENTION_DAYS}d; top-level files ${before} -> ${after}"
+                  echo "deleted $n image(s) older than $RETENTION_DAYS days; top-level files $before -> $after"
               resources:
                 requests:
                   cpu: 10m
