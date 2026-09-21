@@ -7,6 +7,7 @@ resources:
   - ./pvc.yaml
   - ./ingressroute.yaml
   - ./externalsecret.yaml
+  - ./output-retention-cronjob.yaml
 components:
   - ../../../../../shared/components/common/repos/app-template
   - ../../../../../shared/components/common/gatus/guarded
@@ -29,6 +30,7 @@ configMapGenerator:
       annotations:
         kustomize.toolkit.fluxcd.io/substitute: disabled
     files:
+      - ./resources/api-workflows/qwen_image_2_1_edit_3frame_API.json
       - ./resources/api-workflows/qwen_image_2_1_edit_API.json
       - ./resources/api-workflows/qwen_image_edit_2509_single_image_API.json
       - ./resources/api-workflows/02_qwen_Image_edit_subgraphed_API.json
