@@ -118,6 +118,30 @@
       matchPackageNames: ['numpy'],
       allowedVersions: '<2.5.0',
     },
+    {
+      description: [
+        'HELD postgres (plain docker.io library image): 18 and newer — the only consumer is vexa\'s bundled Postgres StatefulSet, which cannot cross a major in place.',
+        'Reason: kubernetes/main/apps/ai/vexa/chart/values.yaml pins `postgres:17-alpine` on a bound 10Gi RWO PVC. The official image refuses to start on a PGDATA initialised by an older major, so a Renovate bump to 18 CrashLoopBackOffs the pod and takes vexa (meeting transcripts) down until it is reverted. There is no pg_upgrade tooling in the vendored chart. Minors/patches within 17 stay allowed. This is NOT the CNPG clusters — those are held separately above.',
+        'Issue: none upstream — documented image behaviour (https://github.com/docker-library/docs/blob/master/postgres/README.md#pgdata). Stranded PR #1825 (v18, targeted archive/) closed without merging.',
+        'Resume: MANUAL — lift only inside a planned vexa dump/restore (pg_dumpall from 17, fresh PGDATA on 18, restore, verify GET /meetings) change.',
+        'Recorded: 2026-09-21 by claude per the 2026-09-12 backlog review. Related: memory renovate-backlog-landmines-2026-09.',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['postgres', 'docker.io/postgres', 'docker.io/library/postgres'],
+      allowedVersions: '<18',
+    },
+    {
+      description: [
+        'DISABLED vexaai/* images: digest-pinned as ONE set, bumped by hand — never by Renovate.',
+        'Reason: upstream ships every vexa image on a floating tag (`v012`, or no tag at all for vexa-bot / v012-mcp). After the 2026-09-12 -> 09-16 drift incident (#2944: meeting-api pulled a build that needed MIGRATION-0005, every GET /meetings returned 500 for four days) all of them are pinned by digest in vexa/app/helmrelease.yaml (postRenderers + runtime.browserImage) and vexa/app/mcp.yaml, with the rule "re-vendor the chart, update ALL digests together, run upstream MIGRATION-000N FIRST". A Renovate digest PR moves ONE image, skips the schema step, lands under the ai/** auto-merge allowlist, and for the tagless pins re-resolves against `latest`. It also cannot resolve v012-mcp at all, which left a permanent "Package lookup failures" warning on the dashboard.',
+        'Issue: https://github.com/thaynes43/haynes-ops/pull/2944',
+        'Resume: MANUAL — re-enable only if upstream starts publishing immutable version tags, and then as a single group with automerge off.',
+        'Recorded: 2026-09-21 by claude.',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/(^|/)vexaai//'],
+      enabled: false,
+    },
     // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
     //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
     //   protection (Host/Origin validation on every route, 403 for non-loopback Host).
