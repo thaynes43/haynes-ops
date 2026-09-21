@@ -49,8 +49,19 @@ install_comfyui_requirements() {
     return 0
   fi
 
+  # --upgrade is required: without it `pip install --target` skips every
+  # package directory that already exists, so a COMFYUI_VERSION bump would keep
+  # the OLD pinned comfyui-frontend-package / comfy-kitchen / comfy-aimdo.
+  # The torch stack is unpinned upstream, so hold it at the versions proven on
+  # this node's driver (580.x / CUDA 13.0); bump these deliberately.
+  local constraints_file
+  constraints_file="$(mktemp)"
+  printf '%s\n' "torch==2.12.0" "torchvision==0.27.0" "torchaudio==2.11.0" > "${constraints_file}"
+
   log "Installing ComfyUI requirements.txt to shared deps at ${DEPS_DIR}..."
-  "${venv_pip}" install --no-cache-dir --target "${DEPS_DIR}" -r "${requirements_file}"
+  "${venv_pip}" install --no-cache-dir --upgrade --target "${DEPS_DIR}" \
+    -c "${constraints_file}" -r "${requirements_file}"
+  rm -f "${constraints_file}"
 
   echo "${current_hash}" > "${marker_file}"
   log "Requirements installed successfully."
