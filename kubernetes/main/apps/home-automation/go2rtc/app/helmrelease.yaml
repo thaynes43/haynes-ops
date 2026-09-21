@@ -67,6 +67,7 @@ spec:
         type: LoadBalancer
         annotations:
           external-dns.alpha.kubernetes.io/hostname: go2rtc.haynesops
+          external-dns.kubernetes.io/hostname: go2rtc.haynesops
           lbipam.cilium.io/ips: 192.168.40.208
         ports:
           http:
@@ -83,6 +84,7 @@ spec:
       app:
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          external-dns.kubernetes.io/target: internal.haynesops
           # Homepage
           gethomepage.dev/href: &url "https://go2rtc.haynesops.com"
           gethomepage.dev/enabled: "true"

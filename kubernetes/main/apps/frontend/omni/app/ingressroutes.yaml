@@ -5,6 +5,7 @@ metadata:
   name: omni-main-http
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
+    external-dns.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
     gethomepage.dev/href: "https://omni.haynesops.com"
     gethomepage.dev/enabled: "true"
@@ -35,6 +36,7 @@ metadata:
   name: omni-machine-grpc
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
+    external-dns.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
@@ -57,6 +59,7 @@ metadata:
   name: omni-kube
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
+    external-dns.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
 spec:
   entryPoints:
