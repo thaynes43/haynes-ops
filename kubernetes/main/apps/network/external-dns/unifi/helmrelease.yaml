@@ -52,18 +52,17 @@ spec:
       # the default 5s webhook read timeout turned every stall into a fatal ->
       # CrashLoopBackOff (21 restarts in the week to 2026-08-13). Ride it out.
       - --webhook-provider-read-timeout=60s
-      # external-dns v0.22.0 (chart 1.22.0) changes the DEFAULT annotation
-      # prefix to `external-dns.kubernetes.io/` with no fallback to the alpha
-      # prefix. Every annotation in this repo is still
-      # `external-dns.alpha.kubernetes.io/` (73 of them, 71 of which are
-      # /target), so without this flag every record would silently lose its
-      # target override and be re-synced to the ingress LB address -- with
-      # `policy: sync` that rewrites live internal DNS. This flag also exists in
-      # 0.21.0 where it is the default, so it is a no-op until the bump.
-      # KEEP THIS until every external-dns.alpha.kubernetes.io/ annotation in
-      # the repo has been migrated to the GA prefix, then remove it in the same
-      # commit as the last migration.
-      - --annotation-prefix=external-dns.alpha.kubernetes.io/
+      # Phase 2a of the GA annotation-prefix migration (#3002). Every record is
+      # dual-annotated since #3044 -- each external-dns.alpha.kubernetes.io/<key>
+      # has an identical external-dns.kubernetes.io/<key> beside it -- so this
+      # flip reads the same values and is a no-op. Verified against the live
+      # cluster before the flip: 71/71 alpha-annotated objects carry an
+      # identical GA twin.
+      # external-dns reads exactly ONE prefix and has no fallback, so this flag
+      # and the annotations must never disagree. Kept explicit (rather than
+      # relying on the v0.22.0 default) until phase 3 removes the alpha
+      # annotations; then it can go only if the default is confirmed identical.
+      - --annotation-prefix=external-dns.kubernetes.io/
     policy: sync
     sources: ["crd", "ingress", "traefik-proxy"]
     excludeDomains: ["haynesnetwork.com"]
