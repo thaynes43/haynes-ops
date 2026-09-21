@@ -224,6 +224,19 @@
       matchPackageNames: ['/thaynes43/dev-env$/'],
       automerge: false,
     },
+    // comfyui carve-out (2026-09-21) — our own image (scripts/comfyui). A bump
+    // restarts ComfyUI: minutes of cold model load from the HDD NAS during which
+    // detection images fail, and a new ComfyUI version needs a real render check
+    // (node renames, dependency drift). Agent-supervised merge only: the PR still
+    // opens. The image tag is <ComfyUI version>-<revision> and is only produced by a
+    // deliberate edit of .github/workflows/comfyui-build.yml, so there is no
+    // unattended path to a new tag anyway.
+    {
+      description: 'comfyui image — manual/supervised merge only (restart = cold model load; new ComfyUI needs a render check)',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/thaynes43/comfyui$/'],
+      automerge: false,
+    },
     // Immich carve-out REMOVED 2026-07-05 (hands-off directive). Immich minor/patch/
     // digest now auto-merge via the photos leaf-app rule above — it is not cluster-
     // breaking, and the safety net (flux-local + health gate + auto-revert + the daily
