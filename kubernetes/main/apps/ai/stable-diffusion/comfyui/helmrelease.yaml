@@ -7,6 +7,10 @@ metadata:
   namespace: ai
 spec:
   interval: 30m
+  # A start can mean a dependency reinstall, tens of GB of model downloads and
+  # a cold model load. With the default 5m the upgrade timed out, Helm rolled
+  # back to the previous COMFYUI_VERSION, retried, and thrashed the pod.
+  timeout: 30m
   chartRef:
     kind: OCIRepository
     name: app-template
@@ -154,10 +158,13 @@ spec:
               CF_QUICK_TUNNELS: "false"
               SERVERLESS: "false"
               COMFYUI_DISABLE_EXTRA_NODES: "0"
-              # Load the qwen-edit diffusion model as fp8 (it IS fp8_e4m3fn on disk).
-              # ComfyUI >=0.3 otherwise upcasts a "default"-dtype UNET to fp16 (~24GB)
-              # and OOMs the 3090. Forcing fp8 keeps it ~12GB on GPU.
-              COMFYUI_ARGS: "--fp8_e4m3fn-unet"
+              # No server-wide dtype flag: --fp8_e4m3fn-unet forces fp8 onto EVERY
+              # diffusion model, including int8 checkpoints such as Qwen-Image-2.1
+              # ("model weight dtype torch.float8_e4m3fn" on an int8_convrot file).
+              # The fp8 Qwen-Image-Edit-2509 workflows AppDaemon can still send
+              # set weight_dtype=fp8_e4m3fn on their own UNETLoader instead
+              # (appdaemon >= 1.20.0).
+              COMFYUI_ARGS: ""
             envFrom:
               - secretRef:
                   name: comfyui-secret
