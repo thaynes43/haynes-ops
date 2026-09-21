@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+# Staged from kubernetes/main/apps/ai/stable-diffusion/comfyui/resources/ by
+# .github/workflows/comfyui-build.yml (and by hand for a local build — see
+# README.md). Never committed: the deployed JSONs are the single source of truth.
+testdata/deployed/

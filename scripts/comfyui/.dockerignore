@@ -1,0 +1,7 @@
+# The repo-root .dockerignore does not apply here: the build context is
+# ./scripts/comfyui, and Docker reads .dockerignore from the context directory.
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+README.md
