@@ -29,9 +29,6 @@ ARG COMFYUI_VERSION=v0.37.0
 # matched, comments included — so never put a version number in a comment
 # BETWEEN the annotation and its ARG. See scripts/dev-env/Dockerfile.
 
-# renovate: datasource=pypi depName=pytest
-ARG PYTEST_VERSION=9.1.1
-
 # Caches: ComfyUI core writes nothing to $HOME, but transformers,
 # huggingface_hub and torch sit on its startup import path and do. Everything
 # mutable is aimed at /tmp, which is a tmpfs/emptyDir, never the read-only root.
@@ -79,7 +76,8 @@ ENV COMFYUI_ROOT=/opt/ComfyUI \
 #   user/, temp/   must NOT exist. A shipped user/comfyui.db would make
 #                  app/database/db.py os.replace it in place on first boot —
 #                  into the read-only tree.
-RUN apt-get update \
+RUN mkdir -p /tmp/comfy-home /tmp/comfy-cache \
+ && apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates git \
  && git clone --depth 1 --branch "${COMFYUI_VERSION}" \
       https://github.com/Comfy-Org/ComfyUI.git "${COMFYUI_ROOT}" \
@@ -140,7 +138,10 @@ CMD ["serve"]
 # ---------------------------------------------------------------------------
 FROM runtime AS test
 USER root
-ARG PYTEST_VERSION
+# Declared here, with its default, because ARG defaults do NOT cross stages —
+# a bare `ARG PYTEST_VERSION` would expand to the empty string.
+# renovate: datasource=pypi depName=pytest
+ARG PYTEST_VERSION=9.1.1
 RUN pip install --no-cache-dir --disable-pip-version-check "pytest==${PYTEST_VERSION}"
 COPY test_provision.py /opt/comfyui-tools/
 # testdata/deployed/{workflows,api-workflows} are the app's REAL workflow JSONs,
