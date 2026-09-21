@@ -116,11 +116,35 @@ jobs:
             ${{ steps.diff.outputs.diff }}
             ```
 
+  annotation-guard:
+    # external-dns >=0.22 reads ONLY `external-dns.kubernetes.io/` (the GA prefix, the
+    # default — neither instance sets --annotation-prefix). An `external-dns.alpha…`
+    # annotation is silently ignored: the /target override vanishes and, with
+    # policy: sync, a public name is rewritten to the private ingress LB IP. The repo was
+    # migrated 2026-09-21 (#3044-#3047, issue #3002); this keeps the old prefix from
+    # creeping back in via a copied manifest. Whole-tree grep, so it is cheap and fail-closed.
+    name: Flux Local - external-dns annotation prefix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Reject the retired alpha prefix
+        run: |
+          if grep -rn --include='*.yaml' --include='*.yml' --include='*.j2' \
+               'external-dns\.alpha\.kubernetes\.io/' kubernetes/; then
+            echo "::error::Use external-dns.kubernetes.io/<key> — the alpha prefix is ignored by external-dns >=0.22 (see issue #3002)."
+            exit 1
+          fi
+          echo "no alpha-prefixed external-dns annotations under kubernetes/"
+
   success:
     if: ${{ !cancelled() }}
     needs:
       - test
       - diff
+      - annotation-guard
     name: Flux Local - Success
     runs-on: ubuntu-latest
     steps:
