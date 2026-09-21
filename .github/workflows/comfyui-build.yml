@@ -48,15 +48,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # ~8-9 GB of image plus the builder's own layer cache does not fit in the
-      # runner's default free space. These four are the biggest things a
-      # ubuntu-latest image carries that no step here needs (~25 GB).
-      - name: Free up runner disk
+      # The 6.5 GB image, the builder's layer cache and the loaded copy come to
+      # roughly 20 GB. Today's ubuntu-latest runner has ~87 GB free, so the
+      # reclaim is dead weight — but runner sizing has changed before, and a
+      # disk-full failure mid-build is opaque. Keep the escape hatch, skip it
+      # when it is not needed (it costs ~4 minutes when it runs).
+      - name: Free up runner disk if needed
         run: |
           df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-                      /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
-          df -h /
+          avail=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+          if [ "${avail:-0}" -lt 40 ]; then
+            echo "only ${avail}G free, reclaiming preinstalled toolchains"
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                        /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+            df -h /
+          else
+            echo "${avail}G free; the build needs ~20G, nothing to reclaim"
+          fi
 
       # One source of truth: the parser is tested against the workflow JSONs the
       # app actually deploys, not a copy in scripts/ that can drift out of step.
