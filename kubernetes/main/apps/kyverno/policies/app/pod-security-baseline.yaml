@@ -6,7 +6,7 @@
 #
 # PHASE A: Audit-only (failureAction: Enforce) with NO namespace excludes — so the
 # ClusterPolicyReport enumerates the FULL real violator set (VolSync movers across 18
-# ns, device-plugins, multus, rook, comfyui, subchart pods, ...) before Phase C adds
+# ns, device-plugins, multus, rook, subchart pods, ...) before Phase C adds
 # per-workload PolicyExceptions and flips to Enforce. fail-open so a Kyverno outage
 # never wedges a Flux apply.
 apiVersion: kyverno.io/v1

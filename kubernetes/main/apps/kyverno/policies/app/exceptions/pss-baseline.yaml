@@ -10,8 +10,6 @@
 # autogen-cronjob-baseline) so controllers, Jobs, and bare Pods are all exempted.
 #
 # App-level flags to revisit (not infra — could be tightened instead of exempted):
-#   - ai/comfyui           : securityContext.privileged=true (GPU usually needs the
-#                            device plugin, NOT privileged — candidate to drop).
 #   - frontend/omni        : NET_ADMIN+NET_RAW+privileged; it's the self-hosted Omni for
 #                            the powered-off/unused edge cluster — candidate to remove.
 #   - home-automation/music-assistant : hostNetwork for cast/DLNA discovery (legit).
@@ -73,11 +71,6 @@ spec:
           namespaces: [network]
           names:
             - multus*
-      - resources:
-          kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
-          namespaces: [ai]
-          names:
-            - comfyui*
       - resources:
           kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
           namespaces: [home-automation]
