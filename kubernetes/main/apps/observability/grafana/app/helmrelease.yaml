@@ -308,6 +308,7 @@ spec:
       enabled: true
       annotations:
         external-dns.alpha.kubernetes.io/target: internal.haynesops
+        external-dns.kubernetes.io/target: internal.haynesops
         # Homepage
         gethomepage.dev/href: &url "https://grafana.haynesops.com"
         gethomepage.dev/enabled: "true"

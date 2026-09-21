@@ -5,6 +5,7 @@ metadata:
   name: home-assistant
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
+    external-dns.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
     # Homepage
     gethomepage.dev/href: &url "https://hass.haynesops.com"
@@ -40,6 +41,7 @@ metadata:
   name: home-assistant-code
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
+    external-dns.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
     # Homepage
     gethomepage.dev/href: &url "https://hass-code.haynesops.com"

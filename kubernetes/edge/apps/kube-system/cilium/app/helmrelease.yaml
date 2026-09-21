@@ -47,6 +47,7 @@ spec:
           enabled: false
           annotations:
             external-dns.alpha.kubernetes.io/target: internal.haynesedge
+            external-dns.kubernetes.io/target: internal.haynesedge
           className: traefik-internal
           hosts: ["hubble.haynesedge.com"]
     operator:

@@ -93,6 +93,7 @@ spec:
       app:
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          external-dns.kubernetes.io/target: internal.haynesops
           gethomepage.dev/href: &url "https://lazylibrarian.haynesops.com"
           gethomepage.dev/enabled: "true"
           gethomepage.dev/group: Downloads

@@ -122,6 +122,7 @@ spec:
       dashboard:
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          external-dns.kubernetes.io/target: internal.haynesops
         ingressClassName: traefik-internal
         host:
           name: rook.haynesops.com
@@ -383,6 +384,7 @@ spec:
           enabled: true
           annotations:
             external-dns.alpha.kubernetes.io/target: internal.haynesops
+            external-dns.kubernetes.io/target: internal.haynesops
             nginx.ingress.kubernetes.io/proxy-body-size: "0"
             nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
           ingressClassName: traefik-internal

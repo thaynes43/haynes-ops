@@ -73,6 +73,7 @@ spec:
       app:
         annotations:
           external-dns.alpha.kubernetes.io/target: internal.haynesops
+          external-dns.kubernetes.io/target: internal.haynesops
         className: traefik-internal
         hosts:
           - host: "{{ .Release.Name }}.haynesops.com"

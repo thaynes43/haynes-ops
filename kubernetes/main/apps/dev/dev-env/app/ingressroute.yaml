@@ -12,6 +12,7 @@ metadata:
   name: dev-env
   annotations:
     external-dns.alpha.kubernetes.io/target: internal.haynesops
+    external-dns.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
     gethomepage.dev/enabled: "true"
     gethomepage.dev/href: "https://dev-env.haynesops.com"

@@ -4,6 +4,7 @@ metadata:
   name: overseerr
   annotations:
     external-dns.alpha.kubernetes.io/target: ingress-ext.haynesnetwork.com
+    external-dns.kubernetes.io/target: ingress-ext.haynesnetwork.com
     kubernetes.io/ingress.class: traefik-external
     # Homepage tile intentionally disabled: this URL now fronts the in-cluster
     # Seerr, which already has its own Media tile (seerr.haynesops.com).
