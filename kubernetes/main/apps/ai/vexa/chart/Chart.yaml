@@ -3,7 +3,12 @@ name: vexa
 description: Vexa v0.12 — self-hostable real-time meeting transcription + agent control plane
 type: application
 # Chart version (SemVer). appVersion tracks the v0.12 control-plane image tag the chart deploys.
-version: 0.12.3
+# BUMP THIS ON EVERY CHART EDIT, values.yaml included: the HelmRelease sources this chart
+# from the GitRepository with the default `reconcileStrategy: ChartVersion`, so Flux only
+# repackages it when this number changes. An edit without a bump merges green and never
+# deploys (2026-09-21: valkey 8 -> 9 sat undeployed). Renovate does it itself via the
+# `bumpVersion` rule in .renovate/groups.json5.
+version: 0.12.4
 appVersion: "0.12.22"
 home: https://github.com/Vexa-ai/vexa
 sources:

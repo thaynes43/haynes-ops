@@ -116,5 +116,10 @@
       },
       automerge: false,
     },
+    {
+      description: 'Vendored vexa chart: bump Chart.yaml with every values.yaml image update — Flux (reconcileStrategy ChartVersion) only repackages a git-sourced chart when its version changes, so an un-bumped update merges and silently never deploys (valkey 9, 2026-09-21).',
+      matchFileNames: ['kubernetes/main/apps/ai/vexa/chart/**'],
+      bumpVersion: 'patch',
+    },
   ],
 }
