@@ -49,19 +49,32 @@ install_comfyui_requirements() {
     return 0
   fi
 
-  # --upgrade is required: without it `pip install --target` skips every
-  # package directory that already exists, so a COMFYUI_VERSION bump would keep
-  # the OLD pinned comfyui-frontend-package / comfy-kitchen / comfy-aimdo.
+  # Build the deps tree in a fresh directory and swap it in. Installing over
+  # the old tree (`pip install --target`, with or without --upgrade) leaves the
+  # PREVIOUS versions' *.dist-info behind, and importlib.metadata then reports
+  # the stale version: the v0.37.0 bump died at import with "tokenizers>=0.23.1
+  # is required ... found tokenizers==0.22.2" although 0.23.2 was installed.
   # The torch stack is unpinned upstream, so hold it at the versions proven on
   # this node's driver (580.x / CUDA 13.0); bump these deliberately.
-  local constraints_file
+  local constraints_file staging_dir
   constraints_file="$(mktemp)"
+  staging_dir="${DEPS_DIR}.new"
   printf '%s\n' "torch==2.12.0" "torchvision==0.27.0" "torchaudio==2.11.0" > "${constraints_file}"
 
-  log "Installing ComfyUI requirements.txt to shared deps at ${DEPS_DIR}..."
-  "${venv_pip}" install --no-cache-dir --upgrade --target "${DEPS_DIR}" \
-    -c "${constraints_file}" -r "${requirements_file}"
+  log "Installing ComfyUI requirements.txt into a fresh tree at ${staging_dir}..."
+  rm -rf "${staging_dir}"
+  mkdir -p "${staging_dir}"
+  if ! "${venv_pip}" install --no-cache-dir --target "${staging_dir}" \
+    -c "${constraints_file}" -r "${requirements_file}"; then
+    log "ERROR: requirements install failed; keeping the existing deps tree."
+    rm -rf "${staging_dir}" "${constraints_file}"
+    return 1
+  fi
   rm -f "${constraints_file}"
+  rm -rf "${DEPS_DIR}.old"
+  [[ -d "${DEPS_DIR}" ]] && mv "${DEPS_DIR}" "${DEPS_DIR}.old"
+  mv "${staging_dir}" "${DEPS_DIR}"
+  rm -rf "${DEPS_DIR}.old"
 
   echo "${current_hash}" > "${marker_file}"
   log "Requirements installed successfully."
