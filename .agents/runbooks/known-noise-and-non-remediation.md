@@ -131,6 +131,50 @@ never arrives. Self-clears once the pull settles.
 - **Check the actual free space before dismissing** — this one shares an alert name
   with a genuine disk-fill, which has bitten this cluster for real.
 
+### `NodeVarEvictionImminent` on talosw01 during a container image pull
+`/var` on talosw01 is a 510 GiB filesystem that sits at ~18.6% free in its **steady
+state**, and the rule fires at `<18%` `for: 5m`. That leaves only ~3 GiB of headroom,
+so a single image pull large enough to matter — comfyui's own image is 3.6 GB — digs
+below the line, holds there while the layers extract, and climbs back out when the
+pull settles. The alert is measuring the pull, not a fill.
+
+**The instinctive fix is destructive here.** The writer this alert points at is a
+GPU workload someone just deployed; "scale it to 0 and prune its PVC" deletes a
+live rollout and its provisioned models to reclaim space that was never the problem.
+
+- **Signature — four things separate this from a genuine fill:**
+  1. The **1h/24h slope, not the 15m one.** A pull shows a steep 15m derivative
+     (−39 GiB/h was measured on 2026-09-21) that the 1h window does not corroborate.
+     Sustained drain on this node runs ~0.16 GiB/h. Query
+     `deriv(node_filesystem_avail_bytes{mountpoint="/var"}[1h])` before believing a
+     `[15m]` figure.
+  2. **The series recovers.** `query_range` over the last 2h at `step=300` shows a
+     V, not a ramp. A real fill has no right-hand side.
+  3. **A pod on that node was created minutes before `startsAt`.** Check
+     `kubectl -n <ns> describe pod <p>` for `Pulling`/`Pulled` events bracketing the
+     dip, and the merge time of whatever PR shipped it.
+  4. **`DiskPressure` is `False`** and there are no eviction events, even though the
+     alert's text says evictions are beginning.
+- **Do:** confirm the recovery and close. `kubectl get node talosw01 -o jsonpath=
+  '{.status.conditions[?(@.type=="DiskPressure")].status}'` plus the 2h range query
+  settle it in two commands.
+- **Do NOT:** scale the workload to 0, pause its dispatcher, delete pods, or prune
+  its PVC. None of those touch the image layers that actually moved the needle.
+- **Do not dismiss a sustained decline, though** — this shares an alert name with a
+  genuine disk-fill. The check is the 1h slope and the right-hand side of the series,
+  never the alert text.
+- 2026-09-21 (`rem-responder-fe433bef`): fired 21:28:19Z; #3061 merged 21:21:15Z and
+  `comfyui-0` was created 21:21:40Z, pulling a 3.6 GB image. `/var` avail went
+  94.9 → 86.0 → 94.8 GiB across 21:18–21:33 and the rule was back to `inactive`
+  before the session opened. The read-only diagnosis had reported
+  `comfyui-workspace` as "452GB of the 547GB /var" and recommended scaling
+  `comfyui-0` to 0 and pruning outputs; the PVC is **80Gi** (`du` confirms 80G) and
+  the pod was mid-`provision-models`. Nothing was wrong and nothing was done.
+- **The thin margin is real and is tracked in #3051** — the ComfyUI pipeline work
+  is what consumed talosw01's `/var` headroom (112 → 95 GiB earlier that day). Until
+  that lands, expect this alert on every comfyui image bump. Re-tuning the 18%
+  threshold or moving the workspace off `/var` is an owner decision, not a lane fix.
+
 ### `etcdDatabaseHighFragmentationRatio`
 Long-standing, accepted warning. Not actionable.
 
