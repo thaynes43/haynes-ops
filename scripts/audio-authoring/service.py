@@ -643,6 +643,10 @@ class Runtime:
 runtime = Runtime()
 mcp = MCPServer(
     "Haynes Quest Audio",
+    # mcp 1.x quietly reported the SDK's own version in serverInfo; 2.x reports an
+    # empty string for an unversioned server and never substitutes its own. Report
+    # the service version, which is what a client actually wants to see there.
+    version=SERVICE_VERSION,
     instructions=(
         "Submit bounded Stable Audio 3 Small SFX jobs and poll them asynchronously. "
         "One generation runs at a time and up to four wait. Download completed WAV files "

@@ -336,6 +336,11 @@ def main() -> None:
                 response = client.post("/mcp", json=body, headers={**headers,
                     "host": "audio-authoring.dev.svc.cluster.local:8000"})
                 assert response.status_code == 200
+                # mcp 2 stopped substituting the SDK version here, so an unversioned
+                # server would silently advertise an empty string.
+                server_info = response.json()["result"]["serverInfo"]
+                assert server_info["name"] == "Haynes Quest Audio", server_info
+                assert server_info["version"] == "0.2.0", server_info
             restart_id = asyncio.run(exercise(workspace))
             stop_service(process)
             record_path = workspace / "jobs" / restart_id / "job.json"
