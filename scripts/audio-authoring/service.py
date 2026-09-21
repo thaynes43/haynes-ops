@@ -19,7 +19,7 @@ import subprocess
 import unicodedata
 import uuid
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import JSONResponse, StreamingResponse
 import uvicorn
@@ -38,7 +38,7 @@ WEIGHTS_REPOSITORY = "stabilityai/stable-audio-3-optimized"
 WEIGHTS_REVISION = "da6edc54ddba10bfd79a077102ded687f80e882b"
 SOURCE_REPOSITORY = "Stability-AI/stable-audio-3"
 SOURCE_REVISION = "779434a908193105335fd8d833418603625b2859"
-SERVICE_VERSION = "0.1.1"
+SERVICE_VERSION = "0.2.0"
 MODEL_FILES = (
     "tflite/t5gemma/encoder_fp16.tflite",
     "tflite/sa3-sm-sfx/dit_fp32.tflite",
@@ -641,25 +641,21 @@ class Runtime:
 
 
 runtime = Runtime()
-mcp = FastMCP(
+mcp = MCPServer(
     "Haynes Quest Audio",
-    host="0.0.0.0",
-    port=8000,
-    stateless_http=True,
-    json_response=True,
-    transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
-        allowed_hosts=[
-            "127.0.0.1:*", "localhost:*", "audio-authoring:*", "audio-authoring.dev:*",
-            "audio-authoring.dev.svc:*", "audio-authoring.dev.svc.cluster.local:*",
-        ],
-        allowed_origins=[],
-    ),
     instructions=(
         "Submit bounded Stable Audio 3 Small SFX jobs and poll them asynchronously. "
         "One generation runs at a time and up to four wait. Download completed WAV files "
         "from the returned internal artifact URL."
     ),
+)
+TRANSPORT_SECURITY = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=[
+        "127.0.0.1:*", "localhost:*", "audio-authoring:*", "audio-authoring.dev:*",
+        "audio-authoring.dev.svc:*", "audio-authoring.dev.svc.cluster.local:*",
+    ],
+    allowed_origins=[],
 )
 
 
@@ -742,7 +738,20 @@ async def artifact(request):
     )
 
 
-app = mcp.streamable_http_app()
+# mcp 2 moved the transport knobs from the server constructor onto the ASGI factory.
+# The transport stays exactly as it was: JSON responses on a stateless /mcp, so every
+# request carries its own transport and no server-side session can idle out from under
+# an agent that holds a connection open while polling a slow CPU generation. The explicit
+# session_idle_timeout=None (the 2.x default is 1800s) is unused while stateless_http is
+# True and exists so a later switch to stateful sessions cannot silently reap them.
+app = mcp.streamable_http_app(
+    streamable_http_path="/mcp",
+    json_response=True,
+    stateless_http=True,
+    session_idle_timeout=None,
+    max_sessions=None,
+    transport_security=TRANSPORT_SECURITY,
+)
 http_lifespan = app.router.lifespan_context
 
 
