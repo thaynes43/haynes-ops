@@ -1,0 +1,117 @@
+name: Build and Push Wyoming Whisper GPU Image
+
+# Builds ghcr.io/thaynes43/wyoming-whisper-gpu — a CUDA build of OHF-Voice's
+# wyoming-faster-whisper, which upstream ships as a Dockerfile but deliberately
+# never publishes. It is what lets Home Assistant's STT run Parakeet on the
+# A2000; see the long header in scripts/wyoming-whisper-gpu/Dockerfile.
+#
+# PRs build and smoke-test without publishing; only a push to main publishes
+# and signs.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/wyoming-whisper-gpu/**'
+      - '.github/workflows/wyoming-whisper-gpu-build.yml'
+  push:
+    branches: [main]
+    paths:
+      # This workflow deliberately does NOT list its own file here — see the
+      # note in dev-env-build.yml: rebuilding on a Renovate action bump
+      # re-pushes the same tag with a new digest and provokes a pointless
+      # digest-drift PR.
+      - 'scripts/wyoming-whisper-gpu/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write   # keyless cosign signing (OIDC)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # <wyoming-faster-whisper version>-<image revision>. Bump the revision when
+  # only our own Dockerfile changes; bump the version half by editing the
+  # WYOMING_FASTER_WHISPER_VERSION ARG (Renovate does that) and resetting the
+  # revision to 1.
+  IMAGE_TAG: 3.8.1-1
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.4.1
+
+      # ~4 GB image (CUDA runtime + cuDNN 9 + onnxruntime-gpu). No cache-to:
+      # the GitHub Actions cache is 10 GB repo-wide and this would evict every
+      # other workflow's entries, same reasoning as comfyui-build.yml.
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./scripts/wyoming-whisper-gpu
+          push: false
+          load: true
+          tags: wyoming-whisper-gpu:test
+
+      - name: Report image size
+        run: |
+          docker images wyoming-whisper-gpu:test --format '{{.Repository}}:{{.Tag}}  {{.Size}}'
+          df -h /
+
+      # No GPU and no network on the runner, so this proves what it can: the
+      # module imports, the CLI parses, onnx-asr is importable and onnxruntime
+      # still reports a CUDA provider (the Dockerfile asserts that too — this
+      # catches a later layer undoing it). Loading a model needs the GPU node.
+      - name: Smoke-test the CLI and the CUDA-capable onnxruntime
+        timeout-minutes: 5
+        run: |
+          docker run --rm --network none wyoming-whisper-gpu:test --help
+          docker run --rm --network none --entrypoint /venv/bin/python3 \
+            wyoming-whisper-gpu:test -c "
+          import onnxruntime as rt, onnx_asr, wyoming_faster_whisper
+          providers = rt.get_available_providers()
+          print('onnxruntime', rt.__version__, providers)
+          assert 'CUDAExecutionProvider' in providers, providers
+          major, minor = (int(p) for p in rt.__version__.split('.')[:2])
+          assert (major, minor) < (1, 27), 'onnxruntime-gpu 1.27+ is CUDA 13'
+          "
+
+      - name: Log in to GitHub Container Registry
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish validated image
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        id: publish
+        uses: docker/build-push-action@v7
+        with:
+          context: ./scripts/wyoming-whisper-gpu
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/wyoming-whisper-gpu:${{ env.IMAGE_TAG }}
+
+      - name: Install cosign
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          # Kept in step with the other image workflows — see the long note in
+          # dev-env-build.yml; change them together.
+          cosign-release: v3.1.3
+
+      - name: Sign the image (keyless)
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/wyoming-whisper-gpu
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
