@@ -16,18 +16,9 @@ tasks:
       - "[[ $(direnv status --json | jq '.state.foundRC.allowed') == 0 ]]"
       - "[[ $(direnv status --json | jq '.state.loadedRC.allowed') == 0 ]]"
 
-  venv:
-    desc: Set up virtual environment
-    cmds:
-      - "{{.PYTHON_BIN}} -m venv {{.VIRTUAL_ENV}}"
-      - '{{.VIRTUAL_ENV}}/bin/python3 -m pip install --upgrade pip setuptools wheel'
-      - '{{.VIRTUAL_ENV}}/bin/python3 -m pip install --upgrade --requirement "{{.PIP_REQUIREMENTS_FILE}}"'
-    sources:
-      - "{{.PIP_REQUIREMENTS_FILE}}"
-    generates:
-      - "{{.VIRTUAL_ENV}}/pyvenv.cfg"
-    preconditions:
-      - { msg: "Missing Pip requirements file", sh: "test -f {{.PIP_REQUIREMENTS_FILE}}" }
+  # `venv` was deleted 2026-09-22: the repo-root `requirements.txt` existed only to
+  # install makejinja for the cluster-template bootstrap targets, which #3097 removed.
+  # Nothing in the repo runs Python from a project venv any more.
 
   brew:
     desc: Install workstation dependencies with Brew

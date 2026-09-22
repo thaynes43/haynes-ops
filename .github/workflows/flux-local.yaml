@@ -27,6 +27,12 @@ jobs:
         with:
           patterns: kubernetes/**/*
 
+  # The `cluster` matrix carries a single entry since the edge cluster was retired
+  # (2026-09-22): `kubernetes/edge/` is gone, so there is nothing else to render. It
+  # stays a matrix so the check names keep their `(main)` / `(main/helmrelease)` shape
+  # and a second cluster is a one-line re-add. Branch protection requires only the
+  # aggregate contexts `Flux Local - Success` and `Diff Scope - Success`, never a
+  # per-matrix name — do not make a matrix leg a required check.
   test:
     if: ${{ needs.filter.outputs.changed-files != '[]' }}
     needs: filter
@@ -36,7 +42,6 @@ jobs:
       matrix:
         cluster:
           - main
-          - edge
       fail-fast: false
     steps:
       - name: Checkout
@@ -66,7 +71,6 @@ jobs:
       matrix:
         cluster:
           - main
-          - edge
         resource:
           - helmrelease
           - kustomization

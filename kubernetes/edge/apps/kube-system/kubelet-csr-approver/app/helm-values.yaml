@@ -1,3 +1,0 @@
----
-providerRegex:  ^(edgem|edgew)\d+$
-bypassDnsResolution: true

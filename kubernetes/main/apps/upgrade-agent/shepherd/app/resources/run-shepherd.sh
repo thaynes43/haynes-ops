@@ -97,11 +97,11 @@ record_spend() {
 # two-place-lockstep footgun (globs vs prompt) is now a paged, refused run instead.
 ramp_globs_for() {
   case "$1" in
-    coredns)        printf '%s' "kubernetes/main/apps/kube-system/coredns/ kubernetes/edge/apps/kube-system/coredns/" ;;
+    coredns)        printf '%s' "kubernetes/main/apps/kube-system/coredns/" ;;
     traefik)        printf '%s' "kubernetes/main/apps/network/traefik/" ;;
     multus)         printf '%s' "kubernetes/main/apps/network/multus/" ;;
     device-plugins) printf '%s' "kubernetes/main/apps/kube-system/generic-device-plugin/ kubernetes/main/apps/kube-system/intel-device-plugin/ kubernetes/main/apps/kube-system/nvidia-device-plugin/" ;;
-    flux)           printf '%s' "kubernetes/main/flux/ kubernetes/edge/flux/" ;;
+    flux)           printf '%s' "kubernetes/main/flux/" ;;
     immich-major)   printf '%s' "kubernetes/main/apps/photos/immich/" ;;
     # ── Revertible cluster-infra (2026-07-08) — the prompt's REVERTIBLE class. The
     #    shepherd auto-merges PATCH/safe-minor bumps of these (data plane untouched,

@@ -77,16 +77,13 @@
     // Gatus/Pushover/watchdog alert path that does NOT depend on Prometheus.
     // Watch item: prometheus-operator-crds (CRD-only bumps) — safe here only
     // because minor/patch CRD changes are additive; majors stay manual.
-    // Edge (2026-07-05): the `kubernetes/*/apps/…` glob (the `*` matches ONE
-    // segment) covers BOTH `main` and `edge`. Decision: edge PRs auto-merge on
-    // the SAME safe-leaf policy as main. Rationale: flux-local fully renders the
-    // edge cluster in its matrix on these (main-targeted) PRs and Diff Scope
-    // runs, so edge gets the same render + scope gates; we just can't RUNTIME-
-    // validate edge (it is powered off) and that is accepted — nothing runs
-    // there to break. Cluster-killers (cilium, coredns, flux) stay OFF this list
-    // for BOTH clusters, so a bad push can't wedge edge when it is next booted.
+    // The `kubernetes/*/apps/…` glob (the `*` matches ONE segment) resolves to
+    // `main` only since the edge cluster was retired and `kubernetes/edge/` was
+    // deleted (2026-09-22). The `*` is kept rather than hard-coded to `main` so a
+    // future second cluster inherits the same safe-leaf policy without a rewrite.
+    // Cluster-killers (cilium, coredns, flux) stay OFF this list.
     {
-      description: 'Auto merge safe leaf-app domains (stateless, single-pod) — main + edge',
+      description: 'Auto merge safe leaf-app domains (stateless, single-pod)',
       matchFileNames: [
         'kubernetes/*/apps/media/**',
         'kubernetes/*/apps/ai/**',
@@ -121,12 +118,10 @@
     // authentik (SSO + DB migrations), multus (CNI), the device-plugins
     // (GPU/detection pipeline). Only stateless, single-pod utilities with no
     // such coupling go here. Same flux-local gate (bake removed, see header). Ramp per-app.
-    // `kubernetes/*/apps/…` again covers main + edge (see the leaf-app note above).
-    // Edge currently has metrics-server, reloader, spegel of these; the rest match
-    // main only (harmless — no edge dir to match). cilium/coredns on edge are
-    // deliberately NOT here (cluster-killers, stay manual on both clusters).
+    // `kubernetes/*/apps/…` again resolves to main only (see the leaf-app note
+    // above). cilium/coredns are deliberately NOT here (cluster-killers, manual).
     {
-      description: 'Auto merge safe cluster-infra leaves (explicit subpaths) — main + edge',
+      description: 'Auto merge safe cluster-infra leaves (explicit subpaths)',
       matchFileNames: [
         'kubernetes/*/apps/kube-system/metrics-server/**',
         'kubernetes/*/apps/kube-system/reloader/**',

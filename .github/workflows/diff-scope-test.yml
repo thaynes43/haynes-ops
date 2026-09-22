@@ -14,7 +14,7 @@ name: Diff Scope Test
 
 on:
   pull_request:
-    branches: [main, edge]
+    branches: [main]
     paths:
       - scripts/diff-scope.sh
       - scripts/diff-scope-test.sh

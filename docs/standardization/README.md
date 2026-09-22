@@ -1,5 +1,10 @@
 ## Standardization roadmap (haynes-ops)
 
+> **Dated plan — read with 2026-09-22 in mind.** The `edge` cluster this roadmap leans on
+> as a proving ground was retired and `kubernetes/edge/` deleted; `main` is the only
+> cluster, so every "validate on `edge` first" / "two clusters" statement below is
+> historical. See `.agents/reference/repo-overview.md` → *Edge cluster retirement*.
+
 This folder is the **planning + runbook hub** for modernizing `haynes-ops` toward the conventions used by the broader **home-ops community**, using two concrete references:
 
 - The reference repo included in this workspace: `example-ops/onedr0p-home-ops`

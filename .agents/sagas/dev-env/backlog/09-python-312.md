@@ -1,10 +1,22 @@
 # 09 — Python ≥3.12 in the dev-env image (workstation venv parity)
 
-**Status:** backlog — latent, nothing broken in-pod today
+**Status:** VOID (2026-09-22) — the premise is gone, no action needed
 **Depends on:** none
 **Recorded:** 2026-07-24 (renovate-saga audit follow-up)
 
-## Problem
+## Resolution — 2026-09-22
+
+Closed as moot, not fixed. The repo-root `requirements.txt` and the
+`task workstation:venv` target were **deleted** in the retire-edge pass: makejinja
+was their only consumer, and the cluster-template bootstrap targets that invoked it
+went in the 2026-09-22 taskfile audit (#3097). There is no repo venv left to build
+in or out of the pod, so the pod's Python version no longer has a parity
+requirement to meet. Do not bump the image's Python for this reason — if a future
+in-pod workflow needs ≥3.12, record that need on its own merits.
+
+The original entry is kept below for context.
+
+## Problem (historical)
 
 The pod ships Python 3.11.2, but `makejinja==2.8.2` in the repo-root
 `requirements.txt` requires Python ≥3.12, so `task workstation:venv` (repo
