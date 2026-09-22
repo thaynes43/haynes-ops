@@ -8,3 +8,17 @@ resources:
   - ./helmrelease.yaml
   - ./ingressroute.yaml
   - ./middleware.yaml
+configMapGenerator:
+  # The Loki ruler sidecar picks this up by label (same pattern as
+  # plex/plexops/qbittorrent). Stable name: nothing references the ConfigMap,
+  # the sidecar reads it.
+  - name: haynesnetwork-loki-rules
+    files:
+      - haynesnetwork.yaml=./lokirule.yaml
+    options:
+      labels:
+        loki_rule: "true"
+generatorOptions:
+  disableNameSuffixHash: true
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled
