@@ -100,7 +100,9 @@ ramp_globs_for() {
     coredns)        printf '%s' "kubernetes/main/apps/kube-system/coredns/" ;;
     traefik)        printf '%s' "kubernetes/main/apps/network/traefik/" ;;
     multus)         printf '%s' "kubernetes/main/apps/network/multus/" ;;
-    device-plugins) printf '%s' "kubernetes/main/apps/kube-system/generic-device-plugin/ kubernetes/main/apps/kube-system/intel-device-plugin/ kubernetes/main/apps/kube-system/nvidia-device-plugin/" ;;
+    # generic-device-plugin removed 2026-09-22 with the self-hosted Omni (its only
+    # devic.es/tun consumer) — see .agents/reference/repo-overview.md.
+    device-plugins) printf '%s' "kubernetes/main/apps/kube-system/intel-device-plugin/ kubernetes/main/apps/kube-system/nvidia-device-plugin/" ;;
     flux)           printf '%s' "kubernetes/main/flux/" ;;
     immich-major)   printf '%s' "kubernetes/main/apps/photos/immich/" ;;
     # ── Revertible cluster-infra (2026-07-08) — the prompt's REVERTIBLE class. The

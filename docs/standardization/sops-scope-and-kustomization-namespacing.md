@@ -56,7 +56,7 @@ spec:
     namespace: flux-system
 ```
 
-(`homepage` and `omni` already do this.)
+(`homepage` and `headlamp` already do this.)
 
 ## Example: `frontend/homepage`
 

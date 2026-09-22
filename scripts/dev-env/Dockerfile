@@ -59,8 +59,9 @@ ARG RESTIC_VERSION=0.19.1
 # Talos version (nodes run v1.13.3). Same style as kubectl: the `v` lives in the ARG.
 # renovate: datasource=github-releases depName=siderolabs/talos
 ARG TALOSCTL_VERSION=v1.14.0
-# omnictl — read-only Omni machine/cluster status; tracks the self-hosted Omni image
-# (ghcr.io/siderolabs/omni). renovate: datasource=github-releases depName=siderolabs/omni
+# omnictl — read-only Omni machine/cluster status against SaaS Omni (the self-hosted
+# instance was decommissioned 2026-09-22); tracks upstream siderolabs/omni releases,
+# which stay API-compatible with nearby omnictl versions. renovate: datasource=github-releases depName=siderolabs/omni
 ARG OMNICTL_VERSION=v1.12.0
 # renovate: datasource=github-releases depName=coder/code-server extractVersion=^v(?<version>.+)$
 ARG CODE_SERVER_VERSION=4.137.0

@@ -69,15 +69,13 @@ spec:
               - matchName: "vexa-vexa-gateway.ai.svc.cluster.local"
               - matchName: "blender-authoring.dev.svc.cluster.local"
               - matchName: "audio-authoring.dev.svc.cluster.local"
-              # Omni (self-hosted, frontend ns) — an in-cluster Omni svc, kept for a
-              # possible future self-hosted route (backlog 10). It is NOT what manages
-              # the main nodes today.
-              - matchName: "omni.frontend.svc.cluster.local"
-              # SaaS Omni — the instance that ACTUALLY registers the main nodes
-              # (talosm0x). Node triage runs through it: omnictl (Reader SA) + an
-              # Omni-proxied talosconfig fetched at runtime (`omnictl talosconfig`),
-              # so talosctl traffic egresses here too (backlog 10, decision 2026-07-25:
-              # SaaS tier denies break-glass, so LAN-direct os:reader is unavailable).
+              # SaaS Omni — the ONLY Omni now, and the instance that registers every
+              # node (talosm0x). The self-hosted frontend/omni svc entry was dropped
+              # 2026-09-22 with that instance's decommission. Node triage runs through
+              # SaaS: omnictl (Reader SA) + an Omni-proxied talosconfig fetched at
+              # runtime (`omnictl talosconfig`), so talosctl traffic egresses here too
+              # (backlog 10, decision 2026-07-25: SaaS tier denies break-glass, so
+              # LAN-direct os:reader is unavailable).
               - matchName: "haynes.na-west-1.omni.siderolabs.io"
               # git + gh + release notes + ghcr blobs
               - matchName: "github.com"
@@ -262,19 +260,9 @@ spec:
         - ports:
             - port: "8000"
               protocol: TCP
-    # 2c. Omni (self-hosted Talos manager, frontend ns) — node-triage omnictl reads
-    #     machine/cluster status + events on the management API (8080) via svc FQDN,
-    #     never the public ingress (backlog 10). See the topology caveat on the DNS
-    #     matchName above: this reaches the SELF-HOSTED Omni; the main cluster's nodes
-    #     are on SaaS Omni, for which omnictl would instead need *.omni.siderolabs.io.
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: frontend
-            app.kubernetes.io/name: omni
-      toPorts:
-        - ports:
-            - port: "8080"
-              protocol: TCP
+    # 2c. (removed 2026-09-22) in-cluster egress to the self-hosted Omni
+    #     (frontend/omni:8080) went with that instance's decommission. All Omni
+    #     traffic is now the SaaS FQDN allowed in the DNS/FQDN rules above.
     # 2b. traefik-internal — playwright (headless chromium MCP) drives the cluster's
     #     own apps for UI/UX testing via their https://<app>.haynesops.com ingress.
     - toEndpoints:

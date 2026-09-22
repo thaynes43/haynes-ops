@@ -21,4 +21,3 @@ resources:
   - ./node-out-of-service/ks.yaml
   - ./nvidia-device-plugin/ks.yaml
   - ./intel-device-plugin/ks.yaml
-  - ./generic-device-plugin/ks.yaml
