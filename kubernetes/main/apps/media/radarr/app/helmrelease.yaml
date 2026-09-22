@@ -157,7 +157,9 @@ spec:
           gethomepage.dev/description: Movie collection manager
           gethomepage.dev/icon: radarr
           gethomepage.dev/app: radarr
-          gethomepage.dev/siteMonitor: *url
+          # Homepage's siteMonitor sends HEAD; Servarr apps answer HEAD / with 401
+          # (only GET serves the UI) but HEAD /ping with 200.
+          gethomepage.dev/siteMonitor: "https://radarr.haynesops.com/ping"
           gethomepage.dev/widget.type: radarr
           gethomepage.dev/widget.url: "http://radarr.media.svc.cluster.local:7878"
           # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it

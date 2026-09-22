@@ -165,7 +165,9 @@ spec:
           gethomepage.dev/description: Indexer manager
           gethomepage.dev/icon: prowlarr
           gethomepage.dev/app: prowlarr
-          gethomepage.dev/siteMonitor: *url
+          # Homepage's siteMonitor sends HEAD; Servarr apps answer HEAD / with 401
+          # (only GET serves the UI) but HEAD /ping with 200.
+          gethomepage.dev/siteMonitor: "https://prowlarr.haynesops.com/ping"
           gethomepage.dev/widget.type: prowlarr
           gethomepage.dev/widget.url: "http://prowlarr.downloads.svc.cluster.local:9696"
           # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it

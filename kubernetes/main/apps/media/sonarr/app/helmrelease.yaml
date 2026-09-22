@@ -157,7 +157,9 @@ spec:
           gethomepage.dev/description: TV collection manager
           gethomepage.dev/icon: sonarr
           gethomepage.dev/app: sonarr
-          gethomepage.dev/siteMonitor: *url
+          # Homepage's siteMonitor sends HEAD; Servarr apps answer HEAD / with 401
+          # (only GET serves the UI) but HEAD /ping with 200.
+          gethomepage.dev/siteMonitor: "https://sonarr.haynesops.com/ping"
           gethomepage.dev/widget.type: sonarr
           gethomepage.dev/widget.url: "http://sonarr.media.svc.cluster.local:8989"
           # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it

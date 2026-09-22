@@ -147,7 +147,9 @@ spec:
           gethomepage.dev/description: Music collection manager
           gethomepage.dev/icon: lidarr
           gethomepage.dev/app: lidarr
-          gethomepage.dev/siteMonitor: *url
+          # Homepage's siteMonitor sends HEAD; Servarr apps answer HEAD / with 401
+          # (only GET serves the UI) but HEAD /ping with 200.
+          gethomepage.dev/siteMonitor: "https://lidarr.haynesops.com/ping"
           gethomepage.dev/widget.type: lidarr
           gethomepage.dev/widget.url: "http://lidarr.media.svc.cluster.local:8686"
           # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it
