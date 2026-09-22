@@ -92,18 +92,29 @@ spec:
               - "999"
               # --ctx-size is the TOTAL KV pool and is divided across the slots
               # (-np), because --kv-unified only defaults on when the slot count
-              # is auto — and it is set explicitly here. 65536 / 2 slots =
-              # 32768 tokens per slot. Verify after a config change: the startup
+              # is auto — and it is set explicitly here. 131072 / 2 slots =
+              # 65536 tokens per slot. Verify after a config change: the startup
               # log prints `n_ctx_slot`.
               #
-              # Raised from 32768 (16k/slot) on 2026-09-22: Home Assistant's
-              # Assist prompt is ~15k tokens on EVERY turn (observed n_tokens
-              # 14,930-15,147 in this server's own log), which sat right on the
-              # 16k slot edge — one long conversation turn past that and the
-              # slot starts discarding context mid-chat. 32k/slot gives the
-              # Assist prompt roughly 2x headroom.
+              # History, so nobody trims this back to "something sensible":
+              #   32768 (16k/slot) — the original sizing.
+              #   65536 (32k/slot), 2026-09-22 — Home Assistant's Assist prompt
+              #     is ~15k tokens on EVERY turn (n_tokens 14,930-15,147 in this
+              #     server's log), which sat right on the 16k slot edge.
+              #   131072 (64k/slot), 2026-09-22 — HA then attached the
+              #     cigar-journal MCP server (35 tools) to the local agent and a
+              #     single Assist turn became ~43.6k tokens. Every call failed
+              #     with "request (43607 tokens) exceeds the available context
+              #     size (32768 tokens)". 64k/slot clears that with room for a
+              #     second MCP server later.
+              #
+              # 65536 per slot needs NO rope scaling: the model's own
+              # n_ctx_train is 131072, so each slot stays inside the trained
+              # window. Going past 65536/slot would not — check for an
+              # `n_ctx_train` warning in the log if you ever raise it again.
+              # KV cost is roughly linear: 16k->32k per slot measured ~+240 MiB.
               - --ctx-size
-              - "65536"
+              - "131072"
               - --parallel
               - "2"
               # Muse Glimmer's chat template is the ATEM tool-calling protocol
