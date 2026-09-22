@@ -5,8 +5,10 @@
 # re-transcription crawled. Runs on the RTX A2000 12GB (talosm01) as of
 # 2026-08-19: the 3090 (talosw01) is reserved for ComfyUI (camera→image
 # flow) and ollama-prime, so transcription gets the least-contended GPU.
-# talosm01 is a control-plane node — fine for whisper's bounded resources;
-# it already hosts ollama-assist01 on the same A2000. meeting-scribe/01.
+# talosm01 is a control-plane node — fine for whisper's bounded resources.
+# It used to share the A2000 with ollama-assist01; that app was removed on
+# 2026-09-22 (empty model store), so whisper now has the card to itself.
+# meeting-scribe/01.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -60,13 +62,16 @@ spec:
             # toward chapter/brother proper nouns. Approved by Tom 2026-08-19.
             - name: WHISPER_DEFAULT_HOTWORDS
               value: "ΣΦΟ, Sigo, Sigma Phi Omicron, Thomas Haynes, Zach Koch, Zak, Dennis Livoli, Liron Feldman, Matthew Sharp, Scott Scarbro, Rohan Solanki, Ryan Carreiro, Herns Farel"
-            # Keep the model RESIDENT — never offload on idle. The A2000's
-            # 12GB VRAM is shared UNMANAGED with ollama-assist01 on talosm01
-            # (it uses runtimeClassName: nvidia with no device-plugin claim),
-            # so the default 300s idle offload makes whisper re-load its model
-            # mid-meeting and race it for VRAM → CUDA out-of-memory crashloop
-            # (that failure mode crashed whisper on the busier 3090 on
-            # 2026-08-19). Claim VRAM once at startup and hold it. WHISPER__TTL
+            # Keep the model RESIDENT — never offload on idle. The A2000's 12GB
+            # VRAM used to be shared UNMANAGED with ollama-assist01 on talosm01
+            # (nothing here claims a device-plugin GPU, only
+            # runtimeClassName: nvidia), so the default 300s idle offload made
+            # whisper re-load its model mid-meeting and race it for VRAM → CUDA
+            # out-of-memory crashloop (that failure mode crashed whisper on the
+            # busier 3090 on 2026-08-19). assist01 was removed on 2026-09-22, but
+            # the setting stays: nothing stops a future tenant landing on this
+            # card the same way, and a resident model is what whisper wants
+            # regardless. Claim VRAM once at startup and hold it. WHISPER__TTL
             # maps to WhisperConfig.ttl (pydantic env_nested_delimiter "__");
             # -1 = never unload. Verified against the running image 2026-08-19
             # (single-underscore WHISPER_TTL is ignored).
