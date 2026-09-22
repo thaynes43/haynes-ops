@@ -7,6 +7,13 @@ metadata:
 spec:
   providerRef:
     name: github-status
+  # Scoped to Kustomizations applied by `cluster-apps`, i.e. the ones reconciled
+  # from the Git source. A bare `name: "*"` would also match an OCI-sourced
+  # Kustomization such as `flux` (revision `v2.9.5@sha256:...`), and a commit
+  # status for a digest GitHub has no commit for fails with
+  # `422 No commit found for SHA`. `matchLabels` requires `name: "*"`.
   eventSources:
     - kind: Kustomization
       name: "*"
+      matchLabels:
+        kustomize.toolkit.fluxcd.io/name: cluster-apps
