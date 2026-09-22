@@ -157,8 +157,9 @@ rewrite, so a hashed name would dangle. The ConfigMap also carries
 
 The graph is the same Qwen-Image-2.1 stack AppDaemon uses for the
 camera renders, minus the reference-image inputs and with an `EmptyLatentImage` (node `12`) as the
-latent source. The three `Select*Device` nodes pin the UNET, CLIP and VAE to **`gpu:1`** — the
-second 3090 — so a chat render does not evict whatever Ollama has resident on card 0. Warm renders
+latent source. The three `Select*Device` nodes pin the UNET, CLIP and VAE to **`gpu:0`** — which,
+since the 2026-09-22 split, is the *only* card the ComfyUI container sees (3090 #1,
+`GPU-d8a856f1-…`) — so a chat render cannot touch the LLM's card. Warm renders
 take ~35–50 s at 25 steps (the old 50-step Qwen-Image-2512 graph took ~477 s, which used to outrun
 the edge proxy's budget; see the 2026-07-10 verification note below).
 
@@ -209,7 +210,7 @@ handler as `/upload/image` — nothing extra to enable.
 The graph is the T2I graph with the empty latent swapped for a `LoadImage` (node `1`) feeding
 `TextEncodeQwenImage21`'s autogrow reference slot (`images.image_1`), and `KSampler.latent_image`
 taken from that encoder's third output instead — the edit size comes from the input image, and node
-`6`'s `resolution: 1024` is the pixel budget references are resized to. Same `gpu:1` pinning, same 25
+`6`'s `resolution: 1024` is the pixel budget references are resized to. Same `gpu:0` pinning, same 25
 steps. Output prefix is `ui/open-webui-edit`. Node `1`'s literal `"image": "input.png"` is a
 placeholder that the mapping always overwrites; it is intentionally a name that does **not** exist in
 ComfyUI's input dir, so a broken mapping fails loudly instead of silently editing some other file.
@@ -433,8 +434,11 @@ the `seed` / `model` keys and the edit-mapping omission list above.
   (and vice versa); on a busy queue the synchronous Open WebUI request can outlive the edge proxy's
   budget even though ComfyUI still produces the image. Same for the first render after a ComfyUI
   restart, which pays a cold model load off HDD-NFS.
-- **GPU:** `gpu:1` is the second 3090. Nothing else pins a card (owner ruling: no per-app GPU
-  pinning — haynes-ops#2960), so these two workflows are the only things that deliberately steer.
+- **GPU:** `gpu:0` is the only card the ComfyUI container can see — 3090 #1
+  (`GPU-d8a856f1-…`, VM bus `02:00.0`), pinned to ComfyUI by the owner ruling of 2026-09-22
+  (haynes-ops#2960; see "the per-app GPU split" above). The other 3090 belongs to `llama-server`.
+  These two workflows steer *within* ComfyUI's one visible card; the split itself is done by
+  `NVIDIA_VISIBLE_DEVICES`.
 - **Uploads accumulate:** every edit leaves the user's source image in ComfyUI's `input/` dir on the
   workspace PVC. Nothing prunes that today; the output-retention CronJob only touches the NAS output
   dir. Worth watching if edit gets heavy use.
@@ -458,11 +462,33 @@ The original wave pointed `COMFYUI_WORKFLOW` at the **reused, unmodified** AppDa
 Ollama share the one RTX 3090 on `talosw01`, so a large chat model resident in VRAM contends with
 image generation. No queue was added (owner ruling) — usage metrics will show if gating/GPU is needed.
 
-Two-GPU note (2026-09-18): talosw01 now passes through two RTX 3090s. ComfyUI took `cuda:0` = the
-replacement card (VM bus `01:00.0`, UUID `GPU-18bf6eab-…`, host `0000:01:00`, hostpci0) and holds
-~21 GB there; Ollama sees both (`NVIDIA_VISIBLE_DEVICES=all`) and places layers wherever VRAM is
-free, so the 70B no longer contends with ComfyUI. Which app gets which card, and whether Ollama
-should span both, is an open decision: haynes-ops#2960.
+**Superseded 2026-09-22 — kept for history.** Two-GPU note (2026-09-18): talosw01 now passes through
+two RTX 3090s. ComfyUI took `cuda:0` = the replacement card (VM bus `01:00.0`, UUID
+`GPU-18bf6eab-…`, host `0000:01:00`, hostpci0) and holds ~21 GB there; Ollama sees both
+(`NVIDIA_VISIBLE_DEVICES=all`) and places layers wherever VRAM is free, so the 70B no longer
+contends with ComfyUI. Which app gets which card, and whether Ollama should span both, is an open
+decision: haynes-ops#2960.
+
+#### Current — the per-app GPU split (owner ruling 2026-09-22, haynes-ops#2960)
+
+`#2960`'s "no per-app GPU pinning" is **lifted**. talosw01's two 3090s are now owned per app, by
+`NVIDIA_VISIBLE_DEVICES` on each container (the device plugin cannot pin a *named* card, so no app
+in `ai` requests `nvidia.com/gpu`):
+
+| Card | VM bus | UUID | Owner |
+|------|--------|------|-------|
+| 3090 #0 | `01:00.0` | `GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b` (the new card, #3052) | `llama-server` — resident assist/chat LLM |
+| 3090 #1 | `02:00.0` | `GPU-d8a856f1-f955-f683-bc24-654561496774` (the original card) | `comfyui` — exclusively |
+
+`ollama-prime` keeps `NVIDIA_VISIBLE_DEVICES=all` and takes the leftovers, spilling to CPU when
+neither card has room (accepted by the owner). ComfyUI's per-job peak is ~16–20 GB, which fits one
+card; AppDaemon's camera renders and Open WebUI's chat renders load the same
+`qwen_image_2.1_int8_convrot` + `qwen3vl_8b_int8_convrot` files, so one resident copy serves both;
+and the LLM needs a whole card to stay resident.
+
+Because the ComfyUI container now sees exactly one GPU, the `Select*Device` nodes in
+`app/comfyui/generate-workflow.json` and `edit-workflow.json` say **`gpu:0`** — which is 3090 #1,
+the pinned card. They said `gpu:1` while the container could see both.
 
 ## Verification (2026-07-10)
 - **Models:** `ollama list` on ollama-prime shows the starter set. `llama3.1:8b` answered a chat

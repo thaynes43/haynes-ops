@@ -115,11 +115,15 @@ spec:
         value: "true"
       OAUTH_GROUP_CLAIM:
         value: "groups"
-      # ComfyUI image generation (2026-09-21). Qwen-Image-2.1 text-to-image
-      # pinned to the SECOND 3090 (the SelectXDevice nodes say `gpu:1`), so a
-      # chat render does not evict whatever Ollama has resident on card 0.
-      # ~35-50 s warm at 25 steps, against the ~477 s the old 50-step
-      # Qwen-Image-2512 graph took. Full write-up + the once-only admin step:
+      # ComfyUI image generation (2026-09-21; device pin revised 2026-09-22).
+      # The SelectXDevice nodes in the graphs say `gpu:0` because ComfyUI now
+      # sees exactly ONE card: the owner ruling of 2026-09-22 (haynes-ops#2960)
+      # pins the ComfyUI container to 3090 #1 (GPU-d8a856f1-…, VM bus 02:00.0)
+      # with NVIDIA_VISIBLE_DEVICES, and the other 3090 belongs to llama-server.
+      # `gpu:0` is therefore that pinned card, not the LLM's — the graphs used to
+      # say `gpu:1` back when the container could see both. ~35-50 s warm at 25
+      # steps, against the ~477 s the old 50-step Qwen-Image-2512 graph took.
+      # Full write-up + the once-only admin step:
       # resources/PLAN-021-ai-config.md section (f).
       #
       # ⚠️ PersistentConfig: every var below is a PersistentConfig in Open WebUI
@@ -159,7 +163,7 @@ spec:
             key: generate-nodes.json
       # Image EDIT (the "Edit Image" half of Admin -> Settings -> Images).
       # ComfyUI is one of the three engines 0.7.2 offers there (OpenAI / ComfyUI
-      # / Gemini); the graph is the same Qwen-Image-2.1 stack on gpu:1 with a
+      # / Gemini); the graph is the same Qwen-Image-2.1 stack on gpu:0 with a
       # LoadImage reference frame instead of an empty latent. Open WebUI POSTs
       # the attached image to ComfyUI's /api/upload/image first and then patches
       # the returned filename into node 1.
