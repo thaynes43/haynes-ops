@@ -1,0 +1,80 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: unpoller-rules
+spec:
+  groups:
+    - name: unpoller.rules
+      rules:
+        # Why these exist (incident 2026-09-09): UniFi device-firmware
+        # auto-update (mgmt.auto_upgrade) used to run itself at ~03:00. It
+        # rebooted every switch at once, the aggregation switch took the
+        # Proxmox cluster's corosync links with it, and all five PVE nodes
+        # fenced. auto_upgrade was turned OFF that day and stays off — firmware
+        # is now applied BY HAND. The cost of that ruling is that a pending
+        # update has no owner and no deadline, so it can sit unnoticed
+        # indefinitely: these rules are the reminder that replaces the
+        # automation.
+        #
+        # Routing (kube-prometheus-stack alertmanager.yaml): severity=critical
+        # -> Pushover; everything else -> "null" (visible in the
+        # Alertmanager/Grafana UI only). Both rules here are deliberately
+        # warning: pending firmware is housekeeping, not an incident, and the
+        # whole point of disabling auto_upgrade was to keep switch reboots on a
+        # human's schedule. Do NOT promote them to critical without a ruling —
+        # a 3 AM page cannot apply firmware any more safely than the automation
+        # that caused the fence.
+        #
+        # scope=host tells the alert-responder this is host/hardware and to
+        # skip LLM diagnosis: every alert here ends at a physical UniFi device
+        # and a person clicking Update in the controller.
+        - alert: UniFiDeviceFirmwareAvailable
+          annotations:
+            summary: >-
+              UniFi {{ $labels.name }} ({{ $labels.type }}) has a firmware update pending.
+            description: >-
+              The controller has offered a firmware update for {{ $labels.name }}
+              ({{ $labels.type }}) for 6 hours and nothing will install it: UniFi
+              auto-update is switched OFF on purpose since the 2026-09-09 fence, so
+              firmware is applied by hand from the UniFi controller (Devices ->
+              {{ $labels.name }} -> Update). Do it one device at a time and watch it come
+              back before starting the next. Order matters: leaf switches (the "Flex" /
+              desk / room switches) first, then the Pro Max access switches, and the
+              aggregation switches ("USW Aggregation", "Switch Pro Aggregation") LAST and
+              alone — they carry the Proxmox corosync links, and rebooting one fences the
+              whole PVE cluster. Expect the Gatus/target alerts for anything behind the
+              device being updated while it reboots.
+          expr: unpoller_device_upgradable == 1
+          for: 6h
+          labels:
+            severity: warning
+            scope: host
+        # The blind spot the rule above cannot see on its own. unpoller serves
+        # /metrics happily (up == 1, and the Gatus check stays green) even when
+        # its controller login fails or the UDM stops answering the API — it
+        # simply stops exporting per-device series, and "no device is
+        # upgradable" looks exactly like "no devices". So this watches the
+        # METRIC, not the target.
+        #
+        # Not a duplicate of the stock TargetDown (general.rules, warning, 10m)
+        # or of the unpoller Gatus endpoint: both of those only catch the
+        # scrape failing. Neither fires in the case this one exists for.
+        - alert: UniFiExporterNoData
+          annotations:
+            summary: No UniFi device metrics from unpoller for 15 min.
+            description: >-
+              unpoller has not exported unpoller_device_upgradable for 15 minutes, so
+              UniFiDeviceFirmwareAvailable is blind and pending firmware will go unnoticed.
+              The exporter can be up and serving while this is true — it means the poll of
+              the controller is failing, not that the pod is down. Check
+              `kubectl logs -n observability deploy/unpoller --tail=50` for UniFi login /
+              API errors, the UDM SE itself at https://192.168.0.1, and the
+              UP_UNIFI_DEFAULT_USER / _PASS credentials in the unpoller ExternalSecret
+              (1Password). A wedged UDM that is still "up" has form (2026-09-13).
+          expr: absent(unpoller_device_upgradable)
+          for: 15m
+          labels:
+            severity: warning
+            scope: host
