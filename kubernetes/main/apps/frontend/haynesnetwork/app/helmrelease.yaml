@@ -388,6 +388,13 @@ spec:
       # PROWLARR_API_KEY (+ DATABASE_URL) from haynesnetwork-secret; URLs + indexer id (17) default
       # in code. Owner bumps MAM_UNSATISFIED_LIMIT at each MAM rank promotion (PLAN-040 makes it an
       # admin setting). Minute offsets (4,19,34,49) avoid every other sync job's schedule.
+      #
+      # ACTUATION IS ALERTED (lokirule.yaml → MamGovernorActuationFailing, severity critical). A tick
+      # whose Prowlarr PUT is rejected logs an `actuationError` field and exits 0, so the CronJob looks
+      # healthy while the gate is frozen. From at least 2026-09-15 until 2026-09-22 04:19Z every tick
+      # failed `PUT /api/v1/indexer/17 (HTTP 400)` — Prowlarr save-time validation against a dead MAM
+      # cookie — and nothing alerted for a week. It was stuck wanting to OPEN (harmless); the identical
+      # failure blocks the PAUSE, which is a 24h MAM download block. 3 consecutive failed ticks now page.
       sync-mam-governor:
         type: cronjob
         pod:

@@ -1,0 +1,46 @@
+---
+# Loki ruler alerts for the haynesnetwork sync CronJobs (loaded by the Loki
+# sidecar via the loki_rule ConfigMap label — see kustomization.yaml;
+# `rules.searchNamespace: ALL` in the loki HelmRelease means this namespace is
+# in scope). Routing: severity=critical is the only Alertmanager route that
+# reaches a human (everything else goes to `null`), and a wedged MAM gate is a
+# compliance hazard, so it pages.
+groups:
+  - name: haynesnetwork-mam-governor
+    rules:
+      - alert: MamGovernorActuationFailing
+        # The sync-mam-governor CronJob runs at :04/:19/:34/:49. When its PUT to
+        # the MyAnonaMouse Prowlarr indexer is rejected the tick records an
+        # `actuationError` field and the gate does not move.
+        #
+        # A failing tick logs that field TWICE — once on `"msg":"mam-governor
+        # evaluated"` and again in the `mamGovernor` object of `"msg":"sync
+        # finished"` — so the second line filter pins the match to one line per
+        # tick and the count IS the tick count (verified live 2026-09-22:
+        # unfiltered = 6 over the same 50m window, filtered = 3). A 50m window
+        # spans 3-4 ticks, so >= 3 means three consecutive failed actuations
+        # rather than a single transient Prowlarr blip.
+        #
+        # Why this exists: from at least 2026-09-15 until 2026-09-22 04:19Z
+        # EVERY tick failed with `PUT /api/v1/indexer/17 ... (HTTP 400)` —
+        # Prowlarr's save-time validation rejected the write while the MAM
+        # cookie was dead — and nothing alerted for a week. It happened to be
+        # stuck while the gate wanted to OPEN, which is the harmless direction;
+        # the same failure blocks the PAUSE, and an unsatisfied count past the
+        # rank cap costs a 24h MAM download block.
+        expr: |
+          sum by (app) (count_over_time({app="haynesnetwork", container="main"} |= "actuationError" |= "mam-governor evaluated" [50m])) >= 3
+        for: 5m
+        annotations:
+          summary: >-
+            The MAM compliance governor cannot actuate the MyAnonaMouse Prowlarr indexer — three or
+            more consecutive 15-minute ticks logged an actuationError, so the gate is frozen in
+            whatever state it is already in and can no longer pause downloads near the unsatisfied
+            cap (a breach costs a 24h MAM download block). Fix: check that Prowlarr accepts a PUT on
+            indexer 17 (`/api/v1/indexer/17`) — an HTTP 400 there is save-time validation, and the
+            usual cause is a dead MAM `mam_id` cookie on the MyAnonaMouse indexer. Recreate the
+            ASN-locked `prowlarr` session at MAM (Security → create a session, locked to the home
+            Comcast ASN), store it as MAM_ID_PROWLARR in 1Password item `myanonamouse`, and load it
+            into Prowlarr's MyAnonaMouse indexer.
+        labels:
+          severity: critical
