@@ -57,6 +57,38 @@ spec:
             index:
               prefix: loki_index_
               period: 24h
+      # RULER WIRING (2026-09-22) — this block is what makes every `loki_rule`-labelled
+      # ConfigMap in this repo actually evaluate and page. Before it, the chart default
+      # rendered `ruler.storage.type: local` with NO `local.directory` and NO
+      # `alertmanager_url`, so the ruler loaded ZERO groups (`/prometheus/api/v1/rules`
+      # → `{"groups":[]}`, no `cortex_prometheus_*` series in Prometheus) and had nowhere
+      # to send a notification anyway. Every rule file that existed at that point —
+      # plex, plexops, zigbee2mqtt and qbittorrent's MamSeedboxSessionDead — was INERT and
+      # had never fired once. Found while adding haynesnetwork's MamGovernorActuationFailing.
+      #   * storage.local.directory + sidecar.rules.folder: Loki's local rule store is laid
+      #     out <directory>/<tenant>/<file>, and `auth_enabled: false` means the tenant is
+      #     `fake`. The chart mounts the shared sc-rules-volume at `sidecar.rules.folder` in
+      #     BOTH containers, so pointing the sidecar one level down at /rules/fake is what
+      #     makes the ruler see those files as tenant `fake` under /rules.
+      #   * enable_alertmanager_v2: Alertmanager here is v0.34.0. Loki defaults to the v1
+      #     /api/v1/alerts endpoint, which that version removed long ago.
+      #   * alertmanager_url points at the ClusterIP Service, not `alertmanager-operated`
+      #     (the headless one): a single ruler process resolves the name once per send, so
+      #     the VIP keeps it on a READY replica of the HA pair instead of pinning it to one
+      #     pod's A record. The pair gossips, so one recipient is enough.
+      #   * rule_path is the ruler's scratch copy dir and must be writable — it goes on the
+      #     PVC next to the WAL, never inside the sidecar's folder.
+      rulerConfig:
+        wal:
+          dir: /var/loki/ruler-wal
+        storage:
+          type: local
+          local:
+            directory: /rules
+        rule_path: /var/loki/ruler-rule-path
+        alertmanager_url: http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093
+        enable_alertmanager_v2: true
+        enable_api: true
       limits_config:
         # 90d (owner-sized 2026-08-21). Re-measured 2026-08-23:
         # deriv(kubelet_volume_stats_used_bytes{persistentvolumeclaim="storage-loki-0"}[24h])
@@ -121,4 +153,7 @@ spec:
       image:
         repository: ghcr.io/kiwigrid/k8s-sidecar
       rules:
+        # <ruler local.directory>/<tenant>. auth_enabled is false, so the tenant is `fake`.
+        # Both the loki container and this sidecar mount the shared emptyDir at this path.
+        folder: /rules/fake
         searchNamespace: ALL
