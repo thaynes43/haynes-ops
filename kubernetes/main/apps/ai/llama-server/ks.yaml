@@ -1,0 +1,31 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app llama-server
+  namespace: ai
+spec:
+  targetNamespace: ai
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: nvidia-device-plugin
+      namespace: kube-system
+    - name: node-feature-discovery
+      namespace: kube-system
+  path: ./kubernetes/main/apps/ai/llama-server/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  # The model is ~17 GB read cold off HDD-backed NFS, so a fresh pod can take
+  # many minutes to pass its startup probe. Don't make Flux block on that.
+  wait: false
+  interval: 30m
+  timeout: 5m
+  postBuild:
+    substitute:
+      APP: *app

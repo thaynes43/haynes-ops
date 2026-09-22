@@ -1,0 +1,179 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: &app llama-server
+  namespace: ai
+spec:
+  interval: 30m
+  # A cold start reads a ~17 GB GGUF off HDD-backed NFS before the server ever
+  # answers /health. The default 5m timed the upgrade out and rolled it back.
+  timeout: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+      strategy: rollback
+  values:
+    controllers:
+      llama-server:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        # One resident model on one card: never two copies mid-rollout, both
+        # trying to fit 3090 #0.
+        strategy: Recreate
+        pod:
+          nodeSelector:
+            feature.node.kubernetes.io/nvidia-3090-gpu: "true"
+          # GPU access comes from the nvidia RuntimeClass, not from an
+          # nvidia.com/gpu request: the device plugin hands out *a* card and
+          # cannot pin a named one, and nothing else in `ai` claims one either.
+          runtimeClassName: nvidia
+        containers:
+          app:
+            image:
+              repository: ghcr.io/ggml-org/llama.cpp
+              # llama.cpp build b11096 (server, CUDA 12). Pinned, never `latest`
+              # or the floating `server-cuda`: a model this size is not something
+              # to re-quantise expectations around on an unannounced rebuild.
+              # talosw01's driver is 580.178.04 (CUDA 13 capable), so the CUDA 12
+              # build runs fine; `server-cuda-bNNNNN` == `server-cuda12-bNNNNN`
+              # (identical digest upstream).
+              tag: server-cuda-b11096@sha256:0192ab2545efcbe79c240645e34abd8fffbe4813aedcef5a0e3a886ef6d6d82f
+            env:
+              # Owner ruling 2026-09-22 (haynes-ops#2960): talosw01's two 3090s
+              # are owned per app.
+              #   3090 #0 — VM bus 01:00.0, GPU-18bf6eab-… (the new card, #3052)
+              #     -> THIS pod, exclusively. The LLM stays resident, so it needs
+              #     a whole card.
+              #   3090 #1 — VM bus 02:00.0, GPU-d8a856f1-… (the original card)
+              #     -> comfyui.
+              # ollama-prime keeps NVIDIA_VISIBLE_DEVICES=all and takes the
+              # leftovers, spilling to CPU when neither card has room.
+              NVIDIA_VISIBLE_DEVICES: GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b
+              TZ: America/New_York
+            args:
+              - --host
+              - 0.0.0.0
+              - --port
+              - "8080"
+              - -m
+              - /models/muse-glimmer-30b/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf
+              # Stable client-facing name. Without it the API reports the GGUF
+              # path, which would change under every re-quant.
+              - --alias
+              - muse-glimmer-30b
+              # Offload everything. 999 is "an exact number" per --help; the
+              # default is `auto`, which does not guarantee a full offload.
+              - --n-gpu-layers
+              - "999"
+              # --ctx-size is the TOTAL KV pool and is divided across the slots
+              # (-np), because --kv-unified only defaults on when the slot count
+              # is auto — and it is set explicitly here. 32768 / 2 slots =
+              # 16384 tokens per slot, the floor this deployment is sized for.
+              # Verify after a config change: the startup log prints
+              # `n_ctx_per_seq`.
+              - --ctx-size
+              - "32768"
+              - --parallel
+              - "2"
+              # Muse Glimmer's chat template is the ATEM tool-calling protocol
+              # (reasoning channel + tool channels), so the jinja engine is not
+              # optional for tool calls. Default-on in b11096; stated anyway.
+              - --jinja
+              # The template reads a `reasoning_strength` kwarg (it even
+              # normalises "Reasoning effort" -> "Reasoning strength" in a system
+              # prompt). `low` keeps assistant/HA latency down; the flag is
+              # accepted by this build (`minimal|low|medium|high|xhigh|max`).
+              - --reasoning-effort
+              - low
+              - --flash-attn
+              - "on"
+              # q8_0 KV roughly halves cache VRAM against the f16 default at
+              # negligible quality cost — the headroom that keeps the loaded
+              # model under ~22.5 GB on a 24 GB card.
+              - --cache-type-k
+              - q8_0
+              - --cache-type-v
+              - q8_0
+              # Prometheus endpoint at /metrics. No ServiceMonitor or alert rules
+              # yet — deliberately a separate change.
+              - --metrics
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities: { drop: ["ALL"] }
+            probes:
+              # llama-server answers /health with 503 while the model loads and
+              # 200 once every slot is ready. The startup probe is what absorbs
+              # the cold read off HDD-NFS (up to 30m) so liveness never fires
+              # mid-load.
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet: { path: /health, port: 8080 }
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 4
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet: { path: /health, port: 8080 }
+                  periodSeconds: 15
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet: { path: /health, port: 8080 }
+                  periodSeconds: 10
+                  failureThreshold: 180
+            resources:
+              requests:
+                cpu: 1000m
+                memory: 8Gi
+              limits:
+                # The GGUF is mmap'd from NFS, so RSS tracks the page cache the
+                # kernel keeps for it; the node has ~135 GiB. Generous on
+                # purpose — an OOMKill here is a multi-minute reload.
+                memory: 32Gi
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+    service:
+      app:
+        # http://llama-server.ai.svc.cluster.local:8080
+        controller: llama-server
+        ports:
+          http:
+            port: 8080
+    persistence:
+      # Models live on the NAS beside comfyui's (misc/comfyui/models) and
+      # ollama's (misc/ollama/models). Read-only: nothing here downloads.
+      models:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        globalMounts:
+          - path: /models
+            subPath: misc/llama/models
+            readOnly: true
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
