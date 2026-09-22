@@ -29,6 +29,13 @@ metadata:
     # The script below uses shell variables; keep Flux's postBuild envsubst
     # (strict mode) away from them.
     kustomize.toolkit.fluxcd.io/substitute: disabled
+    # k8tz runs with --cronJobTimeZone and injectAll, so its webhook OVERWRITES
+    # spec.timeZone on every CronJob in the cluster with the cluster default
+    # (America/New_York) — the field in git is not what runs. Every other
+    # CronJob in the repo happens to ask for that same zone, so nothing has
+    # noticed. This one genuinely wants UTC; the per-object k8tz annotation is
+    # the only way to say so.
+    k8tz.io/timezone: Etc/UTC
 spec:
   schedule: "10 9 * * *"
   timeZone: Etc/UTC
