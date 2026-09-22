@@ -1,5 +1,10 @@
 # Renovate Automation Roadmap
 
+> **Note (2026-09-22):** the `edge` cluster was retired and `kubernetes/edge/` deleted.
+> The `flux-local` matrix, the `kubernetes/*/…` auto-merge globs and the "Edge" ruleset
+> described below now resolve to `main` alone. Everything said here about edge is the
+> historical record of the rollout, not current CI shape.
+
 The goal: stop hand-merging every Renovate PR from
 [issue #1](https://github.com/thaynes43/haynes-ops/issues/1) and only spend
 attention on the updates that actually break things.

@@ -5,8 +5,9 @@ set -o pipefail
 # Usage: kubeconform.sh <kubernetes-dir> [cluster ...]
 #
 # <kubernetes-dir> is the repo's kubernetes/ directory. Each cluster lives in its
-# own subdirectory (kubernetes/main, kubernetes/edge), so validation is scoped per
-# cluster: the standalone manifests and kustomizations under <cluster>/flux, and
+# own subdirectory (kubernetes/main is the only one since edge was retired
+# 2026-09-22), so validation is scoped per cluster: the standalone manifests and
+# kustomizations under <cluster>/flux, and
 # the kustomizations under <cluster>/apps. With no cluster arguments, every cluster
 # directory found under <kubernetes-dir> is validated.
 #

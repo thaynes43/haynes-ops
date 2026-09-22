@@ -6,8 +6,11 @@
 # verdict in the Step Summary so we can observe its behaviour on real Renovate/human/
 # shepherd PRs before making it required in Phase B.
 #
-# Runs UNCONDITIONALLY on every PR to main AND edge (no path filter) so the
-# "Diff Scope - Success" context always reports. AUTHOR-SCOPED: it only FAILS for PRs
+# Runs UNCONDITIONALLY on every PR to main (no path filter) so the
+# "Diff Scope - Success" context always reports. The `edge` base branch was dropped
+# 2026-09-22 with the edge cluster's retirement; the stale `edge` git branch and the
+# "Edge" repository ruleset (18431432) that still requires this context on it are
+# Tom's to delete (the bot can edit neither). AUTHOR-SCOPED: it only FAILS for PRs
 # authored by the shepherd App (haynes-ops-bot[bot]); it always passes for
 # renovate[bot] and the human (trusted / admin-bypass). The enforcement logic is
 # fetched from the BASE branch so a PR that edits the script can't neuter its own
@@ -16,7 +19,7 @@ name: Diff Scope
 
 on:
   pull_request:
-    branches: [main, edge]
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.number || github.ref }}

@@ -4,20 +4,17 @@ set -o pipefail
 
 TARGET="$1"
 
-if [[ -z "${TARGET}" ]]; then
-    echo "Usage: $(basename "$0") [edge|ops]"
-    exit 1
-fi
+# `haynes-ops` is the only cluster: the `edge` target was removed 2026-09-22 with the
+# edge cluster's retirement. TARGET is kept as an argument so a second cluster is a
+# one-case re-add; it defaults to `ops`.
+TARGET="${TARGET:-ops}"
 
 case "${TARGET}" in
-    edge)
-        CONTEXT="haynes-edge"
-        ;;
     ops)
         CONTEXT="haynes-ops"
         ;;
     *)
-        echo "Invalid argument: ${TARGET}. Use 'edge' or 'ops'."
+        echo "Invalid argument: ${TARGET}. Only 'ops' (haynes-ops) exists."
         exit 1
         ;;
 esac

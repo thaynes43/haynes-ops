@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repo Is
 
-A GitOps-managed home lab running two Kubernetes clusters (`main` and `edge`) on Talos Linux, orchestrated by Flux CD. Follows the "Home Operations" community patterns (see [onedr0p/home-ops](https://github.com/onedr0p/home-ops), [bjw-s-labs/home-ops](https://github.com/bjw-s-labs/home-ops)).
+A GitOps-managed home lab running a single Kubernetes cluster (`main`) on Talos Linux, orchestrated by Flux CD. Follows the "Home Operations" community patterns (see [onedr0p/home-ops](https://github.com/onedr0p/home-ops), [bjw-s-labs/home-ops](https://github.com/bjw-s-labs/home-ops)).
 
 ## Core Principles
 
@@ -22,20 +22,19 @@ kubernetes/
 │   ├── apps/          # App deployments organized by domain (home-automation, database, media, etc.)
 │   ├── bootstrap/     # Cluster bootstrap (Flux, Talos, Omni configs)
 │   └── flux/          # Flux config: cluster.yaml (entrypoint), apps.yaml, vars/
-├── edge/              # Edge/test cluster — DECOMMISSIONED, see below
-└── shared/            # Cross-cluster reusable resources
+└── shared/            # Reusable resources (kept shared-shaped for a future 2nd cluster)
     ├── components/    # Kustomize components (volsync, gatus, common)
     └── repositories/  # Shared OCI/Helm repositories
 ```
 
-Each app follows this structure: `kubernetes/{cluster}/apps/{domain}/{app-name}/ks.yaml` (Flux Kustomization) + `app/` dir containing `helmrelease.yaml`, `kustomization.yaml`, and supporting resources.
+Each app follows this structure: `kubernetes/{cluster}/apps/{domain}/{app-name}/ks.yaml` (Flux Kustomization) + `app/` dir containing `helmrelease.yaml`, `kustomization.yaml`, and supporting resources. `main` is the only cluster, so `{cluster}` is always `main`.
 
-**`kubernetes/edge/` has no cluster behind it.** The edge nodes (edgem01-03, edgew01) were
-VMs on the retired pve01-03 hosts; the self-hosted Omni at `omni.haynesops.com` still
-carries an empty `haynes-edge` cluster object that logs `No control plane nodes are
-connected` every 60s. The manifests are kept because `flux-local` builds and diffs them
-on every PR, so treat that tree as a CI fixture, not a deployment target. The `edge:*`
-task namespace was deleted in the 2026-09-22 taskfile audit.
+**The edge cluster was retired on 2026-09-22** and `kubernetes/edge/` was deleted along
+with `kubeconfig-edge`, its `flux-local` CI matrix leg and its Renovate paths. Its nodes
+(edgem01-03, edgew01) were VMs on the pve01-03 hosts that left the Proxmox cluster, and
+nothing matching them exists in the fleet. Git history keeps the tree
+(`git log -- kubernetes/edge`). See `.agents/reference/repo-overview.md` for the leftovers
+outside this repo that are still Tom's to clear.
 
 ## Navigating the Live System
 
@@ -168,7 +167,7 @@ destroy the cluster. Do not add `--yes` to get past one.
 
 ## CI/CD
 
-- **PR validation**: `flux-local` runs on PRs touching `kubernetes/` — tests and diffs both `main` and `edge` clusters
+- **PR validation**: `flux-local` runs on PRs touching `kubernetes/` — tests and diffs the `main` cluster. Branch protection requires exactly two aggregate contexts, `Flux Local - Success` and `Diff Scope - Success`; never make an individual matrix leg a required check.
 - **Renovate**: Auto-updates container images, Helm charts, and GitHub Actions **nightly** (schedule `after 10pm`/`before 6am` America/New_York, repo-wide), auto-merging each PR via `platformAutomerge` the moment its `flux-local` check passes (no PR rate limits since 2026-09-21 — open manual-only/stranded PRs counted against the old 5-concurrent cap and starved every other update; blast radius is governed by the disposition tiers + `.renovate/holds.json5`). Ignores SOPS files and bootstrap dirs.
 
 ## Agent docs (`.agents/`)
@@ -193,11 +192,13 @@ Longer-form runbooks, safety rules, and reference context live in [`.agents/`](.
 ## Environment Setup
 
 Managed via `direnv` (`.envrc`):
-- `KUBECONFIG` → `./kubeconfig` (main). `./kubeconfig-edge` is still in the tree but the
-  edge cluster is decommissioned — see the note under Repository Layout.
+- `KUBECONFIG` → `./kubeconfig` (the `main` cluster, the only one)
 - `SOPS_AGE_KEY_FILE` → `./age.key`
 - `TALOSCONFIG` / `OMNICONFIG` → `./kubernetes/main/bootstrap/{talos,omni}/`
-- Python venv at `.venv/` from `requirements.txt` (`task workstation:venv`)
+
+No Python virtualenv is needed to work in this repo: `requirements.txt` and
+`task workstation:venv` were deleted on 2026-09-22 — makejinja templating (removed in
+#3097) was their only consumer.
 
 ## Infrastructure Stack
 

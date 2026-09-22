@@ -1,5 +1,11 @@
 ## Edge stabilization (make `edge` a safe proving ground)
 
+> **HISTORICAL — the edge cluster was retired on 2026-09-22 and `kubernetes/edge/` was
+> deleted from this repo.** Its nodes were VMs on Proxmox hosts that have since left the
+> PVE cluster. Nothing in this runbook is actionable; it is kept as the record of what
+> the proving ground was meant to be. `main` is the only cluster. See
+> `.agents/reference/repo-overview.md` → *Edge cluster retirement*.
+
 This runbook is about getting **`kubernetes/edge`** to a state where we can safely trial changes before rolling them into `main`.
 
 ### Definition of done

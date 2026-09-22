@@ -10,8 +10,10 @@
 # autogen-cronjob-baseline) so controllers, Jobs, and bare Pods are all exempted.
 #
 # App-level flags to revisit (not infra — could be tightened instead of exempted):
-#   - frontend/omni        : NET_ADMIN+NET_RAW+privileged; it's the self-hosted Omni for
-#                            the powered-off/unused edge cluster — candidate to remove.
+#   - frontend/omni        : NET_ADMIN+NET_RAW+privileged; it's the self-hosted Omni,
+#                            whose only cluster object was the edge cluster's — and edge
+#                            was retired 2026-09-22. Strong candidate to remove outright;
+#                            drop this exemption with it.
 #   - home-automation/music-assistant : hostNetwork for cast/DLNA discovery (legit).
 apiVersion: kyverno.io/v2
 kind: PolicyException
