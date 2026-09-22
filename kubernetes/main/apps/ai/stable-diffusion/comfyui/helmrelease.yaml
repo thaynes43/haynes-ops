@@ -70,11 +70,26 @@ spec:
             env:
               # Owner ruling 2026-09-22 (haynes-ops#2960, which previously said
               # "no per-app GPU pinning" — that is now lifted): talosw01's two
-              # 3090s are split per app.
-              #   3090 #1 — VM bus 02:00.0, GPU-d8a856f1-… (the ORIGINAL card)
-              #     -> ComfyUI, this container, exclusively.
+              # 3090s are split per app. The roles were SWAPPED later the same
+              # day for a thermal reason — read this before "fixing" it back:
+              #
               #   3090 #0 — VM bus 01:00.0, GPU-18bf6eab-… (the NEW card, #3052)
-              #     -> llama-server, the resident assist/chat LLM.
+              #     -> ComfyUI, this container, exclusively. This is the HOT
+              #     slot: intake air passes the CPU radiator first, so the card
+              #     drops to 225 MHz at ~87 °C within ~10 s of sustained load
+              #     with the fan already at 100 % (SW thermal slowdown 0x20).
+              #     ComfyUI is the right tenant for it — a render that throttles
+              #     is just a slower render, whereas a throttled chat turn is a
+              #     user sitting and waiting. The card itself is fine; the
+              #     chassis airflow is the fault, tracked in haynes-ops#3052.
+              #   3090 #1 — VM bus 02:00.0, GPU-d8a856f1-… (the ORIGINAL card)
+              #     -> llama-server, the resident assist/chat LLM. It gets the
+              #     cool slot because it is the latency-sensitive tenant: a
+              #     bench on the hot card fell from 38 to 8 tok/s.
+              #
+              # If #3052 is ever fixed, this split can go back to whatever is
+              # convenient; until then, ComfyUI owns 01:00.0.
+              #
               # ollama-prime keeps NVIDIA_VISIBLE_DEVICES=all and takes whatever
               # is left over, spilling to CPU when neither card has room.
               # Why ComfyUI gets exactly one card: its per-job peak is ~16-20 GB,
@@ -85,8 +100,10 @@ spec:
               # This overrides the NVIDIA_VISIBLE_DEVICES=all baked into
               # ghcr.io/thaynes43/comfyui. The container therefore sees ONE GPU,
               # so anything that names a device index inside ComfyUI must say
-              # `gpu:0` (see open-webui/app/comfyui/*-workflow.json).
-              NVIDIA_VISIBLE_DEVICES: GPU-d8a856f1-f955-f683-bc24-654561496774
+              # `gpu:0` — that stays true across this swap, because `gpu:0` just
+              # means "the one visible card", whichever it is (see
+              # open-webui/app/comfyui/*-workflow.json; unchanged by the swap).
+              NVIDIA_VISIBLE_DEVICES: GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b
               # Existing PVC layout, so saved UI workflows and inputs carry over.
               COMFYUI_USER_DIR: /workspace/ComfyUI/user
               COMFYUI_INPUT_DIR: /workspace/ComfyUI/input

@@ -49,15 +49,31 @@ spec:
               tag: server-cuda-b11096@sha256:0192ab2545efcbe79c240645e34abd8fffbe4813aedcef5a0e3a886ef6d6d82f
             env:
               # Owner ruling 2026-09-22 (haynes-ops#2960): talosw01's two 3090s
-              # are owned per app.
+              # are owned per app. Roles were SWAPPED later the same day for a
+              # thermal reason — read this before "fixing" it back:
+              #
+              #   3090 #1 — VM bus 02:00.0, GPU-d8a856f1-… (the ORIGINAL card)
+              #     -> THIS pod, exclusively. It is the COOL slot. The LLM is
+              #     resident and answers every Assist turn, so it is the workload
+              #     that must hold full clocks.
               #   3090 #0 — VM bus 01:00.0, GPU-18bf6eab-… (the new card, #3052)
-              #     -> THIS pod, exclusively. The LLM stays resident, so it needs
-              #     a whole card.
-              #   3090 #1 — VM bus 02:00.0, GPU-d8a856f1-… (the original card)
-              #     -> comfyui.
+              #     -> comfyui. It sits in the hot slot (intake air passes the
+              #     CPU radiator first) and drops to 225 MHz at ~87 °C within
+              #     ~10 s of sustained load, fan already at 100 %, SW thermal
+              #     slowdown 0x20. A llama-server bench on it fell from 38 to
+              #     8 tok/s. ComfyUI tolerates that far better than interactive
+              #     chat does: a render that throttles is a slower render, a
+              #     chat turn that throttles is a user waiting.
+              #
+              # This is a WORKLOAD placement decision, not a claim that #0 is
+              # broken — the card is fine, the chassis airflow is the fault, and
+              # that is tracked in haynes-ops#3052. If #3052 is ever fixed, the
+              # split can go back to whatever is convenient; until then, keep the
+              # latency-sensitive tenant on 02:00.0.
+              #
               # ollama-prime keeps NVIDIA_VISIBLE_DEVICES=all and takes the
               # leftovers, spilling to CPU when neither card has room.
-              NVIDIA_VISIBLE_DEVICES: GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b
+              NVIDIA_VISIBLE_DEVICES: GPU-d8a856f1-f955-f683-bc24-654561496774
               TZ: America/New_York
             args:
               - --host
@@ -76,12 +92,18 @@ spec:
               - "999"
               # --ctx-size is the TOTAL KV pool and is divided across the slots
               # (-np), because --kv-unified only defaults on when the slot count
-              # is auto — and it is set explicitly here. 32768 / 2 slots =
-              # 16384 tokens per slot, the floor this deployment is sized for.
-              # Verify after a config change: the startup log prints
-              # `n_ctx_per_seq`.
+              # is auto — and it is set explicitly here. 65536 / 2 slots =
+              # 32768 tokens per slot. Verify after a config change: the startup
+              # log prints `n_ctx_slot`.
+              #
+              # Raised from 32768 (16k/slot) on 2026-09-22: Home Assistant's
+              # Assist prompt is ~15k tokens on EVERY turn (observed n_tokens
+              # 14,930-15,147 in this server's own log), which sat right on the
+              # 16k slot edge — one long conversation turn past that and the
+              # slot starts discarding context mid-chat. 32k/slot gives the
+              # Assist prompt roughly 2x headroom.
               - --ctx-size
-              - "32768"
+              - "65536"
               - --parallel
               - "2"
               # Muse Glimmer's chat template is the ATEM tool-calling protocol
