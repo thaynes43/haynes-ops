@@ -52,6 +52,16 @@ ARG ONNXRUNTIME_GPU_VERSION=">=1.19,<1.27"
 # instead of the container filesystem, so a restart does not re-fetch it. They
 # have to be env vars: the libraries read them at import time, before any of our
 # arguments are parsed.
+#
+# HF_HUB_DISABLE_SYMLINKS is not a preference, it is what makes Parakeet load at
+# all. huggingface_hub's cache stores every file as a symlink into
+# `blobs/<first two hex of its sha>/`, so a model and its external-data sibling
+# (`encoder-model.onnx` and `encoder-model.onnx.data`) resolve into DIFFERENT
+# blob subdirectories — and onnxruntime, which validates that external data
+# cannot resolve outside the model's directory, refuses the session with
+# "External data path ... escapes both model directory ... and real model
+# directory". Copying instead of symlinking puts the pair back side by side.
+# Costs one extra copy of the model on disk. Found the hard way on 3.8.1-1.
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -59,6 +69,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     HF_HOME=/data \
     XDG_CACHE_HOME=/data \
+    HF_HUB_DISABLE_SYMLINKS=1 \
     PATH=/venv/bin:$PATH
 
 RUN \
