@@ -57,11 +57,35 @@ nothing under it (verified by grep), so nothing there was edge-only.
 
 | Leftover | Where | Note |
 |---|---|---|
-| `haynes-edge` cluster object | self-hosted Omni (`frontend/omni` in the main cluster) | empty; logs `No control plane nodes are connected` and a failed etcd backup every 60s. Destroy via the Omni UI → Clusters → `haynes-edge` → Destroy. The dev-env pod's only Omni credential is the **SaaS** Reader service account, which cannot reach or write this instance. |
+| `haynes-edge` cluster object | self-hosted Omni (`frontend/omni` in the main cluster) | empty; logs `No control plane nodes are connected` and a failed etcd backup every 60s — 2,884 error/warn lines a day into Loki, all phantom. Destroy via the Omni UI → Clusters → `haynes-edge` → (Unlock Cluster, if shown) → Destroy Cluster. The dev-env pod's only Omni credential is the **SaaS** Reader service account, which cannot reach or write this instance (`invalid signature`). |
 | `edge` git branch | GitHub `thaynes43/haynes-ops` | last commit 2025-09-18; it was the edge cluster's Flux `GitRepository` ref. Protected by a `deletion` rule, so the bot cannot delete it. |
 | "Edge" repository ruleset (id 18431432) | GitHub repo rulesets | targets `refs/heads/edge` and requires `Diff Scope - Success`, which no longer runs on that branch. Delete the ruleset with the branch. Apps cannot edit rulesets. |
 | DHCP reservations `edgem01/02/03` (192.168.40.6/7/8) | UniFi | free the addresses when convenient |
 | VLAN 8 `RookEdgeLan` (192.168.80.0/24) | UniFi | existed only for edge's Rook replication traffic |
+
+### Reaching the self-hosted Omni (rescued from the deleted edge bootstrap)
+
+`kubernetes/edge/bootstrap/omni/haynes-edge-omniconfig.yaml` was the only file in the
+repo that recorded how to reach the self-hosted instance, so its contents are kept here:
+
+- URL `https://omni.haynesops.com` (UI/API). Also `api.omni.haynesops.com` (SideroLink
+  machine API) and `kube.omni.haynesops.com` (Kubernetes proxy); WireGuard on the
+  LoadBalancer IP `192.168.40.210:50180/UDP`.
+- `omnictl` auth is **SideroV1** with identity **`admin@haynesnetwork.com`** — note this
+  is *not* the SaaS identity (`manofoz@gmail.com`). Browser sign-in is SAML via
+  Authentik. Enrolling the PGP key requires a browser, so there is no headless path from
+  the dev-env pod.
+
+**This instance manages nothing else.** `haynes-edge` is its only cluster object, with
+zero machines; every real Talos node is on the SaaS Omni. Once `haynes-edge` is
+destroyed it holds no clusters at all, which makes `frontend/omni` itself a decommission
+candidate — it is the repo's most privileged workload (`privileged: true`, root,
+NET_ADMIN/NET_RAW, a standing Kyverno PSS exception), holds ~20Gi Ceph + 12Gi hostpath,
+backs an empty cluster's etcd to S3 nightly, and is the *only* consumer of
+`generic-device-plugin`'s `devic.es/tun`. Removing it is a separate decision for Tom;
+if it is done, remove `kubernetes/main/apps/frontend/omni/` **as a whole directory** so
+the `omni-gatus-ep` health check goes with it — leaving that ConfigMap behind pages
+Pushover ~10 minutes after the endpoint dies.
 
 Branch protection on `main` requires exactly two aggregate status contexts —
 `Flux Local - Success` and `Diff Scope - Success` — and never an individual matrix leg,
