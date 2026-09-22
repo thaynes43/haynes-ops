@@ -28,6 +28,11 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cigar-mcp-hop
+  annotations:
+    # Same reason as the ConfigMap in kustomization.yaml: NGINX_ENVSUBST_FILTER's
+    # trailing `$` anchor is load-bearing and must reach the container intact, so
+    # keep Flux's postBuild envsubst off this document.
+    kustomize.toolkit.fluxcd.io/substitute: disabled
 spec:
   interval: 30m
   chartRef:
