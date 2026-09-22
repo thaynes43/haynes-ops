@@ -29,7 +29,7 @@ This change is a **reference mechanism migration** (from `chart.spec` to `chartR
 
 ## Why this matters
 
-- **Consistency**: `chartRef` is simpler and aligns with the rest of the repo (example: `ollama-assist01`).
+- **Consistency**: `chartRef` is simpler and aligns with the rest of the repo (example: `ollama-assist02`).
 - **Shared source of truth**: `OCIRepository/app-template` in `flux-system` becomes the chart source for all app-template-based releases.
 - **Operational reality**: upgrades can fail with `spec.selector ... field is immutable` when the chart changes workload selector labels. That requires a delete/recreate of the controller object.
 

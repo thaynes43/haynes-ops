@@ -3,6 +3,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ./assist01/ks.yaml
+  # assist01 (talosm01, RTX A2000) removed 2026-09-22: its model store was empty,
+  # so it served nothing. git history keeps it.
   - ./assist02/ks.yaml
   - ./prime/ks.yaml

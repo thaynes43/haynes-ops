@@ -34,8 +34,9 @@ spec:
           runtimeClassName: nvidia
           # One term per GPU node label -> nodeSelectorTerms are OR'd, which a
           # plain nodeSelector cannot express. Matches (verified 2026-09-21):
-          #   nvidia-3090-gpu      -> talosw01 (2x RTX 3090, ComfyUI + ollama-prime)
-          #   nvidia-a2000         -> talosm01 (RTX A2000, ollama-assist01)
+          #   nvidia-3090-gpu      -> talosw01 (2x RTX 3090: comfyui + llama-server, one
+          #                        each; ollama-prime takes leftovers)
+          #   nvidia-a2000         -> talosm01 (RTX A2000, vexa-whisper)
           #   nvidia-2000-ada-gpu  -> talosm03 (RTX 2000 Ada, ollama-assist02)
           # A new GPU node needs its NFD label added here AND its expected GPU
           # count added to the GpuMissing rule in prometheusrule.yaml.
