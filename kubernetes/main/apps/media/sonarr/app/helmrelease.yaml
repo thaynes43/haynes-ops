@@ -42,7 +42,13 @@ spec:
               # LAN-only ingress; no login form. Swap to Forms/Authentik later
               # if exposed beyond traefik-internal.
               SONARR__AUTH__METHOD: External
-              SONARR__AUTH__REQUIRED: DisabledForLocalAddresses
+              # Inert under External (the app does no UI auth of its own), but it
+              # must be Enabled: since the 2026 AllowedHosts feature the host-config
+              # validator rejects EVERY General-settings save (UI and API) while
+              # Required != Enabled and AllowedHosts is empty, and the health check
+              # warns. AllowedHosts is ASP.NET Host-header filtering — a poor fit
+              # here (kubelet probes send the pod IP as Host) — so it stays empty.
+              SONARR__AUTH__REQUIRED: Enabled
               SONARR__LOG__DBENABLED: "False"
               SONARR__LOG__LEVEL: info
               SONARR__SERVER__PORT: &port 8989
@@ -151,7 +157,9 @@ spec:
           gethomepage.dev/description: TV collection manager
           gethomepage.dev/icon: sonarr
           gethomepage.dev/app: sonarr
-          gethomepage.dev/siteMonitor: *url
+          # Homepage's siteMonitor sends HEAD; Servarr apps answer HEAD / with 401
+          # (only GET serves the UI) but HEAD /ping with 200.
+          gethomepage.dev/siteMonitor: "https://sonarr.haynesops.com/ping"
           gethomepage.dev/widget.type: sonarr
           gethomepage.dev/widget.url: "http://sonarr.media.svc.cluster.local:8989"
           # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it

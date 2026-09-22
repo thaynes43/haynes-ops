@@ -33,7 +33,13 @@ spec:
               # LAN-only ingress; no login form. Swap to Forms/Authentik later
               # if exposed beyond traefik-internal.
               LIDARR__AUTH__METHOD: External
-              LIDARR__AUTH__REQUIRED: DisabledForLocalAddresses
+              # Inert under External (the app does no UI auth of its own), but it
+              # must be Enabled: since the 2026 AllowedHosts feature the host-config
+              # validator rejects EVERY General-settings save (UI and API) while
+              # Required != Enabled and AllowedHosts is empty, and the health check
+              # warns. AllowedHosts is ASP.NET Host-header filtering — a poor fit
+              # here (kubelet probes send the pod IP as Host) — so it stays empty.
+              LIDARR__AUTH__REQUIRED: Enabled
               LIDARR__LOG__DBENABLED: "False"
               LIDARR__LOG__LEVEL: info
               LIDARR__SERVER__PORT: &port 8686
@@ -141,7 +147,9 @@ spec:
           gethomepage.dev/description: Music collection manager
           gethomepage.dev/icon: lidarr
           gethomepage.dev/app: lidarr
-          gethomepage.dev/siteMonitor: *url
+          # Homepage's siteMonitor sends HEAD; Servarr apps answer HEAD / with 401
+          # (only GET serves the UI) but HEAD /ping with 200.
+          gethomepage.dev/siteMonitor: "https://lidarr.haynesops.com/ping"
           gethomepage.dev/widget.type: lidarr
           gethomepage.dev/widget.url: "http://lidarr.media.svc.cluster.local:8686"
           # app-template uses tpl on annotations; escape Homepage var so Helm doesn't render it
