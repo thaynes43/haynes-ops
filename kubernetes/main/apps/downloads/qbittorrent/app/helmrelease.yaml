@@ -9,6 +9,18 @@ spec:
     kind: OCIRepository
     name: app-template
   interval: 30m
+  # Helm's default wait is 5m, and this pod routinely needs longer: the roll is
+  # `strategy: Recreate` (RWO config PVC + macvlan VPN NIC), the new pod only goes
+  # Ready once qBittorrent has loaded ~770 torrents AND the Mullvad egress
+  # readiness probe passes (periodSeconds 60 x failureThreshold 4 = up to 4m of
+  # probe cadence alone). A timeout here is worse than elsewhere: it triggers
+  # `upgrade.remediation.strategy: rollback`, and the rolled-back release pins the
+  # PREVIOUS hash-suffixed `qbittorrent-mam-update-<hash>` ConfigMap that
+  # kustomize-controller has already garbage-collected -> FailedMount, the pod can
+  # never start, the rollback times out too and Flux loops. That took qBittorrent
+  # down ~20m and paged twice (QbittorrentVpnDown + FluxReconciliationFailure) on
+  # 2026-09-22 (#3080 / #3084 context). Give the roll room instead.
+  timeout: 10m
   install:
     remediation:
       retries: 3
