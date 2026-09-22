@@ -1,0 +1,24 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+components:
+  - ../../../../../shared/components/common/repos/app-template
+resources:
+  - ./externalsecret.yaml
+  - ./helmrelease.yaml
+configMapGenerator:
+  # Stable, hash-free name: the HelmRelease references it from inside `values`,
+  # which kustomize's nameReference transformer does not rewrite. Reloader (auto,
+  # on the controller) rolls the pod when this ConfigMap changes.
+  - name: cigar-mcp-hop-nginx
+    files:
+      - default.conf.template=./resources/default.conf.template
+generatorOptions:
+  disableNameSuffixHash: true
+  annotations:
+    # MANDATORY here. The template is deliberately full of things Flux's postBuild
+    # envsubst would eat: ${CIGAR_JOURNAL_TOKEN} is meant for the container's own
+    # envsubst at start-up (Flux would blank it), and nginx's $http_accept would
+    # go the same way. Without this the app deploys with an empty bearer token.
+    kustomize.toolkit.fluxcd.io/substitute: disabled

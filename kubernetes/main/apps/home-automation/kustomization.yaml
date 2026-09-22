@@ -13,4 +13,5 @@ resources:
   - ./go2rtc/ks.yaml
   - ./home-assistant/ks.yaml
   - ./ha-mcp/ks.yaml
+  - ./cigar-mcp-hop/ks.yaml
   - ./appdaemon/ks.yaml
