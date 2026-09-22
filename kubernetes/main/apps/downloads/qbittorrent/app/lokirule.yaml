@@ -1,0 +1,23 @@
+---
+# Loki ruler alerts for the qbittorrent pod (loaded via the loki_rule ConfigMap
+# label, see kustomization.yaml). Routing: severity=critical is the only route
+# that reaches a human (pushover); a dead MAM session needs one — only the
+# account owner can create a new session on the MAM Security page.
+groups:
+  - name: qbittorrent-mam
+    rules:
+      - alert: MamSeedboxSessionDead
+        # The mam-update sidecar logs MAM_SESSION_DEAD on the rejected call and
+        # again every cycle (hourly) until a call succeeds, so a 2h window keeps
+        # the alert firing while dead and clears it ~2h after the fix.
+        expr: |
+          sum by (app) (count_over_time({app="qbittorrent", container="mam-update"} |= "MAM_SESSION_DEAD" [2h])) > 0
+        for: 5m
+        annotations:
+          summary: >-
+            MyAnonaMouse rejected the seedbox session cookie — announces from the Mullvad exit are
+            unregistered. Fix: MAM → Security → create a session (IP = current Mullvad exit, IP-locked,
+            Allow Dynamic Seedbox = Yes) → store as MAM_ID_SEEDBOX in 1Password item `myanonamouse` →
+            restart the qbittorrent pod (the sidecar re-seeds itself from the new value).
+        labels:
+          severity: critical
