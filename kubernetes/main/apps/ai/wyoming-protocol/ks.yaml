@@ -35,6 +35,11 @@ spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
+  dependsOn:
+    - name: nvidia-device-plugin
+      namespace: kube-system
+    - name: node-feature-discovery
+      namespace: kube-system
   path: ./kubernetes/main/apps/ai/wyoming-protocol/whisper
   prune: true
   sourceRef:
@@ -43,7 +48,10 @@ spec:
     namespace: flux-system
   wait: true
   interval: 30m
-  timeout: 5m
+  # Longer than the other three: a cold start downloads ~2.5 GB of Parakeet
+  # before the server binds, and `wait: true` means this Kustomization is not
+  # Ready until the HelmRelease is. Must stay above the HelmRelease's own 20m.
+  timeout: 25m
   postBuild:
     substitute:
       APP: *app
@@ -102,3 +110,32 @@ spec:
       VOLSYNC_CAPACITY: 16Gi
       EXTRAVOL: speech-to-phrase-models
       EXTRAVOL_CAPACITY: 16Gi
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app kokoro
+  namespace: ai
+spec:
+  targetNamespace: ai
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: nvidia-device-plugin
+      namespace: kube-system
+    - name: node-feature-discovery
+      namespace: kube-system
+  path: ./kubernetes/main/apps/ai/wyoming-protocol/kokoro
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
+  postBuild:
+    substitute:
+      APP: *app

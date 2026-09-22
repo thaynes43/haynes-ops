@@ -6,6 +6,13 @@ metadata:
   name: whisper
 spec:
   interval: 30m
+  # The server downloads and loads the model BEFORE it binds its socket
+  # (`__main__.py`: `await loader.load_transcriber()` then
+  # `AsyncServer.from_uri`), so on a cold PVC the pod is not ready until ~2.5 GB
+  # of Parakeet has come down from Hugging Face. With the default 5m Helm times
+  # out mid-download, rolls back and thrashes the pod — the same trap ComfyUI
+  # hit. Later starts read the model off the PVC and take seconds.
+  timeout: 20m
   chartRef:
     kind: OCIRepository
     name: app-template
@@ -26,25 +33,80 @@ spec:
     controllers:
       whisper:
         pod:
+          # Pinned to the host, not to `nvidia-a2000`: that label matches this
+          # node's A2000 today, but Tom has more A2000 mini-PCs to add (#3101)
+          # and the label would then be ambiguous. This service has to land on
+          # the same card as vexa-whisper, by Tom's ruling — see the timeout
+          # note below for what happens when it lands anywhere else.
           nodeSelector:
-            feature.node.kubernetes.io/nvidia-2000-ada-gpu: "true"
+            kubernetes.io/hostname: talosm01
+          # runtimeClassName WITHOUT an `nvidia.com/gpu` request: vexa-whisper
+          # holds this node's only unit, and every other GPU app in this
+          # namespace shares the card the same way. The image carries
+          # NVIDIA_VISIBLE_DEVICES itself, since the device plugin only injects
+          # that for pods that claim the resource.
           runtimeClassName: nvidia
         containers:
           app:
             image:
-              repository: rhasspy/wyoming-whisper
-              tag: 3.8.1
+              repository: ghcr.io/thaynes43/wyoming-whisper-gpu
+              tag: 3.8.1-1
+            # NVIDIA Parakeet TDT 0.6B v2 on the A2000, replacing faster-whisper
+            # `small` on a CPU: ~6% average WER against small's ~12%, with
+            # punctuation and casing built in, in a fraction of the time.
+            #
+            # --stt-library is not optional here. `auto` picks sherpa for
+            # English — and sherpa runs on the CPU even in a CUDA image,
+            # because sherpa-onnx bundles its own onnxruntime and two
+            # CUDA-enabled onnxruntime builds in one process segfault. onnx-asr
+            # is the backend that reaches the GPU. Its own default model is
+            # gigaam-v2-rnnt (Russian), so --model is not optional either.
             args:
+              - --uri
+              - tcp://0.0.0.0:10300
+              - --stt-library
+              - onnx-asr
               - --model
-              - small
+              - nemo-parakeet-tdt-0.6b-v2
+              - --device
+              - cuda
               - --language
               - en
               - --data-dir
               - /data
             env:
               TZ: America/New_York
+            resources:
+              requests:
+                cpu: 500m
+                memory: 1Gi
+              limits:
+                # Parakeet is ~2.5 GB of ONNX on disk and ~1.5-2.8 GB of VRAM;
+                # host RAM only has to hold the model while onnxruntime uploads
+                # it. 6Gi is roomy for that and still leaves the node's 94 GB
+                # alone.
+                memory: 6Gi
+            probes:
+              # Default probe shape here is a tcpSocket on the service port,
+              # and the socket does not open until the model is loaded (see the
+              # timeout note above). The startup probe therefore has to cover
+              # the cold download or the kubelet kills it mid-fetch and the pod
+              # never gets past it: 120 x 10s = 20 minutes, matching the Helm
+              # timeout.
+              startup:
+                enabled: true
+                spec:
+                  failureThreshold: 120
+                  periodSeconds: 10
+              liveness:
+                enabled: true
+              readiness:
+                enabled: true
     service:
       app:
+        # Same name and port as the CPU deployment this replaces, so Home
+        # Assistant's existing Wyoming entry (`faster-whisper`, host
+        # whisper.ai.svc.cluster.local, port 10300) keeps working untouched.
         controller: whisper
         ports:
           http:
