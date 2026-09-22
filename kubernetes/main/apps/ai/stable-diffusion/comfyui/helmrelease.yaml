@@ -58,15 +58,35 @@ spec:
         pod:
           nodeSelector:
             feature.node.kubernetes.io/nvidia-3090-gpu: "true"
-          # GPUs come from the nvidia runtime + NVIDIA_VISIBLE_DEVICES=all baked
-          # into the image: no `privileged`, and no nvidia.com/gpu request, so
-          # both cards stay visible (owner ruling: no per-app GPU pinning).
+          # GPUs come from the nvidia runtime, not from an nvidia.com/gpu request
+          # (the device plugin hands out *a* card, it cannot pin a named one) and
+          # not from `privileged`. Which cards the runtime injects is decided by
+          # NVIDIA_VISIBLE_DEVICES on the app container below.
           runtimeClassName: nvidia
         containers:
           app:
             image: *image
             args: ["serve"]
             env:
+              # Owner ruling 2026-09-22 (haynes-ops#2960, which previously said
+              # "no per-app GPU pinning" — that is now lifted): talosw01's two
+              # 3090s are split per app.
+              #   3090 #1 — VM bus 02:00.0, GPU-d8a856f1-… (the ORIGINAL card)
+              #     -> ComfyUI, this container, exclusively.
+              #   3090 #0 — VM bus 01:00.0, GPU-18bf6eab-… (the NEW card, #3052)
+              #     -> llama-server, the resident assist/chat LLM.
+              # ollama-prime keeps NVIDIA_VISIBLE_DEVICES=all and takes whatever
+              # is left over, spilling to CPU when neither card has room.
+              # Why ComfyUI gets exactly one card: its per-job peak is ~16-20 GB,
+              # which fits on a single 3090; AppDaemon's camera renders and Open
+              # WebUI's chat renders load the SAME qwen_image_2.1_int8_convrot +
+              # qwen3vl_8b_int8_convrot files, so one resident copy serves both;
+              # and the LLM needs a whole card to itself to stay resident.
+              # This overrides the NVIDIA_VISIBLE_DEVICES=all baked into
+              # ghcr.io/thaynes43/comfyui. The container therefore sees ONE GPU,
+              # so anything that names a device index inside ComfyUI must say
+              # `gpu:0` (see open-webui/app/comfyui/*-workflow.json).
+              NVIDIA_VISIBLE_DEVICES: GPU-d8a856f1-f955-f683-bc24-654561496774
               # Existing PVC layout, so saved UI workflows and inputs carry over.
               COMFYUI_USER_DIR: /workspace/ComfyUI/user
               COMFYUI_INPUT_DIR: /workspace/ComfyUI/input

@@ -30,21 +30,21 @@
     "class_type": "SelectModelDevice",
     "inputs": {
       "model": ["2", 0],
-      "device": "gpu:1"
+      "device": "gpu:0"
     }
   },
   "21": {
     "class_type": "SelectCLIPDevice",
     "inputs": {
       "clip": ["3", 0],
-      "device": "gpu:1"
+      "device": "gpu:0"
     }
   },
   "22": {
     "class_type": "SelectVAEDevice",
     "inputs": {
       "vae": ["4", 0],
-      "device": "gpu:1"
+      "device": "gpu:0"
     }
   },
   "5": {
