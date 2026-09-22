@@ -20,8 +20,6 @@ Brewfile.lock.json
 .idea
 # wiki
 wiki
-# Bootstrap
-/config.yaml
 # Cloudflare Tunnel credentials (generated locally)
 /cloudflare-tunnel.json
 # Uncomment configs if not using auth w/ omni 

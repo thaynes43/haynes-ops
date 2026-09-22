@@ -19,12 +19,18 @@ Try:
 > **TODO** Devcontainer needs `helm plugin install https://github.com/databus23/helm-diff` because `helm plugin list` is missing `diff` and if the initial apps fail they complain the second time that you need this diff thing! 
 
 ```bash
-task omni:sync
-task talos:install-helm-apps
-task rook:wipe-disks-talosm01
+task omni:validate                # schema-check the cluster template first
+task omni:sync                    # provision/assign the nodes
+task flux:install-helm-apps       # cilium + coredns + csr-approver + spegel (pre-Flux core)
+task rook:wipe-disks-talosm01     # each of these prompts before it erases anything
 task rook:wipe-disks-talosm02
 task rook:wipe-disks-talosm03
-task flux:bootstrap
+task flux:bootstrap               # needs age.key — run from the workstation
 ```
+
+> The helm-apps step used to be `task talos:install-helm-apps`. The whole `talos:`
+> namespace was talhelper-based and was removed in the 2026-09-22 taskfile audit — Omni
+> owns the machine config, so a raw `talosctl upgrade` would fight it. Upgrades go
+> through `task omni:sync`; see `.agents/runbooks/talos-version-upgrade.md`.
 
 > **TODO** See Rook task file and add `RookDiskWipe` in which was needed to get bluestore partition off of OSDs

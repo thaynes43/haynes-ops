@@ -22,13 +22,20 @@ kubernetes/
 │   ├── apps/          # App deployments organized by domain (home-automation, database, media, etc.)
 │   ├── bootstrap/     # Cluster bootstrap (Flux, Talos, Omni configs)
 │   └── flux/          # Flux config: cluster.yaml (entrypoint), apps.yaml, vars/
-├── edge/              # Edge/test cluster (same structure)
+├── edge/              # Edge/test cluster — DECOMMISSIONED, see below
 └── shared/            # Cross-cluster reusable resources
     ├── components/    # Kustomize components (volsync, gatus, common)
     └── repositories/  # Shared OCI/Helm repositories
 ```
 
 Each app follows this structure: `kubernetes/{cluster}/apps/{domain}/{app-name}/ks.yaml` (Flux Kustomization) + `app/` dir containing `helmrelease.yaml`, `kustomization.yaml`, and supporting resources.
+
+**`kubernetes/edge/` has no cluster behind it.** The edge nodes (edgem01-03, edgew01) were
+VMs on the retired pve01-03 hosts; the self-hosted Omni at `omni.haynesops.com` still
+carries an empty `haynes-edge` cluster object that logs `No control plane nodes are
+connected` every 60s. The manifests are kept because `flux-local` builds and diffs them
+on every PR, so treat that tree as a CI fixture, not a deployment target. The `edge:*`
+task namespace was deleted in the 2026-09-22 taskfile audit.
 
 ## Navigating the Live System
 
@@ -132,17 +139,32 @@ Note: prod apps in `apps-prod.yaml` carry `disable: true`; **the image build str
 
 ## Key Commands (Task runner)
 
+`task --list` is the source of truth — it was audited on 2026-09-22 and every target
+listed there now runs (or dry-runs) green against the current layout. The
+cluster-template leftovers (`init`, `configure`, `repository:*`, `talos:*`, `edge:*`)
+were deleted in that pass; git history keeps them.
+
 ```bash
 task --list                          # List all available tasks
 task flux:reconcile                  # Force Flux to pull latest from Git (full reconcile)
-task flux:bootstrap                  # Bootstrap Flux into a cluster
-task kubernetes:kubeconform          # Validate manifests with kubeconform
-task kubernetes:apply-ks CLUSTER=main PATH=home-automation/home-assistant  # Apply a single app's Kustomization
-task kubernetes:sync-secrets CLUSTER=main  # Force-sync all ExternalSecrets
-task kubernetes:browse-pvc CLUSTER=main NS=media CLAIM=plex  # Browse a PVC interactively
+task kubernetes:kubeconform          # Validate manifests with kubeconform (CLUSTER=main for one cluster)
+task kubernetes:apply-ks PATH=home-automation/home-assistant  # Apply a single app's Kustomization
+task kubernetes:sync-secrets         # Force-sync all ExternalSecrets (SECRET=<name> NS=<ns> for one)
+task kubernetes:browse-pvc NS=media CLAIM=plex  # Browse a PVC interactively
+task kubernetes:resources            # Dump common resources for a support snapshot
+task omni:validate                   # Validate the Omni cluster template
+task omni:sync                       # Apply the Omni cluster template (Talos/k8s bumps, machine config)
 task sops:encrypt                    # Encrypt all SOPS files
-task rook:*                          # Rook/Ceph disk operations
 ```
+
+`apply-ks` takes the namespace from the app's own `ks.yaml` unless you pass `NS=`;
+`CLUSTER=` defaults to `main`. Cluster bring-up from scratch (`omni:sync` →
+`flux:install-helm-apps` → `rook:wipe-disks-*` → `flux:bootstrap`) is in
+[`docs/cluster/index.md`](docs/cluster/index.md).
+
+**Destructive targets prompt before running** (`omni:nuke`, `rook:wipe-disks-talosm0*`,
+`rook:wipe-node`) and refuse outright without a TTY, so a tab-completion slip cannot
+destroy the cluster. Do not add `--yes` to get past one.
 
 ## CI/CD
 
@@ -171,10 +193,11 @@ Longer-form runbooks, safety rules, and reference context live in [`.agents/`](.
 ## Environment Setup
 
 Managed via `direnv` (`.envrc`):
-- `KUBECONFIG` → `./kubeconfig` (main) / `./kubeconfig-edge` (edge)
+- `KUBECONFIG` → `./kubeconfig` (main). `./kubeconfig-edge` is still in the tree but the
+  edge cluster is decommissioned — see the note under Repository Layout.
 - `SOPS_AGE_KEY_FILE` → `./age.key`
-- `TALOSCONFIG` / `OMNICONFIG` → bootstrap dirs
-- Python venv at `.venv/` (for `makejinja` templating)
+- `TALOSCONFIG` / `OMNICONFIG` → `./kubernetes/main/bootstrap/{talos,omni}/`
+- Python venv at `.venv/` from `requirements.txt` (`task workstation:venv`)
 
 ## Infrastructure Stack
 

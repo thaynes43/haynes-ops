@@ -2,30 +2,44 @@
 # yaml-language-server: $schema=https://taskfile.dev/schema.json
 version: "3"
 
+vars:
+  OMNI_CLUSTER: haynes-ops
+  CLUSTER_TEMPLATE_FILE: "{{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml"
+
 tasks:
 
   sync:
     desc: Sync the cluster to the template using omnictl
+    summary: |-
+      Applies kubernetes/main/bootstrap/omni/cluster-template.yaml to Omni. This is how
+      Talos/Kubernetes version bumps, machine config and network changes reach the nodes
+      — see .agents/runbooks/talos-version-upgrade.md. Deliberately NOT prompt-guarded:
+      it is the documented, automation-driven path and a prompt would break it in
+      non-interactive runs. A "context deadline exceeded" on sync is normal, see runbook.
     cmds:
-      # TODO envr for cluster name to support different names
-      - omnictl cluster template sync -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml --verbose
-      - omnictl cluster template status -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml
+      - omnictl cluster template sync -f {{.CLUSTER_TEMPLATE_FILE}} --verbose
+      - omnictl cluster template status -f {{.CLUSTER_TEMPLATE_FILE}}
     preconditions:
       - msg: Missing Omni cluster template
-        sh: test -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml
-      - msg: Omni cluster template vlaidation failed
-        sh: omnictl cluster template validate -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml
+        sh: test -f {{.CLUSTER_TEMPLATE_FILE}}
+      - msg: Omni cluster template validation failed
+        sh: omnictl cluster template validate -f {{.CLUSTER_TEMPLATE_FILE}}
 
   validate:
     desc: Validate the template is configured correctly
     cmds:
-      - omnictl cluster template validate -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml
+      - omnictl cluster template validate -f {{.CLUSTER_TEMPLATE_FILE}}
     preconditions:
       - msg: Missing Omni cluster template
-        sh: test -f {{.KUBERNETES_DIR}}/main/bootstrap/omni/cluster-template.yaml
-        
+        sh: test -f {{.CLUSTER_TEMPLATE_FILE}}
+
   nuke:
-    desc: Destroy the cluster using omnictl
+    desc: "!! DESTRUCTIVE !! Delete the ENTIRE {{.OMNI_CLUSTER}} cluster from Omni"
+    summary: |-
+      !! DESTRUCTIVE !! This deletes the production cluster from Omni and wipes the
+      nodes back to maintenance mode. There is no undo and no backup restore path that
+      does not involve a full rebuild (docs/cluster/index.md). Prompt-guarded, and it
+      refuses to run without a TTY — pass --yes only if you really mean it.
+    prompt: This DESTROYS the {{.OMNI_CLUSTER}} cluster and every workload on it. Continue?
     cmds:
-      # TODO envr for cluster name to support different names
-      - omnictl delete cluster haynes-ops
+      - omnictl delete cluster {{.OMNI_CLUSTER}}

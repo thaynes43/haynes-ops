@@ -40,10 +40,13 @@ tasks:
     desc: Install Arch workstation dependencies with Paru Or Yay
     cmd: "{{.helper}} -Syu --needed --noconfirm --noprogressbar $(cat {{.ARCHFILE}} | xargs)"
     vars:
+      # `|| true` so a missing helper reports through the precondition below instead of
+      # aborting the task with a bare "Command ... failed: exit status 1".
       helper:
-        sh: "command -v yay || command -v paru"
+        sh: "command -v yay || command -v paru || true"
     preconditions:
       - { msg: "Missing Archfile", sh: "test -f {{.ARCHFILE}}" }
+      - { msg: "Missing an AUR helper (yay or paru)", sh: "command -v yay || command -v paru" }
 
   generic-linux:
     desc: Install CLI tools into the projects .bin directory using curl
@@ -51,7 +54,6 @@ tasks:
     platforms: ["linux/amd64", "linux/arm64"]
     cmds:
       - for:
-          - budimanjojo/talhelper?as=talhelper&type=script
           - cloudflare/cloudflared?as=cloudflared&type=script
           - FiloSottile/age?as=age&type=script
           - fluxcd/flux2?as=flux&type=script

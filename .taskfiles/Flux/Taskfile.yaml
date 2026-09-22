@@ -5,12 +5,31 @@ version: "3"
 vars:
   CLUSTER_SECRET_SOPS_FILE: "{{.KUBERNETES_DIR}}/main/flux/vars/cluster-secrets.sops.yaml"
   CLUSTER_SETTINGS_FILE: "{{.KUBERNETES_DIR}}/main/flux/vars/cluster-settings.yaml"
-  GITHUB_DEPLOY_KEY_FILE: "{{.KUBERNETES_DIR}}/main/bootstrap/flux/github-deploy-key.sops.yaml"
+  HELMFILE_FILE: "{{.KUBERNETES_DIR}}/main/bootstrap/helmfile.yaml"
 
 tasks:
 
+  install-helm-apps:
+    desc: Install the pre-Flux core (cilium, coredns, csr-approver, spegel) with helmfile
+    summary: |-
+      Cluster bring-up step 2 — run after `omni:sync` has provisioned the nodes and
+      before `flux:bootstrap`. Flux cannot reconcile anything until the CNI and DNS
+      are up, so these charts are applied imperatively from
+      kubernetes/main/bootstrap/helmfile.yaml. See docs/cluster/index.md.
+    dir: "{{.KUBERNETES_DIR}}/main/bootstrap"
+    cmd: helmfile --kubeconfig {{.KUBECONFIG_FILE}} --file {{.HELMFILE_FILE}} apply --skip-diff-on-install --suppress-diff
+    preconditions:
+      - msg: Missing kubeconfig
+        sh: test -f {{.KUBECONFIG_FILE}}
+      - msg: Missing helmfile
+        sh: test -f {{.HELMFILE_FILE}}
+
   bootstrap:
     desc: Bootstrap Flux into a Kubernetes cluster
+    summary: |-
+      Cluster bring-up step 4 — installs the Flux components, seeds the sops-age
+      secret and applies the cluster vars + the top-level `cluster` Kustomization.
+      Needs the Age key, so this runs from the workstation, not the dev-env pod.
     cmds:
       - kubectl apply --kubeconfig {{.KUBECONFIG_FILE}} --server-side --kustomize {{.KUBERNETES_DIR}}/main/bootstrap/flux
       - |
@@ -27,33 +46,10 @@ tasks:
         sh: test -f {{.KUBECONFIG_FILE}}
       - msg: Missing Sops Age key file
         sh: test -f {{.AGE_FILE}}
-
-  apply:
-    desc: Apply a Flux Kustomization resource for a cluster
-    summary: |
-      Args:
-        path: Path under apps containing the Flux Kustomization resource (ks.yaml) (required)
-        ns: Namespace the Flux Kustomization exists in (default: flux-system)
-    cmd: |
-      flux --kubeconfig {{.KUBECONFIG_FILE}} build ks $(basename {{.path}}) \
-          --namespace {{.ns}} \
-          --kustomization-file {{.KUBERNETES_DIR}}/apps/{{.path}}/ks.yaml \
-          --path {{.KUBERNETES_DIR}}/apps/{{.path}} \
-          {{- if contains "not found" .ks }}--dry-run \{{ end }}
-      | \
-      kubectl apply --kubeconfig {{.KUBECONFIG_FILE}} --server-side \
-          --field-manager=kustomize-controller -f -
-    requires:
-      vars: ["path"]
-    vars:
-      ns: '{{.ns | default "flux-system"}}'
-      ks:
-        sh: flux --kubeconfig {{.KUBECONFIG_FILE}} --namespace {{.ns}} get kustomizations $(basename {{.path}}) 2>&1
-    preconditions:
-      - msg: Missing kubeconfig
-        sh: test -f {{.KUBECONFIG_FILE}}
-      - msg: Missing Flux Kustomization for app {{.path}}
-        sh: test -f {{.KUBERNETES_DIR}}/apps/{{.path}}/ks.yaml
+      - msg: Missing cluster secrets file
+        sh: test -f {{.CLUSTER_SECRET_SOPS_FILE}}
+      - msg: Missing cluster settings file
+        sh: test -f {{.CLUSTER_SETTINGS_FILE}}
 
   reconcile:
     desc: Force update Flux to pull in changes from your Git repository
@@ -61,15 +57,3 @@ tasks:
     preconditions:
       - msg: Missing kubeconfig
         sh: test -f {{.KUBECONFIG_FILE}}
-
-  github-deploy-key:
-    cmds:
-      - kubectl create namespace flux-system --dry-run=client -o yaml | kubectl --kubeconfig {{.KUBECONFIG_FILE}} apply --filename -
-      - sops --decrypt {{.GITHUB_DEPLOY_KEY_FILE}} | kubectl apply --kubeconfig {{.KUBECONFIG_FILE}} --server-side --filename -
-    preconditions:
-      - msg: Missing kubeconfig
-        sh: test -f {{.KUBECONFIG_FILE}}
-      - msg: Missing Sops Age key file
-        sh: test -f {{.AGE_FILE}}
-      - msg: Missing Github deploy key file
-        sh: test -f {{.GITHUB_DEPLOY_KEY_FILE}}
