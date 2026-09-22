@@ -189,7 +189,7 @@
       ],
       "properties": {},
       "widgets_values": [
-        "Qwen_image_2.1",
+        "ui/qwen-image-2.1-t2i",
         "png",
         "8-bit",
         "sRGB"
