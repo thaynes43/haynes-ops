@@ -16,9 +16,14 @@ spec:
       containers:
         - name: wipe-disk
           image: docker.io/library/alpine:latest
+          # Not /dev/termination-log: the host /dev below is mounted over it, and
+          # kubelet would otherwise create the log file in the node's devtmpfs.
+          terminationMessagePath: /tmp/termination-log
           command: ["/bin/sh", "-c"]
           args:
-            - apk add --no-cache sgdisk util-linux util-linux-misc parted device-mapper;
+            - set -e;
+              apk add --no-cache sgdisk util-linux util-linux-misc parted device-mapper;
+              test -b ${ceph_disk};
               sgdisk --zap-all ${ceph_disk};
               dd if=/dev/zero of=${ceph_disk} bs=1M count=10000 oflag=direct;
               blkdiscard ${ceph_disk};
@@ -26,3 +31,13 @@ spec:
           securityContext:
             privileged: true
           resources: {}
+          volumeMounts:
+            # privileged alone only propagates the flat /dev/nvmeXn1 nodes; the
+            # /dev/disk/by-id symlinks the CephCluster names exist only in the
+            # host's /dev, so they have to be mounted in to resolve.
+            - mountPath: /dev
+              name: host-dev
+      volumes:
+        - name: host-dev
+          hostPath:
+            path: /dev
