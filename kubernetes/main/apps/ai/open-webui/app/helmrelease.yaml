@@ -115,3 +115,77 @@ spec:
         value: "true"
       OAUTH_GROUP_CLAIM:
         value: "groups"
+      # ComfyUI image generation (2026-09-21). Qwen-Image-2.1 text-to-image
+      # pinned to the SECOND 3090 (the SelectXDevice nodes say `gpu:1`), so a
+      # chat render does not evict whatever Ollama has resident on card 0.
+      # ~35-50 s warm at 25 steps, against the ~477 s the old 50-step
+      # Qwen-Image-2512 graph took. Full write-up + the once-only admin step:
+      # resources/PLAN-021-ai-config.md section (f).
+      #
+      # ⚠️ PersistentConfig: every var below is a PersistentConfig in Open WebUI
+      # — the env value only SEEDS the database, and a value already stored in
+      # the `config` table wins on every later start. This instance already has
+      # image_generation persisted (engine/enable/base_url/workflow/nodes were
+      # saved on 2026-07-10), so these vars are the declarative record + the DR
+      # seed for a rebuilt PVC; they do NOT change the live instance until the
+      # admin applies them once (PLAN-021 f, "Applying it to the live instance").
+      ENABLE_IMAGE_GENERATION:
+        value: "true"
+      IMAGE_GENERATION_ENGINE:
+        value: "comfyui"
+      COMFYUI_BASE_URL:
+        value: "http://comfyui.ai.svc.cluster.local:8188"
+      # Injected into the graph's UNETLoader (node 2) via the `model` mapping in
+      # nodes.json, so it MUST be an exact filename from ComfyUI's unet list.
+      # The CLIP + VAE are pinned to the Qwen-Image-2.1 pair, so anything other
+      # than a Qwen-Image-2.1 UNET here will fail graph validation.
+      IMAGE_GENERATION_MODEL:
+        value: "qwen_image_2.1_int8_convrot.safetensors"
+      IMAGE_SIZE:
+        value: "1024x1024"
+      IMAGE_STEPS:
+        value: "25"
+      # The graph and the Open WebUI-field -> node mapping, kept as reviewable
+      # JSON files under app/comfyui/ (kustomize builds the ConfigMap).
+      COMFYUI_WORKFLOW:
+        valueFrom:
+          configMapKeyRef:
+            name: open-webui-comfyui-workflow
+            key: generate-workflow.json
+      COMFYUI_WORKFLOW_NODES:
+        valueFrom:
+          configMapKeyRef:
+            name: open-webui-comfyui-workflow
+            key: generate-nodes.json
+      # Image EDIT (the "Edit Image" half of Admin -> Settings -> Images).
+      # ComfyUI is one of the three engines 0.7.2 offers there (OpenAI / ComfyUI
+      # / Gemini); the graph is the same Qwen-Image-2.1 stack on gpu:1 with a
+      # LoadImage reference frame instead of an empty latent. Open WebUI POSTs
+      # the attached image to ComfyUI's /api/upload/image first and then patches
+      # the returned filename into node 1.
+      #
+      # The edit mapping is deliberately only image/prompt/seed — see
+      # resources/PLAN-021-ai-config.md: 0.7.2's edit path never populates
+      # steps/n/width/height (they arrive as None and would be written into the
+      # graph as null), and ComfyUIEditImageForm has no negative_prompt field at
+      # all, so mapping it raises. Steps stay at the graph's literal 25.
+      ENABLE_IMAGE_EDIT:
+        value: "true"
+      IMAGE_EDIT_ENGINE:
+        value: "comfyui"
+      # Inert unless a `model` entry is added to edit-nodes.json (nothing injects
+      # it today); kept here so the value is already right if one ever is.
+      IMAGE_EDIT_MODEL:
+        value: "qwen_image_2.1_int8_convrot.safetensors"
+      IMAGES_EDIT_COMFYUI_BASE_URL:
+        value: "http://comfyui.ai.svc.cluster.local:8188"
+      IMAGES_EDIT_COMFYUI_WORKFLOW:
+        valueFrom:
+          configMapKeyRef:
+            name: open-webui-comfyui-workflow
+            key: edit-workflow.json
+      IMAGES_EDIT_COMFYUI_WORKFLOW_NODES:
+        valueFrom:
+          configMapKeyRef:
+            name: open-webui-comfyui-workflow
+            key: edit-nodes.json
