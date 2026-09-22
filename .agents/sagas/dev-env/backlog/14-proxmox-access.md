@@ -86,9 +86,10 @@ kept as the record of what was considered.
   ids other than the three Talos workers (103/108/113) unless `--any` is passed, so a
   typo cannot stop gasha01. PVE's task log (`/cluster/tasks`, user `dev-env@pve`) is the
   audit trail; revocation is deleting the token.
-- **The fence fix is a normal agent task** once PR B is deployed: `pve delete
-  /cluster/ha/resources/<sid> --yes` for the five resources, declared with
-  `declare-activity`, logged in the incident report.
+- **The fence fix is a normal agent task** once PR B is deployed: `pve --yes delete
+  /cluster/ha/resources/<sid>` for the five resources, declared with
+  `declare-activity`, logged in the incident report. (Global flags go **before** the
+  verb — a trailing `--yes` is swallowed as a path parameter.) ✅ done 2026-09-22.
 
 ### 2026-09-09 — scope clarification (Tom): this is for the interactive/rc sessions, not a new headless lane
 
@@ -217,10 +218,12 @@ Recorded and asked 2026-09-09. Options were (a) temporary `Sys.Console` + one-sh
   pvedash.haynesnetwork` resolves and `curl -k https://pvedash.haynesnetwork/api2/json/version`
   answers `401`; `kubectl get es -n dev dev-env-proxmox` → `SecretSynced`. Verified.
 - PR B merged (post-bounce): `pve ha` lists the HA resources and quorum; `pve vm 108
-  config` shows `onboot: 1`; `pve vm 104 stop --yes` is refused by the helper's
+  config` shows `onboot: 1`; `pve --yes vm 104 stop` is refused by the helper's
   worker-only guard (no request made); `pve --any vm 104 config` reads.
 - The fence remedy in the runbook has been executed once and `pve ha` shows no
-  `started` resources; LRMs report `idle`.
+  `started` resources; LRMs report `idle`. ✅ **done 2026-09-22 12:04Z** (all five
+  resources removed, declared `act-120438-1098241`, resource table empty, LRMs
+  `active`/`idle`, quorum OK, no guest restarted).
 
 ### 2026-09-13 — PR B landed WITHOUT the operator credential (read tier only)
 
@@ -241,9 +244,11 @@ work. Writes refuse with *"only the read token is present (operator token not de
 role + `dev-env@pve!operator` token on a PVE node, add the two fields to 1Password, then
 append the ExternalSecret and bounce the pod once.
 
-**The fence cleanup is still pending** and needs the operator tier:
-`pve delete /cluster/ha/resources/{vm:104,ct:105,ct:106,ct:107,vm:109} --yes`, declared
-with `declare-activity` and logged in the incident report.
+~~**The fence cleanup is still pending**~~ — **done 2026-09-22 12:04Z** with the operator
+tier: `pve --yes delete /cluster/ha/resources/<sid>` for each of vm:104 ct:105 ct:106
+ct:107 vm:109, declared `act-120438-1098241` and logged in the incident report. (Note the
+flag order: the helper parses global flags only *before* the verb, so a trailing `--yes`
+is swallowed as a path parameter and the write is refused.)
 
 ### 2026-09-17 — SSH tier added; operator ES lands with it (GPU swap on HaynesIntelligence)
 

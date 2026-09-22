@@ -53,9 +53,15 @@ not firing. Tom powered `talosw02` back on manually at 11:13Z (07:13 EDT).
 - **EMQX config drift:** the running broker still enforces `retainer.max_payload_size=1MB` / 1 MB max packet (Z2M `bridge/devices` publishes are discarded with `frame_is_too_large`) even though `emqx-configs` now says 256MB/4MB — EMQX keeps `data/configs/cluster.hocon` overrides on the PVC. Apply via the EMQX dashboard/API or `emqx ctl conf`. Longer term: EMQX core replicas 3 so MQTT survives any single node.
 - **Two stale pods** (`frontend/omni-…-fswhb`, `media/plexops-…-58rdx`, `UnexpectedAdmissionError`, 14–18 days old) predate the incident; delete them.
 
-## Open questions
-- Did the PVE host reboot (uptime), or did the VMs get reset some other way?
-- Is UniFi device auto-update enabled, and on what schedule?
+## Open questions — all resolved
+- ~~Did the PVE host reboot (uptime), or did the VMs get reset some other way?~~
+  **Resolved** (Correction 13:56Z + Addendum 14:30Z): all *five* PVE nodes watchdog-fenced
+  on corosync quorum loss; the VMs died with their hosts.
+- ~~Is UniFi device auto-update enabled, and on what schedule?~~ **Resolved** (Addendum
+  14:30Z): it was `mgmt.auto_upgrade = true`, `auto_upgrade_hour = 3` America/New_York;
+  flipped to `false` at ~14:25Z and **re-verified still `false` on 2026-09-22**.
+- ~~Remove the five PVE HA resources (the fence itself)~~ — **done 2026-09-22 12:04Z**, see
+  the addendum below.
 
 ## Addendum 12:19–12:45Z (08:19–08:45 EDT) — Z-Wave wedged a second time
 
@@ -144,4 +150,72 @@ Zigbee port beside it — the Z-Wave dongle's Ethernet link is flapping on its o
 Proxmox access instead (saga `dev-env` backlog 14, runbook `proxmox-access.md`). The
 "Outside this repo (Tom) — Proxmox" bullet above is superseded by that item. Tom's Q-1 ruling
 (standing operator token, `Sys.Console` included) means an agent removes the five HA resources
-once backlog 14 PR B is deployed.
+once backlog 14 PR B is deployed. ✅ **Done 2026-09-22** — see the addendum below.
+
+## Addendum 2026-09-22 — the fence is disarmed, after a second 3 AM network event
+
+### 1. HA resources removed, 12:04Z (08:04 EDT)
+
+Done from the dev-env pod on the operator tier, declared `act-120438-1098241`, per the
+runbook's "Remedy: the fence itself". All five HA resources deleted with
+`pve --yes delete /cluster/ha/resources/<sid>` — vm:104 gasha01, ct:105 nut2700, ct:106
+cephdash, ct:107 pvedash, vm:109 ubuntu01 (each returned `"data": null`). Read-back `pve ha`
+afterwards: **resource table empty**, the transient `deleting` service rows cleared within
+~30 s, LRMs `active`/`idle` on all five nodes, quorum OK, **no guest restarted**.
+
+From now on a network partition leaves the PVE nodes running with a read-only cluster config
+instead of watchdog-fencing them. The 2026-09-09 blast radius (all five nodes rebooting when
+one switch bounced) cannot repeat in that form. The removal procedure is kept in the runbook
+for a re-arm scenario.
+
+### 2. Why now — the 2026-09-22 event
+
+07:10:21–07:13:46Z (03:10–03:14 EDT), the same 3 AM window as 09-09:
+
+| UTC | Event |
+|---|---|
+| 07:10:21–07:13:46 | Every NIC on all three bare-metal masters (i40e 10G pairs first, igc 1G ~12 s later) **and** on all five PVE hosts (mlx5 25G on twin-top / twin-bottom / HaynesIntelligence, i40e on pve04, igb on pve-filet02, r8169 2.5G on HaynesIntelligence) went link-down/up for 0.5–25 s |
+| 07:13:20 | etcd lost its leader (apply latencies 5–13 s); apiservers logged `etcdserver: no leader` |
+| 07:13–07:17 | Every leader-elected controller cluster-wide exited once — ~60 restarts, Prometheus included |
+| ~07:17 | API back |
+| 07:22 | Scrape targets back to 166 |
+| 07:14:40–07:17:15 | **`provisioned_at` on every UniFi switch**; UDM 07:24:45 |
+
+Nothing rebooted: no UDM, switch, AP, PVE host or Talos node — all uptimes 9–13+ days,
+`node_boot_time_seconds` unchanged. ~12 Pushover pushes that night, including a separate
+04:23–04:53Z multus/qbittorrent incident (#3085).
+
+**The PVE hosts were link-less for only 8–25 s — under the ~60 s watchdog window — so they
+did not fence this time.** With the HA resources still armed, a slightly longer bounce would
+have repeated 09-09 exactly. That is why the removal was done the same morning rather than
+left as a standing item.
+
+### 3. Controller-side evidence (why the links bounced)
+
+Read through the `mcp-unifi` pod's API key against `/proxy/network/api/s/default/stat/device`,
+`get/setting` and `stat/sysinfo`:
+
+- `mgmt.auto_upgrade = false` — device firmware auto-update is **still off** since 09-09
+  (`auto_upgrade_hour: 3` remains, inert). No device firmware moved: every device
+  `upgradable: false`, `update_available: false`.
+- `super_mgmt.live_updates: auto` — the Network **application** auto-update is still on.
+  Network app is now 10.6.106 (was 10.6.101). The UDM has been up since 2026-09-13T02:02Z
+  (= its boot), so nothing restarted today.
+- **`provisioned_at` on every switch = 07:14:40–07:17:15Z and the UDM 07:24:45Z** — the
+  controller **re-provisioned the whole site right after the flaps**, i.e. a config push in
+  the 3 AM window applied switch by switch, re-initialising the ports. That is the shape of
+  the event: a controller-driven provisioning sweep, not a firmware rollout and not a reboot.
+
+The *reason* for the provisioning is not visible over the API — Network 10.6 serves no event
+log — so the console System Log for 03:10–03:25 EDT is the only place it is recorded. That is
+the one remaining thread, and it needs the console UI (Tom), not an API call.
+
+### 4. `pve` helper gotcha found doing this
+
+`--yes` (and `--ro/--raw/--any/--node`) are **global** flags parsed only **before** the verb
+(`while … case "$1" in --yes) …; *) break`). A trailing `--yes` is passed through as a
+path/parameter and the helper dies with *"add --yes to perform this write"* — which reads
+like a permission problem and is not. Every `pve … --yes` example in the runbook and the saga
+backlog was wrong as written and is fixed in this PR (`pve --yes delete …`,
+`pve --yes vm 108 reset`). A held-draft dev-env PR makes the flags position-independent in the
+helper itself (merging it bounces the pod, so Tom merges it at a natural break).

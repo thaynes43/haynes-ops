@@ -34,12 +34,19 @@ pve ha                     # HA resources + quorum + LRM/CRM state (the fence pi
 pve nodes                  # node uptime / status
 pve guests                 # every guest: id, name, node, status, onboot
 pve vm 108 config          # one guest's config
-pve vm 108 onboot 1 --yes  # operator tier
-pve vm 108 start --yes     # operator tier
-pve vm 108 reset --yes     # operator tier — a HARD reset; declare-activity first
+pve --yes vm 108 onboot 1  # operator tier
+pve --yes vm 108 start     # operator tier
+pve --yes vm 108 reset     # operator tier — a HARD reset; declare-activity first
 pve get /cluster/ha/status/current            # raw API, any path
 pve --ro get /nodes/twin-top/status
 ```
+
+**Flag order (2026-09-22):** the global flags — `--ro --yes --raw --any --node <name>` —
+are parsed by a loop that runs **before** the verb and stops at the first non-flag word.
+A trailing `--yes` is therefore passed through as a path/parameter and the write is refused
+with *"add --yes to perform this write"*. Put every global flag **before** the verb:
+`pve --yes delete /cluster/ha/resources/vm:104`, not `pve delete … --yes`. (A dev-env PR
+making them position-independent is held as a draft — it bounces the pod.)
 
 Writes print the resolved URL and refuse without `--yes`. Anything disruptive (start,
 stop, reset) — `declare-activity start … --scope <worker>` first, the same as a pod
@@ -52,12 +59,19 @@ Signature: `PVENodeRebooted` for several nodes within a minute, workers NotReady
 Kubernetes side after 8 min; this is the Proxmox side.)
 
 1. `pve guests` — which worker is stopped, and is `onboot` 1? (All three are 1 since
-   2026-09-09; if one is 0, `pve vm <id> onboot 1 --yes`.)
+   2026-09-09; if one is 0, `pve --yes vm <id> onboot 1`.)
 2. `pve nodes` — is its host up and quorate? If the host is down, nothing here helps;
    that is a physical/UPS problem — page.
-3. `pve vm <id> start --yes`, then `kubectl get node -w` until Ready. Log it.
+3. `pve --yes vm <id> start`, then `kubectl get node -w` until Ready. Log it.
 
-## Remedy: the fence itself (one-time; operator tier)
+## Remedy: the fence itself (DONE 2026-09-22; operator tier)
+
+**Executed 2026-09-22 12:04Z** from the dev-env pod, declared `act-120438-1098241`: all
+five HA resources removed, `pve ha` read back empty, LRMs `active`/`idle` on all five
+nodes, quorum OK, no guest restarted. The fence is disarmed — a partition now leaves the
+PVE nodes running with a read-only cluster config. See the 2026-09-22 addendum in
+`.agents/reports/incident-2026-09-09-worker-host-outage.md`. The procedure below stays for
+a **re-arm** scenario (if HA resources are ever added back and need removing again).
 
 The standing operator token can do this (Q-1 ruling). It is a planned change, not an
 emergency: `declare-activity start "removing PVE HA resources" --scope proxmox --ttl 30m`,
@@ -66,14 +80,15 @@ then:
 ```bash
 pve ha                                                # before
 for sid in vm:104 ct:105 ct:106 ct:107 vm:109; do     # gasha01 nut2700 cephdash pvedash ubuntu01
-  pve delete /cluster/ha/resources/$sid --yes
+  pve --yes delete /cluster/ha/resources/$sid         # --yes BEFORE the verb (see "Flag order")
 done
 pve ha                                                # after: no `service` rows
 ```
 
-Guests keep running; only HA management stops. LRMs drift to `idle` within minutes, and
-from then on a network partition leaves nodes running with a read-only cluster config
-instead of rebooting them. Log it in the incident report and `declare-activity end`.
+Guests keep running; only HA management stops. LRMs drift to `idle` within minutes (the
+transient `deleting` service rows cleared in ~30 s on 2026-09-22), and from then on a
+network partition leaves nodes running with a read-only cluster config instead of
+rebooting them. Log it in the incident report and `declare-activity end`.
 
 ## Do not
 
