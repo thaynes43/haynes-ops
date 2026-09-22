@@ -9,3 +9,24 @@ resources:
 components:
   - ../../../../../shared/components/volsync/aws
   - ../../../../../shared/components/common/gatus/external
+# ComfyUI image generation (see resources/PLAN-021-ai-config.md section f).
+# Open WebUI takes the graph and the field->node mapping as *env var strings*
+# (COMFYUI_WORKFLOW / COMFYUI_WORKFLOW_NODES, both json.loads'd at startup), so
+# the reviewable files below are mounted into the env via configMapKeyRef rather
+# than inlined into the HelmRelease. The name must stay hash-free: the env
+# reference lives inside HelmRelease `values`, which kustomize's nameReference
+# transformer does not rewrite. Reloader (auto, on the workload) rolls the pod
+# when this ConfigMap changes.
+configMapGenerator:
+  - name: open-webui-comfyui-workflow
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        # Keep Flux postBuild envsubst away from the graph: prompt/filename
+        # strings are free text and a stray `$` would blank the whole workflow.
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+    files:
+      - comfyui/generate-workflow.json
+      - comfyui/generate-nodes.json
+      - comfyui/edit-workflow.json
+      - comfyui/edit-nodes.json

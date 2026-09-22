@@ -1,10 +1,14 @@
 # Open WebUI — models, RBAC, and ComfyUI image generation (PLAN-021 ops wave)
 
-> Applied 2026-07-10 as the PLAN-021 ops wave (parts b/c/f). This is a **record + disaster-recovery
-> runbook**. The live configuration lives in the Open WebUI database (the `open-webui` PVC) and the
-> Ollama model mount (`gasha01.haynesnetwork:/hdd-nfs-repl/misc/ollama/models`), **not** in this repo.
-> If the Open WebUI PVC is ever restored empty, re-apply the RBAC + image config with the admin-API
-> steps below. Ollama models survive independently on the NFS mount.
+> Applied 2026-07-10 as the PLAN-021 ops wave (parts b/c/f); section (f) reworked 2026-09-21. This is
+> a **record + disaster-recovery runbook**. Model RBAC still lives only in the Open WebUI database
+> (the `open-webui` PVC), alongside the Ollama model mount
+> (`gasha01.haynesnetwork:/hdd-nfs-repl/misc/ollama/models`). The **ComfyUI image config is now
+> declared in this repo** (`app/helmrelease.yaml` + `app/comfyui/*.json`) and seeds a fresh database
+> — but Open WebUI's PersistentConfig means an existing database still wins, so on a live instance it
+> is applied once by hand (section f). If the PVC is ever restored empty, image generation and edit
+> come up configured on their own; re-apply the RBAC with the admin-API steps below. Ollama models
+> survive independently on the NFS mount.
 >
 > All admin-API calls need `OPENWEBUI_API_KEY` (1Password `openwebui` → cluster secret
 > `openwebui-secret`) and a browser-like `User-Agent` header (Cloudflare blocks `python-urllib`).
@@ -108,20 +112,326 @@ present OWUI sets groups to empty on login and would **wipe** the manual `family
 
 ## (f) ComfyUI image generation — all users
 
-Owner ruling: **image generation available to all users incl. Default** (no gating; the reused
-lightweight AppDaemon Qwen text→image workflow). Default user permission
-`features.image_generation` is already `true`, so all users can generate.
+Owner ruling: **image generation available to all users incl. Default** (no gating). Default user
+permission `features.image_generation` is `true` and nothing overrides it in the DB (`user.permissions`
+is absent from the `config` row), so every logged-in user gets the image button.
 
-Config (Open WebUI Admin → Settings → Images, or `POST /api/v1/images/config/update`):
-- `ENABLE_IMAGE_GENERATION=true`
-- `IMAGE_GENERATION_ENGINE=comfyui`
-- `COMFYUI_BASE_URL=http://comfyui.ai.svc.cluster.local:8188`
-- `IMAGE_SIZE=1024x1024`, `IMAGE_STEPS=50`
-- `COMFYUI_WORKFLOW` = the **reused** text→image workflow
-  `apps/ai/stable-diffusion/comfyui/resources/api-workflows/image_qwen_Image_2512_API.json`
-  (Qwen-Image-2512 fp8 + Lightning-4step LoRA switch, base models already provisioned into ComfyUI).
-  **The workflow file is reused read-only — not modified.**
-- `COMFYUI_WORKFLOW_NODES` (Open WebUI field → Qwen node id):
+### Current configuration (2026-09-21) — Qwen-Image-2.1 on the second 3090, generate **and** edit
+
+Everything below is now **declared in Git** (`app/helmrelease.yaml` `extraEnvVars` + the ConfigMap
+built from `app/comfyui/*.json`), where before it lived only in the Open WebUI database.
+Admin → Settings → Images has two halves — *Create Image* and *Edit Image* — and 0.7.2 configures
+them **separately**, with their own engine, base URL, workflow and node mapping.
+
+| Setting | Value | Where |
+|---------|-------|-------|
+| `ENABLE_IMAGE_GENERATION` | `true` | helmrelease |
+| `IMAGE_GENERATION_ENGINE` | `comfyui` | helmrelease |
+| `COMFYUI_BASE_URL` | `http://comfyui.ai.svc.cluster.local:8188` | helmrelease |
+| `IMAGE_GENERATION_MODEL` | `qwen_image_2.1_int8_convrot.safetensors` | helmrelease |
+| `IMAGE_SIZE` | `1024x1024` | helmrelease |
+| `IMAGE_STEPS` | `25` | helmrelease |
+| `COMFYUI_WORKFLOW` | contents of `app/comfyui/generate-workflow.json` | ConfigMap `open-webui-comfyui-workflow`, key `generate-workflow.json` |
+| `COMFYUI_WORKFLOW_NODES` | contents of `app/comfyui/generate-nodes.json` | same ConfigMap, key `generate-nodes.json` |
+| `ENABLE_IMAGE_EDIT` | `true` | helmrelease |
+| `IMAGE_EDIT_ENGINE` | `comfyui` | helmrelease |
+| `IMAGE_EDIT_MODEL` | `qwen_image_2.1_int8_convrot.safetensors` (inert — nothing injects it) | helmrelease |
+| `IMAGES_EDIT_COMFYUI_BASE_URL` | `http://comfyui.ai.svc.cluster.local:8188` | helmrelease |
+| `IMAGES_EDIT_COMFYUI_WORKFLOW` | contents of `app/comfyui/edit-workflow.json` | same ConfigMap, key `edit-workflow.json` |
+| `IMAGES_EDIT_COMFYUI_WORKFLOW_NODES` | contents of `app/comfyui/edit-nodes.json` | same ConfigMap, key `edit-nodes.json` |
+
+No API key is set for either: ComfyUI has no auth and `COMFYUI_API_KEY` /
+`IMAGES_EDIT_COMFYUI_API_KEY` are empty in the database. The `sk-1234` the admin page shows in the
+"ComfyUI API Key" box is Open WebUI's **placeholder text**, not a stored value.
+
+All four workflow/mapping settings are plain **env var strings** in Open WebUI (each is
+`json.loads`'d at startup — there is no file-path option), so kustomize's `configMapGenerator` turns
+the reviewable JSON files into a ConfigMap and the HelmRelease pulls each key in with
+`valueFrom.configMapKeyRef`. The generator has `disableNameSuffixHash: true` on purpose: the env
+reference sits inside HelmRelease `values`, which kustomize's nameReference transformer does **not**
+rewrite, so a hashed name would dangle. The ConfigMap also carries
+`kustomize.toolkit.fluxcd.io/substitute: disabled` — Flux's postBuild envsubst is strict and a stray
+`$` in a prompt or filename would otherwise blank the whole graph.
+
+#### Create Image — `app/comfyui/generate-workflow.json`
+
+The graph is the same Qwen-Image-2.1 stack AppDaemon uses for the
+camera renders, minus the reference-image inputs and with an `EmptyLatentImage` (node `12`) as the
+latent source. The three `Select*Device` nodes pin the UNET, CLIP and VAE to **`gpu:1`** — the
+second 3090 — so a chat render does not evict whatever Ollama has resident on card 0. Warm renders
+take ~35–50 s at 25 steps (the old 50-step Qwen-Image-2512 graph took ~477 s, which used to outrun
+the edge proxy's budget; see the 2026-07-10 verification note below).
+
+Open WebUI field → node mapping (`app/comfyui/generate-nodes.json`):
+
+| OWUI field (`type`) | `key` | node id | node (class) |
+|---------------------|-------|---------|--------------|
+| model | `unet_name` | `2` | UNETLoader |
+| prompt | `prompt` | `6` | TextEncodeQwenImage21 |
+| negative_prompt | `negative_prompt` | `6` | TextEncodeQwenImage21 |
+| width | `width` | `12` | EmptyLatentImage |
+| height | `height` | `12` | EmptyLatentImage |
+| n | `batch_size` | `12` | EmptyLatentImage |
+| steps | `steps` | `7` | KSampler |
+| seed | `seed` | `7` | KSampler |
+
+Three things about that table are load-bearing in 0.7.2
+(`backend/open_webui/utils/images/comfyui.py`):
+
+- **`seed` has no default key.** `prompt`/`width`/`height`/`steps`/… fall back to a sensible key when
+  `key` is omitted; `seed` and `model` write to `inputs[node.key]` verbatim, and `key` defaults to
+  `"text"`. Omit `key` there and you silently set `inputs["text"]`.
+- **The seed must be mapped or every image is identical.** Open WebUI never plumbs a user-supplied
+  seed into the create path; if a `seed` node *is* declared it generates a fresh random one per
+  request, and if it is *not*, the graph's literal `seed: 0` is used every single time.
+- **`model` overwrites node `2`'s `unet_name` with `IMAGE_GENERATION_MODEL`.** It must therefore be
+  an exact filename from ComfyUI's UNET list. The CLIP (`qwen3vl_8b_int8_convrot`) and VAE
+  (`qwen_image_2.1_vae_bf16`) are pinned to the Qwen-Image-2.1 pair, so selecting any other UNET in
+  the admin UI will fail graph validation. If you would rather the UNET never be overridable, delete
+  the `model` entry from `generate-nodes.json` — the loader keeps whatever the graph declares (Open WebUI
+  falls back to listing `CheckpointLoaderSimple` checkpoints in the model dropdown, which is cosmetic).
+
+#### Edit Image — `app/comfyui/edit-workflow.json`
+
+**ComfyUI is a supported edit engine in 0.7.2.** The *Image Edit Engine* dropdown offers exactly
+three: `Default (Open AI)`, `ComfyUI`, `Gemini` (the *generation* dropdown has a fourth,
+Automatic1111). It is configured by an entirely separate set of keys — `ENABLE_IMAGE_EDIT`,
+`IMAGE_EDIT_ENGINE`, `IMAGE_EDIT_MODEL`, `IMAGE_EDIT_SIZE`, `IMAGES_EDIT_COMFYUI_BASE_URL`,
+`IMAGES_EDIT_COMFYUI_API_KEY`, `IMAGES_EDIT_COMFYUI_WORKFLOW`,
+`IMAGES_EDIT_COMFYUI_WORKFLOW_NODES` — so setting up generation does nothing for edit.
+
+How the attached image gets in: `POST /api/v1/images/edit` base64s or fetches the user's image,
+uploads it to ComfyUI with `POST {base_url}/api/upload/image` (multipart field `image`, plus
+`type=input`), takes the `name` ComfyUI returns, and patches that filename into the graph through the
+`image` node type. ComfyUI mirrors every route under `/api`, so `/api/upload/image` is the same
+handler as `/upload/image` — nothing extra to enable.
+
+The graph is the T2I graph with the empty latent swapped for a `LoadImage` (node `1`) feeding
+`TextEncodeQwenImage21`'s autogrow reference slot (`images.image_1`), and `KSampler.latent_image`
+taken from that encoder's third output instead — the edit size comes from the input image, and node
+`6`'s `resolution: 1024` is the pixel budget references are resized to. Same `gpu:1` pinning, same 25
+steps. Output prefix is `ui/open-webui-edit`. Node `1`'s literal `"image": "input.png"` is a
+placeholder that the mapping always overwrites; it is intentionally a name that does **not** exist in
+ComfyUI's input dir, so a broken mapping fails loudly instead of silently editing some other file.
+
+Mapping (`app/comfyui/edit-nodes.json`) — **three entries, and the omissions are deliberate**:
+
+| OWUI field (`type`) | `key` | node id | node (class) |
+|---------------------|-------|---------|--------------|
+| image | `image` | `1` | LoadImage |
+| prompt | `prompt` | `6` | TextEncodeQwenImage21 |
+| seed | `seed` | `7` | KSampler |
+
+Read `images.py` → the `IMAGE_EDIT_ENGINE == "comfyui"` branch before adding to that table. The edit
+payload it builds is only `{image, prompt, width?, height?, n?}`, and `ComfyUIEditImageForm` is a
+different model from the create one:
+
+- **`steps` must NOT be mapped.** There is no `IMAGE_EDIT_STEPS` setting and the edit payload never
+  carries steps, so `payload.steps` is always `None` — a `steps` entry would write `"steps": null`
+  into KSampler and ComfyUI would reject the graph. Steps stay at the graph's literal `25`; change
+  them by editing `edit-workflow.json`.
+- **`negative_prompt` must NOT be mapped.** `ComfyUIEditImageForm` has no `negative_prompt` field at
+  all, yet `comfyui_edit_image()` still handles that node type — mapping it raises `AttributeError`
+  and 500s the request. Node `6`'s negative prompt stays the empty string in the graph.
+- **`n` / `width` / `height` must NOT be mapped** for the same null-injection reason: they are only
+  present in the payload when truthy (`width`/`height` only when `IMAGE_EDIT_SIZE` or the request
+  carries an `NxN` size), and `None` otherwise. The edit graph has no `EmptyLatentImage` to point
+  them at anyway. `IMAGE_EDIT_SIZE` is therefore left unset.
+- **`model` is not mapped either.** `IMAGE_EDIT_MODEL` defaults to `""`, and an unset model would be
+  written straight into `UNETLoader.unet_name`. The env var is still set to the right filename so
+  that adding a `model` entry later is safe.
+
+Both `seed` gotchas from the create mapping apply unchanged: `key` must be spelled `seed` (no
+default), and without the entry every edit reuses `seed: 0`.
+
+#### Where the images land
+
+Saved images use `filename_prefix` **`ui/open-webui`** (edits: `ui/open-webui-edit`), i.e. the `ui/`
+subfolder of ComfyUI's NAS
+output dir. The `comfyui-output-retention` CronJob sweeps `-maxdepth 1` only, so UI-generated images
+are deliberately never swept, unlike the automation renders in the top level.
+
+### PersistentConfig — why the env vars alone do not change the live instance
+
+Every variable above is an Open WebUI **`PersistentConfig`**: the env value is only read to *seed* the
+`config` table, and from then on the database value wins on every start
+(`config.py` → `PersistentConfig.__init__`: *"'X' loaded from the latest database entry"*). The test
+is `config_value is not None`, so an **empty string or empty list in the DB still shadows the env
+var** — which is exactly the situation for the edit keys.
+
+**Storage:** plain **SQLite**, `/app/backend/data/webui.db` on the `open-webui` PVC (Ceph RBD, mounted
+at `/app/backend/data`). There is no `DATABASE_URL` on the pod, so `env.py` falls back to
+`sqlite:///{DATA_DIR}/webui.db` — this instance is **not** on Postgres. The whole persisted config is
+**one row**: `config` table, single row `id=1`, column `data` = one JSON blob (created 2025-04-27, last
+written 2026-07-10).
+
+State read read-only on 2026-09-21:
+
+| JSON path in `config.data` | Current value | Wanted |
+|---|---|---|
+| `image_generation.enable` | `true` | `true` |
+| `image_generation.engine` | `"comfyui"` | `"comfyui"` |
+| `image_generation.model` | `"Qwen-Image-2512"` ⚠️ display name, not a filename | `"qwen_image_2.1_int8_convrot.safetensors"` |
+| `image_generation.size` | `"1024x1024"` | `"1024x1024"` |
+| `image_generation.steps` | `50` ⚠️ | `25` |
+| `image_generation.prompt.enable` | `true` | `true` |
+| `image_generation.comfyui.base_url` | `"http://comfyui.ai.svc.cluster.local:8188"` | unchanged |
+| `image_generation.comfyui.api_key` | `""` (the UI's `sk-1234` is placeholder text) | unchanged |
+| `image_generation.comfyui.workflow` | old Qwen-Image-2512 graph, subgraph ids `197:*` | `generate-workflow.json` |
+| `image_generation.comfyui.nodes` | 6 entries on `197:180/179/194`, no `model` | `generate-nodes.json` |
+| `images.edit.enable` | `false` | `true` |
+| `images.edit.engine` | `"openai"` | `"comfyui"` |
+| `images.edit.model` | `""` | `"qwen_image_2.1_int8_convrot.safetensors"` (inert) |
+| `images.edit.size` | `""` | leave `""` |
+| `images.edit.comfyui.base_url` | `""` | `"http://comfyui.ai.svc.cluster.local:8188"` |
+| `images.edit.comfyui.api_key` | `""` | unchanged |
+| `images.edit.comfyui.workflow` | `""` | `edit-workflow.json` |
+| `images.edit.comfyui.nodes` | `[]` | `edit-nodes.json` |
+
+⚠️ **`steps: 50` is a straight 2× tax.** The persisted 50 comes from the old Qwen-Image-2512 graph;
+Qwen-Image-2.1's own template default is 25 and that is what tonight's ~35–50 s timings were measured
+at. Left at 50 the new workflow renders for ~70–100 s warm with no quality gain.
+
+Note the mismatched prefixes in that table: the *generation* subtree is `image_generation.*` while the
+*edit* subtree is `images.edit.*`. That is Open WebUI's own inconsistency, not a typo.
+
+So the HelmRelease env vars are:
+
+- the **declarative record** of the intended configuration, and
+- the **DR seed** — if the `open-webui` PVC is ever restored empty, the pod comes up already wired to
+  ComfyUI with both workflows and no manual step at all;
+
+but they are **inert on the current database**. Applying them to the live instance is a once-only
+action, by one of the two routes below.
+
+> Do **not** reach for `ENABLE_PERSISTENT_CONFIG=false` to force the issue. It is global: it would
+> also discard every other DB-only setting (RAG/embedding choices, UI defaults, banners…) and silently
+> ignore anything an admin changes in the UI afterwards. Likewise `RESET_CONFIG_ON_START` (wipes the
+> whole row) and the `$DATA_DIR/config.json` migration hook (replaces the whole row, then *renames*
+> the file — impossible from a read-only ConfigMap mount).
+
+#### Route A — Admin UI (no credentials needed beyond an admin login)
+
+**Admin Panel → Settings → Images**, top to bottom:
+
+*Create Image*
+1. **Image Generation (Experimental)** → on; **Image Generation Engine** → `ComfyUI`.
+2. **ComfyUI Base URL** → `http://comfyui.ai.svc.cluster.local:8188` (leave the API key box alone —
+   `sk-1234` is placeholder text).
+3. **ComfyUI Workflow** → paste `app/comfyui/generate-workflow.json`, and set the node mapping rows to
+   the Create-Image table above. Workflow and mapping must be saved **together** — a mapping naming
+   node `2` against a workflow without node `2` makes `GET /api/v1/images/models` 500.
+4. **Set Default Model** → `qwen_image_2.1_int8_convrot.safetensors`. ⚠️ It currently reads
+   `Qwen-Image-2512`, a display name; that is harmless only because the old mapping had no `model`
+   entry. With the new mapping it is injected into `UNETLoader` and every render fails validation.
+5. **Image Size** `1024x1024`, **Steps** `25` (down from the persisted 50).
+
+*Edit Image*
+6. **Image Edit** → on; **Image Edit Engine** → `ComfyUI`.
+7. **ComfyUI Base URL** (edit section) → `http://comfyui.ai.svc.cluster.local:8188`.
+8. **ComfyUI Workflow** → paste `app/comfyui/edit-workflow.json`; mapping rows = the three in the
+   Edit-Image table (image / prompt / seed **only** — see the omission list above).
+9. Save.
+
+#### Route B — admin REST API, from inside the cluster
+
+`POST /api/v1/images/config/update` takes the **whole** `ImagesConfig` body (generation *and* edit
+fields together), so read the current config, patch it, post it back. It needs an **admin** bearer
+token — `OPENWEBUI_API_KEY` from 1Password `openwebui` / secret `openwebui-secret`, which is an admin
+key. Going in-cluster avoids Cloudflare (which blocks `python-urllib` User-Agents).
+
+```bash
+# Run from a pod in ns `ai` with OPENWEBUI_API_KEY in the env and the four JSON
+# files from app/comfyui/ on disk. Never print the response: it contains the
+# OpenAI image API key.
+python3 - <<'EOF'
+import json, os, urllib.request
+BASE, KEY = "http://open-webui.ai.svc.cluster.local:80", os.environ["OPENWEBUI_API_KEY"]
+H = {"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"}
+cfg = json.loads(urllib.request.urlopen(
+    urllib.request.Request(f"{BASE}/api/v1/images/config", headers=H)).read())
+cfg.update({
+    # Create Image
+    "ENABLE_IMAGE_GENERATION": True,
+    "IMAGE_GENERATION_ENGINE": "comfyui",
+    "IMAGE_GENERATION_MODEL": "qwen_image_2.1_int8_convrot.safetensors",
+    "IMAGE_SIZE": "1024x1024",
+    "IMAGE_STEPS": 25,
+    "COMFYUI_BASE_URL": "http://comfyui.ai.svc.cluster.local:8188",
+    "COMFYUI_WORKFLOW": open("generate-workflow.json").read(),
+    "COMFYUI_WORKFLOW_NODES": json.load(open("generate-nodes.json")),
+    # Edit Image
+    "ENABLE_IMAGE_EDIT": True,
+    "IMAGE_EDIT_ENGINE": "comfyui",
+    "IMAGE_EDIT_MODEL": "qwen_image_2.1_int8_convrot.safetensors",
+    "IMAGES_EDIT_COMFYUI_BASE_URL": "http://comfyui.ai.svc.cluster.local:8188",
+    "IMAGES_EDIT_COMFYUI_WORKFLOW": open("edit-workflow.json").read(),
+    "IMAGES_EDIT_COMFYUI_WORKFLOW_NODES": json.load(open("edit-nodes.json")),
+})
+urllib.request.urlopen(urllib.request.Request(
+    f"{BASE}/api/v1/images/config/update", data=json.dumps(cfg).encode(), headers=H))
+print("updated")
+EOF
+```
+
+Open WebUI writes the patched values straight back into the same `config` row and calls
+`PersistentConfig.update()`, so the change is live immediately — **no pod restart**.
+
+#### Route C — edit the persisted row directly (last resort)
+
+Only if no admin token is available. Take a backup first; the row is the entire app configuration.
+
+```bash
+# BACKUP — copy the whole sqlite file off the PVC before touching it
+kubectl exec -n ai open-webui-0 -- python3 -c \
+  "import sqlite3;src=sqlite3.connect('/app/backend/data/webui.db');dst=sqlite3.connect('/app/backend/data/webui.db.bak-$(date +%F)');src.backup(dst);dst.close()"
+# ...or just the config row as JSON (enough to roll back this change):
+kubectl exec -n ai open-webui-0 -- python3 -c \
+  "import sqlite3,json;print(sqlite3.connect('file:/app/backend/data/webui.db?mode=ro',uri=True).execute('select data from config where id=1').fetchone()[0])" \
+  > config-row-backup.json     # contains API keys — treat as a secret, do not commit
+```
+
+Then patch **only** the `image_generation` and `images.edit` subtrees of `config.data` (the two paths
+in the table above), leaving every other key untouched, and write the row back with
+`UPDATE config SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1`. **A pod restart is required
+afterwards** — `CONFIG_DATA` is read once at import time, so a direct row edit is invisible until the
+process reloads (`kubectl rollout restart statefulset/open-webui -n ai`). Rolling back is the same
+operation with the backup's two subtrees.
+
+Route B is preferred over Route C in every case: it validates the body, keeps the row's other keys
+provably untouched, and needs no restart.
+
+#### Changing the workflows later
+
+Edit `app/comfyui/generate-workflow.json` / `edit-workflow.json` (and the matching `*-nodes.json` if
+node ids move), merge, and Flux rolls the pod via Reloader — **but** the same PersistentConfig rule
+applies: the running instance keeps serving the DB copy until it is re-applied by Route A or B. Treat
+the repo as the source of truth and the apply step as the deploy. If you change node ids, re-check
+the `seed` / `model` keys and the edit-mapping omission list above.
+
+### Operational notes
+
+- **Transport:** Open WebUI talks to ComfyUI over plain HTTP `/prompt`, `/history/{id}`, `/view`
+  (plus `/api/upload/image` on the edit path) **and a websocket** (`ws://…:8188/ws?clientId=<user
+  id>`) — the websocket is how it learns the render finished, so it is not optional, on either path.
+  All of it is in-namespace service traffic (`ai` has no NetworkPolicy or CiliumNetworkPolicy), so
+  nothing proxies or filters it. The rendered PNG is fetched by the backend and re-uploaded into Open
+  WebUI's own storage, so the browser never needs to reach ComfyUI.
+- **Shared queue:** ComfyUI runs one queue. A chat render queues behind the AppDaemon camera renders
+  (and vice versa); on a busy queue the synchronous Open WebUI request can outlive the edge proxy's
+  budget even though ComfyUI still produces the image. Same for the first render after a ComfyUI
+  restart, which pays a cold model load off HDD-NFS.
+- **GPU:** `gpu:1` is the second 3090. Nothing else pins a card (owner ruling: no per-app GPU
+  pinning — haynes-ops#2960), so these two workflows are the only things that deliberately steer.
+- **Uploads accumulate:** every edit leaves the user's source image in ComfyUI's `input/` dir on the
+  workspace PVC. Nothing prunes that today; the output-retention CronJob only touches the NAS output
+  dir. Worth watching if edit gets heavy use.
+
+### Superseded — the 2026-07-10 config (history)
+
+The original wave pointed `COMFYUI_WORKFLOW` at the **reused, unmodified** AppDaemon file
+`apps/ai/stable-diffusion/comfyui/resources/api-workflows/image_qwen_Image_2512_API.json`
+(Qwen-Image-2512 fp8 + a Lightning-4step LoRA switch), with `IMAGE_STEPS=50` and this mapping:
 
 | OWUI field | key | node id | Qwen node (class) |
 |------------|-----|---------|-------------------|
@@ -131,10 +441,6 @@ Config (Open WebUI Admin → Settings → Images, or `POST /api/v1/images/config
 | height | height | `197:179` | EmptySD3LatentImage |
 | steps | steps | `197:194` | KSampler |
 | seed | seed | `197:194` | KSampler (seed key is required — no default) |
-
-(The AppDaemon `comfyui_image_generation_provider.py` patches a *different*, image-EDIT workflow
-`02_qwen_Image_edit_*` — its node ids `115:111`/`78`/`60` do **not** apply here. The node ids above
-were read directly from `image_qwen_Image_2512_API.json`.)
 
 **Superseded 2026-09-18 — kept for history.** Single-GPU note: the second 3090 is detached (GPU repair deferred, PLAN-021 part a). ComfyUI and
 Ollama share the one RTX 3090 on `talosw01`, so a large chat model resident in VRAM contends with
@@ -166,6 +472,38 @@ done 2026-09-18 — see the two-GPU note above.)*
   node `197:196`, currently off) would cut this to ~40s; enabling it is a future workflow tweak
   (matches the owner's "switch to a higher-quality/faster workflow" TODO).
 
+## Verification (2026-09-21 — the Qwen-Image-2.1 / `gpu:1` wave)
+Verified read-only, from the repo and the live cluster:
+- **Graphs vs live ComfyUI (v0.37.0):** every class in both graphs
+  (`SelectModelDevice`/`SelectCLIPDevice`/`SelectVAEDevice`, `QwenImage21Cache`,
+  `TextEncodeQwenImage21`, `LoadImage`, …) exists in `/object_info`; all three model files
+  (`qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, `qwen_image_2.1_vae_bf16`) are on the NAS;
+  every link's source node, output index and type matches; every combo value is in range, **`gpu:1`
+  included** (`SelectModelDevice.device` options are `default|cpu|gpu:0|gpu:1`). The same check was
+  re-run on each graph *after* simulating Open WebUI's patching: `comfyui_create_image()` with
+  `generate-nodes.json` (prompt, negative prompt, size, batch, steps, a random seed and the UNET name
+  all land on the intended inputs) and `comfyui_edit_image()` with `edit-nodes.json` (uploaded
+  filename → `LoadImage.image`, prompt → node `6`, random seed → node `7`, steps left at the graph's
+  25). Both still validate afterwards. The same simulation is what showed that mapping
+  `steps`/`n`/`width`/`height` on the **edit** path injects `null`, and that `negative_prompt` raises
+  — hence the three-entry edit mapping.
+- **Persisted DB config:** read-only from `/app/backend/data/webui.db` (SQLite on the PVC — no
+  `DATABASE_URL`, so not Postgres; `config` table, single row `id=1`, last written 2026-07-10) —
+  generation is already enabled against ComfyUI with the Qwen-Image-2512 graph at 50 steps, and the
+  whole `images.edit` subtree exists but is empty/OpenAI. Both therefore shadow the new env vars, and
+  both need the once-only apply above. Exact paths + current/wanted values are in the table above.
+- **Edit engine support:** ComfyUI is one of the three engines the 0.7.2 *Image Edit Engine* dropdown
+  offers (`Default (Open AI)` / `ComfyUI` / `Gemini`) — read out of the built frontend bundle, not
+  guessed. `sk-1234` in the ComfyUI API Key box is likewise placeholder text in that bundle; the
+  stored key is a zero-length string.
+- **Chart render:** `helm template` of open-webui 10.2.1 with these values emits all eight env vars,
+  the two `configMapKeyRef`s included (`extraEnvVars` map values are passed through with `toYaml`, so
+  `valueFrom` works exactly as it already does for the OAuth secrets).
+- **Not verified:** no render or edit was queued, nothing was written to the database, and no Open
+  WebUI login was performed from the agent session (read-only mandate, and the agent has no OWUI
+  account). The end-to-end "type a prompt, get a PNG" / "attach an image, get an edit" checks belong
+  to the apply step. The graphs themselves were tested by the owner on the live server on 2026-09-21.
+
 ## Owner TODOs
 1. Decide `family` membership: which haynesnetwork **Family**-role OWUI users to add (Admins are in;
    the two existing user-role accounts are NOT — classify them). Add via Admin → Users or the
@@ -175,3 +513,9 @@ done 2026-09-18 — see the two-GPU note above.)*
    `OAUTH_GROUPS_CLAIM` on OWUI. Do not enable OWUI side before the Authentik claim exists.
 3. Decide whether the uncensored `huihui_ai/gemma3-abliterated:12b`/`:latest` (currently hidden from
    regular users, no public entry) should be all-users, gated, or removed.
+4. **Once-only:** apply the Qwen-Image-2.1 config to the live instance — the persisted DB values
+   shadow the new env vars until then, for **both** Create Image and Edit Image. Route A (admin UI) or
+   Route B (admin API) in section (f). Three things that are easy to get wrong: the **Model** field
+   must become `qwen_image_2.1_int8_convrot.safetensors` (it currently reads `Qwen-Image-2512`),
+   **Steps** must come down from 50 to 25 (50 doubles render time on 2.1 for no gain), and the edit
+   mapping must have only the three rows image/prompt/seed.
