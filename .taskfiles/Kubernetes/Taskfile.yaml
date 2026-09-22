@@ -26,10 +26,20 @@ tasks:
 
   kubeconform:
     desc: Validate Kubernetes manifests with kubeconform
-    cmd: bash {{.KUBECONFORM_SCRIPT}} {{.KUBERNETES_DIR}}
+    summary: |-
+      CLUSTER: Cluster to validate (optional, default: every cluster under kubernetes/)
+    cmd: bash {{.KUBECONFORM_SCRIPT}} {{.KUBERNETES_DIR}} {{.CLUSTER}}
+    vars:
+      CLUSTER: '{{ .CLUSTER | default "" }}'
     preconditions:
       - msg: Missing kubeconform script
         sh: test -f {{.KUBECONFORM_SCRIPT}}
+      - msg: Missing kubeconform binary
+        sh: command -v kubeconform
+      - msg: Missing kustomize binary
+        sh: command -v kustomize
+      - msg: Missing yq binary
+        sh: command -v yq
 
   apply-ks:
     desc: Apply a Flux Kustomization resource for a cluster
@@ -48,6 +58,7 @@ tasks:
       vars: [CLUSTER, PATH]
     vars:
       NS: '{{.NS | default "flux-system"}}'
+      CLUSTER_DIR: "{{.KUBERNETES_DIR}}/{{.CLUSTER}}"
       KS:
         sh: flux --namespace {{.NS}} get kustomizations {{base .PATH}} 2>&1
     preconditions:
