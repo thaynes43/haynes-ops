@@ -50,7 +50,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/wyoming-whisper-gpu
-              tag: 3.8.1-1
+              tag: 3.8.1-2
             # NVIDIA Parakeet TDT 0.6B v2 on the A2000, replacing faster-whisper
             # `small` on a CPU: ~6% average WER against small's ~12%, with
             # punctuation and casing built in, in a fraction of the time.
@@ -72,8 +72,18 @@ spec:
               - cuda
               - --language
               - en
+              # NOT /data. The 3.8.1-1 rollout downloaded Parakeet there with
+              # huggingface_hub's default symlinks-into-blobs/ layout, which
+              # onnxruntime refuses to load (it validates that a model's
+              # external data file does not resolve outside the model
+              # directory, and `encoder-model.onnx` and `encoder-model.onnx.data`
+              # land in different blobs/ subdirectories). 3.8.1-2 sets
+              # HF_HUB_DISABLE_SYMLINKS in the image so files are copied
+              # instead — but onnx-asr loads from cache first, so it would keep
+              # finding the broken snapshot under /data. A fresh root is the
+              # whole fix; the stale copy costs ~2.5 GB of a 16Gi PVC.
               - --data-dir
-              - /data
+              - /data/parakeet
             env:
               TZ: America/New_York
             resources:
