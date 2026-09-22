@@ -1,0 +1,11 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./helmrelease.yaml
+  # No ingress / DNS entry: in-cluster consumers only (Home Assistant's
+  # conversation agent, Open WebUI). No PVC either — the model is on the NAS and
+  # nothing else is stateful — so no volsync component.
+components:
+  - ../../../../../shared/components/common/repos/app-template
