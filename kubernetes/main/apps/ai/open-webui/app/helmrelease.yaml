@@ -24,6 +24,30 @@ spec:
     # -- A list of Ollama API endpoints. These can be added in lieu of automatically installing the Ollama Helm chart, or in addition to it.
     ollamaUrls: [http://ollama-prime.ai.svc.cluster.local:11434]
 
+    # -- OpenAI-compatible endpoints, in the order Open WebUI indexes them.
+    # The chart prepends the Pipelines service endpoint itself (`pipelines.enabled`
+    # is true, so the rendered value is
+    # `http://open-webui-pipelines.ai.svc.cluster.local:9099;<these>`), so list only
+    # the endpoints after it here.
+    #
+    # This used to be spelled out as an `OPENAI_API_BASE_URLS` entry under
+    # extraEnvVars, which made the chart emit the variable TWICE (once from its own
+    # `openaiBaseApiUrl` default, once from extraEnvVars) and left the container
+    # relying on last-one-wins. Two entries with the same name and *different*
+    # values is a trap, so the list moved here: the chart now emits exactly one.
+    #
+    # ⚠️ Index-matched to `OPENAI_API_KEYS` — Open WebUI splits both on `;` and
+    # zips them (config.py `openai.api_base_urls` / `openai.api_keys`). The key list
+    # is built in app/externalsecret.yaml: two real keys from 1Password (Pipelines,
+    # api.openai.com) plus a `none` placeholder for llama-server, which serves
+    # without `--api-key` and ignores Authorization. Add or reorder a URL here and
+    # the secret template must move with it.
+    openaiBaseApiUrls:
+      - https://api.openai.com/v1
+      # The resident local model: llama.cpp server, alias `muse-glimmer-30b`
+      # (owner ruling 2026-09-22, haynes-ops#2960 — 3090 #0 is its card).
+      - http://llama-server.ai.svc.cluster.local:8080/v1
+
     annotations:
       reloader.stakater.com/auto: "true"
 
@@ -76,8 +100,8 @@ spec:
     extraEnvVars:
       GLOBAL_LOG_LEVEL:
         value: "DEBUG"
-      OPENAI_API_BASE_URLS:
-        value: "http://open-webui-pipelines.ai.svc.cluster.local:9099;https://api.openai.com/v1"
+      # The URL list lives in `openaiBaseApiUrls` above, not here — see the note
+      # there. This is the matching key list, assembled in app/externalsecret.yaml.
       OPENAI_API_KEYS:
         valueFrom:
           secretKeyRef:
