@@ -1,5 +1,25 @@
 # Edge Cluster
 
+> **DECOMMISSIONED — this is a historical document.** The edge nodes were VMs on the
+> pve01-03 Proxmox hosts, which were removed from the PVE cluster (see *Notes on
+> migrating* below). The self-hosted Omni at `omni.haynesops.com` still holds an empty
+> `haynes-edge` cluster object, which reconciles with `No control plane nodes are
+> connected` every 60s and fails its etcd backup every 60s — deleting it from Omni is an
+> open item for Tom.
+>
+> The `.taskfiles/Edge` namespace (`task edge:sync` / `edge:install-helm-apps` /
+> `edge:bootstrap` / `edge:reconcile` / `edge:validate` / `edge:nuke`) was **deleted** in
+> the 2026-09-22 taskfile audit; git history keeps it. Those targets were broken anyway:
+> they invoked `omnictl` against the ambient `$OMNICONFIG` (the SaaS instance that manages
+> `haynes-ops`) rather than the edge context in
+> `kubernetes/edge/bootstrap/omni/haynes-edge-omniconfig.yaml`, so `edge:sync` would have
+> tried to create `haynes-edge` on the wrong Omni.
+>
+> `kubernetes/edge/` itself is retained on purpose: `flux-local` builds and diffs it on
+> every PR and Renovate keeps its charts current, so it is a CI fixture. The `task edge:*`
+> commands quoted below no longer exist — reviving edge means restoring that taskfile
+> from git history and pointing it at the edge omniconfig first.
+
 The edge cluster uses self hosted `omni` from the main cluster to control the nodes. It's intended to be used for development and testing and no services hosted here shall be used in "production".
 
 ## Managing Config Context
@@ -145,6 +165,8 @@ Part 2 - HA cluster
 - [ ] fix KUBERNETES_DIR as it assumes a single cluster.
 
 ## NEW NEW NEW
+
+**These targets no longer exist** (removed 2026-09-22, see the banner at the top):
 
 ```bash
 task edge:sync

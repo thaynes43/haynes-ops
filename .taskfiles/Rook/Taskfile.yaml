@@ -21,9 +21,16 @@ tasks:
   # TODO This did not quite work - need to add "RookDiskWipe" to the mix
   # TODO Worked for 4/6 disks, then manually "RookDiskWipe"'ing them fixed it so IDK
   # TODO https://github.com/onedr0p/home-ops/blob/main/.taskfiles/bootstrap/resources/rook-disk-job.yaml.j2
+  #
+  # !! The /dev/nvmeXn1 paths below are NOT stable — Talos re-enumerates them on
+  # re-image. ALWAYS confirm with `talosctl -n <node-ip> disks` (or the CephCluster
+  # spec's by-id paths: kubectl -n rook-ceph get cephcluster -o jsonpath='{.items[0].spec.storage}')
+  # before running any of these.
+  #
   # CHECK /dev MOUNTS WITH `talosctl -n 192.168.40.93 disks` FIRST
   wipe-disks-talosm01:
-    desc: Trigger a wipe of Rook-Ceph data on node "talosm01"
+    desc: '!! DESTRUCTIVE !! Wipe the Rook-Ceph OSD disks on node "talosm01"'
+    prompt: This ERASES both Ceph OSD disks on talosm01. Continue?
     cmds:
       - task: wipe-disk
         vars:
@@ -38,7 +45,8 @@ tasks:
 
   # CHECK /dev MOUNTS WITH `talosctl -n 192.168.40.59 disks` FIRST
   wipe-disks-talosm02:
-    desc: Trigger a wipe of Rook-Ceph data on node "talosm02"
+    desc: '!! DESTRUCTIVE !! Wipe the Rook-Ceph OSD disks on node "talosm02"'
+    prompt: This ERASES both Ceph OSD disks on talosm02. Continue?
     cmds:
       - task: wipe-disk
         vars:
@@ -53,7 +61,8 @@ tasks:
 
   # CHECK /dev MOUNTS WITH `talosctl -n 192.168.40.10 disks` FIRST
   wipe-disks-talosm03:
-    desc: Trigger a wipe of Rook-Ceph data on node "talosm03"
+    desc: '!! DESTRUCTIVE !! Wipe the Rook-Ceph OSD disks on node "talosm03"'
+    prompt: This ERASES both Ceph OSD disks on talosm03. Continue?
     cmds:
       - task: wipe-disk
         vars:
@@ -66,22 +75,29 @@ tasks:
     vars:
       node: talosm03
 
-  wipe-node-example:
-    desc: Trigger a wipe of Rook-Ceph data on node "example"
+  # Generic form, for a node that has no wipe-disks-<node> target above (e.g. a new
+  # master joining the cluster). Also the only caller of wipe-data, which clears the
+  # /var/lib/rook leftovers that make a re-created OSD complain about a bluestore fs.
+  wipe-node:
+    desc: '!! DESTRUCTIVE !! Wipe one Ceph disk AND /var/lib/rook on an arbitrary node'
+    summary: |-
+      node: node to wipe (required, e.g. talosm01)
+      ceph_disk: device to erase (required, e.g. /dev/nvme0n1 — confirm with `talosctl -n <ip> disks`)
+    prompt: This ERASES {{.ceph_disk}} and /var/lib/rook on {{.node}}. Continue?
     cmds:
       - task: wipe-disk
         vars:
           node: "{{.node}}"
-          ceph_disk: "/dev/example"
+          ceph_disk: "{{.ceph_disk}}"
       - task: wipe-data
         vars:
           node: "{{.node}}"
-    vars:
-      node: example
-
+    requires:
+      vars: [node, ceph_disk]
 
   wipe-disk:
-    desc: Wipe all remnants of rook-ceph from a given disk (ex. task rook:wipe-disk node=talosm01 ceph_disk="/dev/nvme0n1")
+    # internal — reached via wipe-disks-<node> or wipe-node, which carry the prompt
+    desc: Wipe all remnants of rook-ceph from a given disk
     silent: true
     internal: true
     cmds:
@@ -116,7 +132,8 @@ tasks:
       - sh: test -f {{.tempNamespace}}
 
   wipe-data:
-    desc: Wipe all remnants of rook-ceph from a given disk (ex. task rook:wipe-data node=talosm01)
+    # internal — reached via wipe-node, which carries the prompt
+    desc: Wipe the /var/lib/rook state directory on a given node
     silent: true
     internal: true
     cmds:
