@@ -490,6 +490,35 @@ Because the ComfyUI container now sees exactly one GPU, the `Select*Device` node
 `app/comfyui/generate-workflow.json` and `edit-workflow.json` say **`gpu:0`** — which is 3090 #1,
 the pinned card. They said `gpu:1` while the container could see both.
 
+### OpenAI-compatible connections (2026-09-22 — llama-server added)
+
+Open WebUI reaches three OpenAI-compatible endpoints. The two lists are **index-matched**: Open WebUI
+splits `OPENAI_API_BASE_URLS` and `OPENAI_API_KEYS` on `;` and zips them, so they must have the same
+length and order.
+
+| # | Endpoint | Key | Declared in |
+|---|----------|-----|-------------|
+| 0 | `http://open-webui-pipelines.ai.svc.cluster.local:9099` | 1Password `openwebui` → `OPENAI_API_KEYS`, field 1 | the chart prepends it (`pipelines.enabled`) |
+| 1 | `https://api.openai.com/v1` | same secret, field 2 | `openaiBaseApiUrls[0]` in `app/helmrelease.yaml` |
+| 2 | `http://llama-server.ai.svc.cluster.local:8080/v1` (model `muse-glimmer-30b`) | literal `none` | `openaiBaseApiUrls[1]`; placeholder appended in `app/externalsecret.yaml` |
+
+llama.cpp serves without `--api-key` and ignores `Authorization`, so slot 2 needs no real key — only
+a non-empty one, which is why the placeholder lives in the ExternalSecret template rather than in
+1Password. **Adding or reordering a URL means editing both files.**
+
+The URL list moved out of `extraEnvVars` and into the chart's own `openaiBaseApiUrls` in the same
+change: with it in `extraEnvVars` the chart emitted `OPENAI_API_BASE_URLS` **twice** (once from its
+`openaiBaseApiUrl` default + the Pipelines endpoint, once from `extraEnvVars`) and the container
+relied on last-one-wins. Harmless while both copies said the same thing; a trap once they diverge.
+
+**PersistentConfig here behaves differently from the image config.** `OPENAI_API_BASE_URLS` and
+`OPENAI_API_KEYS` are `PersistentConfig` (`openai.api_base_urls` / `openai.api_keys`), but the
+`openai` subtree has **never been written** to `config` in `webui.db` — nobody has pressed Save in
+Admin → Settings → Connections — so `get_config_value()` returns `None` and the env seeds the values
+on **every** start. No once-only admin step was needed. That stops being true the moment an admin
+saves that page: after that the database wins and the env vars are a DR seed only, exactly like the
+image settings in section (f).
+
 ## Verification (2026-07-10)
 - **Models:** `ollama list` on ollama-prime shows the starter set. `llama3.1:8b` answered a chat
   prompt (explained Kubernetes) via the OWUI Ollama proxy; `nomic-embed-text` returned a 768-dim
