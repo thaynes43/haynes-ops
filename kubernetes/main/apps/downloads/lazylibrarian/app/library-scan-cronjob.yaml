@@ -1,0 +1,101 @@
+---
+# Daily LazyLibrarian library rescan (2026-09-22).
+#
+# LL clears a book's Wanted flag in exactly two places: the post-processor,
+# when it imports a download, and librarysync.py's library_scan(), when it
+# finds the file already on disk. LL ships NO scheduler entry for a library
+# scan — the only way to run one is the UI button or this API command — so a
+# book that reaches the library by any other route stays Status /
+# AudioStatus == 'Wanted' forever and LL re-searches it every single day. The
+# live example: haynesnetwork pushes Goodreads shelf items to LL as wants, and
+# re-marks them Wanted on every sync, including the ones already in the
+# library. On 2026-09-22 that was 243 eBook + 321 audiobook phantom wants out
+# of 812 books, re-searched nightly for nothing.
+#
+# Timing: 09:10 UTC — after the site's 07:00 UTC Google-Books quota reset and
+# clear of LL's own 07:20 UTC book search. Pinned to Etc/UTC (not
+# America/New_York, the house default) so that relationship survives DST.
+#
+# Both commands take &wait, so each blocks until its scan finishes rather than
+# returning immediately and running the scan on a background thread — which is
+# what makes the exit code meaningful. The run is normally minutes; curl caps
+# each leg at an hour. `remove` is deliberately NOT passed: this only marks
+# found books Open, it never deletes DB entries for missing files.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lazylibrarian-library-scan
+  annotations:
+    # The script below uses shell variables; keep Flux's postBuild envsubst
+    # (strict mode) away from them.
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+spec:
+  schedule: "10 9 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # The next kickoff is the deadline: a backstop just under the 24h
+      # interval, never sized to the expected runtime.
+      activeDeadlineSeconds: 82800
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: scan
+              # Docker Hub mirror; lscr.io/quay are not on the allowlisted-registry
+              # Kyverno policy. Same image the SAB scratch janitors use.
+              image: docker.io/curlimages/curl:8.22.0
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                - name: LL_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: lazylibrarian-library-scan-secret
+                      key: LAZYLIBRARIAN_API_KEY
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  base="http://lazylibrarian.downloads.svc.cluster.local:5299/api"
+
+                  scan() {
+                    echo "==> $1 start $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                    # --fail catches transport and HTTP errors. LL answers
+                    # HTTP 200 even when it refuses the call (JSON envelope
+                    # with "Success": false, e.g. a wrong api key), and a
+                    # handler that ran clean leaves the body as the literal
+                    # string OK — so the body is checked too, fail-closed.
+                    body=$(curl --fail --silent --show-error --max-time 3600 \
+                      "$base?apikey=$LL_API_KEY&cmd=$1&wait")
+                    echo "    response: $body"
+                    case "$body" in
+                      OK | *'"Success": true'*) ;;
+                      *) echo "    $1 FAILED"; return 1 ;;
+                    esac
+                    echo "==> $1 done  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                  }
+
+                  scan forceLibraryScan
+                  scan forceAudioBookScan
+                  echo "eBook + audiobook library scan complete"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi

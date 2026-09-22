@@ -8,3 +8,5 @@ components:
 resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml
+  - ./library-scan-externalsecret.yaml
+  - ./library-scan-cronjob.yaml
