@@ -158,8 +158,8 @@ rewrite, so a hashed name would dangle. The ConfigMap also carries
 The graph is the same Qwen-Image-2.1 stack AppDaemon uses for the
 camera renders, minus the reference-image inputs and with an `EmptyLatentImage` (node `12`) as the
 latent source. The three `Select*Device` nodes pin the UNET, CLIP and VAE to **`gpu:0`** — which,
-since the 2026-09-22 split, is the *only* card the ComfyUI container sees (3090 #1,
-`GPU-d8a856f1-…`) — so a chat render cannot touch the LLM's card. Warm renders
+since the 2026-09-22 split, is the *only* card the ComfyUI container sees (3090 #0,
+`GPU-18bf6eab-…`) — so a chat render cannot touch the LLM's card. Warm renders
 take ~35–50 s at 25 steps (the old 50-step Qwen-Image-2512 graph took ~477 s, which used to outrun
 the edge proxy's budget; see the 2026-07-10 verification note below).
 
@@ -434,9 +434,10 @@ the `seed` / `model` keys and the edit-mapping omission list above.
   (and vice versa); on a busy queue the synchronous Open WebUI request can outlive the edge proxy's
   budget even though ComfyUI still produces the image. Same for the first render after a ComfyUI
   restart, which pays a cold model load off HDD-NFS.
-- **GPU:** `gpu:0` is the only card the ComfyUI container can see — 3090 #1
-  (`GPU-d8a856f1-…`, VM bus `02:00.0`), pinned to ComfyUI by the owner ruling of 2026-09-22
-  (haynes-ops#2960; see "the per-app GPU split" above). The other 3090 belongs to `llama-server`.
+- **GPU:** `gpu:0` is the only card the ComfyUI container can see — 3090 #0
+  (`GPU-18bf6eab-…`, VM bus `01:00.0`), pinned to ComfyUI by the owner ruling of 2026-09-22
+  (haynes-ops#2960; see "the per-app GPU split" above, including why ComfyUI gets the *hot* slot).
+  The other 3090 belongs to `llama-server`.
   These two workflows steer *within* ComfyUI's one visible card; the split itself is done by
   `NVIDIA_VISIBLE_DEVICES`.
 - **Uploads accumulate:** every edit leaves the user's source image in ComfyUI's `input/` dir on the
@@ -475,10 +476,20 @@ decision: haynes-ops#2960.
 `NVIDIA_VISIBLE_DEVICES` on each container (the device plugin cannot pin a *named* card, so no app
 in `ai` requests `nvidia.com/gpu`):
 
-| Card | VM bus | UUID | Owner |
-|------|--------|------|-------|
-| 3090 #0 | `01:00.0` | `GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b` (the new card, #3052) | `llama-server` — resident assist/chat LLM |
-| 3090 #1 | `02:00.0` | `GPU-d8a856f1-f955-f683-bc24-654561496774` (the original card) | `comfyui` — exclusively |
+| Card | VM bus | UUID | Owner | Slot |
+|------|--------|------|-------|------|
+| 3090 #0 | `01:00.0` | `GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b` (the new card, #3052) | `comfyui` — exclusively | **hot** |
+| 3090 #1 | `02:00.0` | `GPU-d8a856f1-f955-f683-bc24-654561496774` (the original card) | `llama-server` — resident assist/chat LLM | **cool** |
+
+**Which card runs what, and why — do not swap this back without reading #3052.** The roles above are
+the *reverse* of how the split first shipped on 2026-09-22, and the reason is thermal, not
+functional. Slot `01:00.0` takes intake air that has already passed the CPU radiator: under
+sustained load the card there hits ~87 °C and the driver cuts it to **225 MHz** within ~10 s with
+the fan already at 100 % (SW thermal slowdown `0x20`). A llama-server bench on it fell from **38 to
+8 tok/s**. So the latency-sensitive tenant — the chat/Assist LLM, which answers every turn a human
+is waiting on — gets `02:00.0`, and ComfyUI takes the hot slot, where throttling only means a
+slower render. Neither card is faulty; the chassis airflow is, and that is haynes-ops#3052. If
+#3052 is ever fixed, this can go back to whatever is convenient.
 
 `ollama-prime` keeps `NVIDIA_VISIBLE_DEVICES=all` and takes the leftovers, spilling to CPU when
 neither card has room (accepted by the owner). ComfyUI's per-job peak is ~16–20 GB, which fits one
@@ -486,9 +497,10 @@ card; AppDaemon's camera renders and Open WebUI's chat renders load the same
 `qwen_image_2.1_int8_convrot` + `qwen3vl_8b_int8_convrot` files, so one resident copy serves both;
 and the LLM needs a whole card to stay resident.
 
-Because the ComfyUI container now sees exactly one GPU, the `Select*Device` nodes in
-`app/comfyui/generate-workflow.json` and `edit-workflow.json` say **`gpu:0`** — which is 3090 #1,
-the pinned card. They said `gpu:1` while the container could see both.
+Because the ComfyUI container sees exactly one GPU, the `Select*Device` nodes in
+`app/comfyui/generate-workflow.json` and `edit-workflow.json` say **`gpu:0`** — which simply means
+"the one visible card", so the swap did **not** change them. They said `gpu:1` only back when the
+container could see both.
 
 ### OpenAI-compatible connections (2026-09-22 — llama-server added)
 
