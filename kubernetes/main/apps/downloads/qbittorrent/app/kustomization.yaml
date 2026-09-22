@@ -14,6 +14,15 @@ configMapGenerator:
   - name: qbittorrent-mam-update
     files:
       - scripts/mam-update.sh
+    options:
+      # Stable name, no hash suffix. The pod carries
+      # `reloader.stakater.com/auto: "true"`, so Reloader already rolls it
+      # whenever this mounted ConfigMap's contents change — the hash bought
+      # nothing, and it is what made a Helm rollback unrecoverable on
+      # 2026-09-22: the rolled-back release pinned the PREVIOUS
+      # `qbittorrent-mam-update-<hash>`, which kustomize-controller had already
+      # pruned, so every pod hit FailedMount and qBittorrent stayed down ~20m.
+      disableNameSuffixHash: true
   # Loki ruler picks this up by label (same pattern as plex/zigbee2mqtt). Stable
   # name: the rule file is read by the ruler sidecar, nothing references it.
   - name: qbittorrent-lokirule
@@ -28,5 +37,3 @@ generatorOptions:
   # substitution out of it (matches the ytdl-sub/peloton precedent).
   annotations:
     kustomize.toolkit.fluxcd.io/substitute: disabled
-configurations:
-  - ./kustomizeconfig.yaml

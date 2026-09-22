@@ -13,13 +13,16 @@ spec:
   # `strategy: Recreate` (RWO config PVC + macvlan VPN NIC), the new pod only goes
   # Ready once qBittorrent has loaded ~770 torrents AND the Mullvad egress
   # readiness probe passes (periodSeconds 60 x failureThreshold 4 = up to 4m of
-  # probe cadence alone). A timeout here is worse than elsewhere: it triggers
-  # `upgrade.remediation.strategy: rollback`, and the rolled-back release pins the
-  # PREVIOUS hash-suffixed `qbittorrent-mam-update-<hash>` ConfigMap that
-  # kustomize-controller has already garbage-collected -> FailedMount, the pod can
-  # never start, the rollback times out too and Flux loops. That took qBittorrent
-  # down ~20m and paged twice (QbittorrentVpnDown + FluxReconciliationFailure) on
-  # 2026-09-22 (#3080 / #3084 context). Give the roll room instead.
+  # probe cadence alone). A timeout here triggers
+  # `upgrade.remediation.strategy: rollback`, so give the roll room instead of
+  # exercising that path. On 2026-09-22 it was worse than a plain rollback: the
+  # mam-update ConfigMap was hash-suffixed, the rolled-back release pinned the
+  # PREVIOUS `qbittorrent-mam-update-<hash>` that kustomize-controller had already
+  # garbage-collected -> FailedMount, the pod could never start, the rollback timed
+  # out too and Flux looped — ~20m down, paged twice (QbittorrentVpnDown +
+  # FluxReconciliationFailure), #3080 / #3084. That second failure mode is gone (the
+  # generator name is stable now, see kustomization.yaml); this timeout is still
+  # what keeps a slow-but-healthy roll from being rolled back at all.
   timeout: 10m
   install:
     remediation:
@@ -241,8 +244,11 @@ spec:
             mam-update:
               - path: /state
                 subPath: mam-update
-      # mam-update sidecar script (configMapGenerator; hash-suffixed name wired in
-      # via kustomizeconfig.yaml so edits roll the pod).
+      # mam-update sidecar script (configMapGenerator, stable name — see
+      # kustomization.yaml). A script edit still rolls the pod: the controller
+      # carries `reloader.stakater.com/auto: "true"` and Reloader watches the
+      # ConfigMaps this pod mounts. The name is deliberately hash-free so a Helm
+      # rollback lands on a ConfigMap that still exists (2026-09-22 outage).
       mam-update-script:
         type: configMap
         name: qbittorrent-mam-update
