@@ -22,6 +22,7 @@ configMapGenerator:
       - ./resources/workflows/02_qwen_Image_edit_subgraphed.json
       - ./resources/workflows/image_qwen_Image_2512.json
       - ./resources/workflows/image_qwen_image_2_1_image_edit.json
+      - ./resources/workflows/image_qwen_image_2_1_t2i.json
   # API-format graphs, copies of what AppDaemon sends (hass-sandbox
   # appdaemon/providers/ai_providers/comfyui/workflows/). Provisioning checks
   # every model they reference is on the NAS and warns when one is not.
