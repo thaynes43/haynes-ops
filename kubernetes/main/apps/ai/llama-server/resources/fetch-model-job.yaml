@@ -1,0 +1,165 @@
+---
+# Stage a GGUF onto the NAS for llama-server. NOT referenced by
+# app/kustomization.yaml on purpose: Flux must never apply or re-run this. It is
+# a one-shot, applied by hand when a new model is introduced:
+#
+#   # edit MODEL_REPO / MODEL_FILES / MODEL_DIR below, then:
+#   kubectl apply -f kubernetes/main/apps/ai/llama-server/resources/fetch-model-job.yaml
+#   kubectl logs -n ai -l job-name=model-fetch -f
+#   kubectl delete job -n ai model-fetch     # or let ttlSecondsAfterFinished reap it
+#
+# The Job refuses to exit 0 unless every file's byte count matches what the Hub
+# reported, so a half-written model can never be what llama-server points at.
+# Fill EXPECT_SIZES/EXPECT_SHA256 from the Hub before running — a HEAD against
+# the resolve URL returns them:
+#
+#   curl -sIL -r 0-0 https://huggingface.co/<repo>/resolve/main/<file>.gguf \
+#     | grep -iE 'x-linked-size|x-linked-etag'
+#   # x-linked-size: <bytes>   x-linked-etag: "<sha256>"
+#
+# ---------------------------------------------------------------------------
+# MEMORY — read this before lowering the limit (2026-09-22).
+#
+# The first run of this fetch was capped at 6Gi and got OOMKilled, which fired a
+# critical OOMKilled alert and paged the owner at 10:36 local. Two things add up
+# against the cgroup while streaming ~17 GB onto NFS:
+#
+#   1. dirty page cache for the NFS write-back is charged to the *container's*
+#      memory cgroup, and NFS retires dirty pages far more slowly than the
+#      download fills them; and
+#   2. the Hub client's high-performance transfer path buffers several chunk
+#      ranges in parallel.
+#
+# So: HF_HUB_ENABLE_HF_TRANSFER is deliberately NOT set (in huggingface_hub
+# >= 1.x it is a deprecated no-op that only prints a warning, and its Xet
+# successor is left at default concurrency), and the limit is 12Gi — roughly
+# 2x the observed steady-state need, which is headroom for the write-back, not
+# an expectation of using it. talosw01 has ~135 GiB, so this costs nothing.
+# Do not "tidy" it back down to 6Gi.
+#
+# Declare the work before running, so the fetch does not read as an incident:
+#   declare-activity start "staging <model> onto the NAS" --scope ai --ttl 1h
+# ---------------------------------------------------------------------------
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-fetch
+  namespace: ai
+spec:
+  backoffLimit: 4
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: fetch
+          image: docker.io/python:3.12-slim
+          env:
+            # What to fetch. MODEL_DIR is relative to misc/llama/models on the
+            # NAS. EXPECT_SIZES is "<file>=<bytes>" per line and is REQUIRED for
+            # every file; EXPECT_SHA256 is "<file>=<hex>" and is optional per
+            # file (skip it only when the Hub does not publish one).
+            - name: MODEL_REPO
+              value: meta-models/Muse-Glimmer-30B-GGUF
+            - name: MODEL_DIR
+              value: muse-glimmer-30b
+            - name: MODEL_FILES
+              value: |
+                Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf
+                mmproj-Muse-Glimmer-30B-Q4_K_M.gguf
+            - name: EXPECT_SIZES
+              value: |
+                Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf=16756683904
+                mmproj-Muse-Glimmer-30B-Q4_K_M.gguf=1400328928
+            - name: EXPECT_SHA256
+              value: |
+                Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf=4cc57c0f51040a226e5a72cc47b7613f7772950e460a665f7083de89f183f60e
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              export HOME=/tmp PIP_ROOT_USER_ACTION=ignore
+              pip install --quiet --no-cache-dir --target /tmp/py 'huggingface_hub>=0.34'
+              export PYTHONPATH=/tmp/py HF_HOME=/tmp/hf
+              # NOT set: HF_HUB_ENABLE_HF_TRANSFER. See the memory note above.
+              mkdir -p "/misc/llama/models/${MODEL_DIR}"
+              python - <<'PY'
+              import hashlib, os, pathlib, shutil, sys
+              from huggingface_hub import hf_hub_download
+
+              def kv(name):
+                  out = {}
+                  for line in os.environ.get(name, "").splitlines():
+                      line = line.strip()
+                      if line:
+                          k, _, v = line.partition("=")
+                          out[k.strip()] = v.strip()
+                  return out
+
+              repo = os.environ["MODEL_REPO"]
+              dest = f"/misc/llama/models/{os.environ['MODEL_DIR']}"
+              files = [f.strip() for f in os.environ["MODEL_FILES"].split() if f.strip()]
+              sizes, shas = kv("EXPECT_SIZES"), kv("EXPECT_SHA256")
+
+              missing = [f for f in files if f not in sizes]
+              if missing:
+                  sys.exit(f"EXPECT_SIZES has no entry for {missing} - refusing to fetch unverifiable files")
+
+              for name in files:
+                  print(f"=== {name} ===", flush=True)
+                  path = pathlib.Path(hf_hub_download(repo_id=repo, filename=name, local_dir=dest))
+                  got = path.stat().st_size
+                  want = int(sizes[name])
+                  print(f"    {path}  {got} bytes (expect {want})", flush=True)
+                  if got != want:
+                      sys.exit(f"SIZE MISMATCH for {name}: {got} != {want}")
+                  with path.open("rb") as fh:
+                      if fh.read(4) != b"GGUF":
+                          sys.exit(f"NOT A GGUF: {name}")
+                  want_sha = shas.get(name)
+                  if want_sha:
+                      h = hashlib.sha256()
+                      with path.open("rb") as fh:
+                          for chunk in iter(lambda: fh.read(1 << 22), b""):
+                              h.update(chunk)
+                      if h.hexdigest() != want_sha:
+                          sys.exit(f"SHA MISMATCH for {name}: {h.hexdigest()} != {want_sha}")
+                      print("    sha256 OK", flush=True)
+                  else:
+                      print("    sha256 not published - size + GGUF magic only", flush=True)
+
+              # hf_hub_download(local_dir=...) leaves its staging tree behind in
+              # <dest>/.cache/huggingface — including any *.incomplete from a run
+              # that died partway. The first fetch left 14 GB of it on the NAS.
+              # Drop it once every file has passed verification.
+              stale = pathlib.Path(dest) / ".cache"
+              if stale.is_dir():
+                  shutil.rmtree(stale)
+                  print(f"    removed staging dir {stale}", flush=True)
+              print("=== ALL FILES VERIFIED ===", flush=True)
+              PY
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              # 12Gi, NOT 6Gi. See the memory note at the top of this file.
+              memory: 12Gi
+          volumeMounts:
+            - name: misc
+              mountPath: /misc
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: misc
+          nfs:
+            server: gasha01.haynesnetwork
+            path: /hdd-nfs-repl/misc
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
