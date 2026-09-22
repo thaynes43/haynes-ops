@@ -87,13 +87,12 @@ is safe even under a fully compromised agent.
   `kubernetes/main/bootstrap/omni/haynes-ops-omniconfig.yaml`, the main kubeconfig
   server `haynes.kubernetes.na-west-1.omni.siderolabs.io`, and the omni-service-account
   runbook). The **self-hosted Omni at `omni.haynesops.com`** (app
-  `kubernetes/main/apps/frontend/omni`, image `ghcr.io/siderolabs/omni:v1.9.3`) is a
-  **separate instance** and is *not* what registers `talosm0x` today. So:
+  `kubernetes/main/apps/frontend/omni`, image `ghcr.io/siderolabs/omni:v1.9.3`) was a
+  **separate instance** and was *not* what registers `talosm0x`. **(UPDATE 2026-09-22:
+  that instance was decommissioned — SaaS Omni is now the only Omni. See
+  `.agents/reference/repo-overview.md`.)** So:
   - `OMNI_ENDPOINT` for main-cluster triage is `https://haynes.omni.siderolabs.io`,
     which requires CNP egress to `*.omni.siderolabs.io` — **not** the in-cluster svc.
-  - The in-cluster Omni svc egress rule added in PR A (below) supports the
-    self-hosted Omni (edge/lab/migration) and is harmless, but does **not** by itself
-    make `omnictl` see the main nodes.
   - **Because talosctl fully covers the stated motivation, omnictl is optional.** If the
     SaaS-Omni exfil surface (`*.omni.siderolabs.io`) is unwanted, ship talosctl only and
     leave the Omni SA / omni egress for later. This decision is called out in the
@@ -110,10 +109,11 @@ Added to `kubernetes/main/apps/dev/dev-env/app/networkpolicy.yaml`:
   `host`/`remote-node`, not CIDR). Entities are the correct, working selector; the
   port scopes it to apid only. Nodes are DHCP on `192.168.40.0/24` so pinning IPs would
   drift anyway.
-- **In-cluster Omni svc:** `toEndpoints` (ns `frontend`, `app.kubernetes.io/name:
-  omni`) tcp/8080, plus a DNS `matchName: omni.frontend.svc.cluster.local` (Cilium `*`
-  is single-label, so the existing `*.svc` / `*.cluster.local` patterns don't cover a
-  3-label svc FQDN — same trap the MCP svc names hit). Supports the self-hosted Omni.
+- **In-cluster Omni svc** (**REMOVED 2026-09-22 with the self-hosted Omni**):
+  `toEndpoints` (ns `frontend`, `app.kubernetes.io/name: omni`) tcp/8080, plus a DNS
+  `matchName: omni.frontend.svc.cluster.local`. The 3-label-FQDN lesson still stands
+  (Cilium `*` is single-label, so `*.svc` / `*.cluster.local` don't cover
+  `name.ns.svc.cluster.local` — the same trap the MCP svc names hit).
 
 ### Image (PR A — build ≠ rollout)
 
@@ -121,8 +121,9 @@ Added to `kubernetes/main/apps/dev/dev-env/app/networkpolicy.yaml`:
 the cluster:
 
 - `talosctl` **v1.13.3** (`siderolabs/talos`) — matches nodes' Talos v1.13.3.
-- `omnictl` **v1.9.3** (`siderolabs/omni`) — matches the self-hosted Omni image; SaaS
-  Omni is API-compatible with nearby omnictl versions.
+- `omnictl` **v1.9.3** (`siderolabs/omni`) — then matched the self-hosted Omni image;
+  since that instance was removed (2026-09-22) the pin only needs to stay API-compatible
+  with SaaS Omni, which tolerates nearby omnictl versions.
 
 The build workflow's image tag bumps `0.4.0 → 0.5.0`; the running pod stays pinned to
 `0.4.0@sha256:655a2dac…` so **the rebuild does not roll it** (build ≠ rollout — the tag

@@ -137,7 +137,7 @@ scripts/dev-env/Dockerfile                    # ghcr.io/thaynes43/dev-env
    need to bash in and re-auth" problem is real but small: an auth-check probe +
    Pushover page covers it (backlog 04).
 4. **`kubernetes.default.svc` only solves the main cluster from inside the main
-   cluster.** Edge-cluster kubectl, `talosctl`/`omnictl`, and Omni-template work still
+   cluster.** `talosctl`/`omnictl` and Omni-template work still
    need Omni credentials (the existing [omni-service-account runbook](../../runbooks/omni-service-account.md)
    is the headless answer there). And when the main cluster itself is broken, the
    in-cluster dev-env is broken with it — the Mac + Omni path stays the break-glass.

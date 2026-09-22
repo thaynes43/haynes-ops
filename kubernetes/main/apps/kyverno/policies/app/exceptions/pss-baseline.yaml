@@ -10,11 +10,12 @@
 # autogen-cronjob-baseline) so controllers, Jobs, and bare Pods are all exempted.
 #
 # App-level flags to revisit (not infra — could be tightened instead of exempted):
-#   - frontend/omni        : NET_ADMIN+NET_RAW+privileged; it's the self-hosted Omni,
-#                            whose only cluster object was the edge cluster's — and edge
-#                            was retired 2026-09-22. Strong candidate to remove outright;
-#                            drop this exemption with it.
 #   - home-automation/music-assistant : hostNetwork for cast/DLNA discovery (legit).
+#
+# Removed 2026-09-22 with the self-hosted Omni decommission (frontend/omni +
+# generic-device-plugin): the `frontend` exemption block (omni*, the repo's most
+# privileged workload) and `generic-device-plugin*` in kube-system, whose only
+# device consumer (`devic.es/tun`) was that Omni.
 apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
@@ -51,7 +52,6 @@ spec:
           namespaces: [kube-system]
           names:
             - cilium*
-            - generic-device-plugin*
             - intel-gpu-plugin*
             - nvidia-device-plugin*
             - inteldeviceplugins*
@@ -78,11 +78,6 @@ spec:
           namespaces: [home-automation]
           names:
             - music-assistant*
-      - resources:
-          kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, ReplicaSet]
-          namespaces: [frontend]
-          names:
-            - omni*
       # VolSync movers — EPHEMERAL (only exist during a backup/restore), so they were
       # absent from the audit scan but can fail baseline (privileged / host mounts,
       # depending on the mover config) when they run, in ~18 app namespaces. Matched by
