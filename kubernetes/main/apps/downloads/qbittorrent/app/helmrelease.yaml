@@ -125,7 +125,12 @@ spec:
           # register is provably the IP MAM sees. It confirms the Mullvad exit before
           # every call (fail-closed), self-throttles to <=1 call/hr, and persists the
           # rotating mam_id cookie to /state (a subpath of the config PVC) so it
-          # survives restarts. See scripts/mam-update.sh for the full contract.
+          # survives restarts. Since 2026-09-22 it also validates the session once
+          # a day (KEEPALIVE) — a MAM password change silently cancels every
+          # session and qBittorrent's tracker status never showed it (dead for 5
+          # weeks) — logging MAM_SESSION_DEAD, which lokirule.yaml pages as
+          # critical; a new MAM_ID_SEEDBOX + pod restart self-heals. See
+          # scripts/mam-update.sh for the full contract.
           # IMPORTANT: no readiness/startup probe — only the app container's Mullvad
           # egress check may gate pod readiness (same rule as the exporter sidecar).
           mam-update:
@@ -141,6 +146,7 @@ spec:
               MAM_CHECK_URL: https://am.i.mullvad.net/json
               INTERVAL: "3600"
               MIN_GAP: "3600"
+              KEEPALIVE: "86400"
               MAM_ID_SEED:
                 valueFrom:
                   secretKeyRef:

@@ -14,6 +14,15 @@ configMapGenerator:
   - name: qbittorrent-mam-update
     files:
       - scripts/mam-update.sh
+  # Loki ruler picks this up by label (same pattern as plex/zigbee2mqtt). Stable
+  # name: the rule file is read by the ruler sidecar, nothing references it.
+  - name: qbittorrent-lokirule
+    files:
+      - qbittorrent.yaml=./lokirule.yaml
+    options:
+      disableNameSuffixHash: true
+      labels:
+        loki_rule: "true"
 generatorOptions:
   # The script uses ${VAR:-default} shell expansions — keep Flux post-build
   # substitution out of it (matches the ytdl-sub/peloton precedent).
