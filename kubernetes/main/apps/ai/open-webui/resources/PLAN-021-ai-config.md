@@ -377,6 +377,18 @@ EOF
 Open WebUI writes the patched values straight back into the same `config` row and calls
 `PersistentConfig.update()`, so the change is live immediately — **no pod restart**.
 
+**Applied and verified 2026-09-22 (driving session, one-shot Job `openwebui-comfyui-apply-0921` in ns
+`ai`, secret + ConfigMap mounted; nothing printed but status lines).** `GET /api/v1/images/config` →
+patch → `POST /api/v1/images/config/update` returned 200 and the re-read config showed the new
+values live without a restart. Then, through Open WebUI's own API:
+
+- `POST /api/v1/images/generations` `{"prompt": …, "n": 1, "size": "1024x1024"}` → 200, one image
+  (527 s: ComfyUI had just restarted, so this included the model reload; warm renders are ~35–60 s).
+- `POST /api/v1/images/edit` (singular — `/edits` is 405). Because the route declares two body
+  parameters (`form_data`, `metadata`), the JSON must be **wrapped**:
+  `{"form_data": {"image": "data:image/png;base64,…", "prompt": …}, "metadata": {}}` — an unwrapped
+  body is a 422 `body.form_data missing`. → 200 in 126 s, output `ui/open-webui-edit_00001_.png`.
+
 #### Route C — edit the persisted row directly (last resort)
 
 Only if no admin token is available. Take a backup first; the row is the entire app configuration.
