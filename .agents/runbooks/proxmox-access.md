@@ -8,7 +8,7 @@ operating manual.
 | Tier | Credential | Can | Cannot |
 |---|---|---|---|
 | READ | `$PVE_TOKEN_ID` / `$PVE_TOKEN_SECRET` (`prometheus@pve!exporter`, PVEAuditor) | every `GET`: cluster/HA status, quorum, node uptimes, guest placement, `onboot` per guest | any write |
-| OPERATOR | `$PVE_OPERATOR_TOKEN_ID` / `$PVE_OPERATOR_TOKEN_SECRET` (`dev-env@pve!operator`), **present only after Tom fills the 1Password fields and the pod has bounced** | HA resources (remove/adjust), `onboot`, start/stop/reset on guests; PVE-side it is root-equivalent (`Sys.Console`, Tom's ruling 2026-09-09) | by **rule**, not ACL: node reboots, node shells, anything on guests other than the three Talos workers without `--any` (the helper refuses ids ≠ 103/108/113 as a typo guard) |
+| OPERATOR | `$PVE_OPERATOR_TOKEN_ID` / `$PVE_OPERATOR_TOKEN_SECRET` (`dev-env@pve!operator`), **live since 2026-09-18** (ExternalSecret `dev-env-proxmox-operator` → Secret `dev-env-proxmox-operator-secret`; NB the 1Password `dev-env` fields are `PROXMOX_OPERATOR_TOKEN_*` while the env vars are `PVE_OPERATOR_TOKEN_*` — the ES remaps them, so `PROXMOX_*` never appears in the pod and finding none there is expected) | HA resources (remove/adjust), `onboot`, start/stop/reset on guests; PVE-side it is root-equivalent (`Sys.Console`, Tom's ruling 2026-09-09) | by **rule**, not ACL: node reboots, node shells, anything on guests other than the three Talos workers without `--any` (the helper refuses ids ≠ 103/108/113 as a typo guard) |
 
 `pve` uses the operator token when it is set, else the read token. `pve --ro …` forces
 the read token. Env is absent until PR B of backlog 14 has deployed; before that, the
