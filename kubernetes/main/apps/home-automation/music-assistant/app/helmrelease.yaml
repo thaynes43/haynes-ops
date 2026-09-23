@@ -33,6 +33,41 @@ spec:
           hostNetwork: true
           #annotations:
           #  k8s.v1.cni.cncf.io/networks: static-sonos-mass
+        # 2026-09-22 03:14: a cluster-wide network blip restarted MA while cluster DNS was
+        # still down, so the Spotify provider load died on a DNS timeout — and MA only
+        # schedules a retry for MusicAssistantError, never for aiohttp's ClientConnectorDNSError,
+        # so Spotify stayed unloaded for 17h until it was re-authed by hand. The pod is
+        # hostNetwork with ClusterFirstWithHostNet, so this init container resolves through
+        # exactly the same cluster DNS the app will use. It is deliberately never fatal:
+        # a long Spotify/DNS outage must not keep local-library playback from starting.
+        initContainers:
+          wait-for-dns:
+            image:
+              repository: docker.io/library/busybox
+              tag: 1.38.0
+            # `$$` is Flux's escape for a literal `$`. kustomize-controller's postBuild
+            # envsubst runs over this manifest before it reaches the cluster and rewrites
+            # `${i}` to the empty string (no such substitution var), which silently turned
+            # the success line into "dns ready after s". Escaped, the container gets `$i`.
+            command:
+              - /bin/sh
+              - -c
+              - |
+                i=0
+                until nslookup accounts.spotify.com >/dev/null 2>&1 && nslookup api.spotify.com >/dev/null 2>&1; do
+                  if [ "$$i" -ge 180 ]; then
+                    echo "dns still failing after 180s — starting anyway, the Spotify provider may need a reload"
+                    exit 0
+                  fi
+                  sleep 5
+                  i=$$((i + 5))
+                done
+                echo "dns ready after $${i}s"
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: true
         containers:
           app:
             image:
