@@ -294,7 +294,7 @@ and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
 
 | Surface | Model | Why |
 |---|---|---|
-| **Automated Claude Code agents** — alert-responder, upgrade-shepherd, dev-env-ops (both lanes) | **latest Opus**, pinned explicitly (`claude-opus-5` today — the Opus 5.5 move for these lanes is a separate change: their images pin their own CLI floors) | They merge upgrades and touch production unattended; being wrong costs more than the quota. Pinned not aliased — alias repoints lag a launch by days. |
+| **Automated Claude Code agents** — alert-responder, upgrade-shepherd, dev-env-ops (both lanes) | **latest Opus**, pinned explicitly (`claude-opus-5-5` since 2026-09-23; dev-env-ops rides the dev-env image, shepherd/alert-responder the upgrade-shepherd image — each pins its own CLI floor, 2.1.280 for Opus 5.5) | They merge upgrades and touch production unattended; being wrong costs more than the quota. Pinned not aliased — alias repoints lag a launch by days. |
 | **Tom's interactive Claude Code work** | **latest Fable** — `claude-fable-5-1` (Fable 5.1) since 2026-09-01; the Claude Code pod-wide default, re-asserted by dev-init on every boot | This is the surface Fable's plan quota is reserved for. Needs claude-code >=2.1.255 in the image — an older CLI rejects the id outright. |
 | **Native Claude Code subagents** | **Opus 5.5**, exact id `claude-opus-5-5`, effort `xhigh` | Mandatory in every repo for work delegated by a Claude Code driver. Since 2026-09-23 (was Opus 5); needs claude-code >=2.1.280 in the image. |
 | **Tom's interactive Codex work** | **GPT-6 Astra**, exact id `gpt-6-astra`, reasoning effort `max` | This remains the Codex driving model configured for the pod. |
