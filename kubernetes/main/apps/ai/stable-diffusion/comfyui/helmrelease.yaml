@@ -81,15 +81,17 @@ spec:
               #     reboot") also took down 3090 #1 in the same VM, so a wedged
               #     #0 kills every CUDA tenant on talosw01. Before that it had
               #     run at 86-89 °C and throttled to 225 MHz under every render
-              #     (#3052). It gets no tenant until #3052 is fixed.
+              #     (#3052). After the host reboot it enumerates again, but Tom
+              #     heard its fan rattling: it gets NO tenant until #3052 is fixed
+              #     (ollama-prime is pinned to #1 too).
               #
               # Earlier layout (2026-09-22, haynes-ops#2960 lifted "no per-app
               # pinning"): ComfyUI on #0, llama-server on #1. That layout returns
               # only when #0 is trustworthy again AND llama-server comes back;
               # the two cannot share #1 (ComfyUI ~16-20 GB + the LLM ~17 GB).
               #
-              # ollama-prime keeps NVIDIA_VISIBLE_DEVICES=all and takes whatever
-              # is left over, spilling to CPU when neither card has room.
+              # ollama-prime is pinned to #1 as well and takes whatever is left
+              # over there (5m keep-alive), spilling to CPU.
               # Why ComfyUI gets exactly one card: its per-job peak is ~16-20 GB,
               # which fits on a single 3090; AppDaemon's camera renders and Open
               # WebUI's chat renders load the SAME qwen_image_2.1_int8_convrot +

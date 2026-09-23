@@ -477,8 +477,10 @@ of a ComfyUI render (`unspecified launch failure`, then the host read its config
 The driver fault also wedged 3090 #1 inside the same VM, so both cards were down until talosw01
 and its host were rebooted. Owner ruling: ComfyUI moves to 3090 #1 (`GPU-d8a856f1-…`, cool slot),
 and `llama-server` (Muse Glimmer) is scaled to 0 for now, because the two cannot share one 3090.
-#0 gets no tenant until haynes-ops#3052 is fixed. The table below is the 2026-09-22 layout, kept
-because it is the one to return to.
+#0 gets no tenant until haynes-ops#3052 is fixed: the reboot brought it back onto the bus, but
+its fan rattles. `ollama-prime` is pinned to #1 (`NVIDIA_VISIBLE_DEVICES=GPU-d8a856f1-…`, no
+longer `all`) and takes what ComfyUI leaves there. The table below is the 2026-09-22 layout,
+kept because it is the one to return to.
 
 #### Previous — the per-app GPU split (owner ruling 2026-09-22, haynes-ops#2960)
 
