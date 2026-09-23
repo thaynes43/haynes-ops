@@ -30,9 +30,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest PR56 (complete fictional worlds and studio-only kits); checked
-              # main publication 35892568018. Exact artwork approval remains pending.
-              tag: sha-5632426c2bc037ca6b0e933c6317563dab7f1b64@sha256:0dec1bf9ec2a850489204351289d40abb119108f0403b9f89dd5e89c30691727
+              # Haynes Quest PR58 (Rat Casino studio candidates); checked main
+              # publication 35903991472. Exact artwork approval remains pending.
+              tag: sha-daed6c471a6f00ef19da38106f1e6fed25eefcc3@sha256:4733a8744db1080aeb4c1ceb17d05fef9b9688a26d4998f7aa5f3e4d00f2e77f
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
