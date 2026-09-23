@@ -605,7 +605,7 @@ case "$cmd" in
         model="$(pick 'model:' \
           'claude-fable-5-1    Fable 5.1 · 1M ctx, most capable (dev-env default)' \
           'claude-opus-5-5     Opus 5.5 · Fable-class agentic coding at Opus price (subagent default)' \
-          'claude-opus-5       Opus 5 · prior Opus; what the automated lanes still pin' \
+          'claude-opus-5       Opus 5 · prior Opus; the automated lanes fall back to it' \
           'claude-sonnet-5     Sonnet 5 · near-Opus quality, cheaper' \
           'claude-haiku-4-5    Haiku 4.5 · fastest, simple tasks — no effort control')" || model=""
         # No "leave it unset" row: ~/.claude/settings.json lives on the PVC, not in
