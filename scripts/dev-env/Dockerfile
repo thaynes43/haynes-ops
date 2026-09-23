@@ -87,6 +87,11 @@ ARG UV_VERSION=0.12.18
 # `/output-style`. It fixes a 2.1.269 regression where read-only git commands in
 # Bash started asking for permission after a session had been running a while —
 # directly relevant here, where agent sessions are long-lived by design.
+# 2.1.280 (2026-09-23): Claude Opus 5.5. `claude-opus-5-5` (launched 2026-09-22) needs
+# claude-code >=2.1.280 — 2.1.270 answers "unrecognized_model" with no fallback — so
+# this floor is load-bearing for the agent-run picker row and for the Opus 5.5
+# subagent default in config/claude/CLAUDE.md. 2.1.280 also repoints the `opus`
+# alias to 5.5 (another reason the pod pins full ids, never aliases).
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
 ARG CLAUDE_CODE_VERSION=2.1.280
 # Codex is installed at BOOT as the managed STANDALONE (dev-init.sh), not via npm —
@@ -106,6 +111,11 @@ ARG CLAUDE_CODE_VERSION=2.1.280
 # Keep /etc/codex/requirements.toml's allowed_sandbox_modes including "read-only"
 # (#2829) — codex refuses to load the config without it and remote-control never
 # starts, silently, at every boot.
+# 0.156.1 (2026-09-23): GPT-6 Sol + GPT-6 Luna enter the model catalog (a hotfix over
+# 0.156.0, which shipped without them). `gpt-6-sol` is the Codex subagent default in
+# config/claude/CLAUDE.md and, like gpt-6-astra before it, does not exist to an older
+# client: 0.154.0's cache never lists it. This catalog also delists gpt-5.4-mini;
+# agent-run's codex fallback rows were refreshed to match (a slug mismatch WARNs).
 # renovate: datasource=npm depName=@openai/codex
 ARG CODEX_VERSION=0.156.1
 # renovate: datasource=npm depName=tsx
