@@ -62,7 +62,7 @@ spec:
               # same entrypoint and the same template mechanism, built for uid 101
               # with a :8080 default listener.
               repository: docker.io/nginxinc/nginx-unprivileged
-              tag: 1.30.5-alpine
+              tag: 1.31.6-alpine
             env:
               # Pins envsubst to this ONE name so nginx's own $variables survive
               # the render. See resources/default.conf.template.
