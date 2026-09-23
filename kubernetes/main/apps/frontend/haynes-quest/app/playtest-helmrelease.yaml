@@ -30,9 +30,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest PR54 (floating platforms and vertical obby sections); checked
-              # main publication 35490089572. Exact artwork approval remains pending.
-              tag: sha-c7f034af16ff39f0007d76697569db382a83d562@sha256:798d34aed190766547b2bc19e3cd8f398b45bf2bc35e1c0ed09888013fb48569
+              # Haynes Quest PR56 (complete fictional worlds and studio-only kits); checked
+              # main publication 35892568018. Exact artwork approval remains pending.
+              tag: sha-5632426c2bc037ca6b0e933c6317563dab7f1b64@sha256:0dec1bf9ec2a850489204351289d40abb119108f0403b9f89dd5e89c30691727
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
