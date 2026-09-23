@@ -470,7 +470,16 @@ two RTX 3090s. ComfyUI took `cuda:0` = the replacement card (VM bus `01:00.0`, U
 contends with ComfyUI. Which app gets which card, and whether Ollama should span both, is an open
 decision: haynes-ops#2960.
 
-#### Current — ComfyUI on 3090 #1, llama-server suspended (owner ruling 2026-09-23)
+#### Current — ComfyUI on talosm03's RTX 2000 Ada (owner ruling 2026-09-23, evening)
+
+3090 #1 dropped off the PCIe bus too (19:03 EDT, at the start of a render, idle at 60 °C), so
+nothing runs on talosw01's 3090s until the shared hardware fault (power/riser/slot) is fixed
+(#3052). ComfyUI moved to the RTX 2000 Ada (16 GB, `GPU-71a3aea4-…`) on talosm03, shared with
+`ollama-assist02`; its workspace moved to the Ceph claim `comfyui-data`. Benchmarked with the
+production edit graph: 1.42–1.50 s/it, warm render 80–86 s (3090 ~69 s), cold 306 s. The Open
+WebUI graphs keep `gpu:0`.
+
+#### Earlier the same day — ComfyUI on 3090 #1, llama-server suspended (owner ruling 2026-09-23)
 
 On 2026-09-23 14:47 EDT 3090 #0 (`GPU-18bf6eab-…`, hot slot) dropped off the PCIe bus in the middle
 of a ComfyUI render (`unspecified launch failure`, then the host read its config space as all-FF).

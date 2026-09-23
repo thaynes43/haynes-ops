@@ -56,8 +56,9 @@ spec:
               readOnlyRootFilesystem: true
               capabilities: { drop: ["ALL"] }
         pod:
+          # talosm03's RTX 2000 Ada (16 GB) since 2026-09-23 — see NVIDIA_VISIBLE_DEVICES below.
           nodeSelector:
-            feature.node.kubernetes.io/nvidia-3090-gpu: "true"
+            feature.node.kubernetes.io/nvidia-2000-ada-gpu: "true"
           # GPUs come from the nvidia runtime, not from an nvidia.com/gpu request
           # (the device plugin hands out *a* card, it cannot pin a named one) and
           # not from `privileged`. Which cards the runtime injects is decided by
@@ -68,42 +69,34 @@ spec:
             image: *image
             args: ["serve"]
             env:
-              # Owner ruling 2026-09-23: ComfyUI runs on 3090 #1 (VM bus
-              # 02:00.0, GPU-d8a856f1-…, the ORIGINAL card, cool slot), and
-              # llama-server is scaled to zero for now, so this card is ComfyUI's
-              # alone. Read this before moving it back:
+              # Owner ruling 2026-09-23 (evening): ComfyUI runs on talosm03's RTX
+              # 2000 Ada (16 GB, 70 W), NOT on talosw01's 3090s. Both 3090s dropped
+              # off the PCIe bus that day: #0 (GPU-18bf6eab-…) mid-render at 14:47
+              # EDT and #1 (GPU-d8a856f1-…) at the start of a render at 19:03 EDT,
+              # idle at 60 °C. Two cards within hours, after five clean days,
+              # points at something they share (power, riser, slot), not one bad
+              # card. Tom will fix that hardware; until then nothing runs on them
+              # (haynes-ops#3052).
               #
-              #   3090 #0 — VM bus 01:00.0, GPU-18bf6eab-… (the NEW card, #3052,
-              #     hot slot) DROPPED OFF THE PCIe BUS mid-render on 2026-09-23
-              #     14:47 EDT: `unspecified launch failure` in the Qwen text
-              #     encoder, then the host read its config space as all-FF. The
-              #     driver fault ("uvm global fatal error 0x60, requiring os
-              #     reboot") also took down 3090 #1 in the same VM, so a wedged
-              #     #0 kills every CUDA tenant on talosw01. Before that it had
-              #     run at 86-89 °C and throttled to 225 MHz under every render
-              #     (#3052). After the host reboot it enumerates again, but Tom
-              #     heard its fan rattling: it gets NO tenant until #3052 is fixed
-              #     (ollama-prime is pinned to #1 too).
+              # Benchmarked here before the move, with the production
+              # Qwen-Image-2.1 edit graph: 1.42-1.50 s/it (the throttled 3090 did
+              # 1.4), warm render 80-86 s (3090 ~69 s), cold first render 306 s
+              # (models load off the NFS share). AppDaemon allows 900-1200 s per
+              # render and sends at most ~8/h. The card is SHARED with
+              # ollama-assist02 (qwen3.5:9b, ~6.5 GB resident, detection
+              # summaries): ComfyUI's dynamic VRAM works in the remaining ~9 GB
+              # (UNet 6.9 GB, text encoder 8.9 GB, VAE 0.6 GB, loaded in turn). The
+              # A2000 on talosm01 has no room for that LLM (voice STT/TTS + Vexa
+              # hold 8.6 of 12 GB).
               #
-              # Earlier layout (2026-09-22, haynes-ops#2960 lifted "no per-app
-              # pinning"): ComfyUI on #0, llama-server on #1. That layout returns
-              # only when #0 is trustworthy again AND llama-server comes back;
-              # the two cannot share #1 (ComfyUI ~16-20 GB + the LLM ~17 GB).
-              #
-              # ollama-prime is pinned to #1 as well and takes whatever is left
-              # over there (5m keep-alive), spilling to CPU.
-              # Why ComfyUI gets exactly one card: its per-job peak is ~16-20 GB,
-              # which fits on a single 3090; AppDaemon's camera renders and Open
-              # WebUI's chat renders load the SAME qwen_image_2.1_int8_convrot +
-              # qwen3vl_8b_int8_convrot files, so one resident copy serves both;
-              # and the LLM needs a whole card to itself to stay resident.
-              # This overrides the NVIDIA_VISIBLE_DEVICES=all baked into
-              # ghcr.io/thaynes43/comfyui. The container therefore sees ONE GPU,
-              # so anything that names a device index inside ComfyUI must say
-              # `gpu:0` — that stays true across every swap, because `gpu:0` just
-              # means "the one visible card", whichever it is (see
-              # open-webui/app/comfyui/*-workflow.json; unchanged by the swap).
-              NVIDIA_VISIBLE_DEVICES: GPU-d8a856f1-f955-f683-bc24-654561496774
+              # Pinned by UUID so it never lands on a different card by accident.
+              # Moving back to a 3090 = nodeSelector + this UUID together (the
+              # 2026-09-22 per-3090 layout is in open-webui's PLAN-021).
+              # The container sees exactly ONE GPU, so anything naming a device
+              # index inside ComfyUI must say `gpu:0` ("the one visible card"), as
+              # open-webui/app/comfyui/*-workflow.json do. AppDaemon's camera
+              # renders and Open WebUI's chat renders share one model copy.
+              NVIDIA_VISIBLE_DEVICES: GPU-71a3aea4-020b-83ea-4221-cc9f901c7a67
               # Existing PVC layout, so saved UI workflows and inputs carry over.
               COMFYUI_USER_DIR: /workspace/ComfyUI/user
               COMFYUI_INPUT_DIR: /workspace/ComfyUI/input
@@ -140,7 +133,8 @@ spec:
     persistence:
       workspace:
         enabled: true
-        existingClaim: comfyui-workspace
+        # Ceph block (2026-09-23), not node-local openebs-hostpath: it must follow the pod.
+        existingClaim: comfyui-data
         globalMounts:
           - path: /workspace
       tmp:
