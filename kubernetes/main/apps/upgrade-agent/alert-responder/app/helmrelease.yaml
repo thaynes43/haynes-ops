@@ -36,7 +36,7 @@ spec:
               # The shepherd image (claude + kubectl + flux + git + jq); no bot
               # initContainer here — the responder holds NO repo-write credential.
               repository: ghcr.io/thaynes43/upgrade-shepherd
-              tag: 0.1.0@sha256:84c6a9cb1f7490aa692c8afdd8a41a4fa69c5ec0ce828b138d467ce2d91923c3
+              tag: 0.1.0@sha256:0a422122ee7c543f32c08a0708414473fd526b897303921cf8e476a5a3439eac
             command: ["/bin/bash", "/opt/responder/respond.sh"]
             env:
               ALERTMANAGER_URL: http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093
@@ -72,7 +72,8 @@ spec:
               # probe first: `claude --model <id> -p 'reply with your model id'`.
               # Deliberately NOT Fable here (its plan quota is the surface Tom's own
               # dev-env work needs — and it ran out entirely on 2026-08-23).
-              RESPONDER_MODEL: claude-opus-5
+              # 2026-09-23: Opus 5.5 — floor claude-code 2.1.280 in the image (#3119).
+              RESPONDER_MODEL: claude-opus-5-5
               # METERED path = pay-per-token: NEVER Fable, NEVER Opus (Tom's rule
               # 2026-08-23). Sonnet 5 is near-Opus quality at a fraction of the cost
               # and can dispatch a pod claude-code agent for heavy lifting.
