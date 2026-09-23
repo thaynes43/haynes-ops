@@ -44,6 +44,10 @@
         "Authorization": "Bearer ${CIGAR_JOURNAL_TOKEN}"
       }
     },
+    "haynesnetwork": {
+      "type": "http",
+      "url": "http://haynesnetwork-mcp-hop.frontend.svc.cluster.local:8080/mcp"
+    },
     "blender": {
       "type": "http",
       "url": "http://blender-authoring.dev.svc.cluster.local:8000/mcp"

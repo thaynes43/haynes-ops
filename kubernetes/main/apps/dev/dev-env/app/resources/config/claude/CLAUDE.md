@@ -115,7 +115,24 @@ stdio only — no SSE — so a networked server must expose a `/mcp` endpoint.
   `dev-env-cigar` in namespace `dev`). If you ever curl the endpoint directly:
   it speaks streamable-HTTP MCP, so send `initialize` first and carry the
   returned `Mcp-Session-Id`, or you get `400 no valid session`. A 400 about
-  sessions means auth PASSED.
+  sessions means auth PASSED. Since cigar-journal v0.47.2 (#339) an idle session
+  expires after 30 minutes, and an expired or unknown id gets `404 Session not
+  found` (auth passed too): re-initialize and carry on.
+- `haynesnetwork` — Tom's watch history (the Watch Companion, haynesnetwork
+  ADR-087 / DESIGN-049): `unfinished`, `recommend`, `watch_status`,
+  `recent_history`, `mark_watched`, `dismiss`, `undo_last_change`. Reached through
+  the in-cluster hop `http://haynesnetwork-mcp-hop.frontend.svc.cluster.local:8080/mcp`,
+  which injects the consumer token itself, so this pod holds no secret for it (the
+  hop's CiliumNetworkPolicy admits this pod and Home Assistant only). Answers are
+  short spoken text because the same tools back the Movie Room voice agent.
+  `mark_watched` really marks titles watched in Plex (all servers, via watch-state
+  sync): never test it on a title Tom hasn't watched; `undo_last_change` reverses the
+  last change within a day. Runbook: haynesnetwork OPS-015.
+
+Voice agents are the opposite of this pod: Home Assistant sends every tool schema of
+every attached MCP server on every voice turn (35 cigar-journal tools cost ~2 s per
+turn, 2026-09-22), so each room agent gets only the servers its room needs, each kept
+voice-sized. This pod gets them all.
 
 A placeholder only resolves if the variable is in the POD environment
 (ExternalSecret-fed, visible in `/proc/1/environ`) — dev-init's envsubst runs

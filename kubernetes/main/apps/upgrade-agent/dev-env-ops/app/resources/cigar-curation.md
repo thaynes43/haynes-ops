@@ -36,7 +36,10 @@ users never do catalog data entry; you do, attributably and reversibly.
   bearer). Register per session: `claude mcp add --transport http cigars
   https://cigars.haynesnetwork.com/mcp --header "Authorization: Bearer
   <access token>"` — or drive it with curl (initialize → capture
-  `mcp-session-id` → `notifications/initialized` → `tools/call`).
+  `mcp-session-id` → `notifications/initialized` → `tools/call`). Since
+  v0.47.2 an idle session expires after 30 minutes: a `404 Session not found`
+  means the session expired or the pod restarted (auth passed) — initialize
+  again and continue the run.
 - `runId` for every write = this work-order key. Set `confidence` honestly
   per item (0–1).
 
