@@ -384,13 +384,14 @@ spec:
               limits:
                 memory: 512Mi
       # Watch Companion sync every 15 min (haynesnetwork ADR-088 / DESIGN-049 D-09 / PLAN-068): the
-      # Server Owner's Watch Events from all three Tautullis (incremental by row id, uncapped), his Plex
-      # per-episode progress on HaynesOps + HaynesTower (allLeaves re-read only when a show's counts
-      # move), the plex.tv watchlist, and TMDB seed recommendations (at most daily). Writes only the
-      # watch_* tables through the domain single-writers; never writes Plex (only an owner-issued
-      # mark_watched through /api/mcp does). The first run backfills (~11 Tautulli pages + ~180 allLeaves
-      # reads); steady state is a handful of requests. Needs the Tautulli keys, PLEX_*_TOKENs, TMDB and
-      # DATABASE_URL, all in haynesnetwork-secret. Minutes 3,18,33,48 avoid every other sync job.
+      # Server Owner's Watch Events from all three Tautullis (incremental by row id over a 3-day overlap
+      # window; at most 200 pages per instance per run, reported when hit), his Plex per-episode progress
+      # on HaynesOps + HaynesTower (allLeaves re-read only when a show's counts move), the plex.tv
+      # watchlist, and TMDB seed recommendations (at most daily). Writes only the watch_* tables through
+      # the domain single-writers; never writes Plex (only an owner-issued mark_watched through /api/mcp
+      # does). The first run backfills (~11 Tautulli pages + ~180 allLeaves reads); steady state is a
+      # handful of requests. Needs the Tautulli keys, PLEX_*_TOKENs, TMDB and DATABASE_URL, all in
+      # haynesnetwork-secret. Minutes 3,18,33,48 avoid every other sync job.
       sync-watch:
         type: cronjob
         pod:
