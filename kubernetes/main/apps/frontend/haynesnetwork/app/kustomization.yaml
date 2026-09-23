@@ -7,6 +7,7 @@ resources:
   - ./gatus.yaml
   - ./helmrelease.yaml
   - ./ingressroute.yaml
+  - ./mcp-consumer.yaml
   - ./middleware.yaml
 configMapGenerator:
   # The Loki ruler sidecar picks this up by label (same pattern as

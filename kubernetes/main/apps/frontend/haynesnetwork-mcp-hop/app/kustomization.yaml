@@ -1,0 +1,23 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+components:
+  - ../../../../../shared/components/common/repos/app-template
+resources:
+  - ./helmrelease.yaml
+  - ./ciliumnetworkpolicy.yaml
+configMapGenerator:
+  # Stable, hash-free name: the HelmRelease references it from inside `values`, which
+  # kustomize's nameReference transformer does not rewrite. Reloader (auto, on the
+  # controller) rolls the pod when this ConfigMap changes.
+  - name: haynesnetwork-mcp-hop-nginx
+    files:
+      - default.conf.template=./resources/default.conf.template
+generatorOptions:
+  disableNameSuffixHash: true
+  annotations:
+    # MANDATORY. The template is meant for the container's own envsubst at start-up
+    # (${HNET_MCP_HOP_TOKEN}), and nginx's own $variables would be eaten too; Flux's
+    # postBuild envsubst would blank both and deploy an empty bearer.
+    kustomize.toolkit.fluxcd.io/substitute: disabled

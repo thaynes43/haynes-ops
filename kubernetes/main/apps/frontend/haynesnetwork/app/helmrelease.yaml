@@ -116,6 +116,12 @@ spec:
               - secretRef:
                   name: haynesnetwork-authentik-token
                   optional: true
+              # Watch Companion MCP consumer token (ADR-087): generated in-cluster by
+              # ./mcp-consumer.yaml. Optional so a missing Secret degrades /api/mcp to 503
+              # instead of blocking the rollout. Only the web container needs it.
+              - secretRef:
+                  name: haynesnetwork-mcp-consumer
+                  optional: true
             probes:
               liveness:
                 enabled: true

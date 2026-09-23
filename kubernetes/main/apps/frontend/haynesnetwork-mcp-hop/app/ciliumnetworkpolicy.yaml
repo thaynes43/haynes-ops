@@ -1,0 +1,31 @@
+---
+# Load-bearing (haynesnetwork ADR-087 C-05): anything that reaches this hop acts as the Plex server
+# owner on the watch tools. Ingress is therefore enumerated: the Home Assistant pod (the Movie Room
+# voice agent's MCP client), the dev-env pod (agents), and the local host (kubelet probes). Egress is
+# not restricted here; the hop only ever talks to the haynesnetwork Service.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: haynesnetwork-mcp-hop
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: haynesnetwork-mcp-hop
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: home-automation
+            app.kubernetes.io/name: home-assistant
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev
+            app.kubernetes.io/name: dev-env
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
