@@ -45,20 +45,24 @@ spec:
             image:
               repository: docker.io/library/busybox
               tag: 1.38.0
+            # `$$` is Flux's escape for a literal `$`. kustomize-controller's postBuild
+            # envsubst runs over this manifest before it reaches the cluster and rewrites
+            # `${i}` to the empty string (no such substitution var), which silently turned
+            # the success line into "dns ready after s". Escaped, the container gets `$i`.
             command:
               - /bin/sh
               - -c
               - |
                 i=0
                 until nslookup accounts.spotify.com >/dev/null 2>&1 && nslookup api.spotify.com >/dev/null 2>&1; do
-                  if [ "$i" -ge 180 ]; then
+                  if [ "$$i" -ge 180 ]; then
                     echo "dns still failing after 180s — starting anyway, the Spotify provider may need a reload"
                     exit 0
                   fi
                   sleep 5
-                  i=$((i + 5))
+                  i=$$((i + 5))
                 done
-                echo "dns ready after ${i}s"
+                echo "dns ready after $${i}s"
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
