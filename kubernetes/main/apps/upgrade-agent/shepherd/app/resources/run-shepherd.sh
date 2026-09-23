@@ -26,7 +26,9 @@ MODE="${UPGRADE_AGENT_MODE:-dryrun}"
 # alias: alias repoints LAG a launch by days (2026-08-06: `opus` still served 4.8
 # while claude-opus-5 was live), and "latest" is the whole point here. Bump this on
 # an Opus launch — probe first: `claude --model <id> -p 'reply with your model id'`.
-MODEL="${UPGRADE_AGENT_MODEL:-claude-opus-5}"
+# 2026-09-23: claude-opus-5-5 (Opus 5.5; floor claude-code 2.1.280 — an older CLI
+# rejects the id outright, so the image bump (#3119) has to land before this does).
+MODEL="${UPGRADE_AGENT_MODEL:-claude-opus-5-5}"
 # METERED-PATH MODEL — the API key is pay-per-token, so it NEVER runs Opus or Fable
 # (Tom's rule 2026-08-23: no Fable on API pricing; use Sonnet 5). Sonnet 5 is
 # near-Opus quality at a fraction of the cost and can dispatch a pod claude-code
@@ -362,7 +364,7 @@ case "$MODE" in
     # diagnosis-bound — a stronger model is the difference between a clean revert PR
     # and a wasted BREAK-GLASS. Overrides the HR-wide UPGRADE_AGENT_MODEL (sonnet),
     # which still governs the daily survey/auto runs.
-    MODEL="${UPGRADE_AGENT_REMEDIATE_MODEL:-claude-opus-5}"
+    MODEL="${UPGRADE_AGENT_REMEDIATE_MODEL:-claude-opus-5-5}"
     SAFETY_MERGE="you MAY open a forward-fix or rollback PR and enable auto-merge with 'gh pr merge <N> --auto'; NEVER merge immediately, NEVER use --admin, NEVER push to main. BAIL EARLY (within a few turns) with one line 'BREAK-GLASS: <reason>' if a git-only fix is not clearly available (immutable field, wedged HelmRelease, stuck finalizer, one-way major, infra/KubePrism/etcd/node, or not caused by a recent upgrade); do NOT investigate to max-turns, do NOT retry denied cluster writes"
     [ -n "$PROMPT" ] || PROMPT="You are the Tier-4 upgrade shepherd in REMEDIATE mode (Mode 2). A recent upgrade may have regressed. Follow .agents/runbooks/upgrade-shepherd.md Mode 2. Diagnose READ-ONLY (flux get, kubectl describe/get) and identify the culprit merge (git log) FAST. If there is a clean git fix — git revert the bump / re-pin the prior version, or a documented supporting forward-fix from .agents/runbooks/tier4-component-playbooks.md — make it on a NEW branch, commit, push, open a PR, and enable auto-merge (gh pr merge <N> --auto). OTHERWISE STOP EARLY, within a few turns, with a single line 'BREAK-GLASS: <reason>' — do NOT keep investigating to max-turns. Bail to BREAK-GLASS when the fix would hit an immutable field, a wedged HelmRelease, a stuck finalizer, a one-way major, an infra/KubePrism/etcd/node fault, or when NO recent merge plausibly caused this. You have a read-only cluster SA: NEVER kubectl apply/exec/delete and do NOT retry a denied command. If a Flux HelmRelease is Stalled/UpgradeFailed on a chart/image bump (the release itself is broken, e.g. a version that fails its readiness probe and rollback-loops), the fix is to re-pin its tag/version in kubernetes/** to the last-working one (a pure bump — auto-mergeable) so git stops re-applying the broken version. A durable HOLD to stop it re-auto-merging lives in .renovate/holds.json5, which is OUTSIDE kubernetes/** and the diff-scope gate blocks the bot there — so do NOT edit .renovate/; instead put a clear 'HOLD NEEDED: <pkg> <version> — <one-line reason>' line at the TOP of your summary so a human adds the hold. Do NOT push to main, stay inside kubernetes/**."
     ;;

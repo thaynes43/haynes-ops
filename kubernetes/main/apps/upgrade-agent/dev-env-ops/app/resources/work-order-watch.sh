@@ -64,9 +64,9 @@ set -uo pipefail
 CM="${WORK_ORDER_CM:-upgrade-work-orders}"
 NS="${WORK_ORDER_NS:-upgrade-agent}"
 POLL="${WORK_ORDER_POLL_SECONDS:-60}"
-MODEL_DEFAULT="${OPS_SESSION_MODEL:-claude-opus-5}"              # wo-* lane
+MODEL_DEFAULT="${OPS_SESSION_MODEL:-claude-opus-5-5}"              # wo-* lane
 ESC_MODEL_DEFAULT="${OPS_ESC_MODEL:-claude-opus-5}"     # esc-* lane
-REM_MODEL_DEFAULT="${OPS_REM_MODEL:-claude-opus-5}"     # rem-* lane
+REM_MODEL_DEFAULT="${OPS_REM_MODEL:-claude-opus-5-5}"     # rem-* lane
 EFFORT_DEFAULT="${OPS_SESSION_EFFORT:-xhigh}"           # all lanes
 REAP_MAX="${OPS_REAP_MAX_FINISHED:-6}"
 WO_STALE_MIN="${OPS_WO_STALE_MINUTES:-180}"             # wo-* no-heartbeat deadline
