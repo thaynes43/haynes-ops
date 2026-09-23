@@ -149,6 +149,8 @@ spec:
       # role swap unchanged (ComfyUI took the thermally-limited slot so the chat
       # LLM could have the cool one — see #3052 and comfyui's own helmrelease).
       # The graphs said `gpu:1` only back when the container could see both.
+      # 2026-09-23: ComfyUI moved to 3090 #1 (GPU-d8a856f1-…) after #0 fell off
+      # the bus; still exactly one visible card, so `gpu:0` is still right.
       # ~35-50 s warm at 25
       # steps, against the ~477 s the old 50-step Qwen-Image-2512 graph took.
       # Full write-up + the once-only admin step:

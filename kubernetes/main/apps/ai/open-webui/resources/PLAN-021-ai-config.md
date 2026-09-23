@@ -470,7 +470,17 @@ two RTX 3090s. ComfyUI took `cuda:0` = the replacement card (VM bus `01:00.0`, U
 contends with ComfyUI. Which app gets which card, and whether Ollama should span both, is an open
 decision: haynes-ops#2960.
 
-#### Current — the per-app GPU split (owner ruling 2026-09-22, haynes-ops#2960)
+#### Current — ComfyUI on 3090 #1, llama-server suspended (owner ruling 2026-09-23)
+
+On 2026-09-23 14:47 EDT 3090 #0 (`GPU-18bf6eab-…`, hot slot) dropped off the PCIe bus in the middle
+of a ComfyUI render (`unspecified launch failure`, then the host read its config space as all-FF).
+The driver fault also wedged 3090 #1 inside the same VM, so both cards were down until talosw01
+and its host were rebooted. Owner ruling: ComfyUI moves to 3090 #1 (`GPU-d8a856f1-…`, cool slot),
+and `llama-server` (Muse Glimmer) is scaled to 0 for now, because the two cannot share one 3090.
+#0 gets no tenant until haynes-ops#3052 is fixed. The table below is the 2026-09-22 layout, kept
+because it is the one to return to.
+
+#### Previous — the per-app GPU split (owner ruling 2026-09-22, haynes-ops#2960)
 
 `#2960`'s "no per-app GPU pinning" is **lifted**. talosw01's two 3090s are now owned per app, by
 `NVIDIA_VISIBLE_DEVICES` on each container (the device plugin cannot pin a *named* card, so no app
