@@ -1,0 +1,47 @@
+# Header-injecting hop: Home Assistant / dev-env -> haynesnetwork's in-cluster MCP endpoint.
+# Why it exists (haynesnetwork ADR-087 / DESIGN-049 D-04): Home Assistant's `mcp` integration
+# can carry neither a static bearer token nor PKCE, and /api/mcp requires a bearer. nginx adds it,
+# so neither Home Assistant nor dev-env ever holds the token.
+#
+# ENVSUBST: the entrypoint renders this file into /etc/nginx/conf.d/default.conf.
+# NGINX_ENVSUBST_FILTER pins substitution to HNET_MCP_HOP_TOKEN alone, so nginx's own $variables
+# pass through untouched. Keep the filter in sync if a placeholder is ever added.
+#
+# FLUX: the generated ConfigMap carries kustomize.toolkit.fluxcd.io/substitute: disabled.
+#
+# DNS: proxy_pass with a literal hostname resolves once, at config load. The Service ClusterIP is
+# stable for the Service's lifetime; if the haynesnetwork Service is ever recreated, restart this pod.
+
+server {
+    listen 8080;
+    server_name _;
+
+    # Probes only; never touches the upstream, so a haynesnetwork outage does not restart this pod.
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Exactly one path is proxied: this listener speaks for the owner's watch-history consumer
+    # token, so its reachable surface stays the MCP endpoint and nothing else. Anything else gets
+    # nginx's own 404 and never leaves the pod.
+    location = /mcp {
+        proxy_pass http://haynesnetwork.frontend.svc.cluster.local:3000/api/mcp;
+        proxy_http_version 1.1;
+
+        # The entire point of this app. Overrides whatever the client sent.
+        proxy_set_header Authorization "Bearer ${HNET_MCP_HOP_TOKEN}";
+        proxy_set_header Host haynesnetwork.frontend.svc.cluster.local;
+        proxy_set_header Accept $http_accept;
+        # Clear the hop-by-hop Connection header so keepalive to the upstream survives.
+        proxy_set_header Connection "";
+
+        # The endpoint is stateless JSON (no SSE), but never buffer: a slow Plex write must not
+        # sit in nginx's buffer past the client's patience. MCP calls from HA time out at 10 s.
+        proxy_buffering off;
+        proxy_read_timeout 30s;
+        proxy_send_timeout 30s;
+        client_max_body_size 64k;
+    }
+}

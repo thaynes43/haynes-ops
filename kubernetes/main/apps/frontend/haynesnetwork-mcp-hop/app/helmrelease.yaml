@@ -1,0 +1,124 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+#
+# haynesnetwork-mcp-hop -- a header-injecting reverse proxy that gives Home Assistant and the
+# dev-env agents an in-cluster, credential-free path to haynesnetwork's Watch Companion MCP
+# endpoint (POST /api/mcp; haynesnetwork ADR-087, DESIGN-049 D-04, OPS-015).
+#
+# WHY IT EXISTS
+#   Home Assistant's `mcp` integration (2026.9) takes a URL plus optional OAuth and nothing else:
+#   no static header, no PKCE. The endpoint requires `Authorization: Bearer <consumer token>`, and
+#   the token is generated in-cluster (../../haynesnetwork/app/mcp-consumer.yaml) so no person or
+#   agent ever handles it. nginx adds the header. Same pattern as home-automation/cigar-mcp-hop.
+#
+# BLAST RADIUS
+#   Anything that can reach :8080 acts as the Plex server owner on the watch tools (read history,
+#   mark titles watched in Plex). So: ClusterIP only, NO ingress ever, and the
+#   CiliumNetworkPolicy beside this file admits only the Home Assistant pod, the dev-env pod and
+#   kubelet probes. The endpoint itself is also excluded from every haynesnetwork IngressRoute.
+#
+# NO GATUS ENDPOINT
+#   The gatus components probe a public https://<app>.haynesops.com URL; this app has no ingress
+#   by design, so such a check would fail forever and page. The kubelet probes cover liveness.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: haynesnetwork-mcp-hop
+  annotations:
+    # NGINX_ENVSUBST_FILTER's trailing `$` anchor must reach the container intact, so keep Flux's
+    # postBuild envsubst off this document (same reason as the ConfigMap in kustomization.yaml).
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      haynesnetwork-mcp-hop:
+        annotations:
+          # The token is baked into the rendered nginx config at start, so a rotated Secret
+          # takes effect only on a restart; Reloader does that.
+          reloader.stakater.com/auto: "true"
+        containers:
+          app:
+            image:
+              # nginx-unprivileged: same entrypoint/template mechanism as the stock image, built
+              # for uid 101 with a :8080 listener (conf.d is not root-owned).
+              repository: docker.io/nginxinc/nginx-unprivileged
+              tag: 1.31.6-alpine
+            env:
+              NGINX_ENVSUBST_FILTER: "^HNET_MCP_HOP_TOKEN$"
+              HNET_MCP_HOP_TOKEN:
+                valueFrom:
+                  secretKeyRef:
+                    name: haynesnetwork-mcp-consumer
+                    key: HNET_MCP_HOP_TOKEN
+            probes:
+              # /healthz is served by nginx itself and never touches the upstream.
+              liveness: &probes
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8080
+                  initialDelaySeconds: 5
+                  periodSeconds: 30
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              readiness: *probes
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 128Mi
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile: { type: RuntimeDefault }
+    service:
+      app:
+        controller: haynesnetwork-mcp-hop
+        ports:
+          http:
+            port: 8080
+    persistence:
+      nginx-template:
+        type: configMap
+        name: haynesnetwork-mcp-hop-nginx
+        globalMounts:
+          - path: /etc/nginx/templates/default.conf.template
+            subPath: default.conf.template
+            readOnly: true
+      # readOnlyRootFilesystem needs three writable spots: the rendered conf.d, nginx's pid under
+      # /tmp, and proxy/client temp files under /var/cache/nginx.
+      nginx-conf-d:
+        type: emptyDir
+        globalMounts:
+          - path: /etc/nginx/conf.d
+      nginx-cache:
+        type: emptyDir
+        globalMounts:
+          - path: /var/cache/nginx
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
