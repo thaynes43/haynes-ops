@@ -20,7 +20,7 @@
 # (owner's GitHub repos newest-pushed first; offline → local clones), agent (claude|
 # codex), then a MODE picker, a MODEL picker, and an EFFORT picker filtered to the
 # chosen model for BOTH tools (claude: haiku has no effort control, the 4.6 tier lacks
-# xhigh; codex: max on gpt-6-astra + the gpt-5.6 tier, ultra only on astra/sol/terra).
+# xhigh; codex: max on the GPT-6 + GPT-5.6 tiers, ultra only on astra/sol/terra).
 # Flags win — scripted callers pass them and see no prompts (defaults: effort xhigh
 # where the model takes it, model = each tool's own default).
 #
@@ -95,7 +95,7 @@ agent-run — worktree-per-task agent dispatcher
       --interactive                           # claude → mode=both (TUI here + phone/web); codex → local TUI
       --local                                 # terminal TUI here only, no remote (implies --interactive)
       --safe                                  # keep permission prompts (default: skipped — pod is the sandbox)
-      --model <m>                             # claude MODEL ID (claude-fable-5-1, claude-opus-5, …) or codex slug;
+      --model <m>                             # claude MODEL ID (claude-fable-5-1, claude-opus-5-5, …) or codex slug;
                                               # all modes. Bare aliases (fable/opus/…) still work but resolve
                                               # client-side against the PINNED CLI and can silently serve an
                                               # older tier — prefer the id. See the model picker comment.
@@ -375,19 +375,23 @@ claude_effort_rows() {  # $1 = model
 # fallback gets refreshed (dev-env PR) instead of rotting silently.
 CODEX_CACHE="${CODEX_HOME:-$HOME/.codex}/models_cache.json"
 
-# Fallback = the catalog codex 0.153.4 serves (snapshot 2026-09-06). NB the catalog
+# Fallback = the catalog codex 0.156.1 serves (snapshot 2026-09-23). NB the catalog
 # is served PER CLIENT VERSION: a model launched after the image's CODEX_VERSION
 # pin (scripts/dev-env/Dockerfile) is simply absent from the cache — gpt-6-astra
-# did not exist to 0.151.0 and needed 0.153.4. So a missing codex row can mean
-# "bump the pin", not "unavailable" — the same CLI-floor trap as claude's ids.
+# did not exist to 0.151.0 and needed 0.153.4; gpt-6-sol/gpt-6-luna needed 0.156.1
+# (0.154.0's cache never listed them). So a missing codex row can mean "bump the
+# pin", not "unavailable" — the same CLI-floor trap as claude's ids. The slugs
+# here must match the live list EXACTLY or codex_model_rows WARNs on every run:
+# 0.156.1 also delisted gpt-5.4-mini, so it left this table too.
 codex_model_rows_fallback() {
   printf '%s\n' \
-    'gpt-6-astra    GPT-6-Astra · most capable, complex demanding work' \
-    'gpt-5.6-sol    GPT-5.6-Sol · reliable agentic workhorse' \
-    'gpt-5.6-terra  GPT-5.6-Terra · balanced everyday' \
-    'gpt-5.6-luna   GPT-5.6-Luna · fast & affordable' \
-    'gpt-5.5        GPT-5.5 · prior generation' \
-    'gpt-5.4-mini   GPT-5.4-Mini · small & fast'
+    'gpt-6-astra    GPT-6-Astra · frontier intelligence for the most demanding work' \
+    'gpt-6-sol      GPT-6-Sol · workhorse for coding and everyday work (codex subagent default)' \
+    'gpt-6-luna     GPT-6-Luna · fast and affordable for easier tasks' \
+    'gpt-5.6-sol    GPT-5.6-Sol · older coding model for complex work' \
+    'gpt-5.6-terra  GPT-5.6-Terra · older balanced model' \
+    'gpt-5.6-luna   GPT-5.6-Luna · older fast and efficient model' \
+    'gpt-5.5        GPT-5.5 · legacy coding model'
 }
 
 # Visible models in priority order: "slug  DisplayName · description".
@@ -443,9 +447,9 @@ codex_effort_rows() {
 
 codex_effort_rows_fallback() {
   case "$1" in
-    gpt-6-astra|gpt-5.6-sol|gpt-5.6-terra)
+    gpt-6-astra|gpt-6-sol|gpt-5.6-sol|gpt-5.6-terra)
       printf '%s\n' 'xhigh   (dev-env default)' 'ultra   (max reasoning + auto-delegation)' 'max' 'high' 'medium' 'low' ;;
-    gpt-5.6-luna)
+    gpt-6-luna|gpt-5.6-luna)
       printf '%s\n' 'xhigh   (dev-env default)' 'max' 'high' 'medium' 'low' ;;
     *)
       printf '%s\n' 'xhigh   (dev-env default)' 'high' 'medium' 'low' ;;
@@ -592,12 +596,16 @@ case "$cmd" in
         # A full id can also be NEWER THAN THE PINNED CLI in the other direction:
         # Fable 5.1 needs claude-code >=2.1.255 and an older CLI REJECTS the id
         # outright ("Claude Code does not support this model") — no fallback, the
-        # session never starts. Bump the image (Dockerfile CLAUDE_CODE_VERSION)
-        # before adding such a row. Fable 5.1 runs the 1M window by default on the
-        # API, so no [1m] suffix (2026-09-01: claude-fable-5[1m] → claude-fable-5-1).
+        # session never starts; Opus 5.5 (claude-opus-5-5, launched 2026-09-22)
+        # likewise needs >=2.1.280 (2.1.270 answers "unrecognized_model"). Bump the
+        # image (Dockerfile CLAUDE_CODE_VERSION) before adding such a row. Fable 5.1
+        # runs the 1M window by default on the API, so no [1m] suffix (2026-09-01:
+        # claude-fable-5[1m] → claude-fable-5-1). Opus 5.5's own stock effort is
+        # medium (every other tier: high) — moot here, agent-run always passes one.
         model="$(pick 'model:' \
           'claude-fable-5-1    Fable 5.1 · 1M ctx, most capable (dev-env default)' \
-          'claude-opus-5       Opus 5 · deep reasoning + agentic coding' \
+          'claude-opus-5-5     Opus 5.5 · Fable-class agentic coding at Opus price (subagent default)' \
+          'claude-opus-5       Opus 5 · prior Opus; what the automated lanes still pin' \
           'claude-sonnet-5     Sonnet 5 · near-Opus quality, cheaper' \
           'claude-haiku-4-5    Haiku 4.5 · fastest, simple tasks — no effort control')" || model=""
         # No "leave it unset" row: ~/.claude/settings.json lives on the PVC, not in

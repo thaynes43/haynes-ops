@@ -153,8 +153,8 @@ Bare `agent-run` walks every choice; flags skip the walkthrough.
 ```bash
 # Claude Code — interactive + phone-drivable, Fable 5.1 at xhigh (Tom's surface)
 agent-run --repo <name> --agent claude --interactive --model claude-fable-5-1 --effort xhigh
-# Claude Code — separate headless task on Opus 5
-agent-run --repo <name> --agent claude --model claude-opus-5 --effort xhigh -p "<task>"
+# Claude Code — separate headless task on Opus 5.5
+agent-run --repo <name> --agent claude --model claude-opus-5-5 --effort xhigh -p "<task>"
 # Codex — local TUI, GPT-6 Astra at max
 agent-run --repo <name> --agent codex --local --model gpt-6-astra --effort max
 # Codex — headless task
@@ -209,12 +209,13 @@ convenience, not a dependency. An unused standby worktree is reaped by `agent-ru
 
 **Model ids and effort.** Use full ids, never aliases (`fable`, `opus`): an alias
 resolves CLIENT-side against the pinned CLI and can silently serve an older tier
-(freshness contract below). Claude: `claude-fable-5-1`, `claude-opus-5`,
-`claude-sonnet-5`, `claude-haiku-4-5`; effort `low|medium|high|xhigh|max` (or
-`ultracode`) on the 5-family, none at all on Haiku 4.5. Codex: `gpt-6-astra`
-(top), `gpt-5.6-sol|terra|luna`, `gpt-5.5`, `gpt-5.4-mini`; effort
-`low|medium|high|xhigh`, plus `max` on astra + gpt-5.6 and `ultra` on
-astra/sol/terra. agent-run refuses a level the model can't honour instead of
+(freshness contract below). Claude: `claude-fable-5-1`, `claude-opus-5-5`,
+`claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5`; effort
+`low|medium|high|xhigh|max` (or `ultracode`) on the 5-family, none at all on
+Haiku 4.5. Codex: `gpt-6-astra` (top), `gpt-6-sol`, `gpt-6-luna`,
+`gpt-5.6-sol|terra|luna`, `gpt-5.5`; effort `low|medium|high|xhigh`, plus `max`
+on the GPT-6 + 5.6 tiers and `ultra` on astra/sol/terra (both generations).
+agent-run refuses a level the model can't honour instead of
 letting the tool clamp it silently. Quote any `[1m]`-suffixed id (the brackets
 are glob metacharacters); Fable 5.1 needs no suffix, it runs 1M by default.
 
@@ -243,7 +244,7 @@ Claude: expect the banner (model, effort, `Claude Max`) and, for `both`, the
 name the model you asked for (`Fable 5.1` for `claude-fable-5-1`) — an older
 tier means the picker or the image is stale (freshness contract below). `out of
 usage credits` with `Worked for 0s` is the plan's Fable wall, not an agent-run
-bug — redispatch on `claude-opus-5` and tell Tom. Codex: expect the TUI header
+bug — redispatch on `claude-opus-5-5` and tell Tom. Codex: expect the TUI header
 naming the model and the `>` prompt; `/mcp` inside it should list the same
 servers claude has (both are rendered from one `mcp.json`).
 
@@ -289,18 +290,18 @@ reads them and treats a matching alert as dev-caused rather than a fault. They
 are a hint, not a mute — an alert outside your declared scope still gets handled,
 and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
 
-## Model policy (Tom, updated 2026-09-10) — which model runs where
+## Model policy (Tom, updated 2026-09-23) — which model runs where
 
 | Surface | Model | Why |
 |---|---|---|
-| **Automated Claude Code agents** — alert-responder, upgrade-shepherd, dev-env-ops (both lanes) | **latest Opus**, pinned explicitly (`claude-opus-5` today) | They merge upgrades and touch production unattended; being wrong costs more than the quota. Pinned not aliased — alias repoints lag a launch by days. |
+| **Automated Claude Code agents** — alert-responder, upgrade-shepherd, dev-env-ops (both lanes) | **latest Opus**, pinned explicitly (`claude-opus-5` today — the Opus 5.5 move for these lanes is a separate change: their images pin their own CLI floors) | They merge upgrades and touch production unattended; being wrong costs more than the quota. Pinned not aliased — alias repoints lag a launch by days. |
 | **Tom's interactive Claude Code work** | **latest Fable** — `claude-fable-5-1` (Fable 5.1) since 2026-09-01; the Claude Code pod-wide default, re-asserted by dev-init on every boot | This is the surface Fable's plan quota is reserved for. Needs claude-code >=2.1.255 in the image — an older CLI rejects the id outright. |
-| **Native Claude Code subagents** | **Opus 5**, exact id `claude-opus-5`, effort `xhigh` | Mandatory in every repo for work delegated by a Claude Code driver. |
+| **Native Claude Code subagents** | **Opus 5.5**, exact id `claude-opus-5-5`, effort `xhigh` | Mandatory in every repo for work delegated by a Claude Code driver. Since 2026-09-23 (was Opus 5); needs claude-code >=2.1.280 in the image. |
 | **Tom's interactive Codex work** | **GPT-6 Astra**, exact id `gpt-6-astra`, reasoning effort `max` | This remains the Codex driving model configured for the pod. |
-| **Native Codex collaboration subagents** | **GPT-5.6 Sol**, exact id `gpt-5.6-sol`, reasoning effort `xhigh` | Mandatory in every repo for work delegated by a Codex driver. |
+| **Native Codex collaboration subagents** | **GPT-6 Sol**, exact id `gpt-6-sol`, reasoning effort `xhigh` | Mandatory in every repo for work delegated by a Codex driver. Since 2026-09-23 (was GPT-5.6 Sol); needs codex >=0.156.1 in the image. |
 | **Any pay-per-token Claude API-key call** | **Sonnet 5** (`claude-sonnet-5`) | Never use Fable or Opus on Claude API pricing. Sonnet 5 is near-Opus at a fraction of the cost and can dispatch a plan-served Claude Code agent for heavy lifting. This rule does not govern OpenAI API calls. |
 
-### Subagent dispatch rules (Tom, updated 2026-09-10 — apply in EVERY repo)
+### Subagent dispatch rules (Tom, updated 2026-09-23 — apply in EVERY repo)
 
 These bind every session in this pod regardless of which repo the worktree holds
 (a longer Claude Code-specific worked version lives in
@@ -312,12 +313,12 @@ when the task explicitly calls for one, including when Tom explicitly requests
 a Claude Code session from Codex.
 
 - **Claude Code drivers:** default every eligible unit of work to a native Opus
-  5 subagent with exact model `claude-opus-5` and effort `xhigh`. This applies
+  5.5 subagent with exact model `claude-opus-5-5` and effort `xhigh`. This applies
   especially to Fable sessions: the Fable budget is scarce, shared with Tom's
   interactive use, and should be treated as nearly exhausted.
 - **Codex drivers:** default every eligible unit of work to a native collaboration
   subagent using `collaboration.spawn_agent` with `fork_turns: "none"`, exact
-  model `gpt-5.6-sol`, and `reasoning_effort: "xhigh"`. Fresh empty context is
+  model `gpt-6-sol`, and `reasoning_effort: "xhigh"`. Fresh empty context is
   deliberate: give it a self-contained work order with the objective, relevant
   paths and constraints, expected deliverable, and enough verified context to
   work without the parent conversation. Do not use `agent-run` for these native
@@ -349,7 +350,7 @@ defaults. Agents are the tripwire — see the freshness contract below.
 **Claude Code quota exhaustion is a real failure mode:** on 2026-08-23 the plan's Fable
 credits ran out; sessions silently drifted to Opus and a fresh Fable dispatch
 refused its first turn (`out of usage credits` + `Worked for 0s`). That is a
-credit wall, not an agent-run bug — use `claude-opus-5` and tell Tom. It is not
+credit wall, not an agent-run bug — use `claude-opus-5-5` and tell Tom. It is not
 a reason for a Codex driver to switch providers.
 
 ## Model pickers (agent-run) — freshness contract
@@ -374,8 +375,9 @@ surfaces still rot, and **agents are the tripwire for both**:
   wrongly reverted Opus 5→4.8 this way on 2026-08-06. Two more traps: alias
   repoints lag a launch by days (`opus` served 4.8 while `claude-opus-5` was
   already live), and a full id can be newer than the pinned CLI supports
-  (Fable 5.1 needs claude-code >=2.1.255; older CLIs reject it outright rather
-  than fall back) — so a new row may need an image bump first. The per-model
+  (Fable 5.1 needs claude-code >=2.1.255, Opus 5.5 needs >=2.1.280; older CLIs
+  reject the id outright rather than fall back) — so a new row may need an image
+  bump first. The per-model
   effort table only lists the reduced tiers; re-check it against the effort
   table in code.claude.com/docs/en/model-config when a model launches with a
   different level set.
@@ -384,8 +386,8 @@ surfaces still rot, and **agents are the tripwire for both**:
   model launched after the image's `CODEX_VERSION` pin
   (`scripts/dev-env/Dockerfile`) never appears in the cache, the picker, or the
   remote-control phone picker until the pin is bumped (`gpt-6-astra` did not
-  exist to 0.151.0 and needed 0.153.4 — 2026-09-06). Bump first, then refresh
-  the fallbacks.
+  exist to 0.151.0 and needed 0.153.4 — 2026-09-06; `gpt-6-sol`/`gpt-6-luna`
+  needed 0.156.1 — 2026-09-23). Bump first, then refresh the fallbacks.
 
 Either way the fix is the same: open a standard held-draft dev-env PR editing
 `kubernetes/main/apps/dev/dev-env/app/resources/agent-run.sh` (labels/fallbacks
