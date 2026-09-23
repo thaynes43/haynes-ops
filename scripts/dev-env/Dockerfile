@@ -38,7 +38,7 @@ ARG KUBECTL_VERSION=v1.37.0
 # renovate: datasource=github-releases depName=fluxcd/flux2
 ARG FLUX_VERSION=2.9.5
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION=2.100.0
+ARG GH_VERSION=2.101.0
 # renovate: datasource=github-releases depName=helm/helm
 ARG HELM_VERSION=3.22.0
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.+)$
@@ -58,15 +58,15 @@ ARG RESTIC_VERSION=0.19.1
 # talosctl — read-only node triage (dmesg/logs/get) via apid; MUST track the cluster's
 # Talos version (nodes run v1.13.3). Same style as kubectl: the `v` lives in the ARG.
 # renovate: datasource=github-releases depName=siderolabs/talos
-ARG TALOSCTL_VERSION=v1.14.0
+ARG TALOSCTL_VERSION=v1.14.1
 # omnictl — read-only Omni machine/cluster status against SaaS Omni (the self-hosted
 # instance was decommissioned 2026-09-22); tracks upstream siderolabs/omni releases,
 # which stay API-compatible with nearby omnictl versions. renovate: datasource=github-releases depName=siderolabs/omni
-ARG OMNICTL_VERSION=v1.12.0
+ARG OMNICTL_VERSION=v1.12.1
 # renovate: datasource=github-releases depName=coder/code-server extractVersion=^v(?<version>.+)$
-ARG CODE_SERVER_VERSION=4.137.0
+ARG CODE_SERVER_VERSION=4.138.0
 # renovate: datasource=github-releases depName=astral-sh/uv
-ARG UV_VERSION=0.12.13
+ARG UV_VERSION=0.12.18
 # ── claude-code ── NOTE: this prose sits ABOVE the `# renovate:` line ON PURPOSE.
 # See the "version numbers in comments" warning at the top of this ARG block.
 # 2.1.251 (2026-08-29): catching up 35 releases of drift. 2.1.217 was pinned by
@@ -88,7 +88,7 @@ ARG UV_VERSION=0.12.13
 # Bash started asking for permission after a session had been running a while —
 # directly relevant here, where agent sessions are long-lived by design.
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.270
+ARG CLAUDE_CODE_VERSION=2.1.280
 # Codex is installed at BOOT as the managed STANDALONE (dev-init.sh), not via npm —
 # only the standalone can run `codex remote-control`. This pins that standalone
 # version; @openai/codex npm releases track the same numbers as the rust-v* GitHub
@@ -107,9 +107,9 @@ ARG CLAUDE_CODE_VERSION=2.1.270
 # (#2829) — codex refuses to load the config without it and remote-control never
 # starts, silently, at every boot.
 # renovate: datasource=npm depName=@openai/codex
-ARG CODEX_VERSION=0.154.0
+ARG CODEX_VERSION=0.156.1
 # renovate: datasource=npm depName=tsx
-ARG TSX_VERSION=4.23.13
+ARG TSX_VERSION=4.23.15
 # ── pnpm ── prose ABOVE the annotation on purpose (see the warning above).
 # The binding constraint is haynesnetwork's `engines.pnpm: ">=11"` — pnpm 10 hard-
 # refuses to install there. Keep this ARG on the 11 line unless every repo drops it.
@@ -119,9 +119,9 @@ ARG TSX_VERSION=4.23.13
 # whatever this ARG happened to be. It never did — Renovate had been rewriting the
 # number inside the comment on every bump, manufacturing a fact that was never true.)
 # renovate: datasource=npm depName=pnpm
-ARG PNPM_VERSION=11.27.0
+ARG PNPM_VERSION=11.27.1
 # renovate: datasource=npm depName=@playwright/mcp
-ARG PLAYWRIGHT_MCP_VERSION=0.0.80
+ARG PLAYWRIGHT_MCP_VERSION=0.0.82
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
