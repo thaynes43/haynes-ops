@@ -18,7 +18,8 @@ WORKERS=(103 108 113)
 
 usage() {
   cat <<'USAGE'
-usage: pve [--ro] [--yes] [--raw] [--node <name>] <command>
+usage: pve [--ro] [--yes] [--raw] [--any] [--node <name>] <command>
+       global flags may appear anywhere: `pve --yes delete <path>` == `pve delete <path> --yes`
 
   ha                          HA resources + quorum/CRM/LRM state (the fence picture)
   nodes                       node status / uptime / load
@@ -41,6 +42,13 @@ need() { command -v "$1" >/dev/null 2>&1 || die "missing $1"; }
 need curl; need jq
 
 # ---- flags ------------------------------------------------------------------
+# Position-independent: this pre-pass walks EVERY argument, consumes the global flags
+# wherever they appear (and --node's value), and rebuilds the positional array for the
+# verb dispatch below. It used to stop at the first non-flag word, so the natural
+# `pve delete /cluster/ha/resources/vm:104 --yes` handed `--yes` to the API as a
+# parameter and died with "add --yes to perform this write" — which reads like a
+# permission problem (cost a detour on 2026-09-22). Use `--` to pass a literal `--yes`.
+ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ro)   RO=1; shift ;;
@@ -49,9 +57,11 @@ while [[ $# -gt 0 ]]; do
     --any)  ANY=1; shift ;;
     --node) [[ $# -ge 2 ]] || die "--node needs a name"; PVE_API_URL="https://$2.haynesnetwork:8006"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
-    *) break ;;
+    --)     shift; ARGS+=("$@"); break ;;
+    *)      ARGS+=("$1"); shift ;;
   esac
 done
+set -- ${ARGS[@]+"${ARGS[@]}"}   # bash 3.2 + set -u: see the note in api()
 [[ $# -ge 1 ]] || { usage; exit 1; }
 
 # ---- token ------------------------------------------------------------------
