@@ -24,6 +24,12 @@ spec:
   values:
     controllers:
       llama-server:
+        # SUSPENDED 2026-09-23 (owner ruling): 3090 #0 fell off the PCIe bus
+        # and ComfyUI moved onto this pod's card (#1, GPU-d8a856f1-…); both
+        # cannot fit on one 3090. Set back to 1 only together with moving
+        # ComfyUI off GPU-d8a856f1 (see comfyui's helmrelease) — and re-point
+        # the Rumpus Room Voice PE at the Jarvis pipeline again.
+        replicas: 0
         annotations:
           reloader.stakater.com/auto: "true"
         # One resident model on one card: never two copies mid-rollout, both
