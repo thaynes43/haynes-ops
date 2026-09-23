@@ -10,8 +10,8 @@ translations:
 | `AskUserQuestion` — push a question to Tom's phone | your `request_user_input` tool: ONE question at a time, at the moment it arises, never a prose "open questions" list |
 | `ListAgents` / `SendMessage` — peer sessions | your native `collaboration.list_agents`, `collaboration.send_message`, `collaboration.followup_task`, and related tools for the current task tree; independently launched CLI sessions still coordinate through git, work orders, and the PVC |
 | `claude --remote-control`, `/remote-control` | the pod-level daemon `agent-run codex-remote` (see Sessions) |
-| Fable / Opus / Sonnet rows, `--effort` | your driving model remains `gpt-6-astra` at `max` (config.toml); your native subagents use exact model `gpt-5.6-sol` at `xhigh` |
-| Claude Code's Opus subagent rule | use native Codex collaboration instead: `collaboration.spawn_agent` with `fork_turns: "none"`, `model: "gpt-5.6-sol"`, `reasoning_effort: "xhigh"`, and a self-contained work order |
+| Fable / Opus / Sonnet rows, `--effort` | your driving model remains `gpt-6-astra` at `max` (config.toml); your native subagents use exact model `gpt-6-sol` at `xhigh` (GPT-5.6 Sol until 2026-09-23) |
+| Claude Code's Opus subagent rule | use native Codex collaboration instead: `collaboration.spawn_agent` with `fork_turns: "none"`, `model: "gpt-6-sol"`, `reasoning_effort: "xhigh"`, and a self-contained work order |
 | `~/.claude/CLAUDE.md`, agent memory | your instruction chain is this file + each repo's `AGENTS.md`, or its `CLAUDE.md` where there is none (config.toml `project_doc_fallback_filenames`) |
 
 Codex-specific traps:

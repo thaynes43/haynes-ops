@@ -26,7 +26,7 @@ Bare `agent-run` prompts for every choice it isn't given, **tool-first**: repo �
 --interactive       claude → both (TUI here + phone/web); codex → local TUI
 --local             terminal TUI here only, no remote (implies --interactive)
 --safe              keep permission prompts (default: bypassed)
---model <m>         claude id (claude-fable-5-1|claude-opus-5|…; aliases fable|opus|sonnet|haiku work, see below) or codex slug (gpt-5.6-sol|…)
+--model <m>         claude id (claude-fable-5-1|claude-opus-5-5|…; aliases fable|opus|sonnet|haiku work, see below) or codex slug (gpt-6-sol|…)
 --effort <level>    claude low|medium|high|xhigh|max|ultracode, per model (haiku: none); codex adds ultra; default xhigh
 ```
 
@@ -58,22 +58,22 @@ To add or change a server, edit `mcp.json` once (held-draft dev-env PR — it bo
 
 Model is picked first; effort then offers only that model's levels (both tools). Default effort is **`xhigh`** wherever the model supports it. Unset model → the tool's own default. `/model` and `/effort` override in-session (`s` in either picker = this session only).
 
-- **claude** — `claude-fable-5-1` (pod default: Fable 5.1, 1M context by default — no `[1m]` suffix), `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5`. Passed as top-level `--model`/`--effort` flags, which compose with `--remote-control`, so they apply in **all** claude modes. Effort is **per model** (Claude Code's own table — `claude --help` prints only the union):
+- **claude** — `claude-fable-5-1` (pod default: Fable 5.1, 1M context by default — no `[1m]` suffix), `claude-opus-5-5` (subagent default since 2026-09-23), `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5`. Passed as top-level `--model`/`--effort` flags, which compose with `--remote-control`, so they apply in **all** claude modes. Effort is **per model** (Claude Code's own table — `claude --help` prints only the union):
 
   | model | effort levels |
   |---|---|
-  | Fable 5.1, Fable 5, Opus 5, Sonnet 5, Opus 4.8 / 4.7 | `low` `medium` `high` `xhigh` `max` (+ `ultracode`) |
+  | Fable 5.1, Fable 5, Opus 5.5, Opus 5, Sonnet 5, Opus 4.8 / 4.7 | `low` `medium` `high` `xhigh` `max` (+ `ultracode`) |
   | Opus 4.6, Sonnet 4.6 | `low` `medium` `high` `max` |
   | Haiku 4.5, Sonnet 4.5 and older | none — no effort control |
 
-  Claude Code never rejects a mismatch: an unsupported level silently clamps down to the nearest supported one (`xhigh` → `high` on 4.6) and Haiku ignores `--effort` entirely. `agent-run` therefore refuses an explicit level the model can't honour, offers no effort step for Haiku, and logs `effort=none` for it — what the log says is what the banner shows. `ultracode` = `xhigh` + dynamic multi-agent workflows (a Claude Code setting, accepted at launch since 2.1.203); it spends quota fastest.
+  Claude Code never rejects a mismatch: an unsupported level silently clamps down to the nearest supported one (`xhigh` → `high` on 4.6) and Haiku ignores `--effort` entirely. `agent-run` therefore refuses an explicit level the model can't honour, offers no effort step for Haiku, and logs `effort=none` for it — what the log says is what the banner shows. `ultracode` = `xhigh` + dynamic multi-agent workflows (a Claude Code setting, accepted at launch since 2.1.203); it spends quota fastest. Opus 5.5's own stock default is `medium` (every other tier: `high`) — moot under agent-run, which always passes a level.
 
   > **Pick the ID, not the alias.** `opus`/`sonnet`/`haiku`/`fable` are resolved **client-side**, from a table baked into the installed CLI — and this pod's CLI is version-pinned in the image. When the image lags a model launch the alias **silently serves the older tier**, with nothing in the banner, the status line, or the logs to say so. Proven on claude-code 2.1.217 (2026-08-29): `--model opus` → `claude-opus-4-8`, `--model claude-opus-5` → `claude-opus-5`, same binary. Full IDs resolve server-side, so they work even when newer than the CLI's alias table. To check what you actually got: the session banner's second line, or `claude --model <id> -p 'model id?'`.
 
   > **`/model` in a session rewrites the pod-wide default.** `~/.claude/settings.json` lives on the PVC, not in the ConfigMap, so an in-session `/model` saves "as your default for new sessions" **for every future session in this pod**, not just yours. That is how the default silently became Opus 4.8 on 2026-08-29. `dev-init` now re-asserts `claude-fable-5-1` on every pod boot (declared in `dev-init.sh`), but a running pod drifts until the next bounce — prefer `--model` at launch; if you do use `/model`, put `claude-fable-5-1` back afterwards (or pick with `s` for a session-only switch).
 
-  > **A full id can be newer than the pinned CLI.** Fable 5.1 needs claude-code ≥ 2.1.255; an older CLI rejects `claude-fable-5-1` outright (`Claude Code does not support this model`) instead of falling back. The image pins `CLAUDE_CODE_VERSION` (2.1.258 since 2026-09-01) — bump it before adding a newer tier to the picker.
-- **codex** — `gpt-6-astra` (default: GPT-6 Astra), `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4-mini`. Effort differs by model: all take `low|medium|high|xhigh`; `max` on gpt-6-astra and the gpt-5.6 tier; `ultra` on astra/sol/terra. Passed as `-m <model> -c model_reasoning_effort=<level>` (codex has no `--effort` flag or `/effort` command — it folds effort into `/model`). Rows come live from `~/.codex/models_cache.json`, which codex serves **per client version** — a model missing from the picker usually means the image's `CODEX_VERSION` pin (0.153.4 since 2026-09-06) predates the launch, not that the model is unavailable.
+  > **A full id can be newer than the pinned CLI.** Fable 5.1 needs claude-code ≥ 2.1.255 and Opus 5.5 needs ≥ 2.1.280; an older CLI rejects the id outright (`Claude Code does not support this model` / `unrecognized_model`) instead of falling back. The image pins `CLAUDE_CODE_VERSION` (2.1.280 since 2026-09-23) — bump it before adding a newer tier to the picker.
+- **codex** — `gpt-6-astra` (default: GPT-6 Astra), `gpt-6-sol` (subagent default since 2026-09-23), `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5` (`gpt-5.4-mini` was delisted by codex 0.156.1). Effort differs by model: all take `low|medium|high|xhigh`; `max` on the GPT-6 and GPT-5.6 tiers; `ultra` on astra/sol/terra in both generations (not luna, not 5.5). Passed as `-m <model> -c model_reasoning_effort=<level>` (codex has no `--effort` flag or `/effort` command — it folds effort into `/model`). Rows come live from `~/.codex/models_cache.json`, which codex serves **per client version** — a model missing from the picker usually means the image's `CODEX_VERSION` pin (0.156.1 since 2026-09-23) predates the launch, not that the model is unavailable.
 
 `ultracode` (claude only) is accepted at launch — `--effort ultracode`, or the picker row — and in-session via `/effort`; codex has no equivalent.
 

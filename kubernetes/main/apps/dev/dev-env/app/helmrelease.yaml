@@ -37,7 +37,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.6.2@sha256:8b962179b3b2dd394733cc83b8c3f9eef8f341f4b53aa02027eac7bd0d818c93
+              tag: 0.6.3@sha256:85dc8284ed877ed3697d6e86998cd0afbd241be4fc6f69b5b6cd952b71d7c3cb
             command: ["/bin/bash", "-c"]
             args:
               # BOOT ORDER — each step must be fast or detached; nothing after
@@ -143,14 +143,14 @@ spec:
                   name: dev-env-proxmox-secret
                   optional: true
               # PVE_OPERATOR_TOKEN_ID / _SECRET — OPERATOR tier (dev-env@pve!operator,
-              # root-equivalent by Tom's Q-1 ruling). NO ExternalSecret creates this
-              # Secret yet, on purpose: the 1Password fields do not exist (verified
-              # 2026-09-13), and an ES pointing at absent fields fails the whole
-              # Kustomization and pages — see the enable-steps comment at the bottom
-              # of externalsecret.yaml. `optional` is what lets this ref sit here
-              # harmlessly meanwhile; the env appears at the first pod bounce after
-              # the Secret exists (reloader does not fire on Secret creation, only
-              # updates). Until then `pve` runs READ-only and refuses writes.
+              # root-equivalent by Tom's Q-1 ruling). Live since 2026-09-18: the
+              # `dev-env-proxmox-operator` ExternalSecret at the bottom of
+              # externalsecret.yaml fills it (#2950, once the 1Password `dev-env`
+              # fields existed — an ES pointing at absent fields fails the whole
+              # Kustomization and pages, #2807). `optional` stays: a missing Secret
+              # must never keep the workhorse from starting, and reloader does not
+              # fire on Secret creation (only updates), so a fresh Secret shows up
+              # at the next pod bounce. Without it `pve` runs READ-only.
               - secretRef:
                   name: dev-env-proxmox-operator-secret
                   optional: true
@@ -210,7 +210,7 @@ spec:
           gh-refresher:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.6.2@sha256:8b962179b3b2dd394733cc83b8c3f9eef8f341f4b53aa02027eac7bd0d818c93
+              tag: 0.6.3@sha256:85dc8284ed877ed3697d6e86998cd0afbd241be4fc6f69b5b6cd952b71d7c3cb
             command: ["/bin/bash", "/opt/dev-env/scripts/gh-token-refresh.sh"]
             env:
               # Down-scope the minted token. NOTE: may only name permissions the App
@@ -242,7 +242,7 @@ spec:
           auth-watch:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.6.2@sha256:8b962179b3b2dd394733cc83b8c3f9eef8f341f4b53aa02027eac7bd0d818c93
+              tag: 0.6.3@sha256:85dc8284ed877ed3697d6e86998cd0afbd241be4fc6f69b5b6cd952b71d7c3cb
             command: ["/bin/bash", "/opt/dev-env/scripts/auth-check.sh"]
             env:
               HOME: /home/dev
