@@ -35,12 +35,11 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr
-              # v0.9.0 (pinned by immutable digest): the Prometheus /metrics endpoint + "ytdrivarr"
-              # dashboard (#19), the *arr operator console (#20), the emit window (#17) + the dry-run
-              # preview stack — recomposeLibrary (#31), preview engine (#32), POST /api/v1/runs/preview
-              # (#34); v0.9.0 adds config-override preview (thaynes43/ytdrivarr#36, dry-run PR4 —
-              # preview an unsaved config change before it goes live), on AUTH_MODE=open + M3 Peloton.
-              tag: v0.9.1@sha256:e91097df2717780ec8ff60e639d4cc8df7779b9a227bacc58fe86c457f77ebf8
+              # v0.9.2 (pinned by immutable digest): projects the Peloton provider's yt-dlp plugin
+              # (a PelotonIE override for Peloton's signed stream URLs) into the Peloton library's
+              # .ytdrivarr/ytdlp-plugins, accepts the session_rejected alarm (thaynes43/ytdrivarr#40/#41).
+              # Earlier: /metrics + dashboard (#19), the *arr console (#20), dry-run preview (#31-#36).
+              tag: v0.9.2@sha256:d76373b710bac1775b91330d69328c016dbf688322bc7a91f3298e02443b0b31
             env:
               TZ: America/New_York
               PORT: &port 8080

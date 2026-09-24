@@ -45,10 +45,10 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/ytdrivarr-peloton-worker
-              # v0.6.2 worker: the login-form hydration stale-element hardening
-              # (thaynes43/ytdrivarr#9) + the login/bearer/scroll telemetry fix so the auth
-              # metrics stop reading zero (thaynes43/ytdrivarr#26), pinned by immutable digest.
-              tag: v0.9.1@sha256:23bac62c67619edca37495629cb762f19920add66917ec02e314d599b1b749af
+              # v0.9.2 worker: validates every minted session against /api/me before delivering it
+              # (session_rejected alarm) and removes its Chromium profile after each run
+              # (thaynes43/ytdrivarr#40/#41); pinned by immutable digest.
+              tag: v0.9.2@sha256:04e5645c096e17ea8b075a98d6b226686698a1ff9ca7160d2c51bec79105afdc
             env:
               TZ: America/New_York
               LOG_LEVEL: info
