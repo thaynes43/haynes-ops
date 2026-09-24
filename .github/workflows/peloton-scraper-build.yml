@@ -5,9 +5,11 @@ on:
     # main only: every run pushes the fixed :0.3.2 and :latest tags, so a run from
     # any other branch would overwrite the published image before review.
     branches: [main]
+    # The workflow file itself is deliberately NOT a path (same as the other build
+    # workflows): a workflow-only edit must not re-push the fixed tags in place. No
+    # pull_request trigger either — login + push here have no main-only guard.
     paths:
       - 'scripts/peloton-scrape/**'
-      - '.github/workflows/peloton-scraper-build.yml'
   workflow_dispatch:
   
 permissions:
