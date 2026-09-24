@@ -30,9 +30,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest PR65 (Rat Casino playground release record); checked main
-              # publication 35950323812. Exact artwork approval remains pending.
-              tag: sha-2f0b138852f99770ce847ba6894bfd0e459102be@sha256:6c19dafcb6e494be618cf6fcce3f556aa4a6bbf23edf9828b9486715a916670e
+              # Haynes Quest PR66 (sprout-seal favicon and home-screen icon); checked main
+              # publication 36042174434. Exact artwork approval remains pending.
+              tag: sha-d0c1f12112d4c485a84d92bec9c7c4ab7f91f796@sha256:a30865249c7b3de8b23f6f6731a910723ac01b395ca0a1fe26746f1f39a06286
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
