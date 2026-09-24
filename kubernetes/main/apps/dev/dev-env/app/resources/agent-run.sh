@@ -483,13 +483,13 @@ esac
 case "$cmd" in
   run)
     repo="" agent="" base="" prompt="" interactive=0 safe=0 local_tui=0 model="" effort=""
-    # agent-run's OWN claude default (Tom, 2026-09-23): Opus 5.5 — every launch that
+    # agent-run's claude default (Tom, 2026-09-23): Opus 5.5 — every launch that
     # names no --model (flags, or Esc out of the picker) gets this id explicitly.
-    # It is deliberately NOT the pod default: bare `claude` in a shell and the
-    # post-ready standby still ride DEV_ENV_CLAUDE_MODEL (Fable 5.1, Tom's surface,
-    # re-asserted by dev-init), and Fable is asked for by name here
-    # (`--model claude-fable-5-1`). Passing the id keeps a drifted settings.json
-    # from deciding what a dispatched agent runs on. Bump with the picker rows.
+    # Same tier as the pod default (dev-init's DEV_ENV_CLAUDE_MODEL, which governs
+    # bare `claude` and the post-ready standby), but passed by id on purpose: an
+    # in-session /model rewrites settings.json for the whole pod, and a dispatched
+    # agent must not inherit that drift. Fable 5.1 is asked for by name
+    # (`--model claude-fable-5-1`). Bump together with the picker rows + dev-init.
     CLAUDE_DEFAULT_MODEL=claude-opus-5-5
     while [ $# -gt 0 ]; do
       case "$1" in
@@ -613,7 +613,7 @@ case "$cmd" in
         # medium (every other tier: high) — moot here, agent-run always passes one.
         model="$(pick 'model:' \
           'claude-opus-5-5     Opus 5.5 · Fable-class agentic coding at Opus price (agent-run default; subagents too)' \
-          'claude-fable-5-1    Fable 5.1 · 1M ctx, most capable (bare-`claude` pod default; Tom asks for it by name)' \
+          'claude-fable-5-1    Fable 5.1 · 1M ctx, most capable — Tom asks for it by name; scarce quota' \
           'claude-opus-5       Opus 5 · prior Opus; the automated lanes fall back to it' \
           'claude-sonnet-5     Sonnet 5 · near-Opus quality, cheaper' \
           'claude-haiku-4-5    Haiku 4.5 · fastest, simple tasks — no effort control')" || model=""

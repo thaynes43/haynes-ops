@@ -67,11 +67,13 @@ fi
 # silently became Opus 4.8 on 2026-08-29). Re-assert the declared default on every
 # boot; only the `model` key is touched — permissions, statusLine, theme and the
 # per-model effort claude saves under modelSettings stay as they are on the PVC.
-# agent-run passes --model explicitly regardless, so this governs bare `claude`.
-# claude-fable-5-1 = Fable 5.1: 1M window by default on the API (no [1m] suffix);
-# needs claude-code >=2.1.255 (Dockerfile CLAUDE_CODE_VERSION) or the CLI rejects
-# the id outright. Model policy lives in config/claude/CLAUDE.md.
-DEV_ENV_CLAUDE_MODEL="${DEV_ENV_CLAUDE_MODEL:-claude-fable-5-1}"
+# agent-run passes --model explicitly regardless, so this governs bare `claude`
+# (and the post-ready standby, which reads the same default).
+# claude-opus-5-5 = Opus 5.5, the pod-wide default since 2026-09-23 (Tom; was
+# Fable 5.1, which is now asked for by name — `--model claude-fable-5-1`). Needs
+# claude-code >=2.1.280 (Dockerfile CLAUDE_CODE_VERSION) or the CLI rejects the
+# id outright. Model policy lives in config/claude/CLAUDE.md.
+DEV_ENV_CLAUDE_MODEL="${DEV_ENV_CLAUDE_MODEL:-claude-opus-5-5}"
 if command -v jq >/dev/null 2>&1; then
   sj="$HOME/.claude/settings.json"
   [ -s "$sj" ] || printf '{}\n' > "$sj"
