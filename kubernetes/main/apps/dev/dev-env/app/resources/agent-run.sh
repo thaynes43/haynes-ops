@@ -96,7 +96,8 @@ agent-run — worktree-per-task agent dispatcher
       --local                                 # terminal TUI here only, no remote (implies --interactive)
       --safe                                  # keep permission prompts (default: skipped — pod is the sandbox)
       --model <m>                             # claude MODEL ID (claude-fable-5-1, claude-opus-5-5, …) or codex slug;
-                                              # all modes. Bare aliases (fable/opus/…) still work but resolve
+                                              # all modes. Omitted on claude = claude-opus-5-5 (Tom, 2026-09-23);
+                                              # bare aliases (fable/opus/…) still work but resolve
                                               # client-side against the PINNED CLI and can silently serve an
                                               # older tier — prefer the id. See the model picker comment.
       --effort <level>                        # claude low|medium|high|xhigh|max (per model: haiku takes none,
@@ -482,6 +483,14 @@ esac
 case "$cmd" in
   run)
     repo="" agent="" base="" prompt="" interactive=0 safe=0 local_tui=0 model="" effort=""
+    # agent-run's OWN claude default (Tom, 2026-09-23): Opus 5.5 — every launch that
+    # names no --model (flags, or Esc out of the picker) gets this id explicitly.
+    # It is deliberately NOT the pod default: bare `claude` in a shell and the
+    # post-ready standby still ride DEV_ENV_CLAUDE_MODEL (Fable 5.1, Tom's surface,
+    # re-asserted by dev-init), and Fable is asked for by name here
+    # (`--model claude-fable-5-1`). Passing the id keeps a drifted settings.json
+    # from deciding what a dispatched agent runs on. Bump with the picker rows.
+    CLAUDE_DEFAULT_MODEL=claude-opus-5-5
     while [ $# -gt 0 ]; do
       case "$1" in
         --repo) repo="$2"; shift 2 ;;
@@ -603,8 +612,8 @@ case "$cmd" in
         # claude-fable-5[1m] → claude-fable-5-1). Opus 5.5's own stock effort is
         # medium (every other tier: high) — moot here, agent-run always passes one.
         model="$(pick 'model:' \
-          'claude-fable-5-1    Fable 5.1 · 1M ctx, most capable (dev-env default)' \
-          'claude-opus-5-5     Opus 5.5 · Fable-class agentic coding at Opus price (subagent default)' \
+          'claude-opus-5-5     Opus 5.5 · Fable-class agentic coding at Opus price (agent-run default; subagents too)' \
+          'claude-fable-5-1    Fable 5.1 · 1M ctx, most capable (bare-`claude` pod default; Tom asks for it by name)' \
           'claude-opus-5       Opus 5 · prior Opus; the automated lanes fall back to it' \
           'claude-sonnet-5     Sonnet 5 · near-Opus quality, cheaper' \
           'claude-haiku-4-5    Haiku 4.5 · fastest, simple tasks — no effort control')" || model=""
@@ -622,6 +631,10 @@ case "$cmd" in
         model="$(pick 'model:' "${mrows[@]}")" || model=""
       fi
     fi
+
+    # No claude model by now (flags without --model, or the picker was cancelled) →
+    # agent-run's own default, passed explicitly. Codex keeps its empty-means-codex-default.
+    [ "$agent" = claude ] && [ -z "$model" ] && model="$CLAUDE_DEFAULT_MODEL"
 
     # --- effort (deterministic default xhigh; menu + validation filter to the model's set) ---
     # Historically NOTHING set effort — no flag reached RC hosts, no settings key,

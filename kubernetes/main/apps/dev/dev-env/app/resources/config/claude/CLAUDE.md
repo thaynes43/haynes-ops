@@ -230,10 +230,11 @@ Bare `agent-run` walks every choice; flags skip the walkthrough.
 | both | `--interactive` | that TUI **and** a phone/claude.ai-drivable session | falls back to local — codex's remote is pod-level, see below |
 
 ```bash
-# Claude Code — interactive + phone-drivable, Fable 5.1 at xhigh (Tom's surface)
+# Claude Code — interactive + phone-drivable on Fable 5.1 at xhigh (Tom's surface; Fable is
+# asked for BY NAME — agent-run's own default is Opus 5.5 since 2026-09-23)
 agent-run --repo <name> --agent claude --interactive --model claude-fable-5-1 --effort xhigh
-# Claude Code — separate headless task on Opus 5.5
-agent-run --repo <name> --agent claude --model claude-opus-5-5 --effort xhigh -p "<task>"
+# Claude Code — separate headless task on Opus 5.5 (the default: no --model = claude-opus-5-5)
+agent-run --repo <name> --agent claude --effort xhigh -p "<task>"
 # Codex — local TUI, GPT-6 Astra at max
 agent-run --repo <name> --agent codex --local --model gpt-6-astra --effort max
 # Codex — headless task
@@ -374,7 +375,7 @@ and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
 | Surface | Model | Why |
 |---|---|---|
 | **Automated Claude Code agents** — alert-responder, upgrade-shepherd, dev-env-ops (both lanes) | **latest Opus**, pinned explicitly (`claude-opus-5-5` since 2026-09-23; dev-env-ops rides the dev-env image, shepherd/alert-responder the upgrade-shepherd image — each pins its own CLI floor, 2.1.280 for Opus 5.5) | They merge upgrades and touch production unattended; being wrong costs more than the quota. Pinned not aliased — alias repoints lag a launch by days. |
-| **Tom's interactive Claude Code work** | **latest Fable** — `claude-fable-5-1` (Fable 5.1) since 2026-09-01; the Claude Code pod-wide default, re-asserted by dev-init on every boot | This is the surface Fable's plan quota is reserved for. Needs claude-code >=2.1.255 in the image — an older CLI rejects the id outright. |
+| **Tom's interactive Claude Code work** | **latest Fable** — `claude-fable-5-1` (Fable 5.1) since 2026-09-01; the pod-wide default for bare `claude` and the post-ready standby (`DEV_ENV_CLAUDE_MODEL`, re-asserted by dev-init on every boot). **`agent-run` itself defaults to Opus 5.5** (Tom, 2026-09-23): omit `--model` and you get `claude-opus-5-5`; pass `--model claude-fable-5-1` when Fable is wanted | This is the surface Fable's plan quota is reserved for. Needs claude-code >=2.1.255 in the image — an older CLI rejects the id outright. |
 | **Native Claude Code subagents** | **Opus 5.5**, exact id `claude-opus-5-5`, effort `xhigh` | Mandatory in every repo for work delegated by a Claude Code driver. Since 2026-09-23 (was Opus 5); needs claude-code >=2.1.280 in the image. |
 | **Tom's interactive Codex work** | **GPT-6 Astra**, exact id `gpt-6-astra`, reasoning effort `max` | This remains the Codex driving model configured for the pod. |
 | **Native Codex collaboration subagents** | **GPT-6 Sol**, exact id `gpt-6-sol`, reasoning effort `xhigh` | Mandatory in every repo for work delegated by a Codex driver. Since 2026-09-23 (was GPT-5.6 Sol); needs codex >=0.156.1 in the image. |
@@ -421,7 +422,8 @@ Claude Code changelog names the version that added the model; an older pinned
 CLI rejects the id outright, so bump `scripts/dev-env/Dockerfile`
 `CLAUDE_CODE_VERSION` + re-pin the image if needed), probe
 (`claude --model <full-id> -p 'reply with your model id'`), then update the
-pinned ids: `agent-run.sh`'s model picker row, `dev-init.sh`'s
+pinned ids: `agent-run.sh`'s model picker row (and, for Opus, its
+`CLAUDE_DEFAULT_MODEL` — agent-run's own default), `dev-init.sh`'s
 `DEV_ENV_CLAUDE_MODEL` (pod default), and for Opus the
 `upgrade-agent/{alert-responder,shepherd,dev-env-ops}` HRs + their scripts'
 defaults. Agents are the tripwire — see the freshness contract below.
