@@ -39,6 +39,18 @@
       automergeType: 'pr',
       ignoreTests: false,
     },
+    // …except a DIGEST update (2026-09-24 security audit). Every action is SHA-pinned
+    // with a `# vX.Y.Z` comment, so a new release arrives as major/minor/patch; a
+    // digest-only update means the SAME tag was re-pointed upstream — the tj-actions
+    // compromise pattern, and exactly what SHA-pinning exists to stop. The "fail-safe"
+    // argument above doesn't cover it: a `.github/**`-only PR skips flux-local's
+    // test/diff jobs and still reports Flux Local - Success. Needs a human look.
+    {
+      description: 'GitHub Actions re-pointed tag (digest-only): human review',
+      matchManagers: ['github-actions'],
+      matchUpdateTypes: ['digest'],
+      automerge: false,
+    },
     // Tier 2 — our own images. We build and test these before pushing, so a
     // Renovate digest/tag bump is a no-brainer (no soak — bake removed, see header).
     {

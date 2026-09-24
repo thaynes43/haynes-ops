@@ -163,6 +163,15 @@ head_rook() { w "$CSI" 'spec:
       cephfs:
         serviceAccountName: rook-csi-cephfs-ctrlplugin-sa'; }
 
+# ── DIFF-HIDING fixtures (2026-09-24 audit): the PR head is the working tree, so its
+#    .gitattributes steer `git diff`. `* -diff` made every changed file print "Binary
+#    files differ" — no +/- lines, so GATE A and GATE B both saw nothing and a
+#    privileged/hostPath edit read as "OK". ──
+GATTR=kubernetes/main/apps/foo/app/.gitattributes
+h_gattr_hide()   { w "$GATTR" '* -diff'; h_privileged; }
+base_gattr_pre() { sens_base; w "$GATTR" '* -diff'; }      # attribute already on base
+h_bin()          { mkdir -p "$(dirname "$FOO")"; printf 'spec:\n  values:\n    x: 1\0\n    privileged: true\n' > "$FOO"; }
+
 # ── harness ─────────────────────────────────────────────────────────────────────────
 # run_case <name> <expect 0|1> <mkbase fn> <mkhead fn> [expected-substring]
 run_case() {
@@ -216,6 +225,12 @@ echo ""
 echo "── FAIL/GATE B: shape (not a pure version bump) ──"
 run_case "bump + unrelated replicas change" 1 base_hr head_repl "allowed shape"
 run_case "registry swap (no version change)" 1 base_hr head_repo "allowed shape"
+
+echo ""
+echo "── FAIL: diff-hiding (a PR must not be able to blank its own diff) ──"
+run_case "adds .gitattributes '* -diff' + privileged" 1 sens_base      h_gattr_hide "git metadata file"
+run_case "'-diff' already on base, adds privileged"   1 base_gattr_pre h_privileged "security-sensitive"
+run_case "binary (NUL byte) helmrelease"              1 sens_base      h_bin        "binary"
 
 echo ""
 echo "── TYPED PATTERN 1 (2026-07-06): app-template automount restore ──"
