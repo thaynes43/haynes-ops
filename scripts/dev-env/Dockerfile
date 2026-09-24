@@ -34,13 +34,13 @@ FROM node:24-slim
 # block was already written that way, which is why its text survived untouched.
 
 # renovate: datasource=github-releases depName=kubernetes/kubernetes
-ARG KUBECTL_VERSION=v1.37.0
+ARG KUBECTL_VERSION=v1.37.1
 # renovate: datasource=github-releases depName=fluxcd/flux2
 ARG FLUX_VERSION=2.9.5
 # renovate: datasource=github-releases depName=cli/cli
 ARG GH_VERSION=2.101.0
 # renovate: datasource=github-releases depName=helm/helm
-ARG HELM_VERSION=3.22.0
+ARG HELM_VERSION=4.3.0
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.+)$
 ARG KUSTOMIZE_VERSION=5.8.1
 # renovate: datasource=github-releases depName=getsops/sops
@@ -62,7 +62,7 @@ ARG TALOSCTL_VERSION=v1.14.1
 # omnictl — read-only Omni machine/cluster status against SaaS Omni (the self-hosted
 # instance was decommissioned 2026-09-22); tracks upstream siderolabs/omni releases,
 # which stay API-compatible with nearby omnictl versions. renovate: datasource=github-releases depName=siderolabs/omni
-ARG OMNICTL_VERSION=v1.12.1
+ARG OMNICTL_VERSION=v1.12.2
 # renovate: datasource=github-releases depName=coder/code-server extractVersion=^v(?<version>.+)$
 ARG CODE_SERVER_VERSION=4.138.0
 # renovate: datasource=github-releases depName=astral-sh/uv
@@ -93,7 +93,7 @@ ARG UV_VERSION=0.12.18
 # subagent default in config/claude/CLAUDE.md. 2.1.280 also repoints the `opus`
 # alias to 5.5 (another reason the pod pins full ids, never aliases).
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.280
+ARG CLAUDE_CODE_VERSION=2.1.281
 # Codex is installed at BOOT as the managed STANDALONE (dev-init.sh), not via npm —
 # only the standalone can run `codex remote-control`. This pins that standalone
 # version; @openai/codex npm releases track the same numbers as the rust-v* GitHub
@@ -121,15 +121,21 @@ ARG CODEX_VERSION=0.156.1
 # renovate: datasource=npm depName=tsx
 ARG TSX_VERSION=4.23.15
 # ── pnpm ── prose ABOVE the annotation on purpose (see the warning above).
-# The binding constraint is haynesnetwork's `engines.pnpm: ">=11"` — pnpm 10 hard-
-# refuses to install there. Keep this ARG on the 11 line unless every repo drops it.
-# Its `packageManager` field pins an EXACT 11.9.0, but that only binds corepack, not
-# this image's globally installed pnpm, so any 11.x here satisfies the engine range.
+# This global pnpm is only the FALLBACK. Since pnpm 11, a repo whose package.json
+# pins `packageManager: pnpm@<x>` gets that exact version downloaded and run
+# (`pmOnFail` defaults to `download`), so haynesnetwork, cigar-journal and
+# haynes-quest each run their own pin in the pod, and their CI pins its own via
+# pnpm/action-setup. All three lockfiles are format 9.0, which the 12 line reads
+# unchanged. Only an UNPINNED checkout runs this global: its first re-resolving
+# install may re-key cyclic peer variants once (a one-time lockfile diff), and
+# `--frozen-lockfile false` is gone — use `--no-frozen-lockfile`. The old "stay on
+# the 11 line" rule (haynesnetwork's `engines.pnpm: ">=11"`) is satisfied by any
+# newer major too; moved to the 12 line 2026-09-24 (#3037, Tom: upgrade everything).
 # (Until 2026-09-13 this comment claimed haynesnetwork pinned packageManager to
 # whatever this ARG happened to be. It never did — Renovate had been rewriting the
 # number inside the comment on every bump, manufacturing a fact that was never true.)
 # renovate: datasource=npm depName=pnpm
-ARG PNPM_VERSION=11.27.1
+ARG PNPM_VERSION=12.6.0
 # renovate: datasource=npm depName=@playwright/mcp
 ARG PLAYWRIGHT_MCP_VERSION=0.0.82
 
