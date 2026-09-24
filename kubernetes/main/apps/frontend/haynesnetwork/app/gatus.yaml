@@ -1,9 +1,11 @@
 ---
-# Bespoke Gatus endpoint for the haynesnetwork.com APEX front page (saga
-# haynesnetwork-ha, plan 03 — uptime SLI). The shared external-check component
-# (kubernetes/shared/components/gatus/external) can only template a
-# <subdomain>.<domain> URL and only asserts "[STATUS] < 500"; the front page is
-# the bare apex and we want a strict 200, so this endpoint is written out in full.
+# Bespoke Gatus endpoints for the haynesnetwork.com APEX: the front page (saga
+# haynesnetwork-ha, plan 03 — uptime SLI) and the public MCP connector surface
+# (haynesnetwork repo, docs/designs/050-mcp-public-connector.md). The shared
+# external-check component (kubernetes/shared/components/gatus/external) can
+# only template a <subdomain>.<domain> URL and only asserts "[STATUS] < 500";
+# these are all on the bare apex and want strict status/body conditions, so
+# they are written out in full.
 #
 # The k8s-sidecar on gatus-0 watches gatus.io/enabled ConfigMaps cluster-wide and
 # loads this into /config automatically. Alerting (pushover token/thresholds) is
@@ -32,6 +34,55 @@ data:
         alerts:
           - type: pushover
             description: "haynesnetwork.com apex health check failed"
+            send-on-resolved: true
+            failure-threshold: 3
+            success-threshold: 3
+      # Public MCP connector surface: the OAuth-protected /mcp that ChatGPT,
+      # claude.ai, Claude Code and Codex connect to. It is POST-only (every other
+      # method answers 405) and bearer-gated: a request without a token must get
+      # 401 + `WWW-Authenticate: Bearer resource_metadata="…"`, which is how every
+      # connector discovers the OAuth server. So, as with cigar-journal-mcp, the
+      # 401 auth challenge is the HEALTHY answer: it proves the WAN route reaches
+      # the app and the OAuth gate is wired. A 404 (route or release missing),
+      # 405 (method), 5xx, timeout, or a 200 (the gate is open) all fail.
+      # Gatus v5.36 has no response-header placeholder (only [STATUS] [BODY] [IP]
+      # [CONNECTED] [RESPONSE_TIME] [CERTIFICATE_EXPIRATION] [DOMAIN_EXPIRATION]
+      # [DNS_RCODE] [CONTEXT]), so the `resource_metadata` challenge itself can't
+      # be asserted here; the metadata probe below checks the document it names.
+      - name: haynesnetwork-mcp
+        group: external
+        url: "https://haynesnetwork.com/mcp"
+        method: POST
+        body: "{}"
+        headers:
+          Content-Type: application/json
+          Accept: "application/json, text/event-stream"
+        interval: 1m
+        client:
+          dns-resolver: tcp://1.1.1.1:53
+        conditions:
+          - "[STATUS] == 401"
+        alerts:
+          - type: pushover
+            description: "haynesnetwork.com public MCP endpoint (/mcp) no longer answers the 401 auth challenge"
+            send-on-resolved: true
+            failure-threshold: 3
+            success-threshold: 3
+      # RFC 9728 protected-resource metadata: the first document every connector
+      # fetches. Must be a public 200 naming the canonical resource; a wrong
+      # `resource` breaks every client's audience check even while /mcp is up.
+      - name: haynesnetwork-oauth-metadata
+        group: external
+        url: "https://haynesnetwork.com/.well-known/oauth-protected-resource"
+        interval: 1m
+        client:
+          dns-resolver: tcp://1.1.1.1:53
+        conditions:
+          - "[STATUS] == 200"
+          - "[BODY].resource == https://haynesnetwork.com/mcp"
+        alerts:
+          - type: pushover
+            description: "haynesnetwork.com OAuth protected-resource metadata is missing or names the wrong resource"
             send-on-resolved: true
             failure-threshold: 3
             success-threshold: 3

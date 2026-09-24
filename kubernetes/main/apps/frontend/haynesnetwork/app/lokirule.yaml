@@ -1,10 +1,12 @@
 ---
-# Loki ruler alerts for the haynesnetwork sync CronJobs (loaded by the Loki
-# sidecar via the loki_rule ConfigMap label — see kustomization.yaml;
-# `rules.searchNamespace: ALL` in the loki HelmRelease means this namespace is
-# in scope). Routing: severity=critical is the only Alertmanager route that
-# reaches a human (everything else goes to `null`), and a wedged MAM gate is a
-# compliance hazard, so it pages.
+# Loki ruler alerts for haynesnetwork (loaded by the Loki sidecar via the
+# loki_rule ConfigMap label — see kustomization.yaml; `rules.searchNamespace: ALL`
+# in the loki HelmRelease means this namespace is in scope). Container names: the
+# web Deployment's container is `app`, every sync CronJob's is `main`.
+# Routing: severity=critical is the only Alertmanager route that reaches a human
+# (everything else goes to `null` and is visible in the Alertmanager/Grafana UI
+# only). A wedged MAM gate is a compliance hazard, so it pages; the MCP connector
+# auth alerts are warnings.
 groups:
   - name: haynesnetwork-mam-governor
     rules:
@@ -44,3 +46,44 @@ groups:
             into Prowlarr's MyAnonaMouse indexer.
         labels:
           severity: critical
+  - name: haynesnetwork-mcp-connector
+    # The public MCP connector surface (the in-app OAuth server behind
+    # https://haynesnetwork.com/mcp; haynesnetwork repo,
+    # docs/designs/050-mcp-public-connector.md) logs one `[auth] <event> {…}` line
+    # per OAuth step from the web pods, with masked fingerprints and never a
+    # token. Same logger shape as cigar-journal's, whose live lines these filters
+    # were checked against.
+    rules:
+      - alert: McpConnectorRefreshReuseDetected
+        # A refresh token that was already rotated (or revoked) was presented
+        # again. The app revokes that whole refresh family on the spot, so the
+        # connector has to be re-authorized; the alert is the audit trail. One
+        # event is enough: a benign retry race is rare, a replayed stolen token
+        # looks exactly like this. The 10m window keeps it visible ~10 minutes.
+        expr: |
+          sum by (app) (count_over_time({app="haynesnetwork", container="app"} |= "[auth] refresh_reuse_detected" [10m])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            haynesnetwork's MCP connector saw a refresh token replayed, and revoked that token
+            family. Check the `[auth] refresh_reuse_detected` line in Loki for the client id, then
+            the Connected apps page (https://haynesnetwork.com/settings/connections). If the
+            client is not one you use, disconnect it there; if it is, reconnect it.
+        labels:
+          severity: warning
+      - alert: McpConnectorAuthRejectionBurst
+        # More than 20 refused authorization requests or rate-limit hits in 10
+        # minutes: someone is probing /oauth/authorize, /oauth/register or
+        # /oauth/token, or a client is stuck in a retry loop. The per-IP rate
+        # limits already contain it; this surfaces it.
+        expr: |
+          sum by (app) (count_over_time({app="haynesnetwork", container="app"} |~ `\[auth\] (authorize_rejected|rate_limited)\b` [10m])) > 20
+        for: 0m
+        annotations:
+          summary: >-
+            haynesnetwork's MCP connector refused more than 20 authorization requests or
+            rate-limited callers in the last 10 minutes. Check the `[auth] authorize_rejected` and
+            `[auth] rate_limited` lines in Loki for the client and reason; a single client id
+            usually means a stuck connector, many means probing.
+        labels:
+          severity: warning
