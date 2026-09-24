@@ -470,7 +470,28 @@ two RTX 3090s. ComfyUI took `cuda:0` = the replacement card (VM bus `01:00.0`, U
 contends with ComfyUI. Which app gets which card, and whether Ollama should span both, is an open
 decision: haynes-ops#2960.
 
-#### Current — the per-app GPU split (owner ruling 2026-09-22, haynes-ops#2960)
+#### Current — ComfyUI on talosm03's RTX 2000 Ada (owner ruling 2026-09-23, evening)
+
+3090 #1 dropped off the PCIe bus too (19:03 EDT, at the start of a render, idle at 60 °C), so
+nothing runs on talosw01's 3090s until the shared hardware fault (power/riser/slot) is fixed
+(#3052). ComfyUI moved to the RTX 2000 Ada (16 GB, `GPU-71a3aea4-…`) on talosm03, shared with
+`ollama-assist02`; its workspace moved to the Ceph claim `comfyui-data`. Benchmarked with the
+production edit graph: 1.42–1.50 s/it, warm render 80–86 s (3090 ~69 s), cold 306 s. The Open
+WebUI graphs keep `gpu:0`.
+
+#### Earlier the same day — ComfyUI on 3090 #1, llama-server suspended (owner ruling 2026-09-23)
+
+On 2026-09-23 14:47 EDT 3090 #0 (`GPU-18bf6eab-…`, hot slot) dropped off the PCIe bus in the middle
+of a ComfyUI render (`unspecified launch failure`, then the host read its config space as all-FF).
+The driver fault also wedged 3090 #1 inside the same VM, so both cards were down until talosw01
+and its host were rebooted. Owner ruling: ComfyUI moves to 3090 #1 (`GPU-d8a856f1-…`, cool slot),
+and `llama-server` (Muse Glimmer) is scaled to 0 for now, because the two cannot share one 3090.
+#0 gets no tenant until haynes-ops#3052 is fixed: the reboot brought it back onto the bus, but
+its fan rattles. `ollama-prime` is pinned to #1 (`NVIDIA_VISIBLE_DEVICES=GPU-d8a856f1-…`, no
+longer `all`) and takes what ComfyUI leaves there. The table below is the 2026-09-22 layout,
+kept because it is the one to return to.
+
+#### Previous — the per-app GPU split (owner ruling 2026-09-22, haynes-ops#2960)
 
 `#2960`'s "no per-app GPU pinning" is **lifted**. talosw01's two 3090s are now owned per app, by
 `NVIDIA_VISIBLE_DEVICES` on each container (the device plugin cannot pin a *named* card, so no app
