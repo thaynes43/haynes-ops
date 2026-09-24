@@ -38,7 +38,7 @@ env:
   # only our own Dockerfile changes; bump the version half by editing the
   # WYOMING_FASTER_WHISPER_VERSION ARG (Renovate does that) and resetting the
   # revision to 1.
-  IMAGE_TAG: 3.8.1-2
+  IMAGE_TAG: 3.8.1-3
 
 jobs:
   build-and-push:
