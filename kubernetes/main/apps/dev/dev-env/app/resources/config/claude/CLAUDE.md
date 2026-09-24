@@ -55,7 +55,7 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 
 | Tool | Auth | Notes |
 |---|---|---|
-| claude | ✅ Max plan | credential on PVC, self-refreshes |
+| claude | ✅ Max plan | credential on PVC; the access token self-refreshes but the **login itself lapses ~30 days after each `/login`** — run `claude-login-check` at the start of every session (*Max login renewal* below) |
 | codex | ✅ ChatGPT plan | `~/.codex/auth.json`, self-refreshes; same rules (`~/.codex/AGENTS.md`) + MCP servers as claude, rendered at boot; phone control = daemon brought up after every boot by `post-ready.sh` (supervised); `agent-run codex-remote` pairs a phone |
 | kubectl / flux | ✅ in-cluster SA | OPERATOR tier: read all-but-secrets; writes limited to pod delete, **pod exec**, rollout restart, flux reconcile/suspend, Jobs, CronJob suspend + PVC delete in `database` only (`kubectl cnpg destroy`, plugin at `~/.local/bin/kubectl-cnpg`). No secrets/RBAC (exec into a secret-mounting pod can read that pod's secrets — accepted, 2026-08-06) |
 | gh / git push | ✅ haynes-dev-bot | App token, all repos, refreshed every 40min; commits/PRs author as the dev bot |
@@ -65,6 +65,68 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 | pve (Proxmox VE) | ✅ READ (exporter's PVEAuditor token) · ✅ OPERATOR (`dev-env@pve!operator`, since the 2026-09-17 bounce — if `pve` still says "only the read token is present", the 1Password `dev-env` fields `PROXMOX_OPERATOR_TOKEN_ID/_SECRET` are missing) | `pve ha` / `pve nodes` / `pve guests --onboot` / `pve --yes vm <id> config\|onboot\|start\|stop\|reset` / raw `pve get` / `pve --yes delete <path>`. Writes need `--yes`; the global flags (`--ro --yes --raw --any --node`) may sit anywhere on the line since 2026-09-22 — before that only a leading flag counted, and a trailing `--yes` was swallowed as a path parameter (the write then fails with "add --yes to perform this write", which looks like a permission problem and is not). Operator tier is **root-equivalent** on the 5-node PVE cluster (`Sys.Console`, Tom 2026-09-09) — by rule: no node reboots, no node shells via termproxy (use `hw-ssh`), `vm` verbs refuse non-Talos guests without `--any`; `declare-activity` before anything disruptive. It CANNOT attach a raw PCI device (`hostpci` with a raw id is root@pam-only in PVE 8) — that is `hw-ssh <node> sudo qm set …`. Runbook: `.agents/runbooks/proxmox-access.md` |
 | hw-ssh (PVE nodes + HaynesTower/Unraid) | ✅ one ed25519 key (`~/.ssh/dev-env-hw`, from `HW_SSH_PRIVATE_KEY_B64` in the pod env ← 1Password `dev-env`); absent key = `hw-ssh` says so | `hw-ssh list` · `hw-ssh <node> sudo dmidecode -t slot` · `hw-ssh pve-all 'sudo qm list'` · `hw-ssh haynestower 'tail /var/log/syslog'`. PVE nodes: user `dev-env`, key-only, sudo allowlist (dmidecode lspci journalctl dmesg sensors smartctl nvme zpool zfs qm pct pvesh pvecm pvesm ha-manager ipmitool) — `sudo qm` makes it root-equivalent, same tier as the operator token. HaynesTower: **root** (Unraid's only SSH user). By rule: read first; `declare-activity` before `qm stop/start/set` or anything on the array; never reboot a node or stop the Unraid array from here; never `sudo -i`/interactive root. Runbook: `.agents/runbooks/proxmox-access.md` (SSH tier) |
 | terraform/tofu providers | ✅ GCP only (ADC = dev-env-agent@sigo-alumni-prod, roles/owner) | plan+apply against sigo-alumni-prod (multiple applies proven 2026-08-14/15); other clouds still credential-less |
+
+## Max login renewal — check every session, renew from inside the pod
+
+`~/.claude/.credentials.json` (on the PVC) is what every remote-control (`both`)
+session runs on, and that **login expires about 30 days after each `/login`**
+(`refreshTokenExpiresAt`; the CLI's "Your login expires in N days" banner counts
+down to it, and the access token only self-refreshes until then). When it lapses no
+phone/claude.ai session can start and post-ready skips the standby.
+`CLAUDE_CODE_OAUTH_TOKEN` (headless/task sessions, ~1 yr, 1Password) is a separate
+credential; this does not renew it.
+
+**Check — at the start of every session, and whenever a banner says "Your login
+expires in N days":**
+
+```bash
+claude-login-check      # exit 0 = fine · 1 = 7 days or fewer left (or expired) · 2 = cannot tell
+```
+
+It prints timestamps and day counts only, never token material. On exit 1, tell Tom
+in your very next reply, one line ("Max login expires in 3 days — I can renew it now,
+about a minute on your phone"), then run the renewal below as soon as he says go.
+auth-watch pages him daily once it is within 7 days, so a headless session that
+cannot reach him is covered; on exit 2 say so too — it means the check is blind.
+
+**Renew (proven 2026-09-23).** Tom drives it from his phone. He cannot copy from the
+pod's terminal (the code-server terminal wraps the URL and has no working
+copy-paste), so **you relay the link and he pastes the code back to you**. If a
+`/login` inside a session already printed a wrapped URL, Esc out of it and use this
+instead.
+
+1. Start the login in its own wide tmux session (wide so the URL stays one line;
+   strip the env token so the flow cannot short-circuit on it):
+   ```bash
+   tmux kill-session -t login 2>/dev/null
+   tmux new-session -d -s login -x 300 -y 50 -c "$HOME" \
+     "env -u CLAUDE_CODE_OAUTH_TOKEN claude auth login; echo LOGIN_EXIT=\$?; sleep 3600"
+   timeout 60 bash -c 'until tmux capture-pane -p -J -t login | grep -q "https://"; do sleep 2; done'
+   tmux capture-pane -p -J -t login | grep -o 'https://claude.com/cai/oauth/authorize?[^ ]*'
+   ```
+2. Put that URL in your reply to Tom **bare, on its own line** (no backticks, no
+   markdown link — the phone app makes it tappable as-is). Tell him: open it, sign
+   in, then paste back the code the page shows (it looks like `<code>#<state>`).
+3. When he pastes the code, send it into the waiting prompt literally:
+   ```bash
+   tmux send-keys -t login -l '<the code he pasted>'; tmux send-keys -t login Enter
+   timeout 60 bash -c 'until tmux capture-pane -p -J -t login | grep -q LOGIN_EXIT; do sleep 2; done'
+   tmux capture-pane -p -J -t login | grep -E 'Login successful|LOGIN_EXIT|rror'
+   ```
+   `Login successful.` + `LOGIN_EXIT=0` is done. Anything else: kill the session and
+   start over from step 1 with a fresh URL — codes are single-use and the code must
+   match the URL's `state`.
+4. Verify and clean up: `claude-login-check` (expect ~30 days) and
+   `env -u CLAUDE_CODE_OAUTH_TOKEN claude auth status` (`"loggedIn": true`,
+   `"subscriptionType": "max"`), then `tmux kill-session -t login`. Running sessions
+   pick the new login up at their next token refresh; nothing to restart.
+
+**Secrets — this repo is public.** The OAuth URL (`code_challenge`, `state`), the
+code Tom pastes, and anything inside `.credentials.json` are secrets for the life of
+the flow: they go in your chat reply and the tmux pane and nowhere else — never into
+a commit, PR, issue, memory file, handoff note, or log. `claude-login-check` output
+is the only thing here safe to quote in git; `claude auth status` prints the account
+email and org id, so read it, don't paste it.
 
 ## MCP servers (GitOps-managed, `~/.config/dev-env/mcp.json`)
 
@@ -280,8 +342,8 @@ unaffected (it runs in tmux, a TTY). The same applies to any `codex exec` under
 One trap: `both` deliberately strips `CLAUDE_CODE_OAUTH_TOKEN` and falls back to
 `~/.claude/.credentials.json`. The long-lived env token cannot register
 `/v1/code/sessions`, so a session started with it silently never appears on the
-phone/web list. Keep the `/login` ceremony current or `both` breaks while `task`
-and `local` keep working.
+phone/web list. Keep the Max login current (`claude-login-check`, *Max login renewal*
+above) or `both` breaks while `task` and `local` keep working.
 
 ## Declare disruptive work (avoid false escalations)
 

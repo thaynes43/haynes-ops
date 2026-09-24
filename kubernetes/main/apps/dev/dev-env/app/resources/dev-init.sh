@@ -252,6 +252,10 @@ unset _cp_cmd _cp_link
 # not a command until it is linked.
 ln -sf /opt/dev-env/scripts/pve.sh "$HOME/.local/bin/pve"
 ln -sf /opt/dev-env/scripts/hw-ssh.sh "$HOME/.local/bin/hw-ssh"
+# claude-login-check (2026-09-23): the PVC Max login lapses ~30 days after each
+# /login; agents run this every session, auth-watch pages a week out. Same
+# mounted-script-is-not-a-command trap as the three above.
+ln -sf /opt/dev-env/scripts/login-check.sh "$HOME/.local/bin/claude-login-check"
 
 # ── hw-ssh key (2026-09-17, backlog 14 SSH tier) ─────────────────────────────────
 # One ed25519 key for the non-Talos hardware (PVE nodes as `dev-env` + sudo allowlist,

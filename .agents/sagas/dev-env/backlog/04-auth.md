@@ -27,9 +27,21 @@ draft PR #2588) — see "Long-lived token hardening" below.
 
 ## The proven re-auth ceremony (2026-07-13, works fully remote)
 
-Both credentials live on the PVC and self-refresh; this is only needed after a PVC
-loss or a revocation. Requires: an agent session with kubectl (drives tmux in the
-pod) + Tom on any browser (phone works).
+**Correction (2026-09-23):** the Claude side does NOT self-refresh indefinitely. The
+PVC login's refresh token expires ~30 days after each `/login`
+(`claudeAiOauth.refreshTokenExpiresAt` — the CLI's "Your login expires in N days"
+banner counts down to it), and every remote-control session dies with it. So this
+is a monthly ceremony, not a disaster-only one. `claude-login-check`
+(`resources/login-check.sh`) reads that timestamp: agents run it at the start of every
+session and tell Tom at ≤ 7 days, and auth-watch pages him daily from 7 days out. The
+canonical, step-by-step copy of the Claude ceremony now lives in the pod CLAUDE.md
+(*Max login renewal*) — it runs `claude auth login` in a wide tmux session, the agent
+relays the bare URL in chat (Tom cannot copy from the code-server terminal), Tom
+pastes the `code#state` back, the agent `send-keys` it. Keep the two in step.
+
+Codex still self-refreshes; the rest of this section is the original 2026-07-13 record.
+Requires: an agent session with kubectl (drives tmux in the pod) + Tom on any browser
+(phone works).
 
 - **Claude (Max)**: in the pod, `tmux send-keys -t main:0 "claude" Enter` → first-run
   wizard → pick "Claude account with subscription" → widen the window
