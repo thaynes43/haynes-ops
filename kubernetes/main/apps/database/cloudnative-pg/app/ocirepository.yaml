@@ -11,7 +11,7 @@ spec:
     mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
     operation: copy
   ref:
-    tag: 0.29.0
+    tag: 0.29.1
   # The project's OCI publication of the same chart. The classic index at
   # https://cloudnative-pg.github.io/charts began redirecting to
   # https://cloudnative-pg.io/charts on 2026-09-02, and that hostname has no DNS
