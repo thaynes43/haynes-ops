@@ -83,7 +83,7 @@ jobs:
           cache-from: type=gha,scope=dev-env-linux-amd64
           cache-to: type=gha,mode=max,scope=dev-env-linux-amd64
           tags: |
-            ghcr.io/${{ github.repository_owner }}/dev-env:0.6.3
+            ghcr.io/${{ github.repository_owner }}/dev-env:0.6.4
             ghcr.io/${{ github.repository_owner }}/dev-env:latest
 
       - name: Smoke-test base toolchain as the runtime user
@@ -95,7 +95,7 @@ jobs:
             --tmpfs /home/dev:rw,uid=1000,gid=1000,size=256m \
             --user 1000:1000 \
             --entrypoint /bin/bash \
-            ghcr.io/${{ github.repository_owner }}/dev-env:0.6.3 \
+            ghcr.io/${{ github.repository_owner }}/dev-env:0.6.4 \
             -euc '
               test "$(id -u)" = 1000
               node --version
@@ -107,6 +107,7 @@ jobs:
               flux --version
               gh --version
               helm version --short
+              pnpm --version
               code-server --version
             '
 
@@ -116,9 +117,9 @@ jobs:
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/dev-env
         run: |
-          docker push "${IMAGE}:0.6.3"
+          docker push "${IMAGE}:0.6.4"
           docker push "${IMAGE}:latest"
-          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:0.6.3")"
+          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:0.6.4")"
           echo "digest=${digest#*@}" >> "$GITHUB_OUTPUT"
 
       # The live HelmRelease remains on its old digest until a separate held-draft
