@@ -21,7 +21,7 @@
 # `requires-python != 3.14.1` — a base image landing on that exact patch would
 # fail the install with a confusing "no matching distribution". 3.12 works and
 # buys nothing.
-FROM python:3.13-slim@sha256:8d9d0b8bcf6506481eae4907c18f5e3e7902e629f5f6d684f9e7c32e85e3ddf0 AS runtime
+FROM python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2 AS runtime
 
 # renovate: datasource=github-releases depName=Comfy-Org/ComfyUI
 ARG COMFYUI_VERSION=v0.37.0
