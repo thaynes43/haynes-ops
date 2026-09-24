@@ -70,7 +70,7 @@ groups:
             the Connected apps page (https://haynesnetwork.com/settings/connections). If the
             client is not one you use, disconnect it there; if it is, reconnect it.
         labels:
-          severity: warning
+          severity: critical
       - alert: McpConnectorAuthRejectionBurst
         # More than 20 refused authorization requests or rate-limit hits in 10
         # minutes: someone is probing /oauth/authorize, /oauth/register or
