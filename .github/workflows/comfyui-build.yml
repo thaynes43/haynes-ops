@@ -39,7 +39,7 @@ env:
   # only our own scripts change; bump the version half by editing
   # scripts/comfyui/Dockerfile's COMFYUI_VERSION ARG (Renovate does that) and
   # then resetting the revision to 1.
-  IMAGE_TAG: 0.37.0-1
+  IMAGE_TAG: 0.37.0-2
 
 jobs:
   build-and-push-comfyui:

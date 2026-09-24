@@ -12,15 +12,14 @@
 # are baked, immutable and versioned with the image; only models and user data
 # live on volumes.
 #
-# Python 3.13 — ComfyUI's own recommendation, and the newest interpreter for
-# which EVERY pinned dependency ships an explicit cp313 manylinux x86_64 wheel:
-# comfy-kitchen 0.2.35, comfy-aimdo 0.5.5, comfy-angle, av, tokenizers,
-# safetensors, blake3, sentencepiece, scipy, numpy, Pillow and the torch stack
-# all have one. 3.14 also resolves, but only by leaning on abi3 forward
-# compatibility for six of those, and torchvision 0.27.0 declares
-# `requires-python != 3.14.1` — a base image landing on that exact patch would
-# fail the install with a confusing "no matching distribution". 3.12 works and
-# buys nothing.
+# Python 3.14 (since 2026-09-24, Renovate #2915; was 3.13). Every pinned dependency
+# installs: the torch stack, scipy, numpy, sentencepiece and blake3 ship cp314
+# manylinux x86_64 wheels, and tokenizers, safetensors, av, comfy-kitchen and
+# comfy-aimdo ride their abi3 wheels. torchvision 0.27.0 declares
+# `requires-python != 3.14.1`; the base is past that patch (3.14.7 at the bump)
+# and Renovate only moves forward, so it cannot land there. If a future pin
+# lacks a cp314/abi3 wheel, pip falls back to an sdist build and the image
+# build fails loudly — drop back to python:3.13-slim rather than add a compiler.
 FROM python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2 AS runtime
 
 # renovate: datasource=github-releases depName=Comfy-Org/ComfyUI
