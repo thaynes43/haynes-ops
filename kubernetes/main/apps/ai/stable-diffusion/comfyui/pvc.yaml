@@ -1,20 +1,4 @@
 ---
-# LEGACY — node-local openebs-hostpath on talosw01, from the ai-dock image era. Replaced by
-# comfyui-data below (2026-09-23); its 13 MB was copied (28 files, checksums verified) and ComfyUI
-# runs on the Ceph claim. The prune guard is dropped here so the NEXT commit can delete this manifest
-# and Flux prunes the claim (a guarded object survives removal from git).
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: comfyui-workspace
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 80Gi
-  storageClassName: openebs-hostpath
----
 # ComfyUI's writable workspace: user dir (saved UI workflows, settings, the comfyui.db SQLite —
 # which is why this is Ceph block, not the NFS share), uploaded inputs, temp. Models and outputs
 # are on the gasha01 NFS share, so this stays small and can follow the pod to any node.
