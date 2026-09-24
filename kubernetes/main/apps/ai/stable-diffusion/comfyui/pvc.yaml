@@ -1,14 +1,12 @@
 ---
-# LEGACY — node-local openebs-hostpath on talosw01, from the ai-dock image era when models and the
-# Python env lived in the workspace. Replaced by comfyui-data below (2026-09-23): local storage pins
-# ComfyUI to one node, which blocked moving it off talosw01 when both 3090s dropped off the bus.
-# Kept only until its 13 MB (UI workflows, settings, comfyui.db, inputs) is copied and verified.
+# LEGACY — node-local openebs-hostpath on talosw01, from the ai-dock image era. Replaced by
+# comfyui-data below (2026-09-23); its 13 MB was copied (28 files, checksums verified) and ComfyUI
+# runs on the Ceph claim. The prune guard is dropped here so the NEXT commit can delete this manifest
+# and Flux prunes the claim (a guarded object survives removal from git).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: comfyui-workspace
-  annotations:
-    kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
   accessModes:
     - ReadWriteOnce
