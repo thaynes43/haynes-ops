@@ -36,7 +36,7 @@ spec:
               # The shepherd image (claude + kubectl + flux + git + jq); no bot
               # initContainer here — the responder holds NO repo-write credential.
               repository: ghcr.io/thaynes43/upgrade-shepherd
-              tag: 0.1.0@sha256:0a422122ee7c543f32c08a0708414473fd526b897303921cf8e476a5a3439eac
+              tag: 0.1.0@sha256:42fb9c6f55f1122ce09f501d537d4a33ff6e8ce9c0191948ef509338b436a7e5
             command: ["/bin/bash", "/opt/responder/respond.sh"]
             env:
               ALERTMANAGER_URL: http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093
