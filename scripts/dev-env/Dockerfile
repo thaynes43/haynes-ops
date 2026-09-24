@@ -40,7 +40,7 @@ ARG FLUX_VERSION=2.9.5
 # renovate: datasource=github-releases depName=cli/cli
 ARG GH_VERSION=2.101.0
 # renovate: datasource=github-releases depName=helm/helm
-ARG HELM_VERSION=3.22.0
+ARG HELM_VERSION=4.3.0
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.+)$
 ARG KUSTOMIZE_VERSION=5.8.1
 # renovate: datasource=github-releases depName=getsops/sops
@@ -129,7 +129,7 @@ ARG TSX_VERSION=4.23.15
 # whatever this ARG happened to be. It never did — Renovate had been rewriting the
 # number inside the comment on every bump, manufacturing a fact that was never true.)
 # renovate: datasource=npm depName=pnpm
-ARG PNPM_VERSION=11.27.1
+ARG PNPM_VERSION=12.6.0
 # renovate: datasource=npm depName=@playwright/mcp
 ARG PLAYWRIGHT_MCP_VERSION=0.0.82
 
