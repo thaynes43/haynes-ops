@@ -30,6 +30,12 @@ spec:
             image:
               repository: ghcr.io/jmbannon/ytdl-sub
               tag: 2026.08.26
+            env:
+              # ytdrivarr projects the yt-dlp plugins a Peloton library needs next to its
+              # subscriptions.yaml (ytdrivarr#40: an override of yt-dlp's Peloton extractor for
+              # Peloton's signed stream URLs). yt-dlp loads plugins from PYTHONPATH, so both the
+              # preflight's `yt-dlp` and ytdl-sub's in-process YoutubeDL pick them up.
+              PYTHONPATH: /media/peloton/.ytdrivarr/ytdlp-plugins
             command:
               - bash
               - -c
@@ -48,12 +54,13 @@ spec:
                     dict — Authorization header included — at ERROR level, so `--log-level=info`
                     (the July fix, #2198) never covered it. Every line ytdl-sub prints now passes
                     through a redactor before it reaches stdout/Loki.
-                  * When Peloton rejects the delivered session (bearer.txt + cookies.txt, minted by
-                    the ytdrivarr worker), yt-dlp's `ignoreerrors` swallows the 401 on every class:
-                    177 subscriptions report "done, 0 new" and only the odd one raises. The Job
-                    looked like "one bad class"; it was 18 days of downloading nothing. The
-                    preflight below runs yt-dlp's own extraction (the exact auth path) against a
-                    few real classes and refuses to start the 4h run on a dead session.
+                  * When yt-dlp cannot extract a class, its `ignoreerrors` swallows the failure on
+                    every class: 177 subscriptions report "done, 0 new" and only the odd one raises.
+                    The Job looked like "one bad class"; it was weeks of downloading nothing (the
+                    cause turned out to be Peloton's manifest signing, not the session —
+                    ytdrivarr#40). The preflight below runs yt-dlp's full extraction (session ->
+                    metadata -> signed stream URL -> manifest) against a few real classes and
+                    refuses to start the 4h run when all of them fail.
                   * With the session proven, a handful of classes failing (pulled from the library,
                     a yt-dlp hiccup) must not fail the whole run — but a large share must.
                 """
@@ -129,18 +136,22 @@ spec:
 
 
                 def preflight(token, urls, redact):
-                    """Run yt-dlp's extraction (started_client_session -> ride details -> stream token)
-                    against a few real classes. Any one succeeding proves the session; all failing
-                    means every class would fail exactly like this, so the run is pointless."""
+                    """Run yt-dlp's full extraction (started_client_session -> ride details -> signed
+                    stream URL -> manifest formats) against a few real classes. Any one succeeding proves
+                    the path; all failing means every class would fail exactly like this, so the run is
+                    pointless."""
                     if not urls:
                         die('preflight: no class URLs found in the projected subscriptions')
                     # first / middle / last: spread the probes across the library
                     picks = sorted({urls[0], urls[len(urls) // 2], urls[-1]})[:PREFLIGHT_PROBES]
                     minted = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(os.path.getmtime(TOKEN_PATH)))
                     for url in picks:
-                        cmd = ['yt-dlp', '--simulate', '--quiet', '--no-warnings', '--ignore-no-formats-error',
+                        # No --ignore-no-formats-error: it turns a manifest 403 into a silent pass,
+                        # which hid ytdrivarr#40. bearer.txt already carries its `Bearer ` scheme —
+                        # the same value render_subscriptions() drops into the Authorization header.
+                        cmd = ['yt-dlp', '--simulate', '--quiet', '--no-warnings',
                                '--print', 'id', '--cookies', COOKIES_PATH]
-                        for header in HEADERS + ['Authorization: Bearer ' + token]:
+                        for header in HEADERS + ['Authorization: ' + token]:
                             cmd += ['--add-header', header]
                         cmd.append(url)
                         try:
@@ -153,10 +164,19 @@ spec:
                             return
                         tail = (result.stderr.strip().splitlines() or [f'exit {result.returncode}'])[-1]
                         log(f'preflight: {url} -> {redact(tail)}')
-                    die(f'preflight: Peloton rejected the delivered session on {len(picks)}/{len(picks)} probe '
-                        f'classes (bearer.txt minted {minted}). Not starting ytdl-sub — every class would fail '
-                        f'the same way. Fix the session on the ytdrivarr side (worker login / bearer mint), '
+                    die(f'preflight: yt-dlp could not extract any of {len(picks)} probe classes (bearer.txt '
+                        f'minted {minted}). Not starting ytdl-sub — every class would fail the same way. Fix '
+                        f'it on the ytdrivarr side (worker session mint, or the projected yt-dlp plugins), '
                         f'not here.', 2)
+
+
+                def log_plugins():
+                    found = []
+                    for root in filter(None, os.environ.get('PYTHONPATH', '').split(':')):
+                        extractor_dir = os.path.join(root, 'yt_dlp_plugins', 'extractor')
+                        if os.path.isdir(extractor_dir):
+                            found += sorted(f for f in os.listdir(extractor_dir) if f.endswith('.py'))
+                    log(f'yt-dlp plugins projected by ytdrivarr: {", ".join(found) or "NONE (built-in extractors only)"}')
 
 
                 def run_ytdl_sub(redact):
@@ -179,6 +199,7 @@ spec:
                     token = read_token()
                     redact = make_redactor(token)
                     urls = render_subscriptions(token)
+                    log_plugins()
                     preflight(token, urls, redact)
                     rc, started, failed = run_ytdl_sub(redact)
                     if rc == 0:
