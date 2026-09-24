@@ -30,8 +30,21 @@ while true; do
   fi
   out="$(timeout 120 env -u CLAUDE_CODE_OAUTH_TOKEN claude -p 'ok' --model haiku --max-turns 1 2>&1)" || true
   if printf '%s' "$out" | grep -qiE 'not logged in|/login|oauth|401|invalid.*(token|api key)'; then
-    fails="${fails}claude: credentials.json login invalid (remote-control sessions) — rerun the /login ceremony in .agents/sagas/dev-env/backlog/04-auth.md\n"
+    fails="${fails}claude: credentials.json login invalid (remote-control sessions) — ask any dev-env agent to run the Max login renewal (pod CLAUDE.md)\n"
   fi
+
+  # Max login expiry (2026-09-23): the PVC login's refresh token lapses ~30 days
+  # after each /login; when it does, the probe above fails and every remote-control
+  # session with it. Page a WEEK ahead — renewal needs Tom (he opens the OAuth link
+  # and pastes the code back; an agent only drives it). Exit 2 (no file / unknown
+  # format) is deliberately NOT paged here: a dead login is already caught above,
+  # and a claude-code format change must not cry wolf daily.
+  lc="$(bash /opt/dev-env/scripts/login-check.sh --quiet 2>&1)"; lc_rc=$?
+  case "$lc_rc" in
+    1) page "dev-env: Claude Max login expiring" "$lc — ask any dev-env agent to run the Max login renewal (pod CLAUDE.md); ~1 minute on your phone" ;;
+    2) log "WARN login-check could not read the Max login expiry: $lc" ;;
+    *) log "max login: $lc" ;;
+  esac
 
   # Codex (ChatGPT plan)
   codex login status >/dev/null 2>&1 \

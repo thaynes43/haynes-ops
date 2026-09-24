@@ -37,8 +37,9 @@ AGENT_RUN="$HOME/.local/bin/agent-run"
 LAUNCH_LOG="$HOME/.cache/dev-env/post-ready-launches.log"
 LOOP_WINDOW=1800   # 30 min
 LOOP_MAX=3         # launches inside that window → stop launching, something is wrong
-# Same default as dev-init (the pod-wide interactive model; Model policy in CLAUDE.md).
-DEV_ENV_CLAUDE_MODEL="${DEV_ENV_CLAUDE_MODEL:-claude-fable-5-1}"
+# Same default as dev-init (the pod-wide interactive model — Opus 5.5 since
+# 2026-09-23; Model policy in CLAUDE.md). Fable is a by-name `agent-run --model`.
+DEV_ENV_CLAUDE_MODEL="${DEV_ENV_CLAUDE_MODEL:-claude-opus-5-5}"
 
 log() { printf 'post-ready: %s %s\n' "$(date -u '+%H:%M:%SZ')" "$*"; }
 
