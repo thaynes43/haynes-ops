@@ -420,6 +420,7 @@ spec:
         # compatibility tests (claude/codex CLIs) against the spike's public
         # endpoint. Single host, not the *.haynesnetwork.com wildcard.
         - matchName: "cigars.haynesnetwork.com"
+        - matchName: "haynesnetwork.com"  # the public MCP connector surface (haynesnetwork ADR-091): the live gate drives Claude Code from this pod against https://haynesnetwork.com/mcp; resolves to the same Cloudflare IPs as cigars, which only worked by accident
       toPorts:
         - ports:
             - port: "443"
