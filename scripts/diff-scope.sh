@@ -58,6 +58,14 @@ normalize() {
 
 mapfile -t NAME_STATUS < <(git diff --no-renames --name-status "${RANGE}")
 
+# Content diffs must show every line the PR changes. The PR head is the checked-out
+# working tree, so its .gitattributes steer `git diff`: a PR adding `* -diff` (or a
+# `diff=<driver>` textconv) would print "Binary files differ" and hide every +/- line
+# from GATE A and GATE B — privileged/hostPath read as "OK". --text forces a line diff;
+# --no-ext-diff/--no-textconv refuse diff drivers. (Binary + attribute files also gate
+# explicitly below.)
+DIFF_OPTS=(--no-color --text --no-ext-diff --no-textconv)
+
 SENSITIVE_ADD_RE='^\+[[:space:]]*(hostPath|hostNetwork|hostPID|hostIPC|hostUsers|hostPort|privileged:[[:space:]]*true|allowPrivilegeEscalation:[[:space:]]*true|runAsUser:[[:space:]]*0|runAsNonRoot:[[:space:]]*false|procMount|automountServiceAccountToken:[[:space:]]*true|securityContext:|capabilities:|hostAliases:|serviceAccountName:|serviceAccount:)'
 SENSITIVE_KIND_RE='^\+[[:space:]]*kind:[[:space:]]*(ClusterRole|ClusterRoleBinding|Role|RoleBinding|ServiceAccount|NetworkPolicy|CiliumNetworkPolicy|CiliumClusterwideNetworkPolicy|CustomResourceDefinition|MutatingWebhookConfiguration|ValidatingWebhookConfiguration|ClusterPolicy|Policy|PolicyException|CleanupPolicy|Deployment|StatefulSet|DaemonSet|Job|CronJob|Pod|ExternalSecret)([[:space:]]|$)'
 SENSITIVE_WORD_RE='(cluster-admin|system:masters|:default:default)'
@@ -86,6 +94,14 @@ for entry in "${NAME_STATUS[@]}"; do
   printf '%s' "$base" | grep -qiE 'rbac' && violation "sensitive path (rbac file): ${path}"
   [[ "$path" == kubernetes/*/apps/kyverno/* ]] && violation "touches the Kyverno guardrail tree: ${path}"
   [[ "$path" == scripts/diff-scope.sh ]]      && violation "touches the diff-scope guard itself: ${path}"
+  # .gitattributes can hide or rewrite what `git diff` shows; .gitmodules adds code
+  # from another repo. Neither is ever part of a pure bump.
+  case "$base" in
+    .gitattributes|.gitmodules) violation "git metadata file can change how the diff renders: ${path}" ;;
+  esac
+  # Binary (or attribute-suppressed) content has no reviewable lines.
+  git diff --no-renames --numstat "${RANGE}" -- "$path" | grep -q $'^-\t-\t' \
+    && violation "binary or diff-suppressed file (no reviewable lines): ${path}"
 
   # ---- TYPED SUPPORTING-EDIT ALLOWLIST — pattern 1: app-template automount restore.
   #      app-template v5 flips automountServiceAccountToken to false; every HR that
@@ -111,7 +127,7 @@ for entry in "${NAME_STATUS[@]}"; do
   fi
 
   # ---- GATE A: sensitive ADDED content (only '+' lines) ----
-  added="$(git diff --no-color "${RANGE}" -- "$path" | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+  added="$(git diff "${DIFF_OPTS[@]}" "${RANGE}" -- "$path" | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
   if [ "$typed_ok" = "1" ]; then
     added="$(printf '%s\n' "$added" | grep -vE "$TYPED_AUTOMOUNT_RE" | grep -vE "$TYPED_PARENT_RE" || true)"
   fi
@@ -121,8 +137,8 @@ for entry in "${NAME_STATUS[@]}"; do
   printf '%s\n' "$added" | grep -qE  "$SENSITIVE_NS_RE"   && violation "targets kube-system/flux-system/kyverno in ${path}"
 
   # ---- GATE B: shape allowlist (masked-multiset equality of removed vs added) ----
-  rm_lines="$(git diff --no-color "${RANGE}" -- "$path" | grep -E '^-'  | grep -vE '^---' | sed 's/^-//' | normalize | LC_ALL=C sort)"
-  add_raw="$(git diff --no-color "${RANGE}" -- "$path" | grep -E '^\+' | grep -vE '^\+\+\+' | sed 's/^+//')"
+  rm_lines="$(git diff "${DIFF_OPTS[@]}" "${RANGE}" -- "$path" | grep -E '^-'  | grep -vE '^---' | sed 's/^-//' | normalize | LC_ALL=C sort)"
+  add_raw="$(git diff "${DIFF_OPTS[@]}" "${RANGE}" -- "$path" | grep -E '^\+' | grep -vE '^\+\+\+' | sed 's/^+//')"
   if [ "$typed_ok" = "1" ]; then
     add_raw="$(printf '%s\n' "$add_raw" | grep -vE "$TYPED_AUTOMOUNT_RE" | grep -vE "$TYPED_PARENT_RE" || true)"
   fi

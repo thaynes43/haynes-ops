@@ -99,7 +99,12 @@ jobs:
               { re: /^kubernetes\/[^/]+\/apps\/downloads\/qbittorrent\//, dispo: 'disposition:manual-only', patchAuto: true },
             ];
             const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded', 'disposition:manual-only'];
-            const isRenovate = (l) => /renovate/i.test(l || '');
+            // Exact login: a substring match let any account with "renovate" in its
+            // name (e.g. a fork PR from `renovate-helper`) be triaged as Renovate.
+            const isRenovate = (l) => l === 'renovate[bot]';
+            // Only the shepherd's own vet markers count. This is a public repo, so a
+            // marker comment from anyone else could relabel a PR or fake a verdict.
+            const VET_AUTHOR = 'haynes-ops-bot[bot]';
             const tier2Path = (p) => {
               const m = p.match(/^kubernetes\/[^/]+\/apps\/([^/]+)\/(.+)$/);
               if (!m) return false;
@@ -117,6 +122,9 @@ jobs:
               const labelNames = (pr.labels || []).map(l => l.name);
               const brtitle = (pr.head.ref + ' ' + pr.title).toLowerCase();
               const isMajor = labelNames.includes('type/major');
+              // A github-actions digest-only update is a re-pointed upstream tag; Renovate
+              // no longer auto-merges it (.renovate/autoMerge.json5), so don't predict it.
+              const isDigest = labelNames.includes('type/digest');
               const isImmich = paths.some(p => p.startsWith(IMMICH));
               const inCleanRamp = paths.some(p => RAMP_CLEAN.some(r => p.startsWith(r)));
               // Tier-2 auto-merge PREDICTION (Renovate will enable GH auto-merge on its
@@ -134,6 +142,7 @@ jobs:
               let verdict = null;
               const comments = await github.paginate(github.rest.issues.listComments, { owner: OWNER, repo: REPO, issue_number: pr.number, per_page: 100 });
               for (const c of comments) {
+                if (!c.user || c.user.login !== VET_AUTHOR) continue;
                 const m = (c.body || '').match(/^<!-- shepherd-vet sha=([0-9a-f]{40}) -->\s*\n+\s*VERDICT:\s*([A-Za-z-]+)/);
                 if (m && m[1] === pr.head.sha) verdict = m[2].toUpperCase();   // chronological: latest wins
               }
@@ -164,8 +173,8 @@ jobs:
                 want = carve;                                         // name-matched automerge:false carve-out (.renovate/autoMerge.json5) — path-tier must not claim auto-merge
               } else if (isImmich && isMajor) {
                 want = 'disposition:shepherd';                         // immich major → shepherd
-              } else if (ghActions || (!isMajor && (allTier2 || ownImage))) {
-                want = 'disposition:auto-merge';                       // Renovate Tier-0/2 (GHA incl. majors since 2026-07-08; pending its next run)
+              } else if ((ghActions && !isDigest) || (!isMajor && (allTier2 || ownImage))) {
+                want = 'disposition:auto-merge';                       // Renovate Tier-0/2 (GHA incl. majors since 2026-07-08, not digest-only; pending its next run)
               } else if (!isMajor && inCleanRamp) {
                 want = 'disposition:shepherd';                         // clean-tier ramp → shepherd
               } else if (!isMajor && paths.some(p => RAMP_INFRA.some(r => p.startsWith(r)))) {

@@ -9,4 +9,4 @@ data:
     [botdetection.ip_limit]
     link_token = false
     [botdetection.ip_lists]
-    pass_ip = [ '192.168.0.0/24', '192.168.40.0/24', '73.60.196.127' ]
+    pass_ip = [ '192.168.0.0/24', '192.168.40.0/24' ]  # WAN IP redacted (public repo)

@@ -50,7 +50,7 @@ jobs:
           persist-credentials: false
 
       - name: Run flux-local test
-        uses: docker://ghcr.io/allenporter/flux-local:v8.4.0
+        uses: docker://ghcr.io/allenporter/flux-local:v8.4.0@sha256:c0be852e30f299ce6a220cc992b0c21a2a0b0684cc17713b9d718e18d9c8beff
         with:
           args: >-
             test
@@ -90,7 +90,7 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
 
       - name: Run flux-local diff
-        uses: docker://ghcr.io/allenporter/flux-local:v8.4.0
+        uses: docker://ghcr.io/allenporter/flux-local:v8.4.0@sha256:c0be852e30f299ce6a220cc992b0c21a2a0b0684cc17713b9d718e18d9c8beff
         with:
           args: >-
             diff ${{ matrix.resource }}
@@ -105,9 +105,12 @@ jobs:
       - name: Generate Diff
         id: diff
         run: |-
-          echo 'diff<<EOF' >> $GITHUB_OUTPUT
+          # Random delimiter: the rendered diff is PR-controlled, and a bare `EOF` line
+          # in it would end the value early and let the rest set arbitrary outputs.
+          delim="EOF_$(openssl rand -hex 16)"
+          echo "diff<<${delim}" >> $GITHUB_OUTPUT
           cat diff.patch >> $GITHUB_OUTPUT
-          echo 'EOF' >> $GITHUB_OUTPUT
+          echo "${delim}" >> $GITHUB_OUTPUT
 
       - if: ${{ steps.diff.outputs.diff != '' }}
         name: Add Comment

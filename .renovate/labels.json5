@@ -26,6 +26,14 @@
       ],
     },
     {
+      matchUpdateTypes: [
+        'digest',
+      ],
+      labels: [
+        'type/digest',
+      ],
+    },
+    {
       matchDatasources: [
         'docker',
       ],
