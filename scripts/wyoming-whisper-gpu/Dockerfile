@@ -28,7 +28,7 @@
 # along regardless (it is a core dependency) and is CUDA-capable here, since the
 # base supplies the cuDNN 9 that CTranslate2 links against — so switching
 # `--model`/`--stt-library` back to a Whisper model needs no rebuild.
-FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04@sha256:ac55d124da4882b497f732d8dfd9a702d5447a5f29d08d56da6f64f0a1eb34bc
+FROM nvidia/cuda:13.4.1-cudnn-runtime-ubuntu24.04@sha256:bd4e5efa96f86e9b99d1769ae7abd259ddafe54f752e6197fb58d0b66b1f18e8
 
 # renovate: datasource=pypi depName=wyoming-faster-whisper
 ARG WYOMING_FASTER_WHISPER_VERSION=3.8.1
