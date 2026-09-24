@@ -30,9 +30,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest PR63 (Rat Casino release guide and handoff); checked main
-              # publication 35942904233. Exact artwork approval remains pending.
-              tag: sha-65447863ffaef8f280ac50988f16d213333badda@sha256:edd2b8a7d416ac6ba304bb0cc07438cdd625c6cb75c3c6dc1573295e07121c31
+              # Haynes Quest PR64 (Rat Casino playground and scenery); checked main
+              # publication 35948112360. Exact artwork approval remains pending.
+              tag: sha-cf2ae28ba816328d3978f1628d62a9e41f8dc2db@sha256:346657481deaaa3d7a7b072b0af5bfc1eebeb36ff332af6022b3799db1df2232
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
