@@ -34,7 +34,7 @@ FROM node:24-slim
 # block was already written that way, which is why its text survived untouched.
 
 # renovate: datasource=github-releases depName=kubernetes/kubernetes
-ARG KUBECTL_VERSION=v1.37.0
+ARG KUBECTL_VERSION=v1.37.1
 # renovate: datasource=github-releases depName=fluxcd/flux2
 ARG FLUX_VERSION=2.9.5
 # renovate: datasource=github-releases depName=cli/cli
@@ -62,7 +62,7 @@ ARG TALOSCTL_VERSION=v1.14.1
 # omnictl — read-only Omni machine/cluster status against SaaS Omni (the self-hosted
 # instance was decommissioned 2026-09-22); tracks upstream siderolabs/omni releases,
 # which stay API-compatible with nearby omnictl versions. renovate: datasource=github-releases depName=siderolabs/omni
-ARG OMNICTL_VERSION=v1.12.1
+ARG OMNICTL_VERSION=v1.12.2
 # renovate: datasource=github-releases depName=coder/code-server extractVersion=^v(?<version>.+)$
 ARG CODE_SERVER_VERSION=4.138.0
 # renovate: datasource=github-releases depName=astral-sh/uv
@@ -93,7 +93,7 @@ ARG UV_VERSION=0.12.18
 # subagent default in config/claude/CLAUDE.md. 2.1.280 also repoints the `opus`
 # alias to 5.5 (another reason the pod pins full ids, never aliases).
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.280
+ARG CLAUDE_CODE_VERSION=2.1.281
 # Codex is installed at BOOT as the managed STANDALONE (dev-init.sh), not via npm —
 # only the standalone can run `codex remote-control`. This pins that standalone
 # version; @openai/codex npm releases track the same numbers as the rust-v* GitHub
