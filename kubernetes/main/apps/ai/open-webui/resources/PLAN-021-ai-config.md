@@ -470,7 +470,16 @@ two RTX 3090s. ComfyUI took `cuda:0` = the replacement card (VM bus `01:00.0`, U
 contends with ComfyUI. Which app gets which card, and whether Ollama should span both, is an open
 decision: haynes-ops#2960.
 
-#### Current — ComfyUI on talosm03's RTX 2000 Ada (owner ruling 2026-09-23, evening)
+#### Current — llama-server back on 3090 #1, #0 pulled (owner request 2026-09-25)
+
+3090 #0 (`GPU-18bf6eab-…`) was pulled from the host on 2026-09-25, and #1 (`GPU-d8a856f1-…`)
+came back onto the bus with the power cycle. It passed a single-card soak (no drop, but thermally
+throttled; results on #3052) and is on overnight airtime. Tom asked for the card to carry an
+always-loaded model again: `llama-server` (Muse Glimmer) is resident on #1, and the Rumpus Room
+Voice PE is back on the Jarvis pipeline. ComfyUI stays on talosm03's Ada (below). `ollama-prime`
+shares #1 and falls back to CPU when the model leaves no room.
+
+#### Earlier — ComfyUI on talosm03's RTX 2000 Ada (owner ruling 2026-09-23, evening)
 
 3090 #1 dropped off the PCIe bus too (19:03 EDT, at the start of a render, idle at 60 °C), so
 nothing runs on talosw01's 3090s until the shared hardware fault (power/riser/slot) is fixed
