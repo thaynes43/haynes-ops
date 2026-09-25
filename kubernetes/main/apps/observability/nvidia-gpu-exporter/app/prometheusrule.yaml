@@ -27,8 +27,8 @@ spec:
         # A GPU that "fell off the PCIe bus" simply stops being listed by
         # nvidia-smi, so the count drops with no error anywhere. Expected counts
         # (verified 2026-09-21 against `kubectl get nodes -l ...`):
-        #   talosw01 = 2  (2x RTX 3090 — comfyui + llama-server, one each; ollama-prime
-        #                  takes leftovers)
+        #   talosw01 = 1  (RTX 3090 #1, GPU-d8a856f1 — was 2; #0 was pulled 2026-09-25 for the
+        #                  #3052 single-card soak. Set it back to 2 when #0 is reinstalled.)
         #   talosm01 = 1  (RTX A2000 — vexa-whisper)
         #   talosm03 = 1  (RTX 2000 Ada — ollama-assist02)
         # The label_replace(vector(0), ...) terms make the left side read 0
@@ -42,7 +42,7 @@ spec:
               {{ $labels.node }} is reporting fewer NVIDIA GPUs than it has.
             description: >-
               nvidia-smi on {{ $labels.node }} has listed fewer GPUs than expected for 10 minutes
-              (expected: talosw01 2, talosm01 1, talosm03 1). A card that falls off the PCIe bus
+              (expected: talosw01 1, talosm01 1, talosm03 1). A card that falls off the PCIe bus
               disappears exactly like this. Check `kubectl exec -n observability ds/nvidia-gpu-exporter
               -- nvidia-smi -L` first, then the Talos node dmesg for NVRM/Xid 79 lines
               (`talosctl -n <node-ip> dmesg | grep -i nvrm`) and the Proxmox host journal for
@@ -59,7 +59,7 @@ spec:
               )
               < on (node)
               (
-                label_replace(vector(2), "node", "talosw01", "", "")
+                label_replace(vector(1), "node", "talosw01", "", "")
                 or label_replace(vector(1), "node", "talosm01", "", "")
                 or label_replace(vector(1), "node", "talosm03", "", "")
               )
