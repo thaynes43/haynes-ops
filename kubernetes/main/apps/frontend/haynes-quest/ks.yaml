@@ -17,6 +17,8 @@ spec:
       namespace: database
     - name: traefik-internal
       namespace: network
+    - name: traefik-external
+      namespace: network
   path: ./kubernetes/main/apps/frontend/haynes-quest/app
   sourceRef:
     kind: GitRepository

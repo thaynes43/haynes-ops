@@ -64,13 +64,17 @@ spec:
             - port: "5432"
               protocol: TCP
 ---
-# The synthetic fixture runtime accepts traffic only through traefik-internal
-# and can reach only DNS plus its dedicated PostgreSQL database. There is no
-# Immich egress path in this development workload.
+# The family release (haynes-quest ADR-005 D-07) accepts traffic only
+# through traefik-external (the Cloudflare tunnel path). Its egress is limited to:
+#   * DNS for exactly the names below;
+#   * its PostgreSQL database;
+#   * the in-cluster Immich API (private memory photos, sanitized in-app);
+#   * Authentik's public OIDC endpoints (discovery, token, userinfo, JWKS),
+#     which resolve to Cloudflare, hence toFQDNs.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: haynes-quest-fixture
+  name: haynes-quest-family
 spec:
   endpointSelector:
     matchLabels:
@@ -80,7 +84,7 @@ spec:
     - fromEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: network
-            app.kubernetes.io/instance: traefik-internal-network
+            app.kubernetes.io/instance: traefik-external-network
       toPorts:
         - ports:
             - port: "3000"
@@ -97,6 +101,8 @@ spec:
           rules:
             dns:
               - matchName: postgres16-rw.database.svc.cluster.local
+              - matchName: immich-server.photos.svc.cluster.local
+              - matchName: authentik.haynesnetwork.com
     - toServices:
         - k8sService:
             serviceName: postgres16-rw
@@ -104,4 +110,18 @@ spec:
       toPorts:
         - ports:
             - port: "5432"
+              protocol: TCP
+    - toServices:
+        - k8sService:
+            serviceName: immich-server
+            namespace: photos
+      toPorts:
+        - ports:
+            - port: "2283"
+              protocol: TCP
+    - toFQDNs:
+        - matchName: authentik.haynesnetwork.com
+      toPorts:
+        - ports:
+            - port: "443"
               protocol: TCP
