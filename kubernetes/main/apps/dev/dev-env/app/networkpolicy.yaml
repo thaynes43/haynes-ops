@@ -224,6 +224,13 @@ spec:
               # OpenTofu provider registry (metadata only — binaries come from
               # github releases via *.githubusercontent.com, already allowed)
               - matchName: "registry.opentofu.org"
+              # Massachusetts government sites (sigo-alumni board, 2026-09-25): dev-env
+              # agents researching MA Secretary of the Commonwealth nonprofit filings +
+              # corporate standing (www./corp.sec.state.ma.us), mass.gov guidance, and
+              # MGL text on malegislature.gov. Read-only public sites.
+              - matchPattern: "*.sec.state.ma.us"
+              - matchName: "www.mass.gov"
+              - matchName: "malegislature.gov"
     # 2a. Cluster-local MCP servers (saga plan 03): HA + Grafana — the agents'
     #     introspection tools, reached via svc FQDNs, never the public ingress.
     - toEndpoints:
@@ -421,6 +428,11 @@ spec:
         # endpoint. Single host, not the *.haynesnetwork.com wildcard.
         - matchName: "cigars.haynesnetwork.com"
         - matchName: "haynesnetwork.com"  # the public MCP connector surface (haynesnetwork ADR-091): the live gate drives Claude Code from this pod against https://haynesnetwork.com/mcp; resolves to the same Cloudflare IPs as cigars, which only worked by accident
+        # Massachusetts government sites (same set as the DNS rules above):
+        # SOC nonprofit filings + corporate standing, mass.gov, MGL text.
+        - matchPattern: "*.sec.state.ma.us"
+        - matchName: "www.mass.gov"
+        - matchName: "malegislature.gov"
       toPorts:
         - ports:
             - port: "443"
