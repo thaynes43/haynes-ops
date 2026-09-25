@@ -337,3 +337,26 @@ declare-activity start "HaynesIntelligence power-off: pull 3090 #0 (#3052)" \
 **If a future change needs the iGPU hosts:** twin-bottom also hosts gasha01, the NFS server for
 ~30 pods (14 of them on masters: home-assistant, appdaemon, immich, paperless…). Powering it off
 is a much larger outage and needs its own procedure.
+
+---
+
+## Execution log — 2026-09-25 (Tom on site, executed on his go)
+
+| Time (Z) | Step |
+|---|---|
+| 14:5x | Pre-flight green: Ceph HEALTH_OK 31/32 (osd.12 dead), zpools healthy, all nodes Ready, only PDB at 0 = postgres16-primary (talosm03). `qm config 103` saved |
+| 14:57 | `act-145734-70188`; silences `kubernetes_node=talosw01`, `node=talosw01`, `instance=~192.168.40.53:.*`, `id=~node/HaynesIntelligence\|qemu/103\|lxc/101` (2 h); HRs alert-responder/upgrade-health-gate/upgrade-shepherd suspended + CronJobs alert-responder/upgrade-health-gate/upgrade-shepherd/upgrade-shepherd-triage `suspend: true`; PVE Ceph `noout` |
+| 14:58–14:59 | Cordon + drain via headlamp-SA Job `frontend/escape-hatch-drain-talosw01` (Tom approved); ~1 min, no unmanaged pods, nothing blocked |
+| 15:00 | `pct shutdown 101`, `qm shutdown 103` (clean), `qm set 103 --onboot 0`, `pvesh create /nodes/HaynesIntelligence/status --command shutdown` |
+| 15:02 | PVE offline; Ceph 21/31 up, mon quorum 4/5, all PGs active (undersized/degraded) |
+| — | **Tom pulled #0** (`GPU-18bf6eab`, host `01:00.0`, root port `00:01.1`) |
+| 15:08 | Host online. Only `41:00.0` enumerates; **#1 back on the bus** (root port `40:01.1` `LnkSta 16GT/s x16`, `PresDet+`) after being off since 09-23 19:03 |
+| 15:08 | `noout` cleared; `qm set 103 --delete hostpci0`; onboot 1; `qm start 103` |
+| ~15:12 | talosw01 Ready; out-of-service/cilium taints self-cleared; uncordon Job; `nvidia.com/gpu=1`; VM `nvidia-smi` = `GPU-d8a856f1` @ `02:00.0` Gen4 x16 |
+| 15:1x | ollama-prime recovered on its own (pod Running, HR Ready `v123`) — #3181 not needed while #1 holds |
+| 15:25 | Smoke soak `ai/gpu-soak-smoke-20260925`: `sw_thermal_slowdown` 100 % of a 15 s burst, 75–78 °C, SM 705–780 MHz, 214 W, fan 100 %, 40 → 32 TFLOPS |
+| 15:26 | Full soak `ai/gpu-soak-3090-1-slot40-20260925` started (~58 min; `scripts/gpu-soak/`) — pointer on #3052 |
+
+Deviations from the written procedure: none, except the procedure's `pvesh … --output-format json | jq` Ceph check must run on a
+surviving node while HaynesIntelligence is down (used twin-top). Still to do after the soak: resume the four CronJobs + three
+HRs, expire silences, `declare-activity end act-145734-70188`, post results on #3052.
