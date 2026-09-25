@@ -30,10 +30,10 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest PR67 (Rat Casino fun pass: instant contact, casino tokens and
-              # golden tickets); checked main publication 36070469997. Exact artwork
-              # approval remains pending.
-              tag: sha-dc52e4b2c4d42c58e5c6bbf2c1e0b18d7701cf36@sha256:e8a4aba00b78d92ce4d997c277b3896a54dc0c21c0eb58d0636c0fddbeb97521
+              # Haynes Quest main 91a7c65 (after PR69): the PR67 Rat Casino fun pass app
+              # unchanged, with current studio docs; checked main publication 36086166864.
+              # Exact artwork approval remains pending.
+              tag: sha-91a7c65d32f3735c7195a766b33b3b8eb2e860f4@sha256:b20e6a478f9743d11d54eb1fe94c7cf05c0c30ffc86d2c79d739a5808ca12103
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
