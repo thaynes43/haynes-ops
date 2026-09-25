@@ -35,15 +35,24 @@ spec:
               tag: sha-3502ac7120f6d7741a1a209415f4c9eeb33f826b@sha256:743bca475c2e19d2534ecd3be7f952e52d0d5adb5724599f1285218f91e87e37
               pullPolicy: IfNotPresent
             env:
-              NODE_ENV: development
-              QUEST_FIXTURE_MODE: "true"
-              QUEST_APP_ORIGIN: https://haynes-quest.haynesops.com
+              # Family release (haynes-quest ADR-005): Authentik sign-in, real
+              # private memories, internet-facing through traefik-external.
+              NODE_ENV: production
+              QUEST_APP_ORIGIN: https://quest.haynesnetwork.com
+              QUEST_OIDC_DISCOVERY_URL: https://authentik.haynesnetwork.com/application/o/haynes-quest/.well-known/openid-configuration
+              QUEST_OIDC_CLIENT_ID: haynes-quest
+              # Authentik resolves to Cloudflare over both families; the pod
+              # network is IPv4 (cigar-journal precedent).
+              NODE_OPTIONS: --dns-result-order=ipv4first
               PORT: "3000"
             envFrom:
-              # Fixture runtime receives only session + app database fields.
-              # It never mounts the Immich or database-init Secrets.
+              # Session + app database fields, and the Immich URL/key used
+              # only server-side for the children's private memory photos.
+              # The database-init Secret is never mounted here.
               - secretRef:
                   name: haynes-quest-secret
+              - secretRef:
+                  name: haynes-quest-immich-secret
             probes:
               liveness:
                 enabled: true

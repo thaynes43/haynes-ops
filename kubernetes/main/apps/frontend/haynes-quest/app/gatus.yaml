@@ -1,0 +1,27 @@
+---
+# External health check for the family release via the real WAN path
+# (Cloudflare edge -> tunnel -> traefik-external -> pod), matching the
+# cigar-journal pattern. /healthz is the process-only, unauthenticated route.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: haynes-quest-gatus-ep
+  labels:
+    gatus.io/enabled: "true"
+data:
+  config.yaml: |
+    endpoints:
+      - name: haynes-quest
+        group: external
+        url: "https://quest.haynesnetwork.com/healthz"
+        interval: 1m
+        client:
+          dns-resolver: tcp://1.1.1.1:53
+        conditions:
+          - "[STATUS] == 200"
+        alerts:
+          - type: pushover
+            description: "quest.haynesnetwork.com health check failed"
+            send-on-resolved: true
+            failure-threshold: 3
+            success-threshold: 3

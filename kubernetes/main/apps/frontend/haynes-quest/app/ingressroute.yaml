@@ -1,11 +1,45 @@
 ---
-# Synthetic fixture preview on the LAN-only ingress controller. The
-# haynesops.com zone is published to UniFi, excluded from Cloudflare external
-# DNS, and resolves this route to traefik-internal's RFC1918 LoadBalancer.
+# quest.haynesnetwork.com: the family release (haynes-quest ADR-005 D-07).
+# Same WAN path as cigars.haynesnetwork.com: external-dns creates the CNAME to
+# the tunnel edge, and the wildcard certificate covers the subdomain. The app
+# is only reachable after Authentik sign-in; the Authentik application is
+# bound to authentik Admins + family (95-haynes-quest-oidc.yaml).
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: haynes-quest
+  annotations:
+    external-dns.kubernetes.io/target: ingress-ext.haynesnetwork.com
+    kubernetes.io/ingress.class: traefik-external
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`quest.haynesnetwork.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: haynes-quest
+          port: 3000
+  tls:
+    secretName: certificate-haynesnetwork
+---
+# The old LAN host only redirects now. The app enforces one exact Origin
+# (QUEST_APP_ORIGIN), so it cannot also serve here.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: haynes-quest-lan-redirect
+spec:
+  redirectRegex:
+    regex: "^https://haynes-quest\\.haynesops\\.com/(.*)"
+    replacement: "https://quest.haynesnetwork.com/$${1}"
+    permanent: false
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: haynes-quest-lan
   annotations:
     external-dns.kubernetes.io/target: internal.haynesops
     kubernetes.io/ingress.class: traefik-internal
@@ -15,6 +49,8 @@ spec:
   routes:
     - kind: Rule
       match: Host(`haynes-quest.haynesops.com`) && PathPrefix(`/`)
+      middlewares:
+        - name: haynes-quest-lan-redirect
       services:
         - kind: Service
           name: haynes-quest
