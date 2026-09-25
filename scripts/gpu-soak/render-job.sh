@@ -7,6 +7,9 @@ uuid=${1:?gpu uuid, e.g. GPU-d8a856f1-f955-f683-bc24-654561496774}
 name=${2:?job name}
 plan=${3:-}
 here=$(cd "$(dirname "$0")" && pwd)
+# deadline = the plan's own length + 15 min, so a long airtime plan is not killed at 2 h
+deadline=$(echo "${plan:-trigger:4:240:90,sustain:1:0:1200,hottrigger:2:240:90,cool:1:300:0}" | tr ',' '\n' \
+  | awk -F: '{t += $2 * ($3 + $4)} END {print t + 900}')
 image=$(kubectl get sts -n ai comfyui -o jsonpath='{.spec.template.spec.containers[0].image}')  # torch + CUDA, already cached
 cat <<YAML
 apiVersion: batch/v1
@@ -18,7 +21,7 @@ metadata:
   annotations: {haynes-ops/issue: "3052", haynes-ops/gpu: "${uuid}"}
 spec:
   backoffLimit: 0
-  activeDeadlineSeconds: 7200
+  activeDeadlineSeconds: ${deadline}
   ttlSecondsAfterFinished: 604800
   template:
     metadata:

@@ -360,3 +360,6 @@ is a much larger outage and needs its own procedure.
 Deviations from the written procedure: none, except the procedure's `pvesh … --output-format json | jq` Ceph check must run on a
 surviving node while HaynesIntelligence is down (used twin-top). Still to do after the soak: resume the four CronJobs + three
 HRs, expire silences, `declare-activity end act-145734-70188`, post results on #3052.
+| 15:3x | #3183 merged (GpuMissing expects 1 on talosw01 while #0 is out); blanket silence `7875e373` + the 4 outage silences expired (15 min bridge silence while Prometheus reloaded the rule, then expired) |
+| 16:24 | Soak END OK — 6 Gen1→Gen4 retrains under load + 20 min sustained, **no drop**; `sw_thermal_slowdown` 98–100 % of every burst at a 75–79 °C core, sustained SM 360–435 MHz, 17 TFLOPS (vs ~53 cold). Results on #3052 |
+| 16:2x | Lanes resumed (4 CronJobs + 3 HRs Ready), `act-145734-70188` ended, escape-hatch Jobs deleted; overnight airtime Job `ai/gpu-airtime-3090-1-slot40-20260925` started (66 × 10 min idle → 60 s burst, ~12 h) |
