@@ -30,10 +30,10 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest main 91a7c65 (after PR69): the PR67 Rat Casino fun pass app
-              # unchanged, with current studio docs; checked main publication 36086166864.
+              # Haynes Quest main 66c64d4 (PR73): Golden's optional Rat Casino fight
+              # and desktop mouse combat. Checked signed publication 36158873892.
               # Exact artwork approval remains pending.
-              tag: sha-91a7c65d32f3735c7195a766b33b3b8eb2e860f4@sha256:b20e6a478f9743d11d54eb1fe94c7cf05c0c30ffc86d2c79d739a5808ca12103
+              tag: sha-66c64d41e9f741285b49ccb6f1cd57d1ce5947fe@sha256:e6599b23b702512716843a938e8f1016fca443ba6ba2bfd00b435a98e11b504d
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
