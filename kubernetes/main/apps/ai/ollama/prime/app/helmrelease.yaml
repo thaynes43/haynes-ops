@@ -30,7 +30,17 @@ spec:
         pod:
           nodeSelector:
             feature.node.kubernetes.io/nvidia-3090-gpu: "true"
-          runtimeClassName: nvidia
+          # CPU-only until talosw01's 3090s are back (haynes-ops#3052). Both cards
+          # dropped off the PCIe bus on 2026-09-23; #1 (GPU-d8a856f1-…, the card
+          # pinned below) has been unreachable since 23:03Z that day (Xid 79). The
+          # old pod survived on CPU because its nvidia CDI hook had already run; the
+          # 0.34.4 bump (#3173) rolled it on 2026-09-25 and every new container then
+          # failed in the hook ("failed to get device handle from UUID"), so Helm
+          # could neither upgrade nor roll back (esc-shepherd-30377196). Without the
+          # nvidia RuntimeClass the hook is skipped and ollama runs on CPU, which is
+          # the interim state #3052 already accepted. NVIDIA_VISIBLE_DEVICES stays as
+          # the layout to return to. REVERT: restore the line below once #1 is back.
+          # runtimeClassName: nvidia
         containers:
           app:
             image:

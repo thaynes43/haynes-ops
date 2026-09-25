@@ -479,6 +479,14 @@ nothing runs on talosw01's 3090s until the shared hardware fault (power/riser/sl
 production edit graph: 1.42–1.50 s/it, warm render 80–86 s (3090 ~69 s), cold 306 s. The Open
 WebUI graphs keep `gpu:0`.
 
+`ollama-prime` stayed pinned to #1 and kept running on CPU only while its old container lived.
+The 0.34.4 bump (#3173, 2026-09-25 05:24Z) rolled the pod, and every new container then failed
+in the nvidia CDI hook (`failed to get device handle from UUID: Unknown Error`), so Helm could
+neither upgrade nor roll back (esc-shepherd-30377196). It now runs **without the nvidia
+RuntimeClass** (`runtimeClassName` commented out in its HelmRelease): CPU only, the interim state
+above already accepted. The `NVIDIA_VISIBLE_DEVICES` pin to #1 stays as the layout to return to;
+restore the RuntimeClass once #1 is back on the bus.
+
 #### Earlier the same day — ComfyUI on 3090 #1, llama-server suspended (owner ruling 2026-09-23)
 
 On 2026-09-23 14:47 EDT 3090 #0 (`GPU-18bf6eab-…`, hot slot) dropped off the PCIe bus in the middle
