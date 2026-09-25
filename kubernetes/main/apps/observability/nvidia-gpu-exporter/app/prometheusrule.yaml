@@ -43,8 +43,10 @@ spec:
             description: >-
               nvidia-smi on {{ $labels.node }} has listed fewer GPUs than expected for 10 minutes
               (expected: talosw01 1, talosm01 1, talosm03 1). A card that falls off the PCIe bus
-              disappears exactly like this. Check `kubectl exec -n observability ds/nvidia-gpu-exporter
-              -- nvidia-smi -L` first, then the Talos node dmesg for NVRM/Xid 79 lines
+              disappears exactly like this. Check `kubectl exec -n observability $(kubectl get pod -n
+              observability -l app.kubernetes.io/name=nvidia-gpu-exporter --field-selector
+              spec.nodeName={{ $labels.node }} -o name) -- nvidia-smi -L` first (`ds/nvidia-gpu-exporter`
+              picks an arbitrary node's pod, not this one), then the Talos node dmesg for NVRM/Xid 79 lines
               (`talosctl -n <node-ip> dmesg | grep -i nvrm`) and the Proxmox host journal for
               "vfio-pci ... inaccessible" / "retraining failed" on the card's PCI address.
               Recovery is a host power-cycle and, if it recurs, reseating the card or its power
