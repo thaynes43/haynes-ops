@@ -30,8 +30,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest main 91e2679 (the family release image, in fixture mode): World A/B v2, Update world, era models, sound cues.
-              tag: sha-91e2679eba497ba3b4cb56beeeaeb44acfe55519@sha256:d9dc20c6961345b869859b17f4e6f2e1e1431c5acb74df116843a931f2cde990
+              # Haynes Quest main ed03e82 (#104, ADR-006): mints its own session secret and
+              # refuses a DATABASE_URL in ephemeral mode, so it runs with no Secret below.
+              tag: sha-ed03e820576f95870ceab795ba4c85bc00003f5d@sha256:b097e3812b1de5726e1bdb234d233badf4a75fd12e9b414638c42030a3c73c71
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
@@ -39,11 +40,11 @@ spec:
               QUEST_EPHEMERAL_PLAYTEST: "true"
               QUEST_APP_ORIGIN: https://haynes-quest-playtest.haynesops.com
               PORT: "3000"
-            envFrom:
-              # The isolated fixture uses only the existing session/app database
-              # Secret. It never mounts Immich or database-init credentials.
-              - secretRef:
-                  name: haynes-quest-secret
+            # No Secret at all (haynes-quest ADR-006 D-01): the ephemeral fixture
+            # keeps everything in memory, mints its own per-process session secret
+            # and refuses to start if it is handed a DATABASE_URL. It must never
+            # mount haynes-quest-secret, whose DATABASE_URL and BETTER_AUTH_SECRET
+            # belong to the family release, nor any Immich or database-init Secret.
             probes:
               liveness:
                 enabled: true

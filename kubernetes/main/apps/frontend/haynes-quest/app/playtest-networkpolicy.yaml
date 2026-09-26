@@ -1,6 +1,8 @@
 ---
-# The isolated synthetic fixture accepts only internal Traefik traffic and can
-# reach only DNS plus the existing Haynes Quest PostgreSQL database.
+# The isolated synthetic fixture accepts only internal Traefik traffic and has
+# no egress at all: the ephemeral playtest needs no DNS, database or external
+# service, and must never reach the family release's PostgreSQL
+# (haynes-quest ADR-006 D-01).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -10,6 +12,10 @@ spec:
     matchLabels:
       app.kubernetes.io/name: haynes-quest-playtest
       app.kubernetes.io/controller: main
+  # Explicit, because a direction with no rules would otherwise default to allow.
+  enableDefaultDeny:
+    ingress: true
+    egress: true
   ingress:
     - fromEndpoints:
         - matchLabels:
@@ -18,24 +24,4 @@ spec:
       toPorts:
         - ports:
             - port: "3000"
-              protocol: TCP
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: ANY
-          rules:
-            dns:
-              - matchName: postgres16-rw.database.svc.cluster.local
-    - toServices:
-        - k8sService:
-            serviceName: postgres16-rw
-            namespace: database
-      toPorts:
-        - ports:
-            - port: "5432"
               protocol: TCP
