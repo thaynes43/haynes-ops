@@ -53,6 +53,9 @@
 # construction: a worktree is removed only when it has no uncommitted TRACKED
 # changes (untracked scratch like `.claude/` is discarded) — agents commit +
 # PR before abandoning a worktree, so tracked-clean means the work is saved.
+# prune also skips any worktree still IN USE under another name (a process cwd
+# inside it, or git/file activity within AGENT_RUN_BUSY_MIN, default 6h) — see
+# wt_busy.
 # attach is nested-tmux aware: from inside tmux it switches clients instead of
 # tripping the "sessions should be nested with care" guard.
 #
@@ -238,6 +241,45 @@ owning_repo() {  # $1 = worktree path → echoes repo dir
 # remove` yet is disposable. Prints an integer.
 tracked_dirty() {  # $1 = worktree path
   git -C "$1" status --porcelain=v1 2>/dev/null | grep -vcE '^(\?\?|!!)' || true
+}
+
+# Is a worktree IN USE even though no task-<name> tmux session exists? The tmux
+# name is only agent-run's own id: live sessions routinely make and work in
+# side worktrees under other names (`git worktree add ~/work/hops-hnet-v0990`),
+# and a codex phone thread lives in whatever dir the phone picked. On 2026-09-25
+# prune would have deleted a worktree an agent had committed to seconds earlier,
+# an open PR's worktree, and the codex remote thread's cwd. Busy = either
+#   * a process has its cwd inside it (claude/codex/MCP children, shells), or
+#   * git activity or a file edit in the last $AGENT_RUN_BUSY_MIN minutes
+#     (default 360): HEAD / logs/HEAD / FETCH_HEAD / COMMIT_EDITMSG in its
+#     gitdir catch `git -C` work from a session whose cwd is elsewhere.
+#     NOT `index` — prune's own `git status` rewrites it, so it proves nothing.
+# Returns 0 when busy with the reason in $WT_WHY — a global, not stdout, so it
+# runs in the caller's shell and the one-time /proc scan ($WT_CWDS, ~1s) is
+# cached across the loop instead of redone in every $(...) subshell. Offline;
+# same-user /proc only, which is every agent in this pod.
+WT_CWDS="" WT_WHY=""   # WT_CWDS: "pid cwd" lines under $WORK, read from /proc once per run
+wt_busy() {  # $1 = worktree path
+  local wt="${1%/}" p c pid gd hit mins="${AGENT_RUN_BUSY_MIN:-360}"
+  WT_WHY=""
+  if [ -z "$WT_CWDS" ]; then
+    WT_CWDS="-"   # sentinel: scanned, even if nothing is under $WORK
+    for p in /proc/[0-9]*; do
+      c="$(readlink "$p/cwd" 2>/dev/null)" || continue
+      case "$c" in "$WORK"/*) WT_CWDS+=$'\n'"${p#/proc/} $c" ;; esac
+    done
+  fi
+  while read -r pid c; do
+    case "$c" in "$wt"|"$wt"/*) WT_WHY="process $pid has its cwd here"; return 0 ;; esac
+  done <<<"$WT_CWDS"
+  gd="$(git -C "$wt" rev-parse --absolute-git-dir 2>/dev/null)" || return 1
+  hit="$(find "$gd" -mindepth 1 -maxdepth 2 \( -name HEAD -o -name FETCH_HEAD -o -name ORIG_HEAD \
+          -o -name COMMIT_EDITMSG -o -name MERGE_HEAD -o -name REBASE_HEAD \) -mmin "-$mins" 2>/dev/null | head -1)"
+  [ -z "$hit" ] && hit="$(find "$wt" -xdev \( -name .git -o -name node_modules -o -name .claude \) -prune \
+          -o -type f -mmin "-$mins" -print 2>/dev/null | head -1)"
+  [ -n "$hit" ] || return 1
+  WT_WHY="changed <${mins}m ago: ${hit#"$wt"/}"
+  return 0
 }
 
 # Remove ONE worktree (forcing past disposable untracked scratch), then retire the
@@ -784,7 +826,7 @@ reason as your final message."
     for wt in "$WORK"/*/; do
       [ -d "$wt" ] || continue
       tmux has-session -t "task-$(basename "$wt")" 2>/dev/null && continue
-      owning_repo "$wt" >/dev/null 2>&1 && strand=$((strand + 1))   # count what prune acts on
+      owning_repo "$wt" >/dev/null 2>&1 && ! wt_busy "$wt" && strand=$((strand + 1))   # count what prune acts on
     done
     [ "$strand" -gt 0 ] && printf 'STRANDED: %d worktree(s) with no live session → agent-run prune\n' "$strand"
     tmux has-session -t codex-remote 2>/dev/null && [ -S "$HOME/.codex/app-server-control/app-server-control.sock" ] \
@@ -892,12 +934,16 @@ reason as your final message."
         *) die "unknown flag $1 (usage: agent-run prune [--yes] [--force])" ;;
       esac
     done
-    plan=0 wip=0 removed=0 forced=0 failed=0
+    plan=0 wip=0 busy=0 removed=0 forced=0 failed=0
     for wt in "$WORK"/*/; do
       [ -d "$wt" ] || continue
       wt="${wt%/}"; wid="$(basename "$wt")"
       tmux has-session -t "task-$wid" 2>/dev/null && continue   # live → leave it
       repo_dir="$(owning_repo "$wt")" || { printf '  skip  %-34s (not a git worktree)\n' "$wid"; continue; }
+      # Before tracked_dirty: its `git status` touches the worktree's gitdir.
+      if wt_busy "$wt"; then
+        printf '  BUSY  %-34s (%s)\n' "$wid" "$WT_WHY"; busy=$((busy + 1)); continue
+      fi
       br="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)"
       td="$(tracked_dirty "$wt")"
       note="" is_wip=""
@@ -923,9 +969,9 @@ reason as your final message."
     done
     for r in "$REPOS"/*/; do [ -d "$r/.git" ] && git -C "$r" worktree prune 2>/dev/null || true; done
     if [ -n "$do_it" ]; then
-      log "prune done: $removed removed ($forced force-discarded WIP), $failed failed, $wip skipped (WIP)"
+      log "prune done: $removed removed ($forced force-discarded WIP), $failed failed, $wip skipped (WIP), $busy skipped (in use)"
     else
-      log "DRY-RUN: $plan would be reaped ($forced discarding tracked WIP), $wip skipped (WIP). Execute:  agent-run prune --yes${pforce:+ --force}"
+      log "DRY-RUN: $plan would be reaped ($forced discarding tracked WIP), $wip skipped (WIP), $busy skipped (in use). Execute:  agent-run prune --yes${pforce:+ --force}"
     fi
     ;;
   codex-remote)
