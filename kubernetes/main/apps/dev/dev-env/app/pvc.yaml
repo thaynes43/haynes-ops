@@ -5,6 +5,11 @@
 # git/registries, and keeping subscription/git credentials OUT of restic/S3 is a
 # feature. Disaster recovery: PVC re-creates empty, dev-init re-links GitOps configs,
 # re-auth is two ~2-minute ceremonies (.agents/sagas/dev-env/backlog/04-auth.md).
+# Size: 50Gi → 100Gi on 2026-09-25 after worktrees filled it to 91%. The haynes-quest
+# and haynesnetwork worktrees each carry ~1 GB of node_modules. Growing it is ONLINE:
+# ceph-block allows expansion, and the RBD CSI resizer grows the ext4 in place with
+# the pod running. This file is outside app/resources, so Reloader does not bounce
+# the pod. Only ever grow this value; a PVC can't shrink.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -15,5 +20,5 @@ spec:
   accessModes: ["ReadWriteOnce"]
   resources:
     requests:
-      storage: 50Gi
+      storage: 100Gi
   storageClassName: ceph-block
