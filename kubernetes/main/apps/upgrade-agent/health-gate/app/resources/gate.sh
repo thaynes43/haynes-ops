@@ -132,7 +132,7 @@ if [ "$API_OK" -eq 0 ] 2>/dev/null || kubectl version -o json >/dev/null 2>&1; t
   [ -n "$watch_dbg" ] && log "flux NotReady snapshot (condition ages, pre-persistence): $watch_dbg"
 fi
 if [ -n "$REG_IDS" ]; then
-  SIG="$(sig_of "$REG_IDS")"
+  SIG="$(sig_of "$(sig_key_of "$REG_IDS")")"
   flux_list="$(printf '%s\n' "$REG_IDS" | sed -n 's#^flux/##p' | tr '\n' ' ')"
   pod_list="$(printf '%s\n'  "$REG_IDS" | sed -n 's#^pod/##p'  | tr '\n' ' ')"
   entry="$(state_get "$SIG")"          # "" on no-entry OR unreadable CM

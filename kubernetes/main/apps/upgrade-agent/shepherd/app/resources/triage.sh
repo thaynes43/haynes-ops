@@ -300,7 +300,7 @@ if [ -z "$REG_IDS" ]; then
   state_prune
   exit 0
 fi
-SIG="$(sig_of "$REG_IDS")"
+SIG="$(sig_of "$(sig_key_of "$REG_IDS")")"
 REG_SUMMARY="$(printf '%s' "$REG_IDS" | tr '\n' ' ')"
 log "active regression sig=$SIG: ${REG_SUMMARY}"
 

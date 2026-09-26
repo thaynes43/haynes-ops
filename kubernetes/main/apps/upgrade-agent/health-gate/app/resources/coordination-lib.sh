@@ -216,6 +216,35 @@ sig_of() {
     | grep -oE '[0-9a-f]{64}' | head -1 | cut -c1-12
 }
 
+# sig_key_of — the identity a regression is throttled and claimed under (#3182). Feed its
+# output to sig_of; never hash REG_IDS directly.
+#   * Any flux/ ids present -> ONLY the flux/ lines. A failing Flux object IS the
+#     incident; the pods listed beside it churn (a crashlooping pod drops in and out of
+#     the persisted-pods query, a co-listed corpse gets deleted) and each churn used to
+#     re-key the sig, resetting BOTH the gate's last_paged throttle and triage's
+#     one-attempt claim. 2026-09-25: one ollama-prime HelmRelease failure paged at 07:00,
+#     07:30 and 08:30Z under three sigs and spawned two escalation sessions.
+#     A flux-only list keys exactly as before (same input to sig_of, same value).
+#   * pod/ ids only -> each pod name normalised to its owning workload, so a replacement
+#     pod of the same Deployment/CronJob/DaemonSet keeps the sig. Generated suffixes use
+#     k8s's safe alphabet (no vowels, no 0/1/3), so a real name segment is not stripped;
+#     StatefulSet ordinals (-7) are left alone. One pattern per name (`t` = stop at the
+#     first that matched), tried in this order:
+#       <cronjob>-<8+ digit schedule>-<5>   <deploy>-<6-10 hash>-<5>   <owner>-<5>
+sig_key_of() {
+  local _flux
+  _flux="$(printf '%s\n' "$1" | grep '^flux/' || true)"
+  if [ -n "$_flux" ]; then
+    printf '%s' "$_flux"
+    return 0
+  fi
+  printf '%s\n' "$1" | sed '/^$/d' | sed -E \
+      -e 's/-[0-9]{8,}-[bcdfghjklmnpqrstvwxz2456789]{5}$//' -e 't' \
+      -e 's/-[bcdfghjklmnpqrstvwxz2456789]{6,10}-[bcdfghjklmnpqrstvwxz2456789]{5}$//' -e 't' \
+      -e 's/-[bcdfghjklmnpqrstvwxz2456789]{5}$//' \
+    | LC_ALL=C sort -u
+}
+
 # state_get — compact-JSON entry for signature $1, or "" (FAIL-SAFE for the gate: any error
 # => ""). Triage uses state_read() instead (it must distinguish unreadable from absent).
 state_get() {
