@@ -27,8 +27,10 @@ spec:
   tls:
     secretName: certificate-haynesnetwork
 ---
-# The old LAN host only redirects now. The app enforces one exact Origin
-# (QUEST_APP_ORIGIN), so it cannot also serve here.
+# The old LAN host only redirects now, keeping the path and query. The app
+# enforces one exact Origin (QUEST_APP_ORIGIN), so it cannot also serve here.
+# A single `$`: this Kustomization has no postBuild substitution, so the Flux
+# `$$` escape would reach Traefik literally (every URL went to /$%7B1%7D).
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -36,7 +38,7 @@ metadata:
 spec:
   redirectRegex:
     regex: "^https://haynes-quest\\.haynesops\\.com/(.*)"
-    replacement: "https://quest.haynesnetwork.com/$${1}"
+    replacement: "https://quest.haynesnetwork.com/${1}"
     permanent: false
 ---
 apiVersion: traefik.io/v1alpha1
