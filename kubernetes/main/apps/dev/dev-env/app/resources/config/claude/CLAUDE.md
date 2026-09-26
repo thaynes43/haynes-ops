@@ -182,14 +182,18 @@ stdio only — no SSE — so a networked server must expose a `/mcp` endpoint.
   found` (auth passed too): re-initialize and carry on.
 - `haynesnetwork` — Tom's watch history (the Watch Companion, haynesnetwork
   ADR-087 / DESIGN-049): `unfinished`, `recommend`, `watch_status`,
-  `recent_history`, `mark_watched`, `dismiss`, `undo_last_change`. Reached through
+  `recent_history`, `watchlist`, `mark_watched`, `set_watchlist`, `dismiss`,
+  `undo_last_change`. Reached through
   the in-cluster hop `http://haynesnetwork-mcp-hop.frontend.svc.cluster.local:8080/mcp`,
   which injects the consumer token itself, so this pod holds no secret for it (the
   hop's CiliumNetworkPolicy admits this pod and Home Assistant only). Answers are
   short spoken text because the same tools back the Movie Room voice agent.
   `mark_watched` really marks titles watched in Plex (all servers, via watch-state
   sync): never test it on a title Tom hasn't watched; `undo_last_change` reverses the
-  last change within a day. Runbook: haynesnetwork OPS-015.
+  last change within a day. `set_watchlist` really changes his plex.tv watchlist, and
+  **Seerr auto-requests his watchlist** (every 3 min, auto-approved): adding a title that
+  is not on Plex downloads it, and undo cannot cancel that. Test only with a title
+  already on Plex. Runbook: haynesnetwork OPS-015.
 
 Voice agents are the opposite of this pod: Home Assistant sends every tool schema of
 every attached MCP server on every voice turn (35 cigar-journal tools cost ~2 s per
