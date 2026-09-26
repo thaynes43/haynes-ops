@@ -35,6 +35,15 @@ spec:
         - ports:
             - port: "8000"
               protocol: TCP
+    # Second isolated Blender authoring instance (parallel scene authors).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev
+            app.kubernetes.io/name: blender-authoring-2
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: dev
@@ -68,6 +77,7 @@ spec:
               - matchName: "mcp-unifi.observability.svc.cluster.local"
               - matchName: "vexa-vexa-gateway.ai.svc.cluster.local"
               - matchName: "blender-authoring.dev.svc.cluster.local"
+              - matchName: "blender-authoring-2.dev.svc.cluster.local"
               - matchName: "audio-authoring.dev.svc.cluster.local"
               - matchName: "haynesnetwork-mcp-hop.frontend.svc.cluster.local"
               # SaaS Omni — the ONLY Omni now, and the instance that registers every
