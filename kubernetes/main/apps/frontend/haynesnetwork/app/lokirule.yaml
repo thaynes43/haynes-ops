@@ -5,8 +5,10 @@
 # web Deployment's container is `app`, every sync CronJob's is `main`.
 # Routing: severity=critical is the only Alertmanager route that reaches a human
 # (everything else goes to `null` and is visible in the Alertmanager/Grafana UI
-# only). A wedged MAM gate is a compliance hazard, so it pages; the MCP connector
-# auth alerts are warnings.
+# only). A wedged MAM gate is a compliance hazard, so it pages. Of the MCP
+# connector auth alerts, McpConnectorRefreshReuseDetected is critical (a replayed
+# refresh token may be a stolen one, so it pages) and McpConnectorAuthRejectionBurst
+# is a warning (the rate limits already contain it).
 groups:
   - name: haynesnetwork-mam-governor
     rules:
