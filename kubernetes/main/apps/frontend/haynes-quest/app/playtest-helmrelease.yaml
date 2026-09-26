@@ -30,8 +30,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest main e2bde48 (the family release image, in fixture mode): release-review fixes, Update world fixes, mischief kitten.
-              tag: sha-e2bde488eaf7c5a48ce72e3f54fe75749aee47ca@sha256:f58640d249e83f1649e13bcd657b96fd1ed40c794c32f586019851107defe8eb
+              # Haynes Quest main c484f7c (the family release image, in fixture mode): world v3 with six era models, sound wiring, inator model, scare cues.
+              tag: sha-c484f7c6d4b565d173c04e463d761f5595a14c4f@sha256:e2935bb5895a397c607920a1cf6b8f84d29d2b4b03b3cea3031f9b1daa87e09e
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
