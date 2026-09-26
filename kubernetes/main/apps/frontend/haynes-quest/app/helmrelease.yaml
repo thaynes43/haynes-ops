@@ -30,9 +30,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # haynes-quest main 092a822 (PR #76, ADR-005 family sign-in),
-              # signed image from the Application workflow on main.
-              tag: sha-092a8221f29bc954d486f8f64a73f192b02256af@sha256:090d974053e7a44ce4eb05c5bbea9f4243c4119cbb677157b230c5defd6cbc55
+              # haynes-quest main 5778469 (PRs #79/#81/#82: growth moves, family
+              # journeys, household saves, operator CLI), signed image from main.
+              tag: sha-57784691d17da0d92c895286c323384d52c21d8d@sha256:3c7f3ce9f166643dad4fe1f4c2b996d793498e137e8a1f27f99490eceec13f66
               pullPolicy: IfNotPresent
             env:
               # Family release (haynes-quest ADR-005): Authentik sign-in, real
@@ -46,6 +46,8 @@ spec:
               # Authentik resolves to Cloudflare over both families; the pod
               # network is IPv4 (cigar-journal precedent).
               NODE_OPTIONS: --dns-result-order=ipv4first
+              # "Today" for chapter ends and pick windows (household is US Eastern).
+              QUEST_HOUSEHOLD_TIME_ZONE: America/New_York
               PORT: "3000"
             envFrom:
               # Session + app database fields, and the Immich URL/key used
