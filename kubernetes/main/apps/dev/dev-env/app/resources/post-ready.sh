@@ -45,8 +45,9 @@ log() { printf 'post-ready: %s %s\n' "$(date -u '+%H:%M:%SZ')" "$*"; }
 
 codex_state="not reached"
 standby_state="not reached"
+sweep_state="not reached"
 finish() {
-  log "SUMMARY  codex-remote: ${codex_state}  |  claude standby: ${standby_state}"
+  log "SUMMARY  codex-remote: ${codex_state}  |  claude standby: ${standby_state}  |  worktree sweep: ${sweep_state}"
   exit 0   # ALWAYS: a non-zero exit here must never colour the pod's health
 }
 
@@ -151,7 +152,27 @@ if [ ! -x "$AGENT_RUN" ]; then
   finish
 fi
 
-# ── 5. codex remote-control (pod-level phone control) ──────────────────────────
+# ── 5. worktree sweeper (boot, then every 24h) ─────────────────────────────────
+# The emergency fallback for worktrees nobody ever cleaned up (Tom, 2026-09-25:
+# 66 stranded worktrees had /home/dev at 91%). `agent-run sweep` = prune --yes
+# --idle-days 3 --rescue: it reaps every ~/work worktree with no live task session,
+# no process inside it and no git/file activity for 3 days, first committing any
+# tracked WIP to a kept local rescue/<id>-<stamp> branch, so nothing is lost. A
+# boot-only hook would never fire on a pod that stays up for weeks, so it loops in
+# its own tmux session. Here, after the circuit breaker: a restart-looping pod is
+# left for a human untouched. Idempotent (an existing wt-sweep session is kept),
+# non-blocking, never fatal. Log on the PVC: ~/.cache/dev-env/wt-sweep.log.
+if tmux has-session -t wt-sweep 2>/dev/null; then
+  sweep_state="already running (tmux wt-sweep)"
+elif tmux new-session -d -s wt-sweep \
+       "while :; do '$AGENT_RUN' sweep; sleep 86400; done" 2>/dev/null; then
+  sweep_state="up (tmux wt-sweep: now + every 24h → ~/.cache/dev-env/wt-sweep.log)"
+else
+  sweep_state="FAILED to start — run by hand: agent-run sweep"
+fi
+log "worktree sweep: $sweep_state"
+
+# ── 6. codex remote-control (pod-level phone control) ──────────────────────────
 # Exactly the call #2824 made from dev-init, with its gating: the standalone codex
 # (the npm codex cannot do remote-control) and a real ~/.codex/auth.json. `up` is
 # idempotent and starts the supervisor in tmux session `codex-remote`; the enrolment
@@ -169,7 +190,7 @@ else
 fi
 log "codex remote-control: $codex_state"
 
-# ── 6. claude standby session (phone/web-drivable, on haynes-ops) ──────────────
+# ── 7. claude standby session (phone/web-drivable, on haynes-ops) ──────────────
 # A pod roll ends every claude session and only a shell inside the pod can start one
 # (Tom, 2026-09-10: "no sessions for claude code will be active, nothing will be able
 # to start one"), so boot one: agent-run's `both` mode = terminal TUI + `claude

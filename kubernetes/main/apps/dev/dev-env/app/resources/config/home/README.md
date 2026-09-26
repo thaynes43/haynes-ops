@@ -10,7 +10,8 @@ agent-run list                           live tasks + attach commands
 agent-run attach [<task-id>]             enter a session (no id → picker)
 agent-run detach [<task-id>]             disconnect clients; session runs on
 agent-run reap   [<task-id>] [--force]   kill session + remove worktree
-agent-run prune  [--yes] [--force]       bulk-remove stranded worktrees
+agent-run prune  [--yes] [--idle-days N] [--rescue|--force]   bulk-remove stranded worktrees
+agent-run sweep                          boot/daily fallback: prune worktrees idle >3d, WIP → rescue/ branch
 agent-run codex-remote [stop]            pod-level codex phone/web control
 ```
 
@@ -106,9 +107,11 @@ One worktree per task, so concurrent agents in a repo never collide. Agents are 
 
 ## Cleanup
 
-`reap <id>` kills the session and removes its worktree; `prune` bulk-removes stranded worktrees (dead session, worktree left on the PVC) — dry-run by default, `--yes` executes. Both resolve the owning repo from git and remove a worktree only when it has **no uncommitted tracked changes**: untracked scratch is discarded, tracked WIP is kept and reported (`--force` overrides). A worktree's branch is deleted only when git proves offline it holds nothing beyond base (`git branch -d`); a branch with its own commits — unpushed WIP, or squash-merged with the remote gone — is kept, with the exact `git branch -D` printed. Sweep confirmed-merged refs with `git -C ~/repos/<name> branch -D <branch>`.
+`reap <id>` kills the session and removes its worktree; `prune` bulk-removes stranded worktrees (dead session, worktree left on the PVC) — dry-run by default, `--yes` executes. Both resolve the owning repo from git and remove a worktree only when it has **no uncommitted tracked changes**: untracked scratch is discarded, tracked WIP is kept and reported (`--rescue` commits it to a kept `rescue/<id>-<stamp>` branch and then removes the worktree; `--force` discards it). `prune` also skips a worktree that is still **in use** under another name: a process has its cwd inside it, or it saw git or file activity within `--idle-days` (default 6h). A worktree's branch is deleted only when git proves offline it holds nothing beyond base (`git branch -d`); a branch with its own commits — unpushed WIP, or squash-merged with the remote gone — is kept, with the exact `git branch -D` printed. Sweep confirmed-merged refs with `git -C ~/repos/<name> branch -D <branch>`.
 
 Standalone clones made directly under `~/work` (not worktrees) are skipped by `prune` and must be removed by hand after checking for unpushed commits.
+
+**Fallback sweeper.** `post-ready.sh` starts tmux session `wt-sweep`, which runs `agent-run sweep` (= `prune --yes --idle-days 3 --rescue`) at boot and then every 24h. Worktrees nobody cleaned up therefore disappear once they have been idle for 3 days, and any uncommitted tracked changes survive as `rescue/*` branches (`git -C ~/repos/<repo> branch --list 'rescue/*'`). Change the window with `AGENT_RUN_SWEEP_DAYS`. Log: `~/.cache/dev-env/wt-sweep.log`.
 
 ## Toolchain & auth
 

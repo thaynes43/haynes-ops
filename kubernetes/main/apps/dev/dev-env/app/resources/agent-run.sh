@@ -13,7 +13,8 @@
 #   agent-run attach [<task-id>]                # jump into a session (no id → picker)
 #   agent-run detach [<task-id>]                # kick attached clients off (no id → picker)
 #   agent-run reap   [<task-id>] [--force]      # kill + cleanup (no id → picker)
-#   agent-run prune  [--yes] [--force]          # bulk-clean ALL stranded worktrees (dry-run w/o --yes)
+#   agent-run prune  [--yes] [--idle-days N] [--rescue|--force]  # bulk-clean ALL stranded worktrees (dry-run w/o --yes)
+#   agent-run sweep                             # one pass of the boot/daily fallback: prune --yes --idle-days 3 --rescue
 #   agent-run codex-remote [up|stop]            # pod-level codex PHONE control (see NB; up = boot path)
 #
 # Bare `agent-run` fills every omitted choice interactively, TOOL-FIRST: repo picker
@@ -110,7 +111,8 @@ agent-run — worktree-per-task agent dispatcher
   agent-run attach [<task-id>]                # no id → arrow-key picker
   agent-run detach [<task-id>]                # no id → picker (attached sessions only)
   agent-run reap   [<task-id>] [--force]      # no id → picker (incl. stranded worktrees)
-  agent-run prune  [--yes] [--force]          # bulk-clean stranded worktrees (dry-run without --yes)
+  agent-run prune  [--yes] [--idle-days N] [--rescue|--force]  # bulk-clean stranded worktrees (dry-run without --yes)
+  agent-run sweep                             # boot/daily fallback (post-ready runs it): reap worktrees idle >3d, WIP → rescue/ branch
   agent-run codex-remote [up|stop]            # pod-level codex phone control (daemon + pairing code; up = no pairing)
 EOF
 }
@@ -305,6 +307,33 @@ drop_worktree() {
     log "KEPT branch $br @ $tip — has local commit(s) not on HEAD (unpushed WIP, or squash-merged). Confirm it landed, then drop: git -C $repo branch -D $br"
   fi
   return 0
+}
+
+# Park a stranded worktree's tracked WIP on a NEW local branch so the dir can go
+# without losing it: switch to rescue/<id>-<UTC stamp> (carries the dirty tree),
+# commit every tracked change there (--no-verify: a repo hook must not veto a
+# rescue), and leave the rest to drop_worktree, whose `branch -d` then refuses on
+# the unmerged rescue commit and KEEPS the branch. Tracked changes only — untracked
+# files stay scratch, as everywhere else in prune (and `git add -A` would pull
+# renders/recordings into .git on the very PVC this is freeing). Find them later:
+# `git -C ~/repos/<repo> branch --list 'rescue/*'`. Sets RESCUE_BRANCH; nonzero on
+# any failure (conflicted index, commit refused), with the worktree put back as found.
+rescue_wip() {  # $1 = worktree path, $2 = id
+  local wt="$1" wid="$2" orig osha
+  orig="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)" || return 1
+  osha="$(git -C "$wt" rev-parse HEAD 2>/dev/null)" || return 1
+  RESCUE_BRANCH="rescue/$wid-$(date -u +%Y%m%d-%H%M)"
+  git -C "$wt" switch -q -c "$RESCUE_BRANCH" 2>/dev/null || return 1
+  if git -C "$wt" add -u 2>/dev/null \
+     && git -C "$wt" commit -q --no-verify \
+          -m "wip: rescued by agent-run prune from ~/work/$wid (was on $orig @ ${osha:0:7})" 2>/dev/null; then
+    log "rescued $wid's tracked WIP → $RESCUE_BRANCH"
+    return 0
+  fi
+  if [ "$orig" = HEAD ]; then git -C "$wt" switch -q --detach "$osha" 2>/dev/null
+  else git -C "$wt" switch -q "$orig" 2>/dev/null; fi
+  git -C "$wt" branch -q -D "$RESCUE_BRANCH" 2>/dev/null
+  return 1
 }
 
 # Pre-trust a fresh worktree in claude's state file: `claude remote-control`
@@ -508,7 +537,7 @@ token_env='export GH_TOKEN="$(cat /creds/gh_token 2>/dev/null)"'
 # `agent-run` alone starts the guided walkthrough. `run` stays a hidden alias.
 case "${1:-}" in
   run)                                          shift; cmd=run ;;
-  list|attach|detach|reap|prune|codex-remote)   cmd="$1"; shift ;;
+  list|attach|detach|reap|prune|sweep|codex-remote)   cmd="$1"; shift ;;
   help|-h|--help)                               usage; exit 0 ;;
   *)
     # Bare word, not a flag, no such local clone: before treating it as the
@@ -516,7 +545,7 @@ case "${1:-}" in
     # the whole run walkthrough and die at clone time with a misleading error.
     # A real repo whose name shadows a typo is forced with --repo <name>.
     if [ -n "${1:-}" ] && [ "${1#-}" = "${1:-}" ] && [ ! -d "$REPOS/$1/.git" ]; then
-      sug="$(did_you_mean "$1" run list attach detach reap prune codex-remote help)"
+      sug="$(did_you_mean "$1" run list attach detach reap prune sweep codex-remote help)"
       [ -n "$sug" ] && die "unknown command '$1' — did you mean '$sug'? (for a repo really named '$1', use --repo $1)"
     fi
     cmd=run ;;   # bare / repo / -flag → run (keep $@)
@@ -923,18 +952,28 @@ reason as your final message."
     # Bulk-clean STRANDED worktrees under $WORK (dead session, PVC kept the dir) so
     # they don't balloon the PVC — the reap picker one-at-a-time doesn't scale to a
     # backlog. Default is a DRY-RUN plan; add --yes to execute. SAFE: skips any
-    # worktree with uncommitted TRACKED changes (real WIP) unless --force; untracked
-    # scratch (.claude/ etc.) is always discarded. Ends by pruning stale worktree
-    # admin entries in every repo.
-    do_it="" pforce=""
+    # worktree still in use (wt_busy) and any with uncommitted TRACKED changes (real
+    # WIP) unless --rescue (commit it to a kept rescue/ branch first) or --force
+    # (discard it); untracked scratch (.claude/ etc.) is always discarded. Ends by
+    # pruning stale worktree admin entries in every repo.
+    #   --idle-days N  widen the in-use window from AGENT_RUN_BUSY_MIN to N days —
+    #                  the boot/daily sweep (post-ready.sh) runs
+    #                  `prune --yes --idle-days 3 --rescue`, the fallback for
+    #                  worktrees nobody ever cleaned up.
+    do_it="" pforce="" prescue="" pidle="" pusage="usage: agent-run prune [--yes] [--idle-days N] [--rescue | --force]"
     while [ $# -gt 0 ]; do
       case "$1" in
         --yes|-y) do_it=1; shift ;;
         --force)  pforce=1; shift ;;
-        *) die "unknown flag $1 (usage: agent-run prune [--yes] [--force])" ;;
+        --rescue) prescue=1; shift ;;
+        --idle-days)
+          case "${2:-}" in ''|*[!0-9]*|0) die "--idle-days needs a whole number of days ≥1 ($pusage)" ;; esac
+          pidle="$2"; AGENT_RUN_BUSY_MIN=$(( $2 * 1440 )); shift 2 ;;
+        *) die "unknown flag $1 ($pusage)" ;;
       esac
     done
-    plan=0 wip=0 busy=0 removed=0 forced=0 failed=0
+    [ -n "$pforce" ] && [ -n "$prescue" ] && die "--rescue keeps WIP and --force discards it — pick one ($pusage)"
+    plan=0 wip=0 busy=0 removed=0 forced=0 rescued=0 failed=0
     for wt in "$WORK"/*/; do
       [ -d "$wt" ] || continue
       wt="${wt%/}"; wid="$(basename "$wt")"
@@ -948,31 +987,72 @@ reason as your final message."
       td="$(tracked_dirty "$wt")"
       note="" is_wip=""
       if [ "${td:-0}" -gt 0 ]; then
-        if [ -z "$pforce" ]; then
-          printf '  SKIP  %-34s %s  (%s tracked WIP — prune --yes --force to discard)\n' "$wid" "$br" "$td"
+        if [ -n "$prescue" ]; then
+          note="  ↳ rescues $td tracked WIP to a rescue/ branch"; is_wip=rescue
+        elif [ -n "$pforce" ]; then
+          note="  ⚠ discards $td tracked WIP"; is_wip=force   # shown, never hidden
+        else
+          printf '  SKIP  %-34s %s  (%s tracked WIP — --rescue to keep it on a branch, --force to discard)\n' "$wid" "$br" "$td"
           wip=$((wip + 1)); continue
         fi
-        note="  ⚠ discards $td tracked WIP"; is_wip=1   # --force: shown, never hidden
       fi
       plan=$((plan + 1))
       if [ -n "$do_it" ]; then
+        if [ "$is_wip" = rescue ]; then
+          if ! rescue_wip "$wt" "$wid"; then
+            printf '  SKIP  %-34s %s  (rescue commit failed — WIP left in place)\n' "$wid" "$br"
+            wip=$((wip + 1)); plan=$((plan - 1)); continue
+          fi
+          note="  ↳ $td tracked WIP rescued to $RESCUE_BRANCH"
+        fi
         if drop_worktree "$wt" "$repo_dir"; then
           printf '  REAP  %-34s %s%s\n' "$wid" "$br" "$note"
-          removed=$((removed + 1)); [ -n "$is_wip" ] && forced=$((forced + 1))
+          removed=$((removed + 1))
+          case "$is_wip" in force) forced=$((forced + 1)) ;; rescue) rescued=$((rescued + 1)) ;; esac
+          # A rescue switched the worktree off its own branch, so drop_worktree
+          # retired the rescue branch (kept); retire the original the same safe way.
+          if [ "$is_wip" = rescue ]; then
+            case "$br" in ""|HEAD|main|master) ;; *) git -C "$repo_dir" branch -d "$br" >/dev/null 2>&1 && log "branch $br deleted" ;; esac
+          fi
         else
           printf '  FAIL  %-34s %s  (worktree remove failed)\n' "$wid" "$br"; failed=$((failed + 1))
         fi
       else
         printf '  reap  %-34s %s%s\n' "$wid" "$br" "$note"
-        [ -n "$is_wip" ] && forced=$((forced + 1))
+        case "$is_wip" in force) forced=$((forced + 1)) ;; rescue) rescued=$((rescued + 1)) ;; esac
       fi
     done
     for r in "$REPOS"/*/; do [ -d "$r/.git" ] && git -C "$r" worktree prune 2>/dev/null || true; done
     if [ -n "$do_it" ]; then
-      log "prune done: $removed removed ($forced force-discarded WIP), $failed failed, $wip skipped (WIP), $busy skipped (in use)"
+      log "prune done: $removed removed ($rescued with WIP rescued, $forced force-discarded WIP), $failed failed, $wip skipped (WIP), $busy skipped (in use)"
     else
-      log "DRY-RUN: $plan would be reaped ($forced discarding tracked WIP), $wip skipped (WIP), $busy skipped (in use). Execute:  agent-run prune --yes${pforce:+ --force}"
+      log "DRY-RUN: $plan would be reaped ($rescued rescuing WIP, $forced discarding WIP), $wip skipped (WIP), $busy skipped (in use). Execute:  agent-run prune --yes${pidle:+ --idle-days $pidle}${prescue:+ --rescue}${pforce:+ --force}"
     fi
+    ;;
+  sweep)
+    # One pass of the emergency fallback for worktrees nobody ever cleaned up (Tom,
+    # 2026-09-25, after 66 stranded worktrees filled /home/dev to 91%). post-ready.sh
+    # runs it in tmux session `wt-sweep` at boot and then every 24h, so a pod that
+    # stays up for weeks still sweeps. = prune --yes --idle-days N --rescue: reaps
+    # every worktree with no live task session, no process inside it and no git or
+    # file activity for N days (AGENT_RUN_SWEEP_DAYS, default 3); tracked WIP goes to
+    # a kept rescue/ branch first, so nothing is lost. Logged, with disk use before
+    # and after, to ~/.cache/dev-env/wt-sweep.log on the PVC (trimmed past 1 MiB).
+    [ $# -eq 0 ] || die "usage: agent-run sweep   (no flags; AGENT_RUN_SWEEP_DAYS=N changes the 3-day window)"
+    sdays="${AGENT_RUN_SWEEP_DAYS:-3}"
+    case "$sdays" in ''|*[!0-9]*|0) die "AGENT_RUN_SWEEP_DAYS must be a whole number of days ≥1 (got '$sdays')" ;; esac
+    slog="$HOME/.cache/dev-env/wt-sweep.log"; mkdir -p "${slog%/*}"
+    if [ "$(stat -c %s "$slog" 2>/dev/null || echo 0)" -gt 1048576 ]; then
+      tail -n 2000 "$slog" > "$slog.tmp" && mv -f "$slog.tmp" "$slog"
+    fi
+    used() { df --output=pcent "$HOME" 2>/dev/null | tail -n 1 | tr -d ' '; }
+    {
+      printf '== %s sweep: worktrees idle > %s days (home %s used)\n' "$(date -u '+%F %TZ')" "$sdays" "$(used)"
+      bash "$0" prune --yes --idle-days "$sdays" --rescue 2>&1; echo "prune-rc=$?"
+      printf '== %s done (home %s used)\n' "$(date -u '+%F %TZ')" "$(used)"
+    } >> "$slog"
+    last="$(tail -n 4 "$slog" | grep -E 'prune done|prune-rc=[1-9]|ERROR' | head -n 1 | sed 's/^agent-run: //')"
+    log "sweep: ${last:-prune FAILED — see the log}; home $(used) used; log: $slog"
     ;;
   codex-remote)
     # Pod-level codex phone control. codex has NO per-session --remote-control like
