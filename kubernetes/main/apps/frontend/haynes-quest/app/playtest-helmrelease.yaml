@@ -30,11 +30,11 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest main 5778469 (the family release image, run here in
+              # Haynes Quest main e63f549 (the family release image, run here in
               # fixture mode): growth moves and v4 pieces for editor worlds; the
               # Rat Casino, Golden and mouse combat unchanged. Exact artwork
               # approval remains pending.
-              tag: sha-57784691d17da0d92c895286c323384d52c21d8d@sha256:3c7f3ce9f166643dad4fe1f4c2b996d793498e137e8a1f27f99490eceec13f66
+              tag: sha-e63f5491ad6622c4aced010c29cd690156a711f8@sha256:754756fe341e7056b664077b5cb272bdeef7d8898d4ac80855f404a254976630
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
