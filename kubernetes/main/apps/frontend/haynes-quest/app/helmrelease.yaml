@@ -30,9 +30,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # haynes-quest main e63f549 (PRs #79-#86: growth moves, v4 pieces, family
-              # journeys, Immich name search, final copy), signed image from main.
-              tag: sha-e63f5491ad6622c4aced010c29cd690156a711f8@sha256:754756fe341e7056b664077b5cb272bdeef7d8898d4ac80855f404a254976630
+              # haynes-quest main ce19daf (World A family template, catalog v8, foundations), signed image from main.
+              tag: sha-ce19daf3c503ed65815d2b0f4ef83e3e12cb87c7@sha256:b7d7c1d540f988370fadcc9e22f95160ec13dd0b886e6388638fd4cdbaaffa6c
               pullPolicy: IfNotPresent
             env:
               # Family release (haynes-quest ADR-005): Authentik sign-in, real
