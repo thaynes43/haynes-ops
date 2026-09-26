@@ -39,11 +39,11 @@ spec:
               QUEST_EPHEMERAL_PLAYTEST: "true"
               QUEST_APP_ORIGIN: https://haynes-quest-playtest.haynesops.com
               PORT: "3000"
-            envFrom:
-              # The isolated fixture uses only the existing session/app database
-              # Secret. It never mounts Immich or database-init credentials.
-              - secretRef:
-                  name: haynes-quest-secret
+            # No Secret at all (haynes-quest ADR-006 D-01): the ephemeral fixture
+            # keeps everything in memory, mints its own per-process session secret
+            # and refuses to start if it is handed a DATABASE_URL. It must never
+            # mount haynes-quest-secret, whose DATABASE_URL and BETTER_AUTH_SECRET
+            # belong to the family release, nor any Immich or database-init Secret.
             probes:
               liveness:
                 enabled: true
