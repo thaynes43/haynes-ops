@@ -128,6 +128,29 @@ state_upsert() {  # <sig> <class> <attempted> <result> [note] ; RETURNS the writ
 # state_prune — drop entries older than the TTL (approximates "regression no longer present"
 # race-safely: a just-cleared signature lingers <= TTL, never pruned out from under a gate
 # cycle mid-read). Cheap; run every cycle.
+# nonupgrade_record — persist class=nonupgrade for a sig WITHOUT lowering a prior claim (#3182).
+#   <sig> <entry (compact JSON, "" if none)> <STATE_READ_STATUS>
+# The gate reads only class/result/first_seen, so class=nonupgrade keeps its behaviour
+# (phase none: Flux still pages, a non-upgrade pod crashloop does not). `attempted` is
+# read by triage alone and is the at-most-once guard: it must never go 1 -> 0. It used
+# to: once a remediated sig aged past the merge lookback, this path rewrote it
+# `attempted=0 result=none`, and the next merge to main while the failure persisted
+# (the fix PR's own merge included) re-summoned remediate, filed another escalation and
+# paged again. Seen live on 2026-09-25 for sig cce9e6af45bf. An unreadable state CM
+# writes nothing: a blind write could erase a claim it cannot see.
+nonupgrade_record() {
+  local sig="$1" entry="$2" read_status="$3"
+  if [ "$read_status" != "ok" ]; then
+    log "sig=$sig: state CM unreadable — NOT recording class=nonupgrade (a blind write could erase a prior attempt claim)."
+    return 0
+  fi
+  if [ "$(jget "$entry" attempted)" = "1" ]; then
+    state_upsert "$sig" nonupgrade 1 "$(jget "$entry" result)"
+  else
+    state_upsert "$sig" nonupgrade 0 none
+  fi
+}
+
 state_prune() {
   kubectl -n "$STATE_NS" get configmap "$STATE_CM" >/dev/null 2>&1 || return 0
   local ttl out
@@ -385,5 +408,5 @@ if [ "$CLASS" = "upgrade" ]; then
 fi
 
 log "sig=$SIG is NOT upgrade-attributable (class=nonupgrade) — NOT summoning. The gate pages a Flux deploy failure (sole catcher) but stays silent for a non-upgrade pod crashloop (Alertmanager covers it)."
-state_upsert "$SIG" nonupgrade 0 none
+nonupgrade_record "$SIG" "$entry" "$STATE_READ_STATUS"
 exit 0
