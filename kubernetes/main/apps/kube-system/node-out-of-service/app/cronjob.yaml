@@ -66,7 +66,7 @@ spec:
               # everything through `kubectl -o jsonpath`. docker.io is on the Kyverno
               # restrict-image-registries allowlist; the tag is pinned and Renovate
               # bumps it via the `kubernetes` manager.
-              image: docker.io/alpine/kubectl:1.37.0
+              image: docker.io/alpine/kubectl:1.37.1
               # The image ENTRYPOINT is kubectl itself, so command must override it.
               command: ["/bin/sh", "/opt/node-out-of-service/node-out-of-service.sh"]
               env:
