@@ -30,8 +30,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # haynes-quest main ce19daf (World A family template, catalog v8, foundations), signed image from main.
-              tag: sha-ce19daf3c503ed65815d2b0f4ef83e3e12cb87c7@sha256:b7d7c1d540f988370fadcc9e22f95160ec13dd0b886e6388638fd4cdbaaffa6c
+              # haynes-quest main 7f1ab06 (World A and World B family templates), signed image from main.
+              tag: sha-7f1ab063042a573469515357323ab44a5a34c6f3@sha256:65bea1266ceb40504c610d3a6dab4c0a088b2d638918013ab30e6d05e7f3c421
               pullPolicy: IfNotPresent
             env:
               # Family release (haynes-quest ADR-005): Authentik sign-in, real
