@@ -30,9 +30,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest main ed03e82 (#104, ADR-006): mints its own session secret and
-              # refuses a DATABASE_URL in ephemeral mode, so it runs with no Secret below.
-              tag: sha-ed03e820576f95870ceab795ba4c85bc00003f5d@sha256:b097e3812b1de5726e1bdb234d233badf4a75fd12e9b414638c42030a3c73c71
+              # Haynes Quest main e2bde48 (the family release image, in fixture mode): release-review fixes, Update world fixes, mischief kitten.
+              tag: sha-e2bde488eaf7c5a48ce72e3f54fe75749aee47ca@sha256:f58640d249e83f1649e13bcd657b96fd1ed40c794c32f586019851107defe8eb
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
