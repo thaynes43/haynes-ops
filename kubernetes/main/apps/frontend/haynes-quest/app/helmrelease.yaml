@@ -30,8 +30,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # haynes-quest main c484f7c (world v3 with six era models, sound wiring, inator model, scare cues), signed image from main.
-              tag: sha-c484f7c6d4b565d173c04e463d761f5595a14c4f@sha256:e2935bb5895a397c607920a1cf6b8f84d29d2b4b03b3cea3031f9b1daa87e09e
+              # haynes-quest main e976281 (world v4 scare levels, scare runtime and fixes, radio showman, putty grunt, demon idol, inator, lab robot, clubhouse kit), signed image from main.
+              tag: sha-e976281dd406a7141fc5219c0e84405ee9937253@sha256:e37bd90bd2197847dc224b342f9a0d86eb23a0aecf251f9b153f6b20182a469c
               pullPolicy: IfNotPresent
             env:
               # Family release (haynes-quest ADR-005): Authentik sign-in, real
