@@ -8,7 +8,10 @@
 # only). A wedged MAM gate is a compliance hazard, so it pages. Of the MCP
 # connector auth alerts, McpConnectorRefreshReuseDetected is critical (a replayed
 # refresh token may be a stolen one, so it pages) and McpConnectorAuthRejectionBurst
-# is a warning (the rate limits already contain it).
+# is a warning (the rate limits already contain it). Of the watchlist-protection
+# alerts, TrashSweepPaused and ReleaseBlockReaddSameRelease are critical (reclaim
+# stalled; a deleted release came back) and WatchlistAccountUnreadable and
+# WatchlistRegistryRunsFailing are warnings (notices that come before a page).
 groups:
   - name: haynesnetwork-mam-governor
     rules:
@@ -87,5 +90,105 @@ groups:
             rate-limited callers in the last 10 minutes. Check the `[auth] authorize_rejected` and
             `[auth] rate_limited` lines in Loki for the client and reason; a single client id
             usually means a stuck connector, many means probing.
+        labels:
+          severity: warning
+  - name: haynesnetwork-watchlist-protection
+    # Watchlist protection (v0.101.0): the Watchlist Registry CronJob, the Trash
+    # sweep's gate and its Release Block. Every line is one JSON object per line
+    # (`{"level":…,"time":…,"msg":"[area] event",…fields}`) and never carries a
+    # token, a username or a person's titles; accounts appear only as `acct:<8 hex>`.
+    # Each alert links its section of the runbook,
+    # https://github.com/thaynes43/haynesnetwork/blob/main/docs/ops/017-watchlist-protection.md
+    # The two pages are critical (the only route that reaches a human); the two
+    # notices are warnings (Alertmanager / Grafana UI only).
+    rules:
+      - alert: TrashSweepPaused
+        # A scheduled sweep (the sync-trash-batch-sweep CronJob, hourly at :45) with
+        # a batch due logs `[trash] sweep_paused {reason, step, pausedForH}` on every
+        # run while reclaim is paused, whatever the reason (`gate`,
+        # `release_block`, `audit_unsafe`, `arr`). Only the scheduled path carries
+        # a number in pausedForH (the web Expire now logs null), hence container
+        # `main`. The 90m window spans the hourly runs, so the alert holds while
+        # the pause lasts and clears about 30 minutes after the next ok sweep.
+        expr: |
+          sum by (app, reason, step) (count_over_time({app="haynesnetwork", container="main"} |= "[trash] sweep_paused" | json | pausedForH >= 6 [90m])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            haynesnetwork's Trash sweep has been paused for 6 hours or more (reason and step in the
+            labels), so nothing due has been deleted and batches wait in Leaving Soon. `gate`: the
+            watchlist registry is not verified; `release_block`: the Radarr/Sonarr release profile
+            could not be written or read back; `audit_unsafe`: the Maintainerr safety audit failed;
+            `arr`: Maintainerr, Radarr or Sonarr is not answering. Remedy per reason and step:
+            https://github.com/thaynes43/haynesnetwork/blob/main/docs/ops/017-watchlist-protection.md#3-sweep_paused-pages-6-hours-or-more-any-reason
+          runbook_url: https://github.com/thaynes43/haynesnetwork/blob/main/docs/ops/017-watchlist-protection.md#3-sweep_paused-pages-6-hours-or-more-any-reason
+        labels:
+          severity: critical
+      - alert: ReleaseBlockReaddSameRelease
+        # The sweep's hourly re-add check logs `[release-block] readd {arrKind,
+        # recordId, title, grabs, sameRelease}` once per verdict; at error level
+        # with `sameRelease: true` a title deleted from Trash came back and grabbed
+        # the very release the Release Block should have rejected. Logged once per
+        # record, so the 24h window keeps it firing for a day (one page, one
+        # 12h repeat). Any container: a breach must page wherever it is logged.
+        # `title` is a title in our own library, never a person's watchlist.
+        expr: |
+          sum by (app, arrKind, title) (count_over_time({app="haynesnetwork"} |= "[release-block] readd" |= `"sameRelease":true` | json [24h])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            A title deleted from haynesnetwork's Trash was re-added and grabbed the same release the
+            Release Block should have rejected (title and Radarr/Sonarr in the labels). Compare the
+            grab's release name in the *arr history with the record's blocked term, and blocklist
+            the grab by hand:
+            https://github.com/thaynes43/haynesnetwork/blob/main/docs/ops/017-watchlist-protection.md#4-the-readd-page-samereleasetrue
+          runbook_url: https://github.com/thaynes43/haynesnetwork/blob/main/docs/ops/017-watchlist-protection.md#4-the-readd-page-samereleasetrue
+        labels:
+          severity: critical
+      - alert: WatchlistAccountUnreadable
+        # `[watchlist-registry] account_unreadable {class, source, acct,
+        # failingSinceH}` is logged once when one account's source (`community` or
+        # `seerr`) has failed for 72 hours or went hidden: it is frozen, its last
+        # titles still protect, but it no longer blocks the gate. Coverage lost,
+        # not safety, so a notice. Registry runs happen in the registry and sweep
+        # CronJobs only (container `main`); the 24h window keeps it visible a day.
+        expr: |
+          sum by (app, class, source, acct) (count_over_time({app="haynesnetwork", container="main"} |= "[watchlist-registry] account_unreadable" | json [24h])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            haynesnetwork's watchlist registry stopped reading one account's watchlist (class,
+            source and acct tag in the labels). Its last-read titles still protect, but newer
+            additions are not seen. Tell the cause from the same acct's earlier account_failed
+            lines:
+            https://github.com/thaynes43/haynesnetwork/blob/main/docs/ops/017-watchlist-protection.md#5-the-account_unreadable-notice-once-per-source
+          runbook_url: https://github.com/thaynes43/haynesnetwork/blob/main/docs/ops/017-watchlist-protection.md#5-the-account_unreadable-notice-once-per-source
+        labels:
+          severity: warning
+      - alert: WatchlistRegistryRunsFailing
+        # The sync-watchlist-registry CronJob (:14/:29/:44/:59) logs
+        # `[watchlist-registry] run_failed {trigger, failure}` for a whole failed
+        # run and still exits 0, so only this alert says so (a run that throws logs
+        # `failure: error` and exits 1; the CronJob's backoffLimit 0 keeps that to
+        # one line per slot). Eight scheduled failures (2 hours) with no
+        # `run_complete` in the same window means eight in a row. The window is
+        # 2h10m so a slow pod start cannot drop the oldest of the eight before the
+        # newest lands; the sweep's inline refreshes (trigger `sweep`) are not
+        # counted. A `busy` skip is neither, so it can only delay this, never fire
+        # it. It notifies before the gate's own pause reaches the 6-hour
+        # TrashSweepPaused page.
+        expr: |
+          (sum by (app) (count_over_time({app="haynesnetwork", container="main"} |= "[watchlist-registry] run_failed" |= `"trigger":"schedule"` [2h10m])) >= 8)
+          unless
+          (sum by (app) (count_over_time({app="haynesnetwork", container="main"} |= "[watchlist-registry] run_complete" [2h10m])) > 0)
+        for: 0m
+        annotations:
+          summary: >-
+            haynesnetwork's watchlist registry has failed 8 scheduled runs in a row (2 hours), so
+            no watchlist has been re-read since; the Trash sweep's gate closes once the newest ok
+            run is 30 minutes old, and TrashSweepPaused pages at 6 hours. The run_failed line's
+            `failure` names what failed (roster, owner, owner_truncated, error):
+            https://github.com/thaynes43/haynesnetwork/blob/main/docs/ops/017-watchlist-protection.md#6-the-run_failed-streak-8-runs-in-a-row-2-hours
+          runbook_url: https://github.com/thaynes43/haynesnetwork/blob/main/docs/ops/017-watchlist-protection.md#6-the-run_failed-streak-8-runs-in-a-row-2-hours
         labels:
           severity: warning
