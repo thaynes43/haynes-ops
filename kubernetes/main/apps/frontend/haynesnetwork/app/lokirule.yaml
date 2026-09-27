@@ -168,13 +168,15 @@ groups:
       - alert: WatchlistRegistryRunsFailing
         # The sync-watchlist-registry CronJob (:14/:29/:44/:59) logs
         # `[watchlist-registry] run_failed {trigger, failure}` for a whole failed
-        # run and still exits 0, so only this alert says so. Eight scheduled
-        # failures (2 hours) with no `run_complete` in the same window means eight
-        # in a row. The window is 2h10m so a slow pod start cannot drop the oldest
-        # of the eight before the newest lands; the sweep's inline refreshes
-        # (trigger `sweep`) are not counted. A `busy` skip is neither, so it can
-        # only delay this, never fire it. It notifies before the gate's own pause
-        # reaches the 6-hour TrashSweepPaused page.
+        # run and still exits 0, so only this alert says so (a run that throws logs
+        # `failure: error` and exits 1; the CronJob's backoffLimit 0 keeps that to
+        # one line per slot). Eight scheduled failures (2 hours) with no
+        # `run_complete` in the same window means eight in a row. The window is
+        # 2h10m so a slow pod start cannot drop the oldest of the eight before the
+        # newest lands; the sweep's inline refreshes (trigger `sweep`) are not
+        # counted. A `busy` skip is neither, so it can only delay this, never fire
+        # it. It notifies before the gate's own pause reaches the 6-hour
+        # TrashSweepPaused page.
         expr: |
           (sum by (app) (count_over_time({app="haynesnetwork", container="main"} |= "[watchlist-registry] run_failed" |= `"trigger":"schedule"` [2h10m])) >= 8)
           unless

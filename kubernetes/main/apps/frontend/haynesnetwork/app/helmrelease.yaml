@@ -238,9 +238,10 @@ spec:
       # live verification (step S6 of
       # https://github.com/thaynes43/haynesnetwork/blob/main/.agents/plans/072-watchlist-protection.md)
       # is green; S6 lifts it (suspend: false) in the same PR that removes TRASH_WEB_DELETES_HELD.
-      # Suspended here in git, not by kubectl: this release's helm upgrade would reset a hand-set
-      # suspend. Expired batches wait in leaving_soon meanwhile, and the Release Block upkeep keeps
-      # running in sync-watchlist-registry below.
+      # Suspend and resume it only here in git, never by kubectl: the chart renders `suspend` on every
+      # CronJob, so each helm upgrade puts a hand-set value back to this one. Expired batches wait in
+      # leaving_soon meanwhile, and the Release Block upkeep keeps running in sync-watchlist-registry
+      # below.
       sync-trash-batch-sweep:
         type: cronjob
         pod:
@@ -443,14 +444,16 @@ spec:
       # PLEX_HAYNESOPS_TOKEN / PLEX_HAYNESTOWER_TOKEN, SEERR_API_KEY, RADARR_API_KEY /
       # SONARR_API_KEY and DATABASE_URL, all in haynesnetwork-secret (URLs default in-cluster).
       # Minutes 14,29,44,59 are free: :44 lands a minute before the sweep, :14 three before
-      # space-policy.
+      # space-policy. backoffLimit 0: a thrown run exits 1 and waits for the next slot 15 minutes
+      # later instead of retrying in its own, so each slot logs at most one scheduled run_failed and
+      # WatchlistRegistryRunsFailing's 8 lines stay 8 slots (2 hours).
       sync-watchlist-registry:
         type: cronjob
         pod:
           restartPolicy: Never
         cronjob:
           schedule: "14,29,44,59 * * * *"
-          backoffLimit: 1
+          backoffLimit: 0
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
           successfulJobsHistory: 1
