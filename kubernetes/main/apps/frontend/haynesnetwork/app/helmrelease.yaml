@@ -74,7 +74,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/haynesnetwork
-              tag: v0.100.0
+              tag: v0.101.0
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -104,6 +104,13 @@ spec:
               GB_DAILY_CALL_BUDGET_PAIRING: "700"
               GB_DAILY_CALL_BUDGET_GOODREADS: "200"
               GB_DAILY_CALL_BUDGET_BOOKFIX: "100"
+              # Watchlist protection rollout (v0.101.0): while set, the web delete paths (Trash
+              # Expedite, item and all, and the manual Expire now) refuse with "Deleting from Trash
+              # is on hold ..." and delete nothing. Held together with the suspended
+              # sync-trash-batch-sweep below until the live verification (step S6 of
+              # https://github.com/thaynes43/haynesnetwork/blob/main/.agents/plans/072-watchlist-protection.md)
+              # is green; the PR that resumes the sweep removes this line.
+              TRASH_WEB_DELETES_HELD: "true"
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
@@ -227,12 +234,20 @@ spec:
       # Trash-batch sweep hourly (PLAN-012 / ADR-025): expires leaving_soon batches whose
       # window closed — per-item guarded deletes (SAFE audit + guardian + live exclusions
       # re-run at sweep time). Only greenlit/gate-skipped batches can ever reach this path.
+      # SUSPENDED for the watchlist protection rollout (v0.101.0): no real deletion runs until the
+      # live verification (step S6 of
+      # https://github.com/thaynes43/haynesnetwork/blob/main/.agents/plans/072-watchlist-protection.md)
+      # is green; S6 lifts it (suspend: false) in the same PR that removes TRASH_WEB_DELETES_HELD.
+      # Suspended here in git, not by kubectl: this release's helm upgrade would reset a hand-set
+      # suspend. Expired batches wait in leaving_soon meanwhile, and the Release Block upkeep keeps
+      # running in sync-watchlist-registry below.
       sync-trash-batch-sweep:
         type: cronjob
         pod:
           restartPolicy: Never
         cronjob:
           schedule: "45 * * * *"
+          suspend: true
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
@@ -409,6 +424,43 @@ spec:
               - tsx
               - /sync/src/scripts/sync.ts
               - --mode=watch
+            envFrom:
+              - secretRef:
+                  name: haynesnetwork-secret
+            resources:
+              requests:
+                cpu: 25m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
+      # Watchlist Registry every 15 min (v0.101.0, watchlist protection; runbook:
+      # https://github.com/thaynes43/haynesnetwork/blob/main/docs/ops/017-watchlist-protection.md):
+      # reads every watchlist the app can reach (the owner's plex.tv list, friends and Home members
+      # through community.plex.tv, each Seerr user's list) into the registry the Trash sweep's gate
+      # and watchlist keep read. READ-ONLY against plex.tv and Seerr. Then, best effort, the Release
+      # Block upkeep against Radarr/Sonarr (it keeps running while sync-trash-batch-sweep is
+      # suspended). A clean failed run exits 0; the Loki alerts in ./lokirule.yaml watch it. Needs
+      # PLEX_HAYNESOPS_TOKEN / PLEX_HAYNESTOWER_TOKEN, SEERR_API_KEY, RADARR_API_KEY /
+      # SONARR_API_KEY and DATABASE_URL, all in haynesnetwork-secret (URLs default in-cluster).
+      # Minutes 14,29,44,59 are free: :44 lands a minute before the sweep, :14 three before
+      # space-policy.
+      sync-watchlist-registry:
+        type: cronjob
+        pod:
+          restartPolicy: Never
+        cronjob:
+          schedule: "14,29,44,59 * * * *"
+          backoffLimit: 1
+          concurrencyPolicy: Forbid
+          failedJobsHistory: 2
+          successfulJobsHistory: 1
+        containers:
+          main:
+            image: *mainImage
+            command:
+              - tsx
+              - /sync/src/scripts/sync.ts
+              - --mode=watchlist-registry
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
