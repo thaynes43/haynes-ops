@@ -74,7 +74,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/haynesnetwork
-              tag: v0.101.1
+              tag: v0.101.2
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -228,7 +228,7 @@ spec:
       # window closed — per-item guarded deletes (SAFE audit + guardian + live exclusions
       # re-run at sweep time). Only greenlit/gate-skipped batches can ever reach this path.
       # Resumed 2026-09-28 after the watchlist protection live verification passed (step S6 of
-      # https://github.com/thaynes43/haynesnetwork/blob/main/.agents/plans/072-watchlist-protection.md).
+      # https://github.com/thaynes43/haynesnetwork/blob/main/.agents/plans/completed/072-watchlist-protection.md).
       # Suspend and resume it only here in git, never by kubectl: the chart renders `suspend` on every
       # CronJob, so each helm upgrade puts a hand-set value back to this one. Expired batches wait in
       # leaving_soon meanwhile, and the Release Block upkeep keeps running in sync-watchlist-registry
