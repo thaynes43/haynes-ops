@@ -104,13 +104,6 @@ spec:
               GB_DAILY_CALL_BUDGET_PAIRING: "700"
               GB_DAILY_CALL_BUDGET_GOODREADS: "200"
               GB_DAILY_CALL_BUDGET_BOOKFIX: "100"
-              # Watchlist protection rollout (v0.101.0): while set, the web delete paths (Trash
-              # Expedite, item and all, and the manual Expire now) refuse with "Deleting from Trash
-              # is on hold ..." and delete nothing. Held together with the suspended
-              # sync-trash-batch-sweep below until the live verification (step S6 of
-              # https://github.com/thaynes43/haynesnetwork/blob/main/.agents/plans/072-watchlist-protection.md)
-              # is green; the PR that resumes the sweep removes this line.
-              TRASH_WEB_DELETES_HELD: "true"
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
@@ -234,10 +227,8 @@ spec:
       # Trash-batch sweep hourly (PLAN-012 / ADR-025): expires leaving_soon batches whose
       # window closed — per-item guarded deletes (SAFE audit + guardian + live exclusions
       # re-run at sweep time). Only greenlit/gate-skipped batches can ever reach this path.
-      # SUSPENDED for the watchlist protection rollout (v0.101.0): no real deletion runs until the
-      # live verification (step S6 of
-      # https://github.com/thaynes43/haynesnetwork/blob/main/.agents/plans/072-watchlist-protection.md)
-      # is green; S6 lifts it (suspend: false) in the same PR that removes TRASH_WEB_DELETES_HELD.
+      # Resumed 2026-09-28 after the watchlist protection live verification passed (step S6 of
+      # https://github.com/thaynes43/haynesnetwork/blob/main/.agents/plans/072-watchlist-protection.md).
       # Suspend and resume it only here in git, never by kubectl: the chart renders `suspend` on every
       # CronJob, so each helm upgrade puts a hand-set value back to this one. Expired batches wait in
       # leaving_soon meanwhile, and the Release Block upkeep keeps running in sync-watchlist-registry
@@ -248,7 +239,7 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "45 * * * *"
-          suspend: true
+          suspend: false
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
