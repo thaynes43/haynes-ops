@@ -32,8 +32,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest main 9852444 in fixture mode: final evidence, gameplay unchanged from 24bc510.
-              tag: sha-98524447f742f71761221212bf86a9424dbb89e9@sha256:43211b16a96760b098e9af26d04f602e0952e33f346bfd104a54abae2dcf7058
+              # Haynes Quest main 034d314 in fixture mode: smaller image, same media URLs and access.
+              tag: sha-034d314ced5a36a68dc2129ea7a7bf1b3ff5c916@sha256:08d00e64fb7ee71448f33646543953c129f7401ea394641cf6cf479f384c0380
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
