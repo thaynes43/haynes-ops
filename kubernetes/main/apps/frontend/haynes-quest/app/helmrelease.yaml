@@ -32,8 +32,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # haynes-quest main 24bc510 (World A v6 Helper, Rescue Harbor, Casita and Rooftop City candidates), signed image from main.
-              tag: sha-24bc5105cfc253ab5c1472eb44693546ea04e0d6@sha256:0dd8f0d1687427e33b536328dfd7415cde1122e4e80bf6ff2e5bbdaa56cb5207
+              # haynes-quest main 9852444 (final release evidence; gameplay unchanged from 24bc510), signed image from main.
+              tag: sha-98524447f742f71761221212bf86a9424dbb89e9@sha256:43211b16a96760b098e9af26d04f602e0952e33f346bfd104a54abae2dcf7058
               pullPolicy: IfNotPresent
             env:
               # Family release (haynes-quest ADR-005): Authentik sign-in, real
