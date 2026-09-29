@@ -30,8 +30,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # haynes-quest main 489902a (family worlds v5 plus Rescue Harbor candidate kit), signed image from main.
-              tag: sha-489902a8b0e22bbaaea1e9cd0eb20f365610907c@sha256:5484c863cf89cffff6824dcabe63b07a73e8390dbd96e687ddea21f4e24a2794
+              # haynes-quest main d78e146 (family World A v6 Web-slinger Helper plus Rescue Harbor), signed image from main.
+              tag: sha-d78e146f6db2db7eb2393ec164baa06536bb71b1@sha256:f5f5c6787557564918b1768b22e78562bff9803db9dc4f30b338edd70e7cd2e4
               pullPolicy: IfNotPresent
             env:
               # Family release (haynes-quest ADR-005): Authentik sign-in, real
