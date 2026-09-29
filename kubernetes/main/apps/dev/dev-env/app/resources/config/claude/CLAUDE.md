@@ -273,7 +273,7 @@ greyed-out phone entry (openai/codex#34721) — never re-enable it, bump the pin
 **After a pod roll (`post-ready.sh`).** A roll ends every claude session, and only a
 shell inside this pod can start one, so the pod starts its own: a **standby** session
 on `haynes-ops` (`agent-run --interactive`, i.e. a TUI here *and* a phone/claude.ai
-session), plus the codex daemon above. It is launched by
+session), plus the codex daemon above and the worktree sweeper (below). It is launched by
 `/opt/dev-env/scripts/post-ready.sh` in the detached tmux window `main:post-ready`,
 **not** by dev-init: the launches wait for code-server's `/healthz`, then for the
 kubelet to report `Ready=True` + the app container `started`, then settle 60s — so
@@ -337,6 +337,22 @@ servers claude has (both are rendered from one `mcp.json`).
 Managing them: `agent-run list` · `attach [<id>]` · `detach` · `reap [<id>]
 [--force]` · `prune [--yes]` (bulk-clean stranded worktrees; dry-run without
 `--yes`). Reap when a task is done — a stranded worktree outlives its session.
+`prune` skips a worktree that is still in use under another name: a process has its
+cwd inside it, or it saw git or file activity in the last 6h. Before 2026-09-25 only
+a `task-<name>` tmux session counted as in use, so side worktrees that live sessions
+were working in looked stranded. **Fallback sweeper:** post-ready runs
+`agent-run sweep` (= `prune --yes --idle-days 3 --rescue`) in tmux session
+`wt-sweep` at boot and then every 24h. It reaps any worktree idle for more than 3
+days. Before reaping, it commits the worktree's uncommitted work (tracked edits and
+new untracked files) to a kept local branch `rescue/<id>-<stamp>`. A detached
+HEAD's unbranched commits get the same kind of branch. **Gitignored files are
+not kept** (node_modules, build output, `test-results/`, `.env`). A worktree whose
+changes it can't commit safely (mid-merge or mid-rebase, an untracked nested repo,
+more than 50 MiB untracked) is left in place and logged. The boot pass follows a pod
+roll, when no session is running, so only the 3-day window protects a worktree
+then. Find rescues with `git -C ~/repos/<repo> branch --list 'rescue/*'`, then
+`git worktree add` one to resume; never `branch -D` one unread. Log:
+`~/.cache/dev-env/wt-sweep.log`.
 
 **Calling `codex exec` directly from a tool shell? Redirect stdin.** When stdin
 is not a TTY, `codex exec` reads it for extra prompt text until EOF — and a
