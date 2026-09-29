@@ -10,6 +10,10 @@
 # ceph-block allows expansion, and the RBD CSI resizer grows the ext4 in place with
 # the pod running. This file is outside app/resources, so Reloader does not bounce
 # the pod. Only ever grow this value; a PVC can't shrink.
+# 100Gi → 256Gi on 2026-09-28 (Tom: running out of disk loses work, so size it
+# for heavy days, not for today's 31%). RBD is thin-provisioned: Ceph only holds
+# the bytes actually written (×3 replicas), so the headroom itself costs nothing
+# until it's used. At that point Ceph's ceph-blockpool had 2.1 TiB MAX AVAIL.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -20,5 +24,5 @@ spec:
   accessModes: ["ReadWriteOnce"]
   resources:
     requests:
-      storage: 100Gi
+      storage: 256Gi
   storageClassName: ceph-block
