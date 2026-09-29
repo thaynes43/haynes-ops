@@ -30,8 +30,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest main e976281 (the family release image, in fixture mode): world v4 scare levels, scare runtime and fixes, radio showman, putty grunt, demon idol, inator, lab robot, clubhouse kit.
-              tag: sha-e976281dd406a7141fc5219c0e84405ee9937253@sha256:e37bd90bd2197847dc224b342f9a0d86eb23a0aecf251f9b153f6b20182a469c
+              # Haynes Quest main 7f9701e in fixture mode: family worlds v5, authored A4 scares, Playroom kit, and camera/culling fixes.
+              tag: sha-7f9701e5ce7ebbb37d12d8ed8a3aefe3941c0576@sha256:5f526911e856989d3ef9930a4e7ef1076fe86633dd6c833c8ca2d33cf39b2a41
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
