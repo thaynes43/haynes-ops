@@ -339,10 +339,16 @@ a `task-<name>` tmux session counted as in use, so side worktrees that live sess
 were working in looked stranded. **Fallback sweeper:** post-ready runs
 `agent-run sweep` (= `prune --yes --idle-days 3 --rescue`) in tmux session
 `wt-sweep` at boot and then every 24h. It reaps any worktree idle for more than 3
-days. Before reaping, it commits the worktree's uncommitted tracked changes to a
-kept local branch `rescue/<id>-<stamp>`, so nothing is lost. Find those with
-`git -C ~/repos/<repo> branch --list 'rescue/*'`, then `git worktree add` one to
-resume. Log: `~/.cache/dev-env/wt-sweep.log`.
+days. Before reaping, it commits the worktree's uncommitted work (tracked edits and
+new untracked files) to a kept local branch `rescue/<id>-<stamp>`. A detached
+HEAD's unbranched commits get the same kind of branch. **Gitignored files are
+not kept** (node_modules, build output, `test-results/`, `.env`). A worktree whose
+changes it can't commit safely (mid-merge or mid-rebase, an untracked nested repo,
+more than 50 MiB untracked) is left in place and logged. The boot pass follows a pod
+roll, when no session is running, so only the 3-day window protects a worktree
+then. Find rescues with `git -C ~/repos/<repo> branch --list 'rescue/*'`, then
+`git worktree add` one to resume; never `branch -D` one unread. Log:
+`~/.cache/dev-env/wt-sweep.log`.
 
 **Calling `codex exec` directly from a tool shell? Redirect stdin.** When stdin
 is not a TTY, `codex exec` reads it for extra prompt text until EOF — and a

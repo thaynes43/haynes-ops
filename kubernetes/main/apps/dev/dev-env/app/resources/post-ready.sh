@@ -157,7 +157,10 @@ fi
 # 66 stranded worktrees had /home/dev at 91%). `agent-run sweep` = prune --yes
 # --idle-days 3 --rescue: it reaps every ~/work worktree with no live task session,
 # no process inside it and no git/file activity for 3 days, first committing any
-# tracked WIP to a kept local rescue/<id>-<stamp> branch, so nothing is lost. A
+# uncommitted work (tracked edits + new untracked files) to a kept local
+# rescue/<id>-<stamp> branch; gitignored files are not kept. The boot pass runs
+# right after a roll, when no session process exists, so there only the 3-day
+# window holds a worktree. A
 # boot-only hook would never fire on a pod that stays up for weeks, so it loops in
 # its own tmux session. Here, after the circuit breaker: a restart-looping pod is
 # left for a human untouched. Idempotent (an existing wt-sweep session is kept),

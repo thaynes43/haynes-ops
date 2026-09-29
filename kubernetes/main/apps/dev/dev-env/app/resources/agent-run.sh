@@ -240,9 +240,14 @@ owning_repo() {  # $1 = worktree path → echoes repo dir
 # safely committed (and, per the branch's merged PR, landed). Untracked files
 # are runtime scratch — `.claude/` (scheduled_tasks.lock, settings.json),
 # node_modules, build dirs — which legitimately blocks a plain `git worktree
-# remove` yet is disposable. Prints an integer.
+# remove` yet is disposable. Prints an integer. Nonzero when `git status` itself
+# fails (corrupt index, missing objects): that is UNKNOWN, not 0 changes, and
+# counting it as clean would hand a WIP worktree to `worktree remove --force`.
 tracked_dirty() {  # $1 = worktree path
-  git -C "$1" status --porcelain=v1 2>/dev/null | grep -vcE '^(\?\?|!!)' || true
+  local st
+  st="$(git -C "$1" status --porcelain=v1 2>/dev/null)" || return 1
+  [ -n "$st" ] || { echo 0; return 0; }
+  printf '%s\n' "$st" | grep -vcE '^(\?\?|!!)' || true
 }
 
 # Is a worktree IN USE even though no task-<name> tmux session exists? The tmux
@@ -253,33 +258,51 @@ tracked_dirty() {  # $1 = worktree path
 # an open PR's worktree, and the codex remote thread's cwd. Busy = either
 #   * a process has its cwd inside it (claude/codex/MCP children, shells), or
 #   * git activity or a file edit in the last $AGENT_RUN_BUSY_MIN minutes
-#     (default 360): HEAD / logs/HEAD / FETCH_HEAD / COMMIT_EDITMSG in its
+#     (default 360): HEAD / FETCH_HEAD / ORIG_HEAD / COMMIT_EDITMSG in its
 #     gitdir catch `git -C` work from a session whose cwd is elsewhere.
 #     NOT `index` — prune's own `git status` rewrites it, so it proves nothing.
+#     NOT `logs/HEAD` — a repo's auto-gc (reflog expire) rewrites EVERY worktree's
+#     logs/HEAD at once (2026-09-28: all haynes-ops worktrees at 08:25:41, an
+#     18-day-idle one included), so it would hold idle worktrees for days after
+#     each gc. A commit still shows via COMMIT_EDITMSG, a reset/merge via ORIG_HEAD.
 # Returns 0 when busy with the reason in $WT_WHY — a global, not stdout, so it
-# runs in the caller's shell and the one-time /proc scan ($WT_CWDS, ~1s) is
-# cached across the loop instead of redone in every $(...) subshell. Offline;
-# same-user /proc only, which is every agent in this pod.
+# runs in the caller's shell and the one-time /proc scan ($WT_CWDS) is cached
+# across the loop instead of redone in every $(...) subshell (reset WT_CWDS=""
+# to force a fresh scan). Fails CLOSED: a bad window, an unresolvable gitdir or a
+# scan error all count as busy, since this gates a delete. Offline; same-user
+# /proc only, which is every agent in this pod.
 WT_CWDS="" WT_WHY=""   # WT_CWDS: "pid cwd" lines under $WORK, read from /proc once per run
 wt_busy() {  # $1 = worktree path
-  local wt="${1%/}" p c pid gd hit mins="${AGENT_RUN_BUSY_MIN:-360}"
+  local wt="${1%/}" p c pid gd hit rc mins="${AGENT_RUN_BUSY_MIN:-360}"
   WT_WHY=""
+  # `-mmin -0` (or junk) would match nothing, i.e. every worktree would look idle.
+  case "$mins" in ''|*[!0-9]*) WT_WHY="AGENT_RUN_BUSY_MIN='$mins' is not whole minutes — holding all"; return 0 ;; esac
+  mins=$((10#$mins))
+  [ "$mins" -ge 1 ] || { WT_WHY="AGENT_RUN_BUSY_MIN is 0 — holding all"; return 0; }
   if [ -z "$WT_CWDS" ]; then
     WT_CWDS="-"   # sentinel: scanned, even if nothing is under $WORK
-    for p in /proc/[0-9]*; do
-      c="$(readlink "$p/cwd" 2>/dev/null)" || continue
+    # ONE find, not a readlink fork per pid: /proc here lists ~3k pids (on
+    # 2026-09-28, 2970 zombies PID 1 never reaps, 69 readable), and the fork loop
+    # took ~5s where this takes ~45ms. %h = /proc/<pid>, %l = its cwd ('' when
+    # unreadable, i.e. another user's process).
+    while read -r p c; do
       case "$c" in "$WORK"/*) WT_CWDS+=$'\n'"${p#/proc/} $c" ;; esac
-    done
+    done < <(find /proc/[0-9]*/cwd -maxdepth 0 -printf '%h %l\n' 2>/dev/null)
   fi
   while read -r pid c; do
     case "$c" in "$wt"|"$wt"/*) WT_WHY="process $pid has its cwd here"; return 0 ;; esac
   done <<<"$WT_CWDS"
-  gd="$(git -C "$wt" rev-parse --absolute-git-dir 2>/dev/null)" || return 1
-  hit="$(find "$gd" -mindepth 1 -maxdepth 2 \( -name HEAD -o -name FETCH_HEAD -o -name ORIG_HEAD \
-          -o -name COMMIT_EDITMSG -o -name MERGE_HEAD -o -name REBASE_HEAD \) -mmin "-$mins" 2>/dev/null | head -1)"
-  [ -z "$hit" ] && hit="$(find "$wt" -xdev \( -name .git -o -name node_modules -o -name .claude \) -prune \
-          -o -type f -mmin "-$mins" -print 2>/dev/null | head -1)"
-  [ -n "$hit" ] || return 1
+  gd="$(git -C "$wt" rev-parse --absolute-git-dir 2>/dev/null)" || { WT_WHY="cannot resolve its gitdir"; return 0; }
+  hit="$(find "$gd" -mindepth 1 -maxdepth 1 \( -name HEAD -o -name FETCH_HEAD -o -name ORIG_HEAD \
+          -o -name COMMIT_EDITMSG -o -name MERGE_HEAD -o -name REBASE_HEAD \) -mmin "-$mins" -print -quit 2>/dev/null)"; rc=$?
+  if [ -z "$hit" ] && [ "$rc" -eq 0 ]; then
+    hit="$(find "$wt" -xdev \( -name .git -o -name node_modules -o -name .claude \) -prune \
+            -o -type f -mmin "-$mins" -print -quit 2>/dev/null)"; rc=$?
+  fi
+  if [ -z "$hit" ]; then
+    [ "$rc" -eq 0 ] && return 1
+    WT_WHY="scan error (find rc=$rc) — held, check its permissions"; return 0
+  fi
   WT_WHY="changed <${mins}m ago: ${hit#"$wt"/}"
   return 0
 }
@@ -295,41 +318,90 @@ wt_busy() {  # $1 = worktree path
 # not proof THIS local tip landed (stacked commits / reused branch names both defeat
 # it), so we never escalate to -D. Keep the branch (weightless) and print the exact
 # drop command. Never touches a shared base branch. $1 = worktree, $2 = repo dir.
+# A DETACHED HEAD has no branch to keep, and its commits may be on no ref at all:
+# with the worktree (and its HEAD reflog) gone they would be unreachable, i.e.
+# lost to the next gc. Such a tip is anchored on a kept rescue/<id>-<stamp>
+# branch first; if that fails, nothing is removed.
 drop_worktree() {
-  local wt="$1" repo="$2" br tip
+  local wt="$1" repo="$2" br tip sha keep
   br="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)"
   tip="$(git -C "$wt" rev-parse --short HEAD 2>/dev/null)"
+  if [ "$br" = HEAD ]; then
+    sha="$(git -C "$wt" rev-parse HEAD 2>/dev/null)" || return 1
+    if [ -z "$(git -C "$repo" for-each-ref --contains "$sha" --count=1 refs/heads refs/remotes refs/tags 2>/dev/null)" ]; then
+      keep="rescue/$(basename "$wt")-$(date -u +%Y%m%d-%H%M)"
+      git -C "$repo" branch "$keep" "$sha" || return 1
+      log "KEPT detached HEAD @ $tip on $keep — its commit(s) were on no branch"
+    fi
+  fi
   git -C "$repo" worktree remove --force "$wt" || return 1
   case "$br" in ""|HEAD|main|master) return 0 ;; esac
   if git -C "$repo" branch -d "$br" >/dev/null 2>&1; then
     log "branch $br deleted"
+  elif [ "${br#rescue/}" != "$br" ]; then
+    # Never print a -D for a rescue branch: it may be the ONLY copy of the WIP, and
+    # agents act on the commands in these logs.
+    log "KEPT $br @ $tip — rescued WIP. Resume: git -C $repo worktree add ~/work/<id> $br"
   else
     log "KEPT branch $br @ $tip — has local commit(s) not on HEAD (unpushed WIP, or squash-merged). Confirm it landed, then drop: git -C $repo branch -D $br"
   fi
   return 0
 }
 
-# Park a stranded worktree's tracked WIP on a NEW local branch so the dir can go
-# without losing it: switch to rescue/<id>-<UTC stamp> (carries the dirty tree),
-# commit every tracked change there (--no-verify: a repo hook must not veto a
-# rescue), and leave the rest to drop_worktree, whose `branch -d` then refuses on
-# the unmerged rescue commit and KEEPS the branch. Tracked changes only — untracked
-# files stay scratch, as everywhere else in prune (and `git add -A` would pull
-# renders/recordings into .git on the very PVC this is freeing). Find them later:
+# Can rescue_wip commit this worktree's UNTRACKED files safely? Refuses (nonzero,
+# reason in RESCUE_WHY) on an untracked nested git repo — `git add` would record
+# an empty gitlink while the repo itself went with the worktree — or on more than
+# 50 MiB of them: that is renders/recordings/an unignored venv, a human's call,
+# not a commit into .git on the very PVC the sweep is freeing. Ignored files are
+# out of scope either way (node_modules, build output: rebuildable).
+rescue_untracked_ok() {  # $1 = worktree path
+  local wt="$1" ut kb cap_mb=50
+  RESCUE_WHY=""
+  ut="$(git -C "$wt" ls-files -o --exclude-standard -z 2>/dev/null | tr '\0' '\n')" \
+    || { RESCUE_WHY="git ls-files failed"; return 1; }
+  [ -n "$ut" ] || return 0
+  if grep -q '/$' <<<"$ut"; then   # ls-files lists a nested repo as `dir/`, files by name
+    RESCUE_WHY="untracked nested git repo $(grep -m1 '/$' <<<"$ut")"; return 1
+  fi
+  kb="$(cd "$wt" && git ls-files -o --exclude-standard -z | xargs -0 du -k -- 2>/dev/null | awk '{s += $1} END {print s + 0}')"
+  [ "${kb:-0}" -le $(( cap_mb * 1024 )) ] \
+    || { RESCUE_WHY="$(( kb / 1024 )) MiB of untracked files (cap $cap_mb MiB)"; return 1; }
+}
+
+# Park a stranded worktree's WIP on a NEW local branch so the dir can go without
+# losing it: switch to rescue/<id>-<UTC stamp> (carries the dirty tree), commit
+# every change there (--no-verify: a repo hook must not veto a rescue), and leave
+# the rest to drop_worktree, whose `branch -d` then refuses on the unmerged rescue
+# commit and KEEPS the branch. `add -A`: tracked edits AND new untracked files — a
+# script an agent never `git add`ed is work, and on 2026-09-28 some existed nowhere
+# else (hass-sandbox-0823-201535's cctv-stream-watchdog-card.js, wsh-model-0926's
+# scripts/assets/web-slinger-helper/). .gitignore still applies, and
+# rescue_untracked_ok vets the rest first. Find them later:
 # `git -C ~/repos/<repo> branch --list 'rescue/*'`. Sets RESCUE_BRANCH; nonzero on
-# any failure (conflicted index, commit refused), with the worktree put back as found.
+# any failure (conflicted index, commit refused, untracked vetoed), reason in
+# RESCUE_WHY, with the worktree put back as found (a rescue branch that did get a
+# commit is never deleted).
 rescue_wip() {  # $1 = worktree path, $2 = id
   local wt="$1" wid="$2" orig osha
-  orig="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)" || return 1
-  osha="$(git -C "$wt" rev-parse HEAD 2>/dev/null)" || return 1
+  orig="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)" || { RESCUE_WHY="no HEAD"; return 1; }
+  osha="$(git -C "$wt" rev-parse HEAD 2>/dev/null)" || { RESCUE_WHY="no HEAD commit"; return 1; }
+  rescue_untracked_ok "$wt" || return 1
   RESCUE_BRANCH="rescue/$wid-$(date -u +%Y%m%d-%H%M)"
-  git -C "$wt" switch -q -c "$RESCUE_BRANCH" 2>/dev/null || return 1
-  if git -C "$wt" add -u 2>/dev/null \
-     && git -C "$wt" commit -q --no-verify \
+  git -C "$wt" switch -q -c "$RESCUE_BRANCH" 2>/dev/null \
+    || { RESCUE_WHY="git switch refused (merge/rebase in progress?)"; return 1; }
+  # maintenance.auto=false: no detached auto-gc — it would outlive prune while
+  # holding prune's inherited lock fd.
+  if git -C "$wt" add -A 2>/dev/null \
+     && git -C "$wt" -c maintenance.auto=false commit -q --no-verify \
           -m "wip: rescued by agent-run prune from ~/work/$wid (was on $orig @ ${osha:0:7})" 2>/dev/null; then
-    log "rescued $wid's tracked WIP → $RESCUE_BRANCH"
+    log "rescued $wid's WIP → $RESCUE_BRANCH"
     return 0
   fi
+  RESCUE_WHY="add/commit failed"
+  # Undo only while the rescue branch still points at the old tip. If the commit
+  # landed despite the failure status it holds the WIP (the tree is clean against
+  # it): switching back would check out the old files and -D would orphan it.
+  [ "$(git -C "$wt" rev-parse -q --verify "refs/heads/$RESCUE_BRANCH" 2>/dev/null)" = "$osha" ] || return 1
   if [ "$orig" = HEAD ]; then git -C "$wt" switch -q --detach "$osha" 2>/dev/null
   else git -C "$wt" switch -q "$orig" 2>/dev/null; fi
   git -C "$wt" branch -q -D "$RESCUE_BRANCH" 2>/dev/null
@@ -932,7 +1004,7 @@ reason as your final message."
     if [ -d "$wt" ]; then
       repo_dir="$(owning_repo "$wt")" \
         || die "$id is not a git worktree — if it's a stray dir, remove it by hand"
-      td="$(tracked_dirty "$wt")"
+      td="$(tracked_dirty "$wt")" || die "git status fails in $wt — can't prove it clean, so not reaping it; inspect it by hand"
       if [ "${td:-0}" -gt 0 ] && [ "$force" != "--force" ]; then
         log "WON'T reap $id — $td uncommitted TRACKED change(s) (real WIP):"
         git -C "$wt" status --porcelain=v1 2>/dev/null | grep -vE '^(\?\?|!!)' | sed 's/^/    /' >&2
@@ -953,8 +1025,9 @@ reason as your final message."
     # they don't balloon the PVC — the reap picker one-at-a-time doesn't scale to a
     # backlog. Default is a DRY-RUN plan; add --yes to execute. SAFE: skips any
     # worktree still in use (wt_busy) and any with uncommitted TRACKED changes (real
-    # WIP) unless --rescue (commit it to a kept rescue/ branch first) or --force
-    # (discard it); untracked scratch (.claude/ etc.) is always discarded. Ends by
+    # WIP) unless --rescue (commit it — plus any new untracked files — to a kept
+    # rescue/ branch first) or --force (discard it); without --rescue, untracked
+    # scratch (.claude/ etc.) is discarded, and the plan says how much. Ends by
     # pruning stale worktree admin entries in every repo.
     #   --idle-days N  widen the in-use window from AGENT_RUN_BUSY_MIN to N days —
     #                  the boot/daily sweep (post-ready.sh) runs
@@ -967,28 +1040,48 @@ reason as your final message."
         --force)  pforce=1; shift ;;
         --rescue) prescue=1; shift ;;
         --idle-days)
-          case "${2:-}" in ''|*[!0-9]*|0) die "--idle-days needs a whole number of days ≥1 ($pusage)" ;; esac
-          pidle="$2"; AGENT_RUN_BUSY_MIN=$(( $2 * 1440 )); shift 2 ;;
+          case "${2:-}" in ''|*[!0-9]*) die "--idle-days needs a whole number of days ≥1 ($pusage)" ;; esac
+          pidle=$((10#$2))   # base 10: '08' is not octal, and '00' must not slip past as a 0-minute window
+          [ "$pidle" -ge 1 ] || die "--idle-days needs a whole number of days ≥1 ($pusage)"
+          AGENT_RUN_BUSY_MIN=$(( pidle * 1440 )); shift 2 ;;
         *) die "unknown flag $1 ($pusage)" ;;
       esac
     done
     [ -n "$pforce" ] && [ -n "$prescue" ] && die "--rescue keeps WIP and --force discards it — pick one ($pusage)"
+    # One destructive run at a time: the wt-sweep loop and a manual `prune --yes`
+    # would otherwise rescue/remove the same worktree concurrently. flock is
+    # util-linux (in the image); without it, carry on unlocked.
+    if [ -n "$do_it" ] && command -v flock >/dev/null 2>&1; then
+      mkdir -p "$HOME/.cache/dev-env"; exec 9>"$HOME/.cache/dev-env/agent-run-prune.lock"
+      flock -n 9 || die "another 'agent-run prune --yes' (or the wt-sweep) is running — retry once it finishes"
+    fi
     plan=0 wip=0 busy=0 removed=0 forced=0 rescued=0 failed=0
     for wt in "$WORK"/*/; do
       [ -d "$wt" ] || continue
       wt="${wt%/}"; wid="$(basename "$wt")"
       tmux has-session -t "task-$wid" 2>/dev/null && continue   # live → leave it
       repo_dir="$(owning_repo "$wt")" || { printf '  skip  %-34s (not a git worktree)\n' "$wid"; continue; }
+      # A standalone clone is its own repo: `worktree remove` refuses it anyway, but
+      # --rescue would first switch + commit inside it. Hands off, as documented.
+      [ "$repo_dir" = "$wt" ] && { printf '  skip  %-34s (standalone clone, not a worktree)\n' "$wid"; continue; }
       # Before tracked_dirty: its `git status` touches the worktree's gitdir.
       if wt_busy "$wt"; then
         printf '  BUSY  %-34s (%s)\n' "$wid" "$WT_WHY"; busy=$((busy + 1)); continue
       fi
       br="$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)"
-      td="$(tracked_dirty "$wt")"
+      if ! td="$(tracked_dirty "$wt")"; then   # unknown ≠ clean
+        printf '  SKIP  %-34s %s  (git status failed — left alone)\n' "$wid" "$br"; wip=$((wip + 1)); continue
+      fi
+      ut="$(git -C "$wt" status --porcelain=v1 --untracked-files=normal 2>/dev/null | grep -c '^??' || true)"
       note="" is_wip=""
-      if [ "${td:-0}" -gt 0 ]; then
+      # With --rescue, new untracked files are WIP too (see rescue_wip).
+      if [ "${td:-0}" -gt 0 ] || { [ -n "$prescue" ] && [ "${ut:-0}" -gt 0 ]; }; then
         if [ -n "$prescue" ]; then
-          note="  ↳ rescues $td tracked WIP to a rescue/ branch"; is_wip=rescue
+          if ! rescue_untracked_ok "$wt"; then
+            printf '  SKIP  %-34s %s  (cannot rescue: %s — left in place)\n' "$wid" "$br" "$RESCUE_WHY"
+            wip=$((wip + 1)); continue
+          fi
+          note="  ↳ rescues WIP ($td tracked, $ut untracked) to a rescue/ branch"; is_wip=rescue
         elif [ -n "$pforce" ]; then
           note="  ⚠ discards $td tracked WIP"; is_wip=force   # shown, never hidden
         else
@@ -996,14 +1089,21 @@ reason as your final message."
           wip=$((wip + 1)); continue
         fi
       fi
+      [ -z "$prescue" ] && [ "${ut:-0}" -gt 0 ] && note+="  ⚠ discards $ut untracked path(s)"
       plan=$((plan + 1))
       if [ -n "$do_it" ]; then
+        # Re-check just before destroying anything: the /proc scan dates from the
+        # start of the run, and a session may have cd'd in since.
+        WT_CWDS=""
+        if wt_busy "$wt"; then
+          printf '  BUSY  %-34s (%s)\n' "$wid" "$WT_WHY"; busy=$((busy + 1)); plan=$((plan - 1)); continue
+        fi
         if [ "$is_wip" = rescue ]; then
           if ! rescue_wip "$wt" "$wid"; then
-            printf '  SKIP  %-34s %s  (rescue commit failed — WIP left in place)\n' "$wid" "$br"
+            printf '  SKIP  %-34s %s  (rescue failed: %s — WIP left in place)\n' "$wid" "$br" "$RESCUE_WHY"
             wip=$((wip + 1)); plan=$((plan - 1)); continue
           fi
-          note="  ↳ $td tracked WIP rescued to $RESCUE_BRANCH"
+          note="  ↳ WIP ($td tracked, $ut untracked) rescued to $RESCUE_BRANCH"
         fi
         if drop_worktree "$wt" "$repo_dir"; then
           printf '  REAP  %-34s %s%s\n' "$wid" "$br" "$note"
@@ -1035,12 +1135,18 @@ reason as your final message."
     # runs it in tmux session `wt-sweep` at boot and then every 24h, so a pod that
     # stays up for weeks still sweeps. = prune --yes --idle-days N --rescue: reaps
     # every worktree with no live task session, no process inside it and no git or
-    # file activity for N days (AGENT_RUN_SWEEP_DAYS, default 3); tracked WIP goes to
-    # a kept rescue/ branch first, so nothing is lost. Logged, with disk use before
-    # and after, to ~/.cache/dev-env/wt-sweep.log on the PVC (trimmed past 1 MiB).
+    # file activity for N days (AGENT_RUN_SWEEP_DAYS, default 3). Uncommitted work —
+    # tracked edits and new untracked files — goes to a kept rescue/ branch first,
+    # and a worktree whose rescue can't be made safely is left alone. Gitignored
+    # files (node_modules, build output, test-results) are NOT kept. NB the boot
+    # run follows a pod roll, so no session process can hold a worktree then: only
+    # the N-day window protects it. Logged, with disk use before and after, to
+    # ~/.cache/dev-env/wt-sweep.log on the PVC (trimmed past 1 MiB).
     [ $# -eq 0 ] || die "usage: agent-run sweep   (no flags; AGENT_RUN_SWEEP_DAYS=N changes the 3-day window)"
     sdays="${AGENT_RUN_SWEEP_DAYS:-3}"
-    case "$sdays" in ''|*[!0-9]*|0) die "AGENT_RUN_SWEEP_DAYS must be a whole number of days ≥1 (got '$sdays')" ;; esac
+    case "$sdays" in ''|*[!0-9]*) die "AGENT_RUN_SWEEP_DAYS must be a whole number of days ≥1 (got '$sdays')" ;; esac
+    sdays=$((10#$sdays))
+    [ "$sdays" -ge 1 ] || die "AGENT_RUN_SWEEP_DAYS must be a whole number of days ≥1 (got '${AGENT_RUN_SWEEP_DAYS:-}')"
     slog="$HOME/.cache/dev-env/wt-sweep.log"; mkdir -p "${slog%/*}"
     if [ "$(stat -c %s "$slog" 2>/dev/null || echo 0)" -gt 1048576 ]; then
       tail -n 2000 "$slog" > "$slog.tmp" && mv -f "$slog.tmp" "$slog"
