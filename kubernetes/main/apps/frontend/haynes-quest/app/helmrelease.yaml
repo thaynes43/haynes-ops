@@ -6,6 +6,8 @@ metadata:
   name: &app haynes-quest
 spec:
   interval: 30m
+  # A new asset-heavy image digest can take more than Helm's default 5m to pull.
+  timeout: 20m
   chartRef:
     kind: OCIRepository
     name: app-template
