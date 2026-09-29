@@ -74,7 +74,7 @@ spec:
           migrate:
             image: &mainImage
               repository: ghcr.io/thaynes43/haynesnetwork
-              tag: v0.103.0
+              tag: v0.104.0
               pullPolicy: IfNotPresent
             command:
               - tsx
@@ -368,6 +368,10 @@ spec:
         type: cronjob
         pod:
           restartPolicy: Never
+          # Same uid/gid as SABnzbd, so the janitor can read/clear its 1000:1000 download folders.
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
         cronjob:
           schedule: "25 * * * *"
           backoffLimit: 1
@@ -945,6 +949,27 @@ spec:
                 memory: 256Mi
               limits:
                 memory: 1Gi
+    persistence:
+      # Queue janitor "leftover" check (books/LazyLibrarian): confirm every library copy exists (read-only),
+      # then clear the finished SABnzbd folder (read-write). Same shares and paths as LazyLibrarian/SABnzbd.
+      books-library:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl/data/media/books
+        advancedMounts:
+          sync-queue-cleanup:
+            main:
+              - path: /data/cephfs-hdd/data/media/books
+                readOnly: true
+      lazylibrarian-downloads:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl/data/usenet/complete-k8s/lazylibrarian
+        advancedMounts:
+          sync-queue-cleanup:
+            main:
+              - path: /data/cephfs-hdd/data/usenet/complete-k8s/lazylibrarian
+                readOnly: false
     service:
       main:
         controller: main
