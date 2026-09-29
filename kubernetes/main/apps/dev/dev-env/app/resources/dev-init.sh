@@ -46,6 +46,26 @@ fi
 ln -sf "$CFG/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
 cp -f "$CFG/claude/mcp.json" "$HOME/.config/dev-env/mcp.json"
 
+# Subagent types (2026-09-28): the two dispatch tiers in CLAUDE.md ("Subagent dispatch
+# rules"), opus-worker and sonnet-worker, each with an exact model id and effort so
+# dispatch never depends on alias resolution. They are COPIED, not symlinked, because
+# user agent files are plain files the CLI scans. A copy from an earlier boot is
+# recognised by its `# dev-env-managed` frontmatter line and removed once its source
+# leaves the ConfigMap. Hand-made agents (no marker) are never touched.
+mkdir -p "$HOME/.claude/agents"
+for f in "$HOME/.claude/agents/"*.md; do
+  [ -f "$f" ] && grep -q '^# dev-env-managed' "$f" && [ ! -e "$CFG/claude/agent-${f##*/}" ] \
+    && rm -f "$f" && log "subagent '${f##*/}' removed (no longer in the ConfigMap)"
+done
+for f in "$CFG/claude/"agent-*.md; do
+  [ -f "$f" ] || continue
+  if install -m 0644 "$f" "$HOME/.claude/agents/${f##*/agent-}"; then
+    log "subagent '${f##*/agent-}' installed"
+  else
+    log "WARN subagent '${f##*/agent-}' install failed"
+  fi
+done
+
 # Register the GitOps-defined MCP servers at user scope so EVERY claude invocation
 # (any repo, any worktree) sees them. remove-then-add = declarative overwrite; a
 # server Tom removes from git therefore disappears here on the next boot.

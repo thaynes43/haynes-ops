@@ -48,6 +48,10 @@ configMapGenerator:
     files:
       - resources/config/claude/CLAUDE.md
       - resources/config/claude/mcp.json
+      # Subagent tiers (2026-09-28): dev-init copies these into ~/.claude/agents/
+      # (named without the agent- prefix) so dispatch uses exact model ids + effort.
+      - resources/config/claude/agent-opus-worker.md
+      - resources/config/claude/agent-sonnet-worker.md
   - name: dev-env-config-codex
     files:
       - resources/config/codex/config.toml

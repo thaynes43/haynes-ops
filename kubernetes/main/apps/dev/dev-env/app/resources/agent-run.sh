@@ -432,7 +432,8 @@ pretrust() {  # $1 = worktree path
 #
 # Claude's effort levels are PER MODEL (code.claude.com/docs/en/model-config →
 # "Effort levels"), even though `claude --help` prints ONE union list:
-#   Fable 5.1 / Fable 5 / Opus 5 / Sonnet 5 / Opus 4.8 / 4.7   low medium high xhigh max
+#   Fable 5.1 / 5 / Opus 5.5 / Sonnet 5.5 / Opus 5 / Sonnet 5 / Opus 4.8 / 4.7
+#                                                               low medium high xhigh max
 #   Opus 4.6 / Sonnet 4.6                                       low medium high max
 #   Haiku 4.5 / Sonnet 4.5 (and older)                          none — no effort control
 # The CLI never rejects a mismatch: an unsupported level silently CLAMPS DOWN to
@@ -749,16 +750,17 @@ case "$cmd" in
         # Fable 5.1 needs claude-code >=2.1.255 and an older CLI REJECTS the id
         # outright ("Claude Code does not support this model") — no fallback, the
         # session never starts; Opus 5.5 (claude-opus-5-5, launched 2026-09-22)
-        # likewise needs >=2.1.280 (2.1.270 answers "unrecognized_model"). Bump the
+        # likewise needs >=2.1.280 (2.1.270 answers "unrecognized_model"), and Sonnet
+        # 5.5 (claude-sonnet-5-5, launched 2026-09-28) needs >=2.1.284. Bump the
         # image (Dockerfile CLAUDE_CODE_VERSION) before adding such a row. Fable 5.1
         # runs the 1M window by default on the API, so no [1m] suffix (2026-09-01:
         # claude-fable-5[1m] → claude-fable-5-1). Opus 5.5's own stock effort is
         # medium (every other tier: high) — moot here, agent-run always passes one.
         model="$(pick 'model:' \
-          'claude-opus-5-5     Opus 5.5 · Fable-class agentic coding at Opus price (agent-run default; subagents too)' \
+          'claude-opus-5-5     Opus 5.5 · Fable-class agentic coding at Opus price (agent-run default; hard + user-visible subagents)' \
           'claude-fable-5-1    Fable 5.1 · 1M ctx, most capable — Tom asks for it by name; scarce quota' \
           'claude-opus-5       Opus 5 · prior Opus; the automated lanes fall back to it' \
-          'claude-sonnet-5     Sonnet 5 · near-Opus quality, cheaper' \
+          'claude-sonnet-5-5   Sonnet 5.5 · near-Opus quality, cheaper (routine coding + tests subagents)' \
           'claude-haiku-4-5    Haiku 4.5 · fastest, simple tasks — no effort control')" || model=""
         # No "leave it unset" row: ~/.claude/settings.json lives on the PVC, not in
         # the ConfigMap, so ANY in-session `/model` (Enter, not `s`) rewrites the
@@ -883,7 +885,20 @@ reason as your final message."
           # phone/web remote list (A/B-proven in-pod 2026-08-29). Strip it for
           # `both` only, falling back to ~/.claude/.credentials.json (Max login);
           # local TUI, task mode, and auth-watch stay on the env token.
-          launch="env -u CLAUDE_CODE_OAUTH_TOKEN claude$cg --remote-control $id"
+          # The remote session is Tom's COORDINATOR (Tom, 2026-09-28; CLAUDE.md
+          # "Remote Control sessions are coordinators"). CLAUDE.md alone can't make
+          # that stick, because subagents and task sessions read the same file, so
+          # the role is stated in this session's own system prompt. It reaches
+          # the tmux shell by env var, the same way task mode passes AGENT_GUARD.
+          coord="You are the session Tom drives over Remote Control, so you are the \
+COORDINATOR between him and your subagents (see 'Remote Control sessions are \
+coordinators' in ~/.claude/CLAUDE.md). Keep your own context window small so this \
+session can last through many tasks. Plan, ask Tom questions, write self-contained \
+work orders, dispatch subagents (opus-worker for hard or user-visible work, \
+sonnet-worker for routine coding and tests), check their results with cheap \
+targeted commands, and merge and ship. Do not read whole files, run test suites or \
+scroll logs yourself; delegate that work and ask for short conclusions."
+          launch="AGENT_COORD=$(printf '%q' "$coord"); env -u CLAUDE_CODE_OAUTH_TOKEN claude$cg --remote-control $id --append-system-prompt \"\$AGENT_COORD\""
           [ "$safe" = 1 ] && launch="$launch --permission-mode default"
         else
           launch="claude$cg"
