@@ -92,6 +92,10 @@ ARG UV_VERSION=0.12.19
 # this floor is load-bearing for the agent-run picker row and for the Opus 5.5
 # subagent default in config/claude/CLAUDE.md. 2.1.280 also repoints the `opus`
 # alias to 5.5 (another reason the pod pins full ids, never aliases).
+# 2.1.284 (2026-09-28): Claude Sonnet 5.5. `claude-sonnet-5-5` needs claude-code
+# >=2.1.284, and this version also repoints the `sonnet` alias to it. That floor is
+# load-bearing: Sonnet 5.5 is the subagent tier for routine coding and tests in
+# config/claude/CLAUDE.md, and it has an agent-run picker row.
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
 ARG CLAUDE_CODE_VERSION=2.1.284
 # Codex is installed at BOOT as the managed STANDALONE (dev-init.sh), not via npm —
@@ -116,6 +120,10 @@ ARG CLAUDE_CODE_VERSION=2.1.284
 # config/claude/CLAUDE.md and, like gpt-6-astra before it, does not exist to an older
 # client: 0.154.0's cache never lists it. This catalog also delists gpt-5.4-mini;
 # agent-run's codex fallback rows were refreshed to match (a slug mismatch WARNs).
+# 0.158.0 (2026-09-28, via 0.157.0): 0.157.0 auto-starts a background server for
+# eligible interactive sessions. 0.158.0 turns on terminal input approval by default
+# for elevated commands. Both need checking against this pod's single remote-control
+# daemon and its approval-`never` requirements.toml after the roll that ships them.
 # renovate: datasource=npm depName=@openai/codex
 ARG CODEX_VERSION=0.158.0
 # renovate: datasource=npm depName=tsx
