@@ -7,7 +7,11 @@ metadata:
 spec:
   image: ghcr.io/dragonflydb/dragonfly:v2.0.0@sha256:7426fdb31ddcf7bd9499b4205f36ebaa83b26149ba1609a0d5f8f474b3631233
   replicas: 2
-  networkPolicyEnabled: false
+  # No networkPolicyEnabled: operator v1.7.0 removed the field (and the operator-managed
+  # NetworkPolicy) from the CRD, and SSA rejects an undeclared field. It was `false`
+  # here anyway, so behaviour is unchanged. Safe to drop in the same change as the
+  # operator bump: this Kustomization dependsOn `dragonfly` (wait: true), so the CR
+  # only applies once v1.7.0 runs. v1.6.x read an unset field as `true`.
   env:
     - name: MAX_MEMORY
       value: 2048Mi
