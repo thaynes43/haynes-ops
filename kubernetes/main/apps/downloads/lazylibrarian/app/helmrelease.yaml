@@ -37,6 +37,11 @@ spec:
             # cluster's allowlisted-registry Kyverno policy; docker.io is.
             image:
               repository: docker.io/linuxserver/lazylibrarian
+              # librarysync.py in this image is overridden by the
+              # lazylibrarian-librarysync ConfigMap (persistence below), a copy
+              # of THIS tag's file plus a one-line fix. Bumping the tag means
+              # re-deriving that file from the new image, or dropping it if
+              # upstream fixed the bug: see patches/librarysync.py's header.
               tag: version-40a389ea
             env:
               TZ: America/New_York
@@ -118,6 +123,18 @@ spec:
         existingClaim: lazylibrarian
         globalMounts:
           - path: /config
+      # The library scan's id carry-over fix (thaynes43/haynesnetwork#631):
+      # one patched file over the image's own, read-only. Pinned to the
+      # image tag above; patches/librarysync.py's header says how to bump.
+      librarysync-patch:
+        type: configMap
+        name: lazylibrarian-librarysync
+        advancedMounts:
+          lazylibrarian:
+            app:
+              - path: /app/lazylibrarian/lazylibrarian/librarysync.py
+                subPath: librarysync.py
+                readOnly: true
       # RW mount of the gasha01 share at the SAME mountpoint the *arrs +
       # qBittorrent + SABnzbd use, so completed-download paths
       # (data/usenet/complete-k8s, data/torrents-k8s) and the library dest

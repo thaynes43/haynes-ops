@@ -10,3 +10,20 @@ resources:
   - ./helmrelease.yaml
   - ./library-scan-externalsecret.yaml
   - ./library-scan-cronjob.yaml
+configMapGenerator:
+  # Patched upstream librarysync.py (the library scan's id carry-over bug,
+  # thaynes43/haynesnetwork#631), mounted over the image's copy by
+  # helmrelease.yaml. Pinned to the image tag there; see the file's header.
+  - name: lazylibrarian-librarysync
+    files:
+      - librarysync.py=./patches/librarysync.py
+    options:
+      # Stable name: a Helm rollback must land on a ConfigMap that still
+      # exists (the qbittorrent 2026-09-22 FailedMount outage). The pod
+      # carries reloader.stakater.com/auto, so a content change still rolls it.
+      disableNameSuffixHash: true
+generatorOptions:
+  # Python source with $Author-style strings: keep Flux post-build
+  # substitution away from it.
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled
