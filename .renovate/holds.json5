@@ -130,6 +130,18 @@
       matchPackageNames: ['/(^|/)vexaai//'],
       enabled: false,
     },
+    {
+      description: [
+        'HELD huggingface-hub: 2.0.0 and newer — drops the transitive httpx dependency that scripts/audio-authoring/test_service.py imports directly.',
+        "Reason: huggingface-hub 2.0.0 replaces its HTTP stack with httpx2 (per the v2.0.0 release notes: 'clients and transport exceptions now come from httpx2/httpcore2 instead of httpx/httpcore'). httpx is NOT a direct dependency in scripts/audio-authoring/requirements.txt — it rides in transitively via huggingface-hub 1.x's own HTTP stack. test_service.py (the Dockerfile's `target: test` smoke test, run by .github/workflows/audio-authoring-build.yml with no network) does `import httpx` and calls httpx.get/Client/AsyncClient directly against the service's own /healthz and /readyz. On 2.0.0 that transitive httpx is gone, so the test image fails at run time with `ModuleNotFoundError: No module named httpx` — confirmed from the failing build-and-push run's log, not a flaky/transient failure.",
+        'Issue: https://github.com/huggingface/huggingface_hub/releases/tag/v2.0.0 (migration guide: https://huggingface.co/docs/huggingface_hub/main/en/concepts/migration_v2)',
+        'Resume: MANUAL — lift only in a change that also closes the httpx gap: either pin httpx as an explicit direct dependency in requirements.txt, or migrate test_service.py to httpx2. Verify with a green build-and-push run before widening this bound.',
+        'Recorded: 2026-09-28 by claude. Related: PR #3019 (merged, huggingface-hub 1.33.0 — the last 1.x release); PR #3180 (2.0.0, closed: build-and-push failed on the httpx ModuleNotFoundError).',
+      ],
+      matchDatasources: ['pypi'],
+      matchPackageNames: ['huggingface-hub'],
+      allowedVersions: '<2.0.0',
+    },
     // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
     //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
     //   protection (Host/Origin validation on every route, 403 for non-loopback Host).
