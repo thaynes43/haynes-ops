@@ -227,7 +227,7 @@ Bare `agent-run` walks every choice; flags skip the walkthrough.
 |---|---|---|---|
 | task | `-p "<task>"` | headless, fire-and-forget; log at `~/work/<id>.log` | same |
 | local | `--local` | a terminal TUI in this pod only | same |
-| both | `--interactive` | that TUI **and** a phone/claude.ai-drivable session | falls back to local — codex's remote is pod-level, see below |
+| both | `--interactive` | that TUI **and** a phone/claude.ai-drivable session, launched as a **coordinator** (*Remote Control sessions are coordinators* below) | falls back to local — codex's remote is pod-level, see below |
 
 ```bash
 # Claude Code — interactive + phone-drivable on the default, Opus 5.5 at xhigh
@@ -292,7 +292,7 @@ convenience, not a dependency. An unused standby worktree is reaped by `agent-ru
 **Model ids and effort.** Use full ids, never aliases (`fable`, `opus`): an alias
 resolves CLIENT-side against the pinned CLI and can silently serve an older tier
 (freshness contract below). Claude: `claude-fable-5-1`, `claude-opus-5-5`,
-`claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5`; effort
+`claude-sonnet-5-5`, `claude-opus-5`, `claude-haiku-4-5`; effort
 `low|medium|high|xhigh|max` (or `ultracode`) on the 5-family, none at all on
 Haiku 4.5. Codex: `gpt-6-astra` (top), `gpt-6-sol`, `gpt-6-luna`,
 `gpt-5.6-sol|terra|luna`, `gpt-5.5`; effort `low|medium|high|xhigh`, plus `max`
@@ -372,18 +372,45 @@ reads them and treats a matching alert as dev-caused rather than a fault. They
 are a hint, not a mute — an alert outside your declared scope still gets handled,
 and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
 
-## Model policy (Tom, updated 2026-09-23) — which model runs where
+## Model policy (Tom, updated 2026-09-28) — which model runs where
 
 | Surface | Model | Why |
 |---|---|---|
 | **Automated Claude Code agents** — alert-responder, upgrade-shepherd, dev-env-ops (both lanes) | **latest Opus**, pinned explicitly (`claude-opus-5-5` since 2026-09-23; dev-env-ops rides the dev-env image, shepherd/alert-responder the upgrade-shepherd image — each pins its own CLI floor, 2.1.280 for Opus 5.5) | They merge upgrades and touch production unattended; being wrong costs more than the quota. Pinned not aliased — alias repoints lag a launch by days. |
 | **Tom's interactive Claude Code work** | **Opus 5.5 by default** — `claude-opus-5-5` is the pod-wide default since 2026-09-23 (was Fable 5.1 from 2026-09-01): bare `claude`, the post-ready standby (`DEV_ENV_CLAUDE_MODEL`, re-asserted by dev-init on every boot) and every `agent-run` launch without `--model`. **Fable 5.1 by name** — `--model claude-fable-5-1` when Tom wants the top tier | Fable's plan quota is scarce and shared with Tom's own use, and Opus 5.5 is Fable-class on agentic coding, so Fable is spent on purpose, never by default. Fable 5.1 needs claude-code >=2.1.255, Opus 5.5 >=2.1.280 — an older CLI rejects the id outright. |
-| **Native Claude Code subagents** | **Opus 5.5**, exact id `claude-opus-5-5`, effort `xhigh` | Mandatory in every repo for work delegated by a Claude Code driver. Since 2026-09-23 (was Opus 5); needs claude-code >=2.1.280 in the image. |
+| **Native Claude Code subagents** | **Two tiers.** **Opus 5.5** (`opus-worker`: `claude-opus-5-5`, effort `xhigh`) takes hard work and anything a user will see. **Sonnet 5.5** (`sonnet-worker`: `claude-sonnet-5-5`, effort `high`) takes routine coding and testing. See *Subagent dispatch rules* below. | Mandatory in every repo for work delegated by a Claude Code driver. Since 2026-09-28 (Opus 5.5 took everything from 2026-09-23). Sonnet 5.5 does the routine work at lower plan cost, and Opus is kept for work where its judgment shows. Sonnet 5.5 needs claude-code >=2.1.284 and Opus 5.5 needs >=2.1.280. |
 | **Tom's interactive Codex work** | **GPT-6 Astra**, exact id `gpt-6-astra`, reasoning effort `max` | This remains the Codex driving model configured for the pod. |
 | **Native Codex collaboration subagents** | **GPT-6 Sol**, exact id `gpt-6-sol`, reasoning effort `xhigh` | Mandatory in every repo for work delegated by a Codex driver. Since 2026-09-23 (was GPT-5.6 Sol); needs codex >=0.156.1 in the image. |
-| **Any pay-per-token Claude API-key call** | **Sonnet 5** (`claude-sonnet-5`) | Never use Fable or Opus on Claude API pricing. Sonnet 5 is near-Opus at a fraction of the cost and can dispatch a plan-served Claude Code agent for heavy lifting. This rule does not govern OpenAI API calls. |
+| **Any pay-per-token Claude API-key call** | **Sonnet 5.5** (`claude-sonnet-5-5`, since 2026-09-28; was Sonnet 5) | Never use Fable or Opus on Claude API pricing. Sonnet 5.5 is close to Opus quality at a fraction of the cost ($2/$10 per Mtok), and it can dispatch a plan-served Claude Code agent for heavy lifting. This rule does not govern OpenAI API calls. |
 
-### Subagent dispatch rules (Tom, updated 2026-09-23 — apply in EVERY repo)
+### Remote Control sessions are coordinators (Tom, 2026-09-28)
+
+A Claude Code session Tom drives over Remote Control is the **coordinator** between
+him and the subagents. That covers `agent-run --interactive` (`both`), the post-ready
+standby, and any session with `/remote-control` turned on. agent-run's `both` mode
+also says so in the session's system prompt. The goal is to keep the coordinator's
+context window small, so one remote session lasts through many tasks and Tom does not
+have to keep starting new ones.
+
+- **The coordinator talks, plans, dispatches, checks and ships.** It holds the plan,
+  asks Tom questions (AskUserQuestion), writes self-contained work orders, reviews
+  what comes back, and runs the short git/gh/flux steps that merge and deploy the work.
+- **Subagents do the reading and the doing.** Exploring code, broad searches, reading
+  whole files or long logs, edits across files, running tests and builds, reviewing
+  PRs and verifying deploys all go to a subagent that returns a short conclusion
+  rather than file contents. If you are about to read a file end to end or scroll a
+  log, dispatch that work instead.
+- **Verify cheaply.** Check a subagent's key claim with one targeted command (a
+  `grep`, `gh pr checks`, `kubectl get`) rather than redoing its work.
+- **Run independent subagents in parallel and in the background.** To follow up on
+  a finished subagent, use SendMessage so it keeps its own context and you don't
+  rebuild that context in yours.
+- This section is for the top-level session. Subagents and headless `agent-run -p`
+  task sessions do their work themselves. A Codex phone thread takes the same
+  coordinator role with its native `gpt-6-sol` subagents, following the Codex rules
+  below.
+
+### Subagent dispatch rules (Tom, updated 2026-09-28 — apply in EVERY repo)
 
 These bind every session in this pod regardless of which repo the worktree holds
 (a longer Claude Code-specific worked version lives in
@@ -394,41 +421,60 @@ a quota or complexity fallback. Use `agent-run` for a separate CLI session only
 when the task explicitly calls for one, including when Tom explicitly requests
 a Claude Code session from Codex.
 
-- **Claude Code drivers:** default every eligible unit of work to a native Opus
-  5.5 subagent with exact model `claude-opus-5-5` and effort `xhigh`. This applies
-  especially to Fable sessions: the Fable budget is scarce, shared with Tom's
-  interactive use, and should be treated as nearly exhausted.
+- **Claude Code drivers delegate to two tiers.** Pick the tier by how hard the
+  work is and whether a user will see the result:
+
+  | Tier | Give it | Dispatch |
+  |---|---|---|
+  | **Opus 5.5**: `claude-opus-5-5`, effort `xhigh` | **Hard work:** bugs with an unclear cause, design choices, subtle domain or algorithm code, concurrency, risky changes to data, auth, storage or the cluster, and reviews of those changes. **Anything a user will see:** front-end UI/UX (layout, styling, interaction), 3D models and scenes in Blender, game art and audio, and user-facing copy, docs and messages. | `subagent_type: "opus-worker"` |
+  | **Sonnet 5.5**: `claude-sonnet-5-5`, effort `high` | **Routine work:** exploration, code search, reading a subsystem, well-specified features and bug fixes, mechanical edits and refactors, boilerplate, writing and running tests, CI-log triage, doc scaffolding, deploy verification. | `subagent_type: "sonnet-worker"` |
+
+  The two agent types live in `~/.claude/agents/` (GitOps source:
+  `config/claude/agent-*.md`, installed by dev-init at boot) with the exact ids and
+  effort above, so dispatch never depends on alias resolution. If they are missing,
+  pass `model: "opus"` or `model: "sonnet"` to the Agent tool instead; on this pod's
+  pinned CLI (2.1.284) those resolve to Opus 5.5 and Sonnet 5.5.
+  - Sonnet 5.5 is the default for routine work because it saves plan quota. If you
+    are not sure a coding or testing task is routine, start it on Sonnet. If the
+    result comes back wrong or shallow, send that piece to Opus rather than fixing
+    it in your own context.
+  - User-visible work always goes to Opus 5.5, never Sonnet, and the driver reviews
+    it before it ships.
+  - Fable is not a subagent tier. Tom asks for Fable by name for a driving session;
+    its quota is scarce and shared with his own use.
 - **Codex drivers:** default every eligible unit of work to a native collaboration
   subagent using `collaboration.spawn_agent` with `fork_turns: "none"`, exact
   model `gpt-6-sol`, and `reasoning_effort: "xhigh"`. Fresh empty context is
   deliberate: give it a self-contained work order with the objective, relevant
   paths and constraints, expected deliverable, and enough verified context to
   work without the parent conversation. Do not use `agent-run` for these native
-  subagents.
-- Eligible delegation includes exploration and research, reading subsystems,
-  finding call sites, writing and running tests, mechanical or boilerplate
-  edits, doc scaffolding, verification, and deploy audits. When unsure whether
-  a task needs the driving model's judgment, dispatch it to the provider's
-  designated native subagent.
+  subagents. Eligible work includes exploration and research, reading subsystems,
+  finding call sites, writing and running tests, mechanical or boilerplate edits,
+  doc scaffolding, verification and deploy audits; when unsure whether a task
+  needs the driver's judgment, dispatch it. **Exception:** UX design and written text an end user will see (UI
+  copy, page layout and visual design choices, user-facing docs and messages) stay
+  on the driving Astra session.
 - **Keep for the driving session** only what genuinely needs its judgment:
-  architecture and design ratification, subtle domain/algorithm code,
-  cross-repo/cross-plan coherence, and the final review of subagent output.
-- **Exception — never delegate down: UX design and written text an end user
-  will see** (UI copy, page layout/visual design choices, user-facing docs and
-  messages). Those stay on the driving Astra or Fable session.
+  ratifying architecture and design, cross-repo and cross-plan coherence, and the
+  final review of subagent output. A Remote Control coordinator delegates even
+  subtle code to Opus 5.5. Other driving sessions may keep a subtle piece when
+  explaining it would cost more than writing it.
 - Give each subagent a crisp, self-contained task and have it return findings
   and results, not file dumps; fan independent work out in parallel.
 
-**Bump procedure on a new Opus/Fable launch:** check the CLI floor first (the
+**Bump procedure on a new Opus/Sonnet/Fable launch:** check the CLI floor first (the
 Claude Code changelog names the version that added the model; an older pinned
 CLI rejects the id outright, so bump `scripts/dev-env/Dockerfile`
 `CLAUDE_CODE_VERSION` + re-pin the image if needed), probe
 (`claude --model <full-id> -p 'reply with your model id'`), then update the
 pinned ids: `agent-run.sh`'s model picker row (and, for Opus, its
 `CLAUDE_DEFAULT_MODEL` — agent-run's own default), `dev-init.sh`'s
-`DEV_ENV_CLAUDE_MODEL` (pod default), and for Opus the
+`DEV_ENV_CLAUDE_MODEL` (pod default), the subagent tier's `model:` line in
+`config/claude/agent-{opus,sonnet}-worker.md`, and for Opus the
 `upgrade-agent/{alert-responder,shepherd,dev-env-ops}` HRs + their scripts'
-defaults. Agents are the tripwire — see the freshness contract below.
+defaults (for Sonnet: the metered fallbacks, `RESPONDER_FALLBACK_MODEL`, shepherd's
+`FALLBACK_MODEL` and vexa's `SCRIBE_NOTES_API_MODEL`). Agents are the tripwire; see
+the freshness contract below.
 
 **Claude Code quota exhaustion is a real failure mode:** on 2026-08-23 the plan's Fable
 credits ran out; sessions silently drifted to Opus and a fresh Fable dispatch
@@ -458,9 +504,9 @@ surfaces still rot, and **agents are the tripwire for both**:
   wrongly reverted Opus 5→4.8 this way on 2026-08-06. Two more traps: alias
   repoints lag a launch by days (`opus` served 4.8 while `claude-opus-5` was
   already live), and a full id can be newer than the pinned CLI supports
-  (Fable 5.1 needs claude-code >=2.1.255, Opus 5.5 needs >=2.1.280; older CLIs
-  reject the id outright rather than fall back) — so a new row may need an image
-  bump first. The per-model
+  (Fable 5.1 needs claude-code >=2.1.255, Opus 5.5 needs >=2.1.280, Sonnet 5.5
+  needs >=2.1.284; older CLIs reject the id outright rather than fall back), so a
+  new row may need an image bump first. The per-model
   effort table only lists the reduced tiers; re-check it against the effort
   table in code.claude.com/docs/en/model-config when a model launches with a
   different level set.
