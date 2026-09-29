@@ -4,8 +4,14 @@
 # live-pipeline watchdog (meeting-scribe/01): an active meeting whose
 # transcript is still empty after grace gets ONE meeting-api restart (the
 # collector never re-consumes after losing Redis — dry-run 2026-08-18).
-# Site URL is the Cloud Run origin: the apex sits behind Cloudflare, which
-# cached this route's pre-deploy 404; the origin is uncached and stable.
+# Site URL is the in-cluster Service of the live homelab site (frontend/
+# sigoalumni). Not the apex: it sits behind Cloudflare, which once cached this
+# route's pre-deploy 404. Not the Cloud Run `frontpage` URL either: that is a
+# GCP standby that serves no traffic, and polling it every 2 minutes kept it
+# awake. Same image, same Cloud SQL DB and same SCRIBE_DISPATCH_TOKEN (GCP SM
+# scribe-dispatch-token). No CiliumNetworkPolicy selects the dispatcher, the
+# notes Jobs or the site pods today; if one is added to frontend/sigoalumni,
+# it must admit ingress from namespace ai on 8080.
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
@@ -288,7 +294,7 @@ spec:
               command: ["python3", "/app/dispatch.py"]
               env:
                 - name: SITE_ORIGIN
-                  value: "https://frontpage-dgmpniyoga-ue.a.run.app"
+                  value: "http://sigoalumni.frontend.svc.cluster.local:8080"
                 # Stage 3 (notes pipeline) — DISARMED until Tom's supervised
                 # self-test. Flip to "true" to let a completed meeting spawn a
                 # scribe-notes worker. Thresholds are env so a self-test can use a

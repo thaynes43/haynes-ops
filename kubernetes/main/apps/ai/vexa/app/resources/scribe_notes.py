@@ -20,7 +20,9 @@ Env:
   MEET_CODE                 Meet join code (required unless a transcript file is given)
   MEETING_DB_ID             Vexa meeting id (job name / dedupe; informational here)
   EVENT_ID                  site event id to match in the completed-meetings feed
-  SITE_ORIGIN               e.g. https://frontpage-...run.app  (feed + attendance + notify)
+  SITE_ORIGIN               e.g. http://sigoalumni.frontend.svc.cluster.local:8080
+                            (feed + attendance + notify; the live homelab site's
+                            in-cluster Service, not the Cloud Run standby)
   GATEWAY                   e.g. http://vexa-vexa-gateway:8000  (transcript)
   SCRIBE_DISPATCH_TOKEN     bearer for the site internal endpoints
   VEXA_API_KEY              X-API-Key for the gateway
