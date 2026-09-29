@@ -30,8 +30,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest main d78e146 in fixture mode: World A v6 Web-slinger Helper plus Rescue Harbor.
-              tag: sha-d78e146f6db2db7eb2393ec164baa06536bb71b1@sha256:f5f5c6787557564918b1768b22e78562bff9803db9dc4f30b338edd70e7cd2e4
+              # Haynes Quest main adf97ba in fixture mode: World A v6 Helper, Rescue Harbor and Casita candidate.
+              tag: sha-adf97ba781a6dc3a183f6f4c387eeeba609bfdab@sha256:99893efea7b8434d4c30eaf777c9690f6c93014a23292d31731ef83066e030f5
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
