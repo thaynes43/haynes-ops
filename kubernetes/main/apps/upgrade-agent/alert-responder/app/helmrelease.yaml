@@ -36,7 +36,7 @@ spec:
               # The shepherd image (claude + kubectl + flux + git + jq); no bot
               # initContainer here — the responder holds NO repo-write credential.
               repository: ghcr.io/thaynes43/upgrade-shepherd
-              tag: 0.1.0@sha256:42fb9c6f55f1122ce09f501d537d4a33ff6e8ce9c0191948ef509338b436a7e5
+              tag: 0.1.0@sha256:b585c14436d29dbbaa2bfda285b813c8ce284b3be904a9ea66734c79f32e0ca5
             command: ["/bin/bash", "/opt/responder/respond.sh"]
             env:
               ALERTMANAGER_URL: http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093
@@ -75,9 +75,11 @@ spec:
               # 2026-09-23: Opus 5.5 — floor claude-code 2.1.280 in the image (#3119).
               RESPONDER_MODEL: claude-opus-5-5
               # METERED path = pay-per-token: NEVER Fable, NEVER Opus (Tom's rule
-              # 2026-08-23). Sonnet 5 is near-Opus quality at a fraction of the cost
+              # 2026-08-23). Sonnet 5.5 is near-Opus quality at a fraction of the cost
               # and can dispatch a pod claude-code agent for heavy lifting.
-              RESPONDER_FALLBACK_MODEL: claude-sonnet-5
+              # 2026-09-28: Sonnet 5.5 (was Sonnet 5), which needs claude-code 2.1.284
+              # in the image (#3171).
+              RESPONDER_FALLBACK_MODEL: claude-sonnet-5-5
               RESPONDER_MAX_PER_RUN: "1"
               # Storm/loop guards (2026-08-20: a wedged rook-ceph-cluster HR fanned
               # into ~30 FluxReconciliationFailure alerts; the responder paged 16
