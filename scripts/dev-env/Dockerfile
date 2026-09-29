@@ -66,7 +66,7 @@ ARG OMNICTL_VERSION=v1.12.2
 # renovate: datasource=github-releases depName=coder/code-server extractVersion=^v(?<version>.+)$
 ARG CODE_SERVER_VERSION=4.139.1
 # renovate: datasource=github-releases depName=astral-sh/uv
-ARG UV_VERSION=0.12.19
+ARG UV_VERSION=0.12.20
 # ── claude-code ── NOTE: this prose sits ABOVE the `# renovate:` line ON PURPOSE.
 # See the "version numbers in comments" warning at the top of this ARG block.
 # 2.1.251 (2026-08-29): catching up 35 releases of drift. 2.1.217 was pinned by
@@ -145,7 +145,7 @@ ARG TSX_VERSION=4.23.15
 # renovate: datasource=npm depName=pnpm
 ARG PNPM_VERSION=12.6.0
 # renovate: datasource=npm depName=@playwright/mcp
-ARG PLAYWRIGHT_MCP_VERSION=0.0.82
+ARG PLAYWRIGHT_MCP_VERSION=0.0.83
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
