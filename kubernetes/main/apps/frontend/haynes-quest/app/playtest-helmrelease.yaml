@@ -30,8 +30,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Haynes Quest main 7f9701e in fixture mode: family worlds v5, authored A4 scares, Playroom kit, and camera/culling fixes.
-              tag: sha-7f9701e5ce7ebbb37d12d8ed8a3aefe3941c0576@sha256:5f526911e856989d3ef9930a4e7ef1076fe86633dd6c833c8ca2d33cf39b2a41
+              # Haynes Quest main 489902a in fixture mode: family worlds v5 plus Rescue Harbor candidate kit.
+              tag: sha-489902a8b0e22bbaaea1e9cd0eb20f365610907c@sha256:5484c863cf89cffff6824dcabe63b07a73e8390dbd96e687ddea21f4e24a2794
               pullPolicy: IfNotPresent
             env:
               NODE_ENV: development
