@@ -51,7 +51,7 @@ can't fan out into N concurrent LLM summons.
 
 ## The diagnosis: tools & report
 
-Model `sonnet` (`RESPONDER_MODEL`), **25 turns**, **12m** timeout. Runs
+Model `claude-opus-5-5` (`RESPONDER_MODEL`, plan path; `claude-sonnet-5-5` on the metered fallback, `RESPONDER_FALLBACK_MODEL`), **25 turns**, **12m** timeout. Runs
 `dontAsk` with a **read-only allowlist** — there is no path to a cluster write:
 
 | Tool | Notes |
@@ -105,7 +105,8 @@ command the lane can run itself. The first runbook-covered alert is
 | `RESPONDER_MAX_PER_RUN` | `1` | max diagnoses per run (storm cap) |
 | `RESPONDER_MAX_AGE_HOURS` | `24` | ignore incidents older than this |
 | `RESPONDER_STATE_TTL_HOURS` | `168` | prune state entries older than this (7d) |
-| `RESPONDER_MODEL` | `sonnet` | Claude model for the diagnosis |
+| `RESPONDER_MODEL` | `claude-opus-5-5` | Claude model for the diagnosis (plan path) |
+| `RESPONDER_FALLBACK_MODEL` | `claude-sonnet-5-5` | model on the metered API-key fallback — never Fable/Opus |
 | `RESPONDER_MAX_TURNS` | `25` | LLM turn cap |
 | `RESPONDER_MAX_BUDGET_USD` | `2.00` | per-run spend cap |
 | `RESPONDER_MONTHLY_CAP_USD` | `15` | month-to-date spend cap (own envelope) |
@@ -197,7 +198,7 @@ Three CronJobs share ns `upgrade-agent` and the read-only ClusterRole; they do
 |---|---|---|---|---|
 | **gate** ([upgrade-health-gate](upgrade-health-gate.md)) | post-reconcile, every cycle | **no** — deterministic | no — pages only | upgrade health tripwire → Pushover |
 | **triage** ([upgrade-shepherd](upgrade-shepherd.md) `upgrade-shepherd-triage`) | recent merge **AND** regression now | **no** — deterministic | auto-summons shepherd `remediate` | **upgrade-attributable** regressions only |
-| **responder** (this) | **any** firing `severity=critical` | **yes** — Opus 5 (Sonnet 5 on the API fallback), read-only | **no cluster write** — enriches, then pages *or* hands a still-firing `urgent` to the `rem-*` lane by filing a work order | **any** critical, upgrade-related or not |
+| **responder** (this) | **any** firing `severity=critical` | **yes** — Opus 5.5 (Sonnet 5.5 on the API fallback), read-only | **no cluster write** — enriches, then pages *or* hands a still-firing `urgent` to the `rem-*` lane by filing a work order | **any** critical, upgrade-related or not |
 
 - **gate** = the deterministic upgrade safety net (no LLM, page on regression).
 - **triage** = the deterministic auto-summon of the shepherd's `remediate` mode when

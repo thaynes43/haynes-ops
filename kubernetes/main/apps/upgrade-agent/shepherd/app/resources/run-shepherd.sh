@@ -30,10 +30,11 @@ MODE="${UPGRADE_AGENT_MODE:-dryrun}"
 # rejects the id outright, so the image bump (#3119) has to land before this does).
 MODEL="${UPGRADE_AGENT_MODEL:-claude-opus-5-5}"
 # METERED-PATH MODEL — the API key is pay-per-token, so it NEVER runs Opus or Fable
-# (Tom's rule 2026-08-23: no Fable on API pricing; use Sonnet 5). Sonnet 5 is
+# (Tom's rule 2026-08-23: no Fable on API pricing; use Sonnet). Sonnet 5.5 is
 # near-Opus quality at a fraction of the cost and can dispatch a pod claude-code
-# agent for heavy lifting if a fallback run needs more muscle.
-FALLBACK_MODEL="${UPGRADE_AGENT_FALLBACK_MODEL:-claude-sonnet-5}"
+# agent for heavy lifting if a fallback run needs more muscle. 2026-09-28: Sonnet 5.5
+# (was Sonnet 5), which needs claude-code 2.1.284 in the image (#3171).
+FALLBACK_MODEL="${UPGRADE_AGENT_FALLBACK_MODEL:-claude-sonnet-5-5}"
 # MAX_TURNS is a METERED-path (api) spend control only — a plan-served run costs $0,
 # so capping its turns just strands finished work (2026-07-30: the cilium one-way vet
 # authored PR #2310 then died at turn 40 doing post-PR diligence → Error pod, triage
@@ -362,7 +363,7 @@ case "$MODE" in
     MAX_TURNS="${UPGRADE_AGENT_REMEDIATE_MAX_TURNS:-20}"
     # MODEL ESCALATION (2026-07-06): remediate is rare, budget-capped ($5/run) and
     # diagnosis-bound — a stronger model is the difference between a clean revert PR
-    # and a wasted BREAK-GLASS. Overrides the HR-wide UPGRADE_AGENT_MODEL (sonnet),
+    # and a wasted BREAK-GLASS. Overrides the HR-wide UPGRADE_AGENT_MODEL (claude-opus-5-5),
     # which still governs the daily survey/auto runs.
     MODEL="${UPGRADE_AGENT_REMEDIATE_MODEL:-claude-opus-5-5}"
     SAFETY_MERGE="you MAY open a forward-fix or rollback PR and enable auto-merge with 'gh pr merge <N> --auto'; NEVER merge immediately, NEVER use --admin, NEVER push to main. BAIL EARLY (within a few turns) with one line 'BREAK-GLASS: <reason>' if a git-only fix is not clearly available (immutable field, wedged HelmRelease, stuck finalizer, one-way major, infra/KubePrism/etcd/node, or not caused by a recent upgrade); do NOT investigate to max-turns, do NOT retry denied cluster writes"
@@ -472,7 +473,7 @@ if [ "$AUTH_PATH" = "plan" ] && [ "$rc" -ne 0 ] && [ -n "$ANTHROPIC_API_KEY_STAS
     log "FALLBACK: $fallback_reason — retrying on the metered API key."
     AUTH_PATH="api"
     export ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY_STASH"
-    # Metered path: Sonnet 5 for EVERY mode, remediate included (2026-08-23 rule —
+    # Metered path: Sonnet 5.5 for EVERY mode, remediate included (2026-08-23 rule —
     # pay-per-token never runs Opus/Fable). A remediate fallback that needs more
     # muscle should dispatch a pod claude-code agent, not bill Opus by the token.
     MODEL="$FALLBACK_MODEL"

@@ -282,10 +282,14 @@ a second CronJob (`upgrade-shepherd-triage`) does the auto-summon.
 
 | Mode | Tools | Merge? | Model | Use |
 |---|---|---|---|---|
-| `dryrun` (default) | read-only | no | sonnet | report a plan, make nothing |
-| `shepherd` | + edit/PR | no (human merges) | sonnet | 4b.1 supervised PR authoring |
-| `auto` | + `gh pr merge --auto` | **queues** (server-side) | sonnet | 4b.3 hands-off auto-merge |
-| `remediate` | + edit/PR/merge | queues | **opus** (2026-07-06; `UPGRADE_AGENT_REMEDIATE_MODEL`) | Mode-2 regression fix/rollback — rare, \$5-capped, diagnosis-bound |
+| `dryrun` (default) | read-only | no | Opus 5.5 | report a plan, make nothing |
+| `shepherd` | + edit/PR | no (human merges) | Opus 5.5 | 4b.1 supervised PR authoring |
+| `auto` | + `gh pr merge --auto` | **queues** (server-side) | Opus 5.5 | 4b.3 hands-off auto-merge |
+| `remediate` | + edit/PR/merge | queues | **Opus 5.5** (`UPGRADE_AGENT_REMEDIATE_MODEL`; its own knob since 2026-07-06) | Mode-2 regression fix/rollback — rare, \$5-capped, diagnosis-bound |
+
+The Model column is the plan path (`UPGRADE_AGENT_MODEL`, `claude-opus-5-5`). Every
+mode falls back to `claude-sonnet-5-5` on the metered API key
+(`UPGRADE_AGENT_FALLBACK_MODEL`, Sonnet 5.5 since 2026-09-28), never Fable or Opus.
 
 **Durable verdicts (2026-07-06):** every run leaves its final summary line at
 `/tmp/shepherd-summary.txt`; after a remediate, triage records it as `note` on the
