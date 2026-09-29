@@ -26,7 +26,7 @@ Env:
   VEXA_API_KEY              X-API-Key for the gateway
   SCRIBE_NOTES_MODEL        claude model, full id (default: claude-fable-5-1 — board-facing prose)
   SCRIBE_NOTES_PLAN_FALLBACK_MODEL  second plan model when the first is rate-limited (default: claude-opus-5)
-  SCRIBE_NOTES_API_MODEL    model for the metered-API fallback (default: claude-sonnet-5, per model policy)
+  SCRIBE_NOTES_API_MODEL    model for the metered-API fallback (default: claude-sonnet-5-5, per model policy)
   SCRIBE_NOTES_PUBLISH      "true" to write to Outline (default: false -> compose only)
   SCRIBE_NOTES_NOTIFY       "true" to send publish/failure notifications (default: false)
   SCRIBE_NOTES_OUT          where to write the composed page (default: /tmp/scribe-notes.md)
@@ -371,14 +371,15 @@ def summarize(meta, segments):
         raise Fail("summarize", "no CLAUDE_CODE_OAUTH_TOKEN and no ANTHROPIC_API_KEY")
     # Full model ids, never aliases (an alias resolves client-side against the
     # pinned CLI). Plan runs use the board-prose model; the metered-API fallback
-    # is pinned to Sonnet 5 by the pod's model policy — Fable/Opus are never
-    # billed per token.
+    # is pinned to Sonnet 5.5 by the pod's model policy (Sonnet 5 until 2026-09-28;
+    # 5.5 needs claude-code >=2.1.284, i.e. dev-env image >=0.6.5) — Fable/Opus are
+    # never billed per token.
     model = os.environ.get("SCRIBE_NOTES_MODEL", "claude-fable-5-1")
     # Second plan model: still $0, used when the primary hits the plan's usage
     # window (Fable's budget is the scarce one). Only after BOTH plan models
     # fail does the run touch the metered key.
     plan_fallback_model = os.environ.get("SCRIBE_NOTES_PLAN_FALLBACK_MODEL", "claude-opus-5")
-    api_model = os.environ.get("SCRIBE_NOTES_API_MODEL", "claude-sonnet-5")
+    api_model = os.environ.get("SCRIBE_NOTES_API_MODEL", "claude-sonnet-5-5")
 
     def attempt(use_api, use_model=None):
         auth = "api" if use_api else "plan"
