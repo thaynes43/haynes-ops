@@ -211,6 +211,14 @@ spec:
               - matchName: "eventarc.googleapis.com"
               - matchName: "cloudscheduler.googleapis.com"
               - matchName: "cloudbuild.googleapis.com"
+              # GCP billing data, read-only (Tom, 2026-09-29): billing account + budgets
+              # (gcloud billing / REST) and the Standard usage cost export in BigQuery
+              # (sigo-alumni docs/runbooks/gcp-billing-data.md). Billing access is read-only
+              # (Billing Account Viewer); bigquerystorage is the client libs' fast read path.
+              - matchName: "cloudbilling.googleapis.com"
+              - matchName: "billingbudgets.googleapis.com"
+              - matchName: "bigquery.googleapis.com"
+              - matchName: "bigquerystorage.googleapis.com"
               # Workspace SMTP relay (magic-link mail; members-portal, 2026-08-06)
               - matchName: "smtp-relay.gmail.com"
               # Workspace content/roles APIs (Calendar+Drive ride www.googleapis.com;
@@ -422,6 +430,20 @@ spec:
         - matchPattern: "*.tunnel.cloudproxy.app"
         - matchName: "logging.googleapis.com"
         - matchName: "monitoring.googleapis.com"
+        # Scribe read-side verification + failover watchdog APIs: allowed in the DNS
+        # rules above since 2026-08 but never here, so HTTPS only worked when the
+        # name happened to share a Google frontend IP with an allowed host.
+        - matchName: "meet.googleapis.com"
+        - matchName: "pubsub.googleapis.com"
+        - matchName: "cloudfunctions.googleapis.com"
+        - matchName: "eventarc.googleapis.com"
+        - matchName: "cloudscheduler.googleapis.com"
+        - matchName: "cloudbuild.googleapis.com"
+        # GCP billing data, read-only (2026-09-29; same set as the DNS rules above)
+        - matchName: "cloudbilling.googleapis.com"
+        - matchName: "billingbudgets.googleapis.com"
+        - matchName: "bigquery.googleapis.com"
+        - matchName: "bigquerystorage.googleapis.com"
         - matchName: "smtp-relay.gmail.com"
         - matchName: "www.googleapis.com"
         - matchName: "sheets.googleapis.com"
