@@ -34,3 +34,6 @@ zprompt.md
 !.claude/commands/
 HANDOFF-*.md
 SESSION-HANDOFF.md
+# Python bytecode (e.g. from a local py_compile check)
+__pycache__/
+*.pyc
