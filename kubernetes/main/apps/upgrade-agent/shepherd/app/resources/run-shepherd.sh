@@ -9,7 +9,8 @@
 #   - The bot PEM is NEVER here — an initContainer minted a short-lived ghs_ token to
 #     /creds/gh_token; this container only sees that token (contents+PRs:write, 1h TTL).
 #   - --permission-mode dontAsk + an explicit --allowedTools allowlist (auto-denies
-#     everything else). NO `gh pr merge`, NO WebFetch/WebSearch, NO kubectl write.
+#     everything else). `gh pr merge` only in auto/remediate (MERGE_TOOLS), NO
+#     WebFetch/WebSearch, NO kubectl write.
 #   - DRY-RUN by default: makes NO changes. Set UPGRADE_AGENT_MODE=shepherd to enable
 #     edits + PR authorship.
 #
@@ -17,7 +18,7 @@
 # rogue/injected agent could in principle `git push` straight to main. 4b.1 is
 # SUMMONED + SUPERVISED (a human triggers this Job and watches). Do NOT run it
 # unattended until the Kyverno admission baseline + diff-scope check + push protection
-# land. `gh pr merge` is already blocked here regardless.
+# land. `gh pr merge` is blocked in the manual modes regardless.
 set -uo pipefail
 
 MODE="${UPGRADE_AGENT_MODE:-dryrun}"
@@ -56,6 +57,10 @@ SPEND_CM="${UPGRADE_AGENT_SPEND_CM:-upgrade-shepherd-spend}"
 SPEND_MONTH=""; SPEND_PRIOR="0"
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
+epoch_now() { date -u +%s; }
+# Run start, in GitHub's timestamp format: the auto-merge stall fallback only touches
+# auto-merges this bot enabled after this instant (i.e. during this run).
+RUN_START_ISO="$(date -u +%FT%TZ)"
 
 # Returns 0 = proceed, 1 = skip (cap reached). Fails OPEN on any kubectl/RBAC error
 # (the account balance + per-run --max-budget-usd are the real ceilings).
@@ -224,6 +229,262 @@ prefilter_should_run() {
   return 1
 }
 
+# Files an esc-shepherd-* entry (dev-env-ops spawns a joinable session and pages
+# with its name). $1 = reason. Honours ESCALATE_SIG from the caller (a stable
+# signature, so a re-fire of the same failure dedups instead of paging again).
+shepherd_escalate() {
+  bash /opt/coordination/escalate.sh shepherd "job:${HOSTNAME:-unknown} mode=${MODE}" "$1"
+}
+
+# ── AUTO-MERGE STALL FALLBACK (2026-09-30, #3287) ── `gh pr merge --auto` on a PR whose
+# checks finished long ago can leave GitHub with nothing to act on. #3280 (rook v1.20.8
+# operator) had 7/7 checks green since 02:21Z; the 04:07Z run enabled auto-merge while
+# mergeStateStatus still read UNKNOWN (GitHub computes it lazily), so gh queued instead
+# of merging, and a PR whose checks are already complete never produces the
+# check-completion event that fires a queued merge. It sat CLEAN until a human merged it
+# at 08:09Z, and the 08:00Z run paged on the pair's other half meanwhile.
+# So after the LLM's turn (MODE=auto only) the LAUNCHER, not the LLM, watches every PR
+# whose auto-merge THIS BOT enabled during THIS run and finishes the merge itself once
+# GitHub has left it mergeable for AUTOMERGE_GRACE_S. The guardrails are the ones the
+# queued merge had, checked here instead of assumed:
+#   - only auto-merges enabled by the shepherd bot since RUN_START_ISO — never Renovate's,
+#     a human's, or an earlier run's;
+#   - OPEN, not draft, auto-merge STILL enabled (a human who switched it off meant it),
+#     mergeStateStatus CLEAN, every check COMPLETED + SUCCESS/SKIPPED/NEUTRAL, and both
+#     required contexts present;
+#   - --match-head-commit pins the merge to the head those checks ran on;
+#   - NEVER --admin: the bot is non-admin/non-bypass, so branch protection still refuses
+#     the merge server-side unless Flux Local + Diff Scope are green.
+# A PR still waiting on checks when the watch ends is left to GitHub: a check completing
+# AFTER auto-merge was enabled is exactly the event that fires it. MODE=remediate never
+# runs this (its fix PRs are fresh, with checks pending when auto-merge is enabled, and
+# triage reads "a new PR is still open" as result=pending).
+AUTOMERGE_GRACE_S="${UPGRADE_AGENT_AUTOMERGE_GRACE_S:-120}"
+AUTOMERGE_WATCH_S="${UPGRADE_AGENT_AUTOMERGE_WATCH_S:-360}"
+AUTOMERGE_POLL_S="${UPGRADE_AGENT_AUTOMERGE_POLL_S:-15}"
+SHEPHERD_BOT_LOGIN="${UPGRADE_AGENT_BOT_LOGIN:-haynes-ops-bot}"
+REQUIRED_CHECKS_JSON='["Flux Local - Success","Diff Scope - Success"]'
+
+# stdin = `gh pr list --json number,autoMergeRequest`; $1 = ISO-8601 instant. Prints
+# the PRs whose auto-merge the shepherd bot enabled at or after $1, one per line.
+automerge_candidates() {
+  jq -r --arg since "$1" --arg bot "$SHEPHERD_BOT_LOGIN" '
+    .[] | select(.autoMergeRequest != null)
+    | select((.autoMergeRequest.enabledAt // "") >= $since)
+    | select(((.autoMergeRequest.enabledBy.login // "") | sub("^app/"; "") | sub("\\[bot\\]$"; "")) == $bot)
+    | .number' 2>/dev/null
+}
+
+# stdin = `gh pr view --json state,isDraft,mergedAt,mergeStateStatus,autoMergeRequest,
+# headRefOid,statusCheckRollup`. Prints one of:
+#   merged          merged (by GitHub or anyone) — done
+#   skip <why>      no longer ours to finish (closed, draft, auto-merge switched off)
+#   wait <why>      not mergeable yet (a check pending/red, a required context missing,
+#                   mergeState not CLEAN) — GitHub's own trigger path still owns it
+#   ready <sha>     CLEAN, every check green, both required contexts green, unmerged
+automerge_decide() {
+  jq -r --argjson req "$REQUIRED_CHECKS_JSON" '
+    def green:
+      if .__typename == "StatusContext" then (.state // "") == "SUCCESS"
+      else (.status // "") == "COMPLETED"
+        and ((.conclusion // "") as $c | $c == "SUCCESS" or $c == "SKIPPED" or $c == "NEUTRAL")
+      end;
+    def cname: .name // .context // "?";
+    (.statusCheckRollup // []) as $checks
+    | ([$checks[] | select(green | not) | cname]) as $red
+    | ($req - [$checks[] | select(green) | cname]) as $missing
+    | if (.mergedAt // null) != null or .state == "MERGED" then "merged"
+      elif .state != "OPEN" then "skip state=\(.state)"
+      elif .isDraft == true then "skip draft"
+      elif .autoMergeRequest == null then "skip auto-merge-disabled"
+      elif ($checks | length) == 0 then "wait no-checks"
+      elif ($red | length) > 0 then "wait checks-not-green=\($red | join(","))"
+      elif ($missing | length) > 0 then "wait required-missing=\($missing | join(","))"
+      elif .mergeStateStatus != "CLEAN" then "wait mergeState=\(.mergeStateStatus)"
+      elif ((.headRefOid // "") | length) == 0 then "wait no-head-sha"
+      else "ready \(.headRefOid)" end' 2>/dev/null
+}
+
+# $1 = PR, $2 = head SHA the checks passed on, $3 = seconds it sat ready. Plain squash
+# merge; on refusal re-reads the PR (GitHub may have won the race) and escalates only
+# a PR that is still unmerged. Returns 0 = merged, 1 = not merged.
+automerge_complete() {
+  local pr="$1" sha="$2" waited="$3" out merged_at
+  log "automerge-fallback: #$pr has been CLEAN with every check green for ${waited}s and GitHub has not merged it — merging it (plain squash, pinned to ${sha:0:10}, no --admin)."
+  if out="$(gh pr merge "$pr" -R "$REPO" --squash --delete-branch --match-head-commit "$sha" 2>&1)"; then
+    log "automerge-fallback: #$pr merged by the fallback."
+    return 0
+  fi
+  merged_at="$(gh pr view "$pr" -R "$REPO" --json mergedAt 2>/dev/null | jq -r '.mergedAt // ""' 2>/dev/null)"
+  if [ -n "$merged_at" ]; then
+    log "automerge-fallback: #$pr merge call failed but the PR is merged (GitHub got there first) — fine."
+    return 0
+  fi
+  out="$(printf '%s' "$out" | tr '\n\r' '  ' | cut -c1-200)"
+  log "automerge-fallback: WARN #$pr stays unmerged — the fallback merge was refused: $out"
+  ESCALATE_SIG="shepherd-automerge|pr=${pr}|sha=${sha}" shepherd_escalate \
+    "auto-merge stalled: #${pr} is CLEAN with every check green and auto-merge enabled, GitHub has not merged it, and the launcher's plain squash merge was refused: ${out}" \
+    || log "escalate.sh could not file the esc-shepherd entry (best-effort; run outcome unchanged)"
+  return 1
+}
+
+# $1 = RUN_START_ISO. Best-effort: gh failures only log, and it always returns 0.
+automerge_fallback() {
+  local since="$1" list prs pr view verdict sha key t t0 deadline still waits
+  local -A ready_since=()
+  list="$(gh pr list -R "$REPO" --state open --limit 200 --json number,autoMergeRequest 2>/dev/null)" || {
+    log "automerge-fallback: gh pr list failed — cannot watch for a stalled auto-merge this run."; return 0; }
+  prs="$(printf '%s' "$list" | automerge_candidates "$since" | tr '\n' ' ')"
+  if [ -z "${prs// /}" ]; then
+    log "automerge-fallback: no auto-merge enabled by this run is still open — nothing to watch."
+    return 0
+  fi
+  log "automerge-fallback: watching this run's auto-merge(s): ${prs}(grace ${AUTOMERGE_GRACE_S}s, watch ${AUTOMERGE_WATCH_S}s)."
+  deadline=$(( $(epoch_now) + AUTOMERGE_WATCH_S ))
+  while :; do
+    still=""; waits=""
+    t="$(epoch_now)"
+    for pr in $prs; do
+      view="$(gh pr view "$pr" -R "$REPO" --json state,isDraft,mergedAt,mergeStateStatus,autoMergeRequest,headRefOid,statusCheckRollup 2>/dev/null)" || {
+        still="$still $pr"; waits="$waits #$pr(gh-view-failed)"; continue; }
+      verdict="$(printf '%s' "$view" | automerge_decide)"
+      case "$verdict" in
+        merged) log "automerge-fallback: #$pr merged by GitHub auto-merge." ;;
+        skip\ *) log "automerge-fallback: #$pr ${verdict#skip } — leaving it alone." ;;
+        ready\ *)
+          sha="${verdict#ready }"; key="${pr}@${sha}"
+          # Keyed by head SHA: a new push restarts the grace for the new head.
+          [ -n "${ready_since[$key]:-}" ] || ready_since[$key]="$t"
+          t0="${ready_since[$key]}"
+          if [ $(( t - t0 )) -ge "$AUTOMERGE_GRACE_S" ]; then
+            automerge_complete "$pr" "$sha" "$(( t - t0 ))" || true
+          else
+            still="$still $pr"
+          fi ;;
+        *) still="$still $pr"; waits="$waits #$pr(${verdict:-undecidable})" ;;
+      esac
+    done
+    prs="$still"
+    [ -n "${prs// /}" ] || break
+    if [ "$(epoch_now)" -ge "$deadline" ]; then
+      log "automerge-fallback: watch over; still queued:${prs} —${waits:- ready but inside the grace window} — left to GitHub auto-merge (their checks completed after it was enabled, which is the event that fires it)."
+      break
+    fi
+    sleep "$AUTOMERGE_POLL_S"
+  done
+  return 0
+}
+
+# ── VERDICTS + DEFER (2026-09-30, #3287) ── the LLM ends a run with at most these lines
+# at the TOP of its summary (the operating rules in SAFETY_PROMPT define them):
+#   BREAK-GLASS: / HOLD: / HOLD NEEDED:   a human must act — escalates (pages).
+#   DEFER: #<N> waits for #<M> — <why>    the PR is fine and a LATER RUN of this job
+#       clears the wait by itself (the other half of a must-move-together set has not
+#       merged and rolled Ready, the drain rule's one unit is spent, Kometa is running).
+#       Does NOT escalate. A deferred PR gets no vet marker, so the next run re-reads it.
+# The FATAL BACKSTOP for DEFER: a wait that does not clear is a real stall (the 08:00Z
+# page was one underneath: #3280's auto-merge never fired). defer_track keeps each wait's
+# streak in the upgrade-shepherd-defers ConfigMap and escalates, once per streak, when the
+# same wait has lasted DEFER_ESCALATE_MIN. 450 min = the third consecutive deferral on the
+# 4h cadence (~8h after the first), less 30 min of run-start jitter.
+DEFER_CM="${UPGRADE_AGENT_DEFER_CM:-upgrade-shepherd-defers}"
+DEFER_ESCALATE_MIN="${UPGRADE_AGENT_DEFER_ESCALATE_MINUTES:-450}"
+
+# $1 = the flattened summary, $2 = claude's rc. Prints the escalation reason, or nothing.
+escalation_reason() {
+  if printf '%s' "$1" | grep -qE '(BREAK-GLASS|HOLD( NEEDED)?):'; then
+    printf 'terminal verdict: %s' "$1"
+  elif [ "$2" -ne 0 ]; then
+    printf 'auto run died rc=%s (%s)' "$2" "${1:-no summary — see Job logs}"
+  fi
+}
+
+# stdin = the LLM's full final text (newlines kept). Prints "<key><TAB><line>" per DEFER
+# line. The key is the wait's identity, stable however the line is phrased: the first two
+# PR numbers after 'DEFER:' sorted and joined with '+' (deferred PR + blocking PR), one
+# number when the blocker is not a PR (Kometa), '?' when the line names no PR at all.
+defer_keys() {
+  local line rest nums
+  while IFS= read -r line; do
+    case "$line" in *DEFER:*) ;; *) continue ;; esac
+    rest="${line#*DEFER:}"
+    nums="$(printf '%s' "$rest" | grep -oE '#[0-9]+' | tr -d '#' | head -2 | sort -n | paste -sd+ -)"
+    printf '%s\t%s\n' "${nums:-?}" "$(printf '%s' "$line" | tr -d '\t\r' | cut -c1-200)"
+  done
+}
+
+# stdin = defer_keys output; $1 = previous streak state (JSON object), $2 = now (epoch).
+# Pure. A wait deferred again keeps its first_seen and escalated stamp and counts the run;
+# a wait NOT deferred this run is dropped — it cleared (merged, proceeded, or closed).
+defer_next_state() {
+  jq -R 'select(length > 0) | split("\t") | {k: .[0], why: (.[1:] | join(" "))}' \
+    | jq -sc --argjson prev "$1" --argjson now "$2" '
+        reduce .[] as $d ({}; .[$d.k] = {
+          first_seen: ($prev[$d.k].first_seen // $now),
+          runs: (($prev[$d.k].runs // 0) + 1),
+          escalated: ($prev[$d.k].escalated // 0),
+          why: $d.why })'
+}
+
+# $1 = streak state, $2 = now, $3 = limit (s). Pure. Prints the waits at least $3 old
+# that have not been escalated in this streak yet.
+defer_overdue() {
+  printf '%s' "$1" | jq -r --argjson now "$2" --argjson lim "$3" '
+    to_entries[] | select(($now - .value.first_seen) >= $lim and (.value.escalated // 0) == 0) | .key'
+}
+
+# Prints the streak state ("{}" when the ConfigMap does not exist yet); rc 1 = unreadable.
+defer_state_read() {
+  local out err="/tmp/defer-state-read.err"
+  if out="$(kubectl -n "$SPEND_NS" get configmap "$DEFER_CM" -o json 2>"$err")"; then
+    printf '%s' "$out" | jq -c '(.data.state // "{}") | (fromjson? // {}) | if type == "object" then . else {} end'
+  elif grep -q 'NotFound' "$err" 2>/dev/null; then
+    printf '{}'
+  else
+    log "defer-track: WARN cannot read ${DEFER_CM}: $(tr '\n' ' ' < "$err" 2>/dev/null | cut -c1-160)"
+    return 1
+  fi
+}
+
+# $1 = streak state JSON. Runtime state, NOT in git (Flux would reset it), like the spend CM.
+defer_state_write() {
+  kubectl -n "$SPEND_NS" create configmap "$DEFER_CM" --from-literal=state="$1" \
+    --dry-run=client -o yaml | kubectl -n "$SPEND_NS" apply -f - >/dev/null 2>&1
+}
+
+# $1 = the LLM's full final text, $2 = non-empty when this run already escalated (that
+# session covers an overdue wait too, so it is not filed twice; the next run retries).
+# Best-effort: an unreadable state leaves every streak untouched (never reset blind).
+defer_track() {
+  local text="$1" escalated_now="$2" prev next now keys overdue k d age runs why
+  keys="$(printf '%s\n' "$text" | defer_keys)"
+  prev="$(defer_state_read)" || return 1
+  [ -n "$prev" ] || prev='{}'
+  now="$(epoch_now)"
+  next="$(printf '%s\n' "$keys" | defer_next_state "$prev" "$now")" || {
+    log "defer-track: WARN could not compute the next streak state — leaving it untouched."; return 1; }
+  [ -z "$keys" ] || log "defer-track: deferred this run: $(printf '%s\n' "$keys" | cut -f1 | paste -sd' ' -)"
+  overdue="$(defer_overdue "$next" "$now" "$(( DEFER_ESCALATE_MIN * 60 ))")"
+  while IFS= read -r k; do
+    [ -n "$k" ] || continue
+    if [ -n "$escalated_now" ]; then
+      log "defer-track: wait $k is overdue, but this run already escalated — not filing twice; the next run retries."
+      continue
+    fi
+    d="$(printf '%s' "$next" | jq -r --arg k "$k" '.[$k] | "\(.first_seen) \(.runs)"')"
+    age=$(( now - ${d% *} )); runs="${d#* }"
+    why="$(printf '%s' "$next" | jq -r --arg k "$k" '.[$k].why')"
+    if ESCALATE_SIG="shepherd-defer|${k}" shepherd_escalate \
+         "DEFER stalled: the same wait (PRs ${k}) has been deferred for $(( age / 3600 ))h$(( age % 3600 / 60 ))m across ${runs} runs — it is not clearing by itself. Latest: ${why}"; then
+      next="$(printf '%s' "$next" | jq -c --arg k "$k" --argjson now "$now" '.[$k].escalated = $now')"
+    else
+      log "escalate.sh could not file the DEFER backstop for $k (best-effort; retried next run)"
+    fi
+  done <<< "$overdue"
+  if [ "$prev" = '{}' ] && [ "$next" = '{}' ]; then return 0; fi
+  defer_state_write "$next" || { log "defer-track: WARN could not write ${DEFER_CM} (RBAC?)."; return 1; }
+}
+
 # Quiet claude-code's phone-home (the egress CNP would block it anyway).
 export DISABLE_TELEMETRY=1 CLAUDE_CODE_ENABLE_TELEMETRY=0 \
        DISABLE_ERROR_REPORTING=1 DISABLE_AUTOUPDATER=1 DISABLE_NON_ESSENTIAL_MODEL_CALLS=1
@@ -327,6 +588,8 @@ WRITE_TOOLS=(Edit Write
 # boundary: the bot is non-admin + non-bypass, so `gh pr merge --auto` only QUEUES and
 # GitHub merges server-side ONLY when Flux Local + Diff Scope are both green. It cannot
 # merge past a red/pending check, and `--admin` (skip-checks) fails for a non-admin.
+# The launcher's own plain-merge fallback for a queued merge GitHub never fired (see
+# AUTO-MERGE STALL FALLBACK) runs outside the LLM and is bound by that same protection.
 MERGE_TOOLS=("Bash(gh pr merge:*)")
 # Upgrade-window silencing (2026-07-08): after auto-merging a cluster-infra component,
 # the shepherd may set a BOUNDED Alertmanager silence for that component's expected
@@ -351,7 +614,7 @@ case "$MODE" in
     ;;
   auto)      # open a PR AND enable server-side auto-merge (Phase 4b.3)
     ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}" "${MERGE_TOOLS[@]}" "${SILENCE_TOOLS[@]}" "${WORKORDER_TOOLS[@]}")
-    SAFETY_MERGE="you MAY enable auto-merge with 'gh pr merge <N> --auto --squash --delete-branch' AFTER opening the PR; NEVER merge immediately, NEVER use --admin, NEVER push to main"
+    SAFETY_MERGE="you MAY enable auto-merge with 'gh pr merge <N> --auto --squash --delete-branch' AFTER opening the PR; NEVER merge immediately, NEVER use --admin, NEVER push to main. If a queued auto-merge has not landed although its checks are green, do NOT merge it yourself and do not re-queue it: after your turn the launcher completes any auto-merge you queued that GitHub left CLEAN and unmerged"
     [ -n "$PROMPT" ] || PROMPT="You are the Tier-4 upgrade shepherd in AUTO mode. Follow .agents/runbooks/upgrade-shepherd.md. Survey open manual-tier Renovate PRs (gh pr list); pick the NEXT one by the runbook merge-order. CONSULT .renovate/holds.json5 first (skip if held). Read the release notes and the component playbook. If supporting edits are needed, make them on a NEW branch shepherd/<pkg>-<version>, commit, push, and open a PR (gh pr create); then enable auto-merge with gh pr merge <N> --auto --squash --delete-branch. GitHub merges only when Flux Local AND Diff Scope are both green. Do NOT merge immediately, do NOT push to main, do NOT touch anything outside kubernetes/**. One PR only, then stop and summarize."
     ;;
   remediate) # mode 2: diagnose a regression, forward-fix or rollback+hold (Phase 4b.3)
@@ -420,12 +683,17 @@ SAFETY_PROMPT="${SAFETY_PROMPT} GH AUTH: gh is ALREADY authenticated — the lau
 SAFETY_PROMPT="${SAFETY_PROMPT} BACKUP GATE: before you merge, enable auto-merge on, or forward-fix any component backed by a database or persistent volume (cnpg/postgres, rook-ceph, dragonfly, emqx, immich, authentik, paperless, the *arr apps, etc.), FIRST verify a recent SUCCESSFUL backup exists — for cnpg: 'kubectl get backup -n database' (newest .status.phase=completed within 24h) or the Cluster .status.lastSuccessfulBackup; for volsync-backed apps: 'kubectl get replicationsource -A' (.status.lastSyncTime within its schedule). If no healthy backup within 24h exists, do NOT proceed — stop with one line 'HOLD: backup safety net compromised for <component>'. Stateless components need no backup check."
 # (3) AUTONOMY — this Job runs unattended on a schedule; there is no human to answer a
 # mid-task question. Finish the allowlisted work or bail with ONE structured line.
-SAFETY_PROMPT="${SAFETY_PROMPT} AUTONOMY: you run UNATTENDED — no human is watching this run. For reversible, in-scope actions proceed without asking. NEVER end your turn with a question, a plan, or an 'I will…' you have not executed — either complete the allowlisted work now, or stop with a single 'BREAK-GLASS: <reason>' or 'HOLD: <reason>' line."
+# (3b) VERDICTS (2026-09-30, #3287) — HOLD pages Tom (MODE=auto escalation below), so a
+# wait the next run clears on its own gets its own non-paging verdict, DEFER. The 08:00Z
+# page was a HOLD on the second half of the rook pair while the first half's auto-merge
+# was still queued: nothing a human needed to do.
+SAFETY_PROMPT="${SAFETY_PROMPT} AUTONOMY: you run UNATTENDED — no human is watching this run. For reversible, in-scope actions proceed without asking. NEVER end your turn with a question, a plan, or an 'I will…' you have not executed — either complete the allowlisted work now, or put a verdict line at the TOP of your summary."
+SAFETY_PROMPT="${SAFETY_PROMPT} VERDICTS — choose by WHO has to act next. 'DEFER: #<N> waits for #<blocking PR> — <why>' (the blocking PR is whatever holds it back: the previous PR of its set, the unit this run took under the drain rule, the phase-1 PR; write 'waits for <condition>' when the blocker is not a PR; one DEFER line per waiting PR) when the PR itself is fine and a LATER RUN of this scheduled job clears the wait on its own: the previous PR of a must-move-together set has not merged and rolled Ready yet, the one-stateful-unit-per-run drain rule is spent for this run, Kometa is running or about to start, a split component's first phase is not verified yet, an auto-merge you queued has not landed yet. DEFER does not page anyone; the launcher escalates it only if the same wait is still there about 8h later. 'HOLD: <why>' only when a HUMAN must act before the PR can move: backup safety net compromised, an allowlisted command denied, a failed hand-off, a state you cannot explain. HOLD pages the owner. 'BREAK-GLASS: <why>' when recovery needs a cluster write you do not have. Never HOLD a wait the next run clears by itself, and never DEFER a real problem."
 # (4) VET MARKER (2026-07-06) — the write half of the pre-filter's vet-once skip: a vet
 # recorded as a PR comment keyed to the head SHA is never re-paid while the PR bakes.
 # Not applicable to dryrun (no comment tool there; dryrun is never the scheduled run).
 if [ "$MODE" != "dryrun" ]; then
-  SAFETY_PROMPT="${SAFETY_PROMPT} VET MARKER: when you FINISH vetting a Renovate PR — whatever the verdict (auto-merge enabled, declined, held, left-for-Renovate, or you authored a supporting-edit PR for it) — record the vet so it is never re-done at this state: get the head SHA with 'gh pr view <N> --json headRefOid', use the Write tool to author /tmp/vet-comment.md whose FIRST line is exactly '<!-- shepherd-vet sha=<HEAD_SHA> -->' followed by 'VERDICT: <one word>' and 2-4 sentences of reasoning, then run 'gh pr comment <N> --body-file /tmp/vet-comment.md'. Never build the comment inline. Conversely, SKIP (do not re-vet) any PR whose CURRENT head SHA already appears in a shepherd-vet comment — treat its recorded verdict as done."
+  SAFETY_PROMPT="${SAFETY_PROMPT} VET MARKER: when you FINISH vetting a Renovate PR — whatever the verdict (auto-merge enabled, declined, held, left-for-Renovate, or you authored a supporting-edit PR for it), EXCEPT a DEFER — record the vet so it is never re-done at this state: get the head SHA with 'gh pr view <N> --json headRefOid', use the Write tool to author /tmp/vet-comment.md whose FIRST line is exactly '<!-- shepherd-vet sha=<HEAD_SHA> -->' followed by 'VERDICT: <one word>' and 2-4 sentences of reasoning, then run 'gh pr comment <N> --body-file /tmp/vet-comment.md'. Never build the comment inline. Conversely, SKIP (do not re-vet) any PR whose CURRENT head SHA already appears in a shepherd-vet comment — treat its recorded verdict as done. A DEFERRED PR gets NO marker: the marker would stop the next run from re-reading it, and that next run is what clears the wait."
 fi
 
 if [ "$AUTH_PATH" = "plan" ]; then
@@ -499,31 +767,40 @@ fi
 # Durable verdict (2026-07-06): leave the final summary line at a well-known path for
 # the caller — triage records it in the coordination state and the GATE puts it in the
 # page body, so a human sees the BREAK-GLASS/HOLD reason without digging Job logs.
-SUMMARY="$(jq -r '.result // empty' "$OUT_FILE" 2>/dev/null | tr '\n\r' '  ' | cut -c1-400)"
+# `|| …=""` on both: `set -e` is live from here on, so a jq parse error on a truncated
+# OUT_FILE must not end the script before the rc!=0 escalation below gets to run.
+SUMMARY="$(jq -r '.result // empty' "$OUT_FILE" 2>/dev/null | tr '\n\r' '  ' | cut -c1-400)" || SUMMARY=""
+# The full text keeps its newlines: defer_track reads one DEFER line per waiting PR, and
+# those can sit past the 400 chars SUMMARY keeps.
+RESULT_TEXT="$(jq -r '.result // empty' "$OUT_FILE" 2>/dev/null)" || RESULT_TEXT=""
 printf '%s' "$SUMMARY" > /tmp/shepherd-summary.txt 2>/dev/null || true
 [ -n "$SUMMARY" ] && log "final: $SUMMARY"
 log "claude exited rc=$rc"
 
-# ── FAILURE ESCALATION (2026-08-21, backlog 12→13) ── a SCHEDULED (MODE=auto,
-# unattended) run that ends in a terminal BREAK-GLASS/HOLD verdict or dies rc!=0
-# files an esc-shepherd-* entry via the shared writer; the dev-env-ops executor
-# spawns a joinable fable/xhigh session and pages Tom WITH the session name.
+# ── FAILURE ESCALATION (2026-08-21, backlog 12→13; verdicts 2026-09-30, #3287) ── a
+# SCHEDULED (MODE=auto, unattended) run that ends in a terminal BREAK-GLASS/HOLD verdict
+# or dies rc!=0 files an esc-shepherd-* entry via the shared writer; the dev-env-ops
+# executor spawns a joinable session and pages Tom WITH the session name.
 # Deliberately NOT for manual modes (a human summoned and is watching those) and
 # NOT for remediate (triage owns that outcome — it escalates on RESULT=failed
 # with the coordination signature; hooking here too would double-file).
-# Repeated identical HOLDs are rare by construction (the vet marker stops the
-# next run re-vetting the same head SHA); dedup in escalate.sh covers the rest.
-# BEST-EFFORT: escalation failure only logs — never changes this run's rc.
+# A DEFER verdict is NOT terminal and does not escalate here: defer_track owns it and
+# escalates only a wait that has persisted DEFER_ESCALATE_MIN, keyed on the PRs in the
+# wait so every re-fire dedups. The verdict text is no key for that: a waiting PR carries
+# no vet marker, so the next run re-vets it, and its wording changes from run to run.
+# (Before #3287 the pair's second half was a HOLD, so it paged, under a fresh signature,
+# every 4h for as long as the first half sat unmerged.) Vetted HOLDs rarely repeat: the
+# vet marker stops the next run re-vetting the same head SHA.
+# BEST-EFFORT: nothing here changes this run's rc.
 if [ "$MODE" = "auto" ]; then
-  esc_reason=""
-  if printf '%s' "$SUMMARY" | grep -qE '(BREAK-GLASS|HOLD( NEEDED)?):'; then
-    esc_reason="terminal verdict: ${SUMMARY}"
-  elif [ "$rc" -ne 0 ]; then
-    esc_reason="auto run died rc=${rc} (${SUMMARY:-no summary — see Job logs})"
-  fi
+  automerge_fallback "$RUN_START_ISO" \
+    || log "automerge-fallback: unexpected error (best-effort; run outcome unchanged)"
+  esc_reason="$(escalation_reason "$SUMMARY" "$rc")" || esc_reason=""
   if [ -n "$esc_reason" ]; then
-    bash /opt/coordination/escalate.sh shepherd "job:${HOSTNAME:-unknown} mode=auto" "$esc_reason" \
+    shepherd_escalate "$esc_reason" \
       || log "escalate.sh could not file the esc-shepherd entry (best-effort; run outcome unchanged)"
   fi
+  defer_track "$RESULT_TEXT" "$esc_reason" \
+    || log "defer-track: streaks not updated this run (best-effort; run outcome unchanged)"
 fi
 exit "$rc"
