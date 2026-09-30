@@ -88,7 +88,8 @@ run on the read-only **Omni Reader** SA kubeconfig
 
 `run-shepherd.sh` composes a `SAFETY_PROMPT` that is appended to **every** mode's
 system prompt — so these hold even under the scheduled-ramp `UPGRADE_AGENT_PROMPT`
-override in the HR env. Three rules beyond the cluster-read-only / merge-safety line:
+override in the HR env. The main rules beyond the cluster-read-only / merge-safety line
+(the GH-auth and vet-marker rules live in `run-shepherd.sh` next to these):
 
 1. **PR authoring — body as a FILE, never a heredoc.** The shepherd authors the PR
    body with the `Write` tool to `/tmp/pr-body.md`, then
@@ -110,9 +111,20 @@ override in the HR env. Three rules beyond the cluster-read-only / merge-safety 
    needed"* — it keeps the SA read-only (verify, don't trigger) and pages only when the
    safety net is actually broken.
 3. **Autonomy.** The Job runs unattended on a schedule — no human answers a mid-task
-   question. The shepherd finishes the allowlisted work or bails with **one** structured
-   line (`BREAK-GLASS: …` or `HOLD: …`); it never ends a turn with an un-executed plan or
-   an "I'll open the PR next" that then never happens.
+   question. The shepherd finishes the allowlisted work or puts a structured verdict line
+   at the top of its summary; it never ends a turn with an un-executed plan or an "I'll
+   open the PR next" that then never happens.
+4. **Verdicts, chosen by who has to act next (2026-09-30, #3287).**
+
+   | Verdict | Meaning | Pages? |
+   |---|---|---|
+   | `DEFER: #<N> waits for #<M> — <why>` | The PR is fine and a **later run of this job** clears the wait by itself: the previous PR of a must-move-together set has not merged and rolled Ready yet, the drain rule's one stateful unit is spent this run, Kometa is running or about to start, a split component's first phase is unverified, a queued auto-merge has not landed. `waits for <condition>` when the blocker is not a PR. One line per waiting PR. **No vet marker**, so the next run re-reads it. | No, unless the same wait is still there after ~8h (below) |
+   | `HOLD: <why>` / `HOLD NEEDED: …` | A **human** must act before the PR can move: backup safety net compromised, an allowlisted command denied, a failed work-order hand-off, a state the shepherd cannot explain, a `.renovate/holds.json5` entry needed. | Yes |
+   | `BREAK-GLASS: <why>` | Recovery needs a cluster write the Reader SA does not have. | Yes |
+
+   The 2026-09-30 08:01Z page (`esc-shepherd-0c7a9806`) is why DEFER exists: the second
+   half of the rook v1.20.8 pair came out as a `HOLD` while the first half's auto-merge was
+   still queued, and a `HOLD` always pages.
 
 ---
 
@@ -200,6 +212,14 @@ required `values` edit, health queries, rollback steps) live in
    | `emqx` | operator **+** broker — the operator's blue-green *is* the fault; never bump the broker major without the operator |
    | `cnpg` | operator first, then the `Cluster` CRs it manages |
    | `device-plugins` | each plugin + its `dependsOn` NFD (NodeFeatureRule PCI IDs) |
+
+   The scheduled `auto` run moves separate rook PRs as **one drain unit**, in order:
+   it enables auto-merge on the next PR the first run that finds the previous one merged
+   with its HelmRelease Ready on the new version and Ceph `HEALTH_OK`, and until then ends
+   with `DEFER: #<next> waits for #<previous>`. Same-run chaining is not possible: Flux
+   pulls `main` on a 30-minute poll, the Reader SA cannot `--with-source`, and a run is
+   capped at 20 minutes. So on the 4-hour cadence a pair takes up to about 4 hours
+   end to end.
 
 8. **Reconcile = wait for Flux.** Do **not** `--with-source` (Reader can't write).
    Flux is **poll-only (~30 min)** here — no active GitHub webhook — so budget up
@@ -302,6 +322,39 @@ so `gh pr merge --auto` only *queues*; GitHub merges **only when Flux Local *and
 Scope are both green**. It cannot merge past a red/pending check, and `--admin`
 (skip-checks) fails for a non-admin. So `auto`/`remediate` are safe to allowlist `gh pr
 merge` — the Phase-B required checks are the boundary.
+
+**Stalled auto-merge fallback (2026-09-30, #3287).** A queued auto-merge fires on a
+check-completion event. Queue one on a PR whose checks finished hours earlier and GitHub
+may never act: `gh` queues rather than merges when it reads `mergeStateStatus` as
+`UNKNOWN` (computed lazily), and no further check event arrives. #3280 sat `CLEAN`, 7/7
+green, auto-merge set, from 04:07Z to 08:09Z. So after the LLM's turn in `auto` mode the
+**launcher** (`automerge_fallback` in `run-shepherd.sh`, not the LLM) watches each PR
+whose auto-merge the shepherd bot enabled during that run, for up to
+`UPGRADE_AGENT_AUTOMERGE_WATCH_S` (360 s). Once one has been `CLEAN` for
+`UPGRADE_AGENT_AUTOMERGE_GRACE_S` (120 s), with every check green and both required
+contexts present, it runs a plain
+`gh pr merge <N> --squash --delete-branch --match-head-commit <sha>`. It never uses
+`--admin`, and branch protection still binds it. It leaves alone a PR whose auto-merge
+someone switched off, and anything Renovate or a human queued. A PR still waiting on checks
+when the watch ends stays with GitHub, because a check that completes after auto-merge was
+queued is the event that fires it. If the plain merge is refused and the PR is still
+unmerged, it escalates (`esc-shepherd-*`, keyed on PR + SHA). `remediate` does not run the
+fallback.
+
+**What escalates (MODE=auto).** A terminal `HOLD`/`BREAK-GLASS` verdict or `rc≠0` files
+an `esc-shepherd-*` entry at once. dev-env-ops opens a joinable session and pages with its
+name. `DEFER` does not. `defer_track` keeps each wait's streak in the
+`upgrade-shepherd-defers` ConfigMap (runtime state, not in git). The key is the PR numbers
+on the DEFER line, so the key stays the same when the wording changes. A wait that is not
+deferred again ends its streak. A wait still deferred after
+`UPGRADE_AGENT_DEFER_ESCALATE_MINUTES` (450, the third consecutive deferral on the 4-hour
+cadence, about 8 hours) escalates once per streak, as `DEFER stalled: …`, under a stable
+signature. That is the fatal backstop: a wait that does not clear is a real stall, and the
+drain queue does not trip it because its blocker changes every run.
+
+```bash
+kubectl -n upgrade-agent get cm upgrade-shepherd-defers -o jsonpath='{.data.state}' | jq .   # live waits
+```
 
 ### The scheduled-run pre-filter (cost control — LLM only when there's in-scope work)
 

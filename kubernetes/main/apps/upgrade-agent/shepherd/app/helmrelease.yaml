@@ -126,8 +126,14 @@ spec:
                 Confirm the backup gate
                 (append-system-prompt rule) AND, for rook, Ceph HEALTH_OK, then enable
                 auto-merge. rook moves as a UNIT — operator (app/) then csi-drivers/ then
-                cluster/ per the playbook order; if separate Renovate PRs, merge them in
-                that order one per run.
+                cluster/ per the playbook order. When they arrive as separate Renovate
+                PRs, the whole set is ONE unit for the DRAIN RULE: enable auto-merge on
+                the NEXT PR in that order as soon as the previous one has MERGED and its
+                HelmRelease is Ready on the new version with Ceph HEALTH_OK (check
+                'flux get hr -n rook-ceph') — in this run if that is already true when you
+                look, otherwise end with 'DEFER: #<next> waits for #<previous>' and let a
+                later run take it. Finish an in-flight rook set before starting any other
+                class 2/3 unit.
                 ONE-WAY (author + PAGE, do NOT auto-merge) — a migration a git revert
                 CANNOT recover: any Ceph DAEMON major (cephVersion moves), a PG major
                 (cnpg imageName moves major), cilium MINOR or MAJOR (eBPF map layout),
@@ -146,8 +152,9 @@ spec:
                 enabling auto-merge on a plex PR you MUST run the KOMETA-IDLE PREFLIGHT:
                 'kubectl get pods -n media --no-headers | grep -i kometa | grep -vE
                 "Completed|Error"' AND 'kubectl get jobs -n media --no-headers | grep -i
-                kometa | grep -v "1/1"'. If EITHER shows an active kometa pod/job, HOLD (do
-                NOT merge) and note 'Kometa running — retry next run'. ALSO HOLD if a Kometa
+                kometa | grep -v "1/1"'. If EITHER shows an active kometa pod/job, do NOT
+                merge: end with 'DEFER: #<N> waits for Kometa idle' (the next run retries;
+                this is a wait, not a HOLD). ALSO DEFER if a Kometa
                 run is imminent — within ~30 min BEFORE a cron start (collections daily
                 06:30, overlays Sat 01:00, operations Sun 01:00, all America/New_York; check
                 `date`). ONLY when Kometa is idle AND no run is imminent AND every check is
@@ -196,12 +203,19 @@ spec:
                 never move in one reconcile. Renovate bundles both in one PR; author a
                 phase-1 branch touching ONLY traefik-internal (a pure single-file bump
                 that PASSES diff-scope) and ENABLE auto-merge on it; the external phase is
-                a later run once internal verifies healthy. Do the same one-instance-first
+                a later run once internal verifies healthy (until then 'DEFER: #<Renovate
+                PR> waits for #<phase-1 PR>'). Do the same one-instance-first
                 pattern for any component the playbook says to split.
                 DRAIN RULE: you MAY auto-merge EVERY in-scope class-1 stateless pure bump
                 this run (they apply independently). For class 2/3 STATEFUL or
                 CLUSTER-INFRA, auto-merge AT MOST ONE unit per run, then stop — the health
-                gate must verify it green before the next run picks up the next.
+                gate must verify it green before the next run picks up the next. A rook
+                operator/csi-drivers/cluster set is ONE unit: once its previous PR is
+                merged and Ready, its next PR IS this run's unit and is never held back by
+                this rule. Every other
+                stateful PR you leave for a later run because of this rule gets 'DEFER: #<N>
+                waits for #<the unit this run took>' (see VERDICTS in your operating
+                rules), never a HOLD.
                 Out-of-scope — emqx (held), cert-manager, external-secrets, Talos, and any
                 non-ramp component: leave untouched, list in your summary. NEVER merge
                 immediately, NEVER use --admin, NEVER push to main, stay inside
