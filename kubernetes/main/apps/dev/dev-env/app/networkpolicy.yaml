@@ -249,6 +249,13 @@ spec:
               - matchPattern: "*.sec.state.ma.us"
               - matchName: "www.mass.gov"
               - matchName: "malegislature.gov"
+              # student-site cutover audit (sigo-alumni backlog/student-site/cutover/10):
+              # RDAP registration lookups (rdap.org redirects to the registry RDAP),
+              # certificate-transparency subdomains, Wayback URL inventory.
+              - matchName: "rdap.org"
+              - matchName: "rdap.verisign.com"
+              - matchName: "crt.sh"
+              - matchName: "web.archive.org"
     # 2a. Cluster-local MCP servers (saga plan 03): HA + Grafana — the agents'
     #     introspection tools, reached via svc FQDNs, never the public ingress.
     - toEndpoints:
@@ -465,7 +472,21 @@ spec:
         - matchPattern: "*.sec.state.ma.us"
         - matchName: "www.mass.gov"
         - matchName: "malegislature.gov"
+        # student-site cutover audit (same set as the DNS rules above; cutover/10)
+        - matchName: "rdap.org"
+        - matchName: "rdap.verisign.com"
+        - matchName: "crt.sh"
+        - matchName: "web.archive.org"
       toPorts:
         - ports:
             - port: "443"
+              protocol: TCP
+    # 4. Plain HTTP to the legacy chapter site ONLY (cutover/10): the old site's HTTPS
+    #    is broken, so the audit needs port 80. Remove after cutover 07.
+    - toFQDNs:
+        - matchName: "sigmaphiomicron.com"
+        - matchName: "www.sigmaphiomicron.com"
+      toPorts:
+        - ports:
+            - port: "80"
               protocol: TCP
