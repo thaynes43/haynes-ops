@@ -256,6 +256,8 @@ spec:
               - matchName: "rdap.verisign.com"
               - matchName: "crt.sh"
               - matchName: "web.archive.org"
+              # registrar-level RDAP for sigmaphiomicron.com (IONOS, linked from the Verisign record)
+              - matchName: "rdap.ionos.com"
     # 2a. Cluster-local MCP servers (saga plan 03): HA + Grafana — the agents'
     #     introspection tools, reached via svc FQDNs, never the public ingress.
     - toEndpoints:
@@ -477,6 +479,7 @@ spec:
         - matchName: "rdap.verisign.com"
         - matchName: "crt.sh"
         - matchName: "web.archive.org"
+        - matchName: "rdap.ionos.com"
       toPorts:
         - ports:
             - port: "443"
