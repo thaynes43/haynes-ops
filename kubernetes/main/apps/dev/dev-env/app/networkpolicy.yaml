@@ -260,6 +260,15 @@ spec:
               - matchName: "rdap.ionos.com"
               # .org registry RDAP (sigmaphiomicron.org lookup)
               - matchName: "rdap.publicinterestregistry.org"
+              # UMass Lowell public info + photos for the sigmaphiomicron-com site (Tom ruling 2026-10-01):
+              # uml.edu news/myUML club pages, brand.uml.edu brand guide, alumni.uml.edu event pages, Wikimedia Commons photos.
+              - matchName: "uml.edu"
+              - matchName: "www.uml.edu"
+              - matchName: "brand.uml.edu"
+              - matchName: "alumni.uml.edu"
+              - matchName: "www.alumni.uml.edu"
+              - matchName: "commons.wikimedia.org"
+              - matchName: "upload.wikimedia.org"
     # 2a. Cluster-local MCP servers (saga plan 03): HA + Grafana — the agents'
     #     introspection tools, reached via svc FQDNs, never the public ingress.
     - toEndpoints:
@@ -483,6 +492,15 @@ spec:
         - matchName: "web.archive.org"
         - matchName: "rdap.ionos.com"
         - matchName: "rdap.publicinterestregistry.org"
+        # UMass Lowell public info + photos for the sigmaphiomicron-com site (Tom ruling 2026-10-01):
+        # uml.edu news/myUML club pages, brand.uml.edu brand guide, alumni.uml.edu event pages, Wikimedia Commons photos.
+        - matchName: "uml.edu"
+        - matchName: "www.uml.edu"
+        - matchName: "brand.uml.edu"
+        - matchName: "alumni.uml.edu"
+        - matchName: "www.alumni.uml.edu"
+        - matchName: "commons.wikimedia.org"
+        - matchName: "upload.wikimedia.org"
       toPorts:
         - ports:
             - port: "443"
