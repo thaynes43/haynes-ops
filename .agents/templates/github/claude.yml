@@ -59,6 +59,11 @@ jobs:
       - name: Checkout repository
         if: steps.gate.outputs.present == 'true'
         # <<PINNING>> match the repo's existing style (tag, or full SHA + "# vX.Y.Z").
+        # Keep the default credential persistence: claude-code-action runs `git fetch origin
+        # <pr-branch>` before it sets up its own git auth, and a private repo refuses that without
+        # a credential. Do NOT add `persist-credentials: false` (failed in sigmaphiomicron-com
+        # PR 25). If zizmor flags artipacked, set `persist-credentials: true` with an inline
+        # `# zizmor: ignore[artipacked]`: the job token is contents: read.
         uses: actions/checkout@v5
         with:
           fetch-depth: 1

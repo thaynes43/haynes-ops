@@ -26,6 +26,11 @@ grep -n '<<' .github/workflows/claude*.yml    # every marker must be resolved
   (`actions/checkout@v5`) or a full SHA with a `# vX.Y.Z` comment. Renovate/dependabot
   then keeps it current. `anthropics/claude-code-action` stays on `@v1` unless the repo
   pins everything to SHAs.
+- **Checkout keeps its credential.** Leave `actions/checkout` at its default credential
+  persistence. claude-code-action runs `git fetch origin <pr-branch>` before it sets up its
+  own git auth, so `persist-credentials: false` makes the first real review fail on a private
+  repo (sigmaphiomicron-com PR 25, 2026-10-01). If the repo runs zizmor, set
+  `persist-credentials: true # zizmor: ignore[artipacked]`; the job token is `contents: read`.
 - **Model**: `--model claude-opus-5-5`, a full id and never an alias (aliases resolve
   client-side and lag launches). It follows the pod's automated-surface model policy;
   when the policy bumps Opus, every repo's two workflows need the same bump.
