@@ -1,0 +1,77 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# Interactive "@claude" handler: mention @claude in an issue, a PR comment or a
+# review and Claude picks the work up from there. claude-code-action's default
+# rule applies and must never be widened: only actors with write access can
+# trigger it (no allowed_non_write_users). Skips cleanly when the
+# CLAUDE_CODE_OAUTH_TOKEN repo secret is absent.
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+
+# One @claude run per thread; a follow-up mention supersedes an in-flight one.
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    name: Claude Code (@claude)
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write # OIDC exchange for the Claude GitHub App token (used to comment)
+      actions: read # lets Claude read CI results on PRs
+
+    steps:
+      # Secrets cannot appear in `if:`, so expose presence as a step output.
+      - name: Check for CLAUDE_CODE_OAUTH_TOKEN
+        id: gate
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Claude skipped::CLAUDE_CODE_OAUTH_TOKEN repo secret is not set"
+          fi
+
+      - name: Checkout repository
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        if: steps.gate.outputs.enabled == 'true'
+        id: claude
+        uses: anthropics/claude-code-action@12dd8d74c712f5f3669365b2369b558c495b1104 # v1.0.238
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Agent-authored issues/PRs come from the dev bot; allow it to summon Claude.
+          allowed_bots: "haynes-dev-bot"
+          # Automated surfaces are pinned to the newest Opus explicitly — never an
+          # alias, which resolves client-side and can silently serve an older tier.
+          claude_args: "--model claude-opus-5-5"
+          additional_permissions: |
+            actions: read
