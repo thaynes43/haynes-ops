@@ -269,6 +269,14 @@ spec:
               - matchName: "www.alumni.uml.edu"
               - matchName: "commons.wikimedia.org"
               - matchName: "upload.wikimedia.org"
+              # Alumni news for the sigmaphiomicron-com "In the news" spotlight (Tom ruling 2026-10-01):
+              # goriverhawks.com UML Athletics (Hank Brown alumni spotlight, 2025 Hall of Fame ceremony, John Kennedy gift),
+              # lowellsun.com local Lowell coverage, umassathletics.com UMass Amherst releases on John F. Kennedy.
+              - matchName: "goriverhawks.com"
+              - matchName: "www.goriverhawks.com"
+              - matchName: "lowellsun.com"
+              - matchName: "www.lowellsun.com"
+              - matchName: "umassathletics.com"
     # 2a. Cluster-local MCP servers (saga plan 03): HA + Grafana — the agents'
     #     introspection tools, reached via svc FQDNs, never the public ingress.
     - toEndpoints:
@@ -501,6 +509,14 @@ spec:
         - matchName: "www.alumni.uml.edu"
         - matchName: "commons.wikimedia.org"
         - matchName: "upload.wikimedia.org"
+        # Alumni news for the sigmaphiomicron-com "In the news" spotlight (Tom ruling 2026-10-01):
+        # goriverhawks.com UML Athletics (Hank Brown alumni spotlight, 2025 Hall of Fame ceremony, John Kennedy gift),
+        # lowellsun.com local Lowell coverage, umassathletics.com UMass Amherst releases on John F. Kennedy.
+        - matchName: "goriverhawks.com"
+        - matchName: "www.goriverhawks.com"
+        - matchName: "lowellsun.com"
+        - matchName: "www.lowellsun.com"
+        - matchName: "umassathletics.com"
       toPorts:
         - ports:
             - port: "443"
