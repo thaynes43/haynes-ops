@@ -8,7 +8,7 @@
 #                           (default: any node labelled nvidia-3090-gpu, no toleration)
 #   SOAK_POWER_LIMIT_W=150  cap board power before any load. This runs the pod as root with
 #                           CAP_SYS_ADMIN, which Kyverno admits only for Jobs named
-#                           egpu-test-* (kyverno/policies/app/exceptions/pss-baseline.yaml).
+#                           egpu-test-* (kyverno/policies/app/exceptions/egpu-test-capabilities.yaml).
 #   SOAK_ABORT_C=83         stop the load the moment the core reaches this temperature.
 set -euo pipefail
 uuid=${1:?gpu uuid, e.g. GPU-d8a856f1-f955-f683-bc24-654561496774}

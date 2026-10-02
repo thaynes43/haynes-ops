@@ -1,0 +1,36 @@
+---
+# eGPU test-node load Jobs (.agents/runbooks/egpu-test-node.md, scripts/gpu-soak).
+# Capping a suspect card's power with `nvidia-smi -pl` needs CAP_SYS_ADMIN: the NVIDIA
+# driver's admin check is capable(CAP_SYS_ADMIN) (open-gpu-kernel-modules nv-linux.h).
+#
+# Kept apart from pss-baseline-privileged-infra on purpose. That exception waives the
+# whole baseline rule, while this one waives ONE control for ONE value: adding the
+# SYS_ADMIN capability, on the ComfyUI image the soak runs in, for pods named
+# egpu-test-* in `ai`. Privileged mode, hostPath, host namespaces and every other
+# capability stay enforced. The Jobs are created by hand, never by Flux.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: pss-baseline-egpu-test-capabilities
+  namespace: kyverno
+spec:
+  exceptions:
+    - policyName: pod-security-baseline
+      ruleNames:
+        - baseline
+        - autogen-baseline
+        - autogen-cronjob-baseline
+  match:
+    any:
+      - resources:
+          kinds: [Pod, Job]
+          namespaces: [ai]
+          names:
+            - egpu-test-*
+  podSecurity:
+    - controlName: Capabilities
+      images:
+        - ghcr.io/thaynes43/comfyui*
+      restrictedField: spec.containers[*].securityContext.capabilities.add
+      values:
+        - SYS_ADMIN

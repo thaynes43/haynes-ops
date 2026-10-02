@@ -172,8 +172,10 @@ SOAK_NODE=talosw04 SOAK_POWER_LIMIT_W=150 SOAK_ABORT_C=83 \
 ```
 `soak.py` sets persistence mode and the 150 W limit before any load, and refuses to load the
 card if the cap fails (`END,ABORTED_NO_CAP`). It stops the load the moment the core reaches
-83 °C (`END,ABORTED_HOT`, exit 3). The cap needs root with CAP_SYS_ADMIN, which Kyverno
-admits only for Jobs named `egpu-test-*` in `ai`. Pass: three bursts with no `CUDA_ERROR`, no
+83 °C (`END,ABORTED_HOT`, exit 3). The cap needs root with CAP_SYS_ADMIN. Kyverno admits
+exactly that one capability, and only on the ComfyUI image for Jobs named `egpu-test-*` in
+`ai` (`kyverno/policies/app/exceptions/egpu-test-capabilities.yaml`); privileged mode and
+host access stay blocked. Pass: three bursts with no `CUDA_ERROR`, no
 Xid in dmesg, the card still listed afterwards, and the core under about 80 °C.
 
 **Stage 4: full burn, only after the fan and thermal pads are replaced**
