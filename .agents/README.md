@@ -14,6 +14,7 @@ is worth more attention than a red.
 - [audio-authoring.md](runbooks/audio-authoring.md) — independent CPU sound generation, model provisioning, asynchronous MCP jobs, and persistent candidates.
 - [blender-authoring.md](runbooks/blender-authoring.md) — dedicated Blender MCP service, persistent artifacts, independent upgrades, GPU/audio follow-up, and initial agent registration.
 - [talos-version-upgrade.md](runbooks/talos-version-upgrade.md) — bump Talos/Kubernetes via Omni, verify per node, and recover (re-image) a node that won't upgrade. Pairs with the gotchas reference below.
+- [egpu-test-node.md](runbooks/egpu-test-node.md) — **talosw04**, the bare-metal mini PC with a Thunderbolt eGPU dock that serves as the tainted GPU test worker: boot media and BIOS, joining it through Omni (sync only after it registers), the power-capped test ladder for a suspect card, and swapping cards. Its GPU alerts never page.
 - [renovate-upgrade-batches.md](runbooks/renovate-upgrade-batches.md) — clear a backlog of Renovate update PRs by merging in risk-tiered batches (safe → infra → breaking → storage), reconciling and verifying after each.
 - [volsync-restore.md](runbooks/volsync-restore.md) — VolSync (restic) PVC restore, including PVC-resize edge cases.
 - [volsync-unlock.md](runbooks/volsync-unlock.md) — clearing stale restic repository locks.

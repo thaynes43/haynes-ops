@@ -114,3 +114,12 @@ spec:
             - init-pvc-*
             - cleanup-pvc-*
             - quota-pvc-*
+      # eGPU test-node load Jobs (.agents/runbooks/egpu-test-node.md). Capping a card's
+      # power (`nvidia-smi -pl`) needs CAP_SYS_ADMIN as root: the NVIDIA driver's admin
+      # check is capable(CAP_SYS_ADMIN). Only Jobs named egpu-test-* in `ai` get it, and
+      # they are created by hand, never by Flux. Name-scoped like everything above.
+      - resources:
+          kinds: [Pod, Job]
+          namespaces: [ai]
+          names:
+            - egpu-test-*

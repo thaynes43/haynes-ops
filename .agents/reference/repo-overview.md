@@ -38,10 +38,23 @@ components from there via `components:`, and a future second cluster inherits th
 
 ## Edge cluster retirement (2026-09-22)
 
-Tom retired the `edge` cluster outright. The nodes (`edgem01`-`03`, `edgew01`) were VMs
-on the `pve01`-`03` Proxmox hosts, which are no longer in the PVE cluster; the SaaS Omni
-lists only `haynes-ops`, and nothing matching the edge machines exists anywhere in the
-fleet. This repo removed, in one PR:
+Tom retired the `edge` cluster outright. Its nodes were **bare metal**, not VMs (corrected
+2026-10-02; the original note here said "VMs on pve01-03"):
+
+- `edgem01`-`03` were Minisforum MS-01 servers, the same model as `talosm01`-`03`. They had
+  been the Proxmox hosts `pve01`-`03`; Tom removed those hosts from the PVE cluster and
+  installed Talos on them directly (`kubernetes/edge/README.md` mapped "edgem01 from pve01"
+  and so on, and `docs/cluster/migrate-from-proxmox.md` is that procedure). Their template
+  blocks carried `intel-ucode`, `i915`, `thunderbolt` and an MS-01 boot-disk selector. They
+  are idle and are the candidates for the control-plane expansion.
+- `edgew01` (machine `77d65c00-5811-11ef-b65b-a8751caa6100`) was a mini PC with a
+  Thunderbolt eGPU dock (`thunderbolt` + the NVIDIA LTS extensions, no Intel extensions).
+  It rejoins `main` as the tainted GPU test worker `talosw04`
+  ([`../runbooks/egpu-test-node.md`](../runbooks/egpu-test-node.md)).
+
+None of the four was ever registered with the SaaS Omni; they lived in the self-hosted
+Omni, which is gone (below), so the SaaS Omni lists only `haynes-ops`. This repo removed,
+in one PR:
 
 - `kubernetes/edge/` in full (apps, `flux/`, `bootstrap/`, its README) and `kubeconfig-edge`
 - the `edge` leg of the `flux-local` `test` + `diff` CI matrices, and the `edge` base

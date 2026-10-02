@@ -70,6 +70,10 @@ machines:
   - 83596797-0281-4927-94fb-f34bb869b1de
   - 2fe46add-9e72-401c-8ec1-b5fb6837ffa0
   - 960513a6-7a1d-4ece-949d-54a022fe85e5
+  # talosw04: the eGPU test node (ex-edgew01). Sync this only once the machine shows up
+  # in `omnictl get machines`; an unregistered entry leaves this machine set ScalingUp,
+  # which stalls Kubernetes-version upgrades. See .agents/runbooks/egpu-test-node.md.
+  - 77d65c00-5811-11ef-b65b-a8751caa6100
 patches:
   - idOverride: 400-haynes-ops-workers
     inline:
@@ -921,3 +925,149 @@ patches:
             topology.kubernetes.io/zone: w
             network.haynesops.com/vpn: "true"
             intel.feature.node.kubernetes.io/gpu: "true"
+---
+# talosw04: bare-metal mini PC + Thunderbolt eGPU dock, the ex-`edgew01` of the retired edge
+# cluster (same machine id; it was registered only with the decommissioned self-hosted Omni,
+# so it re-joins from SaaS-Omni boot media). It is a swappable GPU TEST node: the kubelet
+# registers it with the NoSchedule taint `haynesops.com/gpu-test`, so only pods that
+# tolerate it land here (the nvidia device plugin, the GPU exporter, the toleration-everything
+# DaemonSets, and the test Jobs). First card on it: the suspect RTX 3090 from #3052.
+# Procedure and test ladder: .agents/runbooks/egpu-test-node.md.
+kind: Machine
+systemExtensions:
+  # CPU vendor is NOT recorded anywhere. edgew01 never carried intel-ucode/i915 while every
+  # Intel edge node did ("Only for intel nodes" in the old edge README), so AMD is the
+  # inference. Before the first sync, read `omnictl get machinestatus <id> -o yaml`
+  # (spec.hardware.processors[].manufacturer) and swap to siderolabs/intel-ucode if it
+  # says Intel. Either way the wrong ucode is inert, never harmful.
+  - siderolabs/amd-ucode
+  - siderolabs/thunderbolt
+  - siderolabs/nvidia-container-toolkit-lts
+  - siderolabs/nvidia-open-gpu-kernel-modules-lts
+name: 77d65c00-5811-11ef-b65b-a8751caa6100
+# Omni-native kernel args: Omni bakes them into the boot image it installs (gotcha #2: under
+# UKI install.extraKernelArgs is silently ignored, so this block has none). The boot media
+# carries the same single arg, so the installed set matches and nothing re-applies (the
+# omni#2382 reboot loop needs an arg duplicated outside Omni's control).
+kernelArgs:
+  - net.ifnames=0
+patches:
+  - idOverride: 400-cm-77d65c00-5811-11ef-b65b-a8751caa6100
+    inline:
+      machine:
+        # Talos service-log shipping to the vector aggregator (see talosm01).
+        logging:
+          destinations:
+            - endpoint: udp://192.168.40.212:6051/
+              format: json_lines
+              extraTags:
+                hostname: talosw04
+                cluster: main
+        install:
+          wipe: true
+        kernel:
+          modules:
+            - name: nvidia
+              parameters:
+                - NVreg_OpenRmEnableUnsupportedGpus=1
+            - name: nvidia_uvm
+            - name: nvidia_drm
+            - name: nvidia_modeset
+            # The thunderbolt extension README asks for the module to be loaded explicitly.
+            # The extension also ships a udev rule that authorizes every Thunderbolt device
+            # on add (and pins its power/control to "on"), so no boltd is needed. That rule
+            # covers the BIOS "user authorization" security level, not "secure connect".
+            - name: thunderbolt
+        network:
+          hostname: talosw04
+          # No deviceSelector: git has no record of this box's NICs, and a guessed MAC
+          # silently matches nothing (gotcha #1). Talos DHCPs the cabled NIC on its own.
+          # UniFi remembers a wired client "edgew01" at 58:47:ca:77:8d:d7; once the machine
+          # registers, confirm it in the machinestatus networklinks, and if the box has
+          # more than one NIC, pin the mgmt NIC here (lowercase, routeMetric 100).
+          nameservers:
+            - 192.168.40.1
+          disableSearchDomain: true
+        sysctls:
+          user.max_user_namespaces: "11255"
+          net.core.bpf_jit_harden: 1
+          fs.inotify.max_queued_events: "65536"
+          fs.inotify.max_user_instances: "8192"
+          fs.inotify.max_user_watches: "524288"
+          net.core.rmem_max: "7500000"
+          net.core.wmem_max: "7500000"
+        kubelet:
+          extraArgs:
+            rotate-server-certificates: "true"
+          extraConfig:
+            # Image GC — rationale on the first machine block (#2913).
+            imageGCHighThresholdPercent: 75
+            imageGCLowThresholdPercent: 65
+            imageMaximumGCAge: 168h
+            # The test-node taint. It is set at kubelet REGISTRATION, not through
+            # machine.nodeTaints: NodeRestriction forbids a worker's kubelet from changing
+            # taints on an existing Node, which is the path Talos uses for nodeTaints on
+            # workers (Talos config docs say so). Registration taints are allowed. If the
+            # taint is ever removed by hand, it comes back only when the Node object is
+            # re-created (`kubectl delete node talosw04`, then the kubelet re-registers).
+            registerWithTaints:
+              - key: haynesops.com/gpu-test
+                value: "true"
+                effect: NoSchedule
+          defaultRuntimeSeccompProfileEnabled: true
+          nodeIP:
+            validSubnets:
+              - 192.168.40.0/24
+          disableManifestsDirectory: true
+          extraMounts:
+            - destination: /var/openebs/local
+              type: bind
+              source: /var/openebs/local
+              options:
+                - bind
+                - rshared
+                - rw
+        files:
+            - content: |
+                [plugins."io.containerd.grpc.v1.cri"]
+                  enable_unprivileged_ports = true
+                  enable_unprivileged_icmp = true
+                [plugins."io.containerd.grpc.v1.cri".containerd]
+                  discard_unpacked_layers = false
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                  discard_unpacked_layers = false
+              permissions: 0
+              path: /etc/cri/conf.d/20-customization.part
+              op: create
+            - content: |
+                [ NFSMount_Global_Options ]
+                nfsvers=4.2
+                hard=True
+                noatime=True
+                nodiratime=True
+                rsize=131072
+                wsize=131072
+                nconnect=8
+              permissions: 420
+              path: /etc/nfsmount.conf
+              op: overwrite
+        features:
+            rbac: true
+            stableHostname: true
+            apidCheckExtKeyUsage: true
+            diskQuotaSupport: true
+            kubePrism:
+                enabled: true
+                port: 7445
+            hostDNS:
+                enabled: true
+                resolveMemberNames: true
+                forwardKubeDNSToHost: false
+        nodeLabels:
+            topology.kubernetes.io/region: main
+            # Same zone as the other workers on purpose: a zone of its own would be a
+            # topology domain no untolerating pod can ever fill.
+            topology.kubernetes.io/zone: w
+            # Selector for the GPU exporter and the test Jobs, and the opt-out for Cilium L2
+            # announcements (kube-system/cilium/config/cilium-l2.yaml).
+            haynesops.com/gpu-test: "true"
