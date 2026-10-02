@@ -13,7 +13,7 @@ How it is kept apart from the rest of the cluster:
 | Taint `haynesops.com/gpu-test=true:NoSchedule` | kubelet `registerWithTaints` in its Omni machine block | Only pods that tolerate it schedule there. No Deployment, StatefulSet or CronJob in the cluster tolerates every taint (checked 2026-10-02). |
 | Label `haynesops.com/gpu-test=true` | Talos `nodeLabels` | Selects the node for the GPU exporter and the test Jobs, and opts it out of Cilium L2 VIP announcements (`kube-system/cilium/config/cilium-l2.yaml`). |
 | No NFD labels | NFD worker has no toleration | The `feature.node.kubernetes.io/nvidia-3090-gpu` selectors of ollama-prime, llama-server and immich-ml cannot match it. The taint would stop them anyway. |
-| Alerts | `observability/nvidia-gpu-exporter/app/prometheusrule.yaml` | talosw04 is left out of `GpuMissing` and excluded from `GpuExporterDown`, so it never pages. `GpuTestNodeGpuMissing` (warning, "null" receiver) shows a lost card in Alertmanager and Grafana. |
+| Alerts | `observability/nvidia-gpu-exporter/app/prometheusrule.yaml`, `NodeRebooted` in `kube-prometheus-stack/app/prometheusrule.yaml` | talosw04 is left out of `GpuMissing` and excluded from `GpuExporterDown` and `NodeRebooted`, so a card test never pages. `GpuTestNodeGpuMissing` (warning, "null" receiver) shows a lost card in Alertmanager and Grafana. |
 
 What does run there: cilium, spegel, node-exporter, promtail, smartctl-exporter (all tolerate
 everything), the nvidia device plugin and the GPU exporter (both tolerate the test taint), and
@@ -25,8 +25,8 @@ removes it by hand it stays gone until `kubectl delete node talosw04` makes the 
 re-register. Talos `machine.nodeTaints` would not work here: NodeRestriction stops a worker's
 kubelet from changing taints on an existing Node, and Talos says so in its config docs.
 
-A reboot of talosw04 still pages `NodeRebooted`, like any node. The first boot after the
-install does not, because node-exporter has no earlier series for it.
+`NodeRebooted` skips talosw04 too: a card that crashes its host is a test result, not a
+page. Its reboots still show in `node_boot_time_seconds`.
 
 ## 1. Boot media and BIOS (Tom, at the box)
 

@@ -126,7 +126,9 @@ spec:
     # instead of storming. severity=critical is required to page — Alertmanager's
     # root receiver is "null" and only severity=critical routes to Pushover (same tier
     # as CephOSDDown). Scoped to job="node-exporter" (the Talos fleet); the out-of-
-    # cluster NAS (job=node-exporter-haynestower) is intentionally excluded.
+    # cluster NAS (job=node-exporter-haynestower) is intentionally excluded, and so is
+    # talosw04, the eGPU test node (.agents/runbooks/egpu-test-node.md): it hosts
+    # cards under test for crashing their host, so a reset there is a test result.
     - name: node-reboot
       rules:
         - alert: NodeRebooted
@@ -137,7 +139,7 @@ spec:
               within the last 10 minutes (kernel boot time changed). If this was not a
               planned Talos upgrade/maintenance it indicates an unplanned hard reset or
               crash — check the node before dependent alerts (e.g. CephOSDDown) mask it.
-          expr: changes(node_boot_time_seconds{job="node-exporter"}[10m]) > 0
+          expr: changes(node_boot_time_seconds{job="node-exporter", kubernetes_node!="talosw04"}[10m]) > 0
           for: 0m
           labels:
             severity: critical
