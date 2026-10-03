@@ -16,9 +16,10 @@ How it is kept apart from the rest of the cluster:
 | No NFD labels | NFD worker has no toleration | The `feature.node.kubernetes.io/nvidia-3090-gpu` selectors of ollama-prime, llama-server and immich-ml cannot match it. The taint would stop them anyway. |
 | Alerts | `observability/nvidia-gpu-exporter/app/prometheusrule.yaml`, `NodeRebooted` in `kube-prometheus-stack/app/prometheusrule.yaml` | talosw04 is left out of `GpuMissing` and excluded from `GpuExporterDown` and `NodeRebooted`, so a card test never pages. `GpuTestNodeGpuMissing` (warning, "null" receiver) shows a lost card in Alertmanager and Grafana. |
 
-What does run there: cilium, spegel, node-exporter, promtail, smartctl-exporter (all tolerate
-everything), the nvidia device plugin and the GPU exporter (both tolerate the test taint), and
-the test Jobs. Multus, NFD and the Ceph CSI node plugins do not run there, so a test pod there
+What does run there: cilium, spegel, node-exporter and smartctl-exporter (all tolerate
+everything); promtail, the nvidia device plugin and the GPU exporter (each tolerates the test
+taint explicitly; promtail is what gets the test Jobs' logs into Loki); and the test Jobs.
+Verified on the live node 2026-10-03. Multus, NFD and the Ceph CSI node plugins do not run there, so a test pod there
 cannot mount a Ceph PVC or attach a macvlan NIC. The test pods need neither.
 
 Taint caveat: a registration taint is applied when the Node object is created. If someone
@@ -166,7 +167,7 @@ pcie() {  # the card, then the port above it (the OCuLink port), then kernel Xid
     echo
   done
   talosctl --talosconfig $TC -n $N dmesg | grep -cE 'NVRM: Xid' | sed 's/^/xid_lines=/'
-  talosctl --talosconfig $TC -n $N dmesg | grep -ciE 'AER:|pcieport.*error' | sed 's/^/aer_lines=/'
+  talosctl --talosconfig $TC -n $N dmesg | grep -iE 'AER:|pcieport.*error' | grep -vc 'AER: enabled' | sed 's/^/aer_lines=/'
 }
 pcie
 ```
@@ -178,9 +179,12 @@ How to read it:
   port's `max_link_speed` (16 GT/s for Gen4, or 8 GT/s if Gen3 is forced). The same data is in
   `nvidia-smi -q` → "GPU Link Info" ("PCIe Generation" and "Link Width", Max vs Current), and
   `soak.py` samples gen and width every 2 s.
-- **AER.** `TOTAL_ERR_COR` should stay 0 or close to it. Counts that climb under load,
-  `NONFATAL`/`FATAL` at all, or `AER:` lines in dmesg are link errors. The nvidia-smi
-  "Replays Since Reset" counter is the card's side of the same story.
+- **AER.** On this board the OCuLink root port (`0000:00:01.1`, AMD Phoenix GPP bridge)
+  exposes no AER counters, so the port line shows none; the card's own counters and dmesg
+  are what there is. The `AER: enabled with IRQ` boot lines (the USB4 bridges) are not
+  errors, and `aer_lines` skips them. `TOTAL_ERR_COR` should stay 0 or close to it. Counts
+  that climb under load, `NONFATAL`/`FATAL` at all, or `AER:` lines in dmesg are link
+  errors. The nvidia-smi "Replays Since Reset" counter is the card's side of the same story.
 - **Xid.** `xid_lines` should stay 0. Xid 79 is "fallen off the bus".
 - **Verdict.** A drop or Xid **with** AER noise or a downgraded link (narrower than x4, or
   stuck below max speed under load) points at the cable or port. Reseat both cable ends
@@ -197,6 +201,12 @@ How to read it:
 - `kubectl exec -n observability $E -- nvidia-smi -q`: record GPU UUID, VBIOS version and
   "GPU Link Info".
 - Run `pcie` and keep the output as the baseline.
+- Fans: `nvidia-smi` shows one aggregate "Fan Speed", which hides a dead fan. Read each
+  channel's duty, target and tachometer RPM with
+  `scripts/gpu-soak/render-fans-job.sh egpu-test-fans-1 180 | kubectl apply -f -`
+  (read-only, no privileges). A zero-RPM card shows 0 rpm on every channel at idle, so the
+  fan verdict comes from running it **next to** a load stage. A channel whose RPM stays far
+  below its siblings at the same duty is the broken fan.
 
 **Stage 2: idle temperatures (15 min, no load)**
 ```bash
@@ -226,7 +236,8 @@ SOAK_NODE=talosw04 SOAK_POWER_LIMIT_W=350 SOAK_ABORT_C=88 \
 This uses the default plan: idle-to-burst retrains (the trigger seen on 2026-09-23), 20 min
 sustained, a hot retrain, then cool-down. 350 W is the stock limit.
 
-Results: `kubectl logs -n ai job/<name>` while the Job exists (7 days), or Loki
+Run `render-fans-job.sh` alongside stages 3 and 4, with its seconds set to the soak's
+length. Results: `kubectl logs -n ai job/<name>` while the Job exists (7 days), or Loki
 `{namespace="ai", app="gpu-soak"} |= "R,"`. The line format is in the `soak.py` docstring.
 Run `pcie` after every stage and compare it with the baseline.
 A card that drops off the bus shows as `CUDA_ERROR` plus Xid 79 in dmesg, and after 10 min
