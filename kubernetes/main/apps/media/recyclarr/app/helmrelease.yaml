@@ -82,5 +82,15 @@ spec:
           - path: /config/recyclarr.yml
             subPath: recyclarr.yml
             readOnly: true
+          - path: /config/settings.yml
+            subPath: settings.yml
+            readOnly: true
+          # local custom formats (resource_providers in settings.yml)
+          - path: /custom-formats/radarr/language-not-english-or-original.json
+            subPath: radarr-language-not-english-or-original.json
+            readOnly: true
+          - path: /custom-formats/sonarr/language-not-english-or-original.json
+            subPath: sonarr-language-not-english-or-original.json
+            readOnly: true
       tmp:
         type: emptyDir

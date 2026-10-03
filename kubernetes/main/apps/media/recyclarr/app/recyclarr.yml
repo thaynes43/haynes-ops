@@ -9,6 +9,29 @@
 # from TRaSH's `default` score set (lossless-audio-friendly — SQP sets ban
 # lossless). CF ids sourced from the official remux-web-2160p (radarr) and
 # web-2160p (sonarr) templates + the audio/HDR/tier groups they omit.
+#
+# CHURN BRAKE (user, 2026-10-03): the upgrade-until score is one a good
+# release actually reaches at the until_quality rung (80th-90th percentile of
+# imported files on that rung: Radarr Remux-2160p 8450, Sonarr Bluray-2160p
+# Remux 500), and a same-quality upgrade must gain at least +100
+# (min_upgrade_format_score; app default was +1, which let a +75 streaming tag
+# or a same-group re-release replace ~4,000 Sonarr files in 90 days). Quality
+# steps (1080p -> 2160p -> Remux) still upgrade regardless of score. Was
+# until_score 10000 + increment 1 on both apps. NOTE: below the until_quality
+# rung the score cutoff never applies (the arrs treat any lower-quality file as
+# cutoff-unmet), so the +100 increment is the brake that matters there.
+#
+# LANGUAGE (user, 2026-10-03): "Language: Not English or Original" is a local
+# custom format (./custom-formats/, wired in through ./settings.yml). It matches
+# a release or file with neither English nor the title's original language
+# (a German dub of an English show; NOT an English dub, NOT Japanese anime).
+# STAGED AT SCORE 0: scoring it -10000 also scores the ~249 existing files that
+# match (223 Sonarr episodes, 26 Radarr movies, 2026-10-03), which makes every
+# one of them replaceable by any English/original release RSS sees. Flip both
+# `score: 0` lines to -10000 once that is ruled acceptable; min_format_score 0
+# then rejects new matching grabs. Radarr's profile language is already
+# "Original" (set in the app, not here), so Radarr already refuses new grabs
+# without the original language, English dubs of foreign films included.
 radarr:
   radarr:
     base_url: http://radarr.media.svc.cluster.local:7878
@@ -25,8 +48,9 @@ radarr:
         upgrade:
           allowed: true
           until_quality: Remux-2160p
-          until_score: 10000
+          until_score: 8450 # was 10000 (unreachable); see CHURN BRAKE above
         min_format_score: 0
+        min_upgrade_format_score: 100 # was the app default 1
         quality_sort: top
         # 1080p floor (720p dropped per user), Remux-2160p ceiling.
         # HDTV-2160p slotted junk-tier-low: outranks plain 1080p only.
@@ -118,6 +142,12 @@ radarr:
           - 5608c71bcebba0a5e666223bae8c9227 # HD Bluray Tier 03
         assign_scores_to:
           - name: FHD-UHD
+      # === language guard (local CF, see LANGUAGE above). STAGED at 0. ===
+      - trash_ids:
+          - haynes-language-not-english-or-original
+        assign_scores_to:
+          - name: FHD-UHD
+            score: 0 # staged; -10000 activates it
 
 sonarr:
   sonarr:
@@ -133,8 +163,9 @@ sonarr:
         upgrade:
           allowed: true
           until_quality: Bluray-2160p Remux
-          until_score: 10000
+          until_score: 500 # was 10000 (unreachable); see CHURN BRAKE above
         min_format_score: 0
+        min_upgrade_format_score: 100 # was the app default 1
         quality_sort: top
         # 1080p floor (720p dropped per user), Bluray-2160p Remux ceiling.
         qualities:
@@ -184,3 +215,9 @@ sonarr:
           - d0c516558625b04b363fa6c5c2c7cfd4 # WEB Scene
         assign_scores_to:
           - name: FHD-UHD
+      # === language guard (local CF, see LANGUAGE above). STAGED at 0. ===
+      - trash_ids:
+          - haynes-language-not-english-or-original
+        assign_scores_to:
+          - name: FHD-UHD
+            score: 0 # staged; -10000 activates it
