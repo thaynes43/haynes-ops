@@ -2,7 +2,7 @@
 # haynes-ops override (downloads/lazylibrarian, ConfigMap lazylibrarian-searchbook)
 #
 # This is LazyLibrarian's upstream lazylibrarian/searchbook.py plus this
-# comment block and three marked changes (search for "haynes-ops fix").
+# comment block and four marked changes (search for "haynes-ops fix").
 # Everything else is upstream, byte for byte.
 #
 # PINNED TO UPSTREAM: image docker.io/linuxserver/lazylibrarian:version-40a389ea
@@ -30,12 +30,21 @@
 #          eBook and AudioBook "general" modes are the same no-category
 #          query) reuses the earlier results instead of asking the indexers
 #          again. Results carry no format, so reuse across formats is exact.
+#   fix 4: CATEGORY SEARCH ONLY (owner ruling 2026-10-03). Each wanted format
+#          is searched once per indexer, in its book category (eBook 7020,
+#          audiobook 3030). Upstream follows a miss with up to four more
+#          queries per indexer (short, no-category "general", short-general,
+#          and "title"); those are dropped. For a title with a parenthesis,
+#          the one query is the short form (the part before the
+#          parenthesis), which upstream only tried second, because the full
+#          form ("Dune (Movie Tie-In)") rarely matches a release name. Set
+#          CATEGORY_SEARCH_ONLY = False to restore upstream's fallbacks.
 #
 # Needs config.ini [SearchScan] delaysearch = True for fixes 1 and 2 to do
 # anything (set live 2026-10-03; old value: unset, i.e. False).
 #
 # BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
-# searchbook.py and re-apply the three marked changes to it (or drop this
+# searchbook.py and re-apply the four marked changes to it (or drop this
 # override if upstream has fixed them). Never carry this file onto a
 # different image unchanged: it would silently revert every other upstream
 # change to the book search.
@@ -74,6 +83,10 @@ from lazylibrarian.providers import (
 )
 from lazylibrarian.resultlist import download_result, find_best_result
 from lazylibrarian.telemetry import TELEMETRY
+
+
+# haynes-ops fix 4: one category search per indexer per wanted format, no fallback modes.
+CATEGORY_SEARCH_ONLY = True
 
 
 # haynes-ops fix 3: never send one book's identical query twice in one search.
@@ -368,7 +381,13 @@ def search_book(books=None, library=None):
                     searchtype = 'book'
 
                 if CONFIG.use_nzb():
-                    resultlist, nprov = _znab_once(book, searchtype, sent)  # haynes-ops fix 3
+                    # haynes-ops fix 4: with CATEGORY_SEARCH_ONLY this is the ONLY indexer query, so a
+                    # title with a parenthesis is searched in its short form (upstream's second try).
+                    if CATEGORY_SEARCH_ONLY and '(' in book['bookName']:
+                        first_type = f"short{searchtype}"
+                    else:
+                        first_type = searchtype
+                    resultlist, nprov = _znab_once(book, first_type, sent)  # haynes-ops fix 3
                     if not nprov:
                         warn_mode('nzb')
                     elif resultlist:
@@ -436,7 +455,7 @@ def search_book(books=None, library=None):
                         matches.append(match)
 
                 # if you can't find the book, try author/title without any "(extended details, series etc)"
-                if not matches and '(' in book['bookName']:
+                if not CATEGORY_SEARCH_ONLY and not matches and '(' in book['bookName']:  # haynes-ops fix 4
                     if CONFIG.use_nzb():
                         resultlist, nprov = _znab_once(book, f"short{searchtype}", sent)  # haynes-ops fix 3
                         if not nprov:
@@ -512,7 +531,7 @@ def search_book(books=None, library=None):
 
                 # if you can't find the book under "books", you might find under general search
                 # general search is the same as booksearch for torrents, irc and rss, no need to check again
-                if not matches and CONFIG.use_nzb():
+                if not CATEGORY_SEARCH_ONLY and not matches and CONFIG.use_nzb():  # haynes-ops fix 4
                     resultlist, nprov = _znab_once(book, f"general{searchtype}", sent)  # haynes-ops fix 3
                     if not nprov:
                         warn_mode('nzb')
@@ -529,7 +548,7 @@ def search_book(books=None, library=None):
 
                 # if still not found, try general search again without any "(extended details, series etc)"
                 # shortgeneral is the same as shortbook for torrents, irc and rss, no need to check again
-                if not matches and CONFIG.use_nzb() and '(' in book['searchterm']:
+                if not CATEGORY_SEARCH_ONLY and not matches and CONFIG.use_nzb() and '(' in book['searchterm']:  # fix 4
                     resultlist, nprov = _znab_once(book, f"shortgeneral{searchtype}", sent)  # haynes-ops fix 3
                     if not nprov:
                         warn_mode('nzb')
@@ -546,7 +565,7 @@ def search_book(books=None, library=None):
                             matches.append(match)
 
                 # if still not found, try general search again with title only
-                if not matches:
+                if not CATEGORY_SEARCH_ONLY and not matches:  # haynes-ops fix 4
                     if CONFIG.use_nzb():
                         resultlist, nprov = _znab_once(book, f"title{searchtype}", sent)  # haynes-ops fix 3
                         if not nprov:
