@@ -27,3 +27,16 @@ spec:
         - url: http://loki-headless.observability.svc.cluster.local:3100/loki/api/v1/push
     serviceMonitor:
       enabled: true
+    # The chart's default tolerations (master + control-plane) plus the eGPU test
+    # node's taint, so talosw04's pod logs (the gpu-soak results in particular) reach
+    # Loki. Setting this list replaces the chart default, hence the first two entries.
+    tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: haynesops.com/gpu-test
+        operator: Exists
+        effect: NoSchedule
