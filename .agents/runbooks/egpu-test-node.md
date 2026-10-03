@@ -10,7 +10,7 @@ Cards so far (Tom's identification is ground truth; NVML UUIDs are the software 
 
 | Card | UUID | What it is | Status |
 |---|---|---|---|
-| A | `GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a` | The **original bus-dropper**, the first card pulled from HaynesIntelligence. Bracket-side fan does not spin, far-end fan has broken blades. | 2026-10-03: passed stage 1 (with 3 min of idle standing in for stage 2's 15) and a 10 min **sustained** 150 W run (a variant, not stage 3's plan). Stage 3's three capped idle-to-burst cycles and stage 4 not run yet. |
+| A | `GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a` | The **original bus-dropper**, the first card pulled from HaynesIntelligence. Bracket-side fan does not spin, far-end fan has broken blades. | 2026-10-03: passed stage 1 (with 3 min of idle standing in for stage 2's 15), a 10 min sustained 150 W variant, and **stage 3 as written** (3 capped idle↔burst retrains, peaks 69/70/70 °C, no Xid/AER/replays). Stage 4 waits for the replacement fan set and pads. Channel 1 (the bracket-side fan) is never driven. |
 | "#0" in older records | `GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b` | A **later** card: it went into HaynesIntelligence slot 01:00.0 on 2026-09-18, dropped on 09-23 and was pulled on 09-25. Probably card B on Tom's bench. | Not re-tested yet. |
 
 How it is kept apart from the rest of the cluster:
