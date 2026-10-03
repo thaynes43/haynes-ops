@@ -124,6 +124,10 @@ ARG CLAUDE_CODE_VERSION=2.1.288
 # eligible interactive sessions. 0.158.0 turns on terminal input approval by default
 # for elevated commands. Both need checking against this pod's single remote-control
 # daemon and its approval-`never` requirements.toml after the roll that ships them.
+# 0.160.0 (2026-10-01, via 0.159.1): GPT-6.1 Sol enters the model catalog as the
+# bundled default. `gpt-6.1-sol` is the Codex subagent default in config/claude/
+# CLAUDE.md since 2026-10-03 and does not exist to an older client: 0.158.0's cache
+# never lists it.
 # renovate: datasource=npm depName=@openai/codex
 ARG CODEX_VERSION=0.160.0
 # renovate: datasource=npm depName=tsx
