@@ -34,7 +34,6 @@
 # min_format_score 0 rejects new matching grabs. Existing matching files (84
 # Radarr movies, 223 Sonarr episodes, 2026-10-03) become replaceable through
 # RSS only; the owner accepted that. Never trigger a search for them.
-# without the original language, English dubs of foreign films included.
 radarr:
   radarr:
     base_url: http://radarr.media.svc.cluster.local:7878
