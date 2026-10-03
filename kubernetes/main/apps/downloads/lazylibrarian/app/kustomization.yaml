@@ -22,6 +22,14 @@ configMapGenerator:
       # exists (the qbittorrent 2026-09-22 FailedMount outage). The pod
       # carries reloader.stakater.com/auto, so a content change still rolls it.
       disableNameSuffixHash: true
+  # Patched upstream searchbook.py (indexer query volume, 2026-10-03): the
+  # daily backlog search honours DELAYSEARCH and never repeats a query for
+  # one book. Mounted by helmrelease.yaml; pinned to the image tag there.
+  - name: lazylibrarian-searchbook
+    files:
+      - searchbook.py=./patches/searchbook.py
+    options:
+      disableNameSuffixHash: true
 generatorOptions:
   # Python source with $Author-style strings: keep Flux post-build
   # substitution away from it.

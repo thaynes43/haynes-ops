@@ -806,6 +806,13 @@ spec:
               # Raised to 50 (owner request) to drain collection gaps faster; the
               # MAM governor (pause at 100 unsatisfied) stays the snatch backstop.
               COLLECTION_FORCE_SEARCH_CAP_PER_RUN: "50"
+              # Re-search cooldown per collection want (app default 12h). Once a
+              # want is queued, LazyLibrarian's own daily backlog search covers it,
+              # so a 12h forced re-search here searched every unfound collection
+              # book about three times a day (2026-10-03: ~1,600 Prowlarr queries
+              # a day). Weekly keeps the re-queue safety net. A new want is still
+              # searched on its first run.
+              COLLECTION_FORCE_SEARCH_COOLDOWN_MS: "604800000"
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
