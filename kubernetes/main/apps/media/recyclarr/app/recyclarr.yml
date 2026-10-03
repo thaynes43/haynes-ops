@@ -20,6 +20,8 @@
 # until_score 10000 + increment 1 on both apps. NOTE: below the until_quality
 # rung the score cutoff never applies (the arrs treat any lower-quality file as
 # cutoff-unmet), so the +100 increment is the brake that matters there.
+# Sonarr's delay profile (120 min Usenet, bypass at score 1775) is set via the
+# API, not here: see .agents/runbooks/arr-quality-profiles.md.
 #
 # LANGUAGE (user, 2026-10-03): "Language: Not English or Original" is a local
 # custom format (./custom-formats/, wired in through ./settings.yml). It matches
