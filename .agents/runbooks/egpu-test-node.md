@@ -4,8 +4,14 @@
 was `edgew01` in the
 retired edge cluster (Omni machine `77d65c00-5811-11ef-b65b-a8751caa6100`). In `main` it is a
 **GPU test worker**: suspect cards go on the dock, get tested, and either go back into
-service or get binned. Its first card is the RTX 3090 from #3052 that dropped off the bus in
-HaynesIntelligence and has one dead fan.
+service or get binned. Results go on #3052, one comment per stage.
+
+Cards so far (Tom's identification is ground truth; NVML UUIDs are the software identity):
+
+| Card | UUID | What it is | Status |
+|---|---|---|---|
+| A | `GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a` | The **original bus-dropper**, the first card pulled from HaynesIntelligence. Bracket-side fan does not spin, far-end fan has broken blades. | 2026-10-03: passed stage 1 (with 3 min of idle standing in for stage 2's 15) and a 10 min **sustained** 150 W run (a variant, not stage 3's plan). Stage 3's three capped idle-to-burst cycles and stage 4 not run yet. |
+| "#0" in older records | `GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b` | A **later** card: it went into HaynesIntelligence slot 01:00.0 on 2026-09-18, dropped on 09-23 and was pulled on 09-25. Probably card B on Tom's bench. | Not re-tested yet. |
 
 How it is kept apart from the rest of the cluster:
 
@@ -206,7 +212,11 @@ How to read it:
   `scripts/gpu-soak/render-fans-job.sh egpu-test-fans-1 180 | kubectl apply -f -`
   (read-only, no privileges). A zero-RPM card shows 0 rpm on every channel at idle, so the
   fan verdict comes from running it **next to** a load stage. A channel whose RPM stays far
-  below its siblings at the same duty is the broken fan.
+  below its siblings at the same duty is the broken fan. A channel the controller keeps at
+  0 % duty under load while another channel runs (card A's channel 1) is not being driven at
+  all: either a dead fan or a header fault. NVML's "target" read a fixed 30 % on card A, so
+  ignore it. A GPU has fewer fan channels than fans, and one tachometer per channel, so map
+  channels to physical fans with Tom's eyes on the card.
 
 **Stage 2: idle temperatures (15 min, no load)**
 ```bash
@@ -220,7 +230,9 @@ for stage 3.
 SOAK_NODE=talosw04 SOAK_POWER_LIMIT_W=150 SOAK_ABORT_C=83 \
   scripts/gpu-soak/render-job.sh all egpu-test-capped-1 "capped:3:120:60,cool:1:300:0" | kubectl apply -f -
 ```
-`soak.py` sets persistence mode and the 150 W limit before any load, and refuses to load the
+The cap outlives the Job (persistence mode keeps it) until a reboot or the next
+`SOAK_POWER_LIMIT_W`; stage 4 sets 350 W explicitly. `soak.py` sets persistence mode and the
+150 W limit before any load, and refuses to load the
 card if the cap fails (`END,ABORTED_NO_CAP`). It stops the load the moment the core reaches
 83 °C (`END,ABORTED_HOT`, exit 3). The cap needs root with CAP_SYS_ADMIN. Kyverno admits
 exactly that one capability, and only on the ComfyUI image for Jobs named `egpu-test-*` in
