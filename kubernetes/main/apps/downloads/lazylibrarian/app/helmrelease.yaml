@@ -37,12 +37,12 @@ spec:
             # cluster's allowlisted-registry Kyverno policy; docker.io is.
             image:
               repository: docker.io/linuxserver/lazylibrarian
-              # librarysync.py and searchbook.py in this image are overridden
-              # by the lazylibrarian-librarysync and lazylibrarian-searchbook
-              # ConfigMaps (persistence below), copies of THIS tag's files plus
-              # marked fixes. Bumping the tag means re-deriving both files from
-              # the new image, or dropping them if upstream fixed the bugs: see
-              # the headers of patches/librarysync.py and patches/searchbook.py.
+              # librarysync.py, searchbook.py and sabnzbd.py in this image are
+              # overridden by the lazylibrarian-librarysync, -searchbook and
+              # -sabnzbd ConfigMaps (persistence below), copies of THIS tag's
+              # files plus marked fixes. Bumping the tag means re-deriving all
+              # three files from the new image, or dropping them if upstream
+              # fixed the bugs: see the headers of the files in patches/.
               tag: version-40a389ea
             env:
               TZ: America/New_York
@@ -148,6 +148,18 @@ spec:
             app:
               - path: /app/lazylibrarian/lazylibrarian/searchbook.py
                 subPath: searchbook.py
+                readOnly: true
+      # SABnzbd hand-off fix (2026-10-03): the NZB is uploaded, not sent as
+      # the Prowlarr URL (whose apikey SABnzbd kept in its history). Pinned to
+      # the image tag above; patches/sabnzbd.py's header says how to bump.
+      sabnzbd-patch:
+        type: configMap
+        name: lazylibrarian-sabnzbd
+        advancedMounts:
+          lazylibrarian:
+            app:
+              - path: /app/lazylibrarian/lazylibrarian/sabnzbd.py
+                subPath: sabnzbd.py
                 readOnly: true
       # RW mount of the gasha01 share at the SAME mountpoint the *arrs +
       # qBittorrent + SABnzbd use, so completed-download paths

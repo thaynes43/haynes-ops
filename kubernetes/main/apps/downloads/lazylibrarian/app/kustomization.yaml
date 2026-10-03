@@ -30,6 +30,15 @@ configMapGenerator:
       - searchbook.py=./patches/searchbook.py
     options:
       disableNameSuffixHash: true
+  # Patched upstream sabnzbd.py (2026-10-03): uploads the NZB to SABnzbd
+  # (mode=addfile) instead of handing it the Prowlarr URL, so the Prowlarr API
+  # key no longer shows in SABnzbd's history. Mounted by helmrelease.yaml;
+  # pinned to the image tag there.
+  - name: lazylibrarian-sabnzbd
+    files:
+      - sabnzbd.py=./patches/sabnzbd.py
+    options:
+      disableNameSuffixHash: true
 generatorOptions:
   # Python source with $Author-style strings: keep Flux post-build
   # substitution away from it.
