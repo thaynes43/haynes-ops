@@ -380,13 +380,14 @@ def search_book(books=None, library=None):
                 else:
                     searchtype = 'book'
 
+                # haynes-ops fix 4: with CATEGORY_SEARCH_ONLY this is the ONLY query per provider, so a
+                # title with a parenthesis is searched in its short form (upstream's second try).
+                if CATEGORY_SEARCH_ONLY and '(' in book['bookName']:
+                    first_type = f"short{searchtype}"
+                else:
+                    first_type = searchtype
+
                 if CONFIG.use_nzb():
-                    # haynes-ops fix 4: with CATEGORY_SEARCH_ONLY this is the ONLY indexer query, so a
-                    # title with a parenthesis is searched in its short form (upstream's second try).
-                    if CATEGORY_SEARCH_ONLY and '(' in book['bookName']:
-                        first_type = f"short{searchtype}"
-                    else:
-                        first_type = searchtype
                     resultlist, nprov = _znab_once(book, first_type, sent)  # haynes-ops fix 3
                     if not nprov:
                         warn_mode('nzb')
@@ -401,7 +402,7 @@ def search_book(books=None, library=None):
                             matches.append(match)
 
                 if CONFIG.use_tor():
-                    resultlist, nprov = iterate_over_torrent_sites(book, searchtype)
+                    resultlist, nprov = iterate_over_torrent_sites(book, first_type)  # haynes-ops fix 4
                     if not nprov:
                         warn_mode('tor')
                     elif resultlist:
@@ -416,7 +417,7 @@ def search_book(books=None, library=None):
                             matches.append(match)
 
                 if CONFIG.use_direct():
-                    resultlist, nprov = iterate_over_direct_sites(book, searchtype)
+                    resultlist, nprov = iterate_over_direct_sites(book, first_type)  # haynes-ops fix 4
                     if not nprov:
                         warn_mode('direct')
                     elif resultlist:
@@ -431,7 +432,7 @@ def search_book(books=None, library=None):
                             matches.append(match)
 
                 if CONFIG.use_irc():
-                    resultlist, nprov = iterate_over_irc_sites(book, searchtype)
+                    resultlist, nprov = iterate_over_irc_sites(book, first_type)  # haynes-ops fix 4
                     if not nprov:
                         warn_mode('irc')
                     elif resultlist:
