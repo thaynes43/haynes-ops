@@ -37,11 +37,12 @@ spec:
             # cluster's allowlisted-registry Kyverno policy; docker.io is.
             image:
               repository: docker.io/linuxserver/lazylibrarian
-              # librarysync.py in this image is overridden by the
-              # lazylibrarian-librarysync ConfigMap (persistence below), a copy
-              # of THIS tag's file plus a one-line fix. Bumping the tag means
-              # re-deriving that file from the new image, or dropping it if
-              # upstream fixed the bug: see patches/librarysync.py's header.
+              # librarysync.py and searchbook.py in this image are overridden
+              # by the lazylibrarian-librarysync and lazylibrarian-searchbook
+              # ConfigMaps (persistence below), copies of THIS tag's files plus
+              # marked fixes. Bumping the tag means re-deriving both files from
+              # the new image, or dropping them if upstream fixed the bugs: see
+              # the headers of patches/librarysync.py and patches/searchbook.py.
               tag: version-40a389ea
             env:
               TZ: America/New_York
@@ -134,6 +135,19 @@ spec:
             app:
               - path: /app/lazylibrarian/lazylibrarian/librarysync.py
                 subPath: librarysync.py
+                readOnly: true
+      # Indexer-load fixes to the book search (2026-10-03): the daily backlog
+      # search honours DELAYSEARCH (capped at 7 skipped runs), and one book's
+      # search never sends the same query twice. Pinned to the image tag above;
+      # patches/searchbook.py's header says how to bump.
+      searchbook-patch:
+        type: configMap
+        name: lazylibrarian-searchbook
+        advancedMounts:
+          lazylibrarian:
+            app:
+              - path: /app/lazylibrarian/lazylibrarian/searchbook.py
+                subPath: searchbook.py
                 readOnly: true
       # RW mount of the gasha01 share at the SAME mountpoint the *arrs +
       # qBittorrent + SABnzbd use, so completed-download paths
