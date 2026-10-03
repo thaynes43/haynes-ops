@@ -36,37 +36,37 @@ FROM node:24-slim
 # renovate: datasource=github-releases depName=kubernetes/kubernetes
 ARG KUBECTL_VERSION=v1.37.1
 # renovate: datasource=github-releases depName=fluxcd/flux2
-ARG FLUX_VERSION=2.9.5
+ARG FLUX_VERSION=2.9.6
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION=2.101.0
+ARG GH_VERSION=2.102.0
 # renovate: datasource=github-releases depName=helm/helm
 ARG HELM_VERSION=4.3.0
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.+)$
-ARG KUSTOMIZE_VERSION=5.8.1
+ARG KUSTOMIZE_VERSION=5.8.2
 # renovate: datasource=github-releases depName=getsops/sops
 ARG SOPS_VERSION=3.13.3
 # renovate: datasource=github-releases depName=FiloSottile/age extractVersion=^v(?<version>.+)$
 ARG AGE_VERSION=1.3.2
 # renovate: datasource=github-releases depName=mikefarah/yq extractVersion=^v(?<version>.+)$
-ARG YQ_VERSION=4.53.6
+ARG YQ_VERSION=4.54.1
 # renovate: datasource=github-releases depName=go-task/task extractVersion=^v(?<version>.+)$
-ARG TASK_VERSION=3.53.1
+ARG TASK_VERSION=3.54.0
 # renovate: datasource=github-releases depName=opentofu/opentofu extractVersion=^v(?<version>.+)$
-ARG OPENTOFU_VERSION=1.12.6
+ARG OPENTOFU_VERSION=1.13.1
 # renovate: datasource=github-releases depName=restic/restic extractVersion=^v(?<version>.+)$
 ARG RESTIC_VERSION=0.19.1
 # talosctl — read-only node triage (dmesg/logs/get) via apid; MUST track the cluster's
 # Talos version (nodes run v1.13.3). Same style as kubectl: the `v` lives in the ARG.
 # renovate: datasource=github-releases depName=siderolabs/talos
-ARG TALOSCTL_VERSION=v1.14.1
+ARG TALOSCTL_VERSION=v1.14.2
 # omnictl — read-only Omni machine/cluster status against SaaS Omni (the self-hosted
 # instance was decommissioned 2026-09-22); tracks upstream siderolabs/omni releases,
 # which stay API-compatible with nearby omnictl versions. renovate: datasource=github-releases depName=siderolabs/omni
-ARG OMNICTL_VERSION=v1.12.2
+ARG OMNICTL_VERSION=v1.12.3
 # renovate: datasource=github-releases depName=coder/code-server extractVersion=^v(?<version>.+)$
-ARG CODE_SERVER_VERSION=4.139.1
+ARG CODE_SERVER_VERSION=4.140.0
 # renovate: datasource=github-releases depName=astral-sh/uv
-ARG UV_VERSION=0.12.20
+ARG UV_VERSION=0.12.23
 # ── claude-code ── NOTE: this prose sits ABOVE the `# renovate:` line ON PURPOSE.
 # See the "version numbers in comments" warning at the top of this ARG block.
 # 2.1.251 (2026-08-29): catching up 35 releases of drift. 2.1.217 was pinned by
@@ -97,7 +97,7 @@ ARG UV_VERSION=0.12.20
 # load-bearing: Sonnet 5.5 is the subagent tier for routine coding and tests in
 # config/claude/CLAUDE.md, and it has an agent-run picker row.
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.284
+ARG CLAUDE_CODE_VERSION=2.1.288
 # Codex is installed at BOOT as the managed STANDALONE (dev-init.sh), not via npm —
 # only the standalone can run `codex remote-control`. This pins that standalone
 # version; @openai/codex npm releases track the same numbers as the rust-v* GitHub
@@ -124,8 +124,12 @@ ARG CLAUDE_CODE_VERSION=2.1.284
 # eligible interactive sessions. 0.158.0 turns on terminal input approval by default
 # for elevated commands. Both need checking against this pod's single remote-control
 # daemon and its approval-`never` requirements.toml after the roll that ships them.
+# 0.160.0 (2026-10-01, via 0.159.1): GPT-6.1 Sol enters the model catalog as the
+# bundled default. `gpt-6.1-sol` is the Codex subagent default in config/claude/
+# CLAUDE.md since 2026-10-03 and does not exist to an older client: 0.158.0's cache
+# never lists it.
 # renovate: datasource=npm depName=@openai/codex
-ARG CODEX_VERSION=0.158.0
+ARG CODEX_VERSION=0.160.0
 # renovate: datasource=npm depName=tsx
 ARG TSX_VERSION=4.23.15
 # ── pnpm ── prose ABOVE the annotation on purpose (see the warning above).
@@ -143,7 +147,7 @@ ARG TSX_VERSION=4.23.15
 # whatever this ARG happened to be. It never did — Renovate had been rewriting the
 # number inside the comment on every bump, manufacturing a fact that was never true.)
 # renovate: datasource=npm depName=pnpm
-ARG PNPM_VERSION=12.6.0
+ARG PNPM_VERSION=12.9.1
 # renovate: datasource=npm depName=@playwright/mcp
 ARG PLAYWRIGHT_MCP_VERSION=0.0.83
 
