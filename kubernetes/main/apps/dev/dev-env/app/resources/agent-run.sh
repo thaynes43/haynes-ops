@@ -532,8 +532,8 @@ CODEX_CACHE="${CODEX_HOME:-$HOME/.codex}/models_cache.json"
 codex_model_rows_fallback() {
   printf '%s\n' \
     'gpt-6-astra    GPT-6-Astra · frontier intelligence for the most demanding work' \
-    'gpt-6.1-sol    GPT-6.1-Sol · latest workhorse model for coding and everyday work' \
-    'gpt-6-sol      GPT-6-Sol · previous generation workhorse (codex subagent default)' \
+    'gpt-6.1-sol    GPT-6.1-Sol · latest workhorse model for coding and everyday work (codex subagent default)' \
+    'gpt-6-sol      GPT-6-Sol · previous generation workhorse model' \
     'gpt-6-luna     GPT-6-Luna · fast and affordable for easier tasks' \
     'gpt-5.6-sol    GPT-5.6-Sol · older coding model for complex work' \
     'gpt-5.6-terra  GPT-5.6-Terra · older balanced model' \
