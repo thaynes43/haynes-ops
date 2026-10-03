@@ -14,34 +14,61 @@ import time
 
 n = ctypes.CDLL("libnvidia-ml.so.1")
 U = ctypes.c_uint
-def ck(r, what):
-    if r != 0:
-        s = n.nvmlErrorString; s.restype = ctypes.c_char_p
-        return f"ERR({r}:{s(r).decode()})"
-    return None
-print("init", n.nvmlInit_v2(), flush=True)
-h = ctypes.c_void_p(); n.nvmlDeviceGetHandleByIndex_v2(0, ctypes.byref(h))
+n.nvmlErrorString.restype = ctypes.c_char_p
+
+
+def ck(r):
+    """None on success, else a printable ERR(...) so a failed read never looks like a value."""
+    return None if r == 0 else f"ERR({r}:{n.nvmlErrorString(r).decode()})"
+
+
+r = n.nvmlInit_v2()
+print("init", r, flush=True)
+if r:
+    sys.exit(f"nvmlInit failed: {ck(r)}")
+h = ctypes.c_void_p()
+r = n.nvmlDeviceGetHandleByIndex_v2(0, ctypes.byref(h))
+if r:
+    sys.exit(f"no GPU handle: {ck(r)}")
+
+
 def s(fn):
-    b = ctypes.create_string_buffer(96); r = getattr(n, fn)(h, b, 96); return ck(r, fn) or b.value.decode()
-def u(fn, *a):
-    v = U(); r = getattr(n, fn)(h, *a, ctypes.byref(v)); return ck(r, fn) or v.value
-print("name", s("nvmlDeviceGetName"), "uuid", s("nvmlDeviceGetUUID"), "vbios", s("nvmlDeviceGetVbiosVersion"))
-print("pcie gen cur/max(link)/max(gpu)", u("nvmlDeviceGetCurrPcieLinkGeneration"), u("nvmlDeviceGetMaxPcieLinkGeneration"), u("nvmlDeviceGetGpuMaxPcieLinkGeneration"),
-      "width cur/max", u("nvmlDeviceGetCurrPcieLinkWidth"), u("nvmlDeviceGetMaxPcieLinkWidth"), "replays", u("nvmlDeviceGetPcieReplayCounter"))
-nf = u("nvmlDeviceGetNumFans"); print("num_fans", nf, flush=True)
-class FSI(ctypes.Structure): _fields_ = [("version", U), ("fan", U), ("speed", U)]
+    b = ctypes.create_string_buffer(96)
+    return ck(getattr(n, fn)(h, b, 96)) or b.value.decode()
+
+
+def u(fn, *a, ctype=U):
+    v = ctype()
+    return ck(getattr(n, fn)(h, *a, ctypes.byref(v))) or v.value
+
+
+class FSI(ctypes.Structure):
+    _fields_ = [("version", U), ("fan", U), ("speed", U)]
+
+
 def rpm(i):
-    st = FSI(ctypes.sizeof(FSI) | (1 << 24), i, 0)
-    r = n.nvmlDeviceGetFanSpeedRPM(h, ctypes.byref(st)); return ck(r, "rpm") or st.speed
+    st = FSI(ctypes.sizeof(FSI) | (1 << 24), i, 0)  # nvmlFanSpeedInfo_v1
+    return ck(n.nvmlDeviceGetFanSpeedRPM(h, ctypes.byref(st))) or st.speed
+
+
+print("name", s("nvmlDeviceGetName"), "uuid", s("nvmlDeviceGetUUID"), "vbios", s("nvmlDeviceGetVbiosVersion"))
+print("pcie gen cur/max(link)/max(gpu)", u("nvmlDeviceGetCurrPcieLinkGeneration"),
+      u("nvmlDeviceGetMaxPcieLinkGeneration"), u("nvmlDeviceGetGpuMaxPcieLinkGeneration"),
+      "width cur/max", u("nvmlDeviceGetCurrPcieLinkWidth"), u("nvmlDeviceGetMaxPcieLinkWidth"),
+      "replays", u("nvmlDeviceGetPcieReplayCounter"))
+nf = u("nvmlDeviceGetNumFans")
+print("num_fans", nf, flush=True)
 dur = int(sys.argv[1]) if len(sys.argv) > 1 else 180
 t0 = time.time()
 while time.time() - t0 <= dur:
-    temp = U(); n.nvmlDeviceGetTemperature(h, 0, ctypes.byref(temp))
-    pw = U(); n.nvmlDeviceGetPowerUsage(h, ctypes.byref(pw))
-    ps = ctypes.c_int(); n.nvmlDeviceGetPerformanceState(h, ctypes.byref(ps))
-    fans = []
-    for i in range(nf if isinstance(nf, int) else 0):
-        fans.append(f"fan{i}={u('nvmlDeviceGetFanSpeed_v2', i)}%/tgt={u('nvmlDeviceGetTargetFanSpeed', i)}%/rpm={rpm(i)}")
-    print(f"t={time.time()-t0:5.0f}s temp={temp.value}C power={pw.value/1000:.1f}W P{ps.value} gen={u('nvmlDeviceGetCurrPcieLinkGeneration')} x{u('nvmlDeviceGetCurrPcieLinkWidth')} " + " ".join(fans), flush=True)
+    temp = u("nvmlDeviceGetTemperature", 0)  # 0 = NVML_TEMPERATURE_GPU
+    pw = u("nvmlDeviceGetPowerUsage")
+    pw = f"{pw / 1000:.1f}" if isinstance(pw, int) else pw
+    ps = u("nvmlDeviceGetPerformanceState", ctype=ctypes.c_int)
+    fans = [f"fan{i}={u('nvmlDeviceGetFanSpeed_v2', i)}%/tgt={u('nvmlDeviceGetTargetFanSpeed', i)}%/rpm={rpm(i)}"
+            for i in range(nf if isinstance(nf, int) else 0)]
+    print(f"t={time.time() - t0:5.0f}s temp={temp}C power={pw}W P{ps} "
+          f"gen={u('nvmlDeviceGetCurrPcieLinkGeneration')} x{u('nvmlDeviceGetCurrPcieLinkWidth')} " + " ".join(fans),
+          flush=True)
     time.sleep(15)
 n.nvmlShutdown()  # release NVML cleanly before the process exits

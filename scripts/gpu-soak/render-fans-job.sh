@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Render a read-only per-fan sampler Job (fans.py) for the eGPU test node.
 # Usage: render-fans-job.sh <job-name> [seconds=180] | kubectl apply -f -
-# Runs next to a soak Job (same node, same card) and needs no privileges. Job names that
-# start with egpu-test- keep the runbook's cleanup glob simple.
+# Runs next to a soak Job (same node, same card) and needs no privileges. Name it
+# egpu-test-* like the other test Jobs so they are easy to find and delete together.
 set -euo pipefail
 name=${1:?job name, e.g. egpu-test-fans-1}
 secs=${2:-180}
