@@ -65,15 +65,15 @@ source). Omni then simply waits. But the workers machine set reports `ScalingUp`
 cluster is not Ready. Talos upgrades still proceed, while a **Kubernetes version upgrade
 stalls at "waiting for the cluster to be ready"** until the box joins or leaves the template.
 
-1. Read the hardware (read-only Reader SA):
-   `omnictl get machinestatus 77d65c00-5811-11ef-b65b-a8751caa6100 -o yaml`
-   - `spec.hardware.processors[].manufacturer`: the template assumes AMD (`amd-ucode`).
-     Swap to `siderolabs/intel-ucode` if it says Intel.
-   - `spec.network.networklinks`: one NIC needs nothing. With more than one, pin the cabled
-     NIC with a lowercase `deviceSelector.hardwareAddr` and `routeMetric: 100` (gotcha #1).
-     UniFi last saw `edgew01` at `58:47:ca:77:8d:d7`.
-   - `spec.hardware.blockdevices`: with more than one disk, add `install.diskSelector`
-     before the sync, because `install.wipe: true` wipes whichever disk Omni picks.
+1. Read the hardware (read-only Reader SA) and check it against the machine block:
+   `omnictl get machinestatus 77d65c00-5811-11ef-b65b-a8751caa6100 -o yaml`. As of
+   2026-10-02 the block matches this box:
+   - CPU AMD Ryzen 9 8945HS, so `amd-ucode`. Swap to `intel-ucode` on an Intel board.
+   - NICs: eth0 is RTL8125 `58:47:ca:77:8d:d7` (cabled, metric 100) and eth1 is RTL8125
+     `58:47:ca:77:8d:d6` (metric 2000), both pinned by lowercase MAC (gotcha #1). A new
+     board means new MACs here.
+   - Disk: `install.diskSelector: {type: nvme}`. The USB boot stick shows up as `/dev/sda`;
+     the selector keeps the wipe-and-install off it.
    - `securitystate.secureboot` should be false.
 2. `omnictl cluster template validate -f kubernetes/main/bootstrap/omni/cluster-template.yaml`
    and `omnictl cluster template diff -f …`. The diff must show only creates for

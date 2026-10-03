@@ -938,11 +938,7 @@ patches:
 # Procedure and test ladder: .agents/runbooks/egpu-test-node.md.
 kind: Machine
 systemExtensions:
-  # CPU vendor is NOT recorded anywhere. edgew01 never carried intel-ucode/i915 while every
-  # Intel edge node did ("Only for intel nodes" in the old edge README), so AMD is the
-  # inference. Before the first sync, read `omnictl get machinestatus <id> -o yaml`
-  # (spec.hardware.processors[].manufacturer) and swap to siderolabs/intel-ucode if it
-  # says Intel. Either way the wrong ucode is inert, never harmful.
+  # AMD Ryzen 9 8945HS (machinestatus, 2026-10-02).
   - siderolabs/amd-ucode
   - siderolabs/nvidia-container-toolkit-lts
   - siderolabs/nvidia-open-gpu-kernel-modules-lts
@@ -966,6 +962,10 @@ patches:
                 hostname: talosw04
                 cluster: main
         install:
+          # The 2 TB Samsung 990 PRO. By type, not model, so a replacement NVMe still
+          # matches; it also keeps the install off the USB boot stick (/dev/sda).
+          diskSelector:
+            type: nvme
           wipe: true
         kernel:
           modules:
@@ -977,11 +977,21 @@ patches:
             - name: nvidia_modeset
         network:
           hostname: talosw04
-          # No deviceSelector: git has no record of this box's NICs, and a guessed MAC
-          # silently matches nothing (gotcha #1). Talos DHCPs the cabled NIC on its own.
-          # UniFi remembers a wired client "edgew01" at 58:47:ca:77:8d:d7; once the machine
-          # registers, confirm it in the machinestatus networklinks, and if the box has
-          # more than one NIC, pin the mgmt NIC here (lowercase, routeMetric 100).
+          # Both NICs listed, like the control planes, so the uncabled one can never win
+          # the default route if it is cabled later. MACs lowercase (gotcha #1).
+          interfaces:
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:8d:d7 # eth0, RTL8125 2.5GbE, the cabled mgmt NIC
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 100
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:8d:d6 # eth1, RTL8125 2.5GbE, no link today
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 2000
           nameservers:
             - 192.168.40.1
           disableSearchDomain: true
