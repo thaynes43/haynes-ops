@@ -309,7 +309,7 @@ resolves CLIENT-side against the pinned CLI and can silently serve an older tier
 (freshness contract below). Claude: `claude-fable-5-1`, `claude-opus-5-5`,
 `claude-sonnet-5-5`, `claude-opus-5`, `claude-haiku-4-5`; effort
 `low|medium|high|xhigh|max` (or `ultracode`) on the 5-family, none at all on
-Haiku 4.5. Codex: `gpt-6-astra` (top), `gpt-6-sol`, `gpt-6-luna`,
+Haiku 4.5. Codex: `gpt-6-astra` (top), `gpt-6.1-sol`, `gpt-6-sol`, `gpt-6-luna`,
 `gpt-5.6-sol|terra|luna`, `gpt-5.5`; effort `low|medium|high|xhigh`, plus `max`
 on the GPT-6 + 5.6 tiers and `ultra` on astra/sol/terra (both generations).
 agent-run refuses a level the model can't honour instead of
@@ -562,7 +562,7 @@ surfaces still rot, and **agents are the tripwire for both**:
   (`scripts/dev-env/Dockerfile`) never appears in the cache, the picker, or the
   remote-control phone picker until the pin is bumped (`gpt-6-astra` did not
   exist to 0.151.0 and needed 0.153.4 — 2026-09-06; `gpt-6-sol`/`gpt-6-luna`
-  needed 0.156.1 — 2026-09-23). Bump first, then refresh the fallbacks.
+  needed 0.156.1 — 2026-09-23; `gpt-6.1-sol` needed 0.159.1 — 2026-10-03). Bump first, then refresh the fallbacks.
 
 Either way the fix is the same: open a standard held-draft dev-env PR editing
 `kubernetes/main/apps/dev/dev-env/app/resources/agent-run.sh` (labels/fallbacks
