@@ -118,8 +118,10 @@ spec:
               nvidia-smi on the test node {{ $labels.node }} has listed no GPU for 10 minutes, or
               its exporter is not reporting. If a card test is running, this is the result
               being tested for: note the time and check `talosctl -n <node-ip> dmesg | grep -iE
-              'nvrm|xid|thunderbolt|pcieport'` before power-cycling the dock. Procedure:
-              .agents/runbooks/egpu-test-node.md. This alert never pages.
+              'nvrm|xid|aer|pcieport'` and the link/AER reading (`pcie` in the runbook) before
+              anyone power-cycles. The dock is OCuLink, which is not hot-pluggable: PC off, dock
+              off and on, then PC on. Procedure: .agents/runbooks/egpu-test-node.md. This alert
+              never pages.
           expr: |
             (
               count by (node) (nvidia_smi_gpu_info{node="talosw04"})

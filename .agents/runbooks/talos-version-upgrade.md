@@ -23,7 +23,7 @@ in-place upgrade.
 | worker | talosw01 | `83596797-0281-4927-94fb-f34bb869b1de` | 192.168.40.53 | **Proxmox VM 103**, GPU passthrough (3090), nvidia |
 | worker | talosw02 | `2fe46add-9e72-401c-8ec1-b5fb6837ffa0` | 192.168.40.77 | Proxmox VM, i915 |
 | worker | talosw03 | `960513a6-7a1d-4ece-949d-54a022fe85e5` | 192.168.40.21 | Proxmox VM, i915 |
-| worker | talosw04 | `77d65c00-5811-11ef-b65b-a8751caa6100` | DHCP | bare-metal mini PC + Thunderbolt eGPU (ex-edgew01), nvidia, tainted `haynesops.com/gpu-test` — [egpu-test-node](egpu-test-node.md) |
+| worker | talosw04 | `77d65c00-5811-11ef-b65b-a8751caa6100` | DHCP | bare-metal mini PC + OCuLink eGPU dock (ex-edgew01), nvidia, tainted `haynesops.com/gpu-test` — [egpu-test-node](egpu-test-node.md) |
 
 Worker eth0 MACs (to find the Proxmox VM by NIC): w01 `bc:24:11:83:72:d2`,
 w02 `bc:24:11:6f:7e:cd`, w03 `bc:24:11:c5:5b:92`. The `.30` VPN NIC (`net1`,

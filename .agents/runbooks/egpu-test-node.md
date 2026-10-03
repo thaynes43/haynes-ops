@@ -1,6 +1,7 @@
 # eGPU test node (talosw04)
 
-`talosw04` is a bare-metal mini PC with a Thunderbolt eGPU dock. It was `edgew01` in the
+`talosw04` is a bare-metal mini PC with an **OCuLink** eGPU dock (a direct PCIe x4 cable). It
+was `edgew01` in the
 retired edge cluster (Omni machine `77d65c00-5811-11ef-b65b-a8751caa6100`). In `main` it is a
 **GPU test worker**: suspect cards go on the dock, get tested, and either go back into
 service or get binned. Its first card is the RTX 3090 from #3052 that dropped off the bus in
@@ -33,24 +34,23 @@ page. Its reboots still show in `node_boot_time_seconds`.
 1. Omni → **Download Installation Media**: Talos **v1.13.9**, **amd64**, bare metal,
    **SecureBoot off** (every node in this cluster runs SecureBoot off).
 2. Extensions: **siderolabs/amd-ucode** for an AMD (Ryzen) CPU or **siderolabs/intel-ucode**
-   for an Intel CPU, plus **siderolabs/thunderbolt**,
-   **siderolabs/nvidia-open-gpu-kernel-modules-lts** and
-   **siderolabs/nvidia-container-toolkit-lts**. Nothing else.
+   for an Intel CPU, plus **siderolabs/nvidia-open-gpu-kernel-modules-lts** and
+   **siderolabs/nvidia-container-toolkit-lts**. Nothing else. The media only has to boot to
+   maintenance mode: once the machine is in the cluster, Omni installs the extension list
+   from the template (its MachineExtensions), not the ISO's.
 3. Extra kernel argument: **net.ifnames=0** (the only one).
 4. Format: **ISO**. Write it to a USB stick with balenaEtcher (or Rufus in DD mode).
 5. The internal disk still holds the old edge install, and Omni's ISO stops when it finds an
    existing Talos ("talos.halt_if_installed"). Wipe that disk first: boot a GParted Live USB
    and delete every partition on the internal SSD.
-6. BIOS: UEFI boot (CSM off), Secure Boot **disabled**. Thunderbolt/USB4 enabled, with
-   security level **No Security** or **User Authorization**. The thunderbolt extension's
-   udev rule authorizes devices for you; "Secure Connect" and "DisplayPort/USB only" block
-   the eGPU. Turn on Thunderbolt boot or pre-boot support if the BIOS has it. **Above 4G
-   decoding on**. Resizable BAR can stay at its default. Set AC power recovery to **Power On**.
-   Leave the internal SSD **first** in the boot order, and boot the USB once from the
-   one-time boot menu.
-7. Plug the dock into the PC's Thunderbolt/USB4 port (not a plain USB-C port) with the
-   dock's own short 40 Gbps cable. Power the dock **before** the PC, so the card enumerates
-   at boot.
+6. BIOS: UEFI boot (CSM off), Secure Boot **disabled**, **Above 4G decoding on**. Resizable
+   BAR can stay at its default. Set AC power recovery to **Power On**. If the board has a
+   PCIe link-speed setting for the OCuLink port, leave it on Auto for the first boot; forcing
+   it to **Gen3** is the standard first fix for link instability (§3). Leave the internal SSD
+   **first** in the boot order, and boot the USB once from the one-time boot menu.
+7. OCuLink is **not hot-pluggable**. On every boot, connect the cable and power the dock
+   **before** powering the PC; a dock that comes up after the PC never enumerates the card.
+   Never unplug the cable or switch the dock off while the PC is on.
 8. Dock power supply: a 350 W RTX 3090 spikes well past 500 W for milliseconds. Use a dock
    PSU of at least 650-750 W, feeding the card with two separate 8-pin cables, not one
    daisy-chained cable. The 150 W capped stage is safe on any dock; the full burn is not.
@@ -146,17 +146,57 @@ Talos access: `omnictl talosconfig /tmp/tc`, then
 `talosctl --talosconfig /tmp/tc -n <talosw04-ip> …`. The exporter pod there has `nvidia-smi`:
 `E=$(kubectl get pod -n observability -l app.kubernetes.io/name=nvidia-gpu-exporter --field-selector spec.nodeName=talosw04 -o name)`.
 
+**Cable or card?** The same symptom, a card that drops off the bus, can come from the OCuLink
+cable or port instead of the card. Take this reading at stage 1 and again before and after
+every load stage. Neither the Talos host nor the test images ship `lspci`, so it reads the
+same LnkSta/LnkCap and AER data from sysfs through the Omni-proxied talosctl:
+
+```bash
+TC=/tmp/tc; N=<talosw04-ip>
+G=$(talosctl --talosconfig $TC -n $N get pcidevices | awk '/NVIDIA/ && /VGA/ {print $4; exit}')
+pcie() {  # the card, then the port above it (the OCuLink port), then kernel Xid/AER counts
+  for d in "$G" "$G/.."; do
+    printf '%s  ' "$d"
+    for f in current_link_speed current_link_width max_link_speed max_link_width; do
+      printf '%s=%s ' "$f" "$(talosctl --talosconfig $TC -n $N read /sys/bus/pci/devices/$d/$f 2>/dev/null | tr -d '\n')"
+    done
+    for f in aer_dev_correctable aer_dev_nonfatal aer_dev_fatal; do
+      talosctl --talosconfig $TC -n $N read /sys/bus/pci/devices/$d/$f 2>/dev/null | grep -oE 'TOTAL_ERR_[A-Z]+ [0-9]+' | tr '\n' ' '
+    done
+    echo
+  done
+  talosctl --talosconfig $TC -n $N dmesg | grep -cE 'NVRM: Xid' | sed 's/^/xid_lines=/'
+  talosctl --talosconfig $TC -n $N dmesg | grep -ciE 'AER:|pcieport.*error' | sed 's/^/aer_lines=/'
+}
+pcie
+```
+
+How to read it:
+- **Link (LnkSta vs LnkCap).** The card's `current_link_width` should equal the port's
+  `max_link_width` (x4 on OCuLink; the card itself is x16-capable). Speed drops to 2.5 GT/s
+  at idle, which is normal power saving, so judge speed **under load**: it should reach the
+  port's `max_link_speed` (16 GT/s for Gen4, or 8 GT/s if Gen3 is forced). The same data is in
+  `nvidia-smi -q` → "GPU Link Info" ("PCIe Generation" and "Link Width", Max vs Current), and
+  `soak.py` samples gen and width every 2 s.
+- **AER.** `TOTAL_ERR_COR` should stay 0 or close to it. Counts that climb under load,
+  `NONFATAL`/`FATAL` at all, or `AER:` lines in dmesg are link errors. The nvidia-smi
+  "Replays Since Reset" counter is the card's side of the same story.
+- **Xid.** `xid_lines` should stay 0. Xid 79 is "fallen off the bus".
+- **Verdict.** A drop or Xid **with** AER noise or a downgraded link (narrower than x4, or
+  stuck below max speed under load) points at the cable or port. Reseat both cable ends
+  first, then force the OCuLink port to Gen3 in the BIOS, and only then blame the card. A
+  card that drops on a clean link (AER 0, full width and speed until the moment it goes) is
+  the card.
+
 **Stage 1: enumerate**
-- `talosctl … dmesg | grep -iE 'thunderbolt|10de|nvrm|xid|BAR|pcieport'`. Expect the dock
-  authorized, `[10de:2204]` enumerated, and NVRM loaded. `BAR 1: no space` or "This PCI I/O
-  region assigned to your NVIDIA device is invalid" means the Thunderbolt bridge window is
-  too small: add `pci=realloc` to the machine's `kernelArgs` and sync (a non-destructive
-  reboot).
-- `talosctl … ls /sys/bus/thunderbolt/devices` and `talosctl … read
-  /sys/bus/thunderbolt/devices/0-1/authorized` (1 = authorized).
+- `talosctl … dmesg | grep -iE '10de|nvrm|xid|BAR|pcieport|AER'`. Expect `[10de:2204]`
+  enumerated and NVRM loaded. `BAR 1: no space` or "This PCI I/O region assigned to your
+  NVIDIA device is invalid" means the firmware left the port's memory window too small: add
+  `pci=realloc` to the machine's `kernelArgs` and sync (a non-destructive reboot). No card at
+  all usually means the dock was powered after the PC.
 - `kubectl exec -n observability $E -- nvidia-smi -q`: record GPU UUID, VBIOS version and
-  "GPU Link Info". Thunderbolt carries PCIe 3.0 x4, so "Max/Current Gen 3, x4" is normal on
-  the dock and is not the dead-link symptom. "Replays Since Reset" should stay 0.
+  "GPU Link Info".
+- Run `pcie` and keep the output as the baseline.
 
 **Stage 2: idle temperatures (15 min, no load)**
 ```bash
@@ -188,9 +228,11 @@ sustained, a hot retrain, then cool-down. 350 W is the stock limit.
 
 Results: `kubectl logs -n ai job/<name>` while the Job exists (7 days), or Loki
 `{namespace="ai", app="gpu-soak"} |= "R,"`. The line format is in the `soak.py` docstring.
+Run `pcie` after every stage and compare it with the baseline.
 A card that drops off the bus shows as `CUDA_ERROR` plus Xid 79 in dmesg, and after 10 min
-as `GpuTestNodeGpuMissing`. Note the time and the dmesg lines on #3052 before anyone
-power-cycles the dock.
+as `GpuTestNodeGpuMissing`. Before anyone power-cycles, run `pcie` and post the time, its
+output and the dmesg lines on #3052; that reading is what tells cable from card. Then power
+down in OCuLink order: PC off, dock off and on, PC on.
 
 ## 4. Swapping cards, or retiring the node
 

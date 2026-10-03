@@ -926,12 +926,15 @@ patches:
             network.haynesops.com/vpn: "true"
             intel.feature.node.kubernetes.io/gpu: "true"
 ---
-# talosw04: bare-metal mini PC + Thunderbolt eGPU dock, the ex-`edgew01` of the retired edge
-# cluster (same machine id; it was registered only with the decommissioned self-hosted Omni,
-# so it re-joins from SaaS-Omni boot media). It is a swappable GPU TEST node: the kubelet
-# registers it with the NoSchedule taint `haynesops.com/gpu-test`, so only pods that
-# tolerate it land here (the nvidia device plugin, the GPU exporter, the toleration-everything
-# DaemonSets, and the test Jobs). First card on it: the suspect RTX 3090 from #3052.
+# talosw04: bare-metal mini PC + OCuLink eGPU dock (a direct PCIe x4 cable, so no Thunderbolt
+# extension or authorization is involved), the ex-`edgew01` of the retired edge cluster (same
+# machine id; it was registered only with the decommissioned self-hosted Omni, so it re-joins
+# from SaaS-Omni boot media). OCuLink is not hot-pluggable: the dock must be cabled and
+# powered before the PC boots or the card does not enumerate. It is a swappable GPU TEST
+# node: the kubelet registers it with the NoSchedule taint `haynesops.com/gpu-test`, so only
+# pods that tolerate it land here (the nvidia device plugin, the GPU exporter, the
+# toleration-everything DaemonSets, and the test Jobs). First card on it: the suspect RTX
+# 3090 from #3052.
 # Procedure and test ladder: .agents/runbooks/egpu-test-node.md.
 kind: Machine
 systemExtensions:
@@ -941,7 +944,6 @@ systemExtensions:
   # (spec.hardware.processors[].manufacturer) and swap to siderolabs/intel-ucode if it
   # says Intel. Either way the wrong ucode is inert, never harmful.
   - siderolabs/amd-ucode
-  - siderolabs/thunderbolt
   - siderolabs/nvidia-container-toolkit-lts
   - siderolabs/nvidia-open-gpu-kernel-modules-lts
 name: 77d65c00-5811-11ef-b65b-a8751caa6100
@@ -973,11 +975,6 @@ patches:
             - name: nvidia_uvm
             - name: nvidia_drm
             - name: nvidia_modeset
-            # The thunderbolt extension README asks for the module to be loaded explicitly.
-            # The extension also ships a udev rule that authorizes every Thunderbolt device
-            # on add (and pins its power/control to "on"), so no boltd is needed. That rule
-            # covers the BIOS "user authorization" security level, not "secure connect".
-            - name: thunderbolt
         network:
           hostname: talosw04
           # No deviceSelector: git has no record of this box's NICs, and a guessed MAC
