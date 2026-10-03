@@ -23,6 +23,7 @@ in-place upgrade.
 | worker | talosw01 | `83596797-0281-4927-94fb-f34bb869b1de` | 192.168.40.53 | **Proxmox VM 103**, GPU passthrough (3090), nvidia |
 | worker | talosw02 | `2fe46add-9e72-401c-8ec1-b5fb6837ffa0` | 192.168.40.77 | Proxmox VM, i915 |
 | worker | talosw03 | `960513a6-7a1d-4ece-949d-54a022fe85e5` | 192.168.40.21 | Proxmox VM, i915 |
+| worker | talosw04 | `77d65c00-5811-11ef-b65b-a8751caa6100` | DHCP | bare-metal mini PC + OCuLink eGPU dock (ex-edgew01), nvidia, tainted `haynesops.com/gpu-test` — [egpu-test-node](egpu-test-node.md) |
 
 Worker eth0 MACs (to find the Proxmox VM by NIC): w01 `bc:24:11:83:72:d2`,
 w02 `bc:24:11:6f:7e:cd`, w03 `bc:24:11:c5:5b:92`. The `.30` VPN NIC (`net1`,
@@ -56,8 +57,8 @@ export OMNICONFIG="$PWD/kubernetes/main/bootstrap/omni/haynes-ops-omniconfig.yam
   ✓) and removes `gitRepo` volumes (none) / deprecates `Service.spec.externalIPs`
   (ours empty).
 - **Extensions:** confirm all carry forward for the target (intel-ucode,
-  nut-client, nvidia-container-toolkit-lts, nvidia-open-gpu-kernel-modules-lts,
-  thunderbolt, qemu-guest-agent, i915). NVIDIA CDI is default-on in 1.13 —
+  amd-ucode (talosw04), nut-client, nvidia-container-toolkit-lts,
+  nvidia-open-gpu-kernel-modules-lts, thunderbolt, qemu-guest-agent, i915). NVIDIA CDI is default-on in 1.13 —
   validate GPU workloads after.
 - **Breaking config changes:** e.g. 1.13 `machine.network.nameservers` now
   OVERWRITES lower layers (we set a complete single-server set, fine).

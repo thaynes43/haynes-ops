@@ -46,7 +46,14 @@ spec:
         deviceIDStrategy: uuid
         securityContext:
           privileged: true
-    tolerations: []
+    # talosw04 (the eGPU test node) is tainted haynesops.com/gpu-test:NoSchedule so
+    # ordinary GPU apps stay off it; the plugin still runs there so its card is
+    # advertised as nvidia.com/gpu (it matches the extension label above). Only
+    # pods that carry the same toleration can claim that card.
+    tolerations:
+      - key: haynesops.com/gpu-test
+        operator: Exists
+        effect: NoSchedule
     resources:
       requests:
         cpu: 100m

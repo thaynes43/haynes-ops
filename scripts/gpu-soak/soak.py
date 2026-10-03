@@ -11,6 +11,12 @@ Every record is one CSV line on stdout, so Loki keeps the whole run after the Jo
 SOAK_PLAN is a comma list of <name>:<cycles>:<idle s>:<burst s>. The default runs the failure
 trigger seen on 2026-09-23 (a render starting from idle, when the link retrains from Gen1),
 then 20 min of sustained load, then the trigger again from a hot idle, then a cool-down.
+
+Safety knobs for a suspect card (.agents/runbooks/egpu-test-node.md):
+  SOAK_POWER_LIMIT_W  cap the board power (nvidia-smi -pm 1 + -pl) before any load. Needs root
+                      with CAP_SYS_ADMIN; if the cap cannot be applied the run aborts unloaded.
+  SOAK_ABORT_C        stop all load the moment the core reaches this temperature, keep sampling
+                      the cool-down for 2 minutes, and exit 3 (END,ABORTED_HOT).
 """
 import os
 import statistics
@@ -23,6 +29,8 @@ PLAN = os.environ.get("SOAK_PLAN", "trigger:4:240:90,sustain:1:0:1200,hottrigger
 SAMPLE_MS = int(os.environ.get("SOAK_SAMPLE_MS", "2000"))
 MATRIX = int(os.environ.get("SOAK_MATRIX", "8192"))
 WINDOW_S = float(os.environ.get("SOAK_WINDOW_S", "5"))
+POWER_LIMIT_W = os.environ.get("SOAK_POWER_LIMIT_W", "")
+ABORT_C = float(os.environ.get("SOAK_ABORT_C", "0"))
 
 QUERY = ("temperature.gpu,fan.speed,power.draw,clocks.sm,clocks.mem,pcie.link.gen.current,"
          "pcie.link.width.current,clocks_event_reasons.active,utilization.gpu,memory.used")
@@ -34,6 +42,7 @@ samples = []            # (phase, temp, sm, reasons, power, fan)
 bursts = {}             # phase -> [(t, tflops)]
 lock = threading.Lock()
 stop = threading.Event()
+hot = threading.Event()  # set once the core reaches SOAK_ABORT_C
 
 
 def ts():
@@ -65,6 +74,10 @@ def sampler():
             with lock:
                 p = phase
             emit("S", ts(), p, *f)
+            temp = num(f[0])
+            if ABORT_C and temp is not None and temp >= ABORT_C and not hot.is_set():
+                hot.set()
+                emit("E", ts(), "ABORT_HOT", f"{temp:.0f}C>={ABORT_C:.0f}C")
             try:
                 reasons = int(f[7], 16)
             except ValueError:
@@ -85,7 +98,17 @@ def set_phase(p):
 
 def main():
     threading.Thread(target=sampler, daemon=True).start()
-    emit("E", ts(), "START", f"plan={PLAN};matrix={MATRIX};visible={os.environ.get('NVIDIA_VISIBLE_DEVICES', '?')}")
+    emit("E", ts(), "START", f"plan={PLAN};matrix={MATRIX};visible={os.environ.get('NVIDIA_VISIBLE_DEVICES', '?')}"
+         f";power_limit={POWER_LIMIT_W or 'default'};abort_c={ABORT_C or 'off'}")
+    if POWER_LIMIT_W:
+        # Persistence mode keeps the driver state (and so the cap) alive between clients.
+        for cmd in (["nvidia-smi", "-pm", "1"], ["nvidia-smi", "-pl", POWER_LIMIT_W]):
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            out = " ".join((r.stdout + r.stderr).split()).replace(",", ";")
+            emit("E", ts(), "POWER_CAP", f"{' '.join(cmd)};rc={r.returncode};{out}")
+            if r.returncode != 0:
+                emit("E", ts(), "END", "ABORTED_NO_CAP")
+                sys.exit(4)  # never load a suspect card uncapped when a cap was asked for
     import torch  # imported after the sampler starts so a CUDA init failure is still sampled
 
     dev = torch.device("cuda:0")
@@ -103,7 +126,7 @@ def main():
         torch.cuda.synchronize()
         emit("E", ts(), "FIRST_KERNEL", f"{p};{time.time() - t0:.3f}s")
         win_t, win_n = time.time(), 0
-        while time.time() - t0 < seconds:
+        while time.time() - t0 < seconds and not hot.is_set():
             for _ in range(10):
                 torch.mm(a, b, out=c)
             torch.cuda.synchronize()
@@ -120,6 +143,8 @@ def main():
         for step in PLAN.split(","):
             name, cycles, idle_s, burst_s = step.split(":")
             for i in range(1, int(cycles) + 1):
+                if hot.is_set():
+                    break
                 if int(idle_s):
                     set_phase(f"{name}{i}-idle")
                     time.sleep(int(idle_s))
@@ -131,11 +156,21 @@ def main():
         set_phase("after-error")
         time.sleep(60)          # keep sampling: does nvidia-smi still see the card?
 
+    if hot.is_set() and not failed:
+        set_phase("after-hot")
+        time.sleep(120)         # sample the cool-down with the load off
+
     stop.set()
     time.sleep(SAMPLE_MS / 1000 + 1)
     summarize()
-    emit("E", ts(), "END", "FAILED" if failed else "OK")
-    sys.exit(2 if failed else 0)
+    if failed:
+        emit("E", ts(), "END", "FAILED")
+        sys.exit(2)
+    if hot.is_set():
+        emit("E", ts(), "END", "ABORTED_HOT")
+        sys.exit(3)
+    emit("E", ts(), "END", "OK")
+    sys.exit(0)
 
 
 def summarize():

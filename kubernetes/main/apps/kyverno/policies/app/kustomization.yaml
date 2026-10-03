@@ -11,3 +11,4 @@ resources:
   - ./exceptions/multus-rbac.yaml
   - ./exceptions/rbac-legit.yaml
   - ./exceptions/pss-baseline.yaml
+  - ./exceptions/egpu-test-capabilities.yaml

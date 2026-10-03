@@ -31,6 +31,9 @@ spec:
         #                  #3052 single-card soak. Set it back to 2 when #0 is reinstalled.)
         #   talosm01 = 1  (RTX A2000 — vexa-whisper)
         #   talosm03 = 1  (RTX 2000 Ada — ollama-assist02)
+        # talosw04 (the eGPU test node) is deliberately NOT in either vector: it
+        # carries suspect cards on purpose, so a drop there must not page. Its
+        # card count is watched by the warning-level GpuTestNodeGpuMissing below.
         # The label_replace(vector(0), ...) terms make the left side read 0
         # rather than "no data" when a node reports nothing at all, so total
         # silence (exporter unscheduled, nvidia-smi failing, driver gone) fires
@@ -87,13 +90,50 @@ spec:
               `kubectl get pods -n observability -l app.kubernetes.io/name=nvidia-gpu-exporter -o wide`
               and that pod's logs. A pod that is Running but serving errors usually means
               nvidia-smi is wedged: the fix is a node reboot.
+          # talosw04 is excluded for the same reason it is absent from GpuMissing: with
+          # a dead card on the dock the exporter's container may not even start there.
           expr: |
-            max by (node) (up{job="nvidia-gpu-exporter"}) == 0
-            and on (node)
-            (max by (node) (kube_node_status_condition{condition="Ready", status="true"}) == 1)
+            (
+              max by (node) (up{job="nvidia-gpu-exporter"}) == 0
+              and on (node)
+              (max by (node) (kube_node_status_condition{condition="Ready", status="true"}) == 1)
+            )
+            unless on (node) label_replace(vector(1), "node", "talosw04", "", "")
           for: 15m
           labels:
             severity: critical
+            scope: host
+
+        # The eGPU test node (talosw04, .agents/runbooks/egpu-test-node.md) carries
+        # cards that are under test because they are suspected of dropping off the
+        # bus, so losing one there is a test RESULT, not an incident. Warning routes
+        # to the "null" receiver: it shows in Alertmanager and Grafana, never on
+        # Pushover. Expected count is 1 card on the dock; an empty dock fires it too,
+        # which is just as unremarkable.
+        - alert: GpuTestNodeGpuMissing
+          annotations:
+            summary: >-
+              The eGPU test node {{ $labels.node }} is reporting no NVIDIA GPU.
+            description: >-
+              nvidia-smi on the test node {{ $labels.node }} has listed no GPU for 10 minutes, or
+              its exporter is not reporting. If a card test is running, this is the result
+              being tested for: note the time and check `talosctl -n <node-ip> dmesg | grep -iE
+              'nvrm|xid|aer|pcieport'` and the link/AER reading (`pcie` in the runbook) before
+              anyone power-cycles. The dock is OCuLink, which is not hot-pluggable: PC off, dock
+              off and on, then PC on. Procedure: .agents/runbooks/egpu-test-node.md. This alert
+              never pages.
+          expr: |
+            (
+              count by (node) (nvidia_smi_gpu_info{node="talosw04"})
+              or label_replace(vector(0), "node", "talosw04", "", "")
+            )
+            < on (node)
+            label_replace(vector(1), "node", "talosw04", "", "")
+            # only while the node exists, so it is quiet before the box joins
+            and on (node) kube_node_info
+          for: 10m
+          labels:
+            severity: warning
             scope: host
 
         # Warning on purpose (#3052): the chassis can only shed ~150 W per card

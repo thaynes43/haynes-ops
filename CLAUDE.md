@@ -31,10 +31,12 @@ Each app follows this structure: `kubernetes/{cluster}/apps/{domain}/{app-name}/
 
 **The edge cluster was retired on 2026-09-22** and `kubernetes/edge/` was deleted along
 with `kubeconfig-edge`, its `flux-local` CI matrix leg and its Renovate paths. Its nodes
-(edgem01-03, edgew01) were VMs on the pve01-03 hosts that left the Proxmox cluster, and
-nothing matching them exists in the fleet. Git history keeps the tree
-(`git log -- kubernetes/edge`). See `.agents/reference/repo-overview.md` for the leftovers
-outside this repo that are still Tom's to clear.
+were bare metal, not VMs: edgem01-03 were MS-01 servers (the old Proxmox hosts pve01-03,
+re-installed as Talos) and now sit idle, and edgew01 was a mini PC with an OCuLink eGPU
+dock that rejoins `main` as the tainted GPU test worker talosw04
+([egpu-test-node](.agents/runbooks/egpu-test-node.md)). Git history keeps the tree
+(`git log -- kubernetes/edge`). See `.agents/reference/repo-overview.md` for the details and
+for the leftovers outside this repo that are still Tom's to clear.
 
 ## Navigating the Live System
 
@@ -175,7 +177,7 @@ destroy the cluster. Do not add `--yes` to get past one.
 
 Longer-form runbooks, safety rules, and reference context live in [`.agents/`](.agents/README.md) (migrated from the retired `.cursor/rules/`). Consult these when the task matches:
 
-- **Runbooks** — [`.agents/runbooks/`](.agents/runbooks/): [talos-version-upgrade](.agents/runbooks/talos-version-upgrade.md) (bump Talos/k8s via Omni, verify per node, re-image a node that won't upgrade), [renovate-upgrade-batches](.agents/runbooks/renovate-upgrade-batches.md) (merge Renovate PR backlogs in risk-tiered batches), [volsync-restore](.agents/runbooks/volsync-restore.md), [volsync-unlock](.agents/runbooks/volsync-unlock.md), [ceph-daemon-crash](.agents/runbooks/ceph-daemon-crash.md) (CephDaemonCrash: the rem lane verifies + archives self-recovered crashes; repeat signatures escalate), [agentic-remediation](.agents/runbooks/agentic-remediation.md) (the `rem-*` lane that fixes a critical alert instead of paging).
+- **Runbooks** — [`.agents/runbooks/`](.agents/runbooks/): [talos-version-upgrade](.agents/runbooks/talos-version-upgrade.md) (bump Talos/k8s via Omni, verify per node, re-image a node that won't upgrade), [renovate-upgrade-batches](.agents/runbooks/renovate-upgrade-batches.md) (merge Renovate PR backlogs in risk-tiered batches), [volsync-restore](.agents/runbooks/volsync-restore.md), [volsync-unlock](.agents/runbooks/volsync-unlock.md), [ceph-daemon-crash](.agents/runbooks/ceph-daemon-crash.md) (CephDaemonCrash: the rem lane verifies + archives self-recovered crashes; repeat signatures escalate), [agentic-remediation](.agents/runbooks/agentic-remediation.md) (the `rem-*` lane that fixes a critical alert instead of paging), [egpu-test-node](.agents/runbooks/egpu-test-node.md) (talosw04, the tainted OCuLink-eGPU worker: join it, test a suspect card, swap cards).
 - **Rules** — [`.agents/rules/`](.agents/rules/): [flux-pvc-prune-safety](.agents/rules/flux-pvc-prune-safety.md).
 - **Reference** — [`.agents/reference/`](.agents/reference/): [talos-omni-gotchas](.agents/reference/talos-omni-gotchas.md) (silent Talos/Omni node & network traps — read before editing the Omni cluster template or upgrading), [repo-overview](.agents/reference/repo-overview.md), [cluster-inspection](.agents/reference/cluster-inspection.md).
 
