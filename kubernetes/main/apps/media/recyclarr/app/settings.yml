@@ -1,0 +1,13 @@
+# Recyclarr settings (projected read-only to /config/settings.yml).
+# Local custom formats: one flat directory per service, each file a CF JSON in
+# TRaSH format with its own trash_id. The JSON files live in ./custom-formats/
+# and are mounted by the helmrelease into the paths below.
+resource_providers:
+  - name: haynes-radarr-cfs
+    type: custom-formats
+    path: /custom-formats/radarr
+    service: radarr
+  - name: haynes-sonarr-cfs
+    type: custom-formats
+    path: /custom-formats/sonarr
+    service: sonarr

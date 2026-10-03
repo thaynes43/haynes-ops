@@ -10,6 +10,9 @@ configMapGenerator:
   - name: recyclarr-config
     files:
       - recyclarr.yml=./recyclarr.yml
+      - settings.yml=./settings.yml
+      - radarr-language-not-english-or-original.json=./custom-formats/radarr-language-not-english-or-original.json
+      - sonarr-language-not-english-or-original.json=./custom-formats/sonarr-language-not-english-or-original.json
 generatorOptions:
   disableNameSuffixHash: true
   annotations:
