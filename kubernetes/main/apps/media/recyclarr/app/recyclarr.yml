@@ -20,18 +20,20 @@
 # until_score 10000 + increment 1 on both apps. NOTE: below the until_quality
 # rung the score cutoff never applies (the arrs treat any lower-quality file as
 # cutoff-unmet), so the +100 increment is the brake that matters there.
+# Sonarr's delay profile (120 min Usenet, bypass at score 1775) is set via the
+# API, not here: see .agents/runbooks/arr-quality-profiles.md.
 #
-# LANGUAGE (user, 2026-10-03): "Language: Not English or Original" is a local
-# custom format (./custom-formats/, wired in through ./settings.yml). It matches
-# a release or file with neither English nor the title's original language
-# (a German dub of an English show; NOT an English dub, NOT Japanese anime).
-# STAGED AT SCORE 0: scoring it -10000 also scores the ~249 existing files that
-# match (223 Sonarr episodes, 26 Radarr movies, 2026-10-03), which makes every
-# one of them replaceable by any English/original release RSS sees. Flip both
-# `score: 0` lines to -10000 once that is ruled acceptable; min_format_score 0
-# then rejects new matching grabs. Radarr's profile language is already
-# "Original" (set in the app, not here), so Radarr already refuses new grabs
-# without the original language, English dubs of foreign films included.
+# LANGUAGE (user, 2026-10-03: "I don't want shit dubs I want films in their
+# original language"). Radarr: TRaSH "Language: Not Original" at -10000, so a
+# release or file without the film's original language is refused, English
+# dubs of foreign films included; the profile language also stays "Original"
+# (set in the app). Sonarr: "Language: Not English or Original" at -10000, a
+# local CF (./custom-formats/, wired in through ./settings.yml) that matches a
+# release or file with neither English nor the show's original language (a
+# German dub of an English show; NOT an English dub, NOT Japanese anime).
+# min_format_score 0 rejects new matching grabs. Existing matching files (84
+# Radarr movies, 223 Sonarr episodes, 2026-10-03) become replaceable through
+# RSS only; the owner accepted that. Never trigger a search for them.
 radarr:
   radarr:
     base_url: http://radarr.media.svc.cluster.local:7878
@@ -142,12 +144,12 @@ radarr:
           - 5608c71bcebba0a5e666223bae8c9227 # HD Bluray Tier 03
         assign_scores_to:
           - name: FHD-UHD
-      # === language guard (local CF, see LANGUAGE above). STAGED at 0. ===
+      # === language guard (see LANGUAGE above) ===
       - trash_ids:
-          - haynes-language-not-english-or-original
+          - d6e9318c875905d6cfb5bee961afcea9 # Language: Not Original
         assign_scores_to:
           - name: FHD-UHD
-            score: 0 # staged; -10000 activates it
+            score: -10000
 
 sonarr:
   sonarr:
@@ -215,9 +217,9 @@ sonarr:
           - d0c516558625b04b363fa6c5c2c7cfd4 # WEB Scene
         assign_scores_to:
           - name: FHD-UHD
-      # === language guard (local CF, see LANGUAGE above). STAGED at 0. ===
+      # === language guard (local CF, see LANGUAGE above) ===
       - trash_ids:
           - haynes-language-not-english-or-original
         assign_scores_to:
           - name: FHD-UHD
-            score: 0 # staged; -10000 activates it
+            score: -10000
