@@ -53,7 +53,9 @@ def _fetch_nzb_without_logging_url(nzburl):  # haynes-ops fix
     """Fetch the NZB bytes for an indexer URL. Never logs or returns the URL."""
     logger = logging.getLogger(__name__)
     try:
-        r = requests.get(nzburl, timeout=CONFIG.get_int('HTTP_TIMEOUT'), proxies=proxy_list(), verify=False)
+        r = requests.get(nzburl, timeout=CONFIG.get_int('HTTP_TIMEOUT'), proxies=proxy_list(),
+                         verify=(CONFIG['SSL_CERTS'] or True) if nzburl.startswith('https')
+                         and CONFIG.get_bool('SSL_VERIFY') else False)
     except Exception as e:
         logger.error(f"Unable to fetch nzb for SAB: {type(e).__name__}")
         return None
