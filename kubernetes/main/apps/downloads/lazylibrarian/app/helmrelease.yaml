@@ -37,11 +37,12 @@ spec:
             # cluster's allowlisted-registry Kyverno policy; docker.io is.
             image:
               repository: docker.io/linuxserver/lazylibrarian
-              # librarysync.py, searchbook.py and sabnzbd.py in this image are
-              # overridden by the lazylibrarian-librarysync, -searchbook and
-              # -sabnzbd ConfigMaps (persistence below), copies of THIS tag's
+              # librarysync.py, searchbook.py, sabnzbd.py, gb.py and dbupgrade.py
+              # in this image are overridden by the lazylibrarian-librarysync,
+              # -searchbook, -sabnzbd, -gb and -dbupgrade ConfigMaps
+              # (persistence below), copies of THIS tag's
               # files plus marked fixes. Bumping the tag means re-deriving all
-              # three files from the new image, or dropping them if upstream
+              # five files from the new image, or dropping them if upstream
               # fixed the bugs: see the headers of the files in patches/.
               tag: version-40a389ea
             env:
@@ -160,6 +161,29 @@ spec:
             app:
               - path: /app/lazylibrarian/lazylibrarian/sabnzbd.py
                 subPath: sabnzbd.py
+                readOnly: true
+      # Books the API's addBook created vanished at the next restart
+      # (thaynes43/haynesnetwork#665): addBook never wrote the bookauthors row
+      # the start-up check counts, so it deleted their author and the books
+      # cascaded. gb.py writes the row; dbupgrade.py spares any author that
+      # owns books. Pinned to the image tag above; see the files' headers.
+      gb-patch:
+        type: configMap
+        name: lazylibrarian-gb
+        advancedMounts:
+          lazylibrarian:
+            app:
+              - path: /app/lazylibrarian/lazylibrarian/gb.py
+                subPath: gb.py
+                readOnly: true
+      dbupgrade-patch:
+        type: configMap
+        name: lazylibrarian-dbupgrade
+        advancedMounts:
+          lazylibrarian:
+            app:
+              - path: /app/lazylibrarian/lazylibrarian/dbupgrade.py
+                subPath: dbupgrade.py
                 readOnly: true
       # RW mount of the gasha01 share at the SAME mountpoint the *arrs +
       # qBittorrent + SABnzbd use, so completed-download paths

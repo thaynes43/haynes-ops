@@ -2,7 +2,7 @@
 # haynes-ops override (downloads/lazylibrarian, ConfigMap lazylibrarian-librarysync)
 #
 # This is LazyLibrarian's upstream lazylibrarian/librarysync.py, byte for byte,
-# plus this comment block and ONE added line (search for "haynes-ops fix").
+# plus this comment block and two marked changes (search for "haynes-ops fix").
 #
 # PINNED TO UPSTREAM: image docker.io/linuxserver/lazylibrarian:version-40a389ea
 #   (LazyLibrarian commit 40a389ea, pyproject version 2026.05.25).
@@ -15,8 +15,14 @@
 # then wrote that other book's .opf next to the file and pointed that book's
 # BookFile at it (thaynes43/haynesnetwork#631).
 #
+# Fix 2: a scan run with `remove` (the web UI's scan; the CronJob's API scans
+# do not pass it) deleted every Paused author with TotalBooks=0. Authors the
+# API's addBook created count zero (no bookauthors row, see gb.py), so that
+# delete took their books with it (books.AuthorID cascades). It now spares
+# any author that still owns a book row (thaynes43/haynesnetwork#665).
+#
 # BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
-# librarysync.py, and either re-apply the one line to it (if upstream has not
+# librarysync.py, and either re-apply both marked changes to it (if upstream has not
 # fixed the bug) or drop this override (if it has). Never carry this file onto
 # a different image unchanged: it would silently revert every other upstream
 # change to the library scan.
@@ -1472,10 +1478,13 @@ def library_scan(startdir=None, library='eBook', authid=None, remove=True):
         if remove:
             # sometimes librarything tells us about a series contributor
             # but openlibrary doesn't agree...
-            res = db.select("select * from authors where status='Paused' and totalbooks=0")
+            # haynes-ops fix 2: never an author that still owns a book row (its books would cascade).
+            res = db.select("select * from authors where status='Paused' and totalbooks=0 "
+                            "and authorid not in (select authorid from books where authorid is not null)")
             if len(res):
                 logger.debug(f"Removed {len(res)} empty series authors")
-                db.action("delete from authors where status='Paused' and totalbooks=0")
+                db.action("delete from authors where status='Paused' and totalbooks=0 "
+                          "and authorid not in (select authorid from books where authorid is not null)")
 
         logger.info('Library scan complete')
         return new_book_count
