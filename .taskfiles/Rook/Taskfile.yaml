@@ -26,7 +26,7 @@ tasks:
   # from the CephCluster's own spec.storage.nodes[].devices[].name in
   # kubernetes/main/apps/storage/rook-ceph/rook-ceph/cluster/helmrelease.yaml.
   # NEVER put a /dev/nvmeXn1 name here: the kernel re-enumerates those across boots
-  # and re-images, and on all three masters /dev/nvme0n1 is the Talos SYSTEM disk,
+  # and re-images, and on the masters /dev/nvme0n1 is usually the Talos SYSTEM disk,
   # not an OSD. Re-derive the lists after adding or replacing a disk:
   #   kubectl -n rook-ceph get cephcluster -o jsonpath='{.items[0].spec.storage}'
   #   talosctl -n <node-ip> ls -l /dev/disk/by-id
@@ -79,6 +79,38 @@ tasks:
     vars:
       node: talosm03
 
+  # talosm04 = 192.168.40.6 (ex-edgem03, #3332)
+  wipe-disks-talosm04:
+    desc: '!! DESTRUCTIVE !! Wipe the Rook-Ceph OSD disks on node "talosm04"'
+    prompt: This ERASES both Ceph OSD disks on talosm04. Continue?
+    cmds:
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/disk/by-id/nvme-MZ1LB1T9HBLS-000FB_S5XANA0RC09203"
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/disk/by-id/nvme-MZ1LB1T9HBLS-000FB_S5XANA0RC09200"
+    vars:
+      node: talosm04
+
+  # talosm05 = DHCP, 192.168.40.79 in maintenance (ex-edgem01, #3332)
+  wipe-disks-talosm05:
+    desc: '!! DESTRUCTIVE !! Wipe the Rook-Ceph OSD disks on node "talosm05"'
+    prompt: This ERASES both Ceph OSD disks on talosm05. Continue?
+    cmds:
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/disk/by-id/nvme-MZ1LB1T9HBLS-000FB_S5XANA0T104001"
+      - task: wipe-disk
+        vars:
+          node: "{{.node}}"
+          ceph_disk: "/dev/disk/by-id/nvme-MZ1LB1T9HBLS-000FB_S5XANE0NC09196"
+    vars:
+      node: talosm05
+
   # Generic form, for a node that has no wipe-disks-<node> target above (e.g. a new
   # master joining the cluster). Also the only caller of wipe-data, which clears the
   # /var/lib/rook leftovers that make a re-created OSD complain about a bluestore fs.
@@ -89,7 +121,7 @@ tasks:
       ceph_disk: device to erase (required). MUST be a stable /dev/disk/by-id/... path,
         copied verbatim from the CephCluster's spec.storage.nodes[].devices[].name — a
         /dev/nvmeXn1 name is rejected, because the kernel re-enumerates those across boots
-        and /dev/nvme0n1 is the Talos system disk on every master. List a node's by-id
+        and /dev/nvme0n1 is usually the Talos system disk on a master. List a node's by-id
         names with `talosctl -n <ip> ls -l /dev/disk/by-id`.
     prompt: This ERASES {{.ceph_disk}} and /var/lib/rook on {{.node}}. Continue?
     cmds:
@@ -134,8 +166,8 @@ tasks:
       secondJobName: "second-wipe-{{- .node -}}"
     env: *task-vars
     preconditions:
-      # Refuse a kernel device name outright — /dev/nvme0n1 is the Talos system disk
-      # on all three masters, and the mapping moves across boots and re-images.
+      # Refuse a kernel device name outright — /dev/nvme0n1 is usually the Talos system
+      # disk on a master, and the mapping moves across boots and re-images.
       - sh: 'echo "{{.ceph_disk}}" | grep -q "^/dev/disk/by-id/"'
         msg: '`ceph_disk` must be a stable /dev/disk/by-id/... path (got "{{.ceph_disk}}") — see the CephCluster spec.storage.nodes[].devices[].name'
       - sh: test -f {{.waitForJobScript}}

@@ -136,6 +136,14 @@ spec:
         urlPrefix: /
         ssl: false
         prometheusEndpoint: http://prometheus-operated.observability.svc.cluster.local:9090
+      # Five mons, matching the five-member etcd (talosm01-05, #3332). The required
+      # control-plane affinity under placement.mon puts one on each master
+      # (allowMultiplePerNode: false). Keep the count odd, and raise it only once
+      # every master it needs is Ready: a mon with no eligible node never schedules.
+      # mgr keeps the chart default of 2.
+      mon:
+        count: 5
+        allowMultiplePerNode: false
       mgr:
         modules:
           - name: insights
@@ -181,6 +189,18 @@ spec:
             devices:
               - name: "/dev/disk/by-id/nvme-MZ1LB1T9HBLS-000FB_S5XANA0T113526"
               - name: "/dev/disk/by-id/nvme-SAMSUNG_MZ1LB1T9HALS-00007_S436NA0N910040"
+          # talosm04 (ex-edgem03) and talosm05 (ex-edgem01), #3332: two 1.92 TB Samsung
+          # PM983s each, read live 2026-10-03/04. They were zapped before this landed (an
+          # empty GPT label makes ceph-volume reject a disk). The CT1000T500SSD8 in each is
+          # the Talos system disk.
+          - name: talosm04
+            devices:
+              - name: "/dev/disk/by-id/nvme-MZ1LB1T9HBLS-000FB_S5XANA0RC09203"
+              - name: "/dev/disk/by-id/nvme-MZ1LB1T9HBLS-000FB_S5XANA0RC09200"
+          - name: talosm05
+            devices:
+              - name: "/dev/disk/by-id/nvme-MZ1LB1T9HBLS-000FB_S5XANA0T104001"
+              - name: "/dev/disk/by-id/nvme-MZ1LB1T9HBLS-000FB_S5XANE0NC09196"
       placement:
         mgr: &placement
           nodeAffinity:
