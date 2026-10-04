@@ -7,6 +7,9 @@
 #                    equivalent in practice via `sudo qm`, same tier Tom ruled for the
 #                    API operator token (2026-09-09, Q-1).
 #   HaynesTower    → root (Unraid has no other SSH user); key in /boot/config/ssh/root.pubkeys.
+#   PiKVM          → root (2026-10-03, Tom). Console + ATX on every bare-metal master via
+#                    the TESmart KVM, so root-equivalent on the masters. Read-only rootfs:
+#                    `rw` only for a config deploy, `ro` straight after.
 #
 # usage: hw-ssh list
 #        hw-ssh <host> [command...]         # no command = interactive shell
@@ -14,7 +17,8 @@
 #        hw-ssh --raw <user@fqdn> [cmd...]  # anything else the CNP allows on :22
 #
 # Rules (runbook .agents/runbooks/proxmox-access.md): read-first; `declare-activity`
-# before anything disruptive; no node reboots or Unraid array stop/start from here.
+# before anything disruptive; no node reboots or Unraid array stop/start from here; no
+# PiKVM ATX power/reset, Wake-on-LAN or console keystrokes without Tom's go-ahead.
 set -uo pipefail
 
 KEY="${HW_SSH_KEY:-$HOME/.ssh/dev-env-hw}"
@@ -23,12 +27,13 @@ DOMAIN=haynesnetwork
 PVE_NODES=(haynesintelligence twin-top twin-bottom pve04 pve-filet02)
 
 die() { printf 'hw-ssh: %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '11,15p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '/^# usage:/,/^#$/{/^#$/d;s/^# \{0,1\}//;p;}' "$0"; exit "${1:-0}"; }
 
 target() {  # host alias → user@fqdn
   case "$1" in
     haynesintelligence|twin-top|twin-bottom|pve04|pve-filet02) printf 'dev-env@%s.%s' "$1" "$DOMAIN" ;;
     haynestower|unraid|tower) printf 'root@haynestower.%s' "$DOMAIN" ;;
+    pikvm|kvm) printf 'root@pikvm.%s' "$DOMAIN" ;;
     *) return 1 ;;
   esac
 }
@@ -48,6 +53,7 @@ case "$1" in
   list)
     for n in "${PVE_NODES[@]}"; do printf '%-20s %s\n' "$n" "$(target "$n")"; done
     printf '%-20s %s\n' haynestower "$(target haynestower)"
+    printf '%-20s %s\n' pikvm "$(target pikvm)"
     ;;
   pve-all)
     shift; [[ $# -ge 1 ]] || die "pve-all needs a command"
