@@ -8,11 +8,12 @@ See `./pikvm.yaml` for example config - I am manually keeping this in sync with 
 
 `pikvm.yaml` on `main` is the source of truth. On the PiKVM web terminal run `su -`
 (enter the root password), then paste this single line. It backs up the current
-override, pulls the repo copy, validates it with `kvmd -m`, restarts kvmd, and puts
-the old file back if validation fails:
+override, downloads the repo copy to a temp file (a failed download changes nothing),
+validates it with `kvmd -m`, restarts kvmd, and on any failure restores the old file
+and restarts kvmd again. It prints `APPLIED` or `ROLLED_BACK`:
 
 ```sh
-rw; cp /etc/kvmd/override.yaml /etc/kvmd/override.yaml.bak; curl -fsSL https://raw.githubusercontent.com/thaynes43/haynes-ops/main/pikvm.yaml -o /etc/kvmd/override.yaml && kvmd -m >/dev/null && systemctl restart kvmd && echo APPLIED || { cp /etc/kvmd/override.yaml.bak /etc/kvmd/override.yaml; echo ROLLED_BACK; }; ro
+rw; cp /etc/kvmd/override.yaml /etc/kvmd/override.yaml.bak && curl -fsSL https://raw.githubusercontent.com/thaynes43/haynes-ops/main/pikvm.yaml -o /tmp/pikvm.yaml && cp /tmp/pikvm.yaml /etc/kvmd/override.yaml && { kvmd -m >/dev/null && systemctl restart kvmd && echo APPLIED || { cp /etc/kvmd/override.yaml.bak /etc/kvmd/override.yaml; systemctl restart kvmd; echo ROLLED_BACK; }; }; ro
 ```
 
 TESmart mapping: kvmd `serverN` / pin `N` is switch input PC`N+1` (server0 = PC1 ...
