@@ -113,6 +113,37 @@ Omni) then goes out the VPN with an unstable exit IP, so **Omni shows the machin
   goes out mgmt (`eth0`). Re-add it (same MAC) after the node is installed and on
   disk — the now-static `eth1` config means the bug won't recur.
 
+## 6. nut-client's config is in UI-made Omni patches, not the template → new node sticks in `booting`
+
+The control planes carry `siderolabs/nut-client` in their template `systemExtensions`,
+but the extension's `ExtensionServiceConfig` (`upsmon.conf`, which holds NUT
+credentials) cannot go in this public repo. It lives in machine-level Omni config
+patches made in the Omni UI: IDs `500-<uuid>`, labelled only
+`omni.sidero.dev/machine: <machine-id>` (no cluster label, so template syncs never
+touch them). A node that gets the extension from the template but has no such patch
+waits for that config forever.
+
+- **Tell:** the node is Ready in k8s and in etcd, yet `talosctl get machinestatus`
+  stays at stage `booting`, Omni counts its machine set short (e.g. 3/5 ready), and
+  `talosctl service ext-nut-client` shows `Waiting for extension service config`.
+  Hit by talosm04 + talosm05 when they joined on 2026-10-03 (#3339).
+- **Fix:** give the new machine its own machine-level patch. dev-env's Omni account
+  is a Reader, so the write goes through an Operator-key Job (the
+  [egpu-test-node](../runbooks/egpu-test-node.md) §2 pattern) that reads the source
+  patch and writes the clone inside the Job, keeping the credentials out of sessions
+  and logs. Never print a patch's `spec.data`; to inspect one, print its `MONITOR`
+  line with the password field masked.
+- **Check the MONITOR target before cloning.** On 2026-10-03 all three talosm01-03
+  patches (identical payloads) pointed at `HaynesTowerUPS@haynestower.haynesnetwork`,
+  which no longer serves NUT: HaynesTower became a NUT client of
+  `APC-2700W@nut2700.haynesnetwork` (192.168.40.12, LXC ct:105). So every master's
+  `ext-nut-client` showed `Running` while logging `connect failed: Connection refused`
+  and protected nothing. `Running` is not proof; read
+  `talosctl logs ext-nut-client`. The masters belong on the large UPS, the APC
+  Smart-UPS X 3000 behind `nut2700` (Tom, 2026-10-03), not the 900 W Back-UPS behind
+  `nut01` (ct:124, `APC-900W-01`). `upsc -l <host>` and `upsc <ups>@<host>` read a NUT
+  server without credentials; `hw-ssh haynestower` has `upsc`.
+
 ---
 
 ## Quick triage map
@@ -124,6 +155,7 @@ Omni) then goes out the VPN with an unstable exit IP, so **Omni shows the machin
 | Node shows as a new/duplicate machine after reinstall | META wiped, lost Omni identity | 3 |
 | Node reboot-loops back to the OLD version after an upgrade | `/boot` too small for initramfs | 4 |
 | Booted ISO, node says connected but Omni says offline / won't install | VPN NIC stealing egress in maintenance | 5 |
+| Node Ready in k8s + etcd, but Omni stage stays `booting` / machine set short | nut-client extension with no machine-level `ExtensionServiceConfig` patch | 6 |
 
 ## Reset Ceph after node work
 
