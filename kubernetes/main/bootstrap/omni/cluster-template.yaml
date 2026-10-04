@@ -551,11 +551,16 @@ patches:
 # (ruling 2026-10-03, #3332). Hardware read live from machinestatus/talosctl on 2026-10-03,
 # in maintenance mode: BIOS AHWSA.1.22, UKI boot, Secure Boot off.
 kind: Machine
+# NVIDIA extensions removed until #3348 is fixed (the RTX A2000 is fitted but never
+# enumerates on PCI). Without the card, ext-nvidia-persistenced and ext-nvidia-cdi-gen
+# never start, startAllServices hits its 1h deadline, "boot sequence: failed", and Talos
+# reboots: an hourly reboot loop on 2026-10-04 that dropped osd.6/osd.8, a mon and an
+# etcd member each time. Restore siderolabs/nvidia-container-toolkit-lts and
+# siderolabs/nvidia-open-gpu-kernel-modules-lts here, plus the kernel.modules block
+# below, only once `lspci -d 10de:` on talosm04 lists the card (steps on #3348).
 systemExtensions:
   - siderolabs/intel-ucode
   - siderolabs/nut-client
-  - siderolabs/nvidia-container-toolkit-lts
-  - siderolabs/nvidia-open-gpu-kernel-modules-lts
   - siderolabs/thunderbolt
 name: 0412ab80-f1ae-11ee-9e2d-bdcefa626900
 # Omni-native kernel args (gotcha #2: under UKI, install.extraKernelArgs is silently
@@ -583,14 +588,9 @@ patches:
           diskSelector:
             model: CT1000T500SSD8
           wipe: true
-        kernel:
-          modules:
-            - name: nvidia
-              parameters:
-                - NVreg_OpenRmEnableUnsupportedGpus=1
-            - name: nvidia_uvm
-            - name: nvidia_drm
-            - name: nvidia_modeset
+        # NVIDIA kernel.modules (nvidia with NVreg_OpenRmEnableUnsupportedGpus=1, nvidia_uvm,
+        # nvidia_drm, nvidia_modeset; same as talosm01) removed with the extensions above
+        # until #3348 is fixed. Put them back in the same PR that restores the extensions.
         network:
           hostname: talosm04
           # Same enumeration as talosm01, verified live: eth2/eth3 = X710 SFP+,
