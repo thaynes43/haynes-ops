@@ -154,6 +154,10 @@ spec:
               # HaynesTower (Unraid NAS) — SSH tier (backlog 14, 2026-09-17), same
               # exact-name discipline as the PVE nodes above.
               - matchName: "haynestower.haynesnetwork"
+              # PiKVM (2026-10-03, Tom): console + ATX for every bare-metal master
+              # via the TESmart KVM. SSH tier only (root, rule 5b); its web UI stays
+              # off this allowlist. Fixed IP 192.168.40.33 + UDM local DNS record.
+              - matchName: "pikvm.haynesnetwork"
               # auth-watch pages via Pushover
               - matchName: "api.pushover.net"
               # ---- sigoalumni.org buildout (sigo-alumni backlog/tooling, 2026-08-05) ----
@@ -392,6 +396,8 @@ spec:
     #    PVE nodes (login as the sudo-allowlisted `dev-env` user) and to HaynesTower,
     #    the Unraid NAS (root — Unraid's only SSH user). The key comes from 1Password
     #    (dev-env-hw-ssh ES → HW_SSH_PRIVATE_KEY_B64); `hw-ssh` is the entry point.
+    #    PiKVM added 2026-10-03 (Tom): root over SSH = console on every master, so
+    #    root-equivalent; rules in .agents/runbooks/proxmox-access.md (SSH tier).
     - toFQDNs:
         - matchName: "haynesintelligence.haynesnetwork"
         - matchName: "twin-top.haynesnetwork"
@@ -399,6 +405,7 @@ spec:
         - matchName: "pve04.haynesnetwork"
         - matchName: "pve-filet02.haynesnetwork"
         - matchName: "haynestower.haynesnetwork"
+        - matchName: "pikvm.haynesnetwork"
       toPorts:
         - ports:
             - port: "22"
