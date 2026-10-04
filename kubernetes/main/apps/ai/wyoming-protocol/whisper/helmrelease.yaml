@@ -33,10 +33,10 @@ spec:
     controllers:
       whisper:
         pod:
-          # Pinned to the host, not to `nvidia-a2000`: that label matches this
-          # node's A2000 today, but Tom has more A2000 mini-PCs to add (#3101)
-          # and the label would then be ambiguous. This service has to land on
-          # the same card as vexa-whisper, by Tom's ruling — see the timeout
+          # Pinned to the host, not to `nvidia-a2000`: that label also matches
+          # the A2000s in talosm04 and talosm05 (#3101, #3332), so it is
+          # ambiguous. This service has to land on the same card as
+          # vexa-whisper, by Tom's ruling — see the timeout
           # note below for what happens when it lands anywhere else.
           nodeSelector:
             kubernetes.io/hostname: talosm01

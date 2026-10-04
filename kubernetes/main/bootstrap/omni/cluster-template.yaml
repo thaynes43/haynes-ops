@@ -21,6 +21,12 @@ machines:
   - 88d0b080-43be-11ef-9fe8-3b0f229ef000
   - c1f22c00-4390-11ef-a299-436f6535c900
   - 98290580-1909-11ef-944c-5fe147626300
+  # talosm04 (ex-edgem03) and talosm05 (ex-edgem01) take etcd from 3 to 5 members (#3332).
+  # Sync only while every machine listed here shows in `omnictl get machines`: an
+  # unregistered entry leaves this machine set ScalingUp, which stalls Kubernetes-version
+  # upgrades (.agents/runbooks/egpu-test-node.md, section 2).
+  - 0412ab80-f1ae-11ee-9e2d-bdcefa626900
+  - 100b8400-f2fa-11ee-8190-410728e5a600
 patches:
   - idOverride: 400-haynes-ops-control-planes
     inline:
@@ -538,6 +544,312 @@ patches:
             network.haynesops.com/ceph-private: "true" # eth3 58:47:ca:77:c5:af
             network.haynesops.com/sonos: "true"        # eth0 58:47:ca:77:c5:b0
             network.haynesops.com/iot: "true"          # eth1 58:47:ca:77:c5:b1
+---
+# talosm04: Minisforum MS-01 (i9-13900H, 96 GiB), the ex-`edgem03` of the retired edge
+# cluster (and before that the Proxmox host pve03). Same machine id as on the decommissioned
+# self-hosted Omni (SMBIOS UUID); it re-joined from SaaS-Omni boot media. Fourth etcd member
+# (ruling 2026-10-03, #3332). Hardware read live from machinestatus/talosctl on 2026-10-03,
+# in maintenance mode: BIOS AHWSA.1.22, UKI boot, Secure Boot off.
+kind: Machine
+systemExtensions:
+  - siderolabs/intel-ucode
+  - siderolabs/nut-client
+  - siderolabs/nvidia-container-toolkit-lts
+  - siderolabs/nvidia-open-gpu-kernel-modules-lts
+  - siderolabs/thunderbolt
+name: 0412ab80-f1ae-11ee-9e2d-bdcefa626900
+# Omni-native kernel args (gotcha #2: under UKI, install.extraKernelArgs is silently
+# ignored, so this block has none). The boot media carries the same single arg and Omni's
+# KernelArgs for this machine already reads [net.ifnames=0], so the installed set matches
+# and nothing re-applies (the omni#2382 reboot loop needs an arg duplicated outside Omni).
+kernelArgs:
+  - net.ifnames=0
+patches:
+  - idOverride: 400-cm-0412ab80-f1ae-11ee-9e2d-bdcefa626900
+    inline:
+      machine:
+        # Talos service-log shipping to the vector aggregator (see talosm01).
+        logging:
+          destinations:
+            - endpoint: udp://192.168.40.212:6051/
+              format: json_lines
+              extraTags:
+                hostname: talosm04
+                cluster: main
+        install:
+          # The 1 TB Crucial T500 (serial 240646DDEE52, nvme0n1 in maintenance). The only
+          # CT1000T500SSD8 in the box: the two Samsung PM983s are the Rook OSD disks, and
+          # the model match also keeps the install off the USB boot stick (/dev/sda).
+          diskSelector:
+            model: CT1000T500SSD8
+          wipe: true
+        kernel:
+          modules:
+            - name: nvidia
+              parameters:
+                - NVreg_OpenRmEnableUnsupportedGpus=1
+            - name: nvidia_uvm
+            - name: nvidia_drm
+            - name: nvidia_modeset
+        network:
+          hostname: talosm04
+          # Same enumeration as talosm01, verified live: eth2/eth3 = X710 SFP+,
+          # eth0 = I226-V, eth1 = I226-LM. MACs lowercase (gotcha #1).
+          interfaces:
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:0a:7a # eth2, mgmt, Pro Aggregation SFP+ 7 (Hayneslab 4)
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 100
+              vip:
+                ip: 192.168.40.202
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:0a:7b # eth3, ceph, Pro Aggregation SFP+ 16 (RookLan 6)
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 2000
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:0a:7c # eth0, Default, Pro Max 24 PoE port 12
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 3000
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:0a:7d # eth1, IoT, Pro Max 24 PoE port 16 (IoT 5)
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 4000
+          nameservers:
+            - 192.168.40.1
+          disableSearchDomain: true
+        sysctls:
+          user.max_user_namespaces: "11255"
+          net.core.bpf_jit_harden: 1
+          fs.inotify.max_queued_events: "65536"
+          fs.inotify.max_user_instances: "8192"
+          fs.inotify.max_user_watches: "524288"
+          net.core.rmem_max: "7500000"
+          net.core.wmem_max: "7500000"
+        kubelet:
+          extraArgs:
+            rotate-server-certificates: "true"
+          # Image GC — rationale on the first machine block (#2913).
+          extraConfig:
+            imageGCHighThresholdPercent: 75
+            imageGCLowThresholdPercent: 65
+            imageMaximumGCAge: 168h
+          defaultRuntimeSeccompProfileEnabled: true
+          nodeIP:
+            validSubnets:
+              - 192.168.40.0/24
+          disableManifestsDirectory: true
+          extraMounts:
+            - destination: /var/openebs/local
+              type: bind
+              source: /var/openebs/local
+              options:
+                - bind
+                - rshared
+                - rw
+        files:
+            - content: |
+                [plugins."io.containerd.grpc.v1.cri"]
+                  enable_unprivileged_ports = true
+                  enable_unprivileged_icmp = true
+                [plugins."io.containerd.grpc.v1.cri".containerd]
+                  discard_unpacked_layers = false
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                  discard_unpacked_layers = false
+              permissions: 0
+              path: /etc/cri/conf.d/20-customization.part
+              op: create
+            - content: |
+                [ NFSMount_Global_Options ]
+                nfsvers=4.2
+                hard=True
+                noatime=True
+                nodiratime=True
+                rsize=131072
+                wsize=131072
+                nconnect=8
+              permissions: 420
+              path: /etc/nfsmount.conf
+              op: overwrite
+        features:
+            rbac: true
+            stableHostname: true
+            apidCheckExtKeyUsage: true
+            diskQuotaSupport: true
+            kubePrism:
+                enabled: true
+                port: 7445
+            hostDNS:
+                enabled: true
+                resolveMemberNames: true
+                forwardKubeDNSToHost: false
+        nodeLabels:
+            topology.kubernetes.io/region: main
+            topology.kubernetes.io/zone: m
+            network.haynesops.com/ceph-private: "true" # eth3 58:47:ca:77:0a:7b
+            network.haynesops.com/sonos: "true"        # eth0 58:47:ca:77:0a:7c
+            network.haynesops.com/iot: "true"          # eth1 58:47:ca:77:0a:7d
+---
+# talosm05: Minisforum MS-01 (i9-13900H, 96 GiB), the ex-`edgem01` of the retired edge
+# cluster (and before that the Proxmox host pve01). Same machine id as on the decommissioned
+# self-hosted Omni (SMBIOS UUID); it re-joined from SaaS-Omni boot media. Fifth etcd member
+# (ruling 2026-10-03, #3332). Hardware read live from machinestatus/talosctl on 2026-10-04,
+# in maintenance mode: BIOS AHWSA.1.22, UKI boot, Secure Boot off, RTX A2000 12GB at 01:00.0.
+kind: Machine
+systemExtensions:
+  - siderolabs/intel-ucode
+  - siderolabs/nut-client
+  - siderolabs/nvidia-container-toolkit-lts
+  - siderolabs/nvidia-open-gpu-kernel-modules-lts
+  - siderolabs/thunderbolt
+name: 100b8400-f2fa-11ee-8190-410728e5a600
+# Omni-native kernel args (gotcha #2: under UKI, install.extraKernelArgs is silently
+# ignored, so this block has none). The boot media carries the same single arg and Omni's
+# KernelArgs for this machine already reads [net.ifnames=0], so the installed set matches
+# and nothing re-applies (the omni#2382 reboot loop needs an arg duplicated outside Omni).
+kernelArgs:
+  - net.ifnames=0
+patches:
+  - idOverride: 400-cm-100b8400-f2fa-11ee-8190-410728e5a600
+    inline:
+      machine:
+        # Talos service-log shipping to the vector aggregator (see talosm01).
+        logging:
+          destinations:
+            - endpoint: udp://192.168.40.212:6051/
+              format: json_lines
+              extraTags:
+                hostname: talosm05
+                cluster: main
+        install:
+          # The 1 TB Crucial T500 (serial 240646DF8CA6, nvme0n1 in maintenance). The only
+          # CT1000T500SSD8 in the box: the two Samsung PM983s are the Rook OSD disks, and
+          # the model match also keeps the install off the USB boot stick (/dev/sda).
+          diskSelector:
+            model: CT1000T500SSD8
+          wipe: true
+        kernel:
+          modules:
+            - name: nvidia
+              parameters:
+                - NVreg_OpenRmEnableUnsupportedGpus=1
+            - name: nvidia_uvm
+            - name: nvidia_drm
+            - name: nvidia_modeset
+        network:
+          hostname: talosm05
+          # Same enumeration as talosm01, verified live: eth2/eth3 = X710 SFP+,
+          # eth0 = I226-V, eth1 = I226-LM. MACs lowercase (gotcha #1). The 2.5G pair was
+          # cabled crossed, so the Flex 2.5G native VLANs were swapped on 2026-10-04
+          # (port 3 Default, port 2 IoT) rather than recabled.
+          interfaces:
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:13:da # eth2, mgmt, Pro Aggregation SFP+ 19 (Hayneslab 4)
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 100
+              vip:
+                ip: 192.168.40.202
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:13:db # eth3, ceph, Pro Aggregation SFP+ 20 (RookLan 6)
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 2000
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:13:dc # eth0, Default, Flex 2.5G 8 PoE port 3
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 3000
+            - deviceSelector:
+                hardwareAddr: 58:47:ca:77:13:dd # eth1, IoT, Flex 2.5G 8 PoE port 2 (IoT 5)
+              mtu: 1500
+              dhcp: true
+              dhcpOptions:
+                routeMetric: 4000
+          nameservers:
+            - 192.168.40.1
+          disableSearchDomain: true
+        sysctls:
+          user.max_user_namespaces: "11255"
+          net.core.bpf_jit_harden: 1
+          fs.inotify.max_queued_events: "65536"
+          fs.inotify.max_user_instances: "8192"
+          fs.inotify.max_user_watches: "524288"
+          net.core.rmem_max: "7500000"
+          net.core.wmem_max: "7500000"
+        kubelet:
+          extraArgs:
+            rotate-server-certificates: "true"
+          # Image GC — rationale on the first machine block (#2913).
+          extraConfig:
+            imageGCHighThresholdPercent: 75
+            imageGCLowThresholdPercent: 65
+            imageMaximumGCAge: 168h
+          defaultRuntimeSeccompProfileEnabled: true
+          nodeIP:
+            validSubnets:
+              - 192.168.40.0/24
+          disableManifestsDirectory: true
+          extraMounts:
+            - destination: /var/openebs/local
+              type: bind
+              source: /var/openebs/local
+              options:
+                - bind
+                - rshared
+                - rw
+        files:
+            - content: |
+                [plugins."io.containerd.grpc.v1.cri"]
+                  enable_unprivileged_ports = true
+                  enable_unprivileged_icmp = true
+                [plugins."io.containerd.grpc.v1.cri".containerd]
+                  discard_unpacked_layers = false
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                  discard_unpacked_layers = false
+              permissions: 0
+              path: /etc/cri/conf.d/20-customization.part
+              op: create
+            - content: |
+                [ NFSMount_Global_Options ]
+                nfsvers=4.2
+                hard=True
+                noatime=True
+                nodiratime=True
+                rsize=131072
+                wsize=131072
+                nconnect=8
+              permissions: 420
+              path: /etc/nfsmount.conf
+              op: overwrite
+        features:
+            rbac: true
+            stableHostname: true
+            apidCheckExtKeyUsage: true
+            diskQuotaSupport: true
+            kubePrism:
+                enabled: true
+                port: 7445
+            hostDNS:
+                enabled: true
+                resolveMemberNames: true
+                forwardKubeDNSToHost: false
+        nodeLabels:
+            topology.kubernetes.io/region: main
+            topology.kubernetes.io/zone: m
+            network.haynesops.com/ceph-private: "true" # eth3 58:47:ca:77:13:db
+            network.haynesops.com/sonos: "true"        # eth0 58:47:ca:77:13:dc
+            network.haynesops.com/iot: "true"          # eth1 58:47:ca:77:13:dd
 ---
 kind: Machine
 systemExtensions:

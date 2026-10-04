@@ -41,8 +41,13 @@ spec:
         app.kubernetes.io/name: vexa-whisper
     spec:
       runtimeClassName: nvidia
+      # Pinned to the host, not to the `nvidia-a2000` NFD label: talosm04 and
+      # talosm05 joined with an A2000 each (#3332), so the label matches three
+      # nodes. wyoming whisper and kokoro share THIS card by Tom's ruling (#2960)
+      # and are pinned to talosm01 the same way; a label selector would let this
+      # pod drift to another A2000 on its next roll and split them up (#3101).
       nodeSelector:
-        feature.node.kubernetes.io/nvidia-a2000: "true"
+        kubernetes.io/hostname: talosm01
       containers:
         - name: whisper
           # Pinned by digest: latest-cuda is an unpinned floating tag, and the

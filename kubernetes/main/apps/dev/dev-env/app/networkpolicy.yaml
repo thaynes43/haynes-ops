@@ -353,9 +353,9 @@ spec:
               protocol: TCP
     # 4. Talos apid (tcp/50000) on the cluster nodes — read-only node triage
     #    (backlog 10): talosctl with an os:reader talosconfig reads dmesg / service
-    #    logs / machine resources directly from each node (masters talosm01-03 are
-    #    bare metal and hard-reset 2026-07-18 & 2026-07-24 with no in-pod way to read
-    #    machine events). SELECT NODE ENTITIES, NOT A CIDR: the repo uses toEntities
+    #    logs / machine resources directly from each node (masters talosm01-05 are
+    #    bare metal; two of them hard-reset 2026-07-18 & 2026-07-24 with no in-pod way
+    #    to read machine events). SELECT NODE ENTITIES, NOT A CIDR: the repo uses toEntities
     #    for cluster infra and Cilium's policy-cidr-match-mode is unset, so a toCIDR
     #    on 192.168.40.0/24 would SILENTLY fail to match — Cilium classifies node IPs
     #    as host/remote-node identities, not CIDR. The port scopes this to apid; the
