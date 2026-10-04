@@ -4,7 +4,23 @@ See `./pikvm.yaml` for example config - I am manually keeping this in sync with 
 
 ## Editing Config
 
-To edit config in pikvm terminal:
+### Apply `pikvm.yaml` in one paste
+
+`pikvm.yaml` on `main` is the source of truth. On the PiKVM web terminal run `su -`
+(enter the root password), then paste this single line. It backs up the current
+override, pulls the repo copy, validates it with `kvmd -m`, restarts kvmd, and puts
+the old file back if validation fails:
+
+```sh
+rw; cp /etc/kvmd/override.yaml /etc/kvmd/override.yaml.bak; curl -fsSL https://raw.githubusercontent.com/thaynes43/haynes-ops/main/pikvm.yaml -o /etc/kvmd/override.yaml && kvmd -m >/dev/null && systemctl restart kvmd && echo APPLIED || { cp /etc/kvmd/override.yaml.bak /etc/kvmd/override.yaml; echo ROLLED_BACK; }; ro
+```
+
+TESmart mapping: kvmd `serverN` / pin `N` is switch input PC`N+1` (server0 = PC1 ...
+server15 = PC16, the switch is 16-port). Edit `pikvm.yaml` in git, never on the device.
+
+### Manual edit
+
+To edit config by hand in the pikvm terminal:
 
 ```yaml
 su -
