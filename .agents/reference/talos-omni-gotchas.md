@@ -165,6 +165,46 @@ waits for that config forever.
   (`fopen /run/nut/upsd.pid`) because systemd runs upsd with `-F` and it writes no
   pid file.
 
+### UPS / NUT: topology and shutdown policy
+
+- **Topology.** The APC Smart-UPS X 3000 (`APC-2700W`, NMC at 192.168.40.71, SNMPv3)
+  is read by NUT 2.8.0 `snmp-ups` on `nut2700` (ct:105 on twin-top, served at
+  192.168.40.12:3493). nut2700's own upsmon is the primary and logs in as `upsmon`.
+  The secondaries are HaynesTower (Unraid nut-dw plugin; it logs in as `upsmon` but its
+  `MONITOR` line says `slave`) and talosm01-05 (user `talos`, see above). With all of
+  them logged in, `upsc -c APC-2700W@localhost` on ct:105 lists 7 IPs.
+- **Policy (Tom, 2026-10-04): shut down on runtime left, not on time on battery.** The
+  Generac generator and transfer switch usually restore power within a minute, so
+  everything rides the battery and shuts down cleanly only if the generator fails.
+  HaynesTower goes at 15 minutes of runtime left and the masters at 10 minutes. At about
+  65% load the UPS reports roughly 2,500 s of runtime, so that is about 27 and 32
+  minutes on battery.
+- **Masters, 10 min: `/etc/nut/ups.conf` on ct:105, section `[APC-2700W]`:**
+  `ignorelb` and `override.battery.runtime.low = 600`. The driver ignores the NMC's own
+  low-battery flag (which fires at 120 s) and raises LB itself when
+  `battery.runtime < battery.runtime.low`. On OB+LB the primary sets FSD, and every
+  secondary still logged in shuts down. Check with `upsc APC-2700W@localhost`: it should
+  show `battery.runtime.low: 600` and `driver.flag.ignorelb: enabled`. The driver logs
+  `dstate_setflags: base variable (battery.runtime.low) is immutable` about every 30 s.
+  That is the override holding, because snmp-ups keeps trying to mark the NMC value
+  writable; it is not a fault. The NMC's own threshold stays at 120 s. Never change it
+  with `upsrw`, and never `upscmd` the UPS from an agent.
+- **Editing `ups.conf` restarts the driver by itself.** `nut-driver-enumerator.path`
+  watches the file. When a section changes, it re-creates `nut-driver@APC-2700W`, which
+  leaves about 2 s of stale data, and reloads upsd with SIGHUP, so clients stay logged
+  in. Edit the file only while `ups.status` is `OL`. upsmon ignores a UPS that goes
+  stale after it was last seen OL, but a UPS last seen OB is promoted to OB+LB after
+  DEADTIME. Back the file up first (`ups.conf.bak-<stamp>`).
+- **HaynesTower, 15 min: `/boot/config/plugins/nut-dw/nut-dw.cfg`**, which is Settings →
+  NUT in the Unraid UI. Shutdown Mode is "Runtime Left" (`SHUTDOWN="batt_timer"`) with
+  `RTVALUE="900"`. The value is in seconds and is compared directly with
+  `battery.runtime`. `RTUNIT="seconds"` only sets how the UI displays runtime. These keys
+  are not written into any NUT config file. `/usr/sbin/nut-notify` reads the cfg when
+  upsmon reports ONBATT, polls `battery.runtime` until it is at or below `RTVALUE`, then
+  runs `upsmon -c fsd`. That shuts down HaynesTower only, because it is a secondary. A
+  cfg edit takes effect at the next ONBATT and needs no restart. Before 2026-10-04 it was
+  "Time on Battery" with 600 s.
+
 ---
 
 ## Quick triage map
