@@ -25,6 +25,8 @@ task flux:install-helm-apps       # cilium + coredns + csr-approver + spegel (pr
 task rook:wipe-disks-talosm01     # each of these prompts before it erases anything
 task rook:wipe-disks-talosm02
 task rook:wipe-disks-talosm03
+task rook:wipe-disks-talosm04
+task rook:wipe-disks-talosm05
 task flux:bootstrap               # needs age.key — run from the workstation
 ```
 
