@@ -8,3 +8,4 @@ resources:
   - ./nvidia-a2000-gpu-device.yaml
   - ./nvidia-2000-ada-gpu-device.yaml
   - ./nvidia-3090-gpu-device.yaml
+  - ./nvidia-gpu-device.yaml

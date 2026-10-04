@@ -18,6 +18,9 @@ spec:
     name: haynes-ops
     namespace: flux-system
   wait: true
+  # The plugin's node affinity needs the feature.node.kubernetes.io/nvidia-gpu label,
+  # which comes from a NodeFeatureRule in node-feature-discovery-rules (which itself
+  # depends on node-feature-discovery).
   dependsOn:
-    - name: node-feature-discovery
+    - name: node-feature-discovery-rules
       namespace: kube-system

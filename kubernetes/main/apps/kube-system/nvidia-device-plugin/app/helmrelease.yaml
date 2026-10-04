@@ -26,11 +26,19 @@ spec:
       retries: 3
       strategy: rollback
   values:
-    # Any node whose Talos nvidia extensions are installed (a2000/2000-ada/3090
-    # today) — the old single-label selector matched only the A2000 box, and
-    # with no control-plane toleration the plugin has run NOWHERE for months;
-    # nvidia.com/gpu was advertised on no node. The plugin pod itself needs the
-    # nvidia RuntimeClass on Talos to see the devices.
+    # A node needs BOTH the Talos nvidia extensions AND an NVIDIA card that is actually
+    # on the PCI bus. The extensions alone are not enough: talosm04 joined (#3332) with
+    # its A2000 not enumerating, and the plugin container could not even start there
+    # ("failed to initialize NVML: Driver Not Loaded", RunContainerError loop). The
+    # card check is the generic NFD label from the nvidia-gpu-device NodeFeatureRule
+    # (any 10de display/3D device), so a new card model needs no change here.
+    # The second term keeps talosw04, the tainted eGPU test node: NFD's worker does not
+    # tolerate its taint, so it never gets NFD labels and is matched by its own Talos
+    # node label instead. A suspect card there that drops off the bus restarts the
+    # plugin by design; that node never pages.
+    # (History: the old single-label selector matched only the A2000 box, and with no
+    # control-plane toleration the plugin ran NOWHERE for months.) The plugin pod itself
+    # needs the nvidia RuntimeClass on Talos to see the devices.
     affinity:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
@@ -38,6 +46,15 @@ spec:
             - matchExpressions:
                 - key: extensions.talos.dev/nvidia-container-toolkit-lts
                   operator: Exists
+                - key: feature.node.kubernetes.io/nvidia-gpu
+                  operator: In
+                  values: ["true"]
+            - matchExpressions:
+                - key: extensions.talos.dev/nvidia-container-toolkit-lts
+                  operator: Exists
+                - key: haynesops.com/gpu-test
+                  operator: In
+                  values: ["true"]
     runtimeClassName: nvidia
     flags:
       migStrategy: single

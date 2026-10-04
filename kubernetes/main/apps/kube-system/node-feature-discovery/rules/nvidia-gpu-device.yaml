@@ -1,0 +1,25 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/nfd.k8s-sigs.io/nodefeaturerule_v1alpha1.json
+apiVersion: nfd.k8s-sigs.io/v1alpha1
+kind: NodeFeatureRule
+metadata:
+  name: nvidia-gpu-device
+spec:
+  rules:
+    - # Any NVIDIA GPU on the PCI bus, whatever the model. The per-model rules next to
+      # this one pin workloads to a card type; this one answers "is there an NVIDIA GPU
+      # here at all", which is what the nvidia-device-plugin needs. NFD's own labels are
+      # per device id (pci-0300_10de_2571.present), so nothing generic existed before.
+      # A node with the nvidia Talos extensions but no enumerated card (talosm04 at
+      # join, #3332) must not get the plugin: its container fails to start with
+      # "failed to initialize NVML: Driver Not Loaded" and crash-loops.
+      name: nvidia.gpu
+      labels:
+        feature.node.kubernetes.io/nvidia-gpu: "true"
+      matchFeatures:
+        - feature: pci.device
+          matchExpressions:
+            # 0300 VGA-compatible (every card here today), 0302 3D controller
+            # (datacenter cards that have no display engine).
+            class: { op: In, value: ["0300", "0302"] }
+            vendor: { op: In, value: ["10de"] }
