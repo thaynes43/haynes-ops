@@ -39,6 +39,20 @@ configMapGenerator:
       - sabnzbd.py=./patches/sabnzbd.py
     options:
       disableNameSuffixHash: true
+  # Patched upstream gb.py + dbupgrade.py (thaynes43/haynesnetwork#665): the
+  # API's addBook writes the bookauthors row it skipped, and the start-up
+  # check never deletes an author that still owns books (books.AuthorID
+  # cascades). Mounted by helmrelease.yaml; pinned to the image tag there.
+  - name: lazylibrarian-gb
+    files:
+      - gb.py=./patches/gb.py
+    options:
+      disableNameSuffixHash: true
+  - name: lazylibrarian-dbupgrade
+    files:
+      - dbupgrade.py=./patches/dbupgrade.py
+    options:
+      disableNameSuffixHash: true
 generatorOptions:
   # Python source with $Author-style strings: keep Flux post-build
   # substitution away from it.
