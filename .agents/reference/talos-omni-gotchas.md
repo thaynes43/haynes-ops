@@ -128,8 +128,10 @@ waits for that config forever.
   `talosctl service ext-nut-client` shows `Waiting for extension service config`.
   Hit by talosm04 + talosm05 when they joined on 2026-10-03 (#3339). Stage `booting`
   means *any* service is still `Waiting`, so check `talosctl services` for others.
-  For example, talosm04 also waits on `ext-nvidia-persistenced` ("Waiting for file
+  For example, talosm04 also waited on `ext-nvidia-persistenced` ("Waiting for file
   /sys/bus/pci/drivers/nvidia") because its GPU does not enumerate (#3348).
+  **It does not stay there:** 70 minutes into the boot, Talos gives up and reboots
+  (section 7). Fix it inside that window.
 - **Current state (2026-10-03, #3347):** each of the five masters has its own patch:
   `500-9f9b0486-…` (talosm01), `500-60c89b5b-…` (m02), `500-6ef5e5d8-…` (m03),
   `500-nut-client-talosm04`, and `500-nut-client-talosm05`. All five have the same payload:
@@ -205,6 +207,51 @@ waits for that config forever.
   cfg edit takes effect at the next ONBATT and needs no restart. Before 2026-10-04 it was
   "Time on Battery" with 600 s.
 
+## 7. A service that never comes up reboots the node every 70 minutes
+
+Talos's boot sequence waits in `startAllServices` for every service, extension services
+included, to report `up`. If one stays `Waiting`, the task hits its deadline **70 minutes
+after it started**, the boot sequence fails and Talos reboots the node. The same service
+waits again on the next boot, so the node reboots every ~72 minutes. Each reboot takes
+down whatever the node runs. For a master that is an etcd member, its Ceph mon and its
+OSDs.
+
+- **Signature** (Loki `{node="<node>", talos_service="machined"}`; nothing in the Omni
+  audit log, because nobody asked for the reboot):
+  ```
+  [talos] task startAllServices (1/1): failed: 2 errors occurred:
+          * context deadline exceeded
+          * context deadline exceeded          <- one line per service still Waiting
+  [talos] phase startEverything (9/9): failed
+  [talos] boot sequence: failed
+  [talos] initialize sequence: 9 phase(s)      <- about 85 s later, the next boot
+  ```
+  The earlier `task startAllServices (1/1): service "X" to be "up", ...` lines, every
+  15 s, name the services it is waiting for.
+- **Between reboots the node looks healthy:** k8s Ready, etcd member healthy, Ceph OSDs
+  up. Only Omni (stage `booting`, machine set short) and `talosctl services` show
+  anything wrong. Do not read "Ready and in quorum" as "fine".
+- **Known causes:**
+  - An NVIDIA extension on a node whose card is not on the PCI bus. `ext-nvidia-persistenced`
+    waits for `/sys/bus/pci/drivers/nvidia`, which never appears, and
+    `KernelModuleSpecController` logs `load nvidia failed: no such device`. Seen on
+    talosm04 on 2026-10-04 (A2000 fitted but not enumerating, #3348): it rebooted at
+    03:14 UTC and was due again at about 04:26. #3353 took its NVIDIA extensions and
+    `kernel.modules` out of the template; the restore steps are on #3348. This also
+    applies to talosw04 if it boots without its card. A dock powered up after the PC, or
+    a card that dropped off the bus before a reboot, puts it in the loop
+    ([egpu-test-node](../runbooks/egpu-test-node.md) §1).
+  - `ext-nut-client` with no machine-level config patch (section 6).
+- **Fix:** make the service able to start (add its config, or fit the hardware), or
+  remove the extension from the node's template block and sync. Removing an extension
+  changes the schematic. Omni then cordons and drains the node, runs a same-version
+  upgrade to the new installer image and reboots it once. The upgrade cancels the stuck
+  boot sequence (`startAllServices (1/1): failed: context canceled`, then
+  `reboot sequence`), so it does not wait for the 70-minute deadline. On talosm04
+  (#3353) it took 3.5 minutes from the operator-key sync to stage `running`, and the new
+  boot logged `boot sequence: done: 6.477328845s`. That line is the proof the loop is
+  gone: once the boot sequence is done, there is no deadline left to hit.
+
 ---
 
 ## Quick triage map
@@ -216,7 +263,8 @@ waits for that config forever.
 | Node shows as a new/duplicate machine after reinstall | META wiped, lost Omni identity | 3 |
 | Node reboot-loops back to the OLD version after an upgrade | `/boot` too small for initramfs | 4 |
 | Booted ISO, node says connected but Omni says offline / won't install | VPN NIC stealing egress in maintenance | 5 |
-| Node Ready in k8s + etcd, but Omni stage stays `booting` / machine set short | an extension service still `Waiting` (`talosctl services`): nut-client with no machine-level patch, or nvidia with no GPU | 6 |
+| Node Ready in k8s + etcd, but Omni stage stays `booting` / machine set short | an extension service still `Waiting` (`talosctl services`): nut-client with no machine-level patch, or nvidia with no GPU | 6, 7 |
+| Node reboots about every 72 min with no audit-log entry; OSDs, mon and etcd member drop each time | a service still `Waiting` when the 70-min `startAllServices` deadline hits: `boot sequence: failed` | 7 |
 
 ## Reset Ceph after node work
 

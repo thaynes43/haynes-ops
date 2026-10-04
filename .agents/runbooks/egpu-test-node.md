@@ -57,7 +57,10 @@ page. Its reboots still show in `node_boot_time_seconds`.
    **first** in the boot order, and boot the USB once from the one-time boot menu.
 7. OCuLink is **not hot-pluggable**. On every boot, connect the cable and power the dock
    **before** powering the PC; a dock that comes up after the PC never enumerates the card.
-   Never unplug the cable or switch the dock off while the PC is on.
+   Never unplug the cable or switch the dock off while the PC is on. If talosw04 does boot
+   without its card, its NVIDIA extension services wait forever and Talos reboots the node
+   70 minutes into each boot ([talos-omni-gotchas](../reference/talos-omni-gotchas.md)
+   section 7). Power it off, power the dock on, then boot the PC again.
 8. Dock power supply: a 350 W RTX 3090 spikes well past 500 W for milliseconds. Use a dock
    PSU of at least 650-750 W, feeding the card with two separate 8-pin cables, not one
    daisy-chained cable. The 150 W capped stage is safe on any dock; the full burn is not.
