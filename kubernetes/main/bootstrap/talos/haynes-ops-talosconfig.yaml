@@ -10,6 +10,11 @@ contexts:
             - 192.168.40.53
             - 192.168.40.77
             - 192.168.40.21
+            # By node name: the Omni proxy resolves those too, and these three hold DHCP
+            # leases rather than fixed addresses.
+            - talosw04
+            - talosm04
+            - talosm05
         auth:
             siderov1:
                 identity: manofoz@gmail.com

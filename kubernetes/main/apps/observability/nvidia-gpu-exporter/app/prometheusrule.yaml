@@ -31,21 +31,30 @@ spec:
         #                  #3052 single-card soak. Set it back to 2 when #0 is reinstalled.)
         #   talosm01 = 1  (RTX A2000 — vexa-whisper)
         #   talosm03 = 1  (RTX 2000 Ada — ollama-assist02)
+        #   talosm05 = 1  (RTX A2000, ex-edgem01; joined as a master for #3332)
+        # talosm04 (ex-edgem03, #3332) is left out until its A2000 enumerates: the
+        # card was fitted but not visible on the PCIe bus at join time (BIOS PEG /
+        # reseat pending), so listing it would page. Add it to both vectors with
+        # the rook PR once `nvidia-smi -L` on talosm04 lists the card.
         # talosw04 (the eGPU test node) is deliberately NOT in either vector: it
         # carries suspect cards on purpose, so a drop there must not page. Its
         # card count is watched by the warning-level GpuTestNodeGpuMissing below.
         # The label_replace(vector(0), ...) terms make the left side read 0
         # rather than "no data" when a node reports nothing at all, so total
         # silence (exporter unscheduled, nvidia-smi failing, driver gone) fires
-        # this too. Adding a GPU node means adding it in BOTH vectors here and
-        # in the helmrelease nodeAffinity.
+        # this too. The trailing `and on (node) kube_node_info` keeps a node quiet
+        # until it exists in Kubernetes, so a GPU node can be listed here in the
+        # same PR that joins it (talosm05, #3332) without paging during the
+        # Omni sync; once its Node object exists, silence counts as missing.
+        # Adding a GPU node means adding it in BOTH vectors here and making sure
+        # the helmrelease nodeAffinity matches its NFD label.
         - alert: GpuMissing
           annotations:
             summary: >-
               {{ $labels.node }} is reporting fewer NVIDIA GPUs than it has.
             description: >-
               nvidia-smi on {{ $labels.node }} has listed fewer GPUs than expected for 10 minutes
-              (expected: talosw01 1, talosm01 1, talosm03 1). A card that falls off the PCIe bus
+              (expected: talosw01 1, talosm01 1, talosm03 1, talosm05 1). A card that falls off the PCIe bus
               disappears exactly like this. Check `kubectl exec -n observability $(kubectl get pod -n
               observability -l app.kubernetes.io/name=nvidia-gpu-exporter --field-selector
               spec.nodeName={{ $labels.node }} -o name) -- nvidia-smi -L` first (`ds/nvidia-gpu-exporter`
@@ -61,15 +70,18 @@ spec:
                 or label_replace(vector(0), "node", "talosw01", "", "")
                 or label_replace(vector(0), "node", "talosm01", "", "")
                 or label_replace(vector(0), "node", "talosm03", "", "")
+                or label_replace(vector(0), "node", "talosm05", "", "")
               )
               < on (node)
               (
                 label_replace(vector(1), "node", "talosw01", "", "")
                 or label_replace(vector(1), "node", "talosm01", "", "")
                 or label_replace(vector(1), "node", "talosm03", "", "")
+                or label_replace(vector(1), "node", "talosm05", "", "")
               )
             )
             unless on (node) (max by (node) (up{job="nvidia-gpu-exporter"}) == 0)
+            and on (node) kube_node_info
           for: 10m
           labels:
             severity: critical

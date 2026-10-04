@@ -37,7 +37,9 @@ spec:
           # plain nodeSelector cannot express. Matches (verified 2026-09-21):
           #   nvidia-3090-gpu      -> talosw01 (2x RTX 3090: comfyui + llama-server, one
           #                        each; ollama-prime takes leftovers)
-          #   nvidia-a2000         -> talosm01 (RTX A2000, vexa-whisper)
+          #   nvidia-a2000         -> talosm01 (RTX A2000, vexa-whisper), and
+          #                        talosm04 + talosm05 (RTX A2000 each, the masters
+          #                        that joined for #3332; no term change needed)
           #   nvidia-2000-ada-gpu  -> talosm03 (RTX 2000 Ada, ollama-assist02)
           #   haynesops.com/gpu-test -> talosw04 (eGPU test node; a Talos node label,
           #                        because NFD does not tolerate the test taint)
@@ -64,8 +66,8 @@ spec:
                       - key: haynesops.com/gpu-test
                         operator: In
                         values: ["true"]
-          # Two of the three GPU nodes are control-plane members (talosm01,
-          # talosm03). They carry no NoSchedule taint today, but a tainted
+          # Four of the GPU nodes are control-plane members (talosm01, talosm03,
+          # talosm04, talosm05). They carry no NoSchedule taint today, but a tainted
           # control plane would silently drop the exporter from them, so carry
           # the toleration.
           tolerations:

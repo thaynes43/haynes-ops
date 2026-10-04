@@ -32,8 +32,10 @@ Each app follows this structure: `kubernetes/{cluster}/apps/{domain}/{app-name}/
 **The edge cluster was retired on 2026-09-22** and `kubernetes/edge/` was deleted along
 with `kubeconfig-edge`, its `flux-local` CI matrix leg and its Renovate paths. Its nodes
 were bare metal, not VMs: edgem01-03 were MS-01 servers (the old Proxmox hosts pve01-03,
-re-installed as Talos) and now sit idle, and edgew01 was a mini PC with an OCuLink eGPU
-dock that rejoins `main` as the tainted GPU test worker talosw04
+re-installed as Talos). Two of them rejoin `main` as control-plane nodes talosm04 (ex-edgem03)
+and talosm05 (ex-edgem01), taking etcd to 5 members (#3332); the third goes to another
+use. edgew01 was a mini PC with an OCuLink eGPU dock that rejoins `main` as the tainted GPU
+test worker talosw04
 ([egpu-test-node](.agents/runbooks/egpu-test-node.md)). Git history keeps the tree
 (`git log -- kubernetes/edge`). See `.agents/reference/repo-overview.md` for the details and
 for the leftovers outside this repo that are still Tom's to clear.

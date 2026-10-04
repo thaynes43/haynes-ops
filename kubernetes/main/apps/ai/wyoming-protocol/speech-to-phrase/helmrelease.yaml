@@ -26,8 +26,11 @@ spec:
     controllers:
       speech-to-phrase:
         pod:
+          # Pinned to the host with the rest of the voice pipeline (whisper,
+          # kokoro, vexa-whisper): the `nvidia-a2000` label also matches
+          # talosm04 and talosm05 since #3332, see the whisper HelmRelease.
           nodeSelector:
-            feature.node.kubernetes.io/nvidia-a2000: "true"
+            kubernetes.io/hostname: talosm01
           runtimeClassName: nvidia
         containers:
           app:

@@ -25,7 +25,7 @@
       "id": 2,
       "type": "stat",
       "title": "GPUs reporting per node",
-      "description": "How many GPUs nvidia-smi lists on each node. Expected: talosw01 2, talosm01 1, talosm03 1. A drop here with no maintenance is a card that fell off the PCIe bus (alert: GpuMissing).",
+      "description": "How many GPUs nvidia-smi lists on each node. Expected: talosw01 1 (2 when 3090 #0 returns), talosm01 1, talosm03 1, talosm05 1. A drop here with no maintenance is a card that fell off the PCIe bus (alert: GpuMissing).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

@@ -20,6 +20,8 @@ in-place upgrade.
 | control-plane | talosm01 | `88d0b080-43be-11ef-9fe8-3b0f229ef000` | 192.168.40.93 | bare metal, nvidia, **UKI** |
 | control-plane | talosm02 | `c1f22c00-4390-11ef-a299-436f6535c900` | 192.168.40.59 | bare metal |
 | control-plane | talosm03 | `98290580-1909-11ef-944c-5fe147626300` | 192.168.40.10 | bare metal, nvidia, **UKI** |
+| control-plane | talosm04 | `0412ab80-f1ae-11ee-9e2d-bdcefa626900` | 192.168.40.6 | bare metal MS-01 (ex-edgem03, #3332), nvidia, **UKI** |
+| control-plane | talosm05 | `100b8400-f2fa-11ee-8190-410728e5a600` | 192.168.40.79 | bare metal MS-01 (ex-edgem01, #3332), nvidia, **UKI** |
 | worker | talosw01 | `83596797-0281-4927-94fb-f34bb869b1de` | 192.168.40.53 | **Proxmox VM 103**, GPU passthrough (3090), nvidia |
 | worker | talosw02 | `2fe46add-9e72-401c-8ec1-b5fb6837ffa0` | 192.168.40.77 | Proxmox VM, i915 |
 | worker | talosw03 | `960513a6-7a1d-4ece-949d-54a022fe85e5` | 192.168.40.21 | Proxmox VM, i915 |

@@ -45,8 +45,12 @@ Tom retired the `edge` cluster outright. Its nodes were **bare metal**, not VMs 
   been the Proxmox hosts `pve01`-`03`; Tom removed those hosts from the PVE cluster and
   installed Talos on them directly (`kubernetes/edge/README.md` mapped "edgem01 from pve01"
   and so on, and `docs/cluster/migrate-from-proxmox.md` is that procedure). Their template
-  blocks carried `intel-ucode`, `i915`, `thunderbolt` and an MS-01 boot-disk selector. They
-  are idle and are the candidates for the control-plane expansion.
+  blocks carried `intel-ucode`, `i915`, `thunderbolt` and an MS-01 boot-disk selector. Two of
+  them rejoin `main` as control-plane nodes, which takes etcd from 3 to 5 members (Tom's
+  ruling 2026-10-03, #3332): `edgem03` (machine `0412ab80-f1ae-11ee-9e2d-bdcefa626900`)
+  becomes `talosm04`, and `edgem01` (machine `100b8400-f2fa-11ee-8190-410728e5a600`) becomes
+  `talosm05`. Each gets an RTX A2000 and its two data NVMe become Rook OSDs. The third,
+  `edgem02`, is reassigned to another use; it is not a talosm02 standby.
 - `edgew01` (machine `77d65c00-5811-11ef-b65b-a8751caa6100`) was a mini PC with an
   OCuLink eGPU dock (a direct PCIe x4 cable; Tom, 2026-10-02). Its edge template carried
   `thunderbolt` and the NVIDIA LTS extensions and no Intel extensions. It rejoins `main` as
