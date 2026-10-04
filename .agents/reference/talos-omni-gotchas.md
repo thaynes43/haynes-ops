@@ -113,7 +113,7 @@ Omni) then goes out the VPN with an unstable exit IP, so **Omni shows the machin
   goes out mgmt (`eth0`). Re-add it (same MAC) after the node is installed and on
   disk — the now-static `eth1` config means the bug won't recur.
 
-## 6. nut-client's config is in UI-made Omni patches, not the template → new node sticks in `booting`
+## 6. nut-client's config is in per-machine Omni patches, not the template → new node sticks in `booting`
 
 The control planes carry `siderolabs/nut-client` in their template `systemExtensions`,
 but the extension's `ExtensionServiceConfig` (`upsmon.conf`, which holds NUT
@@ -126,23 +126,44 @@ waits for that config forever.
 - **Tell:** the node is Ready in k8s and in etcd, yet `talosctl get machinestatus`
   stays at stage `booting`, Omni counts its machine set short (e.g. 3/5 ready), and
   `talosctl service ext-nut-client` shows `Waiting for extension service config`.
-  Hit by talosm04 + talosm05 when they joined on 2026-10-03 (#3339).
-- **Fix:** give the new machine its own machine-level patch. dev-env's Omni account
-  is a Reader, so the write goes through an Operator-key Job (the
-  [egpu-test-node](../runbooks/egpu-test-node.md) §2 pattern) that reads the source
-  patch and writes the clone inside the Job, keeping the credentials out of sessions
-  and logs. Never print a patch's `spec.data`; to inspect one, print its `MONITOR`
-  line with the password field masked.
-- **Check the MONITOR target before cloning.** On 2026-10-03 all three talosm01-03
-  patches (identical payloads) pointed at `HaynesTowerUPS@haynestower.haynesnetwork`,
-  which no longer serves NUT: HaynesTower became a NUT client of
-  `APC-2700W@nut2700.haynesnetwork` (192.168.40.12, LXC ct:105). So every master's
-  `ext-nut-client` showed `Running` while logging `connect failed: Connection refused`
-  and protected nothing. `Running` is not proof; read
-  `talosctl logs ext-nut-client`. The masters belong on the large UPS, the APC
-  Smart-UPS X 3000 behind `nut2700` (Tom, 2026-10-03), not the 900 W Back-UPS behind
-  `nut01` (ct:124, `APC-900W-01`). `upsc -l <host>` and `upsc <ups>@<host>` read a NUT
-  server without credentials; `hw-ssh haynestower` has `upsc`.
+  Hit by talosm04 + talosm05 when they joined on 2026-10-03 (#3339). Stage `booting`
+  means *any* service is still `Waiting`, so check `talosctl services` for others.
+  For example, talosm04 also waits on `ext-nvidia-persistenced` ("Waiting for file
+  /sys/bus/pci/drivers/nvidia") because its GPU does not enumerate (#3348).
+- **Current state (2026-10-03, #3347):** each of the five masters has its own patch:
+  `500-9f9b0486-…` (talosm01), `500-60c89b5b-…` (m02), `500-6ef5e5d8-…` (m03),
+  `500-nut-client-talosm04`, and `500-nut-client-talosm05`. All five have the same payload:
+  `MONITOR APC-2700W@192.168.40.12:3493 1 talos <password> secondary` plus a
+  `SHUTDOWNCMD` line. `talos` is a dedicated `upsmon secondary` user on `nut2700`, the
+  APC Smart-UPS X 3000 (the large UPS, which is where the masters belong, Tom
+  2026-10-03), served from LXC ct:105 on twin-top. Its password exists only in
+  ct:105's `/etc/nut/upsd.users` and in those patches. Keep the patches per machine:
+  a machine-set-level patch alongside them would be a second `nut-client`
+  `ExtensionServiceConfig` on the same machine.
+- **Fix for a new master:** give it its own machine-level patch, a clone of an existing
+  master's. dev-env's Omni account is a Reader, so the write goes through an
+  Operator-key Job (the [egpu-test-node](../runbooks/egpu-test-node.md) §2 pattern).
+  That Job reads the source patch and writes the clone itself, so the credentials
+  never pass through a session or a log. If a new secret has to reach the Job, pipe
+  it in with `kubectl exec -i <pod> -- sh -c 'cat > /work/pw' < file`, not through Job
+  env. The dev-env image's system python has no PyYAML, so use `omnictl get -o json`,
+  and `omnictl apply` accepts JSON. Never print a patch's `spec.data`; to inspect one,
+  print its `MONITOR` line with the password field masked. Adding or changing this
+  document restarts only `ext-nut-client`; no reboot (boot ids unchanged on all
+  five masters, 2026-10-03).
+- **Verify the login, not the state.** On 2026-10-03 the old talosm01-03 patches
+  pointed at `HaynesTowerUPS@haynestower.haynesnetwork`, which no longer serves NUT.
+  Every master's `ext-nut-client` still showed `Running` while it logged
+  `connect failed: Connection refused` and protected nothing. The proof is the server's
+  client list, which needs no credentials:
+  `hw-ssh twin-top "sudo pct exec 105 -- upsc -c APC-2700W@localhost"` lists one IP
+  per logged-in client. Also check `talosctl logs ext-nut-client` for
+  `ACCESS-DENIED`/`refused`. `upsc -l <host>` and `upsc <ups>@<host>` read any NUT
+  server. The 900 W Back-UPS is `APC-900W-01` on `nut01` (ct:124).
+- **Adding a NUT user on ct:105:** append the stanza to `/etc/nut/upsd.users` (back it up
+  first), then run `systemctl reload nut-server`. A plain `upsd -c reload` fails there
+  (`fopen /run/nut/upsd.pid`) because systemd runs upsd with `-F` and it writes no
+  pid file.
 
 ---
 
@@ -155,7 +176,7 @@ waits for that config forever.
 | Node shows as a new/duplicate machine after reinstall | META wiped, lost Omni identity | 3 |
 | Node reboot-loops back to the OLD version after an upgrade | `/boot` too small for initramfs | 4 |
 | Booted ISO, node says connected but Omni says offline / won't install | VPN NIC stealing egress in maintenance | 5 |
-| Node Ready in k8s + etcd, but Omni stage stays `booting` / machine set short | nut-client extension with no machine-level `ExtensionServiceConfig` patch | 6 |
+| Node Ready in k8s + etcd, but Omni stage stays `booting` / machine set short | an extension service still `Waiting` (`talosctl services`): nut-client with no machine-level patch, or nvidia with no GPU | 6 |
 
 ## Reset Ceph after node work
 
