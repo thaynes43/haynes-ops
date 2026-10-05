@@ -1,0 +1,48 @@
+{
+  "before": [
+    {
+      "world": "A",
+      "template": "v7",
+      "draft_revision": 6,
+      "filled": 12,
+      "total": 12,
+      "publication_revision": 7,
+      "phase": "prior"
+    },
+    {
+      "world": "B",
+      "template": "v6",
+      "draft_revision": 5,
+      "filled": 9,
+      "total": 9,
+      "publication_revision": 6,
+      "phase": "prior"
+    }
+  ],
+  "planned_actions": {
+    "A": "upgrade-and-publish",
+    "B": "upgrade-and-publish"
+  },
+  "after": [
+    {
+      "world": "A",
+      "template": "v8",
+      "draft_revision": 7,
+      "filled": 12,
+      "total": 12,
+      "publication_revision": 8,
+      "phase": "published"
+    },
+    {
+      "world": "B",
+      "template": "v7",
+      "draft_revision": 6,
+      "filled": 9,
+      "total": 9,
+      "publication_revision": 7,
+      "phase": "published"
+    }
+  ],
+  "private_media_fetched": false,
+  "started_saves_reset": false
+}
