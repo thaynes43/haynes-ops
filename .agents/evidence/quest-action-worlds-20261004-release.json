@@ -1,5 +1,5 @@
 {
-  "status": "awaiting_signed_image_and_rollout",
+  "status": "pinned_awaiting_gitops_rollout_and_publication",
   "task_started_utc": "2026-10-04",
   "source_pull_request": "https://github.com/thaynes43/haynes-quest/pull/146",
   "scope": [
@@ -103,5 +103,25 @@
     "All new exact-version models remain awaiting owner review under the existing family-candidate permission."
   ],
   "merged_source_commit": "91ac5033323e40748ae21be93c6b4db43e695a0d",
-  "main_image_run": 37250305778
+  "main_image_run": 37250305778,
+  "browser_archive": {
+    "path": "/home/dev/artifacts/haynes-quest/action-worlds/v001/browser/test-results",
+    "files": 137,
+    "bytes": 30079056,
+    "all_copy_hashes_verified": true,
+    "local_fixture_port_3016_closed": true
+  },
+  "image": {
+    "repository": "ghcr.io/thaynes43/haynes-quest",
+    "source_commit": "91ac5033323e40748ae21be93c6b4db43e695a0d",
+    "digest": "sha256:8b5205965b15f93cc76a6d1384dc508ea55c8f70416f8c79d929592ce7a77986",
+    "tag_and_digest": "sha-91ac5033323e40748ae21be93c6b4db43e695a0d@sha256:8b5205965b15f93cc76a6d1384dc508ea55c8f70416f8c79d929592ce7a77986",
+    "main_workflow_result": "success",
+    "build_provenance_step": "success",
+    "cosign_sign_step": "success",
+    "official_attestation_verification": "passed",
+    "signer_workflow": "thaynes43/haynes-quest/.github/workflows/app.yml",
+    "verified_source_ref": "refs/heads/main",
+    "ghcr_tag_digest_matches_attested_subject": true
+  }
 }
