@@ -1,0 +1,324 @@
+{
+  "schemaVersion": 1,
+  "status": "released",
+  "dateUtc": "2026-10-05",
+  "scope": "Active fights and attack chains for existing family and isolated fixture services",
+  "observed": {
+    "completedUtc": "2026-10-05T22:16:39Z",
+    "source": {
+      "validatedHead": "5b711d4ab770b8a4a6cb7f960d40fa94a63df7d5",
+      "prApplicationRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37363140528",
+      "prChecks": {
+        "verify": "success",
+        "containerCheck": "success",
+        "image": "skipped on pull_request"
+      },
+      "documentationRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37363140356",
+      "documentationConclusion": "success",
+      "advisoryRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37363140859",
+      "advisoryDisposition": "success; no findings in issue comment; review scope limited to combo schema/contracts; zero inline comments and zero review records",
+      "mainApplicationRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37376775784",
+      "mainApplicationConclusion": "success",
+      "evidence": {
+        "syntheticRoutes": "https://github.com/thaynes43/haynes-quest/blob/45650c21af49300dacc5e5e2fac340d9c63af62e/.agents/evidence/active-fights/a9-b8-routes-20261005.json",
+        "renderedCombat": "https://github.com/thaynes43/haynes-quest/blob/45650c21af49300dacc5e5e2fac340d9c63af62e/.agents/evidence/active-fights/combat-patterns-20261005.json",
+        "localChecks": "https://github.com/thaynes43/haynes-quest/blob/45650c21af49300dacc5e5e2fac340d9c63af62e/.agents/evidence/active-fights/local-checks-20261005.json"
+      },
+      "localValidation": {
+        "fullSuiteAt3016fab": {
+          "passedFiles": 175,
+          "skippedFiles": 3,
+          "passedTests": 1990,
+          "skippedTests": 34,
+          "qualification": "preceded final combo-window and response-timing corrections; no isolated local PostgreSQL"
+        },
+        "finalTimingAtFef6137": {
+          "focusedPassedTests": 45,
+          "typecheck": "passed",
+          "lint": "passed",
+          "productionBuild": "passed",
+          "qualification": "local focused check; submitted exact revision covered by PR CI"
+        },
+        "manualBrowserAtFinalHead": {
+          "reportedBy": "root",
+          "acceptedServerComboSteps": [
+            1,
+            2,
+            3
+          ],
+          "attackRequestCountAtRelease": 3,
+          "attackRequestCountAfterRelease": 3,
+          "afterReleaseObservationMs": 1500,
+          "apiErrors": 0,
+          "actionErrors": 0,
+          "browserErrors": 0,
+          "recoveries": 0,
+          "authoritativeDetail": "See SHA-pinned combat-patterns source evidence"
+        },
+        "nativeReview": "Root reported no findings"
+      },
+      "mainApplicationVerify": "success (install, typecheck, lint, test, levels:validate, build)",
+      "mainImageJob": "https://github.com/thaynes43/haynes-quest/actions/runs/37376775784/job/111990538405",
+      "mainImageConclusion": "success (build/push, provenance attestation, cosign sign, record image)",
+      "mainAttempt1": {
+        "run": "https://github.com/thaynes43/haynes-quest/actions/runs/37364916913",
+        "conclusion": "failure due to image job cancelled before runner assignment",
+        "verify": "success",
+        "image": "cancelled; empty runner name and no steps",
+        "incident": "https://www.githubstatus.com/"
+      },
+      "implementationPullRequest": "https://github.com/thaynes43/haynes-quest/pull/149",
+      "implementationMergeCommit": "45650c21af49300dacc5e5e2fac340d9c63af62e",
+      "followUpPullRequest": "https://github.com/thaynes43/haynes-quest/pull/150",
+      "followUpValidatedHead": "27be9a59aeb8f398a5c684908e3bd5896e056647",
+      "followUpMergeCommit": "32370a927824aa2b1bf53d8242f7c3af8c1bf896",
+      "followUpChecks": {
+        "application": {
+          "run": "https://github.com/thaynes43/haynes-quest/actions/runs/37372248561",
+          "head": "27be9a59aeb8f398a5c684908e3bd5896e056647",
+          "verify": "success",
+          "containerCheck": "success"
+        },
+        "documentation": {
+          "run": "https://github.com/thaynes43/haynes-quest/actions/runs/37370598386",
+          "head": "27be9a59aeb8f398a5c684908e3bd5896e056647",
+          "build": "success"
+        },
+        "advisory": {
+          "run": "https://github.com/thaynes43/haynes-quest/actions/runs/37370598203",
+          "head": "27be9a59aeb8f398a5c684908e3bd5896e056647",
+          "conclusion": "success",
+          "findings": 0
+        },
+        "qualification": "These are successful checks on the same exact head from different PR attempts; later provider-cancelled runs are recorded separately"
+      },
+      "followUpAttempt1": {
+        "head": "c2c9e3b3813794a1aaef2ac2aa232ad8f8feaa8c",
+        "applicationRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37368794703",
+        "documentationRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37368794671",
+        "advisoryRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37368794669",
+        "conclusion": "all three jobs cancelled without runner assignment or steps",
+        "checkRunAnnotation": "The job was not acquired by Runner of type hosted even after multiple attempts"
+      },
+      "followUpLocalDocs": {
+        "status": "passed",
+        "preparedFiles": 4709,
+        "checkedMarkdownFiles": 348
+      },
+      "followUpWorkflowReview": "No payload source override; dispatch uses default/main ref; verify, container-check and image build/signing steps and permissions unchanged",
+      "followUpAttempt2": {
+        "head": "27be9a59aeb8f398a5c684908e3bd5896e056647",
+        "applicationRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37370598206",
+        "applicationVerify": "cancelled before runner assignment; zero steps",
+        "documentationRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37370598386",
+        "documentationConclusion": "success",
+        "advisoryRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37370598203",
+        "advisoryDisposition": "success; no findings; zero inline comments and zero review records",
+        "checkRunAnnotation": "The job was not acquired by Runner of type hosted even after multiple attempts"
+      },
+      "followUpAttempt3": {
+        "head": "27be9a59aeb8f398a5c684908e3bd5896e056647",
+        "trigger": "pull_request.reopened",
+        "applicationRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37372248561",
+        "applicationConclusion": "success; verify and container-check both success",
+        "documentationRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37372248550",
+        "documentationConclusion": "cancelled before runner assignment",
+        "advisoryRun": "https://github.com/thaynes43/haynes-quest/actions/runs/37372248636",
+        "advisoryConclusion": "cancelled before runner assignment",
+        "qualification": "Earlier same-head documentation and advisory runs succeeded; latest reopened runs did not execute"
+      },
+      "followUpMainAttempt1": {
+        "source": "32370a927824aa2b1bf53d8242f7c3af8c1bf896",
+        "run": "https://github.com/thaynes43/haynes-quest/actions/runs/37375211428",
+        "conclusion": "failure",
+        "verify": "pnpm install/typecheck/lint success; pnpm test cancelled; levels/build skipped",
+        "image": "skipped; no image produced",
+        "checkRunAnnotation": "The operation was canceled.",
+        "qualification": "Hosted runner assigned; job ended after approximately 7m20s, below 15m timeout; cancellation actor not established"
+      },
+      "mainApplicationEvent": "repository_dispatch"
+    },
+    "image": {
+      "repository": "ghcr.io/thaynes43/haynes-quest",
+      "digest": "sha256:74f7138d28abed134cc4b31997eb002663efda55a7a8761188f83002827ead01",
+      "pin": "sha-32370a927824aa2b1bf53d8242f7c3af8c1bf896@sha256:74f7138d28abed134cc4b31997eb002663efda55a7a8761188f83002827ead01",
+      "provenanceVerified": true,
+      "source": "32370a927824aa2b1bf53d8242f7c3af8c1bf896",
+      "verification": "Anonymous GHCR manifest digest and official GitHub attestation verified against exact repository, app.yml signer workflow, main source SHA and refs/heads/main (root verified)",
+      "imageJob": "https://github.com/thaynes43/haynes-quest/actions/runs/37376775784/job/111990538405"
+    },
+    "ops": {
+      "pullRequest": "https://github.com/thaynes43/haynes-ops/pull/3377",
+      "mergeCommit": "622e44fca0e3469f8da4512babb7f28eb3c3c16e",
+      "requiredChecks": "8/8 success; advisory review reported no findings",
+      "initialPromotion": {
+        "pullRequest": "https://github.com/thaynes43/haynes-ops/pull/3376",
+        "mergeCommit": "69853729077f172cbf906fe777d94b1ed59251e7",
+        "checks": "8/8 success; advisory review reported no findings",
+        "gitRepositoryRevision": "main@sha1:69853729077f172cbf906fe777d94b1ed59251e7",
+        "kustomizationAttemptedRevision": "main@sha1:69853729077f172cbf906fe777d94b1ed59251e7",
+        "kustomizationLastAppliedRevisionAtFailure": "main@sha1:50647ede879fb001c8a69e36ac7708a73f6b796d",
+        "result": "Blocked before image rollout: both HelmReleases UpgradeFailed because server-side apply retained the live Deployments defaulted rollingUpdate field while changing strategy to Recreate; both old 7678 images remained Ready 1/1."
+      },
+      "correction": {
+        "pullRequest": "https://github.com/thaynes43/haynes-ops/pull/3377",
+        "validatedHead": "94f48ad22d7a0edb0c0f7bde1250cb8191ca3aab",
+        "status": "merged; deployed and verified at applied revision 622e44fca0e3469f8da4512babb7f28eb3c3c16e",
+        "change": "Both HelmReleases set upgrade.serverSideApply disabled and target only their Deployment with JSON6902 rollingUpdate:null post-render patch; Recreate, RetryOnFailure, image pin, and environment unchanged.",
+        "validation": {
+          "diffCheck": "passed; two HelmReleases, 26 inserted lines",
+          "clientSchema": "strict validation passed for both HelmReleases",
+          "render": "app-template 5.2.1 digest sha256:f32d40ce76b5378acc96783424e3c5b7ec0274240484968a868b2256983514c3; both rendered Deployments retained type Recreate and explicit rollingUpdate null with exact source image digest",
+          "serverDryRun": "Client-side strategic merge patch with Recreate and rollingUpdate null succeeded on family Deployment; merge patch also succeeded on both. Server-side apply with explicit null still failed validation, so correction disables SSA.",
+          "sources": [
+            "https://github.com/helm/helm/blob/v4.3.0/pkg/kube/client.go#L993-L1048",
+            "https://github.com/helm/helm/blob/v4.3.0/pkg/kube/client.go#L1066-L1085",
+            "https://github.com/kubernetes/apimachinery/blob/85f19baf0e880559ec3e247f4f3eb4f76538d5d7/pkg/util/strategicpatch/patch.go#L1952-L2005"
+          ]
+        },
+        "mergeCommit": "622e44fca0e3469f8da4512babb7f28eb3c3c16e"
+      },
+      "checkRuns": {
+        "fluxLocal": "https://github.com/thaynes43/haynes-ops/actions/runs/37380046372",
+        "diffScope": "https://github.com/thaynes43/haynes-ops/actions/runs/37380046384",
+        "advisory": "https://github.com/thaynes43/haynes-ops/actions/runs/37380046390",
+        "result": "8/8 success on PR #3377; advisory no findings"
+      }
+    },
+    "flux": {
+      "gitRepositoryRevision": "main@sha1:622e44fca0e3469f8da4512babb7f28eb3c3c16e",
+      "kustomizationAppliedRevision": "main@sha1:622e44fca0e3469f8da4512babb7f28eb3c3c16e",
+      "ready": true,
+      "generationObserved": true
+    },
+    "rollout": {
+      "postdeployEvidence": "local sanitized status-only audit in ignored release/postdeploy.json",
+      "postdeployEvidenceSha256": "sha256:f6bd8899e7c58b21c437eaca707482cbe6a7efd248adb14d14c444cd6cc70c69",
+      "family": {
+        "deploymentGenerationObserved": true,
+        "deploymentReady": "1/1",
+        "deploymentStrategy": "Recreate",
+        "helmCleanupOnFail": true,
+        "helmGenerationObserved": true,
+        "helmReady": true,
+        "helmUpgradeStrategy": "RetryOnFailure",
+        "imageID": "ghcr.io/thaynes43/haynes-quest@sha256:74f7138d28abed134cc4b31997eb002663efda55a7a8761188f83002827ead01",
+        "internalHealth": {
+          "healthz": 200,
+          "readyz": 200
+        },
+        "pin": "sha-32370a927824aa2b1bf53d8242f7c3af8c1bf896@sha256:74f7138d28abed134cc4b31997eb002663efda55a7a8761188f83002827ead01",
+        "podReady": true,
+        "podRestarts": 0
+      },
+      "fixture": {
+        "deploymentGenerationObserved": true,
+        "deploymentReady": "1/1",
+        "deploymentStrategy": "Recreate",
+        "helmCleanupOnFail": true,
+        "helmGenerationObserved": true,
+        "helmReady": true,
+        "helmUpgradeStrategy": "RetryOnFailure",
+        "imageID": "ghcr.io/thaynes43/haynes-quest@sha256:74f7138d28abed134cc4b31997eb002663efda55a7a8761188f83002827ead01",
+        "internalHealth": {
+          "healthz": 200,
+          "readyz": 200
+        },
+        "pin": "sha-32370a927824aa2b1bf53d8242f7c3af8c1bf896@sha256:74f7138d28abed134cc4b31997eb002663efda55a7a8761188f83002827ead01",
+        "podReady": true,
+        "podRestarts": 0
+      },
+      "familyUnauthenticatedIngress": {
+        "/": 200,
+        "/api/session": 401,
+        "/editor": 200,
+        "/healthz": 200,
+        "/readyz": 200,
+        "/studio/": 401
+      },
+      "fixtureIngress": {
+        "/": 200,
+        "/api/session": 200,
+        "/editor": 200,
+        "/healthz": 200,
+        "/readyz": 200,
+        "/studio/": 200
+      },
+      "helmUpgradeStrategy": "RetryOnFailure on both HelmReleases",
+      "helmCleanupOnFail": true,
+      "deploymentStrategy": "Recreate on both Deployments; no rollingUpdate field",
+      "attempts": [
+        {
+          "opsRevision": "main@sha1:69853729077f172cbf906fe777d94b1ed59251e7",
+          "result": "failed before new image rollout",
+          "familyHelmRelease": "Ready False; UpgradeFailed",
+          "fixtureHelmRelease": "Ready False; UpgradeFailed",
+          "error": "Deployment spec.strategy.rollingUpdate forbidden with Recreate under Helm server-side apply",
+          "oldPods": "prior 7678 image remained Ready 1/1; no new image claimed"
+        }
+      ],
+      "helmServerSideApply": "disabled on both HelmReleases for client-side strategy migration"
+    },
+    "publication": {
+      "A9": {
+        "templateVersion": 9,
+        "draftRevision": 8,
+        "publicationRevision": 9,
+        "privatePhotosAssigned": 12,
+        "privatePhotosExpected": 12,
+        "needsPhoto": 0
+      },
+      "B8": {
+        "templateVersion": 8,
+        "draftRevision": 7,
+        "publicationRevision": 8,
+        "privatePhotosAssigned": 9,
+        "privatePhotosExpected": 9,
+        "needsPhoto": 0
+      },
+      "olderRoutesUnchanged": "Publisher operation targeted A9/B8 only; older route revisions were not re-read in this audit",
+      "startedSavesPreserved": "No save reset performed; saved contents were not inspected",
+      "mediaDecoded": "not performed; assigned/filled status counts only",
+      "phase": "published",
+      "publicationEvidence": "local sanitized release/publication.json",
+      "publicationEvidenceSha256": "sha256:ff6c979eaf6d1aea96dbf02c1cacf427af4f5b55d66f68b65be137848cb0f186",
+      "independentAuditEvidence": "local sanitized release/publication-audit.json",
+      "independentAuditEvidenceSha256": "sha256:c0e6c26dac0cd1480f12e51699dfb2d4acbdc0211c7e53f84b962348a44c1520"
+    },
+    "hostedGameplay": {
+      "status": "bounded synthetic fixture home/editor/bootstrap smoke passed",
+      "evidence": "local sanitized release/hosted-fixture-smoke.json",
+      "charge": "not re-exercised in this hosted smoke; implementation evidence and PR CI are cited under observed.source",
+      "bolt": "not re-exercised in this hosted smoke; implementation evidence and PR CI are cited under observed.source",
+      "agile": "not re-exercised in this hosted smoke; implementation evidence and PR CI are cited under observed.source",
+      "combo": "not re-exercised in this hosted smoke; implementation evidence and PR CI are cited under observed.source",
+      "heldRepeat": "not re-exercised in this hosted smoke; implementation evidence and PR CI are cited under observed.source",
+      "evidenceSha256": "sha256:a273072951bfc63ec1898c063880de819683a49e7dcd205e5f5d818a9030ddb6",
+      "browserConsoleErrors": 0,
+      "authenticatedFamilyGameplay": "not exercised; only status-only unauthenticated family boundary checked",
+      "checks": {
+        "home": "Rendered Haynes Quest landing page and Enter Rat Casino control",
+        "editor": "Rendered level editor with chapter selector and Ready to play state",
+        "bootstrap": "Enter Rat Casino opened playable view with health 10/10, controls, and Attack button",
+        "browserConsoleErrors": 0
+      },
+      "observedUtc": "2026-10-05T22:15:18Z"
+    },
+    "activity": {
+      "id": "act-215329-3652793",
+      "ended": "2026-10-05T22:13:46Z"
+    },
+    "limits": {
+      "physicalChildDevicePlay": "not observed in this release; owner physical-device QA remains outside this evidence",
+      "authenticatedFamilyGameplay": "not covered by isolated fixture unless separately verified"
+    },
+    "alerts": {
+      "currentQuestFluxPendingOrFiring": 0,
+      "questFluxResourcesReady": 3,
+      "history": "Earlier failed upgrade alerted; last firing sample 22:12:00 UTC, none current at 22:14:53 UTC",
+      "evidence": "local sanitized release/alerts.json",
+      "evidenceSha256": "sha256:9d0e310f3e76c892be4297a0c1cf41601f89d48d2e23ed6463cc26545a9f7147"
+    }
+  },
+  "rollbackConstraint": "Pre-combo image 7678bf35 cannot read persisted attackCombo; roll back only to a combo-aware image/schema."
+}
