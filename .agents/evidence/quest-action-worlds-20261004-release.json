@@ -1,0 +1,53 @@
+{
+  "status": "awaiting_signed_image_and_rollout",
+  "task_started_utc": "2026-10-04",
+  "source_pull_request": "https://github.com/thaynes43/haynes-quest/pull/146",
+  "scope": [
+    "frontend/haynes-quest",
+    "frontend/haynes-quest-playtest"
+  ],
+  "change": {
+    "templates": [
+      "family-world-a@v8",
+      "family-world-b@v7"
+    ],
+    "ordinary_enemies_per_chapter": 16,
+    "main_route_pairs": 6,
+    "optional_enemies_per_chapter": 4,
+    "boss_gate_distinct_wins": 4,
+    "ordinary_aggro_metres": 8,
+    "new_animated_enemy_models": 6,
+    "new_static_planting_models": 3,
+    "planting_groups_per_chapter": 5,
+    "low_flower_beds_per_chapter": 6
+  },
+  "before": {
+    "image": "ghcr.io/thaynes43/haynes-quest:sha-d3d5e8987ed1826bfb5e66db159e4099040963a5@sha256:5b60196af6d3220c0731bfa574eda4e47f07510c57f3e6f7443d2445c738d782",
+    "workloads_ready": true,
+    "pod_restarts": [
+      0,
+      0
+    ],
+    "publications": [
+      {
+        "world": "A",
+        "template_version": "v7",
+        "publication_revision": 7,
+        "filled": 12,
+        "total": 12
+      },
+      {
+        "world": "B",
+        "template_version": "v6",
+        "publication_revision": 6,
+        "filled": 9,
+        "total": 9
+      }
+    ]
+  },
+  "after": null,
+  "publication_policy": "Carry existing photo assignments; preserve started saves. New starts or explicitly requested Start fresh use the new publication.",
+  "private_media_fetched": false,
+  "started_saves_reset": false,
+  "owner_review": "New exact-version art remains awaiting owner review in the studio under PRD-004 Q-03."
+}
