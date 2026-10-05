@@ -1,0 +1,98 @@
+{
+  "status": "signed_image_prepared_for_rollout",
+  "dateUtc": "2026-10-05",
+  "scope": "Smaller in-world memory photos; existing worlds, assignments and started saves preserved",
+  "source": {
+    "pullRequest": "https://github.com/thaynes43/haynes-quest/pull/147",
+    "validatedHead": "f440df4959382a1969f6bce330d7525036e8323f",
+    "mainCommit": "7678bf35ee2e77071158e63f52d301af84a18f2f",
+    "prApplicationWorkflow": "https://github.com/thaynes43/haynes-quest/actions/runs/37254191822",
+    "checks": {
+      "testsPassed": 2010,
+      "testFilesPassed": 174,
+      "testsSkipped": 0,
+      "database": "PostgreSQL 16",
+      "typecheck": "passed",
+      "lint": "passed",
+      "levels": "passed",
+      "build": "passed",
+      "container": "passed"
+    },
+    "documentation": {
+      "status": "passed",
+      "preparedFiles": 4700,
+      "checkedMarkdownFiles": 346
+    },
+    "independentReview": "Native Codex Sol review: no blocking findings",
+    "advisory": "GitHub action skipped this PR because its workflow differs from default branch; no advisory findings posted",
+    "mainApplicationWorkflow": "https://github.com/thaynes43/haynes-quest/actions/runs/37255175911"
+  },
+  "media": {
+    "route": "/api/saves/:id/media/:memoryId?size=texture",
+    "textureMaxPixels": [
+      512,
+      1024
+    ],
+    "defaultPreviewMaxPixels": [
+      1600,
+      1600
+    ],
+    "format": "metadata-free WebP",
+    "access": "Existing household/save scope, released-memory and per-request Immich permission checks",
+    "delivery": "private, no-store",
+    "upstreamImmichSize": "preview",
+    "syntheticPortraitBytes": {
+      "default": 676778,
+      "texture": 312136,
+      "reductionPercent": 53.9
+    },
+    "limits": "Actual photo savings vary. Server upstream decode and final canvas/draw calls are unchanged."
+  },
+  "browser": {
+    "implementationCommit": "a1d644a28838d91748d274fdacbaa838e40d98d0",
+    "compiledClient": "index-DqNNEo3p.js",
+    "fixture": "Local synthetic SVG fixture in Chromium 153/SwiftShader",
+    "status": "passed",
+    "textureImageResponses200": 2,
+    "uploadedPhotoCanvases": [
+      [
+        512,
+        848
+      ],
+      [
+        512,
+        848
+      ]
+    ],
+    "detailDefaultPreviewsDecoded": 2,
+    "albumDefaultPreviewsDecoded": 1,
+    "pageConsoleRequestMediaErrors": 0,
+    "archivePath": "/home/dev/artifacts/haynes-quest/followthrough-1005/photo-browser/",
+    "reportSha256": "937ece7032b870df5ec7a6056498fab3d3a0e5cf0c359fc67c02d1f67026ed1c",
+    "limits": "Synthetic SVG browser delivery; no actual private-photo, physical Safari or frame-time claim"
+  },
+  "quota": {
+    "boundedWork": "native gpt-6-sol at xhigh",
+    "questAutomaticAdvisoryModel": "claude-sonnet-5-5",
+    "additionalOpusAuthoringSessions": 0
+  },
+  "rollout": {
+    "status": "pending",
+    "workloads": [
+      "haynes-quest",
+      "haynes-quest-playtest"
+    ],
+    "publicationChanges": false,
+    "saveResets": false,
+    "privatePhotoBytesFetched": false
+  },
+  "image": {
+    "repository": "ghcr.io/thaynes43/haynes-quest",
+    "source": "7678bf35ee2e77071158e63f52d301af84a18f2f",
+    "digest": "sha256:ee98b3de7831c86b0c7377598a99ee61d0a841aa477c53c6ed610972f13d7890",
+    "pin": "sha-7678bf35ee2e77071158e63f52d301af84a18f2f@sha256:ee98b3de7831c86b0c7377598a99ee61d0a841aa477c53c6ed610972f13d7890",
+    "mainBuildProvenanceSignRecordSteps": "all passed",
+    "verification": "Anonymous GHCR manifest digest and official gh attestation verify passed for exact repository, digest, main source, main ref and app.yml workflow",
+    "job": "https://github.com/thaynes43/haynes-quest/actions/runs/37255175911/job/111592003698"
+  }
+}
