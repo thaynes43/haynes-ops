@@ -53,6 +53,15 @@ configMapGenerator:
       - dbupgrade.py=./patches/dbupgrade.py
     options:
       disableNameSuffixHash: true
+  # Patched upstream postprocess.py (thaynes43/haynesnetwork#688): a SABnzbd
+  # job that failed (e.g. "Duplicate NZB") is never post-processed, so the
+  # fuzzy pass cannot import another book's same-named download. Mounted by
+  # helmrelease.yaml; pinned to the image tag there.
+  - name: lazylibrarian-postprocess
+    files:
+      - postprocess.py=./patches/postprocess.py
+    options:
+      disableNameSuffixHash: true
 generatorOptions:
   # Python source with $Author-style strings: keep Flux post-build
   # substitution away from it.
