@@ -62,6 +62,14 @@ configMapGenerator:
       - postprocess.py=./patches/postprocess.py
     options:
       disableNameSuffixHash: true
+  # Patched upstream resultlist.py (thaynes43/haynesnetwork#688): a later
+  # volume of a series named after the wanted book no longer scores as that
+  # book. Mounted by helmrelease.yaml; pinned to the image tag there.
+  - name: lazylibrarian-resultlist
+    files:
+      - resultlist.py=./patches/resultlist.py
+    options:
+      disableNameSuffixHash: true
 generatorOptions:
   # Python source with $Author-style strings: keep Flux post-build
   # substitution away from it.
