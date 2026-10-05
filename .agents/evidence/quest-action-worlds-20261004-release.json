@@ -1,5 +1,5 @@
 {
-  "status": "pinned_awaiting_gitops_rollout_and_publication",
+  "status": "deployed_and_published",
   "task_started_utc": "2026-10-04",
   "source_pull_request": "https://github.com/thaynes43/haynes-quest/pull/146",
   "scope": [
@@ -45,7 +45,51 @@
       }
     ]
   },
-  "after": null,
+  "after": {
+    "image": "ghcr.io/thaynes43/haynes-quest:sha-91ac5033323e40748ae21be93c6b4db43e695a0d@sha256:8b5205965b15f93cc76a6d1384dc508ea55c8f70416f8c79d929592ce7a77986",
+    "both_workloads_ready": true,
+    "pod_restarts": [
+      0,
+      0
+    ],
+    "gitops_ready": true,
+    "gitops_applied_image_revision": "2d753b2eaf62cd87f1a569d5efb2cb31fd9c2ab6",
+    "all_nine_new_hosted_glb_hashes_match": true,
+    "publications": [
+      {
+        "world": "A",
+        "template": "v8",
+        "draft_revision": 7,
+        "filled": 12,
+        "total": 12,
+        "publication_revision": 8,
+        "phase": "published"
+      },
+      {
+        "world": "B",
+        "template": "v7",
+        "draft_revision": 6,
+        "filled": 9,
+        "total": 9,
+        "publication_revision": 7,
+        "phase": "published"
+      }
+    ],
+    "publication_carry_validated": [
+      {
+        "world": "A",
+        "carried": 12,
+        "total": 12,
+        "needs_photo": 0
+      },
+      {
+        "world": "B",
+        "carried": 9,
+        "total": 9,
+        "needs_photo": 0
+      }
+    ]
+  },
   "publication_policy": "Carry existing photo assignments; preserve started saves. New starts or explicitly requested Start fresh use the new publication.",
   "private_media_fetched": false,
   "started_saves_reset": false,
@@ -123,5 +167,13 @@
     "signer_workflow": "thaynes43/haynes-quest/.github/workflows/app.yml",
     "verified_source_ref": "refs/heads/main",
     "ghcr_tag_digest_matches_attested_subject": true
-  }
+  },
+  "completed_utc": "2026-10-05T01:39:02.120802Z",
+  "gitops_image_pin_merge": "2d753b2eaf62cd87f1a569d5efb2cb31fd9c2ab6",
+  "hosted_audit_file": ".agents/evidence/quest-action-worlds-20261004-postdeploy.json",
+  "publication_audit_file": ".agents/evidence/quest-action-worlds-20261004-publication.json",
+  "remaining_owner_criteria": [
+    "Exact-version art review under PRD-004 Q-03",
+    "Physical play with the children and device/listening feedback in PLAN-019"
+  ]
 }
