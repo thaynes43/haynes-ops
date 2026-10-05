@@ -37,12 +37,12 @@ spec:
             # cluster's allowlisted-registry Kyverno policy; docker.io is.
             image:
               repository: docker.io/linuxserver/lazylibrarian
-              # librarysync.py, searchbook.py, sabnzbd.py, gb.py and dbupgrade.py
-              # in this image are overridden by the lazylibrarian-librarysync,
-              # -searchbook, -sabnzbd, -gb and -dbupgrade ConfigMaps
-              # (persistence below), copies of THIS tag's
-              # files plus marked fixes. Bumping the tag means re-deriving all
-              # five files from the new image, or dropping them if upstream
+              # librarysync.py, searchbook.py, sabnzbd.py, gb.py, dbupgrade.py and
+              # postprocess.py in this image are overridden by the
+              # lazylibrarian-librarysync, -searchbook, -sabnzbd, -gb, -dbupgrade
+              # and -postprocess ConfigMaps (persistence below), copies of THIS
+              # tag's files plus marked fixes. Bumping the tag means re-deriving
+              # all six files from the new image, or dropping them if upstream
               # fixed the bugs: see the headers of the files in patches/.
               tag: version-40a389ea
             env:
@@ -184,6 +184,19 @@ spec:
             app:
               - path: /app/lazylibrarian/lazylibrarian/dbupgrade.py
                 subPath: dbupgrade.py
+                readOnly: true
+      # A SABnzbd job that failed ("Duplicate NZB") was post-processed anyway,
+      # and the fuzzy pass imported another book's same-named download
+      # (thaynes43/haynesnetwork#688). Pinned to the image tag above;
+      # patches/postprocess.py's header says how to bump.
+      postprocess-patch:
+        type: configMap
+        name: lazylibrarian-postprocess
+        advancedMounts:
+          lazylibrarian:
+            app:
+              - path: /app/lazylibrarian/lazylibrarian/postprocess.py
+                subPath: postprocess.py
                 readOnly: true
       # RW mount of the gasha01 share at the SAME mountpoint the *arrs +
       # qBittorrent + SABnzbd use, so completed-download paths
