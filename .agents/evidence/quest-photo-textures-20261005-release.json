@@ -1,5 +1,5 @@
 {
-  "status": "signed_image_prepared_for_rollout",
+  "status": "deployed",
   "dateUtc": "2026-10-05",
   "scope": "Smaller in-world memory photos; existing worlds, assignments and started saves preserved",
   "source": {
@@ -77,14 +77,24 @@
     "additionalOpusAuthoringSessions": 0
   },
   "rollout": {
-    "status": "pending",
+    "status": "passed",
     "workloads": [
       "haynes-quest",
       "haynes-quest-playtest"
     ],
     "publicationChanges": false,
     "saveResets": false,
-    "privatePhotoBytesFetched": false
+    "privatePhotoBytesFetched": false,
+    "pinPullRequest": "https://github.com/thaynes43/haynes-ops/pull/3365",
+    "pinMerge": "95d73fe4d6e9a4efe047d92a1a54e00e88c17ea8",
+    "evidence": "quest-photo-textures-20261005-postdeploy.json",
+    "evidenceSha256": "3e22ccafb82ff1c526908b3c0667892ef2349ef768f911433af4ec1f3246d05d",
+    "workloadsReady": "Both 1/1; exact new imageIDs; zero restarts",
+    "internalHealth": "Both healthz/readyz 200",
+    "familyUnauthenticatedIngress": 302,
+    "fixtureIngress": 200,
+    "servedFixtureClientMatchesBrowserSmoke": "assets/index-DqNNEo3p.js",
+    "activity": "act-023952-3181261 ended after successful rollout audit"
   },
   "image": {
     "repository": "ghcr.io/thaynes43/haynes-quest",
@@ -94,5 +104,7 @@
     "mainBuildProvenanceSignRecordSteps": "all passed",
     "verification": "Anonymous GHCR manifest digest and official gh attestation verify passed for exact repository, digest, main source, main ref and app.yml workflow",
     "job": "https://github.com/thaynes43/haynes-quest/actions/runs/37255175911/job/111592003698"
-  }
+  },
+  "completedUtc": "2026-10-05T02:43:33+00:00",
+  "preservedAssetAndLevelFiles": "git diff --quiet passed between old91ac503 and new7678bf3 for docs/assets/media, catalog inventory and scripts/levels; unchanged assets were not re-downloaded"
 }
