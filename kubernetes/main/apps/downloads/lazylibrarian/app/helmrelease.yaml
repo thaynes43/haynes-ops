@@ -37,13 +37,14 @@ spec:
             # cluster's allowlisted-registry Kyverno policy; docker.io is.
             image:
               repository: docker.io/linuxserver/lazylibrarian
-              # librarysync.py, searchbook.py, sabnzbd.py, gb.py, dbupgrade.py and
-              # postprocess.py in this image are overridden by the
-              # lazylibrarian-librarysync, -searchbook, -sabnzbd, -gb, -dbupgrade
-              # and -postprocess ConfigMaps (persistence below), copies of THIS
-              # tag's files plus marked fixes. Bumping the tag means re-deriving
-              # all six files from the new image, or dropping them if upstream
-              # fixed the bugs: see the headers of the files in patches/.
+              # librarysync.py, searchbook.py, sabnzbd.py, gb.py, dbupgrade.py,
+              # postprocess.py and resultlist.py in this image are overridden by
+              # the lazylibrarian-librarysync, -searchbook, -sabnzbd, -gb,
+              # -dbupgrade, -postprocess and -resultlist ConfigMaps (persistence
+              # below), copies of THIS tag's files plus marked fixes. Bumping the
+              # tag means re-deriving all seven files from the new image, or
+              # dropping them if upstream fixed the bugs: see the headers of the
+              # files in patches/.
               tag: version-40a389ea
             env:
               TZ: America/New_York
@@ -197,6 +198,18 @@ spec:
             app:
               - path: /app/lazylibrarian/lazylibrarian/postprocess.py
                 subPath: postprocess.py
+                readOnly: true
+      # A series named after its first book made every later volume's release
+      # score 100+ for book 1 (thaynes43/haynesnetwork#688). Pinned to the
+      # image tag above; patches/resultlist.py's header says how to bump.
+      resultlist-patch:
+        type: configMap
+        name: lazylibrarian-resultlist
+        advancedMounts:
+          lazylibrarian:
+            app:
+              - path: /app/lazylibrarian/lazylibrarian/resultlist.py
+                subPath: resultlist.py
                 readOnly: true
       # RW mount of the gasha01 share at the SAME mountpoint the *arrs +
       # qBittorrent + SABnzbd use, so completed-download paths
