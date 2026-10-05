@@ -17,23 +17,25 @@ spec:
       retries: 3
   upgrade:
     cleanupOnFail: true
-    remediation:
-      retries: 3
+    # Earlier images cannot read persisted attackCombo; retry forward safely.
+    strategy:
+      name: RetryOnFailure
   uninstall:
     keepHistory: false
   values:
     controllers:
       main:
         replicas: 1
-        strategy: RollingUpdate
+        # Persisted combo state requires one schema version during the handover.
+        strategy: Recreate
         annotations:
           reloader.stakater.com/auto: "true"
         containers:
           app:
             image:
               repository: ghcr.io/thaynes43/haynes-quest
-              # Quest main 7678bf3: smaller memory textures; A8/B7 worlds retained.
-              tag: sha-7678bf35ee2e77071158e63f52d301af84a18f2f@sha256:ee98b3de7831c86b0c7377598a99ee61d0a841aa477c53c6ed610972f13d7890
+              # Quest main 32370a9: charges, bolts, combos and A9/B8 courses.
+              tag: sha-32370a927824aa2b1bf53d8242f7c3af8c1bf896@sha256:74f7138d28abed134cc4b31997eb002663efda55a7a8761188f83002827ead01
               pullPolicy: IfNotPresent
             env:
               # Family release (haynes-quest ADR-005): Authentik sign-in, real
