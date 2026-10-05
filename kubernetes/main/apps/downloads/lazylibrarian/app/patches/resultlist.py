@@ -127,18 +127,19 @@ def names_other_volume(release, title, subtitle, author):
     while series and series[0] in writer:
         series = series[1:]
     # a multi-file post's [03/21] counter and a trailing scene group are not part of the title
-    release = re.split(r'[\[(]\s*\d+\s*[_/]\s*\d+\s*[\])]', norm(release))[0]
+    dotted = re.split(r'[\[(]\s*\d+\s*[_/]\s*\d+\s*[\])]', unaccented(release or '').lower().replace("'", ''))[0]
+    release = dotted.replace('.', ' ')  # norm(), keeping the dotted copy aligned for "12. Discworld"
     release = re.sub(r'((?:epub|ebook|mobi|azw3|pdf|retail|mp3|m4b|audiobook|web)\s*)-[a-z0-9]+$', r'\1', release)
     names = [(wanted, False)]
     if series and series != wanted and not series[-1].isdigit():
         names.append((series, True))
-    match = None
+    match = listed = None
     for name, series_only in names:
         name = r'(?<![a-z0-9])' + r'[\s_,:;!?&-]+'.join(name)
         match = re.search(name + r'[\s_\]),:-]*(?:(?:book|bk|vol|volume)\s*|#\s*)?(\d{1,2})'
                           r'(?![a-z0-9]|\s*(?:of\b|[-&_/]\s*\d))', release)
-        if not match and series_only:  # "12. Discworld - Witches Abroad"
-            match = re.search(r'(?<![a-z0-9])(\d{1,2})\s+' + name + r'(?![a-z0-9])', release)
+        if not match and series_only:  # a list number, "12. Discworld - Witches Abroad", not a count ("41 Discworld")
+            match = listed = re.search(r'(?<![a-z0-9.])(\d{1,2})\.\s*' + name + r'(?![a-z0-9])', dotted)
         if match and int(match.group(1)) != 1:
             break
     if not match or int(match.group(1)) == 1:
@@ -150,7 +151,7 @@ def names_other_volume(release, title, subtitle, author):
                         if w not in skip and not w.isdigit() and not re.fullmatch(r'(?:v|part|vol|cd)\d+', w))
     by = '|'.join(w for w in writer if len(w) > 2)
     before = re.split(r'(?<![a-z0-9])(?:%s)(?![a-z0-9])' % by, release[:match.start()]) if by else []
-    other = title_words(release[match.end():]) or (title_words(before[-1]) if len(before) > 1 else '')
+    other = title_words(release[match.end():]) or (title_words(before[-1]) if len(before) > 1 and not listed else '')
     subtitle = ' '.join(w for w in words(subtitle) if w not in _NOT_A_TITLE and not w.isdigit() and w not in
                         ('book', 'bk', 'vol', 'volume', 'part', 'novel', 'one', 'two', 'three', 'four', 'five'))
     if not other or other.endswith('series') or fuzz.token_set_ratio(' '.join(wanted), other) >= OTHER_TITLE_RATIO \
