@@ -24,6 +24,12 @@
 # Processed/Snatched/Seeding rows of the wanted table on 2026-10-05: 153
 # changed, each a later volume, novella or single story grabbed for book 1 or
 # a collection; none was a genuine grab.
+# Extended for thaynes43/haynesnetwork#694: a title that starts with its author
+# ("Terry Pratchett's Discworld") is also looked for as its series alone
+# ("Discworld 21 - Jingo", "12. Discworld - Witches Abroad"), and when nothing
+# follows the volume, the title between the author and the series counts
+# ("Unseen Academicals_ Discworld, Book 37"). Replayed over 3,385 rows: 44 more
+# changed, all later volumes (30 of them grabbed for that Discworld record).
 #
 # BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
 # resultlist.py, and either re-apply the marked change to it (if upstream has
@@ -102,7 +108,10 @@ _NOT_A_TITLE = {'retail', 'ebook', 'audiobook', 'epub', 'mobi', 'azw3', 'azw', '
 
 def names_other_volume(release, title, subtitle, author):
     """ Return (volume, other title) when release reads '<title> NN', '[<title> NN]', '<title> #N', '<title> Book N'
-        or '<title>, Vol N' (N not 1), followed by a title unlike the wanted title and subtitle. Otherwise None. """
+        or '<title>, Vol N' (N not 1), with a title unlike the wanted title and subtitle after it (or, when nothing
+        follows, between the author and it: "Pratchett - Unseen Academicals_ Discworld, Book 37"). A title that starts
+        with its author ("Terry Pratchett's Discworld") is also looked for as its series alone ("Discworld 21 - Jingo",
+        "12. Discworld - Witches Abroad"). Otherwise None. """
     def norm(text):
         return unaccented(text or '').lower().replace("'", '').replace('.', ' ')
 
@@ -112,21 +121,41 @@ def names_other_volume(release, title, subtitle, author):
     wanted = words(title)
     if not wanted or wanted[-1].isdigit():  # a title ending in a number ("Fahrenheit 451") is left alone
         return None
+    writer = set(words(author))
+    writer |= {w + 's' for w in writer}
+    series = wanted
+    while series and series[0] in writer:
+        series = series[1:]
     # a multi-file post's [03/21] counter and a trailing scene group are not part of the title
     release = re.split(r'[\[(]\s*\d+\s*[_/]\s*\d+\s*[\])]', norm(release))[0]
     release = re.sub(r'((?:epub|ebook|mobi|azw3|pdf|retail|mp3|m4b|audiobook|web)\s*)-[a-z0-9]+$', r'\1', release)
-    match = re.search(r'(?<![a-z0-9])' + r'[\s_,:;!?&-]+'.join(wanted) +
-                      r'[\s_\]),:-]*(?:(?:book|bk|vol|volume)\s*|#\s*)?(\d{1,2})'
-                      r'(?![a-z0-9]|\s*(?:of\b|[-&_/]\s*\d))', release)
+    names = [(wanted, False)]
+    if series and series != wanted and not series[-1].isdigit():
+        names.append((series, True))
+    match = None
+    for name, series_only in names:
+        name = r'(?<![a-z0-9])' + r'[\s_,:;!?&-]+'.join(name)
+        match = re.search(name + r'[\s_\]),:-]*(?:(?:book|bk|vol|volume)\s*|#\s*)?(\d{1,2})'
+                          r'(?![a-z0-9]|\s*(?:of\b|[-&_/]\s*\d))', release)
+        if not match and series_only:  # "12. Discworld - Witches Abroad"
+            match = re.search(r'(?<![a-z0-9])(\d{1,2})\s+' + name + r'(?![a-z0-9])', release)
+        if match and int(match.group(1)) != 1:
+            break
     if not match or int(match.group(1)) == 1:
         return None
-    skip = _NOT_A_TITLE | set(get_list(CONFIG['EBOOK_TYPE'])) | set(get_list(CONFIG['AUDIOBOOK_TYPE'])) | \
-        set(words(author))
-    other = ' '.join(w for w in words(release[match.end():])
-                     if w not in skip and not w.isdigit() and not re.fullmatch(r'(?:v|part|vol|cd)\d+', w))
+    skip = _NOT_A_TITLE | set(get_list(CONFIG['EBOOK_TYPE'])) | set(get_list(CONFIG['AUDIOBOOK_TYPE'])) | writer
+
+    def title_words(text):
+        return ' '.join(w for w in words(text)
+                        if w not in skip and not w.isdigit() and not re.fullmatch(r'(?:v|part|vol|cd)\d+', w))
+    by = '|'.join(w for w in writer if len(w) > 2)
+    before = re.split(r'(?<![a-z0-9])(?:%s)(?![a-z0-9])' % by, release[:match.start()]) if by else []
+    other = title_words(release[match.end():]) or (title_words(before[-1]) if len(before) > 1 else '')
+    subtitle = ' '.join(w for w in words(subtitle) if w not in _NOT_A_TITLE and not w.isdigit() and w not in
+                        ('book', 'bk', 'vol', 'volume', 'part', 'novel', 'one', 'two', 'three', 'four', 'five'))
     if not other or other.endswith('series') or fuzz.token_set_ratio(' '.join(wanted), other) >= OTHER_TITLE_RATIO \
-            or (subtitle and fuzz.token_set_ratio(' '.join(words(subtitle)), other) >= OTHER_TITLE_RATIO):
-        return None  # nothing after the number, a series name, or this book again ("Inheritance 04 - Inheritance")
+            or (subtitle and fuzz.token_set_ratio(subtitle, other) >= OTHER_TITLE_RATIO):
+        return None  # nothing but the volume, a series name, or this book again ("Inheritance 04 - Inheritance")
     return int(match.group(1)), other
 
 
