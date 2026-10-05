@@ -17,8 +17,9 @@ spec:
       retries: 3
   upgrade:
     cleanupOnFail: true
-    remediation:
-      retries: 3
+    # Use the same forward retry policy as the family combat schema.
+    strategy:
+      name: RetryOnFailure
   uninstall:
     keepHistory: false
   values:

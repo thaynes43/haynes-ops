@@ -17,8 +17,9 @@ spec:
       retries: 3
   upgrade:
     cleanupOnFail: true
-    remediation:
-      retries: 3
+    # Earlier images cannot read persisted attackCombo; retry forward safely.
+    strategy:
+      name: RetryOnFailure
   uninstall:
     keepHistory: false
   values:
