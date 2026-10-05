@@ -25,7 +25,8 @@ spec:
     controllers:
       main:
         replicas: 1
-        strategy: RollingUpdate
+        # Keep fixture sessions and the combat schema on one version at a time.
+        strategy: Recreate
         annotations:
           reloader.stakater.com/auto: "true"
         containers:

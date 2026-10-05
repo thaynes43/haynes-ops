@@ -25,7 +25,8 @@ spec:
     controllers:
       main:
         replicas: 1
-        strategy: RollingUpdate
+        # Persisted combo state requires one schema version during the handover.
+        strategy: Recreate
         annotations:
           reloader.stakater.com/auto: "true"
         containers:
