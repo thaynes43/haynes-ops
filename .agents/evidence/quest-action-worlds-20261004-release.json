@@ -49,5 +49,59 @@
   "publication_policy": "Carry existing photo assignments; preserve started saves. New starts or explicitly requested Start fresh use the new publication.",
   "private_media_fetched": false,
   "started_saves_reset": false,
-  "owner_review": "New exact-version art remains awaiting owner review in the studio under PRD-004 Q-03."
+  "owner_review": "New exact-version art remains awaiting owner review in the studio under PRD-004 Q-03.",
+  "source_pr_head": "7422a2d58e322c7230ad23d9766dc4f5c9121ced",
+  "source_validation": {
+    "application_run": 37249322875,
+    "verify_job": "success",
+    "test_database": "postgres:16-alpine",
+    "documentation_run": 37249322840,
+    "documentation_result": "success",
+    "advisory_run": 37249322781,
+    "advisory_result": "success; no findings",
+    "container_check": "success",
+    "browser_record": "https://github.com/thaynes43/haynes-quest/blob/main/.agents/evidence/action-worlds/a8-b7-browser-verification.md",
+    "strict_chapter_journeys": 7,
+    "portrait_chapters": [
+      "A1",
+      "B1"
+    ],
+    "studio_catalog_assets": 115,
+    "studio_thumbnails": 165,
+    "ci_tests": {
+      "passed": 2008,
+      "skipped": 0,
+      "passed_files": 173,
+      "duration_seconds": 347.35
+    }
+  },
+  "release_network_preflight": {
+    "pull_request": "https://github.com/thaynes43/haynes-ops/pull/3363",
+    "gitops_merge": "b6ddc14ae85a1e55d2ca999b35976b828f42d6b9",
+    "exact_dns_and_https_hosts": [
+      "tmaproduction.blob.core.windows.net",
+      "tuf-repo-cdn.sigstore.dev"
+    ],
+    "existing_image_attestation_verified": true,
+    "dev_env_pod_restarted": false,
+    "dev_env_restarts": 0
+  },
+  "author_sessions": {
+    "model": "claude-opus-5-5",
+    "parallel_blender_instances": 2,
+    "scenes_released": true,
+    "prior_workspace_files_unchanged": [
+      5796,
+      89
+    ],
+    "finished_cli_sessions_reaped": true,
+    "artifacts_and_remote_branches_preserved": true
+  },
+  "limits": [
+    "Synthetic lockstep journeys and SwiftShader diagnostics establish mechanics, rendering and asset delivery; physical child-device feel and fun have not been observed.",
+    "A8 same-floor pursuit passed; two A8 side-gap attempts were combat-knockout-confounded. The unchanged pursuit runtime has a passing A7 rendered gap/checkpoint probe and navigation/collision unit coverage.",
+    "All new exact-version models remain awaiting owner review under the existing family-candidate permission."
+  ],
+  "merged_source_commit": "91ac5033323e40748ae21be93c6b4db43e695a0d",
+  "main_image_run": 37250305778
 }
