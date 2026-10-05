@@ -17,9 +17,22 @@ spec:
       retries: 3
   upgrade:
     cleanupOnFail: true
+    # SSA retains the old Deployment's defaulted rollingUpdate during the
+    # RollingUpdate-to-Recreate switch; a client-side patch can clear it.
+    serverSideApply: disabled
     # Use the same forward retry policy as the family combat schema.
     strategy:
       name: RetryOnFailure
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: haynes-quest-playtest
+            patch: |-
+              - op: add
+                path: /spec/strategy/rollingUpdate
+                value: null
   uninstall:
     keepHistory: false
   values:
