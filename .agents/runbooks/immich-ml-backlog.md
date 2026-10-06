@@ -101,6 +101,8 @@ kubectl exec -n database postgres16-pgvecto-1 -c postgres -- psql -d immich -c "
 Machine learning is one CUDA replica of `immich-machine-learning` on talosm05's RTX A2000
 (12,282 MiB), which it shares with ollama-assist02. `kubectl logs -n photos
 deploy/immich-machine-learning | grep -c CUDAExecutionProvider` confirms ML is still on the GPU.
+Since 2026-10-06 a VRAM guard keeps ML inside its share of that card under any load
+(*The VRAM guard*, below).
 
 ## Big backlogs and the shared GPU
 
@@ -123,8 +125,14 @@ GPU any more.
 
 **That is why the job runs the queues one at a time.** Only one ML workload is on the card
 besides ollama (the 330 s cooldown between queues lets ML unload the last one), so the peak is
-the highest of the three (OCR, about 9.1 GB in total), not their sum. Since 2026-10-06 nothing manual is needed for a big backlog: the job does what the
+the highest of the three, not their sum. Since 2026-10-06 nothing manual is needed for a big backlog: the job does what the
 2026-10-06 recovery did by hand, which was to run OCR on its own.
+
+One queue at a time turned out not to be enough. In a serial run the same day, Face Detection
+alone, for just 49 assets, took the card to 11,448 MiB (ML about 4.4 GB), and OCR alone logged
+a CUDA out-of-memory error. Uploads and library imports also run all three queues at once,
+whatever the nightly job does. The VRAM guard (next section) is what keeps the card safe now.
+The serial order and cooldown stay, because they keep the GPU quieter for voice.
 
 If you start queues by hand, do the same: start one, wait for it to drain, then start the
 next. Pausing a queue under *Administration → Job Queues* (or `PUT /api/queues/<name>` with
@@ -145,6 +153,139 @@ finds only a handful of assets and none of this applies.
 A few assets may never clear, for example an asset whose preview cannot be decoded. The job
 queues them again every night. That costs little, but if one count stops falling well above
 zero, look at that queue's failed count in the job log and at the immich-server log.
+
+## The VRAM guard
+
+**What it bounds.** With the guard, ML's own GPU memory is at most about **4.2 GB** under any
+load: the CUDA context and all six models' weights (about 1.1 GB), plus one model run of at most
+**3,072 MiB**. Next to ollama-assist02's 7,031 MiB, the card stays under about **11.3 of
+12.3 GB**, which keeps at least 1 GB free. The guard also keeps ML's GPU busy at most a quarter
+of the time, so voice answers slow down by about 15% during an import instead of 70%.
+
+**Why Immich's own settings cannot do this.** Immich ML v3.2.4 creates every CUDA session with
+fixed options, `{"arena_extend_strategy": "kSameAsRequested", "device_id": ...}`
+(`machine-learning/immich_ml/sessions/ort.py:134-135`), and no environment variable reaches
+them. `MACHINE_LEARNING_MODEL_ARENA` only switches the CPU arena (`ort.py:187`). ONNX Runtime's
+CUDA arena never returns memory to the card, so each session grows to its high-water mark and
+stays there. OCR's input shape changes with every image, so that mark keeps rising. By default
+ML also runs one request per CPU at a time (`request_threads = os.cpu_count()`, `config.py:64`;
+20 on talosm05), and each of those holds its own working memory.
+
+**How it works.** Three parts, all in
+`kubernetes/main/apps/photos/immich/machine-learning/`:
+
+| Setting | Where | Effect |
+|---|---|---|
+| `MACHINE_LEARNING_REQUEST_THREADS=1` | `helmrelease.yaml` env (Immich, `config.py:64`, used at `main.py:60-63, 215-219`) | One request at a time. The rest wait in ML's queue. `/ping` is not in that pool. |
+| `MACHINE_LEARNING_MAX_BATCH_SIZE__FACIAL_RECOGNITION=8`, `__OCR=6` | `helmrelease.yaml` env (Immich, `config.py:40-42, 74`; `models/facial_recognition/recognition.py:32-33`; `models/ocr/recognition.py:41-42`) | On CUDA, face recognition has no batch limit by default (`recognition.py:84-92`), so a 61-face photo was one 61-face batch. OCR's 6 is the code default, pinned here. |
+| VRAM guard `vram-guard/sitecustomize.py` | ConfigMap `immich-ml-vram-guard`, mounted at `/opt/immich-ml-vram-guard`, first on `PYTHONPATH` | Python imports `sitecustomize` at start-up. The guard hooks the first `import onnxruntime` and wraps two public onnxruntime calls. Every CUDA session gets `gpu_mem_limit` = `IMMICH_ML_CUDA_MEM_LIMIT_MB` (3072), the hard cap on that session's arena. Every run on a CUDA session sets the run option `memory.enable_memory_arena_shrinkage=gpu:0`, so ONNX Runtime frees all unused arena memory after each run (onnxruntime 1.26.0 `inference_session.cc:3226-3232, 3347-3349`, `bfc_arena.cc:488`). Runs take one process-wide lock (one model on the GPU at a time). After each run the guard waits `(1/d - 1)` times the run's length, with `d` = `IMMICH_ML_GPU_DUTY_CYCLE` (0.25, so three times as long, at most 30 s). |
+| `COLUMNS=200` | `helmrelease.yaml` env | ML's log formatter (Rich) wraps at 80 columns without a terminal, which split `CUDA failure 2: out of memory` across lines. The alert matches whole lines. |
+
+A run that would need more than the 3,072 MiB cap fails inside ONNX Runtime (`Failed to
+allocate memory … Available memory of …`). The other processes on the card are never touched.
+The largest run measured is OCR detection on a 1:30 scrolling screenshot (1170 × 35,100 px,
+which OCR sees as 736 × 22,080), at about 2.8 GB. The library's most elongated image is 8:1.
+An image more extreme than about 1:33 would fail OCR every night, and
+`ImmichMlCudaOutOfMemory` would say so.
+
+The image's own `PYTHONPATH` is `/usr/src`. An Immich upgrade that changes it, or moves
+Python, silently drops the guard, which is why `ImmichMlVramGuardInactive` exists. After an
+upgrade that changes onnxruntime, run the guard's checks in the new image (CPU only, safe in the
+live pod):
+
+```bash
+cd kubernetes/main/apps/photos/immich/machine-learning/vram-guard
+kubectl exec -i -n photos deploy/immich-machine-learning -c app -- sh -c 'mkdir -p /tmp/vg && cat > /tmp/vg/sitecustomize.py' < sitecustomize.py
+kubectl exec -i -n photos deploy/immich-machine-learning -c app -- sh -c 'cat > /tmp/vg/test.py && cd /tmp && PYTHONPATH=/tmp/vg:/usr/src CUDA_VISIBLE_DEVICES= python /tmp/vg/test.py; rm -rf /tmp/vg' < test_sitecustomize.py
+# expect: ALL OK <onnxruntime version>
+kubectl logs -n photos deploy/immich-machine-learning | grep immich-ml-vram-guard
+# expect, once ML has loaded models: "active (onnxruntime …)" and one "guarding CUDA session …" per model
+```
+
+To switch the guard off for a test, set `IMMICH_ML_VRAM_GUARD: "false"` in the HelmRelease.
+Never leave it off: the 2026-10-06 numbers below are what happens.
+
+### Measured (2026-10-06, the load test below)
+
+Same test, same images, 4 minutes at Immich's default job concurrency (Smart Search 2, Face
+Detection 2, OCR 1) then 4 minutes at 4/4/4. Card memory is `nvidia-smi` every 2 s (100 ms for
+the single-image spikes); voice latency is the median of a probe every 15 s. ollama's latency is
+its own `prompt_eval_duration + eval_duration`, so it does not include the test client.
+
+| | Before (unguarded, live ML) | Guarded, no duty cycle (trial) | **Guarded, duty 0.25 (shipped)** |
+|---|---|---|---|
+| Card peak, talosm05 | **11,902 of 12,282 MiB** in the first minute | 8,608 MiB | **8,184 MiB** (10,024 MiB for the 1:30 screenshot, 100 ms sampling) |
+| Failed requests (5xx) | **3,497 of 4,775** (73%), all CUDA out-of-memory | 0 of 1,822 | 0 of 499 except the 1:30 screenshot at a 2,048 MiB cap, which led to the 3,072 cap; 0 at 3,072 |
+| ollama-assist02 answer (server time, idle 1.25-1.31 s) | 1.35 s / 1.32 s (ML failing fast, so little GPU work) | **2.11 s / 2.29 s** (+70-80%) | **1.44 s / 1.51 s** (+11-16%) |
+| GPU utilisation, max temperature | 0-1%, 82 °C | 56-62%, 92 °C | 17-18%, 88 °C |
+| Requests per minute (all three types) | n/a (most failed) | 267 / 188 | 71 / 54 |
+
+(The two latency figures are the default and the 4/4/4 phase.) Requests per minute fell by
+about 4x, which is the duty cycle doing its job: a 2,000-photo iCloud import needs about 6,000
+requests, roughly 1.5 hours. A Smart Search text query that arrives during an import waits
+behind the requests already queued, so it can take 10-30 s until the import is done.
+
+### Why one replica, on talosm05 only
+
+A second replica on talosm01's A2000 (whisper, speech-to-phrase, kokoro, vexa-whisper) was
+tested on 2026-10-06 with a trial server and rejected:
+
+* **It cannot be bounded safely.** talosm01's 14-day peak is 9,590 MiB, which leaves about
+  2.1 GB below the 0.5 GB slack line. ML's guarded worst case is about 4.2 GB, and one OCR run
+  alone can need 2.8 GB. With a 1,024 MiB cap the trial already failed two extreme OCR
+  requests, and the card still reached 10,385 MiB with today's 8,570 MiB baseline.
+* **It is not free for speech-to-text.** Whisper (Parakeet, a 3.8 s command) answered in 54 ms
+  median before and 61-66 ms during the load (max 104-112 ms against 63 ms), so about +10 ms.
+  That is small, but not zero.
+* **Throughput is not needed.** Imports come a couple of times a month and nothing waits on
+  them.
+
+If it is ever reconsidered: immich-server's `machineLearning.urls` is **failover only**. It
+tries the healthy URLs in order and returns the first success
+(`server/src/repositories/machine-learning.repository.ts:162-188`), so a second URL takes no
+load while the first one works. One Service in front of two pods does spread load, per TCP
+connection: immich-server's `fetch` keeps connections alive, ML closes idle ones after 2 s
+(`http_keepalive_timeout_s`, `config.py:62`), and Cilium picks a backend at random for each new
+connection. That split is random, though. It cannot send the large OCR inputs to the card with
+room for them, so both replicas would need the full 3,072 MiB cap.
+
+### Load test
+
+`scripts/immich-ml-loadtest/` holds three scripts. None of them touches Immich's database or
+job queues, apart from one read-only query.
+
+* `render-job.sh <name>` renders a Job in `photos` that POSTs straight to ML's `/predict` with
+  the exact request bodies immich-server v3.2.4 sends (`machine-learning.repository.ts:190-242`).
+  Requests are CLIP visual, face detection + recognition, and OCR. The inputs are real worst-case
+  previews, which `picks.sql` finds read-only: the 30 photos with the most faces (up to 61), the 30
+  with the most OCR boxes (up to 180) and the 20 most elongated (up to 8:1). It adds synthetic
+  extremes: 10:1 text panoramas both ways, one very long text line, a dense text page, a 1:30
+  scrolling screenshot, and a 2 × 2 tile of the most face-heavy photo. While the load runs it
+  times voice: ollama-assist02 `/api/chat` with a Home-Assistant-sized prompt, and Wyoming STT
+  on `whisper` with a 3.8 s command that kokoro synthesizes at start-up. Phases come from
+  `PLAN`; the default is idle 120 s, 2/2/1 for 300 s, 4/4/4 for 300 s, idle 120 s.
+* `render-ml-trial.sh <name> <node> [KEY=VALUE …]` starts a throwaway ML server as a Job on any
+  GPU node, with the guard and the live Deployment's ML settings plus any overrides. Nothing
+  routes Immich traffic to it. Use it to try a different cap or card before changing the
+  HelmRelease. It copies the models to an emptyDir, so the shared cache PVC is only read.
+* `loadtest.py` is the test itself, inlined into the Job.
+
+```bash
+declare-activity start "immich-ML load test" --scope photos,ai --ttl 1h
+cd scripts/immich-ml-loadtest
+PLAN="baseline:120:0:0:0,default:240:2:2:1,heavy:240:4:4:4,recovery:120:0:0:0" \
+  ./render-job.sh immich-ml-loadtest-$(date +%m%d%H%M) | kubectl apply -f -
+# card memory every 2 s while it runs (Prometheus scrapes too coarsely to see the spikes)
+kubectl exec -n observability $(kubectl get pod -n observability -l app.kubernetes.io/name=nvidia-gpu-exporter \
+  --field-selector spec.nodeName=talosm05 -o name) -- nvidia-smi --query-gpu=timestamp,memory.used,utilization.gpu,temperature.gpu \
+  --format=csv,noheader,nounits -lms 2000
+# results: S lines per phase and model type, P lines per voice probe, E lines for the first errors
+kubectl logs -n photos -l app.kubernetes.io/name=immich-ml-loadtest | grep -E '^(S|P|E|I,done)'
+```
+
+Run it only when no backlog is draining (`immich-queue-missing-*` Jobs and the backlog query
+above), since it competes with real jobs for the same ML queue. A healthy guarded run ends with
+`I,done,ml_errors=0`, and the card stays below 12,282 − 512 MiB.
 
 ## Rotate the key
 
@@ -177,3 +318,11 @@ To give this job its own narrower key later, put it in a new field and change th
 | `HTTP 404` on `PUT /api/jobs/…` | An Immich upgrade removed the legacy jobs route (deprecated since v2.4.0) | Find the replacement start route in that release's `server/src/controllers/`, then update the script |
 | `HTTP 000` | immich-server is unreachable | Check `kubectl get pods -n photos` |
 | Pod stuck in `ContainerCreating` (`FailedMount … immich-queue-missing-secret not found`) | The ExternalSecret has not synced, usually because the 1Password field is missing or misnamed | `kubectl get externalsecret -n photos immich-queue-missing`, then check the field name in 1Password |
+
+The machine learning service itself has three warning alerts (none of them pages):
+
+| Alert | Meaning | Fix |
+|---|---|---|
+| `ImmichMlCudaOutOfMemory` (Loki, `machine-learning/lokirule.yaml`) | ML logged `Failed to allocate memory`, `out of memory` or `ALLOC_FAILED` | `Available memory of … is smaller than requested` alone: one run needed more than the 3,072 MiB cap, an extreme image. Find it in the immich-server log (failed OCR / face job, asset id) and decide whether it is worth raising the cap (the card's headroom allows about 3,500). `CUDA failure 2: out of memory`: the card itself was full. Check that the guard is active, and what else is on talosm05 (`nvidia-smi`). |
+| `ImmichMlVramGuardInactive` (Loki) | ML loaded models in the last 30 min without guarding a CUDA session, or the guard logged an ERROR | No guard lines: the mount or `PYTHONPATH` is wrong for this image. ERROR: onnxruntime's API changed; run the guard's checks (*The VRAM guard*). Only `CPUExecutionProvider`: ML lost the GPU. |
+| `SharedGpuMemoryNearlyFull` (Prometheus, `observability/nvidia-gpu-exporter/app/prometheusrule.yaml`) | talosm05's or talosm01's card has been over 95% full for 5 min | On talosm05, ML is the usual suspect; `kubectl rollout restart -n photos deploy/immich-machine-learning` frees its memory at once. Then find out why the guard did not hold. |

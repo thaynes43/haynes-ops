@@ -43,14 +43,21 @@ spec:
           #     dynamic VRAM fills whatever is free when it loads, and with
           #     assist02 gone it can grow into the whole card, so an ML model
           #     load after a render could OOM — not here.
-          #   - talosm01's A2000 belongs to voice STT/TTS + Vexa — not here.
-          #   - talosm05: assist02's footprint is fixed (6.6 GB card total with
-          #     qwen3.5:9b loaded), and ML measured +1.5 GB with all six default
-          #     models loaded (CLIP ViT-B-32__openai visual + textual, buffalo_l
-          #     detection + recognition, PP-OCRv5_mobile detection + recognition),
-          #     so the card peaks near 8.1 of 12.3 GB. After
-          #     MACHINE_LEARNING_MODEL_TTL (300 s) idle the ML worker unloads its
-          #     models and exits, so it holds ~0 VRAM between jobs.
+          #   - talosm01's A2000 belongs to voice: whisper, speech-to-phrase,
+          #     kokoro, vexa-whisper. Re-checked 2026-10-06 for a second replica
+          #     and rejected: its 14-day peak is 9.6 of 12.3 GB, which leaves
+          #     ~2.1 GB, and ML's bounded worst case is ~4.2 GB (below), so a
+          #     replica there would need a cap too small for real inputs.
+          #     Throughput is not needed (runbook, "Why one replica").
+          #   - talosm05: ollama-assist02 holds ~7.0 GB (qwen3.5:9b, loaded
+          #     forever). Unbounded, ML filled the rest: 11.9 of 12.3 GB and
+          #     CUDA out-of-memory errors on 2026-10-06, even with one queue at
+          #     a time (Face Detection alone took ML to ~4.4 GB). The VRAM guard
+          #     below bounds ML at ~4.2 GB worst case, so the card stays under
+          #     ~11.3 GB. Measured under the worst-case load test: ML 0.9-1.2 GB,
+          #     and 3.0 GB for one OCR of a 1:30 screenshot.
+          #     After MACHINE_LEARNING_MODEL_TTL (300 s) idle the ML worker
+          #     unloads its models and exits, so it holds ~0 VRAM between jobs.
           # Pinned by hostname, not the `nvidia-a2000` label: that label also
           # matches talosm01 and talosm04.
           #
@@ -68,7 +75,12 @@ spec:
             kubernetes.io/hostname: talosm05
           runtimeClassName: nvidia
         replicas: 1
-        strategy: RollingUpdate
+        # Recreate, not RollingUpdate: a rolling update starts the new pod while
+        # the old one still holds its models, so for a moment two ML processes
+        # would share the card next to ollama. With Recreate, requests fail for
+        # the half minute the pod takes to restart, and the nightly Missing run
+        # (queue-missing/) picks up any asset that failed.
+        strategy: Recreate
         containers:
           app:
             image:
@@ -85,6 +97,43 @@ spec:
               TRANSFORMERS_CACHE: /cache
               XDG_CONFIG_HOME: /cache/.config
               MPLCONFIGDIR: /cache/.config/matplotlib
+              # --- VRAM bound (2026-10-06). Runbook: .agents/runbooks/immich-ml-backlog.md,
+              # "The VRAM guard". Line numbers are Immich v3.2.4 machine-learning/immich_ml/.
+              # One request at a time. The default is os.cpu_count(), 20 on talosm05
+              # (config.py:64), and every inference in flight holds its own working
+              # memory on the card (main.py:60-63, 215-219). Requests beyond one wait in
+              # ML's queue; /ping is served outside that pool, so health checks never
+              # wait. (The guard also lets only one model run at a time.)
+              MACHINE_LEARNING_REQUEST_THREADS: "1"
+              # Faces per recognition batch. On CUDA the default is no limit
+              # (models/facial_recognition/recognition.py:32-33, 84-92), so a group photo
+              # with 61 faces is one 61-face batch.
+              MACHINE_LEARNING_MAX_BATCH_SIZE__FACIAL_RECOGNITION: "8"
+              # Text boxes per OCR recognition batch. 6 is the code default
+              # (models/ocr/recognition.py:41-42); it is set here so that an upgrade
+              # cannot change the bound without anyone noticing.
+              MACHINE_LEARNING_MAX_BATCH_SIZE__OCR: "6"
+              # The VRAM guard (vram-guard/sitecustomize.py, mounted below). Immich has
+              # no setting for ONNX Runtime's CUDA options (sessions/ort.py:134-135), so
+              # the guard adds them: a hard cap on each model session's memory arena
+              # (IMMICH_ML_CUDA_MEM_LIMIT_MB), and the arena's unused memory handed
+              # back to the card after every run. The image's own PYTHONPATH is
+              # /usr/src; the guard directory goes in front of it.
+              PYTHONPATH: /opt/immich-ml-vram-guard:/usr/src
+              # Per model session. The largest single run measured is OCR detection on
+              # a 1:30 scrolling screenshot, ~2.8 GB; everything else stays under 1 GB.
+              # Worst case for the process: CUDA context + all six models' weights
+              # (~1.1 GB) + one run up to this cap = ~4.2 GB, next to ollama's 7.0 GB.
+              IMMICH_ML_CUDA_MEM_LIMIT_MB: "3072"
+              # GPU busy at most 25% of the time: after each model run the guard waits
+              # three times as long as the run took. Unthrottled, a busy ML slowed
+              # ollama-assist02's voice answers by 1.7x; at 0.25, by ~1.15x. Imports
+              # take about four times longer, which is fine.
+              IMMICH_ML_GPU_DUTY_CYCLE: "0.25"
+              # Rich (ML's log formatter) wraps at 80 columns without a terminal, which
+              # splits CUDA error messages across lines; the out-of-memory alert
+              # (lokirule.yaml) matches whole lines.
+              COLUMNS: "200"
             envFrom:
               - secretRef:
                   name: immich-secret
@@ -103,6 +152,12 @@ spec:
           http:
             port: &port 3003
     persistence:
+      vram-guard:
+        type: configMap
+        name: immich-ml-vram-guard
+        globalMounts:
+          - path: /opt/immich-ml-vram-guard
+            readOnly: true
       cache:
         type: persistentVolumeClaim
         existingClaim: immich-machine-learning
