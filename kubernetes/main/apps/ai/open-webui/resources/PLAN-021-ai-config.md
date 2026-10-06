@@ -486,7 +486,8 @@ nothing runs on talosw01's 3090s until the shared hardware fault (power/riser/sl
 (#3052). ComfyUI moved to the RTX 2000 Ada (16 GB, `GPU-71a3aea4-…`) on talosm03, shared with
 `ollama-assist02`; its workspace moved to the Ceph claim `comfyui-data`. Benchmarked with the
 production edit graph: 1.42–1.50 s/it, warm render 80–86 s (3090 ~69 s), cold 306 s. The Open
-WebUI graphs keep `gpu:0`.
+WebUI graphs keep `gpu:0`. (2026-10-05: `ollama-assist02` has since moved to talosm05's RTX A2000
+12 GB, pinned by hostname, so ComfyUI now has the whole card.)
 
 #### Earlier the same day — ComfyUI on 3090 #1, llama-server suspended (owner ruling 2026-09-23)
 
