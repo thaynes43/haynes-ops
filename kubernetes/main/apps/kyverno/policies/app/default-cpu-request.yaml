@@ -8,17 +8,20 @@
 # ships without requests.
 #
 # WHAT: every non-system Namespace gets a LimitRange `default-cpu-request` that gives
-# a container with NO cpu request a 50m request. That is weight ~51 instead of 1 under
-# contention, and it makes the pod Burstable.
+# a container with NO cpu request a 50m request. That makes the pod Burstable. Under
+# contention it is then entitled to about 50m of CPU, instead of a share of the
+# BestEffort cgroup, which has cpu.weight 1 for all BestEffort pods on the node
+# combined.
 #   - defaultRequest ONLY. No `default` (= no CPU limit is ever injected) and no
 #     min/max, so nothing a chart sets explicitly is changed or rejected.
 #   - CPU ONLY, no memory default: the outage was CPU starvation, and a memory request
 #     would change eviction ranking and memory scheduling for apps nobody sized.
 #   - Admission-time only. LimitRanger defaults a pod when it is CREATED, so running
 #     pods pick it up at their next natural restart. Do not mass-restart for it.
-#   - LimitRanger runs before the mutating webhooks, so the init container k8tz injects
-#     is not defaulted. That does not matter: one requested container makes the pod
-#     Burstable.
+#   - Init containers are defaulted too, including the one k8tz injects by webhook
+#     (verified 2026-10-06 with a test Job: its k8tz init container got 50m). An init
+#     container only raises a pod's effective request when the pod's regular
+#     containers request less than 50m in total.
 #
 # EXCLUDED: the control-plane/system namespaces (kube-system, kube-public,
 # kube-node-lease), flux-system (GitOps engine; also carries the
