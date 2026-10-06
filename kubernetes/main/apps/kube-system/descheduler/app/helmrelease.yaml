@@ -55,15 +55,13 @@ spec:
                 # for the identical condition.
                 #
                 # disk-pressure is not hypothetical here: talosw02 hit it when a
-                # sabnzbd scratch dir filled the node, and talosw02 is where
-                # emqx-core runs. This exclusion is the guard that ships
-                # alongside emqx-core's maxUnavailable in the same PR — that PDB
-                # was, until now, the only thing making the sole MQTT broker
-                # descheduler-immune (no priorityClass, no affinity, no
-                # topologySpread, and an RWO ceph-block PVC that passes nodeFit
-                # anywhere). Relaxing the PDB without this would trade a
-                # drain-blocker for an eviction path on a singleton broker whose
-                # restart also trips the known z2m Last-Will race.
+                # sabnzbd scratch dir filled the node, and talosw02 was where
+                # the MQTT broker (then emqx-core) ran. This exclusion shipped
+                # alongside emqx-core's maxUnavailable — that PDB had been the
+                # only thing making the sole MQTT broker descheduler-immune.
+                # The broker is Mosquitto now (haynes-ops#3395), still a
+                # singleton with an RWO ceph-block PVC and no PDB, so this
+                # exclusion is what keeps a pressure taint from evicting it.
                 excludedTaints:
                   - node.kubernetes.io/not-ready
                   - node.kubernetes.io/unreachable

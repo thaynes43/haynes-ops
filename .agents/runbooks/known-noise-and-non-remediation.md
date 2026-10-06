@@ -207,8 +207,9 @@ incident.
 switch over first (`kubectl cnpg promote`), then drain.
 
 Sibling PDBs are a different story and were fixed properly: the CNPG singletons and
-the vexa components gate their PDBs on replica count, and `emqx-core` now sets
-`maxUnavailable` explicitly. If a *new* singleton shows `allowed=0`, that one is worth
+the vexa components gate their PDBs on replica count. (`emqx-core` set
+`maxUnavailable` explicitly until EMQX was retired on 2026-10-06; the Mosquitto broker
+has no PDB.) If a *new* singleton shows `allowed=0`, that one is worth
 investigating.
 
 ### The muted Ceph `AUTH_INSECURE_*` / `AUTH_EMERGENCY` health checks
