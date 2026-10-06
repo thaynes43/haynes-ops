@@ -37,7 +37,8 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
   in one that lacks them, add the Claude Code review + `@claude` workflows and set the
   `CLAUDE_CODE_OAUTH_TOKEN` secret with the runbook's one-off Job (the pod's own GitHub
   token cannot write secrets). Its review is advisory: read the findings before
-  merging; fix each, or answer with a concrete reason. See `.agents/runbooks/new-repo-setup.md` in haynes-ops.
+  merging; fix each, or answer with a concrete reason. See
+  `.agents/runbooks/new-repo-setup.md` in haynes-ops.
 - **Only QUESTIONS wait on the owner.** Push each one to his phone with the
   **AskUserQuestion tool, ONE at a time**, at the moment it arises — never batched,
   never as a prose "open questions" list in your final message (he does not receive
