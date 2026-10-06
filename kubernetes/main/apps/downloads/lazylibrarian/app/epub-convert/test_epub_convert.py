@@ -271,9 +271,53 @@ def test_failures():
         check(sorted(os.listdir(slow)) == ["Slow - Author F.mobi"], "SIGTERM: the folder is left as it was")
 
 
+def test_duplicates():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = os.path.join(tmp, "EBooks")
+        state = os.path.join(tmp, ".epub-convert")
+        # The library already shows the book from a sibling folder (punctuation differs): no second copy.
+        held = os.path.join(root, "Author G", "Dirk Gentlys Holistic Detective Agency")
+        make_book(os.path.join(held, "Dirk Gentlys Holistic Detective Agency - Author G.epub"),
+                  "Dirk Gently's Holistic Detective Agency", "Author G")
+        dup = os.path.join(root, "Author G", "Dirk Gently's Holistic Detective Agency")
+        make_book(os.path.join(dup, "Author G - Dirk Gently's Holistic Detective Agency.mobi"),
+                  "Dirk Gently's Holistic Detective Agency", "Author G")
+        # Two mobi-only copies of one book: the first converts, the second is its duplicate.
+        first = os.path.join(root, "Author G", "Life the Universe and Everything")
+        make_book(os.path.join(first, "Author G - Life the Universe and Everything.mobi"),
+                  "Life, the Universe and Everything", "Author G")
+        second = os.path.join(root, "Author G", "Life, the Universe, and Everything")
+        make_book(os.path.join(second, "Author G - Life, the Universe, and Everything.mobi"),
+                  "Life, the Universe and Everything", "Author G")
+        # A longer title is another book, not a duplicate.
+        other = os.path.join(root, "Author G", "Dirk Gently's Holistic Detective Agency 2")
+        make_book(os.path.join(other, "Dirk Gently's Holistic Detective Agency 2 - Author G.mobi"),
+                  "Dirk Gently's Holistic Detective Agency 2", "Author G")
+        rc, lines, err = run({"EBOOK_ROOT": root, "STATE_DIR": state, "SETTLE_SECONDS": "0"})
+        results = {line["folder"]: line["result"] for line in by_msg(lines, "epub_convert")}
+        check(rc == 0, f"duplicates: run exits 0 ({err[-300:]})")
+        check(sorted(os.listdir(dup)) == ["Author G - Dirk Gently's Holistic Detective Agency.mobi"],
+              "duplicates: a book the library shows from a sibling folder is not copied again")
+        check(results.get("Author G/Life the Universe and Everything") == "converted"
+              and "Author G/Life, the Universe, and Everything" not in results,
+              f"duplicates: of two mobi-only copies only the first converts ({results})")
+        check(results.get("Author G/Dirk Gently's Holistic Detective Agency 2") == "converted",
+              "duplicates: a longer title is another book")
+        census = by_msg(lines, "epub_convert_census")
+        check(census and census[0]["duplicate"] == 2 and census[0]["unconverted"] == 0 and census[0]["held"] == 0,
+              f"duplicates: census counts 2 duplicates, nothing unconverted ({census})")
+        # The sibling copy goes: the duplicate converts on the next run.
+        os.remove(os.path.join(held, "Dirk Gentlys Holistic Detective Agency - Author G.epub"))
+        rc, lines, err = run({"EBOOK_ROOT": root, "STATE_DIR": state, "SETTLE_SECONDS": "0"})
+        results = {line["folder"]: line["result"] for line in by_msg(lines, "epub_convert")}
+        check(results == {"Author G/Dirk Gently's Holistic Detective Agency": "converted"},
+              f"duplicates: converts once the sibling copy is gone ({results})")
+
+
 if __name__ == "__main__":
     test_title_rule()
     test_runs()
     test_failures()
+    test_duplicates()
     print(f"\n{len(FAILURES)} failed" if FAILURES else "\nall passed")
     sys.exit(1 if FAILURES else 0)

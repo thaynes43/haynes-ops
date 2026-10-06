@@ -12,7 +12,10 @@ What one run does (CronJob lazylibrarian-epub-convert, hourly):
      one never convert at the same time. A lock older than LOCK_STALE_SECONDS is
      from a killed run and is taken over.
   2. Walks EBOOK_ROOT. A folder that holds any .epub or .pdf is never touched.
-     A folder that holds a .mobi or .azw3 and neither of those is a candidate.
+     A folder that holds a .mobi or .azw3 and neither of those is a candidate,
+     unless a sibling folder of the same author holds the same book (same title
+     words) as an epub or pdf: the library already shows it, and a second copy
+     only makes Libretto's match ambiguous. Such a folder counts as `duplicate`.
   3. For each candidate, one source file (azw3 before mobi; then the name
      LazyLibrarian gives a new import, "<Title> - <Author>"; then the newest), one
      conversion at a time with `ebook-convert` into the pod's /tmp. Skipped for now
@@ -32,7 +35,8 @@ What one run does (CronJob lazylibrarian-epub-convert, hourly):
      EPUB) is left exactly as it is and recorded in STATE_DIR/held.tsv, so it is
      reported once and not retried every hour. Delete its line to retry it.
   7. Logs a census: the folders still .mobi/.azw3-only that this run should have
-     converted (`unconverted`, 0 after every run), plus the held and settling ones.
+     converted (`unconverted`, 0 after every run), plus the held, settling and
+     duplicate ones.
 
 Log lines are JSON, one per line, on stdout:
   epub_convert         one per conversion attempt: result converted | drm |
@@ -168,6 +172,38 @@ def choose_source(folder, sources):
         return (SOURCES.index(ext.lower()), 0 if base == ll_name else 1, -mtime, name)
 
     return sorted(sources, key=rank)[0]
+
+
+def duplicate_of(folder):
+    """A sibling folder that already holds this book as an epub or pdf, or None.
+
+    The same book is sometimes filed twice under one author, in folders whose
+    names differ only in punctuation ("Dirk Gently's ..." / "Dirk Gentlys ...",
+    "The Taggerung" / "Taggerung"). Kavita already shows that book from the
+    sibling; a second copy would only add a duplicate series, and Libretto
+    refuses a member it holds twice as ambiguous (2026-10-06: "Dirk Gently's
+    Holistic Detective Agency" went from held to missing). Same words, any
+    punctuation, "the" / "a" / "an" / "and" / "of" ignored.
+    """
+    author_dir = os.path.dirname(folder)
+    mine = _tokens(os.path.basename(folder))
+    if not mine:
+        return None
+    try:
+        siblings = sorted(os.listdir(author_dir))
+    except OSError:
+        return None
+    for name in siblings:
+        path = os.path.join(author_dir, name)
+        if name.startswith(".") or path == folder or not os.path.isdir(path) or _tokens(name) != mine:
+            continue
+        try:
+            files = os.listdir(path)
+        except OSError:
+            continue
+        if any(not f.startswith(".") and os.path.splitext(f)[1].lower() in BLOCKERS for f in files):
+            return os.path.relpath(path, EBOOK_ROOT)
+    return None
 
 
 def recently_changed(folder, sources, now):
@@ -420,8 +456,9 @@ def convert_folder(folder, source):
 
 def census(held, now):
     """Count the folders still .mobi/.azw3-only, split by why."""
-    counts = {"unconverted": 0, "held": 0, "settling": 0}
+    counts = {"unconverted": 0, "held": 0, "settling": 0, "duplicate": 0}
     unconverted = []
+    duplicates = []
     for folder, sources in find_candidates(EBOOK_ROOT):
         source = choose_source(folder, sources)
         rel = os.path.relpath(folder, EBOOK_ROOT)
@@ -431,12 +468,15 @@ def census(held, now):
             continue
         if held_key(rel, source, size) in held:
             counts["held"] += 1
+        elif duplicate_of(folder):
+            counts["duplicate"] += 1
+            duplicates.append(rel)
         elif recently_changed(folder, sources, now):
             counts["settling"] += 1
         else:
             counts["unconverted"] += 1
             unconverted.append(rel)
-    return counts, unconverted[:10]
+    return counts, unconverted[:10], duplicates[:10]
 
 
 def take_lock():
@@ -486,6 +526,8 @@ def main():
                 continue  # moved or removed since the walk (an import); the next run sees the folder as it is
             if held_key(rel, source, size) in held or recently_changed(folder, sources, now):
                 continue
+            if duplicate_of(folder):
+                continue  # counted by the census as `duplicate`; converts by itself if the sibling copy goes
             if time.monotonic() - run_started > RUN_BUDGET_SECONDS:
                 deferred += 1
                 continue
@@ -498,18 +540,20 @@ def main():
                 log("epub_convert", result=result, folder=rel, source=source, detail=f"{type(err).__name__}: {err}"[:300])
             results[result] = results.get(result, 0) + 1
         kavita = kavita_scan() if results.get("converted") else "nothing_converted"
-        counts, sample = census(load_held(STATE_DIR), time.time())
+        counts, sample, duplicate_sample = census(load_held(STATE_DIR), time.time())
         log(
             "epub_convert_census",
             unconverted=counts["unconverted"],
             held=counts["held"],
             settling=counts["settling"],
+            duplicate=counts["duplicate"],
             deferred=deferred,
             converted=results.get("converted", 0),
             failed=sum(v for k, v in results.items() if k not in ("converted", "skipped_now_has_epub_or_pdf")),
             results=results,
             kavita_scan=kavita,
             unconverted_sample=sample,
+            duplicate_sample=duplicate_sample,
             dry_run=DRY_RUN,
             seconds=round(time.monotonic() - run_started, 1),
         )
