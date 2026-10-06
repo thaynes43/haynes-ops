@@ -1,8 +1,5 @@
 # MQTT broker (Mosquitto): layout, clients, `MosquittoNotReady`
 
-> **Status 2026-10-06:** Mosquitto is deployed next to EMQX with no clients yet; the
-> client cutover (haynes-ops#3395) follows. The tables below describe the target state.
-
 The house MQTT broker is **Mosquitto 2.1**, one pod, no operator. Every Zigbee light
 depends on it: zigbee2mqtt talks to the Zigbee radio and to Home Assistant only
 through MQTT.
