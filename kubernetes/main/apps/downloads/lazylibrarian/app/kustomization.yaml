@@ -42,7 +42,9 @@ configMapGenerator:
   # Patched upstream gb.py + dbupgrade.py (thaynes43/haynesnetwork#665): the
   # API's addBook writes the bookauthors row it skipped, and the start-up
   # check never deletes an author that still owns books (books.AuthorID
-  # cascades). Mounted by helmrelease.yaml; pinned to the image tag there.
+  # cascades). dbupgrade.py also logs a census of books no author counts
+  # (LL_UNLINKED_BOOKS, alerted by lokirule.yaml; thaynes43/haynesnetwork#736).
+  # Mounted by helmrelease.yaml; pinned to the image tag there.
   - name: lazylibrarian-gb
     files:
       - gb.py=./patches/gb.py
@@ -70,6 +72,15 @@ configMapGenerator:
       - resultlist.py=./patches/resultlist.py
     options:
       disableNameSuffixHash: true
+  # Loki ruler picks this up by label (same pattern as qbittorrent). Stable
+  # name: the rule file is read by the ruler sidecar, nothing references it.
+  - name: lazylibrarian-lokirule
+    files:
+      - lazylibrarian.yaml=./lokirule.yaml
+    options:
+      disableNameSuffixHash: true
+      labels:
+        loki_rule: "true"
 generatorOptions:
   # Python source with $Author-style strings: keep Flux post-build
   # substitution away from it.

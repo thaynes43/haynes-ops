@@ -2,7 +2,7 @@
 # haynes-ops override (downloads/lazylibrarian, ConfigMap lazylibrarian-dbupgrade)
 #
 # This is LazyLibrarian's upstream lazylibrarian/dbupgrade.py, byte for byte,
-# plus this comment block and ONE marked change (search for "haynes-ops fix").
+# plus this comment block and two marked changes (search for "haynes-ops fix").
 #
 # PINNED TO UPSTREAM: image docker.io/linuxserver/lazylibrarian:version-40a389ea
 #   (LazyLibrarian commit 40a389ea, pyproject version 2026.05.25).
@@ -17,6 +17,13 @@
 # authors at the 2026-10-03 restart, about 900 haynesnetwork requests' books
 # since July (thaynes43/haynesnetwork#665). The delete now spares any author
 # that still owns a row in books.
+#
+# Fix 2, a census (thaynes43/haynesnetwork#736): every start counts the books
+# with no bookauthors row, which count for no author, and logs
+# "LL_UNLINKED_BOOKS <n>" as a WARNING when there are any (the Loki rule in
+# lokirule.yaml alerts on it). On 2026-10-06 the 211 left from before the gb.py
+# fix were given their primary row (Role 1, as gb.py and LazyLibrarian's own
+# v88 upgrade write it), so the census reads 0 and no book depends on fix 1.
 #
 # BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
 # dbupgrade.py, and either re-apply the marked change to it (if upstream has
@@ -642,6 +649,17 @@ def check_db(upgradelog=None):
                     logger.warning(msg)
                     for author in authors:
                         db.action("DELETE from authors WHERE AuthorID=?", (author['AuthorID'],))
+
+            # haynes-ops fix 2: census of books no author counts (thaynes43/haynesnetwork#736). Fix 1 keeps them.
+            unlinked = db.match('SELECT count(*) AS n FROM books b WHERE NOT EXISTS '
+                                '(SELECT 1 FROM bookauthors ba WHERE ba.BookID = b.BookID)')
+            unlinked = check_int(unlinked['n'], 0) if unlinked else 0
+            if unlinked:
+                cnt += unlinked
+                logger.warning(f"LL_UNLINKED_BOOKS {unlinked} {plural(unlinked, 'book')} with no bookauthors row: "
+                               f"no author counts them, only the haynes-ops spare path keeps them")
+            else:
+                logger.info('haynes-ops census: every book has a bookauthors row')
 
             # update author images if exist and nophoto in database
             authors = db.select("SELECT AuthorID FROM authors WHERE authorimg = 'images/nophoto.png'")

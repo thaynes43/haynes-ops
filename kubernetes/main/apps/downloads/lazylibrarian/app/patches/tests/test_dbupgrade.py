@@ -23,3 +23,23 @@ class CheckDbTest(OverlayTestCase):
         self.assertEqual(self.count('authors WHERE AuthorID=?', ('A-empty',)), 0)
         self.assertEqual(self.count('books WHERE BookID=?', ('B-linked',)), 1)
         self.assertEqual(self.db().match("SELECT TotalBooks FROM authors WHERE AuthorID='A-linked'")['TotalBooks'], 1)
+
+
+class CensusTest(OverlayTestCase):
+    """dbupgrade.py fix 2: every start counts the books no author counts (thaynes43/haynesnetwork#736)."""
+
+    def test_census_reports_unlinked_books(self):
+        self.add_author('A-census', 'Census Author')
+        self.add_book('B-census-linked', 'A-census', 'Linked Census Book')
+        self.add_book('B-census-unlinked', 'A-census', 'Unlinked Census Book', link=False)
+        with self.assertLogs('lazylibrarian.dbupgrade', level='INFO') as logs:
+            check_db()
+        self.assertTrue(any('LL_UNLINKED_BOOKS 1 book with no bookauthors row' in line for line in logs.output),
+                        logs.output)
+
+        self.db().action("INSERT INTO bookauthors (AuthorID, BookID, Role) VALUES ('A-census', 'B-census-unlinked', 1)")
+        self.db().action("DELETE FROM books WHERE BookID NOT IN (SELECT BookID FROM bookauthors)")
+        with self.assertLogs('lazylibrarian.dbupgrade', level='INFO') as logs:
+            check_db()
+        self.assertFalse(any('LL_UNLINKED_BOOKS' in line for line in logs.output))
+        self.assertTrue(any('every book has a bookauthors row' in line for line in logs.output))

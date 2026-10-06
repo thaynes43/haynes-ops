@@ -15,7 +15,7 @@ image pinned in `../../helmrelease.yaml`, never against the live pod or its data
 | Overlay | Test |
 |---|---|
 | `resultlist.py` | the volume penalty: the four Assistant to the Villain releases, the Discworld record, the guards (Inheritance, Fahrenheit 451, Harper Connelly, Chroniken 01, a "41 Discworld novels" count), plus `fixtures/resultlist_replay.json`: 296 anonymised rows of the 2026-10-06 replay over the live `wanted` table, each with its upstream and patched score |
-| `dbupgrade.py` | the start-up check keeps an author that owns a book with no `bookauthors` row |
+| `dbupgrade.py` | the start-up check keeps an author that owns a book with no `bookauthors` row, and its census logs `LL_UNLINKED_BOOKS` for such books |
 | `gb.py` | the API's `addBook` writes the `bookauthors` row |
 | `librarysync.py` | no source-id carry-over between files; a `remove` scan keeps authors that own books |
 | `postprocess.py` | an aborted SABnzbd job is never post-processed; a torrent's -1 still is |
