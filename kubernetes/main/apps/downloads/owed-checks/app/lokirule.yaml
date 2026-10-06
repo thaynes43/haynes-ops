@@ -1,0 +1,47 @@
+---
+# Loki ruler alerts for the owed-check runner (haynesnetwork DESIGN-053 D-06). All warning: they route to
+# Alertmanager's null receiver like every warning here (only critical pages), and are seen in Alertmanager / Grafana.
+# The signal people and agents act on is the haynesnetwork "Owed checks overdue" GitHub issue (label owed-checks),
+# which the repo's owed-checks workflow keeps from the same tracker. The runner logs, per pass:
+#   owed_check_result  one per automated check: id, check, result (pass|fail|wait|error), unmet / observed / error
+#   owed_check         one per pending row: id, title, owner, due, overdue, overdueHours, auto (the row's verdict)
+#   owed_checks_run    once per successful pass (owed_checks_run_failed when the tracker is unreadable or invalid)
+# The CronJob runs at :50; a 75m window holds exactly one pass.
+groups:
+  - name: owed-checks
+    rules:
+      - alert: OwedCheckOverdue
+        expr: |
+          sum by (id) (count_over_time({namespace="downloads", container="main", pod=~"owed-checks-.*"} |= "\"msg\":\"owed_check\"" | json id, overdue | overdue="true" [75m])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            Owed check {{ $labels.id }} is past its due time and no result is recorded. Run it (the row's `check`
+            in the haynesnetwork repo's .agents/owed-checks.yaml; its automated verdict is the latest
+            owed_check_result lines in Loki), then record status and a dated evidence line in the row and merge,
+            or move its `due` with an evidence line that says why.
+        labels:
+          severity: warning
+      - alert: OwedCheckFailing
+        expr: |
+          sum by (id, check) (count_over_time({namespace="downloads", container="main", pod=~"owed-checks-.*"} |= "\"msg\":\"owed_check_result\"" | json id, check, result | result=~"fail|error" [75m])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            The automated check "{{ $labels.check }}" of owed check {{ $labels.id }} failed or could not run. Read its
+            owed_check_result line in Loki (unmet / observed / error): a fail is a finding to fix or record as the
+            row's failed result with a follow-up; an error is a broken query or an unreachable source to fix in the
+            row.
+        labels:
+          severity: warning
+      - alert: OwedChecksRunnerSilent
+        expr: |
+          absent_over_time({namespace="downloads", container="main", pod=~"owed-checks-.*"} |= "\"msg\":\"owed_checks_run\"" [3h])
+        for: 15m
+        annotations:
+          summary: >-
+            The owed-check runner has not finished a pass in 3 hours: the CronJob downloads/owed-checks is not
+            running, cannot schedule next to LazyLibrarian, or the tracker is invalid (an owed_checks_run_failed
+            line names the problem). Overdue checks still reach the GitHub issue; data checks do not run.
+        labels:
+          severity: warning
