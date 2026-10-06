@@ -8,7 +8,9 @@ learning is down or overloaded is never processed after that. On 2026-10-05 that
 20,713 assets without CLIP, 19,778 without face detection and 81,482 without OCR (#3413).
 
 The CronJob `immich-queue-missing` (namespace `photos`) presses Missing on those three queues
-every night at **01:30**, through the Immich API, with a key no agent ever sees.
+every night at **01:30**, through the Immich API, with a key no agent ever sees. It runs them
+**one at a time** (Smart Search, then Face Detection, then OCR), because the three together do
+not fit on the GPU (*Big backlogs and the shared GPU*, below).
 
 ## The pieces
 
@@ -27,22 +29,40 @@ just these two ticked would also work:
 | Permission | Route | Why |
 |---|---|---|
 | `job.create` | `PUT /api/jobs/{name}` with `{"command":"start","force":false}` | Starts the queue in Missing mode. It is the only start route in v3.2.4 (`server/src/controllers/job.controller.ts:45-58`); `/api/queues` can only pause, resume and empty a queue. |
-| `queue.read` | `GET /api/queues/{name}` | Reads `isPaused` and the counts (`server/src/controllers/queue.controller.ts:33-42`). |
+| `queue.read` | `GET /api/queues/{name}` | Reads `isPaused` and the counts (`server/src/controllers/queue.controller.ts:33-42`). The response is `{"name", "isPaused", "statistics": {"active", "completed", "failed", "delayed", "waiting", "paused"}}`, checked against the v3.2.4 server code. (`GET /api/jobs` returns the same numbers for every queue, nested under `jobCounts` and `queueStatus`, but it is deprecated since v2.4.0 and needs `job.read`.) |
 
 Both routes are `admin: true`, so a key made by a non-admin user gets `403 Forbidden`
 (`server/src/services/auth.service.ts:219-235`). The queue names are `smartSearch`,
 `faceDetection` and `ocr` (`server/src/enum.ts:816,818,828`).
 
-For each queue the job:
+For each queue, in the order Smart Search, Face Detection, OCR, the job:
 
-1. reads the queue and logs `before: active= waiting= delayed= failed= paused=`;
-2. **skips** it if it is paused (someone paused it on purpose) or busy (`active + waiting > 0`,
-   meaning the previous night's run is still draining; the server would answer
-   `400 Job is already running`);
-3. otherwise sends `start` with `force: false`, then waits a minute and logs `after:` counts.
+1. **Gates.** It waits until no queue has work (`active + waiting + delayed == 0`), this one
+   included. That covers a manual run, or last night's run still draining. A queue that is
+   **paused** in Immich is not waited for (it is not using the GPU). If the queue whose turn it
+   is is paused, the job logs `SKIP: the queue is paused` and moves on.
+2. Sends `start` with `force: false` (Missing).
+3. **Polls** `GET /api/queues/<name>` every 30 s until the queue is drained, which is
+   `active + waiting + delayed == 0` on two polls in a row, and logs the counts every 5
+   minutes. `isPaused` is checked before the counts: BullMQ moves waiting jobs into a separate
+   `paused` count while a queue is paused, so a paused queue reads `waiting=0` without being
+   drained. A queue paused while it runs is logged and left alone.
 
-Any other non-2xx response fails the Job (after it has tried all three queues), and
-`KubeJobFailed` fires. The key is mounted as a curl header file and never printed.
+Each queue has its own **timeout**, counted from the start of its turn and covering the gate,
+the start and the drain: Smart Search 4 h, Face Detection 4 h, OCR 8 h. The 2026-10-05 backlog
+took about 17 minutes, 17 minutes and 3.5 hours. The Job's `activeDeadlineSeconds` is 22 h, a
+backstop under the 24 h schedule (the next kickoff is the deadline); the per-queue timeouts
+add up to 16 h and fire first. `concurrencyPolicy: Forbid` stops the next night's run from
+overlapping one that is still going.
+
+A queue that outlasts its timeout fails the run, and **the later queues are not started**,
+since that would put two on the GPU. A status call that fails with a 5xx or a transport error
+is retried (10 times in a row, 5 minutes, before it fails the run), so an immich-server roll
+mid-run does not kill it; any 4xx fails it at once.
+
+Any non-2xx response, a timeout or a lost status connection fails the Job (the log says
+`FAIL` and `ABORT`), and `KubeJobFailed` fires. The key is mounted as a curl header file and
+never printed.
 
 > **Never send `force: true`.** That is the **All** button, and it deletes before it starts:
 > every CLIP embedding, every ML-detected face along with the people built from them, or all
@@ -55,8 +75,12 @@ kubectl create job -n photos --from=cronjob/immich-queue-missing immich-queue-mi
 kubectl logs -n photos -l app.kubernetes.io/name=immich-queue-missing --tail=50
 ```
 
-A healthy run ends with `immich-queue-missing done … started=N errors=0`. `started=0` with
-`SKIP: busy` lines is also healthy: the earlier run is still working through the queue.
+A healthy run ends with `immich-queue-missing done … started=N errors=0`. On a big backlog it
+takes hours, since each queue drains before the next one starts, so follow it with
+`kubectl logs -n photos -f -l app.kubernetes.io/name=immich-queue-missing`. On a quiet night it
+takes about 5 minutes (the gate and the drain each need a poll or two per queue). `started=0`
+with `SKIP: the queue is paused` lines is healthy too: someone paused that queue on purpose.
+If you start a queue by hand in the UI, the nightly run waits for it before it starts anything.
 
 ## Is the backlog shrinking?
 
@@ -90,21 +114,26 @@ nothing is lost. ollama-assist02 kept working because its model and context are 
 when it loads. If ollama restarted while ML held the card, though, it might not fit on the
 GPU any more.
 
-**So, for a backlog of thousands of assets, run OCR on its own.** Pause OCR under
-*Administration → Job Queues*, and resume it once Smart Search and Face Detection are idle.
-Without the UI, use `PUT /api/queues/ocr` with `{"isPaused": true}` (or `false` to resume).
-That route needs `queue.update`. The shared unrestricted key has it, but a dedicated key with
-only `job.create` and `queue.read` would get a 403. An agent never handles the key, so it makes
-this call from a one-off Job in `photos` that mounts `immich-queue-missing-secret` and runs
-`curl --fail-with-body -sS -X PUT -H @/secret/api-key-header -H 'Content-Type: application/json'
---data '{"isPaused":true}' http://immich-server.photos.svc.cluster.local:2283/api/queues/ocr`.
-Copy the CronJob's pod spec and change only the command. `--fail-with-body` makes a rejected call
-(a 403, say) fail the Job instead of completing it, so check that the Job reached `Complete` and
-that the logged response shows the `isPaused` value you asked for. A resume that silently failed
-leaves OCR paused for good. The nightly job skips a paused
-queue, so **a pause that is never resumed quietly stops OCR**, and the job log shows
-`SKIP: the queue is paused` every night. Once the backlog is gone, a nightly run finds only a
-handful of assets and none of this applies.
+**That is why the job runs the queues one at a time.** Only one ML workload is on the card
+besides ollama, so the peak is the highest of the three (OCR, about 9.1 GB in total), not their
+sum. Since 2026-10-06 nothing manual is needed for a big backlog: the job does what the
+2026-10-06 recovery did by hand, which was to run OCR on its own.
+
+If you start queues by hand, do the same: start one, wait for it to drain, then start the
+next. Pausing a queue under *Administration → Job Queues* (or `PUT /api/queues/<name>` with
+`{"isPaused": true}`, or `false` to resume) holds it back; the nightly job leaves a paused
+queue alone and does not wait for it. That route needs `queue.update`. The shared unrestricted
+key has it, but a dedicated key with only `job.create` and `queue.read` would get a 403. An
+agent never handles the key, so it makes this call from a one-off Job in `photos` that mounts
+`immich-queue-missing-secret` and runs `curl --fail-with-body -sS -X PUT -H
+@/secret/api-key-header -H 'Content-Type: application/json' --data '{"isPaused":true}'
+http://immich-server.photos.svc.cluster.local:2283/api/queues/ocr`. Copy the CronJob's pod
+spec and change only the command. `--fail-with-body` makes a rejected call (a 403, say) fail
+the Job instead of completing it, so check that the Job reached `Complete` and that the logged
+response shows the `isPaused` value you asked for. A resume that silently failed leaves the
+queue paused for good. **A pause that is never resumed quietly stops that queue**, and the job
+log shows `SKIP: the queue is paused` every night. Once the backlog is gone, a nightly run
+finds only a handful of assets and none of this applies.
 
 A few assets may never clear, for example an asset whose preview cannot be decoded. The job
 queues them again every night. That costs little, but if one count stops falling well above
