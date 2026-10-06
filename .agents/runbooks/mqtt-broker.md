@@ -76,6 +76,12 @@ the ExternalSecret's 5-minute refresh, and reloader restarts the pod.
 
 ## Configuration choices (`mosquitto.conf`)
 
+Any byte changed in `mosquitto.conf`, a comment included, restarts the broker
+(reloader), with the Home Assistant cost described under *After a broker restart*.
+One stale comment is waiting for the next real config change: the header says the
+listener is "in-cluster only", but since #3417 it is also on the LAN at
+192.168.40.205. Fix it in that change, not on its own.
+
 - `max_packet_size 33554432` (32 MiB). Mosquitto 2.1 lowered the default to
   2,000,000 bytes, but `zigbee2mqtt/bridge/devices` is about 3.7 MB and retained.
   zigbee2mqtt caps what it accepts itself at 10 MiB
