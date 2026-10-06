@@ -67,6 +67,12 @@
 #    word is in the book's own title or author. Replayed over 3,989 rows on
 #    2026-10-06: 24 moved, each tagged Swedish, Danish, German or French (and
 #    where the file could be read, it was), none an English release.
+#    Then "-AUDiOBOOK-WEB-MP3-DE-" (a format between source and language) and a
+#    German edition word ("(Ungekürzt)", "Hörbuch", also as the mojibake
+#    "UngekÃ¼rzt" that slipped past REJECT_AUDIO): the German Serpent and the
+#    Wings of Night audio. Replayed over 3,988 rows: 121 more tagged, all
+#    German "(Ungekuerzt)" releases of 11 books (4 had scored 80 or more),
+#    none English.
 # Tests, fixtures and the replay tool: patches/tests/.
 #
 # BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
@@ -287,19 +293,35 @@ _LANGUAGE_TAGS = (
     # a bracket that holds a language: "[French]", "(German Edition)", and MAM's "[GER / EPUB]" ("[ENG / ...]" is not)
     re.compile(r'[\[(]\s*(' + _LANGUAGE_NAMES + '|' + _LANGUAGE_CODES + r')\s*(?:edition|version|ed)?\s*'
                r'(?:[/,|][^\])]*)?[\])]', re.I),
-    # MP3-scene audiobooks give the language after the source: "-AUDiOBOOK-WEB-SE-2023-", "-2MP3CD-DE-2024-", "-EB-NL"
-    re.compile(r'[-.](?i:web|dab|sat|cable|\d*(?:mp3)?cd|\d*dvd|eb|audiobook)[-.](' + _SCENE_CODES + r')(?=[-.]|$)'),
+    # MP3-scene audiobooks give the language after the source (and format): "-AUDiOBOOK-WEB-SE-2023-",
+    # "-2MP3CD-DE-2024-", "-AUDiOBOOK-WEB-MP3-DE-2024-", "-EB-NL"
+    re.compile(r'[-.](?i:web|dab|sat|cable|\d*(?:mp3)?cd|\d*dvd|eb|audiobook)(?:[-.](?i:mp3|flac|aac|m4b|ogg))?[-.]('
+               + _SCENE_CODES + r')(?=[-.]|$)'),
     # a capital language code before the format: "Breaking Dawn (2008) NL Audiobook(mp3)" (not "IT": the King novel)
     re.compile(r'(?<![A-Za-z0-9])(' + _SCENE_CODES.replace('IT|', '') + r')[\s._-]+(?i:audiobook|ebook|epub|retail)'
                r'(?![a-z])'),
+    # a German edition word, "(Ungekürzt)", "Hörbuch" (REJECT_AUDIO lists them, but not as the mojibake
+    # "UngekÃ¼rzt" an indexer sends: names_language repairs that first)
+    re.compile(r'(?<![a-z])(ungekurzt|ungekuerzt|gekurzt|gekuerzt|horbuch|hoerbuch|horspiel|hoerspiel)(?![a-z])', re.I),
 )
+
+
+def _unmojibake(text):
+    """ UTF-8 read as Latin-1 or cp1252 ("UngekÃ¼rzt"), decoded back, once; anything else unchanged. """
+    if 'Ã' in text:
+        for codec in ('latin-1', 'cp1252'):
+            try:
+                return text.encode(codec).decode('utf-8')
+            except UnicodeError:
+                pass
+    return text
 
 
 def names_language(release, title, subtitle, author):
     """ The language a release names explicitly ("DANiSH", "WEB-SE", "[GER / EPUB]", "[French]"), else None. A
         language word that is also a word of the book's title, subtitle or author is not read as a tag. """
     own = set(re.findall(r'[a-z0-9]+', unaccented(f"{title} {subtitle or ''} {author}").lower()))
-    text = unaccented(release or '')
+    text = unaccented(_unmojibake(release or ''))
     for tag in _LANGUAGE_TAGS:
         for found in tag.finditer(text):
             if found.group(1).lower() not in own:
