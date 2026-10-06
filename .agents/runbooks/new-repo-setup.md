@@ -74,20 +74,49 @@ exists), modelled on libretto's:
 
 ## 4. Set the secret
 
-The Claude GitHub App is installed on all of Tom's repos. The secret is the long-lived
-OAuth token already in this pod's PID 1 environment (ExternalSecret from 1Password
-`dev-env`). Set it without ever printing it:
+The Claude GitHub App is installed on all of Tom's repos. The secret's value is the
+long-lived OAuth token the dev-env pod already has as `CLAUDE_CODE_OAUTH_TOKEN`
+(Kubernetes Secret `dev-env-claude-secret`, from 1Password `dev-env`).
+
+**Do not use the pod's own GitHub token for this.** `/creds/gh_token` is minted by the
+gh-refresher sidecar with a fixed permission list (`GITHUB_BOT_TOKEN_PERMISSIONS`:
+contents, pull_requests, workflows, issues, checks, actions) that has no `secrets`
+scope. `gh secret set` with it fails with `HTTP 403: Resource not accessible by
+integration` on `actions/secrets/public-key`, even though the haynes-dev-bot App
+itself has "Secrets: Read and write" (Tom granted it during the 2026-09-30 rollout).
+Adding `secrets` to that list is a dev-env HelmRelease change that bounces the pod, and
+it would give every agent shell a secrets-writing token all the time.
+
+Instead, run a one-off Job (proven 2026-10-05 on `thaynes43/dev-env`). The template is
+[`.agents/templates/k8s/gh-secret-set-job.yaml`](../templates/k8s/gh-secret-set-job.yaml).
+It uses the sidecar's image, mint script and App Secret, so the App key never enters
+the app container, and mints a separate short-lived token with only
+`{"secrets":"write","metadata":"read"}`. The secret value reaches the Job through a
+`secretKeyRef`, so no shell or log ever holds it. The Job prints only secret names:
 
 ```bash
-tr '\0' '\n' < /proc/1/environ | sed -n 's/^CLAUDE_CODE_OAUTH_TOKEN=//p' \
-  | gh secret set CLAUDE_CODE_OAUTH_TOKEN -R thaynes43/<repo>
-gh secret list -R thaynes43/<repo> | grep CLAUDE_CODE_OAUTH_TOKEN   # name only, no value
+REPO=<repo>   # without the owner; it also names the Job, so a DNS label (no dots or _)
+IMG=$(kubectl get deploy dev-env -n dev \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="gh-refresher")].image}')
+sed -e "s|<<REPO>>|$REPO|g" -e "s|<<IMAGE>>|$IMG|" \
+  ~/repos/haynes-ops/.agents/templates/k8s/gh-secret-set-job.yaml | kubectl create -f -
+kubectl wait -n dev --for=condition=complete --timeout=150s job/gh-secret-set-$REPO
+kubectl logs -n dev job/gh-secret-set-$REPO   # "CLAUDE_CODE_OAUTH_TOKEN <updatedAt>", names only
+kubectl delete job -n dev gh-secret-set-$REPO # ttlSecondsAfterFinished also reaps it after 15 min
 ```
 
-Needs the haynes-dev-bot GitHub App's repository permission "Secrets: Read and write".
-A `403` means that permission is missing: ask Tom (AskUserQuestion), do not look for
-another route. Never echo, log, commit or paste the token; it is the same credential
-headless sessions use.
+The Kyverno `verify-thaynes43-images` "unverified image" warnings on create are the
+known audit-only finding (cosign bundle mismatch), not a failure. If the Job fails, read
+its log: `MINT FAILED` with an HTTP `422` from the mint means the App no longer has
+"Secrets: Read and write". Ask Tom (AskUserQuestion) to restore it on the haynes-dev-bot
+App and accept the installation's permission request; do not look for another route.
+Never add `set -x` to the Job, print its environment, or echo, log, commit or paste the
+token: it is the same credential headless sessions use.
+
+History: the 2026-09-30 rollout to 12 repos piped `/proc/1/environ` into `gh secret set`
+with `/creds/gh_token`, minutes after Tom granted the Secrets permission, and it worked
+then. By 2026-10-05 that token gets 403 (`x-accepted-github-permissions: secrets=read`)
+while a token minted with `secrets` still works, so do not go back to that one-liner.
 
 ## 5. Verify on the first PR
 
