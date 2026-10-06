@@ -80,6 +80,11 @@ CASES = [
     ('eBook', INH, 'Paolini, Christopher - Inheritance 04 - Inheritance or the Vault of Souls (v5) [epub]', None, None),
     ('eBook', ("Dean Koontz's Frankenstein", 'City of night. Book two', 'Dean Koontz'),
      'Dean Koontz - [Frankenstein 02] - City of Night - Ed Gorman (azw3)', None, None),
+    # ... and a narrator credit or edition words after the repeated title are not another volume's title
+    ('AudioBook', ('Inheritance', '', 'Christopher Paolini'),
+     'Christopher Paolini - Inheritance 04 - Inheritance (Read by Gerard Doyle) MP3', None, None),
+    ('eBook', ('Inheritance', '', 'Christopher Paolini'),
+     'Christopher Paolini - Inheritance 04 - Inheritance Deluxe Edition (epub)', None, None),
 ]
 
 

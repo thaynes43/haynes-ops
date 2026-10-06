@@ -184,12 +184,17 @@ def names_other_volume(release, title, subtitle, author):
     if fuzz.token_set_ratio(' '.join(wanted), other) >= OTHER_TITLE_RATIO:
         # this book again ("Inheritance 04 - Inheritance"), unless more than its title follows, and the book does
         # not call itself that volume: "Mistborn Bk 4 - The Alloy of Law - ... Mistborn" is not "Mistborn" (#738)
-        extra = ' '.join(w for w in other.split() if w not in wanted)
+        extra = re.sub(r'(?:^| )(?:read|narrated|performed|voiced) by(?: .*)?$', '',
+                       ' '.join(w for w in other.split() if w not in wanted))  # a narrator credit is no title
+        extra = ' '.join(w for w in extra.split() if w not in _EDITION_WORDS)
         if not extra or own == volume or fuzz.token_set_ratio(' '.join(wanted), extra) >= OTHER_TITLE_RATIO:
             return None
     return volume, other
 
 
+# words that describe an edition of the book, not the title of another volume
+_EDITION_WORDS = {'edition', 'deluxe', 'special', 'anniversary', 'illustrated', 'revised', 'expanded', 'collectors',
+                  'dramatized', 'dramatised', 'dramatization', 'full', 'cast', 'bbc', 'radio', 'drama'}
 # a number that names a file of a multi-file post, not a volume: "<title> 02.mp3", "<title> 0.jpg"
 _PART_FILE = re.compile(r'\.(?:mp3|m4a|m4b|flac|ogg|aac|wma|jpe?g|png|par2|nfo|sfv|rar|zip|7z|r\d\d)(?![a-z0-9])')
 _NUMBER_WORDS = {w: n for n, w in enumerate('one two three four five six seven eight nine ten eleven twelve'.split(), 1)}
