@@ -120,7 +120,7 @@ Signals in the broker log (`kubectl logs -n database $POD`), and what they mean:
   core. On operator 2.x that is a **full MQTT outage**, on 6.2.0 as well as on
   6.2.1+. The new node never joins: the Community license aborts it with
   `SINGLE_NODE_LICENSE` (emqx/emqx#17600). The outage ends only with the
-  fresh-PVC recovery in *Lessons from the 2026-09-09 window* below.
+  fresh-PVC recovery in *Next time* below.
 - Do not set `replicas: 3` — single-node COMMUNITY license.
 - Do not hand-edit `cluster.hocon` on the PVC; use the API/CLI so the change
   goes through `cluster_sync`.
@@ -177,32 +177,56 @@ non-z2m retained topics that reappear when their publishers next publish) and th
 API keys created by hand, if any. Users: only the bootstrapped `admin`, which came back from
 `/opt/init-user.json`. Authz rules: none existed.
 
-**Next time** (any change to `spec.coreTemplate.spec`, `image`, or anything else in the pod
-template):
+## The 2026-10-06 window (haynes-ops#3384, requests and probe timeouts): what actually happened
 
-1. Plan it as an MQTT outage window with someone at the keyboard, declared
-   (`declare-activity start ... --scope database,emqx,home-automation,zigbee2mqtt`), with
-   Tom's go. Without the manual step 3 the outage does not end.
+The plan above was based on 2026-09-09. Here is how 2026-10-06 differed:
+
+| UTC | event |
+|---|---|
+| 00:48:30 | Flux applies the CR. The operator creates `emqx-core-f5c7475d4` on talosm05. Its pod crash-loops on `SINGLE_NODE_LICENSE` about 9 s after each start, **before its first readiness probe** (initialDelay 10 s). |
+| 00:48 → 01:31 | **The operator never moves.** Its scale-down gate (`checkInitialDelaySecondsReady`) needs the EMQX `Available` condition, and that needs a Ready pod in the new StatefulSet. On 2026-09-09 the new pod was briefly Ready before it crashed, which is the only reason the operator went on to evict and delete the old one. The old core kept serving (no outage), and `emqx ctl cluster status` on it listed the half-joined new node as `stopped`. |
+| 01:31:43 | The old StatefulSet is scaled to 0 by hand. The dev-env SA is denied `statefulsets/scale`; this was a one-off `kubectl patch sts emqx-core-8545588dbb --type merge -p '{"spec":{"replicas":0}}'` with Tom's explicit approval. |
+| 01:31:48 | Old pod gone. A watcher loop does the fresh-PVC step on the new pod within 1 s. |
+| 01:32:07 | New core Ready, standalone. **Broker down for about 23 s.** |
+| 01:32:18 | zigbee2mqtt reconnected on its own. |
+| 01:35:16-17 | Home Assistant and AppDaemon reconnected. HA's event loop sat at about 1 core for 3 minutes, processing about 6,500 MQTT entities going unavailable, and its websocket clients logged "unable to keep up". AppDaemon's MQTT plugin connected at 01:32:16 but could not re-initialise until HA was back. |
+| 01:35:54 → 01:36:07 | z2m restarted. Retained messages went from 7 to 7,229. Then the 30 group `get` pokes. MQTT entities unavailable: 6, the same as before the window. The operator then marked the CR Ready on revision f5c7475d4, and the old StatefulSet stayed at 0. |
+
+Side effect: the `zigbee2mqtt` Flux Kustomization `dependsOn` `emqx-cluster`. Both reported Not Ready while
+the cutover stalled, so `FluxReconciliationFailure` fired for **both**. Silence both, or reconcile
+quickly.
+
+**Next time** (any change to `spec.coreTemplate.spec`, `image`, or anything else in the pod
+template, while we are on operator 2.x):
+
+1. Plan it as an MQTT outage window with someone at the keyboard, and declare it
+   (`declare-activity start ... --scope database,emqx,home-automation,zigbee2mqtt,home-assistant`).
+   Get Tom's go, **including his explicit OK for step 3's StatefulSet patch**, or have him run the
+   scale himself. Silence `EMQXCoreNotReady`, plus `FluxReconciliationFailure` for `emqx-cluster`
+   and `zigbee2mqtt`.
 2. Merge and reconcile, then watch
-   `kubectl get pod -n database -l apps.emqx.io/db-role=core -o wide -w` and the new pod's log.
-   Expect what 2026-09-09 did. The new pod crash-loops on `SINGLE_NODE_LICENSE` while the old
-   one keeps serving. About 90 s in, the old node evicts every client and the outage starts.
-   About 15 s after that, the operator deletes the old pod. Do **not** try
+   `kubectl get pod -n database -l apps.emqx.io/db-role=core -o wide -w`. Expect the new pod to
+   crash-loop on `SINGLE_NODE_LICENSE` while the old one keeps serving. Do **not** try
    `emqx ctl cluster leave`: the new node never finishes its join, so there is no clean
-   hand-over to make. (An earlier version of this step said to; that rested on the wrong
-   "pod Ready ~14:18" row above.)
-3. The moment the OLD pod is gone (not before, or the recreated new pod finds it and joins
-   again), give the new pod a fresh data dir:
+   hand-over to make.
+3. **Do not wait for the operator.** It may evict and delete the old core within about 2 min,
+   as on 2026-09-09, or it may wait forever, as on 2026-10-06. As soon as the new pod is
+   crash-looping, scale the OLD StatefulSet to 0 yourself. That is the single step the
+   operator would otherwise take.
+4. The moment the OLD pod is gone (and its StatefulSet is at 0, so it cannot come back), give
+   the new pod a fresh data dir:
    `kubectl delete pvc -n database emqx-core-data-<new pod> --wait=false && kubectl delete pod -n database <new pod>`.
-   The StatefulSet recreates the pod with an empty PVC. DNS discovery finds only itself, so it
-   boots standalone and was Ready in about 15 s on 2026-09-09. Done promptly, MQTT is down for
-   about 1-3 min, from the eviction until this pod is Ready.
-4. After it is Ready, run `emqx ctl conf show retainer`. A fresh PVC means git's `base.hocon`
+   Do not do this before the old pod is gone: the recreated new pod would find it and join
+   again. The StatefulSet recreates the pod with an empty PVC. DNS discovery finds only itself,
+   so it boots standalone; it was Ready in 19 s on 2026-10-06. A polling loop that issues this
+   the second the old pod disappears holds the broker outage to about 25 s.
+5. After it is Ready, run `emqx ctl conf show retainer`. A fresh PVC means git's `base.hocon`
    values, which are the intended ones since 2026-09-09 (8MB / infinity / infinity); PUT them if
-   not. z2m, HA and AppDaemon reconnect on their own. Then
+   not. z2m reconnects within seconds; HA and AppDaemon can take about 3 min (above). Then
    `kubectl rollout restart deploy/zigbee2mqtt -n home-automation` so the retained discovery
-   store is rebuilt, followed by the group `get` pokes (step 4 of *Fix* above).
-5. A day later, delete the old 0/0 StatefulSet and its PVC (*Housekeeping* above).
+   store is rebuilt, followed by the group `get` pokes (step 4 of *Fix* above). Neither
+   switches a light.
+6. A day later, delete the old 0/0 StatefulSet and its PVC (*Housekeeping* above).
 
 **The operator's hot-apply is fragile.** After #2800 every reconcile logged
 `failed to update emqx config through API ... HTTP 400 parse_error "syntax error before: \"\""`
