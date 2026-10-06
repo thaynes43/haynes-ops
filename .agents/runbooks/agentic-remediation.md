@@ -43,6 +43,10 @@ directory the responder's shallow clone actually searches:
 - [`ceph-daemon-crash.md`](ceph-daemon-crash.md) — `CephDaemonCrash`: verify the
   daemon is back and PGs are clean, archive the inspected crash ids, escalate
   on a repeat signature or a daemon that stays down.
+- [`cpu-starvation.md`](cpu-starvation.md): `NodeLoadSaturated` and
+  `EMQXCoreNotReady`. The lane diagnoses and names the CPU consumer. It never
+  deletes or restarts the dev-env pod, and never deletes the broker PVC for a
+  starvation restart loop.
 - [`known-noise-and-non-remediation.md`](known-noise-and-non-remediation.md) —
   the cases where the obvious fix is wrong.
 

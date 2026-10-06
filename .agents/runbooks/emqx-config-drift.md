@@ -117,10 +117,10 @@ Signals in the broker log (`kubectl logs -n database $POD`), and what they mean:
 
 - Do not add `env` to `spec.coreTemplate.spec` to force a value: env *is* part of
   the pod template, and any pod-template change makes the operator blue-green the
-  core. That is survivable on 6.2.0 (transient 2-node cluster → the new node
-  syncs Mnesia: users, retained messages, cluster.hocon) but it is a planned
-  1–2 min MQTT outage, and it is the exact thing the 6.2.0 pin exists to avoid
-  on 6.2.1+ (`SINGLE_NODE_LICENSE`, emqx/emqx#17600).
+  core. On operator 2.x that is a **full MQTT outage**, on 6.2.0 as well as on
+  6.2.1+. The new node never joins: the Community license aborts it with
+  `SINGLE_NODE_LICENSE` (emqx/emqx#17600). The outage ends only with the
+  fresh-PVC recovery in *Lessons from the 2026-09-09 window* below.
 - Do not set `replicas: 3` — single-node COMMUNITY license.
 - Do not hand-edit `cluster.hocon` on the PVC; use the API/CLI so the change
   goes through `cluster_sync`.
@@ -136,9 +136,12 @@ Signals in the broker log (`kubectl logs -n database $POD`), and what they mean:
 - Retained messages: ~7,450 (7,243 under `homeassistant/`).
 - `cluster.hocon` itself.
 
-A new core node that fails to join the old one would come up with none of this.
-On 6.2.0 the join works; watch `emqx ctl cluster status` on the new pod during a
-blue-green.
+A new core node that fails to join the old one comes up with none of this, and on
+the Community license it always fails. **Corrected 2026-10-06:** this runbook used to
+say that "on 6.2.0 the join works". The 2026-09-09 broker logs in Loki show the
+opposite. The new 6.2.0 node aborted with `SINGLE_NODE_LICENSE` at its first join
+attempt and crash-looped. So a blue-green on this broker never carries the data
+across; plan for the fresh-PVC recovery.
 
 ## Housekeeping the operator does not do
 
@@ -153,11 +156,14 @@ change (#2801) made the operator blue-green the core. What actually happened, wi
 
 | UTC | event |
 |---|---|
-| 14:17:33 | operator creates `emqx-core-8545588dbb` (new hash) on talosm02; pod Ready ~14:18 |
-| 14:18:03 | operator: `failed to start node evacuation: error accessing emqx-core-5db6f9b9c6-0 API` (the Community edition has no rebalance/evacuation API) |
-| 14:19:20 | operator scales the OLD StatefulSet to 0 anyway (`Delete Pod emqx-core-5db6f9b9c6-0`, PreStopHook failed) |
-| 14:21 | new pod fails liveness (18083); every restart after that hangs in `mria_mnesia: still waiting for table(s): [cluster_rpc_mfa,cluster_rpc_commit]` / `Table cluster_rpc_mfa is waiting for one of the nodes: [old node]` — its Mnesia schema still lists the dead old core as a table holder |
-| 14:19 → 14:30:45 | **MQTT down 12 min**: z2m/HA/AppDaemon disconnected |
+| 14:17:33 | operator creates `emqx-core-8545588dbb` (new hash) on talosm02 |
+| 14:17:52 | the new 6.2.0 node finds the old one through the headless service (`publishNotReadyAddresses: true`) and starts joining (`reason: join, Stopping mria`) |
+| 14:17:53 | the new node aborts with `application_start_failure,emqx_license,"SINGLE_NODE_LICENSE ..."` and crash-loops: the same abort at the 14:17:59, 14:18:19 and 14:18:50 restarts. **It is never Ready.** (Re-read from Loki 2026-10-06; this row used to say "pod Ready ~14:18".) |
+| 14:18:03 | operator's evacuation call errors (`HTTP 400 ... Nodes unavailable: [new node]`), but the OLD node logs `node_evacuation_started` |
+| 14:19:03 | the old node evicts its 3 connections (z2m, HA, AppDaemon) after evacuation's 60 s health wait. **The MQTT outage starts here.** |
+| 14:19:16 | operator scales the OLD StatefulSet to 0; the old pod gets SIGTERM and its listeners stop |
+| 14:19:57 → | the new pod (restart 4) hangs in `mria_mnesia: still waiting for table(s): [cluster_rpc_mfa,cluster_rpc_commit]`, `Check down_nodes ... got [old node]`. The half-finished join wrote the dead old core into its Mnesia schema, so it never recovers on its own |
+| 14:19:03 → 14:30:45 | **MQTT down 12 min**: z2m/HA/AppDaemon disconnected |
 | 14:30 | recovery: `kubectl delete pvc emqx-core-data-emqx-core-8545588dbb-0 --wait=false` + `kubectl delete pod emqx-core-8545588dbb-0` → fresh data dir → node boots standalone (DNS discovery finds only itself) → Ready in 15 s |
 | 14:31 | retainer values re-applied via the API (fresh `cluster.hocon`); z2m/HA/AppDaemon reconnected on their own |
 | 14:39 | z2m restart (#2802) republished the ~7,100 retained discovery configs; 30 group `get` pokes via `POST /api/v5/publish` |
@@ -174,17 +180,29 @@ API keys created by hand, if any. Users: only the bootstrapped `admin`, which ca
 **Next time** (any change to `spec.coreTemplate.spec`, `image`, or anything else in the pod
 template):
 
-1. Plan it as a ~10–15 min MQTT outage window, declared, with Tom's go.
-2. Merge, then watch `kubectl get pod -n database -l apps.emqx.io/db-role=core -w`. The moment the
-   NEW pod is Ready and BEFORE the operator kills the old one (it waited ~1m50s on 2026-09-09),
-   detach the old node cleanly so the new one owns the data:
-   `kubectl exec -n database <OLD pod> -c emqx -- emqx ctl cluster leave`
-   — that removes the old node from the schema on both sides; the operator's later scale-down is
-   then harmless. If you miss the window and the new pod loops on `waiting for table(s)`, do the
-   fresh-PVC recovery above (fast, deterministic) rather than trying to resurrect the old pod.
-3. After the new pod is Ready: re-check `emqx ctl conf show retainer` (fresh PVC = git's
-   base.hocon values until the operator hot-applies or you PUT), then restart z2m so the retained
-   discovery store is rebuilt, then the group `get` pokes.
+1. Plan it as an MQTT outage window with someone at the keyboard, declared
+   (`declare-activity start ... --scope database,emqx,home-automation,zigbee2mqtt`), with
+   Tom's go. Without the manual step 3 the outage does not end.
+2. Merge and reconcile, then watch
+   `kubectl get pod -n database -l apps.emqx.io/db-role=core -o wide -w` and the new pod's log.
+   Expect what 2026-09-09 did. The new pod crash-loops on `SINGLE_NODE_LICENSE` while the old
+   one keeps serving. About 90 s in, the old node evicts every client and the outage starts.
+   About 15 s after that, the operator deletes the old pod. Do **not** try
+   `emqx ctl cluster leave`: the new node never finishes its join, so there is no clean
+   hand-over to make. (An earlier version of this step said to; that rested on the wrong
+   "pod Ready ~14:18" row above.)
+3. The moment the OLD pod is gone (not before, or the recreated new pod finds it and joins
+   again), give the new pod a fresh data dir:
+   `kubectl delete pvc -n database emqx-core-data-<new pod> --wait=false && kubectl delete pod -n database <new pod>`.
+   The StatefulSet recreates the pod with an empty PVC. DNS discovery finds only itself, so it
+   boots standalone and was Ready in about 15 s on 2026-09-09. Done promptly, MQTT is down for
+   about 1-3 min, from the eviction until this pod is Ready.
+4. After it is Ready, run `emqx ctl conf show retainer`. A fresh PVC means git's `base.hocon`
+   values, which are the intended ones since 2026-09-09 (8MB / infinity / infinity); PUT them if
+   not. z2m, HA and AppDaemon reconnect on their own. Then
+   `kubectl rollout restart deploy/zigbee2mqtt -n home-automation` so the retained discovery
+   store is rebuilt, followed by the group `get` pokes (step 4 of *Fix* above).
+5. A day later, delete the old 0/0 StatefulSet and its PVC (*Housekeeping* above).
 
 **The operator's hot-apply is fragile.** After #2800 every reconcile logged
 `failed to update emqx config through API ... HTTP 400 parse_error "syntax error before: \"\""`
