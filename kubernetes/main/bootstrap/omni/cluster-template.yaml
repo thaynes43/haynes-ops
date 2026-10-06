@@ -216,6 +216,26 @@ patches:
             imageGCHighThresholdPercent: 75
             imageGCLowThresholdPercent: 65
             imageMaximumGCAge: 168h
+            # Node-allocatable reservations (#3382). Talos's default reserves only 50m CPU and
+            # 512Mi (masters) / 384Mi (workers) outside the pods, so the scheduler could fill ~all
+            # of a node and the kubepods cgroup could take ~all of its memory. enforceNodeAllocatable
+            # stays at the default ["pods"]: kubepods memory.max = capacity minus these, its
+            # cpu.weight follows allocatable CPU, and Talos keeps its own weights on /podruntime and
+            # /system. systemReserved = Talos services + etcd + kernel; kubeReserved = kubelet +
+            # containerd + shims (measured 2026-10-05: etcd up to 1.6Gi resident, kubelet <=0.8Gi,
+            # containerd <=0.55Gi anon, Talos ~0.3Gi). Setting systemReserved REPLACES Talos's
+            # default map, so pid and ephemeral-storage repeat its defaults. Masters reserve 1 CPU +
+            # 5Gi; workers (no etcd) 1 CPU + 3Gi. Same block on every machine below. Applied by
+            # `task omni:sync` or the operator-key Job: a kubelet restart, no reboot. Details:
+            # .agents/reference/talos-omni-gotchas.md section 8.
+            systemReserved:
+              cpu: 500m
+              memory: 3Gi
+              ephemeral-storage: 256Mi
+              pid: "100"
+            kubeReserved:
+              cpu: 500m
+              memory: 2Gi
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -347,6 +367,15 @@ patches:
             imageGCHighThresholdPercent: 75
             imageGCLowThresholdPercent: 65
             imageMaximumGCAge: 168h
+            # Allocatable reservations — rationale on the first machine block (#3382).
+            systemReserved:
+              cpu: 500m
+              memory: 3Gi
+              ephemeral-storage: 256Mi
+              pid: "100"
+            kubeReserved:
+              cpu: 500m
+              memory: 2Gi
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -489,6 +518,15 @@ patches:
             imageGCHighThresholdPercent: 75
             imageGCLowThresholdPercent: 65
             imageMaximumGCAge: 168h
+            # Allocatable reservations — rationale on the first machine block (#3382).
+            systemReserved:
+              cpu: 500m
+              memory: 3Gi
+              ephemeral-storage: 256Mi
+              pid: "100"
+            kubeReserved:
+              cpu: 500m
+              memory: 2Gi
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -641,6 +679,15 @@ patches:
             imageGCHighThresholdPercent: 75
             imageGCLowThresholdPercent: 65
             imageMaximumGCAge: 168h
+            # Allocatable reservations — rationale on the first machine block (#3382).
+            systemReserved:
+              cpu: 500m
+              memory: 3Gi
+              ephemeral-storage: 256Mi
+              pid: "100"
+            kubeReserved:
+              cpu: 500m
+              memory: 2Gi
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -795,6 +842,15 @@ patches:
             imageGCHighThresholdPercent: 75
             imageGCLowThresholdPercent: 65
             imageMaximumGCAge: 168h
+            # Allocatable reservations — rationale on the first machine block (#3382).
+            systemReserved:
+              cpu: 500m
+              memory: 3Gi
+              ephemeral-storage: 256Mi
+              pid: "100"
+            kubeReserved:
+              cpu: 500m
+              memory: 2Gi
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -925,6 +981,15 @@ patches:
             imageGCHighThresholdPercent: 75
             imageGCLowThresholdPercent: 65
             imageMaximumGCAge: 168h
+            # Allocatable reservations — rationale on the first machine block (#3382).
+            systemReserved:
+              cpu: 500m
+              memory: 1Gi
+              ephemeral-storage: 256Mi
+              pid: "100"
+            kubeReserved:
+              cpu: 500m
+              memory: 2Gi
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -1050,6 +1115,15 @@ patches:
             imageGCHighThresholdPercent: 75
             imageGCLowThresholdPercent: 65
             imageMaximumGCAge: 168h
+            # Allocatable reservations — rationale on the first machine block (#3382).
+            systemReserved:
+              cpu: 500m
+              memory: 1Gi
+              ephemeral-storage: 256Mi
+              pid: "100"
+            kubeReserved:
+              cpu: 500m
+              memory: 2Gi
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -1182,6 +1256,15 @@ patches:
             imageGCHighThresholdPercent: 75
             imageGCLowThresholdPercent: 65
             imageMaximumGCAge: 168h
+            # Allocatable reservations — rationale on the first machine block (#3382).
+            systemReserved:
+              cpu: 500m
+              memory: 1Gi
+              ephemeral-storage: 256Mi
+              pid: "100"
+            kubeReserved:
+              cpu: 500m
+              memory: 2Gi
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -1323,6 +1406,15 @@ patches:
             imageGCHighThresholdPercent: 75
             imageGCLowThresholdPercent: 65
             imageMaximumGCAge: 168h
+            # Allocatable reservations — rationale on the first machine block (#3382).
+            systemReserved:
+              cpu: 500m
+              memory: 1Gi
+              ephemeral-storage: 256Mi
+              pid: "100"
+            kubeReserved:
+              cpu: 500m
+              memory: 2Gi
             # The test-node taint. It is set at kubelet REGISTRATION, not through
             # machine.nodeTaints: NodeRestriction forbids a worker's kubelet from changing
             # taints on an existing Node, which is the path Talos uses for nodeTaints on
