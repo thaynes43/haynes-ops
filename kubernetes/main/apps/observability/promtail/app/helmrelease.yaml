@@ -30,6 +30,13 @@ spec:
     # The chart's default tolerations (master + control-plane) plus the eGPU test
     # node's taint, so talosw04's pod logs (the gpu-soak results in particular) reach
     # Loki. Setting this list replaces the chart default, hence the first two entries.
+    # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limit.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 6Gi
     tolerations:
       - key: node-role.kubernetes.io/master
         operator: Exists

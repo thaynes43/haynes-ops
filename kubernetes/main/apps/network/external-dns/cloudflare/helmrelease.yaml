@@ -42,5 +42,12 @@ spec:
     excludeDomains: ["haynesops.com"]
     serviceMonitor:
       enabled: true
+    # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limit.
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        memory: 512Mi
     podAnnotations:
       secret.reloader.stakater.com/reload: *secret

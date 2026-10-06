@@ -98,6 +98,28 @@ spec:
       timeoutSeconds: 5
       failureThreshold: 3
 
+    # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limits.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 768Mi
+      limits:
+        memory: 4Gi
+    pipelines:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+        limits:
+          memory: 384Mi
+    websocket:
+      redis:
+        resources:
+          requests:
+            cpu: 25m
+            memory: 16Mi
+          limits:
+            memory: 64Mi
     extraEnvVars:
       GLOBAL_LOG_LEVEL:
         value: "DEBUG"

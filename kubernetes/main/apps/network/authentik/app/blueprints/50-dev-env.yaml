@@ -79,6 +79,18 @@ entries:
       - ingress
       kubernetes_ingress_class_name: traefik-internal
       kubernetes_ingress_secret_name: certificate-haynesops
+      # #3389: container requests for the generated Deployment (authentik owns it,
+      # so resources go through a JSON patch). No CPU limit.
+      kubernetes_json_patches:
+        deployment:
+        - op: add
+          path: /spec/template/spec/containers/0/resources
+          value:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 96Mi
 # Evict dev-env from the embedded outpost (leftover from attempt 1). FULL
 # REPLACEMENT is what we want here: the embedded outpost natively serves nothing.
 - model: authentik_outposts.outpost

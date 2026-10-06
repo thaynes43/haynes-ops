@@ -28,3 +28,24 @@ spec:
       nameservers:
         - 1.1.1.1
         - 9.9.9.9
+    # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limits.
+    resources:
+      requests:
+        cpu: 25m
+        memory: 96Mi
+      limits:
+        memory: 320Mi
+    cainjector:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 128Mi
+        limits:
+          memory: 384Mi
+    webhook:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 48Mi
+        limits:
+          memory: 192Mi

@@ -176,8 +176,22 @@ spec:
               resources:
                 requests:
                   storage: 2Ti
+    # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limits.
+    prometheusOperator:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 384Mi
     prometheus-node-exporter:
       fullnameOverride: node-exporter
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          memory: 128Mi
       prometheus:
         monitor:
           enabled: true
@@ -189,6 +203,12 @@ spec:
               targetLabel: kubernetes_node
     kube-state-metrics:
       fullnameOverride: kube-state-metrics
+      resources:
+        requests:
+          cpu: 50m
+          memory: 192Mi
+        limits:
+          memory: 1Gi
       metricLabelsAllowlist:
         - pods=[*]
         - deployments=[*]
