@@ -12,6 +12,7 @@ resources:
   - ./flaresolverr/ks.yaml
   - ./kapowarr/ks.yaml
   - ./lazylibrarian/ks.yaml
+  - ./owed-checks/ks.yaml
   - ./prowlarr/ks.yaml
   - ./qbittorrent/ks.yaml
   - ./sabnzbd/ks.yaml

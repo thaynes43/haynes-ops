@@ -1,0 +1,27 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# The owed-check runner (haynesnetwork DESIGN-053): an hourly, read-only CronJob that evaluates the owed post-deploy
+# checks in the haynesnetwork repo's .agents/owed-checks.yaml, plus the Loki rules that alert on its log lines.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app owed-checks
+  namespace: downloads
+spec:
+  targetNamespace: downloads
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    # mounts LazyLibrarian's config PVC (read-only database access, see cronjob.yaml)
+    - name: lazylibrarian
+      namespace: downloads
+  path: ./kubernetes/main/apps/downloads/owed-checks/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: false
+  interval: 30m
+  timeout: 5m

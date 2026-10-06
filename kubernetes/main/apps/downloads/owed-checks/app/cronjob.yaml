@@ -1,0 +1,102 @@
+---
+# The owed-check runner (haynesnetwork DESIGN-053 D-04): hourly at :50 (after format-pairing :32 and goodreads :41),
+# it reads .agents/owed-checks.yaml from the haynesnetwork repo's main branch, runs the automated checks of every
+# pending row whose event has passed, and logs owed_check_result / owed_check / owed_checks_run JSON lines that
+# lokirule.yaml alerts on. Strictly read-only:
+#   - app-db: postgres16-ro (a standby) in a default_transaction_read_only session, each query BEGIN READ ONLY;
+#   - ll-db:  LazyLibrarian's SQLite opened SQLITE_OPEN_READONLY (mode=ro) with PRAGMA query_only;
+#   - books:  the NFS share mounted read-only, for file-exists checks;
+#   - Loki and Prometheus: HTTP GET instant queries.
+# LazyLibrarian's PVC is ceph-block RWO, so the pod is pinned to LazyLibrarian's node. It is mounted read-write at the
+# volume level ONLY because SQLite WAL readers share the -shm index with the writer: a read-only mount cannot open
+# the database ("unable to open database file", tested 2026-10-06). The database itself is never opened writable.
+# Image: the haynesnetwork app image (the runner is packages/sync/src/scripts/owed-checks.ts). Bump this tag together
+# with the frontend HelmRelease's &mainImage (haynesnetwork OPS-004 section 2).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: owed-checks
+spec:
+  schedule: "50 * * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: owed-checks
+        spec:
+          restartPolicy: Never
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: lazylibrarian
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: main
+              image: ghcr.io/thaynes43/haynesnetwork:v0.108.0
+              command:
+                - tsx
+                - /sync/src/scripts/owed-checks.ts
+              env:
+                - name: OWED_CHECKS_URL
+                  value: https://raw.githubusercontent.com/thaynes43/haynesnetwork/main/.agents/owed-checks.yaml
+                - name: LL_DB_PATH
+                  value: /config/lazylibrarian.db
+                - name: LOKI_URL
+                  value: http://loki.observability.svc.cluster.local:3100
+                - name: PROMETHEUS_URL
+                  value: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+                - name: NODE_OPTIONS
+                  value: --disable-warning=ExperimentalWarning
+                - name: HOME
+                  value: /tmp
+              envFrom:
+                - secretRef:
+                    name: owed-checks-secret
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 20m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                - name: books
+                  mountPath: /data/cephfs-hdd
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: config
+              persistentVolumeClaim:
+                claimName: lazylibrarian
+            # LazyLibrarian's own library mount, at its own path, so the paths it stores resolve.
+            - name: books
+              nfs:
+                server: gasha01.haynesnetwork
+                path: /hdd-nfs-repl
+                readOnly: true
+            - name: tmp
+              emptyDir: {}
