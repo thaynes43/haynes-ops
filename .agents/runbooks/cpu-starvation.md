@@ -59,7 +59,7 @@ kubectl logs -n database <pod> -c emqx --previous | tail -50
 | what you see | cause | fix |
 |---|---|---|
 | one pod, `Liveness probe failed ... timeout`, node load high | starvation (2026-10-05) | Fix the node (above). The broker recovers on its own with the same PVC and no data loss. zigbee2mqtt, Home Assistant and AppDaemon reconnect on their own (checked with `emqx ctl clients list` after 2026-10-05). |
-| two `emqx-core-<hash>` pods, or `SINGLE_NODE_LICENSE` in the log | a pod-template change started an operator blue-green | follow `emqx-config-drift.md` → *Next time*: scale the old StatefulSet to 0, then the fresh-PVC step |
+| two `emqx-core-<hash>` pods, or `SINGLE_NODE_LICENSE` in the log | a pod-template change started an operator blue-green | follow `emqx-config-drift.md` → *Pod-template change procedure*: scale the old StatefulSet to 0, then the fresh-PVC step |
 | `mria_mnesia: still waiting for table(s)` and the old core pod is gone | aftermath of a blue-green | the fresh-PVC recovery in `emqx-config-drift.md`. Only this case justifies deleting the broker PVC. |
 
 **Never delete the broker PVC for a starvation restart loop.** The PVC holds the

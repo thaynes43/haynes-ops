@@ -120,7 +120,7 @@ Signals in the broker log (`kubectl logs -n database $POD`), and what they mean:
   core. On operator 2.x that is a **full MQTT outage**, on 6.2.0 as well as on
   6.2.1+. The new node never joins: the Community license aborts it with
   `SINGLE_NODE_LICENSE` (emqx/emqx#17600). The outage ends only with the
-  fresh-PVC recovery in *Next time* below.
+  fresh-PVC recovery in *Pod-template change procedure* below.
 - Do not set `replicas: 3` — single-node COMMUNITY license.
 - Do not hand-edit `cluster.hocon` on the PVC; use the API/CLI so the change
   goes through `cluster_sync`.
@@ -149,7 +149,9 @@ Every blue-green leaves the previous StatefulSet at 0 replicas and, for some,
 its PVC (`kubectl get sts,pvc -n database | grep emqx-core`). Delete the 0/0
 StatefulSets and orphan PVCs once the new core has been stable for a day.
 
-## Lessons from the 2026-09-09 window (read before any pod-template change)
+## Lessons from the 2026-09-09 window
+
+The procedure to follow now is *Pod-template change procedure* below.
 
 **A pod-template change on this broker = a full MQTT outage, not a bounce.** The affinity
 change (#2801) made the operator blue-green the core. What actually happened, with times:
@@ -195,6 +197,8 @@ The plan above was based on 2026-09-09. Here is how 2026-10-06 differed:
 Side effect: the `zigbee2mqtt` Flux Kustomization `dependsOn` `emqx-cluster`. Both reported Not Ready while
 the cutover stalled, so `FluxReconciliationFailure` fired for **both**. Silence both, or reconcile
 quickly.
+
+## Pod-template change procedure (read before any pod-template change)
 
 **Next time** (any change to `spec.coreTemplate.spec`, `image`, or anything else in the pod
 template, while we are on operator 2.x):

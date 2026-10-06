@@ -109,7 +109,8 @@ maximum packet size is 10 MiB (#2802 — the `frame_is_too_large` lines were z2m
 limit, not the broker's). Cost: the operator's blue-green killed the old core before the new one
 could stand alone → **MQTT down 14:19–14:30:45Z (12 min)**, recovered by giving the new core a
 fresh data volume; the retained store was rebuilt by the z2m restart. Details, timeline and the
-procedure for next time are in the runbook's "Lessons from the 2026-09-09 window".
+procedure for next time are in the runbook's "Lessons from the 2026-09-09 window" and
+"Pod-template change procedure" (`.agents/runbooks/emqx-config-drift.md`).
 
 ## Addendum 14:30Z (10:30 EDT) — root cause from the UniFi controller + Proxmox, and what changed
 
