@@ -218,8 +218,9 @@ oplog spawned "$key" mode="$mode" model="$model" effort="$effort" ${rc_why:+rc_o
 # quiet on success: the outcome is an audit line, and order-status.sh's `failed`
 # page re-checks the live state itself.
 rc_confirm() {
-  local deadline=$(( $(date +%s) + RC_CONFIRM_S )) out="" st=unregistered why join src reason
+  local deadline=$(( $(date +%s) + RC_CONFIRM_S )) out="" st=off why join src reason
   if [ "$use_rc" = 1 ]; then
+    st=unregistered
     while [ "$(date +%s)" -lt "$deadline" ]; do
       sleep 5
       out="$(bash /opt/dev-env-ops/rc-state.sh "${TMUX_PANE:-ops:=$key}" 2>/dev/null)" && { st=registered; break; }

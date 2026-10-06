@@ -37,7 +37,7 @@ expect_absent()   { case "$2" in *"$3"*) bad "$1 (must not contain '$3')" "$2" ;
 
 mkdir -p "$T/opt" "$T/bin" "$T/home/work/orders" "$T/cfg/sessions" "$T/tmuxdir"
 for f in session-launch.sh login-check.sh ops-log.sh order-status.sh rc-state.sh; do
-  sed -e "s#/opt/dev-env-ops#$T/opt#g" -e "s#/proc/1/fd/1#$T/events.log#g" \
+  sed -e "s#/opt/dev-env-ops#$T/opt#g" -e "s#> /proc/1/fd/1#>> $T/events.log#g" \
       -e 's#^exec bash$#exit 0#' "$RES/$f" > "$T/opt/$f"
 done
 chmod +x "$T/opt/"*.sh
@@ -132,9 +132,12 @@ out="$(launch esc-selftest-dddd4444 other 20 1 unregistered)"
 expect_contains "esc + login the API rejects: relaunches on the setup token" "$out" "LAUNCH env_token=set"
 expect_contains "esc + login the API rejects: the page says REJECTED" "$out" "REJECTED by the API"
 
+expect_contains "esc + no login: audit says rc_state=off, not unregistered" "$(grep 'key=esc-selftest-bbbb2222' "$T/events.log" | grep paged=esc)" "rc_state=off"
+
 out="$(launch esc-selftest-eeee5555 other 20 0 unregistered)"
 expect_contains "esc + login ok but no registration: page says NOT available" "$out" "NOT available for this session (Remote Control did not register"
 expect_absent "esc + no registration: no link in the page" "$out" "claude.ai/code/"
+expect_contains "esc + no registration: audit says rc_state=unregistered" "$(grep 'key=esc-selftest-eeee5555' "$T/events.log" | grep paged=esc)" "rc_state=unregistered"
 
 out="$(launch wo-3999 other 20 0 registered)"
 expect_contains "shepherd wo-*: Remote Control on the Max login" "$out" "LAUNCH env_token= api_key= args=--remote-control wo-3999"
