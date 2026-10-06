@@ -116,6 +116,23 @@
       matchPackageNames: ['huggingface-hub'],
       allowedVersions: '<2.0.0',
     },
+    {
+      description: [
+        'HELD ghcr.io/thaynes43/dev-env v2.x: the v1 dev-env pins stay on 0.x — dev-env v2 publishes its agent image to the SAME package with 2.x.y tags.',
+        'Reason: dev-env v2 (repo thaynes43/dev-env, ADR-001 Accepted 2026-10-06, KICKOFF B5) pushes ghcr.io/thaynes43/dev-env:2.x.y. Without this hold, the first 2.x tag makes Renovate open a v1 "upgrade" PR that would put the v1 pod (and dev-env-ops, and the vexa scribe-notes Job) on a v2 operator-era image. The v1 pins are 0.6.x; DESIGN-001 says "A Renovate rule holds the v1 HelmRelease below 2.0.0".',
+        'Scope: matchFileNames limits the hold to the 7 v1 pins (dev/dev-env HelmRelease x3, upgrade-agent/dev-env-ops HelmRelease x3, ai/vexa scribe-notes-job.json x1 — that JSON is not scanned by any Renovate manager today and is bumped by hand with the others). A future v2 pin elsewhere in this repo is NOT held.',
+        'Resume: MANUAL — plan 05 (v2 cutover) removes this rule, or re-scopes matchFileNames, in the same PR that repoints the v1 files at v2 (or retires them).',
+        'Recorded: 2026-10-06 by claude (dev-env v2 saga). Related: autoMerge.json5 dev-env manual-merge carve-out (unchanged, still applies below 2.0.0).',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/thaynes43/dev-env$/'],
+      matchFileNames: [
+        'kubernetes/main/apps/dev/dev-env/**',
+        'kubernetes/main/apps/upgrade-agent/dev-env-ops/**',
+        'kubernetes/main/apps/ai/vexa/app/resources/scribe-notes-job.json',
+      ],
+      allowedVersions: '<2.0.0',
+    },
     // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
     //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
     //   protection (Host/Origin validation on every route, 403 for non-loopback Host).
