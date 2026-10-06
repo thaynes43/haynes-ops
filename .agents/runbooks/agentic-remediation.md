@@ -65,6 +65,15 @@ directory the responder's shallow clone actually searches:
   ([haynes-ops#3415](https://github.com/thaynes43/haynes-ops/issues/3415)).
 - The esc-* model is the HelmRelease's `OPS_ESC_MODEL`. Writers must not put a
   `model` in an order unless they mean to override it.
+- **One setup token carries every automated path**: the shepherd, triage, the
+  responder, all three dev-env-ops lanes and vexa scribe-notes use 1Password
+  `claude-code` / `CLAUDE_CODE_OAUTH_TOKEN` (a `claude setup-token`, first
+  wired 2026-07-13 per dev-env saga backlog 07, unchanged on the dev-env-ops PVC
+  since 2026-08-20; setup tokens last about a year). Nothing records its mint
+  date or warns before it expires. When it dies, the shepherd and responder quietly fall
+  back to the metered key (capped at $50 + $15 a month), and the only alarm is
+  dev-env-ops' daily probe, whose page names `~/.claude/.credentials.json`.
+  Re-mint it before about 2027-07 (ceremony: dev-env saga backlog 04-auth.md).
 
 ## What has actually been exercised
 
