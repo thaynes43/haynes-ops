@@ -23,6 +23,14 @@ spec:
     timezone: America/New_York
     injectAll: true
     cronJobTimeZone: true
+    # #3389: every pod admission goes through this webhook (failurePolicy Fail);
+    # requests sized from Prometheus (7d p95, 30d peak); no CPU limit.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
     webhook:
       certManager:
         enabled: true

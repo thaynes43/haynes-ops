@@ -46,6 +46,12 @@ spec:
                 key: password
           - name: LOG_LEVEL
             value: "debug"
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            memory: 384Mi
     extraArgs:
       - --ignore-ingress-tls-spec
       # The UDM's API stalls for >5s under load (image-pull storms, busy WAN);
@@ -60,5 +66,12 @@ spec:
     txtPrefix: k8s.haynes-ops.
     serviceMonitor:
       enabled: true
+    # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limits.
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        memory: 256Mi
     podAnnotations:
       secret.reloader.stakater.com/reload: *secret

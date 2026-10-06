@@ -14,3 +14,11 @@ spec:
   interval: 15m
   timeout: 5m
   releaseName: reflector
+  values:
+    # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limit.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 512Mi
+      limits:
+        memory: 1536Mi

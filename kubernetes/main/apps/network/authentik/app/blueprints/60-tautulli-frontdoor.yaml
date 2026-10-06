@@ -135,3 +135,15 @@ entries:
       - ingress
       kubernetes_ingress_class_name: traefik-external
       kubernetes_ingress_secret_name: certificate-haynesnetwork
+      # #3389: container requests for the generated Deployment (authentik owns it,
+      # so resources go through a JSON patch). No CPU limit.
+      kubernetes_json_patches:
+        deployment:
+        - op: add
+          path: /spec/template/spec/containers/0/resources
+          value:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 96Mi

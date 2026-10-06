@@ -19,6 +19,13 @@ spec:
   values:
     fullnameOverride: headlamp
     replicaCount: 1
+    # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limits.
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
     config:
       watchPlugins: true
       # Headlamp still expects an explicit kubeconfig file in some modes/versions.
@@ -82,6 +89,12 @@ spec:
       - name: kubeconfig
         emptyDir: {}
     pluginsManager:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 192Mi
+        limits:
+          memory: 768Mi
       enabled: true
       configContent: |
         plugins:

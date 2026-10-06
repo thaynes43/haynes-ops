@@ -24,6 +24,13 @@ spec:
   values:
     deploymentStrategy:
       type: Recreate
+    # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limits.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 320Mi
+      limits:
+        memory: 1536Mi
     admin:
       existingSecret: grafana-admin-secret
     env:
@@ -283,6 +290,12 @@ spec:
           #revision: 4
           #datasource: Prometheus
     sidecar:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 96Mi
+        limits:
+          memory: 256Mi
       dashboards:
         enabled: true
         searchNamespace: ALL

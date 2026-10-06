@@ -32,6 +32,16 @@ spec:
       serviceMonitor:
         enabled: true
     enableDiscoveryDaemon: true
+    # #3389: rook-discover DaemonSet requests, sized from Prometheus (7d p95,
+    # 30d peak); no CPU limit. The operator parses this string as YAML.
+    discover:
+      resources: |
+        resources:
+          requests:
+            cpu: 10m
+            memory: 128Mi
+          limits:
+            memory: 512Mi
     monitoring:
       enabled: true
     resources:

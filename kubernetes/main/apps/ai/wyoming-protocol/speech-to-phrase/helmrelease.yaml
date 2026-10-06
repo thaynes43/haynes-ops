@@ -50,6 +50,13 @@ spec:
             envFrom:
               - secretRef:
                   name: speech-to-phrase-secret
+            # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limit.
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                memory: 768Mi
     service:
       app:
         controller: speech-to-phrase

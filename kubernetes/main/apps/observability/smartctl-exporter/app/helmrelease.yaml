@@ -28,6 +28,13 @@ spec:
         - /dev/nvme0n1
         - /dev/nvme1n1
         - /dev/nvme2n1
+    # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limit.
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
     serviceMonitor:
       enabled: true
     prometheusRules:

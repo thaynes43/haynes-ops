@@ -100,6 +100,13 @@ spec:
         retention_period: 90d
     singleBinary:
       replicas: 1
+      # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limits.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 1Gi
+        limits:
+          memory: 4Gi
       # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox host (see incident)
       affinity:
         nodeAffinity:
@@ -152,6 +159,12 @@ spec:
     sidecar:
       image:
         repository: ghcr.io/kiwigrid/k8s-sidecar
+      resources:
+        requests:
+          cpu: 10m
+          memory: 96Mi
+        limits:
+          memory: 256Mi
       rules:
         # <ruler local.directory>/<tenant>. auth_enabled is false, so the tenant is `fake`.
         # Both the loki container and this sidecar mount the shared emptyDir at this path.
