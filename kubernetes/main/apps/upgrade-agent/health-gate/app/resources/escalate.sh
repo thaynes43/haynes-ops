@@ -2,9 +2,21 @@
 # escalate.sh <source> <run-ref> <reason...> — file a FAILURE ESCALATION into the
 # `upgrade-work-orders` ConfigMap (saga dev-env backlog 12, revised into 13's
 # executor). The dev-env-ops watcher turns the entry into a joinable Remote
-# Control session (tmux window + `claude --remote-control <key>`, model fable,
-# effort xhigh) and PAGES ON SPAWN with the session name — escalations ARE
-# failures, so they invert the wo-* quiet-on-success contract.
+# Control session (tmux window + `claude --remote-control <key>`) and PAGES ON
+# SPAWN with the session name — escalations ARE failures, so they invert the
+# wo-* quiet-on-success contract.
+#
+# MODEL: the entry carries NO model/effort. The watcher's esc-* lane defaults
+# (OPS_ESC_MODEL, a pinned full id, and OPS_SESSION_EFFORT in the dev-env-ops
+# HelmRelease) decide. Until 2026-10-06 this script wrote `model:"fable"`, and a
+# per-order model OVERRIDES the lane default, so every escalation ran on the
+# `fable` ALIAS and OPS_ESC_MODEL was dead config (10 of 11 spawns 2026-09-05 to
+# 2026-10-05 logged `model=fable`). Keep the model choice in ONE place: the HR.
+#
+# NOTE: this file ships in the upgrade-coordination-lib ConfigMap, which is also
+# mounted in dev-env-ops — and that Deployment is Reloader-annotated, so merging
+# a change here RESTARTS dev-env-ops and ends any session running in it. Merge
+# when no work order is `claimed` (haynes-ops#3415).
 #
 # Ships as a second key of the `upgrade-coordination-lib` ConfigMap (health-gate
 # kustomization) and is mounted at /opt/coordination in the gate, shepherd,
@@ -72,7 +84,7 @@ now="$(date -u +%s)"
 # hit live on the wo-* synthetic test 2026-08-20).
 entry="$(jq -nc --arg source "$src" --arg reason "$reason" --arg run_ref "$run_ref" --arg now "$now" \
   '{source:$source, reason:$reason, run_ref:$run_ref, class:"escalation",
-    model:"fable", effort:"xhigh", status:"pending", created:$now, updated:$now}')" || {
+    status:"pending", created:$now, updated:$now}')" || {
   elog "FAILED to build the entry JSON — nothing filed."; exit 1; }
 
 if kubectl -n "$NS" get cm "$CM" >/dev/null 2>&1; then
@@ -93,5 +105,5 @@ else
   kubectl -n "$NS" create configmap "$CM" --from-literal="$key=$entry" >/dev/null 2>&1 \
     || { elog "FAILED to create $CM (RBAC?) — escalation NOT filed; primary run unaffected."; exit 1; }
 fi
-elog "$key filed (source=$src) — dev-env-ops will spawn a joinable fable/xhigh session and PAGE with this name."
+elog "$key filed (source=$src) — dev-env-ops will spawn a joinable session on its esc-* lane model and PAGE with this name."
 exit 0
