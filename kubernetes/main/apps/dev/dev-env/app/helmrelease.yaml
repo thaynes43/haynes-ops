@@ -200,10 +200,14 @@ spec:
               # concurrent agent sessions, killed a live sigo-alumni session). Nodes
               # carry ~122Gi, so give real headroom for concurrent agent builds; the
               # limit is a ceiling, not a reservation.
+              # CPU limit 8 (2026-10-06): an agent's 60 busy-loop burners + wide vitest
+              # loops took talosm02 (20 cores) to load 222 and probe-killed EMQX,
+              # traefik, authentik and cnpg. Normal peaks are ~2-6 cores.
               requests:
                 cpu: "1"
                 memory: 4Gi
               limits:
+                cpu: "8"
                 memory: 64Gi
             securityContext:
               allowPrivilegeEscalation: false

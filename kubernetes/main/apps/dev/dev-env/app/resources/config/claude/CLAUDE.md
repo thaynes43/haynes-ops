@@ -380,8 +380,8 @@ it can look like a real incident and pull that agent (or Tom) in for nothing.
 ```bash
 # --scope is REQUIRED: the namespaces/apps/nodes your work can disturb.
 # --ttl defaults to 45m, caps at 8h (2h for the `cluster` wildcard).
-declare-activity start "restarting z2m + emqx (broker migration test)" \
-  --scope home-automation,zigbee2mqtt,emqx --ttl 45m
+declare-activity start "restarting z2m + mosquitto (broker migration test)" \
+  --scope home-automation,zigbee2mqtt,mosquitto --ttl 45m
 # -> declared act-142317-91 ... (the id is printed, and `list` reprints it)
 # ... do the work ...
 declare-activity end act-142317-91   # ALWAYS end early when you finish
@@ -391,6 +391,21 @@ Declarations are **scoped and TTL'd** on this pod's PVC; the remediation session
 reads them and treats a matching alert as dev-caused rather than a fault. They
 are a hint, not a mute — an alert outside your declared scope still gets handled,
 and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
+
+## CPU budget — no burners, no wide test loops (2026-10-06)
+
+This pod shares its node (talosm02) with the cluster's services. On 2026-10-05,
+CPU burners and wide parallel test runs in here starved the BestEffort pods on that
+node, and EMQX, traefik, authentik and cloudnative-pg went into liveness-kill loops.
+The container now has a CPU limit of 8, but that is a backstop, not a budget.
+
+- **Never** run CPU busy-loops, stress tools, or wide parallel or looped test runs
+  in this pod.
+- Reproduce a load-dependent flake in a CPU-limited batch Job on a worker node, or
+  at low parallelism under `nice -n 19`, well below the core count.
+- Prefer fixing a timing flake by reasoning plus fake timers over reproducing it
+  with load.
+- **Every work order** that touches flaky or perf tests must state this rule.
 
 ## Model policy (Tom, updated 2026-09-28) — which model runs where
 
