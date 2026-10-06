@@ -4,9 +4,33 @@
 # sigoalumni.org front page — homelab replicas (sigo-alumni ADR 0004 wave 1,
 # backlog/infra/homelab-hosting/05). Runs the SAME image the Cloud Run service
 # `frontpage` serves, against the SAME Cloud SQL database (shared-DB phase, no
-# data migration) via a cloud-sql-proxy native sidecar. Receives NO public
-# traffic yet: no ingressroute on purpose — the DNS/tunnel flip is a separate,
-# explicitly-not-here step. In-cluster access: sigoalumni.frontend.svc:8080.
+# data migration) via a cloud-sql-proxy native sidecar. These pods serve ALL
+# public sigoalumni.org traffic (Cloudflare Tunnel sigoalumni-homelab ->
+# traefik-external -> ./ingressroute.yaml); Cloud Run serves none. In-cluster
+# access: sigoalumni.frontend.svc:8080.
+#
+# ZERO-DOWNTIME DEPLOYS (Tom, 2026-10-06: "make sure you do rolling restarts
+# when we update things so the site doesn't go down cause we are sending a lot
+# of emails now"). Every image pin, values edit, or Reloader-triggered restart
+# must keep serving AND let an in-flight email send finish. The pieces, all
+# below and all load-bearing:
+#   - 3 replicas, RollingUpdate maxUnavailable 0 / maxSurge 1: a 4th pod comes
+#     up and turns Ready before any old pod is told to stop.
+#   - readiness on /api/healthz: a new pod gets traffic only once it can serve.
+#   - preStop sleep 10s: Traefik fences a terminating endpoint as soon as the
+#     EndpointSlice says so; the sleep covers that watch latency before the app
+#     sees SIGTERM.
+#   - SIGTERM: Next 16's start-server calls server.close() — stops accepting,
+#     lets every in-flight request finish, then exits. Announcements
+#     (lib/events/announce.ts), invite batches (lib/domain/invites.ts
+#     sendInvites) and scribe-notify all send INSIDE the request, sequentially.
+#   - terminationGracePeriodSeconds 600: the kill deadline for that drain. An
+#     idle pod exits in seconds; only a pod mid-send uses the time. Sized for
+#     the largest in-request loop (200 recipients: the custom-audience cap and
+#     the invite-API page cap) at just under 3s per SMTP send. If a loop's cap grows,
+#     grow this with it.
+#   - liveness (tcpSocket) cannot restart a draining pod: kubelet stops liveness
+#     probing once the pod has a deletionTimestamp.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -30,13 +54,19 @@ spec:
   values:
     controllers:
       main:
-        # 3 replicas so no single node failure or drain takes the (future)
-        # serving path down — same HA posture as haynesnetwork. Safe at 3:
+        # 3 replicas so no single node failure or drain takes the serving path
+        # down — same HA posture as haynesnetwork. Safe at 3:
         # DB-backed sessions, zero filesystem state; the image's startup
         # migrate.js serializes concurrent migrations with a session-level
         # pg_advisory_lock (losers block, then no-op).
         replicas: 3
         strategy: RollingUpdate
+        # Explicit, not the 25%/25% default (which only rounds to 0/1 at
+        # exactly this replica count): never take a serving pod away before its
+        # replacement is Ready. See ZERO-DOWNTIME DEPLOYS in the header.
+        rollingUpdate:
+          unavailable: 0
+          surge: 1
         annotations:
           reloader.stakater.com/auto: "true"
         # Keep two pods serving through any voluntary disruption (node drain).
@@ -44,6 +74,11 @@ spec:
         podDisruptionBudget:
           minAvailable: 2
         pod:
+          # Drain deadline for an in-flight email send (header: ZERO-DOWNTIME
+          # DEPLOYS). Includes the 10s preStop. The cloud-sql-proxy native
+          # sidecar is stopped only after the app container exits, so the DB
+          # stays reachable for the whole drain.
+          terminationGracePeriodSeconds: 600
           # AR is a private registry — pull with the homelab-ar-reader SA key
           # (ExternalSecret sigoalumni-ar-pull).
           imagePullSecrets:
@@ -274,6 +309,12 @@ spec:
             envFrom:
               - secretRef:
                   name: sigoalumni-secret
+            # Native sleep action (no shell or binary needed in the image):
+            # keep serving while Traefik fences this endpoint, THEN SIGTERM.
+            lifecycle:
+              preStop:
+                sleep:
+                  seconds: 10
             # PROBES: readiness = GET /api/healthz (DB-touching route, image
             # >= 21b6a87): a pod whose DB path is broken stops receiving
             # traffic — correct for a DB-backed-sessions app. Startup STAYS
