@@ -1,0 +1,41 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+# The MQTT broker is a single pod. When it is not Ready, zigbee2mqtt, every Home
+# Assistant MQTT entity and AppDaemon's MQTT apps are down with it, so every Zigbee
+# light in the house stops responding. This replaces EMQXCoreNotReady (#3383) with the
+# same reasoning: the stock KubePodNotReady waits 15 minutes and is a warning, and
+# warnings go to the null receiver. Severity critical, so it pages Pushover; no
+# `scope: host`, so the alert-responder still diagnoses it.
+#
+# `or on () vector(0)` keeps the alert firing when no mosquitto pod exists at all
+# (a StatefulSet scaled to 0). The `and on ()` guard stops an outage of
+# kube-state-metrics, which this expression reads, from paging as a broker outage.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mosquitto
+spec:
+  groups:
+    - name: mosquitto.rules
+      rules:
+        - alert: MosquittoNotReady
+          annotations:
+            summary: The MQTT broker (Mosquitto) has had no Ready pod for 2 minutes. Zigbee lights and MQTT entities are dead.
+            description: >-
+              No mosquitto pod in namespace database has been Ready for 2 minutes. Find out why with
+              `kubectl get pod -n database -l app.kubernetes.io/name=mosquitto -o wide`,
+              `kubectl describe pod -n database mosquitto-0` and
+              `kubectl logs -n database mosquitto-0 --previous`. A starved node (NodeLoadSaturated,
+              probe timeouts in `kubectl describe pod`) gets fixed at the node: stop the CPU hog.
+              Do not delete the broker PVC: it holds the retained store. Runbook:
+              .agents/runbooks/mqtt-broker.md
+          expr: |
+            (
+              sum(kube_pod_status_ready{namespace="database", pod=~"mosquitto-[0-9]+", condition="true"})
+              or on () vector(0)
+            ) < 1
+            and on () (sum(up{job="kube-state-metrics"}) > 0)
+          for: 2m
+          labels:
+            severity: critical
+            namespace: database
