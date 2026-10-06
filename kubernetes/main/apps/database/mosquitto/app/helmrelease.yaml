@@ -153,3 +153,11 @@ spec:
         type: emptyDir
         globalMounts:
           - path: /mosquitto/auth
+      tmp:
+        # `mosquitto_passwd -U` writes through tmpfile(), which musl hardcodes to /tmp,
+        # and the root fs is read-only (first rollout: "Unable to open temporary file").
+        type: emptyDir
+        advancedMounts:
+          mosquitto:
+            hash-passwords:
+              - path: /tmp
