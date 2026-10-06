@@ -380,8 +380,8 @@ it can look like a real incident and pull that agent (or Tom) in for nothing.
 ```bash
 # --scope is REQUIRED: the namespaces/apps/nodes your work can disturb.
 # --ttl defaults to 45m, caps at 8h (2h for the `cluster` wildcard).
-declare-activity start "restarting z2m + emqx (broker migration test)" \
-  --scope home-automation,zigbee2mqtt,emqx --ttl 45m
+declare-activity start "restarting z2m + mosquitto (broker migration test)" \
+  --scope home-automation,zigbee2mqtt,mosquitto --ttl 45m
 # -> declared act-142317-91 ... (the id is printed, and `list` reprints it)
 # ... do the work ...
 declare-activity end act-142317-91   # ALWAYS end early when you finish
