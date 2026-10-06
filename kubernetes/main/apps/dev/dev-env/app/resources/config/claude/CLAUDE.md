@@ -392,6 +392,21 @@ reads them and treats a matching alert as dev-caused rather than a fault. They
 are a hint, not a mute — an alert outside your declared scope still gets handled,
 and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
 
+## CPU budget — no burners, no wide test loops (2026-10-06)
+
+This pod shares its node (talosm02) with the cluster's services. On 2026-10-05,
+CPU burners and wide parallel test runs in here starved the BestEffort pods on that
+node, and EMQX, traefik, authentik and cloudnative-pg went into liveness-kill loops.
+The container now has a CPU limit of 8, but that is a backstop, not a budget.
+
+- **Never** run CPU busy-loops, stress tools, or wide parallel or looped test runs
+  in this pod.
+- Reproduce a load-dependent flake in a CPU-limited batch Job on a worker node, or
+  at low parallelism under `nice -n 19`, well below the core count.
+- Prefer fixing a timing flake by reasoning plus fake timers over reproducing it
+  with load.
+- **Every work order** that touches flaky or perf tests must state this rule.
+
 ## Model policy (Tom, updated 2026-09-28) — which model runs where
 
 | Surface | Model | Why |
