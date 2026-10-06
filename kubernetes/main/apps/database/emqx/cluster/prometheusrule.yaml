@@ -4,18 +4,9 @@
 # every Home Assistant MQTT entity and AppDaemon's MQTT apps are down with it, so
 # every Zigbee light in the house stops responding.
 #
-# 2026-10-05 (23:41-00:12Z): a runaway CPU load in the dev-env pod starved talosm02.
-# This BestEffort broker starved first; its 1 s /status probe timed out and the
-# liveness probe restart-looped it, with no Ready pod from 00:04 to 00:12:30Z. Nothing
-# paged. The stock KubePodNotReady waits 15m and is a warning, and warnings go to the
-# null receiver. This rule would have fired at 00:06Z (expression checked against
-# the stored series).
-#
-# Severity critical: an MQTT outage always needs a human, and it pages Pushover.
-# No `scope: host`, because the alert-responder's diagnosis is useful (it names the
-# cause, usually a starved node or a blue-green aftermath). The rem-* lane must not
-# delete the broker PVC for this alert. The triage rules are in
-# .agents/runbooks/cpu-starvation.md.
+# Incident background, triage and the rem-* lane's limits (it must not delete the broker
+# PVC for this alert): .agents/runbooks/cpu-starvation.md. Severity critical, so it pages
+# Pushover; no `scope: host`, so the alert-responder still diagnoses it.
 #
 # `or on () vector(0)` keeps the alert firing when no emqx-core pod exists at all
 # (a StatefulSet scaled to 0). The `and on ()` guard stops an outage of

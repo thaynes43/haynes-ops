@@ -109,9 +109,8 @@ spec:
       # (emqx-operator 2.3.1 api/v2 kubebuilder defaults). A probe set here REPLACES the
       # default whole, so it has to restate path, port, delays and thresholds. Liveness
       # still needs 3 failures 30 s apart before it restarts the broker.
-      # MERGING THIS IS A POD-TEMPLATE CHANGE. The operator then blue-greens the core,
-      # which means a full MQTT outage that ends only with the fresh-PVC step. It needs
-      # a planned window; follow .agents/runbooks/emqx-config-drift.md, "Next time".
+      # Any edit to this template is a pod-template change: follow the *Pod-template
+      # change procedure* in .agents/runbooks/emqx-config-drift.md.
       livenessProbe:
         httpGet:
           path: /status
