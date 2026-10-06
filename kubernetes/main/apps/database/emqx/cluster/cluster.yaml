@@ -56,6 +56,9 @@ spec:
   # that the single-node license rejects (maintainer-confirmed, emqx/emqx#17600).
   # Fix = emqx-operator 3.0.0; lift this pin only AFTER the operator is on 3.0.0.
   # Enforced + fully reasoned in .renovate/holds.json5. Rolled back 2026-06-15 (#1841).
+  # 6.2.0 is no exception to the blue-green crash (corrected 2026-10-06). During the
+  # 2026-09-09 blue-green the new 6.2.0 core aborted with the same SINGLE_NODE_LICENSE.
+  # It only boots fine standalone. See .agents/runbooks/emqx-config-drift.md.
   image: docker.io/emqx/emqx:6.2.0
   # NO COMMENTS INSIDE config.data. The operator re-serializes this HOCON and
   # hot-applies it with PUT /api/v5/configs?mode=merge; with `#` comment lines
@@ -87,13 +90,52 @@ spec:
         reloader.stakater.com/auto: "true"
     spec:
       replicas: 1
+      # STARVATION GUARDS (2026-10-06, after the 2026-10-05 talosm02 incident).
+      # The broker ran BestEffort (no requests). When the dev-env pod saturated
+      # talosm02, the BestEffort cgroup slice (minimum CPU weight) got almost no CPU.
+      # /status missed its 1 s probe timeout and liveness restart-looped the only
+      # broker for about 9 min, which took down every Zigbee light. A CPU request makes
+      # the pod Burstable, and the kernel then gives it at least its request's share of
+      # CPU under contention. Sized from 30 days of Prometheus data: CPU p99 0.01 core,
+      # 5-min peak 0.27 core (boot and retained-store reload); memory working set peak
+      # 479Mi, average about 400Mi. No limits, on purpose: a CPU limit would throttle
+      # the retained reload after a restart, and a memory limit risks OOM-killing the
+      # only broker.
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+      # Probe timeouts go from 1 s to 5 s. Every other value is the CRD default
+      # (emqx-operator 2.3.1 api/v2 kubebuilder defaults). A probe set here REPLACES the
+      # default whole, so it has to restate path, port, delays and thresholds. Liveness
+      # still needs 3 failures 30 s apart before it restarts the broker.
+      # MERGING THIS IS A POD-TEMPLATE CHANGE. The operator then blue-greens the core,
+      # which means a full MQTT outage that ends only with the fresh-PVC step. It needs
+      # a planned window; follow .agents/runbooks/emqx-config-drift.md, "Next time".
+      livenessProbe:
+        httpGet:
+          path: /status
+          port: dashboard
+        initialDelaySeconds: 60
+        periodSeconds: 30
+        failureThreshold: 3
+        timeoutSeconds: 5
+      readinessProbe:
+        httpGet:
+          path: /status
+          port: dashboard
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        failureThreshold: 12
+        timeoutSeconds: 5
       # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox
       # cluster that fenced wholesale this morning (see the incident report);
       # the broker was on talosw02 and took Zigbee2MQTT, every Zigbee automation
       # and the whole of AppDaemon down with it for 3.5 h. Soft preference only.
-      # This IS a pod-template change → the operator blue-greens the core (new
-      # StatefulSet, transient 2-node cluster, ~1–2 min MQTT bounce, z2m restart
-      # after). Planned window; procedure in .agents/runbooks/emqx-config-drift.md.
+      # This IS a pod-template change: the operator blue-greens the core. On
+      # 2026-09-09 that was a full 12-minute MQTT outage, not the "1-2 min bounce" this
+      # comment used to promise (the new node crash-looped on SINGLE_NODE_LICENSE).
+      # Planned window; procedure in .agents/runbooks/emqx-config-drift.md.
       affinity:
         nodeAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
