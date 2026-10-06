@@ -258,6 +258,18 @@
       matchPackageNames: ['/linuxserver/lazylibrarian$/'],
       automerge: false,
     },
+    // calibre carve-out (2026-10-06) — the EPUB converter CronJob
+    // (apps/downloads/lazylibrarian/app/epub-convert-cronjob.yaml) writes into the
+    // books library. Its "LazyLibrarian EPUB Convert" check runs the converter's
+    // tests inside the new calibre image, but it is advisory, so the downloads/**
+    // leaf rule would merge a bump on flux-local alone. Manual merge: read that
+    // check, then merge.
+    {
+      description: 'calibre image (EPUB converter) — manual merge only (read the LazyLibrarian EPUB Convert check first)',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/linuxserver/calibre$/'],
+      automerge: false,
+    },
     // Immich carve-out REMOVED 2026-07-05 (hands-off directive). Immich minor/patch/
     // digest now auto-merge via the photos leaf-app rule above — it is not cluster-
     // breaking, and the safety net (flux-local + health gate + auto-revert + the daily
