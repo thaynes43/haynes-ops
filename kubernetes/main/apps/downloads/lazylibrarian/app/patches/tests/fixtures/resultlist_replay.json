@@ -558,9 +558,12 @@
   "sub": "The Final Empire",
   "author": "Brandon Sanderson",
   "release": "Brandon Sanderson - Mistborn 6 (2016) MP3",
-  "volume": null,
+  "volume": [
+   6,
+   ""
+  ],
   "upstream": 101.0,
-  "patched": 101.0
+  "patched": 51.0
  },
  {
   "library": "AudioBook",
@@ -627,9 +630,12 @@
   "sub": "The Final Empire",
   "author": "Brandon Sanderson",
   "release": "Brandon Sanderson - Mistborn 6 2016 MP3",
-  "volume": null,
+  "volume": [
+   6,
+   ""
+  ],
   "upstream": 101.0,
-  "patched": 101.0
+  "patched": 51.0
  },
  {
   "library": "eBook",
@@ -1062,9 +1068,12 @@
   "sub": "",
   "author": "Hugh Howey",
   "release": "Hugh Howey - [Silo 02-Shift 02] - Second Shift-Order (retail) (mobi)",
-  "volume": null,
+  "volume": [
+   2,
+   "second shift order"
+  ],
   "upstream": 98.0,
-  "patched": 98.0
+  "patched": 48.0
  },
  {
   "library": "eBook",
@@ -1108,9 +1117,12 @@
   "sub": "The Final Empire",
   "author": "Brandon Sanderson",
   "release": "Brandon Sanderson - [Mistborn 03.5] - Mistborn-Secret History (retail) (epub)",
-  "volume": null,
+  "volume": [
+   3,
+   "mistborn secret history"
+  ],
   "upstream": 100.0,
-  "patched": 100.0
+  "patched": 50.0
  },
  {
   "library": "eBook",
@@ -2853,9 +2865,12 @@
   "sub": "The Final Empire",
   "author": "Brandon Sanderson",
   "release": "Brandon Sanderson - Mistborn Bk 4 - The Alloy of Law NMR 56 kbps 0032 - Brandon Sanderson - Mistborn Bk 4 - The Alloy of Law",
-  "volume": null,
+  "volume": [
+   4,
+   "the alloy of law mistborn bk the alloy of law"
+  ],
   "upstream": 84.0,
-  "patched": 84.0
+  "patched": 34.0
  },
  {
   "library": "AudioBook",
@@ -2863,9 +2878,12 @@
   "sub": "The Final Empire",
   "author": "Brandon Sanderson",
   "release": "Brandon Sanderson - Mistborn Bk 3 - The Hero of Ages NMR 32 kbps 000119 - Brandon Sanderson - Mistborn Bk 3 - The Hero of Ages",
-  "volume": null,
+  "volume": [
+   3,
+   "the hero of ages mistborn bk the hero of ages"
+  ],
   "upstream": 84.0,
-  "patched": 84.0
+  "patched": 34.0
  },
  {
   "library": "AudioBook",

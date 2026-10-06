@@ -30,6 +30,20 @@
 # follows the volume, the title between the author and the series counts
 # ("Unseen Academicals_ Discworld, Book 37"). Replayed over 3,385 rows: 44 more
 # changed, all later volumes (30 of them grabbed for that Discworld record).
+# Extended for thaynes43/haynesnetwork#738: a release that gives only a volume
+# number, no title ("Assistant to the Villain 03 [epub]", "Mistborn 6 (2016)
+# MP3"), loses the points too for volume 2 and up, unless the number is a part
+# file of a multi-file post ("... 02.mp3"), the subtitle names that volume as
+# the book's own ("Inheritance", "Book IV": "Inheritance 04"), or the release
+# is a bare "<title> - N" naming no author (a series index after the book's own
+# title, "Blonde Faith - 11": 4 of 4 such grabs were the right book). And a
+# release that repeats the wanted title after another volume's own title
+# ("Mistborn Bk 4 - The Alloy of Law ... Mistborn") is no longer read as this
+# book again, unless the subtitle names that volume as the book's own
+# ("Inheritance 04 - Inheritance or the Vault of Souls", "Book IV"). Replayed
+# over 3,989 rows on 2026-10-06: 10 more changed, every one a later volume or
+# novella grabbed for book 1 (Mistborn, Once Upon a Broken Heart, Shift).
+# Tests, fixtures and the replay tool: patches/tests/.
 #
 # BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
 # resultlist.py, and either re-apply the marked change to it (if upstream has
@@ -111,7 +125,10 @@ def names_other_volume(release, title, subtitle, author):
         or '<title>, Vol N' (N not 1), with a title unlike the wanted title and subtitle after it (or, when nothing
         follows, between the author and it: "Pratchett - Unseen Academicals_ Discworld, Book 37"). A title that starts
         with its author ("Terry Pratchett's Discworld") is also looked for as its series alone ("Discworld 21 - Jingo",
-        "12. Discworld - Witches Abroad"). Otherwise None. """
+        "12. Discworld - Witches Abroad"). When no title at all goes with the volume ("<title> 03 [epub]"), return
+        (volume, '') for N >= 2, unless the number is a file's part counter ("<title> 02.mp3"), the book's own volume
+        by its subtitle ("Inheritance", "Book IV": "Inheritance 04"), or a bare "<title> - N" that names no author
+        (a series index after the book's own title: "Blonde Faith - 11"). Otherwise None. """
     def norm(text):
         return unaccented(text or '').lower().replace("'", '').replace('.', ' ')
 
@@ -136,14 +153,15 @@ def names_other_volume(release, title, subtitle, author):
     match = listed = None
     for name, series_only in names:
         name = r'(?<![a-z0-9])' + r'[\s_,:;!?&-]+'.join(name)
-        match = re.search(name + r'[\s_\]),:-]*(?:(?:book|bk|vol|volume)\s*|#\s*)?(\d{1,2})'
+        match = re.search(name + r'(?P<sep>[\s_\]),:-]*(?:(?:book|bk|vol|volume)\s*|#\s*)?)(?P<vol>\d{1,2})'
                           r'(?![a-z0-9]|\s*(?:of\b|[-&_/]\s*\d))', release)
         if not match and series_only:  # a list number, "12. Discworld - Witches Abroad", not a count ("41 Discworld")
-            match = listed = re.search(r'(?<![a-z0-9.])(\d{1,2})\.\s*' + name + r'(?![a-z0-9])', dotted)
-        if match and int(match.group(1)) != 1:
+            match = listed = re.search(r'(?<![a-z0-9.])(?P<vol>\d{1,2})\.\s*' + name + r'(?![a-z0-9])', dotted)
+        if match and int(match.group('vol')) != 1:
             break
-    if not match or int(match.group(1)) == 1:
+    if not match or int(match.group('vol')) == 1:
         return None
+    volume = int(match.group('vol'))
     skip = _NOT_A_TITLE | set(get_list(CONFIG['EBOOK_TYPE'])) | set(get_list(CONFIG['AUDIOBOOK_TYPE'])) | writer
 
     def title_words(text):
@@ -152,12 +170,45 @@ def names_other_volume(release, title, subtitle, author):
     by = '|'.join(w for w in writer if len(w) > 2)
     before = re.split(r'(?<![a-z0-9])(?:%s)(?![a-z0-9])' % by, release[:match.start()]) if by else []
     other = title_words(release[match.end():]) or (title_words(before[-1]) if len(before) > 1 and not listed else '')
+    if not other:  # nothing but the volume: "Assistant to the Villain 03 [epub]" (thaynes43/haynesnetwork#738)
+        if listed or volume < 2 or _PART_FILE.match(dotted, match.end('vol')) or own_volume(subtitle) == volume:
+            return None
+        if '-' in match.group('sep') and not (by and re.search(r'(?<![a-z0-9])(?:%s)(?![a-z0-9])' % by, release)):
+            return None
+        return volume, ''
+    own = own_volume(subtitle)
     subtitle = ' '.join(w for w in words(subtitle) if w not in _NOT_A_TITLE and not w.isdigit() and w not in
                         ('book', 'bk', 'vol', 'volume', 'part', 'novel', 'one', 'two', 'three', 'four', 'five'))
-    if not other or other.endswith('series') or fuzz.token_set_ratio(' '.join(wanted), other) >= OTHER_TITLE_RATIO \
-            or (subtitle and fuzz.token_set_ratio(subtitle, other) >= OTHER_TITLE_RATIO):
-        return None  # nothing but the volume, a series name, or this book again ("Inheritance 04 - Inheritance")
-    return int(match.group(1)), other
+    if other.endswith('series') or (subtitle and fuzz.token_set_ratio(subtitle, other) >= OTHER_TITLE_RATIO):
+        return None  # a series name, or this book by its subtitle
+    if fuzz.token_set_ratio(' '.join(wanted), other) >= OTHER_TITLE_RATIO:
+        # this book again ("Inheritance 04 - Inheritance"), unless more than its title follows, and the book does
+        # not call itself that volume: "Mistborn Bk 4 - The Alloy of Law - ... Mistborn" is not "Mistborn" (#738)
+        extra = re.sub(r'(?:^| )(?:read|narrated|performed|voiced) by(?: .*)?$', '',
+                       ' '.join(w for w in other.split() if w not in wanted))  # a narrator credit is no title
+        extra = ' '.join(w for w in extra.split() if w not in _EDITION_WORDS)
+        if not extra or own == volume or fuzz.token_set_ratio(' '.join(wanted), extra) >= OTHER_TITLE_RATIO:
+            return None
+    return volume, other
+
+
+# words that describe an edition of the book, not the title of another volume
+_EDITION_WORDS = {'edition', 'deluxe', 'special', 'anniversary', 'illustrated', 'revised', 'expanded', 'collectors',
+                  'dramatized', 'dramatised', 'dramatization', 'full', 'cast', 'bbc', 'radio', 'drama'}
+# a number that names a file of a multi-file post, not a volume: "<title> 02.mp3", "<title> 0.jpg"
+_PART_FILE = re.compile(r'\.(?:mp3|m4a|m4b|flac|ogg|aac|wma|jpe?g|png|par2|nfo|sfv|rar|zip|7z|r\d\d)(?![a-z0-9])')
+_NUMBER_WORDS = {w: n for n, w in enumerate('one two three four five six seven eight nine ten eleven twelve'.split(), 1)}
+_ROMAN = {r: n for n, r in enumerate('i ii iii iv v vi vii viii ix x xi xii xiii xiv xv xvi xvii xviii xix xx'.split(), 1)}
+
+
+def own_volume(subtitle):
+    """ The volume a subtitle gives the book itself ("Book IV", "Book 4", "Book Four", "Volume 2", "#4"), else None. """
+    found = re.search(r'(?<![a-z0-9])(?:book|bk|volume|vol|#)\s*(\d{1,2}|[a-z]+)(?![a-z0-9])',
+                      unaccented(subtitle or '').lower().replace('.', ' '))
+    if not found:
+        return None
+    n = found.group(1)
+    return int(n) if n.isdigit() else _ROMAN.get(n) or _NUMBER_WORDS.get(n)
 
 
 def find_best_result(resultlist, book, searchtype, source):

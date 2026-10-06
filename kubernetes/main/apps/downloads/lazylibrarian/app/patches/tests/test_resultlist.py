@@ -49,6 +49,42 @@ CASES = [
     ('eBook', MIST, 'Brandon Sanderson - Mistborn 01 - The Final Empire epub', None, None),
     ('eBook', MIST, 'Brandon Sanderson - [Mistborn 01-03] - The Mistborn Trilogy Omnibus (retail) (epub)', None, None),
     ('eBook', ('Shatter Me', '', 'Tahereh Mafi'), 'Tahereh.Mafi-[Shatter.Me.01.5-06.5].azw3.epub.mobi', None, None),
+    # haynesnetwork#738: only a volume number, no title, still names another volume ...
+    ('eBook', ATV, 'Hannah Nicole Maehrer - Assistant to the Villain 03 [epub]', 3, None),
+    ('eBook', ATV, 'Assistant to the Villain Book 3 (retail) (epub)', 3, None),
+    ('eBook', ATV, 'Assistant to the Villain #3', 3, None),
+    ('eBook', ATV, 'Hannah Nicole Maehrer - Assistant to the Villain - 03', 3, None),
+    ('eBook', ATV, 'Hannah Nicole Maehrer - [Assistant to the Villain 01] (epub)', None, None),
+    ('AudioBook', MIST, 'Brandon Sanderson - Mistborn 6 (2016) MP3', 6, (101.0, 51.0)),
+    ('AudioBook', TPD, 'Terry Pratchett - Discworld 21 (2001) MP3', 21, None),
+    # ... but not the book's own series index after its own title, a part file, or the volume its subtitle names
+    ('eBook', ('Blonde Faith', '', 'Walter Mosley'), 'Blonde Faith - 11', None, None),
+    ('eBook', ATV, 'Assistant to the Villain - 03', None, None),
+    ('AudioBook', ('Dark Rivers of the Heart', '', 'Dean Koontz'),
+     'NMR_Dean Koontz - Dark Rivers of the Heart 02.mp3', None, None),
+    ('AudioBook', ('Winter of the World', 'Book Two of the Century Trilogy', 'Ken Follett'),
+     'nmr Ken Follett - Winter of the World 0.jpg 01_16', None, None),
+    ('eBook', INH, 'Christopher Paolini - Inheritance 04', None, None),
+    ('AudioBook', ('White Sand', 'Volume 2', 'Brandon Sanderson'), 'White Sand 02', None, None),
+    ('eBook', ('Fahrenheit 451', 'A Novel', 'Ray Bradbury'), 'Ray Bradbury - Fahrenheit 451 2', None, None),
+    # haynesnetwork#738: the wanted title repeated after another volume's own title is not this book again ...
+    ('AudioBook', MIST, 'Brandon Sanderson - Mistborn Bk 4 - The Alloy of Law NMR 56 kbps - Brandon Sanderson - Mistborn',
+     4, None),
+    ('eBook', MIST, 'Brandon Sanderson - [Mistborn 03.5] - Mistborn-Secret History (retail) (epub)', 3, (100.0, 50.0)),
+    ('eBook', ('Once Upon a Broken Heart', '', 'Stephanie Garber'),
+     'Stephanie Garber - [Once Upon a Broken Heart 03] - A Curse for True Love (mobi) - Once Upon a Broken Heart',
+     3, None),
+    ('eBook', ('Shift', '', 'Hugh Howey'), 'Hugh Howey - [Silo 02-Shift 02] - Second Shift-Order (retail) (mobi)',
+     2, (98.0, 48.0)),
+    # ... unless the subtitle says the book is that volume
+    ('eBook', INH, 'Paolini, Christopher - Inheritance 04 - Inheritance or the Vault of Souls (v5) [epub]', None, None),
+    ('eBook', ("Dean Koontz's Frankenstein", 'City of night. Book two', 'Dean Koontz'),
+     'Dean Koontz - [Frankenstein 02] - City of Night - Ed Gorman (azw3)', None, None),
+    # ... and a narrator credit or edition words after the repeated title are not another volume's title
+    ('AudioBook', ('Inheritance', '', 'Christopher Paolini'),
+     'Christopher Paolini - Inheritance 04 - Inheritance (Read by Gerard Doyle) MP3', None, None),
+    ('eBook', ('Inheritance', '', 'Christopher Paolini'),
+     'Christopher Paolini - Inheritance 04 - Inheritance Deluxe Edition (epub)', None, None),
 ]
 
 
