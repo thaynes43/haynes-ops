@@ -46,6 +46,9 @@ spec:
               - "*"
             env:
               GRAFANA_URL: http://grafana.observability.svc.cluster.local
+              # v2.0.0 flipped anonymous usage reporting (to stats.grafana.org) to
+              # ON by default; v1.x had it off. Keep it off.
+              GRAFANA_USAGE_STATS: disabled
             envFrom:
               - secretRef:
                   name: mcp-grafana-secret
