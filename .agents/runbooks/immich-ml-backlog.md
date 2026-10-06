@@ -91,8 +91,14 @@ when it loads. If ollama restarted while ML held the card, though, it might not 
 GPU any more.
 
 **So, for a backlog of thousands of assets, run OCR on its own.** Pause OCR under
-*Administration → Job Queues*, or with `PUT /api/queues/ocr` `{"isPaused": true}` using the same
-key. Resume it once Smart Search and Face Detection are idle. The nightly job skips a paused
+*Administration → Job Queues*, and resume it once Smart Search and Face Detection are idle.
+Without the UI, use `PUT /api/queues/ocr` with `{"isPaused": true}` (or `false` to resume).
+That route needs `queue.update`. The shared unrestricted key has it, but a dedicated key with
+only `job.create` and `queue.read` would get a 403. An agent never handles the key, so it makes
+this call from a one-off Job in `photos` that mounts `immich-queue-missing-secret` and runs
+`curl -X PUT -H @/secret/api-key-header -H 'Content-Type: application/json' --data '{"isPaused":true}'
+http://immich-server.photos.svc.cluster.local:2283/api/queues/ocr`. Copy the CronJob's pod
+spec and change only the command. The nightly job skips a paused
 queue, so **a pause that is never resumed quietly stops OCR**, and the job log shows
 `SKIP: the queue is paused` every night. Once the backlog is gone, a nightly run finds only a
 handful of assets and none of this applies.
