@@ -14,13 +14,15 @@
 #             No page. Call it if you will be busy more than ~30min.
 #   escalate  terminal for this order, and the ONLY route from an autonomous
 #             remediation to a human: marks the order `escalated` and files a
-#             real esc-* order, which the watcher turns into a joinable Remote
-#             Control session AND pages Tom with its name. Use it for case 3
+#             real esc-* order, which the watcher turns into a joinable
+#             session AND pages Tom with how to join it (its Remote Control link
+#             once registration is confirmed, else the attach command). Use it for case 3
 #             (needs a human action you cannot take — node reboot, physical,
 #             power, anything outside RBAC/egress) and case 4 (you tried and
 #             failed). Put the EXACT human steps in the note.
 #   failed    terminal failure. On wo-*/esc-* this pages directly and the
-#             session stays joinable. On a rem-* order it is UPGRADED to
+#             session stays joinable (the page carries the Remote Control link
+#             only if the session is really registered — rc-state.sh). On a rem-* order it is UPGRADED to
 #             `escalate`: a headless session has no window for Tom to join, so
 #             "failed" without a session would page him toward nothing.
 #
@@ -109,11 +111,16 @@ case "$status" in
 
   failed)
     oplog closed "$key" status=failed note="$note"
+    # The join handle is CHECKED, not assumed (#3414): the phone link only when
+    # the session in window ops:<key> really is registered with Remote Control,
+    # otherwise a plain "not on your phone" and the attach command.
+    join="$(bash /opt/dev-env-ops/rc-state.sh --join "$key" 2>/dev/null)"
+    [ -n "$join" ] || join="Attach from a dev-env session: kubectl -n upgrade-agent exec -it deploy/dev-env-ops -c app -- tmux attach -t 'ops:${key}'"
     curl -sf --max-time 10 https://api.pushover.net/1/messages.json \
       --form-string "token=${PUSHOVER_TOKEN:-}" \
       --form-string "user=${PUSHOVER_USER_KEY:-}" \
       --form-string "title=[dev-env-ops] work order ${key} FAILED" \
-      --form-string "message=${note:-no reason recorded} — session stays joinable: Remote Control '${key}' / tmux window '${key}' on the dev-env-ops pod." \
+      --form-string "message=${note:-no reason recorded} — the session window stays open. ${join}" \
       --form-string "priority=0" >/dev/null || echo "order-status: page failed" >&2
     ;;
 esac

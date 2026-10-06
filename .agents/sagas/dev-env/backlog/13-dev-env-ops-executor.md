@@ -54,6 +54,16 @@ exited. A vet can't own that class; a session can.
   but never appear on Tom's remote list, so session-launch strips it for the
   interactive lanes and they ride the pod's `~/.claude/.credentials.json` (Max
   login), whose expiry work-order-watch now probes daily (page on failure).
+  **Revised 2026-10-06 (haynes-ops#3414):** that file was never a Max login.
+  ops-init synthesized it from the setup token, so no wo-*/esc-* session
+  registered (45 of 45, 2026-09-03 to 2026-10-05) while the inference-only
+  probe said ok. Tom's ruling: dev-env-ops gets its OWN monthly `claude auth
+  login` (a separate grant, never a copy of dev-env's file), which ops-init no
+  longer overwrites. esc-* and shepherd wo-* use it; curation and rem-* stay on
+  the setup token. Pages carry a Remote Control link only after the
+  registration is confirmed, and give the attach command otherwise. The watcher
+  pages from 7 days before expiry. Ceremony and wiring:
+  `.agents/runbooks/agentic-remediation.md`, "dev-env-ops Max login".
 
 **Flow:** shepherd files `upgrade-work-orders` CM entry via
 `/opt/shepherd/work-order.sh <PR> <class> "<reason>"` (allowlisted like

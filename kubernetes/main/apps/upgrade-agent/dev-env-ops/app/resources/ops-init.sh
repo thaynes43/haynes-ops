@@ -16,29 +16,33 @@ if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
   fi
 fi
 
-# ── Claude auth bootstrap (2026-08-20, proven live during the synthetic test) ──
-# INTERACTIVE claude ignores CLAUDE_CODE_OAUTH_TOKEN (headless-only) and runs
-# the first-run wizard on a fresh PVC (theme → login → OAuth browser dance = an
-# unattended wedge). Seed the logged-in state instead:
-#   1. $CLAUDE_CONFIG_DIR/.credentials.json synthesized from the setup-token
-#      (NOTE the path: CLAUDE_CONFIG_DIR moves BOTH state files under ~/.claude/
-#      — seeding ~/.claude.json does nothing, hit live).
-#   2. $CLAUDE_CONFIG_DIR/.claude.json with the onboarding flags.
-# No oauthAccount object is needed (verified). Re-seed whenever the env token
-# differs from the stored one so a 1P token rotation heals on the pod roll the
-# secret change triggers (this pod's contract is setup-token auth — a manual
-# in-pod login would be overwritten on the next boot, by design).
-if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-  cur="$(jq -r '.claudeAiOauth.accessToken // empty' "$HOME/.claude/.credentials.json" 2>/dev/null)"
-  if [ "$cur" != "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
-    EXP=$(( ($(date +%s) + 300*24*3600) * 1000 ))
-    jq -nc --arg t "$CLAUDE_CODE_OAUTH_TOKEN" --argjson e "$EXP" \
-      '{claudeAiOauth: {accessToken: $t, expiresAt: $e,
-        scopes: ["user:inference","user:profile"], subscriptionType: "max"}}' \
-      > "$HOME/.claude/.credentials.json" \
-      && chmod 600 "$HOME/.claude/.credentials.json" \
-      && log "seeded .credentials.json from the setup-token"
-  fi
+# ── Claude auth (2026-08-20; rewritten 2026-10-06 for haynes-ops#3414) ──────
+# Two credentials, never mixed:
+#   * CLAUDE_CODE_OAUTH_TOKEN (pod env, a `claude setup-token`): rem-*,
+#     curation, and every no-Remote-Control fallback. Nothing to seed — the CLI
+#     reads the env var directly.
+#   * $CLAUDE_CONFIG_DIR/.credentials.json: dev-env-ops' OWN Max login, written
+#     ONLY by `claude auth login` during the renewal ceremony (runbook
+#     agentic-remediation.md) and refreshed in place by the CLI. It lives on the
+#     dev-env-ops-home PVC, so it survives restarts. wo-*/esc-* ride it for
+#     Remote Control, which the setup token cannot register.
+# Until 2026-10-06 this block SYNTHESIZED .credentials.json from the setup token
+# and rewrote it on any boot where the two differed — which made a real login
+# impossible to keep, and made every wo-*/esc-* "Remote Control" session a
+# setup-token session that was never registered (45 of 45, 2026-09-03..10-05).
+# NEVER write .credentials.json here again, and never copy one in from another
+# pod: a copy is a second refresh owner of the same token family (the 2026-08-29
+# revocation class) — the next rotation in one pod logs out the other.
+cred="$HOME/.claude/.credentials.json"
+if jq -e '.claudeAiOauth.refreshToken // empty' "$cred" >/dev/null 2>&1; then
+  log "$(bash /opt/dev-env-ops/login-check.sh --quiet 2>&1 | head -1)"
+elif [ -f "$cred" ] && jq -e '(keys == ["claudeAiOauth"]) and ((.claudeAiOauth.refreshToken // "") == "")' "$cred" >/dev/null 2>&1; then
+  # The legacy synthesized file: setup token, no refresh token, nothing else.
+  # Remove it so "is there a Max login?" has one honest answer.
+  rm -f "$cred" \
+    && log "removed the legacy setup-token .credentials.json — no Max login yet: wo-*/esc-* run on the setup token WITHOUT Remote Control until the dev-env-ops Max login ceremony is run (runbook agentic-remediation.md)"
+else
+  log "$(bash /opt/dev-env-ops/login-check.sh --quiet 2>&1 | head -1)"
 fi
 if [ ! -f "$HOME/.claude/.claude.json" ]; then
   jq -nc '{hasCompletedOnboarding: true, lastOnboardingVersion: "2.1.217",
