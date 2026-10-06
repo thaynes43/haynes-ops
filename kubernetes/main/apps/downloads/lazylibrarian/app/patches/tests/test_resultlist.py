@@ -121,6 +121,7 @@ class VolumePenaltyTest(OverlayTestCase):
 
 POTTER = ('Israel Potter', '', 'Herman Melville')
 POTTER_DK = 'Herman.Melville.Pierre.And.Israel.Potter.2014.DANiSH.RETAiL.ePub.eBOOK-DECiPHER-mqIO'
+SERPENT = ('The Serpent and the Wings of Night', '', 'Carissa Broadbent')
 
 # (library, (title, subtitle, author), BookLang, release, the language tag it names, or None)
 LANGUAGE_CASES = [
@@ -141,6 +142,13 @@ LANGUAGE_CASES = [
     ('eBook', ('Clockwork Prince', '', 'Cassandra Clare'), 'en', 'Clockwork Prince by Cassandra Clare [GER / EPUB]', 'GER'),
     ('AudioBook', ('Katabasis', '', 'R. F. Kuang'), 'en', 'R. F. Kuang - Katabasis [French]', 'French'),
     ('eBook', ('Eclipse', '', 'Stephenie Meyer'), 'en-GB', 'Eclipse by Stephenie Meyer [SPA / PDF]', 'SPA'),
+    # the German Serpent and the Wings of Night: a format between source and language, and the mojibake edition word
+    ('AudioBook', SERPENT, 'en',
+     'Carissa Broadbent-Crowns of Nyaxia 01 - The Serpent and the Wings of Night-AUDiOBOOK-WEB-MP3-DE-2024-PaZ', 'DE'),
+    ('AudioBook', SERPENT, 'en', 'Carissa Broadbent - Crowns of Nyaxia 01 - The Serpent and the Wings of Night '
+     '(Ungek\u00c3\u00bcrzt) MP3', 'Ungekurzt'),  # the indexer's mojibake of "Ungekürzt"
+    ('AudioBook', SERPENT, 'en', 'Carissa Broadbent - The Serpent and the Wings of Night (Ungek\u00fcrzt) H\u00f6rbuch',
+     'Ungekurzt'),
     # a book in another language, or one LazyLibrarian holds no language for, is left alone
     ('eBook', POTTER, 'da', POTTER_DK, None),
     ('eBook', POTTER, None, POTTER_DK, None),
@@ -162,6 +170,9 @@ LANGUAGE_CASES = [
     ('eBook', ("Percy Jackson's Greek Gods", '', 'Rick Riordan'), 'en', 'Rick Riordan - Percy Jacksons Greek Gods (epub)',
      None),
     ('AudioBook', ('Twilight', '', 'Stephenie Meyer'), 'en', 'Stephenie Meyer - Twilight (Unabridged) MP3', None),
+    ('AudioBook', SERPENT, 'en', 'Carissa Broadbent-The Serpent and the Wings of Night-AUDiOBOOK-WEB-MP3-EN-2024-GRP',
+     None),
+    ('eBook', ('Tienda de Sao Paulo', '', 'Ana Silva'), 'en', 'Ana Silva - Tienda de S\u00c3O Paulo (epub)', None),
 ]
 
 
