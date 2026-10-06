@@ -9,6 +9,7 @@ resources:
   - ./verify-thaynes43-images.yaml
   - ./verify-haynesnetwork-images.yaml
   - ./default-cpu-request.yaml
+  - ./besteffort-pod-alert.yaml
   - ./exceptions/multus-rbac.yaml
   - ./exceptions/rbac-legit.yaml
   - ./exceptions/pss-baseline.yaml
