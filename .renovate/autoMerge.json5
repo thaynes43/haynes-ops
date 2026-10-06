@@ -116,8 +116,9 @@
       // 'digest' (2026-06-28): SHA-pinned image refreshes on the SAME tag are at
       // least as safe as minor/patch for these stateless single-pod apps, yet the
       // minor/patch-only list stranded every digest bump forever (cloudflare-ddns
-      // #1884, postgres-init #1889/#1890). The Immich carve-out below still blocks
-      // immich-app/* digests (matches by package name, last rule wins per-dep).
+      // #1884, postgres-init #1889/#1890). immich-app/* digests ride this rule too:
+      // the Immich carve-out that used to block them was removed 2026-07-05 (see
+      // the note at the end of this file).
       matchUpdateTypes: ['minor', 'patch', 'digest'],
       automerge: true,
       automergeType: 'pr',

@@ -20,7 +20,7 @@ How it is kept apart from the rest of the cluster:
 |---|---|---|
 | Taint `haynesops.com/gpu-test=true:NoSchedule` | kubelet `registerWithTaints` in its Omni machine block | Only pods that tolerate it schedule there. No Deployment, StatefulSet or CronJob in the cluster tolerates every taint (checked 2026-10-02). |
 | Label `haynesops.com/gpu-test=true` | Talos `nodeLabels` | Selects the node for the GPU exporter and the test Jobs, and opts it out of Cilium L2 VIP announcements (`kube-system/cilium/config/cilium-l2.yaml`). |
-| No NFD labels | NFD worker has no toleration | The `feature.node.kubernetes.io/nvidia-3090-gpu` selectors of ollama-prime, llama-server and immich-ml cannot match it. The taint would stop them anyway. |
+| No NFD labels | NFD worker has no toleration | The `feature.node.kubernetes.io/nvidia-3090-gpu` selectors of ollama-prime and llama-server cannot match it. The taint would stop them anyway. |
 | Alerts | `observability/nvidia-gpu-exporter/app/prometheusrule.yaml`, `NodeRebooted` in `kube-prometheus-stack/app/prometheusrule.yaml` | talosw04 is left out of `GpuMissing` and excluded from `GpuExporterDown` and `NodeRebooted`, so a card test never pages. `GpuTestNodeGpuMissing` (warning, "null" receiver) shows a lost card in Alertmanager and Grafana. |
 
 What does run there: cilium, spegel, node-exporter and smartctl-exporter (all tolerate
