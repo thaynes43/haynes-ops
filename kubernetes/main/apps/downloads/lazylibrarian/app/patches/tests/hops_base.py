@@ -52,29 +52,50 @@ def load_fixture(name):
         return json.load(f)
 
 
-def score(library, title, sub, author, release, penalty=True):
+def set_fixture_language(lang):
+    """The scored book's BookLang: a books row 'fixture' with that language, or no row at all for None (a book
+    LazyLibrarian cannot find, as every fixture before the language penalty was scored)."""
+    db = database.DBConnection()
+    row = db.match("SELECT BookLang FROM books WHERE BookID='fixture'")
+    if (row['BookLang'] == lang) if row else lang is None:
+        return
+    db.action("DELETE FROM books WHERE BookID='fixture'")
+    if lang is not None:
+        db.action("INSERT OR IGNORE INTO authors (AuthorID, AuthorName, Status) VALUES ('fixture', 'Fixture', 'Active')")
+        db.action("INSERT INTO books (BookID, AuthorID, BookName, Status, AudioStatus, BookLang) "
+                  "VALUES ('fixture', 'fixture', 'Fixture', 'Skipped', 'Skipped', ?)", (lang,))
+
+
+def score(library, title, sub, author, release, penalty=True, lang=None, detail=False):
     """(score, names_other_volume result) for one release against one book, through resultlist.find_best_result
-    exactly as a search scores it (source nzb). penalty=False is upstream scoring (the overlay's penalty off)."""
+    exactly as a search scores it (source nzb). penalty=False is upstream scoring (the overlay's penalties off).
+    lang is the book's BookLang (None: no books row). detail=True adds the names_language result."""
     from lazylibrarian import resultlist
+    set_fixture_language(lang)
     book = {'bookid': 'fixture', 'authorName': author, 'bookName': title, 'bookSub': sub or '', 'library': library,
             'searchterm': title}
     res = {'nzbtitle': release, 'nzburl': 'http://fixture.invalid/nzb', 'nzbprov': 'fixture', 'nzbsize': 0,
            'nzbmode': 'nzb', 'priority': 0}
-    original = getattr(resultlist, 'names_other_volume', None)
+    originals = {name: getattr(resultlist, name, None) for name in ('names_other_volume', 'names_language')}
     seen = {}
 
-    def spy(*args, **kwargs):
-        seen['volume'] = original(*args, **kwargs) if penalty else None
-        return seen['volume']
+    def spy(name):
+        def found(*args, **kwargs):
+            seen[name] = originals[name](*args, **kwargs) if penalty else None
+            return seen[name]
+        return found
 
-    if original:
-        resultlist.names_other_volume = spy
+    for name, original in originals.items():
+        if original:
+            setattr(resultlist, name, spy(name))
     try:
         match = resultlist.find_best_result([res], book, 'book' if library == 'eBook' else 'audiobook', 'nzb')
     finally:
-        if original:
-            resultlist.names_other_volume = original
-    return (round(match[0], 2) if match else None), seen.get('volume')
+        for name, original in originals.items():
+            if original:
+                setattr(resultlist, name, original)
+    result = (round(match[0], 2) if match else None), seen.get('names_other_volume')
+    return result + (seen.get('names_language'),) if detail else result
 
 
 _real_connect = socket.socket.connect

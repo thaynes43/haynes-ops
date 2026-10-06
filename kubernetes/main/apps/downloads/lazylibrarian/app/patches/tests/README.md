@@ -14,7 +14,7 @@ image pinned in `../../helmrelease.yaml`, never against the live pod or its data
 
 | Overlay | Test |
 |---|---|
-| `resultlist.py` | the volume penalty: the four Assistant to the Villain releases, the Discworld record, the guards (Inheritance, Fahrenheit 451, Harper Connelly, Chroniken 01, a "41 Discworld novels" count), plus `fixtures/resultlist_replay.json`: 296 anonymised rows of the 2026-10-06 replay over the live `wanted` table, each with its upstream and patched score |
+| `resultlist.py` | the volume penalty: the four Assistant to the Villain releases, the Discworld record, the guards (Inheritance, Fahrenheit 451, Harper Connelly, Chroniken 01, a "41 Discworld novels" count), plus `fixtures/resultlist_replay.json`: 296 anonymised rows of the 2026-10-06 replay over the live `wanted` table, each with its upstream and patched score; the language penalty: each tag form of the grab history (`DANiSH`, `WEB-SE`, `2MP3CD-DE`, `[GER / EPUB]`, `[French]`, `EB-NL`) for an English book, and the guards (another `BookLang`, `[ENG / EPUB]`, `WEB-EN`, a language word in the title: Learn French, The Danish Girl, IT); the blacklist: a `Failed` row blocks its release under any spelling (spaces for dots, case, underscores, the title in its link's `file`), only for its provider and format |
 | `dbupgrade.py` | the start-up check keeps an author that owns a book with no `bookauthors` row, and its census logs `LL_UNLINKED_BOOKS` for such books |
 | `gb.py` | the API's `addBook` writes the `bookauthors` row |
 | `librarysync.py` | no source-id carry-over between files; a `remove` scan keeps authors that own books |
@@ -46,7 +46,8 @@ Everything is sequential: one process, one test at a time. Never run it in a loo
 3. Add the case to the test, and run `run.py` (and `run.py --tests-only --drop <name>` to see the new test fail on
    upstream).
 4. A scoring change (`resultlist.py`): replay the history first, `./oneshot.sh replay /tmp/new.tsv`, once with the
-   old overlay and once with the new, and hand-check every row whose score moved. The TSV is the whole download
+   old overlay and once with the new, and hand-check every row whose score moved (the TSV's `volume` and
+   `language` columns say which penalty moved it). The TSV is the whole download
    history with providers, dates and requester tags: keep it out of git. `fixtures/resultlist_replay.json` is a
    deliberate, curated subset of it (the rows that test the penalty, deduplicated), kept to title, author and
    release name: no provider, URL, size, date, requester tag or scene group. Fold changed rows in the same way.
