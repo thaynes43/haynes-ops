@@ -52,6 +52,23 @@ spec:
       enabled: true
       minAvailable: 2
 
+    # #3385: without requests this pod was BestEffort, and every BestEffort pod
+    # on a node shares cpu.weight 1. On 2026-10-05 a runaway pod saturated
+    # talosm02, this pod got no CPU, /ping timed out and the kubelet killed it
+    # in a loop. A request makes it Burstable with a weight that follows the
+    # request, so under contention it keeps at least about this much CPU.
+    # Sized from Prometheus, 7 days to 2026-10-06: CPU p95 5m-rate 4.5m, 1m-rate
+    # peak 63m; working set p95 216Mi, 30-day peak 243Mi.
+    # No CPU limit on purpose: CFS throttling on the ingress path adds latency.
+    # The memory limit is about 4x the 30-day peak. The chart also sets
+    # GOMEMLIMIT to 90% of it, so the Go GC tightens before an OOM kill.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
     ports:
       web:
         http:

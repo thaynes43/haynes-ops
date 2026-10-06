@@ -59,6 +59,23 @@ spec:
         password: ""
     server:
       replicas: 3
+      # #3385: without requests the server and worker pods were BestEffort, and
+      # every BestEffort pod on a node shares cpu.weight 1. On 2026-10-05 a
+      # runaway pod saturated talosm02, these pods got no CPU, their liveness
+      # probes timed out and the kubelet killed them in a loop. A request makes
+      # them Burstable with a weight that follows the request, so under
+      # contention each keeps at least about this much CPU.
+      # Sized from Prometheus, 7 days to 2026-10-06: CPU p95 5m-rate 43m,
+      # 1m-rate peak 283m; working set p95 739Mi, 30-day peak 802Mi.
+      # No CPU limit on purpose: every forward-auth request on the ingress path
+      # waits on this container, and CFS throttling would add latency there.
+      # The memory limit is about 2.5x the 30-day peak.
+      resources:
+        requests:
+          cpu: 200m
+          memory: 1Gi
+        limits:
+          memory: 2Gi
       # PLAN-011: haynesnetwork brand assets mounted read-only so brand fields
       # can reference them as media values (e.g. hnet/logo-%(theme)s.svg).
       # PLAN-042: web-dist-lowered (emptyDir) holds a CSS-nesting-LOWERED copy of
@@ -140,6 +157,17 @@ spec:
         enabled: false
     worker:
        replicas: 3
+       # #3385: see server.resources above. Its liveness probe is the exec
+       # `ak healthcheck`, which also needs CPU to answer within 3s.
+       # Sized from Prometheus, 7 days to 2026-10-06: CPU p95 5m-rate 60m,
+       # 1m-rate peak 190m; working set p95 444Mi, 30-day peak 487Mi.
+       # No CPU limit; the memory limit is about 3x the 30-day peak.
+       resources:
+         requests:
+           cpu: 200m
+           memory: 512Mi
+         limits:
+           memory: 1536Mi
     geoip:
       enabled: false
       existingSecret:
