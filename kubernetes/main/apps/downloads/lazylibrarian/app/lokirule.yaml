@@ -1,0 +1,26 @@
+---
+# Loki ruler alerts for LazyLibrarian (loaded via the loki_rule ConfigMap label,
+# see kustomization.yaml). Routing: severity=critical is the only route that
+# reaches a human; a warning shows in the Alertmanager and Grafana UI only.
+groups:
+  - name: lazylibrarian-census
+    rules:
+      - alert: LazyLibrarianBooksWithoutAuthorLink
+        # patches/dbupgrade.py fix 2 logs LL_UNLINKED_BOOKS <n> at every start
+        # when books have no bookauthors row (thaynes43/haynesnetwork#736).
+        # Such a book counts for no author, so only the overlay's spare path
+        # keeps it alive across restarts: before that overlay, LazyLibrarian
+        # deleted ~900 requested books this way. The start-up check runs once
+        # per start, so a 26h window keeps the alert up for a day after it.
+        # Fix: find the add path that skipped the row (gb.py's addBook writes
+        # it), then backfill as on 2026-10-06 (primary row, Role 1, one
+        # transaction after a database backup).
+        expr: |
+          sum by (app) (count_over_time({app="lazylibrarian", container="app"} |= "LL_UNLINKED_BOOKS" [26h])) > 0
+        for: 1m
+        annotations:
+          summary: >-
+            LazyLibrarian holds books with no bookauthors row; only the dbupgrade.py overlay keeps them
+            across restarts. Find the add path that skipped the row and backfill it (haynesnetwork#736).
+        labels:
+          severity: warning
