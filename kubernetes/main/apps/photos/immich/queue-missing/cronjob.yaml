@@ -41,6 +41,11 @@
 # a queue-all job (active) in the queue before it answers, so there is no idle
 # gap while it streams the assets in.
 #
+# After each queue it idles 330 s, just over MACHINE_LEARNING_MODEL_TTL (300 s):
+# ML keeps a finished queue's models and CUDA arena loaded until then, so
+# starting the next queue sooner would stack two queues' memory on the card.
+# That adds about 11 minutes a night.
+#
 # Each queue has its own timeout, counted from when its turn begins and
 # covering the gate, the start and the drain: smartSearch 4 h, faceDetection
 # 4 h, ocr 8 h (the 2026-10-05 backlog: 20k, 20k and 81k assets, which drained in
@@ -131,6 +136,11 @@ spec:
                   body=/tmp/body
                   poll=30      # seconds between status polls
                   settle=10    # seconds after a start before the first poll
+                  # Idle time between queues. immich-machine-learning keeps a
+                  # finished queue's models and CUDA arena until
+                  # MACHINE_LEARNING_MODEL_TTL (300 s) of idleness, then exits
+                  # and frees its VRAM; the next queue must not start before.
+                  cooldown=330
                   fail=0
                   started=0
                   res=""
@@ -327,6 +337,10 @@ spec:
                         break
                         ;;
                     esac
+                    if [ "$q" != ocr ]; then
+                      echo "[$q] cooling down ${cooldown}s so ML unloads its models before the next queue"
+                      sleep "$cooldown"
+                    fi
                   done
 
                   echo "immich-queue-missing done $(ts) started=$started errors=$fail"

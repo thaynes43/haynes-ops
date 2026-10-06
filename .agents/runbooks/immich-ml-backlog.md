@@ -48,6 +48,12 @@ For each queue, in the order Smart Search, Face Detection, OCR, the job:
    `paused` count while a queue is paused, so a paused queue reads `waiting=0` without being
    drained. A queue paused while it runs is logged and left alone.
 
+4. **Cools down** for 330 s (not after OCR, the last one). The ML worker keeps a finished
+   queue's models and CUDA arena loaded until `MACHINE_LEARNING_MODEL_TTL` (300 s) of idleness,
+   then exits and frees its VRAM, so starting the next queue sooner would stack two queues'
+   memory on the card (found in review of #3439). It adds about 11 minutes a night. The
+   cooldown is not counted in the next queue's timeout.
+
 Each queue has its own **timeout**, counted from the start of its turn and covering the gate,
 the start and the drain: Smart Search 4 h, Face Detection 4 h, OCR 8 h. The 2026-10-05 backlog
 took about 17 minutes, 17 minutes and 3.5 hours. The Job's `activeDeadlineSeconds` is 22 h, a
@@ -115,8 +121,8 @@ when it loads. If ollama restarted while ML held the card, though, it might not 
 GPU any more.
 
 **That is why the job runs the queues one at a time.** Only one ML workload is on the card
-besides ollama, so the peak is the highest of the three (OCR, about 9.1 GB in total), not their
-sum. Since 2026-10-06 nothing manual is needed for a big backlog: the job does what the
+besides ollama (the 330 s cooldown between queues lets ML unload the last one), so the peak is
+the highest of the three (OCR, about 9.1 GB in total), not their sum. Since 2026-10-06 nothing manual is needed for a big backlog: the job does what the
 2026-10-06 recovery did by hand, which was to run OCR on its own.
 
 If you start queues by hand, do the same: start one, wait for it to drain, then start the
