@@ -8,6 +8,7 @@ resources:
   - ./pod-security-baseline.yaml
   - ./verify-thaynes43-images.yaml
   - ./verify-haynesnetwork-images.yaml
+  - ./default-cpu-request.yaml
   - ./exceptions/multus-rbac.yaml
   - ./exceptions/rbac-legit.yaml
   - ./exceptions/pss-baseline.yaml
