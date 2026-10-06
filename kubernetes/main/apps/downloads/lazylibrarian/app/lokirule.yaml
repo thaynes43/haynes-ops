@@ -50,8 +50,10 @@ groups:
         # A book the converter could not convert, or whose EPUB named another
         # book. It stays .mobi/.azw3-only and is recorded in
         # books/.epub-convert/held.tsv, so this fires once per book, not hourly.
+        # io_error (a copy or rename on the share failed) is not held: it is
+        # retried every run and keeps this up while it repeats.
         expr: |
-          sum by (result) (count_over_time({namespace="downloads", container="epub-convert", pod=~"lazylibrarian-epub-convert-.*"} |= "\"msg\":\"epub_convert\"" | json result | result=~"drm|convert_error|timeout|unreadable|title_mismatch" [75m])) > 0
+          sum by (result) (count_over_time({namespace="downloads", container="epub-convert", pod=~"lazylibrarian-epub-convert-.*"} |= "\"msg\":\"epub_convert\"" | json result | result=~"drm|convert_error|timeout|unreadable|title_mismatch|io_error" [75m])) > 0
         for: 0m
         annotations:
           summary: >-

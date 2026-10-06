@@ -47,7 +47,8 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
-      # RUN_BUDGET_SECONDS (45m) + one CONVERT_TIMEOUT_SECONDS (10m) fits; the hourly cadence is the ceiling.
+      # RUN_BUDGET_SECONDS (40m) + one book's CONVERT_TIMEOUT_SECONDS (10m, every calibre call for that book
+      # included) + the census walk fits. If it is ever reached, SIGTERM releases the run's lock.
       activeDeadlineSeconds: 3300
       template:
         metadata:
@@ -83,7 +84,7 @@ spec:
                 - name: STATE_DIR
                   value: /data/cephfs-hdd/data/media/books/.epub-convert
                 - name: RUN_BUDGET_SECONDS
-                  value: "2700"
+                  value: "2400"
                 # An import younger than this is left for the next run.
                 - name: SETTLE_SECONDS
                   value: "900"

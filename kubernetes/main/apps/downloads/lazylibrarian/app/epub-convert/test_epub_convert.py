@@ -220,8 +220,60 @@ def test_runs():
               "run 7: a deleted held line is retried, nothing else")
 
 
+def test_failures():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = os.path.join(tmp, "EBooks")
+        state = os.path.join(tmp, ".epub-convert")
+
+        # A folder the job cannot write to fails on its own; the folder after it still converts.
+        locked = os.path.join(root, "Author E", "Read Only")
+        make_book(os.path.join(locked, "Read Only - Author E.mobi"), "Read Only", "Author E")
+        after = os.path.join(root, "Author E", "Zed Book")
+        make_book(os.path.join(after, "Zed Book - Author E.mobi"), "Zed Book", "Author E")
+        os.chmod(locked, 0o555)
+        try:
+            rc, lines, err = run({"EBOOK_ROOT": root, "STATE_DIR": state, "SETTLE_SECONDS": "0"})
+        finally:
+            os.chmod(locked, 0o755)
+        results = {line["folder"]: line["result"] for line in by_msg(lines, "epub_convert")}
+        check(rc == 0 and results.get("Author E/Read Only") == "io_error", f"io_error: logged, run continues ({results})")
+        check(results.get("Author E/Zed Book") == "converted", "io_error: the next folder still converts")
+        census = by_msg(lines, "epub_convert_census")
+        check(census and census[0]["unconverted"] == 1 and census[0]["held"] == 0,
+              "io_error: not held, counted unconverted (retried next run)")
+        check(sorted(os.listdir(locked)) == ["Read Only - Author E.mobi"], "io_error: folder left as it was")
+
+        # A book whose calibre calls run over the per-book timeout is held as timeout.
+        rc, lines, err = run({"EBOOK_ROOT": root, "STATE_DIR": state, "SETTLE_SECONDS": "0",
+                              "CONVERT_TIMEOUT_SECONDS": "0"})
+        results = {line["folder"]: line["result"] for line in by_msg(lines, "epub_convert")}
+        check(results == {"Author E/Read Only": "timeout"}, f"timeout: held as timeout ({results})")
+        check(sorted(os.listdir(locked)) == ["Read Only - Author E.mobi"], "timeout: folder left as it was")
+
+        # SIGTERM (activeDeadlineSeconds) mid-conversion releases the lock and leaves no partial.
+        slow = os.path.join(root, "Author F", "Slow")
+        make_book(os.path.join(slow, "Slow - Author F.mobi"), "Slow", "Author F")
+        sleeper = os.path.join(tmp, "slow-convert")
+        with open(sleeper, "w") as fh:
+            fh.write("#!/bin/sh\nsleep 60\n")
+        os.chmod(sleeper, 0o755)
+        env = dict(os.environ, EBOOK_ROOT=root, STATE_DIR=state, SETTLE_SECONDS="0", EBOOK_CONVERT=sleeper)
+        proc = subprocess.Popen([sys.executable, SCRIPT], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        for _ in range(100):
+            if os.path.isdir(os.path.join(state, "lock")):
+                break
+            time.sleep(0.1)
+        time.sleep(1)
+        proc.terminate()
+        proc.wait(timeout=30)
+        check(proc.returncode != 0 and not os.path.exists(os.path.join(state, "lock")),
+              f"SIGTERM: run ends and releases the lock (rc {proc.returncode})")
+        check(sorted(os.listdir(slow)) == ["Slow - Author F.mobi"], "SIGTERM: the folder is left as it was")
+
+
 if __name__ == "__main__":
     test_title_rule()
     test_runs()
+    test_failures()
     print(f"\n{len(FAILURES)} failed" if FAILURES else "\nall passed")
     sys.exit(1 if FAILURES else 0)

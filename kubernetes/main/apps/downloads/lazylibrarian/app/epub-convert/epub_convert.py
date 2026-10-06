@@ -36,7 +36,8 @@ What one run does (CronJob lazylibrarian-epub-convert, hourly):
 
 Log lines are JSON, one per line, on stdout:
   epub_convert         one per conversion attempt: result converted | drm |
-                       convert_error | timeout | unreadable | title_mismatch
+                       convert_error | timeout | unreadable | title_mismatch |
+                       io_error (not held: retried next run)
   epub_convert_census  once per completed run
   epub_convert_locked  another run holds the lock; nothing was done
 The Loki rules in ../lokirule.yaml alert on them.
@@ -51,6 +52,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -63,10 +65,12 @@ import urllib.request
 EBOOK_ROOT = os.environ.get("EBOOK_ROOT", "/data/cephfs-hdd/data/media/books/EBooks")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/cephfs-hdd/data/media/books/.epub-convert")
 DRY_RUN = os.environ.get("DRY_RUN", "") == "1"
-RUN_BUDGET_SECONDS = int(os.environ.get("RUN_BUDGET_SECONDS", "2700"))
+RUN_BUDGET_SECONDS = int(os.environ.get("RUN_BUDGET_SECONDS", "2400"))
 SETTLE_SECONDS = int(os.environ.get("SETTLE_SECONDS", "900"))
 CONVERT_TIMEOUT_SECONDS = int(os.environ.get("CONVERT_TIMEOUT_SECONDS", "600"))
-LOCK_STALE_SECONDS = int(os.environ.get("LOCK_STALE_SECONDS", "10800"))
+# A run is killed at the Job's activeDeadlineSeconds (3300s); SIGTERM releases the lock, and a lock older than
+# this is from a run that got SIGKILL.
+LOCK_STALE_SECONDS = int(os.environ.get("LOCK_STALE_SECONDS", "3600"))
 KAVITA_URL = os.environ.get("KAVITA_URL", "").rstrip("/")
 KAVITA_API_KEY = os.environ.get("KAVITA_API_KEY", "")
 EBOOK_CONVERT = os.environ.get("EBOOK_CONVERT", "ebook-convert")
@@ -229,12 +233,27 @@ def record_held(state_dir, key, reason, detail):
 # --- calibre ------------------------------------------------------------------
 
 
-def read_meta(path):
-    """(title, authors) from ebook-meta, or (None, None) when it cannot read the file."""
+class BookTimeout(Exception):
+    """The book's CONVERT_TIMEOUT_SECONDS ran out (shared by every calibre call for one book)."""
+
+
+def _remaining(deadline):
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise BookTimeout()
+    return left
+
+
+def _calibre(argv, deadline):
     try:
-        res = subprocess.run([EBOOK_META, path], capture_output=True, text=True, timeout=300)
-    except subprocess.TimeoutExpired:
-        return None, None
+        return subprocess.run(argv, capture_output=True, text=True, timeout=_remaining(deadline))
+    except subprocess.TimeoutExpired as err:
+        raise BookTimeout() from err
+
+
+def read_meta(path, deadline=None):
+    """(title, authors) from ebook-meta, or (None, None) when it cannot read the file."""
+    res = _calibre([EBOOK_META, path], deadline if deadline is not None else time.monotonic() + 300)
     if res.returncode != 0:
         return None, None
     fields = {}
@@ -245,30 +264,19 @@ def read_meta(path):
     return fields.get("Title") or None, fields.get("Author(s)") or None
 
 
-def _run_convert(source_path, out_path, extra):
-    return subprocess.run(
-        ["nice", "-n", "10", EBOOK_CONVERT, source_path, out_path, *extra],
-        capture_output=True,
-        text=True,
-        timeout=CONVERT_TIMEOUT_SECONDS,
-    )
-
-
-def convert(source_path, out_path):
+def convert(source_path, out_path, deadline):
     """Run ebook-convert. Returns (reason, detail): reason None on success.
 
     A book with one huge HTML part fails EPUB output's file splitting
     ("SplitError: Could not find reasonable point at which to split"); it is
     retried once with splitting off (--flow-size 0), which readers handle.
     """
-    try:
-        res = _run_convert(source_path, out_path, [])
+    argv = ["nice", "-n", "10", EBOOK_CONVERT, source_path, out_path]
+    res = _calibre(argv, deadline)
+    output = (res.stdout or "") + (res.stderr or "")
+    if res.returncode != 0 and "SplitError" in output:
+        res = _calibre([*argv, "--flow-size", "0"], deadline)
         output = (res.stdout or "") + (res.stderr or "")
-        if res.returncode != 0 and "SplitError" in output:
-            res = _run_convert(source_path, out_path, ["--flow-size", "0"])
-            output = (res.stdout or "") + (res.stderr or "")
-    except subprocess.TimeoutExpired:
-        return "timeout", f"ebook-convert ran over {CONVERT_TIMEOUT_SECONDS}s"
     if res.returncode != 0 or not os.path.isfile(out_path):
         reason = "drm" if re.search(r"DRMError|locked by DRM|\bDRM\b", output) else "convert_error"
         lines = [line for line in output.strip().splitlines() if line.strip()]
@@ -276,13 +284,9 @@ def convert(source_path, out_path):
     return None, ""
 
 
-def set_authors(path, authors):
+def set_authors(path, authors, deadline):
     """Write the author into our own new EPUB (never the original). True on success."""
-    try:
-        res = subprocess.run([EBOOK_META, path, "--authors", authors], capture_output=True, text=True, timeout=300)
-    except subprocess.TimeoutExpired:
-        return False
-    return res.returncode == 0
+    return _calibre([EBOOK_META, path, "--authors", authors], deadline).returncode == 0
 
 
 def _kavita(method, path, token=None, timeout=30):
@@ -344,21 +348,27 @@ def convert_folder(folder, source):
     size = os.stat(source_path).st_size
     key = held_key(rel, source, size)
     started = time.monotonic()
+    deadline = started + CONVERT_TIMEOUT_SECONDS
     fields = {"folder": rel, "source": source, "epub": os.path.basename(dest), "dry_run": DRY_RUN}
+    partial = os.path.join(folder, f".{base}.epub.partial")
 
     work = tempfile.mkdtemp(prefix="epub-convert-", dir=os.environ.get("TMPDIR", "/tmp"))
     try:
         out = os.path.join(work, "book.epub")
-        reason, detail = convert(source_path, out)
         title = authors = None
         author_from_folder = False
+        try:
+            reason, detail = convert(source_path, out, deadline)
+            if reason is None:
+                title, authors = read_meta(out, deadline)
+                if title and (not authors or authors.strip().lower() == "unknown"):
+                    # The book carries no author (calibre reads "Unknown"): take LazyLibrarian's, its author folder.
+                    if set_authors(out, author_folder, deadline):
+                        title, authors = read_meta(out, deadline)
+                        author_from_folder = True
+        except BookTimeout:
+            reason, detail = "timeout", f"calibre ran over {CONVERT_TIMEOUT_SECONDS}s for this book"
         if reason is None:
-            title, authors = read_meta(out)
-            if title and (not authors or authors.strip().lower() == "unknown"):
-                # The book carries no author (calibre reads "Unknown"): take LazyLibrarian's, its author folder.
-                if set_authors(out, author_folder):
-                    title, authors = read_meta(out)
-                    author_from_folder = True
             if not title or not authors or authors.strip().lower() == "unknown":
                 reason, detail = "unreadable", "ebook-meta read no title or no author from the EPUB"
             elif not title_matches(title, book_title):
@@ -379,7 +389,6 @@ def convert_folder(folder, source):
             log("epub_convert", result="skipped_now_has_epub_or_pdf", seconds=round(time.monotonic() - started, 1), **fields)
             return "skipped_now_has_epub_or_pdf"
         if not DRY_RUN:
-            partial = os.path.join(folder, f".{base}.epub.partial")
             shutil.copyfile(out, partial)
             os.chmod(partial, 0o644)
             if os.path.exists(dest):
@@ -401,6 +410,8 @@ def convert_folder(folder, source):
         return "converted"
     finally:
         shutil.rmtree(work, ignore_errors=True)
+        if not DRY_RUN and os.path.exists(partial):
+            os.remove(partial)
 
 
 # --- the run --------------------------------------------------------------------
@@ -443,7 +454,14 @@ def take_lock():
         return path
 
 
+def _terminate(signum, _frame):
+    # activeDeadlineSeconds or a pod delete: unwind through main()'s finally, which releases the lock
+    # (subprocess.run kills the running ebook-convert on the way out).
+    raise SystemExit(128 + signum)
+
+
 def main():
+    signal.signal(signal.SIGTERM, _terminate)
     run_started = time.monotonic()
     if not os.path.isdir(EBOOK_ROOT):
         log("epub_convert_run_failed", error=f"EBOOK_ROOT {EBOOK_ROOT} is not a directory")
@@ -461,13 +479,22 @@ def main():
         for folder, sources in find_candidates(EBOOK_ROOT):
             source = choose_source(folder, sources)
             rel = os.path.relpath(folder, EBOOK_ROOT)
-            size = os.stat(os.path.join(folder, source)).st_size
+            try:
+                size = os.stat(os.path.join(folder, source)).st_size
+            except OSError:
+                continue  # moved or removed since the walk (an import); the next run sees the folder as it is
             if held_key(rel, source, size) in held or recently_changed(folder, sources, now):
                 continue
             if time.monotonic() - run_started > RUN_BUDGET_SECONDS:
                 deferred += 1
                 continue
-            result = convert_folder(folder, source)
+            try:
+                result = convert_folder(folder, source)
+            except Exception as err:  # noqa: BLE001 - one folder's I/O failure never stops the others
+                # Not recorded as held: an NFS hiccup or an import race clears by itself, and the next run retries.
+                # A failure that repeats logs every hour and keeps LazyLibrarianEpubConvertHeld up.
+                result = "io_error"
+                log("epub_convert", result=result, folder=rel, source=source, detail=f"{type(err).__name__}: {err}"[:300])
             results[result] = results.get(result, 0) + 1
         kavita = kavita_scan() if results.get("converted") else "nothing_converted"
         counts, sample = census(load_held(STATE_DIR), time.time())
