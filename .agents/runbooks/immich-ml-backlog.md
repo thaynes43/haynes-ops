@@ -51,7 +51,8 @@ For each queue, in the order Smart Search, Face Detection, OCR, the job:
 4. **Cools down** for 330 s (not after OCR, the last one). The ML worker keeps a finished
    queue's models and CUDA arena loaded until `MACHINE_LEARNING_MODEL_TTL` (300 s) of idleness,
    then exits and frees its VRAM, so starting the next queue sooner would stack two queues'
-   memory on the card (found in review of #3439). It adds about 11 minutes a night. The
+   memory on the card (found in review of #3439). It also cools down if the gate had to wait for a busy queue (a manual run, or last night
+still draining) before it starts. This adds about 11 minutes a night. The
    cooldown is not counted in the next queue's timeout.
 
 Each queue has its own **timeout**, counted from the start of its turn and covering the gate,

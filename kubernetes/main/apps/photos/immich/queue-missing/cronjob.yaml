@@ -41,7 +41,8 @@
 # a queue-all job (active) in the queue before it answers, so there is no idle
 # gap while it streams the assets in.
 #
-# After each queue it idles 330 s, just over MACHINE_LEARNING_MODEL_TTL (300 s):
+# After each queue it idles 330 s (and likewise after the gate waited for a
+# queue that was already busy), just over MACHINE_LEARNING_MODEL_TTL (300 s):
 # ML keeps a finished queue's models and CUDA arena loaded until then, so
 # starting the next queue sooner would stack two queues' memory on the card.
 # That adds about 11 minutes a night.
@@ -144,6 +145,7 @@ spec:
                   fail=0
                   started=0
                   res=""
+                  seen_busy=0
 
                   ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                   now() { date +%s; }
@@ -219,6 +221,7 @@ spec:
                             fi
                           else
                             idle=0
+                            seen_busy=1
                             if [ $((polls % 10)) -eq 0 ]; then
                               echo "[$dq] $(date -u +%H:%M:%SZ) busy: $(counts)"
                             fi
@@ -260,6 +263,7 @@ spec:
                     # never share the GPU. A paused queue is not waited for.
                     stop=0
                     skip=0
+                    seen_busy=0
                     for o in smartSearch faceDetection ocr; do
                       drain "$o" "$dl" 1
                       case "$res" in
@@ -292,6 +296,14 @@ spec:
                     fi
                     if [ "$skip" -eq 1 ]; then
                       continue
+                    fi
+
+                    # If the gate had to wait for a busy queue (a manual run, or
+                    # an earlier night still draining), ML still holds that
+                    # queue's models: give it the same cooldown.
+                    if [ "$seen_busy" -eq 1 ]; then
+                      echo "[$q] the gate waited for a busy queue; cooling down ${cooldown}s so ML unloads its models"
+                      sleep "$cooldown"
                     fi
 
                     # force=false is Missing. Never true: that deletes first.
