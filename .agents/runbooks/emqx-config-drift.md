@@ -160,7 +160,7 @@ change (#2801) made the operator blue-green the core. What actually happened, wi
 |---|---|
 | 14:17:33 | operator creates `emqx-core-8545588dbb` (new hash) on talosm02 |
 | 14:17:52 | the new 6.2.0 node finds the old one through the headless service (`publishNotReadyAddresses: true`) and starts joining (`reason: join, Stopping mria`) |
-| 14:17:53 | the new node aborts with `application_start_failure,emqx_license,"SINGLE_NODE_LICENSE ..."` and crash-loops: the same abort at the 14:17:59, 14:18:19 and 14:18:50 restarts. **It is never Ready.** (Re-read from Loki 2026-10-06; this row used to say "pod Ready ~14:18".) |
+| 14:17:53 | the new node aborts with `application_start_failure,emqx_license,"SINGLE_NODE_LICENSE ..."` and crash-loops: the same abort at the 14:17:59, 14:18:19 and 14:18:50 restarts. The pod was **briefly Ready (14:17:52)** and then aborted, which is what lets the operator go on to evict the old core (see the 2026-10-06 row below). (Re-read from Loki 2026-10-06; this row used to say "pod Ready ~14:18".) |
 | 14:18:03 | operator's evacuation call errors (`HTTP 400 ... Nodes unavailable: [new node]`), but the OLD node logs `node_evacuation_started` |
 | 14:19:03 | the old node evicts its 3 connections (z2m, HA, AppDaemon) after evacuation's 60 s health wait. **The MQTT outage starts here.** |
 | 14:19:16 | operator scales the OLD StatefulSet to 0; the old pod gets SIGTERM and its listeners stop |

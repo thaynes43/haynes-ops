@@ -38,8 +38,11 @@ topk(5, sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{node="<n
   `ps -eo pid,pcpu,etime,args --sort=-pcpu | head`, then `kill` the offenders.
   Deleting or restarting the dev-env pod ends **every** agent session in it, and
   that is Tom's call. The CPU limit for dev-env is haynes-ops#3381, a held draft
-  because merging it restarts the pod. The kubelet `systemReserved`/`kubeReserved`
-  follow-up is #3382.
+  because merging it restarts the pod. The kubelet was never starved (it used at most
+  0.18 cores during the incident). The fix is CPU requests on the BestEffort critical
+  pods (#3385: done in #3384, #3387, #3388; the remaining BestEffort pods are tracked in
+  #3389). The kubelet/system reservations (#3382) are node-allocatable hygiene, not the
+  starvation fix.
 - **Any other pod.** Capture its logs first, then restart it if it is a runaway loop.
   If it is legitimate load, it needs requests and limits through git.
 - **The rem-\* lane.** It may diagnose and report on this alert. It may not delete
