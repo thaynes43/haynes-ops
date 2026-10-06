@@ -21,6 +21,14 @@ minutes. A starved node also starves its own node-exporter, so expect scrape gap
 (`up{job="node-exporter"} == 0`) from that node. The rule bridges them with
 `last_over_time(...[15m])`. A gap is part of the symptom, not a separate fault.
 
+Why this rule exists next to the stock `NodeSystemSaturation` (load1/CPU > 2 for 15m,
+a warning): on 2026-10-05 the stock rule went pending and never fired, because each
+scrape gap (node-exporter `up==0` 23:43-23:47, 23:50-23:53 and 00:03-00:12Z) drops the
+series and resets its `for`. Backtested on the stored series, this rule's expression is
+true without a break from 23:47:30 to 00:30Z on talosm02, so `for: 10m` fires at 23:57:30,
+inside the incident. In the 30 days before it, only talosm02 crossed 2x, twice: that
+night and 2026-09-26 (dev-env at about 17.5 cores). No other node went above 1.23x.
+
 Load counts runnable tasks **and** tasks in uninterruptible (D-state) sleep, so first
 tell CPU starvation from a storage stall:
 
@@ -50,6 +58,10 @@ topk(5, sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{node="<n
   storage fault. When the culprit is dev-env, escalate with the process list.
 
 ## `EMQXCoreNotReady`: no Ready broker pod for 2 minutes
+
+Why a dedicated rule: the stock `KubePodNotReady` waits 15 minutes and is a warning, and
+warnings go to the null receiver, so nothing paged on 2026-10-05. Backtested against the
+stored series, this rule would have fired at 00:06Z.
 
 Read the pod's state before acting:
 
