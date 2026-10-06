@@ -3,6 +3,12 @@
 **Status:** executing (2026-07-13). All scoping decisions are recorded in the
 [Decision log](#decision-log).
 
+**dev-env v2 (2026-10-05):** the distributed redesign (one pod per agent session, run
+by an operator) lives in its own private repo, **thaynes43/dev-env**, as the saga
+`.agents/sagas/distributed-dev-env/`. This saga keeps covering v1, which keeps
+running and is maintained here until Tom approves the cutover. See [ADR-001](adrs/001-v2-lives-in-own-repo.md)
+for what stays here as GitOps and what moves.
+
 **Operating mode (Tom, 2026-07-13):** autonomous — the agent authors, self-reviews,
 merges, and verifies saga PRs end-to-end without waiting for human approval. Tom
 watches the PR stream remotely. Pause only for genuinely new decisions outside the
@@ -167,6 +173,7 @@ scripts/dev-env/Dockerfile                    # ghcr.io/thaynes43/dev-env
 | 6 | Access path: Traefik+Authentik ingress vs LAN-only; where /remote-control fits | **DECIDED** 2026-07-13 | **traefik-internal + Authentik only** (no Cloudflare Tunnel exposure). Browser interaction with running agents is REQUIRED: `/remote-control` for Claude (outbound-only via claude.ai — CNP must allow it, verify from the pod early in the PoC). CAVEAT: Codex has no true /remote-control equivalent — its browser story is the code-server terminal attached to the task's tmux session; revisit if OpenAI ships one. |
 | 7 | Home PVC size/class + VolSync backup or not | **DECIDED** 2026-07-13 | **50Gi Ceph block RWO, prune-protected, NO VolSync** — repos/caches regenerate; keeping credentials out of S3 is a feature. PVC loss costs ~2 min of re-auth ceremonies. |
 | 8 | Language SDKs baked into the image | **DECIDED** 2026-07-13 | Must cover **haynesnetwork (Node/TypeScript — tsx), haynes-ops (bash/python-makejinja + k8s toolchain), hass-sandbox (Python/pytest)** out of the gate → Node 24 from base + tsx/pnpm, Python 3 + uv/venv/pytest. Go/Rust/.NET deferred until a concrete need. |
+| 9 | Where dev-env v2 (distributed, one pod per session) lives | **DECIDED** 2026-10-05 (Tom) | A new private repo, **thaynes43/dev-env**, image name kept. v1 stays here and runs until cutover; manifests and pod config stay here as GitOps. [ADR-001](adrs/001-v2-lives-in-own-repo.md). Backlog 08 and 09 are folded into the v2 design. |
 
 ## Plan backlog
 
@@ -182,7 +189,7 @@ neighbors once prerequisites are met.
 | [05 — kubectl RBAC tiers](backlog/05-rbac.md) | 02 | ∥ 03, 04 |
 | [06 — agent-run wrapper + worktrees](backlog/06-agent-run.md) | 03, 04 | |
 | [07 — Shepherd dispatch integration](backlog/07-shepherd-dispatch.md) | 06 | |
-| [08 — multi-instance flavors](backlog/08-multi-instance.md) | 06 | ∥ 07 |
-| [09 — LAN control plane / UI](backlog/09-control-plane.md) | 07 | last |
+| [08 — multi-instance flavors](backlog/08-multi-instance.md) (folded into dev-env v2, Decision #9) | 06 | ∥ 07 |
+| [09 — LAN control plane / UI](backlog/09-control-plane.md) (folded into dev-env v2, Decision #9) | 07 | last |
 | [10 — Taskfile overhaul](backlog/10-taskfile-overhaul.md) | — | ∥ anytime; ideally before 02 so pod agents inherit trustworthy tasks |
 | [11 — haynesnetwork build/run/test readiness](backlog/11-haynesnetwork-readiness.md) | 02 | done except e2e — Tom's gate before dispatching haynesnetwork backlog work |
