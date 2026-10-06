@@ -29,7 +29,8 @@ own copies, where every test of a fix fails. That is also how to find out at a b
 
 - **CI:** `.github/workflows/lazylibrarian-overlays.yaml` runs on every PR that touches
   `apps/downloads/lazylibrarian/app/`: `docker run --network none --entrypoint python3 <pinned image>
-  /patches/tests/run.py` with `patches/` mounted read-only.
+  /patches/tests/run.py` with `patches/` mounted read-only. The check is advisory (not a required context), so
+  Renovate never auto-merges a LazyLibrarian bump (`.renovate/autoMerge.json5`): read the check before merging.
 - **With docker:** the same command from the repo root:
   `docker run --rm --network none --entrypoint python3 -v "$PWD/kubernetes/main/apps/downloads/lazylibrarian/app/patches:/patches:ro" docker.io/linuxserver/lazylibrarian:<tag> /patches/tests/run.py`
 - **In the cluster (no docker, e.g. the dev-env pod):** `./oneshot.sh [run.py args]` starts a throwaway Job on the
@@ -45,9 +46,10 @@ Everything is sequential: one process, one test at a time. Never run it in a loo
 3. Add the case to the test, and run `run.py` (and `run.py --tests-only --drop <name>` to see the new test fail on
    upstream).
 4. A scoring change (`resultlist.py`): replay the history first, `./oneshot.sh replay /tmp/new.tsv`, once with the
-   old overlay and once with the new, and hand-check every row whose score moved. The TSV is the household's
-   download history: keep it out of git. Fold the changed rows into `fixtures/resultlist_replay.json` (anonymised:
-   no provider, URL, size, date or scene group).
+   old overlay and once with the new, and hand-check every row whose score moved. The TSV is the whole download
+   history with providers, dates and requester tags: keep it out of git. `fixtures/resultlist_replay.json` is a
+   deliberate, curated subset of it (the rows that test the penalty, deduplicated), kept to title, author and
+   release name: no provider, URL, size, date, requester tag or scene group. Fold changed rows in the same way.
 5. After the deploy: `./verify-deployed.sh` (the pod serves exactly these files, each module imports, no traceback).
 
 ## Bumping the image tag

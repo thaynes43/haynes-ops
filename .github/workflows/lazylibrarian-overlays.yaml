@@ -6,6 +6,8 @@
 # helmrelease.yaml: each overlay must sit on the exact upstream file it was cut
 # from (sha256 + its diff applies cleanly), and the tests of the patched
 # behaviour must pass. An image bump that forgets the overlays fails here.
+# Advisory, not a required context: Renovate never auto-merges a LazyLibrarian
+# bump (.renovate/autoMerge.json5), so a person or agent reads this first.
 # Offline (--network none), one container, the tests run one at a time.
 name: LazyLibrarian Overlays
 
