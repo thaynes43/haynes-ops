@@ -28,8 +28,15 @@ spec:
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
+          # talosm05's RTX A2000 12 GB (moved off talosm03's RTX 2000 Ada, which
+          # it shared with ComfyUI). Pin by hostname: the nvidia-a2000 label
+          # also matches talosm01 (voice STT/TTS) and talosm04. Shares the card
+          # with immich-machine-learning (CUDA, ~0 when idle), whose VRAM guard
+          # bounds it at ~4.2 GB worst case and caps its GPU duty cycle at 25%
+          # so this model stays responsive — see photos/immich/machine-learning
+          # and .agents/runbooks/immich-ml-backlog.md.
           nodeSelector:
-            feature.node.kubernetes.io/nvidia-2000-ada-gpu: "true"
+            kubernetes.io/hostname: talosm05
           runtimeClassName: nvidia
         containers:
           app:
@@ -51,6 +58,11 @@ spec:
               # all served models have headroom. KV-cache bump is trivial vs 32Gi.
               - name: OLLAMA_CONTEXT_LENGTH
                 value: "8192"
+              # No OLLAMA_NUM_PARALLEL: ollama forces 1 slot for qwen3.5's
+              # architecture (qwen35, server/sched.go in v0.35.1-v0.40.0), so
+              # voice queues behind any in-flight vision call (~10 s each, 37 s
+              # behind an unserialized burst of 5; measured 2026-10-06, #3450,
+              # .agents/runbooks/immich-ml-backlog.md). VRAM: 7,031-7,037 MiB.
             resources:
               requests:
                 #nvidia.com/gpu: 1 # requesting 1 GPU TODO dig into how it works here https://github.com/jahanson/theshire/blob/main/kubernetes/apps/ai/ollama/app/helmrelease.yaml#L50 

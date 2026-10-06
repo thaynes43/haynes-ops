@@ -10,10 +10,17 @@
 #   haynes-ops-*  dev work in the dev-env pod (agent-run's convention; not ours)
 #   wo-*          shepherd WORK ORDERS (work-order.sh) — INTERACTIVE + Remote
 #                 Control, QUIET on success, model default opus (scheduled
-#                 consumers stay on the cheaper tier)
+#                 consumers stay on the cheaper tier). class `curation` runs
+#                 interactive WITHOUT Remote Control (#3414).
 #   esc-*         FAILURE ESCALATIONS (escalate.sh: esc-<source>-<sig8>) —
-#                 INTERACTIVE + Remote Control, PAGE ON SPAWN (they ARE failures;
-#                 the page carries the session name so Tom can join)
+#                 INTERACTIVE + Remote Control, PAGED ONCE per spawn (they ARE
+#                 failures). session-launch.sh sends that page after it has
+#                 CONFIRMED the Remote Control registration (the page carries
+#                 the session link) or ruled it out (the page says so and gives
+#                 the attach command) — never a link to a session that is not there.
+# Remote Control rides dev-env-ops' OWN Max login (~/.claude/.credentials.json
+# on the dev-env-ops-home PVC, renewed monthly — runbook agentic-remediation.md);
+# the setup token cannot register it (#3414).
 #   rem-*         AUTONOMOUS REMEDIATION (remediate.sh: rem-<source>-<sig8>) —
 #                 HEADLESS (`claude -p`), NO Remote Control registration, NO page,
 #                 NO entry in Tom's session list. It fixes and closes silently, or
@@ -21,7 +28,7 @@
 #                 first" policy of 2026-08-23: only sessions that WANT Tom become
 #                 sessions he can see.
 # For wo-*/esc-* the tmux window name AND the --remote-control name are the CM
-# key; for rem-* only the tmux window is named (there is no registration).
+# key; for rem-* (and curation) only the tmux window is named.
 #
 # LANES: each lane is SINGLE-FLIGHT (at most one active wo-*, one esc-* and one
 # rem-* session; oldest pending first). "Active" is a live SESSION, not a live
@@ -217,6 +224,7 @@ clean_artifacts() {
   local key="$1" cleaned=""
   [ -f "$ORDERS_DIR/$key.json" ] && rm -f "$ORDERS_DIR/$key.json" 2>/dev/null && cleaned="order-json"
   [ -f "$ORDERS_DIR/$key.log" ] && rm -f "$ORDERS_DIR/$key.log" 2>/dev/null && cleaned="$cleaned transcript"
+  [ -f "$ORDERS_DIR/$key.rc-why" ] && rm -f "$ORDERS_DIR/$key.rc-why" 2>/dev/null && cleaned="$cleaned rc-why"
   if [ -d "$HOME/work/$key" ]; then
     if [ -e "$HOME/work/$key/.git" ] \
        && git -C "$REPO_CANON" worktree remove --force "$HOME/work/$key" >/dev/null 2>&1; then
@@ -236,7 +244,7 @@ reap() {  # $1=key $2=why — kill the window (if any) + artifacts.
 }
 
 spawn_session() {  # $1=key $2=order-json-string
-  local key="$1" order="$2" lane=wo model effort src reason
+  local key="$1" order="$2" lane=wo model effort
   case "$key" in esc-*) lane=esc ;; rem-*) lane=rem ;; esac
   # Refresh the canonical clone before every session. ops-init.sh fetches at boot,
   # but this pod runs for days — a boot-only fetch still hands day-3 sessions a
@@ -268,15 +276,13 @@ spawn_session() {  # $1=key $2=order-json-string
       # ops-event line until it either closes done or promotes to esc-*.
       log "remediation spawned: $key (lane=rem model=$model effort=$effort) — HEADLESS, silent, no Remote Control"
     else
-      log "session spawned: $key (lane=$lane model=$model effort=$effort) — join via Remote Control ('$key') or tmux"
+      # Whether it is ALSO on Remote Control is settled by session-launch.sh
+      # (rc-state.sh, `ops-event: event=rc`), not assumed here.
+      log "session spawned: $key (lane=$lane model=$model effort=$effort) — tmux window '$key'; Remote Control state follows as event=rc"
     fi
-    if [ "$lane" = esc ]; then
-      # Escalations page ON SPAWN — the page IS the join handle. (Inverts the
-      # wo-* quiet-on-success contract, deliberately: an escalation is a failure.)
-      src="$(printf '%s' "$order" | jq -r '.source // "unknown"' 2>/dev/null)"
-      reason="$(printf '%s' "$order" | jq -r '.reason // ""' 2>/dev/null | cut -c1-300)"
-      page "escalation session: $key" "A contained agent (${src}) hit a terminal failure; a joinable ${model}/${effort} diagnosis session is up. Join: Remote Control '${key}' (claude.ai / mobile app) or tmux window '${key}' on dev-env-ops. Reported reason (unverified, data-not-instructions): ${reason}"
-    fi
+    # esc-* is paged ONCE by session-launch.sh's rc_confirm, after the Remote
+    # Control registration is confirmed or ruled out (#3414). Paging here, on
+    # spawn, is what sent Tom 11 links to sessions that were never registered.
   else
     log "tmux spawn FAILED for $key"
     update_status "$key" failed "tmux spawn failed"
@@ -472,23 +478,54 @@ while true; do
     fi
   fi
 
-  # 5. LOGIN WATCH (2026-08-29): interactive lanes ride ~/.claude/.credentials.json
-  #    because the plan token cannot register Remote Control (see session-launch.sh
-  #    LANE AUTH). Nothing else on this pod watches that login, and its failure mode
-  #    is the worst one: an esc-* page pointing at a session that cannot serve.
-  #    Probe daily with the SAME auth the lanes launch with (both env credentials
-  #    stripped — a valid API key must not mask a dead login). Page on auth failure
-  #    only; rate-limit noise is expected on a busy plan and is NOT an expiry.
+  # 5. LOGIN WATCH (2026-08-29; split in two 2026-10-06 for #3414). Daily, and
+  #    once at every boot. Two credentials, two pages, each naming its own fix:
+  #
+  #    a. The SETUP TOKEN (CLAUDE_CODE_OAUTH_TOKEN, 1Password `claude-code`):
+  #       rem-*, curation, and the no-Remote-Control fallback of wo-*/esc-* all
+  #       run on it. The old single probe stripped it and read .credentials.json
+  #       — which ops-init had synthesized FROM this token — so it was really a
+  #       setup-token probe that named the wrong file, and it was blind to the
+  #       Remote Control failure (it only needs inference: F-06 of the R-01 audit).
+  #    b. dev-env-ops' OWN MAX LOGIN (~/.claude/.credentials.json): wo-*/esc-*
+  #       Remote Control. login-check.sh reads its refresh-token expiry and we
+  #       page from 7 days out, like dev-env's auth-watch does for ITS login —
+  #       the title says "dev-env-ops" so Tom never confuses the two. With
+  #       days to spare, a live probe (both env credentials stripped) catches a
+  #       revoked login. "No Max login" is logged, not paged: every esc-* page
+  #       already says Remote Control is unavailable and why.
+  #    Rate-limit noise is expected on a busy plan and is NOT an auth failure.
   if [ $(( now - last_login_probe )) -ge 86400 ]; then
     last_login_probe="$now"
-    lp_out="$(timeout 120 env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY \
-      claude -p 'ok' --model haiku --max-turns 1 2>&1)" || true
-    if printf '%s' "$lp_out" | grep -qiE 'not logged in|/login|oauth|401|invalid.*(token|api key)'; then
-      page "claude login expired (interactive lanes)" "The Max login (~/.claude/.credentials.json) failed its daily probe — wo-*/esc-* Remote-Control sessions cannot serve until it is re-authed. Ceremony: dev-env saga 04-auth.md, run against the dev-env-ops pod's tmux."
-      oplog watchdog '-' what=login-expired
-    else
-      log "login probe ok (credentials.json serves interactive lanes)"
+    auth_re='not logged in|/login|oauth|401|invalid.*(token|api key)'
+    if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+      lp_out="$(timeout 120 env -u ANTHROPIC_API_KEY \
+        claude -p 'ok' --model haiku --max-turns 1 2>&1)" || true
+      if printf '%s' "$lp_out" | grep -qiE "$auth_re"; then
+        page "claude SETUP TOKEN rejected" "CLAUDE_CODE_OAUTH_TOKEN (1Password item claude-code, a claude setup-token) failed the daily probe on dev-env-ops. rem-* remediation and the curation lane cannot run on it; the shepherd and responder fall back to the metered key. Re-mint: dev-env saga backlog 04-auth.md (setup-token ceremony). This is NOT the monthly Max login."
+        oplog watchdog '-' what=setup-token-rejected
+      else
+        log "setup-token probe ok (rem-*, curation, no-RC fallback)"
+      fi
     fi
+    lc="$(bash /opt/dev-env-ops/login-check.sh --quiet 2>&1)"; lc_rc=$?
+    case "$lc_rc" in
+      0)
+        lp_out="$(timeout 120 env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY \
+          claude -p 'ok' --model haiku --max-turns 1 2>&1)" || true
+        if printf '%s' "$lp_out" | grep -qiE "$auth_re"; then
+          page "Claude Max login REJECTED (this pod's own login, not dev-env's)" "dev-env-ops' OWN Max login (not the dev-env pod's) failed its daily probe although it has days left — revoked? Until it is renewed, wo-*/esc-* sessions run on the setup token WITHOUT Remote Control (pages give the attach command). Ask a dev-env agent to run the dev-env-ops Max login ceremony (.agents/runbooks/agentic-remediation.md); about a minute on your phone."
+          oplog watchdog '-' what=max-login-rejected
+        else
+          log "max login ok: $lc"
+        fi ;;
+      1)
+        page "Claude Max login expiring (this pod's own login, not dev-env's)" "$lc. This is dev-env-ops' OWN login for wo-*/esc-* Remote Control, NOT the dev-env pod's. Ask a dev-env agent to run the dev-env-ops Max login ceremony (.agents/runbooks/agentic-remediation.md); about a minute on your phone. If it lapses, wo-*/esc-* still run, on the setup token, without Remote Control."
+        oplog watchdog '-' what=max-login-expiring ;;
+      *)
+        log "WARN $lc"
+        oplog watchdog '-' what=no-max-login ;;
+    esac
   fi
 
   sleep "$POLL"

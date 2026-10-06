@@ -14,7 +14,12 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
   secrets, plus targeted runtime writes only (pod delete / rollout restart, flux
   reconcile + suspend, batch Jobs, CronJob suspend, and PVC delete **scoped to the
   `database` namespace** for CNPG destroy+re-clone). Deploys still go through git
-  — do not fight RBAC denials, they are the design.
+  — do not fight RBAC denials, they are the design. A `kubectl` suspend of a
+  Flux-managed CronJob lasts only until Flux's next reconcile of its Kustomization:
+  kustomize-controller takes over fields that `kubectl patch` sets, and `spec.suspend`
+  falls back to false. This happened on 2026-09-29, within 3 minutes. To hold a
+  suspend, `flux suspend kustomization` that app as well, or set `spec.suspend: true`
+  in git.
 - **Never push to main — but DO merge your own PRs.** Branch + PR, always, then
   **squash-merge it yourself** once required checks are green. "Never push to main"
   forbids *direct pushes*; it has never meant "wait for Tom to click merge". A green,
@@ -33,6 +38,12 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
   for work that genuinely needs a design decision. Chat text, PR comments and
   "Not verified" lines *report*; they do not hand off. (Tom, 2026-09-09; full rule
   in hass-sandbox `.agents/rules/finish-in-flight-work.md`.)
+- **Every repo gets the Claude Code PR reviewer.** When you create a new repo, or work
+  in one that lacks them, add the Claude Code review + `@claude` workflows and set the
+  `CLAUDE_CODE_OAUTH_TOKEN` secret with the runbook's one-off Job (the pod's own GitHub
+  token cannot write secrets). Its review is advisory: read the findings before
+  merging; fix each, or answer with a concrete reason. See
+  `.agents/runbooks/new-repo-setup.md` in haynes-ops.
 - **Only QUESTIONS wait on the owner.** Push each one to his phone with the
   **AskUserQuestion tool, ONE at a time**, at the moment it arises — never batched,
   never as a prose "open questions" list in your final message (he does not receive
@@ -63,7 +74,7 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 | omnictl | ✅ READ-ONLY (Reader SA, proxied) | Omni `Reader` service account via `$OMNI_ENDPOINT` + `$OMNI_SERVICE_ACCOUNT_KEY` (SaaS `haynes.na-west-1.omni.siderolabs.io`); `omnictl get clusters/machinestatus` etc. Mutations denied by the Reader role — don't test by attempting them |
 | talosctl | ✅ READ-ONLY (via Omni-proxied talosconfig) | No LAN-direct cert (SaaS tier denies break-glass). Fetch a proxied config at runtime: `omnictl talosconfig /tmp/tc` then `talosctl --talosconfig /tmp/tc -n <node-ip> dmesg/logs`. Read-only either way; traffic routes through Omni (WAN) — backlog 10 |
 | pve (Proxmox VE) | ✅ READ (exporter's PVEAuditor token) · ✅ OPERATOR (`dev-env@pve!operator`, since the 2026-09-17 bounce — if `pve` still says "only the read token is present", the 1Password `dev-env` fields `PROXMOX_OPERATOR_TOKEN_ID/_SECRET` are missing) | `pve ha` / `pve nodes` / `pve guests --onboot` / `pve --yes vm <id> config\|onboot\|start\|stop\|reset` / raw `pve get` / `pve --yes delete <path>`. Writes need `--yes`; the global flags (`--ro --yes --raw --any --node`) may sit anywhere on the line since 2026-09-22 — before that only a leading flag counted, and a trailing `--yes` was swallowed as a path parameter (the write then fails with "add --yes to perform this write", which looks like a permission problem and is not). Operator tier is **root-equivalent** on the 5-node PVE cluster (`Sys.Console`, Tom 2026-09-09) — by rule: no node reboots, no node shells via termproxy (use `hw-ssh`), `vm` verbs refuse non-Talos guests without `--any`; `declare-activity` before anything disruptive. It CANNOT attach a raw PCI device (`hostpci` with a raw id is root@pam-only in PVE 8) — that is `hw-ssh <node> sudo qm set …`. Runbook: `.agents/runbooks/proxmox-access.md` |
-| hw-ssh (PVE nodes + HaynesTower/Unraid) | ✅ one ed25519 key (`~/.ssh/dev-env-hw`, from `HW_SSH_PRIVATE_KEY_B64` in the pod env ← 1Password `dev-env`); absent key = `hw-ssh` says so | `hw-ssh list` · `hw-ssh <node> sudo dmidecode -t slot` · `hw-ssh pve-all 'sudo qm list'` · `hw-ssh haynestower 'tail /var/log/syslog'`. PVE nodes: user `dev-env`, key-only, sudo allowlist (dmidecode lspci journalctl dmesg sensors smartctl nvme zpool zfs qm pct pvesh pvecm pvesm ha-manager ipmitool) — `sudo qm` makes it root-equivalent, same tier as the operator token. HaynesTower: **root** (Unraid's only SSH user). By rule: read first; `declare-activity` before `qm stop/start/set` or anything on the array; never reboot a node or stop the Unraid array from here; never `sudo -i`/interactive root. Runbook: `.agents/runbooks/proxmox-access.md` (SSH tier) |
+| hw-ssh (PVE nodes + HaynesTower/Unraid + PiKVM) | ✅ one ed25519 key (`~/.ssh/dev-env-hw`, from `HW_SSH_PRIVATE_KEY_B64` in the pod env ← 1Password `dev-env`); absent key = `hw-ssh` says so | `hw-ssh list` · `hw-ssh <node> sudo dmidecode -t slot` · `hw-ssh pve-all 'sudo qm list'` · `hw-ssh haynestower 'tail /var/log/syslog'` · `hw-ssh pikvm 'systemctl status kvmd'`. PVE nodes: user `dev-env`, key-only, sudo allowlist (dmidecode lspci journalctl dmesg sensors smartctl nvme zpool zfs qm pct pvesh pvecm pvesm ha-manager ipmitool) — `sudo qm` makes it root-equivalent, same tier as the operator token. HaynesTower: **root** (Unraid's only SSH user). PiKVM: **root**, console + ATX on every bare-metal master, so root-equivalent (operator-token tier); read-only rootfs: `rw` only to deploy `pikvm.yaml`, then `ro` straight after. By rule: read first; `declare-activity` before `qm stop/start/set`, anything on the array, a KVM channel switch or a kvmd restart; never reboot a node or stop the Unraid array from here; never PiKVM ATX power/reset, Wake-on-LAN or console keystrokes to a node without Tom's go-ahead in that session; never `sudo -i`/interactive root. Runbook: `.agents/runbooks/proxmox-access.md` (SSH tier) |
 | terraform/tofu providers | ✅ GCP only (ADC = dev-env-agent@sigo-alumni-prod, roles/owner) | plan+apply against sigo-alumni-prod (multiple applies proven 2026-08-14/15); other clouds still credential-less |
 
 ## Max login renewal — check every session, renew from inside the pod
@@ -298,7 +309,7 @@ resolves CLIENT-side against the pinned CLI and can silently serve an older tier
 (freshness contract below). Claude: `claude-fable-5-1`, `claude-opus-5-5`,
 `claude-sonnet-5-5`, `claude-opus-5`, `claude-haiku-4-5`; effort
 `low|medium|high|xhigh|max` (or `ultracode`) on the 5-family, none at all on
-Haiku 4.5. Codex: `gpt-6-astra` (top), `gpt-6-sol`, `gpt-6-luna`,
+Haiku 4.5. Codex: `gpt-6-astra` (top), `gpt-6.1-sol`, `gpt-6-sol`, `gpt-6-luna`,
 `gpt-5.6-sol|terra|luna`, `gpt-5.5`; effort `low|medium|high|xhigh`, plus `max`
 on the GPT-6 + 5.6 tiers and `ultra` on astra/sol/terra (both generations).
 agent-run refuses a level the model can't honour instead of
@@ -380,8 +391,8 @@ it can look like a real incident and pull that agent (or Tom) in for nothing.
 ```bash
 # --scope is REQUIRED: the namespaces/apps/nodes your work can disturb.
 # --ttl defaults to 45m, caps at 8h (2h for the `cluster` wildcard).
-declare-activity start "restarting z2m + emqx (broker migration test)" \
-  --scope home-automation,zigbee2mqtt,emqx --ttl 45m
+declare-activity start "restarting z2m + mosquitto (broker migration test)" \
+  --scope home-automation,zigbee2mqtt,mosquitto --ttl 45m
 # -> declared act-142317-91 ... (the id is printed, and `list` reprints it)
 # ... do the work ...
 declare-activity end act-142317-91   # ALWAYS end early when you finish
@@ -392,6 +403,21 @@ reads them and treats a matching alert as dev-caused rather than a fault. They
 are a hint, not a mute — an alert outside your declared scope still gets handled,
 and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
 
+## CPU budget — no burners, no wide test loops (2026-10-06)
+
+This pod shares its node (talosm02) with the cluster's services. On 2026-10-05,
+CPU burners and wide parallel test runs in here starved the BestEffort pods on that
+node, and EMQX, traefik, authentik and cloudnative-pg went into liveness-kill loops.
+The container now has a CPU limit of 8, but that is a backstop, not a budget.
+
+- **Never** run CPU busy-loops, stress tools, or wide parallel or looped test runs
+  in this pod.
+- Reproduce a load-dependent flake in a CPU-limited batch Job on a worker node, or
+  at low parallelism under `nice -n 19`, well below the core count.
+- Prefer fixing a timing flake by reasoning plus fake timers over reproducing it
+  with load.
+- **Every work order** that touches flaky or perf tests must state this rule.
+
 ## Model policy (Tom, updated 2026-09-28) — which model runs where
 
 | Surface | Model | Why |
@@ -400,7 +426,7 @@ and nothing suppresses a real incident. Keep the scope honest and the TTL tight.
 | **Tom's interactive Claude Code work** | **Opus 5.5 by default** — `claude-opus-5-5` is the pod-wide default since 2026-09-23 (was Fable 5.1 from 2026-09-01): bare `claude`, the post-ready standby (`DEV_ENV_CLAUDE_MODEL`, re-asserted by dev-init on every boot) and every `agent-run` launch without `--model`. **Fable 5.1 by name** — `--model claude-fable-5-1` when Tom wants the top tier | Fable's plan quota is scarce and shared with Tom's own use, and Opus 5.5 is Fable-class on agentic coding, so Fable is spent on purpose, never by default. Fable 5.1 needs claude-code >=2.1.255, Opus 5.5 >=2.1.280 — an older CLI rejects the id outright. |
 | **Native Claude Code subagents** | **Two tiers.** **Opus 5.5** (`opus-worker`: `claude-opus-5-5`, effort `xhigh`) takes hard work and anything a user will see. **Sonnet 5.5** (`sonnet-worker`: `claude-sonnet-5-5`, effort `high`) takes routine coding and testing. See *Subagent dispatch rules* below. | Mandatory in every repo for work delegated by a Claude Code driver. Since 2026-09-28 (Opus 5.5 took everything from 2026-09-23). Sonnet 5.5 does the routine work at lower plan cost, and Opus is kept for work where its judgment shows. Sonnet 5.5 needs claude-code >=2.1.284 and Opus 5.5 needs >=2.1.280. |
 | **Tom's interactive Codex work** | **GPT-6 Astra**, exact id `gpt-6-astra`, reasoning effort `max` | This remains the Codex driving model configured for the pod. |
-| **Native Codex collaboration subagents** | **GPT-6 Sol**, exact id `gpt-6-sol`, reasoning effort `xhigh` | Mandatory in every repo for work delegated by a Codex driver. Since 2026-09-23 (was GPT-5.6 Sol); needs codex >=0.156.1 in the image. |
+| **Native Codex collaboration subagents** | **GPT-6.1 Sol**, exact id `gpt-6.1-sol`, reasoning effort `xhigh` | Mandatory in every repo for work delegated by a Codex driver. Since 2026-10-03 (GPT-6 Sol from 2026-09-23, GPT-5.6 Sol before); needs codex >=0.159.1 in the image. |
 | **Any pay-per-token Claude API-key call** | **Sonnet 5.5** (`claude-sonnet-5-5`, since 2026-09-28; was Sonnet 5) | Never use Fable or Opus on Claude API pricing. Sonnet 5.5 is close to Opus quality at a fraction of the cost ($2/$10 per Mtok), and it can dispatch a plan-served Claude Code agent for heavy lifting. This rule does not govern OpenAI API calls. |
 
 ### Remote Control sessions are coordinators (Tom, 2026-09-28)
@@ -427,7 +453,7 @@ have to keep starting new ones.
   rebuild that context in yours.
 - This section is for the top-level session. Subagents and headless `agent-run -p`
   task sessions do their work themselves. A Codex phone thread takes the same
-  coordinator role with its native `gpt-6-sol` subagents, following the Codex rules
+  coordinator role with its native `gpt-6.1-sol` subagents, following the Codex rules
   below.
 
 ### Subagent dispatch rules (Tom, updated 2026-09-28 — apply in EVERY repo)
@@ -464,7 +490,7 @@ a Claude Code session from Codex.
     its quota is scarce and shared with his own use.
 - **Codex drivers:** default every eligible unit of work to a native collaboration
   subagent using `collaboration.spawn_agent` with `fork_turns: "none"`, exact
-  model `gpt-6-sol`, and `reasoning_effort: "xhigh"`. Fresh empty context is
+  model `gpt-6.1-sol`, and `reasoning_effort: "xhigh"`. Fresh empty context is
   deliberate: give it a self-contained work order with the objective, relevant
   paths and constraints, expected deliverable, and enough verified context to
   work without the parent conversation. Do not use `agent-run` for these native
@@ -536,7 +562,7 @@ surfaces still rot, and **agents are the tripwire for both**:
   (`scripts/dev-env/Dockerfile`) never appears in the cache, the picker, or the
   remote-control phone picker until the pin is bumped (`gpt-6-astra` did not
   exist to 0.151.0 and needed 0.153.4 — 2026-09-06; `gpt-6-sol`/`gpt-6-luna`
-  needed 0.156.1 — 2026-09-23). Bump first, then refresh the fallbacks.
+  needed 0.156.1 — 2026-09-23; `gpt-6.1-sol` needed 0.159.1 — 2026-10-03). Bump first, then refresh the fallbacks.
 
 Either way the fix is the same: open a standard held-draft dev-env PR editing
 `kubernetes/main/apps/dev/dev-env/app/resources/agent-run.sh` (labels/fallbacks

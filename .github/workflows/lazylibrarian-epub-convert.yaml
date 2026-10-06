@@ -1,0 +1,56 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# The LazyLibrarian EPUB converter (kubernetes/main/apps/downloads/lazylibrarian/
+# app/epub-convert/) runs its tests INSIDE the calibre image pinned in
+# epub-convert-cronjob.yaml, with the real ebook-convert / ebook-meta: a throwaway
+# library is built from text fixtures, converted, and checked (idempotence, the
+# epub/pdf no-touch rule, held failures, the census). A calibre bump that changes
+# conversion or ebook-meta output fails here. Advisory, not a required context, so
+# Renovate never merges a calibre bump on its own (.renovate/autoMerge.json5).
+# Offline (--network none), one container, one CPU.
+name: LazyLibrarian EPUB Convert
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert/**
+      - kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert-cronjob.yaml
+      - .github/workflows/lazylibrarian-epub-convert.yaml
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: LazyLibrarian EPUB Convert - Success
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read the pinned image from the CronJob
+        id: image
+        run: |
+          ref=$(awk '/image: ghcr.io\/linuxserver\/calibre/{print $2; exit}' \
+            kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert-cronjob.yaml)
+          test -n "$ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Run the tests inside the pinned image
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          docker run --rm --network none --cpus 1 --user 1000:1000 \
+            -e HOME=/tmp -e TMPDIR=/tmp -e QT_QPA_PLATFORM=offscreen \
+            -e CALIBRE_CONFIG_DIRECTORY=/tmp/calibre-config -e CALIBRE_CACHE_DIRECTORY=/tmp/calibre-cache \
+            -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-convert:ro" \
+            --entrypoint python3 "$IMAGE" /epub-convert/test_epub_convert.py

@@ -7,3 +7,24 @@ components:
   - ../../../../../shared/components/volsync/aws
 resources:
   - ./helmrelease.yaml
+configMapGenerator:
+  # The VRAM guard, imported by Python at start-up from PYTHONPATH (helmrelease.yaml). Stable
+  # name: a Helm rollback must land on a ConfigMap that still exists. The pod carries
+  # reloader.stakater.com/auto, so a content change still restarts it.
+  - name: immich-ml-vram-guard
+    files:
+      - sitecustomize.py=./vram-guard/sitecustomize.py
+    options:
+      disableNameSuffixHash: true
+  # Loki ruler picks this up by label (same pattern as qbittorrent). Nothing references it.
+  - name: immich-machine-learning-lokirule
+    files:
+      - immich-machine-learning.yaml=./lokirule.yaml
+    options:
+      disableNameSuffixHash: true
+      labels:
+        loki_rule: "true"
+generatorOptions:
+  # Python source and LogQL: keep Flux post-build substitution away from them.
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled

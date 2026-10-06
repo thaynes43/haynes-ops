@@ -30,3 +30,17 @@ spec:
       replicaCount: 1
       serviceMonitor:
         create: true
+      # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limits.
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          memory: 256Mi
+    webhook:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 64Mi

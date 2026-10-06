@@ -28,7 +28,7 @@ Note the `type/major|minor|patch` labels (Renovate adds them) and CI status. Fla
 | Tier | What | Approach |
 |---|---|---|
 | **1 — safe** | single-app image tag bumps (patch/minor): media, home-automation, UI, sidecars | Batch ~8 at a time, reconcile, broad pod sweep. Post-merge verification *is* the safety net here — no need to research every leaf app. |
-| **2 — infra** | helm/images for infra: CNI (cilium), Flux, operators (CNPG, EMQX, ESO, device plugins), DNS, monitoring exporters | Quick research on minors of operators/CRD-bearing charts. Watch operator-managed restarts (CNPG rolls Postgres instances; that's expected). |
+| **2 — infra** | helm/images for infra: CNI (cilium), Flux, operators (CNPG, ESO, device plugins), DNS, monitoring exporters | Quick research on minors of operators/CRD-bearing charts. Watch operator-managed restarts (CNPG rolls Postgres instances; that's expected). |
 | **3 — breaking (`!`)** | chart/app majors: app-template, traefik, prometheus stack+CRDs, etc. | **Research release notes first**, make required value edits, merge **one at a time**, verify, then next. |
 | **4 — storage** | rook-ceph / Ceph | **Always last.** See the rook section — it has its own remediation. |
 

@@ -103,7 +103,7 @@ rebooting them. Log it in the incident report and `declare-activity end`.
 - Do not copy tokens out of other pods. The exporter pod holds the read token too; the
   sanctioned path is the pod env this runbook describes.
 
-## SSH tier (`hw-ssh`) — the hardware itself, PVE nodes + HaynesTower (2026-09-17)
+## SSH tier (`hw-ssh`) — the hardware itself, PVE nodes + HaynesTower + PiKVM (2026-09-17)
 
 Why it exists: the 2026-09-17 GPU swap on HaynesIntelligence needed `dmidecode -t slot`,
 `lspci -vv` and the previous-boot `journalctl -b -1` on the **host** — no PVE API call runs
@@ -115,6 +115,7 @@ hardware can be managed by dev-env models"*, so the same key covers the Unraid N
 |---|---|---|
 | haynesintelligence, twin-top, twin-bottom, pve04, pve-filet02 (`.haynesnetwork`) | `dev-env`, key-only | sudo allowlist below; `sudo qm` makes it root-equivalent in practice — the tier of the operator token (Q-1) |
 | haynestower (`.haynesnetwork`, Unraid) | `root`, key-only | Unraid has no other SSH user |
+| pikvm (`.haynesnetwork`, fixed IP 192.168.40.33; alias `kvm`), added 2026-10-03 | `root`, key-only | console + ATX on every bare-metal master through the TESmart KVM, so **root-equivalent on the masters**, the same tier as the operator token. Rules in [PiKVM](#pikvm) below |
 
 One ed25519 key, `~/.ssh/dev-env-hw`, written by dev-init from `HW_SSH_PRIVATE_KEY_B64`
 (1Password `dev-env`, top-level field = base64 of the private-key file on one line).
@@ -125,6 +126,7 @@ hw-ssh haynesintelligence sudo dmidecode -t slot        # slot ↔ bus address
 hw-ssh haynesintelligence 'sudo journalctl -b -1 -p err' # previous boot's errors
 hw-ssh pve-all 'sudo qm list'                            # all five nodes
 hw-ssh haynestower 'tail -50 /var/log/syslog'
+hw-ssh pikvm 'systemctl status kvmd --no-pager'          # kvmd health
 hw-ssh haynesintelligence                                # interactive shell as dev-env (never `sudo -i`)
 ```
 
@@ -134,6 +136,46 @@ open an interactive root shell. Sudo allowlist (resolved per node at install tim
 that is not installed is simply absent): `dmidecode lspci journalctl dmesg sensors smartctl
 nvme zpool zfs qm pct pvesh pvecm pvesm ha-manager ipmitool`. Extending it is a PR here plus
 Tom re-running the node script.
+
+### PiKVM
+
+The PiKVM drives the TESmart KVM wired to every bare-metal master: video and keyboard on
+each master's console, plus ATX power and Wake-on-LAN through kvmd's GPIO. Root over SSH
+reaches all of that, so treat a session on it like the operator token. Its config source
+is `pikvm.yaml` at the repo root; `docs/cluster/pikvm-readme.md` has the background. PiKVM
+OS keeps its root filesystem read-only: `rw` remounts it writable, `ro` puts it back.
+
+Rules:
+- **Read first.** `systemctl status kvmd`, `journalctl -u kvmd`, `cat
+  /etc/kvmd/override.yaml` and `kvmd -m` (the merged config, all overrides applied) are all
+  read-only and need no `rw`. The box runs kvmd 4.20 (`pacman -Q kvmd`, 2026-10-03), which
+  has `-m` but not the newer `-M`.
+- **`rw` only to deploy the config**, and `ro` straight afterwards, every time. Never leave
+  the box writable. If `ro` fails (a process holds a file open), retry `hw-ssh pikvm ro`.
+- **`declare-activity` before** switching a KVM channel or restarting kvmd.
+- **Never use ATX power, ATX reset or Wake-on-LAN on a node, or send keystrokes to a node
+  console, without Tom's explicit go-ahead in that session.** Those are a master reboot or
+  a typed command on a master, not a PiKVM change.
+
+Deploy `pikvm.yaml` (it goes to `/etc/kvmd/override.yaml`, then `systemctl restart kvmd`,
+as the file's own header and the readme say). Run it from a worktree at the repo root:
+
+```bash
+# 1. Read first: the box against the repo. Tom keeps the repo copy in sync by hand, so a
+#    line on the box that the repo lacks is drift: stop and ask him, never overwrite it.
+hw-ssh pikvm cat /etc/kvmd/override.yaml | diff -u - pikvm.yaml
+# 2. Declare, back up to /tmp (tmpfs, writable while ro), then rw → write → ro.
+#    `ro` runs even if the write fails.
+declare-activity start "pikvm: deploy pikvm.yaml + restart kvmd" --scope pikvm --ttl 20m
+hw-ssh pikvm 'cp /etc/kvmd/override.yaml /tmp/override.yaml.bak && rw && { cat > /etc/kvmd/override.yaml; rc=$?; ro; exit $rc; }' < pikvm.yaml
+# 3. Check that kvmd parses the merged config, then restart it and confirm it is up.
+hw-ssh pikvm 'kvmd -m >/dev/null && systemctl restart kvmd && sleep 5 && systemctl is-active kvmd'
+declare-activity end <id>
+```
+
+If step 3 fails at `kvmd -m`, kvmd is still running the old config. Restore the backup
+before anything restarts it:
+`hw-ssh pikvm 'rw && { cp /tmp/override.yaml.bak /etc/kvmd/override.yaml; rc=$?; ro; exit $rc; }'`.
 
 ### Provisioning (Tom, once)
 
@@ -198,7 +240,15 @@ Tom re-running the node script.
    echo 'ssh-ed25519 AAAA…  dev-env-hw' >> /boot/config/ssh/root.pubkeys
    cat /boot/config/ssh/root.pubkeys > /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
    ```
-6. Merge the held-draft dev-env PR (it bounces the pod). **Not before steps 2 and 4's
+6. **PiKVM** (done 2026-10-03). PiKVM OS lets root log in over SSH; its root filesystem
+   is read-only, so wrap the write in `rw`/`ro`:
+   ```bash
+   rw
+   mkdir -p /root/.ssh && chmod 700 /root/.ssh
+   echo 'ssh-ed25519 AAAA…  dev-env-hw' >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+   ro
+   ```
+7. Merge the held-draft dev-env PR (it bounces the pod). **Not before steps 2 and 4's
    fields exist** — an ExternalSecret against a missing field fails the Kustomization and
    pages (2026-09-09 ×3).
 
@@ -208,6 +258,7 @@ Tom re-running the node script.
 hw-ssh list
 hw-ssh pve-all 'hostname; sudo -n dmidecode -t slot | grep -c Designation'
 hw-ssh haynestower 'uname -a; uptime'
+hw-ssh pikvm 'hostname; pacman -Q kvmd; ls -l /etc/kvmd/override.yaml'
 pve get /access/permissions --raw | grep -o 'Sys.Console'   # operator token live
 ```
 `hw-ssh: no key at ~/.ssh/dev-env-hw` = field missing or pod not bounced; `Permission

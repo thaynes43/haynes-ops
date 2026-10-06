@@ -144,6 +144,36 @@ spec:
           labels:
             severity: critical
             scope: host          # host/hardware event — alert-responder skips LLM diagnosis
+    # Sustained run-queue saturation on a Talos node (load15 above 2x CPU count for 10m),
+    # written to survive the node-exporter scrape gaps a starved node causes. Background,
+    # the D-state caveat and triage: .agents/runbooks/cpu-starvation.md.
+    - name: node-cpu-saturation
+      rules:
+        - alert: NodeLoadSaturated
+          annotations:
+            summary: 'Node {{ $labels.kubernetes_node }} has had 15-minute load at {{ printf "%.1f" $value }}x its CPU count for 10 minutes. Pods on it are being starved.'
+            description: >-
+              {{ $labels.kubernetes_node }} has carried a 15-minute load average of
+              {{ printf "%.1f" $value }}x its CPU count for 10+ minutes. BestEffort pods starve
+              first (on 2026-10-05 EMQX restart-looped and the Zigbee lights went dead). Find the
+              consumer: topk(5, sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{node="{{ $labels.kubernetes_node }}", container!=""}[5m]))).
+              If CPU is mostly idle (instance:node_cpu_utilisation:rate5m low) the load is
+              D-state I/O (storage), not CPU. Scrape gaps from this node are part of the symptom.
+              Runbook: .agents/runbooks/cpu-starvation.md
+          expr: |
+            max by (kubernetes_node, instance) (
+              last_over_time(node_load15{job="node-exporter"}[15m])
+            )
+            / on (instance) group_left ()
+            count by (instance) (
+              count by (instance, cpu) (
+                last_over_time(node_cpu_seconds_total{job="node-exporter", mode="idle"}[15m])
+              )
+            )
+            > 2
+          for: 10m
+          labels:
+            severity: critical
     # NAS capacity backstop (owner ruling 2026-08-06, same ruling as the rook-ceph
     # postRenderer that scopes CephNodeDiskspaceWarning to role!="nas"): Unraid's
     # per-disk fill level is meaningless for capacity planning — the high-water

@@ -1,0 +1,254 @@
+--- a/searchbook.py
++++ b/searchbook.py
+@@ -1,3 +1,54 @@
++# ---------------------------------------------------------------------------
++# haynes-ops override (downloads/lazylibrarian, ConfigMap lazylibrarian-searchbook)
++#
++# This is LazyLibrarian's upstream lazylibrarian/searchbook.py plus this
++# comment block and four marked changes (search for "haynes-ops fix").
++# Everything else is upstream, byte for byte.
++#
++# PINNED TO UPSTREAM: image docker.io/linuxserver/lazylibrarian:version-40a389ea
++#   (LazyLibrarian commit 40a389ea, pyproject version 2026.05.25).
++#   sha256 of the unmodified upstream file in that image:
++#   c4871db843d91fa12d7c35345266e5f1bd209f61e44b2f0c6eb40100f35df55f
++#
++# Why: LazyLibrarian was ~80% of all Prowlarr queries (50,431 of ~63,000 in
++# the week to 2026-10-03). Each wanted format costs 3 queries per indexer per
++# run (5 when the title has a parenthesis), the daily backlog search re-ran
++# all 271 wanted formats every day whatever their history, and about 10% of
++# the queries in a run repeated one already sent for the same book.
++#
++#   fix 1: the scheduled backlog search (thread SEARCHALLBOOKS) honours
++#          DELAYSEARCH ("Increase delay for previously failed searches").
++#          Upstream forces that thread, so the setting never applied to the
++#          one search that re-runs every wanted book. Explicit asks
++#          (API-SEARCH*, FORCE-SEARCH*) stay forced, as upstream.
++#   fix 2: the DELAYSEARCH back-off stops growing at 7 skipped runs, so a
++#          book that keeps missing is still searched about once a week
++#          instead of ever more rarely.
++#   fix 3: within one book's search, a mode whose queries are identical,
++#          provider by provider, to a mode already sent (the eBook "title"
++#          mode repeats the "book" mode whenever the author has no initials;
++#          eBook and AudioBook "general" modes are the same no-category
++#          query) reuses the earlier results instead of asking the indexers
++#          again. Results carry no format, so reuse across formats is exact.
++#   fix 4: CATEGORY SEARCH ONLY (owner ruling 2026-10-03). Each wanted format
++#          is searched once per indexer, in its book category (eBook 7020,
++#          audiobook 3030). Upstream follows a miss with up to four more
++#          queries per indexer (short, no-category "general", short-general,
++#          and "title"); those are dropped. For a title with a parenthesis,
++#          the one query is the short form (the part before the
++#          parenthesis), which upstream only tried second, because the full
++#          form ("Dune (Movie Tie-In)") rarely matches a release name. Set
++#          CATEGORY_SEARCH_ONLY = False to restore upstream's fallbacks.
++#
++# Needs config.ini [SearchScan] delaysearch = True for fixes 1 and 2 to do
++# anything (set live 2026-10-03; old value: unset, i.e. False).
++#
++# BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
++# searchbook.py and re-apply the four marked changes to it (or drop this
++# override if upstream has fixed them). Never carry this file onto a
++# different image unchanged: it would silently revert every other upstream
++# change to the book search.
++# ---------------------------------------------------------------------------
+ #  This file is part of Lazylibrarian.
+ #  Lazylibrarian is free software':'you can redistribute it and/or modify
+ #  it under the terms of the GNU General Public License as published by
+@@ -15,6 +66,7 @@
+ import threading
+ import time
+ import traceback
++from copy import deepcopy
+ 
+ import lazylibrarian
+ from lazylibrarian import database
+@@ -27,9 +79,64 @@
+     iterate_over_rss_sites,
+     iterate_over_torrent_sites,
+     iterate_over_znab_sites,
++    return_search_structure,
+ )
+ from lazylibrarian.resultlist import download_result, find_best_result
+ from lazylibrarian.telemetry import TELEMETRY
++
++
++# haynes-ops fix 4: one category search per indexer per wanted format, no fallback modes.
++CATEGORY_SEARCH_ONLY = True
++
++
++# haynes-ops fix 3: never send one book's identical query twice in one search.
++def _znab_query_key(book, search_type):
++    """What iterate_over_znab_sites(book, search_type) would send, provider by provider, as a
++    hashable key. Mirrors its enabled / blocked / DLTYPES filtering."""
++    if 'book' in search_type:
++        dltype = 'E'
++    elif 'audio' in search_type:
++        dltype = 'A'
++    elif 'mag' in search_type:
++        dltype = 'M'
++    elif 'comic' in search_type:
++        dltype = 'C'
++    else:
++        dltype = ''
++    key = []
++    for kind in ('NEWZNAB', 'TORZNAB'):
++        for provider in CONFIG.providers(kind):
++            if not provider['ENABLED']:
++                continue
++            host = provider['HOST']
++            if BLOCKHANDLER.is_blocked(host):
++                key.append((kind, host, 'blocked'))
++                continue
++            if dltype and dltype not in provider['DLTYPES']:
++                continue
++            params = return_search_structure(provider, provider['API'], book, search_type, 'nzb') or {}
++            key.append((kind, host, tuple(sorted((str(k), repr(v)) for k, v in params.items()))))
++    return tuple(key)
++
++
++def _znab_once(book, search_type, sent):
++    """iterate_over_znab_sites, unless this book already sent exactly these queries in this search:
++    then reuse those results (copied) rather than ask the same indexers the same thing again."""
++    logger = logging.getLogger(__name__)
++    try:
++        key = _znab_query_key(book, search_type)
++    except Exception as e:
++        logger.debug(f"haynes-ops: no query key for {search_type}: {type(e).__name__} {e}")
++        key = None
++    if key is not None and key in sent:
++        logger.debug(f"haynes-ops: {search_type} search for {book['library']} {book['searchterm']} "
++                     f"repeats an earlier query, reusing its results")
++        resultlist, nprov = sent[key]
++        return deepcopy(resultlist), nprov
++    resultlist, nprov = iterate_over_znab_sites(book, search_type)
++    if key is not None:
++        sent[key] = (deepcopy(resultlist), nprov)
++    return resultlist, nprov
+ 
+ 
+ def cron_search_book():
+@@ -98,7 +205,9 @@
+             else:
+                 thread_name("SEARCHBOOKS")
+ 
+-        if 'SEARCHALL' in threadname or 'API-SEARCH' in threadname or 'FORCE-SEARCH' in threadname:
++        # haynes-ops fix 1: the scheduled backlog (SEARCHALLBOOKS) honours DELAYSEARCH; upstream also
++        # matched 'SEARCHALL' here, which forced it and made DELAYSEARCH a no-op for the daily search.
++        if 'API-SEARCH' in threadname or 'FORCE-SEARCH' in threadname:
+             force = True
+         else:
+             force = False
+@@ -237,7 +346,11 @@
+                 warn_mode('rss')
+ 
+         book_count = 0
++        sent = {}  # haynes-ops fix 3: queries already sent for sent_for (one book, both formats)
++        sent_for = None
+         for book in searchlist:
++            if book['bookid'] != sent_for:
++                sent, sent_for = {}, book['bookid']
+             if lazylibrarian.STOPTHREADS and thread_name() == "SEARCHALLBOOKS":
+                 logger.debug("STOPTHREADS Aborting SEARCHALLBOOKS")
+                 break
+@@ -267,8 +380,15 @@
+                 else:
+                     searchtype = 'book'
+ 
++                # haynes-ops fix 4: with CATEGORY_SEARCH_ONLY this is the ONLY query per provider, so a
++                # title with a parenthesis is searched in its short form (upstream's second try).
++                if CATEGORY_SEARCH_ONLY and '(' in book['bookName']:
++                    first_type = f"short{searchtype}"
++                else:
++                    first_type = searchtype
++
+                 if CONFIG.use_nzb():
+-                    resultlist, nprov = iterate_over_znab_sites(book, searchtype)
++                    resultlist, nprov = _znab_once(book, first_type, sent)  # haynes-ops fix 3
+                     if not nprov:
+                         warn_mode('nzb')
+                     elif resultlist:
+@@ -282,7 +402,7 @@
+                             matches.append(match)
+ 
+                 if CONFIG.use_tor():
+-                    resultlist, nprov = iterate_over_torrent_sites(book, searchtype)
++                    resultlist, nprov = iterate_over_torrent_sites(book, first_type)  # haynes-ops fix 4
+                     if not nprov:
+                         warn_mode('tor')
+                     elif resultlist:
+@@ -297,7 +417,7 @@
+                             matches.append(match)
+ 
+                 if CONFIG.use_direct():
+-                    resultlist, nprov = iterate_over_direct_sites(book, searchtype)
++                    resultlist, nprov = iterate_over_direct_sites(book, first_type)  # haynes-ops fix 4
+                     if not nprov:
+                         warn_mode('direct')
+                     elif resultlist:
+@@ -312,7 +432,7 @@
+                             matches.append(match)
+ 
+                 if CONFIG.use_irc():
+-                    resultlist, nprov = iterate_over_irc_sites(book, searchtype)
++                    resultlist, nprov = iterate_over_irc_sites(book, first_type)  # haynes-ops fix 4
+                     if not nprov:
+                         warn_mode('irc')
+                     elif resultlist:
+@@ -336,9 +456,9 @@
+                         matches.append(match)
+ 
+                 # if you can't find the book, try author/title without any "(extended details, series etc)"
+-                if not matches and '(' in book['bookName']:
++                if not CATEGORY_SEARCH_ONLY and not matches and '(' in book['bookName']:  # haynes-ops fix 4
+                     if CONFIG.use_nzb():
+-                        resultlist, nprov = iterate_over_znab_sites(book, f"short{searchtype}")
++                        resultlist, nprov = _znab_once(book, f"short{searchtype}", sent)  # haynes-ops fix 3
+                         if not nprov:
+                             warn_mode('nzb')
+                         elif resultlist:
+@@ -412,8 +532,8 @@
+ 
+                 # if you can't find the book under "books", you might find under general search
+                 # general search is the same as booksearch for torrents, irc and rss, no need to check again
+-                if not matches and CONFIG.use_nzb():
+-                    resultlist, nprov = iterate_over_znab_sites(book, f"general{searchtype}")
++                if not CATEGORY_SEARCH_ONLY and not matches and CONFIG.use_nzb():  # haynes-ops fix 4
++                    resultlist, nprov = _znab_once(book, f"general{searchtype}", sent)  # haynes-ops fix 3
+                     if not nprov:
+                         warn_mode('nzb')
+                     elif resultlist:
+@@ -429,8 +549,8 @@
+ 
+                 # if still not found, try general search again without any "(extended details, series etc)"
+                 # shortgeneral is the same as shortbook for torrents, irc and rss, no need to check again
+-                if not matches and CONFIG.use_nzb() and '(' in book['searchterm']:
+-                    resultlist, nprov = iterate_over_znab_sites(book, f"shortgeneral{searchtype}")
++                if not CATEGORY_SEARCH_ONLY and not matches and CONFIG.use_nzb() and '(' in book['searchterm']:  # fix 4
++                    resultlist, nprov = _znab_once(book, f"shortgeneral{searchtype}", sent)  # haynes-ops fix 3
+                     if not nprov:
+                         warn_mode('nzb')
+                     elif resultlist:
+@@ -446,9 +566,9 @@
+                             matches.append(match)
+ 
+                 # if still not found, try general search again with title only
+-                if not matches:
++                if not CATEGORY_SEARCH_ONLY and not matches:  # haynes-ops fix 4
+                     if CONFIG.use_nzb():
+-                        resultlist, nprov = iterate_over_znab_sites(book, f"title{searchtype}")
++                        resultlist, nprov = _znab_once(book, f"title{searchtype}", sent)  # haynes-ops fix 3
+                         if not nprov:
+                             warn_mode('nzb')
+                         elif resultlist:
+@@ -543,8 +663,9 @@
+                 else:
+                     interval = 0
+ 
++                # haynes-ops fix 2: cap the back-off at 7 skipped runs (about weekly on a daily search).
+                 db.upsert("failedsearch",
+-                          {'Count': 0, 'Interval': interval + 1, 'Time': time.time()},
++                          {'Count': 0, 'Interval': min(interval + 1, 7), 'Time': time.time()},
+                           {'BookID': book['bookid'], 'Library': book['library']})
+ 
+             time.sleep(CONFIG.get_int('SEARCH_RATELIMIT'))

@@ -36,14 +36,59 @@ spec:
     # Distinct from rook's rook-ceph.rbd.csi.ceph.com so the two driver
     # stacks can never shadow each other.
     driverName: gasha01.rbd.csi.ceph.com
+    # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limits.
+    # nodeplugin.plugin.resources also covers the provisioner's csi-rbdplugin,
+    # csi-rbdplugin-controller and both liveness-prometheus containers.
     provisioner:
       # chart default is 3; two is plenty and matches rook's controllerPlugin
       replicaCount: 2
+      provisioner:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 96Mi
+          limits:
+            memory: 256Mi
+      attacher:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+      resizer:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+      snapshotter:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 96Mi
+          limits:
+            memory: 256Mi
     nodeplugin:
       # hostNetwork nodeplugin: keep its liveness/metrics port clear of
       # rook's csi nodeplugins on the same hosts.
       httpMetrics:
         containerPort: 8092
+      plugin:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 96Mi
+          limits:
+            memory: 512Mi
+      registrar:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
     # Secret is ExternalSecret-managed (externalsecret.yaml), StorageClass is
     # a plain manifest (storageclass.yaml) — chart creates neither.
     secret:

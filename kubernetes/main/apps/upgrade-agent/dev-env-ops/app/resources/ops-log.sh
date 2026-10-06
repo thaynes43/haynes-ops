@@ -20,7 +20,8 @@
 # EVENT VOCABULARY (keep this list and the runbook in sync):
 #   filed        an order appeared in the CM (writer side; logged by the watcher)
 #   claimed      the watcher took the order and is about to spawn
-#   spawned      a session process started              (attrs: mode, model, effort)
+#   spawned      a session process started              (attrs: mode, model, effort, rc_off)
+#   rc           Remote Control verdict for a session   (attrs: state=registered|unregistered|off, why, paged)
 #   triage       the session finished triaging          (attrs: verdict)
 #   dev-activity the dev-env awareness check ran        (attrs: hits, matched)
 #   fix          the session performed a fix action     (attrs: what)

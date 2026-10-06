@@ -10,6 +10,8 @@ resources:
   - ./helmrelease.yaml
   - ./library-scan-externalsecret.yaml
   - ./library-scan-cronjob.yaml
+  - ./epub-convert-externalsecret.yaml
+  - ./epub-convert-cronjob.yaml
 configMapGenerator:
   # Patched upstream librarysync.py (the library scan's id carry-over bug,
   # thaynes43/haynesnetwork#631), mounted over the image's copy by
@@ -42,7 +44,9 @@ configMapGenerator:
   # Patched upstream gb.py + dbupgrade.py (thaynes43/haynesnetwork#665): the
   # API's addBook writes the bookauthors row it skipped, and the start-up
   # check never deletes an author that still owns books (books.AuthorID
-  # cascades). Mounted by helmrelease.yaml; pinned to the image tag there.
+  # cascades). dbupgrade.py also logs a census of books no author counts
+  # (LL_UNLINKED_BOOKS, alerted by lokirule.yaml; thaynes43/haynesnetwork#736).
+  # Mounted by helmrelease.yaml; pinned to the image tag there.
   - name: lazylibrarian-gb
     files:
       - gb.py=./patches/gb.py
@@ -64,12 +68,31 @@ configMapGenerator:
       disableNameSuffixHash: true
   # Patched upstream resultlist.py (thaynes43/haynesnetwork#688): a later
   # volume of a series named after the wanted book no longer scores as that
-  # book. Mounted by helmrelease.yaml; pinned to the image tag there.
+  # book. thaynes43/haynesnetwork#755: a Failed row blocks its release under
+  # any spelling, and a release tagged with another language loses the match
+  # for an English book. Mounted by helmrelease.yaml; pinned to the image tag
+  # there.
   - name: lazylibrarian-resultlist
     files:
       - resultlist.py=./patches/resultlist.py
     options:
       disableNameSuffixHash: true
+  # The EPUB converter's script (epub-convert-cronjob.yaml; issue
+  # https://github.com/thaynes43/haynesnetwork/issues/770). Hashed name on
+  # purpose: kustomize rewrites the CronJob's reference, so the next Job runs
+  # the new script. Only the script ships; its test runs in CI.
+  - name: lazylibrarian-epub-convert
+    files:
+      - epub_convert.py=./epub-convert/epub_convert.py
+  # Loki ruler picks this up by label (same pattern as qbittorrent). Stable
+  # name: the rule file is read by the ruler sidecar, nothing references it.
+  - name: lazylibrarian-lokirule
+    files:
+      - lazylibrarian.yaml=./lokirule.yaml
+    options:
+      disableNameSuffixHash: true
+      labels:
+        loki_rule: "true"
 generatorOptions:
   # Python source with $Author-style strings: keep Flux post-build
   # substitution away from it.

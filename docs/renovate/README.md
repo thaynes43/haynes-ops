@@ -224,7 +224,7 @@ which is all the rule allows) and the meta-risk that observability is the
 safety net for the *other* Tier 2 merges (mitigated by the independent
 Gatus/Pushover/watchdog alert path). Per-package trust clocks for the new
 entries start 2026-06-15. **Still manual** (the irreducible core, → Tier 4):
-database operators (CNPG/dragonfly/EMQX), cilium, coredns, traefik,
+database operators (CNPG/dragonfly), cilium, coredns, traefik,
 authentik, multus, device-plugins.
 
 ## Tier 3 — Grouped multi-component apps
@@ -379,7 +379,7 @@ runbook — invoked three ways:
 
 1. **Scheduled gate (phase 4a, build first).** Cron / `/loop` trigger. After
    every reconcile it runs the post-merge health checks (Flux Kustomization
-   status, CNPG / Rook-Ceph / EMQX health, HA Zigbee availability) and pages
+   status, CNPG / Rook-Ceph / MQTT broker health, HA Zigbee availability) and pages
    on regression. Rollback stays human in 4a, automated in 4b.
 
 2. **Summoned remediation (on-demand).** When an upgrade *fails* — an alert
@@ -485,8 +485,8 @@ recoverability:
 **The genuinely non-auto set** is now: one-way majors (author + human-confirm),
 `cert-manager` minor/major (authored for review), the **name-matched carve-outs**
 (qbittorrent minor/major — MAM approved-clients; plex during a Kometa run; the
-dev-env image), the **Tier-3** HA-pod group + Z2M, the **holds** (emqx, cnpg
-≥0.30, node majors), Talos (not a Flux flow), and **supporting-edit PRs**
+dev-env image), the **Tier-3** HA-pod group + Z2M, the **holds** (cnpg
+≥0.30, postgres majors, node majors), Talos (not a Flux flow), and **supporting-edit PRs**
 (diff-scope security gate — except the one typed pattern it admits; see
 `scripts/diff-scope-test.sh`). Everything else reversible auto-merges — see
 [Current manual set](#current-manual-set--what-does-not-auto-merge) for the full
@@ -528,8 +528,7 @@ rest of `home-automation/**` auto-merges):
 
 **3. Holds** (`.renovate/holds.json5`, version-blacklisted — see
 [Holds registry](#holds-registry--reasoned-release-blacklist) below):
-`emqx-operator` (2.3.2–2.x, auto-resume at 3.0.0), `emqx` broker (≥6.2.1, manual
-lift after operator 3.0.0), `cloudnative-pg` chart (≥0.30.0 / operator 1.31.0+,
+`cloudnative-pg` chart (≥0.30.0 / operator 1.31.0+,
 until the Barman-Cloud-plugin migration), `docker.io/library/node` majors (ride the
 22 LTS line until ~2027-04).
 
@@ -573,7 +572,8 @@ tightest `allowedVersions`, run
 commit. The Tier-4 shepherd does this automatically when it hits a blocker.
 **Lift a hold:** delete the rule (or widen `allowedVersions`) in a commit
 referencing the upstream fix; Renovate re-proposes. Seeded 2026-06-30 with the two
-EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/issues/17600)).
+EMQX holds (operator + broker, [emqx/emqx#17600](https://github.com/emqx/emqx/issues/17600)),
+which were removed with EMQX itself on 2026-10-06 (#3395).
 
 ## Decisions made
 

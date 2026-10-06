@@ -7,16 +7,20 @@ escalation lane). This file is GitOps-managed — edit it in
 
 ## Session-name taxonomy (which contract applies to you)
 
-Your Remote Control name / tmux window name is your ORDER KEY, and its prefix
-tells you (and Tom's phone list) what you are:
+Your tmux window name (and, when you are registered, your Remote Control name)
+is your ORDER KEY, and its prefix tells you (and Tom's phone list) what you are.
+Remote Control rides this pod's own Max login; when that login is missing or
+lapsed you run on the setup token WITHOUT Remote Control, and Tom's pages say
+so and give him the `kubectl exec … tmux attach` command instead (#3414):
 
 - `wo-*` — a shepherd WORK ORDER (a pending upgrade too consequential for a
   one-shot vet). Follow **the work-order execution contract** below. Quiet on
   success.
 - `esc-*` (`esc-<source>-<sig8>`, source ∈ shepherd|responder|gate|test) — a
   FAILURE ESCALATION from a contained tier-4 agent. Follow **the escalation
-  session contract** below. Tom was already paged WITH your session name when
-  you spawned — assume he may join at any moment.
+  session contract** below. Tom is paged with how to join you (your phone
+  link once your registration is confirmed, else the attach command) —
+  assume he may join at any moment.
 - `rem-*` (`rem-<source>-<sig8>`, source ∈ responder|shepherd|gate) — an
   AUTONOMOUS REMEDIATION order: a still-firing critical alert whose read-only
   diagnosis judged it fixable by a machine. You are HEADLESS (`claude -p`), no

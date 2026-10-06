@@ -1,0 +1,52 @@
+# #3389: the two shared proxy outposts were created in the UI and had no
+# resource requests. This blueprint owns their `config` only (providers stay
+# UI-managed: attrs here never list them). `config` is replaced as a whole, so
+# every non-default field from the live config (2026-10-06) is repeated here.
+version: 1
+metadata:
+  name: hnet-shared-proxy-outposts
+  labels:
+    blueprints.goauthentik.io/description: 'Shared proxy outposts (external + internal): config incl. Deployment resource requests (#3389).'
+context: {}
+entries:
+- model: authentik_outposts.outpost
+  state: present
+  identifiers:
+    name: Proxy Provider External Outpost
+  attrs:
+    config:
+      authentik_host: https://authentik.haynesnetwork.com/
+      log_level: debug
+      kubernetes_replicas: 1
+      kubernetes_namespace: network
+      kubernetes_service_type: ClusterIP
+      kubernetes_disabled_components:
+      - ingress
+      kubernetes_ingress_class_name: traefik-external
+      kubernetes_ingress_secret_name: certificate-haynesnetwork
+      kubernetes_json_patches: &patches
+        deployment:
+        - op: add
+          path: /spec/template/spec/containers/0/resources
+          value:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 96Mi
+- model: authentik_outposts.outpost
+  state: present
+  identifiers:
+    name: Proxy Provider Internal Outpost
+  attrs:
+    config:
+      authentik_host: https://authentik.haynesnetwork.com/
+      log_level: debug
+      kubernetes_replicas: 1
+      kubernetes_namespace: network
+      kubernetes_service_type: ClusterIP
+      kubernetes_disabled_components:
+      - ingress
+      kubernetes_ingress_class_name: traefik-internal
+      kubernetes_ingress_secret_name: certificate-haynesops
+      kubernetes_json_patches: *patches

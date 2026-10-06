@@ -397,7 +397,7 @@ if [ "$CLASS" = "upgrade" ]; then
   # produce a fix (break-glass / no-op / crash): file an esc-shepherd-* entry keyed
   # on the COORDINATION signature (stable across gate/triage cycles for this exact
   # regression set, so re-fires dedup) — the dev-env-ops executor spawns a joinable
-  # fable/xhigh session and pages Tom WITH the session name. The gate still pages
+  # session (esc-* lane model) and pages Tom WITH the session name. The gate still pages
   # the failure independently. BEST-EFFORT: a write failure only logs.
   if [ "$RESULT" = "failed" ]; then
     ESCALATE_SIG="$SIG" bash /opt/coordination/escalate.sh shepherd "job:${HOSTNAME:-unknown} triage/remediate sig=$SIG" \

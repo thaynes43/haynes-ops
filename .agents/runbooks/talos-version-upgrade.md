@@ -177,19 +177,10 @@ kubectl get pdb -A | awk '$5 == 0'   # ALLOWED DISRUPTIONS column = 0
   primary (now a replica) evicts cleanly. A hard-failover risks the
   diverged-standby wedge (see memory `postgres16-diverged-standby-wedge`:
   a standby that replayed past the fork point never self-heals).
-- **`emqx-core`** (database ns) → **FIXED 2026-08-23, no longer a drain blocker.**
-  `add_pdb.go` in operator 2.3.1 creates the PDB unconditionally, copying nil
-  min/max into an empty spec → the disruption controller can't compute an
-  expected count → ALLOWED 0 forever. The cluster CR now sets
-  `coreTemplate.spec.maxUnavailable: 1` → ALLOWED 1.
-  **Correction:** the claim that "the 2.x EMQX CR exposes no PDB knob" was
-  **false** — the live CRD exposes `coreTemplate.spec.{minAvailable,maxUnavailable}`
-  on both v2 and v2beta1, and `add_pdb.go@2.3.1` copies them verbatim. Setting
-  them does NOT trigger a blue-green (`computeHash`/`justCheckPodTemplate` read
-  `spec.template` only), so the SINGLE_NODE_LICENSE crash is not a risk here.
-  If it ever regresses, `kubectl delete pod` still works as the manual unstick —
-  retained MQTT state re-publishes on restart (Zigbee2MQTT may need a restart
-  after — see CLAUDE.md cascading-restarts note).
+- **`emqx-core`** (database ns) → **gone.** EMQX was retired on 2026-10-06
+  (haynes-ops#3395). The MQTT broker is now `database/mosquitto-0`, which has no PDB,
+  so it never blocks a drain. A drain restarts it: clients reconnect on their own and
+  the retained store survives on its PVC (`.agents/runbooks/mqtt-broker.md`).
   **At the operator 3.0 lift this key must be REMOVED:** 3.0 drops PDB support
   entirely (no `add_pdb.go`), and v3beta1's `maxUnavailable` is an unrelated
   replicant rolling-update knob.

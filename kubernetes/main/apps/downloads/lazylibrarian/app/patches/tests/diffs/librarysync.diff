@@ -1,0 +1,59 @@
+--- a/librarysync.py
++++ b/librarysync.py
+@@ -1,3 +1,32 @@
++# ---------------------------------------------------------------------------
++# haynes-ops override (downloads/lazylibrarian, ConfigMap lazylibrarian-librarysync)
++#
++# This is LazyLibrarian's upstream lazylibrarian/librarysync.py, byte for byte,
++# plus this comment block and two marked changes (search for "haynes-ops fix").
++#
++# PINNED TO UPSTREAM: image docker.io/linuxserver/lazylibrarian:version-40a389ea
++#   (LazyLibrarian commit 40a389ea, pyproject version 2026.05.25).
++#   sha256 of the unmodified upstream file in that image:
++#   b05018db5ac8b00423c30d89768fff8d549fcddbd4ebe2d1d122cf43f41933e9
++#
++# The fix: library_scan() never reset gr_id / gb_id / ol_id / hc_id / dnb_id
++# between files, so `bookid = eval(this_source['book_key'])` handed a file
++# with no id of its own the id of the last file scanned that had one. The scan
++# then wrote that other book's .opf next to the file and pointed that book's
++# BookFile at it (thaynes43/haynesnetwork#631).
++#
++# Fix 2: a scan run with `remove` (the web UI's scan; the CronJob's API scans
++# do not pass it) deleted every Paused author with TotalBooks=0. Authors the
++# API's addBook created count zero (no bookauthors row, see gb.py), so that
++# delete took their books with it (books.AuthorID cascades). It now spares
++# any author that still owns a book row (thaynes43/haynesnetwork#665).
++#
++# BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
++# librarysync.py, and either re-apply both marked changes to it (if upstream has not
++# fixed the bug) or drop this override (if it has). Never carry this file onto
++# a different image unchanged: it would silently revert every other upstream
++# change to the library scan.
++# ---------------------------------------------------------------------------
+ #  This file is part of Lazylibrarian.
+ #  Lazylibrarian is free software : you can redistribute it and/or modify
+ #  it under the terms of the GNU General Public License as published by
+@@ -819,6 +848,7 @@
+                         extn = splitext(files)[1]
+                         bookid = None
+                         forced_bookid = ''
++                        gr_id = gb_id = ol_id = hc_id = dnb_id = None  # haynes-ops fix: no id carry-over between files
+ 
+                         # if it's an epub or a mobi we can try to read metadata from it
+                         res = {}
+@@ -1448,10 +1478,13 @@
+         if remove:
+             # sometimes librarything tells us about a series contributor
+             # but openlibrary doesn't agree...
+-            res = db.select("select * from authors where status='Paused' and totalbooks=0")
++            # haynes-ops fix 2: never an author that still owns a book row (its books would cascade).
++            res = db.select("select * from authors where status='Paused' and totalbooks=0 "
++                            "and authorid not in (select authorid from books where authorid is not null)")
+             if len(res):
+                 logger.debug(f"Removed {len(res)} empty series authors")
+-                db.action("delete from authors where status='Paused' and totalbooks=0")
++                db.action("delete from authors where status='Paused' and totalbooks=0 "
++                          "and authorid not in (select authorid from books where authorid is not null)")
+ 
+         logger.info('Library scan complete')
+         return new_book_count

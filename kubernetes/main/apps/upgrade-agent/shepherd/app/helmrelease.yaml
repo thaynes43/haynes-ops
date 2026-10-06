@@ -216,7 +216,7 @@ spec:
                 stateful PR you leave for a later run because of this rule gets 'DEFER: #<N>
                 waits for #<the unit this run took>' (see VERDICTS in your operating
                 rules), never a HOLD.
-                Out-of-scope — emqx (held), cert-manager, external-secrets, Talos, and any
+                Out-of-scope — cert-manager, external-secrets, Talos, and any
                 non-ramp component: leave untouched, list in your summary. NEVER merge
                 immediately, NEVER use --admin, NEVER push to main, stay inside
                 kubernetes/**. Then stop and summarize what you merged, authored, paged,

@@ -29,9 +29,11 @@ spec:
         # (verified 2026-09-21 against `kubectl get nodes -l ...`):
         #   talosw01 = 1  (RTX 3090 #1, GPU-d8a856f1 — was 2; #0 was pulled 2026-09-25 for the
         #                  #3052 single-card soak. Set it back to 2 when #0 is reinstalled.)
-        #   talosm01 = 1  (RTX A2000 — vexa-whisper)
-        #   talosm03 = 1  (RTX 2000 Ada — ollama-assist02)
-        #   talosm05 = 1  (RTX A2000, ex-edgem01; joined as a master for #3332)
+        #   talosm01 = 1  (RTX A2000 — voice: whisper STT, speech-to-phrase, kokoro TTS,
+        #                  vexa-whisper)
+        #   talosm03 = 1  (RTX 2000 Ada — ComfyUI)
+        #   talosm05 = 1  (RTX A2000, ex-edgem01; joined as a master for #3332;
+        #                  ollama-assist02 + immich-machine-learning)
         # talosm04 (ex-edgem03, #3332) is left out until its A2000 enumerates: the
         # card was fitted but not visible on the PCIe bus at join time (BIOS PEG /
         # reseat pending), so listing it would page. Add it to both vectors with
@@ -206,3 +208,43 @@ spec:
           labels:
             severity: warning
             scope: host
+
+        # The two RTX A2000s that voice depends on are shared: talosm05 holds
+        # ollama-assist02 (Home Assistant's Assist model, ~7.0 GB resident) next to
+        # immich-machine-learning, and talosm01 holds whisper, speech-to-phrase,
+        # kokoro and vexa-whisper. A card that stays nearly full means the next
+        # allocation by any of them can fail. On 2026-10-06 immich-ML filled
+        # talosm05 to 11.9 of 12.3 GB and logged about 150 CUDA out-of-memory errors
+        # (.agents/runbooks/immich-ml-backlog.md). Its VRAM guard keeps the card
+        # under ~11.3 GB since then, so this firing means something new took
+        # the memory.
+        # Only these two cards: talosm03 (ComfyUI) fills its card on purpose
+        # (97% peaks are normal there), and talosw01's 3090 has its own headroom rules.
+        # Warning: it never pages.
+        - alert: SharedGpuMemoryNearlyFull
+          annotations:
+            summary: >-
+              GPU {{ $labels.index }} ({{ $labels.name }}) on {{ $labels.node }} is {{ $value | humanizePercentage }} full.
+            description: >-
+              The shared voice GPU on {{ $labels.node }} has had more than 95% of its memory in use
+              for 5 minutes. The next allocation by ollama-assist02, whisper or kokoro could fail,
+              so voice may break. Find out what holds the memory: `nvidia-smi` in that node's
+              nvidia-gpu-exporter pod (`kubectl exec -n observability $(kubectl get pod -n
+              observability -l app.kubernetes.io/name=nvidia-gpu-exporter --field-selector
+              spec.nodeName={{ $labels.node }} -o name) -- nvidia-smi`) gives the total but not
+              the processes. On talosm05, check immich-machine-learning first: its logs, its
+              ImmichMlCudaOutOfMemory and ImmichMlVramGuardInactive alerts, and the runbook
+              .agents/runbooks/immich-ml-backlog.md. Restarting immich-machine-learning frees its
+              memory at once (`kubectl rollout restart -n photos deploy/immich-machine-learning`).
+          expr: |
+            (
+              max by (node, uuid) (
+                nvidia_smi_memory_used_bytes{node=~"talosm01|talosm05"}
+                / nvidia_smi_memory_total_bytes{node=~"talosm01|talosm05"}
+              ) > 0.95
+            )
+            * on (uuid) group_left (name, index) nvidia_smi_gpu_info
+          # No scope=host: the cause is software on the card, not the card.
+          for: 5m
+          labels:
+            severity: warning

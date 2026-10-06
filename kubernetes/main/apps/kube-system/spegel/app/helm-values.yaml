@@ -5,3 +5,15 @@ spegel:
 service:
   registry:
     hostPort: 29999
+# The chart default requests memory only, so the pod got the minimum CPU weight
+# and starved first under node CPU saturation (2026-10-05 outage, #3420). The
+# Kyverno default-request LimitRange (#3406) skips kube-system, so request CPU
+# here. 25m covers the highest per-pod 7-day p95 (talosm02, ~25m; the others
+# 5-15m). No CPU limit. Memory keeps the chart default. The chart applies this
+# block to the registry container and the configuration init container.
+resources:
+  requests:
+    cpu: 25m
+    memory: 128Mi
+  limits:
+    memory: 128Mi

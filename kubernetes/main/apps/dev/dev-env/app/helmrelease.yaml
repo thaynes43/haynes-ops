@@ -43,7 +43,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.6.5@sha256:57d001f4c868c04c932c6e7299eea78dcea9597f8e99f2123a06ce754dbde01a
+              tag: 0.6.8@sha256:f4f344e09258d0355cb1ed67ce08cacafd45905f459341516c298dad386d9b03
             command: ["/bin/bash", "-c"]
             args:
               # BOOT ORDER — each step must be fast or detached; nothing after
@@ -200,10 +200,14 @@ spec:
               # concurrent agent sessions, killed a live sigo-alumni session). Nodes
               # carry ~122Gi, so give real headroom for concurrent agent builds; the
               # limit is a ceiling, not a reservation.
+              # CPU limit 8 (2026-10-06): an agent's 60 busy-loop burners + wide vitest
+              # loops took talosm02 (20 cores) to load 222 and probe-killed EMQX,
+              # traefik, authentik and cnpg. Normal peaks are ~2-6 cores.
               requests:
                 cpu: "1"
                 memory: 4Gi
               limits:
+                cpu: "8"
                 memory: 64Gi
             securityContext:
               allowPrivilegeEscalation: false
@@ -216,7 +220,7 @@ spec:
           gh-refresher:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.6.5@sha256:57d001f4c868c04c932c6e7299eea78dcea9597f8e99f2123a06ce754dbde01a
+              tag: 0.6.8@sha256:f4f344e09258d0355cb1ed67ce08cacafd45905f459341516c298dad386d9b03
             command: ["/bin/bash", "/opt/dev-env/scripts/gh-token-refresh.sh"]
             env:
               # Down-scope the minted token. NOTE: may only name permissions the App
@@ -248,7 +252,7 @@ spec:
           auth-watch:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              tag: 0.6.5@sha256:57d001f4c868c04c932c6e7299eea78dcea9597f8e99f2123a06ce754dbde01a
+              tag: 0.6.8@sha256:f4f344e09258d0355cb1ed67ce08cacafd45905f459341516c298dad386d9b03
             command: ["/bin/bash", "/opt/dev-env/scripts/auth-check.sh"]
             env:
               HOME: /home/dev

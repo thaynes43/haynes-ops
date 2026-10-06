@@ -1,0 +1,76 @@
+---
+# Loki ruler alerts for LazyLibrarian (loaded via the loki_rule ConfigMap label,
+# see kustomization.yaml). Routing: severity=critical is the only route that
+# reaches a human; a warning shows in the Alertmanager and Grafana UI only.
+groups:
+  - name: lazylibrarian-census
+    rules:
+      - alert: LazyLibrarianBooksWithoutAuthorLink
+        # patches/dbupgrade.py fix 2 logs LL_UNLINKED_BOOKS <n> at every start
+        # when books have no bookauthors row (thaynes43/haynesnetwork#736).
+        # Such a book counts for no author, so only the overlay's spare path
+        # keeps it alive across restarts: before that overlay, LazyLibrarian
+        # deleted ~900 requested books this way. The start-up check runs once
+        # per start, so a 26h window keeps the alert up for a day after it.
+        # Fix: find the add path that skipped the row (gb.py's addBook writes
+        # it), then backfill as on 2026-10-06 (primary row, Role 1, one
+        # transaction after a database backup).
+        expr: |
+          sum by (app) (count_over_time({app="lazylibrarian", container="app"} |= "LL_UNLINKED_BOOKS" [26h])) > 0
+        for: 1m
+        annotations:
+          summary: >-
+            LazyLibrarian holds books with no bookauthors row; only the dbupgrade.py overlay keeps them
+            across restarts. Find the add path that skipped the row and backfill it (haynesnetwork#736).
+        labels:
+          severity: warning
+  # The hourly EPUB converter (epub-convert-cronjob.yaml; issue
+  # https://github.com/thaynes43/haynesnetwork/issues/770). It logs one
+  # epub_convert line per conversion attempt and one epub_convert_census line per
+  # completed run. The CronJob runs at :20; a 75m window holds the latest run.
+  - name: lazylibrarian-epub-convert
+    rules:
+      - alert: LazyLibrarianEbooksNotConverted
+        # The post-run census: book folders still holding only a .mobi/.azw3 that
+        # the run should have converted. Expected 0 after every run (a fresh import
+        # counts as `settling`, a failed one as `held`). Non-zero means the run's
+        # time budget ran out (`deferred`; the next run continues) or the walk and
+        # the conversion disagree: read the census line's unconverted_sample.
+        expr: |
+          sum(count_over_time({namespace="downloads", container="epub-convert", pod=~"lazylibrarian-epub-convert-.*"} |= "\"msg\":\"epub_convert_census\"" | json unconverted | unconverted > 0 [75m])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            The EPUB converter's last run left LazyLibrarian books held only as .mobi/.azw3 that it should have
+            converted, so Kavita cannot show them. Read the epub_convert_census line (deferred, unconverted_sample) in
+            Loki; a deferred backlog clears on the next run (haynesnetwork#770).
+        labels:
+          severity: warning
+      - alert: LazyLibrarianEpubConvertHeld
+        # A book the converter could not convert, or whose EPUB named another
+        # book. It stays .mobi/.azw3-only and is recorded in
+        # books/.epub-convert/held.tsv, so this fires once per book, not hourly.
+        # io_error (a copy or rename on the share failed) is not held: it is
+        # retried every run and keeps this up while it repeats.
+        expr: |
+          sum by (result) (count_over_time({namespace="downloads", container="epub-convert", pod=~"lazylibrarian-epub-convert-.*"} |= "\"msg\":\"epub_convert\"" | json result | result=~"drm|convert_error|timeout|unreadable|title_mismatch|io_error" [75m])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            The EPUB converter left a LazyLibrarian book as it was ({{ $labels.result }}); Kavita cannot show it. Read
+            its epub_convert line (folder, detail): DRM or a broken file needs another release searched; a
+            title_mismatch means LazyLibrarian filed another book under that title. To retry after a fix, delete the
+            book's line in books/.epub-convert/held.tsv (haynesnetwork#770).
+        labels:
+          severity: warning
+      - alert: LazyLibrarianEpubConvertSilent
+        expr: |
+          absent_over_time({namespace="downloads", container="epub-convert", pod=~"lazylibrarian-epub-convert-.*"} |= "\"msg\":\"epub_convert_census\"" [3h])
+        for: 15m
+        annotations:
+          summary: >-
+            The EPUB converter has not finished a run in 3 hours: CronJob downloads/lazylibrarian-epub-convert is not
+            running or its runs fail (an epub_convert_run_failed or a Python traceback in its log), so new
+            .mobi/.azw3 books stay out of Kavita (haynesnetwork#770).
+        labels:
+          severity: warning

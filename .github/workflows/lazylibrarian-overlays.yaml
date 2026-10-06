@@ -1,0 +1,55 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# LazyLibrarian runs with patched upstream files mounted over its image
+# (kubernetes/main/apps/downloads/lazylibrarian/app/patches/). This job runs
+# their harness (patches/tests/run.py) INSIDE the pinned image named in
+# helmrelease.yaml: each overlay must sit on the exact upstream file it was cut
+# from (sha256 + its diff applies cleanly), and the tests of the patched
+# behaviour must pass. An image bump that forgets the overlays fails here.
+# Advisory, not a required context: Renovate never auto-merges a LazyLibrarian
+# bump (.renovate/autoMerge.json5), so a person or agent reads this first.
+# Offline (--network none), one container, the tests run one at a time.
+name: LazyLibrarian Overlays
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/downloads/lazylibrarian/app/**
+      - .github/workflows/lazylibrarian-overlays.yaml
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    name: LazyLibrarian Overlays - Success
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read the pinned image from the HelmRelease
+        id: image
+        run: |
+          hr=kubernetes/main/apps/downloads/lazylibrarian/app/helmrelease.yaml
+          repo=$(awk '/repository: .*lazylibrarian/{print $2; exit}' "$hr")
+          tag=$(awk '/^ *tag: version-/{print $2; exit}' "$hr")
+          test -n "$repo" && test -n "$tag"
+          echo "ref=$repo:$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Run the harness inside the pinned image
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          docker run --rm --network none --cpus 1 --entrypoint python3 \
+            -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/patches:/patches:ro" \
+            "$IMAGE" /patches/tests/run.py

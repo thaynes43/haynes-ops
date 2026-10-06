@@ -1,0 +1,91 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kyverno/kyverno/main/api/kyverno/v1/clusterpolicy.json
+# Cluster-wide backstop so no pod is ever BestEffort again (Tom's ruling, 2026-10-06,
+# Q-08). In the 2026-10-05 outage (23:42-00:12Z) a runaway agent saturated talosm02
+# and every BestEffort pod there (CPU weight 1: EMQX, traefik, authentik, ...) starved
+# into liveness-kill loops. Per-app requests (#3384/#3387/#3388/#3389) cover the
+# workloads we know about; this covers the ones we don't, and every future chart that
+# ships without requests.
+#
+# WHAT: every non-system Namespace gets a LimitRange `default-cpu-request` that gives
+# a container with NO cpu request a 50m request. That makes the pod Burstable. Under
+# contention it is then entitled to about 50m of CPU, instead of a share of the
+# BestEffort cgroup, which has cpu.weight 1 for all BestEffort pods on the node
+# combined.
+#   - defaultRequest ONLY. No `default` (= no CPU limit is ever injected) and no
+#     min/max, so nothing a chart sets explicitly is changed or rejected.
+#   - CPU ONLY, no memory default: the outage was CPU starvation, and a memory request
+#     would change eviction ranking and memory scheduling for apps nobody sized.
+#   - Admission-time only. LimitRanger defaults a pod when it is CREATED, so running
+#     pods pick it up at their next natural restart. Do not mass-restart for it.
+#   - Init containers are defaulted too, including the one k8tz injects by webhook
+#     (verified 2026-10-06 with a test Job: its k8tz init container got 50m). An init
+#     container only raises a pod's effective request when the pod's regular
+#     containers request less than 50m in total.
+#
+# EXCLUDED: the control-plane/system namespaces (kube-system, kube-public,
+# kube-node-lease), flux-system (GitOps engine; also carries the
+# critical-pods-flux-system ResourceQuota) and kyverno (must never depend on its own
+# generated objects). rook-ceph, ceph-csi, openebs-system, volsync-system and k8tz are
+# deliberately INCLUDED: their unrequested containers are CSI node/ctrl plugins,
+# sidecars and webhooks, which are exactly what must not starve, and their operators
+# reconcile Deployments/DaemonSets, not live pod specs, so an admission-defaulted
+# request causes no reconcile drift.
+#
+# RBAC: the chart's kyverno:background-controller role already grants
+# create/update/patch/delete on limitranges, and the controller is bound to `view` for
+# reads, so no aggregated ClusterRole is needed.
+#
+# synchronize: Kyverno keeps the LimitRange as declared (a hand edit or delete is
+# reverted). generateExisting: the namespaces that existed before this policy get one
+# too. fail-open (failurePolicy Ignore) so a Kyverno outage never blocks a Namespace
+# create/update; a namespace created during one gets its LimitRange on its next update.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: default-cpu-request
+  annotations:
+    policies.kyverno.io/title: Default CPU request
+    policies.kyverno.io/subject: Namespace, LimitRange
+    policies.kyverno.io/description: >-
+      Generates a LimitRange in every non-system namespace that gives containers
+      without a CPU request a 50m request (no limit), so no pod is BestEffort.
+spec:
+  webhookConfiguration:
+    failurePolicy: Ignore
+  rules:
+    - name: generate-default-cpu-request
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      exclude:
+        any:
+          - resources:
+              names:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - flux-system
+                - kyverno
+      # A namespace being deleted can no longer take new objects; skip it rather than
+      # log a failed create.
+      preconditions:
+        all:
+          - key: "{{ request.object.status.phase || '' }}"
+            operator: NotEquals
+            value: Terminating
+      generate:
+        generateExisting: true
+        synchronize: true
+        apiVersion: v1
+        kind: LimitRange
+        name: default-cpu-request
+        namespace: "{{ request.object.metadata.name }}"
+        data:
+          spec:
+            limits:
+              - type: Container
+                defaultRequest:
+                  cpu: 50m

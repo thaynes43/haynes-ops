@@ -23,6 +23,11 @@ configMapGenerator:
       - resources/ops-digest.sh
       - resources/dev-activity-check.sh
       - resources/gh-token-refresh.sh
+      # haynes-ops#3414: dev-env-ops' own Max login (expiry check), the
+      # Remote Control registration check, and its no-page self-test.
+      - resources/login-check.sh
+      - resources/rc-state.sh
+      - resources/rc-selftest.sh
       - resources/ops-claude.md
       - resources/cigar-curation.md
 generatorOptions:

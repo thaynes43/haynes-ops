@@ -1,0 +1,345 @@
+--- a/resultlist.py
++++ b/resultlist.py
+@@ -1,3 +1,86 @@
++# ---------------------------------------------------------------------------
++# haynes-ops override (downloads/lazylibrarian, ConfigMap lazylibrarian-resultlist)
++#
++# This is LazyLibrarian's upstream lazylibrarian/resultlist.py, byte for byte,
++# plus this comment block and THREE marked changes (search for "haynes-ops fix":
++# imports, helpers above find_best_result, and their calls in find_best_result):
++# the volume penalty, the blacklist's release match, the language penalty.
++#
++# PINNED TO UPSTREAM: image docker.io/linuxserver/lazylibrarian:version-40a389ea
++#   (LazyLibrarian commit 40a389ea, pyproject version 2026.05.25).
++#   sha256 of the unmodified upstream file in that image:
++#   dd255ab9b14f52903db34fcc25d04d271cdc619742d52cced9d6972bcb40501d
++#
++# The fix: find_best_result() scores a release with token_set_ratio, which is
++# 100 whenever the release holds every word of the wanted title. For a series
++# named after its first book, every later volume's release does, so
++# "...-Assistant to the Villain 03-Accomplice to the Villain-..." scored 106
++# for book 1 and was grabbed and imported as it (thaynes43/haynesnetwork#688).
++# LazyLibrarian holds no series data here (Google Books gives none), so the
++# release itself is read: the wanted title, a volume marker with a number
++# other than 1, then a different title (token_set_ratio under 90 against the
++# wanted title and subtitle) loses 50 points, well under MATCH_RATIO (80).
++# A title ending in a number, a file counter, scene group, format words and a
++# trailing series name are not read as titles. Replayed over all 3,373
++# Processed/Snatched/Seeding rows of the wanted table on 2026-10-05: 153
++# changed, each a later volume, novella or single story grabbed for book 1 or
++# a collection; none was a genuine grab.
++# Extended for thaynes43/haynesnetwork#694: a title that starts with its author
++# ("Terry Pratchett's Discworld") is also looked for as its series alone
++# ("Discworld 21 - Jingo", "12. Discworld - Witches Abroad"), and when nothing
++# follows the volume, the title between the author and the series counts
++# ("Unseen Academicals_ Discworld, Book 37"). Replayed over 3,385 rows: 44 more
++# changed, all later volumes (30 of them grabbed for that Discworld record).
++# Extended for thaynes43/haynesnetwork#738: a release that gives only a volume
++# number, no title ("Assistant to the Villain 03 [epub]", "Mistborn 6 (2016)
++# MP3"), loses the points too for volume 2 and up, unless the number is a part
++# file of a multi-file post ("... 02.mp3"), the subtitle names that volume as
++# the book's own ("Inheritance", "Book IV": "Inheritance 04"), or the release
++# is a bare "<title> - N" naming no author (a series index after the book's own
++# title, "Blonde Faith - 11": 4 of 4 such grabs were the right book). And a
++# release that repeats the wanted title after another volume's own title
++# ("Mistborn Bk 4 - The Alloy of Law ... Mistborn") is no longer read as this
++# book again, unless the subtitle names that volume as the book's own
++# ("Inheritance 04 - Inheritance or the Vault of Souls", "Book IV"). Replayed
++# over 3,989 rows on 2026-10-06: 10 more changed, every one a later volume or
++# novella grabbed for book 1 (Mistborn, Once Upon a Broken Heart, Shift).
++# Extended for thaynes43/haynesnetwork#755, two more fixes:
++#  - The blacklist. BLACKLIST_FAILED (on here) rejects a release whose provider
++#    and title match a Failed wanted row, but compares the title exactly, and
++#    the post-processor renames the row to the download client's job name
++#    (SABnzbd: dots to spaces, ".par2." dropped). So a Failed release came back
++#    under its indexer spelling, and so did hand-written blocks (the Danish
++#    Israel Potter). Now a Failed row of the same provider and format also
++#    blocks its release under any spelling: case, and runs of dots, underscores
++#    and spaces, ignored, for its stored title and for the title in its
++#    download link's file parameter. (The link itself differs per search:
++#    Prowlarr encrypts it anew. No GUID is kept.) BLACKLIST_PROCESSED is off
++#    here and unchanged. Over the wanted history this blocks about 940 more
++#    re-grabs of an already Failed release, each of which failed again, and
++#    18 that had first failed for a passing reason (not sent, stalled, a
++#    SABnzbd duplicate) and then succeeded: upstream's own rule for those.
++#  - The language. Nothing read a language from the release name, so
++#    "...Potter.2014.DANiSH.RETAiL.ePub..." and "...AUDiOBOOK-WEB-SE-2023-..."
++#    scored as the English book. A release with an explicit language tag
++#    (scene "DANiSH.RETAiL", MP3-scene "WEB-SE-", "[GER / EPUB]", "[French]")
++#    loses 50 points when LazyLibrarian holds the book as English, unless that
++#    word is in the book's own title or author. Replayed over 3,989 rows on
++#    2026-10-06: 24 moved, each tagged Swedish, Danish, German or French (and
++#    where the file could be read, it was), none an English release.
++#    Then "-AUDiOBOOK-WEB-MP3-DE-" (a format between source and language) and a
++#    German edition word ("(Ungekürzt)", "Hörbuch", also as the mojibake
++#    "UngekÃ¼rzt" that slipped past REJECT_AUDIO): the German Serpent and the
++#    Wings of Night audio. Replayed over 3,988 rows: 121 more tagged, all
++#    German "(Ungekuerzt)" releases of 11 books (4 had scored 80 or more),
++#    none English.
++# Tests, fixtures and the replay tool: patches/tests/.
++#
++# BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
++# resultlist.py, and either re-apply the marked change to it (if upstream has
++# not fixed the bug) or drop this override (if it has). Never carry this file
++# onto a different image unchanged: it would silently revert every other
++# upstream change to result scoring.
++# ---------------------------------------------------------------------------
+ #  This file is part of Lazylibrarian.
+ #
+ #  Lazylibrarian is free software':'you can redistribute it and/or modify
+@@ -14,7 +97,9 @@
+ #  along with Lazylibrarian.  If not, see <http://www.gnu.org/licenses/>.
+ 
+ import logging
++import re  # haynes-ops fix
+ import traceback
++from urllib.parse import parse_qs, urlsplit  # haynes-ops fix
+ 
+ from rapidfuzz import fuzz
+ 
+@@ -53,6 +138,200 @@
+             return 0
+         return download_result(match, book)
+     return 0
++
++
++# haynes-ops fix: a series named after its first book ("Assistant to the Villain") makes a later volume's release
++# ("...-Assistant to the Villain 03-Accomplice to the Villain-...") contain every word of book 1's title, so
++# token_set_ratio scores it 100 for book 1 (thaynes43/haynesnetwork#688). LazyLibrarian holds no series data here,
++# so the release itself is read: the wanted title, a volume number other than 1, then a DIFFERENT title.
++VOLUME_PENALTY = 50
++OTHER_TITLE_RATIO = 90
++_NOT_A_TITLE = {'retail', 'ebook', 'audiobook', 'epub', 'mobi', 'azw3', 'azw', 'pdf', 'mp3', 'm4b', 'm4a', 'flac',
++                'unabridged', 'abridged', 'us', 'uk', 'eng', 'en', 'nmr', 'kbps', 'yenc', 'rar', 'par2', 'pars',
++                'nfo', 'sfv', 'nzb', 'zip', 'jpg', 'txt'}
++
++
++def names_other_volume(release, title, subtitle, author):
++    """ Return (volume, other title) when release reads '<title> NN', '[<title> NN]', '<title> #N', '<title> Book N'
++        or '<title>, Vol N' (N not 1), with a title unlike the wanted title and subtitle after it (or, when nothing
++        follows, between the author and it: "Pratchett - Unseen Academicals_ Discworld, Book 37"). A title that starts
++        with its author ("Terry Pratchett's Discworld") is also looked for as its series alone ("Discworld 21 - Jingo",
++        "12. Discworld - Witches Abroad"). When no title at all goes with the volume ("<title> 03 [epub]"), return
++        (volume, '') for N >= 2, unless the number is a file's part counter ("<title> 02.mp3"), the book's own volume
++        by its subtitle ("Inheritance", "Book IV": "Inheritance 04"), or a bare "<title> - N" that names no author
++        (a series index after the book's own title: "Blonde Faith - 11"). Otherwise None. """
++    def norm(text):
++        return unaccented(text or '').lower().replace("'", '').replace('.', ' ')
++
++    def words(text):
++        return re.findall(r'[a-z0-9]+', norm(text))
++
++    wanted = words(title)
++    if not wanted or wanted[-1].isdigit():  # a title ending in a number ("Fahrenheit 451") is left alone
++        return None
++    writer = set(words(author))
++    writer |= {w + 's' for w in writer}
++    series = wanted
++    while series and series[0] in writer:
++        series = series[1:]
++    # a multi-file post's [03/21] counter and a trailing scene group are not part of the title
++    dotted = re.split(r'[\[(]\s*\d+\s*[_/]\s*\d+\s*[\])]', unaccented(release or '').lower().replace("'", ''))[0]
++    release = dotted.replace('.', ' ')  # norm(), keeping the dotted copy aligned for "12. Discworld"
++    release = re.sub(r'((?:epub|ebook|mobi|azw3|pdf|retail|mp3|m4b|audiobook|web)\s*)-[a-z0-9]+$', r'\1', release)
++    names = [(wanted, False)]
++    if series and series != wanted and not series[-1].isdigit():
++        names.append((series, True))
++    match = listed = None
++    for name, series_only in names:
++        name = r'(?<![a-z0-9])' + r'[\s_,:;!?&-]+'.join(name)
++        match = re.search(name + r'(?P<sep>[\s_\]),:-]*(?:(?:book|bk|vol|volume)\s*|#\s*)?)(?P<vol>\d{1,2})'
++                          r'(?![a-z0-9]|\s*(?:of\b|[-&_/]\s*\d))', release)
++        if not match and series_only:  # a list number, "12. Discworld - Witches Abroad", not a count ("41 Discworld")
++            match = listed = re.search(r'(?<![a-z0-9.])(?P<vol>\d{1,2})\.\s*' + name + r'(?![a-z0-9])', dotted)
++        if match and int(match.group('vol')) != 1:
++            break
++    if not match or int(match.group('vol')) == 1:
++        return None
++    volume = int(match.group('vol'))
++    skip = _NOT_A_TITLE | set(get_list(CONFIG['EBOOK_TYPE'])) | set(get_list(CONFIG['AUDIOBOOK_TYPE'])) | writer
++
++    def title_words(text):
++        return ' '.join(w for w in words(text)
++                        if w not in skip and not w.isdigit() and not re.fullmatch(r'(?:v|part|vol|cd)\d+', w))
++    by = '|'.join(w for w in writer if len(w) > 2)
++    before = re.split(r'(?<![a-z0-9])(?:%s)(?![a-z0-9])' % by, release[:match.start()]) if by else []
++    other = title_words(release[match.end():]) or (title_words(before[-1]) if len(before) > 1 and not listed else '')
++    if not other:  # nothing but the volume: "Assistant to the Villain 03 [epub]" (thaynes43/haynesnetwork#738)
++        if listed or volume < 2 or _PART_FILE.match(dotted, match.end('vol')) or own_volume(subtitle) == volume:
++            return None
++        if '-' in match.group('sep') and not (by and re.search(r'(?<![a-z0-9])(?:%s)(?![a-z0-9])' % by, release)):
++            return None
++        return volume, ''
++    own = own_volume(subtitle)
++    subtitle = ' '.join(w for w in words(subtitle) if w not in _NOT_A_TITLE and not w.isdigit() and w not in
++                        ('book', 'bk', 'vol', 'volume', 'part', 'novel', 'one', 'two', 'three', 'four', 'five'))
++    if other.endswith('series') or (subtitle and fuzz.token_set_ratio(subtitle, other) >= OTHER_TITLE_RATIO):
++        return None  # a series name, or this book by its subtitle
++    if fuzz.token_set_ratio(' '.join(wanted), other) >= OTHER_TITLE_RATIO:
++        # this book again ("Inheritance 04 - Inheritance"), unless more than its title follows, and the book does
++        # not call itself that volume: "Mistborn Bk 4 - The Alloy of Law - ... Mistborn" is not "Mistborn" (#738)
++        extra = re.sub(r'(?:^| )(?:read|narrated|performed|voiced) by(?: .*)?$', '',
++                       ' '.join(w for w in other.split() if w not in wanted))  # a narrator credit is no title
++        extra = ' '.join(w for w in extra.split() if w not in _EDITION_WORDS)
++        if not extra or own == volume or fuzz.token_set_ratio(' '.join(wanted), extra) >= OTHER_TITLE_RATIO:
++            return None
++    return volume, other
++
++
++# words that describe an edition of the book, not the title of another volume
++_EDITION_WORDS = {'edition', 'deluxe', 'special', 'anniversary', 'illustrated', 'revised', 'expanded', 'collectors',
++                  'dramatized', 'dramatised', 'dramatization', 'full', 'cast', 'bbc', 'radio', 'drama'}
++# a number that names a file of a multi-file post, not a volume: "<title> 02.mp3", "<title> 0.jpg"
++_PART_FILE = re.compile(r'\.(?:mp3|m4a|m4b|flac|ogg|aac|wma|jpe?g|png|par2|nfo|sfv|rar|zip|7z|r\d\d)(?![a-z0-9])')
++_NUMBER_WORDS = {w: n for n, w in enumerate('one two three four five six seven eight nine ten eleven twelve'.split(), 1)}
++_ROMAN = {r: n for n, r in enumerate('i ii iii iv v vi vii viii ix x xi xii xiii xiv xv xvi xvii xviii xix xx'.split(), 1)}
++
++
++def own_volume(subtitle):
++    """ The volume a subtitle gives the book itself ("Book IV", "Book 4", "Book Four", "Volume 2", "#4"), else None. """
++    found = re.search(r'(?<![a-z0-9])(?:book|bk|volume|vol|#)\s*(\d{1,2}|[a-z]+)(?![a-z0-9])',
++                      unaccented(subtitle or '').lower().replace('.', ' '))
++    if not found:
++        return None
++    n = found.group(1)
++    return int(n) if n.isdigit() else _ROMAN.get(n) or _NUMBER_WORDS.get(n)
++
++
++# haynes-ops fix: blacklist_failed compares the release title exactly, but the same release is spelled several ways.
++# The post-processor renames a Failed row's NZBtitle to the download client's job name (SABnzbd turns the dots into
++# spaces and drops a ".par2." suffix), and hand-written blocks copy that name, so the next search's
++# "Herman.Melville...Potter.2014.DANiSH..." did not match the block "Herman Melville ... Potter 2014 DANiSH ..."
++# (thaynes43/haynesnetwork#755). The URL is no key either: Prowlarr encrypts its download link anew for each search.
++def release_key(title):
++    """ A release title with case, and every run of dots, underscores and white space, ignored. """
++    return re.sub(r'[\s._]+', ' ', (title or '').lower()).strip()
++
++
++def url_title(url):
++    """ The release title in a download link's file parameter (Prowlarr and Jackett set it): no rename touches it. """
++    try:
++        return parse_qs(urlsplit(url or '').query).get('file', [''])[0]
++    except ValueError:
++        return ''
++
++
++def failed_release(db, cache, provider, auxinfo, title):
++    """ The Failed wanted row of this provider and format whose stored title, or the title in its download link, is
++        this release under release_key(). cache keeps each provider's keys for one find_best_result call. """
++    keys = cache.get((provider, auxinfo))
++    if keys is None:
++        keys = cache[(provider, auxinfo)] = {}
++        for row in db.select("SELECT NZBtitle, NZBurl, NZBprov FROM wanted WHERE NZBprov=? AND AuxInfo=? AND "
++                             "Status='Failed' ORDER BY rowid", (provider, auxinfo)):
++            for spelling in (row['NZBtitle'], url_title(row['NZBurl'])):
++                if spelling:
++                    keys.setdefault(release_key(spelling), row)
++    return keys.get(release_key(title))
++
++
++# haynes-ops fix: a release that names its language explicitly, for a book LazyLibrarian holds as English. Nothing
++# upstream reads a language from the release name, so "...Israel.Potter.2014.DANiSH.RETAiL.ePub..." scored as the
++# English book (thaynes43/haynesnetwork#755). Only explicit tags count, never a language word in the book's own
++# title or author ("The Danish Girl"), and a book in any other language, or with no language, is left alone.
++LANGUAGE_PENALTY = 50
++_LANGUAGE_NAMES = ('danish|dansk|swedish|svensk|norwegian|norsk|finnish|suomi|icelandic|german|deutsch|dutch|'
++                   'nederlands|flemish|french|francais|spanish|espanol|castellano|catalan|italian|italiano|portuguese|'
++                   'portugues|brazilian|polish|polski|czech|slovak|hungarian|magyar|romanian|russian|ukrainian|turkish|'
++                   'greek|hebrew|arabic|chinese|japanese|korean')
++_LANGUAGE_CODES = ('ger|deu|fre|fra|spa|esp|ita|por|dut|nld|swe|dan|nor|fin|pol|rus|hun|cze|ces|tur|gre|ell|heb|ara|'
++                   'chi|zho|jpn|kor')
++_SCENE_CODES = 'DE|DK|SE|NL|NO|FI|FR|ES|IT|PL|CZ|HU|RU|PT|BR|TR|GR|IS'
++_LANGUAGE_TAGS = (
++    # scene eBooks: the language right before the format words, "...Potter.2014.DANiSH.RETAiL.ePub.eBOOK-DECiPHER"
++    re.compile(r'(?<![a-z0-9])(' + _LANGUAGE_NAMES + r')[\s._-]+(?:retail|ebook|epub|pdf|mobi|azw3|audiobook|'
++               r'hoerbuch|mp3|m4b|unabridged|web)(?![a-z])', re.I),
++    # a bracket that holds a language: "[French]", "(German Edition)", and MAM's "[GER / EPUB]" ("[ENG / ...]" is not)
++    re.compile(r'[\[(]\s*(' + _LANGUAGE_NAMES + '|' + _LANGUAGE_CODES + r')\s*(?:edition|version|ed)?\s*'
++               r'(?:[/,|][^\])]*)?[\])]', re.I),
++    # MP3-scene audiobooks give the language after the source (and format): "-AUDiOBOOK-WEB-SE-2023-",
++    # "-2MP3CD-DE-2024-", "-AUDiOBOOK-WEB-MP3-DE-2024-", "-EB-NL"
++    re.compile(r'[-.](?i:web|dab|sat|cable|\d*(?:mp3)?cd|\d*dvd|eb|audiobook)(?:[-.](?i:mp3|flac|aac|m4b|ogg))?[-.]('
++               + _SCENE_CODES + r')(?=[-.]|$)'),
++    # a capital language code before the format: "Breaking Dawn (2008) NL Audiobook(mp3)" (not "IT": the King novel)
++    re.compile(r'(?<![A-Za-z0-9])(' + _SCENE_CODES.replace('IT|', '') + r')[\s._-]+(?i:audiobook|ebook|epub|retail)'
++               r'(?![a-z])'),
++    # a German edition word, "(Ungekürzt)", "Hörbuch" (REJECT_AUDIO lists them, but not as the mojibake
++    # "UngekÃ¼rzt" an indexer sends: names_language repairs that first)
++    re.compile(r'(?<![a-z])(ungekurzt|ungekuerzt|gekurzt|gekuerzt|horbuch|hoerbuch|horspiel|hoerspiel)(?![a-z])', re.I),
++)
++
++
++def _unmojibake(text):
++    """ UTF-8 read as Latin-1 or cp1252 ("UngekÃ¼rzt"), decoded back, once; anything else unchanged. """
++    if 'Ã' in text:
++        for codec in ('latin-1', 'cp1252'):
++            try:
++                return text.encode(codec).decode('utf-8')
++            except UnicodeError:
++                pass
++    return text
++
++
++def names_language(release, title, subtitle, author):
++    """ The language a release names explicitly ("DANiSH", "WEB-SE", "[GER / EPUB]", "[French]"), else None. A
++        language word that is also a word of the book's title, subtitle or author is not read as a tag. """
++    own = set(re.findall(r'[a-z0-9]+', unaccented(f"{title} {subtitle or ''} {author}").lower()))
++    text = unaccented(_unmojibake(release or ''))
++    for tag in _LANGUAGE_TAGS:
++        for found in tag.finditer(text):
++            if found.group(1).lower() not in own:
++                return found.group(1)
++    return None
++
++
++def is_english(booklang):
++    """ True for LazyLibrarian's English language values: en, eng, en-GB, en-US, English. """
++    return (booklang or '').strip().lower().replace('_', '-').split('-')[0] in ('en', 'eng', 'english')
+ 
+ 
+ def find_best_result(resultlist, book, searchtype, source):
+@@ -101,6 +380,11 @@
+             prefix = 'nzb'
+         else:  # rss and direct providers return same names as torrents
+             prefix = 'tor_'
++
++        # haynes-ops fix: the Failed releases per provider (failed_release), and the book's language (names_language)
++        failed_keys = {}
++        booklang = db.match('SELECT BookLang FROM books WHERE BookID=?', (book.get('bookid'),))
++        english = is_english(booklang['BookLang']) if booklang else False
+ 
+         logger.debug(f'Searching {len(resultlist)} {source} results for best {auxinfo} match')
+         matches = []
+@@ -150,6 +434,12 @@
+                         logger.debug(f"Rejecting {res[prefix + 'title']}, title blacklisted (Failed) at "
+                                      f"{blacklisted['NZBprov']}")
+                         rejected = True
++                if not rejected:  # haynes-ops fix: the same release under another spelling, for this format
++                    blacklisted = failed_release(db, failed_keys, res[f"{prefix}prov"], auxinfo, res[f"{prefix}title"])
++                    if blacklisted:
++                        logger.debug(f"Rejecting {res[prefix + 'title']}, release blacklisted (Failed) at "
++                                     f"{blacklisted['NZBprov']} as {blacklisted['NZBtitle']}")
++                        rejected = True
+ 
+             if not rejected and CONFIG.get_bool('BLACKLIST_PROCESSED'):
+                 cmd = "SELECT * from wanted WHERE NZBurl=?"
+@@ -290,6 +580,19 @@
+                     for word in wordlist:
+                         for i in [i for i, x in enumerate(preferwords) if x == word]:
+                             score += i + 1
++
++                # haynes-ops fix: a later volume of a series named after the wanted book
++                other_volume = names_other_volume(res[f"{prefix}title"], title, book.get('bookSub'), author)
++                if other_volume:
++                    score -= VOLUME_PENALTY
++                    logger.debug(f"{result_title} is volume {other_volume[0]} ({other_volume[1]}) of a series "
++                                 f"named {title}: score {round(score, 2)}")
++                # haynes-ops fix: a release that names another language, for an English book
++                language = english and names_language(res[f"{prefix}title"], title, book.get('bookSub'), author)
++                if language:
++                    score -= LANGUAGE_PENALTY
++                    logger.debug(f"{result_title} names the language {language} and the book is English: "
++                                 f"score {round(score, 2)}")
+ 
+                 matches.append([score, new_value_dict, control_value_dict, res['priority']])
+ 

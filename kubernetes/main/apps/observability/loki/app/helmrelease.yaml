@@ -72,10 +72,15 @@ spec:
       #     makes the ruler see those files as tenant `fake` under /rules.
       #   * enable_alertmanager_v2: Alertmanager here is v0.34.0. Loki defaults to the v1
       #     /api/v1/alerts endpoint, which that version removed long ago.
-      #   * alertmanager_url points at the ClusterIP Service, not `alertmanager-operated`
-      #     (the headless one): a single ruler process resolves the name once per send, so
-      #     the VIP keeps it on a READY replica of the HA pair instead of pinning it to one
-      #     pod's A record. The pair gossips, so one recipient is enough.
+      #   * alertmanager_url lists BOTH replicas of the HA pair (2026-10-06). The pair gossips
+      #     silences and the notification log, NOT alerts: each replica only holds the alerts
+      #     sent to it. Pointed at the ClusterIP Service, the ruler's kept-alive connection
+      #     landed every alert on replica 0, so anything reading the API through the Service
+      #     (Grafana's Alertmanager datasource, the alert-responder's poll) saw Loki alerts on
+      #     about half its requests (found verifying haynesnetwork's OwedCheck* rules: replica 0
+      #     held them, replica 1 nothing). Each comma-separated URL is its own notifier group,
+      #     so every alert goes to both; the cluster still sends each notification once. A
+      #     replica that is down only costs failed sends to it (loki_prometheus_notifications_errors_total).
       #   * rule_path is the ruler's scratch copy dir and must be writable — it goes on the
       #     PVC next to the WAL, never inside the sidecar's folder.
       rulerConfig:
@@ -86,7 +91,7 @@ spec:
           local:
             directory: /rules
         rule_path: /var/loki/ruler-rule-path
-        alertmanager_url: http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093
+        alertmanager_url: http://alertmanager-kube-prometheus-stack-0.alertmanager-operated.observability.svc.cluster.local:9093,http://alertmanager-kube-prometheus-stack-1.alertmanager-operated.observability.svc.cluster.local:9093
         enable_alertmanager_v2: true
         enable_api: true
       limits_config:
@@ -100,6 +105,13 @@ spec:
         retention_period: 90d
     singleBinary:
       replicas: 1
+      # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limits.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 1Gi
+        limits:
+          memory: 4Gi
       # 2026-09-09: prefer bare-metal masters — all worker VMs share one Proxmox host (see incident)
       affinity:
         nodeAffinity:
@@ -152,6 +164,12 @@ spec:
     sidecar:
       image:
         repository: ghcr.io/kiwigrid/k8s-sidecar
+      resources:
+        requests:
+          cpu: 10m
+          memory: 96Mi
+        limits:
+          memory: 256Mi
       rules:
         # <ruler local.directory>/<tenant>. auth_enabled is false, so the tenant is `fake`.
         # Both the loki container and this sidecar mount the shared emptyDir at this path.

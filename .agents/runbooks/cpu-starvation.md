@@ -1,0 +1,69 @@
+# CPU starvation on a node: `NodeLoadSaturated` (and the MQTT broker)
+
+`NodeLoadSaturated` is `severity: critical`, so it pages Pushover, and it carries no
+`scope: host`, so the alert-responder diagnoses it. The broker alert from the same
+incident, `EMQXCoreNotReady`, went away with EMQX on 2026-10-06 (haynes-ops#3395).
+Its replacement is `MosquittoNotReady`, with the same reasoning and triage in
+[`mqtt-broker.md`](mqtt-broker.md).
+
+**2026-10-05, 23:41-00:12Z.** An agent session in the dev-env pod (namespace `dev`,
+which had no CPU limit then) ran about 60 `while :; do :; done` burners plus parallel
+vitest runs on talosm02, a node with 20 threads. Load1 passed 100. Every pod on the
+node starved, BestEffort pods first. EMQX restart-looped: its 1 s `/status` liveness
+probe timed out, and the broker had no Ready pod from 00:04 to 00:12:30Z, so every
+Zigbee light was dead. The traefik, authentik, cnpg-operator, cert-manager-webhook,
+cilium-operator, k8tz, snapshot-controller, node-exporter and blackbox-exporter health
+checks failed on the same node. Nothing paged. The same dev-env pod had already held
+talosm02 at 99% CPU for hours on 2026-09-26.
+
+## `NodeLoadSaturated`: what it measures
+
+The node's 15-minute load average is above 2x its CPU count, and has been for 10
+minutes. A starved node also starves its own node-exporter, so expect scrape gaps
+(`up{job="node-exporter"} == 0`) from that node. The rule bridges them with
+`last_over_time(...[15m])`. A gap is part of the symptom, not a separate fault.
+
+Why this rule exists next to the stock `NodeSystemSaturation` (load1/CPU > 2 for 15m,
+a warning): on 2026-10-05 the stock rule went pending and never fired, because each
+scrape gap (node-exporter `up==0` 23:43-23:47, 23:50-23:53 and 00:03-00:12Z) drops the
+series and resets its `for`. Backtested on the stored series, this rule's expression is
+true without a break from 23:47:30 to 00:30Z on talosm02, so `for: 10m` fires at 23:57:30,
+inside the incident. In the 30 days before it, only talosm02 crossed 2x, twice: that
+night and 2026-09-26 (dev-env at about 17.5 cores). No other node went above 1.23x.
+
+Load counts runnable tasks **and** tasks in uninterruptible (D-state) sleep, so first
+tell CPU starvation from a storage stall:
+
+```promql
+instance:node_cpu_utilisation:rate5m{kubernetes_node="<node>"}   # high (>0.8): CPU. Low: D-state I/O, see the Ceph/NFS runbooks
+topk(5, sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{node="<node>", container!=""}[5m])))
+```
+
+`kubectl top pod -A --sort-by=cpu` gives the same ranking when the kubelet answers.
+
+## What to do with the consumer
+
+- **dev-env (namespace `dev`).** An agent session is running the load. Kill the
+  runaway processes, not the pod: from a shell in the dev-env pod, run
+  `ps -eo pid,pcpu,etime,args --sort=-pcpu | head`, then `kill` the offenders.
+  Deleting or restarting the dev-env pod ends **every** agent session in it, and
+  that is Tom's call. The CPU limit for dev-env is haynes-ops#3381, a held draft
+  because merging it restarts the pod. The kubelet was never starved (it used at most
+  0.18 cores during the incident). The fix is CPU requests on the BestEffort critical
+  pods (#3385: done in #3384, #3387, #3388; the remaining BestEffort pods are tracked in
+  #3389). The kubelet/system reservations (#3382) are node-allocatable hygiene, not the
+  starvation fix.
+- **Any other pod.** Capture its logs first, then restart it if it is a runaway loop.
+  If it is legitimate load, it needs requests and limits through git.
+- **The rem-\* lane.** It may diagnose and report on this alert. It may not delete
+  or restart the dev-env pod, and it may not delete any PVC. A starved node is not a
+  storage fault. When the culprit is dev-env, escalate with the process list.
+
+## The MQTT broker on a starved node
+
+The broker is Mosquitto now (`database/mosquitto-0`). It has a CPU request, so it is
+never BestEffort, and only TCP probes, so a starved node slows it down instead of
+restart-looping it. If `MosquittoNotReady` fires next to `NodeLoadSaturated`, fix the
+node first. The broker recovers on its own with the same PVC and no data loss.
+**Never delete the broker PVC (`data-mosquitto-0`) for a starvation restart loop.**
+It holds the retained store. The triage table is in [`mqtt-broker.md`](mqtt-broker.md).

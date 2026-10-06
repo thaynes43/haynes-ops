@@ -1,0 +1,169 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+# The house MQTT broker: Mosquitto, one replica, no operator (haynes-ops#3395).
+# Clients: zigbee2mqtt, Home Assistant (MQTT config entry, UI-managed), AppDaemon.
+# Any change here is an ordinary StatefulSet rolling restart: the broker is down for
+# a few seconds and every client reconnects on its own. Runbook:
+# .agents/runbooks/mqtt-broker.md
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: mosquitto
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    controllers:
+      mosquitto:
+        type: statefulset
+        annotations:
+          reloader.stakater.com/auto: "true"
+        initContainers:
+          hash-passwords:
+            image: &image
+              repository: docker.io/library/eclipse-mosquitto
+              tag: 2.1.2-alpine@sha256:38c0da4f2ef84284d47b3b3eeea1cb3bdeabe81ee10caf0cd5c5ff61ee3ea408
+            command: ["/bin/sh", "-c"]
+            args:
+              - umask 077 && cp /mosquitto/secret/passwd /mosquitto/auth/passwd && mosquitto_passwd -U /mosquitto/auth/passwd
+            securityContext: &securityContext
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities: { drop: ["ALL"] }
+            resources:
+              requests:
+                cpu: 10m
+                memory: 16Mi
+              limits:
+                memory: 64Mi
+        containers:
+          app:
+            image: *image
+            command: ["/usr/sbin/mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
+            probes:
+              # TCP probes on purpose. The 2026-10-05 outage was a liveness probe
+              # restart-looping a CPU-starved broker. The kernel accepts the TCP
+              # handshake even when the broker is starved, so liveness only fires
+              # for a dead or wedged process: 6 failures 20 s apart, with a 5 s timeout.
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  tcpSocket:
+                    port: &port 1883
+                  initialDelaySeconds: 10
+                  periodSeconds: 20
+                  timeoutSeconds: 5
+                  failureThreshold: 6
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  tcpSocket:
+                    port: *port
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+            securityContext: *securityContext
+            # Requests from day one: never BestEffort (2026-10-05). The smoke test
+            # (3,000 retained configs, a 5.6 MB retained payload, a restart) peaked
+            # at 27 MiB RSS. The live load is about 11 msg/s, 500 subscriptions and
+            # 7,400 retained messages (~15 MB); EMQX doing the same work needed
+            # 0.01 core at p99 and 0.27 core at its boot peak. 100m keeps the broker's
+            # CPU share under contention. No CPU limit, so the burst after a restart
+            # (HA re-fetching every retained config) is never throttled. The memory
+            # limit only catches a runaway client queue (max_queued_messages).
+            resources:
+              requests:
+                cpu: 100m
+                memory: 64Mi
+              limits:
+                memory: 512Mi
+        statefulset:
+          volumeClaimTemplates:
+            - name: data
+              storageClass: ceph-block
+              accessMode: ReadWriteOnce
+              size: 1Gi
+              globalMounts:
+                - path: /mosquitto/data
+    defaultPodOptions:
+      # Prefer the bare-metal masters, like the other single-instance home services:
+      # all worker VMs share one Proxmox cluster, which fenced wholesale on 2026-09-09
+      # and took the broker (then EMQX on talosw02) down for 3.5 h. Soft preference.
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1883
+        runAsGroup: 1883
+        fsGroup: 1883
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+    service:
+      app:
+        # mqtt://mqtt.database.svc.cluster.local:1883. A broker-neutral name, so the
+        # next broker change is a selector change and not an edit to every client.
+        # 192.168.40.205 is the LAN address EMQX's emqx-listeners had. No known client
+        # uses it (all three are in-cluster), but anything on the LAN that pointed at
+        # the old broker IP keeps working.
+        forceRename: mqtt
+        controller: mosquitto
+        type: LoadBalancer
+        annotations:
+          lbipam.cilium.io/ips: 192.168.40.205
+        ports:
+          mqtt:
+            port: *port
+    persistence:
+      config:
+        type: configMap
+        name: mosquitto-configmap
+        advancedMounts:
+          mosquitto:
+            app:
+              # A ConfigMap change restarts the pod (reloader), so subPath's lack of
+              # live updates does not matter.
+              - path: /mosquitto/config/mosquitto.conf
+                subPath: mosquitto.conf
+                readOnly: true
+      secret:
+        # The plaintext password file. The initContainer hashes a copy of it into the
+        # `auth` emptyDir. That copy is a plain file: Mosquitto 2.1 refuses to open a
+        # password file through a symlink (a Secret mount is one), unless
+        # MOSQUITTO_UNSAFE_ALLOW_SYMLINKS is set. The broker
+        # container mounts it too, so you can publish from inside the pod without the
+        # secret leaving it (runbook: "Publish or subscribe by hand").
+        type: secret
+        name: mosquitto-secret
+        globalMounts:
+          - path: /mosquitto/secret
+            readOnly: true
+      auth:
+        type: emptyDir
+        globalMounts:
+          - path: /mosquitto/auth
+      tmp:
+        # `mosquitto_passwd -U` writes through tmpfile(), which musl hardcodes to /tmp,
+        # and the root fs is read-only (first rollout: "Unable to open temporary file").
+        type: emptyDir
+        advancedMounts:
+          mosquitto:
+            hash-passwords:
+              - path: /tmp

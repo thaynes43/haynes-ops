@@ -7,5 +7,5 @@ resources:
   - ./namespace.yaml
   # Flux-Kustomizations
   - ./cloudnative-pg/ks.yaml
-  - ./emqx/ks.yaml
+  - ./mosquitto/ks.yaml
   - ./dragonfly/ks.yaml

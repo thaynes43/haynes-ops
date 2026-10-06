@@ -252,6 +252,35 @@ OSDs.
   boot logged `boot sequence: done: 6.477328845s`. That line is the proof the loop is
   gone: once the boot sequence is done, there is no deadline left to hit.
 
+## 8. `kubelet.extraConfig.systemReserved` replaces Talos's default map
+
+Talos reserves `cpu: 50m`, `memory: 512Mi` (masters) or `384Mi` (workers), `pid: "100"`
+and `ephemeral-storage: 256Mi` for the system, but only when `systemReserved` is empty
+(`kubelet_spec.go`: `if len(config.SystemReserved) == 0`). Setting the map in
+`machine.kubelet.extraConfig` drops every default key you leave out, with no warning. The
+template therefore repeats `pid` and `ephemeral-storage` next to its own `cpu`/`memory`
+(#3382). `kubeReserved` has no Talos default.
+
+- **What the reservations do here.** `enforceNodeAllocatable` stays at the kubelet default
+  `["pods"]`. Allocatable drops by the reserved amounts, the kubepods cgroup's `memory.max`
+  becomes capacity minus the reservations, and its `cpu.weight` follows allocatable CPU. Talos
+  sets its own `cpu.weight` and `memory.min`/`low` on `/podruntime` (kubelet, containerd, etcd)
+  and `/system`. Adding `kube-reserved`/`system-reserved` to `enforceNodeAllocatable` would
+  replace those with smaller weights and hard memory caps on etcd and containerd, so do not.
+- **CPU is shared by weight, not capped.** Under full contention the top-level split on a
+  master is about kubepods 780 : podruntime 157 : init 79 : system 59
+  (`talosctl cgroups --preset cpu`). Inside kubepods, every BestEffort pod on the node shares
+  one `cpu.weight` of 1, against the burstable class's weight equal to its summed requests.
+  A busy pod therefore starves BestEffort pods long before it starves the kubelet.
+- **Lowering allocatable below the pods' requests rejects pods.** After the change the
+  kubelet restarts and admits its pods again; any that no longer fit fail with
+  `OutOfcpu`/`OutOfmemory`. Compare each node's `kubectl describe node` "Allocated
+  resources" with the new allocatable before you sync.
+- **Applying** is a kubelet restart on each node, no reboot (Omni applies config in
+  `AUTO` mode, and kubelet settings take effect live). Verify with
+  `talosctl -n <ip> read /etc/kubernetes/kubelet.yaml | grep -A5 Reserved` and
+  `kubectl get node <n> -o jsonpath='{.status.allocatable}'`.
+
 ---
 
 ## Quick triage map

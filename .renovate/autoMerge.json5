@@ -116,8 +116,9 @@
       // 'digest' (2026-06-28): SHA-pinned image refreshes on the SAME tag are at
       // least as safe as minor/patch for these stateless single-pod apps, yet the
       // minor/patch-only list stranded every digest bump forever (cloudflare-ddns
-      // #1884, postgres-init #1889/#1890). The Immich carve-out below still blocks
-      // immich-app/* digests (matches by package name, last rule wins per-dep).
+      // #1884, postgres-init #1889/#1890). immich-app/* digests ride this rule too:
+      // the Immich carve-out that used to block them was removed 2026-07-05 (see
+      // the note at the end of this file).
       matchUpdateTypes: ['minor', 'patch', 'digest'],
       automerge: true,
       automergeType: 'pr',
@@ -242,6 +243,31 @@
       description: 'comfyui image — manual/supervised merge only (restart = cold model load; new ComfyUI needs a render check)',
       matchDatasources: ['docker'],
       matchPackageNames: ['/thaynes43/comfyui$/'],
+      automerge: false,
+    },
+    // LazyLibrarian carve-out (2026-10-06) — the image runs with seven patched
+    // upstream files mounted over it (apps/downloads/lazylibrarian/app/patches/),
+    // each a copy of THIS tag's file plus marked fixes. A bump must re-derive them
+    // (patches/tests/README.md), or the old copies silently revert the new image's
+    // changes. The "LazyLibrarian Overlays" check runs the harness against the new
+    // tag but is not a required context, so Renovate must never merge on its own:
+    // the PR opens, an agent re-derives the overlays in it, then merges.
+    {
+      description: 'lazylibrarian image — manual merge only (re-derive the patched upstream files first)',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/linuxserver/lazylibrarian$/'],
+      automerge: false,
+    },
+    // calibre carve-out (2026-10-06) — the EPUB converter CronJob
+    // (apps/downloads/lazylibrarian/app/epub-convert-cronjob.yaml) writes into the
+    // books library. Its "LazyLibrarian EPUB Convert" check runs the converter's
+    // tests inside the new calibre image, but it is advisory, so the downloads/**
+    // leaf rule would merge a bump on flux-local alone. Manual merge: read that
+    // check, then merge.
+    {
+      description: 'calibre image (EPUB converter) — manual merge only (read the LazyLibrarian EPUB Convert check first)',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/linuxserver/calibre$/'],
       automerge: false,
     },
     // Immich carve-out REMOVED 2026-07-05 (hands-off directive). Immich minor/patch/

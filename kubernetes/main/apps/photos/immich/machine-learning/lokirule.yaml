@@ -1,0 +1,67 @@
+# Loki ruler alerts for immich-machine-learning (loaded via the loki_rule ConfigMap label, see
+# kustomization.yaml). Both are warnings: they show in Alertmanager and Grafana and never page.
+# A failed ML request costs nothing permanent, because the nightly Missing run queues the asset
+# again. These alerts exist so that a return of the out-of-memory retry loop, or a guard that
+# stopped loading, is noticed instead of passing silently.
+# Runbook: .agents/runbooks/immich-ml-backlog.md, "The VRAM guard".
+groups:
+  - name: immich-machine-learning
+    rules:
+      - alert: ImmichMlCudaOutOfMemory
+        # The three ways a GPU allocation fails in ML's log. The arena cap failing a run:
+        # "Failed to allocate memory for requested buffer" (ONNX Runtime's own error line).
+        # The card itself full: "CUDA failure 2: out of memory" (cudaStreamCreate, cublasCreate)
+        # or a cuBLAS/cuDNN ALLOC_FAILED, inside the Python traceback. The traceback is
+        # formatted by Rich, which wraps at 80 columns without a terminal; COLUMNS=200 in
+        # helmrelease.yaml keeps these messages on one line. Each event logs several matching
+        # lines, so read the value as "events happened", not as a count of failed jobs.
+        # Measured 2026-10-06 before the VRAM guard, in 10 minutes of the worst-case load test:
+        # 3,497 failed requests, and 242 lines matched even at 80 columns (runbook).
+        expr: |
+          sum by (app) (count_over_time({namespace="photos", app="immich-machine-learning"} |~ "Failed to allocate memory|out of memory|ALLOC_FAILED" [15m])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            immich-machine-learning logged GPU out-of-memory errors in the last 15 minutes.
+          description: >-
+            ML failed to allocate GPU memory, so some Smart Search, Face Detection or OCR jobs
+            failed; the nightly Missing run queues those assets again. With the VRAM guard in
+            place this should not happen. "Failed to allocate memory ... Available memory of"
+            alone means one run needed more than the per-session cap
+            (IMMICH_ML_CUDA_MEM_LIMIT_MB): an extreme image, such as an OCR of a very long
+            screenshot, and it fails again every night until the cap or the asset changes.
+            "CUDA failure 2: out of memory" means the card itself was full. Check the guard's start-up line
+            (`kubectl logs -n photos deploy/immich-machine-learning | grep immich-ml-vram-guard`),
+            the talosm05 card (`nvidia-smi` in its nvidia-gpu-exporter pod; ollama-assist02 holds
+            about 7 GB), and whether something else landed on that card. Runbook:
+            .agents/runbooks/immich-ml-backlog.md, "The VRAM guard".
+        labels:
+          severity: warning
+
+      - alert: ImmichMlVramGuardInactive
+        # ML loaded a model, but no CUDA session was guarded in the same window. Either the guard
+        # did not load (an image changed PYTHONPATH or moved Python, or the patch failed and
+        # logged "immich-ml-vram-guard ERROR"), or ML fell back to the CPU. Both need a look.
+        expr: |
+          (
+            sum by (app) (count_over_time({namespace="photos", app="immich-machine-learning"} |~ "Loading (detection|recognition|visual|textual) model" [30m])) > 0
+            unless
+            sum by (app) (count_over_time({namespace="photos", app="immich-machine-learning"} |= "immich-ml-vram-guard INFO: guarding CUDA session" [30m])) > 0
+          )
+          or
+          sum by (app) (count_over_time({namespace="photos", app="immich-machine-learning"} |= "immich-ml-vram-guard ERROR" [30m])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            immich-machine-learning is running without its VRAM guard.
+          description: >-
+            ML loaded models in the last 30 minutes, but the VRAM guard did not guard a CUDA
+            session, or it logged an error. Without the guard ML can grow into the memory that
+            ollama-assist02 shares on talosm05 (the 2026-10-06 out-of-memory loop). Check
+            `kubectl logs -n photos deploy/immich-machine-learning | grep -E 'immich-ml-vram-guard|providers'`.
+            No guard line at all: the image changed PYTHONPATH or its Python, so fix the mount or
+            PYTHONPATH in helmrelease.yaml. An ERROR line: an onnxruntime API change, so fix
+            vram-guard/sitecustomize.py. Only CPUExecutionProvider in the providers line: ML lost
+            the GPU. Runbook: .agents/runbooks/immich-ml-backlog.md, "The VRAM guard".
+        labels:
+          severity: warning
