@@ -137,6 +137,19 @@ spec:
         containers:
           app:
             image:
+              # Pinned to sigoalumni-org main commit 02bc6eb (2026-10-06):
+              # rich text for the event Body / Description and the
+              # brothers-only details (sigoalumni-org #157, issue #153) — a
+              # small editor (bold, italic, heading, bullets, numbers, links),
+              # sanitized on save and on render, formatted in the announce
+              # email's HTML part, plain-text rendering everywhere else.
+              # MIGRATION 0023 adds two NULLABLE columns (description_html,
+              # member_details_html) — additive, no backfill, safe while old
+              # pods overlap in the rolling update (they never touch them).
+              # Also carries #155 (docs) and CI/terraform-only commits. No env
+              # or secret change.
+              # On top of 4294d65:
+              # (previous pin note follows)
               # Pinned to sigoalumni-org main commit 4294d65 (2026-09-17):
               # Board Meeting Minutes review-gate fix (sigoalumni-org #145).
               # Live verification found the one real sample of ΣΦΟ Scribe
@@ -241,7 +254,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 4294d65e7bec0bde0e6eb9c6bb05864a079b1d1e
+              tag: 02bc6eb2545d4f6d187b1225659517386906a5d5
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
