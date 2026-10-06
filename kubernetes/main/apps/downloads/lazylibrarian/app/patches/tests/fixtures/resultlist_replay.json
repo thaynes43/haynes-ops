@@ -1,0 +1,3478 @@
+[
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Christopher Paolini - Inheritance 04 - Inheritance v5.epub",
+  "volume": null,
+  "upstream": 102.0,
+  "patched": 102.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Chain of Gold",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "(AMZN2020) [54_55] - _Cassandra Clare - Last Hours 01 - Chain of Gold - 42.mp3_",
+  "volume": null,
+  "upstream": 67.0,
+  "patched": 67.0
+ },
+ {
+  "library": "eBook",
+  "title": "Skyward",
+  "sub": "",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Skyward 04] - Defiant (retail) (epub)",
+  "volume": [
+   4,
+   "defiant"
+  ],
+  "upstream": 102.0,
+  "patched": 52.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [Throne of Glass 05] - Empire of Storms (epub)",
+  "volume": [
+   5,
+   "empire of storms"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah.J.Maas-[Throne.of.Glass.6]-Tower.of.Dawn",
+  "volume": [
+   6,
+   "tower of dawn"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "Fahrenheit 451",
+  "sub": "A Novel",
+  "author": "Ray Bradbury",
+  "release": "Ray Bradbury - Fahrenheit 451 (60th Anniversary) (epub) (epub)",
+  "volume": null,
+  "upstream": 106.0,
+  "patched": 106.0
+ },
+ {
+  "library": "eBook",
+  "title": "Harry Potter",
+  "sub": "5 Years of Magic, Adventure, and Mystery at Hogwarts",
+  "author": "J.K. Rowling",
+  "release": "J K Rowling - [Harry Potter 01] - Harry Potter and the Sorcerers Stone (retail) (epub)",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "eBook",
+  "title": "Once Upon a Broken Heart",
+  "sub": "",
+  "author": "Stephanie Garber",
+  "release": "Stephanie Garber - [Once Upon a Broken Heart 01] - Once Upon a Broken Heart (epub)",
+  "volume": null,
+  "upstream": 103.0,
+  "patched": 103.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "The Science of Discworld IV",
+  "sub": "Judgement Day",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett, Ian Stewart, Jack Cohen - The Science of Discworld IV (Unabridged) (2013) MP3",
+  "volume": null,
+  "upstream": 97.0,
+  "patched": 97.0
+ },
+ {
+  "library": "eBook",
+  "title": "All I Did Was Shoot My Man",
+  "sub": "A Leonid McGill Mystery",
+  "author": "Walter Mosley",
+  "release": "All I Did Was Shoot My Man - 4",
+  "volume": null,
+  "upstream": 61.2,
+  "patched": 61.2
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh.Mafi-[Shatter.Me.01.5-06.5].azw3.epub.mobi",
+  "volume": null,
+  "upstream": 104.0,
+  "patched": 104.0
+ },
+ {
+  "library": "eBook",
+  "title": "Gone Fishin'",
+  "sub": "Featuring an Original Easy Rawlins Short Story \"Smoke\"",
+  "author": "Walter Mosley",
+  "release": "Gone Fishin - 6",
+  "volume": null,
+  "upstream": 60.54,
+  "patched": 60.54
+ },
+ {
+  "library": "eBook",
+  "title": "Always Outnumbered, Always Outgunned",
+  "sub": "",
+  "author": "Walter Mosley",
+  "release": "Always Outnumbered, Always Outgunned - 1",
+  "volume": null,
+  "upstream": 62.95,
+  "patched": 62.95
+ },
+ {
+  "library": "eBook",
+  "title": "The Dispossessed",
+  "sub": "",
+  "author": "Ursula K. Le Guin",
+  "release": "The Dispossessed (25)",
+  "volume": null,
+  "upstream": 57.57,
+  "patched": 57.57
+ },
+ {
+  "library": "eBook",
+  "title": "Alcatraz Vs. the Evil Librarians",
+  "sub": "",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Alcatraz vs. the Evil Librarians 05] - The Dark Talent (retail) (epub)",
+  "volume": [
+   5,
+   "the dark talent"
+  ],
+  "upstream": 95.92,
+  "patched": 45.92
+ },
+ {
+  "library": "eBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Clare Cassandra - Chroniken der Unterwelt 03 - City of Glass epub",
+  "volume": [
+   3,
+   "city of glass"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "eBook",
+  "title": "Blonde Faith",
+  "sub": "",
+  "author": "Walter Mosley",
+  "release": "Blonde Faith - 11",
+  "volume": null,
+  "upstream": 66.86,
+  "patched": 66.86
+ },
+ {
+  "library": "eBook",
+  "title": "The Long Fall",
+  "sub": "",
+  "author": "Walter Mosley",
+  "release": "The Long Fall - 1",
+  "volume": null,
+  "upstream": 63.29,
+  "patched": 63.29
+ },
+ {
+  "library": "eBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Clare Cassandra - Chroniken der Unterwelt 01 - City of Bones epub",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Alcatraz Vs. the Evil Librarians",
+  "sub": "",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson & Janci Patterson - [Alcatraz vs the Evil Librarians 06] - Bastille vs. the Evil Librarians (epub)",
+  "volume": [
+   6,
+   "bastille vs the evil librarians"
+  ],
+  "upstream": 94.92,
+  "patched": 44.92
+ },
+ {
+  "library": "AudioBook",
+  "title": "The Infernal Devices",
+  "sub": "Clockwork Angel; Clockwork Prince; Clockwork Princess",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - The Infernal Devices 3 - The Clockwork Princess MP3",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [Throne of Glass 06] - Tower of Dawn (retail) (epub)",
+  "volume": [
+   6,
+   "tower of dawn"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "eBook",
+  "title": "Once Upon a Broken Heart",
+  "sub": "",
+  "author": "Stephanie Garber",
+  "release": "Stephanie Garber - [Once Upon a Broken Heart 01] - Once Upon a Broken Heart (mobi)",
+  "volume": null,
+  "upstream": 102.0,
+  "patched": 102.0
+ },
+ {
+  "library": "eBook",
+  "title": "Binti",
+  "sub": "",
+  "author": "Nnedi Okorafor",
+  "release": "Nnedi Okorafor - [Binti 01] - Binti (azw3)",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "The Infernal Devices",
+  "sub": "Clockwork Angel; Clockwork Prince; Clockwork Princess",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - The Infernal Devices 2 - The Clockwork Prince MP3",
+  "volume": [
+   2,
+   "the clockwork prince"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 05] - Empire of Storms (epub)",
+  "volume": [
+   5,
+   "empire of storms"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Maas, Sarah J - Throne of Glass 03 - Heir of Fire (Retail) [epub]",
+  "volume": [
+   3,
+   "heir of fire"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "eBook",
+  "title": "Once Upon a Broken Heart",
+  "sub": "",
+  "author": "Stephanie Garber",
+  "release": "Stephanie Garber - [Once Upon a Broken Heart 01] - Once Upon a Broken Heart (azw3)",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Clare Cassandra - Chroniken der Unterwelt 02 - City of Ashes epub",
+  "volume": [
+   2,
+   "city of ashes"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "The Infernal Devices",
+  "sub": "Clockwork Angel; Clockwork Prince; Clockwork Princess",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - The Infernal Devices 1_ Clockwork Angel (2010) MP3",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 01] - Throne of Glass (retail) (azw3)",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Clare Cassandra - Chroniken der Unterwelt 05 - City of Lost Souls epub",
+  "volume": [
+   5,
+   "city of lost souls"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - Throne of Glass 00.4 The Assassin and The Empire (epub, mobi)",
+  "volume": [
+   0,
+   "the assassin and the empire"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "eBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Clare Cassandra - Chroniken der Unterwelt 04 - City of fallen Angels epub",
+  "volume": [
+   4,
+   "city of fallen angels"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Pathfinder",
+  "sub": "",
+  "author": "Orson Scott Card",
+  "release": "Orson Scott Card - Ruins Pathfinder, Book 2 (Unabridged) MP3",
+  "volume": [
+   2,
+   "ruins"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Clare, Cassandra - Chroniken der Unterwelt 05 - City of Lost Souls",
+  "volume": [
+   5,
+   "city of lost souls"
+  ],
+  "upstream": 95.0,
+  "patched": 45.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 04] - Queen of Shadows (US) (retail) (epub)",
+  "volume": [
+   4,
+   "queen of shadows"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Deadlocked",
+  "sub": "A Sookie Stackhouse Novel",
+  "author": "Charlaine Harris",
+  "release": "(NMR) [20_27] - _Charlaine Harris - Sookie Stackhouse #12 Deadlocked - 19.mp3_",
+  "volume": null,
+  "upstream": 69.27,
+  "patched": 69.27
+ },
+ {
+  "library": "eBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Clare, Cassandra - Chroniken der Unterwelt 06 - City of Heavenly Fire",
+  "volume": [
+   6,
+   "city of heavenly fire"
+  ],
+  "upstream": 95.0,
+  "patched": 45.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "A Crown of Swords",
+  "sub": "Book Seven of 'The Wheel of Time'",
+  "author": "Robert Jordan",
+  "release": "Robert Jordan - The Wheel of Time 07 - A Crown of Swords[04_71] - _Robert Jordan - The Wheel of Time 07 - A Crown of Swords (1996).par2_",
+  "volume": null,
+  "upstream": 88.0,
+  "patched": 88.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah.J.Maas.-.[Throne.of.Glass.01].-.Throne.of.Glass.(retail).(azw3)",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "The Science of Discworld II",
+  "sub": "The Globe",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett etc - The Science of Discworld II The Globe 06of12.mp3",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 00.1] - The Assassin's Blade (retail) (epub)",
+  "volume": [
+   0,
+   "the assassins blade"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh Mafi - [Shatter Me 01] - Shatter Me (retail) (epub)",
+  "volume": null,
+  "upstream": 103.0,
+  "patched": 103.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "The Science of Discworld II",
+  "sub": "The Globe",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett Ian Stewart Jack Cohen - The Globe The Science of Discworld II A Novel",
+  "volume": null,
+  "upstream": 93.0,
+  "patched": 93.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh Mafi - [Shatter Me 05] - Defy Me (retail) (epub)",
+  "volume": [
+   5,
+   "defy me"
+  ],
+  "upstream": 102.0,
+  "patched": 52.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "The Science of Discworld II",
+  "sub": "The Globe",
+  "author": "Terry Pratchett",
+  "release": "Science of Discworld III Darwins Watch, The - Terry Pratchett",
+  "volume": null,
+  "upstream": 91.12,
+  "patched": 91.12
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh Mafi - [Shatter Me 03] - Ignite Me (retail) (epub)",
+  "volume": [
+   3,
+   "ignite me"
+  ],
+  "upstream": 102.0,
+  "patched": 52.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "A Crown of Swords",
+  "sub": "Book Seven of 'The Wheel of Time'",
+  "author": "Robert Jordan",
+  "release": "Robert Jordan - The Wheel of Time - Book 7 - Lord of Chaos (32 kpbs) (NMR) (for Requester) 01_50 [A Crown of Swords - 01 of 42.mp3] (9874)",
+  "volume": null,
+  "upstream": 87.0,
+  "patched": 87.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn 6 (2016) MP3",
+  "volume": null,
+  "upstream": 101.0,
+  "patched": 101.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Pathfinder",
+  "sub": "",
+  "author": "Orson Scott Card",
+  "release": "Orson Scott Card - Pathfinder, Bk 2 - Ruins (NMR",
+  "volume": [
+   2,
+   "ruins"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "eBook",
+  "title": "Once Upon a Broken Heart",
+  "sub": "",
+  "author": "Stephanie Garber",
+  "release": "Stephanie.Garber.-.Once.Upon.A.Broken.Heart.Once.Upon.A.Broken.Heart.1.2021.RETAIL.EPUB.eBook-GRP",
+  "volume": null,
+  "upstream": 95.65,
+  "patched": 95.65
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 00.1] - The Assassins Blade (retail) (epub)",
+  "volume": [
+   0,
+   "the assassins blade"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh Mafi - Shatter Me 05 - Defy Me retail epub",
+  "volume": [
+   5,
+   "defy me"
+  ],
+  "upstream": 102.0,
+  "patched": 52.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [Throne of Glass 01] - Throne of Glass",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn 6 2016 MP3",
+  "volume": null,
+  "upstream": 101.0,
+  "patched": 101.0
+ },
+ {
+  "library": "eBook",
+  "title": "Once Upon a Broken Heart",
+  "sub": "",
+  "author": "Stephanie Garber",
+  "release": "Stephanie.Garber.-.A.Curse.For.True.Love.Once.Upon.A.Broken.Heart.3.2023.RETAIL.EPUB.eBook-GRP",
+  "volume": [
+   3,
+   "a curse for true love"
+  ],
+  "upstream": 91.65,
+  "patched": 41.65
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh Mafi - [Shatter Me 06.5] - Believe Me (retail) (epub)",
+  "volume": [
+   6,
+   "believe me"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn 2 - Well of Ascension MP3",
+  "volume": [
+   2,
+   "well of ascension"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - Chroniken der Unterwelt 3 - City of Glass (2011) MP3",
+  "volume": [
+   3,
+   "city of glass"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 04] - Queen of Shadows (v5.0) (epub)",
+  "volume": [
+   4,
+   "queen of shadows"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn 1 - The Final Empire MP3",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh Mafi - [Shatter Me 02.5] - Fracture Me (epub)",
+  "volume": [
+   2,
+   "fracture me"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - Chroniken der Unterwelt 2 - City of Ashes (2011) MP3",
+  "volume": [
+   2,
+   "city of ashes"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 04] - Court of Thorns and Roses (retail) (epub)",
+  "volume": [
+   4,
+   "court of thorns and roses"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 07] - Lost Metal (retail) (epub)",
+  "volume": [
+   7,
+   "lost metal"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Bänder der Trauer (Mistborn 6) (2017) MP3",
+  "volume": [
+   6,
+   "bander der trauer"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - Chroniken der Unterwelt 5 - City of Lost Souls MP3",
+  "volume": [
+   5,
+   "city of lost souls"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Maas, Sarah J. - [Throne of Glass 01] • Throne of Glass.epub",
+  "volume": null,
+  "upstream": 102.0,
+  "patched": 102.0
+ },
+ {
+  "library": "eBook",
+  "title": "Dean Koontz's Frankenstein",
+  "sub": "City of night. Book two",
+  "author": "Dean Koontz",
+  "release": "Dean Koontz - [Frankenstein 04] - Lost Souls (epub)",
+  "volume": [
+   4,
+   "lost souls"
+  ],
+  "upstream": 93.31,
+  "patched": 43.31
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh Mafi - [Shatter Me 06.5] - Believe Me (UK) (epub)",
+  "volume": [
+   6,
+   "believe me"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 00.5] - The Assassins Blade (epub)",
+  "volume": [
+   0,
+   "the assassins blade"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "The Last Olympian",
+  "sub": "Percy Jackson and the Olympians: Book 5",
+  "author": "Rick Riordan",
+  "release": "RP NMR Percy Jackson 5 Unabr 64 kbps [014_110] _Rick Riordan - The Last Olympian - 12 of 98.mp3_",
+  "volume": null,
+  "upstream": 72.84,
+  "patched": 72.84
+ },
+ {
+  "library": "eBook",
+  "title": "Dean Koontz's Frankenstein",
+  "sub": "City of night. Book two",
+  "author": "Dean Koontz",
+  "release": "Dean Koontz - [Frankenstein 05] - The Dead Town (epub)",
+  "volume": [
+   5,
+   "the dead town"
+  ],
+  "upstream": 92.31,
+  "patched": 42.31
+ },
+ {
+  "library": "AudioBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - Chroniken der Unterwelt 3 - City of Glass 2011 MP3",
+  "volume": [
+   3,
+   "city of glass"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "The Last Olympian",
+  "sub": "Percy Jackson and the Olympians: Book 5",
+  "author": "Rick Riordan",
+  "release": "RP NMR Percy Jackson 5 Unabr 64 kbps [014/110] \"Rick Riordan - The Last Olympian - 12 of 98.mp3\"",
+  "volume": null,
+  "upstream": 87.0,
+  "patched": 87.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - Chroniken der Unterwelt 2 - City of Ashes 2011 MP3",
+  "volume": [
+   2,
+   "city of ashes"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "Dean Koontz's Frankenstein",
+  "sub": "City of night. Book two",
+  "author": "Dean Koontz",
+  "release": "Dean Koontz - [Frankenstein 04] - Lost Souls (azw3)",
+  "volume": [
+   4,
+   "lost souls"
+  ],
+  "upstream": 90.31,
+  "patched": 40.31
+ },
+ {
+  "library": "AudioBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - Chroniken der Unterwelt 1 - City Of Bones 2011 MP3",
+  "volume": null,
+  "upstream": 98.0,
+  "patched": 98.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Chroniken der Unterwelt",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - City of Heavenly Fire Chroniken der Unterwelt 6 2015 MP3",
+  "volume": [
+   6,
+   "city of heavenly fire"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh.Mafi.-.[Shatter.Me.01.5-06.5]",
+  "volume": null,
+  "upstream": 96.0,
+  "patched": 96.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 02] - Crown of Midnight (azw3)",
+  "volume": [
+   2,
+   "crown of midnight"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 02] - Crown of Midnight (retail) (azw3)",
+  "volume": [
+   2,
+   "crown of midnight"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shift",
+  "sub": "",
+  "author": "Hugh Howey",
+  "release": "Hugh Howey - [Silo 02-Shift 01-03] - Shift Omnibus (retail) (epub)",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh.Mafi.-.[Shatter.Me.06.5].-.Believe.Me.(retail).(epub)",
+  "volume": [
+   6,
+   "believe me"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "eBook",
+  "title": "The Last Olympian",
+  "sub": "Percy Jackson and the Olympians: Book 5",
+  "author": "Rick Riordan",
+  "release": "RP NMR Percy Jackson 5 Unabr 64 kbps [001/110] \"Rick Riordan - The Last Olympian - 00.nfo\"",
+  "volume": null,
+  "upstream": 89.0,
+  "patched": 89.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett's 'Discworld', Bk 39 - Snuff (NMR 64 kbps) 16_46 _Terry Pratchett - Snuff 16.mp3_",
+  "volume": [
+   39,
+   "snuff snuff"
+  ],
+  "upstream": 89.0,
+  "patched": 39.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 05] - Shadows of Self (retail) (epub)",
+  "volume": [
+   5,
+   "shadows of self"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Cibola Burn",
+  "sub": "",
+  "author": "James S.A. Corey",
+  "release": "(NMR) [41_57] - _James S. A. Corey - Expanse 04 Cibola Burn - 41.mp3_",
+  "volume": null,
+  "upstream": 80.5,
+  "patched": 80.5
+ },
+ {
+  "library": "AudioBook",
+  "title": "Harry Potter and the Philosopher's Stone",
+  "sub": "",
+  "author": "J.K. Rowling",
+  "release": "J.K. ROWLING - Harry Potter and the Philosopher's Stone  [Book 1] - Mine (D)",
+  "volume": null,
+  "upstream": 67.43,
+  "patched": 67.43
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 00.4] - The Assassin and the Underworld (retail) (epub)",
+  "volume": [
+   0,
+   "the assassin and the underworld"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shift",
+  "sub": "",
+  "author": "Hugh Howey",
+  "release": "Hugh Howey - [Silo 02-Shift 02] - Second Shift-Order (retail) (mobi)",
+  "volume": null,
+  "upstream": 98.0,
+  "patched": 98.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh.Mafi.-.[Shatter.Me.06.5].-.Believe.Me.(UK).(epub)",
+  "volume": [
+   6,
+   "believe me"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "eBook",
+  "title": "Strange Dogs",
+  "sub": "An Expanse Novella",
+  "author": "James S.A. Corey",
+  "release": "[Expanse] [ Corey, James S. A. - The Expanse 6.5 - An Expanse Novella - Strange Dogs ]-[01_10] _Corey, James S. A. - The Expanse 6.5 - An Expanse Novella - Strange Dogs.rar_",
+  "volume": null,
+  "upstream": 82.0,
+  "patched": 82.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn 3 - Herrscher des Lichts (2012) MP3",
+  "volume": [
+   3,
+   "herrscher des lichts"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 03.5] - Mistborn-Secret History (retail) (epub)",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 00.3] - The Assassin and the Desert (retail) (epub)",
+  "volume": [
+   0,
+   "the assassin and the desert"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn 3 - The Hero of Ages MP3",
+  "volume": [
+   3,
+   "the hero of ages"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh.Mafi.-.[Shatter.Me.04].-.Restore.Me.(azw3)",
+  "volume": [
+   4,
+   "restore me"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 01] - Mistborn-The Final Empire (epub)",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 06] - Tower of Dawn (US) (retail) (azw3)",
+  "volume": [
+   6,
+   "tower of dawn"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Mafi, Tahereh - Shatter me 04 - Restore Me",
+  "volume": [
+   4,
+   "restore me"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 01] - The Final Empire (epub)",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [Throne of Glass 02] - Crown of Midnight",
+  "volume": [
+   2,
+   "crown of midnight"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 06.5] - Secret History (epub)",
+  "volume": [
+   6,
+   "secret history"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Mafi, Tahereh - Shatter me 04.5 - Shadow Me",
+  "volume": [
+   4,
+   "shadow me"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Twilight",
+  "sub": "",
+  "author": "Stephenie Meyer",
+  "release": "Stephenie Meyer-Twilight 4 Saa Laenge Vi Baada Andas-AUDiOBOOK-WEB-SE-2009-CRAViNGS iNT",
+  "volume": [
+   4,
+   "saa laenge vi baada andas web se cravings int"
+  ],
+  "upstream": 88.0,
+  "patched": 38.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Maas, Sarah J - Throne of Glass 05 - Empire of Storms",
+  "volume": [
+   5,
+   "empire of storms"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Wrinkle in Time",
+  "sub": "(Newbery Medal Winner)",
+  "author": "Madeleine L'Engle",
+  "release": "Madeleine LEngle - [Time 01] - A Wrinkle in Time (50th anniversary) (retail) (epub)",
+  "volume": null,
+  "upstream": 101.0,
+  "patched": 101.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn 01 - The Final Empire epub",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn Bk 2 - Well of Ascension  NMR",
+  "volume": [
+   2,
+   "well of ascension"
+  ],
+  "upstream": 94.0,
+  "patched": 44.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Mafi, Tahereh - Shatter Me 06.5 - Believe Me",
+  "volume": [
+   6,
+   "believe me"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn Bk 1 - The Final Empire  NMR",
+  "volume": null,
+  "upstream": 94.0,
+  "patched": 94.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 00.3] - The Assassin and the Underworld (epub)",
+  "volume": [
+   0,
+   "the assassin and the underworld"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 21 - Jingo MP3",
+  "volume": [
+   21,
+   "jingo"
+  ],
+  "upstream": 91.0,
+  "patched": 41.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 03] - The Hero of Ages (retail) (epub)",
+  "volume": [
+   3,
+   "the hero of ages"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Mafi, Tahereh - Shatter Me 05.5 - Reveal Me",
+  "volume": [
+   5,
+   "reveal me"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Auberon",
+  "sub": "An Expanse Novella",
+  "author": "James S.A. Corey",
+  "release": "[Expanse] [ Corey, James S. A. - The Expanse 7.5 - An Expanse Novella - Auberon ]-[01_12] _Corey, James S. A. - The Expanse 7.5 - An Expanse Novella - Auberon.par2_",
+  "volume": null,
+  "upstream": 82.0,
+  "patched": 82.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Twilight",
+  "sub": "",
+  "author": "Stephenie Meyer",
+  "release": "Stephenie Meyer - Twilight 4 Saa Laenge Vi Baada Andas-AUDiOBOOK-WEB-SE-2009-CRAViNGS iNT",
+  "volume": [
+   4,
+   "saa laenge vi baada andas web se cravings int"
+  ],
+  "upstream": 88.0,
+  "patched": 38.0
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Christopher Paolini - [Inheritance 03] - Brisingr (Deluxe Edition) (retail) (epub)",
+  "volume": [
+   3,
+   "brisingr deluxe edition"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn Bk 2 - Well of Ascension NMR",
+  "volume": [
+   2,
+   "well of ascension"
+  ],
+  "upstream": 94.0,
+  "patched": 44.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 00.2] - The Assassin and the Desert (epub)",
+  "volume": [
+   0,
+   "the assassin and the desert"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Wrinkle in Time",
+  "sub": "(Newbery Medal Winner)",
+  "author": "Madeleine L'Engle",
+  "release": "Madeleine LEngle - [Time Quintet 01] - A Wrinkle in Time (50th Anniversary ed) (retail) (epub)",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Ready Player One",
+  "sub": "",
+  "author": "Ernest Cline",
+  "release": "Ernest.Cline-[Ready.Player.One-1]-Ready.Player.One.Wil.Wheaton",
+  "volume": null,
+  "upstream": 97.0,
+  "patched": 97.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 01-03] - The Mistborn Trilogy Omnibus (retail) (epub)",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Twilight",
+  "sub": "",
+  "author": "Stephenie Meyer",
+  "release": "Stephenie Meyer - Twilight 2 Naer Jag Hoer Din Roest-AUDiOBOOK-WEB-SE-2009-CRAViNGS iNT",
+  "volume": [
+   2,
+   "naer jag hoer din roest web se cravings int"
+  ],
+  "upstream": 88.0,
+  "patched": 38.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn Bk 1 - The Final Empire NMR",
+  "volume": null,
+  "upstream": 94.0,
+  "patched": 94.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 00.1-00.5] - The Assassins Blade Omnibus (retail) (epub)",
+  "volume": [
+   0,
+   "the assassins blade omnibus"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn Bk 4 - The Alloy of Law  NMR",
+  "volume": [
+   4,
+   "the alloy of law"
+  ],
+  "upstream": 93.0,
+  "patched": 43.0
+ },
+ {
+  "library": "eBook",
+  "title": "The Firm",
+  "sub": "",
+  "author": "John Grisham",
+  "release": "John.Grisham.-.The.Exchange.The.Firm.2.2023.RETAIL.EPUB.eBook-GRP",
+  "volume": [
+   2,
+   "the exchange"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "Eragon",
+  "sub": "",
+  "author": "Christopher Paolini",
+  "release": "[01_10] - _Christopher.Paolini.-.Eragon.1-4.rar_",
+  "volume": null,
+  "upstream": 76.15,
+  "patched": 76.15
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Christopher Paolini - Inheritance 03 - Brisingr v5.0.epub",
+  "volume": [
+   3,
+   "brisingr"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne of Glass 00.1] - The Assassin and the Pirate Lord (retail) (epub)",
+  "volume": [
+   0,
+   "the assassin and the pirate lord"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 03] - The Hero of Ages (epub)",
+  "volume": [
+   3,
+   "the hero of ages"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn Bk 4 - The Alloy of Law NMR",
+  "volume": [
+   4,
+   "the alloy of law"
+  ],
+  "upstream": 93.0,
+  "patched": 43.0
+ },
+ {
+  "library": "eBook",
+  "title": "The Firm",
+  "sub": "",
+  "author": "John Grisham",
+  "release": "John.Grisham.The.Exchange.The.Firm.2.2023.RETAIL.EPUB.eBook-GRP",
+  "volume": [
+   2,
+   "the exchange"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Christopher Paolini - Inheritance 02 - Eldest v5.0.epub",
+  "volume": [
+   2,
+   "eldest"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [Throne of Glass 04] - Queen of Shadows (US) (retail)",
+  "volume": [
+   4,
+   "queen of shadows"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 07 - Pyramids MP3",
+  "volume": [
+   7,
+   "pyramids"
+  ],
+  "upstream": 91.0,
+  "patched": 41.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "The Way of Kings",
+  "sub": "The first book of the breathtaking epic Stormlight Archive from the worldwide fantasy sensation",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - 'The Stormlight Archive', Bk 1 - The Way of Kings NMR 39_49 _The Way of Kings 38-38.mp3_",
+  "volume": null,
+  "upstream": 90.0,
+  "patched": 90.0
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Paolini, Christopher - Inheritance 04 - Inheritance",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Maas, Sarah J - Throne of Glass 04 - Queen of Shadows (US) (Retail)",
+  "volume": [
+   4,
+   "queen of shadows"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Lost Hero",
+  "sub": "",
+  "author": "Rick Riordan",
+  "release": "Rick Riordan - HoO1 The Lost Hero 03of16.mp3",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 01-03] - The Mistborn Trilogy Omnibus (retail) (mobi)",
+  "volume": null,
+  "upstream": 98.0,
+  "patched": 98.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - Throne of Glass 04 Queen of Shadows (US) (retail)",
+  "volume": [
+   4,
+   "queen of shadows"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Mistborn 1-3 - Brandon Sanderson",
+  "volume": null,
+  "upstream": 98.0,
+  "patched": 98.0
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Christopher Paolini - Inheritance 01 to 03 - Omnibus (v5.0).epub",
+  "volume": null,
+  "upstream": 98.0,
+  "patched": 98.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "The Last Hero",
+  "sub": "A Discworld Fable",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - The Last Hero. Req_ Jingo and_or Thud! - file 1 of 4 Terry Pratchett - The Last Hero 01-04.mp3",
+  "volume": null,
+  "upstream": 93.0,
+  "patched": 93.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [Throne of Glass 0.5] - The Assassins Blade",
+  "volume": [
+   0,
+   "the assassins blade"
+  ],
+  "upstream": 95.0,
+  "patched": 45.0
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Paolini, Christopher - Inheritance 03 - Brisingr",
+  "volume": [
+   3,
+   "brisingr"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "The Science of Discworld II",
+  "sub": "The Globe",
+  "author": "Terry Pratchett",
+  "release": "The Science of Discworld",
+  "volume": null,
+  "upstream": 65.38,
+  "patched": 65.38
+ },
+ {
+  "library": "AudioBook",
+  "title": "Grave Secret",
+  "sub": "",
+  "author": "Charlaine Harris",
+  "release": "Grave secret -book 4-Harper Connelly series",
+  "volume": null,
+  "upstream": 43.38,
+  "patched": 43.38
+ },
+ {
+  "library": "AudioBook",
+  "title": "Antifragile",
+  "sub": "Things That Gain from Disorder",
+  "author": "Nassim Nicholas Taleb",
+  "release": "Nassim Nicholas Taleb - Nassim Nicholas Taleb - Antifragile  - 1 (2012) MP3",
+  "volume": null,
+  "upstream": 101.0,
+  "patched": 101.0
+ },
+ {
+  "library": "eBook",
+  "title": "Fractal Noise",
+  "sub": "A Fractalverse Novel",
+  "author": "Christopher Paolini",
+  "release": "Christopher Paolini-Fractal Noise-2MP3CD-DE-2024-FKKAuDiOBooK",
+  "volume": null,
+  "upstream": 96.0,
+  "patched": 96.0
+ },
+ {
+  "library": "eBook",
+  "title": "Liar's Poker",
+  "sub": "",
+  "author": "Michael Lewis",
+  "release": "Liars Poker (25th Anniversary Edition) -- Michael Lewis.epub",
+  "volume": null,
+  "upstream": 101.0,
+  "patched": 101.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shatter Me",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh Mafi - [Shatter Me 01-03] - Shatter Me Complete Collection (Shatter Me; Destroy Me; Unravel Me; Fracture Me; Ignite Me) (epub).epub",
+  "volume": null,
+  "upstream": 96.0,
+  "patched": 96.0
+ },
+ {
+  "library": "eBook",
+  "title": "Little Scarlet",
+  "sub": "A Novel",
+  "author": "Walter Mosley",
+  "release": "Little Scarlet - 9",
+  "volume": null,
+  "upstream": 69.69,
+  "patched": 69.69
+ },
+ {
+  "library": "eBook",
+  "title": "The Hedge Knight",
+  "sub": "",
+  "author": "George R.R. Martin",
+  "release": "The Hedge Knight (#01 - #06) (Aug 2003 - Apr 2004).cbr",
+  "volume": null,
+  "upstream": 53.17,
+  "patched": 53.17
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - Throne of Glass 00.5 The Assassins Blade",
+  "volume": [
+   0,
+   "the assassins blade"
+  ],
+  "upstream": 95.0,
+  "patched": 45.0
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Paolini, Christopher - Inheritance 02 - Eldest",
+  "volume": [
+   2,
+   "eldest"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "Fractal Noise",
+  "sub": "A Fractalverse Novel",
+  "author": "Christopher Paolini",
+  "release": "Christopher Paolini-Fractal Noise-2MP3CD-DE-2024-FKKAuDiOBooK-GRP",
+  "volume": null,
+  "upstream": 95.0,
+  "patched": 95.0
+ },
+ {
+  "library": "eBook",
+  "title": "Shift",
+  "sub": "",
+  "author": "Hugh Howey",
+  "release": "Shift Omnibus Edition (Shift 1-3) (Silo  - Howey, Hugh.epub",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Honor Among Thieves",
+  "sub": "",
+  "author": "James S.A. Corey",
+  "release": "Star Wars [2 - The Rebellion] 08 Empire and Rebellion Honor Among Thieves [64]",
+  "volume": null,
+  "upstream": 52.99,
+  "patched": 52.99
+ },
+ {
+  "library": "eBook",
+  "title": "Twilight",
+  "sub": "",
+  "author": "Stephenie Meyer",
+  "release": "Stephenie Meyer - [Twilight 01] - Twilight &amp; Life and Death (Tenth Anniversary Edition) (retail) (epub)",
+  "volume": null,
+  "upstream": 96.0,
+  "patched": 96.0
+ },
+ {
+  "library": "eBook",
+  "title": "This Woven Kingdom",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh Mafi - [This Woven Kingdom 01] - This Woven Kingdom (retail) (epub)",
+  "volume": null,
+  "upstream": 103.0,
+  "patched": 103.0
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Christopher Paolini - Inheritance 01 to 03 - Omnibus v5.0.epub",
+  "volume": null,
+  "upstream": 98.0,
+  "patched": 98.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne Of Glass 06] - Tower Of Dawn (epub)",
+  "volume": [
+   6,
+   "tower of dawn"
+  ],
+  "upstream": 89.89,
+  "patched": 39.89
+ },
+ {
+  "library": "eBook",
+  "title": "This Woven Kingdom",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Mafi, Tahereh - This Woven Kingdom 01 - This Woven Kingdom",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Paolini, Christopher - Inheritance 05 - Murtagh (2023)",
+  "volume": [
+   5,
+   "murtagh"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Nemesis Games",
+  "sub": "",
+  "author": "James S.A. Corey",
+  "release": "(NMR) [34_46] - _James S. A. Corey - Expanse 05 Nemesis Games - 34.mp3_",
+  "volume": null,
+  "upstream": 80.5,
+  "patched": 80.5
+ },
+ {
+  "library": "AudioBook",
+  "title": "SSN",
+  "sub": "",
+  "author": "Tom Clancy",
+  "release": "NMR - TOM CLANCY - SSN Audio Books - Tom Clancy - SSN - 1 of 4.mp3",
+  "volume": null,
+  "upstream": 97.0,
+  "patched": 97.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - Tales from the Shadowhunter Academy 01 Welcome to Shadowhunter Academy - Sarah Rees Brennan (azw3, epub)",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "eBook",
+  "title": "The Hunger Games",
+  "sub": "The First Book of the Hunger Games",
+  "author": "Suzanne Collins",
+  "release": "Suzanne Collins - [The Hunger Games 01] - The Hunger Games (epub)",
+  "volume": null,
+  "upstream": 103.0,
+  "patched": 103.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne Of Glass 03] - Heir Of Fire (epub)",
+  "volume": [
+   3,
+   "heir of fire"
+  ],
+  "upstream": 89.89,
+  "patched": 39.89
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Paolini, Christopher - Inheritance 04 - Inheritance or the Valit of Souls (v5) [epub]",
+  "volume": null,
+  "upstream": 97.0,
+  "patched": 97.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 02] - The Lost Herondale - Robin Wasserman (retail) (epub)",
+  "volume": [
+   2,
+   "the lost herondale robin wasserman"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "This Woven Kingdom",
+  "sub": "",
+  "author": "Tahereh Mafi",
+  "release": "Tahereh Mafi - This Woven Kingdom 03 - All This Twisted Glory.par2_ by Pferdchen",
+  "volume": [
+   3,
+   "all this twisted glory by pferdchen"
+  ],
+  "upstream": 93.0,
+  "patched": 43.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [Throne Of Glass 05] - The Assassins Blade (epub)",
+  "volume": [
+   5,
+   "the assassins blade"
+  ],
+  "upstream": 88.89,
+  "patched": 38.89
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Christopher Paolini - [Inheritance 01-03] - Inheritance Cycle (Eragon; Eldest; Brisingr) (mobi)",
+  "volume": null,
+  "upstream": 97.0,
+  "patched": 97.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "House of Earth and Blood",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "(AMZN2020) [71_71] - _Sarah J. Maas - Crescent City 01 - House of Earth and Blood - 56.mp3_",
+  "volume": null,
+  "upstream": 75.33,
+  "patched": 75.33
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 01] - Mistborn-The Final Empire (retail) (azw3)",
+  "volume": null,
+  "upstream": 97.0,
+  "patched": 97.0
+ },
+ {
+  "library": "eBook",
+  "title": "Skyward",
+  "sub": "",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Skyward 02] - Starsight (retail) (epub)",
+  "volume": [
+   2,
+   "starsight"
+  ],
+  "upstream": 102.0,
+  "patched": 52.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah.J.Maas.-.[Throne.of.Glass.00.1].-.The.Assassins.Blade.(retail).(epub)",
+  "volume": [
+   0,
+   "the assassins blade"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "The Girl who Played with Fire",
+  "sub": "",
+  "author": "Stieg Larsson",
+  "release": "Stieg Larsson - M2 The Girl Who Played with Fire 01of18.mp3",
+  "volume": null,
+  "upstream": 93.59,
+  "patched": 93.59
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Christopher Paolini - [Inheritance 01-03] - Inheritance Cycle (Eragon; Eldest; Brisingr) (html)",
+  "volume": null,
+  "upstream": 93.0,
+  "patched": 93.0
+ },
+ {
+  "library": "eBook",
+  "title": "Grey",
+  "sub": "Fifty shades of Grey von Christian selbst erzählt ; Roman",
+  "author": "E.L. James",
+  "release": "James, E L - As Told By Christian Grey 02 - Darker [MF] (Retail)",
+  "volume": [
+   2,
+   "darker mf"
+  ],
+  "upstream": 93.0,
+  "patched": 43.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 05] - The Evil We Love Robin Wasserman (retail) (epub)",
+  "volume": [
+   5,
+   "the evil we love robin wasserman"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [A Court of Thorns and Roses 04] - A Court of Frost and Starlight (retail) (epub)",
+  "volume": [
+   4,
+   "a court of frost and starlight"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "eBook",
+  "title": "Skyward",
+  "sub": "",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Skyward 01] - Skyward (UK) (epub)",
+  "volume": null,
+  "upstream": 102.0,
+  "patched": 102.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 10] - Angels Twice Descending - Robin Wasserman (retail) (epub)",
+  "volume": [
+   10,
+   "angels twice descending robin wasserman"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [A Court of Thorns and Roses 03] - A Court of Wings and Ruin (retail) (epub)",
+  "volume": [
+   3,
+   "a court of wings and ruin"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 01] - Mistborn (v5.1)",
+  "volume": null,
+  "upstream": 97.0,
+  "patched": 97.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "SSN",
+  "sub": "",
+  "author": "Tom Clancy",
+  "release": "Tom Clancy - SSN NMR 64 kbps 0111 - Tom Clancy - SSN - 1 of 4.mp3",
+  "volume": null,
+  "upstream": 96.0,
+  "patched": 96.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah.J.Maas.-.[Throne.of.Glass.02].-.Crown.of.Midnight.(retail).(azw3)",
+  "volume": [
+   2,
+   "crown of midnight"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 08] - The Fiery Trial - Maureen Johnson (US) (retail) (epub)",
+  "volume": [
+   8,
+   "the fiery trial maureen johnson"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [A Court of Thorns and Roses 02] - A Court of Mist and Fury (epub)",
+  "volume": [
+   2,
+   "a court of mist and fury"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - 'Mistborn', Bk 1 - The Final Empire (NMR 64 kbps) [14_31] - _Brandon Sanderson - Mistborn - The Final Empire 05 of 22.mp3_",
+  "volume": null,
+  "upstream": 83.0,
+  "patched": 83.0
+ },
+ {
+  "library": "eBook",
+  "title": "Skyward",
+  "sub": "",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Skyward 02] - Starsight (US) (epub)",
+  "volume": [
+   2,
+   "starsight"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn 01 - The Final Empire",
+  "volume": null,
+  "upstream": 96.0,
+  "patched": 96.0
+ },
+ {
+  "library": "eBook",
+  "title": "Nemesis Games",
+  "sub": "",
+  "author": "James S.A. Corey",
+  "release": "[Expanse] [ Corey, James S. A. - The Expanse 5.0 - Nemesis Games ]-[01_16] _Corey, James S. A. - The Expanse 5.0 - Nemesis Games.par2_",
+  "volume": null,
+  "upstream": 88.0,
+  "patched": 88.0
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Re_ REQ_ Murtagh (2023) (The fifth book in the Inheritance Cycle series) A novel by Christopher Paolini - _Paolini, Christopher - Inheritance 05 - Murtagh (2023).epub_",
+  "volume": [
+   5,
+   "murtagh"
+  ],
+  "upstream": 81.0,
+  "patched": 31.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 05] - The Evil We Love - Robin Wasserman (epub)",
+  "volume": [
+   5,
+   "the evil we love robin wasserman"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [A Court of Thorns and Roses 02] - A Court of Mist and Fury (epub)",
+  "volume": [
+   2,
+   "a court of mist and fury"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 06] - The Bands of Mourning (retail) (azw3)",
+  "volume": [
+   6,
+   "the bands of mourning"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "eBook",
+  "title": "Inheritance",
+  "sub": "Book IV",
+  "author": "Christopher Paolini",
+  "release": "Re: REQ: Murtagh (2023) (The fifth book in the Inheritance Cycle series) A novel by Christopher Paolini - \"Paolini, Christopher - Inheritance 05 - Murtagh (2023).epub\"",
+  "volume": [
+   5,
+   "murtagh"
+  ],
+  "upstream": 87.0,
+  "patched": 37.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 01] - Welcome to Shadowhunter Academy - Sarah Rees Brennan (epub)",
+  "volume": null,
+  "upstream": 98.0,
+  "patched": 98.0
+ },
+ {
+  "library": "eBook",
+  "title": "Skyward",
+  "sub": "",
+  "author": "Brandon Sanderson",
+  "release": "Brandon.Sanderson.-.Skyward.Skyward.1.2018.RETAIL.EPUB.eBook-GRP",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 04] - The Alloy of Law (retail) (azw3)",
+  "volume": [
+   4,
+   "the alloy of law"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 03] - The Hero of Ages (retail) (azw3)",
+  "volume": [
+   3,
+   "the hero of ages"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 06] - Pale Kings and Princes - Robin Wasserman (retail) (epub)",
+  "volume": [
+   6,
+   "pale kings and princes robin wasserman"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "Skyward",
+  "sub": "",
+  "author": "Brandon Sanderson",
+  "release": "Brandon.Sanderson-Skyward.Skyward.1.2018.RETAIL.EPUB.eBook-GRP",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 04] - Nothing But Shadows - Sarah Rees Brennan (retail) (epub)",
+  "volume": [
+   4,
+   "nothing but shadows sarah rees brennan"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Mistborn 01 - The Final Empire - Brandon Sanderson",
+  "volume": null,
+  "upstream": 96.0,
+  "patched": 96.0
+ },
+ {
+  "library": "eBook",
+  "title": "Skyward",
+  "sub": "",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Skyward 00.5] - Defending Elysium (epub)",
+  "volume": [
+   0,
+   "defending elysium"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [A Court of Thorns and Roses 3.5] - A Court of Frost and Starlight (epub)",
+  "volume": [
+   3,
+   "a court of frost and starlight"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Dead or Alive",
+  "sub": "",
+  "author": "Tom Clancy",
+  "release": "Tom Clancy - Jack Ryan Bk 13 - Dead or Alive NMR 64 kbps Tom Clancy  Grant Blackwood - Dead or Alive 01of18.mp3 0128",
+  "volume": null,
+  "upstream": 92.0,
+  "patched": 92.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn 4 - The Alloy of Law - Revised - [01_51] - _Brandon Sanderson - Mistborn 4 - The Alloy of Law.par2_",
+  "volume": [
+   4,
+   "the alloy of law revised"
+  ],
+  "upstream": 86.0,
+  "patched": 36.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [A Court of Thorns and Roses 02] - A Court of Mist and Fury (mobi)",
+  "volume": [
+   2,
+   "a court of mist and fury"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn 03 - The Hero of Ages",
+  "volume": [
+   3,
+   "the hero of ages"
+  ],
+  "upstream": 95.0,
+  "patched": 45.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 06] - Pale Kings and Princes with Robin Wasserman (retail) (epub)",
+  "volume": [
+   6,
+   "pale kings and princes with robin wasserman"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [A Court of Thorns and Roses 02] - A Court of Mist and Fury (mobi)",
+  "volume": [
+   2,
+   "a court of mist and fury"
+  ],
+  "upstream": 100.0,
+  "patched": 50.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 08] - The Fiery Trial Maureen Johnson (azw3)",
+  "volume": [
+   8,
+   "the fiery trial maureen johnson"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Maas, Sarah J - A Court of Thorns and Roses 01 - A Court of Thorns and Roses",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "eBook",
+  "title": "Skyward",
+  "sub": "",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Skyward 01] - Skyward (ARC) (pdf)",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - [A Court of Thorns and Roses 01] - A Court of Thorns and Roses",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 09] - Born to Endless Night - Sarah Rees Brennan (retail) (epub)",
+  "volume": [
+   9,
+   "born to endless night sarah rees brennan"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Maas, Sarah J - A Court of Thorns and Roses 05 - A Court of Silver Flames",
+  "volume": [
+   5,
+   "a court of silver flames"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 01-10] - Tales from the Shadowhunter Academy - Sarah Rees Brennan, Maureen Johnson, Robin Wasserman (retail) (epub)",
+  "volume": null,
+  "upstream": 95.0,
+  "patched": 95.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Maas, Sarah J - A Court of Thorns and Roses 03 - A Court of Wings and Ruin (Retail)",
+  "volume": [
+   3,
+   "a court of wings and ruin"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "Skyward",
+  "sub": "",
+  "author": "Brandon Sanderson",
+  "release": "Brandon.Sanderson.-.Defiant.Skyward.4.2023.RETAIL.EPUB.eBook-GRP",
+  "volume": [
+   4,
+   "defiant"
+  ],
+  "upstream": 99.0,
+  "patched": 49.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Tales from the Shadowhunter Academy 01] - Welcome to Shadowhunter Academy - Sarah Rees Brennan (azw3)",
+  "volume": null,
+  "upstream": 95.0,
+  "patched": 95.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Maas, Sarah J - A Court of Thorns And Roses 04 - A Court Of Frost And Starlight (Retail)",
+  "volume": [
+   4,
+   "a court of frost and starlight"
+  ],
+  "upstream": 89.0,
+  "patched": 39.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Sanderson, Brandon - Mistborn 04 - 04 Mistborn Alloy of Law",
+  "volume": null,
+  "upstream": 95.0,
+  "patched": 95.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 06] - The Bands of Mourning (Retail)",
+  "volume": [
+   6,
+   "the bands of mourning"
+  ],
+  "upstream": 95.0,
+  "patched": 45.0
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare , Sarah Rees Brennan - [Tales from the Shadowhunter Academy 01] - Welcome to Shadowhunter Academy (epub)",
+  "volume": null,
+  "upstream": 98.0,
+  "patched": 98.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [A Court Of Thorns And Roses 04] - A Court Of Frost And Starlight (epub)",
+  "volume": [
+   4,
+   "a court of frost and starlight"
+  ],
+  "upstream": 86.11,
+  "patched": 36.11
+ },
+ {
+  "library": "eBook",
+  "title": "Tales from the Shadowhunter Academy",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra.Clare.-.[Tales.from.the.Shadowhunter.Academy.06].-.Pale.Kings.and.Princes.-.Robin.Wasserman.(retail).(epub)",
+  "volume": [
+   6,
+   "pale kings and princes robin wasserman"
+  ],
+  "upstream": 97.0,
+  "patched": 47.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Mistborn 04 - The Alloy of Law - Brandon Sanderson",
+  "volume": [
+   4,
+   "the alloy of law"
+  ],
+  "upstream": 95.0,
+  "patched": 45.0
+ },
+ {
+  "library": "eBook",
+  "title": "A Court of Thorns and Roses",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - [A Court Of Thorns And Roses 03] - A Court Of Wings And Ruin (epub)",
+  "volume": [
+   3,
+   "a court of wings and ruin"
+  ],
+  "upstream": 86.11,
+  "patched": 36.11
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn Bk 1 - The Final Empire NMR 64 kbps 0031 - Brandon Sanderson - Mistborn Bk 1 - The Final Empire",
+  "volume": null,
+  "upstream": 86.0,
+  "patched": 86.0
+ },
+ {
+  "library": "eBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - Throne of Glass 4 - KÃÂ¶nigin der Finsternis.part01.rar_ by Pferdchen",
+  "volume": [
+   4,
+   "kaanigin der finsternis by pferdchen"
+  ],
+  "upstream": 92.0,
+  "patched": 42.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Mistborn 03 - The Hero of Ages - Brandon Sanderson",
+  "volume": [
+   3,
+   "the hero of ages"
+  ],
+  "upstream": 95.0,
+  "patched": 45.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Sanderson, Brandon - Mistborn 04 - The Alloy of Law",
+  "volume": [
+   4,
+   "the alloy of law"
+  ],
+  "upstream": 95.0,
+  "patched": 45.0
+ },
+ {
+  "library": "eBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - [Mistborn 01-03] - The Mistborn Trilogy (The Final Empire; Well of Ascension; Hero of Ages) (retail) (epub)",
+  "volume": null,
+  "upstream": 91.0,
+  "patched": 91.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn Bk 4 - The Alloy of Law NMR 56 kbps 0032 - Brandon Sanderson - Mistborn Bk 4 - The Alloy of Law",
+  "volume": null,
+  "upstream": 84.0,
+  "patched": 84.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn Bk 3 - The Hero of Ages NMR 32 kbps 000119 - Brandon Sanderson - Mistborn Bk 3 - The Hero of Ages",
+  "volume": null,
+  "upstream": 84.0,
+  "patched": 84.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Schatten ber Elantel Mistborn 5 2017 MP3",
+  "volume": [
+   5,
+   "schatten ber elantel"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Bnder der Trauer Mistborn 6 2017 MP3",
+  "volume": [
+   6,
+   "bnder der trauer"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Mistborn",
+  "sub": "The Final Empire",
+  "author": "Brandon Sanderson",
+  "release": "Brandon Sanderson - Mistborn 04 - Jaeger der Macht (Fantasyroman, 2012) (2012) MP3",
+  "volume": [
+   4,
+   "jaeger der macht fantasyroman"
+  ],
+  "upstream": 96.0,
+  "patched": 46.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - Throne of Glass 04 - Queen of Shadows (Unabr - 64k [2015]) [10_21] - _Queen of Shadows.part01.rar_",
+  "volume": [
+   4,
+   "queen of shadows unabr 64k"
+  ],
+  "upstream": 89.0,
+  "patched": 39.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J Maas - Throne of Glass 04 - Queen of MP3",
+  "volume": [
+   4,
+   "queen of"
+  ],
+  "upstream": 101.0,
+  "patched": 51.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - Die Erwhlte Throne of Glass 1 2019 MP3",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - Kriegerin im Schatten_ Throne of Glass 2 (2019) MP3",
+  "volume": [
+   2,
+   "kriegerin im schatten"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - Erbin des Feuers_ Throne of Glass 3 (2019) MP3",
+  "volume": [
+   3,
+   "erbin des feuers"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Throne of Glass",
+  "sub": "",
+  "author": "Sarah J. Maas",
+  "release": "Sarah J. Maas - Erbin des Feuers Throne of Glass 3 2019 MP3",
+  "volume": [
+   3,
+   "erbin des feuers"
+  ],
+  "upstream": 98.0,
+  "patched": 48.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 34 - Thud! (2005) MP3",
+  "volume": [
+   34,
+   "thud"
+  ],
+  "upstream": 90.0,
+  "patched": 40.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 29 - Night Watch MP3",
+  "volume": [
+   29,
+   "night watch"
+  ],
+  "upstream": 90.0,
+  "patched": 40.0
+ },
+ {
+  "library": "eBook",
+  "title": "Ghosts of the Shadow Market",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - [Ghosts of the Shadow Market 01-10] - Ghosts of the Shadow Market Box Set (epub)",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Ghosts of the Shadow Market",
+  "sub": "",
+  "author": "Cassandra Clare",
+  "release": "Cassandra Clare - Ghosts of the Shadow Market 01-10 - Ghosts of the Shadow Market Box Set epub",
+  "volume": null,
+  "upstream": 100.0,
+  "patched": 100.0
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 35] - Wintersmith (epub)",
+  "volume": [
+   35,
+   "wintersmith"
+  ],
+  "upstream": 92.0,
+  "patched": 42.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 18 - Maskerade (1998) MP3",
+  "volume": [
+   18,
+   "maskerade"
+  ],
+  "upstream": 90.0,
+  "patched": 40.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 13 - Small Gods MP3",
+  "volume": [
+   13,
+   "small gods"
+  ],
+  "upstream": 90.0,
+  "patched": 40.0
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 34] - Thud! (epub)",
+  "volume": [
+   34,
+   "thud"
+  ],
+  "upstream": 92.0,
+  "patched": 42.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 12-Witches Abroad MP3",
+  "volume": [
+   12,
+   "witches abroad"
+  ],
+  "upstream": 90.0,
+  "patched": 40.0
+ },
+ {
+  "library": "eBook",
+  "title": "Red Queen",
+  "sub": "",
+  "author": "Victoria Aveyard",
+  "release": "Victoria Aveyard - [Red Queen 01] - Red Queen (retail) (epub)",
+  "volume": null,
+  "upstream": 103.0,
+  "patched": 103.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 09 - Eric (2001) MP3",
+  "volume": [
+   9,
+   "eric"
+  ],
+  "upstream": 90.0,
+  "patched": 40.0
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 21] - Jingo (epub)",
+  "volume": [
+   21,
+   "jingo"
+  ],
+  "upstream": 92.0,
+  "patched": 42.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 08 - Guards! Guards! MP3",
+  "volume": [
+   8,
+   "guards guards"
+  ],
+  "upstream": 90.0,
+  "patched": 40.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 05 - Sourcery (1988) MP3",
+  "volume": [
+   5,
+   "sourcery"
+  ],
+  "upstream": 90.0,
+  "patched": 40.0
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 35] - Wintersmith (UK) (retail) (epub)",
+  "volume": [
+   35,
+   "wintersmith"
+  ],
+  "upstream": 91.0,
+  "patched": 41.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 02 - Light Fantastic MP3",
+  "volume": [
+   2,
+   "light fantastic"
+  ],
+  "upstream": 90.0,
+  "patched": 40.0
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 34] - Thud! (UK) (retail) (epub)",
+  "volume": [
+   34,
+   "thud"
+  ],
+  "upstream": 91.0,
+  "patched": 41.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - The Science of Discworld (1999) MP3",
+  "volume": null,
+  "upstream": 89.0,
+  "patched": 89.0
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 20] - Hogfather (UK) (retail) (epub)",
+  "volume": [
+   20,
+   "hogfather"
+  ],
+  "upstream": 91.0,
+  "patched": 41.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 33 - Going Postal (2004) MP3",
+  "volume": [
+   33,
+   "going postal"
+  ],
+  "upstream": 89.0,
+  "patched": 39.0
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 34] - Thud! (US) (epub)",
+  "volume": [
+   34,
+   "thud"
+  ],
+  "upstream": 91.0,
+  "patched": 41.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 40 - Raising Steam (2013) MP3",
+  "volume": [
+   40,
+   "raising steam"
+  ],
+  "upstream": 89.0,
+  "patched": 39.0
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 37] - Unseen Academicals (epub)",
+  "volume": [
+   37,
+   "unseen academicals"
+  ],
+  "upstream": 91.0,
+  "patched": 41.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - 12. Discworld - Witches Abroad (1991) MP3",
+  "volume": [
+   12,
+   "witches abroad"
+  ],
+  "upstream": 89.0,
+  "patched": 39.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Pratchett, Terry - Discworld 32 - Unseen Academicals (2009) MP3",
+  "volume": [
+   32,
+   "unseen academicals"
+  ],
+  "upstream": 89.0,
+  "patched": 39.0
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 36] - Making Money (epub)",
+  "volume": [
+   36,
+   "making money"
+  ],
+  "upstream": 91.0,
+  "patched": 41.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 06 - Wyrd Systers (1988) MP3",
+  "volume": [
+   6,
+   "wyrd systers"
+  ],
+  "upstream": 89.0,
+  "patched": 39.0
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 29] - Night Watch (epub)",
+  "volume": [
+   29,
+   "night watch"
+  ],
+  "upstream": 91.0,
+  "patched": 41.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Discworld 03 - Equal Rights (1987) MP3",
+  "volume": [
+   3,
+   "equal rights"
+  ],
+  "upstream": 89.0,
+  "patched": 39.0
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 37] - Unseen Academicals (US) (retail) (epub)",
+  "volume": [
+   37,
+   "unseen academicals"
+  ],
+  "upstream": 90.0,
+  "patched": 40.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - Unseen Academicals_ Discworld, Book 37 (2009) MP3",
+  "volume": [
+   37,
+   "unseen academicals"
+  ],
+  "upstream": 88.0,
+  "patched": 38.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "White Sand",
+  "sub": "Volume 2",
+  "author": "Brandon Sanderson",
+  "release": "White Sand 02",
+  "volume": null,
+  "upstream": 69.0,
+  "patched": 69.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Words of Radiance",
+  "sub": "The Stormlight Archive Book Two",
+  "author": "Brandon Sanderson",
+  "release": "The Stormlight Archive 2 - Words of Radiance (2 of 5)",
+  "volume": null,
+  "upstream": 60.39,
+  "patched": 60.39
+ },
+ {
+  "library": "eBook",
+  "title": "Terry Pratchett's Discworld",
+  "sub": "",
+  "author": "Terry Pratchett",
+  "release": "Terry Pratchett - [Discworld 36] - Making Money (US) (retail) (epub)",
+  "volume": [
+   36,
+   "making money"
+  ],
+  "upstream": 90.0,
+  "patched": 40.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "The Stranger From The Sea",
+  "sub": "",
+  "author": "Winston Graham",
+  "release": "Graham, Winston - Poldark 8 - The Stranger From The Sea - (24@64kb)",
+  "volume": null,
+  "upstream": 97.0,
+  "patched": 97.0
+ },
+ {
+  "library": "eBook",
+  "title": "Redwall",
+  "sub": "",
+  "author": "Brian Jacques",
+  "release": "Brian Jacques - [Redwall 01] - Redwall (retail) (epub)",
+  "volume": null,
+  "upstream": 103.0,
+  "patched": 103.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Pride and Prejudice",
+  "sub": "",
+  "author": "Jane Austen",
+  "release": "Jane Austen  - Pride and Prejudice 64k",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "AudioBook",
+  "title": "Funny Story",
+  "sub": "",
+  "author": "Emily Henry",
+  "release": "Funny Story (64k)",
+  "volume": null,
+  "upstream": 64.38,
+  "patched": 64.38
+ },
+ {
+  "library": "eBook",
+  "title": "Six of Crows",
+  "sub": "",
+  "author": "Leigh Bardugo",
+  "release": "Six of Crows 01 - Six of Crows",
+  "volume": null,
+  "upstream": 63.29,
+  "patched": 63.29
+ },
+ {
+  "library": "eBook",
+  "title": "Azazel",
+  "sub": "",
+  "author": "Isaac Asimov",
+  "release": "Asimov, Isaac - Azazel (1)",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ },
+ {
+  "library": "eBook",
+  "title": "The Wretched Divine",
+  "sub": "",
+  "author": "Adalyn Grace",
+  "release": "Adalyn Grace - The Wretched Divine 1 - The Wretched Divine",
+  "volume": null,
+  "upstream": 99.0,
+  "patched": 99.0
+ }
+]

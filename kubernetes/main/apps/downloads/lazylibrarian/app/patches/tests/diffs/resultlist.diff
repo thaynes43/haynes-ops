@@ -1,0 +1,139 @@
+--- a/resultlist.py
++++ b/resultlist.py
+@@ -1,3 +1,42 @@
++# ---------------------------------------------------------------------------
++# haynes-ops override (downloads/lazylibrarian, ConfigMap lazylibrarian-resultlist)
++#
++# This is LazyLibrarian's upstream lazylibrarian/resultlist.py, byte for byte,
++# plus this comment block and ONE marked change (search for "haynes-ops fix":
++# an import, a helper above find_best_result, and its call in the scoring loop).
++#
++# PINNED TO UPSTREAM: image docker.io/linuxserver/lazylibrarian:version-40a389ea
++#   (LazyLibrarian commit 40a389ea, pyproject version 2026.05.25).
++#   sha256 of the unmodified upstream file in that image:
++#   dd255ab9b14f52903db34fcc25d04d271cdc619742d52cced9d6972bcb40501d
++#
++# The fix: find_best_result() scores a release with token_set_ratio, which is
++# 100 whenever the release holds every word of the wanted title. For a series
++# named after its first book, every later volume's release does, so
++# "...-Assistant to the Villain 03-Accomplice to the Villain-..." scored 106
++# for book 1 and was grabbed and imported as it (thaynes43/haynesnetwork#688).
++# LazyLibrarian holds no series data here (Google Books gives none), so the
++# release itself is read: the wanted title, a volume marker with a number
++# other than 1, then a different title (token_set_ratio under 90 against the
++# wanted title and subtitle) loses 50 points, well under MATCH_RATIO (80).
++# A title ending in a number, a file counter, scene group, format words and a
++# trailing series name are not read as titles. Replayed over all 3,373
++# Processed/Snatched/Seeding rows of the wanted table on 2026-10-05: 153
++# changed, each a later volume, novella or single story grabbed for book 1 or
++# a collection; none was a genuine grab.
++# Extended for thaynes43/haynesnetwork#694: a title that starts with its author
++# ("Terry Pratchett's Discworld") is also looked for as its series alone
++# ("Discworld 21 - Jingo", "12. Discworld - Witches Abroad"), and when nothing
++# follows the volume, the title between the author and the series counts
++# ("Unseen Academicals_ Discworld, Book 37"). Replayed over 3,385 rows: 44 more
++# changed, all later volumes (30 of them grabbed for that Discworld record).
++#
++# BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
++# resultlist.py, and either re-apply the marked change to it (if upstream has
++# not fixed the bug) or drop this override (if it has). Never carry this file
++# onto a different image unchanged: it would silently revert every other
++# upstream change to result scoring.
++# ---------------------------------------------------------------------------
+ #  This file is part of Lazylibrarian.
+ #
+ #  Lazylibrarian is free software':'you can redistribute it and/or modify
+@@ -14,6 +53,7 @@
+ #  along with Lazylibrarian.  If not, see <http://www.gnu.org/licenses/>.
+ 
+ import logging
++import re  # haynes-ops fix
+ import traceback
+ 
+ from rapidfuzz import fuzz
+@@ -53,6 +93,71 @@
+             return 0
+         return download_result(match, book)
+     return 0
++
++
++# haynes-ops fix: a series named after its first book ("Assistant to the Villain") makes a later volume's release
++# ("...-Assistant to the Villain 03-Accomplice to the Villain-...") contain every word of book 1's title, so
++# token_set_ratio scores it 100 for book 1 (thaynes43/haynesnetwork#688). LazyLibrarian holds no series data here,
++# so the release itself is read: the wanted title, a volume number other than 1, then a DIFFERENT title.
++VOLUME_PENALTY = 50
++OTHER_TITLE_RATIO = 90
++_NOT_A_TITLE = {'retail', 'ebook', 'audiobook', 'epub', 'mobi', 'azw3', 'azw', 'pdf', 'mp3', 'm4b', 'm4a', 'flac',
++                'unabridged', 'abridged', 'us', 'uk', 'eng', 'en', 'nmr', 'kbps', 'yenc', 'rar', 'par2', 'pars',
++                'nfo', 'sfv', 'nzb', 'zip', 'jpg', 'txt'}
++
++
++def names_other_volume(release, title, subtitle, author):
++    """ Return (volume, other title) when release reads '<title> NN', '[<title> NN]', '<title> #N', '<title> Book N'
++        or '<title>, Vol N' (N not 1), with a title unlike the wanted title and subtitle after it (or, when nothing
++        follows, between the author and it: "Pratchett - Unseen Academicals_ Discworld, Book 37"). A title that starts
++        with its author ("Terry Pratchett's Discworld") is also looked for as its series alone ("Discworld 21 - Jingo",
++        "12. Discworld - Witches Abroad"). Otherwise None. """
++    def norm(text):
++        return unaccented(text or '').lower().replace("'", '').replace('.', ' ')
++
++    def words(text):
++        return re.findall(r'[a-z0-9]+', norm(text))
++
++    wanted = words(title)
++    if not wanted or wanted[-1].isdigit():  # a title ending in a number ("Fahrenheit 451") is left alone
++        return None
++    writer = set(words(author))
++    writer |= {w + 's' for w in writer}
++    series = wanted
++    while series and series[0] in writer:
++        series = series[1:]
++    # a multi-file post's [03/21] counter and a trailing scene group are not part of the title
++    dotted = re.split(r'[\[(]\s*\d+\s*[_/]\s*\d+\s*[\])]', unaccented(release or '').lower().replace("'", ''))[0]
++    release = dotted.replace('.', ' ')  # norm(), keeping the dotted copy aligned for "12. Discworld"
++    release = re.sub(r'((?:epub|ebook|mobi|azw3|pdf|retail|mp3|m4b|audiobook|web)\s*)-[a-z0-9]+$', r'\1', release)
++    names = [(wanted, False)]
++    if series and series != wanted and not series[-1].isdigit():
++        names.append((series, True))
++    match = listed = None
++    for name, series_only in names:
++        name = r'(?<![a-z0-9])' + r'[\s_,:;!?&-]+'.join(name)
++        match = re.search(name + r'[\s_\]),:-]*(?:(?:book|bk|vol|volume)\s*|#\s*)?(\d{1,2})'
++                          r'(?![a-z0-9]|\s*(?:of\b|[-&_/]\s*\d))', release)
++        if not match and series_only:  # a list number, "12. Discworld - Witches Abroad", not a count ("41 Discworld")
++            match = listed = re.search(r'(?<![a-z0-9.])(\d{1,2})\.\s*' + name + r'(?![a-z0-9])', dotted)
++        if match and int(match.group(1)) != 1:
++            break
++    if not match or int(match.group(1)) == 1:
++        return None
++    skip = _NOT_A_TITLE | set(get_list(CONFIG['EBOOK_TYPE'])) | set(get_list(CONFIG['AUDIOBOOK_TYPE'])) | writer
++
++    def title_words(text):
++        return ' '.join(w for w in words(text)
++                        if w not in skip and not w.isdigit() and not re.fullmatch(r'(?:v|part|vol|cd)\d+', w))
++    by = '|'.join(w for w in writer if len(w) > 2)
++    before = re.split(r'(?<![a-z0-9])(?:%s)(?![a-z0-9])' % by, release[:match.start()]) if by else []
++    other = title_words(release[match.end():]) or (title_words(before[-1]) if len(before) > 1 and not listed else '')
++    subtitle = ' '.join(w for w in words(subtitle) if w not in _NOT_A_TITLE and not w.isdigit() and w not in
++                        ('book', 'bk', 'vol', 'volume', 'part', 'novel', 'one', 'two', 'three', 'four', 'five'))
++    if not other or other.endswith('series') or fuzz.token_set_ratio(' '.join(wanted), other) >= OTHER_TITLE_RATIO \
++            or (subtitle and fuzz.token_set_ratio(subtitle, other) >= OTHER_TITLE_RATIO):
++        return None  # nothing but the volume, a series name, or this book again ("Inheritance 04 - Inheritance")
++    return int(match.group(1)), other
+ 
+ 
+ def find_best_result(resultlist, book, searchtype, source):
+@@ -290,6 +395,13 @@
+                     for word in wordlist:
+                         for i in [i for i, x in enumerate(preferwords) if x == word]:
+                             score += i + 1
++
++                # haynes-ops fix: a later volume of a series named after the wanted book
++                other_volume = names_other_volume(res[f"{prefix}title"], title, book.get('bookSub'), author)
++                if other_volume:
++                    score -= VOLUME_PENALTY
++                    logger.debug(f"{result_title} is volume {other_volume[0]} ({other_volume[1]}) of a series "
++                                 f"named {title}: score {round(score, 2)}")
+ 
+                 matches.append([score, new_value_dict, control_value_dict, res['priority']])
+ 
