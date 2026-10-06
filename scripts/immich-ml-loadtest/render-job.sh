@@ -9,6 +9,7 @@
 #   PLAN     phases "name:seconds:clip:faces:ocr,..." (default in loadtest.py:
 #            baseline 120 s, default 300 s at 2/2/1, heavy 300 s at 4/4/4, recovery 120 s)
 #   WHISPER  Wyoming STT host:port to time (default whisper.ai:10300)
+#   PROBE_INTERVAL_S  seconds between voice probes (default 15)
 #
 # It reads the worst-case previews read-only from the immich database (picks.sql) and reads
 # those JPEGs from the photo share mounted read-only. It never writes to Immich.
@@ -52,6 +53,7 @@ spec:
 $( [ -n "${ML_URL:-}" ] && echo "            - {name: ML_URL, value: \"${ML_URL}\"}" )
 $( [ -n "${PLAN:-}" ] && echo "            - {name: PLAN, value: \"${PLAN}\"}" )
 $( [ -n "${WHISPER:-}" ] && echo "            - {name: WHISPER, value: \"${WHISPER}\"}" )
+$( [ -n "${PROBE_INTERVAL_S:-}" ] && echo "            - {name: PROBE_INTERVAL_S, value: \"${PROBE_INTERVAL_S}\"}" )
             - name: PICKS
               value: |
 $(printf '%s\n' "$picks" | sed 's/^/                /')

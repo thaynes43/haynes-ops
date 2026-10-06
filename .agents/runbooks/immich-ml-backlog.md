@@ -202,28 +202,50 @@ kubectl logs -n photos deploy/immich-machine-learning | grep immich-ml-vram-guar
 # expect, once ML has loaded models: "active (onnxruntime …)" and one "guarding CUDA session …" per model
 ```
 
+Since #3449, pods log `ERROR: init 250 result=11` once at start, right before the guard's
+`active` line (it has no newline of its own). The text comes from the NVIDIA driver's
+`libnvidia-sandboxutils.so` (format `%s %d result=%d`, next to its MIG messages; the A2000 has
+no MIG). The exact trigger was not found. It is harmless: CUDA sessions load and run normally
+after it, and the After load test had 0 errors. The guard's alert matches
+`immich-ml-vram-guard ERROR`, not this line.
+
 To switch the guard off for a test, set `IMMICH_ML_VRAM_GUARD: "false"` in the HelmRelease.
 Never leave it off: the 2026-10-06 numbers below are what happens.
 
 ### Measured (2026-10-06, the load test below)
 
-Same test, same images, 4 minutes at Immich's default job concurrency (Smart Search 2, Face
-Detection 2, OCR 1) then 4 minutes at 4/4/4. Card memory is `nvidia-smi` every 2 s (100 ms for
-the single-image spikes); voice latency is the median of a probe every 15 s. ollama's latency is
-its own `prompt_eval_duration + eval_duration`, so it does not include the test client.
+Same test, same images: 4 minutes at Immich's default job concurrency (Smart Search 2, Face
+Detection 2, OCR 1), then 4 minutes at 4/4/4. "Before" and "After" ran against the live
+Deployment, before and after #3449. The middle column is a trial server with the guard but no
+duty cycle. Card memory comes from `nvidia-smi` every 2 s, and every 200 ms for the spikes.
+Voice latency is the median of a probe every 15 s. For ollama it is the server's own
+`prompt_eval_duration + eval_duration`, so the test client's time is not counted.
 
-| | Before (unguarded, live ML) | Guarded, no duty cycle (trial) | **Guarded, duty 0.25 (shipped)** |
+| | Before (live, unguarded) | Trial: guard, no duty cycle | **After (live, as shipped)** |
 |---|---|---|---|
-| Card peak, talosm05 | **11,902 of 12,282 MiB** in the first minute | 8,608 MiB | **8,184 MiB** (10,024 MiB for the 1:30 screenshot, 100 ms sampling) |
-| Failed requests (5xx) | **3,497 of 4,775** (73%), all CUDA out-of-memory | 0 of 1,822 | 0 of 499 except the 1:30 screenshot at a 2,048 MiB cap, which led to the 3,072 cap; 0 at 3,072 |
-| ollama-assist02 answer (server time, idle 1.25-1.31 s) | 1.35 s / 1.32 s (ML failing fast, so little GPU work) | **2.11 s / 2.29 s** (+70-80%) | **1.44 s / 1.51 s** (+11-16%) |
-| GPU utilisation, max temperature | 0-1%, 82 °C | 56-62%, 92 °C | 17-18%, 88 °C |
-| Requests per minute (all three types) | n/a (most failed) | 267 / 188 | 71 / 54 |
+| talosm05 card peak | **11,902 of 12,282 MiB** within the first minute | 8,608 MiB | **8,654 MiB**; 10,694 MiB at 200 ms, one OCR spike |
+| Failed requests (5xx) | **3,497 of 4,775** (73%), all CUDA out-of-memory | 0 of 1,822 | **0 of 445** |
+| ollama-assist02 answer, server time (idle 1.25-1.30 s) | 1.35 / 1.32 s, because ML failed fast and did little GPU work | **2.11 / 2.29 s** (+70-80%) | **1.46 / 1.53 s** (+14-19%) |
+| whisper STT on talosm01 (3.8 s command, idle 56-59 ms) | 58 / 54 ms | 56 / 68 ms | 80 / 61 ms (ML is not on that card; the difference is noise) |
+| GPU utilisation, max temperature | 0-1%, 82 °C | 56-62%, 92 °C | 15-24%, 90 °C |
+| Requests per minute, all three types | n/a, most failed | 267 / 188 | 65 / 46 |
 
-(The two latency figures are the default and the 4/4/4 phase.) Requests per minute fell by
-about 4x, which is the duty cycle doing its job: a 2,000-photo iCloud import needs about 6,000
-requests, roughly 1.5 hours. A Smart Search text query that arrives during an import waits
-behind the requests already queued, so it can take 10-30 s until the import is done.
+The two figures in each cell are the default phase and the 4/4/4 phase. The cap came from a
+trial at 2,048 MiB, where OCR detection of the 1:30 screenshot failed four times ("Available
+memory of 387667456 is smaller than requested bytes of 390021120"). At 3,072 MiB it passed,
+peaking at 10,024 MiB on the card. Requests per minute fell by about 4x, which is the duty
+cycle doing its job. A 2,000-photo iCloud import needs about 6,000 requests, roughly 1.5-2 hours.
+A Smart Search text query that arrives during an import waits behind the requests already
+queued, so it can take 10-40 s until the import is done.
+
+Even at 15-24% utilisation the card reached 88-90 °C: talosm05's A2000 runs hot. A long
+import may raise `GpuHot` (warning) for a while. That is the card's cooling, not the guard.
+
+Voice outliers that are not ML: ollama answers one request at a time, so a voice request waits
+behind AppDaemon's camera-vision requests. In a 5-minute window with no ML load at all, the
+probe still saw 5-7 s answers. Once, in the recovery phase of the After run, one probe
+waited 106 s with ollama logging nothing, and it did not happen again in 95 more probes. Both
+are tracked in #3450.
 
 ### Why one replica, on talosm05 only
 
