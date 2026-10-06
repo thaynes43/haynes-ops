@@ -68,10 +68,43 @@ kubectl exec -n database postgres16-pgvecto-1 -c postgres -- psql -d immich -c "
 ```
 
 Machine learning is one CUDA replica of `immich-machine-learning` on talosm05's RTX A2000
-(12 GB), which it shares with ollama-assist02 (about 6.6 GB). With every model loaded, ML
-measured about +1.5 GB, so watch the talosm05 VRAM panel during the first big drain.
-`kubectl logs -n photos deploy/immich-machine-learning | grep -c CUDAExecutionProvider` confirms
-it is still on the GPU.
+(12,282 MiB), which it shares with ollama-assist02. `kubectl logs -n photos
+deploy/immich-machine-learning | grep -c CUDAExecutionProvider` confirms ML is still on the GPU.
+
+## Big backlogs and the shared GPU
+
+A light load costs ML about 1.5 GB of VRAM. A big backlog in all three queues at once costs
+far more. Measured on 2026-10-06, the first run against the #3413 backlog behaved like this:
+
+| Phase | talosm05 VRAM (`nvidia_smi_memory_used_bytes`) | Notes |
+|---|---|---|
+| ML idle, ollama only | 7,027 MiB | ollama-assist02's `qwen3.5:9b`, loaded `Forever` |
+| All three queues running | **11,900 of 12,282 MiB** within a minute | ML logged CUDA `Failed to allocate memory` about 150 times in 10 minutes, mostly in facial recognition and OCR. The GPU reached 92 °C. |
+| OCR paused; Smart Search and Face Detection draining | 10,488 to 11,636 MiB | ML gives back little arena memory while it is busy. The errors stopped about 7 minutes after the pause. |
+| ML idle for 5 minutes | 7,027 MiB | ML logs `Shutting down due to inactivity` and frees all of its VRAM |
+| OCR alone (concurrency 1) | 8,762 MiB | about 400 assets a minute |
+
+Smart Search (20,713) and Face Detection (19,778) drained in about 17 minutes. An asset whose
+job hit an out-of-memory error stays missing, and the next nightly run queues it again, so
+nothing is lost. ollama-assist02 kept working because its model and context are allocated
+when it loads. If ollama restarted while ML held the card, though, it might not fit on the
+GPU any more.
+
+**So, for a backlog of thousands of assets, run OCR on its own.** Pause OCR under
+*Administration → Job Queues*, and resume it once Smart Search and Face Detection are idle.
+Without the UI, use `PUT /api/queues/ocr` with `{"isPaused": true}` (or `false` to resume).
+That route needs `queue.update`. The shared unrestricted key has it, but a dedicated key with
+only `job.create` and `queue.read` would get a 403. An agent never handles the key, so it makes
+this call from a one-off Job in `photos` that mounts `immich-queue-missing-secret` and runs
+`curl --fail-with-body -sS -X PUT -H @/secret/api-key-header -H 'Content-Type: application/json'
+--data '{"isPaused":true}' http://immich-server.photos.svc.cluster.local:2283/api/queues/ocr`.
+Copy the CronJob's pod spec and change only the command. `--fail-with-body` makes a rejected call
+(a 403, say) fail the Job instead of completing it, so check that the Job reached `Complete` and
+that the logged response shows the `isPaused` value you asked for. A resume that silently failed
+leaves OCR paused for good. The nightly job skips a paused
+queue, so **a pause that is never resumed quietly stops OCR**, and the job log shows
+`SKIP: the queue is paused` every night. Once the backlog is gone, a nightly run finds only a
+handful of assets and none of this applies.
 
 A few assets may never clear, for example an asset whose preview cannot be decoded. The job
 queues them again every night. That costs little, but if one count stops falling well above
