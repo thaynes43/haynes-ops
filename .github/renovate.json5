@@ -90,4 +90,16 @@
   commitMessageTopic: '{{depName}}',
   commitMessageExtra: 'to {{newVersion}}',
   commitMessageSuffix: '',
+  packageRules: [
+    // LinuxServer's calibre tags are v<calibre>-ls<build> (the EPUB converter,
+    // apps/downloads/lazylibrarian/app/epub-convert-cronjob.yaml). Docker
+    // versioning reads -ls<build> as a compatibility suffix and would only ever
+    // offer the same build; this compares calibre's version, then the build.
+    {
+      description: 'linuxserver/calibre: v<calibre>-ls<build> tags',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/linuxserver/calibre$/'],
+      versioning: 'regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-ls(?<build>\\d+)$',
+    },
+  ],
 }

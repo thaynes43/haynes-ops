@@ -1,0 +1,144 @@
+---
+# Hourly EPUB conversion of LazyLibrarian's .mobi / .azw3-only books (2026-10-06).
+#
+# LazyLibrarian accepts epub, mobi, pdf and azw3; Kavita's Books library opens
+# epub and pdf only, so a book held only as .mobi or .azw3 never reaches the
+# library. Owner ruling on https://github.com/thaynes43/haynesnetwork/issues/770:
+# keep accepting those formats, convert them to EPUB after import, keep the
+# original, re-download nothing.
+#
+# epub-convert/epub_convert.py (its header has the whole contract): for every
+# book folder under EBooks that holds a .mobi/.azw3 and no .epub or .pdf, one
+# `ebook-convert` at a time into the pod's /tmp; the EPUB is checked with
+# `ebook-meta` (title and author read, title matches the folder's book) and only
+# then placed beside the original as "<original basename>.epub". A folder that
+# already holds an epub or a pdf is never touched. A book that fails (DRM, a
+# conversion error, a title that names another book) is left as it is and
+# recorded in books/.epub-convert/held.tsv, outside every library root; delete
+# its line to retry it. LazyLibrarian's daily library scan then links the book
+# to the epub (EBOOK_TYPE lists epub first); Kavita gets one library scan per
+# run that converted something.
+#
+# Load (the 2026-10-05 CPU-starvation outage): one conversion at a time, under
+# `nice`, CPU limit 1, never on a control-plane node. A run stops starting new
+# conversions after RUN_BUDGET_SECONDS; the next run takes the rest.
+#
+# Image: LinuxServer's calibre (the LazyLibrarian image has no calibre), only
+# its CLI; the s6 init and desktop never start. ghcr.io, not lscr.io (not on the
+# Kyverno registry allowlist). epub-convert/test_epub_convert.py runs inside
+# this exact image in CI (.github/workflows/lazylibrarian-epub-convert.yaml).
+#
+# Logs and alerts: JSON lines epub_convert / epub_convert_census, alerted by
+# lokirule.yaml (group lazylibrarian-epub-convert).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lazylibrarian-epub-convert
+  annotations:
+    # Keep Flux's postBuild envsubst away from the spec (no ${...} is meant for it).
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+spec:
+  schedule: "20 * * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      # RUN_BUDGET_SECONDS (45m) + one CONVERT_TIMEOUT_SECONDS (10m) fits; the hourly cadence is the ceiling.
+      activeDeadlineSeconds: 3300
+      template:
+        metadata:
+          labels:
+            # NOT app.kubernetes.io/name: lazylibrarian: the owed-checks CronJob pins itself to the pod with that
+            # label to share LazyLibrarian's RWO volume, and must never pick this one.
+            app.kubernetes.io/name: lazylibrarian-epub-convert
+        spec:
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: node-role.kubernetes.io/control-plane
+                        operator: DoesNotExist
+          securityContext:
+            # LazyLibrarian's PUID/PGID, so the EPUB is owned like every file LazyLibrarian writes.
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: epub-convert
+              image: ghcr.io/linuxserver/calibre:v9.15.0-ls424@sha256:c97f86a5acc3372d5e25e75b4c98d1bffa64e70d4c413554beb1e554ae109187
+              command:
+                - python3
+                - /scripts/epub_convert.py
+              env:
+                - name: EBOOK_ROOT
+                  value: /data/cephfs-hdd/data/media/books/EBooks
+                - name: STATE_DIR
+                  value: /data/cephfs-hdd/data/media/books/.epub-convert
+                - name: RUN_BUDGET_SECONDS
+                  value: "2700"
+                # An import younger than this is left for the next run.
+                - name: SETTLE_SECONDS
+                  value: "900"
+                - name: CONVERT_TIMEOUT_SECONDS
+                  value: "600"
+                - name: KAVITA_URL
+                  value: http://kavita.media.svc.cluster.local:5000
+                - name: KAVITA_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: lazylibrarian-epub-convert-secret
+                      key: KAVITA_API_KEY
+                      # Without it the job still converts; Kavita's own scheduled scan picks the books up.
+                      optional: true
+                - name: HOME
+                  value: /tmp
+                - name: TMPDIR
+                  value: /tmp
+                - name: CALIBRE_CONFIG_DIRECTORY
+                  value: /tmp/calibre-config
+                - name: CALIBRE_CACHE_DIRECTORY
+                  value: /tmp/calibre-cache
+                - name: CALIBRE_TEMP_DIR
+                  value: /tmp
+                - name: QT_QPA_PLATFORM
+                  value: offscreen
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 250m
+                  memory: 512Mi
+                limits:
+                  cpu: "1"
+                  memory: 2Gi
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: books
+                  mountPath: /data/cephfs-hdd
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: script
+              configMap:
+                name: lazylibrarian-epub-convert
+            # LazyLibrarian's own library mount, at its own path (helmrelease.yaml data-proxmox).
+            - name: books
+              nfs:
+                server: gasha01.haynesnetwork
+                path: /hdd-nfs-repl
+            - name: tmp
+              emptyDir:
+                sizeLimit: 4Gi

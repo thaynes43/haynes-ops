@@ -10,6 +10,8 @@ resources:
   - ./helmrelease.yaml
   - ./library-scan-externalsecret.yaml
   - ./library-scan-cronjob.yaml
+  - ./epub-convert-externalsecret.yaml
+  - ./epub-convert-cronjob.yaml
 configMapGenerator:
   # Patched upstream librarysync.py (the library scan's id carry-over bug,
   # thaynes43/haynesnetwork#631), mounted over the image's copy by
@@ -75,6 +77,13 @@ configMapGenerator:
       - resultlist.py=./patches/resultlist.py
     options:
       disableNameSuffixHash: true
+  # The EPUB converter's script (epub-convert-cronjob.yaml; issue
+  # https://github.com/thaynes43/haynesnetwork/issues/770). Hashed name on
+  # purpose: kustomize rewrites the CronJob's reference, so the next Job runs
+  # the new script. Only the script ships; its test runs in CI.
+  - name: lazylibrarian-epub-convert
+    files:
+      - epub_convert.py=./epub-convert/epub_convert.py
   # Loki ruler picks this up by label (same pattern as qbittorrent). Stable
   # name: the rule file is read by the ruler sidecar, nothing references it.
   - name: lazylibrarian-lokirule
