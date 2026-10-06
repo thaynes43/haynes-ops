@@ -14,7 +14,12 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
   secrets, plus targeted runtime writes only (pod delete / rollout restart, flux
   reconcile + suspend, batch Jobs, CronJob suspend, and PVC delete **scoped to the
   `database` namespace** for CNPG destroy+re-clone). Deploys still go through git
-  — do not fight RBAC denials, they are the design.
+  — do not fight RBAC denials, they are the design. A `kubectl` suspend of a
+  Flux-managed CronJob lasts only until Flux's next reconcile of its Kustomization:
+  kustomize-controller takes over fields that `kubectl patch` sets, and `spec.suspend`
+  falls back to false. This happened on 2026-09-29, within 3 minutes. To hold a
+  suspend, `flux suspend kustomization` that app as well, or set `spec.suspend: true`
+  in git.
 - **Never push to main — but DO merge your own PRs.** Branch + PR, always, then
   **squash-merge it yourself** once required checks are green. "Never push to main"
   forbids *direct pushes*; it has never meant "wait for Tom to click merge". A green,
