@@ -56,6 +56,41 @@ spec:
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
+    # 2026-10-06 (dev-env v2, plan 01 item 8.2): the thaynes43/dev-env repo signs
+    # `dev-env-operator:sha-<short>` from .github/workflows/publish.yml on main and,
+    # later, the v2 agent image `dev-env:2.x.y` (workflow name not settled yet, KICKOFF
+    # B5), so the subject allows any workflow of that repo but ONLY on refs/heads/main
+    # (unlike the haynes-ops rule above, which has no ref pin). Separate rule so a
+    # haynes-ops workflow cannot vouch for a v2 image or the reverse. `dev-env:2.*`
+    # keeps v1's 0.x tags out. Same attestor settings as verify-self-built, same cosign
+    # v3.1.3 signing pin: so it has the SAME "no signatures found" gap (haynes-ops
+    # #3092, legacy .sig vs Sigstore bundle). Audit, so nothing is gated; do not flip
+    # to Enforce before #3092 is fixed. OVERLAP: verify-self-built's `dev-env*` glob also
+    # matches these v2 images and its haynes-ops subject will not match them; narrow it
+    # to `dev-env:0.*` before ANY Enforce. Move to ImageValidatingPolicy with #3405.
+    - name: verify-dev-env-v2
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/thaynes43/dev-env-operator*"
+            - "ghcr.io/thaynes43/dev-env:2.*"
+          failureAction: Audit
+          mutateDigest: false
+          verifyDigest: false
+          required: true
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    # thaynes43/dev-env workflows, main branch only.
+                    subject: "https://github.com/thaynes43/dev-env/.github/workflows/*@refs/heads/main"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
     - name: verify-cigar-journal
       match:
         any:
