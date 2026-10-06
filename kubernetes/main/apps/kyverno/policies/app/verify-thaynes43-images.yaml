@@ -41,7 +41,10 @@ spec:
         - imageReferences:
             - "ghcr.io/thaynes43/upgrade-agent*"
             - "ghcr.io/thaynes43/upgrade-shepherd*"
-            - "ghcr.io/thaynes43/dev-env*"
+            # 2026-10-06: v1 only (`0.*`). Every v1 pin (dev-env HR, dev-env-ops HR, vexa
+            # scribe-notes job) is 0.6.x. The old `dev-env*` glob also matched the v2
+            # images (dev-env-operator:sha-*, dev-env:2.*) that verify-dev-env-v2 owns.
+            - "ghcr.io/thaynes43/dev-env:0.*"
             - "ghcr.io/thaynes43/comfyui*"
           failureAction: Audit
           mutateDigest: false   # we pin tag@digest in the manifests; don't rewrite
@@ -65,9 +68,9 @@ spec:
     # keeps v1's 0.x tags out. Same attestor settings as verify-self-built, same cosign
     # v3.1.3 signing pin: so it has the SAME "no signatures found" gap (haynes-ops
     # #3092, legacy .sig vs Sigstore bundle). Audit, so nothing is gated; do not flip
-    # to Enforce before #3092 is fixed. OVERLAP: verify-self-built's `dev-env*` glob also
-    # matches these v2 images and its haynes-ops subject will not match them; narrow it
-    # to `dev-env:0.*` before ANY Enforce. Move to ImageValidatingPolicy with #3405.
+    # to Enforce before #3092 is fixed. verify-self-built's v1 glob was narrowed to
+    # `dev-env:0.*` on 2026-10-06 so the two rules no longer overlap. Both rules are
+    # still Audit and still unverifying (#3092). Move to ImageValidatingPolicy with #3405.
     - name: verify-dev-env-v2
       match:
         any:
