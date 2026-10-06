@@ -82,12 +82,13 @@ spec:
               # Qwen-Image-2.1 edit graph: 1.42-1.50 s/it (the throttled 3090 did
               # 1.4), warm render 80-86 s (3090 ~69 s), cold first render 306 s
               # (models load off the NFS share). AppDaemon allows 900-1200 s per
-              # render and sends at most ~8/h. The card is SHARED with
-              # ollama-assist02 (qwen3.5:9b, ~6.5 GB resident, detection
-              # summaries): ComfyUI's dynamic VRAM works in the remaining ~9 GB
-              # (UNet 6.9 GB, text encoder 8.9 GB, VAE 0.6 GB, loaded in turn). The
-              # A2000 on talosm01 has no room for that LLM (voice STT/TTS + Vexa
-              # hold 8.6 of 12 GB).
+              # render and sends at most ~8/h. The card was SHARED with
+              # ollama-assist02 (qwen3.5:9b, ~6.5 GB resident) when this was
+              # benchmarked, so ComfyUI's dynamic VRAM worked in the remaining
+              # ~9 GB (UNet 6.9 GB, text encoder 8.9 GB, VAE 0.6 GB, loaded in
+              # turn). assist02 has since moved to talosm05's A2000 (the A2000 on
+              # talosm01 has no room for that LLM: voice STT/TTS + Vexa hold 8.6
+              # of 12 GB), so ComfyUI now has the whole 16 GB.
               #
               # Pinned by UUID so it never lands on a different card by accident.
               # Moving back to a 3090 = nodeSelector + this UUID together (the

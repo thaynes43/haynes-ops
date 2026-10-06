@@ -39,8 +39,9 @@ spec:
           #                        each; ollama-prime takes leftovers)
           #   nvidia-a2000         -> talosm01 (RTX A2000, vexa-whisper), and
           #                        talosm04 + talosm05 (RTX A2000 each, the masters
-          #                        that joined for #3332; no term change needed)
-          #   nvidia-2000-ada-gpu  -> talosm03 (RTX 2000 Ada, ollama-assist02)
+          #                        that joined for #3332; no term change needed;
+          #                        talosm05 hosts ollama-assist02)
+          #   nvidia-2000-ada-gpu  -> talosm03 (RTX 2000 Ada, ComfyUI)
           #   haynesops.com/gpu-test -> talosw04 (eGPU test node; a Talos node label,
           #                        because NFD does not tolerate the test taint)
           # A new GPU node needs its NFD label added here AND its expected GPU
