@@ -89,3 +89,32 @@ spec:
       VOLSYNC_ACCESSMODES: ReadWriteMany
       VOLSYNC_STORAGECLASS: ceph-filesystem
       VOLSYNC_SNAPSHOTCLASS: csi-ceph-filesystem
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# Nightly "Missing" run for Smart Search / Face Detection / OCR (#3413). Its own
+# Kustomization so that its ExternalSecret (one 1Password field) can never hold
+# immich-server, or immich-machine-learning behind it, un-Ready.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app immich-queue-missing
+  namespace: photos
+spec:
+  targetNamespace: photos
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: immich-server
+      namespace: photos
+    - name: external-secrets-stores
+      namespace: external-secrets
+  path: ./kubernetes/main/apps/photos/immich/queue-missing
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m

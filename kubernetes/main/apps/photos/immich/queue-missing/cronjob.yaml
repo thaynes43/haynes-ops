@@ -1,0 +1,216 @@
+---
+# Nightly "Missing" run for Immich's Smart Search, Face Detection and OCR
+# queues (#3413).
+#
+# WHY: Immich's own nightly tasks (00:00 server time, America/New_York) queue
+# only missing thumbnails and face clustering (queue.service.ts
+# handleNightlyJobs, v3.2.4). Smart Search (CLIP), Face Detection and OCR are
+# queued when an asset is uploaded, or when an admin presses "Missing" under
+# Administration -> Job Queues, and at no other time. Assets that arrived while
+# ML was down stay unprocessed for good: on 2026-10-05 that was 20,713 assets
+# without CLIP, 19,778 without face detection and 81,482 without OCR.
+#
+# WHAT: for each queue it does what the Missing button does (web
+# QueueCard.svelte sends {command: "start", force: false}):
+#   1. GET /api/queues/<name> (permission queue.read) and log isPaused + counts.
+#      Skip the queue if it is paused (an admin paused it on purpose) or busy
+#      (active + waiting > 0, so the previous run is still draining). The UI
+#      offers Missing only on an idle queue, and the server answers 400 "Job is
+#      already running" while any job in that queue is active.
+#   2. PUT /api/jobs/<name> {"command":"start","force":false} (job.create).
+#      This deprecated route is still the only way to start a queue in v3.2.4;
+#      the newer /api/queues controller can only pause, resume and empty.
+#   3. After a one-minute settle, GET each queue again and log the counts.
+#
+# force MUST stay false. force=true is the "All" button and it DELETES first:
+# every CLIP embedding, every ML-detected face (and the people built from
+# them), or all OCR text. Then it reprocesses the whole library.
+#
+# Fails loudly: any non-2xx response marks the run failed (exit 1, so the Job
+# fails and KubeJobFailed fires), after it has still tried the other queues.
+# The one exception is the 400 "already running" answer, which only means the
+# busy check above lost a race. The API key is read by curl from a mounted
+# header file and is never echoed; Immich's error bodies do not contain it.
+#
+# On demand:
+#   kubectl create job -n photos --from=cronjob/immich-queue-missing immich-queue-missing-manual-$(date +%s)
+# Runbook: .agents/runbooks/immich-ml-backlog.md
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: immich-queue-missing
+  annotations:
+    # The script uses shell variables. This Kustomization has no postBuild
+    # substitution today; the annotation keeps it that way for this object.
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+spec:
+  # 01:30, after Immich's own nightly jobs at 00:00. Both are America/New_York,
+  # the house default; k8tz writes that zone onto every CronJob anyway.
+  schedule: "30 1 * * *"
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      # One attempt. The calls are idempotent, so a retry would only hide a
+      # flapping auth or network problem.
+      backoffLimit: 0
+      # A backstop just under the 24h interval, never sized to the runtime
+      # (Tom, 2026-09-13). Every curl has its own timeout, so a run takes about
+      # a minute and cannot hold the schedule.
+      activeDeadlineSeconds: 82800
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: immich-queue-missing
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            # The curl image's USER is a name (curl_user), so runAsNonRoot
+            # needs a numeric uid to verify. fsGroup makes the 0440 secret
+            # file readable by this uid.
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: queue-missing
+              image: docker.io/curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  base="http://immich-server.photos.svc.cluster.local:2283/api"
+                  hdr=/secret/api-key-header
+                  body=/tmp/body
+                  fail=0
+                  started=0
+
+                  ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+                  # api METHOD PATH [JSON]: sets $code and leaves the response
+                  # body in $body. Transport errors come back as code 000.
+                  api() {
+                    : > "$body"
+                    if [ $# -ge 3 ]; then
+                      code=$(curl -sS -o "$body" -w '%{http_code}' \
+                        --connect-timeout 10 --max-time 60 -X "$1" -H @"$hdr" \
+                        -H 'Content-Type: application/json' --data "$3" \
+                        "$base$2") || code=000
+                    else
+                      code=$(curl -sS -o "$body" -w '%{http_code}' \
+                        --connect-timeout 10 --max-time 60 -X "$1" -H @"$hdr" \
+                        "$base$2") || code=000
+                    fi
+                  }
+
+                  num() { sed -n -E "s/.*\"$1\":([0-9]+).*/\1/p" "$body"; }
+                  paused() { sed -n -E 's/.*"isPaused":(true|false).*/\1/p' "$body"; }
+                  counts() {
+                    echo "active=$(num active) waiting=$(num waiting) delayed=$(num delayed) failed=$(num failed) paused=$(paused)"
+                  }
+                  snippet() { head -c 300 "$body"; }
+
+                  echo "immich-queue-missing start $(ts)"
+                  for q in smartSearch faceDetection ocr; do
+                    api GET "/queues/$q"
+                    case "$code" in
+                      2??) ;;
+                      *)
+                        echo "[$q] FAIL: GET /api/queues/$q -> HTTP $code: $(snippet)"
+                        fail=1
+                        continue
+                        ;;
+                    esac
+                    active=$(num active)
+                    waiting=$(num waiting)
+                    is_paused=$(paused)
+                    if [ -z "$active" ] || [ -z "$waiting" ] || [ -z "$is_paused" ]; then
+                      echo "[$q] FAIL: unexpected /api/queues/$q response: $(snippet)"
+                      fail=1
+                      continue
+                    fi
+                    echo "[$q] before: $(counts)"
+                    if [ "$is_paused" = true ]; then
+                      echo "[$q] SKIP: the queue is paused in Immich; leaving it alone"
+                      continue
+                    fi
+                    if [ $((active + waiting)) -gt 0 ]; then
+                      echo "[$q] SKIP: busy (active=$active waiting=$waiting); the earlier run is still draining"
+                      continue
+                    fi
+                    # force=false is Missing. Never true: that deletes first.
+                    api PUT "/jobs/$q" '{"command":"start","force":false}'
+                    case "$code" in
+                      2??)
+                        echo "[$q] started Missing (force=false)"
+                        started=$((started + 1))
+                        ;;
+                      400)
+                        if grep -q 'already running' "$body"; then
+                          echo "[$q] SKIP: Immich says the job is already running"
+                        else
+                          echo "[$q] FAIL: PUT /api/jobs/$q -> HTTP 400: $(snippet)"
+                          fail=1
+                        fi
+                        ;;
+                      *)
+                        echo "[$q] FAIL: PUT /api/jobs/$q -> HTTP $code: $(snippet)"
+                        fail=1
+                        ;;
+                    esac
+                  done
+
+                  if [ "$started" -gt 0 ]; then
+                    # Each start queues one "queue all" job that streams the
+                    # missing assets into the queue; give it time to fill.
+                    sleep 60
+                    for q in smartSearch faceDetection ocr; do
+                      api GET "/queues/$q"
+                      case "$code" in
+                        2??) echo "[$q] after: $(counts)" ;;
+                        *)
+                          echo "[$q] FAIL: GET /api/queues/$q -> HTTP $code: $(snippet)"
+                          fail=1
+                          ;;
+                      esac
+                    done
+                  fi
+
+                  echo "immich-queue-missing done $(ts) started=$started errors=$fail"
+                  exit "$fail"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+              volumeMounts:
+                - name: api-key
+                  mountPath: /secret
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: api-key
+              secret:
+                secretName: immich-queue-missing-secret
+                defaultMode: 0440
+                items:
+                  - key: api-key-header
+                    path: api-key-header
+            - name: tmp
+              emptyDir:
+                medium: Memory
+                sizeLimit: 1Mi
