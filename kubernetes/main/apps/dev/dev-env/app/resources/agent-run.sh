@@ -520,18 +520,20 @@ claude_effort_rows() {  # $1 = model
 # fallback gets refreshed (dev-env PR) instead of rotting silently.
 CODEX_CACHE="${CODEX_HOME:-$HOME/.codex}/models_cache.json"
 
-# Fallback = the catalog codex 0.156.1 serves (snapshot 2026-09-23). NB the catalog
+# Fallback = the catalog codex 0.160.0 serves (snapshot 2026-10-03). NB the catalog
 # is served PER CLIENT VERSION: a model launched after the image's CODEX_VERSION
 # pin (scripts/dev-env/Dockerfile) is simply absent from the cache — gpt-6-astra
 # did not exist to 0.151.0 and needed 0.153.4; gpt-6-sol/gpt-6-luna needed 0.156.1
-# (0.154.0's cache never listed them). So a missing codex row can mean "bump the
+# (0.154.0's cache never listed them); gpt-6.1-sol needed 0.159.1 (0.158.0's
+# cache never listed it, 2026-10-03). So a missing codex row can mean "bump the
 # pin", not "unavailable" — the same CLI-floor trap as claude's ids. The slugs
 # here must match the live list EXACTLY or codex_model_rows WARNs on every run:
 # 0.156.1 also delisted gpt-5.4-mini, so it left this table too.
 codex_model_rows_fallback() {
   printf '%s\n' \
     'gpt-6-astra    GPT-6-Astra · frontier intelligence for the most demanding work' \
-    'gpt-6-sol      GPT-6-Sol · workhorse for coding and everyday work (codex subagent default)' \
+    'gpt-6.1-sol    GPT-6.1-Sol · latest workhorse model for coding and everyday work (codex subagent default)' \
+    'gpt-6-sol      GPT-6-Sol · previous generation workhorse model' \
     'gpt-6-luna     GPT-6-Luna · fast and affordable for easier tasks' \
     'gpt-5.6-sol    GPT-5.6-Sol · older coding model for complex work' \
     'gpt-5.6-terra  GPT-5.6-Terra · older balanced model' \
@@ -592,7 +594,7 @@ codex_effort_rows() {
 
 codex_effort_rows_fallback() {
   case "$1" in
-    gpt-6-astra|gpt-6-sol|gpt-5.6-sol|gpt-5.6-terra)
+    gpt-6-astra|gpt-6.1-sol|gpt-6-sol|gpt-5.6-sol|gpt-5.6-terra)
       printf '%s\n' 'xhigh   (dev-env default)' 'ultra   (max reasoning + auto-delegation)' 'max' 'high' 'medium' 'low' ;;
     gpt-6-luna|gpt-5.6-luna)
       printf '%s\n' 'xhigh   (dev-env default)' 'max' 'high' 'medium' 'low' ;;

@@ -309,7 +309,7 @@ resolves CLIENT-side against the pinned CLI and can silently serve an older tier
 (freshness contract below). Claude: `claude-fable-5-1`, `claude-opus-5-5`,
 `claude-sonnet-5-5`, `claude-opus-5`, `claude-haiku-4-5`; effort
 `low|medium|high|xhigh|max` (or `ultracode`) on the 5-family, none at all on
-Haiku 4.5. Codex: `gpt-6-astra` (top), `gpt-6-sol`, `gpt-6-luna`,
+Haiku 4.5. Codex: `gpt-6-astra` (top), `gpt-6.1-sol`, `gpt-6-sol`, `gpt-6-luna`,
 `gpt-5.6-sol|terra|luna`, `gpt-5.5`; effort `low|medium|high|xhigh`, plus `max`
 on the GPT-6 + 5.6 tiers and `ultra` on astra/sol/terra (both generations).
 agent-run refuses a level the model can't honour instead of
@@ -426,7 +426,7 @@ The container now has a CPU limit of 8, but that is a backstop, not a budget.
 | **Tom's interactive Claude Code work** | **Opus 5.5 by default** — `claude-opus-5-5` is the pod-wide default since 2026-09-23 (was Fable 5.1 from 2026-09-01): bare `claude`, the post-ready standby (`DEV_ENV_CLAUDE_MODEL`, re-asserted by dev-init on every boot) and every `agent-run` launch without `--model`. **Fable 5.1 by name** — `--model claude-fable-5-1` when Tom wants the top tier | Fable's plan quota is scarce and shared with Tom's own use, and Opus 5.5 is Fable-class on agentic coding, so Fable is spent on purpose, never by default. Fable 5.1 needs claude-code >=2.1.255, Opus 5.5 >=2.1.280 — an older CLI rejects the id outright. |
 | **Native Claude Code subagents** | **Two tiers.** **Opus 5.5** (`opus-worker`: `claude-opus-5-5`, effort `xhigh`) takes hard work and anything a user will see. **Sonnet 5.5** (`sonnet-worker`: `claude-sonnet-5-5`, effort `high`) takes routine coding and testing. See *Subagent dispatch rules* below. | Mandatory in every repo for work delegated by a Claude Code driver. Since 2026-09-28 (Opus 5.5 took everything from 2026-09-23). Sonnet 5.5 does the routine work at lower plan cost, and Opus is kept for work where its judgment shows. Sonnet 5.5 needs claude-code >=2.1.284 and Opus 5.5 needs >=2.1.280. |
 | **Tom's interactive Codex work** | **GPT-6 Astra**, exact id `gpt-6-astra`, reasoning effort `max` | This remains the Codex driving model configured for the pod. |
-| **Native Codex collaboration subagents** | **GPT-6 Sol**, exact id `gpt-6-sol`, reasoning effort `xhigh` | Mandatory in every repo for work delegated by a Codex driver. Since 2026-09-23 (was GPT-5.6 Sol); needs codex >=0.156.1 in the image. |
+| **Native Codex collaboration subagents** | **GPT-6.1 Sol**, exact id `gpt-6.1-sol`, reasoning effort `xhigh` | Mandatory in every repo for work delegated by a Codex driver. Since 2026-10-03 (GPT-6 Sol from 2026-09-23, GPT-5.6 Sol before); needs codex >=0.159.1 in the image. |
 | **Any pay-per-token Claude API-key call** | **Sonnet 5.5** (`claude-sonnet-5-5`, since 2026-09-28; was Sonnet 5) | Never use Fable or Opus on Claude API pricing. Sonnet 5.5 is close to Opus quality at a fraction of the cost ($2/$10 per Mtok), and it can dispatch a plan-served Claude Code agent for heavy lifting. This rule does not govern OpenAI API calls. |
 
 ### Remote Control sessions are coordinators (Tom, 2026-09-28)
@@ -453,7 +453,7 @@ have to keep starting new ones.
   rebuild that context in yours.
 - This section is for the top-level session. Subagents and headless `agent-run -p`
   task sessions do their work themselves. A Codex phone thread takes the same
-  coordinator role with its native `gpt-6-sol` subagents, following the Codex rules
+  coordinator role with its native `gpt-6.1-sol` subagents, following the Codex rules
   below.
 
 ### Subagent dispatch rules (Tom, updated 2026-09-28 — apply in EVERY repo)
@@ -490,7 +490,7 @@ a Claude Code session from Codex.
     its quota is scarce and shared with his own use.
 - **Codex drivers:** default every eligible unit of work to a native collaboration
   subagent using `collaboration.spawn_agent` with `fork_turns: "none"`, exact
-  model `gpt-6-sol`, and `reasoning_effort: "xhigh"`. Fresh empty context is
+  model `gpt-6.1-sol`, and `reasoning_effort: "xhigh"`. Fresh empty context is
   deliberate: give it a self-contained work order with the objective, relevant
   paths and constraints, expected deliverable, and enough verified context to
   work without the parent conversation. Do not use `agent-run` for these native
@@ -562,7 +562,7 @@ surfaces still rot, and **agents are the tripwire for both**:
   (`scripts/dev-env/Dockerfile`) never appears in the cache, the picker, or the
   remote-control phone picker until the pin is bumped (`gpt-6-astra` did not
   exist to 0.151.0 and needed 0.153.4 — 2026-09-06; `gpt-6-sol`/`gpt-6-luna`
-  needed 0.156.1 — 2026-09-23). Bump first, then refresh the fallbacks.
+  needed 0.156.1 — 2026-09-23; `gpt-6.1-sol` needed 0.159.1 — 2026-10-03). Bump first, then refresh the fallbacks.
 
 Either way the fix is the same: open a standard held-draft dev-env PR editing
 `kubernetes/main/apps/dev/dev-env/app/resources/agent-run.sh` (labels/fallbacks
