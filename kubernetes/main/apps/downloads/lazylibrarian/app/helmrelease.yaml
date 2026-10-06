@@ -44,7 +44,8 @@ spec:
               # below), copies of THIS tag's files plus marked fixes. Bumping the
               # tag means re-deriving all seven files from the new image, or
               # dropping them if upstream fixed the bugs: see the headers of the
-              # files in patches/.
+              # files in patches/. patches/tests/ is their harness: CI runs it
+              # inside THIS tag (pins + tests); README.md there has the bump steps.
               tag: version-40a389ea
             env:
               TZ: America/New_York

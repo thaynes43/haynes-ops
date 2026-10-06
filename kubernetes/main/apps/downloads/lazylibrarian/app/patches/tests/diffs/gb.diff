@@ -1,0 +1,44 @@
+--- a/gb.py
++++ b/gb.py
+@@ -1,3 +1,29 @@
++# ---------------------------------------------------------------------------
++# haynes-ops override (downloads/lazylibrarian, ConfigMap lazylibrarian-gb)
++#
++# This is LazyLibrarian's upstream lazylibrarian/gb.py, byte for byte, plus
++# this comment block and ONE marked change (search for "haynes-ops fix").
++#
++# PINNED TO UPSTREAM: image docker.io/linuxserver/lazylibrarian:version-40a389ea
++#   (LazyLibrarian commit 40a389ea, pyproject version 2026.05.25).
++#   sha256 of the unmodified upstream file in that image:
++#   9ab71fbd28b9600c6fa679ca9662674b82421be20c06ab23e9f024b5d635971f
++#
++# The fix: GoogleBooks.add_bookid_to_db() (what the API's addBook runs, and
++# so every book haynesnetwork adds) never inserted the bookauthors row that
++# get_author_books() writes. update_totals() counts an author's books through
++# bookauthors, so an author LazyLibrarian only knew through added books
++# counted zero, and dbupgrade.check_db() deleted it at the next start, taking
++# every one of those books with it (books.AuthorID cascades). About 900
++# haynesnetwork requests pointed at books deleted this way
++# (thaynes43/haynesnetwork#665). dbupgrade.py carries the matching guard.
++#
++# BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
++# gb.py, and either re-apply the marked change to it (if upstream has not
++# fixed the bug) or drop this override (if it has). Never carry this file onto
++# a different image unchanged: it would silently revert every other upstream
++# change to the Google Books source.
++# ---------------------------------------------------------------------------
+ #  This file is part of Lazylibrarian.
+ #  Lazylibrarian is free software, you can redistribute it and/or modify
+ #  it under the terms of the GNU General Public License as published by
+@@ -813,6 +839,11 @@
+                 "gb_id": bookid
+             }
+             db.upsert("books", new_value_dict, control_value_dict)
++            # haynes-ops fix: link the book to its author, as get_author_books does. Without this row
++            # update_totals counts the author's books as zero and check_db deletes the author (and, by
++            # ON DELETE CASCADE, every book added this way) at the next start (thaynes43/haynesnetwork#665).
++            db.action('INSERT into bookauthors (AuthorID, BookID, Role) VALUES (?, ?, ?)',
++                      (author_id, bookid, ROLE['PRIMARY']), suppress='UNIQUE')
+ 
+             if 'nocover' in book['img'] or 'nophoto' in book['img']:
+                 # try to get a cover from another source

@@ -1,0 +1,96 @@
+--- a/sabnzbd.py
++++ b/sabnzbd.py
+@@ -1,3 +1,31 @@
++# ---------------------------------------------------------------------------
++# haynes-ops override (downloads/lazylibrarian, ConfigMap lazylibrarian-sabnzbd)
++#
++# This is LazyLibrarian's upstream lazylibrarian/sabnzbd.py plus this comment
++# block and marked changes (search for "haynes-ops fix"). Everything else is
++# upstream, byte for byte.
++#
++# PINNED TO UPSTREAM: image docker.io/linuxserver/lazylibrarian:version-40a389ea
++#   (LazyLibrarian commit 40a389ea, pyproject version 2026.05.25).
++#   sha256 of the unmodified upstream file in that image:
++#   ab7b6f43b9a0db3acfb9cb3b720e837c83570e903feab7877d0217e149d544b3
++#
++# Why: upstream hands SABnzbd the indexer's download URL (mode=addurl), and
++# SABnzbd stores that URL on the job and shows it in its history. For Prowlarr
++# the URL carries the Prowlarr API key (apikey=...), so the key sat in
++# SABnzbd's history (the `url` and `stage_log` fields) for every grab.
++#
++# The fix: for an http(s) URL, LazyLibrarian fetches the NZB itself and
++# uploads it with mode=addfile, so SABnzbd never sees the URL. The job name
++# (nzbname) and category are unchanged. If the fetch fails the send fails
++# (there is no fallback to addurl, which would leak the key again), and no
++# log line from the new code carries the URL.
++#
++# BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
++# sabnzbd.py and re-apply the marked changes to it (or drop this override if
++# upstream has fixed it). Never carry this file onto a different image
++# unchanged: it would silently revert every other upstream change to it.
++# ---------------------------------------------------------------------------
+ #  This file is part of Lazylibrarian.
+ #  Lazylibrarian is free software':'you can redistribute it and/or modify
+ #  it under the terms of the GNU General Public License as published by
+@@ -19,6 +47,23 @@
+ from lazylibrarian.common import proxy_list
+ from lazylibrarian.config2 import CONFIG
+ from lazylibrarian.formatter import make_utf8bytes, versiontuple
++
++
++def _fetch_nzb_without_logging_url(nzburl):  # haynes-ops fix
++    """Fetch the NZB bytes for an indexer URL. Never logs or returns the URL."""
++    logger = logging.getLogger(__name__)
++    try:
++        r = requests.get(nzburl, timeout=CONFIG.get_int('HTTP_TIMEOUT'), proxies=proxy_list(),
++                         verify=(CONFIG['SSL_CERTS'] or True) if nzburl.startswith('https')
++                         and CONFIG.get_bool('SSL_VERIFY') else False)
++    except Exception as e:
++        logger.error(f"Unable to fetch nzb for SAB: {type(e).__name__}")
++        return None
++    data = r.content
++    if r.status_code != 200 or b'<nzb' not in data[:4096].lower():
++        logger.error(f"Unable to fetch nzb for SAB: http {r.status_code}, {len(data)} bytes, not an nzb")
++        return None
++    return data
+ 
+ 
+ def check_link():
+@@ -72,6 +117,7 @@
+         host = f"{host}/{CONFIG['SAB_SUBDIR'].strip('/')}"
+ 
+     params = {}
++    nzbdata = None  # haynes-ops fix
+ 
+     if nzburl in ['auth', 'get_cats', 'version']:
+         # connection test
+@@ -164,7 +210,14 @@
+     else:
+         params['mode'] = 'addurl'
+         params['output'] = 'json'
+-        if nzburl:
++        if nzburl and nzburl.startswith(('http://', 'https://')):  # haynes-ops fix
++            nzbdata = _fetch_nzb_without_logging_url(nzburl)
++            if not nzbdata:
++                res = "Send to SAB failed: could not fetch the nzb from the indexer"
++                logger.error(res)
++                return False, res
++            params['mode'] = 'addfile'
++        elif nzburl:
+             params['name'] = make_utf8bytes(nzburl)[0]
+         if title:
+             params['nzbname'] = make_utf8bytes(title)[0]
+@@ -198,7 +251,12 @@
+     proxies = proxy_list()
+     try:
+         timeout = CONFIG.get_int('HTTP_TIMEOUT')
+-        if url.startswith('https') and CONFIG.get_bool('SSL_VERIFY'):
++        if nzbdata:  # haynes-ops fix
++            fname = f"{(title or 'LL').replace('/', '_')[:150]}.nzb"
++            r = requests.post(url, files={'name': (fname, nzbdata)}, timeout=timeout, proxies=proxies,
++                              verify=(CONFIG['SSL_CERTS'] or True) if url.startswith('https')
++                              and CONFIG.get_bool('SSL_VERIFY') else False)
++        elif url.startswith('https') and CONFIG.get_bool('SSL_VERIFY'):
+             r = requests.get(url, timeout=timeout, proxies=proxies,
+                              verify=CONFIG['SSL_CERTS'] if CONFIG['SSL_CERTS'] else True)
+         else:
