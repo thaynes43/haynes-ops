@@ -58,7 +58,9 @@ Three things worth knowing, all verified against v0.37.0's source:
 * **The SQLite database follows the user directory.** With `--database-url`
   unset, `app/database/db.py` resolves `sqlite:///<user dir>/comfyui.db`, so the
   database, its `.lock` and any alembic `.bkp` all land on the workspace volume.
-  It is created on every start, whether or not `--enable-assets` is on.
+  Since ComfyUI 0.39.0 it is created only when `--enable-assets` is on (earlier
+  versions created it on every start). Production does not pass the flag, so no
+  database is written there; the smoke test passes it to prove where it would land.
 * **The input directory must be writable, not merely present.** `LoadAudio` and
   `Load3D` `makedirs` inside it while nodes load.
 

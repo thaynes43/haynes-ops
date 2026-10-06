@@ -273,7 +273,13 @@ def _run_server_test(dirs, port=8188, boot_timeout=420.0):
     survivable.  This can.
     """
     log("starting ComfyUI on port %d" % port)
-    argv = _comfy_argv(dirs, ["--listen", "127.0.0.1", "--port", str(port)])
+    # ComfyUI >= 0.38 creates comfyui.db only when --enable-assets is on (it was
+    # created on every boot before, so production does not pass the flag).  The
+    # smoke test turns it on purely to prove the database lands on the writable
+    # volume under a read-only root filesystem.
+    argv = _comfy_argv(
+        dirs, ["--listen", "127.0.0.1", "--port", str(port), "--enable-assets"]
+    )
     process = subprocess.Popen(argv, cwd=COMFY_ROOT)
     base = "http://127.0.0.1:%d" % port
     deadline = time.time() + boot_timeout
