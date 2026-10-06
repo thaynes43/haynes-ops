@@ -1,0 +1,79 @@
+---
+# Loki ruler alerts for the Books Census (haynesnetwork DESIGN-028 amendment 2026-10-06). All warning: they route to
+# Alertmanager's null receiver like every warning here (only critical pages); a census does not page. People and agents
+# read the latest books_census line at session start (haynesnetwork .agents/KICKOFF.md). The CronJob logs, per run:
+#   books_census_finding  one per finding: kind, key, held (a Census Hold covers it), the book, the path, the evidence
+#   books_census          once per run: wrongFile, missingFile, foreignHeld, foreignWanted, foreignItems (unheld
+#                         findings per kind), held, unusedHolds, samples, appDb, holds, durationMs
+#   books_census_failed   when LazyLibrarian's database cannot be read (exit 1)
+# The CronJob runs daily at 10:15Z; a 26h window holds exactly one run. A finding is repaired (the #781 repair is the
+# pattern) or covered by a Census Hold in the haynesnetwork repo's .agents/books-census-holds.yaml; the alert clears with
+# the next run that no longer counts it (run one by hand: kubectl -n downloads create job --from=cronjob/books-census
+# books-census-manual-$(date +%s)).
+groups:
+  - name: books-census
+    rules:
+      - alert: BooksCensusWrongFile
+        expr: |
+          sum(count_over_time({namespace="downloads", container="main", pod=~"books-census-.*"} |= "\"msg\":\"books_census\"" | json wrongFile | wrongFile > 0 [26h])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            The Books Census found LazyLibrarian books whose held file is another book (its books_census_finding lines,
+            kind wrong_file, name each one and the file's own title). Repair a real one (re-point to the right file, hold
+            the wrong one), or add a Census Hold if the check misread it (haynesnetwork#781).
+        labels:
+          severity: warning
+      - alert: BooksCensusMissingFile
+        expr: |
+          sum(count_over_time({namespace="downloads", container="main", pod=~"books-census-.*"} |= "\"msg\":\"books_census\"" | json missingFile | missingFile > 0 [26h])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            The Books Census found LazyLibrarian books pointing at a file that is not on disk, so the format reads held
+            when nothing is there (books_census_finding lines, kind missing_file).
+        labels:
+          severity: warning
+      - alert: BooksCensusForeignHeld
+        expr: |
+          sum(count_over_time({namespace="downloads", container="main", pod=~"books-census-.*"} |= "\"msg\":\"books_census\"" | json foreignHeld | foreignHeld > 0 [26h])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            The Books Census found non-English files LazyLibrarian holds (the English-only rule, F10;
+            books_census_finding lines, kind foreign_held, with the text, declared and label signals). Confirm the
+            language, then hold the file as foreign_f10 or add a Census Hold (haynesnetwork#744).
+        labels:
+          severity: warning
+      - alert: BooksCensusForeignWanted
+        expr: |
+          sum(count_over_time({namespace="downloads", container="main", pod=~"books-census-.*"} |= "\"msg\":\"books_census\"" | json foreignWanted | foreignWanted > 0 [26h])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            The Books Census found non-English books LazyLibrarian wants, or that an open app want points at, so a
+            foreign edition may be downloaded (F10; books_census_finding lines, kind foreign_wanted, name the wants).
+            Switch the want to the English edition or park it, and unqueue the book (haynesnetwork#744).
+        labels:
+          severity: warning
+      - alert: BooksCensusForeignItems
+        expr: |
+          sum(count_over_time({namespace="downloads", container="main", pod=~"books-census-.*"} |= "\"msg\":\"books_census\"" | json foreignItems | foreignItems > 0 [26h])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            The Books Census found Kavita or Audiobookshelf items tagged non-English (F10; books_census_finding lines,
+            kind foreign_item). The tags have been wrong both ways: check the content, then fix the tag or hold the
+            files (haynesnetwork#744).
+        labels:
+          severity: warning
+      - alert: BooksCensusSilent
+        expr: |
+          absent_over_time({namespace="downloads", container="main", pod=~"books-census-.*"} |= "\"msg\":\"books_census\"" [26h])
+        for: 30m
+        annotations:
+          summary: >-
+            The Books Census has not finished a run in 26 hours: CronJob downloads/books-census is not running, cannot
+            schedule next to LazyLibrarian, or fails (a books_census_failed line or a stack trace in its log).
+        labels:
+          severity: warning

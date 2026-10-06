@@ -1,0 +1,106 @@
+---
+# The Books Census (haynesnetwork DESIGN-028 amendment 2026-10-06, glossary T-289; issues #744 and #781). Daily at
+# 10:15Z, after LazyLibrarian's 09:10Z library scan. Observe-only: it finds and logs, it never writes and never repairs.
+#   wrong_file      a LazyLibrarian book whose held file is another book (the file's own title, else its name)
+#   missing_file    a LazyLibrarian pointer to a file that is not on disk
+#   foreign_held    a non-English file held; foreign_wanted: a non-English book wanted; foreign_item: a library tag
+# It logs books_census_finding (one per finding) and books_census (one per run) JSON lines that lokirule.yaml alerts on.
+# Strictly read-only, the owed-check runner's sources (DESIGN-053 D-04):
+#   - LazyLibrarian's SQLite opened SQLITE_OPEN_READONLY (mode=ro) with PRAGMA query_only;
+#   - the books NFS share mounted read-only at LazyLibrarian's own path (the file metadata: positioned reads only);
+#   - the app's Postgres through postgres16-ro in a default_transaction_read_only session, each query BEGIN READ ONLY;
+#   - the Census Holds file from the haynesnetwork repo's main branch (HTTP GET).
+# LazyLibrarian's PVC is ceph-block RWO, so the pod is pinned to LazyLibrarian's node and mounts it read-write at the
+# volume level ONLY because SQLite WAL readers share the -shm index with the writer (tested 2026-10-06 for owed-checks).
+# A pass reads every file LazyLibrarian points at (about 1,550, 25 s in the 2026-10-06 trials), four at a time.
+# Image: the haynesnetwork app image (packages/sync/src/scripts/books-census.ts). Bump this tag together with the
+# frontend HelmRelease's &mainImage and the owed-checks CronJob (haynesnetwork OPS-004 section 2).
+# Run it now: kubectl -n downloads create job --from=cronjob/books-census books-census-manual-$(date +%s)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: books-census
+spec:
+  schedule: "15 10 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 1800
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      # While the pod runs it holds LazyLibrarian's RWO volume on LL's node: an LL pod rescheduled to another node
+      # waits in Multi-Attach until the Job ends. A pass takes under a minute; the deadline bounds a stuck NFS read.
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: books-census
+        spec:
+          restartPolicy: Never
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: lazylibrarian
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: main
+              image: ghcr.io/thaynes43/haynesnetwork:v0.109.0
+              command:
+                - tsx
+                - /sync/src/scripts/books-census.ts
+              env:
+                - name: BOOKS_CENSUS_HOLDS_URL
+                  value: https://raw.githubusercontent.com/thaynes43/haynesnetwork/main/.agents/books-census-holds.yaml
+                - name: LL_DB_PATH
+                  value: /config/lazylibrarian.db
+                - name: BOOKS_ROOT
+                  value: /data/cephfs-hdd/data/media/books
+                - name: NODE_OPTIONS
+                  value: --disable-warning=ExperimentalWarning
+                - name: HOME
+                  value: /tmp
+              envFrom:
+                - secretRef:
+                    name: books-census-secret
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                - name: books
+                  mountPath: /data/cephfs-hdd
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: config
+              persistentVolumeClaim:
+                claimName: lazylibrarian
+            # LazyLibrarian's own library mount, at its own path, so the paths it stores resolve.
+            - name: books
+              nfs:
+                server: gasha01.haynesnetwork
+                path: /hdd-nfs-repl
+                readOnly: true
+            - name: tmp
+              emptyDir: {}
