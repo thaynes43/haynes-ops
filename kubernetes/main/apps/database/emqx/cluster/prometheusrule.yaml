@@ -1,0 +1,51 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+# The MQTT broker is a single core node: when it has no Ready pod, zigbee2mqtt,
+# every Home Assistant MQTT entity and AppDaemon's MQTT apps are down with it, so
+# every Zigbee light in the house stops responding.
+#
+# 2026-10-05 (23:41-00:12Z): a runaway CPU load in the dev-env pod starved talosm02.
+# This BestEffort broker starved first; its 1 s /status probe timed out and the
+# liveness probe restart-looped it, with no Ready pod from 00:04 to 00:12:30Z. Nothing
+# paged. The stock KubePodNotReady waits 15m and is a warning, and warnings go to the
+# null receiver. This rule would have fired at 00:06Z (expression checked against
+# the stored series).
+#
+# Severity critical: an MQTT outage always needs a human, and it pages Pushover.
+# No `scope: host`, because the alert-responder's diagnosis is useful (it names the
+# cause, usually a starved node or a blue-green aftermath). The rem-* lane must not
+# delete the broker PVC for this alert. The triage rules are in
+# .agents/runbooks/cpu-starvation.md.
+#
+# `or on () vector(0)` keeps the alert firing when no emqx-core pod exists at all
+# (a StatefulSet scaled to 0). The `and on ()` guard stops an outage of
+# kube-state-metrics, which this expression reads, from paging as an EMQX outage.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: emqx
+spec:
+  groups:
+    - name: emqx.rules
+      rules:
+        - alert: EMQXCoreNotReady
+          annotations:
+            summary: EMQX has had no Ready core pod for 2 minutes. MQTT is down, so Zigbee lights and MQTT entities are dead.
+            description: >-
+              No emqx-core pod in namespace database has been Ready for 2 minutes. Find out why with
+              `kubectl get pod -n database -l apps.emqx.io/db-role=core -o wide` and
+              `kubectl logs -n database <pod> -c emqx --previous`. A starved node (NodeLoadSaturated,
+              probe timeouts in `kubectl describe pod`) gets fixed at the node: stop the CPU hog.
+              Two emqx-core pods, or `still waiting for table(s)` in the log, means a pod-template
+              blue-green aftermath; see .agents/runbooks/emqx-config-drift.md. Do not delete the
+              broker PVC for a starvation restart loop. Runbook: .agents/runbooks/cpu-starvation.md
+          expr: |
+            (
+              sum(kube_pod_status_ready{namespace="database", pod=~"emqx-core-.*", condition="true"})
+              or on () vector(0)
+            ) < 1
+            and on () (sum(up{job="kube-state-metrics"}) > 0)
+          for: 2m
+          labels:
+            severity: critical
+            namespace: database
