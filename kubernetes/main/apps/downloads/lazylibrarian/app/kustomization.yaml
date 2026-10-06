@@ -66,7 +66,10 @@ configMapGenerator:
       disableNameSuffixHash: true
   # Patched upstream resultlist.py (thaynes43/haynesnetwork#688): a later
   # volume of a series named after the wanted book no longer scores as that
-  # book. Mounted by helmrelease.yaml; pinned to the image tag there.
+  # book. thaynes43/haynesnetwork#755: a Failed row blocks its release under
+  # any spelling, and a release tagged with another language loses the match
+  # for an English book. Mounted by helmrelease.yaml; pinned to the image tag
+  # there.
   - name: lazylibrarian-resultlist
     files:
       - resultlist.py=./patches/resultlist.py

@@ -2,8 +2,9 @@
 # haynes-ops override (downloads/lazylibrarian, ConfigMap lazylibrarian-resultlist)
 #
 # This is LazyLibrarian's upstream lazylibrarian/resultlist.py, byte for byte,
-# plus this comment block and ONE marked change (search for "haynes-ops fix":
-# an import, a helper above find_best_result, and its call in the scoring loop).
+# plus this comment block and THREE marked changes (search for "haynes-ops fix":
+# imports, helpers above find_best_result, and their calls in find_best_result):
+# the volume penalty, the blacklist's release match, the language penalty.
 #
 # PINNED TO UPSTREAM: image docker.io/linuxserver/lazylibrarian:version-40a389ea
 #   (LazyLibrarian commit 40a389ea, pyproject version 2026.05.25).
@@ -43,6 +44,29 @@
 # ("Inheritance 04 - Inheritance or the Vault of Souls", "Book IV"). Replayed
 # over 3,989 rows on 2026-10-06: 10 more changed, every one a later volume or
 # novella grabbed for book 1 (Mistborn, Once Upon a Broken Heart, Shift).
+# Extended for thaynes43/haynesnetwork#755, two more fixes:
+#  - The blacklist. BLACKLIST_FAILED (on here) rejects a release whose provider
+#    and title match a Failed wanted row, but compares the title exactly, and
+#    the post-processor renames the row to the download client's job name
+#    (SABnzbd: dots to spaces, ".par2." dropped). So a Failed release came back
+#    under its indexer spelling, and so did hand-written blocks (the Danish
+#    Israel Potter). Now a Failed row of the same provider and format also
+#    blocks its release under any spelling: case, and runs of dots, underscores
+#    and spaces, ignored, for its stored title and for the title in its
+#    download link's file parameter. (The link itself differs per search:
+#    Prowlarr encrypts it anew. No GUID is kept.) BLACKLIST_PROCESSED is off
+#    here and unchanged. Over the wanted history this blocks about 940 more
+#    re-grabs of an already Failed release, each of which failed again, and
+#    18 that had first failed for a passing reason (not sent, stalled, a
+#    SABnzbd duplicate) and then succeeded: upstream's own rule for those.
+#  - The language. Nothing read a language from the release name, so
+#    "...Potter.2014.DANiSH.RETAiL.ePub..." and "...AUDiOBOOK-WEB-SE-2023-..."
+#    scored as the English book. A release with an explicit language tag
+#    (scene "DANiSH.RETAiL", MP3-scene "WEB-SE-", "[GER / EPUB]", "[French]")
+#    loses 50 points when LazyLibrarian holds the book as English, unless that
+#    word is in the book's own title or author. Replayed over 3,989 rows on
+#    2026-10-06: 24 moved, each tagged Swedish, Danish, German or French (and
+#    where the file could be read, it was), none an English release.
 # Tests, fixtures and the replay tool: patches/tests/.
 #
 # BEFORE BUMPING THE IMAGE TAG in helmrelease.yaml: take the new image's
@@ -69,6 +93,7 @@
 import logging
 import re  # haynes-ops fix
 import traceback
+from urllib.parse import parse_qs, urlsplit  # haynes-ops fix
 
 from rapidfuzz import fuzz
 
@@ -211,6 +236,82 @@ def own_volume(subtitle):
     return int(n) if n.isdigit() else _ROMAN.get(n) or _NUMBER_WORDS.get(n)
 
 
+# haynes-ops fix: blacklist_failed compares the release title exactly, but the same release is spelled several ways.
+# The post-processor renames a Failed row's NZBtitle to the download client's job name (SABnzbd turns the dots into
+# spaces and drops a ".par2." suffix), and hand-written blocks copy that name, so the next search's
+# "Herman.Melville...Potter.2014.DANiSH..." did not match the block "Herman Melville ... Potter 2014 DANiSH ..."
+# (thaynes43/haynesnetwork#755). The URL is no key either: Prowlarr encrypts its download link anew for each search.
+def release_key(title):
+    """ A release title with case, and every run of dots, underscores and white space, ignored. """
+    return re.sub(r'[\s._]+', ' ', (title or '').lower()).strip()
+
+
+def url_title(url):
+    """ The release title in a download link's file parameter (Prowlarr and Jackett set it): no rename touches it. """
+    try:
+        return parse_qs(urlsplit(url or '').query).get('file', [''])[0]
+    except ValueError:
+        return ''
+
+
+def failed_release(db, cache, provider, auxinfo, title):
+    """ The Failed wanted row of this provider and format whose stored title, or the title in its download link, is
+        this release under release_key(). cache keeps each provider's keys for one find_best_result call. """
+    keys = cache.get((provider, auxinfo))
+    if keys is None:
+        keys = cache[(provider, auxinfo)] = {}
+        for row in db.select("SELECT NZBtitle, NZBurl, NZBprov FROM wanted WHERE NZBprov=? AND AuxInfo=? AND "
+                             "Status='Failed' ORDER BY rowid", (provider, auxinfo)):
+            for spelling in (row['NZBtitle'], url_title(row['NZBurl'])):
+                if spelling:
+                    keys.setdefault(release_key(spelling), row)
+    return keys.get(release_key(title))
+
+
+# haynes-ops fix: a release that names its language explicitly, for a book LazyLibrarian holds as English. Nothing
+# upstream reads a language from the release name, so "...Israel.Potter.2014.DANiSH.RETAiL.ePub..." scored as the
+# English book (thaynes43/haynesnetwork#755). Only explicit tags count, never a language word in the book's own
+# title or author ("The Danish Girl"), and a book in any other language, or with no language, is left alone.
+LANGUAGE_PENALTY = 50
+_LANGUAGE_NAMES = ('danish|dansk|swedish|svensk|norwegian|norsk|finnish|suomi|icelandic|german|deutsch|dutch|'
+                   'nederlands|flemish|french|francais|spanish|espanol|castellano|catalan|italian|italiano|portuguese|'
+                   'portugues|brazilian|polish|polski|czech|slovak|hungarian|magyar|romanian|russian|ukrainian|turkish|'
+                   'greek|hebrew|arabic|chinese|japanese|korean')
+_LANGUAGE_CODES = ('ger|deu|fre|fra|spa|esp|ita|por|dut|nld|swe|dan|nor|fin|pol|rus|hun|cze|ces|tur|gre|ell|heb|ara|'
+                   'chi|zho|jpn|kor')
+_SCENE_CODES = 'DE|DK|SE|NL|NO|FI|FR|ES|IT|PL|CZ|HU|RU|PT|BR|TR|GR|IS'
+_LANGUAGE_TAGS = (
+    # scene eBooks: the language right before the format words, "...Potter.2014.DANiSH.RETAiL.ePub.eBOOK-DECiPHER"
+    re.compile(r'(?<![a-z0-9])(' + _LANGUAGE_NAMES + r')[\s._-]+(?:retail|ebook|epub|pdf|mobi|azw3|audiobook|'
+               r'hoerbuch|mp3|m4b|unabridged|web)(?![a-z])', re.I),
+    # a bracket that holds a language: "[French]", "(German Edition)", and MAM's "[GER / EPUB]" ("[ENG / ...]" is not)
+    re.compile(r'[\[(]\s*(' + _LANGUAGE_NAMES + '|' + _LANGUAGE_CODES + r')\s*(?:edition|version|ed)?\s*'
+               r'(?:[/,|][^\])]*)?[\])]', re.I),
+    # MP3-scene audiobooks give the language after the source: "-AUDiOBOOK-WEB-SE-2023-", "-2MP3CD-DE-2024-", "-EB-NL"
+    re.compile(r'[-.](?i:web|dab|sat|cable|\d*(?:mp3)?cd|\d*dvd|eb|audiobook)[-.](' + _SCENE_CODES + r')(?=[-.]|$)'),
+    # a capital language code before the format: "Breaking Dawn (2008) NL Audiobook(mp3)" (not "IT": the King novel)
+    re.compile(r'(?<![A-Za-z0-9])(' + _SCENE_CODES.replace('IT|', '') + r')[\s._-]+(?i:audiobook|ebook|epub|retail)'
+               r'(?![a-z])'),
+)
+
+
+def names_language(release, title, subtitle, author):
+    """ The language a release names explicitly ("DANiSH", "WEB-SE", "[GER / EPUB]", "[French]"), else None. A
+        language word that is also a word of the book's title, subtitle or author is not read as a tag. """
+    own = set(re.findall(r'[a-z0-9]+', unaccented(f"{title} {subtitle or ''} {author}").lower()))
+    text = unaccented(release or '')
+    for tag in _LANGUAGE_TAGS:
+        for found in tag.finditer(text):
+            if found.group(1).lower() not in own:
+                return found.group(1)
+    return None
+
+
+def is_english(booklang):
+    """ True for LazyLibrarian's English language values: en, eng, en-GB, en-US, English. """
+    return (booklang or '').strip().lower().replace('_', '-').split('-')[0] in ('en', 'eng', 'english')
+
+
 def find_best_result(resultlist, book, searchtype, source):
     """ resultlist: collated results from search providers
         book:       the book we want to find
@@ -257,6 +358,11 @@ def find_best_result(resultlist, book, searchtype, source):
             prefix = 'nzb'
         else:  # rss and direct providers return same names as torrents
             prefix = 'tor_'
+
+        # haynes-ops fix: the Failed releases per provider (failed_release), and the book's language (names_language)
+        failed_keys = {}
+        booklang = db.match('SELECT BookLang FROM books WHERE BookID=?', (book.get('bookid'),))
+        english = is_english(booklang['BookLang']) if booklang else False
 
         logger.debug(f'Searching {len(resultlist)} {source} results for best {auxinfo} match')
         matches = []
@@ -305,6 +411,12 @@ def find_best_result(resultlist, book, searchtype, source):
                     if blacklisted:
                         logger.debug(f"Rejecting {res[prefix + 'title']}, title blacklisted (Failed) at "
                                      f"{blacklisted['NZBprov']}")
+                        rejected = True
+                if not rejected:  # haynes-ops fix: the same release under another spelling, for this format
+                    blacklisted = failed_release(db, failed_keys, res[f"{prefix}prov"], auxinfo, res[f"{prefix}title"])
+                    if blacklisted:
+                        logger.debug(f"Rejecting {res[prefix + 'title']}, release blacklisted (Failed) at "
+                                     f"{blacklisted['NZBprov']} as {blacklisted['NZBtitle']}")
                         rejected = True
 
             if not rejected and CONFIG.get_bool('BLACKLIST_PROCESSED'):
@@ -453,6 +565,12 @@ def find_best_result(resultlist, book, searchtype, source):
                     score -= VOLUME_PENALTY
                     logger.debug(f"{result_title} is volume {other_volume[0]} ({other_volume[1]}) of a series "
                                  f"named {title}: score {round(score, 2)}")
+                # haynes-ops fix: a release that names another language, for an English book
+                language = english and names_language(res[f"{prefix}title"], title, book.get('bookSub'), author)
+                if language:
+                    score -= LANGUAGE_PENALTY
+                    logger.debug(f"{result_title} names the language {language} and the book is English: "
+                                 f"score {round(score, 2)}")
 
                 matches.append([score, new_value_dict, control_value_dict, res['priority']])
 
