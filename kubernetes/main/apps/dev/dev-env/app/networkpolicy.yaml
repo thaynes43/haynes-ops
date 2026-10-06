@@ -165,6 +165,9 @@ spec:
               # ---- sigoalumni.org buildout (sigo-alumni backlog/tooling, 2026-08-05) ----
               # gcloud SDK tarball + component downloads
               - matchName: "dl.google.com"
+              # Go module proxy + checksum DB, for dev-env v2 builds in the v1 pod
+              - matchName: "proxy.golang.org"
+              - matchName: "sum.golang.org"
               # Google OAuth: interactive `gcloud auth login` + token exchange
               - matchName: "accounts.google.com"
               - matchName: "oauth2.googleapis.com"
@@ -448,6 +451,9 @@ spec:
         - matchName: "haynes.na-west-1.omni.siderolabs.io"
         # ---- sigoalumni.org buildout (same set as the DNS rules above) ----
         - matchName: "dl.google.com"
+        # Go module proxy + checksum DB (same set as the DNS rules above)
+        - matchName: "proxy.golang.org"
+        - matchName: "sum.golang.org"
         - matchName: "accounts.google.com"
         - matchName: "oauth2.googleapis.com"
         - matchName: "cloudresourcemanager.googleapis.com"
