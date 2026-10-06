@@ -106,6 +106,10 @@ spec:
       limits:
         memory: 4Gi
     pipelines:
+      # RWO PVC: a RollingUpdate surge pod on another node deadlocks on
+      # Multi-Attach (#3389 rollout), so replace the pod instead.
+      strategy:
+        type: Recreate
       resources:
         requests:
           cpu: 10m
