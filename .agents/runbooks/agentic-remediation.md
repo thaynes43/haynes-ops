@@ -3,8 +3,8 @@
 **What it is.** A critical alert whose read-only diagnosis says `ACTION: urgent`
 and which is still firing is *handed to a machine*, not paged: the
 alert-responder files a `rem-responder-<sig8>` order, the `dev-env-ops` executor
-runs a headless Claude Code session (Opus 5, `xhigh`, 40 min / 120 turns, no
-Remote Control, nobody paged) that triages, fixes inside its containment,
+runs a headless Claude Code session (`OPS_REM_MODEL`, Opus 5.5 since 2026-09-23,
+`xhigh`, 40 min / 120 turns, no Remote Control, nobody paged) that triages, fixes inside its containment,
 verifies against the live condition, and closes silently into the quiet digest
 (Pushover priority -1). Tom is paged only when the lane cannot fix or tried and
 failed — and then with a joinable `esc-rem-<sig8>` session, not a summary.
@@ -50,6 +50,31 @@ directory the responder's shallow clone actually searches:
 - [`known-noise-and-non-remediation.md`](known-noise-and-non-remediation.md) —
   the cases where the obvious fix is wrong.
 
+## Known gaps (2026-10-05 audit)
+
+- **The esc-* "join from the phone" handle does not work.** No `wo-*`/`esc-*`
+  session in `dev-env-ops` has registered with Remote Control since at least
+  2026-09-03: the pod's credentials file holds the setup token, which lacks the
+  `user:sessions:claude_code` scope. Join an escalation from a dev-env session
+  with `kubectl -n upgrade-agent exec -it deploy/dev-env-ops -c app -- tmux attach -t ops:<key>`
+  (detach with `C-b d`, never kill the window). Decision pending in
+  [haynes-ops#3414](https://github.com/thaynes43/haynes-ops/issues/3414).
+- **Merging anything mounted in `dev-env-ops` restarts it** (its scripts, the
+  `upgrade-coordination-lib` ConfigMap from `health-gate/`, its Secrets) and ends
+  every session in it. Merge those when no order is `claimed`
+  ([haynes-ops#3415](https://github.com/thaynes43/haynes-ops/issues/3415)).
+- The esc-* model is the HelmRelease's `OPS_ESC_MODEL`. Writers must not put a
+  `model` in an order unless they mean to override it.
+- **One setup token carries every automated path**: the shepherd, triage, the
+  responder, all three dev-env-ops lanes and vexa scribe-notes use 1Password
+  `claude-code` / `CLAUDE_CODE_OAUTH_TOKEN` (a `claude setup-token`, first
+  wired 2026-07-13 per dev-env saga backlog 07, unchanged on the dev-env-ops PVC
+  since 2026-08-20; setup tokens last about a year). Nothing records its mint
+  date or warns before it expires. When it dies, the shepherd and responder quietly fall
+  back to the metered key (capped at $50 + $15 a month), and the only alarm is
+  dev-env-ops' daily probe, whose page names `~/.claude/.credentials.json`.
+  Re-mint it before about 2027-07 (ceremony: dev-env saga backlog 04-auth.md).
+
 ## What has actually been exercised
 
 - 2026-08-23: a synthetic `rem-*` order end to end (#2569 wired the executor;
@@ -60,3 +85,10 @@ directory the responder's shallow clone actually searches:
   archived by hand a day later. The `ceph-daemon-crash.md` playbook and the
   responder prompt clause that makes `urgent` the handoff verb for
   runbook-covered alerts date from that incident.
+- 2026-09-05 to 2026-10-05 (audit, haynes-ops#3414): 12 `rem-*` orders, all
+  closed by the session itself in 4 to 15 minutes. 9 `done`: real fixes on 3
+  incidents (multus conf regenerated on talosw01, a Ceph crash verified and
+  archived, dev-env PVC space freed twice) and 5 "nothing to fix" verdicts
+  (self-healed, or a matched `declare-activity`). 3 `escalate`: two physical
+  device faults (Z-Wave PoE coordinator, three Hue bulbs off mains) and the
+  2026-09-12 drill. Zero metered API spend.

@@ -171,7 +171,7 @@ if [ -n "$REG_IDS" ]; then
       # ── REPEAT-PAGE ESCALATION (2026-08-21, backlog 12→13) ── lpaged>0 means this
       # exact signature already paged >= REPAGE_SUPPRESS_HOURS ago and NOTHING fixed
       # it (auto-remediation failed or never applied) — file an esc-gate-* entry so
-      # the dev-env-ops executor spawns a joinable fable session and pages Tom WITH
+      # the dev-env-ops executor spawns a joinable session (esc-* lane model) and pages Tom WITH
       # the session name. Dedup lives in escalate.sh (an open entry for this sig is
       # not refiled). BEST-EFFORT: a write failure only logs — the page above is the
       # primary signal and already went out.

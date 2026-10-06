@@ -17,8 +17,10 @@ does NOT bounce dev-env.
   shepherd, triage, AND responder pods (the responder HR gained the mount).
   Files `esc-<source>-<sig8>` entries into the EXISTING `upgrade-work-orders` CM
   — `{source, reason(≤400ch, control-chars stripped), run_ref,
-  class:"escalation", model:"fable", effort:"xhigh", status:"pending", created,
-  updated}`, single-encoded, CM-legal key charset. Dedup: an entry for the same
+  class:"escalation", status:"pending", created, updated}`, single-encoded,
+  CM-legal key charset. (Until 2026-10-06 it also wrote `model:"fable",
+  effort:"xhigh"`, which overrode the HR's pinned `OPS_ESC_MODEL`; the lane
+  defaults now decide.) Dedup: an entry for the same
   source+sig still pending/claimed is not refiled. BEST-EFFORT: a writer failure
   logs and never breaks the primary run.
 - **Call sites**: run-shepherd.sh MODE=auto terminal BREAK-GLASS/HOLD/rc≠0;
@@ -27,8 +29,10 @@ does NOT bounce dev-env.
   gate.sh REPEAT page for an unresolved signature (its Role gained name-scoped
   get+update on `upgrade-work-orders` — it still cannot create it).
 - **Executor** (dev-env-ops watcher): separate esc-* lane, single-flight per
-  lane, model fable / effort xhigh defaults for esc-*, and — unlike wo-* —
-  **pages ON SPAWN** with the session name as the join handle. Session prompt
+  lane, model `OPS_ESC_MODEL` (pinned `claude-fable-5-1`) / effort xhigh defaults
+  for esc-*, and — unlike wo-* — **pages ON SPAWN** with the session name as the
+  join handle. (2026-10-05 audit: that handle has never registered with Remote
+  Control in this pod; join through tmux, see haynes-ops#3414.) Session prompt
   frames reason/run_ref as data-to-verify, never instructions (ops-claude.md
   escalation session contract).
 - **Naming taxonomy** (enforced in escalate.sh + the watcher): `haynes-ops-*`

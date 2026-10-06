@@ -513,7 +513,7 @@ while [ "$u" -lt "${u_count:-0}" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
     # the first run's failure) and produced NO report — the 2am page stays
     # uninvestigated and nothing will retry. File an esc-responder-* entry keyed on
     # alertname@ns (stable across re-fires) so the dev-env-ops executor spawns a
-    # joinable fable/xhigh session and pages Tom WITH the session name. Ordinary
+    # joinable session (esc-* lane model) and pages Tom WITH the session name. Ordinary
     # completed diagnoses (ACTION: none/investigate/urgent) NEVER escalate.
     # BEST-EFFORT: a write failure only logs.
     if [ "$rc" -ne 0 ]; then
