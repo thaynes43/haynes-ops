@@ -10,27 +10,66 @@
 # ML was down stay unprocessed for good: on 2026-10-05 that was 20,713 assets
 # without CLIP, 19,778 without face detection and 81,482 without OCR.
 #
-# WHAT: for each queue it does what the Missing button does (web
-# QueueCard.svelte sends {command: "start", force: false}):
-#   1. GET /api/queues/<name> (permission queue.read) and log isPaused + counts.
-#      Skip the queue if it is paused (an admin paused it on purpose) or busy
-#      (active + waiting > 0, so the previous run is still draining). The UI
-#      offers Missing only on an idle queue, and the server answers 400 "Job is
-#      already running" while any job in that queue is active.
-#   2. PUT /api/jobs/<name> {"command":"start","force":false} (job.create).
-#      This deprecated route is still the only way to start a queue in v3.2.4;
-#      the newer /api/queues controller can only pause, resume and empty.
-#   3. After a one-minute settle, GET each queue again and log the counts.
+# WHAT: it runs the three queues ONE AT A TIME, in this order, and waits for
+# each to drain before it starts the next. immich-machine-learning shares
+# talosm05's 12 GB RTX A2000 with ollama-assist02 (about 7 GB resident). With all
+# three queues busy the first run (2026-10-06) peaked at 11.9 of 12.3 GB, ML
+# logged about 150 CUDA out-of-memory errors in 10 minutes and the card hit
+# 92 C. OCR alone peaks around 9.1 GB, which fits.
+#
+# For each queue, in turn:
+#   1. Gate: wait until none of the three queues has work (active + waiting +
+#      delayed == 0). That covers a manual run, or an earlier night still
+#      draining. A paused queue is skipped, never waited for: an admin paused it
+#      on purpose, and a paused queue is not using the GPU.
+#   2. PUT /api/jobs/<name> {"command":"start","force":false} (job.create), which
+#      is what the Missing button does (web QueueCard.svelte). This deprecated
+#      route is still the only way to start a queue in v3.2.4; the newer
+#      /api/queues controller can only pause, resume and empty.
+#   3. Poll GET /api/queues/<name> (queue.read) every 30 s until the queue is
+#      drained, and log the counts every 5 minutes.
+#
+# The status fields are the ones the v3.2.4 server returns (queue.controller.ts,
+# queue.dto.ts): {"name", "isPaused", "statistics": {"active", "completed",
+# "failed", "delayed", "waiting", "paused"}}. GET /api/jobs (job.controller.ts)
+# returns the same numbers nested under jobCounts/queueStatus for all queues,
+# but it is deprecated since v2.4.0, needs job.read and is harder to parse.
+# BullMQ moves waiting jobs into "paused" while a queue is paused, so isPaused
+# is always checked before the counts are believed. "Drained" is
+# active + waiting + delayed == 0 on two polls in a row, 30 s apart, after a
+# start (one poll is enough for the gate). The start request puts
+# a queue-all job (active) in the queue before it answers, so there is no idle
+# gap while it streams the assets in.
+#
+# After each queue it idles 330 s (and likewise after the gate waited for a
+# queue that was already busy), just over MACHINE_LEARNING_MODEL_TTL (300 s):
+# ML keeps a finished queue's models and CUDA arena loaded until then, so
+# starting the next queue sooner would stack two queues' memory on the card.
+# That adds about 11 minutes a night.
+#
+# Each queue has its own timeout, counted from when its turn begins and
+# covering the gate, the start and the drain: smartSearch 4 h, faceDetection
+# 4 h, ocr 8 h (the 2026-10-05 backlog: 20k, 20k and 81k assets, which drained in
+# about 17 min, 17 min and 3.5 h). A queue that is still busy at its timeout
+# fails the run and ends it; the later queues are NOT started, because that
+# would overlap the busy one. The Job's activeDeadlineSeconds (22 h) is only a
+# backstop under the 24 h interval, above the 16 h those three add up to.
 #
 # force MUST stay false. force=true is the "All" button and it DELETES first:
 # every CLIP embedding, every ML-detected face (and the people built from
 # them), or all OCR text. Then it reprocesses the whole library.
 #
-# Fails loudly: any non-2xx response marks the run failed (exit 1, so the Job
-# fails and KubeJobFailed fires), after it has still tried the other queues.
-# The one exception is the 400 "already running" answer, which only means the
-# busy check above lost a race. The API key is read by curl from a mounted
-# header file and is never echoed; Immich's error bodies do not contain it.
+# Fails loudly: a non-2xx response, a queue that outlasts its timeout, or a
+# status call that fails 10 times in a row (5 minutes; a single 5xx or timeout,
+# such as an immich-server roll, is retried) marks the run failed (exit 1, so
+# the Job fails and KubeJobFailed fires). A 4xx on a status call, or a start
+# that is rejected, fails at once. A rejected start only costs that queue; a
+# status failure or a timeout ends the run, since the state of the queue is not
+# known and starting the next one could overlap it. The one non-2xx that is not
+# an error is the 400 "already running" answer to a start, which means the gate
+# lost a race; the job then just waits for that queue. The API key is read by
+# curl from a mounted header file and is never echoed; Immich's error bodies do
+# not contain it.
 #
 # On demand:
 #   kubectl create job -n photos --from=cronjob/immich-queue-missing immich-queue-missing-manual-$(date +%s)
@@ -57,10 +96,12 @@ spec:
       # One attempt. The calls are idempotent, so a retry would only hide a
       # flapping auth or network problem.
       backoffLimit: 0
-      # A backstop just under the 24h interval, never sized to the runtime
-      # (Tom, 2026-09-13). Every curl has its own timeout, so a run takes about
-      # a minute and cannot hold the schedule.
-      activeDeadlineSeconds: 82800
+      # A backstop under the 24h interval, never sized to the runtime (Tom,
+      # 2026-09-13): the next kickoff IS the deadline, so 22h. The real limits
+      # are the per-queue timeouts in the script (4h + 4h + 8h = 16h), which
+      # fire first. concurrencyPolicy Forbid keeps a run that is still draining
+      # from being overlapped.
+      activeDeadlineSeconds: 79200
       ttlSecondsAfterFinished: 86400
       template:
         metadata:
@@ -94,10 +135,20 @@ spec:
                   base="http://immich-server.photos.svc.cluster.local:2283/api"
                   hdr=/secret/api-key-header
                   body=/tmp/body
+                  poll=30      # seconds between status polls
+                  settle=10    # seconds after a start before the first poll
+                  # Idle time between queues. immich-machine-learning keeps a
+                  # finished queue's models and CUDA arena until
+                  # MACHINE_LEARNING_MODEL_TTL (300 s) of idleness, then exits
+                  # and frees its VRAM; the next queue must not start before.
+                  cooldown=330
                   fail=0
                   started=0
+                  res=""
+                  seen_busy=0
 
                   ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+                  now() { date +%s; }
 
                   # api METHOD PATH [JSON]: sets $code and leaves the response
                   # body in $body. Transport errors come back as code 000.
@@ -118,38 +169,143 @@ spec:
                   num() { sed -n -E "s/.*\"$1\":([0-9]+).*/\1/p" "$body"; }
                   paused() { sed -n -E 's/.*"isPaused":(true|false).*/\1/p' "$body"; }
                   counts() {
-                    echo "active=$(num active) waiting=$(num waiting) delayed=$(num delayed) failed=$(num failed) paused=$(paused)"
+                    echo "active=$(num active) waiting=$(num waiting) delayed=$(num delayed) failed=$(num failed) isPaused=$(paused) pausedJobs=$(num paused)"
                   }
                   snippet() { head -c 300 "$body"; }
-
-                  echo "immich-queue-missing start $(ts)"
-                  for q in smartSearch faceDetection ocr; do
-                    api GET "/queues/$q"
-                    case "$code" in
-                      2??) ;;
-                      *)
-                        echo "[$q] FAIL: GET /api/queues/$q -> HTTP $code: $(snippet)"
-                        fail=1
-                        continue
-                        ;;
+                  limit() {
+                    case "$1" in
+                      ocr) echo 28800 ;;
+                      *) echo 14400 ;;
                     esac
-                    active=$(num active)
-                    waiting=$(num waiting)
-                    is_paused=$(paused)
-                    if [ -z "$active" ] || [ -z "$waiting" ] || [ -z "$is_paused" ]; then
-                      echo "[$q] FAIL: unexpected /api/queues/$q response: $(snippet)"
-                      fail=1
+                  }
+
+                  # drain QUEUE DEADLINE NEED: poll until QUEUE has no active,
+                  # waiting or delayed jobs on NEED polls in a row. Sets $res
+                  # to drained | paused | timeout | error.
+                  drain() {
+                    dq=$1
+                    dl=$2
+                    need=$3
+                    idle=0
+                    errs=0
+                    polls=0
+                    while :; do
+                      api GET "/queues/$dq"
+                      case "$code" in
+                        2??)
+                          errs=0
+                          a=$(num active)
+                          w=$(num waiting)
+                          d=$(num delayed)
+                          p=$(paused)
+                          if [ -z "$a" ] || [ -z "$w" ] || [ -z "$d" ] || [ -z "$p" ]; then
+                            echo "[$dq] FAIL: unexpected /api/queues/$dq response: $(snippet)"
+                            res=error
+                            return 0
+                          fi
+                          # isPaused first: BullMQ moves waiting jobs into
+                          # "paused" while paused, so waiting reads 0 then.
+                          if [ "$p" = true ]; then
+                            echo "[$dq] paused in Immich: $(counts)"
+                            res=paused
+                            return 0
+                          fi
+                          if [ $((a + w + d)) -eq 0 ]; then
+                            idle=$((idle + 1))
+                            if [ "$idle" -ge "$need" ]; then
+                              if [ "$polls" -gt 1 ] || [ "$need" -ge 2 ]; then
+                                echo "[$dq] drained: $(counts)"
+                              fi
+                              res=drained
+                              return 0
+                            fi
+                          else
+                            idle=0
+                            seen_busy=1
+                            if [ $((polls % 10)) -eq 0 ]; then
+                              echo "[$dq] $(date -u +%H:%M:%SZ) busy: $(counts)"
+                            fi
+                          fi
+                          ;;
+                        000|5??)
+                          errs=$((errs + 1))
+                          echo "[$dq] status call failed ($errs/10): HTTP $code: $(snippet)"
+                          if [ "$errs" -ge 10 ]; then
+                            echo "[$dq] FAIL: GET /api/queues/$dq failed 10 times in a row"
+                            res=error
+                            return 0
+                          fi
+                          ;;
+                        *)
+                          echo "[$dq] FAIL: GET /api/queues/$dq -> HTTP $code: $(snippet)"
+                          res=error
+                          return 0
+                          ;;
+                      esac
+                      polls=$((polls + 1))
+                      if [ "$(now)" -ge "$dl" ]; then
+                        echo "[$dq] timed out: $(counts)"
+                        res=timeout
+                        return 0
+                      fi
+                      sleep "$poll"
+                    done
+                  }
+
+                  echo "immich-queue-missing start $(ts) (one queue at a time: smartSearch, faceDetection, ocr)"
+                  for q in smartSearch faceDetection ocr; do
+                    lim=$(limit "$q")
+                    t0=$(now)
+                    dl=$((t0 + lim))
+                    echo "[$q] turn begins $(ts), timeout ${lim}s"
+
+                    # Gate: no queue (this one included) may have work, so two
+                    # never share the GPU. A paused queue is not waited for.
+                    stop=0
+                    skip=0
+                    seen_busy=0
+                    for o in smartSearch faceDetection ocr; do
+                      drain "$o" "$dl" 1
+                      case "$res" in
+                        drained) ;;
+                        paused)
+                          if [ "$o" = "$q" ]; then
+                            echo "[$q] SKIP: the queue is paused in Immich; leaving it alone"
+                            skip=1
+                          else
+                            echo "[$o] paused in Immich; not waiting for it"
+                          fi
+                          ;;
+                        timeout)
+                          echo "[$q] FAIL: $o still busy after ${lim}s, before $q could start"
+                          fail=1
+                          stop=1
+                          ;;
+                        *)
+                          fail=1
+                          stop=1
+                          ;;
+                      esac
+                      if [ "$stop" -eq 1 ]; then
+                        break
+                      fi
+                    done
+                    if [ "$stop" -eq 1 ]; then
+                      echo "[$q] ABORT: not starting the remaining queues, so none overlap a busy one"
+                      break
+                    fi
+                    if [ "$skip" -eq 1 ]; then
                       continue
                     fi
-                    echo "[$q] before: $(counts)"
-                    if [ "$is_paused" = true ]; then
-                      echo "[$q] SKIP: the queue is paused in Immich; leaving it alone"
-                      continue
+
+                    # If the gate had to wait for a busy queue (a manual run, or
+                    # an earlier night still draining), ML still holds that
+                    # queue's models: give it the same cooldown.
+                    if [ "$seen_busy" -eq 1 ]; then
+                      echo "[$q] the gate waited for a busy queue; cooling down ${cooldown}s so ML unloads its models"
+                      sleep "$cooldown"
                     fi
-                    if [ $((active + waiting)) -gt 0 ]; then
-                      echo "[$q] SKIP: busy (active=$active waiting=$waiting); the earlier run is still draining"
-                      continue
-                    fi
+
                     # force=false is Missing. Never true: that deletes first.
                     api PUT "/jobs/$q" '{"command":"start","force":false}'
                     case "$code" in
@@ -159,34 +315,45 @@ spec:
                         ;;
                       400)
                         if grep -q 'already running' "$body"; then
-                          echo "[$q] SKIP: Immich says the job is already running"
+                          echo "[$q] already running (lost a race with another start); waiting for it"
                         else
                           echo "[$q] FAIL: PUT /api/jobs/$q -> HTTP 400: $(snippet)"
                           fail=1
+                          continue
                         fi
                         ;;
                       *)
                         echo "[$q] FAIL: PUT /api/jobs/$q -> HTTP $code: $(snippet)"
                         fail=1
+                        continue
                         ;;
                     esac
-                  done
 
-                  if [ "$started" -gt 0 ]; then
                     # Each start queues one "queue all" job that streams the
-                    # missing assets into the queue; give it time to fill.
-                    sleep 60
-                    for q in smartSearch faceDetection ocr; do
-                      api GET "/queues/$q"
-                      case "$code" in
-                        2??) echo "[$q] after: $(counts)" ;;
-                        *)
-                          echo "[$q] FAIL: GET /api/queues/$q -> HTTP $code: $(snippet)"
-                          fail=1
-                          ;;
-                      esac
-                    done
-                  fi
+                    # missing assets in; it is active until it has queued them.
+                    sleep "$settle"
+                    drain "$q" "$dl" 2
+                    took=$(($(now) - t0))
+                    case "$res" in
+                      drained) echo "[$q] done after ${took}s" ;;
+                      paused) echo "[$q] paused while it ran; moving on after ${took}s" ;;
+                      timeout)
+                        echo "[$q] FAIL: not drained after ${took}s (timeout ${lim}s)"
+                        fail=1
+                        echo "[$q] ABORT: not starting the remaining queues, so none overlap a busy one"
+                        break
+                        ;;
+                      *)
+                        fail=1
+                        echo "[$q] ABORT: not starting the remaining queues, so none overlap a busy one"
+                        break
+                        ;;
+                    esac
+                    if [ "$q" != ocr ]; then
+                      echo "[$q] cooling down ${cooldown}s so ML unloads its models before the next queue"
+                      sleep "$cooldown"
+                    fi
+                  done
 
                   echo "immich-queue-missing done $(ts) started=$started errors=$fail"
                   exit "$fail"
