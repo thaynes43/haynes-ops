@@ -1,0 +1,21 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./externalsecret.yaml
+  - ./cronjob.yaml
+configMapGenerator:
+  # Loki ruler picks this up by label (same pattern as owed-checks / lazylibrarian). Stable name: the ruler sidecar
+  # reads it, nothing references it.
+  - name: books-census-lokirule
+    files:
+      - books-census.yaml=./lokirule.yaml
+    options:
+      disableNameSuffixHash: true
+      labels:
+        loki_rule: "true"
+generatorOptions:
+  # Alert templates use {{ $labels.* }}: keep Flux post-build substitution away from them.
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled

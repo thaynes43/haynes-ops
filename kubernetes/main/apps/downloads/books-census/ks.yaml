@@ -1,0 +1,28 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# The Books Census (haynesnetwork DESIGN-028 amendment 2026-10-06, issues #744 and #781): a daily, observe-only CronJob
+# that finds LazyLibrarian books holding another book's file, stale file pointers, and breaches of the English-only
+# rule, plus the Loki rules that alert on its log lines.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app books-census
+  namespace: downloads
+spec:
+  targetNamespace: downloads
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    # mounts LazyLibrarian's config PVC (read-only database access, see cronjob.yaml)
+    - name: lazylibrarian
+      namespace: downloads
+  path: ./kubernetes/main/apps/downloads/books-census/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: false
+  interval: 30m
+  timeout: 5m

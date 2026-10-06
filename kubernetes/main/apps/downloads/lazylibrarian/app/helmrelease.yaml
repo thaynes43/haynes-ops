@@ -124,8 +124,9 @@ spec:
                   port: http
     persistence:
       # Also mounted, read-only at the database level, by the hourly downloads/owed-checks CronJob (pinned to this
-      # pod's node, at most 3 minutes a pass). A new LL pod on ANOTHER node that sits in Multi-Attach for a few
-      # minutes at :50 is waiting for that Job to end.
+      # pod's node, at most 3 minutes a pass) and the daily downloads/books-census CronJob (10:15Z, about a minute,
+      # at most 10). A new LL pod on ANOTHER node that sits in Multi-Attach for a few minutes at :50 or 10:15 is
+      # waiting for one of those Jobs to end.
       config:
         existingClaim: lazylibrarian
         globalMounts:
