@@ -58,6 +58,11 @@ spec:
               # all served models have headroom. KV-cache bump is trivial vs 32Gi.
               - name: OLLAMA_CONTEXT_LENGTH
                 value: "8192"
+              # No OLLAMA_NUM_PARALLEL: ollama forces 1 slot for qwen3.5's
+              # architecture (qwen35, server/sched.go in v0.35.1-v0.40.0), so
+              # voice queues behind any in-flight vision call (~10 s each, 37 s
+              # behind an unserialized burst of 5; measured 2026-10-06, #3450,
+              # .agents/runbooks/immich-ml-backlog.md). VRAM: 7,031-7,037 MiB.
             resources:
               requests:
                 #nvidia.com/gpu: 1 # requesting 1 GPU TODO dig into how it works here https://github.com/jahanson/theshire/blob/main/kubernetes/apps/ai/ollama/app/helmrelease.yaml#L50 

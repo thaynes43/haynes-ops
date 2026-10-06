@@ -247,6 +247,27 @@ probe still saw 5-7 s answers. Once, in the recovery phase of the After run, one
 waited 106 s with ollama logging nothing, and it did not happen again in 95 more probes. Both
 are tracked in #3450.
 
+**A second ollama slot is not possible for this model.** `OLLAMA_NUM_PARALLEL` is ignored for
+`qwen3.5:9b`: ollama forces one slot for the `qwen35` architecture (and `qwen3next`, `qwen3vl`,
+`mllama`, `lfm2`, `nemotron_h`) and logs `model architecture does not currently support
+parallel requests` (`server/sched.go:510-515` in v0.35.1, unchanged in v0.40.0 and on `main`
+as of 2026-10-06). The model's `model_family` is `qwen35`. Voice therefore waits for whatever
+is already running, and the only lever on this card is how much vision work is queued ahead
+of it. Measured on 2026-10-06 from a Job in `ai` (ML idle; voice probe = the load test's
+~1,020-token Assist prompt, one at a time; vision = AppDaemon's payload shape, a fresh
+1920 × 1080 frame plus a ~470-token instruction, 2,667 prompt tokens, about 72 out):
+
+| | Voice answer, client wall time | Vision call, server time |
+|---|---|---|
+| Idle | 1.4-1.6 s | n/a |
+| 5 vision calls sent at once (an unserialized AppDaemon burst) | **37.2 s** for the probe that arrived during the burst | 9.1-9.8 s each, last one answered after 49 s |
+| 5 vision calls sent one after another (AppDaemon serialized) | **6.4-7.5 s** (6 probes); bounded by one vision call plus its own 1.5 s | 9.3 → 10.6 s, rising as the card heats |
+
+An image ollama has already seen is much cheaper (2.4 s), because ollama caches image
+embeddings, so a load test must use a fresh image for every call. Card memory stayed at
+7,031-7,037 MiB through both bursts: llama-server allocates its context and compute buffers
+when the model loads.
+
 ### Why one replica, on talosm05 only
 
 A second replica on talosm01's A2000 (whisper, speech-to-phrase, kokoro, vexa-whisper) was
