@@ -120,8 +120,14 @@ spec:
       app:
         # mqtt://mqtt.database.svc.cluster.local:1883. A broker-neutral name, so the
         # next broker change is a selector change and not an edit to every client.
+        # 192.168.40.205 is the LAN address EMQX's emqx-listeners had. No known client
+        # uses it (all three are in-cluster), but anything on the LAN that pointed at
+        # the old broker IP keeps working.
         forceRename: mqtt
         controller: mosquitto
+        type: LoadBalancer
+        annotations:
+          lbipam.cilium.io/ips: 192.168.40.205
         ports:
           mqtt:
             port: *port

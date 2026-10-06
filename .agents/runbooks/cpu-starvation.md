@@ -1,8 +1,10 @@
-# CPU starvation on a node: `NodeLoadSaturated` and `EMQXCoreNotReady`
+# CPU starvation on a node: `NodeLoadSaturated` (and the MQTT broker)
 
-Both alerts are `severity: critical`, so they page Pushover, and they carry no
-`scope: host`, so the alert-responder diagnoses them. They came out of the same
-incident.
+`NodeLoadSaturated` is `severity: critical`, so it pages Pushover, and it carries no
+`scope: host`, so the alert-responder diagnoses it. The broker alert from the same
+incident, `EMQXCoreNotReady`, went away with EMQX on 2026-10-06 (haynes-ops#3395).
+Its replacement is `MosquittoNotReady`, with the same reasoning and triage in
+[`mqtt-broker.md`](mqtt-broker.md).
 
 **2026-10-05, 23:41-00:12Z.** An agent session in the dev-env pod (namespace `dev`,
 which had no CPU limit then) ran about 60 `while :; do :; done` burners plus parallel
@@ -57,26 +59,11 @@ topk(5, sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{node="<n
   or restart the dev-env pod, and it may not delete any PVC. A starved node is not a
   storage fault. When the culprit is dev-env, escalate with the process list.
 
-## `EMQXCoreNotReady`: no Ready broker pod for 2 minutes
+## The MQTT broker on a starved node
 
-Why a dedicated rule: the stock `KubePodNotReady` waits 15 minutes and is a warning, and
-warnings go to the null receiver, so nothing paged on 2026-10-05. Backtested against the
-stored series, this rule would have fired at 00:06Z.
-
-Read the pod's state before acting:
-
-```bash
-kubectl get pod -n database -l apps.emqx.io/db-role=core -o wide
-kubectl describe pod -n database <pod> | grep -iE 'probe|killing|timeout'
-kubectl logs -n database <pod> -c emqx --previous | tail -50
-```
-
-| what you see | cause | fix |
-|---|---|---|
-| one pod, `Liveness probe failed ... timeout`, node load high | starvation (2026-10-05) | Fix the node (above). The broker recovers on its own with the same PVC and no data loss. zigbee2mqtt, Home Assistant and AppDaemon reconnect on their own (checked with `emqx ctl clients list` after 2026-10-05). |
-| two `emqx-core-<hash>` pods, or `SINGLE_NODE_LICENSE` in the log | a pod-template change started an operator blue-green | follow `emqx-config-drift.md` → *Pod-template change procedure*: scale the old StatefulSet to 0, then the fresh-PVC step |
-| `mria_mnesia: still waiting for table(s)` and the old core pod is gone | aftermath of a blue-green | the fresh-PVC recovery in `emqx-config-drift.md`. Only this case justifies deleting the broker PVC. |
-
-**Never delete the broker PVC for a starvation restart loop.** The PVC holds the
-retained store (about 7,450 messages, including Home Assistant's discovery configs),
-the Mnesia users and `cluster.hocon`.
+The broker is Mosquitto now (`database/mosquitto-0`). It has a CPU request, so it is
+never BestEffort, and only TCP probes, so a starved node slows it down instead of
+restart-looping it. If `MosquittoNotReady` fires next to `NodeLoadSaturated`, fix the
+node first. The broker recovers on its own with the same PVC and no data loss.
+**Never delete the broker PVC (`data-mosquitto-0`) for a starvation restart loop.**
+It holds the retained store. The triage table is in [`mqtt-broker.md`](mqtt-broker.md).

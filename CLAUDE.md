@@ -91,7 +91,7 @@ task flux:reconcile
 ```bash
 # Find the kustomization name and namespace from the app's ks.yaml, then:
 flux reconcile kustomization <ks-name> -n <ks-namespace> --with-source
-# Example: flux reconcile kustomization emqx-cluster -n database --with-source
+# Example: flux reconcile kustomization mosquitto -n database --with-source
 ```
 
 ### 3. Monitor reconciliation
@@ -115,7 +115,7 @@ kubectl logs -n <namespace> <pod> --tail=50
 scripts/checkHealth.sh
 ```
 
-**Cascading restarts**: Operator-managed resources (EMQX CR, Rook CephCluster, etc.) may restart pods when their config changes. Check whether dependent apps need a restart too. For example, changing EMQX config restarts the broker pod, which clears in-flight MQTT state — downstream clients like Zigbee2MQTT may need a pod restart to re-publish retained messages.
+**Cascading restarts**: Operator-managed resources (CNPG Clusters, Rook CephCluster, etc.) may restart pods when their config changes. Check whether dependent apps need a restart too. For example, any change to the MQTT broker (Mosquitto, `database/mosquitto`) restarts it. Its clients reconnect on their own and the retained store survives, but Home Assistant then spends about 3 minutes with a pegged event loop while its ~6,500 MQTT entities go unavailable and come back. Batch broker changes, and see `.agents/runbooks/mqtt-broker.md`.
 
 ## AppDaemon Deploys (cross-repo: `../hass-sandbox` → this repo)
 

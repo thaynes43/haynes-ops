@@ -47,7 +47,7 @@ Every Kustomization + HelmRelease + Source `Ready=True`, **and** the `flux-syste
 | **Method** | `flux` / `kubectl` — **Reader SA only.** No Prometheus fallback (see note). |
 | **Query** | `scripts/checkHealth.sh` (its `print_non_ready` helper already filters `flux get helmreleases/kustomizations/sources all -A` to non-Ready rows). Standalone: `flux get kustomizations -A \| grep -ivE 'True\|NAME'` ; `flux get helmreleases -A \| grep -ivE 'True\|NAME'` ; `flux get sources git -A`. Then confirm the `flux-system` GitRepository **REVISION** == the merged commit SHA, and dependent kustomizations reconciled at that revision. |
 | **Healthy** | Every ks / HR / Source row `Ready=True`; GitRepository revision == merged commit. |
-| **Benign-warn** | Immediately post-merge a row may transiently show `Reconciliation in progress`, `running health checks`, or HR `upgrade in progress`. Operator charts that roll their own pods (CNPG instances, EMQX) briefly show the dependent app reconciling. **Re-poll after one reconcile interval** before judging — the gate waits for Flux's own poll, it does **not** run `flux reconcile --with-source` (a write the Reader SA is denied). |
+| **Benign-warn** | Immediately post-merge a row may transiently show `Reconciliation in progress`, `running health checks`, or HR `upgrade in progress`. Operator charts that roll their own pods (CNPG instances) briefly show the dependent app reconciling. **Re-poll after one reconcile interval** before judging — the gate waits for Flux's own poll, it does **not** run `flux reconcile --with-source` (a write the Reader SA is denied). |
 | **Regression** | Any `Ready=False` persisting past one interval: HR `install/upgrade retries exhausted` / `values don't meet the specifications of the schema` / `Helm upgrade failed`; ks `dependency ... is not ready` / `build failed`; or GitRepository **stuck on the OLD revision** (Renovate advanced `main` but Flux never pulled). |
 
 > **Prometheus fallback (since 2026-07-17):** per-resource Flux readiness IS now in Prometheus as `gotk_resource_info{ready,exported_namespace,name,customresource_kind}` (kube-state-metrics customResourceState — NOT the old `gotk_reconcile_condition`, which Flux ≥2.1 removed and which still returns no data). If the Reader SA token is dead, query `gotk_resource_info{ready=~"False|Unknown", suspended!="true"}` via Grafana MCP instead of reporting blind; prefer the kubectl path when available (it carries condition messages the metric lacks).
@@ -88,7 +88,7 @@ The existing runtime safety net: root route is `null`, only `severity=critical` 
 | **Query** | **Grafana MCP:** `ALERTS{alertstate="firing",severity="critical"}` (empty == none). For context: `sum(ALERTS{alertstate="firing"})`. **AM API:** `GET http://kube-prometheus-stack-alertmanager.observability.svc:9093/api/v2/alerts?filter=severity=critical&active=true`. |
 | **Healthy** | Zero series for `ALERTS{alertstate="firing",severity="critical"}`. |
 | **Benign-warn** | The always-firing `Watchdog` dead-man's-switch (by design — routed to the heartbeat receiver / healthchecks.io, not critical), `InfoInhibitor`, and AM-suppressed `KubeJobNotCompleted`/`KubeJobFailed` for `ytdl-sub-.*` (best-effort media backfills). These appear in `sum(ALERTS{...firing})` but **never** as `severity=critical`. |
-| **Regression** | **ANY** new `severity=critical` series firing during/after the reconcile window — `KubePodCrashLooping`, `KubeDeploymentReplicasMismatch`, `CephClusterErrorState`, `KubeStatefulSetReplicasMismatch`, `PrometheusOperator*`, or a CNPG/EMQX critical tied to the changed component. |
+| **Regression** | **ANY** new `severity=critical` series firing during/after the reconcile window — `KubePodCrashLooping`, `KubeDeploymentReplicasMismatch`, `CephClusterErrorState`, `KubeStatefulSetReplicasMismatch`, `PrometheusOperator*`, or a CNPG/`MosquittoNotReady` critical tied to the changed component. |
 
 ### 5. Ceph cluster health
 
@@ -159,6 +159,6 @@ The scheduled gate is **read+page only** — it does **not** roll back in phase 
 - [`omni-service-account.md`](omni-service-account.md) — Reader SA constraints (read-only, no exec/reconcile) that bound what the gate can do.
 - [`docs/renovate/README.md`](../../docs/renovate/README.md) Tier 4 — phase 4a (watch+page) vs. 4b (in-cluster CronJob + automated rollback via the App) split, and the shepherd's three invocation modes.
 - [`docs/renovate/tier4-bot-setup.md`](../../docs/renovate/tier4-bot-setup.md) — haynes-ops-bot GitHub App identity + token minting.
-- [`.renovate/holds.json5`](../../.renovate/holds.json5) — read **before** working any PR so the gate never re-investigates a known-bad upgrade (EMQX operator/broker holds).
+- [`.renovate/holds.json5`](../../.renovate/holds.json5) — read **before** working any PR so the gate never re-investigates a known-bad upgrade (for example the CNPG postgres-major hold).
 - `tier4-component-playbooks.md` — the per-component checks this cross-cutting gate sits alongside.
 - [`.agents/rules/flux-pvc-prune-safety.md`](../rules/flux-pvc-prune-safety.md) — PVC-prune hazard when reverting/moving Kustomizations.

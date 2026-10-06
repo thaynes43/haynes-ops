@@ -161,74 +161,17 @@ CloudNativePG operator + the `postgres16` (3-instance HA) and `postgres16-pgvect
 
 ---
 
-## emqx
+## emqx (retired)
 
-EMQX operator (Helm chart) + the single-node EMQX broker CR in ns `database`. The MQTT bus for **zigbee2mqtt, esphome, appdaemon, Home Assistant** — a broker restart clears in-flight MQTT state, so downstream clients may need a pod restart to re-publish retained messages.
-
-- **Renovate match:** datasources `helm` + `docker`; packageNames `emqx-operator`, `/emqx/emqx$/`. **Two independent artifacts, two mechanisms:** (1) **operator** = Helm chart `emqx-operator` from `https://repos.emqx.io/charts`, pinned in `app/helmrelease.yaml spec.chart.spec.version` (2.3.1); the chart appVersion drives the operator image (no explicit `image.tag`). (2) **broker** = container `docker.io/emqx/emqx` literal in `cluster/cluster.yaml spec.image` (6.2.0); the `$`-anchored regex deliberately does NOT catch `ghcr.io/emqx/emqx-operator`. **BOTH are HELD** in `.renovate/holds.json5` (operator `<2.3.2 || >=3.0.0`; broker `<6.2.1`); holds extend last (final word). Renovate uses `dependencyDashboardApproval` — these never blind-auto-merge. Don't confuse with dragonfly/cnpg/postgres16 in the same ns.
-
-- **Repo paths:** `kubernetes/main/apps/database/emqx/` → `app/helmrelease.yaml`, `app/helmrepository.yaml`, `app/externalsecret.yaml`; `cluster/cluster.yaml`, `cluster/ingress.yaml`, `cluster/podmonitor.yaml`; `ks.yaml`; `.renovate/holds.json5`.
-
-- **Before merging — read:**
-  - **First:** re-read both EMQX rules in `.renovate/holds.json5` and the WHY comment at `cluster/cluster.yaml` lines 8-14. The hold is reasoned and maintainer-confirmed — don't re-investigate from scratch.
-  - **Root-cause issue:** <https://github.com/emqx/emqx/issues/17600> — single-node COMMUNITY license aborts boot (`SINGLE_NODE_LICENSE`) when the operator's blue-green upgrade forms a transient 2-node cluster. This is an OPERATOR behavior. The hold resumes only at **emqx-operator 3.0.0 GA** (still pre-release rc.3 as of 2026-06-30 — `>=3.0.0` auto-resume will NOT fire until the final tag).
-  - Operator notes: `gh release view <tag> --repo emqx/emqx-operator`; blue-green docs at <https://docs.emqx.com/en/emqx-operator/latest/>.
-  - Broker notes / config-schema: `gh release view <tag> --repo emqx/emqx`; diff our `spec.config.data` (HOCON, lines 16-46) against the target release's config reference.
-  - CRD: `helm show crds emqx/emqx-operator --version <ver>` — live CRD serves `v2` (storage) AND `v2beta1` (served); a major may drop `v2beta1`.
-
-- **Check our usage (grep before upgrading):**
-
-  | Feature | Where | Why |
-  |---|---|---|
-  | Broker image `emqx:6.2.0` (HELD) + `replicas: 1` | `cluster/cluster.yaml` :15, :52 | replicas:1 + the single-node COMMUNITY license is the crux of the hold. Any operator-driven 2nd node → transient 2-node cluster → `SINGLE_NODE_LICENSE` abort. Never bump `spec.image` past 6.2.0 while operator <3.0.0; never raise replicas. |
-  | CR apiVersion `apps.emqx.io/v2beta1` | `cluster/cluster.yaml` :3-4; podmonitor selector labels | An operator MAJOR (3.0.0) may drop the `v2beta1` served version → migrate to `apps.emqx.io/v2` + re-`task kubernetes:kubeconform` before merge, or the CR stops reconciling. |
-  | HOCON config (`max_packet_size=256MB`, retainer disc, authn `built_in_database` + `bootstrap_file=/opt/init-user.json`, authz `no_match=deny`) | `cluster.yaml` :16-46; bootstrap via `app/externalsecret.yaml` mounted at :56-64 | A broker major changes HOCON schema; the riskiest keys are `bootstrap_file/bootstrap_type` (superuser seed), authn/authz backend shape, retainer storage. A renamed key boots with broken auth — clients silently fail. Diff before bumping. |
-  | Operator-generated Services `emqx-dashboard:18083`, `emqx-listeners:1883` (LB IP 192.168.40.205) | `ingress.yaml` :24-28; `cluster.yaml` :71-76; consumers: zigbee2mqtt HR :56, esphome ES :21, appdaemon ES :59 | These DNS names are how the ingress + 3 MQTT clients reach the broker. A major that renames the managed Services silently breaks all of them. Verify names survive + preserve `lbipam.cilium.io/ips: 192.168.40.205`. |
-  | Per-pod `ceph-block` PVC for `built_in_database` (retainer + authn on disc) | `cluster.yaml` :65-70 (8Gi), bound `emqx-core-<rev>-0` | retainer + authn persist here. A broker MAJOR that migrates the on-disc schema can't cleanly roll back to the older image → reseed/data-loss path. |
-  | `reloader.stakater.com/auto: true` + `envFrom emqx-secret`; z2m `dependsOn emqx-cluster` | `cluster.yaml` :49-55; `zigbee2mqtt/ks.yaml` :14 | A broker reconcile/restart cascades to Z2M; an `emqx-secret` re-sync restarts the core pod → another blue-green cycle. Factor into verify. |
-
-- **Known breaking patterns → required edit:**
-
-  | Pattern | Required edit |
-  |---|---|
-  | Operator blue-green boots a green node before retiring blue → transient 2-node → single-node COMMUNITY license `SINGLE_NODE_LICENSE` abort → broker crash-loops (#17600; first exposed by 6.2.1; operator 2.3.2 does NOT fix) | Do NOT bump broker past 6.2.0 nor operator into 2.3.2..2.x — both HELD. The broker hold's resume is the OPERATOR (3.0.0 GA), not encodable in `allowedVersions` → lift BY HAND. Correct order when 3.0.0 GAs: (1) widen the operator hold + bump chart to 3.0.0, verify healthy single node; (2) ONLY THEN hand-widen the broker hold past `<6.2.1` and bump `spec.image`. |
-  | Operator major bumps the CRD and drops the `v2beta1` served version while our CR declares `v2beta1` | Operator-first: bump the chart, migrate `cluster.yaml` apiVersion `v2beta1`→`v2` if dropped, re-run kubeconform. Operator-managed broker-pod restarts on reconcile are EXPECTED — but watch the single-node trap during that restart. |
-  | Broker HOCON schema drift renames/removes keys (bootstrap_*, authn/authz, retainer) | Diff `spec.config.data` vs the target config reference; update renamed keys in the same commit as the image bump. A wrong key boots with broken auth — clients silently fail. Validate + watch `emqx_connections_count` return to baseline. |
-  | Operator major renames managed Services (emqx-dashboard / emqx-listeners) or ports | Update `ingress.yaml` backend + all 3 consumers (z2m `MQTT_SERVER`, esphome + appdaemon externalsecrets → `emqx-listeners.database.svc:1883`). Preserve the cilium LB IP annotation. |
-
-- **Post-upgrade health checks:**
-
-  | Signal | Method | Query | Healthy | Benign-warn | Regression |
-  |---|---|---|---|---|---|
-  | CR Ready with exactly one core node at expected version | kubectl | `kubectl get emqx emqx -n database -o jsonpath='{.status.conditions[?(@.type=="Ready")].status} nodes={range .status.coreNodes[*]}{.version}/{.status} {end}'` | Ready=True, single coreNode at 6.2.0, status=running | brief CoreNodesProgressing/Ready flicker while the core pod rolls (<~3m) | Ready=False >5m, **>1 coreNode (the 2-node trap)**, or status!=running / version!=expected |
-  | Single-node guard (signature of the held failure) | promql | `max(emqx_cluster_nodes_running)` | `== 1` steady | none — no benign 2 on the community license | `== 2` (forming 2-node → abort imminent) or `== 0` (down/crash-loop) → roll back |
-  | Broker scrape up | promql | `up{job="database/emqx"}` | `== 1` | a single missed scrape while the core pod restarts | `== 0` >2m, or the series disappears (PodMonitor selector broke on a label rename) |
-  | Client connections preserved (auth still works) | promql | `emqx_connections_count{job="database/emqx"}` | back to baseline (>=3) within minutes | dips toward 0 briefly during the restart while clients reconnect | stuck at 0 / well below baseline >5m = HOCON authn break, license abort, or Service rename |
-  | Boot-crash log signature | logql | `{namespace="database", pod=~"emqx-core.+"} \|~ "SINGLE_NODE_LICENSE\|license.*abort\|emqx_license"` | no matching lines after upgrade | INFO-level community-license / expiry lines (not boot aborts) | any `SINGLE_NODE_LICENSE` / license-abort-at-boot line → the held mode recurred → roll back immediately |
-
-- **Verify:**
-  1. Identify WHICH artifact changed — operator chart (`app/helmrelease.yaml`, rolls `emqx-operator-controller-manager`) or broker image (`cluster/cluster.yaml`, rolls `emqx-core`). Different Kustomizations.
-  2. Read-only Flux: `flux get kustomization emqx -n database` and `… emqx-cluster -n database` → both Ready=True at the new revision (do NOT `--with-source`).
-  3. `kubectl get pods -n database -l apps.emqx.io/instance=emqx` → `emqx-core-<rev>-0` 1/1 Running (no CrashLoop); `emqx-operator-controller-manager-*` 1/1.
-  4. Health-check 1 (CR Ready, single coreNode at expected version).
-  5. Health-checks 2-4: `emqx_cluster_nodes_running==1`, `up==1`, connections back to baseline.
-  6. Health-check 5: no `SINGLE_NODE_LICENSE` / license-abort lines.
-  7. Downstream: z2m / esphome / appdaemon Running; check HA MQTT entity availability. Broker restart cleared in-flight state → z2m may need **(BREAK-GLASS)** `kubectl delete pod -n home-automation -l app.kubernetes.io/name=zigbee2mqtt` to re-publish retained messages.
-  8. Dashboard: `https://emqx.haynesops.com` returns <500 (Gatus `emqx` endpoint stays green).
-
-- **Rollback:** **Verdict: conditional convergence.** For the **in-scope held case** (broker 6.2.0↔6.2.1; operator 2.3.1↔2.3.2) **data-loss risk is effectively NONE** — the single-node license aborts the green node at **boot**, before it ever joins the cluster or touches Mnesia, so the healthy blue 6.2.0 pod keeps running and its `ceph-block` PVC (the only copy of retainer + built_in_database auth) is never migrated. Reverting to the byte-identical 6.2.0 spec reproduces blue's pod-template hash → the operator re-adopts blue's StatefulSet+PVC and deletes the crash-looping green. The genuine no-boot/reseed risk only materializes in the **future post-3.0.0 world** where a green node can actually boot and migrate the on-disc schema (a broker major). **The one way today's rollback turns data-lossy is human error: `kubectl delete emqx emqx` or deleting the core PVC.**
-
-  Corrected procedure:
-  1. **Re-pin in Git** (preferred over `git revert` if other commits intervened): set `cluster/cluster.yaml spec.image` back to `emqx:6.2.0` and/or `app/helmrelease.yaml` chart back to 2.3.1. Commit ONLY those files + push. The push fires the GitHub Receiver → near-immediate top-down reconcile; do NOT `flux reconcile --with-source`. Convergence ceiling without the webhook is the 10m GitRepository interval.
-  2. **Re-assert both holds** and validate: `npx --yes --package renovate renovate-config-validator .renovate/holds.json5`. The broker hold's resume is the operator reaching 3.0.0 GA (lift by hand; currently rc.3 — keep held).
-  3. **Verify the precondition for clean convergence (read-only):** confirm the healthy blue 6.2.0 core pod is still Running — `kubectl get pods -n database -l apps.emqx.io/instance=emqx -o wide`. If a Ready 6.2.0 pod exists, the byte-identical revert re-adopts it (no new 2-node cluster, no data loss, no break-glass). **If blue is GONE, expect the revert to re-trigger blue-green and re-abort → go straight to step 5.**
-  4. **Verify recovery by the CR/POD, NOT the Kustomization Ready gate.** Check `kubectl get emqx emqx -n database -o yaml` `.status` + pod readiness. `emqx-cluster` (`wait:true, timeout:5m`) may sit Ready=False and not re-flip until its 30m interval even after the broker is healthy — that is NOT a failed revert, and NOT a reason to reach for an out-of-SA `flux reconcile`.
-  5. **(BREAK-GLASS)** ONLY if blue didn't survive or the operator won't retire green: `kubectl delete pod emqx-core-<podTemplateHash>-0 -n database` targeting the **crash-looping GREEN pod** (identify by image 6.2.x + CrashLoopBackOff — **NEVER the Ready blue pod**), or restart `deploy/emqx-operator -n database`. **NEVER** `kubectl delete emqx emqx` and **NEVER** delete the core PVC (destroys the only copy of retainer + auth).
-  6. **(BREAK-GLASS) operator-rollback axis:** if the operator pod is itself unhealthy mid-downgrade, heal IT first — its conversion webhook gates Flux's apply of the v2beta1 CR (a down operator → "conversion webhook connection refused", the revert can't land). Watch for the operator HR's `strategy:rollback` re-deploying the bad chart against the git revert; if wedged in remediation, `flux suspend helmrelease emqx -n database` then `flux resume` after re-pinning, or `helm rollback`.
-  7. **(BREAK-GLASS)** after the broker is healthy, restart downstream MQTT clients that didn't reconnect: `kubectl delete pod -n home-automation -l app.kubernetes.io/name=zigbee2mqtt` (and esphome/appdaemon).
-  8. Re-run health-checks; confirm operator still <3.0.0 and the broker hold in place. `reloader.stakater.com/auto` means a later `emqx-secret` re-sync can re-trigger a blue-green cycle during the window.
-
-  **Caveats:** ANY momentary 2-node cluster aborts boot — the whole reason both are held. Broker MAJOR downgrade = potential no-boot/data loss (retainer + built_in_database authn on the per-pod PVC; init superuser re-seeds from `emqx-init-user-secret`, other auth records do not). Reverting the operator does NOT downgrade the CRD — if a major dropped `v2beta1` and migrated the CR to `v2`, rolling the operator back leaves the CR unreconciled (apiVersion is a one-way manual step). Convergence latency ceiling is the 10m GitRepository interval (the GitHub Receiver fast-tracks the push) — usually seconds, so don't panic-reach for `flux reconcile`.
+EMQX and emqx-operator were removed on 2026-10-06 (haynes-ops#3395). The MQTT broker
+is now Mosquitto (`kubernetes/main/apps/database/mosquitto/`), a plain app-template
+StatefulSet with no operator and no CRDs. It is not in the manual tier: an image bump
+is an ordinary rolling restart of `mosquitto-0`, a few seconds of broker downtime.
+Verify an upgrade with `.agents/runbooks/mqtt-broker.md` (*After a broker restart*):
+the three clients reconnect, the retained count is restored, the HA MQTT unavailable
+count is back to baseline. Expect Home Assistant's event loop to be busy for about
+3 minutes after any broker restart. Read Mosquitto's ChangeLog before a minor
+upgrade: 2.1 changed the `max_packet_size` default and deprecated `password_file`.
 
 ---
 
@@ -712,7 +655,7 @@ Corrected procedure:
 0. **CLASSIFY the regression FIRST:** (i) Helm green but devices not registered → needs git revert (no auto-rollback fired); (ii) Helm upgrade FAILED → `strategy:rollback` already reverted the in-cluster release to last-good — confirm before touching git; (iii) HR stalled "retries exhausted" / "another operation in progress" → WEDGED, git revert alone won't converge → break-glass; (iv) capacity gone but HR/pods healthy → suspect GPU off the PCI bus (host reboot, out-of-band).
 1. **GIT-FIRST, revert the WHOLE commit.** Prefer `git revert <sha>` over a surgical `chart.spec.version` re-pin — Renovate bumps frequently pair the version with `values:`/CR/NodeFeatureRule edits (nvidia flags→config-file) that a version-only re-pin strands against the old chart. Known-good pins: nvidia 0.19.3, intel operator+gpu 0.36.0 (BOTH, same version), NFD 0.18.3.
 2. **BEFORE asserting a clean revert,** check whether the bump crossed a CRD apiVersion boundary (NFD `NodeFeatureRule`; intel `GpuDevicePlugin`/`DeviceConfig` — both charts use `crds:CreateReplace` on upgrade, so the revert REPLACES the CRD back to the OLDER schema). Diff the chart's `crds/` across versions: if a served/stored apiVersion changed, a clean downgrade is BLOCKED by `status.storedVersions` → **(BREAK-GLASS)** manual `kubectl patch` of storedVersions. Minor-only bumps (0.18.x/0.36.x) are safe.
-3. If a known-bad release, add a hold to `.renovate/holds.json5` (EMQX-entry convention: `allowedVersions` excluding the bad version + Reason/Issue/Resume), validate `npx --yes --package renovate renovate-config-validator .renovate/holds.json5`, commit.
+3. If a known-bad release, add a hold to `.renovate/holds.json5` (existing-entry convention: `allowedVersions` excluding the bad version + Reason/Issue/Resume), validate `npx --yes --package renovate renovate-config-validator .renovate/holds.json5`, commit.
 4. **Commit + push.** Do NOT `flux reconcile --with-source` **(BREAK-GLASS)**. The main github-receiver pokes the GitRepository on push; leaf Kustomizations + helm-controller reconcile on source/generation change — minutes (fallback 30m poll if the webhook/Traefik is degraded).
 5. **For an INTEL revert specifically** (dependsOn forces operator-up-before-gpu; gpu DaemonSet is OPERATOR-managed): after the revert lands, verify the operator reconciled the existing `GpuDevicePlugin` CR and the DaemonSet image actually rolled back. A stale operator-left DaemonSet → **(BREAK-GLASS)** delete the DaemonSet / re-annotate the CR for Helm ownership.
 6. **VERIFY on real signal, NOT Kustomization Ready** (intel ks are `wait:false` → Ready=True the instant they APPLY): confirm HR Ready=True, `gpu.intel.com/i915` node-allocatable >0, GPU labels restored, plugin pods Running, and Plex no longer Unschedulable. For nvidia, confirm GPU detection/accounting before declaring the detection-summary pipeline healthy.
@@ -788,7 +731,7 @@ Corrected procedure:
 4. **(K8S regression — NO ROLLBACK)** Do NOT sync a `kubernetes.version` decrease: `validate` ACCEPTS it, the sync proceeds, then nodes silently fail to converge (a hung roll after a k8s-down revert is the unsupported-downgrade signature, not a transient timeout). Forward-fix-only — patch forward to a fixed k8s patch, or restore from etcd backup (GATE 5). Never skip minors either direction. Keep k8s 1.36 HELD until Cilium lists support.
 5. **(MONITOR — read-only OK)** `omnictl get clustermachinestatus`, `omnictl cluster template status -f ...`, `kubectl get nodes -o wide`, keep `ceph_health_status`==0 between CP reboots. **DANGER WINDOW:** while any CP is wedged/re-imaging you sit at 2/3 etcd quorum with ZERO fault tolerance — serialize CP work; a second CP hiccup loses quorum → apiserver down → the Reader SA goes blind.
 6. **(WEDGED NODE — BREAK-GLASS re-image)** If a node reboot-loops (`omnictl machine-logs <id> --log-format dmesg` shows `/boot/B/initramfs.xz: no space left on device`, the small-/boot nvidia trap on m01/m03/w01), the template can't recover it → re-image per `talos-version-upgrade.md`. VM FIRST: `qm set <vmid> --smbios1 uuid=<original-machine-id>` (gotcha #3) and disconnect the .30 VPN NIC (gotcha #5). This DESTROYS that node's openebs-hostpath data. If falling back to direct talosctl, re-mint the cert first: `omnictl talosconfig <file> -c haynes-ops` (it has expired before).
-7. **(POST-ROLL FLUX/OPERATOR CLEANUP — BREAK-GLASS writes)** Template-converged ≠ cluster-healthy. Expect + remediate the reboot-roll fallout per memory `talos-reimage-aftermath`: EMQX operator stale-annotation crash-loop, orphaned openebs/VolSync cache PVCs, VolSync stale restic locks, Ceph rule flap. Needs `kubectl delete/annotate` / `restic unlock` / pod restarts.
+7. **(POST-ROLL FLUX/OPERATOR CLEANUP — BREAK-GLASS writes)** Template-converged ≠ cluster-healthy. Expect + remediate the reboot-roll fallout per memory `talos-reimage-aftermath`: orphaned openebs/VolSync cache PVCs, VolSync stale restic locks, Ceph rule flap. Needs `kubectl delete/annotate` / `restic unlock` / pod restarts.
 8. **(CEPH — BREAK-GLASS)** Only after all nodes back AND every OSD/mon rejoined active+clean: `kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd unset noout`. If a daemon did NOT rejoin, do NOT clear noout — restart the OSD/mon pod first, recover, then unset.
 9. **(GATE 5 — LAST RESORT DR, BREAK-GLASS + LOSSY)** If the control plane is bricked or etcd lost quorum, restore from the Omni etcd backup (24h interval). Rebuilds the CP from the last ≤24h snapshot — loses all state since, and CANNOT restore k8s below the snapshot's storage version. Choose the target Talos version in the reverted template before restoring.
 

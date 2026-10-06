@@ -99,7 +99,7 @@ override in the HR env. The main rules beyond the cluster-read-only / merge-safe
    file-then-`--body-file` shape stays inside the allowlisted `Write` + `gh pr create`
    tools.
 2. **Backup gate (stateful upgrades).** Before merging / auto-merging / forward-fixing
-   any component with durable state (cnpg·postgres, rook-ceph, dragonfly, emqx, immich,
+   any component with durable state (cnpg·postgres, rook-ceph, dragonfly, immich,
    authentik, paperless, the `*arr` apps…), the shepherd first confirms a **recent
    successful backup** exists — read-only, within its SA: `kubectl get backup -n database`
    (newest `.status.phase=completed` <24h, or the Cluster `.status.lastSuccessfulBackup`)
@@ -131,7 +131,7 @@ override in the HR env. The main rules beyond the cluster-read-only / merge-safe
 ## Mode 3 — breaking-change shepherd (the core loop)
 
 The manual-tier set that will never blind-auto-merge: database operators
-(`cnpg`, `dragonfly-operator`, `emqx`), `cilium`, `coredns`, `traefik`,
+(`cnpg`, `dragonfly-operator`), `cilium`, `coredns`, `traefik`,
 `authentik`, `multus`, `device-plugins`, `rook-ceph`, `flux`. (Talos/k8s is its
 own beast — it's *not* a Flux/Renovate flow; see
 [talos-version-upgrade.md](./talos-version-upgrade.md).) These open **ordinary
@@ -162,7 +162,7 @@ required `values` edit, health queries, rollback steps) live in
    grep -A6 "$PKG" .renovate/holds.json5    # read the HELD/Reason/Issue/Resume lines
    ```
    - **Held** (PR matches an `allowedVersions` exclusion) → **skip it**, don't
-     re-investigate. The WHY is right there (e.g. EMQX, emqx/emqx#17600).
+     re-investigate. The WHY is right there (e.g. the cloudnative-pg chart hold).
    - **Newly blocked** (you discover this release is broken and there's no
      same-package fix yet) → **[ADD a hold](#holds-protocol)** and move on. Don't
      leave the PR to churn.
@@ -209,7 +209,6 @@ required `values` edit, health queries, rollback steps) live in
    | Component | Move as a unit |
    |---|---|
    | `rook-ceph` | operator → `ceph-csi-drivers` → cluster (`dependsOn` order) |
-   | `emqx` | operator **+** broker — the operator's blue-green *is* the fault; never bump the broker major without the operator |
    | `cnpg` | operator first, then the `Cluster` CRs it manages |
    | `device-plugins` | each plugin + its `dependsOn` NFD (NodeFeatureRule PCI IDs) |
 
@@ -230,7 +229,7 @@ required `values` edit, health queries, rollback steps) live in
 
 9. **Run the health gate.** [`upgrade-health-gate.md`](./upgrade-health-gate.md)
    **plus the component's own `healthChecks`** from the playbook (CNPG cluster
-   health, `ceph -s`, EMQX broker up, cilium connectivity, HA Zigbee availability,
+   health, `ceph -s`, MQTT broker (`mosquitto-0`) up, cilium connectivity, HA Zigbee availability,
    etc.).
    ```bash
    scripts/checkHealth.sh                        # non-Ready Flux ks/hr cluster-wide
@@ -285,7 +284,7 @@ and on-call.
 The phase-4a watch-and-page loop. Full procedure:
 **[`upgrade-health-gate.md`](./upgrade-health-gate.md).** In brief: cron / `/loop`
 trigger runs the post-reconcile health checks (Flux Kustomization status, CNPG /
-Rook-Ceph / EMQX health, HA Zigbee availability) on the Reader SA and **pages on
+Rook-Ceph / MQTT broker health, HA Zigbee availability) on the Reader SA and **pages on
 regression**. **Rollback stays human in 4a** — the gate's job is to guarantee a
 bad merge never goes unnoticed, not yet to act on it. (Automated rollback is the
 phase-4b endgame, in-cluster CronJob.)
@@ -496,9 +495,9 @@ that **enforces** via `allowedVersions` and **documents** via a structured
    ```
 
 **LIFT a hold:** delete the rule (or widen `allowedVersions`) in a commit
-referencing the upstream fix; Renovate re-proposes. (Example live today: EMQX —
-operator auto-resumes at `>=3.0.0`; broker is a **manual** lift, because its
-resume condition is the *operator* version, not the broker's.)
+referencing the upstream fix; Renovate re-proposes. (A rule whose resume condition is a *different* package's version, as the
+retired EMQX broker hold was, cannot be encoded in `allowedVersions` and needs a
+**manual** lift.)
 
 ---
 
@@ -519,9 +518,8 @@ Merge lowest-risk first. Each row links its full section in
 | 6 | [`dragonfly-operator`](tier4-component-playbooks.md#dragonfly-operator) | database | **in-memory flush** | control-plane (operator/CRD/rbac) revert is clean **if** the old operator doesn't re-roll the STS. Any data-plane restart flushes the entire keyspace (replicas:1, no PVC) → drops immich BullMQ + paperless Celery in-flight jobs (re-enqueue on restart). HAND-MAINTAINED ClusterRole in `app/rbac.yaml`. |
 | 7 | [`cilium`](tier4-component-playbooks.md#cilium) | kube-system | **one-way eBPF / break-glass** | no data, but eBPF map-layout migration is one-directional (old agent crash-loops; recovery = a brief `cleanBpfState=true` value edit = datapath wipe). CRD storage-version (`CiliumLoadBalancerIPPool` v2alpha1→v2) can strand LB-IP announcement. A bad CNI push severs networking Flux needs to self-heal → out-of-band. |
 | 8 | [`authentik`](tier4-component-playbooks.md#authentik) | network | **migrations / PITR** | **patch within same `YYYY.M` = clean.** A `YYYY.M` **major** runs forward-only DB migrations with no down-migrations → old image crashes on the migrated schema; recovery = CNPG PITR, which is **all-tenant** (one barmanObjectStore covers authentik+grafana+…) and loses every write since the upgrade. **Bias to forward-fix.** |
-| 9 | [`emqx`](tier4-component-playbooks.md#emqx) | database | **operator-pair / held** | **HELD at broker 6.2.0 / operator <2.3.2** until operator 3.0.0 GA (emqx/emqx#17600 blue-green bug). In-scope revert is data-safe (blue pod never migrates Mnesia). A *future* broker-major revert post-3.0.0 is a reseed (retained msgs + dashboard users; init superuser re-seeds). Operator + broker move as a unit. |
-| 10 | [`cnpg`](tier4-component-playbooks.md#cnpg) | database | **reseed** | operator-chart revert is low-risk (data plane untouched), but CNPG doesn't officially support operator **downgrade**. PG **major** = one-way (`pg_upgrade`); reverting `imageName` against migrated PGDATA only crash-loops → restore from S3 (~600 GB egress). **`postgres16-pgvecto` is single-instance** — `delete pvc` = total loss (no replica source); the "delete pvc to reseed" trick is **only** for the 3-instance `postgres16` replicas. Bias to forward-fix. |
-| 11 | [`rook-ceph`](tier4-component-playbooks.md#rook-ceph) | rook-ceph | **one-way major (storage)** | **always last.** Chart-only bump is revertible (HRs carry `strategy:rollback`); any bump that moved a Ceph daemon **major** is effectively one-way — old binaries refuse migrated metadata. Operator → `ceph-csi-drivers` → cluster as a unit. **Pin `cephVersion`** so the chart bump never silently carries a Ceph major. Break-glass OSD/daemon surgery can destroy a replica set — page instead. |
+| 9 | [`cnpg`](tier4-component-playbooks.md#cnpg) | database | **reseed** | operator-chart revert is low-risk (data plane untouched), but CNPG doesn't officially support operator **downgrade**. PG **major** = one-way (`pg_upgrade`); reverting `imageName` against migrated PGDATA only crash-loops → restore from S3 (~600 GB egress). **`postgres16-pgvecto` is single-instance** — `delete pvc` = total loss (no replica source); the "delete pvc to reseed" trick is **only** for the 3-instance `postgres16` replicas. Bias to forward-fix. |
+| 10 | [`rook-ceph`](tier4-component-playbooks.md#rook-ceph) | rook-ceph | **one-way major (storage)** | **always last.** Chart-only bump is revertible (HRs carry `strategy:rollback`); any bump that moved a Ceph daemon **major** is effectively one-way — old binaries refuse migrated metadata. Operator → `ceph-csi-drivers` → cluster as a unit. **Pin `cephVersion`** so the chart bump never silently carries a Ceph major. Break-glass OSD/daemon surgery can destroy a replica set — page instead. |
 | — | [`talos-kubernetes`](./talos-version-upgrade.md) | *(below Flux)* | **break-glass (Omni admin)** | **NOT a Flux/Renovate flow** — applied by `task omni:sync` (omnictl, Omni **admin** identity), so a git revert does nothing and the Reader SA can't roll it back. Talos patch/minor downgrades in-place (preserves `/var`); **k8s minor downgrade is unsupported** → forward-fix only. Entire rollback escalates to a supervised `OMNICONFIG` session. Follow [talos-version-upgrade.md](./talos-version-upgrade.md) + [talos-omni-gotchas](../reference/talos-omni-gotchas.md). |
 
 ### Cross-references

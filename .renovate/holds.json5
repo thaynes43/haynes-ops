@@ -34,33 +34,6 @@
   packageRules: [
     {
       description: [
-        'HELD emqx-operator: 2.3.2 through 2.x — do not upgrade until 3.0.0 GA.',
-        "Reason: emqx-operator does blue-green upgrades — it boots a NEW broker node, forming a transient 2-node cluster, before retiring the old pod. EMQX's built-in single-node COMMUNITY license rejects the 2nd node, so an operator-driven broker reconcile crash-loops with SINGLE_NODE_LICENSE. 2.3.2 does not fix this; only operator 3.0.0 reworks the blue-green logic. Maintainer-confirmed (see Issue).",
-        'Issue: https://github.com/emqx/emqx/issues/17600',
-        'Resume: emqx-operator 3.0.0 GA — auto (allowedVersions re-opens at >=3.0.0; Renovate ignores the 3.0.0-rc pre-releases until the final release).',
-        'PDB (corrected 2026-08-23): 2.x DOES expose the knob — the live CRD has coreTemplate.spec.{minAvailable,maxUnavailable} on v2 and v2beta1 and add_pdb.go@2.3.1 copies them. The earlier "2.x has no knob" note was wrong. The real bug is that add_pdb.go creates the PDB unconditionally, copying nil min/max into an EMPTY spec → the disruption controller leaves expectedCount=0 → ALLOWED DISRUPTIONS 0 forever, which stalled every drain in the 2026-08-21 Talos roll. Fixed by setting coreTemplate.spec.maxUnavailable: 1 in cluster.yaml (does NOT trigger blue-green: computeHash/justCheckPodTemplate read spec.template only, so no SINGLE_NODE_LICENSE risk).',
-        'AT THE 3.0 LIFT, DELETE that maxUnavailable key: 3.0 removes PDB support entirely (no add_pdb.go in the 3.0.0-rc tree) and v3beta1 maxUnavailable is an unrelated replicant rolling-update knob. Note auto-delete-when-unset arrives in 2.3.3-rc.1, not 3.0.',
-        'Recorded: 2026-06-30 by claude. Related: PR #1860; memory renovate-automation-roadmap.',
-      ],
-      matchDatasources: ['helm'],
-      matchPackageNames: ['emqx-operator'],
-      allowedVersions: '<2.3.2 || >=3.0.0',
-    },
-    {
-      description: [
-        'HELD emqx (broker): 6.2.1 and newer — single-node community-license boot crash.',
-        'Reason: NOT a broker bug. The crash is the emqx-operator blue-green upgrade (see the emqx-operator hold above) forming a transient 2-node cluster that the single-node COMMUNITY license rejects — emqx_license aborts at boot with SINGLE_NODE_LICENSE. 6.2.0 boots fine; 6.2.1 first exposed it. The broker is pinned at 6.2.0 in cluster/cluster.yaml.',
-        'Issue: https://github.com/emqx/emqx/issues/17600',
-        'Resume: MANUAL — lift ONLY after emqx-operator 3.0.0 is deployed (which fixes blue-green). The resume condition is the OPERATOR version, not the broker version, so it cannot be encoded in allowedVersions; widen this bound by hand once the operator is on 3.0.0.',
-        'Recorded: 2026-06-30 by claude. Related: PR #1859; memory renovate-automation-roadmap.',
-        'CORRECTED 2026-10-06: 6.2.0 is not immune. During the 2026-09-09 affinity blue-green, the new 6.2.0 core aborted with the same SINGLE_NODE_LICENSE (Loki: emqx-core-8545588dbb-0, restarts 0-3). "6.2.0 boots fine" is true only for a STANDALONE boot. On operator 2.x every pod-template change, an image bump included, needs the Pod-template change procedure in .agents/runbooks/emqx-config-drift.md. The hold still stands, because a bump forces that procedure.',
-      ],
-      matchDatasources: ['docker'],
-      matchPackageNames: ['/emqx/emqx$/'],
-      allowedVersions: '<6.2.1',
-    },
-    {
-      description: [
         'HELD ghcr.io/cloudnative-pg/postgresql majors: track the running postgres16 cluster major — Postgres 17 lands only as a deliberate cluster migration, never a Renovate merge.',
         'Reason: the image has two consumers that must move TOGETHER with the cluster: (1) cluster16.yaml `imageName` — a CNPG major upgrade is a real migration (dump/restore or blue-green per CNPG docs), not an in-place bump; (2) the Outline wiki backup CronJob dump initContainer (frontend/outline/app/backup-cronjob.yaml), pinned so pg_dump matches the cluster major. Minors/patches within 16 stay allowed for both.',
         'Issue: sigo-alumni backlog/infra/homelab-hosting/07 (wiki wave-2 backup continuity); stranded PR #2449 (v17) closed under this hold.',
