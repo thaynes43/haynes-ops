@@ -395,9 +395,10 @@ def convert_folder(folder, source):
                 os.remove(partial)
                 log("epub_convert", result="skipped_now_has_epub_or_pdf", seconds=round(time.monotonic() - started, 1), **fields)
                 return "skipped_now_has_epub_or_pdf"
+            # A short copy must never land under the final name: the next run would see an epub and skip the book.
+            if os.path.getsize(partial) != os.path.getsize(out):
+                raise OSError(f"size mismatch after copy: {partial}")
             os.rename(partial, dest)
-            if os.path.getsize(dest) != os.path.getsize(out):
-                raise OSError(f"size mismatch after copy: {dest}")
             os.utime(folder)
             os.utime(os.path.dirname(folder))
         log(
