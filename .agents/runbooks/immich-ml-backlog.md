@@ -96,9 +96,12 @@ Without the UI, use `PUT /api/queues/ocr` with `{"isPaused": true}` (or `false` 
 That route needs `queue.update`. The shared unrestricted key has it, but a dedicated key with
 only `job.create` and `queue.read` would get a 403. An agent never handles the key, so it makes
 this call from a one-off Job in `photos` that mounts `immich-queue-missing-secret` and runs
-`curl -X PUT -H @/secret/api-key-header -H 'Content-Type: application/json' --data '{"isPaused":true}'
-http://immich-server.photos.svc.cluster.local:2283/api/queues/ocr`. Copy the CronJob's pod
-spec and change only the command. The nightly job skips a paused
+`curl --fail-with-body -sS -X PUT -H @/secret/api-key-header -H 'Content-Type: application/json'
+--data '{"isPaused":true}' http://immich-server.photos.svc.cluster.local:2283/api/queues/ocr`.
+Copy the CronJob's pod spec and change only the command. `--fail-with-body` makes a rejected call
+(a 403, say) fail the Job instead of completing it, so check that the Job reached `Complete` and
+that the logged response shows the `isPaused` value you asked for. A resume that silently failed
+leaves OCR paused for good. The nightly job skips a paused
 queue, so **a pause that is never resumed quietly stops OCR**, and the job log shows
 `SKIP: the queue is paused` every night. Once the backlog is gone, a nightly run finds only a
 handful of assets and none of this applies.
