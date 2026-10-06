@@ -26,7 +26,9 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
-      activeDeadlineSeconds: 900
+      # A pass takes seconds. Keep this short: while the pod runs it holds LazyLibrarian's RWO volume on LL's node,
+      # so an LL pod rescheduled to another node mid-pass waits in Multi-Attach until the Job ends.
+      activeDeadlineSeconds: 180
       template:
         metadata:
           labels:

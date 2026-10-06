@@ -123,6 +123,9 @@ spec:
                   identifier: app
                   port: http
     persistence:
+      # Also mounted, read-only at the database level, by the hourly downloads/owed-checks CronJob (pinned to this
+      # pod's node, at most 3 minutes a pass). A new LL pod on ANOTHER node that sits in Multi-Attach for a few
+      # minutes at :50 is waiting for that Job to end.
       config:
         existingClaim: lazylibrarian
         globalMounts:
