@@ -54,7 +54,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: main
-              image: ghcr.io/thaynes43/haynesnetwork:v0.109.5
+              image: ghcr.io/thaynes43/haynesnetwork:v0.110.0
               command:
                 - tsx
                 - /sync/src/scripts/books-census.ts
