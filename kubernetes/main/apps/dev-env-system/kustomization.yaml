@@ -14,5 +14,3 @@ resources:
   - ./session-config/ks.yaml
   - ./secrets/ks.yaml
   - ./rbac/ks.yaml
-  # TEMPORARY: spike S-12; removed once recorded in the dev-env repo.
-  - ./rbac-s12/ks.yaml
