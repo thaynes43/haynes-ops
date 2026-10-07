@@ -60,10 +60,12 @@ spec:
                     rekor:
                       url: https://rekor.sigstore.dev
     # 2026-10-06 (dev-env v2, plan 01 item 8.2): the thaynes43/dev-env repo signs
-    # `dev-env-operator:sha-<short>` from .github/workflows/publish.yml on main and,
-    # later, the v2 agent image `dev-env:2.x.y` (workflow name not settled yet, KICKOFF
-    # B5), so the subject allows any workflow of that repo but ONLY on refs/heads/main
-    # (unlike the haynes-ops rule above, which has no ref pin). Separate rule so a
+    # `dev-env-operator:sha-<short>` from .github/workflows/publish.yml on main, and the
+    # v2 agent image `dev-env:2.x.y` from publish-agent.yml on a v2.x.y release tag
+    # (KICKOFF B5, D-52). Each image has its own verifyImages entry below: the operator's
+    # subject allows any workflow of that repo but ONLY on refs/heads/main (unlike the
+    # haynes-ops rule above, which has no ref pin); the agent's is that one workflow on
+    # refs/tags/v2.*. Separate rule so a
     # haynes-ops workflow cannot vouch for a v2 image or the reverse. `dev-env:2.*`
     # keeps v1's 0.x tags out. Same attestor settings as verify-self-built, same cosign
     # v3.1.3 signing pin: so it has the SAME "no signatures found" gap (haynes-ops
@@ -78,9 +80,9 @@ spec:
               kinds:
                 - Pod
       verifyImages:
+        # The operator image: signed by thaynes43/dev-env publish.yml on main.
         - imageReferences:
             - "ghcr.io/thaynes43/dev-env-operator*"
-            - "ghcr.io/thaynes43/dev-env:2.*"
           failureAction: Audit
           mutateDigest: false
           verifyDigest: false
@@ -91,6 +93,25 @@ spec:
                 - keyless:
                     # thaynes43/dev-env workflows, main branch only.
                     subject: "https://github.com/thaynes43/dev-env/.github/workflows/*@refs/heads/main"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+        # The agent image `dev-env:2.x.y` (thaynes43/dev-env KICKOFF B5, D-52): signed by
+        # publish-agent.yml, which runs from a release tag, so the certificate subject
+        # ends in `@refs/tags/v2.x.y`, not `@refs/heads/main`. A separate entry so a
+        # main-branch workflow cannot vouch for the agent image, or a tag for the operator.
+        # `dev-env:2.*` keeps v1's 0.x tags out.
+        - imageReferences:
+            - "ghcr.io/thaynes43/dev-env:2.*"
+          failureAction: Audit
+          mutateDigest: false
+          verifyDigest: false
+          required: true
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subject: "https://github.com/thaynes43/dev-env/.github/workflows/publish-agent.yml@refs/tags/v2.*"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
