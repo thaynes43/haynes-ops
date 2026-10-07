@@ -1,0 +1,43 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/admissionregistration.k8s.io/validatingadmissionpolicy_v1.json
+# dev-env-v1-token-guard (DESIGN-001 D-46, D-50): the v1 pod may mint a token for its own
+# ServiceAccount (./v1-api-token.yaml) only for the operator's audience and for an hour at
+# most. RBAC cannot say this: `create` on serviceaccounts/token allows any audience and
+# any lifetime, and a token for the API server's own audience would be a long-lived,
+# unbound copy of v1's OPERATOR tier. agent-run asks for dev-env-operator and 600 s.
+#
+# Matched to dev/dev-env by username; nothing else is evaluated. v1 had no
+# serviceaccounts/token right before this, so nothing v1 does today is refused.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-v1-token-guard
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["*"]
+        operations: [CREATE]
+        resources: [serviceaccounts/token]
+  matchConditions:
+    - name: dev-env-v1
+      expression: request.userInfo.username == 'system:serviceaccount:dev:dev-env'
+  validations:
+    - expression: object.spec.?audiences.orValue([]) == ['dev-env-operator']
+      message: >-
+        dev-env-v1-token-guard: the v1 pod mints tokens only for the audience dev-env-operator, the
+        dev-env v2 API (DESIGN-001 D-46)
+      reason: Forbidden
+    - expression: object.spec.?expirationSeconds.orValue(0) > 0 && object.spec.expirationSeconds <= 3600
+      message: >-
+        dev-env-v1-token-guard: a token the v1 pod mints lives an hour at most (DESIGN-001 D-46)
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-v1-token-guard
+spec:
+  policyName: dev-env-v1-token-guard
+  validationActions: [Deny]

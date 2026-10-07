@@ -1,0 +1,150 @@
+---
+# The baseline agent identity, dev-agents/dev-env-agent (DESIGN-001 6.11, D-19).
+#
+# RBAC here is v1's OPERATOR tier (ClusterRole dev-env-operator in
+# apps/dev/dev-env/app/rbac.yaml), copied rule for rule, plus read on the
+# dev-env.haynesops.com group. It is a copy, not a second binding of v1's role, so that
+# v1's role can change or go at cutover without moving v2.
+#
+# RBAC verbs are not field-scoped (haynes-ops #3392): jobs create, patch on workloads,
+# CronJobs, Flux objects and ExternalSecrets would each let an agent act as another
+# ServiceAccount or have a controller apply its change. Two admission policies hold
+# these verbs to what the runbooks use:
+#   - dev-env-agent-guard (./agent-guard.yaml): the field-level rules of #3392 option 1;
+#   - dev-env-identity-guard (./identity-guard.yaml): nothing in the three dev-env
+#     namespaces, no other ServiceAccount, no new Secret reference, no protected object;
+# and the Kyverno policy dev-env-exec-guard refuses exec into privileged pods.
+# Change the verbs below and the guards together.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-agent
+rules:
+  # Core group read, everything except Secrets (as v1).
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - pods/status
+      - events
+      - nodes
+      - namespaces
+      - services
+      - endpoints
+      - configmaps
+      - persistentvolumeclaims
+      - persistentvolumes
+      - serviceaccounts
+      - resourcequotas
+      - limitranges
+    verbs: [get, list, watch]
+  # Non-core groups: wildcard read (as v1), plus the v2 sessions (agent-run list, fleet).
+  - apiGroups:
+      - admissionregistration.k8s.io
+      - apiextensions.k8s.io
+      - apps
+      - autoscaling
+      - batch
+      - ceph.rook.io
+      - cert-manager.io
+      - cilium.io
+      - coordination.k8s.io
+      - dev-env.haynesops.com
+      - discovery.k8s.io
+      - dragonflydb.io
+      - external-secrets.io
+      - gateway.networking.k8s.io
+      - helm.toolkit.fluxcd.io
+      - kustomize.toolkit.fluxcd.io
+      - kyverno.io
+      - metrics.k8s.io
+      - monitoring.coreos.com
+      - networking.k8s.io
+      - node.k8s.io
+      - notification.toolkit.fluxcd.io
+      - objectbucket.io
+      - policy
+      - postgresql.cnpg.io
+      - rbac.authorization.k8s.io
+      - snapshot.storage.k8s.io
+      - source.toolkit.fluxcd.io
+      - storage.k8s.io
+      - traefik.io
+      - volsync.backube
+    resources: ["*"]
+    verbs: [get, list, watch]
+  # ── Writes, each under the guards ──
+  # Restart a wedged pod. Refused in the dev-env namespaces (identity guard).
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]
+  # Exec. Refused in the dev-env namespaces (identity guard) and into a privileged pod
+  # (Kyverno dev-env-exec-guard).
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+  # API-server proxy, for runbooks that query Prometheus. Refused in the dev-env
+  # namespaces (identity guard), where the CNPs also drop it.
+  - apiGroups: [""]
+    resources: [services/proxy, pods/proxy]
+    verbs: [get, create]
+  # kubectl rollout restart: only the restartedAt template annotation (agent guard).
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [patch]
+  # ExternalSecret force-sync: only the force-sync annotation (both guards).
+  - apiGroups: [external-secrets.io]
+    resources: [externalsecrets]
+    verbs: [patch]
+  # flux reconcile, suspend, resume: only the reconcile.fluxcd.io/ annotations and
+  # spec.suspend (both guards).
+  - apiGroups: [kustomize.toolkit.fluxcd.io]
+    resources: [kustomizations]
+    verbs: [patch]
+  - apiGroups: [helm.toolkit.fluxcd.io]
+    resources: [helmreleases]
+    verbs: [patch]
+  - apiGroups: [source.toolkit.fluxcd.io]
+    resources: [gitrepositories, ocirepositories, helmrepositories, helmcharts, buckets]
+    verbs: [patch]
+  # One-off Jobs (the volsync unlock runbook): the pod runs as `default`, mounts no
+  # Secret outside the short list, and is not privileged (both guards).
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, delete]
+  # CronJob kill switch: only spec.suspend (agent guard).
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    verbs: [patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  # Named after the role: a binding's roleRef cannot change in place, so a new tier is
+  # a new binding name (see v1's rbac.yaml).
+  name: dev-env-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-agent
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-agent
+    namespace: dev-agents
+---
+# CNPG destroy and re-clone (PVC delete in database only), as v1 has it. The Role is
+# the database app's (apps/database/cloudnative-pg/app/dev-env-rbac.yaml); this binds
+# the v2 agent to it from here, so cutover removes v1's binding without touching v2's.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-agent-cnpg-remediation
+  namespace: database
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-cnpg-remediation
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-agent
+    namespace: dev-agents

@@ -9,6 +9,7 @@ resources:
   - ./verify-thaynes43-images.yaml
   - ./verify-haynesnetwork-images.yaml
   - ./dev-env-require-cpu-limit.yaml
+  - ./dev-env-exec-guard.yaml
   - ./default-cpu-request.yaml
   - ./besteffort-pod-alert.yaml
   - ./exceptions/multus-rbac.yaml
