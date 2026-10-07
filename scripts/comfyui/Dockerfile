@@ -92,6 +92,22 @@ RUN mkdir -p /tmp/comfy-home /tmp/comfy-cache \
  && apt-get purge -y --auto-remove git \
  && rm -rf /var/lib/apt/lists/*
 
+# GPL-3.0 notice: ComfyUI is bundled, so the license text and the exact source
+# version ship in the image. NOTICE.in carries a placeholder, filled from the same
+# COMFYUI_VERSION ARG that picks the git tag above, so the notice cannot drift
+# from the code. The license is copied out of the checkout, and the build fails
+# if the checkout has none or the notice still holds a placeholder.
+COPY NOTICE.in /tmp/comfyui-notice/NOTICE.in
+RUN mkdir -p /usr/share/doc/comfyui \
+ && test -s "${COMFYUI_ROOT}/LICENSE" \
+ && grep -q 'GNU GENERAL PUBLIC LICENSE' "${COMFYUI_ROOT}/LICENSE" \
+ && cp "${COMFYUI_ROOT}/LICENSE" /usr/share/doc/comfyui/LICENSE \
+ && sed "s|@COMFYUI_VERSION@|${COMFYUI_VERSION}|g" /tmp/comfyui-notice/NOTICE.in \
+      > /usr/share/doc/comfyui/NOTICE \
+ && ! grep -q '@COMFYUI_VERSION@' /usr/share/doc/comfyui/NOTICE \
+ && chmod -R a+rX /usr/share/doc/comfyui \
+ && rm -rf /tmp/comfyui-notice
+
 COPY constraints.txt /tmp/comfyui-build/
 
 # The torch stack first, then ComfyUI's requirements under the same pins so a

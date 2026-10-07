@@ -1,0 +1,26 @@
+ghcr.io/thaynes43/comfyui - license notice
+==========================================
+
+This image bundles ComfyUI @COMFYUI_VERSION@, which is free software licensed
+under the GNU General Public License, version 3 (GPL-3.0).
+
+  Project:        ComfyUI
+  Version:        @COMFYUI_VERSION@
+  Copyright:      the ComfyUI authors
+  Source (exact): https://github.com/Comfy-Org/ComfyUI/tree/@COMFYUI_VERSION@
+  Source archive: https://github.com/Comfy-Org/ComfyUI/archive/refs/tags/@COMFYUI_VERSION@.tar.gz
+
+The full license text is in /usr/share/doc/comfyui/LICENSE (the same file ships
+in the source tree at /opt/ComfyUI/LICENSE).
+
+ComfyUI is installed unmodified, in source form, at /opt/ComfyUI. It is the
+upstream tag above with only its .git, .github, .ci, tests and tests-unit
+directories removed. The image's own entrypoint and provisioning scripts are in
+/opt/comfyui-tools and are built from
+https://github.com/thaynes43/haynes-ops/tree/main/scripts/comfyui .
+
+The Python packages installed in the image (PyTorch, NumPy and others) are
+separate works under their own licenses. Each one's license files are in its
+.dist-info directory under the Python site-packages directory, and its exact
+version is pinned in constraints.txt next to the Dockerfile. The base image and
+its Debian packages keep their copyright files under /usr/share/doc/*/copyright.

@@ -23,6 +23,7 @@ root filesystem is read-only.
 | User | uid/gid 1000 (`comfy`), never root, no `privileged` |
 | Custom nodes | none — no ComfyUI-Manager, no third party. Only what ComfyUI itself ships. |
 | Image tag | `<comfyui version without v>-<image revision>`, set once in `.github/workflows/comfyui-build.yml` |
+| License notice | ComfyUI is GPL-3.0. `NOTICE.in` is filled with `COMFYUI_VERSION` at build time and lands, with ComfyUI's `LICENSE`, in `/usr/share/doc/comfyui/` |
 
 ## Subcommands
 
