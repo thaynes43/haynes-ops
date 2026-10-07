@@ -1,0 +1,31 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: arc-haynes-swarm
+  namespace: arc-runners
+spec:
+  targetNamespace: arc-runners
+  dependsOn:
+    - name: arc-runner-infrastructure
+      namespace: arc-runners
+    - name: arc-controller
+      namespace: arc-systems
+    - name: arc-github-app
+      namespace: arc-runners
+    - name: kyverno-policies
+      namespace: kyverno
+  path: ./kubernetes/main/apps/arc-runners/haynes-swarm/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
+  postBuild:
+    substitute:
+      APP: arc-haynes-swarm
+      ARC_REPOSITORY: haynes-swarm

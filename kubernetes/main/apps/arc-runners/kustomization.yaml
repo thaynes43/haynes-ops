@@ -1,0 +1,12 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./namespace.yaml
+  - ./infrastructure/ks.yaml
+  - ./github-app/ks.yaml
+  - ./sigmaphiomicron-com/ks.yaml
+  - ./sigo-alumni/ks.yaml
+  - ./sigoalumni-org/ks.yaml
+  - ./demo-console/ks.yaml
+  - ./haynes-swarm/ks.yaml

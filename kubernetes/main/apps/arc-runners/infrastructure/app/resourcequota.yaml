@@ -1,0 +1,16 @@
+---
+# Five repository pools, each capped at one runner. DinD native sidecars share
+# their pod's CPU, memory and ephemeral-storage accounting with the runner.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: arc-runners
+spec:
+  hard:
+    pods: "5"
+    requests.cpu: "5"
+    requests.memory: 10Gi
+    limits.cpu: "20"
+    limits.memory: 40Gi
+    requests.ephemeral-storage: 10Gi
+    limits.ephemeral-storage: 175Gi

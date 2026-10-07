@@ -1,0 +1,170 @@
+---
+# Repo workflows can reach their documented package/build/deploy endpoints, with
+# no Kubernetes API or lateral cluster/LAN access. Runner pods have no API token.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: arc-runners
+  namespace: arc-runners
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns: &workflowDomains
+              # GitHub runner registration, actions, checkout, artifacts and images.
+              - matchName: github.com
+              - matchName: api.github.com
+              - matchPattern: "*.github.com"
+              - matchPattern: "*.githubusercontent.com"
+              - matchPattern: "*.actions.githubusercontent.com"
+              - matchPattern: "*.*.actions.githubusercontent.com"
+              - matchPattern: "*.blob.core.windows.net"
+              - matchName: ghcr.io
+              - matchPattern: "*.ghcr.io"
+              # Node, npm/pnpm, Python, Go, Bun (GitHub releases), Anthropic.
+              - matchName: nodejs.org
+              - matchName: unofficial-builds.nodejs.org
+              - matchName: registry.npmjs.org
+              - matchName: get.pnpm.io
+              - matchName: pypi.org
+              - matchName: pypi.python.org
+              - matchName: files.pythonhosted.org
+              - matchName: proxy.golang.org
+              - matchName: sum.golang.org
+              - matchName: go.dev
+              - matchName: dl.google.com
+              - matchName: api.anthropic.com
+              - matchName: claude.ai
+              - matchPattern: "*.claude.ai"
+              # Docker Hub and Microsoft's service/container/CDN registries.
+              - matchName: registry-1.docker.io
+              - matchName: auth.docker.io
+              - matchName: production.cloudflare.docker.com
+              - matchPattern: "*.*.r2.cloudflarestorage.com"
+              - matchName: mcr.microsoft.com
+              - matchPattern: "*.data.mcr.microsoft.com"
+              - matchName: packages.microsoft.com
+              - matchName: api.nuget.org
+              - matchPattern: "*.nuget.org"
+              - matchName: builds.dotnet.microsoft.com
+              - matchName: ci.dot.net
+              - matchName: download.visualstudio.microsoft.com
+              - matchName: aka.ms
+              - matchName: dotnetcli.azureedge.net
+              # Playwright browser downloads.
+              - matchName: cdn.playwright.dev
+              - matchName: playwright.download.prss.microsoft.com
+              - matchName: cdn.playwright.download.prss.microsoft.com
+              # Google WIF/gcloud/Cloud Run/Artifact Registry/Drive/Sheets APIs.
+              - matchPattern: "*.googleapis.com"
+              - matchName: us-east1-docker.pkg.dev
+              - matchName: gcr.io
+              - matchPattern: "*.gcr.io"
+              - matchName: sdk.cloud.google.com
+              # Apt dependencies in existing Playwright steps and Dockerfile builds.
+              - matchName: deb.debian.org
+              - matchName: security.debian.org
+              - matchName: archive.ubuntu.com
+              - matchName: security.ubuntu.com
+              - matchPattern: "*.archive.ubuntu.com"
+              # Cloudflare Workers API and the deployed application smoke check.
+              - matchName: api.cloudflare.com
+              - matchName: sigo.sigoalumni.org
+    - toFQDNs: *workflowDomains
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Ubuntu/Debian archive configurations use HTTP by default.
+    - toFQDNs:
+        - matchName: deb.debian.org
+        - matchName: security.debian.org
+        - matchName: archive.ubuntu.com
+        - matchName: security.ubuntu.com
+        - matchPattern: "*.archive.ubuntu.com"
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+  # Denies take precedence over any FQDN allow (including a DNS answer on the LAN).
+  # Cilium selects in-cluster pods by identity; CoreDNS is the only exception.
+  egressDeny:
+    - toEntities: [host, remote-node]
+    - toEndpoints:
+        - matchExpressions:
+            - key: io.kubernetes.pod.namespace
+              operator: NotIn
+              values: [kube-system]
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+          matchExpressions:
+            - key: k8s-app
+              operator: NotIn
+              values: [kube-dns]
+    - toCIDR:
+        - 0.0.0.0/8
+        - 10.0.0.0/8
+        - 100.64.0.0/10
+        - 127.0.0.0/8
+        - 169.254.0.0/16
+        - 172.16.0.0/12
+        - 192.0.0.0/24
+        - 192.168.0.0/16
+        - 198.18.0.0/15
+        - 224.0.0.0/4
+        - 240.0.0.0/4
+---
+# The weekly lychee job in this repo scans arbitrary public external links.
+# This supplemental public HTTP(S) rule is scoped to that repo's ephemeral pods.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: arc-sigmaphiomicron-com-link-checks
+  namespace: arc-runners
+spec:
+  endpointSelector:
+    matchLabels:
+      haynesops.com/arc-runner: "true"
+      haynesops.com/arc-repository: sigmaphiomicron-com
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 0.0.0.0/8
+            - 10.0.0.0/8
+            - 100.64.0.0/10
+            - 127.0.0.0/8
+            - 169.254.0.0/16
+            - 172.16.0.0/12
+            - 192.0.0.0/24
+            - 192.168.0.0/16
+            - 198.18.0.0/15
+            - 224.0.0.0/4
+            - 240.0.0.0/4
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP

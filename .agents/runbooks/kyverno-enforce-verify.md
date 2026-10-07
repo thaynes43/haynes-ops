@@ -5,17 +5,13 @@ StorageClass.** ~5 minutes. Runnable by you or by a summoned agent (all read-onl
 
 ## Why this exists
 
-> **Correction, 2026-09-12 — these three are NOT in enforce mode.** Verified live:
-> `restrict-image-registries`, `restrict-rbac-escalation` and `pod-security-baseline`
-> all report `validationFailureAction: Audit`. Only **`verify-haynesnetwork-images`**
-> is `Enforce` — it is the one policy in the repo that sets the key explicitly, and
-> the field defaults to `Audit` when omitted. So today these three **report**
-> violations, they do not deny them, and the guardrail is weaker than the paragraph
-> below claims. Decide deliberately whether that is intended; if these should enforce,
-> they each need `validationFailureAction: Enforce` added. Until then, read every
-> "deny" below as "record". (`verify-thaynes43-images` is also Audit — which is why
-> the `upgrade-shepherd` image has been failing signature verification on every run
-> without blocking anything.)
+> **Correction, 2026-10-07:** the September note incorrectly inferred enforcement
+> from the deprecated policy-level `validationFailureAction`. Live rules in
+> `restrict-image-registries`, `restrict-rbac-escalation`, and `pod-security-baseline`
+> explicitly set `validate.failureAction: Enforce`; this rule-level setting is
+> authoritative. They deny admission violations. Inspect each rule rather than
+> relying on the policy default. `verify-thaynes43-images` remains Audit, while
+> `verify-haynesnetwork-images` uses Enforce.
 
 Kyverno's three enforce policies (`restrict-image-registries`, `restrict-rbac-escalation`,
 `pod-security-baseline`) deny non-conforming resources at admission. The dangerous gap is
