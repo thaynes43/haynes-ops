@@ -3,8 +3,9 @@
 # The LazyLibrarian EPUB converter (kubernetes/main/apps/downloads/lazylibrarian/
 # app/epub-convert/) runs its tests INSIDE the calibre image pinned in
 # epub-convert-cronjob.yaml, with the real ebook-convert / ebook-meta: a throwaway
-# library is built from text fixtures, converted, and checked (idempotence, the
-# epub/pdf no-touch rule, held failures, the census). A calibre bump that changes
+# library is built from text fixtures, converted, and checked (idempotence,
+# conversion eligibility, metadata stripping, backups/restore, held failures and
+# the census). A calibre bump that changes
 # conversion or ebook-meta output fails here. Advisory, not a required context, so
 # Renovate never merges a calibre bump on its own (.renovate/autoMerge.json5).
 # Offline (--network none), one container, one CPU.
@@ -54,3 +55,12 @@ jobs:
             -e CALIBRE_CONFIG_DIRECTORY=/tmp/calibre-config -e CALIBRE_CACHE_DIRECTORY=/tmp/calibre-cache \
             -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-convert:ro" \
             --entrypoint python3 "$IMAGE" /epub-convert/test_epub_convert.py
+
+      - name: Run the metadata safety tests inside the pinned image
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          docker run --rm --network none --cpus 1 --user 1000:1000 \
+            -e HOME=/tmp -e TMPDIR=/tmp \
+            -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-convert:ro" \
+            --entrypoint python3 "$IMAGE" /epub-convert/test_epub_metadata.py

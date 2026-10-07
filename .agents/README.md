@@ -10,6 +10,7 @@ guards whose degraded state is fail-open. Append findings there as you hit them;
 is worth more attention than a red.
 
 ## runbooks/ — step-by-step procedures
+- [lazylibrarian-epub-metadata.md](runbooks/lazylibrarian-epub-metadata.md) — gated metadata removal, inventories, collision Holds, staged Jobs and verified backup restore.
 - [self-hosted-runners.md](runbooks/self-hosted-runners.md) — private-only repository-scoped ARC runners: App credentials, isolated worker pools, workflow cutover, rotation and scaling.
 - [plex-tonight.md](runbooks/plex-tonight.md) — refresh private Plex watch history and library evidence for movies, new shows, and series to resume.
 - [audio-authoring.md](runbooks/audio-authoring.md) — independent CPU sound generation, model provisioning, asynchronous MCP jobs, and persistent candidates.
