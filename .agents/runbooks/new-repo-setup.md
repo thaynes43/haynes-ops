@@ -109,9 +109,12 @@ kubectl logs -n dev job/gh-secret-set-$REPO   # "CLAUDE_CODE_OAUTH_TOKEN <update
 kubectl delete job -n dev gh-secret-set-$REPO # ttlSecondsAfterFinished also reaps it after 15 min
 ```
 
-The Kyverno `verify-thaynes43-images` "unverified image" warnings on create are the
-known audit-only finding (cosign bundle mismatch), not a failure. If the Job fails, read
-its log: `MINT FAILED` with an HTTP `422` from the mint means the App no longer has
+The `verify-thaynes43-images` rules currently use `failureAction: Audit`, so image
+verification warnings do not block admission. The current dev-env digest's legacy
+Cosign signature was repaired and verified on 2026-10-07. Investigate any new
+unverified-image warning using the [signature repair procedure](kyverno-enforce-verify.md#repair-existing-bundle-only-image-signatures);
+it is no longer an expected bundle mismatch for that digest.
+If the Job fails, read its log: `MINT FAILED` with an HTTP `422` from the mint means the App no longer has
 "Secrets: Read and write". Ask Tom (AskUserQuestion) to restore it on the haynes-dev-bot
 App and accept the installation's permission request; do not look for another route.
 Never add `set -x` to the Job, print its environment, or echo, log, commit or paste the
