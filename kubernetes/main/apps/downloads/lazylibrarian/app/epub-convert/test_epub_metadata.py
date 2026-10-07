@@ -5,6 +5,7 @@ Run once at low priority: nice -n 19 python3 test_epub_metadata.py
 Never use CPU stress, wide parallelism or looped tests in the dev-env pod.
 """
 
+import contextlib
 import io
 import json
 import os
@@ -200,11 +201,126 @@ class ConversionSourceTests(unittest.TestCase):
             os.symlink(original, os.path.join(tmp, "linked.mobi"))
             os.mkfifo(os.path.join(tmp, "pipe.mobi"))
             with metadata.safe_directory(tmp) as directory:
-                with self.assertRaises(OSError):
+                with self.assertRaisesRegex(metadata.Refused, "symlink"):
                     metadata.stat_conversion_source(directory, "linked.mobi")
                 with self.assertRaisesRegex(metadata.Refused, "regular file"):
                     metadata.stat_conversion_source(directory, "pipe.mobi")
             self.assertEqual(read(original), b"MOBI")
+
+    def test_plain_conversion_copy_exceeds_rewrite_bound_in_fixed_chunks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = b"candidate EPUB bytes" * 100
+            write(os.path.join(tmp, "book.epub"), payload)
+            real_read, requests = os.read, []
+            def bounded_read(descriptor, size):
+                requests.append(size)
+                self.assertLessEqual(size, 1024 * 1024)
+                return real_read(descriptor, size)
+            with metadata.safe_directory(tmp) as directory, \
+                    mock.patch.object(metadata, "MAX_ARCHIVE", 16), \
+                    mock.patch.object(metadata.os, "read", side_effect=bounded_read), \
+                    mock.patch.object(metadata.os, "fdopen", side_effect=AssertionError("whole output buffered")):
+                self.assertEqual(metadata.copy_conversion_output(directory, "book.epub", directory, ".book.epub.partial"), len(payload))
+            self.assertEqual(read(os.path.join(tmp, ".book.epub.partial")), payload)
+            self.assertGreater(len(requests), 2)  # copy, EOF and verified read-back
+
+
+class MetadataIdentityTests(unittest.TestCase):
+    def file_identity(self, raw, relative="Suzanne Collins/Mockingjay/Book.epub"):
+        with tempfile.TemporaryDirectory() as tmp:
+            write(os.path.join(tmp, "Book.epub"), raw)
+            with metadata.safe_directory(tmp) as directory:
+                return metadata.grouping_identity_file(directory, "Book.epub", relative)
+
+    def test_unrelated_crc_and_rewrite_size_are_not_identity_requirements(self):
+        clean = metadata.strip_opf(OPF)[0]
+        raw = fixture(opf=clean, mimetype_first=False, mimetype_stored=False)
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            body = archive.getinfo("OEBPS/chapter.xhtml")
+        offset = body.header_offset
+        start = offset + 30 + int.from_bytes(raw[offset + 26:offset + 28], "little") + int.from_bytes(raw[offset + 28:offset + 30], "little")
+        raw = raw[:start] + bytes([raw[start] ^ 255]) + raw[start + 1:]
+        with mock.patch.object(metadata, "MAX_ARCHIVE", 16), \
+                mock.patch.object(metadata, "read_regular", side_effect=AssertionError("whole EPUB read")), \
+                mock.patch.object(zipfile.ZipFile, "testzip", side_effect=AssertionError("all member CRCs read")):
+            identity = self.file_identity(raw)
+        self.assertFalse(identity["has_series_metadata"])
+        self.assertEqual(identity["projected_aliases"], {"mockingjaymore"})
+        self.assertIn("source_identity", identity)
+        with self.assertRaises(metadata.Refused):
+            metadata.sanitized_epub(raw)
+
+    def test_harmless_dtd_identity_is_read_without_entity_resolution(self):
+        clean = metadata.strip_opf(OPF)[0]
+        for declaration in (b'<!DOCTYPE package>', b'<!DOCTYPE package SYSTEM "https://invalid.example/unused.dtd">'):
+            raw = fixture(opf=clean.replace(b'<package', declaration + b'<package', 1))
+            self.assertEqual(self.file_identity(raw)["projected_aliases"], {"mockingjaymore"})
+            with self.assertRaises(metadata.Refused):
+                metadata.sanitized_epub(raw)
+        for declaration in (b'<!DOCTYPE package [<!ENTITY local "Mockingjay">]>',
+                            b'<!DOCTYPE package [<!ENTITY remote SYSTEM "file:///etc/passwd">]>'):
+            with self.assertRaises(metadata.Refused):
+                self.file_identity(fixture(opf=clean.replace(b'<package', declaration + b'<package', 1)))
+        with self.assertRaises(metadata.Refused):
+            self.file_identity(fixture(opf=clean.replace(b'Mockingjay &amp; more', b'&undefined;')))
+
+    def test_two_level_placement_uses_creator_and_empty_untagged_is_unindexed(self):
+        clean = metadata.strip_opf(OPF)[0]
+        identity = self.file_identity(fixture(opf=clean), "Penny Dreadfuls/Book.epub")
+        self.assertEqual(identity["authors"], {"collins suzanne"})
+        empty = clean.replace(b'<dc:title id="title">Mockingjay &amp; more</dc:title>', b'').replace(b'<dc:creator id="author">Suzanne Collins</dc:creator>', b'')
+        identity = self.file_identity(fixture(opf=empty), "Buffalo Gals/Book.epub")
+        self.assertEqual(identity["projected_aliases"], set())
+        self.assertEqual(identity["current_aliases"], set())
+        self.assertEqual(identity["authors"], set())
+        self.assertFalse(identity["has_series_metadata"])
+
+    def test_missing_title_active_series_is_known_but_cannot_be_stripped(self):
+        raw = OPF.replace(b'<dc:title id="title">Mockingjay &amp; more</dc:title>', b'')
+        identity = self.file_identity(fixture(opf=raw))
+        self.assertTrue(identity["has_series_metadata"])
+        self.assertEqual(identity["current_aliases"], {"anothercollection"})
+        self.assertIn("no first dc:title", identity["strip_refusal"])
+
+    def test_unrelated_group_position_is_untagged_and_xml_reads_remain_bounded(self):
+        clean = metadata.strip_opf(OPF)[0].replace(b'</metadata>', b'<meta property="group-position">2</meta></metadata>')
+        self.assertFalse(self.file_identity(fixture(opf=clean))["has_series_metadata"])
+        with mock.patch.object(metadata, "MAX_XML", 8), self.assertRaisesRegex(metadata.Refused, "XML"):
+            self.file_identity(fixture(opf=clean))
+        source = metadata._MetadataReader(io.BytesIO(b"small"), 40 * 1024 * 1024, float("inf"))
+        with self.assertRaisesRegex(metadata.Refused, "32 MiB"):
+            source.read()
+
+
+class ConversionPublicationTests(unittest.TestCase):
+    def test_gate_off_large_candidate_publishes_and_permanent_refusal_is_held(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, state = os.path.join(tmp, "EBooks"), os.path.join(tmp, ".epub-convert")
+            folder = os.path.join(root, "Suzanne Collins", "Mockingjay")
+            source = os.path.join(folder, "Mockingjay.mobi")
+            write(source, b"retained source")
+            payload = fixture()
+            def convert(_source, target, _deadline):
+                write(target, payload)
+                return None, ""
+            with mock.patch.multiple(epub_convert, EBOOK_ROOT=root, STATE_DIR=state, DRY_RUN=False,
+                                     STRIP_SERIES_METADATA=False, STRIP_ONLY=False, SETTLE_SECONDS=0), \
+                    mock.patch.object(epub_convert, "convert", side_effect=convert) as converter, \
+                    mock.patch.object(epub_convert, "read_meta", return_value=("Mockingjay", "Suzanne Collins")), \
+                    mock.patch.object(epub_convert, "kavita_scan", return_value="ok"), \
+                    mock.patch.object(sys, "argv", [SCRIPT]), \
+                    mock.patch.object(metadata, "MAX_ARCHIVE", 16), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(epub_convert.main(), 0)
+                self.assertEqual(read(os.path.join(folder, "Mockingjay.epub")), payload)
+                self.assertEqual(read(source), b"retained source")
+                os.unlink(os.path.join(folder, "Mockingjay.epub"))
+                with mock.patch.object(metadata, "copy_conversion_output", side_effect=metadata.Refused("permanent candidate constraint")):
+                    self.assertEqual(epub_convert.main(), 0)
+                attempts = converter.call_count
+                self.assertEqual(epub_convert.main(), 0)
+                self.assertEqual(converter.call_count, attempts)
+            self.assertIn("permanent candidate constraint", read(os.path.join(state, "held.tsv")).decode())
+            self.assertFalse(os.path.exists(os.path.join(folder, ".Mockingjay.epub.partial")))
 
 
 class GroupingTests(unittest.TestCase):
@@ -463,6 +579,27 @@ class FileTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertEqual(read(self.path), self.original)
         self.assertTrue(any("budget" in line.get("detail", "") for line in lines))
+
+    def test_untagged_nonconforming_files_are_untouched_and_tagged_fingerprint_is_checked(self):
+        clean = metadata.strip_opf(OPF)[0]
+        harmless = clean.replace(b'<package', b'<!DOCTYPE package><package', 1)
+        other = os.path.join(self.root, "Other Author", "Other Book", "Other.epub")
+        write(other, fixture(opf=harmless, mimetype_first=False, mimetype_stored=False))
+        before = read(other), os.stat(other).st_mtime_ns, os.stat(other).st_ctime_ns
+        result, lines = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual((read(other), os.stat(other).st_mtime_ns, os.stat(other).st_ctime_ns), before)
+        census = next(line for line in lines if line["msg"] == "epub_series_strip_census")
+        self.assertEqual(census["stripped"], 1)
+        self.assertEqual(census["untagged"], 1)
+        write(self.path, self.original)
+        with metadata.safe_directory(os.path.dirname(self.path)) as directory:
+            identity = metadata.grouping_identity_file(directory, os.path.basename(self.path), "Suzanne Collins/Mockingjay/Mockingjay.epub")
+        changed = self.original + b"changed after preflight"
+        write(self.path, changed)
+        with self.assertRaisesRegex(metadata.Changed, "since grouping preflight"):
+            metadata.strip_existing(self.path, self.root, self.state, 0, expected_source_identity=identity["source_identity"])
+        self.assertEqual(read(self.path), changed)
 
     def test_killed_conversion_publication_pair_is_recovered_safely(self):
         folder = os.path.join(self.root, "Other Author", "Recovery")

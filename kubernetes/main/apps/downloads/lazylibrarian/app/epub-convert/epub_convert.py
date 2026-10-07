@@ -457,12 +457,18 @@ def convert_folder(folder, source):
             log("epub_convert", result=reason, detail=detail, seconds=round(time.monotonic() - started, 1), **fields)
             return reason
 
+        converted_identity = None
         if STRIP_SERIES_METADATA:
             try:
                 fields["series_strip"] = epub_metadata.strip_converted(
                     out, os.path.relpath(dest, EBOOK_ROOT), EBOOK_ROOT, STATE_DIR, DRY_RUN, SERIES_IDENTITIES
                 )
-            except (epub_metadata.Refused, ValueError, OSError) as err:
+                with epub_metadata.safe_directory(work) as converted_directory:
+                    output, _output_info = epub_metadata.read_regular(converted_directory, "book.epub")
+                converted_identity = epub_metadata.grouping_identity(output, os.path.relpath(dest, EBOOK_ROOT))
+            except epub_metadata.Changed:
+                raise
+            except ValueError as err:
                 reason, detail = "unreadable", f"series metadata validation refused: {err}"
                 record_held(STATE_DIR, key, reason, detail)
                 log("epub_convert", result=reason, detail=detail, **fields)
@@ -476,17 +482,16 @@ def convert_folder(folder, source):
             with epub_metadata.safe_directory(folder) as directory:
                 current_info = epub_metadata.stat_conversion_source(directory, source)
                 if epub_metadata._identity(current_info) != epub_metadata._identity(source_info):
-                    raise epub_metadata.Refused("conversion source changed before publish")
-                with open(out, "rb") as converted:
-                    output = converted.read()
-                epub_metadata._write_file(directory, os.path.basename(partial), output, 0o644)
-                if os.path.lexists(dest):
+                    raise epub_metadata.Changed("conversion source changed before publish")
+                with epub_metadata.safe_directory(work) as converted_directory:
+                    epub_metadata.copy_conversion_output(converted_directory, "book.epub", directory, os.path.basename(partial))
+                current_info = epub_metadata.stat_conversion_source(directory, source)
+                if epub_metadata._identity(current_info) != epub_metadata._identity(source_info):
+                    raise epub_metadata.Changed("conversion source changed during publish preparation")
+                if any(os.path.splitext(name)[1].lower() in BLOCKERS for name in os.listdir(directory)):
                     os.unlink(os.path.basename(partial), dir_fd=directory)
                     log("epub_convert", result="skipped_now_has_epub_or_pdf", seconds=round(time.monotonic() - started, 1), **fields)
                     return "skipped_now_has_epub_or_pdf"
-                copied, _partial_info = epub_metadata.read_regular(directory, os.path.basename(partial))
-                if copied != output:
-                    raise OSError(f"copy mismatch: {partial}")
                 epub_metadata._same_directory(directory, folder)
                 # Link publication is atomic and refuses an existing name, including an import racing us.
                 try:
@@ -501,7 +506,7 @@ def convert_folder(folder, source):
             with epub_metadata.safe_directory(os.path.dirname(folder)) as author_directory:
                 os.utime(author_directory)
             if STRIP_SERIES_METADATA:
-                SERIES_IDENTITIES.append(epub_metadata.grouping_identity(output, os.path.relpath(dest, EBOOK_ROOT)))
+                SERIES_IDENTITIES.append(converted_identity)
         log(
             "epub_convert",
             result="converted",
@@ -623,6 +628,11 @@ def strip_series_pass(folders, run_started):
                     identity = identities.get(relative)
                     if identity is None:
                         raise epub_metadata.Refused("EPUB appeared after grouping preflight")
+                    if not identity["has_series_metadata"]:
+                        counts["untagged"] += 1
+                        continue
+                    if identity.get("strip_refusal"):
+                        raise epub_metadata.Refused(identity["strip_refusal"])
                     conflicts = epub_metadata.collision_conflicts(identity, SERIES_IDENTITIES)
                     if conflicts:
                         result = {"result": "collision_held", "path": relative, "conflicts": conflicts,
@@ -630,7 +640,7 @@ def strip_series_pass(folders, run_started):
                                   "detail": "stripping would create a cross-author Kavita grouping collision"}
                     else:
                         result = epub_metadata.strip_existing(path, EBOOK_ROOT, STATE_DIR, SETTLE_SECONDS,
-                                                             DRY_RUN, identity["original_sha256"])
+                                                             DRY_RUN, expected_source_identity=identity["source_identity"])
                         if result["result"] == "stripped":
                             identity["current_aliases"] = identity["projected_aliases"]
                             identity["comparison_aliases"] = identity["projected_aliases"]
@@ -705,6 +715,16 @@ def main():
                 continue
             try:
                 result = convert_folder(folder, source)
+            except epub_metadata.Changed as err:
+                result = "io_error"
+                log("epub_convert", result=result, folder=rel, source=source,
+                    detail=f"changed input, retry after settling: {err}"[:300])
+            except epub_metadata.Refused as err:
+                # A stable safety/format constraint needs an operator decision, not hourly calibre work.
+                result = "unreadable"
+                detail = f"conversion safety refused: {err}"[:300]
+                record_held(STATE_DIR, held_key(rel, source, size), result, detail)
+                log("epub_convert", result=result, folder=rel, source=source, detail=detail)
             except Exception as err:  # noqa: BLE001 - one folder's I/O failure never stops the others
                 # Not recorded as held: an NFS hiccup or an import race clears by itself, and the next run retries.
                 # A failure that repeats logs every hour and keeps LazyLibrarianEpubConvertHeld up.

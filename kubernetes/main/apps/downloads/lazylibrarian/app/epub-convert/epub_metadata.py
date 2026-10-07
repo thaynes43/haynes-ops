@@ -8,6 +8,7 @@ streams and central directory offsets may change. Refuse anything ambiguous.
 import contextlib
 import copy
 import datetime
+import errno
 import hashlib
 import io
 import json
@@ -35,6 +36,10 @@ class Refused(ValueError):
     """The input cannot be changed while honoring the preservation contract."""
 
 
+class Changed(Refused):
+    """An input/directory race may clear on the next settled run; do not hold it."""
+
+
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -59,7 +64,7 @@ def _xml_text(raw):
     return text, codec, prefix
 
 
-def xml_nodes(raw):
+def xml_nodes(raw, allow_harmless_dtd=False):
     """Parse safely and retain UTF-8 byte spans without serializing XML."""
     text, codec, prefix = _xml_text(raw)
     utf8 = text.encode("utf-8")
@@ -69,7 +74,9 @@ def xml_nodes(raw):
     def forbidden(*_args):
         raise Refused("DTD and XML entities are not supported")
 
-    parser.StartDoctypeDeclHandler = forbidden
+    # Identity reads match Kavita's DtdProcessing.Ignore. Expat never loads a
+    # declared external DTD here, and entity definitions/references still refuse.
+    parser.StartDoctypeDeclHandler = (lambda *_args: None) if allow_harmless_dtd else forbidden
     parser.EntityDeclHandler = forbidden
     parser.ExternalEntityRefHandler = forbidden
 
@@ -257,7 +264,45 @@ def author_normalized(value):
     return " ".join(sorted(words))
 
 
-def grouping_identity(raw, relative):
+class _MetadataReader:
+    """Bound ZipFile's central-directory reads without parsing the ZIP format.
+
+    Only container/OPF payloads are read. The archive itself can be large, and
+    unrelated member CRCs/contents are checked only when a file is rewritten.
+    """
+
+    def __init__(self, source, size, deadline):
+        self.source, self.size, self.deadline = source, size, deadline
+
+    def read(self, size=-1):
+        if time.monotonic() >= self.deadline:
+            raise Refused("run budget exhausted during identity preflight")
+        if size < 0:
+            size = max(0, self.size - self.source.tell())
+        if size > 32 * 1024 * 1024:
+            raise Refused("ZIP metadata read exceeds the 32 MiB safety limit")
+        return self.source.read(size)
+
+    def seek(self, *args):
+        return self.source.seek(*args)
+
+    def tell(self):
+        return self.source.tell()
+
+    def seekable(self):
+        return True
+
+
+def _identity_xml(archive, name):
+    _member_name(name)
+    if archive.getinfo(name).file_size > MAX_XML:
+        raise Refused(f"identity XML exceeds the 4 MiB safety limit: {name}")
+    with archive.open(name) as member:
+        raw = member.read(MAX_XML + 1)  # CRC checked for the metadata actually read.
+    return xml_nodes(raw, allow_harmless_dtd=True)[0]
+
+
+def _grouping_from_archive(archive, relative):
     """Read aliases without imposing rewrite-only EPUB/OPF requirements.
 
     BookService's last calibre series / EPUB3 collection and last index win,
@@ -265,32 +310,23 @@ def grouping_identity(raw, relative):
     from the newly exposed aliases; uncertain/multiple titles are not subtracted.
     EPUB3 main-title file-as supplies SeriesSort; calibre:title_sort does not.
     """
-    if len(raw) > MAX_ARCHIVE:
-        raise Refused("EPUB exceeds the identity preflight size limit")
     try:
-        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        if archive:
             infos = archive.infolist()
             if len(infos) > 10000 or len({i.filename for i in infos}) != len(infos):
                 raise Refused("duplicate or too many ZIP entries in identity preflight")
-            if sum(i.file_size for i in infos) > MAX_EXPANDED:
-                raise Refused("expanded EPUB exceeds identity preflight limit")
-            bad = archive.testzip()
-            if bad:
-                raise Refused(f"invalid ZIP CRC in {bad}")
-            if archive.getinfo("META-INF/container.xml").file_size > MAX_XML:
-                raise Refused("container exceeds identity preflight XML limit")
-            container, *_unused = xml_nodes(archive.read("META-INF/container.xml"))
+            container = _identity_xml(archive, "META-INF/container.xml")
+            if not container or container[0]["name"] != CONTAINER + "container":
+                raise Refused("identity preflight has an invalid EPUB container")
             packages = [node["attrs"].get("full-path") for node in container
                         if node["name"] == CONTAINER + "rootfile"
                         and node["attrs"].get("media-type") == "application/oebps-package+xml"]
-            if not packages:
-                raise Refused("identity preflight found no OPF package")
+            if not packages or len(set(packages)) != len(packages):
+                raise Refused("identity preflight found no unique OPF package")
             titles, authors, series, sorts, inventory, active_packages = [], [], [], [], [], []
+            removable = indexed_without_title = False
             for name in packages:
-                _member_name(name)
-                if archive.getinfo(name).file_size > MAX_XML:
-                    raise Refused("OPF exceeds identity preflight limit")
-                nodes, *_unused = xml_nodes(archive.read(name))
+                nodes = _identity_xml(archive, name)
                 if not nodes or nodes[0]["name"] != OPF + "package":
                     raise Refused("identity preflight OPF is not a package")
                 meta = [n for n in nodes if n["name"] == OPF + "meta"
@@ -302,6 +338,8 @@ def grouping_identity(raw, relative):
                 effective_series = effective_index = ""
                 for n in meta:
                     attrs = n["attrs"]
+                    if attrs.get("name") in ("calibre:series", "calibre:series_index") or attrs.get("property") == "belongs-to-collection":
+                        removable = True
                     if attrs.get("name") in ("calibre:series", "calibre:series_index") or attrs.get("property") in (
                             "belongs-to-collection", "collection-type", "group-position"):
                         inventory.append({"opf": name, "attributes": attrs, "text": n["text"]})
@@ -325,27 +363,64 @@ def grouping_identity(raw, relative):
                     active = {kavita_normalized(effective_series.strip())} - {""}
                     if not active:
                         raise Refused("active EPUB series normalizes to an empty name")
+                    if not title_nodes or not title_nodes[0]["text"].strip():
+                        indexed_without_title = True
                 else:
                     possible_titles = {kavita_normalized(n["text"]) for n in title_nodes} - {""}
                     active = possible_titles if len(possible_titles) == 1 else set()
                 active_packages.append(active)
             projected = {kavita_normalized(value) for value in titles + sorts} - {""}
-            if not titles or not projected:
-                raise Refused("identity preflight cannot read a nonempty dc:title")
-            # The author directory is an additional alias, including books with missing creators.
+            # Kavita rejects an empty first title after series removal. An
+            # already untagged empty package is known-unindexed, with no aliases.
+            if not titles:
+                projected = set()
+            # Only normal author/book/file placement supplies a folder alias.
             parts = relative.split("/")
-            if len(parts) < 3:
-                raise Refused("identity preflight requires author/book/file placement")
-            author_aliases = {author_normalized(value) for value in authors + [parts[0]]} - {""}
-            if not author_aliases:
-                raise Refused("identity preflight cannot read an author identity")
+            author_values = authors + ([parts[0]] if len(parts) >= 3 else [])
+            author_aliases = {author_normalized(value) for value in author_values} - {""}
             current = set.intersection(*active_packages)
             comparison = {kavita_normalized(value) for value in series + sorts} - {""}
-            return {"path": relative, "authors": author_aliases, "projected_aliases": projected,
+            result = {"path": relative, "authors": author_aliases, "projected_aliases": projected,
                     "current_aliases": current, "comparison_aliases": comparison, "metadata": inventory,
-                    "original_sha256": sha256(raw)}
+                    "has_series_metadata": removable}
+            if indexed_without_title:
+                result["strip_refusal"] = "stripping active series would leave no first dc:title for Kavita indexing"
+            return result
     except (zipfile.BadZipFile, RuntimeError, KeyError, UnicodeError, OSError, zlib.error) as err:
         raise Refused(f"identity preflight cannot read EPUB: {err}") from err
+
+
+def grouping_identity(raw, relative):
+    """Read a bounded candidate already held in memory by rewrite validation."""
+    if len(raw) > MAX_ARCHIVE:
+        raise Refused("EPUB candidate exceeds the 256 MiB safety limit")
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            result = _grouping_from_archive(archive, relative)
+            result["original_sha256"] = sha256(raw)
+            return result
+    except (zipfile.BadZipFile, RuntimeError, OSError) as err:
+        raise Refused(f"identity preflight cannot read EPUB: {err}") from err
+
+
+def grouping_identity_file(directory, name, relative, deadline=float("inf")):
+    """Read only bounded ZIP metadata through a safe, stable source descriptor."""
+    if os.path.basename(name) != name or name in ("", ".", ".."):
+        raise Refused("invalid EPUB identity basename")
+    descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    with os.fdopen(descriptor, "rb") as source:
+        before = os.fstat(source.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise Refused("EPUB identity source must be a regular file")
+        try:
+            with zipfile.ZipFile(_MetadataReader(source, before.st_size, deadline)) as archive:
+                result = _grouping_from_archive(archive, relative)
+        except (zipfile.BadZipFile, RuntimeError, OSError) as err:
+            raise Refused(f"identity preflight cannot read EPUB: {err}") from err
+        if _identity(before) != _identity(os.fstat(source.fileno())):
+            raise Changed("EPUB changed during identity preflight")
+        result["source_identity"] = _identity(before)
+        return result
 
 
 def collision_conflicts(identity, identities, new_file=False):
@@ -384,8 +459,7 @@ def identity_preflight(root, deadline):
                 return identities, errors
             try:
                 with safe_directory(folder) as directory:
-                    raw, _info = read_regular(directory, name)
-                identities.append(grouping_identity(raw, relative))
+                    identities.append(grouping_identity_file(directory, name, relative, deadline))
             except Exception as err:
                 errors.append({"path": relative, "detail": f"{type(err).__name__}: {err}"[:500]})
     return identities, errors
@@ -432,7 +506,7 @@ def _same_directory(descriptor, path):
     with safe_directory(path) as current:
         a, b = os.fstat(descriptor), os.fstat(current)
         if (a.st_dev, a.st_ino) != (b.st_dev, b.st_ino):
-            raise Refused("directory changed during the operation")
+            raise Changed("directory changed during the operation")
 
 
 def read_regular(descriptor, name, limit=MAX_ARCHIVE):
@@ -446,7 +520,7 @@ def read_regular(descriptor, name, limit=MAX_ARCHIVE):
         raw = source.read(limit + 1)
         after = os.fstat(source.fileno())
         if len(raw) > limit or _identity(before) != _identity(after) or len(raw) != before.st_size:
-            raise Refused("input changed while being read")
+            raise Changed("input changed while being read")
         return raw, before
 
 
@@ -459,7 +533,12 @@ def stat_conversion_source(descriptor, name):
     """
     if os.path.basename(name) != name or name in ("", ".", ".."):
         raise Refused("invalid conversion source basename")
-    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+    except OSError as err:
+        if err.errno == errno.ELOOP:
+            raise Refused("conversion source must not be a symlink") from err
+        raise
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):
@@ -471,6 +550,75 @@ def stat_conversion_source(descriptor, name):
 
 def _identity(info):
     return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_nlink)
+
+
+def copy_conversion_output(source_directory, source_name, target_directory, target_name):
+    """Stream and hash an EPUB candidate, verifying the copy at its known size.
+
+    Plain conversion can publish EPUBs larger than the metadata rewrite limit.
+    Both copy and read-back use fixed 1 MiB chunks, so there is no whole-file
+    allocation. The metadata pass still validates its own bounded ZIP input.
+    """
+    for name in (source_name, target_name):
+        if os.path.basename(name) != name or name in ("", ".", ".."):
+            raise Refused("invalid conversion output basename")
+    try:
+        source = os.open(source_name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=source_directory)
+    except OSError as err:
+        if err.errno == errno.ELOOP:
+            raise Refused("conversion output must not be a symlink") from err
+        raise
+    target = None
+    try:
+        before = os.fstat(source)
+        if not stat.S_ISREG(before.st_mode):
+            raise Refused("conversion output must be a regular file")
+        target = os.open(target_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o644, dir_fd=target_directory)
+        checksum, count = hashlib.sha256(), 0
+        while True:
+            chunk = os.read(source, 1024 * 1024)
+            if not chunk:
+                break
+            count += len(chunk)
+            if count > before.st_size:
+                raise Changed("conversion output grew during copy")
+            checksum.update(chunk)
+            remaining = memoryview(chunk)
+            while remaining:
+                written = os.write(target, remaining)
+                if not written:
+                    raise OSError("zero-byte write while copying conversion output")
+                remaining = remaining[written:]
+        if count != before.st_size or _identity(before) != _identity(os.fstat(source)):
+            raise Changed("conversion output changed during copy")
+        os.fchmod(target, 0o644)
+        os.fsync(target)
+    finally:
+        os.close(source)
+        if target is not None:
+            os.close(target)
+    copied = os.open(target_name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=target_directory)
+    try:
+        before_copy = os.fstat(copied)
+        if not stat.S_ISREG(before_copy.st_mode) or before_copy.st_nlink != 1:
+            raise Refused("conversion partial must be a regular file with one hardlink")
+        if before_copy.st_size != before.st_size:
+            raise OSError("conversion partial size differs from the candidate")
+        copied_hash, remaining = hashlib.sha256(), before.st_size
+        while remaining:
+            chunk = os.read(copied, min(1024 * 1024, remaining))
+            if not chunk:
+                raise OSError("conversion partial ended before its expected size")
+            copied_hash.update(chunk)
+            remaining -= len(chunk)
+        if os.read(copied, 1) or _identity(before_copy) != _identity(os.fstat(copied)):
+            raise Changed("conversion partial changed during verification")
+        if copied_hash.digest() != checksum.digest():
+            raise OSError("conversion partial checksum differs from the candidate")
+    finally:
+        os.close(copied)
+    return before.st_size
 
 
 def _write_file(descriptor, name, raw, mode=0o600):
@@ -532,10 +680,10 @@ def _replace(descriptor, folder, name, original, original_info, candidate):
             os.fsync(target.fileno())
         saved, current_info = read_regular(descriptor, partial)
         if saved != candidate:
-            raise Refused("candidate changed after write")
+            raise Changed("candidate changed after write")
         current, current_info = read_regular(descriptor, name)
         if _identity(current_info) != _identity(original_info) or current != original:
-            raise Refused("original changed before replacement")
+            raise Changed("original changed before replacement")
         _same_directory(descriptor, folder)
         os.replace(partial, name, src_dir_fd=descriptor, dst_dir_fd=descriptor)
         os.fsync(descriptor)
@@ -546,7 +694,8 @@ def _replace(descriptor, folder, name, original, original_info, candidate):
             pass
 
 
-def strip_existing(path, root, state, settle_seconds, dry_run=False, expected_sha256=None):
+def strip_existing(path, root, state, settle_seconds, dry_run=False, expected_sha256=None,
+                   expected_source_identity=None):
     relative = os.path.relpath(path, root)
     if relative == ".." or relative.startswith("../"):
         raise Refused("EPUB is outside EBOOK_ROOT")
@@ -554,8 +703,10 @@ def strip_existing(path, root, state, settle_seconds, dry_run=False, expected_sh
     folder, name = os.path.split(path)
     with safe_directory(folder) as directory:
         raw, info = read_regular(directory, name)
+        if expected_source_identity is not None and _identity(info) != expected_source_identity:
+            raise Changed("source changed since grouping preflight")
         if expected_sha256 and sha256(raw) != expected_sha256:
-            raise Refused("source changed since grouping preflight")
+            raise Changed("source changed since grouping preflight")
         if time.time() - max(info.st_mtime, info.st_ctime) < settle_seconds:
             return {"result": "settling", "path": relative}
         candidate, inventory = sanitized_epub(raw)
@@ -582,6 +733,8 @@ def strip_converted(path, relative, root, state, dry_run=False, identities=None)
         raw, info = read_regular(directory, os.path.basename(path))
         candidate, inventory = sanitized_epub(raw)
         identity = grouping_identity(candidate, relative)
+        if not identity["projected_aliases"]:
+            raise Refused("converted EPUB has no title grouping identity after series removal")
         conflicts = collision_conflicts(identity, identities or [], new_file=True)
         if conflicts:
             raise Refused(f"converted EPUB would create a cross-author grouping collision: {conflicts}")
