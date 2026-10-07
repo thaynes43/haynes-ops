@@ -144,6 +144,12 @@ its external-links check on October 5; investigate failures against that baselin
 
 ## Isolation and Docker details
 
+Runner templates opt out of the global timezone webhook with
+`k8tz.io/inject: "false"`. Its injected init container has no resource bounds
+and would violate the runner namespace quota before a pod can start. Keep
+this annotation when copying a pool; preserve the quota and each runner and
+DinD container's requests and limits. Jobs use the runner image's UTC timezone.
+
 Runner service accounts have no workload RBAC, and runner pods do not mount a
 Kubernetes API token. Kubernetes container mode is deliberately unused: it needs
 pod/exec/Secret permissions and does not satisfy existing arbitrary Docker CLI
