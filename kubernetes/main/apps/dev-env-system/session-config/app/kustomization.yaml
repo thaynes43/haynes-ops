@@ -1,0 +1,52 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+# The session config (DESIGN-001 D-49): what agentd renders into each v2 session pod's
+# home at boot (D-40), in v1's layout. dev-env-templates mounts these by name:
+#   dev-env-config-claude       -> /opt/dev-env/config/claude
+#   dev-env-config-codex        -> /opt/dev-env/config/codex
+#   dev-env-codex-requirements  -> /etc/codex (Codex's system path for requirements)
+#   dev-env-scripts             -> /opt/dev-env/scripts (mode 0555)
+# A session pod waits in ContainerCreating until all four exist.
+#
+# These are v2 COPIES of v1's apps/dev/dev-env/app/resources/config/** and bashrc.sh,
+# never references to them: an edit there restarts the v1 pod. Until the cutover
+# (plan 05), a change to a rule both pods share, or to the MCP list, goes into both
+# copies (v1's as a held draft). mcp.json and requirements.toml carry v1's content
+# unchanged; the rest is adapted for a session pod.
+#
+# Editing a file here restarts nothing: no Reloader, and the templates' revision does
+# not cover it. The kubelet refreshes the mounted files in a minute or two. Then
+# CLAUDE.md (a link) reaches the next Claude session started in the pod, bashrc.sh the
+# next shell, and requirements.toml the next Codex session. The subagents, the MCP
+# registration, config.toml and AGENTS.md change at the pod's next boot (a new
+# session, a resume or a drain).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: dev-agents
+configMapGenerator:
+  - name: dev-env-config-claude
+    files:
+      - config/claude/CLAUDE.md
+      # One MCP list for Claude and Codex. JSON has no comments: this file is v1's
+      # config/claude/mcp.json, byte for byte. Its ${VAR} placeholders are for agentd
+      # (D-40), which is why the Flux Kustomization has no postBuild.substitute.
+      - config/claude/mcp.json
+      # agentd copies these to ~/.claude/agents/ without the agent- prefix.
+      - config/claude/agent-opus-worker.md
+      - config/claude/agent-sonnet-worker.md
+  - name: dev-env-config-codex
+    files:
+      - config/codex/config.toml
+      # agentd prepends it to CLAUDE.md to make ~/.codex/AGENTS.md.
+      - config/codex/AGENTS.header.md
+  # Its own ConfigMap: a template mount takes a whole ConfigMap as a directory, and
+  # dev-env-config-codex at /etc/codex would make its config.toml Codex's system layer.
+  - name: dev-env-codex-requirements
+    files:
+      - config/codex/requirements.toml
+  - name: dev-env-scripts
+    files:
+      - scripts/bashrc.sh
+generatorOptions:
+  # dev-env-templates names each ConfigMap, so no hash suffix.
+  disableNameSuffixHash: true

@@ -1,0 +1,41 @@
+# Codex config for dev-env v2 session pods (DESIGN-001 D-49). GitOps-managed: edit
+# kubernetes/main/apps/dev-env-system/session-config/app/config/codex/config.toml.
+# agentd writes ~/.codex/config.toml from this file at every boot, then appends the
+# [mcp_servers.*] tables it renders from config/claude/mcp.json (D-40).
+# ~/.codex/auth.json is the keeper's (DESIGN-001 6.3) and agentd never copies it here.
+
+# Rules and MCP servers are SHARED with claude, not duplicated:
+#   - instructions: agentd writes ~/.codex/AGENTS.md = AGENTS.header.md (the Codex
+#     preamble) + config/claude/CLAUDE.md (the session pod's rules); per repo, the
+#     fallback below makes codex read a CLAUDE.md wherever no AGENTS.md exists.
+#   - MCP servers: edit mcp.json, never this file. A hand-written table here would be
+#     duplicated by the generated one, and codex rejects duplicate keys.
+
+# Defaults for sessions that do not pin model and effort themselves: the codex hub's
+# phone threads and a bare `codex`. agent-run passes its own model and effort. Tom,
+# 2026-09-06: GPT-6 Astra at max. The slug needs a Codex release that knows it; the
+# image's CODEX_VERSION is the pin.
+model = "gpt-6-astra"
+model_reasoning_effort = "max"
+
+# The pod is the sandbox (D-23): no inner sandbox, no approvals. bubblewrap cannot
+# create user namespaces in a session pod (RuntimeDefault seccomp, no capabilities, no
+# privilege escalation; `codex sandbox linux -- true` fails), so a workspace-write
+# sandbox would fail on EVERY command and escalate each one to an approval. The phone
+# app sends its own values at thread start and writes them back into
+# ~/.codex/config.toml, so these are only host defaults; agentd re-renders the file at
+# boot. The real floor is /etc/codex/requirements.toml (ConfigMap
+# dev-env-codex-requirements), which Codex applies to every thread whatever a client
+# asks for.
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+# Project instructions: codex looks for AGENTS.md; most repos here carry only a
+# CLAUDE.md, so read that when AGENTS.md is absent (an AGENTS.md still wins). The
+# global AGENTS.md plus a repo CLAUDE.md can pass codex's 32 KiB default cap and be cut
+# silently, so raise it.
+project_doc_fallback_filenames = ["CLAUDE.md"]
+project_doc_max_bytes = 131072
+
+[history]
+persistence = "save-all"
