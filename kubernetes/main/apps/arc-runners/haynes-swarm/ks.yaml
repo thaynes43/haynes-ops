@@ -6,9 +6,6 @@ metadata:
   name: arc-haynes-swarm
   namespace: arc-runners
 spec:
-  # Activate with the dedicated App credentials and public runner image ready.
-  # Keeping the auth/pools suspended avoids critical alerts for intentional setup.
-  suspend: true
   targetNamespace: arc-runners
   dependsOn:
     - name: arc-runner-infrastructure
