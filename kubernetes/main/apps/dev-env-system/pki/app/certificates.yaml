@@ -1,0 +1,57 @@
+---
+# The dev-env CA. Clients trust THIS certificate: session pods through the templates'
+# api-ca mount (AGENTD_API_CA_FILE), the v1 pod's agent-run through DEV_ENV_API_CA_FILE
+# (D-50). Its key never leaves this namespace's Secret dev-env-ca.
+#
+# Ten years, renewed one year before the end. A renewal makes a new key, so the trust
+# anchor clients hold must follow it; KICKOFF 8.9 says how they get it.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dev-env-ca
+  namespace: dev-env-system
+  annotations:
+    # The Secret outlives the Certificate anyway (no owner reference), but keep the
+    # object too: a pruned and re-added CA Certificate is the one way to change the
+    # trust anchor by accident.
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  isCA: true
+  commonName: dev-env v2 CA
+  secretName: dev-env-ca
+  duration: 87600h # 10y
+  renewBefore: 8760h # 1y
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: dev-env-selfsigned
+    kind: Issuer
+---
+# The /v1 API's serving certificate (D-46). Session pods resolve names with ndots:1 and
+# the DNS allowlist refuses search-expanded names, so clients use the full name, which is
+# the operator's --api-url. The operator reads tls.crt and tls.key from the Secret's
+# mount (--api-tls-dir) and reloads them on renewal.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dev-env-operator-api
+  namespace: dev-env-system
+spec:
+  secretName: dev-env-operator-api-tls
+  dnsNames:
+    - dev-env-operator.dev-env-system.svc.cluster.local
+    - dev-env-operator.dev-env-system.svc
+    - dev-env-operator.dev-env-system
+  duration: 2160h # 90d
+  renewBefore: 720h # 30d
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+    - server auth
+    - digital signature
+  issuerRef:
+    name: dev-env-ca
+    kind: Issuer

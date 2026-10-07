@@ -1,0 +1,21 @@
+---
+# Self-signed Issuer: it signs one certificate, the dev-env CA below.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: dev-env-selfsigned
+  namespace: dev-env-system
+spec:
+  selfSigned: {}
+---
+# The dev-env CA Issuer. It signs the operator API's serving certificate (and, in later
+# plans, the keeper's and the broker's). Namespaced on purpose: a ClusterIssuer would let
+# a Certificate in any namespace get the API's name signed.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: dev-env-ca
+  namespace: dev-env-system
+spec:
+  ca:
+    secretName: dev-env-ca

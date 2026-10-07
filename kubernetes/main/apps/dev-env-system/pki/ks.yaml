@@ -1,0 +1,31 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# The dev-env v2 CA and the /v1 API's serving certificate (DESIGN-001 D-46, D-50;
+# KICKOFF 8.9). A private CA in dev-env-system, namespaced Issuers only: nothing outside
+# this namespace can get a certificate signed by it, so no other namespace can mint a
+# certificate for the API's name. This follows the cluster's in-cluster TLS convention
+# (cert-manager/certificates/self-signed: a self-signed Issuer makes a CA Certificate,
+# and a CA Issuer signs the serving certificate).
+#
+# Nothing here runs a pod. The operator HelmRelease mounts the API's Secret.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-pki
+  namespace: dev-env-system
+spec:
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: cert-manager
+      namespace: cert-manager
+  path: ./kubernetes/main/apps/dev-env-system/pki/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
