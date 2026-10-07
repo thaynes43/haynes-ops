@@ -1,0 +1,133 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+# dev-env-keeper (DESIGN-001 3.1, D-38, D-52; KICKOFF 8.9): the one holder of rotating
+# credentials. Plan 01's keeper mints the haynes-dev-bot installation token every 40
+# minutes (or at two thirds of its life) and merges it into dev-agents/dev-env-gh-token,
+# which session pods mount at /creds.
+#
+# ONE OWNER PER CREDENTIAL: one replica, Recreate, and the Lease
+# dev-env-keeper.dev-env.haynesops.com in this namespace. Never raise replicas or switch
+# to RollingUpdate: two keepers refreshing one Max login or Codex auth.json (plans 03, 04)
+# revoke the whole token family.
+#
+# The keeper is a second binary in the operator image (D-38), so it shares the operator's
+# pin. A keeper restart costs nothing: tokens it wrote stay valid for their hour, and a
+# new keeper mints at once (5.1: an outage under 20 minutes is invisible).
+#
+# The ServiceAccount and its Roles come from dev-env-rbac (8.4), the App Secret and the
+# empty dev-env-gh-token from dev-env-secrets (8.8).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: &app dev-env-keeper
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  maxHistory: 2
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  uninstall:
+    keepHistory: false
+  values:
+    global:
+      # The ServiceAccount is dev-env-rbac's (8.4).
+      createDefaultServiceAccount: false
+    controllers:
+      dev-env-keeper:
+        replicas: 1
+        strategy: Recreate
+        serviceAccount:
+          name: dev-env-keeper
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/dev-env-operator
+              # Same pin as dev-env-operator (one image, one version, D-38).
+              tag: sha-8b388b2@sha256:aade97068c4bb78fbd232b266fe69ecf642d7ae9f2c7e5bc1a9db31585bbdecc
+              pullPolicy: IfNotPresent
+            # The image's entrypoint is the operator.
+            command:
+              - /usr/local/bin/dev-env-keeper
+            # No flags: the defaults are plan 01's names (--secret-namespace dev-agents,
+            # --gh-token-secret dev-env-gh-token, --github-app-dir
+            # /etc/dev-env-keeper/github-dev-bot, the Lease in POD_NAMESPACE, v1's
+            # down-scoped token permissions, metrics :8080, probes :8081).
+            env:
+              POD_NAMESPACE:
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8081
+                  periodSeconds: 20
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+              # Ready while every credential holds a token this process wrote and none
+              # has expired (D-52). A keeper that does not lead, or whose mints fail for a
+              # token's whole life, is not ready, so the cluster's pod-not-ready alert
+              # covers a dark gh token.
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /readyz
+                    port: 8081
+                  periodSeconds: 10
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+    defaultPodOptions:
+      automountServiceAccountToken: true
+      enableServiceLinks: false
+      securityContext:
+        # distroless nonroot; fsGroup lets it read the 0440 App files.
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+    # No Service until plan 03 adds the keeper's 8443 endpoint.
+    persistence:
+      # The haynes-dev-bot App (client-id, app-id, installation-id, private-key), read at
+      # every mint, so a key rotated in 1Password arrives without a restart. Only the
+      # keeper mounts this Secret.
+      github-dev-bot:
+        type: secret
+        name: dev-env-keeper-github-dev-bot
+        defaultMode: 0440
+        globalMounts:
+          - path: /etc/dev-env-keeper/github-dev-bot
+            readOnly: true
+      tmp:
+        type: emptyDir
+        medium: Memory
+        sizeLimit: 16Mi
+        globalMounts:
+          - path: /tmp

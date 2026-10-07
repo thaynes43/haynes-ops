@@ -2,9 +2,12 @@
 # The operator (DESIGN-001 6.10). Pods carry app.kubernetes.io/name: dev-env-operator
 # (the operator HelmRelease, 8.9, must keep that label).
 #
-# Ingress: 8443 from session pods only. The summoning callers in upgrade-agent (3.7)
-# are admitted when plan 10 moves summoning into the operator, and the broker's console
-# traffic has its own policy with the broker.
+# Ingress: 8443 from session pods, and from the v1 pod (dev/dev-env) until cutover: it is
+# a trusted client (--client-service-accounts, D-46) and runs the v2 agent-run (D-50;
+# its own policy carries the egress half, KICKOFF 8.9). The summoning callers in
+# upgrade-agent (3.7) are admitted when plan 10 moves summoning into the operator, and
+# the broker's console traffic has its own policy with the broker. The kubelet's probes
+# (8081) come from the host, which Cilium admits.
 # Egress: the API server, the keeper (8443) and api.pushover.net (the pages). Egress to
 # tool pods' health ports comes with plan 08, once a tool pod and its port exist.
 apiVersion: cilium.io/v2
@@ -21,6 +24,9 @@ spec:
     - fromEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: dev-agents
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev
+            app.kubernetes.io/name: dev-env
       toPorts:
         - ports:
             - port: "8443"

@@ -40,17 +40,25 @@ env:
   - { name: DISABLE_AUTOUPDATER, value: "1" }
   # The pod-wide Claude default (Opus 5.5). Full model ids, never aliases.
   - { name: DEV_ENV_CLAUDE_MODEL, value: claude-opus-5-5 }
+  # The dev-env CA, which signed the /v1 API's certificate (D-46, KICKOFF 8.9): agentd's
+  # heartbeat and agent-run both add it to the system roots. The operator sets
+  # AGENTD_API_URL from its --api-url; the CA comes from the api-ca mount below.
+  - { name: AGENTD_API_CA_FILE, value: /opt/dev-env/api-ca/ca.crt }
 
 # The GitOps config agentd renders, in v1's layout (D-14, D-49). The four ConfigMaps are
 # built in dev-agents by ../../session-config (KICKOFF 8.8a), as v2 copies of v1's files.
-# A pod waits in ContainerCreating until all four exist. codex-requirements is Codex's
-# admin floor (approval never, sandbox danger-full-access; D-23) at the system path Codex
-# reads; every pod gets it, because every image carries Codex.
+# A pod waits in ContainerCreating until every ConfigMap below exists (api-ca comes
+# from ../../pki). codex-requirements is Codex's admin floor (approval never, sandbox
+# danger-full-access; D-23) at the system path Codex reads; every pod gets it, because
+# every image carries Codex.
 mounts:
   - { name: config-claude, configMap: dev-env-config-claude, path: /opt/dev-env/config/claude }
   - { name: config-codex, configMap: dev-env-config-codex, path: /opt/dev-env/config/codex }
   - { name: scripts, configMap: dev-env-scripts, path: /opt/dev-env/scripts, defaultMode: 0555 }
   - { name: codex-requirements, configMap: dev-env-codex-requirements, path: /etc/codex }
+  # The dev-env CA certificate (public), pinned in git by ../../pki (ConfigMap
+  # dev-env-api-ca in dev-agents). AGENTD_API_CA_FILE above names its ca.crt.
+  - { name: api-ca, configMap: dev-env-api-ca, path: /opt/dev-env/api-ca }
 
 # The static Claude token (6.1), for task and local sessions only. The Secret is an
 # ExternalSecret in dev-agents (KICKOFF 8.8).
