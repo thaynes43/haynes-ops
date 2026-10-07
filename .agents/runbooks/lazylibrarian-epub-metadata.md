@@ -42,9 +42,11 @@ The job verifies the backup before writing a hidden sibling temporary EPUB. It
 validates every ZIP CRC, first/stored mimetype, every declared package document,
 absence of removed tags and dangling refinements, and unchanged unrelated bytes
 and ZIP metadata. It rechecks source inode, size, timestamps and hash before atomic
-replacement. Symlinked paths, hardlinked or nonregular inputs, signed EPUBs,
+replacement. Symlinked paths, hardlinked EPUBs, nonregular inputs, signed EPUBs,
 unsupported ZIP encodings, changing and unsettled inputs are refused or deferred.
 Limits: 256 MiB compressed, 512 MiB expanded, 10,000 ZIP entries and 4 MiB per XML.
+These limits apply to EPUBs. Read-only MOBI/AZW3 originals may be hardlinked or
+larger; their identity checks read descriptor metadata without buffering content.
 
 Successful changes touch book/author folders and queue one Kavita library scan.
 The existing state-directory lock serializes scheduled, backfill and restore runs.

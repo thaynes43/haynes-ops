@@ -174,6 +174,39 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(len(inventory), 14)
 
 
+class ConversionSourceTests(unittest.TestCase):
+    def test_large_hardlinked_source_is_checked_without_reading_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "large.azw3")
+            write(source, b"AZW3")
+            os.link(source, os.path.join(tmp, "retained-download.azw3"))
+            # A sparse logical size exercises the bound without allocating/reading a 256 MiB fixture.
+            os.truncate(source, metadata.MAX_ARCHIVE + 1)
+            with metadata.safe_directory(tmp) as directory:
+                with mock.patch.object(metadata.os, "read", side_effect=AssertionError("source content read")), \
+                        mock.patch.object(metadata.os, "fdopen", side_effect=AssertionError("source buffered")), \
+                        mock.patch("builtins.open", side_effect=AssertionError("source buffered")):
+                    info = metadata.stat_conversion_source(directory, "large.azw3")
+                self.assertEqual(info.st_size, metadata.MAX_ARCHIVE + 1)
+                self.assertEqual(info.st_nlink, 2)
+                self.assertTrue(stat.S_ISREG(info.st_mode))
+                with self.assertRaises(metadata.Refused):
+                    metadata.read_regular(directory, "large.azw3")
+
+    def test_conversion_source_symlink_and_fifo_are_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            original = os.path.join(tmp, "original.mobi")
+            write(original, b"MOBI")
+            os.symlink(original, os.path.join(tmp, "linked.mobi"))
+            os.mkfifo(os.path.join(tmp, "pipe.mobi"))
+            with metadata.safe_directory(tmp) as directory:
+                with self.assertRaises(OSError):
+                    metadata.stat_conversion_source(directory, "linked.mobi")
+                with self.assertRaisesRegex(metadata.Refused, "regular file"):
+                    metadata.stat_conversion_source(directory, "pipe.mobi")
+            self.assertEqual(read(original), b"MOBI")
+
+
 class GroupingTests(unittest.TestCase):
     def setUp(self):
         self.clean = metadata.strip_opf(OPF)[0].replace(b'Mockingjay &amp; more', b'Night Shift')

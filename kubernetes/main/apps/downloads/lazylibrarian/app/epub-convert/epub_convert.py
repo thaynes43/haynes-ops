@@ -417,7 +417,7 @@ def convert_folder(folder, source):
     author_folder = os.path.basename(os.path.dirname(folder))
     # Never give calibre a link outside the library, or publish through a linked directory.
     with epub_metadata.safe_directory(folder) as directory:
-        _source_bytes, source_info = epub_metadata.read_regular(directory, source)
+        source_info = epub_metadata.stat_conversion_source(directory, source)
     size = source_info.st_size
     key = held_key(rel, source, size)
     started = time.monotonic()
@@ -474,7 +474,7 @@ def convert_folder(folder, source):
             return "skipped_now_has_epub_or_pdf"
         if not DRY_RUN:
             with epub_metadata.safe_directory(folder) as directory:
-                _source_bytes, current_info = epub_metadata.read_regular(directory, source)
+                current_info = epub_metadata.stat_conversion_source(directory, source)
                 if epub_metadata._identity(current_info) != epub_metadata._identity(source_info):
                     raise epub_metadata.Refused("conversion source changed before publish")
                 with open(out, "rb") as converted:

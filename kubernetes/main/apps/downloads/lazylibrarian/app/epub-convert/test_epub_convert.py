@@ -317,6 +317,32 @@ def test_duplicates():
               f"duplicates: converts once the sibling copy is gone ({results})")
 
 
+def test_hardlinked_conversion_source():
+    """Gated-off conversion reads a hardlinked import and retains both original names."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = os.path.join(tmp, "EBooks")
+        state = os.path.join(tmp, ".epub-convert")
+        source = os.path.join(root, "Author I", "Hardlinked Input", "Hardlinked Input - Author I.mobi")
+        make_book(source, "Hardlinked Input", "Author I")
+        retained = os.path.join(tmp, "retained-download.mobi")
+        os.link(source, retained)
+        source_hash = digest(source)
+        rc, lines, err = run({"EBOOK_ROOT": root, "STATE_DIR": state, "SETTLE_SECONDS": "0"})
+        check(rc == 0, f"hardlinked source: gated-off run succeeds ({err[-300:]})")
+        results = by_msg(lines, "epub_convert")
+        check(len(results) == 1 and results[0]["result"] == "converted", "hardlinked source: converted rather than retried as io_error")
+        output = os.path.splitext(source)[0] + ".epub"
+        check(os.path.isfile(output), "hardlinked source: EPUB published")
+        title, authors = epub_convert.read_meta(output)
+        check(title == "Hardlinked Input" and authors and "Author I" in authors,
+              "hardlinked source: real ebook-meta reads the converted title/author")
+        check(digest(source) == source_hash and digest(retained) == source_hash,
+              "hardlinked source: both original names remain byte-for-byte unchanged")
+        check(os.stat(source).st_nlink == 2 and os.stat(source).st_ino == os.stat(retained).st_ino,
+              "hardlinked source: original hardlinks retained")
+        check(not os.path.exists(os.path.join(state, "held.tsv")), "hardlinked source: not held")
+
+
 def test_series_metadata():
     """The real calibre output is stripped before publication, and the source stays intact."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -368,6 +394,7 @@ if __name__ == "__main__":
     test_runs()
     test_failures()
     test_duplicates()
+    test_hardlinked_conversion_source()
     test_series_metadata()
     print(f"\n{len(FAILURES)} failed" if FAILURES else "\nall passed")
     sys.exit(1 if FAILURES else 0)

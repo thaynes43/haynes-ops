@@ -450,6 +450,25 @@ def read_regular(descriptor, name, limit=MAX_ARCHIVE):
         return raw, before
 
 
+def stat_conversion_source(descriptor, name):
+    """Metadata-only check for read-only MOBI/AZW3 input, allowing size and hardlinks.
+
+    EPUB replacement limits belong to read_regular. Conversion retains its input;
+    opening with O_NOFOLLOW and checking the descriptor refuses symlinks/nonfiles
+    without buffering the original or changing hardlink-based imports.
+    """
+    if os.path.basename(name) != name or name in ("", ".", ".."):
+        raise Refused("invalid conversion source basename")
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise Refused("conversion source must be a regular file")
+        return info
+    finally:
+        os.close(fd)
+
+
 def _identity(info):
     return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_nlink)
 
