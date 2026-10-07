@@ -6,6 +6,7 @@ resources:
   - ./agentsessions.yaml
   - ./accessgrants.yaml
   - ./grantpolicies.yaml
+  - ./activities.yaml
 patches:
   # A CRD is never pruned (DESIGN-001 D-03): deleting it deletes every session.
   - target:
