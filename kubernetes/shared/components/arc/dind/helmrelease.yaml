@@ -105,11 +105,11 @@ spec:
               requests:
                 cpu: 50m
                 memory: 128Mi
-                ephemeral-storage: 64Mi
+                ephemeral-storage: 768Mi
               limits:
                 cpu: 100m
                 memory: 256Mi
-                ephemeral-storage: 512Mi
+                ephemeral-storage: 1Gi
             volumeMounts:
               - name: dind-externals
                 mountPath: /home/runner/tmpDir
@@ -191,7 +191,7 @@ spec:
               sizeLimit: 64Mi
           - name: dind-externals
             emptyDir:
-              sizeLimit: 256Mi
+              sizeLimit: 1Gi
           - name: docker-data
             emptyDir:
               sizeLimit: 20Gi
