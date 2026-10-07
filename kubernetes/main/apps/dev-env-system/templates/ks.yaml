@@ -1,0 +1,25 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# dev-env-templates (DESIGN-001 D-04, D-44): the GitOps data every v2 session pod is built
+# from. The operator reads it and never writes it. No Reloader and no restart hook is
+# attached on purpose: a template change marks running sessions `Outdated` and changes
+# nothing else (5.1), so merging a change here never touches a running session.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-templates
+  namespace: dev-env-system
+spec:
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  path: ./kubernetes/main/apps/dev-env-system/templates/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
+  # NO postBuild.substitute: the document is read as plain YAML by the operator.

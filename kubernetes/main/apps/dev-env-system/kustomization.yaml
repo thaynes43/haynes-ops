@@ -9,3 +9,5 @@ resources:
   - ./crds/ks.yaml
   - ./network/ks.yaml
   - ./scheduling/ks.yaml
+  - ./templates/ks.yaml
+  - ./storage/ks.yaml

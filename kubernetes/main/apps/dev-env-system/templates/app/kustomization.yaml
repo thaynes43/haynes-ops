@@ -1,0 +1,12 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: dev-env-system
+configMapGenerator:
+  # The operator looks the ConfigMap up by name (RBAC by resourceNames, D-44), so no hash suffix.
+  - name: dev-env-templates
+    files:
+      - templates.yaml
+generatorOptions:
+  disableNameSuffixHash: true
