@@ -38,8 +38,10 @@ grep -n '<<' .github/workflows/claude*.yml    # every marker must be resolved
   skip drafts, forks, dependabot and renovate; the secret-presence gate step, so the job
   finishes green when the secret is missing; `@claude` limited to write-access actors
   (no `allowed_non_write_users`), and the `@claude` job's `if:` also requires the
-  text's author to be `OWNER`, `MEMBER` or `COLLABORATOR`, or the actor to be
-  `haynes-dev-bot[bot]`, so a stranger's comment on a public repo starts no job;
+  text's author to be `OWNER`, `MEMBER` or `COLLABORATOR`, or the dev bot
+  `haynes-dev-bot[bot]` to be the commenter (`github.actor`) or, for issues, the
+  issue's author (`issue.user.login`, never the assigner), so a stranger's comment on
+  a public repo starts no job;
   `allowed_bots: "haynes-dev-bot"` so agent PRs get reviewed. If the repo triggers on specific branches, add `branches:` to the review
   workflow as haynes-ops does.
 - **Advisory, never required.** Do not add the review job to branch protection or a
