@@ -54,6 +54,13 @@ rules:
   - apiGroups: [dev-env.haynesops.com]
     resources: [agentsessions/finalizers]
     verbs: [update]
+  # Access grants (plan 07, D-54, D-55): the /v1 API creates a session's request,
+  # lists and reads them, and patches spec.release when the session gives one back.
+  # No accessgrants/status: only the broker decides a grant, so the operator cannot
+  # approve one.
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [accessgrants]
+    verbs: [get, list, watch, create, patch]
 ---
 # Tool pods (plan 08): their pods, volumes, Services and namespaced network policies.
 apiVersion: rbac.authorization.k8s.io/v1

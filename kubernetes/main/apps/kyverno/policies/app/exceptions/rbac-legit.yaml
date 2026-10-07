@@ -13,6 +13,8 @@
 #       - cluster-reconciler-flux-system, headlamp-admin  (bindings -> cluster-admin)
 #       - cilium, rook-ceph-system                        (bindings -> their own roles)
 #       - crd-controller-flux-system, openebs-localpv-provisioner (wildcard/escalate roles)
+#       - dev-env-broker (dev-env v2's access broker: `bind` on the five dev-env-grant-*
+#         ClusterRoles by resourceNames and nothing else; dev-env-system/rbac/app/broker.yaml)
 #
 # NOT a requester/subject exclude (invalid under background:true) and NOT a
 # kustomize-/helm-controller exclude (that's the apply path a malicious shepherd PR
@@ -59,3 +61,4 @@ spec:
           names:
             - crd-controller-flux-system
             - openebs-localpv-provisioner
+            - dev-env-broker

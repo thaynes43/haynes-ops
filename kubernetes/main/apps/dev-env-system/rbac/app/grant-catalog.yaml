@@ -1,0 +1,114 @@
+---
+# The grant role catalog (thaynes43/dev-env DESIGN-001 6.12, D-25, D-54): the only roles
+# the access broker may bind, each to one grant's own ServiceAccount
+# (dev-agents/grant-<id>) for the grant's TTL. The broker holds `bind` on these names and
+# nothing else (./broker.yaml), and the AccessGrant schema accepts no other role.
+#
+# A grant identity has these rules and nothing more: not the baseline agent's reads. So
+# each role carries the reads its writes need (kubectl apply gets before it patches,
+# `kubectl rollout status` watches ReplicaSets).
+#
+# dev-env-identity-guard (./identity-guard.yaml) binds every grant identity on top:
+# nothing in dev-env-system, dev-agents or dev-tools; no write or exec in the enforcing
+# namespaces; pods only as `default`, not privileged, no new Secret reference.
+#
+# Not here: dev-env-grant-breakglass. It is generated from API discovery minus D-27's
+# exclusion list, and lands with the broker's break-glass support (plan 07 step 6).
+# The built-in edit, admin and cluster-admin are never in the catalog (6.12: edit and
+# admin include Secret writes and pods under any ServiceAccount).
+#
+# dev-env-grant-workloads, bound per namespace by RoleBinding. Pods still run as
+# `default` and add no Secret reference (identity guard), but changing the image or
+# command of a workload that already mounts a Secret reads that Secret: the approval
+# page says so, and a GrantPolicy may approve it only for namespaces named one by one.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-grant-workloads
+  labels:
+    dev-env.haynesops.com/grant-role: "true"
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps]
+    resources: [deployments/scale, statefulsets/scale]
+    verbs: [get, update, patch]
+  - apiGroups: [apps]
+    resources: [replicasets, controllerrevisions]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods, services, configmaps]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods/log, events, endpoints]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+---
+# dev-env-grant-storage, bound per namespace: the observability and CNPG cases v1 solved
+# with one-off Roles (PVC and snapshot create and delete; StatefulSet delete for a
+# re-clone).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-grant-storage
+  labels:
+    dev-env.haynesops.com/grant-role: "true"
+rules:
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [snapshot.storage.k8s.io]
+    resources: [volumesnapshots]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [apps]
+    resources: [statefulsets]
+    verbs: [get, list, watch, delete]
+  - apiGroups: [""]
+    resources: [pods, events]
+    verbs: [get, list, watch]
+---
+# dev-env-grant-secrets-read, bound per namespace. No GrantPolicy may approve it (the
+# AccessGrant and GrantPolicy schema refuses it): Tom approves each one on the page,
+# which shows its namespaces in red.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-grant-secrets-read
+  labels:
+    dev-env.haynesops.com/grant-role: "true"
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list]
+---
+# dev-env-grant-nodes, bound cluster-wide by ClusterRoleBinding: cordon, uncordon, drain
+# (evictions), node labels and taints. Evictions in the dev-env namespaces stay refused
+# (identity guard): `agent-run fleet evacuate <node>` moves sessions first (6.12).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-grant-nodes
+  labels:
+    dev-env.haynesops.com/grant-role: "true"
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, watch, patch, update]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/eviction]
+    verbs: [create]
+  - apiGroups: [apps]
+    resources: [daemonsets, replicasets, statefulsets]
+    verbs: [get, list]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch]
