@@ -4,6 +4,21 @@
     {
       customType: 'regex',
       description: [
+        'dev-env v2 agent image in dev-env-templates (thaynes43/dev-env DESIGN-001 D-44, D-53).',
+        'templates.yaml is a ConfigMap source file, not a manifest (no apiVersion or kind), so the kubernetes manager skips it.',
+        'The pin is name:tag@sha256, so Renovate bumps the tag and the digest together. The v1 hold in holds.json5 does not apply here (its matchFileNames are the v1 pins), and the dev-env manual-merge rule in autoMerge.json5 does.',
+      ],
+      managerFilePatterns: [
+        '/(^|/)kubernetes/main/apps/dev-env-system/templates/app/templates\\.yaml$/',
+      ],
+      matchStrings: [
+        'image: (?<depName>ghcr\\.io/thaynes43/dev-env):(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)@(?<currentDigest>sha256:[a-f0-9]{64})',
+      ],
+      datasourceTemplate: 'docker',
+    },
+    {
+      customType: 'regex',
+      description: [
         'GitHub raw URL with path (e.g. CRD) - preserve path after version',
       ],
       managerFilePatterns: [
