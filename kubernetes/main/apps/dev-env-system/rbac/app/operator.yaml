@@ -95,7 +95,7 @@ metadata:
 rules:
   - apiGroups: [coordination.k8s.io]
     resources: [leases]
-    verbs: [get, list, watch, create, update, patch, delete]
+    verbs: [get, create, update]
   - apiGroups: [""]
     resources: [configmaps]
     resourceNames: [dev-env-templates]
@@ -146,9 +146,8 @@ subjects:
     name: dev-env-operator
     namespace: dev-env-system
 ---
-# TokenReview: the /v1 API authenticates every request with one (D-05, D-46), and the
-# keeper's endpoint accepts only the operator's token the same way (6.11). Shared by
-# the operator and the keeper.
+# TokenReview: the /v1 API authenticates every request with one (D-05, D-46). The
+# keeper joins this binding when its endpoint for the operator arrives (6.11, plan 03).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -169,7 +168,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: dev-env-operator
-    namespace: dev-env-system
-  - kind: ServiceAccount
-    name: dev-env-keeper
     namespace: dev-env-system

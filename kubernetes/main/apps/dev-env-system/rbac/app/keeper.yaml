@@ -1,11 +1,13 @@
 ---
-# The keeper, dev-env-system/dev-env-keeper (DESIGN-001 3.1, 6.4, 6.11, the keeper row):
-# the only writer of the four credential Secrets in dev-agents, by name. They are created
-# empty by GitOps (KICKOFF 8.8), so it needs no create. TokenReview comes from
-# ./operator.yaml (dev-env-tokenreview).
-#
-# Not yet: pods/exec in dev-agents and read on AccessGrant, for credential grants
-# (Q-07). Plan 07 adds them with the AccessGrant CRD.
+# The keeper, dev-env-system/dev-env-keeper (DESIGN-001 3.1, 6.4, 6.11, D-52): the least
+# plan 01 needs, exactly the Roles internal/keeper's envtest suite runs it with.
+#   - dev-agents: `patch` on the four credential Secrets by name. It merges each token
+#     with one JSON merge patch and never creates, lists or reads them; GitOps creates
+#     them empty (KICKOFF 8.8).
+#   - dev-env-system: its leader-election Lease and the Event leader election records.
+# Not yet: Secrets get and update (plan 03, if the Max login write needs them), pods/exec
+# in dev-agents and read on AccessGrant for credential grants (Q-07, plan 07), and
+# TokenReview for the endpoint that serves the operator (plan 03).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -19,7 +21,7 @@ rules:
       - dev-env-ops-gh-token
       - dev-env-claude-live
       - dev-env-codex-live
-    verbs: [get, update, patch]
+    verbs: [patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -29,7 +31,10 @@ metadata:
 rules:
   - apiGroups: [coordination.k8s.io]
     resources: [leases]
-    verbs: [get, list, watch, create, update, patch, delete]
+    verbs: [get, create, update]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

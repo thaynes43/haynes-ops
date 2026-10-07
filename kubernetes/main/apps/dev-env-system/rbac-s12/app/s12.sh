@@ -9,7 +9,8 @@
 #
 # Output: one line per check, `PASS|FAIL <want> <id> <what>: <who decided> | <message>`,
 # then a summary. `who` is the policy that refused, RBAC, or `admitted`.
-# Light by design (CPU rule): about 40 kubectl calls, one at a time.
+# Light by design (CPU rule): about 50 kubectl calls, one at a time. Pod targets are
+# Running pods only: kubectl refuses, before any request, to exec into a finished pod.
 set -u
 K="${KUBECTL:-kubectl}"
 NOW=$(date +%s)
@@ -72,13 +73,13 @@ GITREPO=${GITREPO:-flux-system/haynes-ops}
 ES=${ES:-$(first externalsecrets.external-secrets.io -A)}
 RS=${RS:-$($K get replicationsources.volsync.backube -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.spec.restic.repository}{"\n"}{end}' 2>/dev/null | head -1)}
 PVC=${PVC:-$($K get pvc -n database -o jsonpath='{range .items[*]}database/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
-HEADLAMP=${HEADLAMP:-$($K get pods -n frontend -o jsonpath='{range .items[?(@.spec.serviceAccountName=="headlamp")]}frontend/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
-HOSTPID=${HOSTPID:-$($K get pods -n observability -o jsonpath='{range .items[?(@.spec.hostPID==true)]}observability/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
-FLUXPOD=${FLUXPOD:-$($K get pods -n flux-system -o jsonpath='{range .items[*]}flux-system/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
-KYVERNOPOD=${KYVERNOPOD:-$($K get pods -n kyverno -o jsonpath='{range .items[*]}kyverno/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
-KSYSPOD=${KSYSPOD:-$($K get pods -n kube-system -l k8s-app=kube-dns -o jsonpath='{range .items[*]}kube-system/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
-OPSPOD=${OPSPOD:-$($K get pods -n upgrade-agent -o jsonpath='{range .items[?(@.spec.serviceAccountName=="dev-env-ops")]}upgrade-agent/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
-TOOLS=${TOOLS:-$($K get pods -n rook-ceph -l app=rook-ceph-tools -o jsonpath='{range .items[*]}rook-ceph/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
+HEADLAMP=${HEADLAMP:-$($K get pods --field-selector=status.phase=Running -n frontend -o jsonpath='{range .items[?(@.spec.serviceAccountName=="headlamp")]}frontend/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
+HOSTPID=${HOSTPID:-$($K get pods --field-selector=status.phase=Running -n observability -o jsonpath='{range .items[?(@.spec.hostPID==true)]}observability/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
+FLUXPOD=${FLUXPOD:-$($K get pods --field-selector=status.phase=Running -n flux-system -o jsonpath='{range .items[*]}flux-system/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
+KYVERNOPOD=${KYVERNOPOD:-$($K get pods --field-selector=status.phase=Running -n kyverno -o jsonpath='{range .items[*]}kyverno/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
+KSYSPOD=${KSYSPOD:-$($K get pods --field-selector=status.phase=Running -n kube-system -l k8s-app=kube-dns -o jsonpath='{range .items[*]}kube-system/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
+OPSPOD=${OPSPOD:-$($K get pods --field-selector=status.phase=Running -n upgrade-agent -o jsonpath='{range .items[?(@.spec.serviceAccountName=="dev-env-ops")]}upgrade-agent/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
+TOOLS=${TOOLS:-$($K get pods --field-selector=status.phase=Running -n rook-ceph -l app=rook-ceph-tools -o jsonpath='{range .items[*]}rook-ceph/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
 PROM=${PROM:-/api/v1/namespaces/observability/services/http:kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=up}
 ns() { echo "${1%%/*}"; }
 nm() { echo "${1#*/}"; }
