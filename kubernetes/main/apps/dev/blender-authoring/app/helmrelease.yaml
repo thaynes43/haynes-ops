@@ -27,7 +27,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/blender-authoring
-              tag: 0.1.0@sha256:c626b9ac4efa241172929e3646f30be58cec35d4e6d460979b02d1f6a870257d
+              tag: 0.1.1@sha256:770c55c761485c80d4f9378cd7ac6a2ae6e806257da6344db45302b3399356ef
             probes:
               startup:
                 enabled: true
