@@ -1,0 +1,140 @@
+---
+# The access broker, dev-env-system/dev-env-broker (thaynes43/dev-env DESIGN-001 3.1,
+# 6.11 broker row, 6.12; D-25, D-54). The most privileged v2 identity: it can hand out
+# the catalog roles, break-glass included. It runs where agents cannot write or exec
+# (dev-env-system, refused to every dev-agents identity by the identity guard), and it
+# takes approvals only from Tom on its page.
+#
+# It may bind the grant role catalog (./grant-catalog.yaml) and nothing else: `bind` by
+# resourceNames, so the API server's escalation check refuses a binding to any other
+# role, edit, admin and cluster-admin included. RBAC cannot narrow which subjects a
+# binding names or which bindings it deletes; the broker's code binds only its own
+# grant-<id> ServiceAccounts and deletes only bindings named after its own grants.
+#
+# Nothing runs as this ServiceAccount until the broker Deployment lands (plan 07 H2).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-broker
+rules:
+  # A kube grant's RoleBindings in the granted namespaces, or a ClusterRoleBinding for
+  # the cluster-wide roles (nodes, break-glass).
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [rolebindings, clusterrolebindings]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles]
+    resourceNames:
+      - dev-env-grant-workloads
+      - dev-env-grant-storage
+      - dev-env-grant-secrets-read
+      - dev-env-grant-nodes
+      - dev-env-grant-breakglass
+    verbs: [bind]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-broker
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-broker
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-broker
+    namespace: dev-env-system
+---
+# dev-agents: the grants themselves, their identities and network policies, and the
+# session pods they are installed in.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-broker
+  namespace: dev-agents
+rules:
+  # It decides grants: status is its alone (the operator's /v1 API has no status
+  # write, D-54); update for its finalizer; delete for the 90-day retention.
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [accessgrants]
+    verbs: [get, list, watch, update, patch, delete]
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [accessgrants/status]
+    verbs: [get, update, patch]
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [accessgrants/finalizers]
+    verbs: [update]
+  # The requesting session, and the console's session list (3.8).
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [agentsessions]
+    verbs: [get, list, watch]
+  # A kube grant's identity, grant-<id>, and its token: a TokenRequest bound to the
+  # session's pod, with the grant's TTL.
+  - apiGroups: [""]
+    resources: [serviceaccounts]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [""]
+    resources: [serviceaccounts/token]
+    verbs: [create]
+  # Installing a grant: `agentd ctl grant-install` by exec in the session's pod (D-08).
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+  # An egress grant's CiliumNetworkPolicy, selecting the session's pod. Namespaced
+  # policies only: no write on CiliumClusterwideNetworkPolicy, which holds the
+  # baseline tiers (D-24).
+  - apiGroups: [cilium.io]
+    resources: [ciliumnetworkpolicies]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: ["", events.k8s.io]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-broker
+  namespace: dev-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-broker
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-broker
+    namespace: dev-env-system
+---
+# Its own namespace: its leader-election Lease (not the operator's), the standing
+# policies Flux applies, and its Events.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-broker
+  namespace: dev-env-system
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, create, update]
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [grantpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: ["", events.k8s.io]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-broker
+  namespace: dev-env-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-broker
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-broker
+    namespace: dev-env-system
