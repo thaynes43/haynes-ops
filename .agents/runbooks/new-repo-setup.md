@@ -39,9 +39,12 @@ grep -n '<<' .github/workflows/claude*.yml    # every marker must be resolved
   finishes green when the secret is missing; `@claude` limited to write-access actors
   (no `allowed_non_write_users`), and the `@claude` job's `if:` also requires the
   text's author to be `OWNER`, `MEMBER` or `COLLABORATOR`, or the dev bot
-  `haynes-dev-bot[bot]` to be the commenter (`github.actor`) or, for issues, the
-  issue's author (`issue.user.login`, never the assigner), so a stranger's comment on
-  a public repo starts no job;
+  `haynes-dev-bot[bot]` to be the text's author: `github.event.comment.user.login`
+  for comments, `github.event.review.user.login` for reviews, or
+  `github.event.issue.user.login` for issues (never the assigner). Match the
+  author association from that same event object. This prevents a stranger's
+  comment on a public repo from starting a job and passes zizmor's bot-condition
+  check; do not use the workflow actor as a substitute for the text's author.
   `allowed_bots: "haynes-dev-bot"` so agent PRs get reviewed. If the repo triggers on specific branches, add `branches:` to the review
   workflow as haynes-ops does.
 - **Advisory, never required.** Do not add the review job to branch protection or a

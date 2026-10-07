@@ -33,13 +33,13 @@ jobs:
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') &&
         (contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) ||
-         github.actor == 'haynes-dev-bot[bot]')) ||
+         github.event.comment.user.login == 'haynes-dev-bot[bot]')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') &&
         (contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) ||
-         github.actor == 'haynes-dev-bot[bot]')) ||
+         github.event.comment.user.login == 'haynes-dev-bot[bot]')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') &&
         (contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association) ||
-         github.actor == 'haynes-dev-bot[bot]')) ||
+         github.event.review.user.login == 'haynes-dev-bot[bot]')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) &&
         (contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) ||
          github.event.issue.user.login == 'haynes-dev-bot[bot]'))
