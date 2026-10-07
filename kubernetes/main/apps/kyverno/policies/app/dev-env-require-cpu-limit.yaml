@@ -1,0 +1,51 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/policies.kyverno.io/validatingpolicy_v1.json
+# Every container of a dev-env v2 session pod must set a CPU limit (DESIGN-001 7.2: "CPU
+# limits are mandatory"). Origin: 2026-10-05, when a CPU-hungry test run in the v1
+# dev-env pod, which has no CPU limit, saturated talosm02 and pushed EMQX, traefik,
+# authentik and cloudnative-pg into liveness-kill loops. The limit is what turns a
+# runaway agent into a throttled one. The operator also requires the limit when it
+# parses dev-env-templates, so this is the cluster-side backstop.
+#
+# SCOPE: pods in the dev-agents namespace ONLY, selected by namespace name. No existing
+# namespace is touched, the v1 dev-env pod (namespace dev) included. dev-tools is not
+# covered: tool pods are sized by their own pool.
+#
+# Init containers are not checked: they run to completion at start (the k8tz timezone
+# init container that webhook injects into every pod has no limit of its own).
+#
+# policies.kyverno.io CEL type (haynes-ops #3405), not a ClusterPolicy. fail-open
+# (failurePolicy Ignore) like the other policies here: a Kyverno outage must not block
+# pod creation, and the operator sets the limit itself anyway.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: dev-env-require-cpu-limit
+  annotations:
+    policies.kyverno.io/title: dev-env session pods need a CPU limit
+    policies.kyverno.io/category: dev-env
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Rejects a pod in dev-agents with a container that has no CPU limit, so a runaway
+      agent is throttled and cannot starve its node.
+spec:
+  failurePolicy: Ignore
+  validationActions:
+    - Deny
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: dev-agents
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  validations:
+    - expression: >-
+        object.spec.containers.all(c,
+          has(c.resources) && has(c.resources.limits) && 'cpu' in c.resources.limits)
+      message: >-
+        Every container in a dev-agents pod must set resources.limits.cpu
+        (DESIGN-001 7.2, the 2026-10-05 talosm02 starvation).

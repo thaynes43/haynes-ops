@@ -1,0 +1,16 @@
+---
+# Session pods run below everything else and never preempt (DESIGN-001 7.1, D-20): when a
+# worker is full, household workloads win, and a preempted session resumes from its
+# volume. -10 is below the default priority 0 of every other pod; preemptionPolicy
+# Never means a pending agent pod waits for room instead of evicting anything, other
+# agents included. The operator sets priorityClassName: dev-env-agent on every session
+# pod in code (D-44), so there is no `globalDefault`.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: dev-env-agent
+value: -10
+preemptionPolicy: Never
+globalDefault: false
+description: >-
+  dev-env v2 session pods. Below default priority, and never preempts another pod.
