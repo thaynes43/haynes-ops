@@ -7,7 +7,7 @@
 # in the dev-env repo. Every write in the script is a server-side dry run.
 #
 # wait: true, so a failed check (the script exits non-zero) shows as this Kustomization
-# not Ready. Read the result with `kubectl -n dev-agents logs job/s12-baseline-guard`.
+# not Ready. Read the result with `kubectl -n dev-agents logs job/s12-baseline-guard-2`.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
