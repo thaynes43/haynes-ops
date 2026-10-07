@@ -1,0 +1,34 @@
+---
+# Preserve every baseline control except privileged=true on this exact DinD
+# native init sidecar image. Runner containers have no privilege exemption.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: pss-baseline-arc-dind
+  namespace: kyverno
+spec:
+  exceptions:
+    - policyName: pod-security-baseline
+      ruleNames:
+        - baseline
+  match:
+    any:
+      - resources:
+          kinds: [Pod]
+          namespaces: [arc-runners]
+          names:
+            - arc-sigmaphiomicron-com-*
+            - arc-sigoalumni-org-*
+            - arc-demo-console-*
+            - arc-haynes-swarm-*
+          selector:
+            matchLabels:
+              haynesops.com/arc-runner: "true"
+              haynesops.com/arc-container-mode: dind
+  podSecurity:
+    - controlName: Privileged Containers
+      images:
+        - docker.io/library/docker:29.8.2-dind
+      restrictedField: spec.initContainers[*].securityContext.privileged
+      values:
+        - "true"

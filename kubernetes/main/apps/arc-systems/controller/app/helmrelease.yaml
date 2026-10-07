@@ -1,0 +1,60 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/helm.toolkit.fluxcd.io/helmrelease_v2.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: arc-controller
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: arc-controller
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: arc-controller
+    replicaCount: 1
+    serviceAccount:
+      name: arc-controller
+    flags:
+      watchSingleNamespace: arc-runners
+      healthProbeBindAddress: ":8081"
+      logLevel: info
+      logFormat: json
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+        ephemeral-storage: 64Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+        ephemeral-storage: 256Mi
+    nodeSelector:
+      kubernetes.io/arch: amd64
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: In
+                  values: [talosw01, talosw02, talosw03]

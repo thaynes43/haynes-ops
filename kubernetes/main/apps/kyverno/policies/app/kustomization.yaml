@@ -16,3 +16,4 @@ resources:
   - ./exceptions/rbac-legit.yaml
   - ./exceptions/pss-baseline.yaml
   - ./exceptions/egpu-test-capabilities.yaml
+  - ./exceptions/arc-dind.yaml

@@ -1,0 +1,6 @@
+---
+# Shared DinD pool; each Flux Kustomization provides APP and ARC_REPOSITORY.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - ./helmrelease.yaml

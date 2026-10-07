@@ -1,0 +1,30 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: arc-sigo-alumni
+  namespace: arc-runners
+spec:
+  # Activate with the dedicated App credentials and public runner image ready.
+  # Keeping the auth/pools suspended avoids critical alerts for intentional setup.
+  suspend: true
+  targetNamespace: arc-runners
+  dependsOn:
+    - name: arc-runner-infrastructure
+      namespace: arc-runners
+    - name: arc-controller
+      namespace: arc-systems
+    - name: arc-github-app
+      namespace: arc-runners
+    - name: kyverno-policies
+      namespace: kyverno
+  path: ./kubernetes/main/apps/arc-runners/sigo-alumni/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m

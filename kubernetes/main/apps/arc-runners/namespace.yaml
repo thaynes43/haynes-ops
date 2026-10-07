@@ -1,0 +1,13 @@
+# Only the pinned DinD sidecar receives a Kyverno baseline-control exception.
+# Native Pod Security Admission cannot express that container-level exception.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arc-runners
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled

@@ -34,6 +34,22 @@
   packageRules: [
     {
       description: [
+        'HELD ARC Docker DinD: update the sidecar and its exact-image PolicyException together, by hand.',
+        'Reason: the Kubernetes image manager finds the DinD image in the shared runner component but does not find the bare image-list entry in the Kyverno exception. Updating only the component makes all four Docker runner pools fail baseline admission.',
+        'Issue: https://github.com/thaynes43/haynes-ops/pull/3503#discussion_r4203251469',
+        'Resume: MANUAL — update kubernetes/shared/components/arc/dind/helmrelease.yaml and kubernetes/main/apps/kyverno/policies/app/exceptions/arc-dind.yaml atomically, then verify admission and real Docker workflows. Re-enable automation only when both references share one tested update path.',
+        'Recorded: 2026-10-07 by Codex during the ARC infrastructure review. Runbook: .agents/runbooks/self-hosted-runners.md.',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['docker', 'docker.io/docker', 'docker.io/library/docker'],
+      matchFileNames: [
+        'kubernetes/shared/components/arc/dind/**',
+        'kubernetes/main/apps/kyverno/policies/app/exceptions/arc-dind.yaml',
+      ],
+      enabled: false,
+    },
+    {
+      description: [
         'HELD ghcr.io/cloudnative-pg/postgresql majors: track the running postgres16 cluster major — Postgres 17 lands only as a deliberate cluster migration, never a Renovate merge.',
         'Reason: the image has two consumers that must move TOGETHER with the cluster: (1) cluster16.yaml `imageName` — a CNPG major upgrade is a real migration (dump/restore or blue-green per CNPG docs), not an in-place bump; (2) the Outline wiki backup CronJob dump initContainer (frontend/outline/app/backup-cronjob.yaml), pinned so pg_dump matches the cluster major. Minors/patches within 16 stay allowed for both.',
         'Issue: sigo-alumni backlog/infra/homelab-hosting/07 (wiki wave-2 backup continuity); stranded PR #2449 (v17) closed under this hold.',

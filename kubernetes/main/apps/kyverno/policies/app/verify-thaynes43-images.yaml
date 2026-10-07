@@ -6,7 +6,7 @@
 # OUR GitHub Actions workflow (OIDC identity), not swapped by an attacker.
 #
 # SCOPE: only the images whose build workflows sign (upgrade-agent, upgrade-shepherd,
-# dev-env). Other ghcr.io/thaynes43/* images (appdaemon, hass-immich-addon,
+# dev-env, comfyui, actions-runner). Other ghcr.io/thaynes43/* images (appdaemon, hass-immich-addon,
 # todos-for-dues, ytdl-sub-config-manager) are NOT covered yet — add them here as
 # their builds gain `cosign sign` (appdaemon is the next one, in hass-sandbox).
 #
@@ -14,14 +14,12 @@
 # pods are all on signed digests. fail-open (failurePolicy: Ignore). background:false —
 # verifyImages verifies at admission (it needs the request + reaches Fulcio/Rekor).
 #
-# STATUS (2026-09-01): NOT VERIFYING. The Cosign-type attestor below reads the legacy
-# signature tag (`sha256-<digest>.sig`). The build workflows moved to cosign v3 on
-# 2026-07-25 (Renovate bump of cosign-installer's cosign-release), and v3 writes only
-# the Sigstore bundle format (`sha256-<digest>` referrer tag on GHCR) with no legacy
-# switch — so every self-built image since then reports "no signatures found" here
-# (policyreports in dev + upgrade-agent). Audit hides it. Do NOT flip to Enforce until
-# either the workflows pin cosign v2 again or this rule moves to a bundle-aware
-# verifier; details next to `cosign-release` in .github/workflows/dev-env-build.yml.
+# STATUS (2026-10-07): the Cosign-type attestor reads legacy
+# `sha256-<digest>.sig` tags. The haynes-ops image workflows now keep cosign v3.1.3
+# and explicitly emit that format with --new-bundle-format=false,
+# --use-signing-config=false and --registry-referrers-mode=legacy. Their existing
+# bundle-only tags remain unverifiable until their next source rebuild. Keep Audit
+# until the running digests have legacy signatures or the verifier supports bundles.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -46,6 +44,7 @@ spec:
             # images (dev-env-operator:sha-*, dev-env:2.*) that verify-dev-env-v2 owns.
             - "ghcr.io/thaynes43/dev-env:0.*"
             - "ghcr.io/thaynes43/comfyui*"
+            - "ghcr.io/thaynes43/actions-runner:*"
           failureAction: Audit
           mutateDigest: false   # we pin tag@digest in the manifests; don't rewrite
           verifyDigest: false

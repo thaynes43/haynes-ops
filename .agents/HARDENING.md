@@ -63,27 +63,32 @@ Two ways to close it properly, owner's call:
    which sidesteps the default-deny egress CiliumNetworkPolicy entirely. Not taken here
    because it trades a documented, deliberate boundary for convenience.
 
-### H-2 — Three Kyverno policies are documented as enforcing and are not
+### H-2 — Kyverno enforcement was misread from the deprecated policy default
 
 **Found:** 2026-09-12, same session.
 
-`restrict-image-registries`, `restrict-rbac-escalation` and `pod-security-baseline` are all
-live in **Audit**. Only `verify-haynesnetwork-images` sets `validationFailureAction:
-Enforce`; the field defaults to `Audit` when omitted. The runbook describes all three as
-denying at admission. Corrected in the runbook text; **the underlying question is
-undecided** — should they enforce? If yes they each need the key added, and that should be
-staged one at a time with the exception gaps checked, because turning on enforce is exactly
-how the OpenEBS helper-pod incident happened.
+**Corrected:** 2026-10-07 during the ARC admission audit. The live rules in
+`restrict-image-registries`, `restrict-rbac-escalation`, and `pod-security-baseline`
+set `validate.failureAction: Enforce`. This rule-level field takes precedence over
+the deprecated `spec.validationFailureAction`, which still reports `Audit`.
+These policies already deny non-conforming admission requests. The former claim
+that they merely report violations was wrong; no policy change was needed.
+Inspect rule-level actions when auditing enforcement, and keep controller-spawned
+pods covered by narrowly scoped exceptions.
 
 ### H-3 — `upgrade-shepherd` fails image signature verification on every run
 
 **Found:** 2026-09-12, incidentally, via `PolicyViolation` events.
 
-`verify-thaynes43-images/verify-self-built` reports `no signatures found` /
-`unverified image` for `ghcr.io/thaynes43/upgrade-shepherd`. The policy is Audit, so the
-job completes and nothing pages — it has simply been failing quietly. Either the build
-should sign the image (matching what the policy expects) or the policy should not cover it.
-Right now it is neither enforced nor clean, which is the worst of both.
+The original `verify-thaynes43-images/verify-self-built` finding was
+`no signatures found` / `unverified image` for `ghcr.io/thaynes43/upgrade-shepherd`.
+The policy remains Audit. During the 2026-10-07 runner-image audit, the signing
+pipelines were corrected to emit legacy OCI signatures with patched Cosign
+v3.1.3: `--new-bundle-format=false --use-signing-config=false
+--registry-referrers-mode=legacy`. Cosign v3 supports both formats; the prior
+claim that this required downgrading Cosign or upgrading Kyverno was wrong.
+Existing image digests retain their prior signatures until republished; inspect
+the applicable build and admission result when verifying a deployed tag.
 
 ### H-4 — A stale corepack shim on the PVC silently voided the pnpm pin
 

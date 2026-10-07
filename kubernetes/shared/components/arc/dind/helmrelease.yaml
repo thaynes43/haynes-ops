@@ -1,0 +1,194 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/helm.toolkit.fluxcd.io/helmrelease_v2.json
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ${APP}
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: arc-runner-scale-set
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  values:
+    githubConfigUrl: https://github.com/thaynes43/${ARC_REPOSITORY}
+    githubConfigSecret: arc-github-app
+    runnerScaleSetName: ${APP}
+    minRunners: 0
+    maxRunners: 1
+    controllerServiceAccount:
+      namespace: arc-systems
+      name: arc-controller
+    # Manual DinD configuration pins its image and bounds every native sidecar.
+    containerMode: {}
+    listenerTemplate:
+      metadata:
+        labels:
+          haynesops.com/arc-component: listener
+      spec:
+        nodeSelector:
+          kubernetes.io/arch: amd64
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: In
+                      values: [talosw01, talosw02, talosw03]
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 65532
+          runAsGroup: 65532
+          seccompProfile:
+            type: RuntimeDefault
+        containers:
+          - name: listener
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+                ephemeral-storage: 64Mi
+              limits:
+                cpu: 250m
+                memory: 256Mi
+                ephemeral-storage: 256Mi
+    template:
+      metadata:
+        labels:
+          haynesops.com/arc-runner: "true"
+          haynesops.com/arc-repository: ${ARC_REPOSITORY}
+          haynesops.com/arc-container-mode: dind
+      spec:
+        automountServiceAccountToken: false
+        nodeSelector:
+          kubernetes.io/arch: amd64
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: In
+                      values: [talosw01, talosw02, talosw03]
+        securityContext:
+          fsGroup: 1001
+          supplementalGroups: [123]
+          seccompProfile:
+            type: RuntimeDefault
+        initContainers:
+          - name: init-dind-externals
+            image: ghcr.io/thaynes43/actions-runner:0.1.0
+            command: ["cp", "-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+            securityContext:
+              allowPrivilegeEscalation: false
+              runAsNonRoot: true
+              runAsUser: 1001
+              runAsGroup: 1001
+              capabilities:
+                drop: [ALL]
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+                ephemeral-storage: 64Mi
+              limits:
+                cpu: 100m
+                memory: 256Mi
+                ephemeral-storage: 512Mi
+            volumeMounts:
+              - name: dind-externals
+                mountPath: /home/runner/tmpDir
+          - name: dind
+            image: docker.io/library/docker:29.8.2-dind
+            restartPolicy: Always
+            args:
+              - dockerd
+              - --host=unix:///var/run/docker.sock
+              - --group=$(DOCKER_GROUP_GID)
+            env:
+              - name: DOCKER_GROUP_GID
+                value: "123"
+            securityContext:
+              privileged: true
+              runAsUser: 0
+              runAsGroup: 0
+            startupProbe:
+              exec:
+                command: ["docker", "info"]
+              periodSeconds: 5
+              failureThreshold: 24
+            resources:
+              requests:
+                cpu: 500m
+                memory: 1Gi
+                ephemeral-storage: 1Gi
+              limits:
+                cpu: "2"
+                memory: 4Gi
+                ephemeral-storage: 22Gi
+            volumeMounts:
+              - name: work
+                mountPath: /home/runner/_work
+              - name: dind-sock
+                mountPath: /var/run
+              - name: dind-externals
+                mountPath: /home/runner/externals
+              - name: docker-data
+                mountPath: /var/lib/docker
+        containers:
+          - name: runner
+            image: ghcr.io/thaynes43/actions-runner:0.1.0
+            command: ["/home/runner/run.sh"]
+            env:
+              - name: DOCKER_HOST
+                value: unix:///var/run/docker.sock
+              - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
+                value: "120"
+            securityContext:
+              # Existing setup actions use sudo apt (e.g. Playwright --with-deps).
+              # Keep the bounded default capabilities needed by sudo, without NET_RAW.
+              allowPrivilegeEscalation: true
+              runAsNonRoot: true
+              runAsUser: 1001
+              runAsGroup: 1001
+              capabilities:
+                drop: [NET_RAW]
+            resources:
+              requests:
+                cpu: 500m
+                memory: 1Gi
+                ephemeral-storage: 1Gi
+              limits:
+                cpu: "2"
+                memory: 4Gi
+                ephemeral-storage: 12Gi
+            volumeMounts:
+              - name: work
+                mountPath: /home/runner/_work
+              - name: dind-sock
+                mountPath: /var/run
+        volumes:
+          - name: work
+            emptyDir:
+              sizeLimit: 10Gi
+          - name: dind-sock
+            emptyDir:
+              sizeLimit: 64Mi
+          - name: dind-externals
+            emptyDir:
+              sizeLimit: 256Mi
+          - name: docker-data
+            emptyDir:
+              sizeLimit: 20Gi
