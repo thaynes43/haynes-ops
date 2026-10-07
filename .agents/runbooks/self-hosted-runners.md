@@ -155,6 +155,13 @@ Kubernetes API token. Kubernetes container mode is deliberately unused: it needs
 pod/exec/Secret permissions and does not satisfy existing arbitrary Docker CLI
 steps. Controller/listener accounts receive the chart's scoped permissions.
 
+Runner containers request 500m CPU and limit CPU to 2. The default memory
+request/limit is 1Gi/4Gi; Demo uses 2Gi/6Gi for its serial full-stack browser
+tests, which saturated the smaller cap. DinD requests 1Gi and limits memory to
+4Gi. At one runner per pool, effective memory budgets total 10Gi requests and
+38Gi limits, within the namespace's 10Gi/40Gi quota. Review these totals when
+changing a pool; keep its worker affinity and every container's bounds.
+
 `arc-runners` needs privileged Pod Security Admission because DinD needs a
 privileged daemon. Kyverno retains baseline enforcement with an exception
 limited to the fixed Docker image, generated runner names, namespace, runner

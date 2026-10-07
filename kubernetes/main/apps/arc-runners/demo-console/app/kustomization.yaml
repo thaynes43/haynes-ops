@@ -3,3 +3,18 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 components:
   - ../../../../../shared/components/arc/dind
+patches:
+  - target:
+      group: helm.toolkit.fluxcd.io
+      version: v2
+      kind: HelmRelease
+    patch: |-
+      - op: test
+        path: /spec/values/template/spec/containers/0/name
+        value: runner
+      - op: replace
+        path: /spec/values/template/spec/containers/0/resources/requests/memory
+        value: 2Gi
+      - op: replace
+        path: /spec/values/template/spec/containers/0/resources/limits/memory
+        value: 6Gi
