@@ -66,16 +66,16 @@ spec:
       reason: Forbidden
     # 2. Grant identities and grant network policies live in dev-agents only.
     - expression: >-
-        variables.binding || request.namespace == 'dev-agents'
+        variables.binding || request.?namespace.orValue('') == 'dev-agents'
       messageExpression: >-
         'dev-env-broker-guard: grant ServiceAccounts, tokens and network policies live in dev-agents, not ' +
-        request.namespace
+        request.?namespace.orValue('')
       reason: Forbidden
     # 3. A binding never reaches the dev-env namespaces.
     - expression: >-
-        !variables.binding || !(request.namespace in ['dev-env-system', 'dev-agents', 'dev-tools'])
+        !variables.binding || !(request.?namespace.orValue('') in ['dev-env-system', 'dev-agents', 'dev-tools'])
       messageExpression: >-
-        'dev-env-broker-guard: no grant binding in ' + request.namespace + ' (DESIGN-001 6.12)'
+        'dev-env-broker-guard: no grant binding in ' + request.?namespace.orValue('') + ' (DESIGN-001 6.12)'
       reason: Forbidden
     # 4. A new binding binds one catalog ClusterRole of its scope to exactly its own grant
     #    identity.
