@@ -178,12 +178,19 @@ sidecar without resources and can duplicate custom init containers. Runner and
 daemon share `/home/runner/_work` at the same absolute path for Docker bind
 mounts, `/var/run` for the Unix socket, and runner action runtimes. Docker storage
 is ephemeral and bounded. Every container has requests and limits.
+The shared `dind-externals` volume has a 1Gi bound: image `0.1.0` uses about
+593Mi for those runtimes. Its copy init container requests 768Mi ephemeral
+storage with a 1Gi limit. A smaller volume can evict the runner after a job
+starts; inspect pod events when GitHub reports lost runner communication.
 
 Namespace network policies deny inbound traffic and allow DNS plus required
 external feeds. They prevent runner access to the cluster API and private
 networks. The sigmaphi pool also needs public web access for link checking;
 that exception remains confined to that pool. Add changing feed/CDN hosts through
-Git and Flux, and verify from an actual job. Do not broaden dev-env's policy or
+Git and Flux, and verify from an actual job. Workflow downloads belong in the
+runner pool's policy. The separate dev-env allowlist includes
+`productionresultssa*.blob.core.windows.net` for reading GitHub job logs;
+additional diagnostic destinations also require a reviewed Git change. Do not
 use proxies to evade a denied destination.
 
 ## Add a repository
