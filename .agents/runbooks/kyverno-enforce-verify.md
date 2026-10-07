@@ -44,7 +44,14 @@ bundle. Rebuilding a version creates a different digest and does not repair the
 signature of the image already running.
 
 Use `.github/workflows/repair-image-signatures.yml` on `main` to add a compatible
-signature to one exact digest without rebuilding or restarting a workload:
+signature without rebuilding or restarting a workload. The pod's GitHub App
+token has read-only Actions access, so manual dispatch returns 403. An agent
+instead updates the curated `scripts/image-signatures/current-targets.json` in
+a reviewed PR; merging a change to that file on main triggers the repair jobs,
+with at most two hosted jobs running concurrently. Target only the exact current
+immutable digests that need repair, and keep the allowed family list unchanged.
+
+An operator with Actions write access can also dispatch one exact digest:
 
 ```bash
 gh workflow run repair-image-signatures.yml --repo thaynes43/haynes-ops \

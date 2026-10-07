@@ -1,7 +1,12 @@
 name: Repair Legacy Image Signatures
 
-# One immutable digest per dispatch. Existing provenance must verify before signing.
+# Exact immutable digests from a reviewed target file or one manual dispatch.
+# Existing provenance must verify before signing.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/image-signatures/current-targets.json'
   workflow_dispatch:
     inputs:
       image:
@@ -25,12 +30,75 @@ permissions:
   contents: read
 
 concurrency:
-  group: legacy-signature-repair-${{ inputs.image }}-${{ inputs.digest }}
+  group: legacy-signature-repair-${{ github.event_name }}-${{ inputs.image || github.sha }}-${{ inputs.digest || github.sha }}
   cancel-in-progress: false
 
 jobs:
-  repair:
+  prepare-targets:
     if: github.repository == 'thaynes43/haynes-ops' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - name: Checkout reviewed targets
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate target matrix
+        id: targets
+        env:
+          REPAIR_EVENT: ${{ github.event_name }}
+          INPUT_IMAGE: ${{ inputs.image }}
+          INPUT_DIGEST: ${{ inputs.digest }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          allowed = {
+              "audio-authoring", "blender-authoring", "dev-env", "comfyui",
+              "upgrade-agent", "upgrade-shepherd", "wyoming-whisper-gpu",
+          }
+          event = os.environ["REPAIR_EVENT"]
+          if event == "workflow_dispatch":
+              targets = [{"family": os.environ["INPUT_IMAGE"], "digest": os.environ["INPUT_DIGEST"]}]
+          elif event == "push":
+              targets = json.loads(Path("scripts/image-signatures/current-targets.json").read_text())
+          else:
+              raise SystemExit("Unsupported repair event")
+
+          if not isinstance(targets, list) or not 1 <= len(targets) <= len(allowed):
+              raise SystemExit("Expected one to seven repair targets")
+          seen = set()
+          for target in targets:
+              if not isinstance(target, dict) or set(target) != {"family", "digest"}:
+                  raise SystemExit("Each target must contain only family and digest")
+              family, digest = target["family"], target["digest"]
+              if not isinstance(family, str) or family not in allowed or family in seen:
+                  raise SystemExit("Unknown or duplicate image family")
+              if not isinstance(digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
+                  raise SystemExit("An exact sha256 digest is required")
+              seen.add(family)
+
+          matrix = json.dumps({"include": targets}, separators=(",", ":"))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"matrix={matrix}\n")
+          PY
+
+  repair:
+    needs: prepare-targets
+    if: github.repository == 'thaynes43/haynes-ops' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.prepare-targets.outputs.matrix) }}
+    name: Repair ${{ matrix.family }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -38,8 +106,8 @@ jobs:
       packages: write
       id-token: write
     env:
-      IMAGE_FAMILY: ${{ inputs.image }}
-      DIGEST: ${{ inputs.digest }}
+      IMAGE_FAMILY: ${{ matrix.family }}
+      DIGEST: ${{ matrix.digest }}
       REPAIR_CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
     steps:
       - name: Validate target and fix original build identity
