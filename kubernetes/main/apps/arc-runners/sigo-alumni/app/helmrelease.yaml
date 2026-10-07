@@ -66,6 +66,9 @@ spec:
                 ephemeral-storage: 256Mi
     template:
       metadata:
+        annotations:
+          # The injected timezone init container cannot satisfy the runner quota.
+          k8tz.io/inject: "false"
         labels:
           haynesops.com/arc-runner: "true"
           haynesops.com/arc-repository: sigo-alumni
