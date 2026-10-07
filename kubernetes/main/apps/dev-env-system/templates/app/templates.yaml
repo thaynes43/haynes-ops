@@ -4,11 +4,13 @@
 # affected. The shape is thaynes43/dev-env internal/templates/testdata/templates.yaml,
 # which that repo's tests parse.
 
-# PLACEHOLDER until KICKOFF B5 publishes the first agent image (ghcr.io/thaynes43/dev-env
-# 2.x does not exist yet). The all-zero digest is deliberately unpullable: no session
-# can start from it, and no operator runs yet (8.9). B5's release PR, or Renovate after
-# it, replaces this line with the real name:tag@sha256 pin.
-image: ghcr.io/thaynes43/dev-env:2.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
+# The agent image (thaynes43/dev-env D-53): publish-agent.yml pushes dev-env:2.x.y from the
+# v2.x.y release tag and signs it keyless (Kyverno verify-dev-env-v2 trusts that subject).
+# 2.0.0 is the first release (thaynes43/dev-env #52). Pinned by tag and digest; Renovate
+# tracks this line with its own regex manager (.renovate/customManagers.json5), and the
+# dev-env manual-merge rule applies. A change here reaches NEW sessions only: running
+# pods keep their image and are reported Outdated (D-44).
+image: ghcr.io/thaynes43/dev-env:2.0.0@sha256:8bab980d6beea9eb8f1576d38a3fd9837150193414728baf1bcc3e07e28a371a
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
