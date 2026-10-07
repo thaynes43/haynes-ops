@@ -1,6 +1,7 @@
 ---
 # MCP executes trusted Blender authoring code; no public/LAN ingress, credentials,
-# addon socket Service, or runtime downloads. Only the agent pod may call it.
+# addon socket Service, or runtime downloads. Only the agent pods may call it: the v1 dev-env pod
+# and the dev-env v2 session pods in dev-agents (KICKOFF 8.10).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -15,6 +16,8 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: dev
             app.kubernetes.io/name: dev-env
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-agents
       toPorts:
         - ports:
             - port: '8000'
