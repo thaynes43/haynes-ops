@@ -1,4 +1,4 @@
-ai-edge-litert==2.2.0
+ai-edge-litert==2.3.0
 huggingface-hub==1.33.0
 mcp==2.3.0
 numpy==2.5.3
