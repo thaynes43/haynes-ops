@@ -64,9 +64,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # thaynes43/dev-env main 6cd7adc (publish.yml run 37689914665), signed
+              # thaynes43/dev-env main dbf32dc (publish.yml run 37691142226), signed
               # keyless from main (Kyverno verify-dev-env-v2).
-              tag: sha-6cd7adc@sha256:60c1b7446ab77b0cc4cb1d1e0bb9f466f4b955e3d14ab430192f8d27cc34ce87
+              tag: sha-dbf32dc@sha256:292ac01d8e4f110482ac8c5e3f89311310b1dd9975267a3c2b6c71a17174bd68
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
