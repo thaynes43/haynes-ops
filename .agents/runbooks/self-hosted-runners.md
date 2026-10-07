@@ -190,6 +190,8 @@ The shared `dind-externals` volume has a 1Gi bound: image `0.1.0` uses about
 storage with a 1Gi limit. A smaller volume can evict the runner after a job
 starts; inspect pod events when GitHub reports lost runner communication.
 
+DinD runner Pods set `dnsConfig.options` to `ndots: "1"`, so dotted package-feed names are tried directly before cluster search suffixes. With the Kubernetes default `ndots:5`, Alpine dependency installs first requested names such as `registry.npmjs.org.arc-runners.svc.cluster.local`; Hubble showed the exact DNS allowlist rejecting those requests. Check the Pod and Docker container resolver options and DNS flow evidence when an install stalls, then verify a real build after a Git/Flux fix. The plain runner keeps its existing DNS settings.
+
 Namespace network policies deny inbound traffic and allow DNS plus required
 external feeds. They prevent runner access to the cluster API and private
 networks. The sigmaphi pool also needs public web access for link checking;
@@ -202,6 +204,17 @@ runner pool's policy. The separate dev-env allowlist names the exact storage
 accounts observed in GitHub's job-log responses; use its network policy as the
 current list. Additional diagnostic destinations require a reviewed Git change. Do not
 use proxies to evade a denied destination.
+
+When migrating a workflow, preserve its toolchain and make its runtime prerequisites explicit. The initial cutover required these compatibility settings:
+
+| Repository | Runtime prerequisite |
+| --- | --- |
+| `sigmaphiomicron-com` | Docker-bound fixtures use the shared `RUNNER_TEMP` path. |
+| `sigoalumni-org` | Next build workers are capped at two to fit the runner memory limit; Docker CI has a 10-minute step timeout. |
+| `demo-console` | .NET setup installs under `runner.temp`; browser tests install `fonts-dejavu-core`, report font resolution, and have a 30-minute job timeout. |
+| `haynes-swarm` | PostgreSQL readiness is bounded; CI and release jobs have 30-minute limits, and the deterministic audit has a 10-minute limit. |
+
+Verify browser fonts as well as libraries when comparing layout tests with a hosted runner. Keep build-worker counts, job deadlines and memory budgets explicit when sharing a single pool slot.
 
 ## Add a repository
 
@@ -254,6 +267,7 @@ jobs. Restore the cap through Git to resume. Never stress-test the dev-env pod.
 - [ARC App permissions](https://docs.github.com/en/actions/how-tos/manage-runners/use-actions-runner-controller/authenticate-to-the-api)
 - [Personal App registration](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)
 - [GitHub runner network destinations](https://docs.github.com/en/actions/reference/runners/self-hosted-runners#accessible-domains-by-function)
+- [Kubernetes Pod DNS configuration](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-s-dns-config)
 - [Docker Hub network destinations](https://docs.docker.com/desktop/enterprise/allow-list/)
 - [Pinned ARC chart source](https://github.com/actions/actions-runner-controller/tree/gha-runner-scale-set-0.15.0/charts)
 - [Repository runner registration API](https://docs.github.com/en/rest/actions/self-hosted-runners#create-a-registration-token-for-a-repository)
