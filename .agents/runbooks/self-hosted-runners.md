@@ -93,15 +93,12 @@ identity also passed. No owner visibility change is needed for this version.
 
 ## Verify before changing workflows
 
-Initially the auth and five runner-set Kustomizations have `suspend: true` in
-Git. Infrastructure and the controller deploy independently. This avoids the
-cluster's critical `FluxReconciliationFailure` alert during owner setup: an
-unsuspended missing credential and its dependency-blocked pools would all alert
-after fifteen minutes.
-
-After the owner creates the App item, verify the published image matches the
-pinned shared DinD and plain runner references, and remove those six suspends
-in a short haynes-ops PR. Merge and reconcile it.
+The owner completed the App and 1Password setup on October 7, 2026. Activation
+PR [#3516](https://github.com/thaynes43/haynes-ops/pull/3516) removed the six setup
+suspensions; the ExternalSecret synchronized and all five listeners became Ready.
+For a fresh deployment, keep the auth and runner-set Kustomizations suspended
+until the credential item and anonymously pullable, pinned image are ready.
+Remove those suspensions through a reviewed haynes-ops PR and reconcile Flux.
 The App ExternalSecret then acts as a health gate: pools wait for valid Secret
 synchronization before registering. Do not remove suspension while owner setup
 is incomplete, or weaken Flux alerts to accommodate an unconfigured pool.
@@ -112,7 +109,6 @@ Use read-only checks; never print Secret data or full environments:
 kubectl get externalsecret -n arc-runners
 flux get kustomizations -A
 kubectl get deployments,pods -n arc-systems -o wide
-kubectl get autoscalingrunnersets -n arc-runners
 kubectl get pods -n arc-runners -o wide
 ```
 
@@ -122,6 +118,9 @@ the names in their `ks.yaml` files. Confirm all five listeners exist in
 its scale set. Zero idle ephemeral runner pods is expected with `minRunners: 0`.
 Check each pool's actual first job before declaring its egress policy complete:
 package feeds and CDN redirects can change.
+The dev-env operator cannot read `actions.github.com` custom resources. Use
+HelmRelease readiness, controller/listener logs, allowed pod metadata, and the
+repository runner settings to verify registration without expanding RBAC.
 
 Then open one PR per private repository, replacing each job's `runs-on` with its
 scale-set name from the table. Preserve workflow permissions, environments,
@@ -132,10 +131,10 @@ YAML and is outside this migration.
 Start with `sigo-alumni`, then prove Docker builds, workspace bind mounts,
 PostgreSQL services, and Chromium jobs in the other repositories. Their PR checks
 must complete on ARC before squash merge. Read every advisory Claude review.
-`demo-console` also needs the reviewer and `@claude` workflows and credential
-provisioning from `new-repo-setup.md`; it currently lacks them. The old
-`haynes-swarm` reviewers fire on `ready_for_review`/`reopened`, so ensure the
-review event fires before merging. Update those stale triggers during migration.
+For a repository missing automated reviews, add the reviewer and `@claude`
+workflows and provision its credential using `new-repo-setup.md`. Reviewers
+must fire on opening, updating, and readying a PR; read their findings before
+merging.
 
 After merging, inspect a real default-branch or scheduled run. In particular,
 `sigmaphiomicron-com` deploys every six hours and `haynes-swarm` audits weekly.
