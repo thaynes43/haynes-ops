@@ -11,7 +11,12 @@ What one run does (CronJob lazylibrarian-epub-convert, hourly):
   1. Takes a lock (a directory in STATE_DIR), so a manual run and the scheduled
      one never convert at the same time. A lock older than LOCK_STALE_SECONDS is
      from a killed run and is taken over.
-  2. Walks EBOOK_ROOT. A folder that holds any .epub or .pdf is never touched.
+  2. When STRIP_SERIES_METADATA=1, visits existing EPUBs independently, removes
+     only approved series metadata, verifies a backup outside EBOOK_ROOT and
+     replaces each unchanged source atomically. The gate defaults OFF. Dry runs
+     log extracted series/index metadata for the reading-list inventory.
+     Conversion then walks EBOOK_ROOT. A folder holding .epub/.pdf is ineligible
+     for conversion (its EPUBs can still be eligible for metadata removal).
      A folder that holds a .mobi or .azw3 and neither of those is a candidate,
      unless a sibling folder of the same author holds the same book (same title
      words) as an epub or pdf: the library already shows it, and a second copy
@@ -28,9 +33,9 @@ What one run does (CronJob lazylibrarian-epub-convert, hourly):
      copied into the folder under a hidden name and renamed to
      "<source basename>.epub": the name LazyLibrarian gave the original, so its
      library scan links the book to the epub (EBOOK_TYPE lists epub first).
-  5. Touches the book folder and the author folder (on this NFS share adding a
+  5. Touches the book folder and the author folder after conversion or stripping (on this NFS share adding a
      file does not reliably bump the folder mtime Kavita's scan compares), then,
-     when anything was converted and a key is set, queues one Kavita library scan.
+     when anything was converted or stripped and a key is set, queues one Kavita library scan.
   6. A source that fails (DRM, a conversion error, an unreadable or mismatched
      EPUB) is left exactly as it is and recorded in STATE_DIR/held.tsv, so it is
      reported once and not retried every hour. Delete its line to retry it.
@@ -49,6 +54,10 @@ The Loki rules in ../lokirule.yaml alert on them.
 Environment: EBOOK_ROOT, STATE_DIR, DRY_RUN=1 (log what would happen, write
 nothing), RUN_BUDGET_SECONDS, SETTLE_SECONDS, CONVERT_TIMEOUT_SECONDS,
 LOCK_STALE_SECONDS, KAVITA_URL, KAVITA_API_KEY, EBOOK_CONVERT, EBOOK_META.
+STRIP_SERIES_METADATA=1 enables metadata removal, STRIP_ONLY=1 disables conversion,
+STRIP_FOLDERS_JSON selects exact relative book folders (unset means all EPUBs).
+--restore-backup <manifest> restores one original, under the same lock and scan contract.
+Backup retention and rollout: .agents/runbooks/lazylibrarian-epub-metadata.md.
 """
 
 import datetime
@@ -57,6 +66,7 @@ import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -65,6 +75,8 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+
+import epub_metadata
 
 EBOOK_ROOT = os.environ.get("EBOOK_ROOT", "/data/cephfs-hdd/data/media/books/EBooks")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/cephfs-hdd/data/media/books/.epub-convert")
@@ -79,9 +91,12 @@ KAVITA_URL = os.environ.get("KAVITA_URL", "").rstrip("/")
 KAVITA_API_KEY = os.environ.get("KAVITA_API_KEY", "")
 EBOOK_CONVERT = os.environ.get("EBOOK_CONVERT", "ebook-convert")
 EBOOK_META = os.environ.get("EBOOK_META", "ebook-meta")
+STRIP_SERIES_METADATA = os.environ.get("STRIP_SERIES_METADATA", "") == "1"
+STRIP_ONLY = os.environ.get("STRIP_ONLY", "") == "1"
+SERIES_IDENTITIES = []
 
 SOURCES = (".azw3", ".mobi")  # preference order
-BLOCKERS = (".epub", ".pdf")  # a folder holding either is never touched
+BLOCKERS = (".epub", ".pdf")  # a folder holding either is never converted
 HELD_FILE = "held.tsv"
 LOCK_DIR = "lock"
 PARTIAL_RE = re.compile(r"^\..+\.epub\.partial$")
@@ -147,7 +162,7 @@ def find_candidates(root):
     """Folders that hold a .mobi/.azw3 and no .epub/.pdf: [(folder, [source names])]. Hidden entries are skipped."""
     found = []
     for folder, dirs, files in os.walk(root):
-        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+        dirs[:] = sorted(d for d in dirs if not d.startswith(".") and not os.path.islink(os.path.join(folder, d)))
         exts = {os.path.splitext(f)[1].lower() for f in files if not f.startswith(".")}
         if exts & set(BLOCKERS):
             continue
@@ -195,7 +210,7 @@ def duplicate_of(folder):
         return None
     for name in siblings:
         path = os.path.join(author_dir, name)
-        if name.startswith(".") or path == folder or not os.path.isdir(path) or _tokens(name) != mine:
+        if name.startswith(".") or path == folder or os.path.islink(path) or not os.path.isdir(path) or _tokens(name) != mine:
             continue
         try:
             files = os.listdir(path)
@@ -221,12 +236,25 @@ def clean_partials(root):
     """Remove hidden .<name>.epub.partial files a killed run left behind (only ever written by this job)."""
     removed = 0
     for folder, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        dirs[:] = [d for d in dirs if not d.startswith(".") and not os.path.islink(os.path.join(folder, d))]
         for name in files:
             if PARTIAL_RE.match(name):
                 path = os.path.join(folder, name)
                 if not DRY_RUN:
-                    os.remove(path)
+                    with epub_metadata.safe_directory(folder) as directory:
+                        info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                        owns_publication_pair = False
+                        if stat.S_ISREG(info.st_mode) and info.st_nlink == 2:
+                            # A SIGKILL between atomic link publication and partial unlink leaves this pair.
+                            try:
+                                published = os.stat(name[1:-len(".partial")], dir_fd=directory, follow_symlinks=False)
+                                owns_publication_pair = (published.st_dev, published.st_ino) == (info.st_dev, info.st_ino)
+                            except FileNotFoundError:
+                                pass
+                        if not stat.S_ISREG(info.st_mode) or (info.st_nlink != 1 and not owns_publication_pair):
+                            log("epub_convert_partial_refused", path=os.path.relpath(path, root))
+                            continue
+                        os.unlink(name, dir_fd=directory)
                 removed += 1
                 log("epub_convert_partial_removed", path=os.path.relpath(path, root), dry_run=DRY_RUN)
     return removed
@@ -241,10 +269,10 @@ def held_key(rel_folder, source, size):
 
 def load_held(state_dir):
     held = {}
-    path = os.path.join(state_dir, HELD_FILE)
     try:
-        with open(path, encoding="utf-8") as fh:
-            for line in fh:
+        with epub_metadata.safe_directory(state_dir) as directory:
+            contents, _info = epub_metadata.read_regular(directory, HELD_FILE, 16 * 1024 * 1024)
+            for line in contents.decode("utf-8").splitlines():
                 parts = line.rstrip("\n").split("\t")
                 if len(parts) >= 4 and not line.startswith("#"):
                     held["\t".join(parts[:3])] = parts[3]
@@ -256,14 +284,20 @@ def load_held(state_dir):
 def record_held(state_dir, key, reason, detail):
     if DRY_RUN:
         return
-    path = os.path.join(state_dir, HELD_FILE)
-    new = not os.path.exists(path)
     detail = re.sub(r"\s+", " ", detail or "")[:300]
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    with open(path, "a", encoding="utf-8") as fh:
-        if new:
-            fh.write("# folder\tsource\tsize\treason\twhen\tdetail  (delete a line to retry that book)\n")
-        fh.write(f"{key}\t{reason}\t{stamp}\t{detail}\n")
+    with epub_metadata.safe_directory(state_dir) as directory:
+        fd = os.open(HELD_FILE, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     0o644, dir_fd=directory)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
+            info = os.fstat(fh.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise epub_metadata.Refused("held.tsv must be a regular file with one hardlink")
+            if info.st_size == 0:
+                fh.write("# folder\tsource\tsize\treason\twhen\tdetail  (delete a line to retry that book)\n")
+            fh.write(f"{key}\t{reason}\t{stamp}\t{detail}\n")
+            fh.flush()
+            os.fsync(fh.fileno())
 
 
 # --- calibre ------------------------------------------------------------------
@@ -381,7 +415,10 @@ def convert_folder(folder, source):
     dest = os.path.join(folder, base + ".epub")
     book_title = os.path.basename(folder)
     author_folder = os.path.basename(os.path.dirname(folder))
-    size = os.stat(source_path).st_size
+    # Never give calibre a link outside the library, or publish through a linked directory.
+    with epub_metadata.safe_directory(folder) as directory:
+        _source_bytes, source_info = epub_metadata.read_regular(directory, source)
+    size = source_info.st_size
     key = held_key(rel, source, size)
     started = time.monotonic()
     deadline = started + CONVERT_TIMEOUT_SECONDS
@@ -420,23 +457,51 @@ def convert_folder(folder, source):
             log("epub_convert", result=reason, detail=detail, seconds=round(time.monotonic() - started, 1), **fields)
             return reason
 
+        if STRIP_SERIES_METADATA:
+            try:
+                fields["series_strip"] = epub_metadata.strip_converted(
+                    out, os.path.relpath(dest, EBOOK_ROOT), EBOOK_ROOT, STATE_DIR, DRY_RUN, SERIES_IDENTITIES
+                )
+            except (epub_metadata.Refused, ValueError, OSError) as err:
+                reason, detail = "unreadable", f"series metadata validation refused: {err}"
+                record_held(STATE_DIR, key, reason, detail)
+                log("epub_convert", result=reason, detail=detail, **fields)
+                return reason
+
         # Re-check right before writing: LazyLibrarian may have imported an epub or pdf meanwhile.
         if any(os.path.splitext(f)[1].lower() in BLOCKERS for f in os.listdir(folder)):
             log("epub_convert", result="skipped_now_has_epub_or_pdf", seconds=round(time.monotonic() - started, 1), **fields)
             return "skipped_now_has_epub_or_pdf"
         if not DRY_RUN:
-            shutil.copyfile(out, partial)
-            os.chmod(partial, 0o644)
-            if os.path.exists(dest):
-                os.remove(partial)
-                log("epub_convert", result="skipped_now_has_epub_or_pdf", seconds=round(time.monotonic() - started, 1), **fields)
-                return "skipped_now_has_epub_or_pdf"
-            # A short copy must never land under the final name: the next run would see an epub and skip the book.
-            if os.path.getsize(partial) != os.path.getsize(out):
-                raise OSError(f"size mismatch after copy: {partial}")
-            os.rename(partial, dest)
-            os.utime(folder)
-            os.utime(os.path.dirname(folder))
+            with epub_metadata.safe_directory(folder) as directory:
+                _source_bytes, current_info = epub_metadata.read_regular(directory, source)
+                if epub_metadata._identity(current_info) != epub_metadata._identity(source_info):
+                    raise epub_metadata.Refused("conversion source changed before publish")
+                with open(out, "rb") as converted:
+                    output = converted.read()
+                epub_metadata._write_file(directory, os.path.basename(partial), output, 0o644)
+                if os.path.lexists(dest):
+                    os.unlink(os.path.basename(partial), dir_fd=directory)
+                    log("epub_convert", result="skipped_now_has_epub_or_pdf", seconds=round(time.monotonic() - started, 1), **fields)
+                    return "skipped_now_has_epub_or_pdf"
+                copied, _partial_info = epub_metadata.read_regular(directory, os.path.basename(partial))
+                if copied != output:
+                    raise OSError(f"copy mismatch: {partial}")
+                epub_metadata._same_directory(directory, folder)
+                # Link publication is atomic and refuses an existing name, including an import racing us.
+                try:
+                    os.link(os.path.basename(partial), os.path.basename(dest),
+                            src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
+                except FileExistsError:
+                    log("epub_convert", result="skipped_now_has_epub_or_pdf", **fields)
+                    return "skipped_now_has_epub_or_pdf"
+                os.unlink(os.path.basename(partial), dir_fd=directory)
+                os.fsync(directory)
+                os.utime(directory)
+            with epub_metadata.safe_directory(os.path.dirname(folder)) as author_directory:
+                os.utime(author_directory)
+            if STRIP_SERIES_METADATA:
+                SERIES_IDENTITIES.append(epub_metadata.grouping_identity(output, os.path.relpath(dest, EBOOK_ROOT)))
         log(
             "epub_convert",
             result="converted",
@@ -447,8 +512,16 @@ def convert_folder(folder, source):
         return "converted"
     finally:
         shutil.rmtree(work, ignore_errors=True)
-        if not DRY_RUN and os.path.exists(partial):
-            os.remove(partial)
+        if not DRY_RUN:
+            try:
+                with epub_metadata.safe_directory(folder) as directory:
+                    info = os.stat(os.path.basename(partial), dir_fd=directory, follow_symlinks=False)
+                    if stat.S_ISREG(info.st_mode):
+                        os.unlink(os.path.basename(partial), dir_fd=directory)
+            except FileNotFoundError:
+                pass
+            except OSError as err:
+                log("epub_convert_partial_cleanup_refused", path=os.path.relpath(partial, EBOOK_ROOT), detail=str(err))
 
 
 # --- the run --------------------------------------------------------------------
@@ -481,18 +554,94 @@ def census(held, now):
 
 def take_lock():
     path = os.path.join(STATE_DIR, LOCK_DIR)
-    os.makedirs(STATE_DIR, exist_ok=True)
-    try:
-        os.mkdir(path)
-        return path
-    except FileExistsError:
-        age = time.time() - os.stat(path).st_mtime
-        if age < LOCK_STALE_SECONDS:
-            log("epub_convert_locked", lock_age_seconds=int(age))
-            return None
-        log("epub_convert_lock_taken_over", lock_age_seconds=int(age))
-        os.utime(path)
-        return path
+    with epub_metadata.safe_directory(STATE_DIR, create=True) as directory:
+        try:
+            os.mkdir(LOCK_DIR, dir_fd=directory)
+            return path
+        except FileExistsError:
+            with epub_metadata.safe_directory(path) as lock_directory:
+                age = time.time() - os.fstat(lock_directory).st_mtime
+                if age < LOCK_STALE_SECONDS:
+                    log("epub_convert_locked", lock_age_seconds=int(age))
+                    return None
+                log("epub_convert_lock_taken_over", lock_age_seconds=int(age))
+                os.utime(lock_directory)
+                return path
+
+
+def strip_folders():
+    raw = os.environ.get("STRIP_FOLDERS_JSON")
+    if raw is None:
+        return [EBOOK_ROOT]
+    targets = json.loads(raw)
+    if not isinstance(targets, list) or not targets or any(not isinstance(t, str) for t in targets):
+        raise epub_metadata.Refused("STRIP_FOLDERS_JSON must be a nonempty JSON array of relative folders")
+    folders = []
+    for target in sorted(set(targets)):
+        if not target or os.path.isabs(target) or any(p in ("", ".", "..") or p.startswith(".") for p in target.split("/")):
+            raise epub_metadata.Refused("strip targets must be exact, visible relative folders")
+        folder = os.path.join(EBOOK_ROOT, target)
+        with epub_metadata.safe_directory(folder):
+            pass
+        folders.append(folder)
+    if any(a != b and os.path.commonpath((a, b)) == a for a in folders for b in folders):
+        raise epub_metadata.Refused("strip target folders must not overlap")
+    return folders
+
+
+def strip_series_pass(folders, run_started):
+    global SERIES_IDENTITIES
+    counts = {"stripped": 0, "would_strip": 0, "untagged": 0, "settling": 0,
+              "refused": 0, "deferred": 0, "collision_held": 0}
+    SERIES_IDENTITIES, errors = epub_metadata.identity_preflight(EBOOK_ROOT, run_started + RUN_BUDGET_SECONDS)
+    for error in errors:
+        log("epub_series_preflight", result="refused", **error, dry_run=DRY_RUN)
+    if errors:
+        counts.update(refused=len(errors), preflight_failed=True)
+        log("epub_series_strip_census", **counts, dry_run=DRY_RUN)
+        return counts
+    identities = {identity["path"]: identity for identity in SERIES_IDENTITIES}
+    log("epub_series_preflight", result="ok", epub_count=len(SERIES_IDENTITIES), dry_run=DRY_RUN)
+    for root in folders:
+        for folder, dirs, files in os.walk(root):
+            for name in sorted(dirs):
+                path = os.path.join(folder, name)
+                if not name.startswith(".") and os.path.islink(path):
+                    counts["refused"] += 1
+                    log("epub_series_strip", result="refused", path=os.path.relpath(path, EBOOK_ROOT),
+                        detail="symlinked directory is excluded", dry_run=DRY_RUN)
+            dirs[:] = sorted(d for d in dirs if not d.startswith(".") and not os.path.islink(os.path.join(folder, d)))
+            for name in sorted(files):
+                if name.startswith(".") or os.path.splitext(name)[1].lower() != ".epub":
+                    continue
+                path = os.path.join(folder, name)
+                if time.monotonic() - run_started > RUN_BUDGET_SECONDS:
+                    counts["deferred"] += 1
+                    continue
+                try:
+                    relative = os.path.relpath(path, EBOOK_ROOT)
+                    identity = identities.get(relative)
+                    if identity is None:
+                        raise epub_metadata.Refused("EPUB appeared after grouping preflight")
+                    conflicts = epub_metadata.collision_conflicts(identity, SERIES_IDENTITIES)
+                    if conflicts:
+                        result = {"result": "collision_held", "path": relative, "conflicts": conflicts,
+                                  "metadata": identity["metadata"],
+                                  "detail": "stripping would create a cross-author Kavita grouping collision"}
+                    else:
+                        result = epub_metadata.strip_existing(path, EBOOK_ROOT, STATE_DIR, SETTLE_SECONDS,
+                                                             DRY_RUN, identity["original_sha256"])
+                        if result["result"] == "stripped":
+                            identity["current_aliases"] = identity["projected_aliases"]
+                            identity["comparison_aliases"] = identity["projected_aliases"]
+                except Exception as err:  # one refused file never changes any other file's eligibility
+                    result = {"result": "refused", "path": os.path.relpath(path, EBOOK_ROOT),
+                              "detail": f"{type(err).__name__}: {err}"[:500]}
+                counts[result["result"]] += 1
+                if result["result"] != "untagged":
+                    log("epub_series_strip", **result, dry_run=DRY_RUN)
+    log("epub_series_strip_census", **counts, dry_run=DRY_RUN)
+    return counts
 
 
 def _terminate(signum, _frame):
@@ -504,20 +653,43 @@ def _terminate(signum, _frame):
 def main():
     signal.signal(signal.SIGTERM, _terminate)
     run_started = time.monotonic()
-    if not os.path.isdir(EBOOK_ROOT):
-        log("epub_convert_run_failed", error=f"EBOOK_ROOT {EBOOK_ROOT} is not a directory")
+    restore = None
+    if len(sys.argv) > 1:
+        if len(sys.argv) != 3 or sys.argv[1] != "--restore-backup":
+            log("epub_convert_run_failed", error="usage: epub_convert.py [--restore-backup <manifest>]")
+            return 1
+        restore = sys.argv[2]
+    try:
+        epub_metadata.validate_paths(EBOOK_ROOT, STATE_DIR)
+        if STRIP_ONLY and not STRIP_SERIES_METADATA and not restore:
+            raise epub_metadata.Refused("STRIP_ONLY requires STRIP_SERIES_METADATA=1")
+        folders = strip_folders() if STRIP_SERIES_METADATA and not restore else []
+        if "STRIP_FOLDERS_JSON" in os.environ and not STRIP_ONLY and not restore:
+            raise epub_metadata.Refused("targeted stripping requires STRIP_ONLY=1 to isolate the stage")
+    except (ValueError, OSError) as err:
+        log("epub_convert_run_failed", error=str(err))
         return 1
     lock = None if DRY_RUN else take_lock()
     if not DRY_RUN and lock is None:
         return 0
     try:
-        if not DRY_RUN:
+        if restore:
+            try:
+                result = epub_metadata.restore_backup(restore, EBOOK_ROOT, STATE_DIR, DRY_RUN)
+            except Exception as err:
+                log("epub_series_restore", result="refused", detail=f"{type(err).__name__}: {err}"[:500], dry_run=DRY_RUN)
+                return 1
+            log("epub_series_restore", **result, dry_run=DRY_RUN,
+                kavita_scan=kavita_scan() if result["result"] == "restored" else "dry_run")
+            return 0
+        if not DRY_RUN and not STRIP_ONLY:
             clean_partials(EBOOK_ROOT)
+        series = strip_series_pass(folders, run_started) if STRIP_SERIES_METADATA else {"stripped": 0, "refused": 0, "deferred": 0}
         held = load_held(STATE_DIR)
         now = time.time()
         results = {}
         deferred = 0
-        for folder, sources in find_candidates(EBOOK_ROOT):
+        for folder, sources in ([] if STRIP_ONLY or series.get("preflight_failed") else find_candidates(EBOOK_ROOT)):
             source = choose_source(folder, sources)
             rel = os.path.relpath(folder, EBOOK_ROOT)
             try:
@@ -539,7 +711,7 @@ def main():
                 result = "io_error"
                 log("epub_convert", result=result, folder=rel, source=source, detail=f"{type(err).__name__}: {err}"[:300])
             results[result] = results.get(result, 0) + 1
-        kavita = kavita_scan() if results.get("converted") else "nothing_converted"
+        kavita = kavita_scan() if results.get("converted") or series["stripped"] else "nothing_converted"
         counts, sample, duplicate_sample = census(load_held(STATE_DIR), time.time())
         log(
             "epub_convert_census",
@@ -549,6 +721,7 @@ def main():
             duplicate=counts["duplicate"],
             deferred=deferred,
             converted=results.get("converted", 0),
+            series_strip=series,
             failed=sum(v for k, v in results.items() if k not in ("converted", "skipped_now_has_epub_or_pdf")),
             results=results,
             kavita_scan=kavita,
@@ -557,7 +730,7 @@ def main():
             dry_run=DRY_RUN,
             seconds=round(time.monotonic() - run_started, 1),
         )
-        return 0
+        return 1 if series["refused"] or series["deferred"] else 0
     finally:
         if lock:
             shutil.rmtree(lock, ignore_errors=True)

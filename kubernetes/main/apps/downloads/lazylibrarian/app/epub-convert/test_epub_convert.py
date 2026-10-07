@@ -21,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "epub_convert.py")
 sys.path.insert(0, HERE)
 import epub_convert  # noqa: E402
+import epub_metadata  # noqa: E402
 
 FAILURES = []
 
@@ -54,7 +55,9 @@ def backdate(root):
 
 
 def run(env_extra):
-    env = dict(os.environ, **env_extra)
+    env = dict(os.environ, STRIP_SERIES_METADATA="0", STRIP_ONLY="0", KAVITA_URL="", KAVITA_API_KEY="")
+    env.pop("STRIP_FOLDERS_JSON", None)
+    env.update(env_extra)
     res = subprocess.run([sys.executable, SCRIPT], capture_output=True, text=True, env=env, timeout=900)
     lines = []
     for line in res.stdout.splitlines():
@@ -314,10 +317,57 @@ def test_duplicates():
               f"duplicates: converts once the sibling copy is gone ({results})")
 
 
+def test_series_metadata():
+    """The real calibre output is stripped before publication, and the source stays intact."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = os.path.join(tmp, "EBooks")
+        state = os.path.join(tmp, ".epub-convert")
+        existing = os.path.join(root, "Author H", "Existing Tagged", "Existing Tagged.epub")
+        source = os.path.join(root, "Author H", "Series Output", "Series Output - Author H.mobi")
+        make_book(existing, "Existing Tagged", "Author H")
+        make_book(source, "Series Output", "Author H")
+        for path in (existing, source):
+            subprocess.run(["ebook-meta", path, "--series", "Test Saga", "--index", "2"],
+                           check=True, capture_output=True)
+        source_hash = digest(source)
+        existing_hash = digest(existing)
+        # Calibre can discard series while converting MOBI. Add real ebook-meta tags to its output,
+        # so this fixture proves stripping/backup even when a converter preserves grouping.
+        wrapper = os.path.join(tmp, "tag-converted-output")
+        with open(wrapper, "w") as script:
+            script.write(f"#!{sys.executable}\nimport subprocess,sys\n")
+            script.write("rc=subprocess.call(['ebook-convert', *sys.argv[1:]])\n")
+            script.write("if rc == 0: rc=subprocess.call(['ebook-meta', sys.argv[2], '--series', 'Test Saga', '--index', '2'])\n")
+            script.write("sys.exit(rc)\n")
+        os.chmod(wrapper, 0o755)
+        rc, lines, err = run({"EBOOK_ROOT": root, "STATE_DIR": state, "SETTLE_SECONDS": "0",
+                              "STRIP_SERIES_METADATA": "1", "EBOOK_CONVERT": wrapper})
+        check(rc == 0, f"series: gated run succeeds ({err[-300:]})")
+        output = os.path.splitext(source)[0] + ".epub"
+        check(os.path.exists(output), "series: conversion publishes its EPUB")
+        for path in (existing, output):
+            with open(path, "rb") as epub:
+                check(not epub_metadata.inspect_epub(epub.read())[3],
+                      f"series: approved metadata absent from {os.path.basename(path)}")
+            title, authors = epub_convert.read_meta(path)
+            check(bool(title and authors and "Author H" in authors), "series: real ebook-meta still reads title/author")
+        check(digest(source) == source_hash, "series: original mobi remains byte-for-byte unchanged")
+        check(digest(existing) != existing_hash, "series: existing tagged EPUB changed")
+        manifests = [name for name in os.listdir(os.path.join(state, "backup")) if name.endswith(".json")]
+        check(len(manifests) == 2, "series: existing and converted originals both have backups")
+        before = {path: (digest(path), os.stat(path).st_mtime_ns) for path in (existing, output)}
+        rc, lines, err = run({"EBOOK_ROOT": root, "STATE_DIR": state, "SETTLE_SECONDS": "0",
+                              "STRIP_SERIES_METADATA": "1"})
+        check(rc == 0 and not by_msg(lines, "epub_convert"), "series: next gated run converts nothing")
+        check({path: (digest(path), os.stat(path).st_mtime_ns) for path in (existing, output)} == before,
+              "series: untagged EPUBs keep bytes and mtimes on the next run")
+
+
 if __name__ == "__main__":
     test_title_rule()
     test_runs()
     test_failures()
     test_duplicates()
+    test_series_metadata()
     print(f"\n{len(FAILURES)} failed" if FAILURES else "\nall passed")
     sys.exit(1 if FAILURES else 0)

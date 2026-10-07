@@ -12,12 +12,19 @@
 # `ebook-convert` at a time into the pod's /tmp; the EPUB is checked with
 # `ebook-meta` (title and author read, title matches the folder's book) and only
 # then placed beside the original as "<original basename>.epub". A folder that
-# already holds an epub or a pdf is never touched. A book that fails (DRM, a
+# already holds an epub or a pdf is never converted. A book that fails (DRM, a
 # conversion error, a title that names another book) is left as it is and
 # recorded in books/.epub-convert/held.tsv, outside every library root; delete
 # its line to retry it. LazyLibrarian's daily library scan then links the book
 # to the epub (EBOOK_TYPE lists epub first); Kavita gets one library scan per
 # run that converted something.
+#
+# Metadata removal (https://github.com/thaynes43/haynesnetwork/issues/825) ships
+# gated OFF. A separate pass strips only approved embedded grouping metadata,
+# after verified backups under books/.epub-convert/backup. It shares this lock
+# and queues one scan after successful changes. Stage and restore procedure:
+# .agents/runbooks/lazylibrarian-epub-metadata.md. Enable only after app safeguards,
+# census review, targeted two-book stage and full backfill are verified.
 #
 # Load (the 2026-10-05 CPU-starvation outage): one conversion at a time, under
 # `nice`, CPU limit 1, never on a control-plane node. A run stops starting new
@@ -83,6 +90,8 @@ spec:
                   value: /data/cephfs-hdd/data/media/books/EBooks
                 - name: STATE_DIR
                   value: /data/cephfs-hdd/data/media/books/.epub-convert
+                - name: STRIP_SERIES_METADATA
+                  value: "0"
                 - name: RUN_BUDGET_SECONDS
                   value: "2400"
                 # An import younger than this is left for the next run.
