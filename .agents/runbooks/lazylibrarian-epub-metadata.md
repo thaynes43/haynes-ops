@@ -13,17 +13,27 @@ STRIP_ONLY=1. Without that variable the pass visits all EPUBs under EBOOK_ROOT.
 
 The pass removes calibre:series, calibre:series_index, all belongs-to-collection
 metadata and the collection-type/group-position refinements of those collections.
-It preserves every other OPF byte and every other ZIP member's uncompressed bytes,
-order and metadata. ZIP compression streams can change. Unknown refinements to a
-removed ID cause refusal.
+It preserves every other OPF byte and every ZIP member's uncompressed content.
+Other members retain their relative order and metadata. A changed archive's
+mimetype is placed first and stored, including when the original used a different
+order or compression. ZIP compression streams can change. Unknown refinements to
+a removed ID cause refusal.
 
 Before any edit, a bounded read-only preflight reads every EPUB's title, creator,
 series and main-title sort aliases using Kavita 0.9.0.2 name normalization. A tagged
 file that would create a cross-author group is held, with conflicting paths logged.
 The guard leaves existing shared title groups alone. An unreadable identity, unsafe
 path or exhausted preflight budget stops the entire mutation pass, including
-conversion. Untagged books need readable identities but need not meet rewrite-only
-requirements such as a first/stored mimetype.
+conversion. The census reads container and OPF metadata only, with a 4 MiB limit per
+XML document, 10,000 ZIP entries and bounded central-directory reads. It accepts
+harmless DTD declarations and refuses entity definitions or resolution. In Kavita's
+metadata-enabled Books library, an untagged EPUB with no title is known to be
+unindexed and contributes no grouping aliases. Untagged EPUBs are never rewritten.
+
+Full archive validation applies to files being changed: at most 256 MiB compressed
+and 512 MiB expanded, every ZIP member's CRC checked, and a first, stored mimetype.
+With stripping disabled, ordinary conversion publishes in fixed-size chunks and
+verifies the known-size output hash, preserving support for large converted EPUBs.
 
 ## Backups and refusal
 

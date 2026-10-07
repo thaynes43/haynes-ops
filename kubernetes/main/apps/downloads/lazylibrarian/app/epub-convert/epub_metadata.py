@@ -161,12 +161,14 @@ def strip_opf(raw):
 
 
 def _member_name(name):
+    if not isinstance(name, str):
+        raise Refused("ZIP member name must be a string")
     parts = PurePosixPath(name).parts
     if not name or "\\" in name or "\0" in name or name.startswith("/") or ".." in parts:
         raise Refused(f"unsafe ZIP member {name!r}")
 
 
-def inspect_epub(raw):
+def inspect_epub(raw, require_canonical=True):
     """Validate all CRCs, the EPUB container and every declared package."""
     if len(raw) > MAX_ARCHIVE:
         raise Refused("EPUB exceeds the 256 MiB safety limit")
@@ -176,7 +178,8 @@ def inspect_epub(raw):
             if not infos or len(infos) > 10000 or len({i.filename for i in infos}) != len(infos):
                 raise Refused("empty, too many or duplicate ZIP members")
             first = infos[0]
-            if first.filename != "mimetype" or first.header_offset != 0 or first.compress_type != zipfile.ZIP_STORED:
+            if require_canonical and (first.filename != "mimetype" or first.header_offset != 0
+                                      or first.compress_type != zipfile.ZIP_STORED):
                 raise Refused("mimetype must be the first, stored ZIP member")
             if sum(info.file_size for info in infos) > MAX_EXPANDED:
                 raise Refused("expanded EPUB exceeds the 512 MiB safety limit")
@@ -225,20 +228,31 @@ def inspect_epub(raw):
 
 
 def sanitized_epub(raw):
-    infos, members, comment, updates, inventory = inspect_epub(raw)
+    infos, members, comment, updates, inventory = inspect_epub(raw, require_canonical=False)
     if not updates:
         return raw, inventory
     output = io.BytesIO()
+    ordered = sorted(infos, key=lambda info: info.filename != "mimetype")
     with zipfile.ZipFile(output, "w", allowZip64=False) as archive:
         archive.comment = comment
-        for info in infos:
-            archive.writestr(copy.copy(info), updates.get(info.filename, members[info.filename]))
+        for info in ordered:
+            copied = copy.copy(info)
+            if copied.filename == "mimetype":
+                copied.compress_type = zipfile.ZIP_STORED
+            archive.writestr(copied, updates.get(info.filename, members[info.filename]))
+            # ZipFile fills a zero external_attr with default permissions. It
+            # is only in the central directory, emitted on close, so restore
+            # the original public ZipInfo field before that record is written.
+            copied.external_attr = info.external_attr
     candidate = output.getvalue()
     after_infos, after_members, after_comment, leftover, _inventory = inspect_epub(candidate)
     if leftover or after_comment != comment or len(after_infos) != len(infos):
         raise Refused("candidate validation failed")
-    for before, after in zip(infos, after_infos):
-        if any(getattr(before, key) != getattr(after, key) for key in ZIP_METADATA):
+    for before, after in zip(ordered, after_infos):
+        expected = copy.copy(before)
+        if expected.filename == "mimetype":
+            expected.compress_type = zipfile.ZIP_STORED
+        if any(getattr(expected, key) != getattr(after, key) for key in ZIP_METADATA):
             raise Refused(f"ZIP member metadata changed: {before.filename}")
         if after_members[before.filename] != updates.get(before.filename, members[before.filename]):
             raise Refused(f"ZIP member bytes changed unexpectedly: {before.filename}")
@@ -763,7 +777,7 @@ def restore_backup(manifest_path, root, state, dry_run=False):
         original, _info = read_regular(backups, manifest["backup_file"])
         if sha256(original) != manifest["original_sha256"]:
             raise Refused("backup checksum does not match its manifest")
-        inspect_epub(original)
+        inspect_epub(original, require_canonical=False)
     path = os.path.join(root, relative)
     folder, name = os.path.split(path)
     with safe_directory(folder) as directory:

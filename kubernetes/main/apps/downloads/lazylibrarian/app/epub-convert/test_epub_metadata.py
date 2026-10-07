@@ -47,7 +47,7 @@ OPF = b'''<?xml version="1.0" encoding="UTF-8"?>
 CONTAINER = b'''<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="OEBPS/book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'''
 
 
-def fixture(opf=OPF, mimetype_first=True, mimetype_stored=True, extra_members=None):
+def fixture(opf=OPF, mimetype_first=True, mimetype_stored=True, extra_members=None, zero_attributes=()):
     members = [("mimetype", b"application/epub+zip"), ("META-INF/container.xml", CONTAINER),
                ("OEBPS/book.opf", opf), ("OEBPS/chapter.xhtml", b"<html><body>A chapter.</body></html>"),
                ("OEBPS/cover.jpg", bytes(range(256)))]
@@ -65,6 +65,8 @@ def fixture(opf=OPF, mimetype_first=True, mimetype_stored=True, extra_members=No
             info.comment = b"Keep member comment"
             info.extra = b"\xfe\xca\x04\x00keep"
             archive.writestr(info, raw)
+            if name in zero_attributes:
+                info.external_attr = 0  # Actual publisher/iTunes archives contain this unset value.
     return output.getvalue()
 
 
@@ -121,6 +123,16 @@ class OpfTests(unittest.TestCase):
             with self.assertRaisesRegex(metadata.Refused, "unfamiliar refinement"):
                 metadata.strip_opf(OPF.replace(b'</metadata>', extra + b'</metadata>'))
 
+    def test_lone_series_index_removed_but_unrelated_group_position_preserved(self):
+        clean = metadata.strip_opf(OPF)[0]
+        unrelated = b'<meta property="group-position" refines="#isbn">7</meta>'
+        index = b'<meta name="calibre:series_index" content="3"/>'
+        raw = clean.replace(b'</metadata>', unrelated + index + b'</metadata>')
+        after, inventory = metadata.strip_opf(raw)
+        self.assertEqual(after, raw.replace(index, b''))
+        self.assertEqual(len(inventory), 1)
+        self.assertIn(unrelated, after)
+
     def test_dangling_duplicate_nested_and_entity_xml_refused(self):
         for raw in (OPF.replace(b'refines="#author"', b'refines="#absent"'),
                     OPF.replace(b'id="author"', b'id="title"'),
@@ -149,7 +161,7 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(metadata.sanitized_epub(stripped), (stripped, []))
 
     def test_unsafe_invalid_signed_archives_refused(self):
-        inputs = (b'not a zip', fixture(mimetype_first=False), fixture(mimetype_stored=False),
+        inputs = (b'not a zip',
                   fixture(extra_members=[("../outside", b"unsafe")]),
                   fixture(extra_members=[("META-INF/signatures.xml", b"signed")]),
                   fixture(opf=b'<broken>'))
@@ -160,6 +172,45 @@ class ArchiveTests(unittest.TestCase):
         corrupt = raw[:100] + bytes([raw[100] ^ 1]) + raw[101:]
         with self.assertRaises(metadata.Refused):
             metadata.sanitized_epub(corrupt)
+
+    def test_unset_publisher_and_itunes_member_attributes_are_preserved(self):
+        raw = fixture(extra_members=[("iTunesMetadata.plist", b"unchanged store metadata")],
+                      zero_attributes=("mimetype", "OEBPS/book.opf", "iTunesMetadata.plist"))
+        after, inventory = metadata.sanitized_epub(raw)
+        self.assertTrue(inventory)
+        with zipfile.ZipFile(io.BytesIO(raw)) as source, zipfile.ZipFile(io.BytesIO(after)) as candidate:
+            for name in ("mimetype", "OEBPS/book.opf", "iTunesMetadata.plist"):
+                self.assertEqual(source.getinfo(name).external_attr, 0)
+                self.assertEqual(candidate.getinfo(name).external_attr, 0)
+            self.assertEqual(candidate.read("iTunesMetadata.plist"), source.read("iTunesMetadata.plist"))
+
+    def test_tagged_input_mimetype_normalized_and_other_members_preserved(self):
+        for first, stored in ((False, True), (True, False), (False, False)):
+            raw = fixture(mimetype_first=first, mimetype_stored=stored, zero_attributes=("mimetype",))
+            with self.assertRaises(metadata.Refused):
+                metadata.inspect_epub(raw)
+            after, inventory = metadata.sanitized_epub(raw)
+            self.assertTrue(inventory)
+            metadata.inspect_epub(after)  # Full CRC/canonical candidate proof remains strict.
+            with zipfile.ZipFile(io.BytesIO(raw)) as source, zipfile.ZipFile(io.BytesIO(after)) as candidate:
+                self.assertEqual(candidate.namelist(), ["mimetype"] + [n for n in source.namelist() if n != "mimetype"])
+                self.assertEqual(candidate.getinfo("mimetype").compress_type, zipfile.ZIP_STORED)
+                self.assertEqual(candidate.getinfo("mimetype").external_attr, 0)
+                for name in source.namelist():
+                    if name == "mimetype":
+                        continue
+                    for field in metadata.ZIP_METADATA:
+                        self.assertEqual(getattr(source.getinfo(name), field), getattr(candidate.getinfo(name), field))
+                    if name != "OEBPS/book.opf":
+                        self.assertEqual(source.read(name), candidate.read(name))
+            self.assertEqual(metadata.sanitized_epub(after), (after, []))
+        with zipfile.ZipFile(io.BytesIO(fixture())) as source:
+            malformed = io.BytesIO()
+            with zipfile.ZipFile(malformed, "w") as destination:
+                for info in source.infolist():
+                    destination.writestr(info, b"wrong MIME value" if info.filename == "mimetype" else source.read(info))
+        with self.assertRaisesRegex(metadata.Refused, "mimetype"):
+            metadata.sanitized_epub(malformed.getvalue())
 
     def test_multiple_opfs_stripped(self):
         raw = fixture(extra_members=[("OEBPS/second.opf", OPF)])
@@ -408,6 +459,7 @@ class FileTests(unittest.TestCase):
         manifest = json.loads(read(manifest_path))
         backup = os.path.join(self.state, "backup", manifest["backup_file"])
         self.assertEqual(read(backup), self.original)
+
         self.assertEqual(manifest["relative_path"], "Suzanne Collins/Mockingjay/Mockingjay.epub")
         before = snapshot(self.tmp.name)
         self.assertEqual(self.strip()["result"], "untagged")
@@ -418,6 +470,16 @@ class FileTests(unittest.TestCase):
         self.assertEqual(restored["result"], "restored")
         self.assertEqual(read(self.path), self.original)
         self.assertEqual(read(backup), self.original)
+
+    def test_noncanonical_original_is_backed_up_and_restored_exactly(self):
+        original = fixture(mimetype_first=False, mimetype_stored=False, zero_attributes=("mimetype",))
+        write(self.path, original)
+        result = self.strip()
+        metadata.inspect_epub(read(self.path))
+        manifest = json.loads(read(result["backup_manifest"]))
+        self.assertEqual(read(os.path.join(self.state, "backup", manifest["backup_file"])), original)
+        metadata.restore_backup(result["backup_manifest"], self.root, self.state)
+        self.assertEqual(read(self.path), original)
 
     def test_failed_replace_leaves_original_and_keeps_backup(self):
         with mock.patch.object(metadata, "_replace", side_effect=OSError("simulated write failure")):
