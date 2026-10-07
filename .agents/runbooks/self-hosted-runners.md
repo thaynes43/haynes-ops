@@ -187,7 +187,10 @@ Namespace network policies deny inbound traffic and allow DNS plus required
 external feeds. They prevent runner access to the cluster API and private
 networks. The sigmaphi pool also needs public web access for link checking;
 that exception remains confined to that pool. Add changing feed/CDN hosts through
-Git and Flux, and verify from an actual job. Workflow downloads belong in the
+Git and Flux. Docker Hub blob downloads use `production.cloudfront.docker.com`
+alongside the existing Cloudflare host; keep the exact CDN names in the shared
+DNS and HTTPS list and inspect pull errors for changed redirects. Verify feeds
+from an actual job. Workflow downloads belong in the
 runner pool's policy. The separate dev-env allowlist names the exact storage
 accounts observed in GitHub's job-log responses; use its network policy as the
 current list. Additional diagnostic destinations require a reviewed Git change. Do not
@@ -244,5 +247,6 @@ jobs. Restore the cap through Git to resume. Never stress-test the dev-env pod.
 - [ARC App permissions](https://docs.github.com/en/actions/how-tos/manage-runners/use-actions-runner-controller/authenticate-to-the-api)
 - [Personal App registration](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)
 - [GitHub runner network destinations](https://docs.github.com/en/actions/reference/runners/self-hosted-runners#accessible-domains-by-function)
+- [Docker Hub network destinations](https://docs.docker.com/desktop/enterprise/allow-list/)
 - [Pinned ARC chart source](https://github.com/actions/actions-runner-controller/tree/gha-runner-scale-set-0.15.0/charts)
 - [Repository runner registration API](https://docs.github.com/en/rest/actions/self-hosted-runners#create-a-registration-token-for-a-repository)
