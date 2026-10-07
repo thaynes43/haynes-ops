@@ -1,0 +1,93 @@
+---
+# dev-env-broker-guard: narrows the access broker's RBAC (./broker.yaml) to the objects
+# of its own grants (thaynes43/dev-env DESIGN-001 6.12, D-54). RBAC cannot scope a
+# create by name, so on its own the broker's role could make or mint a token for any
+# ServiceAccount in dev-agents, dev-env-workbench included (exempt from both guards and
+# trusted by the operator as a client), and could bind a catalog role to any subject.
+# This policy holds it to what a grant is made of, all named grant-<id> (D-54):
+#   - ServiceAccounts in dev-agents: create and delete only grant-* names, and a token
+#     only for a grant-* ServiceAccount;
+#   - RoleBindings and ClusterRoleBindings: create and delete only grant-* names; a new
+#     one binds a ClusterRole from the catalog to exactly one subject, the ServiceAccount
+#     dev-agents/<its own name>, so a binding and its grant identity cannot be mixed up;
+#     no binding in the three dev-env namespaces;
+#   - CiliumNetworkPolicies: only grant-* names, and only in dev-agents.
+# AccessGrants, GrantPolicies (read), Leases, Events, pods and pods/exec are not
+# narrowed here: the RBAC already scopes them to dev-agents and dev-env-system, and an
+# exec's target cannot be checked by name (session pods have no fixed prefix).
+#
+# Failure: Fail, matched by username first (a string compare that cannot fail), so an
+# error refuses only the broker's own request. No paramRef (D-19 as built).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-broker-guard
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [serviceaccounts, serviceaccounts/token]
+      - apiGroups: [rbac.authorization.k8s.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [rolebindings, clusterrolebindings]
+      - apiGroups: [cilium.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [ciliumnetworkpolicies]
+  matchConditions:
+    - name: broker-identity
+      expression: request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-broker'
+  variables:
+    - name: grantName
+      expression: request.?name.orValue('').startsWith('grant-')
+    - name: catalog
+      expression: >-
+        ['dev-env-grant-workloads', 'dev-env-grant-storage', 'dev-env-grant-secrets-read',
+         'dev-env-grant-nodes', 'dev-env-grant-breakglass']
+    - name: binding
+      expression: request.resource.group == 'rbac.authorization.k8s.io'
+  validations:
+    # 1. Only its own grant objects, all named grant-<id> (D-54).
+    - expression: variables.grantName
+      messageExpression: >-
+        'dev-env-broker-guard: the broker may ' + request.operation + ' ' + request.resource.resource +
+        (request.?subResource.orValue('') == '' ? '' : '/' + request.subResource) +
+        ' only for its own grants, named grant-<id>; not ' + request.?name.orValue('<unnamed>')
+      reason: Forbidden
+    # 2. Grant identities and grant network policies live in dev-agents only.
+    - expression: >-
+        variables.binding || request.namespace == 'dev-agents'
+      messageExpression: >-
+        'dev-env-broker-guard: grant ServiceAccounts, tokens and network policies live in dev-agents, not ' +
+        request.namespace
+      reason: Forbidden
+    # 3. A binding never reaches the dev-env namespaces.
+    - expression: >-
+        !variables.binding || !(request.namespace in ['dev-env-system', 'dev-agents', 'dev-tools'])
+      messageExpression: >-
+        'dev-env-broker-guard: no grant binding in ' + request.namespace + ' (DESIGN-001 6.12)'
+      reason: Forbidden
+    # 4. A new binding binds one catalog ClusterRole to exactly its own grant identity.
+    - expression: >-
+        !variables.binding || request.operation == 'DELETE' || (
+          object.roleRef.kind == 'ClusterRole' && object.roleRef.name in variables.catalog &&
+          size(object.?subjects.orValue([])) == 1 &&
+          object.subjects[0].kind == 'ServiceAccount' &&
+          object.subjects[0].?namespace.orValue('') == 'dev-agents' &&
+          object.subjects[0].name == object.metadata.name)
+      messageExpression: >-
+        'dev-env-broker-guard: a grant binding binds one dev-env-grant-* ClusterRole to its own ServiceAccount,' +
+        ' dev-agents/' + request.?name.orValue('<unnamed>') + ', and nothing else'
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-broker-guard
+spec:
+  policyName: dev-env-broker-guard
+  validationActions: [Deny]

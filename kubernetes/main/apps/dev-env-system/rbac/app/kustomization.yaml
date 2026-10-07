@@ -8,6 +8,7 @@ resources:
   - ./operator.yaml
   - ./keeper.yaml
   - ./broker.yaml
+  - ./broker-guard.yaml
   - ./grant-catalog.yaml
   - ./v1-api-token.yaml
   - ./agent-guard.yaml
