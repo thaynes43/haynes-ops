@@ -39,7 +39,19 @@ jobs:
           load: true
           cache-from: type=gha,scope=blender-authoring-linux-amd64
           cache-to: type=gha,mode=max,scope=blender-authoring-linux-amd64
-          tags: ghcr.io/${{ github.repository_owner }}/blender-authoring:0.1.0
+          tags: ghcr.io/${{ github.repository_owner }}/blender-authoring:0.1.1
+      - name: Check the GPL notice and license texts are in the image
+        run: |
+          img=ghcr.io/${{ github.repository_owner }}/blender-authoring:0.1.1
+          docker run --rm --network none --entrypoint /bin/sh "$img" -c '
+            set -eu
+            d=/usr/share/doc/blender-authoring
+            ls -l "$d" "$d/blender-license"
+            grep -q "Blender 4.5.13" "$d/NOTICE"
+            grep -q "blender-4.5.13.tar.xz" "$d/NOTICE"
+            grep -rq "GNU GENERAL PUBLIC LICENSE" "$d/blender-license"
+            test -s "$d/blender-copyright.txt"
+            head -12 "$d/NOTICE"'
       - name: Smoke-test remote authoring without network or credentials
         timeout-minutes: 8
         run: |
@@ -49,7 +61,7 @@ jobs:
             --tmpfs /workspace:rw,uid=1000,gid=1000,size=1g \
             --user 1000:1000 \
             --entrypoint /opt/blender-authoring/blender-mcp/.venv/bin/python \
-            ghcr.io/${{ github.repository_owner }}/blender-authoring:0.1.0 \
+            ghcr.io/${{ github.repository_owner }}/blender-authoring:0.1.1 \
             /opt/blender-authoring/test-service.py
       - name: Log in to GitHub Container Registry
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -64,8 +76,8 @@ jobs:
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/blender-authoring
         run: |
-          docker push "${IMAGE}:0.1.0"
-          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:0.1.0")"
+          docker push "${IMAGE}:0.1.1"
+          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:0.1.1")"
           echo "digest=${digest#*@}" >> "$GITHUB_OUTPUT"
       - name: Install cosign
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

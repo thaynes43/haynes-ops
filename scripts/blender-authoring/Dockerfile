@@ -52,6 +52,28 @@ RUN git init /opt/blender-authoring/blender-mcp \
  && apt-get purge -y git curl \
  && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/*
+# GPL-2.0-or-later notice: Blender is bundled, so its license texts and the exact
+# source version ship in the image. NOTICE.in holds placeholders, filled from the
+# same ARGs that pick the downloads above, so the notice cannot drift from the
+# binaries. The build fails if the Blender tarball has no GPL text, or a
+# placeholder is left unfilled.
+COPY NOTICE.in /tmp/blender-notice/NOTICE.in
+RUN docdir=/usr/share/doc/blender-authoring \
+ && mkdir -p "${docdir}" \
+ && test -d /opt/blender/license \
+ && grep -rqs 'GNU GENERAL PUBLIC LICENSE' /opt/blender/license \
+ && ls -l /opt/blender/license /opt/blender/copyright.txt \
+ && cp -r /opt/blender/license "${docdir}/blender-license" \
+ && cp /opt/blender/copyright.txt "${docdir}/blender-copyright.txt" \
+ && sed -e "s|@BLENDER_VERSION@|${BLENDER_VERSION}|g" \
+        -e "s|@BLENDER_SERIES@|${BLENDER_SERIES}|g" \
+        -e "s|@BLENDER_MCP_REVISION@|${BLENDER_MCP_REVISION}|g" \
+        -e "s|@GLTF_TRANSFORM_VERSION@|${GLTF_TRANSFORM_VERSION}|g" \
+        -e "s|@GLTF_VALIDATOR_VERSION@|${GLTF_VALIDATOR_VERSION}|g" \
+        /tmp/blender-notice/NOTICE.in > "${docdir}/NOTICE" \
+ && ! grep -q '@[A-Z_]*@' "${docdir}/NOTICE" \
+ && chmod -R a+rX "${docdir}" \
+ && rm -rf /tmp/blender-notice
 COPY desktop.py bootstrap.py service.py test-service.py test-unit.py /opt/blender-authoring/
 RUN mkdir -p /workspace && chown 1000:1000 /workspace
 ENV HOME=/tmp/blender-home \

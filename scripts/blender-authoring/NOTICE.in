@@ -1,0 +1,33 @@
+ghcr.io/thaynes43/blender-authoring - license notice
+====================================================
+
+This image bundles Blender @BLENDER_VERSION@, which is free software licensed under
+the GNU General Public License, version 2 or later (GPL-2.0-or-later).
+
+  Project:        Blender
+  Version:        @BLENDER_VERSION@
+  Copyright:      the Blender Foundation and contributors
+  Source (exact): https://download.blender.org/source/blender-@BLENDER_VERSION@.tar.xz
+  Source (git):   https://projects.blender.org/blender/blender/src/tag/v@BLENDER_VERSION@
+  Binary used:    https://download.blender.org/release/Blender@BLENDER_SERIES@/blender-@BLENDER_VERSION@-linux-x64.tar.xz
+                  (official build, checked against Blender's published SHA-256)
+
+Blender is installed unmodified, from the official binary release, in /opt/blender.
+Its license texts and copyright notices are in /opt/blender/license and
+/opt/blender/copyright.txt, and copied to /usr/share/doc/blender-authoring/ in this
+image (blender-license/ and blender-copyright.txt). Blender also bundles third
+party libraries with their own licenses; those are listed in the same directory.
+
+Other works in the image, each under its own license:
+
+  Blender MCP   MIT. Source: https://github.com/ahujasid/blender-mcp at revision
+                @BLENDER_MCP_REVISION@ (license: /opt/blender-authoring/blender-mcp/LICENSE).
+  glTF Transform @GLTF_TRANSFORM_VERSION@ (MIT) and glTF Validator
+                @GLTF_VALIDATOR_VERSION@ (Apache-2.0), installed from npm.
+  Debian packages (including FFmpeg, which Debian builds under the GPL) and the
+                Node.js base image keep their copyright files under
+                /usr/share/doc/*/copyright. Source for the Debian packages is in the
+                Debian archive (deb-src), for the release of the base image.
+
+The image's own service scripts (service.py and others, in /opt/blender-authoring)
+are built from https://github.com/thaynes43/haynes-ops/tree/main/scripts/blender-authoring .

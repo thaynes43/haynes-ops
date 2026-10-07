@@ -39,7 +39,7 @@ env:
   # only our own scripts change; bump the version half by editing
   # scripts/comfyui/Dockerfile's COMFYUI_VERSION ARG (Renovate does that) and
   # then resetting the revision to 1.
-  IMAGE_TAG: 0.39.0-1
+  IMAGE_TAG: 0.39.0-2
 
 jobs:
   build-and-push-comfyui:
@@ -101,6 +101,16 @@ jobs:
         run: |
           docker images comfyui:test --format '{{.Repository}}:{{.Tag}}  {{.Size}}'
           df -h /
+
+      - name: Check the GPL notice and license text are in the image
+        run: |
+          docker run --rm --network none --entrypoint /bin/sh comfyui:test -c '
+            set -eu
+            d=/usr/share/doc/comfyui
+            ls -l "$d"
+            grep -q "GNU GENERAL PUBLIC LICENSE" "$d/LICENSE"
+            grep -q "ComfyUI $COMFYUI_VERSION" "$d/NOTICE"
+            head -12 "$d/NOTICE"'
 
       - name: Smoke-test on a read-only root filesystem, no network, no GPU, no models
         timeout-minutes: 25
