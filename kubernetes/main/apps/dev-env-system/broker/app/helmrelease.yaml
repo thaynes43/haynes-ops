@@ -28,7 +28,7 @@ spec:
       createDefaultServiceAccount: false
     controllers:
       dev-env-broker:
-        replicas: 2
+        replicas: 0
         strategy: RollingUpdate
         rollingUpdate:
           maxUnavailable: 0
@@ -36,7 +36,8 @@ spec:
         serviceAccount:
           name: dev-env-broker
         podDisruptionBudget:
-          minAvailable: 1
+          # Keep zero as a percentage: the chart omits a numeric zero as false.
+          minAvailable: "0%"
         pod:
           topologySpreadConstraints:
             - maxSkew: 1
