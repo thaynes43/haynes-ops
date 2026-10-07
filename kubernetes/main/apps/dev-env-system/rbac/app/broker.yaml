@@ -70,7 +70,7 @@ rules:
     verbs: [get, list, watch]
   # A kube grant's identity, grant-<id>, and its token: a TokenRequest with the grant's
   # TTL. Not bound to the session's pod: the API server refuses that for a pod that runs
-  # as another ServiceAccount, so deleting grant-<id> at the end is the revoke (D-58).
+  # as another ServiceAccount, so deleting grant-<id> at the end is the revoke (dev-env D-61).
   - apiGroups: [""]
     resources: [serviceaccounts]
     verbs: [get, list, watch, create, delete]
