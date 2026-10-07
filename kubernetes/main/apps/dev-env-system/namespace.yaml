@@ -1,0 +1,16 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev-env-system
+  labels:
+    # The operator and keeper hold the Claude Max login and the GitHub App keys, so
+    # this namespace gets the same tight boundary as upgrade-agent: Pod Security
+    # Admission "restricted". Their pods are non-root, read-only-rootfs, no caps.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    # Network policies select by this label (DESIGN-001 6.10).
+    dev-env.haynesops.com/role: system
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled

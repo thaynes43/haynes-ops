@@ -1,0 +1,18 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev-tools
+  labels:
+    # Empty until plan 08 (tool pods). Blender and audio authoring already run under
+    # "restricted" in the v1 dev namespace, so tool pods start with the same boundary;
+    # a pool that cannot meet it is a decision for that pool's PR.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    # Network policies select by this label (DESIGN-001 6.10, 8.1).
+    dev-env.haynesops.com/role: tools
+  annotations:
+    # Tool workspaces live here: a pruned namespace would take them with it
+    # (.agents/rules/flux-pvc-prune-safety.md).
+    kustomize.toolkit.fluxcd.io/prune: disabled
