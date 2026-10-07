@@ -33,6 +33,19 @@ home:
   storageClassName: gasha01-rbd
   size: 20Gi
 
+# D-09's timers (thaynes43/dev-env D-60, D-62), each optional with D-09's default.
+# The revision leaves them out, so a change here marks no session Outdated. A session's
+# own spec.lifecycle (agent-run --idle-suspend-after, --archive-after) overrides them.
+lifecycle:
+  # A task session that is not busy, once nothing has happened in it this long.
+  taskIdleSuspendAfter: 1h
+  # A local or remote session whose agent is idle, with no client attached.
+  idleSuspendAfter: 72h
+  # A suspended session's volume, after a valid rescue; the session stays Archived.
+  archiveAfter: 168h
+  # Rescue bundles on dev-env-shared (plan 02 step 11).
+  bundleRetention: 720h
+
 # The RWX claim every pod mounts at /home/dev/.shared (storage/app, claim dev-env-shared).
 sharedClaim: dev-env-shared
 
