@@ -1,6 +1,7 @@
 ---
-# The runtime is a private MCP service. Only dev-env may call it, and inference
-# is deliberately offline: model acquisition belongs to the provisioner below.
+# The runtime is a private MCP service. Only dev-env (v1) and the dev-agents session
+# pods (dev-env v2, KICKOFF 8.10) may call it, and inference is deliberately offline:
+# model acquisition belongs to the provisioner below.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -16,6 +17,8 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: dev
             app.kubernetes.io/name: dev-env
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-agents
       toPorts:
         - ports:
             - port: '8000'

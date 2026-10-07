@@ -8,10 +8,13 @@
 # and kubelet probes are always admitted from the local host. (Cilium reads an empty
 # rule `- {}` as "selects the pod, allows no peer", unlike a Kubernetes NetworkPolicy.)
 #
-# NOT here yet, on purpose (KICKOFF 8.10): the in-cluster MCP services (Home Assistant,
-# Grafana, UniFi, vexa, the haynesnetwork hop) and the authoring tool pods. Their own
-# policies admit only the v1 pod today, so both halves of each hop (this egress and
-# their ingress) land together in 8.10, not before.
+# The shared in-cluster MCP services and the authoring tool pods (D-14, KICKOFF 8.10) are
+# the last rules below. Ingress to ha-mcp, mcp-grafana, mcp-unifi and vexa is open in
+# the cluster today (they have no policy of their own), so only this egress half is
+# needed for them. The haynesnetwork hop and the audio and Blender services admit
+# their callers by label, so each of those policies also admits dev-agents (the
+# ingress half, same PR). Ports and labels are copied from the v1 pod's policy
+# (apps/dev/dev-env/app/networkpolicy.yaml).
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
@@ -59,4 +62,75 @@ spec:
       toPorts:
         - ports:
             - port: "8443"
+              protocol: TCP
+    # Shared MCP services (D-14), the same set and ports v1 reaches. Reached by service
+    # FQDN; DNS above allows every name.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: home-automation
+            app.kubernetes.io/name: ha-mcp
+      toPorts:
+        - ports:
+            - port: "8086"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: mcp-grafana
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: mcp-unifi
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: ai
+            app.kubernetes.io/instance: vexa
+            app.kubernetes.io/component: gateway
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    # The haynesnetwork Watch Companion hop (the hop injects the consumer token itself).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: frontend
+            app.kubernetes.io/name: haynesnetwork-mcp-hop
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    # Authoring services in dev (Blender x2, audio runtime; the audio provisioner is not
+    # a caller target). Each also admits dev-agents on its own side.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev
+            app.kubernetes.io/name: blender-authoring
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev
+            app.kubernetes.io/name: blender-authoring-2
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev
+            app.kubernetes.io/name: audio-authoring
+            app.kubernetes.io/component: runtime
+      toPorts:
+        - ports:
+            - port: "8000"
               protocol: TCP
