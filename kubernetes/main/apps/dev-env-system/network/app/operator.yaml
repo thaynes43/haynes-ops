@@ -7,7 +7,7 @@
 # its own policy carries the egress half, KICKOFF 8.9). The summoning callers in
 # upgrade-agent (3.7) are admitted when plan 10 moves summoning into the operator, and
 # the broker's console traffic has its own policy with the broker. The kubelet's probes
-# (8081) come from the host, which Cilium admits.
+# (8081) come from the host, which Cilium admits. Prometheus scrapes 8080 (D-56).
 # Egress: the API server, the keeper (8443) and api.pushover.net (the pages). Egress to
 # tool pods' health ports comes with plan 08, once a tool pod and its port exist.
 apiVersion: cilium.io/v2
@@ -30,6 +30,15 @@ spec:
       toPorts:
         - ports:
             - port: "8443"
+              protocol: TCP
+    # Prometheus scrapes the metrics port (thaynes43/dev-env D-56).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports:
+            - port: "8080"
               protocol: TCP
   egress:
     - toEntities:

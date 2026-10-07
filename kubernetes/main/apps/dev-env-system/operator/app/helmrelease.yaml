@@ -64,9 +64,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # thaynes43/dev-env main 06841c8 (publish.yml run 37687758669), signed
+              # thaynes43/dev-env main 6cd7adc (publish.yml run 37689914665), signed
               # keyless from main (Kyverno verify-dev-env-v2).
-              tag: sha-06841c8@sha256:2af3c516c1fefaef51082c1cb595cf49af10d062c2ed41b5d1e5d78ce4d37bb2
+              tag: sha-6cd7adc@sha256:60c1b7446ab77b0cc4cb1d1e0bb9f466f4b955e3d14ab430192f8d27cc34ce87
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -136,13 +136,31 @@ spec:
           type: RuntimeDefault
     service:
       # The /v1 API (D-46). Session pods, the v1 pod and the workbench call it by the
-      # Certificate's name, dev-env-operator.dev-env-system.svc.cluster.local.
+      # Certificate's name, dev-env-operator.dev-env-system.svc.cluster.local. The same
+      # Service carries the metrics port, so its name does not change.
       api:
         controller: dev-env-operator
         ports:
           https:
             port: 8443
             protocol: HTTPS
+          # controller-runtime's metrics, with the sessions' series (thaynes43/dev-env
+          # D-56): dev_env_session_rescue_failed and dev_env_sessions. Prometheus is
+          # the only caller (network/app/operator.yaml).
+          metrics:
+            port: 8080
+            protocol: HTTP
+    serviceMonitor:
+      # Both replicas are scraped; they report the same series from their caches, and
+      # the rules fold them with max (prometheusrule.yaml).
+      app:
+        serviceName: dev-env-operator
+        endpoints:
+          - port: metrics
+            scheme: http
+            path: /metrics
+            interval: 1m
+            scrapeTimeout: 10s
     persistence:
       # The API's serving certificate (dev-env-pki). A Secret volume, not a subPath, so
       # a renewal reaches the files and the operator reloads them (D-46).

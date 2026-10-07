@@ -1,0 +1,57 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+# dev-env v2's pages (thaynes43/dev-env DESIGN-001 D-10, D-56). Both are severity
+# critical, the one severity Alertmanager sends to Tom's phone by Pushover.
+#
+# DevEnvRescueFailed: a session's newest rescue failed (condition RescueFailed True).
+# D-10 keeps its volume and blocks archive until a human decides. The 20 minutes let
+# a hold pod's retry (D-55, every 15 minutes) clear a passing failure (CephFS or
+# GitHub down) without a page; keep_firing_for rides over a short scrape gap once the
+# page is out. Grouped by session only, so a retry that fails for a new reason does
+# not restart the 20 minutes.
+#
+# DevEnvOperatorMetricsAbsent: no replica reports dev_env_sessions. The operator is
+# down, or cannot list sessions (a failed list fails the whole scrape): no session
+# starts, no reap finishes, and DevEnvRescueFailed cannot see.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: dev-env-operator
+spec:
+  groups:
+    - name: dev-env-operator.rules
+      rules:
+        - alert: DevEnvRescueFailed
+          expr: max by (session) (dev_env_session_rescue_failed) > 0
+          for: 20m
+          keep_firing_for: 30m
+          labels:
+            severity: critical
+          annotations:
+            summary: >-
+              dev-env session {{ $labels.session }}: its rescue failed, so its volume is
+              kept and its archive is blocked (D-10).
+            description: >-
+              `agent-run show {{ $labels.session }}`, or `kubectl get agentsession -n
+              dev-agents {{ $labels.session }} -o yaml`, gives the RescueFailed reason
+              (WorktreeRefused, BundleFailed, FetchFailed, NotProven, ...). If the
+              session has a hold pod (D-55), the operator retries the rescue every 15
+              minutes, and a human can exec in to fix the worktree. The kept volume is
+              the point: never lift a finalizer or delete the volume or the session
+              without Tom's decision (D-45). An automated responder reports this and
+              changes nothing.
+        - alert: DevEnvOperatorMetricsAbsent
+          expr: absent(dev_env_sessions)
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: >-
+              The dev-env v2 operator reports no session metrics: it is down or cannot
+              list sessions.
+            description: >-
+              No dev-env-operator replica in dev-env-system served dev_env_sessions for
+              15 minutes. Until it does, no v2 session starts, no reap finishes, and
+              DevEnvRescueFailed is blind. Check `kubectl get pods -n dev-env-system -l
+              app.kubernetes.io/name=dev-env-operator` and their logs. Running
+              sessions are not affected (D-01).
