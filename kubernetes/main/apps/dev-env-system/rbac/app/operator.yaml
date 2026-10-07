@@ -38,10 +38,12 @@ rules:
   - apiGroups: ["", events.k8s.io]
     resources: [events]
     verbs: [create, patch]
-  # The expiry backstop for grant network policies (plan 07; only grants live here).
+  # The expiry backstop reads an ended AccessGrant's same-named policy, verifies its
+  # grant/session/manager labels, then deletes with a UID precondition (plan 07).
+  # Direct reads only: the operator never lists or watches network policies here.
   - apiGroups: [cilium.io]
     resources: [ciliumnetworkpolicies]
-    verbs: [delete]
+    verbs: [get, delete]
   # Its own CRD group. The /v1 API creates and deletes sessions; the reconciler patches
   # finalizers and writes status; finalizers update is for clusters that enforce
   # owner-reference permissions (D-44).
