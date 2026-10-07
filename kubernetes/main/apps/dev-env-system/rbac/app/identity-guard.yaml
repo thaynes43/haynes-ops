@@ -4,14 +4,17 @@
 # dev-agents except the workbench, that is the baseline agent dev-env-agent and every
 # grant-<id> ServiceAccount the broker creates (plan 07), break-glass included. It refuses:
 #   1. any write, delete, eviction, exec, attach or proxy in dev-env-system, dev-agents
-#      or dev-tools: inside them an agent acts only through the operator's /v1 API;
+#      or dev-tools: inside them an agent acts only through the operator's /v1 API; and
+#      exec or attach in a controller namespace (kube-system, kyverno, flux-system, ...);
 #   2. for grant identities, any write or exec in flux-system, kyverno,
 #      external-secrets and kube-system, the namespaces that enforce these rules;
 #      evictions there are allowed, so a node drain works. The baseline agent keeps v1's
 #      guarded actions there (dev-env-agent-guard);
 #   3. a pod, Job, CronJob or workload, created or with its pod spec changed, that runs
 #      as a ServiceAccount other than its namespace's `default` or one on the short list,
-#      or is privileged, or uses hostPath, host network, host PID or host IPC. An update
+#      or does not meet the Pod Security baseline (privileged, hostPath, host network,
+#      PID or IPC, hostPort, an added capability, an unsafe sysctl, Unconfined seccomp or
+#      AppArmor, an unmasked proc, a custom SELinux user, role or type). An update
 #      that leaves the pod spec alone (kubectl rollout restart) is not checked here;
 #   4. a create, or a pod-spec change, that adds a Secret reference the object did not
 #      already have, unless the Secret is on the short list;
@@ -55,6 +58,21 @@ spec:
       expression: "[]"
     - name: allowedSecrets
       expression: "['^[a-z0-9-]+/[a-z0-9-]+-volsync-aws-secret$']"
+    # Pod Security Standards "baseline", which these pods must meet whatever Kyverno's
+    # pod-security-baseline does (it fails open, and its exceptions match Job names an
+    # agent can choose, such as volsync-src-*).
+    - name: baselineCapabilities
+      expression: >-
+        ['AUDIT_WRITE', 'CHOWN', 'DAC_OVERRIDE', 'FOWNER', 'FSETID', 'KILL', 'MKNOD', 'NET_BIND_SERVICE',
+         'SETFCAP', 'SETGID', 'SETPCAP', 'SETUID', 'SYS_CHROOT']
+    - name: safeSysctls
+      expression: >-
+        ['kernel.shm_rmid_forced', 'net.ipv4.ip_local_port_range', 'net.ipv4.ip_unprivileged_port_start',
+         'net.ipv4.tcp_syncookies', 'net.ipv4.ping_group_range', 'net.ipv4.ip_local_reserved_ports',
+         'net.ipv4.tcp_keepalive_time', 'net.ipv4.tcp_fin_timeout', 'net.ipv4.tcp_keepalive_intvl',
+         'net.ipv4.tcp_keepalive_probes']
+    - name: seLinuxTypes
+      expression: "['', 'container_t', 'container_init_t', 'container_kvm_t', 'container_engine_t']"
     # ── Who and where ──
     - name: grant
       expression: request.userInfo.username.startsWith('system:serviceaccount:dev-agents:grant-')
@@ -68,6 +86,13 @@ spec:
     - name: targetNamespace
       expression: >-
         variables.group == '' && variables.resource == 'namespaces' ? request.?name.orValue('') : request.?namespace.orValue('')
+    # Namespaces where every pod is a privileged controller: no exec or attach (rule 1b).
+    # The ServiceAccount and privileged-pod half of the exec rule is the Kyverno policy
+    # dev-env-exec-guard, which can look the pod up.
+    - name: controllerNamespaces
+      expression: >-
+        ['kube-system', 'kyverno', 'flux-system', 'external-secrets', 'cert-manager', 'ceph-csi',
+         'openebs-system', 'volsync-system', 'k8tz']
     # ── Workloads (rules 3 and 4) ──
     - name: workload
       expression: >-
@@ -95,6 +120,35 @@ spec:
       expression: >-
         variables.oldPod.?containers.orValue([]) + variables.oldPod.?initContainers.orValue([]) +
         variables.oldPod.?ephemeralContainers.orValue([])
+    - name: newPodMeta
+      expression: >-
+        variables.resource == 'pods' ? object.metadata :
+        variables.resource == 'cronjobs' ? object.spec.jobTemplate.spec.template.?metadata.orValue({}) :
+        object.spec.?template.?metadata.orValue({})
+    - name: podViolations
+      expression: >-
+        (variables.newPod.?hostNetwork.orValue(false) ? ['host network'] : []) +
+        (variables.newPod.?hostPID.orValue(false) ? ['host PID'] : []) +
+        (variables.newPod.?hostIPC.orValue(false) ? ['host IPC'] : []) +
+        (variables.newPod.?volumes.orValue([]).exists(v, has(v.hostPath)) ? ['a hostPath volume'] : []) +
+        (variables.newPod.?securityContext.?sysctls.orValue([]).exists(s, !(s.name in variables.safeSysctls)) ? ['an unsafe sysctl'] : []) +
+        ([variables.newPod.?securityContext.orValue({})].exists(sc,
+           sc.?seccompProfile.?type.orValue('') == 'Unconfined' || sc.?appArmorProfile.?type.orValue('') == 'Unconfined' ||
+           sc.?windowsOptions.?hostProcess.orValue(false) ||
+           !(sc.?seLinuxOptions.?type.orValue('') in variables.seLinuxTypes) ||
+           sc.?seLinuxOptions.?user.orValue('') != '' || sc.?seLinuxOptions.?role.orValue('') != '') ? ['an unconfined pod securityContext'] : []) +
+        (variables.newContainers.exists(c, c.?securityContext.?privileged.orValue(false)) ? ['a privileged container'] : []) +
+        (variables.newContainers.exists(c, c.?securityContext.?capabilities.?add.orValue([]).exists(a, !(a in variables.baselineCapabilities))) ?
+          ['an added capability outside the baseline set'] : []) +
+        (variables.newContainers.exists(c, [c.?securityContext.orValue({})].exists(sc,
+           sc.?seccompProfile.?type.orValue('') == 'Unconfined' || sc.?appArmorProfile.?type.orValue('') == 'Unconfined' ||
+           sc.?procMount.orValue('Default') != 'Default' || sc.?windowsOptions.?hostProcess.orValue(false) ||
+           !(sc.?seLinuxOptions.?type.orValue('') in variables.seLinuxTypes) ||
+           sc.?seLinuxOptions.?user.orValue('') != '' || sc.?seLinuxOptions.?role.orValue('') != '')) ?
+          ['an unconfined container securityContext'] : []) +
+        (variables.newContainers.exists(c, c.?ports.orValue([]).exists(p, p.?hostPort.orValue(0) != 0)) ? ['a hostPort'] : []) +
+        (variables.newPodMeta.?annotations.orValue({}).exists(k, k.startsWith('container.apparmor.security.beta.kubernetes.io/') &&
+           variables.newPodMeta.annotations[k] == 'unconfined') ? ['an unconfined AppArmor annotation'] : [])
     - name: newSecrets
       expression: >-
         (variables.newPod.?volumes.orValue([]).map(v,
@@ -160,6 +214,16 @@ spec:
         variables.resource + (variables.subresource == '' ? '' : '/' + variables.subresource) + ' in ' + variables.targetNamespace +
         ': inside the dev-env namespaces an agent acts only through the operator API, agent-run (DESIGN-001 6.11, D-19)'
       reason: Forbidden
+    # 1b. No exec or attach into a controller namespace. Kyverno never sees kube-system or
+    # kyverno (its resourceFilters and webhook namespaceSelector skip them), so this part
+    # of the exec rule lives here, where the API server applies it to CONNECT itself.
+    - expression: >-
+        !(request.operation == 'CONNECT' && variables.group == '' && variables.resource == 'pods' &&
+          variables.subresource in ['exec', 'attach'] && variables.targetNamespace in variables.controllerNamespaces)
+      messageExpression: >-
+        'dev-env-identity-guard: a dev-env agent may not exec into pods in ' + variables.targetNamespace +
+        ', where every pod is a privileged controller (DESIGN-001 D-19)'
+      reason: Forbidden
     # 2. Grants stay out of the namespaces that enforce these rules; evictions excepted.
     - expression: >-
         !variables.grant ||
@@ -181,15 +245,10 @@ spec:
         variables.newPod.?serviceAccountName.orValue(variables.newPod.?serviceAccount.orValue('')) +
         ' (haynes-ops #3392, DESIGN-001 D-19)'
       reason: Forbidden
-    - expression: >-
-        !variables.workload || !variables.podChanged ||
-        (!variables.newPod.?hostNetwork.orValue(false) && !variables.newPod.?hostPID.orValue(false) &&
-         !variables.newPod.?hostIPC.orValue(false) &&
-         !variables.newPod.?volumes.orValue([]).exists(v, has(v.hostPath)) &&
-         !variables.newContainers.exists(c, c.?securityContext.?privileged.orValue(false)))
-      message: >-
-        dev-env-identity-guard: a pod a dev-env agent creates or changes is not privileged and uses no
-        hostPath, host network, host PID or host IPC (DESIGN-001 D-19)
+    - expression: "!variables.workload || !variables.podChanged || size(variables.podViolations) == 0"
+      messageExpression: >-
+        'dev-env-identity-guard: a pod a dev-env agent creates or changes meets the Pod Security baseline; refused for ' +
+        variables.podViolations.join(', ') + ' (DESIGN-001 D-19)'
       reason: Forbidden
     # 4. No new Secret reference.
     - expression: "!variables.workload || !variables.podChanged || size(variables.addedSecrets) == 0"

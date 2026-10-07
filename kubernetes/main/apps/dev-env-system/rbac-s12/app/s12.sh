@@ -75,13 +75,16 @@ PVC=${PVC:-$($K get pvc -n database -o jsonpath='{range .items[*]}database/{.met
 HEADLAMP=${HEADLAMP:-$($K get pods -n frontend -o jsonpath='{range .items[?(@.spec.serviceAccountName=="headlamp")]}frontend/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
 HOSTPID=${HOSTPID:-$($K get pods -n observability -o jsonpath='{range .items[?(@.spec.hostPID==true)]}observability/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
 FLUXPOD=${FLUXPOD:-$($K get pods -n flux-system -o jsonpath='{range .items[*]}flux-system/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
+KYVERNOPOD=${KYVERNOPOD:-$($K get pods -n kyverno -o jsonpath='{range .items[*]}kyverno/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
+KSYSPOD=${KSYSPOD:-$($K get pods -n kube-system -l k8s-app=kube-dns -o jsonpath='{range .items[*]}kube-system/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
+OPSPOD=${OPSPOD:-$($K get pods -n upgrade-agent -o jsonpath='{range .items[?(@.spec.serviceAccountName=="dev-env-ops")]}upgrade-agent/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
 TOOLS=${TOOLS:-$($K get pods -n rook-ceph -l app=rook-ceph-tools -o jsonpath='{range .items[*]}rook-ceph/{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)}
 PROM=${PROM:-/api/v1/namespaces/observability/services/http:kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=up}
 ns() { echo "${1%%/*}"; }
 nm() { echo "${1#*/}"; }
 
 echo "S-12 as $($K auth whoami -o jsonpath='{.status.userInfo.username}' 2>/dev/null) at $(date -u +%FT%TZ)"
-echo "targets: deploy=$DEPLOY sts=$STS ds=$DS cron=$CRON ks=$KS hr=$HR git=$GITREPO es=$ES volsync=$RS pvc=$PVC headlamp=$HEADLAMP hostpid=$HOSTPID flux=$FLUXPOD tools=$TOOLS self=$SELF_NS/$SELF_POD"
+echo "targets: deploy=$DEPLOY sts=$STS ds=$DS cron=$CRON ks=$KS hr=$HR git=$GITREPO es=$ES volsync=$RS pvc=$PVC headlamp=$HEADLAMP hostpid=$HOSTPID flux=$FLUXPOD kyverno=$KYVERNOPOD kube-system=$KSYSPOD ops=$OPSPOD tools=$TOOLS self=$SELF_NS/$SELF_POD"
 
 echo "── haynes-ops #3392 paths: each must be refused ──"
 check refused P1 "Job as another ServiceAccount (frontend/headlamp)" \
@@ -96,6 +99,11 @@ check refused P2d "hostPath Job" \
   create_job "$(ns "$RS")" s12-hostpath ',"volumes":[{"name":"h","hostPath":{"path":"/"}}]' ''
 check refused P2e "host-PID Job" \
   create_job "$(ns "$RS")" s12-hostpid ',"hostPID":true' ''
+check refused P2f "volsync-named Job with SYS_ADMIN and Unconfined seccomp (Kyverno PSS exempts the name)" \
+  create_job "$(ns "$RS")" volsync-src-s12 ',"securityContext":{"seccompProfile":{"type":"Unconfined"}}' \
+  ',"securityContext":{"capabilities":{"add":["SYS_ADMIN","DAC_READ_SEARCH"]}}'
+check refused P2g "Job with a hostPort" \
+  create_job "$(ns "$RS")" s12-hostport '' ',"ports":[{"containerPort":8080,"hostPort":18080}]'
 check refused P3 "Deployment image patch ($DEPLOY)" \
   $K -n "$(ns "$DEPLOY")" patch deployment "$(nm "$DEPLOY")" --dry-run=server --type=json \
   -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"docker.io/library/busybox:1.37"}]'
@@ -130,6 +138,12 @@ check refused P5b "exec into a host-PID pod ($HOSTPID)" \
   $K -n "$(ns "$HOSTPID")" exec "$(nm "$HOSTPID")" -- true
 check refused P5c "exec into a flux-system pod ($FLUXPOD)" \
   $K -n "$(ns "$FLUXPOD")" exec "$(nm "$FLUXPOD")" -- true
+check refused P5d "exec into a kyverno pod ($KYVERNOPOD; Kyverno never sees its own namespace)" \
+  $K -n "$(ns "$KYVERNOPOD")" exec "$(nm "$KYVERNOPOD")" -- true
+check refused P5e "exec into a kube-system pod ($KSYSPOD)" \
+  $K -n "$(ns "$KSYSPOD")" exec "$(nm "$KSYSPOD")" -- true
+check refused P5f "exec into the v1 dev-env-ops pod ($OPSPOD, v1 OPERATOR tier)" \
+  $K -n "$(ns "$OPSPOD")" exec "$(nm "$OPSPOD")" -- true
 
 echo "── the dev-env namespaces: each must be refused ──"
 check refused N1 "exec into a dev-agents pod (own pod; the VAP on CONNECT)" \

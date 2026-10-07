@@ -8,14 +8,18 @@
 # pod, which is root on its node.
 #
 # Kyverno, not the ValidatingAdmissionPolicy guards in apps/dev-env-system/rbac: the rule
-# needs the target pod, and only Kyverno's resource.Get can look it up at admission. The
-# VAP identity guard already refuses exec in the three dev-env namespaces.
+# needs the target pod, and only Kyverno's resource.Get can look it up at admission.
+# Namespaces where every pod is a privileged controller (kube-system, kyverno, flux-system,
+# external-secrets, ...) and the three dev-env namespaces are refused by the VAP
+# dev-env-identity-guard instead: Kyverno never sees kube-system or kyverno at all (its
+# resourceFilters and webhook namespaceSelector skip them), and the VAP needs no lookup.
 #
-# THE PRIVILEGED LIST below is the one place to add a new powerful ServiceAccount: any
-# ServiceAccount bound cluster-wide to cluster-admin, a wildcard write, Secret read,
-# serviceaccounts/token, pod create, nodes/proxy or escalate/bind/impersonate, and any
-# pod holding v1's unguarded OPERATOR tier. Whole namespaces are listed where every pod is
-# such a controller. Built from the cluster's ClusterRoleBindings on 2026-10-06.
+# THE PRIVILEGED LIST below is the one place to add a new powerful ServiceAccount outside
+# those namespaces: any ServiceAccount bound cluster-wide to cluster-admin, a wildcard
+# write, Secret read, serviceaccounts/token, pod create, nodes/proxy or
+# escalate/bind/impersonate, and any pod holding v1's unguarded OPERATOR tier. Built from
+# the cluster's ClusterRoleBindings on 2026-10-06. A new controller namespace goes in the
+# identity guard's controllerNamespaces.
 #
 # Matched by username to every dev-agents identity but the workbench (the same identities
 # as dev-env-identity-guard). failurePolicy Fail: Kyverno 1.19 copies a CEL policy's
@@ -33,7 +37,7 @@ metadata:
     policies.kyverno.io/subject: Pod
     policies.kyverno.io/description: >-
       Refuses exec and attach by a dev-env v2 agent into a pod that runs as a privileged
-      ServiceAccount, sits in a controller namespace, or is privileged or host-PID.
+      ServiceAccount, or is privileged or host-PID.
 spec:
   failurePolicy: Fail
   validationActions:
@@ -53,12 +57,7 @@ spec:
         request.userInfo.username.startsWith('system:serviceaccount:dev-agents:') &&
         request.userInfo.username != 'system:serviceaccount:dev-agents:dev-env-workbench'
   variables:
-    # Namespaces where every pod is a privileged controller.
-    - name: privilegedNamespaces
-      expression: >-
-        ['kube-system', 'flux-system', 'kyverno', 'external-secrets', 'cert-manager', 'ceph-csi',
-         'openebs-system', 'volsync-system', 'k8tz', 'dev-env-system', 'dev-agents', 'dev-tools']
-    # ServiceAccounts, '<namespace>/<name>', elsewhere.
+    # ServiceAccounts, '<namespace>/<name>', outside the controller namespaces.
     - name: privilegedServiceAccounts
       expression: >-
         ['frontend/headlamp',
@@ -78,10 +77,6 @@ spec:
       expression: >-
         request.namespace + '/' + variables.pod.spec.?serviceAccountName.orValue('default')
   validations:
-    - expression: "!(request.namespace in variables.privilegedNamespaces)"
-      messageExpression: >-
-        'dev-env-exec-guard: a dev-env agent may not exec into pods in ' + request.namespace +
-        ', where every pod is a privileged controller (DESIGN-001 D-19)'
     - expression: "!(variables.serviceAccount in variables.privilegedServiceAccounts)"
       messageExpression: >-
         'dev-env-exec-guard: a dev-env agent may not exec into ' + request.name + ', which runs as the privileged ServiceAccount ' +
