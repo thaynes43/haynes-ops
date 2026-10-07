@@ -31,6 +31,13 @@ spec:
       # option is dropped here — re-add via the ceph-csi-operator Driver CR if needed.
       serviceMonitor:
         enabled: true
+      # v1.21 renders ROOK_CREATE_CSI_OPERATOR_RESOURCES from this key but the chart's
+      # values.yaml never defines it, so it renders as null. If that lands in the
+      # operator ConfigMap as "", Rook reads the setting as disabled and DELETES the
+      # rook-ceph CephConnection + ClientProfile (pkg/operator/ceph/cluster/mon/mon.go)
+      # — every StorageClass clusterID, i.e. new provisioning and mounts. Pin the code
+      # default explicitly. Inert on charts < v1.21 (no template references it).
+      createCsiOperatorResources: true
     enableDiscoveryDaemon: true
     # #3389: rook-discover DaemonSet requests, sized from Prometheus (7d p95,
     # 30d peak); no CPU limit. The operator parses this string as YAML.
