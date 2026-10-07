@@ -57,17 +57,26 @@ mounts:
 claude:
   staticToken: { name: dev-env-claude-secret, key: CLAUDE_CODE_OAUTH_TOKEN }
 
-# D-18. Every Secret named below is created by 8.8 (ExternalSecrets and the empty
-# keeper-owned ones). dev-env-mcp-secret must hold v1's MCP tokens WITHOUT the Proxmox
+# D-18. `full` and `dev` carry the cigar-journal MCP token as `ops` does (mcp.json's
+# ${CIGAR_JOURNAL_TOKEN}, from its own Secret dev-env-cigar-secret, not dev-env-mcp-secret),
+# so no profile that gets mcp.json renders a broken Authorization header.
+# Every Secret named below is created by 8.8 (ExternalSecrets and the empty keeper-owned
+# ones). dev-env-mcp-secret must hold v1's MCP tokens WITHOUT the Proxmox
 # operator token and the hw-ssh key (Q-07: those come only as grants).
 defaultProfile: full
 profiles:
   full:
+    env:
+      - name: CIGAR_JOURNAL_TOKEN
+        valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
     envFrom:
       - secretRef: { name: dev-env-mcp-secret }
     mounts:
       - { name: gh-token, secret: dev-env-gh-token, path: /creds }
   dev:
+    env:
+      - name: CIGAR_JOURNAL_TOKEN
+        valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
     envFrom:
       - secretRef: { name: dev-env-mcp-secret }
     mounts:
