@@ -1,0 +1,30 @@
+[
+  {
+    "family": "audio-authoring",
+    "digest": "sha256:1c2df391468aa60e7fcce9a55c4018218054808d134490c6b89daede813c73b4"
+  },
+  {
+    "family": "blender-authoring",
+    "digest": "sha256:c626b9ac4efa241172929e3646f30be58cec35d4e6d460979b02d1f6a870257d"
+  },
+  {
+    "family": "dev-env",
+    "digest": "sha256:f4f344e09258d0355cb1ed67ce08cacafd45905f459341516c298dad386d9b03"
+  },
+  {
+    "family": "comfyui",
+    "digest": "sha256:9f204214c42785384c0fd5b3859696abb87810983055189c8956bc9f86565e5d"
+  },
+  {
+    "family": "upgrade-agent",
+    "digest": "sha256:7afebafe4ecb7d77352ece3c1fbd8f341f7bdcb41163f7e22a25a6e53ac6683e"
+  },
+  {
+    "family": "upgrade-shepherd",
+    "digest": "sha256:918ccbedb5a9766a84d78096a9bd56ecf3b9905da3913337c337dce3a2aeb598"
+  },
+  {
+    "family": "wyoming-whisper-gpu",
+    "digest": "sha256:df5a6e2caccfd347807d0fc5714d7ad2cf25c2b833fceeae26fc614d0304def0"
+  }
+]
