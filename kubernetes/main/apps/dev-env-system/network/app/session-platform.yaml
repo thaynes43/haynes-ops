@@ -1,0 +1,62 @@
+---
+# Platform tier (DESIGN-001 D-24): what EVERY session pod in dev-agents may reach, whatever
+# its profile. It also makes every session pod default-deny, in both directions, the
+# moment it exists: a pod selected by any policy with an `egress` or `ingress` section
+# is closed to everything not allowed by some policy.
+#
+# Ingress: none. `kubectl exec` and attach go through the kubelet, not the pod network,
+# and kubelet probes are always admitted from the local host. (Cilium reads an empty
+# rule `- {}` as "selects the pod, allows no peer", unlike a Kubernetes NetworkPolicy.)
+#
+# NOT here yet, on purpose (KICKOFF 8.10): the in-cluster MCP services (Home Assistant,
+# Grafana, UniFi, vexa, the haynesnetwork hop) and the authoring tool pods. Their own
+# policies admit only the v1 pod today, so both halves of each hop (this egress and
+# their ingress) land together in 8.10, not before.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: dev-env-session-platform
+spec:
+  description: dev-env v2 session pods, platform tier (default-deny, DNS, API server, operator API)
+  endpointSelector:
+    matchLabels:
+      io.kubernetes.pod.namespace: dev-agents
+  ingress:
+    - {}
+  egress:
+    # DNS through CoreDNS. The `*` DNS rule routes lookups through Cilium's DNS proxy,
+    # which is what lets Hubble record each pod's lookups (6.10's audit trail) and lets
+    # any toFQDNs grant resolve. It allows every name, and the web tier below allows
+    # every public address, so this filters nothing the web tier does not already allow.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+    # Kubernetes API server, in-cluster kubectl via kubernetes.default.svc (same pair of
+    # ports as the v1 policy: the Service port and the node's real one).
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # The operator's /v1 API (heartbeats, the agent-run client). The operator
+    # HelmRelease (8.9) must label its pods app.kubernetes.io/name: dev-env-operator
+    # (the app-template default for a release of that name does).
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-operator
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP

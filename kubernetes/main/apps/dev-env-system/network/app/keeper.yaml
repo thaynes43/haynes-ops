@@ -1,0 +1,54 @@
+---
+# The keeper (DESIGN-001 6.10), the one holder of the rotating credentials and the
+# GitHub App keys. Pods carry app.kubernetes.io/name: dev-env-keeper (the keeper
+# HelmRelease, 8.9, must keep that label). Nothing outside this list is reachable.
+#
+# Ingress: 8443 from the operator only (the login ceremony, status, archive). The
+# broker joins when it exists.
+# Egress, by exact name:
+#   api.github.com        mint installation tokens for the dev bot
+#   api.anthropic.com     the plan-usage read (spike S-16) and the profile fetch
+#   platform.claude.com   the Claude OAuth token endpoint (refresh)
+#   console.anthropic.com the Claude token endpoint's older host, still used by some CLI releases
+#   auth.openai.com       the Codex token endpoint (refresh)
+#   api.pushover.net      credential-expiry pages
+# If the keeper needs a host this list lacks, Hubble shows the drop; add it here by PR.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-keeper
+  namespace: dev-env-system
+spec:
+  description: dev-env v2 keeper, operator-only ingress and a short list of credential endpoints
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-keeper
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-operator
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    - toFQDNs:
+        - matchName: api.github.com
+        - matchName: api.anthropic.com
+        - matchName: platform.claude.com
+        - matchName: console.anthropic.com
+        - matchName: auth.openai.com
+        - matchName: api.pushover.net
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

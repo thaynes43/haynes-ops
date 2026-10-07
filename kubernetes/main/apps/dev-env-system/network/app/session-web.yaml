@@ -1,0 +1,53 @@
+---
+# Web tier (DESIGN-001 D-24): TCP 80 and 443 to any PUBLIC address, for every session
+# pod except profile `ops` (its pods carry dev-env.haynesops.com/egress: ops, set by
+# the profile in dev-env-templates, and get the ops tier instead when summoned
+# sessions arrive). Until that tier exists an `ops` pod has only the platform tier.
+#
+# Cilium's `world` entity is not used: it includes the LAN. A CIDR set excepts every
+# range that is not the public internet, so a session cannot reach the LAN
+# (192.168.0.0/16, which holds the nodes, the NAS and the Proxmox hosts) or any
+# in-cluster address. (In-cluster pods and nodes are matched by identity, not by CIDR,
+# so the excepts are a second fence there.)
+#   10.42.0.0/16  pod CIDR     10.43.0.0/16  service CIDR     both inside 10.0.0.0/8
+#
+# IPv4 only: the cluster runs with IPv6 off (cilium-config enable-ipv6 "false"), so
+# DESIGN-001's `::/0` entry has no traffic to match. Add it with the first IPv6 pod.
+#
+# Go module proxy and checksum DB (proxy.golang.org, sum.golang.org), which v1 needed,
+# are public hosts on 443 and need no entry of their own here.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: dev-env-session-web
+spec:
+  description: dev-env v2 session pods, web tier (TCP 80/443 to public addresses)
+  endpointSelector:
+    matchLabels:
+      io.kubernetes.pod.namespace: dev-agents
+    matchExpressions:
+      - key: dev-env.haynesops.com/egress
+        operator: NotIn
+        values:
+          - ops
+  egress:
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 0.0.0.0/8
+            - 10.0.0.0/8
+            - 100.64.0.0/10
+            - 127.0.0.0/8
+            - 169.254.0.0/16
+            - 172.16.0.0/12
+            - 192.0.0.0/24
+            - 192.168.0.0/16
+            - 198.18.0.0/15
+            - 224.0.0.0/4
+            - 240.0.0.0/4
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP

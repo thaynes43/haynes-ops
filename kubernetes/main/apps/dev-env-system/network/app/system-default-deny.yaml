@@ -1,0 +1,27 @@
+---
+# Every pod in dev-env-system (operator, keeper, and the broker when it arrives) is
+# default-deny with DNS only. The `*` DNS rule is also what lets the toFQDNs rules in
+# keeper.yaml and operator.yaml resolve: Cilium only learns a name's addresses from
+# lookups that pass its DNS proxy. Each component's own policy adds its allows.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-system-default-deny
+  namespace: dev-env-system
+spec:
+  description: dev-env v2 control plane, default-deny with DNS only
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
