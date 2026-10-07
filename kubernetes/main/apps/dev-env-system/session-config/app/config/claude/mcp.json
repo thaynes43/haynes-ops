@@ -1,0 +1,60 @@
+{
+  "mcpServers": {
+    "home-assistant": {
+      "type": "http",
+      "url": "http://ha-mcp.home-automation.svc.cluster.local:8086${HA_MCP_SECRET_PATH}"
+    },
+    "grafana-mcp": {
+      "type": "http",
+      "url": "http://mcp-grafana.observability.svc.cluster.local:8000/mcp"
+    },
+    "mcp-unifi": {
+      "type": "http",
+      "url": "http://mcp-unifi.observability.svc.cluster.local:3000/mcp"
+    },
+    "playwright": {
+      "command": "playwright-mcp",
+      "args": [
+        "--browser",
+        "chromium",
+        "--headless"
+      ]
+    },
+    "outline": {
+      "command": "uvx",
+      "args": [
+        "mcp-outline"
+      ],
+      "env": {
+        "OUTLINE_API_KEY": "${OUTLINE_API_KEY}",
+        "OUTLINE_API_URL": "https://wiki.sigoalumni.org/api"
+      }
+    },
+    "vexa": {
+      "type": "http",
+      "url": "http://vexa-vexa-gateway.ai.svc.cluster.local:8000/mcp",
+      "headers": {
+        "X-API-Key": "${VEXA_API_KEY}"
+      }
+    },
+    "cigar-journal": {
+      "type": "http",
+      "url": "https://cigars.haynesnetwork.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${CIGAR_JOURNAL_TOKEN}"
+      }
+    },
+    "haynesnetwork": {
+      "type": "http",
+      "url": "http://haynesnetwork-mcp-hop.frontend.svc.cluster.local:8080/mcp"
+    },
+    "blender": {
+      "type": "http",
+      "url": "http://blender-authoring.dev.svc.cluster.local:8000/mcp"
+    },
+    "audio": {
+      "type": "http",
+      "url": "http://audio-authoring.dev.svc.cluster.local:8000/mcp"
+    }
+  }
+}

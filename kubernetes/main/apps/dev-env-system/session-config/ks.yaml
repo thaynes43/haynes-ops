@@ -1,0 +1,24 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# The v2 session config in dev-agents (DESIGN-001 D-49, KICKOFF 8.8a): the ConfigMaps
+# that dev-env-templates mounts into every session pod. No Reloader and no restart hook:
+# nothing restarts when they change (see app/kustomization.yaml).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-session-config
+  namespace: dev-env-system
+spec:
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  path: ./kubernetes/main/apps/dev-env-system/session-config/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
+  # NO postBuild.substitute: mcp.json's ${VAR} placeholders must reach agentd as written.

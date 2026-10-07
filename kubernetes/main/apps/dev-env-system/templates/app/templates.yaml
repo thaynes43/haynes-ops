@@ -41,14 +41,16 @@ env:
   # The pod-wide Claude default (Opus 5.5). Full model ids, never aliases.
   - { name: DEV_ENV_CLAUDE_MODEL, value: claude-opus-5-5 }
 
-# The GitOps config agentd renders, in v1's layout (D-14). NOT YET CREATED in dev-agents:
-# these three ConfigMaps (v1 builds them in namespace dev from apps/dev/dev-env/app/resources/**,
-# which this work does not touch) need a v2 source before the first session starts, or its
-# pod waits in ContainerCreating on the missing ConfigMap. No KICKOFF 8.x item owns them yet.
+# The GitOps config agentd renders, in v1's layout (D-14, D-49). The four ConfigMaps are
+# built in dev-agents by ../../session-config (KICKOFF 8.8a), as v2 copies of v1's files.
+# A pod waits in ContainerCreating until all four exist. codex-requirements is Codex's
+# admin floor (approval never, sandbox danger-full-access; D-23) at the system path Codex
+# reads; every pod gets it, because every image carries Codex.
 mounts:
   - { name: config-claude, configMap: dev-env-config-claude, path: /opt/dev-env/config/claude }
   - { name: config-codex, configMap: dev-env-config-codex, path: /opt/dev-env/config/codex }
   - { name: scripts, configMap: dev-env-scripts, path: /opt/dev-env/scripts, defaultMode: 0555 }
+  - { name: codex-requirements, configMap: dev-env-codex-requirements, path: /etc/codex }
 
 # The static Claude token (6.1), for task and local sessions only. The Secret is an
 # ExternalSecret in dev-agents (KICKOFF 8.8).

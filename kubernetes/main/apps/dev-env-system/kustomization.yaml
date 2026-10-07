@@ -11,3 +11,4 @@ resources:
   - ./scheduling/ks.yaml
   - ./templates/ks.yaml
   - ./storage/ks.yaml
+  - ./session-config/ks.yaml

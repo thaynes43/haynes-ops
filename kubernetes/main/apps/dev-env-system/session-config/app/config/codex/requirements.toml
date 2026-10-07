@@ -1,0 +1,32 @@
+# Codex ADMIN REQUIREMENTS for dev-env v2 session pods (DESIGN-001 D-49): the one
+# config layer a client cannot override. dev-env-templates mounts this ConfigMap
+# (dev-env-codex-requirements) at /etc/codex in every session pod. That is the system
+# path Codex reads on Linux: CODEX_HOME/requirements.toml is NOT read (verified in v1,
+# 2026-09-10), and no variable moves the system directory. A directory mount, not v1's
+# subPath, so a change here reaches running pods.
+#
+# Why (Tom, 2026-09-10: "supposed to be yolo mode … approval requests constantly"):
+# the pod IS the sandbox (D-23). bubblewrap cannot create user namespaces in a session
+# pod (RuntimeDefault seccomp, no capabilities, no privilege escalation: the v1 pod's
+# settings, where `codex sandbox linux -- true` still failed on 2026-10-06), so a
+# workspace-write sandbox fails on EVERY command and codex escalates each one to an
+# approval. config.toml's `approval_policy = "never"` + `sandbox_mode =
+# "danger-full-access"` are only host DEFAULTS: the ChatGPT phone app sends its own
+# thread settings at thread/start (on-request / workspace-write / effort high) AND
+# writes them back into ~/.codex/config.toml (observed in v1 at 11:00:08, the second
+# Tom's thread started). Requirements are applied by the local runtime at
+# session init ("disallowed by requirements; falling back to required value"), so a
+# phone thread that asks for on-request/workspace-write runs as never/full-access.
+#
+# Validate on the codex hub's first phone thread (plan 04): in the newest
+# ~/.codex/sessions/**/rollout-*.jsonl the turn_context must show approval_policy
+# "never" + sandbox_policy danger-full-access, and ~/.codex/logs_2.sqlite should carry
+# a "disallowed by requirements" line.
+allowed_approval_policies = ["never"]
+# "read-only" MUST be in the set: codex 0.153.4 refuses to load its config otherwise
+# ("invalid value for `allowed_sandbox_modes`: `[DangerFullAccess]` is not in the
+# allowed set must include 'read-only' to allow any PermissionProfile") — which is why
+# `codex remote-control start` died at every boot on 2026-09-10 and the phone showed
+# nothing. Listing it does not weaken the floor: approval stays "never" and every
+# thread still defaults to danger-full-access from config.toml.
+allowed_sandbox_modes = ["read-only", "danger-full-access"]
