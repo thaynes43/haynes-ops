@@ -22,9 +22,13 @@ sizes:
   M:
     requests: { cpu: 250m, memory: 2Gi }
     limits: { cpu: "4", memory: 8Gi }
+  # TEMPORARY (2026-10-07, thaynes43/dev-env plan 01 acceptance): no node has 100Ti of
+  # ephemeral storage, so a size L session cannot fit and must stay Pending with the
+  # scheduler's reason. The next PR restores L to { cpu: "1", memory: 6Gi } /
+  # { cpu: "8", memory: 24Gi } as soon as the check has run.
   L:
-    requests: { cpu: "1", memory: 6Gi }
-    limits: { cpu: "8", memory: 24Gi }
+    requests: { cpu: "1", memory: 6Gi, ephemeral-storage: 100Ti }
+    limits: { cpu: "8", memory: 24Gi, ephemeral-storage: 100Ti }
 
 # D-22 (Q-05): one RWO volume per session on gasha01-rbd, so agent disk load stays off the
 # in-cluster OSDs on the control-plane nodes. If spike S-8 shows size L slower than twice
