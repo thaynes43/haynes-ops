@@ -1,0 +1,26 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# Temporary bounded verification: install with broker replicas=2, test the operator
+# expiry backstop with broker replicas=0, then restore=2 and remove this app/wiring.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: plan07-broker-smoke
+  namespace: dev-env-system
+  annotations:
+    dev-env.haynesops.com/verification: plan07-temporary
+spec:
+  # No targetNamespace: the scratch resources and the standing policies live
+  # in separate namespaces. Never move a fixture into dev-agents or v1's dev.
+  dependsOn:
+    - name: dev-env-broker
+  path: ./kubernetes/main/apps/dev-env-system/broker-smoke/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m

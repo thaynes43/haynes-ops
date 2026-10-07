@@ -8,4 +8,5 @@ resources:
   - ./tools-default-deny.yaml
   - ./system-default-deny.yaml
   - ./operator.yaml
+  - ./broker.yaml
   - ./keeper.yaml

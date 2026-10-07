@@ -21,4 +21,7 @@ resources:
   - ./rbac/ks.yaml
   - ./pki/ks.yaml
   - ./operator/ks.yaml
+  - ./broker/ks.yaml
+  # Temporary plan 07 bounded verification; remove after the smoke session is reaped.
+  - ./broker-smoke/ks.yaml
   - ./keeper/ks.yaml

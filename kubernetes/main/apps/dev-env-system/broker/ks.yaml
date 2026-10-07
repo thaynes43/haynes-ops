@@ -1,0 +1,28 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# The access broker's own Deployment, identity and Lease (DESIGN-001 3.1, 6.12).
+# Its session pods and grant objects have no owner reference to this release.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-broker
+  namespace: &namespace dev-env-system
+spec:
+  targetNamespace: *namespace
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: dev-env-crds
+    - name: dev-env-rbac
+    - name: dev-env-network
+  path: ./kubernetes/main/apps/dev-env-system/broker/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m

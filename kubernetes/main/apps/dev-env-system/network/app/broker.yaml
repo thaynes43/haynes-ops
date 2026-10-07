@@ -1,0 +1,30 @@
+---
+# The broker makes grant identities, bindings and policies and installs credentials
+# by exec through the API server. Its probes come from the local host. DNS is allowed
+# by dev-env-system-default-deny; the approval page and Pushover join in step 6.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-broker
+  namespace: dev-env-system
+spec:
+  description: dev-env v2 access broker, Kubernetes API egress only
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-broker
+  ingress:
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP

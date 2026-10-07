@@ -1,0 +1,164 @@
+# Temporary plan 07 bounded grant verification; remove after the smoke session
+# is reaped and broker replicas are restored to two. No agent credentials mount.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: plan07-broker-smoke
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: plan07-smoke
+  namespace: plan07-broker-smoke
+data:
+  purpose: bounded grant verification
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plan07-smoke
+  namespace: plan07-broker-smoke
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: plan07-smoke
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: plan07-smoke
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: http
+          # The already deployed, signed agent image includes Python. This pod
+          # overrides its entrypoint and mounts no agent credential or config.
+          image: ghcr.io/thaynes43/dev-env:2.4.0@sha256:c136f4f169dfb4453744f31d232626a8768c4a656c1db212f1b3cdd6271d7ad0
+          command: ["python3", "-c"]
+          args:
+            - |
+              from http.server import BaseHTTPRequestHandler, HTTPServer
+              class Handler(BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'plan07-egress-ok\n')
+                  def log_message(self, *args):
+                      pass
+              HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: plan07-smoke
+  namespace: plan07-broker-smoke
+spec:
+  selector:
+    app.kubernetes.io/name: plan07-smoke
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: plan07-smoke-http
+  namespace: plan07-broker-smoke
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: plan07-smoke
+  ingress:
+    - fromEntities: [host]
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-agents
+            app.kubernetes.io/name: dev-env-session
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: plan07-smoke-kube
+  namespace: dev-env-system
+spec:
+  description: Temporary bounded smoke grant to a namespace containing test objects only.
+  profiles: [dev]
+  repos: [dev-env]
+  agents: [claude]
+  type: kube
+  kube:
+    roles: [dev-env-grant-workloads]
+    namespaces: [plan07-broker-smoke]
+  maxTTL: 10m
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: plan07-smoke-egress
+  namespace: dev-env-system
+spec:
+  description: Temporary smoke access to one test HTTP endpoint and one TCP port.
+  profiles: [dev]
+  repos: [dev-env]
+  agents: [claude]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: plan07-broker-smoke
+        matchLabels:
+          app.kubernetes.io/name: plan07-smoke
+    ports:
+      - port: 8080
+        protocol: TCP
+  maxTTL: 10m
