@@ -137,6 +137,15 @@ spec:
         containers:
           app:
             image:
+              # Pinned to sigoalumni-org main commit 9661f51 (2026-10-06):
+              # announcement email preview on a draft event's manage page
+              # (sigoalumni-org #159, issue #158) — a collapsed "Preview"
+              # beside Publish renders the email from the saved row with the
+              # send path's own builders, in a sandboxed iframe; meetings show
+              # stand-ins for the Meet link and dial-in (nothing minted,
+              # nothing sent). No migration, no env or secret change.
+              # On top of 02bc6eb:
+              # (previous pin note follows)
               # Pinned to sigoalumni-org main commit 02bc6eb (2026-10-06):
               # rich text for the event Body / Description and the
               # brothers-only details (sigoalumni-org #157, issue #153) — a
@@ -254,7 +263,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 02bc6eb2545d4f6d187b1225659517386906a5d5
+              tag: 9661f51f6f83dbcd55795e3718db533672066e0a
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
