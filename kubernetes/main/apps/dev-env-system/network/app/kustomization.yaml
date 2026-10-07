@@ -3,8 +3,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Pre Flux-Kustomizations
-  - ./namespace.yaml
-  # Flux-Kustomizations
-  - ./crds/ks.yaml
-  - ./network/ks.yaml
+  - ./session-platform.yaml
+  - ./session-web.yaml
+  - ./tools-default-deny.yaml
+  - ./system-default-deny.yaml
+  - ./operator.yaml
+  - ./keeper.yaml

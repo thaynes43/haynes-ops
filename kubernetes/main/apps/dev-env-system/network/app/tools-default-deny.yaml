@@ -1,0 +1,30 @@
+---
+# Every pod in dev-tools is default-deny from its first moment (DESIGN-001 6.10, 8.1):
+# DNS out, nothing in, nothing else out. The operator adds the rest as namespaced
+# CiliumNetworkPolicies (tool ingress from the holding session and the operator's
+# health checks, and a pool's declared egress), and those only ever ADD allows. Delete
+# them all and a tool pod is still closed.
+# dev-tools is empty until plan 08.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: dev-env-tools-default-deny
+spec:
+  description: dev-env v2 tool pods, default-deny with DNS only
+  endpointSelector:
+    matchLabels:
+      io.kubernetes.pod.namespace: dev-tools
+  ingress:
+    - {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"

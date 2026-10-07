@@ -10,7 +10,8 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
-    # Network policies and the CPU-limit policy select by this label (DESIGN-001 6.10, 7.2).
+    # Marks the dev-env namespaces. The network policies select by namespace name; the
+    # label is for anything that needs to tell these namespaces apart.
     dev-env.haynesops.com/role: agents
   annotations:
     # Session volumes live here: a pruned namespace would take them with it
