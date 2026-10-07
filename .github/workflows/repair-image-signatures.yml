@@ -30,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: legacy-signature-repair-${{ github.ref }}
+  group: legacy-signature-repair-${{ github.event_name }}-${{ inputs.image || github.sha }}-${{ inputs.digest || github.sha }}
   cancel-in-progress: false
 
 jobs:
