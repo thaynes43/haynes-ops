@@ -5,3 +5,40 @@ kind: Kustomization
 resources:
   - ./issuers.yaml
   - ./certificates.yaml
+configMapGenerator:
+  # The dev-env CA certificate, pinned (D-50, KICKOFF 8.9). It is public: the CA's key
+  # stays in Secret dev-env-system/dev-env-ca, which only cert-manager reads.
+  #
+  # Who reads it:
+  #   - session pods: dev-env-templates mounts it at /opt/dev-env/api-ca, and
+  #     AGENTD_API_CA_FILE names ca.crt (agentd's heartbeat and agent-run);
+  #   - the v1 pod's v2 agent-run, without a mount (a mount would restart that pod):
+  #       kubectl get configmap dev-env-api-ca -n dev-agents \
+  #         -o jsonpath='{.data.ca\.crt}' > ~/.cache/dev-env-api-ca.crt
+  #       export DEV_ENV_API_CA_FILE=~/.cache/dev-env-api-ca.crt
+  #     (or point DEV_ENV_API_CA_FILE at this file in a haynes-ops checkout).
+  #
+  # Why pinned and not copied by a controller: no new controller and no new privilege
+  # (nothing has to read the CA Secret and write ConfigMaps), and the trust anchor
+  # changes only by a reviewed commit. A client that meets a certificate this CA did not
+  # sign refuses it (agent-run exit 3, agentd logs the heartbeat failure); it fails closed.
+  #
+  # RE-PIN when the CA changes: cert-manager renews it in 2035 (one year before it
+  # expires, with a new key), or makes a new one if Secret dev-env-ca is ever lost (a
+  # cluster rebuild). Then copy the new certificate from the CA's newest
+  # CertificateRequest, which any cluster reader can see (the Secret is not needed), and
+  # merge it here:
+  #   kubectl get certificaterequest -n dev-env-system -o json | jq -r '[.items[]
+  #     | select(.metadata.annotations["cert-manager.io/certificate-name"] == "dev-env-ca")]
+  #     | last | .status.certificate' | base64 -d > ca.crt
+  # The serving certificate is re-signed by the new CA at its next renewal; `cmctl renew
+  # dev-env-operator-api -n dev-env-system` (Tom) does it at once.
+  #
+  # Pinned 2026-10-07: CN "dev-env v2 CA", not after 2036-10-04, SHA-256 fingerprint
+  # 5D:B4:0D:B2:45:3D:31:97:0A:0D:8D:81:BC:D2:7E:2D:DE:43:6C:06:84:99:3E:6D:11:3A:A8:E4:11:F5:C3:59
+  - name: dev-env-api-ca
+    namespace: dev-agents
+    files:
+      - ca.crt
+generatorOptions:
+  disableNameSuffixHash: true

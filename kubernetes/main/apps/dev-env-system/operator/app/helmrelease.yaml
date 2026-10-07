@@ -1,0 +1,161 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+# dev-env-operator (DESIGN-001 3.1, D-01, D-46; KICKOFF 8.9): the v2 control plane.
+# Two replicas with leader election: only the leader reconciles AgentSessions, every
+# replica serves the /v1 API on 8443.
+#
+# UPGRADING THIS NEVER TOUCHES A SESSION (DESIGN-001 5.1, D-03): session pods and volumes
+# are owned by their AgentSession, never by this Deployment, and the CRDs live in
+# dev-env-crds with pruning off. A rollout, a rollback or an uninstall of this release
+# leaves every running session alone, so the image may roll at any time.
+#
+# The ServiceAccount, its Roles and the TokenReview ClusterRole come from dev-env-rbac
+# (8.4); this release creates no ServiceAccount and no RBAC.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: &app dev-env-operator
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  maxHistory: 2
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 3
+  uninstall:
+    keepHistory: false
+  values:
+    global:
+      # The ServiceAccount is dev-env-rbac's (8.4).
+      createDefaultServiceAccount: false
+    controllers:
+      dev-env-operator:
+        replicas: 2
+        # app-template's default is Recreate; roll one replica at a time so the API
+        # stays up through an upgrade.
+        strategy: RollingUpdate
+        rollingUpdate:
+          maxUnavailable: 0
+          maxSurge: 1
+        serviceAccount:
+          name: dev-env-operator
+        # Keep one replica serving the API through a node drain.
+        podDisruptionBudget:
+          minAvailable: 1
+        pod:
+          # DESIGN-001 7.1: the operator is tiny and may run anywhere; its two replicas
+          # spread across zones m and w, so one node class going away leaves the API up.
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: DoNotSchedule
+              matchLabelKeys:
+                - pod-template-hash
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: *app
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/dev-env-operator
+              # thaynes43/dev-env main 8b388b2 (publish.yml run 37562944477), signed
+              # keyless from main (Kyverno verify-dev-env-v2).
+              tag: sha-8b388b2@sha256:aade97068c4bb78fbd232b266fe69ecf642d7ae9f2c7e5bc1a9db31585bbdecc
+              pullPolicy: IfNotPresent
+            args:
+              # Session pods report here (AGENTD_API_URL, D-41). The full name: session
+              # pods use ndots:1 and the DNS allowlist refuses search-expanded names.
+              - --api-url=https://dev-env-operator.dev-env-system.svc.cluster.local:8443
+              # Trusted callers that are not sessions (D-46): the workbench (plan 02) and,
+              # until cutover, the v1 pod, whose token is minted for its own
+              # ServiceAccount (dev-env-rbac's dev-env-v2-api-token Role in `dev`,
+              # held to this audience by dev-env-v1-token-guard).
+              - --client-service-accounts=dev-agents/dev-env-workbench,dev/dev-env
+              # The other flags keep their defaults: --session-namespace dev-agents,
+              # --templates-name dev-env-templates in this namespace (the Lease lives
+              # here too), --api-bind-address :8443, --api-tls-dir
+              # /etc/dev-env-operator/api-tls, --human-service-account
+              # dev-env-system/dev-env-human, metrics :8080, probes :8081.
+            env:
+              POD_NAMESPACE:
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: 8081
+                  periodSeconds: 20
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+              # Ready once the manager runs and the API serves (the "api" check, D-46).
+              # A replica that does not lead is still ready: it serves the API.
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /readyz
+                    port: 8081
+                  periodSeconds: 10
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+            resources:
+              requests:
+                cpu: 20m
+                memory: 64Mi
+              limits:
+                cpu: 500m
+                memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+    defaultPodOptions:
+      automountServiceAccountToken: true
+      enableServiceLinks: false
+      securityContext:
+        # distroless nonroot; dev-env-system enforces Pod Security "restricted".
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+    service:
+      # The /v1 API (D-46). Session pods, the v1 pod and the workbench call it by the
+      # Certificate's name, dev-env-operator.dev-env-system.svc.cluster.local.
+      api:
+        controller: dev-env-operator
+        ports:
+          https:
+            port: 8443
+            protocol: HTTPS
+    persistence:
+      # The API's serving certificate (dev-env-pki). A Secret volume, not a subPath, so
+      # a renewal reaches the files and the operator reloads them (D-46).
+      api-tls:
+        type: secret
+        name: dev-env-operator-api-tls
+        defaultMode: 0440
+        globalMounts:
+          - path: /etc/dev-env-operator/api-tls
+            readOnly: true
+      tmp:
+        type: emptyDir
+        medium: Memory
+        sizeLimit: 16Mi
+        globalMounts:
+          - path: /tmp

@@ -80,6 +80,9 @@ spec:
               - matchName: "blender-authoring-2.dev.svc.cluster.local"
               - matchName: "audio-authoring.dev.svc.cluster.local"
               - matchName: "haynesnetwork-mcp-hop.frontend.svc.cluster.local"
+              # dev-env v2's /v1 API (KICKOFF 8.9, D-46, D-50): the v2 agent-run in this
+              # pod calls it by the certificate's full name.
+              - matchName: "dev-env-operator.dev-env-system.svc.cluster.local"
               # SaaS Omni — the ONLY Omni now, and the instance that registers every
               # node (talosm0x). The self-hosted frontend/omni svc entry was dropped
               # 2026-09-22 with that instance's decommission. Node triage runs through
@@ -333,6 +336,19 @@ spec:
       toPorts:
         - ports:
             - port: "8000"
+              protocol: TCP
+    # dev-env v2's /v1 API (KICKOFF 8.9, D-46, D-50). Until cutover this pod is a
+    # trusted client of the v2 operator (--client-service-accounts dev/dev-env): the v2
+    # agent-run here creates and lists sessions over HTTPS on 8443. The operator's own
+    # policy (dev-env-system/network, dev-env-operator) admits this pod by label; this
+    # rule is the egress half. Policy changes do not restart the pod.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-operator
+      toPorts:
+        - ports:
+            - port: "8443"
               protocol: TCP
     # 2c. (removed 2026-09-22) in-cluster egress to the self-hosted Omni
     #     (frontend/omni:8080) went with that instance's decommission. All Omni

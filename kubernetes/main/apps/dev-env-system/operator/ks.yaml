@@ -1,0 +1,35 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# dev-env-operator (DESIGN-001 3.1, D-46; KICKOFF 8.9): the HelmRelease, with the /v1
+# API's Service (dev-env-operator, 8443) and a PodDisruptionBudget. It needs, and so
+# waits for: the CRDs, its ServiceAccount and Roles, the templates it builds pods from,
+# its network policy, and the API's certificate.
+#
+# Rolling this never touches a session (DESIGN-001 5.1): no session object has an owner
+# reference to the Deployment, and the CRDs are in dev-env-crds with pruning off.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-operator
+  namespace: &namespace dev-env-system
+spec:
+  targetNamespace: *namespace
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: dev-env-crds
+    - name: dev-env-rbac
+    - name: dev-env-templates
+    - name: dev-env-network
+    - name: dev-env-pki
+  path: ./kubernetes/main/apps/dev-env-system/operator/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m

@@ -2,6 +2,11 @@
 # yaml-language-server: $schema=https://json.schemastore.org/kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+# The app-template OCIRepository the operator and keeper HelmReleases use, once for the
+# namespace (frontend's pattern), so neither app's Flux Kustomization owns it alone.
+namespace: dev-env-system
+components:
+  - ../../../shared/components/common/repos/app-template
 resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
@@ -15,3 +20,5 @@ resources:
   - ./secrets/ks.yaml
   - ./rbac/ks.yaml
   - ./pki/ks.yaml
+  - ./operator/ks.yaml
+  - ./keeper/ks.yaml
