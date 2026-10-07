@@ -210,8 +210,8 @@ When migrating a workflow, preserve its toolchain and make its runtime prerequis
 | Repository | Runtime prerequisite |
 | --- | --- |
 | `sigmaphiomicron-com` | Docker-bound fixtures use the shared `RUNNER_TEMP` path. |
-| `sigoalumni-org` | Next build workers are capped at two to fit the runner memory limit; Docker CI has a 10-minute step timeout. |
-| `demo-console` | .NET setup installs under `runner.temp`; browser tests install `fonts-dejavu-core`, report font resolution, and have a 30-minute job timeout. |
+| `sigoalumni-org` | Next build workers are capped at two; CI has a 20-minute job deadline and a 10-minute Docker step deadline. Deployment has a 30-minute job deadline and a 15-minute image build/push deadline. |
+| `demo-console` | .NET setup installs under `runner.temp`; browser tests install `fonts-dejavu-core`, report font resolution, and wait for rendered Jobs rows before checking Due Time values. CI jobs have 20-minute deadlines; browser and image jobs have 30-minute deadlines. |
 | `haynes-swarm` | PostgreSQL readiness is bounded; CI and release jobs have 30-minute limits, and the deterministic audit has a 10-minute limit. |
 
 Verify browser fonts as well as libraries when comparing layout tests with a hosted runner. Keep build-worker counts, job deadlines and memory budgets explicit when sharing a single pool slot.

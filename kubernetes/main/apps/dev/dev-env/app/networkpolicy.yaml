@@ -105,6 +105,7 @@ spec:
               - matchName: "productionresultssa5.blob.core.windows.net"
               - matchName: "productionresultssa10.blob.core.windows.net"
               - matchName: "productionresultssa15.blob.core.windows.net"
+              - matchName: "productionresultssa19.blob.core.windows.net"
               - matchName: "tuf-repo-cdn.sigstore.dev"
               # Anthropic: API + claude.ai (/remote-control relay) + claude.com
               # (platform.claude.com — claude-code startup checks, proven via Hubble
@@ -450,6 +451,7 @@ spec:
         - matchName: "productionresultssa5.blob.core.windows.net"
         - matchName: "productionresultssa10.blob.core.windows.net"
         - matchName: "productionresultssa15.blob.core.windows.net"
+        - matchName: "productionresultssa19.blob.core.windows.net"
         - matchName: "tuf-repo-cdn.sigstore.dev"
         - matchName: "anthropic.com"
         - matchPattern: "*.anthropic.com"
