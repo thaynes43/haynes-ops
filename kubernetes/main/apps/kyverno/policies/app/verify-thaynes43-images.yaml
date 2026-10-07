@@ -62,7 +62,7 @@ spec:
     # 2026-10-06 (dev-env v2, plan 01 item 8.2): the thaynes43/dev-env repo signs
     # `dev-env-operator:sha-<short>` from .github/workflows/publish.yml on main, and the
     # v2 agent image `dev-env:2.x.y` from publish-agent.yml on a v2.x.y release tag
-    # (KICKOFF B5, D-52). Each image has its own verifyImages entry below: the operator's
+    # (KICKOFF B5, D-53). Each image has its own verifyImages entry below: the operator's
     # subject allows any workflow of that repo but ONLY on refs/heads/main (unlike the
     # haynes-ops rule above, which has no ref pin); the agent's is that one workflow on
     # refs/tags/v2.*. Separate rule so a
@@ -96,7 +96,7 @@ spec:
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
-        # The agent image `dev-env:2.x.y` (thaynes43/dev-env KICKOFF B5, D-52): signed by
+        # The agent image `dev-env:2.x.y` (thaynes43/dev-env KICKOFF B5, D-53): signed by
         # publish-agent.yml, which runs from a release tag, so the certificate subject
         # ends in `@refs/tags/v2.x.y`, not `@refs/heads/main`. A separate entry so a
         # main-branch workflow cannot vouch for the agent image, or a tag for the operator.
