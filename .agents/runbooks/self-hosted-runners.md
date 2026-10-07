@@ -40,7 +40,10 @@ with the workflow prerequisites missing from that image: GitHub CLI, Python and
 pipx, compiler tooling, PostgreSQL clients, compression and browser libraries.
 Existing setup actions install project SDK versions. Changes to its Dockerfile
 must increment its version and update every pool's image reference after the
-published image can be pulled anonymously. Do not build it or run broad test
+published image can be pulled anonymously. Publication rejects an existing
+version tag, and PR validation requires a version bump when the Dockerfile
+changes. Runner manifests pin the published digest before activation. Do not
+build it or run broad test
 loops in dev-env; that pod shares talosm02 with critical services.
 
 ## First activation: owner credential setup
@@ -83,9 +86,18 @@ contains no App credentials or private source.
 
 ## Verify before changing workflows
 
-The App ExternalSecret is a Flux health gate. Until its 1Password item exists,
-runner-set Kustomizations wait; the controller can become Ready independently.
-This prevents an unauthenticated set from repeatedly attempting registration.
+Initially the auth and five runner-set Kustomizations have `suspend: true` in
+Git. Infrastructure and the controller deploy independently. This avoids the
+cluster's critical `FluxReconciliationFailure` alert during owner setup: an
+unsuspended missing credential and its dependency-blocked pools would all alert
+after fifteen minutes.
+
+After the owner creates the App item and makes the image public, verify the
+published image digest, pin the shared DinD and plain runner image references,
+and remove those six suspends in a short haynes-ops PR. Merge and reconcile it.
+The App ExternalSecret then acts as a health gate: pools wait for valid Secret
+synchronization before registering. Do not remove suspension while owner setup
+is incomplete, or weaken Flux alerts to accommodate an unconfigured pool.
 
 Use read-only checks; never print Secret data or full environments:
 
@@ -141,6 +153,12 @@ dependencies; setting `allowPrivilegeEscalation: false` or dropping all
 capabilities would break those jobs. Keep the exception's image synchronized
 with the daemon image.
 `arc-systems` uses restricted admission.
+
+Renovate holds the DinD image in this component because its exact image is also
+matched by the privileged exception. Upgrade the daemon tag or digest and the
+exception together in one PR, render the chart, verify admission, then merge and
+reconcile. Never broaden the exception to a wildcard to accommodate an automatic
+image update.
 
 The DinD PodSpec is explicit. Do not switch it to `containerMode.type: dind`
 without reviewing the chart: version 0.15.0 injects an unpinned `docker:dind`
