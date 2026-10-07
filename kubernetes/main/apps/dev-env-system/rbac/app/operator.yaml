@@ -1,0 +1,175 @@
+---
+# The operator, dev-env-system/dev-env-operator (DESIGN-001 6.11, the operator row; D-44,
+# D-45, D-46). Namespaced Roles only, plus TokenReview: no cluster-wide pod or PVC
+# rights, no Secrets, no bind. The manager's cache is scoped to dev-agents and the one
+# templates ConfigMap (internal/controller/reconciler.go, CacheOptions), so namespaced
+# Roles cover every list and watch it makes.
+#
+# Not the v1 ClusterRole `dev-env-operator`: that name is v1's OPERATOR tier for agents
+# (6.11, "Naming note"). These are Roles named dev-env-operator in their own namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-operator
+  namespace: dev-agents
+rules:
+  # Session pods: built once, never written after create (5.1); deleted only on the
+  # guarded paths (D-45); patch for the finalizer the rescue lifts.
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [create, delete, get, list, watch, patch]
+  # Rescue runs `agentd ctl rescue` by exec before a suspend or an archive (D-10, D-48).
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [pods/eviction]
+    verbs: [create]
+  # Session volumes; patch lifts the volume's finalizer at archive (5.1, plan 01 step 5).
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    verbs: [create, delete, get, list, watch, patch]
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [create, delete, get, list, watch]
+  - apiGroups: ["", events.k8s.io]
+    resources: [events]
+    verbs: [create, patch]
+  # The expiry backstop for grant network policies (plan 07; only grants live here).
+  - apiGroups: [cilium.io]
+    resources: [ciliumnetworkpolicies]
+    verbs: [delete]
+  # Its own CRD group. The /v1 API creates and deletes sessions; the reconciler patches
+  # finalizers and writes status; finalizers update is for clusters that enforce
+  # owner-reference permissions (D-44).
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [agentsessions]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [agentsessions/status]
+    verbs: [get, update, patch]
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [agentsessions/finalizers]
+    verbs: [update]
+---
+# Tool pods (plan 08): their pods, volumes, Services and namespaced network policies.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-operator
+  namespace: dev-tools
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [create, delete, get, list, watch, patch]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [pods/eviction]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims, services]
+    verbs: [create, delete, get, list, watch]
+  - apiGroups: ["", events.k8s.io]
+    resources: [events]
+    verbs: [create, patch]
+  - apiGroups: [cilium.io]
+    resources: [ciliumnetworkpolicies]
+    verbs: [create, delete, get, list, watch, patch, update]
+---
+# Its own namespace: the leader-election Lease, and the one templates ConfigMap by name
+# (the cache lists and watches it with a metadata.name field selector, which RBAC
+# authorizes by resourceNames; D-44).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-operator
+  namespace: dev-env-system
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-templates]
+    verbs: [get, list, watch]
+  - apiGroups: ["", events.k8s.io]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-operator
+  namespace: dev-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-operator
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-operator
+  namespace: dev-tools
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-operator
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-operator
+  namespace: dev-env-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-operator
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
+---
+# TokenReview: the /v1 API authenticates every request with one (D-05, D-46), and the
+# keeper's endpoint accepts only the operator's token the same way (6.11). Shared by
+# the operator and the keeper.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-tokenreview
+rules:
+  - apiGroups: [authentication.k8s.io]
+    resources: [tokenreviews]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-tokenreview
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-tokenreview
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
+  - kind: ServiceAccount
+    name: dev-env-keeper
+    namespace: dev-env-system

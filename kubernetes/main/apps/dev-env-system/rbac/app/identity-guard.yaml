@@ -1,0 +1,245 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/admissionregistration.k8s.io/validatingadmissionpolicy_v1.json
+# dev-env-identity-guard (DESIGN-001 6.11, D-19): the rules that bind every identity in
+# dev-agents except the workbench, that is the baseline agent dev-env-agent and every
+# grant-<id> ServiceAccount the broker creates (plan 07), break-glass included. It refuses:
+#   1. any write, delete, eviction, exec, attach or proxy in dev-env-system, dev-agents
+#      or dev-tools: inside them an agent acts only through the operator's /v1 API;
+#   2. for grant identities, any write or exec in flux-system, kyverno,
+#      external-secrets and kube-system, the namespaces that enforce these rules;
+#      evictions there are allowed, so a node drain works. The baseline agent keeps v1's
+#      guarded actions there (dev-env-agent-guard);
+#   3. a pod, Job, CronJob or workload, created or with its pod spec changed, that runs
+#      as a ServiceAccount other than its namespace's `default` or one on the short list,
+#      or is privileged, or uses hostPath, host network, host PID or host IPC. An update
+#      that leaves the pod spec alone (kubectl rollout restart) is not checked here;
+#   4. a create, or a pod-spec change, that adds a Secret reference the object did not
+#      already have, unless the Secret is on the short list;
+#   5. a PersistentVolume with a hostPath or local source;
+#   6. writes to RBAC objects, admission policies and webhooks, Kyverno policies,
+#      CustomResourceDefinitions, APIServices, CiliumClusterwideNetworkPolicy and the
+#      dev-env.haynesops.com objects; TokenRequests, ephemeral containers, the node
+#      proxy and CSR approval (the break-glass role leaves these out too; this is the
+#      backstop); Flux objects beyond the reconcile.fluxcd.io/ annotations and
+#      spec.suspend, and external-secrets.io objects beyond the force-sync annotation.
+#      The API server never sends admissionregistration.k8s.io objects (policies,
+#      bindings, webhook configurations) to admission policies or webhooks, so for those
+#      the rule is a statement only: RBAC is the control, and no v2 role may write them.
+#
+# Exec into privileged pods is the Kyverno policy dev-env-exec-guard (it looks the pod
+# up, which CEL here cannot).
+#
+# failurePolicy Fail, with no paramRef (see dev-env-agent-guard for why): the match
+# condition is a string compare that cannot fail, so an error refuses only a dev-agents
+# identity's request. Spike S-12 checks the policy from a pod running as dev-env-agent.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-identity-guard
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["*"]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE, CONNECT]
+        resources: ["*/*"]
+  matchConditions:
+    - name: dev-agents-identity
+      expression: >-
+        request.userInfo.username.startsWith('system:serviceaccount:dev-agents:') &&
+        request.userInfo.username != 'system:serviceaccount:dev-agents:dev-env-workbench'
+  variables:
+    # ── The short lists: keep them equal to dev-env-agent-guard's ──
+    - name: allowedServiceAccounts
+      expression: "[]"
+    - name: allowedSecrets
+      expression: "['^[a-z0-9-]+/[a-z0-9-]+-volsync-aws-secret$']"
+    # ── Who and where ──
+    - name: grant
+      expression: request.userInfo.username.startsWith('system:serviceaccount:dev-agents:grant-')
+    - name: group
+      expression: request.resource.group
+    - name: resource
+      expression: request.resource.resource
+    - name: subresource
+      expression: request.?subResource.orValue('')
+    # A Namespace object's request carries its name, not a namespace.
+    - name: targetNamespace
+      expression: >-
+        variables.group == '' && variables.resource == 'namespaces' ? request.?name.orValue('') : request.?namespace.orValue('')
+    # ── Workloads (rules 3 and 4) ──
+    - name: workload
+      expression: >-
+        variables.subresource == '' && request.operation in ['CREATE', 'UPDATE'] && (
+          (variables.group == '' && variables.resource in ['pods', 'replicationcontrollers']) ||
+          (variables.group == 'apps' && variables.resource in ['deployments', 'statefulsets', 'daemonsets', 'replicasets']) ||
+          (variables.group == 'batch' && variables.resource in ['jobs', 'cronjobs']))
+    - name: newPod
+      expression: >-
+        variables.resource == 'pods' ? object.spec :
+        variables.resource == 'cronjobs' ? object.spec.jobTemplate.spec.template.spec :
+        object.spec.?template.?spec.orValue({})
+    - name: oldPod
+      expression: >-
+        variables.resource == 'pods' ? oldObject.spec :
+        variables.resource == 'cronjobs' ? oldObject.spec.jobTemplate.spec.template.spec :
+        oldObject.spec.?template.?spec.orValue({})
+    - name: podChanged
+      expression: request.operation == 'CREATE' || variables.newPod != variables.oldPod
+    - name: newContainers
+      expression: >-
+        variables.newPod.?containers.orValue([]) + variables.newPod.?initContainers.orValue([]) +
+        variables.newPod.?ephemeralContainers.orValue([])
+    - name: oldContainers
+      expression: >-
+        variables.oldPod.?containers.orValue([]) + variables.oldPod.?initContainers.orValue([]) +
+        variables.oldPod.?ephemeralContainers.orValue([])
+    - name: newSecrets
+      expression: >-
+        (variables.newPod.?volumes.orValue([]).map(v,
+            [v.?secret.?secretName.orValue(''), v.?azureFile.?secretName.orValue(''),
+             v.?csi.?nodePublishSecretRef.?name.orValue('')] +
+            ['cephfs', 'rbd', 'flexVolume', 'iscsi', 'scaleIO', 'storageos'].map(t,
+              v[?t].?secretRef.?name.orValue('')) +
+            v.?projected.?sources.orValue([]).map(s, s.?secret.?name.orValue(''))).flatten() +
+         variables.newContainers.map(c,
+            c.?envFrom.orValue([]).map(e, e.?secretRef.?name.orValue('')) +
+            c.?env.orValue([]).map(e, e.?valueFrom.?secretKeyRef.?name.orValue(''))).flatten()
+        ).filter(n, n != '')
+    - name: oldSecrets
+      expression: >-
+        (variables.oldPod.?volumes.orValue([]).map(v,
+            [v.?secret.?secretName.orValue(''), v.?azureFile.?secretName.orValue(''),
+             v.?csi.?nodePublishSecretRef.?name.orValue('')] +
+            ['cephfs', 'rbd', 'flexVolume', 'iscsi', 'scaleIO', 'storageos'].map(t,
+              v[?t].?secretRef.?name.orValue('')) +
+            v.?projected.?sources.orValue([]).map(s, s.?secret.?name.orValue(''))).flatten() +
+         variables.oldContainers.map(c,
+            c.?envFrom.orValue([]).map(e, e.?secretRef.?name.orValue('')) +
+            c.?env.orValue([]).map(e, e.?valueFrom.?secretKeyRef.?name.orValue(''))).flatten()
+        ).filter(n, n != '')
+    - name: addedSecrets
+      expression: >-
+        variables.newSecrets.filter(n,
+          !(request.operation == 'UPDATE' && n in variables.oldSecrets) &&
+          !variables.allowedSecrets.exists(p, (request.?namespace.orValue('') + '/' + n).matches(p)))
+    # ── Protected objects (rule 6) ──
+    - name: locked
+      expression: >-
+        variables.group in ['rbac.authorization.k8s.io', 'admissionregistration.k8s.io', 'kyverno.io',
+          'policies.kyverno.io', 'apiextensions.k8s.io', 'apiregistration.k8s.io', 'dev-env.haynesops.com'] ||
+        (variables.group == 'cilium.io' && variables.resource == 'ciliumclusterwidenetworkpolicies') ||
+        (variables.group == 'certificates.k8s.io' && variables.subresource == 'approval') ||
+        (variables.group == '' && (
+          (variables.resource == 'serviceaccounts' && variables.subresource == 'token') ||
+          (variables.resource == 'pods' && variables.subresource == 'ephemeralcontainers') ||
+          (variables.resource == 'nodes' && variables.subresource == 'proxy')))
+    - name: flux
+      expression: variables.group.endsWith('.fluxcd.io')
+    - name: externalSecrets
+      expression: variables.group == 'external-secrets.io' || variables.group.endsWith('.external-secrets.io')
+    - name: newAnnotations
+      expression: object.metadata.?annotations.orValue({})
+    - name: oldAnnotations
+      expression: oldObject.metadata.?annotations.orValue({})
+    - name: sameLabelsFinalizersOwners
+      expression: >-
+        object.metadata.?labels.orValue({}) == oldObject.metadata.?labels.orValue({}) &&
+        object.metadata.?finalizers.orValue([]) == oldObject.metadata.?finalizers.orValue([]) &&
+        object.metadata.?ownerReferences.orValue([]) == oldObject.metadata.?ownerReferences.orValue([])
+    - name: newSpec
+      expression: object.?spec.orValue({})
+    - name: oldSpec
+      expression: oldObject.?spec.orValue({})
+  validations:
+    # 1. The dev-env namespaces.
+    - expression: "!(variables.targetNamespace in ['dev-env-system', 'dev-agents', 'dev-tools'])"
+      messageExpression: >-
+        'dev-env-identity-guard: ' + request.userInfo.username + ' may not ' + request.operation + ' ' +
+        variables.resource + (variables.subresource == '' ? '' : '/' + variables.subresource) + ' in ' + variables.targetNamespace +
+        ': inside the dev-env namespaces an agent acts only through the operator API, agent-run (DESIGN-001 6.11, D-19)'
+      reason: Forbidden
+    # 2. Grants stay out of the namespaces that enforce these rules; evictions excepted.
+    - expression: >-
+        !variables.grant ||
+        !(variables.targetNamespace in ['flux-system', 'kyverno', 'external-secrets', 'kube-system']) ||
+        (request.operation == 'CREATE' && variables.group == '' && variables.resource == 'pods' &&
+         variables.subresource == 'eviction')
+      messageExpression: >-
+        'dev-env-identity-guard: a grant may not write or exec in ' + variables.targetNamespace +
+        ', which enforces these rules; only evictions are allowed there (DESIGN-001 D-19)'
+      reason: Forbidden
+    # 3. No other identity, no privilege.
+    - expression: >-
+        !variables.workload || !variables.podChanged ||
+        [variables.newPod.?serviceAccountName.orValue(''), variables.newPod.?serviceAccount.orValue('')].all(sa,
+          sa == '' || sa == 'default' ||
+          variables.allowedServiceAccounts.exists(p, (request.?namespace.orValue('') + '/' + sa).matches(p)))
+      messageExpression: >-
+        'dev-env-identity-guard: a pod a dev-env agent creates or changes runs as the default ServiceAccount of its namespace, not ' +
+        variables.newPod.?serviceAccountName.orValue(variables.newPod.?serviceAccount.orValue('')) +
+        ' (haynes-ops #3392, DESIGN-001 D-19)'
+      reason: Forbidden
+    - expression: >-
+        !variables.workload || !variables.podChanged ||
+        (!variables.newPod.?hostNetwork.orValue(false) && !variables.newPod.?hostPID.orValue(false) &&
+         !variables.newPod.?hostIPC.orValue(false) &&
+         !variables.newPod.?volumes.orValue([]).exists(v, has(v.hostPath)) &&
+         !variables.newContainers.exists(c, c.?securityContext.?privileged.orValue(false)))
+      message: >-
+        dev-env-identity-guard: a pod a dev-env agent creates or changes is not privileged and uses no
+        hostPath, host network, host PID or host IPC (DESIGN-001 D-19)
+      reason: Forbidden
+    # 4. No new Secret reference.
+    - expression: "!variables.workload || !variables.podChanged || size(variables.addedSecrets) == 0"
+      messageExpression: >-
+        'dev-env-identity-guard: a dev-env agent may not add a Secret reference to a pod spec; refused: ' +
+        variables.addedSecrets.join(', ') + ' (DESIGN-001 D-19)'
+      reason: Forbidden
+    # 5. No host volumes by way of a PersistentVolume.
+    - expression: >-
+        !(variables.group == '' && variables.resource == 'persistentvolumes' && variables.subresource == '' &&
+          request.operation in ['CREATE', 'UPDATE'] && (has(object.spec.hostPath) || has(object.spec.local)))
+      message: >-
+        dev-env-identity-guard: a dev-env agent may not create a hostPath or local PersistentVolume (DESIGN-001 D-19)
+      reason: Forbidden
+    # 6. Protected objects.
+    - expression: "!variables.locked"
+      messageExpression: >-
+        'dev-env-identity-guard: a dev-env agent may not ' + request.operation + ' ' + variables.resource +
+        (variables.subresource == '' ? '' : '/' + variables.subresource) +
+        (variables.group == '' ? '' : '.' + variables.group) +
+        ': it is one of the objects that enforce the guard or mint identity (DESIGN-001 D-19)'
+      reason: Forbidden
+    - expression: >-
+        !variables.flux ||
+        (request.operation == 'UPDATE' && variables.subresource == '' && variables.sameLabelsFinalizersOwners &&
+         variables.newSpec.all(k, k == 'suspend' || (k in variables.oldSpec && variables.newSpec[k] == variables.oldSpec[k])) &&
+         variables.oldSpec.all(k, k == 'suspend' || k in variables.newSpec) &&
+         variables.newAnnotations.all(k, k.startsWith('reconcile.fluxcd.io/') ||
+           (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&
+         variables.oldAnnotations.all(k, k.startsWith('reconcile.fluxcd.io/') || k in variables.newAnnotations))
+      messageExpression: >-
+        'dev-env-identity-guard: a dev-env agent may only reconcile, suspend or resume a Flux ' + variables.resource +
+        ' (the reconcile.fluxcd.io/ annotations and spec.suspend); Flux applies what git holds (DESIGN-001 D-19)'
+      reason: Forbidden
+    - expression: >-
+        !variables.externalSecrets ||
+        (request.operation == 'UPDATE' && variables.subresource == '' && variables.resource == 'externalsecrets' &&
+         variables.sameLabelsFinalizersOwners && object.?spec == oldObject.?spec &&
+         variables.newAnnotations.all(k, k == 'force-sync' ||
+           (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&
+         variables.oldAnnotations.all(k, k == 'force-sync' || k in variables.newAnnotations))
+      messageExpression: >-
+        'dev-env-identity-guard: a dev-env agent may only force-sync an ExternalSecret; ' + variables.resource +
+        ' objects change in git (DESIGN-001 D-19)'
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-identity-guard
+spec:
+  policyName: dev-env-identity-guard
+  validationActions: [Deny]

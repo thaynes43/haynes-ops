@@ -1,0 +1,63 @@
+---
+# S-12 runs once as dev-agents/dev-env-agent. A Job's template cannot change, so a re-run
+# is a new name (s12-baseline-guard-2, ...). Light (CPU rule): one shell running about 45
+# kubectl calls one at a time, under a 250m CPU limit.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: s12-baseline-guard
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dev-env-s12
+    spec:
+      restartPolicy: Never
+      serviceAccountName: dev-env-agent
+      automountServiceAccountToken: true
+      priorityClassName: dev-env-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: s12
+          # flux-cli carries kubectl as well as flux (fluxcd/flux2 Dockerfile).
+          image: ghcr.io/fluxcd/flux-cli:v2.9.6@sha256:b1ac18156f227af9a524b842a96f2c20986c7a779ef721df3ba4e4540f449d76
+          command: ["/bin/sh", "/opt/s12/s12.sh"]
+          env:
+            - name: HOME
+              value: /tmp
+            - name: SELF_POD
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: script
+              mountPath: /opt/s12
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: script
+          configMap:
+            name: dev-env-s12
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

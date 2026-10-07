@@ -1,0 +1,60 @@
+---
+# The keeper, dev-env-system/dev-env-keeper (DESIGN-001 3.1, 6.4, 6.11, the keeper row):
+# the only writer of the four credential Secrets in dev-agents, by name. They are created
+# empty by GitOps (KICKOFF 8.8), so it needs no create. TokenReview comes from
+# ./operator.yaml (dev-env-tokenreview).
+#
+# Not yet: pods/exec in dev-agents and read on AccessGrant, for credential grants
+# (Q-07). Plan 07 adds them with the AccessGrant CRD.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper
+  namespace: dev-agents
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames:
+      - dev-env-gh-token
+      - dev-env-ops-gh-token
+      - dev-env-claude-live
+      - dev-env-codex-live
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper
+  namespace: dev-env-system
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper
+  namespace: dev-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-keeper
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-keeper
+    namespace: dev-env-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper
+  namespace: dev-env-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-keeper
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-keeper
+    namespace: dev-env-system

@@ -1,0 +1,95 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/policies.kyverno.io/validatingpolicy_v1.json
+# dev-env v2: no exec or attach into a privileged pod by a dev-env agent (DESIGN-001 6.11,
+# D-19). The agent keeps v1's exec everywhere else, as v1 has it (Tom, 2026-08-06): exec
+# reads the Secrets of the pod it enters, which is accepted. Exec into a pod that runs as
+# a powerful ServiceAccount is not: it hands the agent that identity (haynes-ops #3392;
+# for example the cluster-admin headlamp pod). Nor is exec into a privileged or host-PID
+# pod, which is root on its node.
+#
+# Kyverno, not the ValidatingAdmissionPolicy guards in apps/dev-env-system/rbac: the rule
+# needs the target pod, and only Kyverno's resource.Get can look it up at admission. The
+# VAP identity guard already refuses exec in the three dev-env namespaces.
+#
+# THE PRIVILEGED LIST below is the one place to add a new powerful ServiceAccount: any
+# ServiceAccount bound cluster-wide to cluster-admin, a wildcard write, Secret read,
+# serviceaccounts/token, pod create, nodes/proxy or escalate/bind/impersonate, and any
+# pod holding v1's unguarded OPERATOR tier. Whole namespaces are listed where every pod is
+# such a controller. Built from the cluster's ClusterRoleBindings on 2026-10-06.
+#
+# Matched by username to every dev-agents identity but the workbench (the same identities
+# as dev-env-identity-guard). failurePolicy Fail: Kyverno 1.19 copies a CEL policy's
+# matchConditions into its own fine-grained webhook, so the API server applies the
+# username match first and a Kyverno outage refuses exec only to dev-env agents, never to
+# anyone else. If the pod cannot be read the exec is refused too.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: dev-env-exec-guard
+  annotations:
+    policies.kyverno.io/title: dev-env agents may not exec into privileged pods
+    policies.kyverno.io/category: dev-env
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Refuses exec and attach by a dev-env v2 agent into a pod that runs as a privileged
+      ServiceAccount, sits in a controller namespace, or is privileged or host-PID.
+spec:
+  failurePolicy: Fail
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CONNECT"]
+        resources: ["pods/exec", "pods/attach"]
+  matchConditions:
+    - name: dev-agents-identity
+      expression: >-
+        request.userInfo.username.startsWith('system:serviceaccount:dev-agents:') &&
+        request.userInfo.username != 'system:serviceaccount:dev-agents:dev-env-workbench'
+  variables:
+    # Namespaces where every pod is a privileged controller.
+    - name: privilegedNamespaces
+      expression: >-
+        ['kube-system', 'flux-system', 'kyverno', 'external-secrets', 'cert-manager', 'ceph-csi',
+         'openebs-system', 'volsync-system', 'k8tz', 'dev-env-system', 'dev-agents', 'dev-tools']
+    # ServiceAccounts, '<namespace>/<name>', elsewhere.
+    - name: privilegedServiceAccounts
+      expression: >-
+        ['frontend/headlamp',
+         'dev/dev-env', 'upgrade-agent/dev-env-ops',
+         'database/cloudnative-pg', 'database/dragonfly-operator-controller-manager',
+         'network/multus', 'network/traefik-external', 'network/traefik-internal',
+         'observability/grafana', 'observability/kube-prometheus-stack-operator',
+         'observability/kube-state-metrics', 'observability/loki', 'observability/promtail',
+         'rook-ceph/rook-ceph-system', 'rook-ceph/objectstorage-provisioner',
+         'rook-ceph/rook-ceph-cephfs-csi-ceph-com-ctrlplugin-sa',
+         'rook-ceph/rook-ceph-cephfs-csi-ceph-com-nodeplugin-sa',
+         'rook-ceph/rook-ceph-rbd-csi-ceph-com-ctrlplugin-sa',
+         'rook-ceph/rook-ceph-rbd-csi-ceph-com-nodeplugin-sa']
+    - name: pod
+      expression: resource.Get("v1", "pods", request.namespace, request.name)
+    - name: serviceAccount
+      expression: >-
+        request.namespace + '/' + variables.pod.spec.?serviceAccountName.orValue('default')
+  validations:
+    - expression: "!(request.namespace in variables.privilegedNamespaces)"
+      messageExpression: >-
+        'dev-env-exec-guard: a dev-env agent may not exec into pods in ' + request.namespace +
+        ', where every pod is a privileged controller (DESIGN-001 D-19)'
+    - expression: "!(variables.serviceAccount in variables.privilegedServiceAccounts)"
+      messageExpression: >-
+        'dev-env-exec-guard: a dev-env agent may not exec into ' + request.name + ', which runs as the privileged ServiceAccount ' +
+        variables.serviceAccount + ' (haynes-ops #3392, DESIGN-001 D-19)'
+    - expression: >-
+        !variables.pod.spec.?hostPID.orValue(false) &&
+        !(variables.pod.spec.?containers.orValue([]) + variables.pod.spec.?initContainers.orValue([])).exists(c,
+          c.?securityContext.?privileged.orValue(false))
+      messageExpression: >-
+        'dev-env-exec-guard: a dev-env agent may not exec into ' + request.name +
+        ', a privileged or host-PID pod, which is root on its node (DESIGN-001 D-19)'

@@ -1,0 +1,36 @@
+---
+# v1's way into the v2 API (D-46, D-50): `agent-run` in the v1 pod mints a token for its
+# own ServiceAccount, dev/dev-env, with audience dev-env-operator, and the operator
+# treats it as a `client` until cutover.
+#
+# A Role of its own here, deliberately not in apps/dev/dev-env/app: nothing in v1's
+# app changes, so the v1 pod cannot restart for it. Removed at cutover with v1.
+#
+# RBAC cannot limit the audience or lifetime of a TokenRequest; resourceNames only
+# limits it to the pod's own ServiceAccount. ./v1-token-guard.yaml holds it to the
+# audience dev-env-operator and an hour at most, so the right adds nothing in the
+# cluster: the token is valid only at the operator.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-v2-api-token
+  namespace: dev
+rules:
+  - apiGroups: [""]
+    resources: [serviceaccounts/token]
+    resourceNames: [dev-env]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-v2-api-token
+  namespace: dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-v2-api-token
+subjects:
+  - kind: ServiceAccount
+    name: dev-env
+    namespace: dev

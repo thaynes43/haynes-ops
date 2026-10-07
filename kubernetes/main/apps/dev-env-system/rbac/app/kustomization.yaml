@@ -1,0 +1,13 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./serviceaccounts.yaml
+  - ./agent.yaml
+  - ./operator.yaml
+  - ./keeper.yaml
+  - ./v1-api-token.yaml
+  - ./agent-guard.yaml
+  - ./identity-guard.yaml
+  - ./v1-token-guard.yaml

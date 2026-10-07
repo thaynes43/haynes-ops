@@ -1,0 +1,216 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/admissionregistration.k8s.io/validatingadmissionpolicy_v1.json
+# dev-env-agent-guard (DESIGN-001 6.11, D-19; haynes-ops #3392 option 1). The baseline
+# agent keeps v1's write verbs cluster-wide (./agent.yaml); this policy lets through only
+# what the runbooks do with them:
+#   - Job create: the pod runs as its namespace's `default` ServiceAccount (or one on the
+#     short list below), mounts no Secret outside the short list, and is not privileged
+#     and uses no hostPath, host network, host PID or host IPC;
+#   - Deployment, StatefulSet and DaemonSet patch: only the template annotation
+#     kubectl.kubernetes.io/restartedAt (kubectl rollout restart);
+#   - CronJob patch: only spec.suspend;
+#   - Flux object patch: only the reconcile.fluxcd.io/ annotations (flux reconcile,
+#     --force, --reset) and spec.suspend (flux suspend, resume);
+#   - ExternalSecret patch: only the force-sync annotation.
+# Pod delete, exec and proxy are not field-scoped and are not here: the identity guard
+# keeps them out of the dev-env namespaces, and the Kyverno exec guard keeps exec out of
+# privileged pods.
+#
+# Matched to the agent ServiceAccount by username. It is complete on its own, so the
+# same policy can bind v1's identities if #3392 is ever mitigated for v1: add their
+# usernames to the match condition. The identity guard repeats the Job, Flux and
+# ExternalSecret rules for grant identities; keep the two in step.
+#
+# failurePolicy Fail: an error refuses the agent's request, never anyone else's, because
+# the match condition (a string compare that cannot fail) runs first. There is no
+# paramRef on purpose: a missing parameter object is checked before match conditions and
+# would refuse every Job create in the cluster. The short lists are variables here.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-agent-guard
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [batch]
+        apiVersions: ["*"]
+        operations: [CREATE]
+        resources: [jobs]
+      - apiGroups: [apps]
+        apiVersions: ["*"]
+        operations: [UPDATE]
+        resources: [deployments, statefulsets, daemonsets]
+      - apiGroups: [batch]
+        apiVersions: ["*"]
+        operations: [UPDATE]
+        resources: [cronjobs]
+      - apiGroups: [kustomize.toolkit.fluxcd.io, helm.toolkit.fluxcd.io, source.toolkit.fluxcd.io]
+        apiVersions: ["*"]
+        operations: [UPDATE]
+        resources: ["*"]
+      - apiGroups: [external-secrets.io]
+        apiVersions: ["*"]
+        operations: [UPDATE]
+        resources: [externalsecrets]
+  matchConditions:
+    - name: dev-env-agent
+      expression: request.userInfo.username == 'system:serviceaccount:dev-agents:dev-env-agent'
+  variables:
+    # ── The short lists (RE2, matched against '<namespace>/<name>') ──
+    # ServiceAccounts a Job may run as besides `default`. Empty: no runbook needs one.
+    - name: allowedServiceAccounts
+      expression: "[]"
+    # Secrets a Job may mount: the volsync restic repositories, for the volsync unlock
+    # runbook (every ReplicationSource's spec.restic.repository is <app>-volsync-aws-secret).
+    - name: allowedSecrets
+      expression: "['^[a-z0-9-]+/[a-z0-9-]+-volsync-aws-secret$']"
+    # ── What the request is ──
+    - name: job
+      expression: request.resource.group == 'batch' && request.resource.resource == 'jobs'
+    - name: cronjob
+      expression: request.resource.group == 'batch' && request.resource.resource == 'cronjobs'
+    - name: workload
+      expression: request.resource.group == 'apps'
+    - name: flux
+      expression: request.resource.group.endsWith('.fluxcd.io')
+    - name: externalSecret
+      expression: request.resource.group == 'external-secrets.io'
+    # ── Job pods ──
+    - name: pod
+      expression: object.spec.template.spec
+    - name: containers
+      expression: >-
+        variables.pod.?containers.orValue([]) + variables.pod.?initContainers.orValue([]) +
+        variables.pod.?ephemeralContainers.orValue([])
+    # Every Secret the pod can read: secret and projected volumes, the volume types that
+    # take a secretRef, CSI node-publish secrets, envFrom and env valueFrom.
+    - name: secrets
+      expression: >-
+        (variables.pod.?volumes.orValue([]).map(v,
+            [v.?secret.?secretName.orValue(''), v.?azureFile.?secretName.orValue(''),
+             v.?csi.?nodePublishSecretRef.?name.orValue('')] +
+            ['cephfs', 'rbd', 'flexVolume', 'iscsi', 'scaleIO', 'storageos'].map(t,
+              v[?t].?secretRef.?name.orValue('')) +
+            v.?projected.?sources.orValue([]).map(s, s.?secret.?name.orValue(''))).flatten() +
+         variables.containers.map(c,
+            c.?envFrom.orValue([]).map(e, e.?secretRef.?name.orValue('')) +
+            c.?env.orValue([]).map(e, e.?valueFrom.?secretKeyRef.?name.orValue(''))).flatten()
+        ).filter(n, n != '')
+    # ── Updates ──
+    - name: newAnnotations
+      expression: object.metadata.?annotations.orValue({})
+    - name: oldAnnotations
+      expression: oldObject.metadata.?annotations.orValue({})
+    - name: sameLabelsFinalizersOwners
+      expression: >-
+        object.metadata.?labels.orValue({}) == oldObject.metadata.?labels.orValue({}) &&
+        object.metadata.?finalizers.orValue([]) == oldObject.metadata.?finalizers.orValue([]) &&
+        object.metadata.?ownerReferences.orValue([]) == oldObject.metadata.?ownerReferences.orValue([])
+    - name: newSpec
+      expression: object.?spec.orValue({})
+    - name: oldSpec
+      expression: oldObject.?spec.orValue({})
+    - name: newTemplateMeta
+      expression: object.spec.?template.?metadata.orValue({})
+    - name: oldTemplateMeta
+      expression: oldObject.spec.?template.?metadata.orValue({})
+    - name: newTemplateAnnotations
+      expression: variables.newTemplateMeta.?annotations.orValue({})
+    - name: oldTemplateAnnotations
+      expression: variables.oldTemplateMeta.?annotations.orValue({})
+  validations:
+    # Jobs (the volsync unlock runbook).
+    - expression: >-
+        !variables.job ||
+        [variables.pod.?serviceAccountName.orValue(''), variables.pod.?serviceAccount.orValue('')].all(sa,
+          sa == '' || sa == 'default' ||
+          variables.allowedServiceAccounts.exists(p, (request.?namespace.orValue('') + '/' + sa).matches(p)))
+      messageExpression: >-
+        'dev-env-agent-guard: a Job created by a dev-env agent runs as the default ServiceAccount of its namespace, not ' +
+        variables.pod.?serviceAccountName.orValue(variables.pod.?serviceAccount.orValue('')) +
+        ' (haynes-ops #3392, DESIGN-001 D-19)'
+      reason: Forbidden
+    - expression: >-
+        !variables.job ||
+        variables.secrets.all(n, variables.allowedSecrets.exists(p, (request.?namespace.orValue('') + '/' + n).matches(p)))
+      messageExpression: >-
+        'dev-env-agent-guard: a Job created by a dev-env agent mounts no Secret outside the short list; refused: ' +
+        variables.secrets.filter(n, !variables.allowedSecrets.exists(p, (request.?namespace.orValue('') + '/' + n).matches(p))).join(', ') +
+        ' (haynes-ops #3392, DESIGN-001 D-19)'
+      reason: Forbidden
+    - expression: >-
+        !variables.job ||
+        (!variables.pod.?hostNetwork.orValue(false) && !variables.pod.?hostPID.orValue(false) &&
+         !variables.pod.?hostIPC.orValue(false) &&
+         !variables.pod.?volumes.orValue([]).exists(v, has(v.hostPath)) &&
+         !variables.containers.exists(c, c.?securityContext.?privileged.orValue(false)))
+      message: >-
+        dev-env-agent-guard: a Job created by a dev-env agent is not privileged and uses no hostPath,
+        host network, host PID or host IPC (DESIGN-001 D-19)
+      reason: Forbidden
+    # kubectl rollout restart: the template's restartedAt annotation and nothing else. The
+    # API server itself bumps a DaemonSet's deprecated.daemonset.template.generation
+    # annotation on any template change, before admission, so that key may differ.
+    - expression: >-
+        !variables.workload ||
+        (variables.sameLabelsFinalizersOwners &&
+         variables.newAnnotations.all(k, k == 'deprecated.daemonset.template.generation' ||
+           (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&
+         variables.oldAnnotations.all(k, k == 'deprecated.daemonset.template.generation' || k in variables.newAnnotations) &&
+         variables.newSpec.all(k, k == 'template' || (k in variables.oldSpec && variables.newSpec[k] == variables.oldSpec[k])) &&
+         variables.oldSpec.all(k, k == 'template' || k in variables.newSpec) &&
+         object.spec.?template.?spec == oldObject.spec.?template.?spec &&
+         variables.newTemplateMeta.all(k, k == 'annotations' ||
+           (k in variables.oldTemplateMeta && variables.newTemplateMeta[k] == variables.oldTemplateMeta[k])) &&
+         variables.oldTemplateMeta.all(k, k == 'annotations' || k in variables.newTemplateMeta) &&
+         variables.newTemplateAnnotations.all(k, k == 'kubectl.kubernetes.io/restartedAt' ||
+           (k in variables.oldTemplateAnnotations && variables.newTemplateAnnotations[k] == variables.oldTemplateAnnotations[k])) &&
+         variables.oldTemplateAnnotations.all(k, k == 'kubectl.kubernetes.io/restartedAt' || k in variables.newTemplateAnnotations))
+      messageExpression: >-
+        'dev-env-agent-guard: a dev-env agent may only restart a ' + request.resource.resource +
+        ' (the kubectl.kubernetes.io/restartedAt template annotation, kubectl rollout restart); any other change goes through git (haynes-ops #3392, DESIGN-001 D-19)'
+      reason: Forbidden
+    # CronJob kill switch: spec.suspend and nothing else.
+    - expression: >-
+        !variables.cronjob ||
+        (variables.sameLabelsFinalizersOwners && variables.newAnnotations == variables.oldAnnotations &&
+         variables.newSpec.all(k, k == 'suspend' || (k in variables.oldSpec && variables.newSpec[k] == variables.oldSpec[k])) &&
+         variables.oldSpec.all(k, k == 'suspend' || k in variables.newSpec))
+      message: >-
+        dev-env-agent-guard: a dev-env agent may only change a CronJob's spec.suspend; any other change
+        goes through git (haynes-ops #3392, DESIGN-001 D-19)
+      reason: Forbidden
+    # flux reconcile / suspend / resume: the reconcile.fluxcd.io/ annotations and spec.suspend.
+    - expression: >-
+        !variables.flux ||
+        (request.?subResource.orValue('') == '' && variables.sameLabelsFinalizersOwners &&
+         variables.newSpec.all(k, k == 'suspend' || (k in variables.oldSpec && variables.newSpec[k] == variables.oldSpec[k])) &&
+         variables.oldSpec.all(k, k == 'suspend' || k in variables.newSpec) &&
+         variables.newAnnotations.all(k, k.startsWith('reconcile.fluxcd.io/') ||
+           (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&
+         variables.oldAnnotations.all(k, k.startsWith('reconcile.fluxcd.io/') || k in variables.newAnnotations))
+      messageExpression: >-
+        'dev-env-agent-guard: a dev-env agent may only reconcile, suspend or resume a Flux ' + request.resource.resource +
+        ' (the reconcile.fluxcd.io/ annotations and spec.suspend); its spec changes in git (haynes-ops #3392, DESIGN-001 D-19)'
+      reason: Forbidden
+    # ExternalSecret force-sync: the force-sync annotation and nothing else.
+    - expression: >-
+        !variables.externalSecret ||
+        (request.?subResource.orValue('') == '' && variables.sameLabelsFinalizersOwners &&
+         object.?spec == oldObject.?spec &&
+         variables.newAnnotations.all(k, k == 'force-sync' ||
+           (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&
+         variables.oldAnnotations.all(k, k == 'force-sync' || k in variables.newAnnotations))
+      message: >-
+        dev-env-agent-guard: a dev-env agent may only force-sync an ExternalSecret (the force-sync
+        annotation); its spec changes in git (DESIGN-001 D-19)
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-agent-guard
+spec:
+  policyName: dev-env-agent-guard
+  validationActions: [Deny]
