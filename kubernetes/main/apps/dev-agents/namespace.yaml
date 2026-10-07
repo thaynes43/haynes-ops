@@ -1,0 +1,18 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev-agents
+  labels:
+    # Session pods run non-root with a read-only root filesystem, all capabilities
+    # dropped and the RuntimeDefault seccomp profile (DESIGN-001 3.6), so they fit
+    # "restricted", the same boundary the v1 dev namespace has.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    # Network policies and the CPU-limit policy select by this label (DESIGN-001 6.10, 7.2).
+    dev-env.haynesops.com/role: agents
+  annotations:
+    # Session volumes live here: a pruned namespace would take them with it
+    # (.agents/rules/flux-pvc-prune-safety.md).
+    kustomize.toolkit.fluxcd.io/prune: disabled

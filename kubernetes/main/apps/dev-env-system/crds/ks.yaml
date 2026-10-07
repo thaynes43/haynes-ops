@@ -1,0 +1,25 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# The dev-env v2 CRDs, alone in their own Kustomization with pruning OFF
+# (DESIGN-001 D-03). Deleting a CRD deletes every AgentSession, and each session owns
+# its pod and volume, so nothing that could ever prune this Kustomization's inventory
+# may exist: `prune: false` here, and the same annotation on each CRD (kustomization.yaml).
+# The operator HelmRelease (KICKOFF 8.9) must NOT ship the CRDs itself.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-crds
+  namespace: dev-env-system
+spec:
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  path: ./kubernetes/main/apps/dev-env-system/crds/app
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
