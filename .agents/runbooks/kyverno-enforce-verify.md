@@ -13,7 +13,30 @@ StorageClass.** ~5 minutes. Runnable by you or by a summoned agent (all read-onl
 > relying on the policy default. `verify-thaynes43-images` remains Audit, while
 > `verify-haynesnetwork-images` uses Enforce.
 
-### Repair existing bundle-only image signatures
+Kyverno's three enforce policies (`restrict-image-registries`, `restrict-rbac-escalation`,
+`pod-security-baseline`) deny non-conforming resources at admission. The dangerous gap is
+**ephemeral, controller-spawned pods** — a provisioner/operator creates a privileged
+helper pod that lives 1–2 seconds, so a point-in-time scan never sees it, so it may not be
+in the exceptions, so it gets **silently denied**. That already bit us twice:
+
+- **OpenEBS localpv helper pods** denied → every new `openebs-hostpath` PVC hung `Pending`
+  forever (fixed: `exceptions/pss-baseline.yaml` `init-pvc-*`/`cleanup-pvc-*`/`quota-pvc-*`).
+- The reports-controller **OOMKilled** for a day unnoticed (fixed: raised its memory).
+
+**The continuous watch is already automated** — the `kyverno-guardrail.rules`
+PrometheusRule pages Pushover (critical) on OOM/controller-down/stuck-PVC/repeated-denial,
+**with no agent running.** This runbook is the *periodic manual deep-check* for the slow
+or transient cases that stay under the alert thresholds, plus the proactive
+"did the thing I just deployed spawn a helper pod that's being blocked?" check.
+
+> Exceptions live in `kubernetes/main/apps/kyverno/policies/app/exceptions/`. Never set a
+> policy to `background: false` to enable `subjects:`-scoped exceptions — Kyverno forbids
+> `subjects` under `background: true` (verified 2026-07-03), and losing background scans
+> blinds this whole runbook + the audit reports. Name/namespace-scoped exceptions only.
+
+---
+
+## Repair existing bundle-only image signatures
 
 The haynes-ops image builders now emit legacy Cosign signatures compatible with
 the current verifier. Older deployed digests may still have only a Sigstore v3
@@ -41,32 +64,17 @@ transparency proof, and immutable digest claim. It then emits a legacy signature
 with patched Cosign v3.1.3 and verifies the repair workflow's identity. A failed
 original verification must stop the repair; never disable identity, timestamp,
 or digest checks to force it through. Read the final job result and summary, then
-verify admission at the next ordinary workload creation. No cluster credentials
+verify admission at the next ordinary workload creation for policy-covered
+families. No cluster credentials
 or persistent cluster writes are involved. The repair changes signature
 artifacts while preserving the image manifest and running pods.
 
-Kyverno's three enforce policies (`restrict-image-registries`, `restrict-rbac-escalation`,
-`pod-security-baseline`) deny non-conforming resources at admission. The dangerous gap is
-**ephemeral, controller-spawned pods** — a provisioner/operator creates a privileged
-helper pod that lives 1–2 seconds, so a point-in-time scan never sees it, so it may not be
-in the exceptions, so it gets **silently denied**. That already bit us twice:
+The current image policy covers upgrade-agent, upgrade-shepherd, legacy
+dev-env, comfyui and actions-runner. It does not yet cover audio-authoring,
+blender-authoring or wyoming-whisper-gpu. For those three, use the hosted
+verification result and signature artifact as repair evidence; their next
+pod admission will not evaluate this policy.
 
-- **OpenEBS localpv helper pods** denied → every new `openebs-hostpath` PVC hung `Pending`
-  forever (fixed: `exceptions/pss-baseline.yaml` `init-pvc-*`/`cleanup-pvc-*`/`quota-pvc-*`).
-- The reports-controller **OOMKilled** for a day unnoticed (fixed: raised its memory).
-
-**The continuous watch is already automated** — the `kyverno-guardrail.rules`
-PrometheusRule pages Pushover (critical) on OOM/controller-down/stuck-PVC/repeated-denial,
-**with no agent running.** This runbook is the *periodic manual deep-check* for the slow
-or transient cases that stay under the alert thresholds, plus the proactive
-"did the thing I just deployed spawn a helper pod that's being blocked?" check.
-
-> Exceptions live in `kubernetes/main/apps/kyverno/policies/app/exceptions/`. Never set a
-> policy to `background: false` to enable `subjects:`-scoped exceptions — Kyverno forbids
-> `subjects` under `background: true` (verified 2026-07-03), and losing background scans
-> blinds this whole runbook + the audit reports. Name/namespace-scoped exceptions only.
-
----
 
 ## The check (run all three blocks; all-green = nothing to do)
 
