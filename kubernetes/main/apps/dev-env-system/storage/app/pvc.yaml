@@ -1,0 +1,24 @@
+---
+# dev-env-shared: one RWX claim, mounted by every session pod at /home/dev/.shared
+# (DESIGN-001 D-22): memory/ (linked into each pod's ~/.claude/projects/<key>/memory),
+# rescue/ (bundles), logs/ (task logs) and mirrors/ (reserved, D-15). In-cluster Rook
+# CephFS on purpose: gasha01 offers Kubernetes only RBD, and a rescue bundle on a
+# different Ceph cluster from the session volumes survives a gasha01 failure. Small and
+# written rarely, so the one MDS barely notices. agentd creates the four directories.
+#
+# NOT VolSync'd: bundles are copies of work that also lives on the session volume until
+# its archive, and memory is regenerable notes. Revisit with the first archive (plan 01).
+# Grow only: a PVC cannot shrink (ceph-filesystem allows online expansion).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dev-env-shared
+  namespace: dev-agents
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: ceph-filesystem

@@ -1,0 +1,25 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# The shared volume (DESIGN-001 D-22, Q-05), alone in a Kustomization with pruning OFF:
+# it holds Claude's shared memory, rescue bundles (D-10) and task logs, and the
+# ceph-filesystem class reclaims with Delete, so a pruned PVC is lost data
+# (.agents/rules/flux-pvc-prune-safety.md). The claim carries the prune-disabled
+# annotation as well.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-shared
+  namespace: dev-env-system
+spec:
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  path: ./kubernetes/main/apps/dev-env-system/storage/app
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
