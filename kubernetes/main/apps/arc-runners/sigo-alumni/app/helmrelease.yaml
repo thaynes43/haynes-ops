@@ -89,7 +89,7 @@ spec:
             type: RuntimeDefault
         containers:
           - name: runner
-            image: ghcr.io/thaynes43/actions-runner:0.1.0
+            image: ghcr.io/thaynes43/actions-runner:0.1.0@sha256:2166736618b66c2496af112461d1a2ebfd6df050d6d6de3d2c89914b86939cb9
             command: ["/home/runner/run.sh"]
             securityContext:
               # Existing setup actions use sudo apt (e.g. Playwright --with-deps).

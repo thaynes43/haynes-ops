@@ -87,8 +87,10 @@ pipelines were corrected to emit legacy OCI signatures with patched Cosign
 v3.1.3: `--new-bundle-format=false --use-signing-config=false
 --registry-referrers-mode=legacy`. Cosign v3 supports both formats; the prior
 claim that this required downgrading Cosign or upgrading Kyverno was wrong.
-Existing image digests retain their prior signatures until republished; inspect
-the applicable build and admission result when verifying a deployed tag.
+Older deployed digests retain their prior signatures independently of a new
+source build. The hosted `repair-image-signatures.yml` helper verifies the
+original bundle and exact build identity before adding a compatible signature
+to the same immutable digest; no workload rebuild or restart is required.
 
 ### H-4 — A stale corepack shim on the PVC silently voided the pnpm pin
 

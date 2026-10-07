@@ -1,0 +1,106 @@
+name: Repair Legacy Image Signatures
+
+# One immutable digest per dispatch. Existing provenance must verify before signing.
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Image family whose original main build signed this digest
+        type: choice
+        required: true
+        options:
+          - audio-authoring
+          - blender-authoring
+          - dev-env
+          - comfyui
+          - upgrade-agent
+          - upgrade-shepherd
+          - wyoming-whisper-gpu
+      digest:
+        description: 'Full immutable digest: sha256:<64 lowercase hex characters>'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legacy-signature-repair-${{ inputs.image }}-${{ inputs.digest }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.repository == 'thaynes43/haynes-ops' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      IMAGE_FAMILY: ${{ inputs.image }}
+      DIGEST: ${{ inputs.digest }}
+      REPAIR_CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
+    steps:
+      - name: Validate target and fix original build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$IMAGE_FAMILY" in
+            audio-authoring|blender-authoring|dev-env|comfyui|upgrade-agent|upgrade-shepherd|wyoming-whisper-gpu) ;;
+            *) echo '::error::Image family is not allowed'; exit 1 ;;
+          esac
+          if ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo '::error::An exact sha256 digest is required'
+            exit 1
+          fi
+          printf 'IMAGE=ghcr.io/thaynes43/%s\n' "$IMAGE_FAMILY" >> "$GITHUB_ENV"
+          printf 'ORIGINAL_CERTIFICATE_IDENTITY=https://github.com/thaynes43/haynes-ops/.github/workflows/%s-build.yml@refs/heads/main\n' "$IMAGE_FAMILY" >> "$GITHUB_ENV"
+
+      - name: Install patched cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify original bundle and immutable digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This discovers OCI referrers and GHCR's sha256-<digest> fallback index.
+          # Verify Fulcio identity, issuer, SCT, Rekor inclusion, signed timestamp,
+          # and the in-toto subject digest. Any failure stops before publication.
+          cosign verify-attestation --new-bundle-format=true --use-signed-timestamps \
+            --type https://sigstore.dev/cosign/sign/v1 \
+            --check-claims=true --max-workers=1 \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "$ORIGINAL_CERTIFICATE_IDENTITY" \
+            "${IMAGE}@${DIGEST}" > "$RUNNER_TEMP/original-verification.json"
+
+      - name: Add compatible signature to the verified digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cosign sign --yes --new-bundle-format=false --use-signing-config=false \
+            --registry-referrers-mode=legacy "${IMAGE}@${DIGEST}"
+
+      - name: Verify compatible signature and repair workflow identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cosign verify --new-bundle-format=false --check-claims=true --max-workers=1 \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "$REPAIR_CERTIFICATE_IDENTITY" \
+            "${IMAGE}@${DIGEST}" > "$RUNNER_TEMP/legacy-verification.json"
+          {
+            printf 'Verified the original main build and added a verified legacy signature.\n\n'
+            printf 'Image: `%s@%s`\n\n' "$IMAGE" "$DIGEST"
+            printf 'Original signer: `%s`\n\n' "$ORIGINAL_CERTIFICATE_IDENTITY"
+            printf 'Repair signer: `%s`\n' "$REPAIR_CERTIFICATE_IDENTITY"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -18,8 +18,9 @@
 # `sha256-<digest>.sig` tags. The haynes-ops image workflows now keep cosign v3.1.3
 # and explicitly emit that format with --new-bundle-format=false,
 # --use-signing-config=false and --registry-referrers-mode=legacy. Their existing
-# bundle-only tags remain unverifiable until their next source rebuild. Keep Audit
-# until the running digests have legacy signatures or the verifier supports bundles.
+# bundle-only digests need the verified repair-image-signatures.yml helper;
+# rebuilding a tag does not repair an older pinned digest. Keep Audit until the
+# running digests have legacy signatures or the verifier supports bundles.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:

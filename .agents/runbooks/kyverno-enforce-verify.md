@@ -13,6 +13,38 @@ StorageClass.** ~5 minutes. Runnable by you or by a summoned agent (all read-onl
 > relying on the policy default. `verify-thaynes43-images` remains Audit, while
 > `verify-haynesnetwork-images` uses Enforce.
 
+### Repair existing bundle-only image signatures
+
+The haynes-ops image builders now emit legacy Cosign signatures compatible with
+the current verifier. Older deployed digests may still have only a Sigstore v3
+bundle. Rebuilding a version creates a different digest and does not repair the
+signature of the image already running.
+
+Use `.github/workflows/repair-image-signatures.yml` on `main` to add a compatible
+signature to one exact digest without rebuilding or restarting a workload:
+
+```bash
+gh workflow run repair-image-signatures.yml --repo thaynes43/haynes-ops \
+  --ref main -f image=dev-env -f 'digest=sha256:<64-lowercase-hex-characters>'
+```
+
+Replace the digest placeholder with the exact immutable workload reference
+before running. Allowed families are
+audio-authoring, blender-authoring, dev-env, comfyui, upgrade-agent,
+upgrade-shepherd, and wyoming-whisper-gpu. This helper covers the old haynes-ops
+dev-env image; the separate dev-env repository's v2 images have different
+provenance and must not be sent to it.
+
+Before signing, the hosted job cryptographically verifies the original main
+build workflow's exact Fulcio identity, GitHub issuer, signed timestamp,
+transparency proof, and immutable digest claim. It then emits a legacy signature
+with patched Cosign v3.1.3 and verifies the repair workflow's identity. A failed
+original verification must stop the repair; never disable identity, timestamp,
+or digest checks to force it through. Read the final job result and summary, then
+verify admission at the next ordinary workload creation. No cluster credentials
+or persistent cluster writes are involved. The repair changes signature
+artifacts while preserving the image manifest and running pods.
+
 Kyverno's three enforce policies (`restrict-image-registries`, `restrict-rbac-escalation`,
 `pod-security-baseline`) deny non-conforming resources at admission. The dangerous gap is
 **ephemeral, controller-spawned pods** — a provisioner/operator creates a privileged
