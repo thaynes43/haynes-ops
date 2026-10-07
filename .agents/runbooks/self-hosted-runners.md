@@ -78,11 +78,18 @@ Credentials never belong in Git, workflow files, PRs, issues, or chat. The pod
 cannot read Kubernetes Secrets or encrypt SOPS files. Do not request these values
 from the owner; request only confirmation that the item exists.
 
-Verify the newly published GHCR runner package is **Public** at
+Verify every new GHCR runner package can be pulled anonymously. If it is private,
+set **Public** at
 <https://github.com/users/thaynes43/packages/container/actions-runner/settings>.
-A public repository does not by itself guarantee a new package is public. Making
+A public repository does not by itself guarantee a package is public. Making
 this image public reveals only the public Dockerfile and installed tools; it
 contains no App credentials or private source.
+
+The initial `0.1.0` publication is already public: anonymous tag, digest and
+legacy-signature manifest requests returned 200 on 2026-10-07. Its pinned digest
+is `sha256:2166736618b66c2496af112461d1a2ebfd6df050d6d6de3d2c89914b86939cb9`.
+Hosted smoke and signature verification against the exact main build workflow
+identity also passed. No owner visibility change is needed for this version.
 
 ## Verify before changing workflows
 
@@ -92,9 +99,9 @@ cluster's critical `FluxReconciliationFailure` alert during owner setup: an
 unsuspended missing credential and its dependency-blocked pools would all alert
 after fifteen minutes.
 
-After the owner creates the App item and makes the image public, verify the
-published image digest, pin the shared DinD and plain runner image references,
-and remove those six suspends in a short haynes-ops PR. Merge and reconcile it.
+After the owner creates the App item, verify the published image matches the
+pinned shared DinD and plain runner references, and remove those six suspends
+in a short haynes-ops PR. Merge and reconcile it.
 The App ExternalSecret then acts as a health gate: pools wait for valid Secret
 synchronization before registering. Do not remove suspension while owner setup
 is incomplete, or weaken Flux alerts to accommodate an unconfigured pool.
