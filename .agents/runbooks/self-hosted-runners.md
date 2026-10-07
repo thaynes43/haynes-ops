@@ -188,9 +188,9 @@ external feeds. They prevent runner access to the cluster API and private
 networks. The sigmaphi pool also needs public web access for link checking;
 that exception remains confined to that pool. Add changing feed/CDN hosts through
 Git and Flux, and verify from an actual job. Workflow downloads belong in the
-runner pool's policy. The separate dev-env allowlist includes
-`productionresultssa*.blob.core.windows.net` for reading GitHub job logs;
-additional diagnostic destinations also require a reviewed Git change. Do not
+runner pool's policy. The separate dev-env allowlist names the exact storage
+accounts observed in GitHub's job-log responses; use its network policy as the
+current list. Additional diagnostic destinations require a reviewed Git change. Do not
 use proxies to evade a denied destination.
 
 ## Add a repository
