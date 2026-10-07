@@ -1,9 +1,12 @@
 ---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
 # What keeps the household first when a worker is busy (DESIGN-001 7.1, 7.2, D-21): the
-# agents' PriorityClass and the ceiling on one session pod. The Kyverno half (a CPU
-# limit is mandatory in dev-agents) is dev-env-require-cpu-limit in the kyverno-policies
-# Kustomization.
+# agents' PriorityClass. The Kyverno half (a CPU limit is mandatory in dev-agents, and
+# no container may exceed size class L) is dev-env-require-cpu-limit in the
+# kyverno-policies Kustomization. There is no LimitRange on purpose: with a `max` and no
+# `default` the API server sets default = max and defaultRequest = default, so every
+# container without limits would get 8 CPU / 24Gi, the Kyverno check could never see a
+# missing limit, and each pod would reserve 24Gi.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
