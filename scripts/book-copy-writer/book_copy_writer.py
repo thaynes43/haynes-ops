@@ -292,12 +292,32 @@ def run(args, environ=os.environ):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--snapshot", required=True)
-    parser.add_argument("--selection", required=True)
-    parser.add_argument("--app-capture", required=True)
+    parser.add_argument("--snapshot")
+    parser.add_argument("--selection")
+    parser.add_argument("--app-capture")
+    parser.add_argument("--wait-proofs", action="store_true")
     parser.add_argument("--deadline-epoch", required=True, type=float)
     args = parser.parse_args()
     try:
+        if args.wait_proofs:
+            if any((args.snapshot, args.selection, args.app_capture)) or not 0 < args.deadline_epoch - time.time() <= 300:
+                raise metadata.Refused("proof wait requires its own bounded absolute deadline and no proof paths")
+            from proof_transport import wait_ready
+            def timed_out(_signum, _frame):
+                raise DeadlineExpired("proof delivery deadline expired")
+            previous = {s: signal.signal(s, timed_out) for s in (signal.SIGALRM, signal.SIGTERM, signal.SIGINT)}
+            try:
+                signal.setitimer(signal.ITIMER_REAL, args.deadline_epoch - time.time())
+                paths = wait_ready("/tmp/copy-proofs", os.environ, args.deadline_epoch)
+                args.snapshot, args.selection, args.app_capture = (paths[name] for name in
+                                                                 ("snapshot.json", "selection.json", "app-capture.json"))
+                return run(args)
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                for signum, handler in previous.items():
+                    signal.signal(signum, handler)
+        if not all((args.snapshot, args.selection, args.app_capture)):
+            raise metadata.Refused("three exact proof paths or --wait-proofs are required")
         return run(args)
     except (Exception, DeadlineExpired) as error:
         # Do not log DSN, raw driver errors, application rows or credentials.

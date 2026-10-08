@@ -396,6 +396,29 @@ and column of `books_items` and `book_requests`, ordered by id, including comics
 arrays from those exact rows. The read-only preflight binds the canonical SHA-256 of this complete private capture
 into `snapshot.app_wants.source_sha256`. Never replace the capture with a filtered or regenerated subset.
 
+Large proofs travel through an authorized exec receiver's stdin into the exact owned writer Pod's private `/tmp`
+files, not environment values, command arguments or ConfigMaps. The main Job process uses `--wait-proofs
+--deadline-epoch ABSOLUTE_EPOCH`; the reviewed manifest binds
+the same absolute deadline in `COPY_DEADLINE_EPOCH`, three SHA-256 values in `COPY_PROOF_HASHES_JSON`, and the Pod reads its phase label and controller Job UID through
+`COPY_PHASE_TOKEN`, `COPY_JOB_UID` and `COPY_POD_UID` Downward API fields. The bounded header binds those same identities and exact
+file lengths. Only `snapshot.json` (16 MiB), `selection.json` (1 MiB) and `app-capture.json` (32 MiB) are accepted.
+Unknown, truncated, oversized or changed content refuses before library reads. The receiver requires EOF, fsyncs
+private files and publishes a no-overwrite atomic ready marker. The main Job process verifies those immutable
+files, then acquires its own PostgreSQL fence and consolidates in that same process. Both receiver and main process
+enforce the reviewed absolute deadline while waiting or reading. The parent checks the live Pod
+UID, owner Job UID, phase and recorded ready manifest before `kubectl exec -i` into its receiver; it never transfers
+to a reused name. Run its receiver with `kubectl exec -i -n NAMESPACE POD -c WRITER -- nice -n 19 python
+/copy-writer/proof_transport.py receive`; stream the `proof_transport.py send` bundle to that command and require
+the receiver's successful exit. The receiver only writes `/tmp` proofs and has no library or database actions.
+
+The operator-side `scripts/book-copy-writer/proof_sender.py` validates the hash-pinned checkpoint helper and active
+phase ledger before transfer. It requires the observed Job UID and durable ready-manifest hash, the exact live Pod
+UID and controller owner, the reviewed node and image digest, an unchanged executable Pod specification, and the
+original running main container. Supply its exact `--phase-state`, `--restore-pr`, `--namespace`, `--job`, `--pod`,
+`--pod-uid`, `--checkpoint-helper`, `--checkpoint-sha256` and three proof-file arguments. It rechecks the ledger and
+compares every local proof hash to the recorded ready manifest before starting the bounded exec receiver.
+Its absolute deadline also interrupts a blocked local stdin write and kills and reaps only its own exec process.
+
 Run `python /copy-writer/book_copy_writer.py --snapshot SNAPSHOT --selection SELECTION --app-capture CAPTURE
 --deadline-epoch ABSOLUTE_EPOCH` with `DATABASE_URL`, `STRIP_SERIES_METADATA=0`, the reviewed `EBOOK_ROOT`,
 `STATE_DIR` and `LIBRARY_HOLD_FOLDERS_JSON`. An explicit ordered selection is mandatory; the absolute deadline must

@@ -72,6 +72,14 @@ jobs:
             -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-tests:ro" \
             --entrypoint nice book-copy-writer:validation -n 19 python /writer-tests/test_book_copy_writer.py
 
+      - name: Verify bounded proof stdin transport without a network
+        run: |
+          docker run --rm --read-only --network none --cpus 1 --memory 128m --user 1000:1000 \
+            --tmpfs /tmp:rw,uid=1000,gid=1000,size=16m \
+            -e PYTHONPATH=/copy-writer \
+            -v "$GITHUB_WORKSPACE/scripts/book-copy-writer:/writer-tests:ro" \
+            --entrypoint nice book-copy-writer:validation -n 19 python /writer-tests/test_proof_transport.py
+
       - name: Preserve the exact validated image for main-only publication
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: docker save book-copy-writer:validation --output "${RUNNER_TEMP}/book-copy-writer-image.tar"

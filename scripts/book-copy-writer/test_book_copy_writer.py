@@ -87,6 +87,50 @@ class PG16:
 
 
 class WriterTests(unittest.TestCase):
+    def test_main_waits_for_verified_files_then_runs_in_the_same_process(self):
+        paths = {"snapshot.json": "/tmp/fixture-snapshot", "selection.json": "/tmp/fixture-selection",
+                 "app-capture.json": "/tmp/fixture-app"}
+        pid = os.getpid()
+        def run_in_owner(args):
+            self.assertEqual(os.getpid(), pid)
+            self.assertEqual((args.snapshot, args.selection, args.app_capture), tuple(paths.values()))
+            return 0
+        with mock.patch.object(sys, "argv", ["writer", "--wait-proofs", "--deadline-epoch", str(time.time() + 60)]), \
+             mock.patch("proof_transport.wait_ready", return_value=paths) as waiter, \
+             mock.patch.object(writer, "run", side_effect=run_in_owner) as run:
+            self.assertEqual(writer.main(), 0)
+            waiter.assert_called_once(); run.assert_called_once()
+
+    def test_main_closed_proof_gate_prevents_library_or_database_entry(self):
+        with tempfile.TemporaryDirectory() as root:
+            deadline = time.time() + 60
+            from proof_transport import wait_ready
+            def closed(_directory, environ, approved_deadline):
+                return wait_ready(Path(root, "proofs"), environ, approved_deadline)
+            with mock.patch.object(sys, "argv", ["writer", "--wait-proofs", "--deadline-epoch", str(deadline)]), \
+                 mock.patch.dict(os.environ, {}, clear=True), mock.patch("proof_transport.wait_ready", side_effect=closed), \
+                 mock.patch.object(writer, "run") as run, mock.patch.object(writer, "log"):
+                self.assertEqual(writer.main(), 1)
+                run.assert_not_called()
+                self.assertFalse(Path(root, "proofs").exists())
+
+    def test_actual_main_wait_deadline_stops_before_database_or_library_entry(self):
+        import hashlib
+        from proof_transport import FILES, wait_ready
+        with tempfile.TemporaryDirectory() as root:
+            deadline = time.time() + .15
+            environment = {'COPY_PHASE_TOKEN': 'a' * 32, 'COPY_JOB_UID': '11111111-2222-3333-4444-555555555555',
+                           'COPY_POD_UID': 'cccccccc-dddd-eeee-ffff-aaaaaaaaaaaa', 'COPY_DEADLINE_EPOCH': str(deadline),
+                           'COPY_PROOF_HASHES_JSON': json.dumps({name: hashlib.sha256(b'fixture').hexdigest() for name in FILES})}
+            def waiting(_directory, environ, approved_deadline):
+                return wait_ready(Path(root, 'proofs'), environ, approved_deadline)
+            with mock.patch.object(sys, 'argv', ['writer', '--wait-proofs', '--deadline-epoch', str(deadline)]), \
+                 mock.patch.dict(os.environ, environment, clear=True), mock.patch('proof_transport.wait_ready', side_effect=waiting), \
+                 mock.patch.object(writer, 'run') as run, mock.patch.object(writer, 'log'):
+                self.assertEqual(writer.main(), 1)
+                run.assert_not_called()
+                self.assertFalse(Path(root, 'proofs/ready.json').exists())
+
     @classmethod
     def setUpClass(cls):
         cls.pg = PG16()

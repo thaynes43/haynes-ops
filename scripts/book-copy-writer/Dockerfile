@@ -9,5 +9,6 @@ RUN python -m pip install --no-cache-dir --only-binary=:all: --require-hashes -r
 COPY kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert/epub_copies.py ./epub_copies.py
 COPY kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert/epub_metadata.py ./epub_metadata.py
 COPY scripts/book-copy-writer/book_copy_writer.py ./book_copy_writer.py
+COPY scripts/book-copy-writer/proof_transport.py ./proof_transport.py
 USER 1000:1000
 ENTRYPOINT ["python", "/copy-writer/book_copy_writer.py"]
