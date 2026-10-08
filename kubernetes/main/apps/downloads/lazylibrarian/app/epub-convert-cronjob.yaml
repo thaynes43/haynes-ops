@@ -45,7 +45,7 @@ metadata:
     # Keep Flux's postBuild envsubst away from the spec (no ${...} is meant for it).
     kustomize.toolkit.fluxcd.io/substitute: disabled
 spec:
-  suspend: false
+  suspend: true
   schedule: "20 * * * *"
   timeZone: Etc/UTC
   concurrencyPolicy: Forbid
