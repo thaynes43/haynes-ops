@@ -1,0 +1,8582 @@
+{
+  "schemaVersion": 1,
+  "resources": [
+    {
+      "apiGroup": "",
+      "resource": "bindings",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Binding"
+      ],
+      "verbs": [
+        "create"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "componentstatuses",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ComponentStatus"
+      ],
+      "verbs": [
+        "get",
+        "list"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "configmaps",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ConfigMap"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "endpoints",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Endpoints"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "events",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Event"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "limitranges",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "LimitRange"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "namespaces",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Namespace"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "namespaces/finalize",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Namespace"
+      ],
+      "verbs": [
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "namespaces/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Namespace"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "nodes",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Node"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "nodes/proxy",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "NodeProxyOptions"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "nodes/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Node"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "persistentvolumeclaims",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PersistentVolumeClaim"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "persistentvolumeclaims/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PersistentVolumeClaim"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "persistentvolumes",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PersistentVolume"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "persistentvolumes/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PersistentVolume"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "pods",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Pod"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "pods/attach",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PodAttachOptions"
+      ],
+      "verbs": [
+        "create",
+        "get"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "pods/binding",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Binding"
+      ],
+      "verbs": [
+        "create"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "pods/ephemeralcontainers",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Pod"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "pods/eviction",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Eviction"
+      ],
+      "verbs": [
+        "create"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "pods/exec",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PodExecOptions"
+      ],
+      "verbs": [
+        "create",
+        "get"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "pods/log",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Pod"
+      ],
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "pods/portforward",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PodPortForwardOptions"
+      ],
+      "verbs": [
+        "create",
+        "get"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "pods/proxy",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PodProxyOptions"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "pods/resize",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Pod"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "pods/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Pod"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "podtemplates",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PodTemplate"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "replicationcontrollers",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ReplicationController"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "replicationcontrollers/scale",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Scale"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "replicationcontrollers/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ReplicationController"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "resourcequotas",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ResourceQuota"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "resourcequotas/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ResourceQuota"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "secrets",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Secret"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "serviceaccounts",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ServiceAccount"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "serviceaccounts/token",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "TokenRequest"
+      ],
+      "verbs": [
+        "create"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "services",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Service"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "services/proxy",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ServiceProxyOptions"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "",
+      "resource": "services/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Service"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "acme.cert-manager.io",
+      "resource": "challenges",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Challenge"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "acme.cert-manager.io",
+      "resource": "challenges/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Challenge"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "acme.cert-manager.io",
+      "resource": "orders",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Order"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "acme.cert-manager.io",
+      "resource": "orders/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Order"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "actions.github.com",
+      "resource": "autoscalinglisteners",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AutoscalingListener"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "actions.github.com",
+      "resource": "autoscalinglisteners/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AutoscalingListener"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "actions.github.com",
+      "resource": "autoscalingrunnersets",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AutoscalingRunnerSet"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "actions.github.com",
+      "resource": "autoscalingrunnersets/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AutoscalingRunnerSet"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "actions.github.com",
+      "resource": "ephemeralrunners",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "EphemeralRunner"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "actions.github.com",
+      "resource": "ephemeralrunners/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "EphemeralRunner"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "actions.github.com",
+      "resource": "ephemeralrunnersets",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "EphemeralRunnerSet"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "actions.github.com",
+      "resource": "ephemeralrunnersets/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "EphemeralRunnerSet"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "admissionregistration.k8s.io",
+      "resource": "mutatingwebhookconfigurations",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "MutatingWebhookConfiguration"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "admissionregistration.k8s.io",
+      "resource": "validatingadmissionpolicies",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ValidatingAdmissionPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "admissionregistration.k8s.io",
+      "resource": "validatingadmissionpolicies/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ValidatingAdmissionPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "admissionregistration.k8s.io",
+      "resource": "validatingadmissionpolicybindings",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ValidatingAdmissionPolicyBinding"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "admissionregistration.k8s.io",
+      "resource": "validatingwebhookconfigurations",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ValidatingWebhookConfiguration"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "apiextensions.k8s.io",
+      "resource": "customresourcedefinitions",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CustomResourceDefinition"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "apiextensions.k8s.io",
+      "resource": "customresourcedefinitions/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CustomResourceDefinition"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "apiregistration.k8s.io",
+      "resource": "apiservices",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "APIService"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "apiregistration.k8s.io",
+      "resource": "apiservices/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "APIService"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "controllerrevisions",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ControllerRevision"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "daemonsets",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "DaemonSet"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "daemonsets/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "DaemonSet"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "deployments",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Deployment"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "deployments/scale",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Scale"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "deployments/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Deployment"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "replicasets",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ReplicaSet"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "replicasets/scale",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Scale"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "replicasets/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ReplicaSet"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "statefulsets",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "StatefulSet"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "statefulsets/scale",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Scale"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "apps",
+      "resource": "statefulsets/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "StatefulSet"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "authentication.k8s.io",
+      "resource": "selfsubjectreviews",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "SelfSubjectReview"
+      ],
+      "verbs": [
+        "create"
+      ]
+    },
+    {
+      "apiGroup": "authentication.k8s.io",
+      "resource": "tokenreviews",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "TokenReview"
+      ],
+      "verbs": [
+        "create"
+      ]
+    },
+    {
+      "apiGroup": "authorization.k8s.io",
+      "resource": "localsubjectaccessreviews",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "LocalSubjectAccessReview"
+      ],
+      "verbs": [
+        "create"
+      ]
+    },
+    {
+      "apiGroup": "authorization.k8s.io",
+      "resource": "selfsubjectaccessreviews",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "SelfSubjectAccessReview"
+      ],
+      "verbs": [
+        "create"
+      ]
+    },
+    {
+      "apiGroup": "authorization.k8s.io",
+      "resource": "selfsubjectrulesreviews",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "SelfSubjectRulesReview"
+      ],
+      "verbs": [
+        "create"
+      ]
+    },
+    {
+      "apiGroup": "authorization.k8s.io",
+      "resource": "subjectaccessreviews",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "SubjectAccessReview"
+      ],
+      "verbs": [
+        "create"
+      ]
+    },
+    {
+      "apiGroup": "autoscaling",
+      "resource": "horizontalpodautoscalers",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v2"
+      ],
+      "kinds": [
+        "HorizontalPodAutoscaler"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "autoscaling",
+      "resource": "horizontalpodautoscalers/status",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v2"
+      ],
+      "kinds": [
+        "HorizontalPodAutoscaler"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "batch",
+      "resource": "cronjobs",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CronJob"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "batch",
+      "resource": "cronjobs/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CronJob"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "batch",
+      "resource": "jobs",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Job"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "batch",
+      "resource": "jobs/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Job"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephblockpoolradosnamespaces",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephBlockPoolRadosNamespace"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephblockpoolradosnamespaces/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephBlockPoolRadosNamespace"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephblockpools",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephBlockPool"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephblockpools/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephBlockPool"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephbucketnotifications",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephBucketNotification"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephbucketnotifications/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephBucketNotification"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephbuckettopics",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephBucketTopic"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephbuckettopics/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephBucketTopic"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephclients",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephClient"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephclients/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephClient"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephclusters",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephCluster"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephclusters/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephCluster"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephcosidrivers",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephCOSIDriver"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephfilesystemmirrors",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephFilesystemMirror"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephfilesystemmirrors/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephFilesystemMirror"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephfilesystems",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephFilesystem"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephfilesystems/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephFilesystem"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephfilesystemsubvolumegroups",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephFilesystemSubVolumeGroup"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephfilesystemsubvolumegroups/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephFilesystemSubVolumeGroup"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephnfses",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephNFS"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephnfses/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephNFS"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephnvmeofgateways",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephNVMeOFGateway"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephnvmeofgateways/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephNVMeOFGateway"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectrealms",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectRealm"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectrealms/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectRealm"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectstoreaccounts",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectStoreAccount"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectstoreaccounts/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectStoreAccount"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectstores",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectStore"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectstores/scale",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Scale"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectstores/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectStore"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectstoreusers",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectStoreUser"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectstoreusers/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectStoreUser"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectzonegroups",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectZoneGroup"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectzonegroups/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectZoneGroup"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectzones",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectZone"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephobjectzones/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephObjectZone"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephrbdmirrors",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephRBDMirror"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "ceph.rook.io",
+      "resource": "cephrbdmirrors/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephRBDMirror"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cert-manager.io",
+      "resource": "certificaterequests",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CertificateRequest"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cert-manager.io",
+      "resource": "certificaterequests/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CertificateRequest"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cert-manager.io",
+      "resource": "certificates",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Certificate"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cert-manager.io",
+      "resource": "certificates/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Certificate"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cert-manager.io",
+      "resource": "clusterissuers",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClusterIssuer"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cert-manager.io",
+      "resource": "clusterissuers/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClusterIssuer"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cert-manager.io",
+      "resource": "issuers",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Issuer"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cert-manager.io",
+      "resource": "issuers/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Issuer"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "certificates.k8s.io",
+      "resource": "certificatesigningrequests",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CertificateSigningRequest"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "certificates.k8s.io",
+      "resource": "certificatesigningrequests/approval",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CertificateSigningRequest"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "certificates.k8s.io",
+      "resource": "certificatesigningrequests/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CertificateSigningRequest"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumcidrgroups",
+      "namespaced": false,
+      "versions": [
+        "v2",
+        "v2alpha1"
+      ],
+      "kinds": [
+        "CiliumCIDRGroup"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumclusterwidenetworkpolicies",
+      "namespaced": false,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumClusterwideNetworkPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumclusterwidenetworkpolicies/status",
+      "namespaced": false,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumClusterwideNetworkPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumendpoints",
+      "namespaced": true,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumEndpoint"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumexternalworkloads",
+      "namespaced": false,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumExternalWorkload"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumexternalworkloads/status",
+      "namespaced": false,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumExternalWorkload"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumidentities",
+      "namespaced": false,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumIdentity"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumidentities/status",
+      "namespaced": false,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumIdentity"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliuml2announcementpolicies",
+      "namespaced": false,
+      "versions": [
+        "v2alpha1"
+      ],
+      "kinds": [
+        "CiliumL2AnnouncementPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliuml2announcementpolicies/status",
+      "namespaced": false,
+      "versions": [
+        "v2alpha1"
+      ],
+      "kinds": [
+        "CiliumL2AnnouncementPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumloadbalancerippools",
+      "namespaced": false,
+      "versions": [
+        "v2",
+        "v2alpha1"
+      ],
+      "kinds": [
+        "CiliumLoadBalancerIPPool"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumloadbalancerippools/status",
+      "namespaced": false,
+      "versions": [
+        "v2",
+        "v2alpha1"
+      ],
+      "kinds": [
+        "CiliumLoadBalancerIPPool"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumlocalredirectpolicies",
+      "namespaced": true,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumLocalRedirectPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumnetworkpolicies",
+      "namespaced": true,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumNetworkPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumnetworkpolicies/status",
+      "namespaced": true,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumNetworkPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumnodeconfigs",
+      "namespaced": true,
+      "versions": [
+        "v2",
+        "v2alpha1"
+      ],
+      "kinds": [
+        "CiliumNodeConfig"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumnodes",
+      "namespaced": false,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumNode"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumnodes/status",
+      "namespaced": false,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "CiliumNode"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "cilium.io",
+      "resource": "ciliumpodippools",
+      "namespaced": false,
+      "versions": [
+        "v2alpha1"
+      ],
+      "kinds": [
+        "CiliumPodIPPool"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "coordination.k8s.io",
+      "resource": "leases",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Lease"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "cephconnections",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephConnection"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "cephconnections/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CephConnection"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "clientprofilemappings",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClientProfileMapping"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "clientprofilemappings/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClientProfileMapping"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "clientprofilereplications",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClientProfileReplication"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "clientprofilereplications/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClientProfileReplication"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "clientprofiles",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClientProfile"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "clientprofiles/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClientProfile"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "drivers",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Driver"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "drivers/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Driver"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "operatorconfigs",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "OperatorConfig"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "csi.ceph.io",
+      "resource": "operatorconfigs/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "OperatorConfig"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "dev-env.haynesops.com",
+      "resource": "accessgrants",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AccessGrant"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "dev-env.haynesops.com",
+      "resource": "accessgrants/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AccessGrant"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "dev-env.haynesops.com",
+      "resource": "activities",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Activity"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "dev-env.haynesops.com",
+      "resource": "agentsessions",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AgentSession"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "dev-env.haynesops.com",
+      "resource": "agentsessions/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AgentSession"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "dev-env.haynesops.com",
+      "resource": "grantpolicies",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "GrantPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "dlbdeviceplugins",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "DlbDevicePlugin"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "dlbdeviceplugins/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "DlbDevicePlugin"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "dsadeviceplugins",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "DsaDevicePlugin"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "dsadeviceplugins/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "DsaDevicePlugin"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "fpgadeviceplugins",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "FpgaDevicePlugin"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "fpgadeviceplugins/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "FpgaDevicePlugin"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "gpudeviceplugins",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "GpuDevicePlugin"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "gpudeviceplugins/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "GpuDevicePlugin"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "iaadeviceplugins",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "IaaDevicePlugin"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "iaadeviceplugins/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "IaaDevicePlugin"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "npudeviceplugins",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "NpuDevicePlugin"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "npudeviceplugins/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "NpuDevicePlugin"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "qatdeviceplugins",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "QatDevicePlugin"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "qatdeviceplugins/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "QatDevicePlugin"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "sgxdeviceplugins",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "SgxDevicePlugin"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "deviceplugin.intel.com",
+      "resource": "sgxdeviceplugins/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "SgxDevicePlugin"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "discovery.k8s.io",
+      "resource": "endpointslices",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "EndpointSlice"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "dragonflydb.io",
+      "resource": "dragonflies",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Dragonfly"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "dragonflydb.io",
+      "resource": "dragonflies/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Dragonfly"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "events.k8s.io",
+      "resource": "events",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Event"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "clusterexternalsecrets",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClusterExternalSecret"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "clusterexternalsecrets/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClusterExternalSecret"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "clusterpushsecrets",
+      "namespaced": false,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ClusterPushSecret"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "clusterpushsecrets/status",
+      "namespaced": false,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ClusterPushSecret"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "clustersecretstores",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClusterSecretStore"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "clustersecretstores/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClusterSecretStore"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "externalsecrets",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ExternalSecret"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "externalsecrets/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ExternalSecret"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "pushsecrets",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "PushSecret"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "pushsecrets/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "PushSecret"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "secretstores",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "SecretStore"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "external-secrets.io",
+      "resource": "secretstores/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "SecretStore"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "externaldns.k8s.io",
+      "resource": "dnsendpoints",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "DNSEndpoint"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "externaldns.k8s.io",
+      "resource": "dnsendpoints/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "DNSEndpoint"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "externaldns.k8s.io",
+      "resource": "dnsrecords",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "DNSRecord"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "externaldns.k8s.io",
+      "resource": "dnsrecords/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "DNSRecord"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "flowcontrol.apiserver.k8s.io",
+      "resource": "flowschemas",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "FlowSchema"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "flowcontrol.apiserver.k8s.io",
+      "resource": "flowschemas/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "FlowSchema"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "flowcontrol.apiserver.k8s.io",
+      "resource": "prioritylevelconfigurations",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PriorityLevelConfiguration"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "flowcontrol.apiserver.k8s.io",
+      "resource": "prioritylevelconfigurations/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PriorityLevelConfiguration"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "fpga.intel.com",
+      "resource": "acceleratorfunctions",
+      "namespaced": true,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "AcceleratorFunction"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "fpga.intel.com",
+      "resource": "fpgaregions",
+      "namespaced": true,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "FpgaRegion"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "gateway.networking.k8s.io",
+      "resource": "backendtlspolicies",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "BackendTLSPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "gateway.networking.k8s.io",
+      "resource": "backendtlspolicies/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "BackendTLSPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "gateway.networking.k8s.io",
+      "resource": "gatewayclasses",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "GatewayClass"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "gateway.networking.k8s.io",
+      "resource": "gatewayclasses/status",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "GatewayClass"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "gateway.networking.k8s.io",
+      "resource": "gateways",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "Gateway"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "gateway.networking.k8s.io",
+      "resource": "gateways/status",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "Gateway"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "gateway.networking.k8s.io",
+      "resource": "grpcroutes",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "GRPCRoute"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "gateway.networking.k8s.io",
+      "resource": "grpcroutes/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "GRPCRoute"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "gateway.networking.k8s.io",
+      "resource": "httproutes",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "HTTPRoute"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "gateway.networking.k8s.io",
+      "resource": "httproutes/status",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "HTTPRoute"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "gateway.networking.k8s.io",
+      "resource": "referencegrants",
+      "namespaced": true,
+      "versions": [
+        "v1beta1"
+      ],
+      "kinds": [
+        "ReferenceGrant"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "acraccesstokens",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ACRAccessToken"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "acraccesstokens/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ACRAccessToken"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "beyondtrustworkloadcredentialsdynamicsecrets",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "BeyondtrustWorkloadCredentialsDynamicSecret"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "beyondtrustworkloadcredentialsdynamicsecrets/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "BeyondtrustWorkloadCredentialsDynamicSecret"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "cloudsmithaccesstokens",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "CloudsmithAccessToken"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "cloudsmithaccesstokens/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "CloudsmithAccessToken"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "clustergenerators",
+      "namespaced": false,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ClusterGenerator"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "clustergenerators/status",
+      "namespaced": false,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ClusterGenerator"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "ecrauthorizationtokens",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ECRAuthorizationToken"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "ecrauthorizationtokens/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ECRAuthorizationToken"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "fakes",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Fake"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "fakes/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Fake"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "gcraccesstokens",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "GCRAccessToken"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "gcraccesstokens/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "GCRAccessToken"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "generatorstates",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "GeneratorState"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "githubaccesstokens",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "GithubAccessToken"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "githubaccesstokens/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "GithubAccessToken"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "gitlabdeploytokens",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "GitlabDeployToken"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "gitlabdeploytokens/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "GitlabDeployToken"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "grafanas",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Grafana"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "grafanas/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Grafana"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "mfas",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "MFA"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "mfas/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "MFA"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "passwords",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Password"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "passwords/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Password"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "quayaccesstokens",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "QuayAccessToken"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "quayaccesstokens/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "QuayAccessToken"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "sshkeys",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "SSHKey"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "sshkeys/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "SSHKey"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "stssessiontokens",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "STSSessionToken"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "stssessiontokens/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "STSSessionToken"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "uuids",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "UUID"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "uuids/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "UUID"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "vaultdynamicsecrets",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "VaultDynamicSecret"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "vaultdynamicsecrets/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "VaultDynamicSecret"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "webhooks",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Webhook"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "generators.external-secrets.io",
+      "resource": "webhooks/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Webhook"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "groupsnapshot.storage.k8s.io",
+      "resource": "volumegroupsnapshotclasses",
+      "namespaced": false,
+      "versions": [
+        "v1beta1",
+        "v1beta2"
+      ],
+      "kinds": [
+        "VolumeGroupSnapshotClass"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "groupsnapshot.storage.k8s.io",
+      "resource": "volumegroupsnapshotcontents",
+      "namespaced": false,
+      "versions": [
+        "v1beta1",
+        "v1beta2"
+      ],
+      "kinds": [
+        "VolumeGroupSnapshotContent"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "groupsnapshot.storage.k8s.io",
+      "resource": "volumegroupsnapshotcontents/status",
+      "namespaced": false,
+      "versions": [
+        "v1beta1",
+        "v1beta2"
+      ],
+      "kinds": [
+        "VolumeGroupSnapshotContent"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "groupsnapshot.storage.k8s.io",
+      "resource": "volumegroupsnapshots",
+      "namespaced": true,
+      "versions": [
+        "v1beta1",
+        "v1beta2"
+      ],
+      "kinds": [
+        "VolumeGroupSnapshot"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "groupsnapshot.storage.k8s.io",
+      "resource": "volumegroupsnapshots/status",
+      "namespaced": true,
+      "versions": [
+        "v1beta1",
+        "v1beta2"
+      ],
+      "kinds": [
+        "VolumeGroupSnapshot"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "helm.toolkit.fluxcd.io",
+      "resource": "helmreleases",
+      "namespaced": true,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "HelmRelease"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "helm.toolkit.fluxcd.io",
+      "resource": "helmreleases/status",
+      "namespaced": true,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "HelmRelease"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "accesscontrolpolicies",
+      "namespaced": false,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AccessControlPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "aiservices",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AIService"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "apiaccesses",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "APIAccess"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "apiauths",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "APIAuth"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "apibundles",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "APIBundle"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "apicatalogitems",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "APICatalogItem"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "apiplans",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "APIPlan"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "apiportalauths",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "APIPortalAuth"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "apiportals",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "APIPortal"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "apiratelimits",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "APIRateLimit"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "apis",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "API"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "apiversions",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "APIVersion"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "contentitems",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ContentItem"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "contentitems/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ContentItem"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "managedapplications",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ManagedApplication"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "managedsubscriptions",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ManagedSubscription"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "uplinks",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Uplink"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "hub.traefik.io",
+      "resource": "uplinks/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Uplink"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "image.toolkit.fluxcd.io",
+      "resource": "imagepolicies",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ImagePolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "image.toolkit.fluxcd.io",
+      "resource": "imagepolicies/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ImagePolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "image.toolkit.fluxcd.io",
+      "resource": "imagerepositories",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ImageRepository"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "image.toolkit.fluxcd.io",
+      "resource": "imagerepositories/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ImageRepository"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "image.toolkit.fluxcd.io",
+      "resource": "imageupdateautomations",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ImageUpdateAutomation"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "image.toolkit.fluxcd.io",
+      "resource": "imageupdateautomations/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ImageUpdateAutomation"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "jaegertracing.io",
+      "resource": "jaegers",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Jaeger"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "jaegertracing.io",
+      "resource": "jaegers/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Jaeger"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "k8s.cni.cncf.io",
+      "resource": "network-attachment-definitions",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "NetworkAttachmentDefinition"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "kustomize.toolkit.fluxcd.io",
+      "resource": "kustomizations",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Kustomization"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "kustomize.toolkit.fluxcd.io",
+      "resource": "kustomizations/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Kustomization"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "cleanuppolicies",
+      "namespaced": true,
+      "versions": [
+        "v2",
+        "v2beta1"
+      ],
+      "kinds": [
+        "CleanupPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "cleanuppolicies/status",
+      "namespaced": true,
+      "versions": [
+        "v2",
+        "v2beta1"
+      ],
+      "kinds": [
+        "CleanupPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "clustercleanuppolicies",
+      "namespaced": false,
+      "versions": [
+        "v2",
+        "v2beta1"
+      ],
+      "kinds": [
+        "ClusterCleanupPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "clustercleanuppolicies/status",
+      "namespaced": false,
+      "versions": [
+        "v2",
+        "v2beta1"
+      ],
+      "kinds": [
+        "ClusterCleanupPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "clusterpolicies",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v2beta1"
+      ],
+      "kinds": [
+        "ClusterPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "clusterpolicies/status",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v2beta1"
+      ],
+      "kinds": [
+        "ClusterPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "globalcontextentries",
+      "namespaced": false,
+      "versions": [
+        "v2",
+        "v2alpha1",
+        "v2beta1"
+      ],
+      "kinds": [
+        "GlobalContextEntry"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "globalcontextentries/status",
+      "namespaced": false,
+      "versions": [
+        "v2",
+        "v2alpha1",
+        "v2beta1"
+      ],
+      "kinds": [
+        "GlobalContextEntry"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "policies",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v2beta1"
+      ],
+      "kinds": [
+        "Policy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "policies/status",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v2beta1"
+      ],
+      "kinds": [
+        "Policy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "policyexceptions",
+      "namespaced": true,
+      "versions": [
+        "v2",
+        "v2beta1"
+      ],
+      "kinds": [
+        "PolicyException"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "updaterequests",
+      "namespaced": true,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "UpdateRequest"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "kyverno.io",
+      "resource": "updaterequests/status",
+      "namespaced": true,
+      "versions": [
+        "v2"
+      ],
+      "kinds": [
+        "UpdateRequest"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "metrics.k8s.io",
+      "resource": "nodes",
+      "namespaced": false,
+      "versions": [
+        "v1beta1"
+      ],
+      "kinds": [
+        "NodeMetrics"
+      ],
+      "verbs": [
+        "get",
+        "list"
+      ]
+    },
+    {
+      "apiGroup": "metrics.k8s.io",
+      "resource": "pods",
+      "namespaced": true,
+      "versions": [
+        "v1beta1"
+      ],
+      "kinds": [
+        "PodMetrics"
+      ],
+      "verbs": [
+        "get",
+        "list"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "alertmanagerconfigs",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AlertmanagerConfig"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "alertmanagerconfigs/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "AlertmanagerConfig"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "alertmanagers",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Alertmanager"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "alertmanagers/scale",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Scale"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "alertmanagers/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Alertmanager"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "podmonitors",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PodMonitor"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "podmonitors/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PodMonitor"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "probes",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Probe"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "probes/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Probe"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "prometheusagents",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "PrometheusAgent"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "prometheusagents/scale",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Scale"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "prometheusagents/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "PrometheusAgent"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "prometheuses",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Prometheus"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "prometheuses/scale",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Scale"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "prometheuses/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Prometheus"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "prometheusrules",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PrometheusRule"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "prometheusrules/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PrometheusRule"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "scrapeconfigs",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ScrapeConfig"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "scrapeconfigs/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ScrapeConfig"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "servicemonitors",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ServiceMonitor"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "servicemonitors/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ServiceMonitor"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "thanosrulers",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ThanosRuler"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.coreos.com",
+      "resource": "thanosrulers/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ThanosRuler"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "monitoring.grafana.com",
+      "resource": "podlogs",
+      "namespaced": true,
+      "versions": [
+        "v1alpha2"
+      ],
+      "kinds": [
+        "PodLogs"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "networking.k8s.io",
+      "resource": "ingressclasses",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "IngressClass"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "networking.k8s.io",
+      "resource": "ingresses",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Ingress"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "networking.k8s.io",
+      "resource": "ingresses/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Ingress"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "networking.k8s.io",
+      "resource": "ipaddresses",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "IPAddress"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "networking.k8s.io",
+      "resource": "networkpolicies",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "NetworkPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "networking.k8s.io",
+      "resource": "servicecidrs",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ServiceCIDR"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "networking.k8s.io",
+      "resource": "servicecidrs/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ServiceCIDR"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "nfd.k8s-sigs.io",
+      "resource": "nodefeaturegroups",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "NodeFeatureGroup"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "nfd.k8s-sigs.io",
+      "resource": "nodefeaturegroups/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "NodeFeatureGroup"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "nfd.k8s-sigs.io",
+      "resource": "nodefeaturerules",
+      "namespaced": false,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "NodeFeatureRule"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "nfd.k8s-sigs.io",
+      "resource": "nodefeatures",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "NodeFeature"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "node.k8s.io",
+      "resource": "runtimeclasses",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "RuntimeClass"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "notification.toolkit.fluxcd.io",
+      "resource": "alerts",
+      "namespaced": true,
+      "versions": [
+        "v1beta3"
+      ],
+      "kinds": [
+        "Alert"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "notification.toolkit.fluxcd.io",
+      "resource": "providers",
+      "namespaced": true,
+      "versions": [
+        "v1beta3"
+      ],
+      "kinds": [
+        "Provider"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "notification.toolkit.fluxcd.io",
+      "resource": "receivers",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Receiver"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "notification.toolkit.fluxcd.io",
+      "resource": "receivers/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Receiver"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "objectbucket.io",
+      "resource": "objectbucketclaims",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ObjectBucketClaim"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "objectbucket.io",
+      "resource": "objectbucketclaims/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ObjectBucketClaim"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "objectbucket.io",
+      "resource": "objectbuckets",
+      "namespaced": false,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ObjectBucket"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "objectbucket.io",
+      "resource": "objectbuckets/status",
+      "namespaced": false,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ObjectBucket"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "deletingpolicies",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1alpha1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "DeletingPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "deletingpolicies/status",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1alpha1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "DeletingPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "generatingpolicies",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1alpha1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "GeneratingPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "generatingpolicies/status",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1alpha1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "GeneratingPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "imagevalidatingpolicies",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1alpha1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "ImageValidatingPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "imagevalidatingpolicies/status",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1alpha1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "ImageValidatingPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "mutatingpolicies",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1alpha1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "MutatingPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "mutatingpolicies/status",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1alpha1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "MutatingPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "namespaceddeletingpolicies",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "NamespacedDeletingPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "namespaceddeletingpolicies/status",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "NamespacedDeletingPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "namespacedgeneratingpolicies",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "NamespacedGeneratingPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "namespacedgeneratingpolicies/status",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "NamespacedGeneratingPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "namespacedimagevalidatingpolicies",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "NamespacedImageValidatingPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "namespacedimagevalidatingpolicies/status",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "NamespacedImageValidatingPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "namespacedmutatingpolicies",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "NamespacedMutatingPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "namespacedmutatingpolicies/status",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "NamespacedMutatingPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "namespacedvalidatingpolicies",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "NamespacedValidatingPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "namespacedvalidatingpolicies/status",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "NamespacedValidatingPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "policyexceptions",
+      "namespaced": true,
+      "versions": [
+        "v1",
+        "v1alpha1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "PolicyException"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "validatingpolicies",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1alpha1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "ValidatingPolicy"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policies.kyverno.io",
+      "resource": "validatingpolicies/status",
+      "namespaced": false,
+      "versions": [
+        "v1",
+        "v1alpha1",
+        "v1beta1"
+      ],
+      "kinds": [
+        "ValidatingPolicy"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "policy",
+      "resource": "poddisruptionbudgets",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PodDisruptionBudget"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "policy",
+      "resource": "poddisruptionbudgets/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PodDisruptionBudget"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "backups",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Backup"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "backups/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Backup"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "clusterimagecatalogs",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClusterImageCatalog"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "clusters",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Cluster"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "clusters/scale",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Scale"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "clusters/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Cluster"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "databaseroles",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "DatabaseRole"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "databaseroles/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "DatabaseRole"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "databases",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Database"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "databases/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Database"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "failoverquorums",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "FailoverQuorum"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "failoverquorums/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "FailoverQuorum"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "imagecatalogs",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ImageCatalog"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "poolers",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Pooler"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "poolers/scale",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Scale"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "poolers/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Pooler"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "publications",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Publication"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "publications/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Publication"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "scheduledbackups",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ScheduledBackup"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "scheduledbackups/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ScheduledBackup"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "subscriptions",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Subscription"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "postgresql.cnpg.io",
+      "resource": "subscriptions/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Subscription"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "rbac.authorization.k8s.io",
+      "resource": "clusterrolebindings",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClusterRoleBinding"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "rbac.authorization.k8s.io",
+      "resource": "clusterroles",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClusterRole"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "rbac.authorization.k8s.io",
+      "resource": "rolebindings",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "RoleBinding"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "rbac.authorization.k8s.io",
+      "resource": "roles",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Role"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "reports.kyverno.io",
+      "resource": "clusterephemeralreports",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ClusterEphemeralReport"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "reports.kyverno.io",
+      "resource": "ephemeralreports",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "EphemeralReport"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "resource.k8s.io",
+      "resource": "deviceclasses",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "DeviceClass"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "resource.k8s.io",
+      "resource": "resourceclaims",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ResourceClaim"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "resource.k8s.io",
+      "resource": "resourceclaims/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ResourceClaim"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "resource.k8s.io",
+      "resource": "resourceclaimtemplates",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ResourceClaimTemplate"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "resource.k8s.io",
+      "resource": "resourceslices",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ResourceSlice"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "scheduling.k8s.io",
+      "resource": "priorityclasses",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "PriorityClass"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "snapshot.storage.k8s.io",
+      "resource": "volumesnapshotclasses",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "VolumeSnapshotClass"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "snapshot.storage.k8s.io",
+      "resource": "volumesnapshotcontents",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "VolumeSnapshotContent"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "snapshot.storage.k8s.io",
+      "resource": "volumesnapshotcontents/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "VolumeSnapshotContent"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "snapshot.storage.k8s.io",
+      "resource": "volumesnapshots",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "VolumeSnapshot"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "snapshot.storage.k8s.io",
+      "resource": "volumesnapshots/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "VolumeSnapshot"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "source.extensions.fluxcd.io",
+      "resource": "artifactgenerators",
+      "namespaced": true,
+      "versions": [
+        "v1beta1"
+      ],
+      "kinds": [
+        "ArtifactGenerator"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "source.extensions.fluxcd.io",
+      "resource": "artifactgenerators/status",
+      "namespaced": true,
+      "versions": [
+        "v1beta1"
+      ],
+      "kinds": [
+        "ArtifactGenerator"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "buckets",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Bucket"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "buckets/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "Bucket"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "externalartifacts",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ExternalArtifact"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "externalartifacts/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "ExternalArtifact"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "gitrepositories",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "GitRepository"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "gitrepositories/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "GitRepository"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "helmcharts",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "HelmChart"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "helmcharts/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "HelmChart"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "helmrepositories",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "HelmRepository"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "helmrepositories/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "HelmRepository"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "ocirepositories",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "OCIRepository"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "source.toolkit.fluxcd.io",
+      "resource": "ocirepositories/status",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "OCIRepository"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "storage.k8s.io",
+      "resource": "csidrivers",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CSIDriver"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "storage.k8s.io",
+      "resource": "csinodes",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CSINode"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "storage.k8s.io",
+      "resource": "csistoragecapacities",
+      "namespaced": true,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "CSIStorageCapacity"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "storage.k8s.io",
+      "resource": "storageclasses",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "StorageClass"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "storage.k8s.io",
+      "resource": "volumeattachments",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "VolumeAttachment"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "storage.k8s.io",
+      "resource": "volumeattachments/status",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "VolumeAttachment"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "storage.k8s.io",
+      "resource": "volumeattributesclasses",
+      "namespaced": false,
+      "versions": [
+        "v1"
+      ],
+      "kinds": [
+        "VolumeAttributesClass"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "traefik.io",
+      "resource": "ingressroutes",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "IngressRoute"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "traefik.io",
+      "resource": "ingressroutetcps",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "IngressRouteTCP"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "traefik.io",
+      "resource": "ingressrouteudps",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "IngressRouteUDP"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "traefik.io",
+      "resource": "middlewares",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "Middleware"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "traefik.io",
+      "resource": "middlewaretcps",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "MiddlewareTCP"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "traefik.io",
+      "resource": "serverstransports",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ServersTransport"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "traefik.io",
+      "resource": "serverstransporttcps",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ServersTransportTCP"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "traefik.io",
+      "resource": "tlsoptions",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "TLSOption"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "traefik.io",
+      "resource": "tlsstores",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "TLSStore"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "traefik.io",
+      "resource": "traefikservices",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "TraefikService"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "volsync.backube",
+      "resource": "replicationdestinations",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ReplicationDestination"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "volsync.backube",
+      "resource": "replicationdestinations/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ReplicationDestination"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "volsync.backube",
+      "resource": "replicationsources",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ReplicationSource"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "volsync.backube",
+      "resource": "replicationsources/status",
+      "namespaced": true,
+      "versions": [
+        "v1alpha1"
+      ],
+      "kinds": [
+        "ReplicationSource"
+      ],
+      "verbs": [
+        "get",
+        "patch",
+        "update"
+      ]
+    },
+    {
+      "apiGroup": "wgpolicyk8s.io",
+      "resource": "clusterpolicyreports",
+      "namespaced": false,
+      "versions": [
+        "v1alpha2"
+      ],
+      "kinds": [
+        "ClusterPolicyReport"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    },
+    {
+      "apiGroup": "wgpolicyk8s.io",
+      "resource": "policyreports",
+      "namespaced": true,
+      "versions": [
+        "v1alpha2"
+      ],
+      "kinds": [
+        "PolicyReport"
+      ],
+      "verbs": [
+        "create",
+        "delete",
+        "deletecollection",
+        "get",
+        "list",
+        "patch",
+        "update",
+        "watch"
+      ]
+    }
+  ]
+}

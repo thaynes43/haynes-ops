@@ -12,8 +12,9 @@
 # nothing in dev-env-system, dev-agents or dev-tools; no write or exec in the enforcing
 # namespaces; pods only as `default`, not privileged, no new Secret reference.
 #
-# Not here: dev-env-grant-breakglass. It is generated from API discovery minus D-27's
-# exclusion list, and lands with the broker's break-glass support (plan 07 step 6).
+# dev-env-grant-breakglass is in grant-breakglass.yaml, generated from API discovery
+# minus D-27's exclusions by catalog/generate.py and checked for CI/runtime drift.
+# Human approval stays disabled until the break-glass half of S-12 passes.
 # The built-in edit, admin and cluster-admin are never in the catalog (6.12: edit and
 # admin include Secret writes and pods under any ServiceAccount).
 #

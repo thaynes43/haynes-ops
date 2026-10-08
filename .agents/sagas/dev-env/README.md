@@ -4,7 +4,7 @@
 [Decision log](#decision-log).
 
 **dev-env v2 (2026-10-05):** the distributed redesign (one pod per agent session, run
-by an operator) lives in its own private repo, **thaynes43/dev-env**, as the saga
+by an operator) lives in its own public repo, **thaynes43/dev-env**, as the saga
 `.agents/sagas/distributed-dev-env/`. This saga keeps covering v1, which keeps
 running and is maintained here until Tom approves the cutover. See [ADR-001](adrs/001-v2-lives-in-own-repo.md)
 for what stays here as GitOps and what moves.
@@ -193,3 +193,4 @@ neighbors once prerequisites are met.
 | [09 — LAN control plane / UI](backlog/09-control-plane.md) (folded into dev-env v2, Decision #9) | 07 | last |
 | [10 — Taskfile overhaul](backlog/10-taskfile-overhaul.md) | — | ∥ anytime; ideally before 02 so pod agents inherit trustworthy tasks |
 | [11 — haynesnetwork build/run/test readiness](backlog/11-haynesnetwork-readiness.md) | 02 | done except e2e — Tom's gate before dispatching haynesnetwork backlog work |
+| [15 — v2 break-glass discovery catalog](backlog/15-v2-breakglass-catalog.md) | v2 plan 07 H1 | GitOps companion; human approval waits for S-12 and step 6 |

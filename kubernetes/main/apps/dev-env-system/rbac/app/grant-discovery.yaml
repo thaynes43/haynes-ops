@@ -1,0 +1,120 @@
+---
+# Metadata-only drift watcher. It cannot read objects, change RBAC, open a PR or
+# notify anyone itself. See .agents/sagas/dev-env/backlog/15-v2-breakglass-catalog.md.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dev-env-grant-discovery
+  namespace: dev-env-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-grant-discovery
+rules:
+  - nonResourceURLs: [/api, /api/*, /apis, /apis/*]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-grant-discovery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-grant-discovery
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-grant-discovery
+    namespace: dev-env-system
+---
+# The namespace default-deny owns DNS; no public or pod egress is added here.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-grant-discovery
+  namespace: dev-env-system
+spec:
+  description: Kubernetes API discovery only for the break-glass catalog watcher
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-grant-discovery
+  egress:
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/batch/cronjob_v1.json
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dev-env-grant-discovery
+  namespace: dev-env-system
+spec:
+  schedule: "17,47 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: dev-env-grant-discovery
+        spec:
+          restartPolicy: Never
+          serviceAccountName: dev-env-grant-discovery
+          automountServiceAccountToken: true
+          enableServiceLinks: false
+          # Discovery is cheap, but scheduled jobs belong on workers rather than
+          # the shared talosm02 node that hosts dev-env and critical services.
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: In
+                        values: [talosw01, talosw02, talosw03]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: discovery
+              # Same minor image line as the existing Vexa dispatcher; no pip,
+              # kubectl, shell helper or application image is needed by this Job.
+              image: docker.io/library/python:3.14-alpine
+              command: [python3, -B, /catalog/generate.py, check-live, --in-cluster]
+              env:
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: catalog
+                  mountPath: /catalog
+                  readOnly: true
+          volumes:
+            - name: catalog
+              configMap:
+                name: dev-env-grant-discovery
