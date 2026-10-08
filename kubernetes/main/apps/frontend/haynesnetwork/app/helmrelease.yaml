@@ -834,7 +834,7 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "32 * * * *"
-          suspend: true
+          suspend: false
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
