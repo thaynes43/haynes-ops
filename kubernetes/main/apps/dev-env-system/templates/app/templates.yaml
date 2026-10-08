@@ -92,10 +92,19 @@ profiles:
     env:
       - name: CIGAR_JOURNAL_TOKEN
         valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
+      - name: OMNI_ENDPOINT
+        value: https://haynes.na-west-1.omni.siderolabs.io:443
+      - name: OMNI_SERVICE_ACCOUNT_KEY
+        valueFrom: { secretKeyRef: { name: dev-env-node-triage-secret, key: OMNI_SERVICE_ACCOUNT_KEY } }
+      - { name: GOOGLE_APPLICATION_CREDENTIALS, value: /etc/gcp/sa_key.json }
     envFrom:
       - secretRef: { name: dev-env-mcp-secret }
+      # Preserve v1's optional reader Secret; LAN access still needs an egress grant.
+      - secretRef: { name: dev-env-proxmox-secret, optional: true }
+      - secretRef: { name: dev-env-cloudflare-secret }
     mounts:
       - { name: gh-token, secret: dev-env-gh-token, path: /creds }
+      - { name: gcp-sa, secret: dev-env-gcp-secret, path: /etc/gcp, defaultMode: 0440 }
   dev:
     env:
       - name: CIGAR_JOURNAL_TOKEN
@@ -110,6 +119,8 @@ profiles:
     env:
       - name: CIGAR_JOURNAL_TOKEN
         valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
+    envFrom:
+      - secretRef: { name: dev-env-proxmox-secret, optional: true }
     mounts:
       - { name: gh-token, secret: dev-env-ops-gh-token, path: /creds }
     labels:
