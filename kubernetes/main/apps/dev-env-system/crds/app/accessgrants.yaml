@@ -1,7 +1,7 @@
 ---
 # The AccessGrant CRD, generated in thaynes43/dev-env from api/v1alpha1.
-# Source: dev-env commit 96ea748 on agent/keeper-pve-impl1008 (implementation
-# pending review), including the immutable requester sessionUID field.
+# Source: dev-env main eeb15e3, PR #111, including the immutable requester
+# sessionUID field. The code is reviewed and merged; runtime minting stays off.
 # The generated config/crd/dev-env.haynesops.com_accessgrants.yaml follows below.
 # Never edit the schema here: change api/v1alpha1 in dev-env, run `make generate`,
 # and copy the result. Keep it in step with the broker/operator image pins.
