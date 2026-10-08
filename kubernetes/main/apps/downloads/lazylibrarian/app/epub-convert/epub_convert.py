@@ -58,6 +58,7 @@ LOCK_STALE_SECONDS, KAVITA_URL, KAVITA_API_KEY, EBOOK_CONVERT, EBOOK_META.
 STRIP_SERIES_METADATA=1 enables metadata removal, STRIP_ONLY=1 disables conversion,
 STRIP_FOLDERS_JSON selects exact relative book folders (unset means all EPUBs).
 --restore-backup <manifest> restores one original, under the same lock and scan contract.
+--restore-retained-copy <manifest> returns verified bytes to an absent library path.
 --consolidate-copies <snapshot> manually retains unprotected extras outside EBooks;
 it requires a fresh complete dependency census and never runs from the strip gate.
 Backup retention and rollout: .agents/runbooks/lazylibrarian-epub-metadata.md.
@@ -696,21 +697,24 @@ def main():
     signal.signal(signal.SIGTERM, _terminate)
     run_started = time.monotonic()
     restore = None
+    restore_copy = None
     copies = None
     if len(sys.argv) > 1:
-        if (len(sys.argv) != 3 or sys.argv[1] not in ("--restore-backup", "--consolidate-copies")
+        if (len(sys.argv) != 3 or sys.argv[1] not in ("--restore-backup", "--restore-retained-copy", "--consolidate-copies")
                 or not sys.argv[2].strip()):
-            log("epub_convert_run_failed", error="usage: epub_convert.py [--restore-backup <manifest> | --consolidate-copies <snapshot>]")
+            log("epub_convert_run_failed", error="usage: epub_convert.py [--restore-backup <manifest> | --restore-retained-copy <manifest> | --consolidate-copies <snapshot>]")
             return 1
         if sys.argv[1] == "--restore-backup":
             restore = sys.argv[2]
+        elif sys.argv[1] == "--restore-retained-copy":
+            restore_copy = sys.argv[2]
         else:
             copies = sys.argv[2]
     try:
         epub_metadata.validate_paths(EBOOK_ROOT, STATE_DIR)
         LIBRARY_HOLDS = epub_metadata.library_hold_folders(EBOOK_ROOT)
-        if copies and (STRIP_SERIES_METADATA or STRIP_ONLY or "STRIP_FOLDERS_JSON" in os.environ):
-            raise epub_metadata.Refused("copy consolidation requires stripping/conversion modes off")
+        if (copies or restore_copy) and (STRIP_SERIES_METADATA or STRIP_ONLY or "STRIP_FOLDERS_JSON" in os.environ):
+            raise epub_metadata.Refused("copy consolidation/restoration requires stripping/conversion modes off")
         if STRIP_ONLY and not STRIP_SERIES_METADATA and not restore:
             raise epub_metadata.Refused("STRIP_ONLY requires STRIP_SERIES_METADATA=1")
         folders = strip_folders() if STRIP_SERIES_METADATA and not restore else []
@@ -723,6 +727,16 @@ def main():
     if not DRY_RUN and lock is None:
         return 0
     try:
+        if restore_copy:
+            try:
+                result = epub_copies.restore_retained_copy(restore_copy, EBOOK_ROOT, STATE_DIR, DRY_RUN,
+                                                          run_started + RUN_BUDGET_SECONDS)
+            except Exception as err:
+                log("epub_copy_restore", result="refused", detail=f"{type(err).__name__}: {err}"[:500], dry_run=DRY_RUN)
+                return 1
+            log("epub_copy_restore", **result, dry_run=DRY_RUN,
+                kavita_scan=kavita_scan() if result["result"] == "restored" else "dry_run")
+            return 0
         if copies:
             try:
                 counts = epub_copies.consolidate(copies, EBOOK_ROOT, STATE_DIR, SETTLE_SECONDS,

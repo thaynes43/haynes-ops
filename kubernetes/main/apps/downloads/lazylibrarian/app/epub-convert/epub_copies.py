@@ -6,11 +6,21 @@ import json
 import os
 import stat
 import time
+import uuid
 
 import epub_metadata as metadata
 
 SNAPSHOT_MAX_AGE = 300
 SOURCES = ("lazylibrarian", "census", "kavita", "app_wants")
+
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise metadata.Refused("evidence/manifest has duplicate JSON keys")
+        result[key] = value
+    return result
 
 
 def relative_path(value):
@@ -21,14 +31,18 @@ def relative_path(value):
     return value
 
 
-def fresh(timestamp):
+def timestamp_epoch(timestamp):
     try:
         parsed = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         if parsed.utcoffset() != datetime.timedelta(0):
             raise ValueError("timestamp must be UTC")
-        age = time.time() - parsed.timestamp()
     except (AttributeError, TypeError, ValueError) as err:
         raise metadata.Refused("snapshot timestamp must be a UTC ISO timestamp") from err
+    return parsed.timestamp()
+
+
+def fresh(timestamp):
+    age = time.time() - timestamp_epoch(timestamp)
     if not 0 <= age <= SNAPSHOT_MAX_AGE:
         raise metadata.Refused("dependency snapshot is stale or future-dated")
 
@@ -39,19 +53,17 @@ def require_fresh(snapshot):
         fresh(snapshot[source]["checked_at"])
 
 
+def expiry_deadline(snapshot):
+    expiry = min(timestamp_epoch(snapshot["created_at"]),
+                 *(timestamp_epoch(snapshot[source]["checked_at"]) for source in SOURCES)) + SNAPSHOT_MAX_AGE
+    return time.monotonic() + max(0, expiry - time.time())
+
+
 def load_snapshot(path, root):
     if os.path.commonpath((os.path.abspath(root), os.path.abspath(path))) == os.path.abspath(root):
         raise metadata.Refused("dependency snapshot must be outside EBOOK_ROOT")
     with metadata.safe_directory(os.path.dirname(os.path.abspath(path))) as directory:
         raw, _info = metadata.read_regular(directory, os.path.basename(path), 16 * 1024 * 1024)
-    def unique_object(pairs):
-        result = {}
-        for key, value in pairs:
-            if key in result:
-                raise metadata.Refused("dependency snapshot has duplicate JSON keys")
-            result[key] = value
-        return result
-
     snapshot = json.loads(raw, object_pairs_hook=unique_object)
     if (not isinstance(snapshot, dict) or snapshot.get("schema") != 1
             or snapshot.get("ebook_root") != os.path.abspath(root)):
@@ -200,6 +212,7 @@ def move_copy(path, root, state, expected_hash, expected_identity, evidence_hash
             metadata._same_directory(backups, backup_folder)
             if metadata._identity(os.stat(name, dir_fd=source, follow_symlinks=False)) != metadata._identity(current):
                 raise metadata.Changed("copy path changed before removal; both names remain for review")
+            guard(recheck_keeper=False)  # no I/O between this freshness check and unlink
             os.unlink(name, dir_fd=source)  # destination keeps the inode and all bytes
             os.fsync(source)
             os.fsync(backups)
@@ -212,8 +225,99 @@ def move_copy(path, root, state, expected_hash, expected_identity, evidence_hash
         return result
 
 
+def restore_retained_copy(manifest_path, root, state, dry_run=False, deadline=float("inf")):
+    """Publish one verified fresh inode without replacing any library entry."""
+    metadata.validate_paths(root, state)
+    backup_folder = os.path.join(state, "copies")
+    if os.path.dirname(os.path.abspath(manifest_path)) != os.path.abspath(backup_folder):
+        raise metadata.Refused("retained-copy manifest must be directly inside STATE_DIR/copies")
+    with metadata.safe_directory(backup_folder) as backups:
+        data, _manifest_info = metadata.read_regular(backups, os.path.basename(manifest_path), 65536)
+        manifest = json.loads(data, object_pairs_hook=unique_object)
+        if manifest.get("schema") != 1 or manifest.get("kind") != "retained_copy":
+            raise metadata.Refused("unknown retained-copy manifest schema/kind")
+        relative = relative_path(manifest["relative_path"])
+        digest = manifest["sha256"]
+        if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise metadata.Refused("retained-copy manifest checksum is invalid")
+        stem = metadata.sha256(relative.encode()) + "-" + digest
+        if manifest["backup_file"] != stem + ".epub" or os.path.basename(manifest_path) != stem + ".json":
+            raise metadata.Refused("retained-copy manifest filenames do not match the original path/hash")
+        mode, uid, gid = (manifest[key] for key in ("original_mode", "original_uid", "original_gid"))
+        if (any(type(value) is not int or value < 0 for value in (mode, uid, gid)) or mode > 0o7777):
+            raise metadata.Refused("retained-copy owner/mode are invalid")
+        raw, info = metadata.read_regular(backups, manifest["backup_file"])
+        if metadata.sha256(raw) != digest or (stat.S_IMODE(info.st_mode), info.st_uid, info.st_gid) != (mode, uid, gid):
+            raise metadata.Refused("retained-copy bytes or owner/mode differ from the manifest")
+        metadata.inspect_epub(raw, require_canonical=False)
+        absolute = os.path.join(root, relative)
+        metadata.require_unheld_library_file(absolute, root)
+        folder, name = os.path.split(absolute)
+        # Existing book directories are retained by move_copy. Do not recreate an
+        # unknown library layout during a later restoration.
+        with metadata.safe_directory(folder) as directory:
+            try:
+                os.stat(name, dir_fd=directory, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise metadata.Refused("retained-copy original path must be absent")
+            result = {"result": "would_restore" if dry_run else "restored", "path": relative, "sha256": digest}
+            if dry_run:
+                return result
+            partial = ".copy-restore-" + uuid.uuid4().hex
+            metadata._write_file(directory, partial, raw)
+            created = os.stat(partial, dir_fd=directory, follow_symlinks=False)
+            try:
+                fd = os.open(partial, os.O_RDWR | os.O_NOFOLLOW, dir_fd=directory)
+                try:
+                    os.fchown(fd, uid, gid)
+                    os.fchmod(fd, mode)
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+                candidate, candidate_info = metadata.read_regular(directory, partial)
+                if (metadata.sha256(candidate) != digest
+                        or (stat.S_IMODE(candidate_info.st_mode), candidate_info.st_uid, candidate_info.st_gid) != (mode, uid, gid)
+                        or (candidate_info.st_dev, candidate_info.st_ino) != (created.st_dev, created.st_ino)
+                        or (candidate_info.st_dev, candidate_info.st_ino) == (info.st_dev, info.st_ino)):
+                    raise metadata.Changed("retained-copy restoration candidate failed verification")
+                metadata.inspect_epub(candidate, require_canonical=False)
+                saved_hash, saved = hash_file(backups, manifest["backup_file"], deadline)
+                if (saved_hash != digest or metadata._identity(saved) != metadata._identity(info)
+                        or (stat.S_IMODE(saved.st_mode), saved.st_uid, saved.st_gid) != (mode, uid, gid)):
+                    raise metadata.Changed("retained copy changed before restoration publication")
+                metadata.require_unheld_library_file(absolute, root)
+                metadata._same_directory(backups, backup_folder)
+                metadata._same_directory(directory, folder)
+                if time.monotonic() >= deadline:
+                    raise metadata.Refused("run budget exhausted before retained-copy restoration")
+                # Atomic link publication refuses an entry that raced the absence
+                # check. The new inode is independent of the retained backup.
+                os.link(partial, name, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
+                os.fsync(directory)
+            finally:
+                try:
+                    cleanup_hash, cleanup_info = hash_file(directory, partial, deadline)
+                    if cleanup_hash == digest and (cleanup_info.st_dev, cleanup_info.st_ino) == (created.st_dev, created.st_ino):
+                        os.unlink(partial, dir_fd=directory)
+                        os.fsync(directory)
+                except FileNotFoundError:
+                    pass
+            published, published_info = metadata.read_regular(directory, name)
+            if metadata.sha256(published) != digest or (stat.S_IMODE(published_info.st_mode), published_info.st_uid, published_info.st_gid) != (mode, uid, gid):
+                raise metadata.Changed("published retained-copy restoration failed verification; review both copies")
+            os.utime(directory)
+            author_folder = os.path.dirname(folder)
+            if os.path.commonpath((os.path.abspath(root), author_folder)) == os.path.abspath(root):
+                with metadata.safe_directory(author_folder) as author:
+                    os.utime(author)
+            return result
+
+
 def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=False, deadline=float("inf")):
     snapshot, hashes, pointers, protected, evidence_hash = load_snapshot(snapshot_path, root)
+    deadline = min(deadline, expiry_deadline(snapshot))
     identities, errors = metadata.identity_preflight(root, deadline)
     if errors:
         raise metadata.Refused(f"copy identity census is incomplete: {errors}")
@@ -232,8 +336,8 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
     counts = {"moved": 0, "would_move": 0, "retained": 0, "protected": 0, "settling": 0,
               "review_groups": 0, "refused": 0}
     for identity in identities:
-        if len(identity["title_keys"]) == 1 and len(identity["creator_keys"]) == 1:
-            key = (next(iter(identity["title_keys"])), next(iter(identity["creator_keys"])))
+        if not identity.get("author_refusal") and len(identity["title_keys"]) == 1 and len(identity["author_keys"]) == 1:
+            key = (next(iter(identity["title_keys"])), next(iter(identity["author_keys"])))
             groups.setdefault(key, []).append(identity["path"])
         else:
             log("epub_copy_consolidate", result="review", path=identity["path"],
@@ -270,10 +374,12 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
                 log("epub_copy_consolidate", result="settling", path=path, dry_run=dry_run)
                 continue
 
-            def guard():
+            def guard(recheck_keeper=True):
                 require_fresh(snapshot)
                 if time.monotonic() >= deadline:
                     raise metadata.Refused("run budget exhausted before copy move")
+                if not recheck_keeper:
+                    return
                 if protection_reasons(path, root, holds, protected):
                     raise metadata.Refused("copy gained an ignore/hold protection before move")
                 # Keep the pointer-selected copy present and byte-identical before each removal.
@@ -282,6 +388,9 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
                     metadata._same_directory(directory, os.path.dirname(os.path.join(root, keeper)))
                 if digest != hashes[keeper] or metadata._identity(current) != metadata._identity(files[keeper]):
                     raise metadata.Changed("LL BookFile keeper changed/disappeared after census")
+                require_fresh(snapshot)
+                if time.monotonic() >= deadline:
+                    raise metadata.Refused("snapshot/run budget exhausted during keeper recheck")
 
             try:
                 result = move_copy(path, root, state, hashes[path], metadata._identity(info),

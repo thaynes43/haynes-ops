@@ -13,6 +13,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import secrets
 import stat
 import time
@@ -343,6 +344,40 @@ def _identity_xml(archive, name):
     return xml_nodes(raw, allow_harmless_dtd=True)[0]
 
 
+def _qualified_authors(nodes, meta):
+    """Recognize author roles without treating translators/editors as authors."""
+    creators = [node for node in nodes if node["name"] == DC + "creator"
+                and node["parent"] and node["parent"]["name"] == OPF + "metadata"]
+    credits = []
+    if any(node["attrs"].get("property") == "role" and not node["attrs"].get("refines") for node in meta):
+        return [], "unassigned creator role metadata"
+    for creator in creators:
+        roles = []
+        explicit = creator["attrs"].get(OPF + "role") or creator["attrs"].get("role")
+        if explicit:
+            roles.append(explicit.strip().lower())
+        identifier = creator["attrs"].get("id") or creator["attrs"].get("http://www.w3.org/XML/1998/namespace}id")
+        if identifier:
+            roles += [node["text"].strip().lower() for node in meta
+                      if node["attrs"].get("property") == "role"
+                      and node["attrs"].get("refines") == "#" + identifier]
+        if roles and any(role not in ("aut", "author") for role in roles):
+            continue
+        text = creator["text"].strip()
+        if not text:
+            return [], "empty author credit"
+        # A single surname/forename comma is retained as written. Multi-credit
+        # lists and uncertain boundaries must not become one invented author.
+        if text.count(",") > 1 or re.search(r"[;&/]|\band\b", text, flags=re.IGNORECASE):
+            return [], "ambiguous combined author credit"
+        credits.append(text)
+    if not credits:
+        return [], "no unambiguous author-role creator"
+    if len({author_normalized(value) for value in credits}) != 1:
+        return [], "multiple author-role creators"
+    return credits, None
+
+
 def _grouping_from_archive(archive, relative):
     """Read aliases without imposing rewrite-only EPUB/OPF requirements.
 
@@ -364,7 +399,8 @@ def _grouping_from_archive(archive, relative):
                         and node["attrs"].get("media-type") == "application/oebps-package+xml"]
             if not packages or len(set(packages)) != len(packages):
                 raise Refused("identity preflight found no unique OPF package")
-            titles, authors, series, sorts, inventory, active_packages = [], [], [], [], [], []
+            titles, authors, qualified_authors, author_refusals = [], [], [], []
+            series, sorts, inventory, active_packages = [], [], [], []
             removable = indexed_without_title = False
             for name in packages:
                 nodes = _identity_xml(archive, name)
@@ -376,6 +412,10 @@ def _grouping_from_archive(archive, relative):
                                and n["parent"] and n["parent"]["name"] == OPF + "metadata"]
                 titles += [n["text"].strip() for n in title_nodes if n["text"].strip()]
                 authors += [n["text"].strip() for n in nodes if n["name"] == DC + "creator"]
+                qualified, refusal = _qualified_authors(nodes, meta)
+                qualified_authors += qualified
+                if refusal:
+                    author_refusals.append(refusal)
                 effective_series = effective_index = ""
                 for n in meta:
                     attrs = n["attrs"]
@@ -426,6 +466,9 @@ def _grouping_from_archive(archive, relative):
                     "has_series_metadata": removable,
                     "title_keys": {kavita_normalized(value) for value in titles} - {""},
                     "creator_keys": {author_normalized(value) for value in authors} - {""},
+                    "author_keys": {author_normalized(value) for value in qualified_authors} - {""},
+                    "author": qualified_authors[0] if qualified_authors else None,
+                    "author_refusal": "; ".join(sorted(set(author_refusals))) if author_refusals else None,
                     "title": titles[0] if titles else None,
                     "creator": next((value for value in authors if value), None)}
             if indexed_without_title:
@@ -486,15 +529,16 @@ def dedicated_grouping(identity, identities):
     """Same-title/different-creator policy includes existing mixed-author groups."""
     collisions = [other for other in identities if other["path"] != identity["path"]
                   and identity.get("title_keys", set()) & other.get("title_keys", set())
-                  and identity.get("creator_keys", set()) != other.get("creator_keys", set())]
+                  and (identity.get("author_refusal") or other.get("author_refusal")
+                       or identity.get("author_keys", set()) != other.get("author_keys", set()))]
     if not collisions:
         return None
-    if (len(identity["title_keys"]) != 1 or len(identity["creator_keys"]) != 1
-            or not identity["title"] or not identity["creator"]
-            or any(len(other.get("creator_keys", set())) != 1
+    if (identity.get("author_refusal") or len(identity["title_keys"]) != 1 or len(identity["author_keys"]) != 1
+            or not identity["title"] or not identity["author"]
+            or any(other.get("author_refusal") or len(other.get("author_keys", set())) != 1
                    or len(other.get("title_keys", set())) != 1 for other in collisions)):
         raise GroupingHold("same-title cross-author grouping has ambiguous title/creator metadata")
-    return f"{identity['title']} ({identity['creator']})"
+    return f"{identity['title']} ({identity['author']})"
 
 
 def identity_preflight(root, deadline):

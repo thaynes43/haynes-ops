@@ -70,6 +70,95 @@ class CopyTests(unittest.TestCase):
         self.assertEqual(manifest["relative_path"], self.extra)
         self.assertEqual(manifest["evidence_sha256"], metadata.sha256(read(self.evidence)))
 
+    def moved_manifest(self):
+        self.assertEqual(self.run_copies()["moved"], 1)
+        manifest_path = next(line["backup_manifest"] for line in self.lines if line.get("result") == "moved")
+        manifest = json.loads(read(manifest_path))
+        retained = os.path.join(self.state, "copies", manifest["backup_file"])
+        return manifest_path, retained
+
+    def test_verified_copy_return_has_fresh_single_link_inode_and_retains_backup(self):
+        path, retained = self.moved_manifest()
+        before = snapshot(self.state)
+        saved_inode = os.stat(retained).st_ino
+        self.assertEqual(copies.restore_retained_copy(path, self.root, self.state, True)["result"], "would_restore")
+        self.assertFalse(os.path.exists(os.path.join(self.root, self.extra)))
+        self.assertEqual(copies.restore_retained_copy(path, self.root, self.state)["result"], "restored")
+        restored = os.stat(os.path.join(self.root, self.extra))
+        saved = os.stat(retained)
+        self.assertNotEqual(restored.st_ino, saved_inode)
+        self.assertEqual((restored.st_nlink, saved.st_nlink), (1, 1))
+        self.assertEqual((restored.st_uid, restored.st_gid, restored.st_mode), (saved.st_uid, saved.st_gid, saved.st_mode))
+        self.assertEqual(read(os.path.join(self.root, self.extra)), self.raw)
+        self.assertEqual(snapshot(self.state), before)
+        self.assertTrue(metadata.inspect_epub(read(os.path.join(self.root, self.extra))))
+
+    def test_copy_return_refuses_existing_or_racing_entry_without_overwrite(self):
+        path, retained = self.moved_manifest()
+        original = os.path.join(self.root, self.extra)
+        write(original, b"current library copy")
+        with self.assertRaisesRegex(metadata.Refused, "must be absent"):
+            copies.restore_retained_copy(path, self.root, self.state)
+        self.assertEqual(read(original), b"current library copy")
+        os.unlink(original)
+        link = os.link
+
+        def raced(*args, **kwargs):
+            write(original, b"new writer copy")
+            return link(*args, **kwargs)
+
+        with mock.patch.object(os, "link", side_effect=raced), self.assertRaises(FileExistsError):
+            copies.restore_retained_copy(path, self.root, self.state)
+        self.assertEqual(read(original), b"new writer copy")
+        self.assertEqual(read(retained), self.raw)
+        self.assertFalse(any(name.startswith(".copy-restore-") for name in os.listdir(os.path.dirname(original))))
+
+    def test_copy_return_refuses_symlink_checksum_owner_mode_and_unsafe_manifest(self):
+        path, retained = self.moved_manifest()
+        saved_manifest = read(path)
+        write(retained, self.raw + b"changed")
+        with self.assertRaisesRegex(metadata.Refused, "bytes or owner/mode"):
+            copies.restore_retained_copy(path, self.root, self.state)
+        write(retained, self.raw)
+        real_backup = retained + ".real"
+        os.rename(retained, real_backup)
+        os.symlink(real_backup, retained)
+        with self.assertRaises(OSError):
+            copies.restore_retained_copy(path, self.root, self.state)
+        os.unlink(retained)
+        os.rename(real_backup, retained)
+        for changes in ({"original_mode": 0}, {"relative_path": "../outside.epub"}, {"backup_file": "../outside.epub"}):
+            data = json.loads(saved_manifest)
+            write(path, json.dumps({**data, **changes}).encode())
+            with self.assertRaises(metadata.Refused):
+                copies.restore_retained_copy(path, self.root, self.state)
+        write(path, saved_manifest)
+        os.rename(path, path + ".real")
+        os.symlink(path + ".real", path)
+        with self.assertRaises(OSError):
+            copies.restore_retained_copy(path, self.root, self.state)
+        self.assertFalse(os.path.exists(os.path.join(self.root, self.extra)))
+
+    def test_copy_return_interruption_preserves_verified_bytes_and_hold_blocks_return(self):
+        path, retained = self.moved_manifest()
+        original = os.path.join(self.root, self.extra)
+        with mock.patch.dict(os.environ, {"LIBRARY_HOLD_FOLDERS_JSON": '["Suzanne Collins/Boxed Set"]'}):
+            with self.assertRaisesRegex(metadata.Refused, "hold"):
+                copies.restore_retained_copy(path, self.root, self.state)
+        link = os.link
+
+        def interrupted(*args, **kwargs):
+            link(*args, **kwargs)
+            raise OSError("interrupted after publication")
+
+        with mock.patch.object(os, "link", side_effect=interrupted), self.assertRaisesRegex(OSError, "interrupted"):
+            copies.restore_retained_copy(path, self.root, self.state)
+        self.assertEqual(read(original), self.raw)
+        self.assertEqual(read(retained), self.raw)
+        self.assertEqual(os.stat(original).st_nlink, 1)
+        with self.assertRaisesRegex(metadata.Refused, "must be absent"):
+            copies.restore_retained_copy(path, self.root, self.state)
+
     def test_each_dependency_and_ignore_or_configured_hold_retains_extra(self):
         for source in copies.SOURCES[1:]:
             with self.subTest(source=source):
@@ -129,6 +218,20 @@ class CopyTests(unittest.TestCase):
         counts = self.run_copies()
         self.assertEqual(counts["moved"], 0)
         self.assertTrue(any(line.get("result") == "review" and line.get("path") == self.extra for line in self.lines))
+
+    def test_editor_translator_and_combined_credit_extras_are_never_copy_candidates(self):
+        for raw in (
+            OPF.replace(b'<dc:creator id="author">', b'<dc:creator id="author" xmlns:opf="http://www.idpf.org/2007/opf" opf:role="edt">'),
+            OPF.replace(b'</metadata>', b'<meta property="role" refines="#author">trl</meta></metadata>'),
+            OPF.replace(b'Suzanne Collins', b'Quinn, Enoch, Hawkins, Ryan'),
+        ):
+            with self.subTest(raw=raw[-100:]):
+                write(os.path.join(self.root, self.extra), fixture(opf=raw))
+                before = snapshot(self.root)
+                counts = self.run_copies()
+                self.assertEqual(counts["moved"], 0)
+                self.assertEqual(snapshot(self.root), before)
+                self.assertTrue(any(line.get("result") == "review" and line.get("path") == self.extra for line in self.lines))
 
     def test_hardlinks_ignore_symlinks_and_existing_destinations_refuse(self):
         extra = os.path.join(self.root, self.extra)
@@ -224,6 +327,53 @@ class CopyTests(unittest.TestCase):
         self.assertEqual(counts["refused"], 1)
         self.assertEqual(read(os.path.join(self.root, self.extra)), self.raw)
 
+    def test_snapshot_expiry_during_keeper_hash_is_checked_after_hash(self):
+        clock = [time.time()]
+        data = self.evidence_data()
+        old = datetime.datetime.fromtimestamp(clock[0] - 299, datetime.timezone.utc).isoformat()
+        data["created_at"] = old
+        for source in copies.SOURCES:
+            data[source]["checked_at"] = old
+        original_hash = copies.hash_file
+        keeper_reads = [0]
+
+        def slow_keeper(directory, name, deadline):
+            result = original_hash(directory, name, deadline)
+            if name == os.path.basename(self.keeper):
+                keeper_reads[0] += 1
+                if keeper_reads[0] == 2:
+                    clock[0] += 2
+            return result
+
+        with mock.patch.object(copies.time, "time", side_effect=lambda: clock[0]), \
+                mock.patch.object(copies, "hash_file", side_effect=slow_keeper):
+            counts = self.run_copies(data)
+        self.assertEqual(counts["refused"], 1)
+        self.assertEqual(read(os.path.join(self.root, self.extra)), self.raw)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "copies")))
+
+    def test_expiry_immediately_before_unlink_keeps_both_names(self):
+        clock = [time.time()]
+        data = self.evidence_data()
+        old = datetime.datetime.fromtimestamp(clock[0] - 299, datetime.timezone.utc).isoformat()
+        data["created_at"] = old
+        for source in copies.SOURCES:
+            data[source]["checked_at"] = old
+        original_stat = os.stat
+
+        def expires_after_path_check(path, *args, **kwargs):
+            info = original_stat(path, *args, **kwargs)
+            if path == os.path.basename(self.extra) and info.st_nlink == 2:
+                clock[0] += 2
+            return info
+
+        with mock.patch.object(copies.time, "time", side_effect=lambda: clock[0]), \
+                mock.patch.object(os, "stat", side_effect=expires_after_path_check):
+            counts = self.run_copies(data)
+        self.assertEqual(counts["refused"], 1)
+        self.assertEqual(read(os.path.join(self.root, self.extra)), self.raw)
+        self.assertEqual(os.stat(os.path.join(self.root, self.extra)).st_nlink, 2)
+
     def test_cli_lock_modes_and_dry_run(self):
         write(self.evidence, json.dumps(self.evidence_data()).encode())
         script = os.path.join(os.path.dirname(__file__), "epub_convert.py")
@@ -246,6 +396,24 @@ class CopyTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 1, proc.stdout)
         self.assertIn("usage:", proc.stdout)
         self.assertFalse(os.path.exists(self.state))
+
+    def test_cli_copy_return_dry_run_and_real_publication_use_only_return_mode(self):
+        manifest, retained = self.moved_manifest()
+        script = os.path.join(os.path.dirname(__file__), "epub_convert.py")
+        env = dict(os.environ, EBOOK_ROOT=self.root, STATE_DIR=self.state, SETTLE_SECONDS="0",
+                   STRIP_SERIES_METADATA="0", STRIP_ONLY="0", DRY_RUN="1", KAVITA_URL="", KAVITA_API_KEY="")
+        env.pop("STRIP_FOLDERS_JSON", None)
+        proc = subprocess.run([sys.executable, script, "--restore-retained-copy", manifest],
+                              env=env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(json.loads(proc.stdout)["result"], "would_restore")
+        self.assertFalse(os.path.exists(os.path.join(self.root, self.extra)))
+        env["DRY_RUN"] = "0"
+        proc = subprocess.run([sys.executable, script, "--restore-retained-copy", manifest],
+                              env=env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(read(os.path.join(self.root, self.extra)), read(retained))
+        self.assertEqual(os.stat(os.path.join(self.root, self.extra)).st_nlink, 1)
 
 
 if __name__ == "__main__":

@@ -395,6 +395,36 @@ class ConversionPublicationTests(unittest.TestCase):
 
 
 class GroupingTests(unittest.TestCase):
+    def test_disambiguation_requires_author_roles_and_unambiguous_credit_boundaries(self):
+        peer_raw = OPF.replace(b'Suzanne Collins', b'Other Author')
+        peer = metadata.grouping_identity(fixture(opf=peer_raw), "Other/Book/peer.epub")
+        refusals = [
+            OPF.replace(b'<dc:creator id="author">', b'<dc:creator id="author" xmlns:opf="http://www.idpf.org/2007/opf" opf:role="edt">'),
+            OPF.replace(b'</metadata>', b'<meta property="role" refines="#author" scheme="marc:relators">trl</meta></metadata>'),
+            OPF.replace(b'Suzanne Collins', b'Quinn, Enoch, Hawkins, Ryan'),
+        ]
+        for raw in refusals:
+            with self.subTest(raw=raw[-100:]):
+                identity = metadata.grouping_identity(fixture(opf=raw), "Writer/Book/book.epub")
+                self.assertTrue(identity["author_refusal"])
+                with self.assertRaises(metadata.GroupingHold):
+                    metadata.dedicated_grouping(identity, [identity, peer])
+                # Original conservative aliases remain available to ordinary stripping.
+                self.assertTrue(identity["creator_keys"])
+                self.assertTrue(identity["authors"])
+
+    def test_disambiguation_selects_real_author_after_translator_without_credit_edits(self):
+        translator = (b'<dc:creator id="translator">Another Person</dc:creator>'
+                      b'<meta property="role" refines="#translator">trl</meta>')
+        raw = OPF.replace(b'<dc:creator id="author">', translator + b'<dc:creator id="author">')
+        identity = metadata.grouping_identity(fixture(opf=raw), "Writer/Book/book.epub")
+        peer = metadata.grouping_identity(fixture(opf=OPF.replace(b'Suzanne Collins', b'Other Author')),
+                                          "Other/Book/peer.epub")
+        self.assertEqual(metadata.dedicated_grouping(identity, [identity, peer]), "Mockingjay & more (Suzanne Collins)")
+        edited, _inventory = metadata.strip_opf(raw, "Mockingjay & more (Suzanne Collins)")
+        self.assertIn(translator, edited)
+        self.assertIn(b'<dc:creator id="author">Suzanne Collins</dc:creator>', edited)
+
     def setUp(self):
         self.clean = metadata.strip_opf(OPF)[0].replace(b'Mockingjay &amp; more', b'Night Shift')
         king = self.clean.replace(b'Suzanne Collins', b'Stephen King')

@@ -38,7 +38,10 @@ series and main-title sort aliases using Kavita 0.9.0.2 name normalization. A ta
 file with the same title as a different author's book receives the owner's
 [Title (Author) grouping tag](https://github.com/thaynes43/haynesnetwork/issues/830):
 calibre:series is the unchanged OPF title followed by the unchanged OPF creator in
-parentheses, and calibre:series_index is 1. This also separates existing mixed-author
+parentheses, and calibre:series_index is 1. Only author-role credits qualify;
+EPUB3 role refinements and EPUB2 opf:role exclude editor/translator credits.
+Combined credits such as "Quinn, Enoch, Hawkins, Ryan" are ambiguous and held;
+the converter never guesses comma-separated author boundaries. This also separates existing mixed-author
 groups, including untagged EPUBs. Only unambiguous title/creator metadata qualifies;
 missing or conflicting identities remain held. Ordinary books still lose their
 grouping tags. The inserted tags are the only additional OPF bytes, and an already
@@ -208,6 +211,8 @@ The operator must obtain complete current reads, never infer an empty dependency
 list from an API error or partial page. Parent migration coordination owns those
 reads and all service pauses. The converter rechecks snapshot freshness for each
 move; expiry ends application safely with remaining copies intact.
+All hashes share the earliest source expiry deadline. Freshness is checked after
+each keeper hash and immediately before removing the original directory entry.
 
 `files` is the complete EPUB census, each entry `{path, sha256}` relative to
 EBOOK_ROOT. It must exactly match the fresh read-only converter census, and every
@@ -238,7 +243,8 @@ protections. It produces a private candidate/protection report and schema-1
 snapshot. Captures retain their original timestamps; stale/partial inputs and
 missing writer attestations are reported as blockers rather than made fresh or
 complete. App request anchors resolve through the actual Kavita file map; an
-unresolved active dependency blocks snapshot completeness. Any saved Kavita state
+unresolved request dependency blocks snapshot completeness, including parked and
+landed requests that retain a library anchor. Any saved Kavita state
 row protects its joined files, including zero-counter locations. The report is
 exploratory while any blocker remains and is never permission to move a file.
 
@@ -255,7 +261,7 @@ Without such a hold or an equally observable gate covering all those entrypoints
 their quiescence attestations stay false and consolidation stays blocked. The
 parent migration session owns any downtime decision, declarations and restoration.
 
-Groups require one unambiguous OPF title and creator shared by all their copies;
+Groups require one unambiguous OPF title and author-role creator shared by all their copies;
 they are not grouped by folder spelling or fuzzy title matching. Exactly one
 existing EPUB in the group must be pointed to by BookFile, with one LL book id.
 That copy stays. No keeper or competing BookFile copies retain the entire group
@@ -278,7 +284,13 @@ cleanup. Do not manually delete the protected in-library name to finish a move.
 
 `epub_copy_consolidate` logs every keeper, protected copy and move; its census
 counts retained, protected, moved, would-move, settling and review groups. One scan
-is queued only after real moves. A move failure exits nonzero. Restore a moved copy
-only under the operational pause after validating its manifest/checksum and that
-its original path is still absent; return the saved inode without overwrite,
-then touch book/author directories and verify the scan, dependencies and coverage.
+is queued only after real moves. A move failure exits nonzero. Under the same
+reviewed operational pause, `--restore-retained-copy <manifest>` returns one copy
+after validating its saved bytes, complete EPUB, manifest path and original
+ownership/mode. Its original library path must be absent. The command publishes
+a verified fresh inode with no overwrite, retains the backup indefinitely,
+touches book/author directories and queues one scan. A changed or symlinked backup,
+existing destination or configured library hold refuses the command. Interrupted
+publication can leave a hidden restore artifact for review; never replace a current
+file or remove retained bytes to force a retry. Begin with DRY_RUN=1, then verify
+the returned file, scan, dependencies and coverage.
