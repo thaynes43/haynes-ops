@@ -50,7 +50,8 @@ spec:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
               # Same pin as dev-env-operator (one image, one version, D-38).
-              tag: sha-fac4751@sha256:42e571529138d45826a3a1d958fd047ce9fac486686e0e9410b02d92f4970e69
+              # Signed/verified keyless from main eeb15e3 by publish.yml (run 37798469467).
+              tag: sha-eeb15e3@sha256:491bfd05e101843d1bb31250841095a23901cf1eeb51566398ddc416ccbcef3c
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:

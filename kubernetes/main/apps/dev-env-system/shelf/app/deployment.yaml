@@ -47,7 +47,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: shelf
-          image: ghcr.io/thaynes43/dev-env:2.7.0@sha256:db6cb82379fc8795f49b87b16232758513d6b5de08c0b4f6f1a69e49773165f0
+          # v2.9.0 source 187e8b0; publish-agent.yml run 37799418992 signed/verified
+          # keyless on refs/tags/v2.9.0, matching dev-env-templates.
+          image: ghcr.io/thaynes43/dev-env:2.9.0@sha256:423201bec73fc4dae1bc92d22d444587c3ed89d641674e6a92d3f15208b68c72
           args: ["shelf"]
           env:
             - name: HOME
