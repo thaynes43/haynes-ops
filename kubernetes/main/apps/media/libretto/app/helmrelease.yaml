@@ -51,8 +51,7 @@ spec:
               # LIBRETTO_FAKE_TARGET stays unset: real targets only.
               KAVITA_URL: http://kavita.media.svc.cluster.local:5000
               ABS_URL: http://audiobookshelf.media.svc.cluster.local:13378
-              # Pause acquisition while Kavita identities are being replaced.
-              LAZYLIBRARIAN_URL: ""
+              LAZYLIBRARIAN_URL: http://lazylibrarian.downloads.svc.cluster.local:5299
               # Acquisition queues or adds English editions only (the estate rule).
               LIBRETTO_ACQUISITION_LANGUAGES: en
             envFrom:
