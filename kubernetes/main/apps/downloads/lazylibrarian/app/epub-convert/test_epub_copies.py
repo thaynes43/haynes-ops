@@ -447,6 +447,20 @@ class CopyTests(unittest.TestCase):
         self.assertEqual(read(os.path.join(self.root, self.extra)), self.raw)
         self.assertFalse(os.path.exists(os.path.join(self.state, "copies")))
 
+    def test_eligibility_refusal_logs_final_census_without_any_move(self):
+        marker = os.path.join(os.path.dirname(os.path.join(self.root, self.extra)), ".ll_ignore")
+        os.symlink(os.path.join(self.tmp.name, "missing"), marker)
+        before = snapshot(self.root)
+        with mock.patch.object(copies, "move_copy") as move:
+            counts = self.run_copies()
+        move.assert_not_called()
+        self.assertEqual((counts["moved"], counts["refused"]), (0, 1))
+        census = [row for row in self.lines if row["msg"] == "epub_copy_consolidate_census"]
+        self.assertEqual(len(census), 1)
+        self.assertEqual({key: census[0][key] for key in counts}, counts)
+        self.assertEqual(snapshot(self.root), before)
+        self.assertFalse(os.path.exists(self.state))
+
     def test_cross_device_backup_refuses_without_removing_source(self):
         original_fstat = os.fstat
 

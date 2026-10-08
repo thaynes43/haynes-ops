@@ -482,6 +482,7 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
 
             eligible[path] = keeper
     if counts["refused"]:
+        log("epub_copy_consolidate_census", **counts, dry_run=dry_run)
         return counts
     chosen, selection_hash = (load_selection(selection_path, root, evidence_hash, eligible, hashes)
                               if selection_path else (list(eligible), None))
