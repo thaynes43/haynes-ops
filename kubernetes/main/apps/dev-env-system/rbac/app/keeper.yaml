@@ -5,9 +5,9 @@
 #     with one JSON merge patch and never creates, lists or reads them; GitOps creates
 #     them empty (KICKOFF 8.8).
 #   - dev-env-system: its leader-election Lease and the Event leader election records.
-# Not yet: Secrets get and update (plan 03, if the Max login write needs them), pods/exec
-# in dev-agents and read on AccessGrant for credential grants (Q-07, plan 07), and
-# TokenReview for the endpoint that serves the operator (plan 03).
+# D-69's credential-job, named journal and session-pod rights are separately scoped
+# in keeper-credentials.yaml. Login Secret get/update and TokenReview for the endpoint
+# that serves the operator remain plan 03 work.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

@@ -7,8 +7,11 @@ resources:
   - ./agent.yaml
   - ./operator.yaml
   - ./keeper.yaml
+  - ./keeper-credentials.yaml
   - ./broker.yaml
+  - ./broker-credentials.yaml
   - ./broker-guard.yaml
+  - ./credential-job-guard.yaml
   - ./grant-catalog.yaml
   - ./v1-api-token.yaml
   - ./v2-read.yaml
