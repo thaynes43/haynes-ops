@@ -43,6 +43,15 @@ class PreflightTests(unittest.TestCase):
                                  series or {}, protected or [], errors or [], self.proof, self.census,
                                  self.attestations if attestations is None else attestations)
 
+    def test_complete_app_capture_hash_binds_raw_state_even_without_current_protections(self):
+        snapshot, _report = self.prepare()
+        expected = metadata.sha256(json.dumps(self.app, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode())
+        self.assertEqual(snapshot["app_wants"]["source_sha256"], expected)
+        self.app["full_table_rows"] = {"books_items": "[]", "book_requests": "[]"}
+        changed, _report = self.prepare()
+        self.assertNotEqual(changed["app_wants"]["source_sha256"], expected)
+        self.assertEqual(changed["app_wants"]["protected_paths"], snapshot["app_wants"]["protected_paths"])
+
     def test_capture_is_complete_read_only_and_records_ancestor_and_configured_holds(self):
         write(os.path.join(self.root, "Author", ".ll_ignore"), b"repair")
         before = snapshot(self.root)

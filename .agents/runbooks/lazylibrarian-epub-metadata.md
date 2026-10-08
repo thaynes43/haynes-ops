@@ -377,3 +377,41 @@ failure stops continuation. Remaining moves retain per-source identity, keeper,
 protection and freshness guards under the same continuously held fence and earliest
 source expiry. Unselected extras stay in EBooks. These checks reuse the verified
 complete census and avoid another whole-corpus hash inside the 300-second window.
+
+The dedicated manual copy writer owns a PostgreSQL 16 primary READ ONLY transaction and SHARE locks on both
+book_requests and books_items throughout consolidation. It compares the complete captured application rows under
+those locks before reading the library, checks the same backend before each move and first-retention proof, and
+refuses any mismatch, lost connection or deadline. The image contains the pinned driver at build time; runtime Jobs
+install nothing. Source-capture locks stay held until the writer stops, and the recovery supervisor stops owned
+writers before releasing its locks or restoring services.
+
+The copy-only image is built from `scripts/book-copy-writer/Dockerfile`. It bundles the reviewed, unchanged
+`epub_copies.py` and `epub_metadata.py`; it has no Calibre conversion or metadata-stripping entrypoint. Its workflow
+builds and tests PRs without publishing, publishes only main, and signs the immutable image digest. Pin that actual
+published digest in the reviewed manual Job before a maintenance window; building the image does not deploy it.
+
+Prepare the full app capture through the continuously held source-capture transaction. In addition to its existing
+full `app.items` and `app.wants`, include `full_table_rows`: the canonical PostgreSQL JSONB array text of **every** row
+and column of `books_items` and `book_requests`, ordered by id, including comics and parked requests. Derive the app
+arrays from those exact rows. The read-only preflight binds the canonical SHA-256 of this complete private capture
+into `snapshot.app_wants.source_sha256`. Never replace the capture with a filtered or regenerated subset.
+
+Run `python /copy-writer/book_copy_writer.py --snapshot SNAPSHOT --selection SELECTION --app-capture CAPTURE
+--deadline-epoch ABSOLUTE_EPOCH` with `DATABASE_URL`, `STRIP_SERIES_METADATA=0`, the reviewed `EBOOK_ROOT`,
+`STATE_DIR` and `LIBRARY_HOLD_FOLDERS_JSON`. An explicit ordered selection is mandatory; the absolute deadline must
+be in the next 300 seconds and also respects the earliest source expiry. The script acquires its own compatible
+SHARE locks before checking the capture and invoking the existing consolidation in this same process. It retains
+the shared converter lock, Ransom hold, complete identity census, first-stage proof and all existing no-overwrite
+backup guards. It never queues a scan while services are down; the parent verifies retention and requests scans
+only after restoration.
+
+For each manifest publication, retained link and original-name removal, the copy-only wrapper checks the database
+fence first, then repeats the original local directory/file identity checks immediately before the exact allowed
+descriptor operation. It changes no unrelated OS operations or mounted modules. A deadline or signal unwinds the
+same process, so no copier child survives to mutate files after its PostgreSQL connection closes. Connection or
+backend loss refuses subsequent actions; the parent still stops the exact owned Job before releasing source locks.
+
+The focused image tests run once, sequentially at nice 19 with one CPU. Their isolated PostgreSQL 16 fixture proves
+reads continue while both table writers are blocked, supervisor-connection EOF leaves the copy writer's own locks
+held, and backend loss, changed captures, unknown lock state and deadlines prevent further file actions. No test
+connects to production or installs packages in a runtime Pod.
