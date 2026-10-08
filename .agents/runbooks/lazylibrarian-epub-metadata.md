@@ -127,6 +127,25 @@ the strip gate still off. Restore before app, pairing or reading-list verificati
 long waits, or uncertain investigation. Enable hourly stripping later in a separate
 GitOps PR after those checks pass. Declare the tight maintenance window before
 deploying its pause and end the activity promptly after restoration.
+
+Stage the pause and its exact inverse while production is live. Retarget the open
+inverse PR to `main` before merging the pause, because automatic branch deletion
+can close an inverse that still uses the pause branch as its base. Arm recovery
+before holding the three affected Flux Kustomizations. Keep their workloads live
+while the pause lands in git, replay and validate the inverse locally, and push
+its final head once. Resume Flux onto the pause only after that final inverse has
+all required checks green and its completed advisory review has been handled.
+
+Record every Job intent and phase token before creation, then record the actual
+Job UID immediately afterward. Collect API inventories first and UID-bound
+Libretto process attestations last, and validate and start the first stage in one
+bounded command so the 30-second process proof stays fresh. The ten-minute edit
+window never extends on restart. Recovery stops only the phase's owned Jobs and
+Pods, restores the reviewed inverse, and verifies every schedule, acquisition
+setting and Flux revision. Poll a command that returns a running session until it
+finishes; a missing exit code is not an error. An accepted Kavita scan may outlive
+its requester Job, so record any pending scan when restoring after a timeout.
+
 Confirm the runtime configuration directly without printing credentials:
 
     kubectl exec -n media deployment/libretto -- node --input-type=module -e '
