@@ -51,9 +51,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Plan 07 kube installation and egress enforcement, signed/verified
-              # by dev-env publish.yml on main (run 37699861688).
-              tag: sha-763fe77@sha256:3063e5c4fb82641a3b8c3e6d1ba2d4968dd65e48d78acaf60f93e79796c5b91b
+              # thaynes43/dev-env main eeb15e3, signed/verified keyless
+              # by publish.yml on main (run 37798469467).
+              tag: sha-eeb15e3@sha256:491bfd05e101843d1bb31250841095a23901cf1eeb51566398ddc416ccbcef3c
               pullPolicy: IfNotPresent
             args:
               - broker
