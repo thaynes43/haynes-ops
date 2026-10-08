@@ -146,12 +146,33 @@ jobs:
           fi
           echo "no alpha-prefixed external-dns annotations under kubernetes/"
 
+  grant-catalog:
+    # Public hosted CI has no cluster credentials. It checks the checked-in
+    # discovery/role pair and repo CRDs. The metadata-only GitOps CronJob catches
+    # runtime/Helm API drift and fails without repairing or expanding RBAC.
+    name: Flux Local - dev-env grant catalog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the repo-CRD parser
+        run: python3 -m pip install --disable-pip-version-check "pyyaml==6.0.3"
+      - name: Verify break-glass discovery, exclusions and generation
+        run: |
+          python3 -B -m unittest discover \
+            -s kubernetes/main/apps/dev-env-system/rbac/app/catalog -p 'test_*.py'
+          python3 -B kubernetes/main/apps/dev-env-system/rbac/app/catalog/generate.py \
+            check --crd-root kubernetes/main/apps
+
   success:
     if: ${{ !cancelled() }}
     needs:
       - test
       - diff
       - annotation-guard
+      - grant-catalog
     name: Flux Local - Success
     runs-on: ubuntu-latest
     steps:
