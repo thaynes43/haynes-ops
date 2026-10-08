@@ -219,6 +219,17 @@ class CopyTests(unittest.TestCase):
         self.assertEqual(counts["moved"], 0)
         self.assertTrue(any(line.get("result") == "review" and line.get("path") == self.extra for line in self.lines))
 
+    def test_conflicting_creator_spelling_shared_alias_retains_all_possible_copies(self):
+        third = "Suzanne Collins/Alternate/third.epub"
+        write(os.path.join(self.root, third), fixture(opf=OPF.replace(b'Suzanne Collins', b'Suzanne C. Collins')))
+        before = snapshot(self.root)
+        counts = self.run_copies()
+        self.assertEqual(counts["moved"], 0)
+        self.assertEqual(snapshot(self.root), before)
+        self.assertFalse(os.path.exists(self.state))
+        reviews = {line.get("path") for line in self.lines if line.get("result") == "review"}
+        self.assertTrue({self.keeper, self.extra, third}.issubset(reviews))
+
     def test_editor_translator_and_combined_credit_extras_are_never_copy_candidates(self):
         for raw in (
             OPF.replace(b'<dc:creator id="author">', b'<dc:creator id="author" xmlns:opf="http://www.idpf.org/2007/opf" opf:role="edt">'),

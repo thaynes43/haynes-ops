@@ -395,6 +395,15 @@ class ConversionPublicationTests(unittest.TestCase):
 
 
 class GroupingTests(unittest.TestCase):
+    def test_creator_spelling_variants_with_shared_author_alias_do_not_invent_two_people(self):
+        first = metadata.grouping_identity(fixture(), "Suzanne Collins/Book/first.epub")
+        second = metadata.grouping_identity(fixture(opf=OPF.replace(b'Suzanne Collins', b'Suzanne C. Collins')),
+                                            "Suzanne Collins/Book/second.epub")
+        self.assertNotEqual(first["author_keys"], second["author_keys"])
+        self.assertEqual(metadata.author_identity_conflicts(first, [first, second]), [second["path"]])
+        with self.assertRaises(metadata.GroupingHold):
+            metadata.dedicated_grouping(first, [first, second])
+
     def test_disambiguation_requires_author_roles_and_unambiguous_credit_boundaries(self):
         peer_raw = OPF.replace(b'Suzanne Collins', b'Other Author')
         peer = metadata.grouping_identity(fixture(opf=peer_raw), "Other/Book/peer.epub")

@@ -336,7 +336,8 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
     counts = {"moved": 0, "would_move": 0, "retained": 0, "protected": 0, "settling": 0,
               "review_groups": 0, "refused": 0}
     for identity in identities:
-        if not identity.get("author_refusal") and len(identity["title_keys"]) == 1 and len(identity["author_keys"]) == 1:
+        if (not identity.get("author_refusal") and len(identity["title_keys"]) == 1 and len(identity["author_keys"]) == 1
+                and not metadata.author_identity_conflicts(identity, identities)):
             key = (next(iter(identity["title_keys"])), next(iter(identity["author_keys"])))
             groups.setdefault(key, []).append(identity["path"])
         else:

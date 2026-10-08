@@ -43,7 +43,9 @@ EPUB3 role refinements and EPUB2 opf:role exclude editor/translator credits.
 Combined credits such as "Quinn, Enoch, Hawkins, Ryan" are ambiguous and held;
 the converter never guesses comma-separated author boundaries. This also separates existing mixed-author
 groups, including untagged EPUBs. Only unambiguous title/creator metadata qualifies;
-missing or conflicting identities remain held. Ordinary books still lose their
+missing or conflicting identities remain held. Different creator spellings that
+share an existing author/folder alias are also held, since they may be one person.
+This ambiguity excludes those copies from consolidation too. Ordinary books still lose their
 grouping tags. The inserted tags are the only additional OPF bytes, and an already
 correct pair is unchanged. An unreadable identity, unsafe
 path or exhausted preflight budget stops the entire mutation pass, including

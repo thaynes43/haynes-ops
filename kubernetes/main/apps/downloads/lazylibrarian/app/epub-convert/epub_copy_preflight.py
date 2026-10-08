@@ -277,11 +277,15 @@ def prepare(library, ll, app, series_files, kavita_protected, kavita_errors, kav
             except (KeyError, metadata.Refused) as err:
                 blockers.append(f"{source}: invalid protection: {err}")
     groups, ambiguous = collections.defaultdict(list), []
-    for row in library["files"]:
-        if row.get("author_refusal") or len(row["title_keys"]) != 1 or len(row["author_keys"]) != 1:
-            ambiguous.append({"path": row["path"], "reason": row.get("author_refusal") or "ambiguous title/author identity"})
+    identities = [{**row, "title_keys": set(row["title_keys"]), "author_keys": set(row["author_keys"])}
+                  for row in library["files"]]
+    for row in identities:
+        conflicts = metadata.author_identity_conflicts(row, identities)
+        if row.get("author_refusal") or len(row["title_keys"]) != 1 or len(row["author_keys"]) != 1 or conflicts:
+            ambiguous.append({"path": row["path"], "reason": row.get("author_refusal") or "ambiguous title/author identity",
+                              "shared_alias_conflicts": conflicts})
             continue
-        groups[(row["title_keys"][0], row["author_keys"][0])].append(row)
+        groups[(next(iter(row["title_keys"])), next(iter(row["author_keys"])))].append(row)
     report_groups = []
     for (title, author), rows in groups.items():
         if len(rows) < 2:

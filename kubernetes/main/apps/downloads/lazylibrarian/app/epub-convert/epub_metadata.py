@@ -525,6 +525,18 @@ def collision_conflicts(identity, identities, new_file=False):
     return conflicts
 
 
+def author_identity_conflicts(identity, identities):
+    """Do not invent different people from conflicting credits with a shared alias."""
+    def aliases(row):
+        parts = row["path"].split("/")
+        return row.get("author_keys", set()) | ({author_normalized(parts[0])} if len(parts) >= 3 else set())
+
+    return [other["path"] for other in identities if other["path"] != identity["path"]
+            and identity.get("title_keys", set()) & other.get("title_keys", set())
+            and identity.get("author_keys", set()) != other.get("author_keys", set())
+            and aliases(identity) & aliases(other)]
+
+
 def dedicated_grouping(identity, identities):
     """Same-title/different-creator policy includes existing mixed-author groups."""
     collisions = [other for other in identities if other["path"] != identity["path"]
@@ -533,7 +545,8 @@ def dedicated_grouping(identity, identities):
                        or identity.get("author_keys", set()) != other.get("author_keys", set()))]
     if not collisions:
         return None
-    if (identity.get("author_refusal") or len(identity["title_keys"]) != 1 or len(identity["author_keys"]) != 1
+    if (author_identity_conflicts(identity, identities)
+            or identity.get("author_refusal") or len(identity["title_keys"]) != 1 or len(identity["author_keys"]) != 1
             or not identity["title"] or not identity["author"]
             or any(other.get("author_refusal") or len(other.get("author_keys", set())) != 1
                    or len(other.get("title_keys", set())) != 1 for other in collisions)):
