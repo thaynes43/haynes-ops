@@ -13,8 +13,10 @@ import unittest
 from unittest import mock
 
 HERE = Path(__file__).resolve().parent
-MODULES = Path(os.environ.get("COPY_TEST_MODULES", HERE.parents[1] / "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert"))
-sys.path[:0] = [str(HERE), str(MODULES), "/copy-writer"]
+MODULES = Path(os.environ.get("COPY_TEST_MODULES") or HERE.parents[1] / "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert")
+# CI tests the bundled runtime modules; the read-only source mount supplies only
+# temporary-library fixture helpers. Local runs use this worktree's modules.
+sys.path[:0] = ["/copy-writer", str(HERE), str(MODULES)]
 import book_copy_writer as writer
 import epub_copies as copies
 import epub_metadata as metadata

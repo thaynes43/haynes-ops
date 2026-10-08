@@ -62,7 +62,7 @@ jobs:
           docker run --detach --name copy-writer-pg16 --cpus 1 --memory 256m \
             --tmpfs /var/lib/postgresql/data:rw,size=128m \
             -e POSTGRES_DB=copy_writer_fixture -e POSTGRES_USER=postgres \
-            -e POSTGRES_PASSWORD=isolated-fixture postgres:16 \
+            -e POSTGRES_PASSWORD=isolated-fixture postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d \
             -c shared_buffers=16MB -c max_connections=8 -c max_worker_processes=0 \
             -c autovacuum=off -c jit=off
           timeout 20 bash -c 'until docker exec copy-writer-pg16 pg_isready -U postgres -d copy_writer_fixture; do sleep .2; done'
