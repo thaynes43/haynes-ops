@@ -182,8 +182,14 @@ class ProofTransportTests(unittest.TestCase):
                 send(TamperingStream(), paths, self.phase, self.uid, self.pod_uid)
 
     def test_actual_receiver_cli_stops_an_open_stdin_at_its_deadline(self):
-        environment = {**os.environ, **self.env, "COPY_DEADLINE_EPOCH": str(time.time() + .15)}
-        receiver = subprocess.Popen([sys.executable, str(Path(__file__).with_name('proof_transport.py')), 'receive'],
+        environment = {**os.environ, **self.env,
+                       'PYTHONPATH': str(Path(__file__).resolve().parent) + os.pathsep + os.environ.get('PYTHONPATH', '')}
+        # Warm imports before setting this deliberately tiny fixture deadline;
+        # cold interpreter scheduling is unrelated to blocked-stdin expiry.
+        program = ("import os,runpy,sys,time,proof_transport; "
+                   "os.environ['COPY_DEADLINE_EPOCH']=str(time.time()+.15); "
+                   "sys.argv=[sys.argv[1],'receive']; runpy.run_path(sys.argv[0],run_name='__main__')")
+        receiver = subprocess.Popen([sys.executable, '-c', program, str(Path(__file__).with_name('proof_transport.py'))],
                                     env=environment, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             self.assertEqual(receiver.wait(timeout=2), 1)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Operator-side exec delivery; exact durable Job and Pod ownership before stdin."""
 import argparse
+import contextlib
 import copy
 import hashlib
 import importlib.util
@@ -132,7 +133,10 @@ def stream_to_receiver(command, paths, phase, job_uid, pod_uid, deadline, popen=
                     process.kill()
                 process.wait(timeout=3)
                 if process.stdin is not None:
-                    process.stdin.close()
+                    # A killed non-reading child leaves buffered bytes. Closing
+                    # that pipe must not mask the original deadline refusal.
+                    with contextlib.suppress(BrokenPipeError):
+                        process.stdin.close()
         finally:
             for signum, handler in previous.items():
                 signal.signal(signum, handler)
