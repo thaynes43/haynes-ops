@@ -325,7 +325,101 @@ def restore_retained_copy(manifest_path, root, state, dry_run=False, deadline=fl
             return result
 
 
-def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=False, deadline=float("inf")):
+def load_selection(path, root, evidence_hash, eligible, hashes):
+    if os.path.commonpath((os.path.abspath(root), os.path.abspath(path))) == os.path.abspath(root):
+        raise metadata.Refused("copy selection must be outside EBOOK_ROOT")
+    with metadata.safe_directory(os.path.dirname(os.path.abspath(path))) as directory:
+        raw, _info = metadata.read_regular(directory, os.path.basename(path), 1024 * 1024)
+    selection = json.loads(raw, object_pairs_hook=unique_object)
+    if (not isinstance(selection, dict) or type(selection.get("schema")) is not int or selection["schema"] != 1
+            or selection.get("kind") != "copy_selection" or selection.get("approved_for_retention") is not True
+            or selection.get("snapshot_sha256") != evidence_hash
+            or not isinstance(selection.get("entries"), list) or not selection["entries"]):
+        raise metadata.Refused("approved copy selection must bind the exact complete snapshot")
+    chosen = []
+    for entry in selection["entries"]:
+        if not isinstance(entry, dict) or set(entry) != {"path", "sha256", "keeper", "keeper_sha256"}:
+            raise metadata.Refused("copy selection requires exact source/keeper path and hash records")
+        path, keeper = relative_path(entry["path"]), relative_path(entry["keeper"])
+        if (path in chosen or eligible.get(path) != keeper or hashes.get(path) != entry["sha256"]
+                or hashes.get(keeper) != entry["keeper_sha256"]):
+            raise metadata.Refused("selected copy is repeated, protected, ineligible or changed")
+        chosen.append(path)
+    return chosen, metadata.sha256(raw)
+
+
+def file_fingerprints(root, deadline):
+    """Read every library file's identity without rehashing the complete corpus."""
+    result = {}
+    def walk_error(error):
+        raise error
+    for folder, dirs, names in os.walk(root, followlinks=False, onerror=walk_error):
+        if time.monotonic() >= deadline:
+            raise metadata.Refused("source expiry reached during complete file census")
+        for name in dirs:
+            if os.path.islink(os.path.join(folder, name)):
+                raise metadata.Refused("symlinked directory in complete file census")
+        with metadata.safe_directory(folder) as directory:
+            for name in names:
+                if time.monotonic() >= deadline:
+                    raise metadata.Refused("source expiry reached during complete file census")
+                info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                result[os.path.relpath(os.path.join(folder, name), root)] = (
+                    metadata._identity(info), info.st_mode, info.st_uid, info.st_gid)
+    return result
+
+
+def verify_first_retention(result, keeper, root, state, hashes, files, all_files,
+                           snapshot, evidence_hash, deadline):
+    """Prove the first retained copy and complete remaining census before continuing."""
+    path = result["path"]
+    manifest_path = result["backup_manifest"]
+    backup_folder = os.path.join(state, "copies")
+    if os.path.dirname(manifest_path) != backup_folder:
+        raise metadata.Refused("first retention manifest is outside the exact backup folder")
+    with metadata.safe_directory(backup_folder) as directory:
+        raw, _info = metadata.read_regular(directory, os.path.basename(manifest_path), 65536)
+        manifest = json.loads(raw, object_pairs_hook=unique_object)
+        stem = metadata.sha256(path.encode()) + "-" + hashes[path]
+        original = files[path]
+        if (manifest.get("schema") != 1 or manifest.get("kind") != "retained_copy"
+                or manifest.get("relative_path") != path or manifest.get("sha256") != hashes[path]
+                or manifest.get("evidence_sha256") != evidence_hash
+                or manifest.get("backup_file") != stem + ".epub"
+                or (manifest.get("original_mode"), manifest.get("original_uid"), manifest.get("original_gid"))
+                != (stat.S_IMODE(original.st_mode), original.st_uid, original.st_gid)):
+            raise metadata.Refused("first retention manifest differs from approved source")
+        digest, retained = hash_file(directory, stem + ".epub", deadline)
+        if (digest != hashes[path] or retained.st_nlink != 1
+                or (retained.st_dev, retained.st_ino, retained.st_size, retained.st_mode, retained.st_uid, retained.st_gid)
+                != (original.st_dev, original.st_ino, original.st_size, original.st_mode, original.st_uid, original.st_gid)):
+            raise metadata.Changed("first retention bytes/inode/ownership differ from approved source")
+    with metadata.safe_directory(os.path.dirname(os.path.join(root, path))) as directory:
+        try:
+            os.stat(os.path.basename(path), dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise metadata.Changed("first retained copy still has a library entry")
+    with metadata.safe_directory(os.path.dirname(os.path.join(root, keeper))) as directory:
+        digest, current = hash_file(directory, os.path.basename(keeper), deadline)
+        if digest != hashes[keeper] or metadata._identity(current) != metadata._identity(files[keeper]):
+            raise metadata.Changed("first-stage keeper changed")
+    remaining = file_fingerprints(root, deadline)
+    if remaining != {name: info for name, info in all_files.items() if name != path}:
+        raise metadata.Changed("unapproved library file changed after first retention")
+    require_fresh(snapshot)
+    if time.monotonic() >= deadline:
+        raise metadata.Refused("source expiry reached during first-stage verification")
+    return {"path": path, "keeper": keeper, "backup_manifest": manifest_path,
+            "retained_sha256": hashes[path],
+            "keeper_sha256": hashes[keeper], "unchanged_epubs": len(files) - 1,
+            "unchanged_files": len(remaining),
+            "evidence_sha256": evidence_hash, "protected_bytes_verified": True}
+
+
+def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=False, deadline=float("inf"),
+                selection_path=None):
     snapshot, hashes, pointers, protected, evidence_hash = load_snapshot(snapshot_path, root)
     deadline = min(deadline, expiry_deadline(snapshot))
     identities, errors = metadata.identity_preflight(root, deadline)
@@ -353,6 +447,7 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
         else:
             log("epub_copy_consolidate", result="review", path=identity["path"],
                 detail="ambiguous title/creator identity is retained", dry_run=dry_run)
+    eligible = {}
     for paths in groups.values():
         if len(paths) < 2:
             continue
@@ -385,36 +480,59 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
                 log("epub_copy_consolidate", result="settling", path=path, dry_run=dry_run)
                 continue
 
-            def guard(recheck_keeper=True):
-                require_fresh(snapshot)
-                if time.monotonic() >= deadline:
-                    raise metadata.Refused("run budget exhausted before copy move")
-                if not recheck_keeper:
-                    return
-                if protection_reasons(path, root, holds, protected):
-                    raise metadata.Refused("copy gained an ignore/hold protection before move")
-                # Keep the pointer-selected copy present and byte-identical before each removal.
-                with metadata.safe_directory(os.path.dirname(os.path.join(root, keeper))) as directory:
-                    digest, current = hash_file(directory, os.path.basename(keeper), deadline)
-                    metadata._same_directory(directory, os.path.dirname(os.path.join(root, keeper)))
-                if digest != hashes[keeper] or metadata._identity(current) != metadata._identity(files[keeper]):
-                    raise metadata.Changed("LL BookFile keeper changed/disappeared after census")
-                require_fresh(snapshot)
-                if time.monotonic() >= deadline:
-                    raise metadata.Refused("snapshot/run budget exhausted during keeper recheck")
+            eligible[path] = keeper
+    if counts["refused"]:
+        return counts
+    chosen, selection_hash = (load_selection(selection_path, root, evidence_hash, eligible, hashes)
+                              if selection_path else (list(eligible), None))
+    all_files = file_fingerprints(root, deadline) if selection_path else None
+    if all_files is not None:
+        visible_epubs = {path for path in all_files if path.lower().endswith(".epub")
+                         and all(not part.startswith(".") for part in path.split("/"))}
+        if visible_epubs != set(files):
+            raise metadata.Changed("complete EPUB census changed before selection application")
+        for path, original in files.items():
+            if all_files.get(path) != (metadata._identity(original), original.st_mode, original.st_uid, original.st_gid):
+                raise metadata.Changed("hashed EPUB changed before selection application")
+    for index, path in enumerate(chosen):
+        keeper, info = eligible[path], files[path]
 
-            try:
-                result = move_copy(path, root, state, hashes[path], metadata._identity(info),
-                                   evidence_hash, guard, dry_run, deadline)
-                counts[result["result"]] += 1
-                log("epub_copy_consolidate", **result, keeper=keeper, dry_run=dry_run)
-            except Exception as err:
-                counts["refused"] += 1
-                log("epub_copy_consolidate", result="refused", path=path,
-                    detail=f"{type(err).__name__}: {err}"[:500], dry_run=dry_run)
-                # An expired/racing snapshot must not authorize subsequent moves.
-                break
-        if counts["refused"]:
+        def guard(recheck_keeper=True):
+            require_fresh(snapshot)
+            if time.monotonic() >= deadline:
+                raise metadata.Refused("run budget exhausted before copy move")
+            if not recheck_keeper:
+                return
+            if protection_reasons(path, root, holds, protected):
+                raise metadata.Refused("copy gained an ignore/hold protection before move")
+            # Keep the pointer-selected copy present and byte-identical before each removal.
+            with metadata.safe_directory(os.path.dirname(os.path.join(root, keeper))) as directory:
+                digest, current = hash_file(directory, os.path.basename(keeper), deadline)
+                metadata._same_directory(directory, os.path.dirname(os.path.join(root, keeper)))
+            if digest != hashes[keeper] or metadata._identity(current) != metadata._identity(files[keeper]):
+                raise metadata.Changed("LL BookFile keeper changed/disappeared after census")
+            require_fresh(snapshot)
+            if time.monotonic() >= deadline:
+                raise metadata.Refused("snapshot/run budget exhausted during keeper recheck")
+
+        try:
+            result = move_copy(path, root, state, hashes[path], metadata._identity(info),
+                               evidence_hash, guard, dry_run, deadline)
+            counts[result["result"]] += 1
+            log("epub_copy_consolidate", **result, keeper=keeper, dry_run=dry_run,
+                phase="first" if selection_path and index == 0 else "remaining" if selection_path else "all")
+            if selection_path and index == 0 and not dry_run:
+                proof = verify_first_retention(result, keeper, root, state, hashes, files, all_files,
+                                               snapshot, evidence_hash, deadline)
+                log("epub_copy_stage_proof", result="verified", stage="first", selection_sha256=selection_hash, **proof)
+                if len(chosen) > 1:
+                    log("epub_copy_stage_phase", result="started", phase="remaining", approved=len(chosen) - 1,
+                        selection_sha256=selection_hash)
+        except Exception as err:
+            counts["refused"] += 1
+            log("epub_copy_consolidate", result="refused", path=path,
+                detail=f"{type(err).__name__}: {err}"[:500], dry_run=dry_run)
+            # An expired/racing snapshot must not authorize subsequent moves.
             break
     log("epub_copy_consolidate_census", **counts, dry_run=dry_run)
     return counts

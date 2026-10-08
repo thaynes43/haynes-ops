@@ -61,6 +61,7 @@ STRIP_FOLDERS_JSON selects exact relative book folders (unset means all EPUBs).
 --restore-retained-copy <manifest> returns verified bytes to an absent library path.
 --consolidate-copies <snapshot> manually retains unprotected extras outside EBooks;
 it requires a fresh complete dependency census and never runs from the strip gate.
+An optional --copy-selection <manifest> chooses exact ordered approved extras.
 Backup retention and rollout: .agents/runbooks/lazylibrarian-epub-metadata.md.
 """
 
@@ -748,12 +749,14 @@ def main():
     restore = None
     restore_copy = None
     copies = None
+    selection = None
     author_manifest = None
     author_proof = None
     if len(sys.argv) > 1:
         valid = (len(sys.argv) == 3 and sys.argv[1] in ("--restore-backup", "--restore-retained-copy", "--consolidate-copies", "--strip-author-proof"))
-        if not valid or not sys.argv[2].strip():
-            log("epub_convert_run_failed", error="usage: epub_convert.py [--restore-backup <manifest> | --restore-retained-copy <manifest> | --strip-author-proof <manifest> | --consolidate-copies <snapshot>]")
+        selected = (len(sys.argv) == 5 and sys.argv[1] == "--consolidate-copies" and sys.argv[3] == "--copy-selection")
+        if not (valid or selected) or not sys.argv[2].strip() or (selected and not sys.argv[4].strip()):
+            log("epub_convert_run_failed", error="usage: epub_convert.py [--restore-backup <manifest> | --restore-retained-copy <manifest> | --strip-author-proof <manifest> | --consolidate-copies <snapshot> [--copy-selection <manifest>]]")
             return 1
         if sys.argv[1] == "--restore-backup":
             restore = sys.argv[2]
@@ -763,6 +766,7 @@ def main():
             author_manifest = sys.argv[2]
         else:
             copies = sys.argv[2]
+            selection = sys.argv[4] if selected else None
     try:
         epub_metadata.validate_paths(EBOOK_ROOT, STATE_DIR)
         LIBRARY_HOLDS = epub_metadata.library_hold_folders(EBOOK_ROOT)
@@ -798,7 +802,7 @@ def main():
             try:
                 counts = epub_copies.consolidate(copies, EBOOK_ROOT, STATE_DIR, SETTLE_SECONDS,
                                                 LIBRARY_HOLDS, log, DRY_RUN,
-                                                run_started + RUN_BUDGET_SECONDS)
+                                                run_started + RUN_BUDGET_SECONDS, selection_path=selection)
             except Exception as err:
                 log("epub_copy_consolidate", result="refused", detail=f"{type(err).__name__}: {err}"[:500], dry_run=DRY_RUN)
                 return 1

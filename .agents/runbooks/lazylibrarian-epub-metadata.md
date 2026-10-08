@@ -349,3 +349,28 @@ existing destination or configured library hold refuses the command. Interrupted
 publication can leave a hidden restore artifact for review; never replace a current
 file or remove retained bytes to force a retry. Begin with DRY_RUN=1, then verify
 the returned file, scan, dependencies and coverage.
+
+A manual selection manifest binds an ordered list of exact source and keeper paths and hashes to the complete
+dependency snapshot. Validate the entire selection before any move. Retain and verify the first selected copy,
+confirm its keeper and every unapproved file remain intact, then continue the remaining selection only if that
+proof passes. Abort on mismatch, lost fence or deadline.
+
+For staged retention, add `--copy-selection <selection.json>` to the manual
+consolidation command. The schema-1 `copy_selection` record lives outside EBooks,
+requires `approved_for_retention: true`, binds `snapshot_sha256` to the exact complete
+dependency snapshot, and contains an ordered nonempty `entries` array of
+`{path, sha256, keeper, keeper_sha256}` records. Each entry must independently be an
+eligible unprotected extra under that complete snapshot. Missing, repeated, changed,
+protected or keeper entries refuse the entire selection before any move. Narrowing
+scope never removes source files, dependencies or protections from the snapshot.
+
+The invocation hashes the complete current corpus once. It moves the first exact
+selected extra, verifies the retained bytes/manifest/ownership, absent original and
+unchanged keeper, then verifies the complete remaining file census against the
+original fingerprints. This includes every protected EPUB and non-EPUB library
+file; EPUB fingerprints remain bound to the full corpus hash. It logs a
+separate `epub_copy_stage_proof` before starting the remaining selected moves. Any
+failure stops continuation. Remaining moves retain per-source identity, keeper,
+protection and freshness guards under the same continuously held fence and earliest
+source expiry. Unselected extras stay in EBooks. These checks reuse the verified
+complete census and avoid another whole-corpus hash inside the 300-second window.
