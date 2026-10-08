@@ -690,6 +690,8 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "22 * * * *"
+          # Controlled EPUB migration; resume after verified backfill.
+          suspend: true
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
@@ -723,6 +725,8 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "41 * * * *"
+          # Controlled EPUB migration; resume after verified backfill.
+          suspend: true
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
@@ -790,6 +794,8 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "27 * * * *"
+          # Controlled EPUB migration; resume after verified backfill.
+          suspend: true
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
@@ -831,6 +837,8 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "32 * * * *"
+          # Controlled EPUB migration; resume after verified backfill.
+          suspend: true
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2

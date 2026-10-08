@@ -68,6 +68,35 @@ Deploy the app's pairing safeguards, complete the after-strip Held File Check an
 adversarial review, and repair findings or record justified Census Holds. Keep the
 scheduled gate off throughout inventory and staging.
 
+During the controlled migration, git suspends the EPUB converter and the app's
+books, Goodreads, collections and format-pairing CronJobs. Libretto's configured
+LazyLibrarian URL is temporarily empty so no acquisition context can be created
+while Kavita identities change. Existing recipe policies remain intact. Verify
+those deployed settings before running manual Jobs with the reviewed app image.
+Declare activity before deploying the pause and keep its downloads/lazylibrarian
+scope live until restoration, renewing before expiry if needed. A pause lasting
+3h15m triggers `LazyLibrarianEpubConvertSilent`; that heartbeat absence is expected
+for the declared suspended converter. The scoped declaration lets remediation
+recognize this work while leaving alerts outside the migration scope actionable.
+Confirm the runtime configuration directly without printing credentials:
+
+    kubectl exec -n media deployment/libretto -- node --input-type=module -e '
+    import { loadConfig } from "/app/dist/config.js";
+    import { createLogger } from "/app/dist/logger.js";
+    import { createAcquireContext } from "/app/dist/acquire/acquire.js";
+    const config = loadConfig();
+    const disabled = process.env.LAZYLIBRARIAN_URL === "" &&
+      config.lazyLibrarian === undefined &&
+      createAcquireContext(config, createLogger("silent")) === undefined;
+    console.log(JSON.stringify({ acquisitionDisabled: disabled }));
+    if (!disabled) process.exitCode = 1;
+    '
+
+After successful backfill, pairing and reading-list verification, restore all
+five schedules and Libretto's URL in git together with the scheduled strip gate.
+If the migration stops early, restore the schedules and URL through git while
+keeping the strip gate off; never leave the temporary pause as an implicit handoff.
+
 Clone the CronJob's pinned image, service account, NFS mount, worker-node affinity,
 one-CPU limit and non-root user into each temporary Job. This prepares and submits
 a read-only inventory Job; its preflight examines the whole EPUB library.

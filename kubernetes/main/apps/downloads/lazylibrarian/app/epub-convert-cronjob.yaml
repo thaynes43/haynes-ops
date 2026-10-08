@@ -45,6 +45,8 @@ metadata:
     # Keep Flux's postBuild envsubst away from the spec (no ${...} is meant for it).
     kustomize.toolkit.fluxcd.io/substitute: disabled
 spec:
+  # Keep scheduled scans separate from the verified migration Jobs.
+  suspend: true
   schedule: "20 * * * *"
   timeZone: Etc/UTC
   concurrencyPolicy: Forbid
