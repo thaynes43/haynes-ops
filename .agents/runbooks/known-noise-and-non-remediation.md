@@ -47,6 +47,40 @@ scan and begins the whole wait again.
 - **Do NOT:** restart the pod, delete it, or "unstick" it.
 - **Check:** `kubectl -n downloads logs deploy/slskd | grep -i scan`
 
+### Hand-made probe Jobs (`books-825-*` style) in the gate/triage coordination set
+A dev-env session investigating an issue runs one-shot Jobs by hand (`kubectl create
+job`, `kubectl apply` of a jq-cloned CronJob template) and some exit non-zero by
+design — a probe that tests whether a module exists, a baseline that fails before the
+fix. Their Error pods sit in the API until the Job's `ttlSecondsAfterFinished` (the
+dev-env convention is 1h) and nothing is broken.
+
+The upgrade shepherd's triage classes such a corpse as an UPGRADE regression whenever
+the pod template borrowed a Flux workload's `app.kubernetes.io/name` and a merge
+touched that app's path inside the attribution lookback (3h). It then spends a remediate
+run to conclude "not a regression", records `result=failed`, and pages (2026-10-08
+04:00Z, `esc-shepherd-80441793`: probe `books-825-fresh-census-projection-1008-0338`
+carried `app.kubernetes.io/name=books-census`, 34 minutes after haynesnetwork v0.110.3
+touched `books-census/app/cronjob.yaml`). Because the signature hashes the corpse
+set, every further failing probe from the same session re-keys it and pages again
+until the merge ages out of the window.
+
+- **Signature:** the signal pods are `phase=Failed`, timestamp-suffixed, owned by Jobs
+  that have **no `ownerReferences` and no `*.toolkit.fluxcd.io/name` label** (nothing
+  Flux applied); often an `hn-issue` label or an issue number in the name; a matching
+  `dev-activity-check.sh` declaration; the real workload (its CronJob's latest run, its
+  HelmRelease) is healthy.
+- **Do:** record the matched declaration and the Job evidence, close `done`. The
+  coordination lib drops these corpses itself (rule C, 2026-10-08 — the triage log
+  reads `dropped stale corpse pod … (superseded/ancient/ad-hoc/gone)`); if one still
+  reaches a signature, that rule has regressed — fix the lib, not the pods.
+- **Do NOT:** open a fix PR against the app the label names, restart its CronJob, or
+  treat the dev's probe output as a workload failure. Deleting the corpses is a
+  last-resort park (it re-keys the sig; it only helps when it empties the set).
+- **Check:**
+  `kubectl -n <ns> get job <job> -o json | jq '{owners:(.metadata.ownerReferences//[]|length), flux:[.metadata.labels//{}|keys[]|select(test("toolkit.fluxcd.io"))]}'`
+  → `{"owners":0,"flux":[]}` is a hand-made Job. Then
+  `bash /opt/dev-env-ops/dev-activity-check.sh <ns> <name-prefix>`.
+
 ### `ytdl-sub-*` KubeJobFailed
 Expected; these jobs fail routinely by design and are explicitly null-routed in
 Alertmanager.
