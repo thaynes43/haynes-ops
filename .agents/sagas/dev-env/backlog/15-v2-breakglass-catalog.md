@@ -13,13 +13,26 @@ generator reads every served API version and merges the same group/resource acro
 versions. It excludes Secrets and their subresources, ServiceAccount tokens, the
 node proxy, ephemeral containers, bind/escalate/impersonate, RBAC, CSR approval,
 admission controls, Kyverno, CRDs, APIServices, Flux, External Secrets, API Priority
-and Fairness configuration, and dev-env CRDs. Within `cilium.io`, only namespaced
+and Fairness configuration, Traefik, Gateway API, External DNS, Kubernetes Ingress
+and every Ingress subresource, and dev-env CRDs. Within `cilium.io`, only namespaced
 `ciliumnetworkpolicies` and their subresources are allowed; every other resource,
 including future data-plane resources, is excluded. Cilium endpoint/identity state,
 CIDR groups, redirect policy, node/IPAM, LB pools and L2 announcements can bypass
 network isolation or alter LAN traffic even without modifying a cluster-wide policy.
-The identity guard refuses these Cilium resources and the flow-control group as a
-backstop. The role grants no wildcard or non-resource permission.
+The identity guard refuses these Cilium resources, the flow-control group, route/DNS
+groups and Ingress mutations as a backstop. The role grants no wildcard or
+non-resource permission. Kubernetes NetworkPolicy remains available under the
+existing namespace guard.
+
+Route writes can expose an arbitrary in-cluster Service publicly or remove an
+existing Authentik forward-auth middleware, bypassing the same isolation protected
+by the proxy exclusions. For example, code-server runs `--auth none` behind its
+Authentik middleware; a new route without that middleware would expose it without
+authentication. Accordingly, every resource and subresource in `traefik.io`,
+`gateway.networking.k8s.io` and `externaldns.k8s.io` is excluded, as are
+`networking.k8s.io/ingresses` and all descendants. These route exclusions do not
+resolve the baseline, Authentik workload or shared-database authority gaps: Q-16
+remains open and deployment/human approval remain blocked.
 It additionally excludes pod port-forward and pod/Service proxy endpoints: they
 bypass network/ingress isolation and lack the privileged-target admission lookup
 that covers both pod exec and attach. Those paths fail closed until a guard is

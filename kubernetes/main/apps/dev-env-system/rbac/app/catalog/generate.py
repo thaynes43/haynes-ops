@@ -45,6 +45,11 @@ EXCLUDED_GROUPS = frozenset(
         "external-secrets.io",
         "fluxcd.io",
         "flowcontrol.apiserver.k8s.io",
+        # Routes, middleware and DNS can publish arbitrary Services or remove
+        # forward-auth; they bypass the isolation protected by proxy exclusions.
+        "traefik.io",
+        "gateway.networking.k8s.io",
+        "externaldns.k8s.io",
     }
 )
 EXCLUDED_RESOURCES = {
@@ -63,6 +68,7 @@ EXCLUDED_RESOURCES = {
         }
     ),
     "certificates.k8s.io": frozenset({"certificatesigningrequests/approval"}),
+    "networking.k8s.io": frozenset({"ingresses"}),
 }
 CRD_RESOURCE_VERBS = tuple(sorted(ALLOWED_VERBS))
 CRD_SUBRESOURCE_VERBS = ("get", "patch", "update")

@@ -45,6 +45,7 @@ class CatalogSecurityTests(unittest.TestCase):
             "v1": ["secrets", "serviceaccounts/token", "nodes/proxy", "pods/ephemeralcontainers", "pods/portforward", "pods/proxy", "services/proxy"],
             "certificates.k8s.io/v1": ["certificatesigningrequests/approval"],
             "cilium.io/v2": ["ciliumclusterwidenetworkpolicies"],
+            "networking.k8s.io/v1": ["ingresses"],
         }
         lists = [listing(gv, [name for parent in parents for name in (parent, parent + "/future")]) for gv, parents in blocked.items()]
         lists.append(listing("v1", ["pods", "pods/exec", "pods/attach", "configmaps"]))
@@ -72,6 +73,20 @@ class CatalogSecurityTests(unittest.TestCase):
         granted = permissions(json.loads(catalog.DEFAULT_ROLE.read_text()))
         self.assertFalse(any(g == "flowcontrol.apiserver.k8s.io" for g, _, _ in granted))
         self.assertEqual({r for g, r, _ in granted if g == "cilium.io"}, {"ciliumnetworkpolicies", "ciliumnetworkpolicies/status"})
+
+    def test_route_and_dns_groups_are_closed_to_future_resources_and_subresources(self):
+        groups = ["traefik.io", "gateway.networking.k8s.io", "externaldns.k8s.io"]
+        lists = [listing(group + "/v1", ["ingressroutes", "middlewares", "traefikservices", "httproutes", "dnsendpoints", "future", "future/status", "future/status/nested"]) for group in groups]
+        lists.append(listing("networking.k8s.io/v1", ["ingresses", "ingresses/status", "ingresses/status/future", "networkpolicies", "networkpolicies/status", "ingressclasses"]))
+        granted = permissions(catalog.role(catalog.normalize(lists)))
+        self.assertFalse(any(group in groups for group, _, _ in granted))
+        self.assertEqual({resource for _, resource, _ in granted}, {"networkpolicies", "networkpolicies/status", "ingressclasses"})
+
+    def test_actual_role_excludes_routes_and_retains_network_policy(self):
+        granted = permissions(json.loads(catalog.DEFAULT_ROLE.read_text()))
+        self.assertFalse(any(group in {"traefik.io", "gateway.networking.k8s.io", "externaldns.k8s.io"} for group, _, _ in granted))
+        self.assertFalse(any(group == "networking.k8s.io" and (resource == "ingresses" or resource.startswith("ingresses/")) for group, resource, _ in granted))
+        self.assertIn(("networking.k8s.io", "networkpolicies", "create"), granted)
 
     def test_dangerous_verbs_are_removed_even_in_a_new_group(self):
         snapshot = catalog.normalize([listing("new.example/v1", ["widgets"], ["get", "create", "bind", "escalate", "impersonate"])])
