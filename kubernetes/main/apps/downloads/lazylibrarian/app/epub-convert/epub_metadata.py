@@ -41,6 +41,10 @@ class Changed(Refused):
     """An input/directory race may clear on the next settled run; do not hold it."""
 
 
+class GroupingHold(Refused):
+    """A readable identity needs review before the owner-ruled tag can be derived."""
+
+
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -489,7 +493,7 @@ def dedicated_grouping(identity, identities):
             or not identity["title"] or not identity["creator"]
             or any(len(other.get("creator_keys", set())) != 1
                    or len(other.get("title_keys", set())) != 1 for other in collisions)):
-        raise Refused("same-title cross-author grouping has ambiguous title/creator metadata")
+        raise GroupingHold("same-title cross-author grouping has ambiguous title/creator metadata")
     return f"{identity['title']} ({identity['creator']})"
 
 

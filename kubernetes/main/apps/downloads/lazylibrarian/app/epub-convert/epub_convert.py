@@ -672,6 +672,9 @@ def strip_series_pass(folders, run_started):
                         if result["result"] == "stripped":
                             identity["current_aliases"] = projected["projected_aliases"]
                             identity["comparison_aliases"] = projected["projected_aliases"]
+                except epub_metadata.GroupingHold as err:
+                    result = {"result": "collision_held", "path": os.path.relpath(path, EBOOK_ROOT),
+                              "metadata": identity["metadata"], "detail": str(err)}
                 except Exception as err:  # one refused file never changes any other file's eligibility
                     result = {"result": "refused", "path": os.path.relpath(path, EBOOK_ROOT),
                               "detail": f"{type(err).__name__}: {err}"[:500]}
@@ -695,7 +698,8 @@ def main():
     restore = None
     copies = None
     if len(sys.argv) > 1:
-        if len(sys.argv) != 3 or sys.argv[1] not in ("--restore-backup", "--consolidate-copies"):
+        if (len(sys.argv) != 3 or sys.argv[1] not in ("--restore-backup", "--consolidate-copies")
+                or not sys.argv[2].strip()):
             log("epub_convert_run_failed", error="usage: epub_convert.py [--restore-backup <manifest> | --consolidate-copies <snapshot>]")
             return 1
         if sys.argv[1] == "--restore-backup":

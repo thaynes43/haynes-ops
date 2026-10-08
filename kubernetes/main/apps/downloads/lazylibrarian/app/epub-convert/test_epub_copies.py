@@ -231,6 +231,13 @@ class CopyTests(unittest.TestCase):
                               env=env, capture_output=True, text=True, timeout=20)
         self.assertEqual(proc.returncode, 1, proc.stdout)
         self.assertIn("modes off", proc.stdout)
+        env["STRIP_SERIES_METADATA"] = "0"
+        env["DRY_RUN"] = "0"
+        proc = subprocess.run([sys.executable, script, "--consolidate-copies", ""],
+                              env=env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("usage:", proc.stdout)
+        self.assertFalse(os.path.exists(self.state))
 
 
 if __name__ == "__main__":

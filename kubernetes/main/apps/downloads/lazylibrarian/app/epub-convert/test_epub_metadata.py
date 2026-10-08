@@ -729,15 +729,16 @@ class FileTests(unittest.TestCase):
             identity = metadata.grouping_identity(read(path), os.path.relpath(path, self.root))
             self.assertEqual(identity["current_aliases"], {metadata.kavita_normalized(f"City of Bones ({author})")})
 
-    def test_ambiguous_cross_author_metadata_is_refused_without_title_edits(self):
+    def test_ambiguous_cross_author_metadata_is_held_without_title_edits_or_run_failure(self):
         other = os.path.join(self.root, "Other", "Book", "other.epub")
         raw = OPF.replace(b'<dc:creator id="author">', b'<dc:creator>Another Author</dc:creator><dc:creator id="author">')
         write(other, fixture(opf=raw))
         original = snapshot(self.root)
         process, lines = self.run_script()
-        self.assertEqual(process.returncode, 1, process.stdout)
+        self.assertEqual(process.returncode, 0, process.stdout)
         self.assertEqual(snapshot(self.root), original)
         self.assertTrue(any("ambiguous" in line.get("detail", "") for line in lines))
+        self.assertEqual(next(line for line in lines if line["msg"] == "epub_series_strip_census")["collision_held"], 2)
 
     def test_configured_hold_is_separate_and_scoped_runs_preserve_it(self):
         held_folder = os.path.join(self.root, "Daniel Silva", "Ransom")
