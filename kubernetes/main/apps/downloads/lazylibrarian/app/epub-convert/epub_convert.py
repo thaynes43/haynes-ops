@@ -94,6 +94,7 @@ EBOOK_META = os.environ.get("EBOOK_META", "ebook-meta")
 STRIP_SERIES_METADATA = os.environ.get("STRIP_SERIES_METADATA", "") == "1"
 STRIP_ONLY = os.environ.get("STRIP_ONLY", "") == "1"
 SERIES_IDENTITIES = []
+LIBRARY_HOLDS = None  # startup validates and freezes the configured holds; direct helpers validate on demand
 
 SOURCES = (".azw3", ".mobi")  # preference order
 BLOCKERS = (".epub", ".pdf")  # a folder holding either is never converted
@@ -162,6 +163,9 @@ def find_candidates(root):
     """Folders that hold a .mobi/.azw3 and no .epub/.pdf: [(folder, [source names])]. Hidden entries are skipped."""
     found = []
     for folder, dirs, files in os.walk(root):
+        if epub_metadata.held_library_folder(folder, root, LIBRARY_HOLDS):
+            dirs[:] = []
+            continue
         dirs[:] = sorted(d for d in dirs if not d.startswith(".") and not os.path.islink(os.path.join(folder, d)))
         exts = {os.path.splitext(f)[1].lower() for f in files if not f.startswith(".")}
         if exts & set(BLOCKERS):
@@ -236,6 +240,9 @@ def clean_partials(root):
     """Remove hidden .<name>.epub.partial files a killed run left behind (only ever written by this job)."""
     removed = 0
     for folder, dirs, files in os.walk(root):
+        if epub_metadata.held_library_folder(folder, root, LIBRARY_HOLDS):
+            dirs[:] = []
+            continue
         dirs[:] = [d for d in dirs if not d.startswith(".") and not os.path.islink(os.path.join(folder, d))]
         for name in files:
             if PARTIAL_RE.match(name):
@@ -410,6 +417,11 @@ def kavita_scan():
 def convert_folder(folder, source):
     """Convert one folder's chosen source. Returns the result string."""
     rel = os.path.relpath(folder, EBOOK_ROOT)
+    held_folder = epub_metadata.held_library_folder(folder, EBOOK_ROOT, LIBRARY_HOLDS)
+    if held_folder:
+        log("epub_convert", result="configured_held", folder=rel, source=source,
+            held_folder=held_folder, detail="configured library hold preserves every source file", dry_run=DRY_RUN)
+        return "configured_held"
     source_path = os.path.join(folder, source)
     base = os.path.splitext(source)[0]
     dest = os.path.join(folder, base + ".epub")
@@ -597,7 +609,7 @@ def strip_folders():
 def strip_series_pass(folders, run_started):
     global SERIES_IDENTITIES
     counts = {"stripped": 0, "would_strip": 0, "untagged": 0, "settling": 0,
-              "refused": 0, "deferred": 0, "collision_held": 0}
+              "refused": 0, "deferred": 0, "collision_held": 0, "configured_held": 0}
     SERIES_IDENTITIES, errors = epub_metadata.identity_preflight(EBOOK_ROOT, run_started + RUN_BUDGET_SECONDS)
     for error in errors:
         log("epub_series_preflight", result="refused", **error, dry_run=DRY_RUN)
@@ -620,6 +632,13 @@ def strip_series_pass(folders, run_started):
                 if name.startswith(".") or os.path.splitext(name)[1].lower() != ".epub":
                     continue
                 path = os.path.join(folder, name)
+                held_folder = epub_metadata.held_library_folder(folder, EBOOK_ROOT, LIBRARY_HOLDS)
+                if held_folder:
+                    counts["configured_held"] += 1
+                    log("epub_series_strip", result="configured_held", path=os.path.relpath(path, EBOOK_ROOT),
+                        held_folder=held_folder, detail="configured library hold preserves grouping metadata",
+                        dry_run=DRY_RUN)
+                    continue
                 if time.monotonic() - run_started > RUN_BUDGET_SECONDS:
                     counts["deferred"] += 1
                     continue
@@ -661,6 +680,7 @@ def _terminate(signum, _frame):
 
 
 def main():
+    global LIBRARY_HOLDS
     signal.signal(signal.SIGTERM, _terminate)
     run_started = time.monotonic()
     restore = None
@@ -671,6 +691,7 @@ def main():
         restore = sys.argv[2]
     try:
         epub_metadata.validate_paths(EBOOK_ROOT, STATE_DIR)
+        LIBRARY_HOLDS = epub_metadata.library_hold_folders(EBOOK_ROOT)
         if STRIP_ONLY and not STRIP_SERIES_METADATA and not restore:
             raise epub_metadata.Refused("STRIP_ONLY requires STRIP_SERIES_METADATA=1")
         folders = strip_folders() if STRIP_SERIES_METADATA and not restore else []
@@ -742,7 +763,8 @@ def main():
             deferred=deferred,
             converted=results.get("converted", 0),
             series_strip=series,
-            failed=sum(v for k, v in results.items() if k not in ("converted", "skipped_now_has_epub_or_pdf")),
+            failed=sum(v for k, v in results.items() if k not in ("converted", "skipped_now_has_epub_or_pdf", "configured_held")),
+            configured_hold_folders=sorted(LIBRARY_HOLDS),
             results=results,
             kavita_scan=kavita,
             unconverted_sample=sample,
