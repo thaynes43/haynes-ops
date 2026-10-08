@@ -8,7 +8,9 @@
 #
 # This is the READ side of that. The WRITE side is `declare-activity` in the
 # dev-env pod (kubernetes/main/apps/dev/dev-env/app/resources/declare-activity.sh),
-# which drops TTL'd, SCOPED activity records on the dev-env PVC.
+# which drops TTL'd, SCOPED activity records on the dev-env PVC, and, for dev-env v2
+# sessions, `declare-activity` as a client of the operator's /v1/activities, which
+# writes Activity objects in dev-env-system (thaynes43/dev-env D-66; section 1b).
 #
 # TRANSPORT — verified live 2026-08-23, and it corrects a wrong assumption in the
 # design brief: the dev-env-ops SA *can* `create pods/exec` in namespace `dev`
@@ -69,6 +71,26 @@ if [ -n "$devpod" ]; then
 else
   note "WARN: no running dev-env pod found in ns/${DEV_NS} — declared-activity channel unavailable."
 fi
+[ -n "$declared" ] || declared='[]'
+
+# ── 1b. v2 DECLARATIONS (thaynes43/dev-env D-66) ─────────────────────────────
+# dev-env v2 sessions declare through the operator's API: Activity objects in
+# dev-env-system, which this SA reads through the dev-env-v2-read ClusterRole. They
+# are mapped into v1's record shape (session is the declaring v2 session, which the
+# remediation lane can reach with `agent-run msg <session>`), so the matching and
+# the report below treat both alike. Until cutover both sources are read
+# (DESIGN-001 6.9). The operator deletes an expired one within a minute; this check
+# drops it anyway. The operator writes expiresAt as a metav1.Time (whole seconds, UTC);
+# the sub() strips fractional seconds in case a writer adds them, because jq's
+# fromdateiso8601 refuses them and the declaration would vanish without a word.
+v2_declared="$(kubectl get activities.dev-env.haynesops.com -n "${DEV_ENV_V2_NS:-dev-env-system}" -o json 2>/dev/null \
+  | jq -c --argjson now "$now" '[ .items[]?
+      | { id: .metadata.name, who: .spec.declaredBy, session: (.spec.session // "-"),
+          what: .spec.description, scope: (.spec.scope // []), source: "v2",
+          expires: (((.spec.expiresAt // "") | sub("\\.[0-9]+"; "") | fromdateiso8601?) // 0) }
+      | select(.expires > $now) ]' 2>/dev/null)" || v2_declared='[]'
+[ -n "$v2_declared" ] || v2_declared='[]'
+declared="$(jq -nc --argjson a "$declared" --argjson b "$v2_declared" '$a + $b' 2>/dev/null)" || true
 [ -n "$declared" ] || declared='[]'
 
 # Score declarations against the hints. A declaration's `scope` is a list of
