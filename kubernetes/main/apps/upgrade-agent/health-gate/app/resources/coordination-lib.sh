@@ -98,7 +98,8 @@ pod_is_stale_corpse() {  # $1=ns $2=pod ; rc0 = drop from the coordination set
   fi
   # B. ancient — Failed longer than the ceiling (a live cron failure re-fails on
   # FRESH pods each schedule, so an old corpse only means retention, not regression)
-  start="$(printf '%s' "$pj" | jq -r '(.status.startTime // .metadata.creationTimestamp // "") | sub("\\.[0-9]+";"") | fromdateiso8601? // 0' 2>/dev/null)"
+  # TZ=UTC for jq: jq 1.6 (Debian bookworm) parses fromdateiso8601 in local time, and under the pod's TZ=America/New_York it lands an hour late during DST.
+  start="$(printf '%s' "$pj" | TZ=UTC jq -r '(.status.startTime // .metadata.creationTimestamp // "") | sub("\\.[0-9]+";"") | fromdateiso8601? // 0' 2>/dev/null)"
   if [ "${start:-0}" -gt 0 ] 2>/dev/null && [ "$(( NOW - start ))" -gt "$(( COORD_STALE_POD_HOURS * 3600 ))" ]; then
     return 0
   fi
@@ -165,8 +166,9 @@ pod_failure_is_the_alert() {  # $1=ns $2=pod ; rc0 = drop from the set (stdout: 
 collect_regressions() {
   SIG_PODS_STATUS=ok
   local flux_ids pods_json pods_ids
+  # TZ=UTC for jq: jq 1.6 (Debian bookworm) parses fromdateiso8601 in local time, and under the pod's TZ=America/New_York it lands an hour late during DST.
   flux_ids="$(kubectl get kustomizations.kustomize.toolkit.fluxcd.io,helmreleases.helm.toolkit.fluxcd.io -A -o json 2>/dev/null \
-    | jq -r --argjson now "$NOW" '.items[] | . as $i
+    | TZ=UTC jq -r --argjson now "$NOW" '.items[] | . as $i
         | (.status.conditions // []) as $cs
         | ($cs[]? | select(.type=="Ready" and .status!="True")) as $c
         | ([ $c.lastTransitionTime,

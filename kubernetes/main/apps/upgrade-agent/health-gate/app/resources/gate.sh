@@ -123,8 +123,9 @@ collect_regressions
 # lastTransitionTime churns while helm-controller actively retries, or something else;
 # the conditions were rewritten before anyone could look. Next time this line IS the look.
 if [ "$API_OK" -eq 0 ] 2>/dev/null || kubectl version -o json >/dev/null 2>&1; then
+  # TZ=UTC for jq: jq 1.6 (Debian bookworm) parses fromdateiso8601 in local time, and under the pod's TZ=America/New_York it lands an hour late during DST.
   watch_dbg="$(kubectl get kustomizations.kustomize.toolkit.fluxcd.io,helmreleases.helm.toolkit.fluxcd.io -A -o json 2>/dev/null \
-    | jq -r --argjson now "$NOW" '.items[] | . as $i
+    | TZ=UTC jq -r --argjson now "$NOW" '.items[] | . as $i
         | select(.status.conditions[]? | select(.type=="Ready" and .status!="True"))
         | "\(.kind)/\($i.metadata.namespace)/\($i.metadata.name)[" + ([.status.conditions[]?
             | "\(.type)=\(.status)@\(($now - ((.lastTransitionTime|sub("\\.[0-9]+";"")|fromdateiso8601?) // $now)))s"] | join(",")) + "]"' 2>/dev/null \
