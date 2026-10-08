@@ -1,0 +1,32 @@
+---
+# Read on the dev-env v2 group for the v1 identities that look at v2 (DESIGN-001 6.9,
+# 6.11; thaynes43/dev-env D-66): the v1 dev-env pod (dev/dev-env), whose agents run the
+# v2 agent-run and check sessions with kubectl, and dev-env-ops
+# (upgrade-agent/dev-env-ops), whose dev-activity-check.sh reads declare-activity's
+# Activity objects beside v1's files. It is a separate ClusterRole, outside v1's app, so
+# nothing under apps/dev/dev-env changes and the v1 pod does not restart. Read only:
+# every v2 write goes through the operator's API.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-v2-read
+rules:
+  - apiGroups: [dev-env.haynesops.com]
+    resources: ["*"]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-v2-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-v2-read
+subjects:
+  - kind: ServiceAccount
+    name: dev-env
+    namespace: dev
+  - kind: ServiceAccount
+    name: dev-env-ops
+    namespace: upgrade-agent

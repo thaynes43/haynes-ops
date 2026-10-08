@@ -11,6 +11,7 @@ resources:
   - ./broker-guard.yaml
   - ./grant-catalog.yaml
   - ./v1-api-token.yaml
+  - ./v2-read.yaml
   - ./agent-guard.yaml
   - ./identity-guard.yaml
   - ./v1-token-guard.yaml

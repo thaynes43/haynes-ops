@@ -105,6 +105,11 @@ rules:
   - apiGroups: [coordination.k8s.io]
     resources: [leases]
     verbs: [get, create, update]
+  # declare-activity's declarations (thaynes43/dev-env D-66): the /v1 API creates, lists
+  # and ends them, and the leader deletes them at expiry.
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [activities]
+    verbs: [create, get, list, watch, delete]
   - apiGroups: [""]
     resources: [configmaps]
     resourceNames: [dev-env-templates]
