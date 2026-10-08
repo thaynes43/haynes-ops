@@ -85,6 +85,7 @@ configMapGenerator:
     files:
       - epub_convert.py=./epub-convert/epub_convert.py
       - epub_metadata.py=./epub-convert/epub_metadata.py
+      - epub_copies.py=./epub-convert/epub_copies.py
   # Loki ruler picks this up by label (same pattern as qbittorrent). Stable
   # name: the rule file is read by the ruler sidecar, nothing references it.
   - name: lazylibrarian-lokirule
