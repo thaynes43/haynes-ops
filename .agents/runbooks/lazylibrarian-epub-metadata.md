@@ -493,3 +493,31 @@ pause without reducing selected-file or dependency checks. Normal hourly behavio
 is unchanged. Keep the existing absolute expiry, exact writer ownership and restore
 watcher. Any performance claim must come from actual completed captures, not the
 faster of inconsistent earlier timings.
+
+For the duplicate-copy window, register all five exact Job intents before the first service stop: the primary
+PostgreSQL plus NFS source census, stopped LazyLibrarian reader, stopped Kavita reader, native Lidarr reader and
+the single copy writer. Record source and writer PostgreSQL ownership separately, including phase-qualified source
+application name and actual Job/Pod UIDs. A stopped reader may bind only to the source session already observed
+and recorded as healthy. All manual Pod templates opt out of k8tz injection; verify the admitted executable,
+containers, mounts, identity and immutable image rather than accepting an unknown injected workload.
+
+The copy service window is at most 300 seconds, with mutation stopped by 250 seconds and 50 seconds reserved for
+restoration. Stop all six relevant schedules, LazyLibrarian and Kavita and disable Libretto acquisition only after
+the reviewed inverse is ready while services remain live. Hold the four application Flux scopes during preparation.
+Capture complete dependencies after the real stops and source SHARE fence. Place the source and writer on the
+same reviewed node, then compare the writer's actual complete stat census with the source before delivering proofs.
+Require exact device/inode identities and actual user and parent-directory access; no normalization proves a move.
+
+Publishers remain running. Prove every configured destination and hook from complete native configuration and
+actual mount identity, including local block volumes, NFS exports and nested mounts. Unknown or changing scope
+refuses the copy. Bind the writer's absolute deadline before creating it to the earliest of the phase abort clock,
+65 seconds after publisher capture starts and 35 seconds after capture completes. Do not refresh evidence while
+a writer can mutate or extend its deadline. Verify one archived copy and the complete unchanged remainder before
+continuing the exact selection. Preserve every protected or uncertain copy for review.
+
+On success, refusal, uncertainty or expiry, restore first. Stop and remove all five owned Jobs and Pods, then prove
+both PostgreSQL application names and every recorded backend absent before resuming each Flux scope. A writer
+that exits quickly may report its actual fence PID in the completed owned log; do not claim that the parent saved
+that PID before the first archive. Startup gaps still require application-name absence checks. Verify all six
+schedules active, LazyLibrarian and Kavita Ready and Libretto acquisition normal after the inverse applies.
+Only then perform any required scan and app or collection verification under a separate bounded window.
