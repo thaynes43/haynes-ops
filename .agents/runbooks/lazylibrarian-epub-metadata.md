@@ -11,6 +11,17 @@ STRIP_ONLY=1 skips conversion and partial-file cleanup; use it for inventory and
 backfill Jobs. STRIP_FOLDERS_JSON selects exact relative book folders and requires
 STRIP_ONLY=1. Without that variable the pass visits all EPUBs under EBOOK_ROOT.
 
+LIBRARY_HOLD_FOLDERS_JSON lists exact normalized library-relative book folders
+that every mutation path must preserve. Malformed or unconfined entries stop the
+job before writes. Holds apply to stripping, conversion, cleanup and restore,
+including targeted one-offs; the read-only collision census still includes their
+metadata. A held folder is reported separately and is never called untagged.
+The configured hold is Daniel Silva/Ransom. Its EPUB has a saved Kavita reading
+location and session history, so its original metadata and files remain intact
+until [the state-preservation decision](https://github.com/thaynes43/haynesnetwork/issues/840).
+Compare that state before and after every migration scan. This hold stays in git
+when the temporary migration pauses are removed and hourly stripping is enabled.
+
 The pass removes calibre:series, calibre:series_index, all belongs-to-collection
 metadata and the collection-type/group-position refinements of those collections.
 It preserves every other OPF byte and every ZIP member's uncompressed content.

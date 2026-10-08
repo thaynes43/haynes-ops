@@ -94,6 +94,8 @@ spec:
                   value: /data/cephfs-hdd/data/media/books/.epub-convert
                 - name: STRIP_SERIES_METADATA
                   value: "0"
+                - name: LIBRARY_HOLD_FOLDERS_JSON
+                  value: '["Daniel Silva/Ransom"]'
                 - name: RUN_BUDGET_SECONDS
                   value: "2400"
                 # An import younger than this is left for the next run.

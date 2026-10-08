@@ -516,6 +516,50 @@ def validate_paths(root, state):
         pass
 
 
+def library_hold_folders(root):
+    """Strict normalized relative folder holds, including their descendants."""
+    try:
+        entries = json.loads(os.environ.get("LIBRARY_HOLD_FOLDERS_JSON", "[]"))
+    except (ValueError, TypeError) as err:
+        raise Refused("LIBRARY_HOLD_FOLDERS_JSON must be a JSON array of relative folders") from err
+    if not isinstance(entries, list):
+        raise Refused("LIBRARY_HOLD_FOLDERS_JSON must be a JSON array of relative folders")
+    holds = set()
+    for entry in entries:
+        if (not isinstance(entry, str) or not entry or os.path.isabs(entry) or "\\" in entry
+                or any(ord(c) < 32 for c in entry)
+                or any(part in ("", ".", "..") or part.startswith(".") for part in entry.split("/"))
+                or str(PurePosixPath(entry)) != entry or entry in holds):
+            raise Refused("library hold folders must be unique normalized visible relative paths")
+        target = os.path.join(os.path.abspath(root), entry)
+        if os.path.commonpath((os.path.abspath(root), target)) != os.path.abspath(root):
+            raise Refused("library hold folder is outside EBOOK_ROOT")
+        # Missing folders are valid future holds; existing ancestors must not be links.
+        existing = target
+        while not os.path.lexists(existing):
+            existing = os.path.dirname(existing)
+        with safe_directory(existing):
+            pass
+        holds.add(entry)
+    return frozenset(holds)
+
+
+def held_library_folder(folder, root, holds=None):
+    relative = os.path.relpath(folder, root)
+    configured = library_hold_folders(root) if holds is None else holds
+    return next((entry for entry in sorted(configured)
+                 if relative == entry or relative.startswith(entry + os.sep)), None)
+
+
+def require_unheld_library_file(path, root):
+    folder = os.path.dirname(path)
+    if os.path.commonpath((os.path.abspath(root), os.path.abspath(folder))) != os.path.abspath(root):
+        raise Refused("mutation is outside EBOOK_ROOT")
+    held = held_library_folder(folder, root)
+    if held:
+        raise Refused(f"configured library hold preserves {held}")
+
+
 def _same_directory(descriptor, path):
     with safe_directory(path) as current:
         a, b = os.fstat(descriptor), os.fstat(current)
@@ -713,6 +757,7 @@ def strip_existing(path, root, state, settle_seconds, dry_run=False, expected_sh
     relative = os.path.relpath(path, root)
     if relative == ".." or relative.startswith("../"):
         raise Refused("EPUB is outside EBOOK_ROOT")
+    require_unheld_library_file(path, root)
     validate_paths(root, state)
     folder, name = os.path.split(path)
     with safe_directory(folder) as directory:
@@ -742,6 +787,7 @@ def strip_existing(path, root, state, settle_seconds, dry_run=False, expected_sh
 
 def strip_converted(path, relative, root, state, dry_run=False, identities=None):
     """Strip a trusted temporary conversion before it is published to the library."""
+    require_unheld_library_file(os.path.join(root, relative), root)
     validate_paths(root, state)
     with safe_directory(os.path.dirname(path)) as directory:
         raw, info = read_regular(directory, os.path.basename(path))
@@ -774,6 +820,7 @@ def restore_backup(manifest_path, root, state, dry_run=False):
         relative = manifest["relative_path"]
         if os.path.isabs(relative) or ".." in relative.split("/") or "\\" in relative:
             raise Refused("unsafe original relative path")
+        require_unheld_library_file(os.path.join(root, relative), root)
         original, _info = read_regular(backups, manifest["backup_file"])
         if sha256(original) != manifest["original_sha256"]:
             raise Refused("backup checksum does not match its manifest")

@@ -685,6 +685,120 @@ class FileTests(unittest.TestCase):
         a["current_aliases"] = a["projected_aliases"]
         self.assertFalse(metadata.collision_conflicts(a, [a, b]))
 
+    def test_configured_hold_is_separate_and_scoped_runs_preserve_it(self):
+        held_folder = os.path.join(self.root, "Daniel Silva", "Ransom")
+        held = os.path.join(held_folder, "Ransom.epub")
+        write(held, fixture(opf=OPF.replace(b'Mockingjay &amp; more', b'Ransom')
+                            .replace(b'Suzanne Collins', b'Daniel Silva')))
+        before = read(held), os.stat(held).st_mtime_ns, os.stat(held).st_ctime_ns
+        holds = json.dumps(["Daniel Silva/Ransom"])
+        process, lines = self.run_script(LIBRARY_HOLD_FOLDERS_JSON=holds)
+        self.assertEqual(process.returncode, 0, process.stdout)
+        self.assertEqual((read(held), os.stat(held).st_mtime_ns, os.stat(held).st_ctime_ns), before)
+        census = next(line for line in lines if line["msg"] == "epub_series_strip_census")
+        self.assertEqual((census["stripped"], census["configured_held"], census["untagged"], census["collision_held"]),
+                         (1, 1, 0, 0))
+        self.assertEqual(next(line for line in lines if line["msg"] == "epub_series_preflight")["epub_count"], 2)
+        configured = next(line for line in lines if line.get("result") == "configured_held")
+        self.assertEqual(configured["path"], "Daniel Silva/Ransom/Ransom.epub")
+        self.assertEqual(configured["held_folder"], "Daniel Silva/Ransom")
+        process, lines = self.run_script(LIBRARY_HOLD_FOLDERS_JSON=holds,
+                                        STRIP_FOLDERS_JSON=holds)
+        self.assertEqual(process.returncode, 0, process.stdout)
+        self.assertEqual(next(line for line in lines if line["msg"] == "epub_series_strip_census")["configured_held"], 1)
+        self.assertEqual(read(held), before[0])
+
+    def test_configured_hold_still_contributes_collision_identity(self):
+        # A held book is read by preflight, so an unheld peer cannot merge into it after stripping.
+        raw = metadata.strip_opf(OPF)[0].replace(b'Suzanne Collins', b'Daniel Silva')
+        held = os.path.join(self.root, "Daniel Silva", "Ransom", "Ransom.epub")
+        write(held, fixture(opf=raw))
+        process, lines = self.run_script(LIBRARY_HOLD_FOLDERS_JSON='["Daniel Silva/Ransom"]')
+        self.assertEqual(process.returncode, 0, process.stdout)
+        census = next(line for line in lines if line["msg"] == "epub_series_strip_census")
+        self.assertEqual((census["stripped"], census["collision_held"], census["configured_held"], census["untagged"]),
+                         (0, 1, 1, 0))
+        self.assertEqual(read(self.path), self.original)
+        self.assertEqual(read(held), fixture(opf=raw))
+
+    def test_configured_hold_preserves_gate_off_conversion_and_partials(self):
+        held_folder = os.path.join(self.root, "Daniel Silva", "Ransom")
+        source = os.path.join(held_folder, "Ransom.mobi")
+        partial = os.path.join(held_folder, ".Ransom.epub.partial")
+        nested = os.path.join(held_folder, "Supplement", ".notes.epub.partial")
+        write(source, b"retained source")
+        write(partial, b"retained partial")
+        write(nested, b"retained nested partial")
+        near = os.path.join(self.root, "Daniel Silva", "Ransom Again", "Other.mobi")
+        near_partial = os.path.join(os.path.dirname(near), ".Other.epub.partial")
+        write(near, b"unheld source")
+        write(near_partial, b"ordinary stale partial")
+        with mock.patch.dict(os.environ, LIBRARY_HOLD_FOLDERS_JSON='["Daniel Silva/Ransom"]'), \
+                mock.patch.object(epub_convert, "LIBRARY_HOLDS", None), \
+                mock.patch.object(epub_convert, "EBOOK_ROOT", self.root), \
+                mock.patch.object(epub_convert, "DRY_RUN", False):
+            self.assertEqual(epub_convert.find_candidates(self.root), [(os.path.dirname(near), ["Other.mobi"])])
+            self.assertEqual(epub_convert.clean_partials(self.root), 1)
+            with mock.patch.object(epub_convert.subprocess, "run", side_effect=AssertionError("must not convert")):
+                self.assertEqual(epub_convert.convert_folder(held_folder, "Ransom.mobi"), "configured_held")
+        self.assertEqual((read(source), read(partial), read(nested)),
+                         (b"retained source", b"retained partial", b"retained nested partial"))
+        self.assertFalse(os.path.exists(near_partial))
+        os.unlink(near)  # Isolate the process-level gate-off path from calibre work.
+        process, lines = self.run_script(LIBRARY_HOLD_FOLDERS_JSON='["Daniel Silva/Ransom"]',
+                                        STRIP_SERIES_METADATA="0", STRIP_ONLY="0")
+        self.assertEqual(process.returncode, 0, process.stdout)
+        self.assertEqual((read(source), read(partial), read(nested)),
+                         (b"retained source", b"retained partial", b"retained nested partial"))
+        self.assertEqual(next(line for line in lines if line["msg"] == "epub_convert_census")["configured_hold_folders"],
+                         ["Daniel Silva/Ransom"])
+
+    def test_configured_hold_blocks_direct_strip_conversion_and_restore(self):
+        manifest = self.strip()["backup_manifest"]
+        converted = os.path.join(self.tmp.name, "conversion", "book.epub")
+        write(converted, self.original)
+        relative = os.path.relpath(self.path, self.root)
+        before = snapshot(self.tmp.name)
+        with mock.patch.dict(os.environ, LIBRARY_HOLD_FOLDERS_JSON='["Suzanne Collins/Mockingjay"]'):
+            with self.assertRaisesRegex(metadata.Refused, "configured library hold"):
+                self.strip()
+            with self.assertRaisesRegex(metadata.Refused, "configured library hold"):
+                metadata.strip_converted(converted, relative, self.root, self.state)
+            with self.assertRaisesRegex(metadata.Refused, "configured library hold"):
+                metadata.restore_backup(manifest, self.root, self.state)
+        self.assertEqual(snapshot(self.tmp.name), before)
+
+    def test_malformed_hold_config_fails_before_any_cleanup_or_write(self):
+        partial = os.path.join(os.path.dirname(self.path), ".Mockingjay.epub.partial")
+        write(partial, b"must survive invalid config")
+        before = snapshot(self.tmp.name)
+        for malformed in ('not-json', '{}', '["../outside"]', '["/absolute"]',
+                          '["Daniel Silva//Ransom"]', '["Daniel Silva/./Ransom"]',
+                          '["Daniel Silva/Ransom/"]', '[".hidden"]',
+                          '["Daniel Silva/Ransom", "Daniel Silva/Ransom"]', '[1]'):
+            with self.subTest(config=malformed):
+                process, lines = self.run_script(LIBRARY_HOLD_FOLDERS_JSON=malformed,
+                                                STRIP_SERIES_METADATA="0", STRIP_ONLY="0")
+                self.assertEqual(process.returncode, 1, process.stdout)
+                self.assertTrue(any(line["msg"] == "epub_convert_run_failed" for line in lines))
+                self.assertEqual(snapshot(self.tmp.name), before)
+
+    def test_hold_config_rejects_symlink_ancestors_and_accepts_missing_future_folder(self):
+        alias = os.path.join(self.root, "Alias")
+        os.symlink(os.path.dirname(self.path), alias)
+        with mock.patch.dict(os.environ, LIBRARY_HOLD_FOLDERS_JSON='["Alias/Future"]'):
+            with self.assertRaises(OSError):
+                metadata.library_hold_folders(self.root)
+        with mock.patch.dict(os.environ, LIBRARY_HOLD_FOLDERS_JSON='["Daniel Silva/Ransom"]'):
+            self.assertEqual(metadata.library_hold_folders(self.root), frozenset(["Daniel Silva/Ransom"]))
+
+    def test_approved_original_checksum_is_checked_before_backup_or_replacement(self):
+        before = snapshot(self.tmp.name)
+        with self.assertRaisesRegex(metadata.Changed, "source changed since grouping preflight"):
+            self.strip(expected_sha256="0" * 64)
+        self.assertEqual(snapshot(self.tmp.name), before)
+        self.assertFalse(os.path.exists(self.state))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
