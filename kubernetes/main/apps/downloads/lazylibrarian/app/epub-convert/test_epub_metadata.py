@@ -123,6 +123,26 @@ class OpfTests(unittest.TestCase):
             with self.assertRaisesRegex(metadata.Refused, "unfamiliar refinement"):
                 metadata.strip_opf(OPF.replace(b'</metadata>', extra + b'</metadata>'))
 
+    def test_dedicated_grouping_escapes_xml_preserves_other_bytes_and_is_idempotent(self):
+        grouping = 'Mockingjay & more (A <Writer> "Jr")'
+        after, inventory = metadata.strip_opf(OPF, grouping)
+        self.assertEqual(len(inventory), 7)
+        nodes = metadata.xml_nodes(after)[0]
+        tags = [node for node in nodes if node["attrs"].get("name") == "calibre:series"]
+        self.assertEqual([node["attrs"]["content"] for node in tags], [grouping])
+        self.assertIn(b'<dc:title id="title">Mockingjay &amp; more</dc:title>', after)
+        self.assertIn(b'<dc:identifier id="isbn">9780439023511</dc:identifier>', after)
+        self.assertIn(b'<![CDATA[Cover <and> description]]>', after)
+        self.assertEqual(metadata.strip_opf(after, grouping), (after, []))
+        prefixed = OPF.replace(b'<package xmlns=', b'<opf:package xmlns:opf=').replace(b'</package>', b'</opf:package>')
+        for name in (b'metadata', b'meta', b'manifest', b'item', b'spine', b'itemref'):
+            prefixed = prefixed.replace(b'<' + name, b'<opf:' + name).replace(b'</' + name, b'</opf:' + name)
+        for raw in (prefixed, b'\xff\xfe' + OPF.decode().replace('encoding="UTF-8"', 'encoding="UTF-16"').encode("utf-16-le")):
+            changed, _inventory = metadata.strip_opf(raw, grouping)
+            self.assertEqual(metadata.strip_opf(changed, grouping), (changed, []))
+            self.assertEqual([node["attrs"]["content"] for node in metadata.xml_nodes(changed)[0]
+                              if node["attrs"].get("name") == "calibre:series"], [grouping])
+
     def test_lone_series_index_removed_but_unrelated_group_position_preserved(self):
         clean = metadata.strip_opf(OPF)[0]
         unrelated = b'<meta property="group-position" refines="#isbn">7</meta>'
@@ -600,7 +620,7 @@ class FileTests(unittest.TestCase):
         self.assertTrue(any(line.get("result") == "restored" for line in lines))
         self.assertFalse(os.path.exists(os.path.join(self.state, "lock")))
 
-    def test_new_cross_author_collision_is_held(self):
+    def test_new_cross_author_collision_gets_owner_grouping_and_untagged_peer_follows(self):
         harris = OPF.replace(b'Mockingjay &amp; more', b'Night Shift').replace(b'Suzanne Collins', b'Charlaine Harris')
         harris = harris.replace(b'The Hunger Games', b'Midnight, Texas')
         write(self.path, fixture(opf=harris))
@@ -609,15 +629,23 @@ class FileTests(unittest.TestCase):
             king_opf = king_opf.replace(tag.replace(b'The Hunger Games', b'Midnight, Texas'), b'')
         king = os.path.join(self.root, "Stephen King", "Night Shift", "Night Shift.epub")
         write(king, fixture(opf=king_opf))
-        before = read(self.path)
+        before = read(self.path), read(king)
         result, lines = self.run_script(STRIP_FOLDERS_JSON=json.dumps(["Suzanne Collins/Mockingjay"]))
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertEqual(read(self.path), before)
-        self.assertFalse(os.path.exists(os.path.join(self.state, "backup")))
-        held = next(line for line in lines if line.get("result") == "collision_held")
-        self.assertEqual(held["conflicts"][0]["path"], "Stephen King/Night Shift/Night Shift.epub")
-        self.assertEqual(held["conflicts"][0]["aliases"], ["nightshift"])
-        self.assertIn("Midnight, Texas", json.dumps(held["metadata"]))
+        changed = next(line for line in lines if line.get("result") == "stripped")
+        self.assertEqual(changed["grouping"], "Night Shift (Charlaine Harris)")
+        self.assertIn("Midnight, Texas", json.dumps(changed["metadata"]))
+        self.assertEqual(read(king), before[1], "targeted stage does not edit the other folder")
+        self.assertEqual(read(self.path), metadata.sanitized_epub(before[0], changed["grouping"])[0])
+        result, lines = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(metadata.grouping_identity(read(king), "Stephen King/Night Shift/Night Shift.epub")["current_aliases"],
+                         {"nightshiftstephenking"})
+        before_repeat = snapshot(self.root)
+        result, lines = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(snapshot(self.root), before_repeat, "correct dedicated tags retain bytes and timestamps")
+        self.assertEqual(next(line for line in lines if line["msg"] == "epub_series_strip_census")["grouped"], 2)
 
     def test_unknown_identity_blocks_targeted_pass_without_rewrite_requirements(self):
         # A readable untagged EPUB whose mimetype is compressed/second still contributes identity aliases.
@@ -685,6 +713,32 @@ class FileTests(unittest.TestCase):
         a["current_aliases"] = a["projected_aliases"]
         self.assertFalse(metadata.collision_conflicts(a, [a, b]))
 
+    def test_existing_untagged_cross_author_group_is_split_without_other_member_edits(self):
+        clean = metadata.strip_opf(OPF)[0].replace(b'Mockingjay &amp; more', b'City of Bones')
+        write(self.path, fixture(opf=clean.replace(b'Suzanne Collins', b'Cassandra Clare')))
+        other = os.path.join(self.root, "Martha Wells", "City of Bones", "other.epub")
+        write(other, fixture(opf=clean.replace(b'Suzanne Collins', b'Martha Wells')))
+        before = {path: metadata.inspect_epub(read(path))[1] for path in (self.path, other)}
+        process, lines = self.run_script()
+        self.assertEqual(process.returncode, 0, process.stdout)
+        self.assertEqual(next(line for line in lines if line["msg"] == "epub_series_strip_census")["stripped"], 2)
+        for path, author in ((self.path, "Cassandra Clare"), (other, "Martha Wells")):
+            after = metadata.inspect_epub(read(path))[1]
+            self.assertEqual({name: raw for name, raw in after.items() if not name.endswith(".opf")},
+                             {name: raw for name, raw in before[path].items() if not name.endswith(".opf")})
+            identity = metadata.grouping_identity(read(path), os.path.relpath(path, self.root))
+            self.assertEqual(identity["current_aliases"], {metadata.kavita_normalized(f"City of Bones ({author})")})
+
+    def test_ambiguous_cross_author_metadata_is_refused_without_title_edits(self):
+        other = os.path.join(self.root, "Other", "Book", "other.epub")
+        raw = OPF.replace(b'<dc:creator id="author">', b'<dc:creator>Another Author</dc:creator><dc:creator id="author">')
+        write(other, fixture(opf=raw))
+        original = snapshot(self.root)
+        process, lines = self.run_script()
+        self.assertEqual(process.returncode, 1, process.stdout)
+        self.assertEqual(snapshot(self.root), original)
+        self.assertTrue(any("ambiguous" in line.get("detail", "") for line in lines))
+
     def test_configured_hold_is_separate_and_scoped_runs_preserve_it(self):
         held_folder = os.path.join(self.root, "Daniel Silva", "Ransom")
         held = os.path.join(held_folder, "Ransom.epub")
@@ -717,8 +771,9 @@ class FileTests(unittest.TestCase):
         self.assertEqual(process.returncode, 0, process.stdout)
         census = next(line for line in lines if line["msg"] == "epub_series_strip_census")
         self.assertEqual((census["stripped"], census["collision_held"], census["configured_held"], census["untagged"]),
-                         (0, 1, 1, 0))
-        self.assertEqual(read(self.path), self.original)
+                         (1, 0, 1, 0))
+        self.assertEqual(metadata.grouping_identity(read(self.path), "Suzanne Collins/Mockingjay/Mockingjay.epub")["current_aliases"],
+                         {"mockingjaymoresuzannecollins"})
         self.assertEqual(read(held), fixture(opf=raw))
 
     def test_configured_hold_preserves_gate_off_conversion_and_partials(self):

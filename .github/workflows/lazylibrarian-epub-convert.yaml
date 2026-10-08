@@ -64,3 +64,12 @@ jobs:
             -e HOME=/tmp -e TMPDIR=/tmp \
             -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-convert:ro" \
             --entrypoint python3 "$IMAGE" /epub-convert/test_epub_metadata.py
+
+      - name: Run the copy-retention safety tests inside the pinned image
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          docker run --rm --network none --cpus 1 --user 1000:1000 \
+            -e HOME=/tmp -e TMPDIR=/tmp \
+            -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-convert:ro" \
+            --entrypoint python3 "$IMAGE" /epub-convert/test_epub_copies.py

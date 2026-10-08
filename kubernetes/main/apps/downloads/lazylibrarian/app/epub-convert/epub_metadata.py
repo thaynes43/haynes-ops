@@ -1,6 +1,6 @@
-"""Lossless OPF series removal and verified, reversible EPUB replacement.
+"""Lossless OPF grouping edits and verified, reversible EPUB replacement.
 
-The only XML edit is deletion of approved meta element byte spans. ZipFile
+XML edits delete approved meta byte spans and insert owner-ruled grouping tags. ZipFile
 preserves every member's uncompressed bytes, ordering and metadata; compression
 streams and central directory offsets may change. Refuse anything ambiguous.
 """
@@ -21,6 +21,7 @@ import zipfile
 import zlib
 from pathlib import PurePosixPath
 from xml.parsers import expat
+from xml.sax.saxutils import quoteattr
 
 OPF = "http://www.idpf.org/2007/opf}"
 DC = "http://purl.org/dc/elements/1.1/}"
@@ -122,7 +123,7 @@ def xml_nodes(raw, allow_harmless_dtd=False):
     return nodes, utf8, codec, prefix
 
 
-def strip_opf(raw):
+def strip_opf(raw, grouping=None):
     nodes, utf8, codec, prefix = xml_nodes(raw)
     if not nodes or nodes[0]["name"] != OPF + "package":
         raise Refused("OPF root is not an EPUB package")
@@ -154,9 +155,31 @@ def strip_opf(raw):
             raise Refused(f"unfamiliar refinement of removed metadata: {node['attrs']!r}")
     if any(node["children"] for node in removed):
         raise Refused("series meta contains child elements")
+    if grouping is not None:
+        if not isinstance(grouping, str) or not grouping.strip() or any(ord(c) < 32 for c in grouping):
+            raise Refused("invalid dedicated grouping tag")
+        desired = {"calibre:series": grouping, "calibre:series_index": "1"}
+        if (len(removed) == 2 and {node["attrs"].get("name"): node["attrs"].get("content")
+                                  for node in removed} == desired
+                and all(set(node["attrs"]) == {"name", "content"} for node in removed)):
+            return raw, []
     inventory = [{"attributes": node["attrs"], "text": node["text"]} for node in removed]
-    for node in sorted(removed, key=lambda node: node["start"], reverse=True):
-        utf8 = utf8[:node["start"]] + utf8[node["end"]:]
+    edits = [(node["start"], node["end"], b"") for node in removed]
+    if grouping is not None:
+        containers = [node for node in nodes if node["name"] == OPF + "metadata"
+                      and node["parent"] is nodes[0]]
+        if len(containers) != 1 or containers[0]["empty"]:
+            raise Refused("dedicated grouping requires one nonempty OPF metadata element")
+        container = containers[0]
+        closing = utf8.rfind(b"</", container["open_end"], container["end"])
+        if closing < 0:
+            raise Refused("OPF metadata closing tag not found")
+        inserted = ('\n<meta xmlns="http://www.idpf.org/2007/opf" name="calibre:series" content='
+                    + quoteattr(grouping) + '/>\n<meta xmlns="http://www.idpf.org/2007/opf" '
+                    'name="calibre:series_index" content="1"/>\n').encode("utf-8")
+        edits.append((closing, closing, inserted))
+    for start, end, replacement in sorted(edits, reverse=True):
+        utf8 = utf8[:start] + replacement + utf8[end:]
     return prefix + utf8.decode("utf-8").encode(codec), inventory
 
 
@@ -168,7 +191,7 @@ def _member_name(name):
         raise Refused(f"unsafe ZIP member {name!r}")
 
 
-def inspect_epub(raw, require_canonical=True):
+def inspect_epub(raw, require_canonical=True, grouping=None):
     """Validate all CRCs, the EPUB container and every declared package."""
     if len(raw) > MAX_ARCHIVE:
         raise Refused("EPUB exceeds the 256 MiB safety limit")
@@ -218,8 +241,8 @@ def inspect_epub(raw, require_canonical=True):
                 _member_name(name)
                 if name not in members:
                     raise Refused(f"missing OPF {name!r}")
-                changed, tags = strip_opf(members[name])
-                if tags:
+                changed, tags = strip_opf(members[name], grouping)
+                if changed != members[name]:
                     updates[name] = changed
                     inventory += [{"opf": name, **tag} for tag in tags]
             return infos, members, archive.comment, updates, inventory
@@ -227,8 +250,8 @@ def inspect_epub(raw, require_canonical=True):
         raise Refused(f"invalid EPUB: {err}") from err
 
 
-def sanitized_epub(raw):
-    infos, members, comment, updates, inventory = inspect_epub(raw, require_canonical=False)
+def sanitized_epub(raw, grouping=None):
+    infos, members, comment, updates, inventory = inspect_epub(raw, require_canonical=False, grouping=grouping)
     if not updates:
         return raw, inventory
     output = io.BytesIO()
@@ -245,7 +268,7 @@ def sanitized_epub(raw):
             # the original public ZipInfo field before that record is written.
             copied.external_attr = info.external_attr
     candidate = output.getvalue()
-    after_infos, after_members, after_comment, leftover, _inventory = inspect_epub(candidate)
+    after_infos, after_members, after_comment, leftover, _inventory = inspect_epub(candidate, grouping=grouping)
     if leftover or after_comment != comment or len(after_infos) != len(infos):
         raise Refused("candidate validation failed")
     for before, after in zip(ordered, after_infos):
@@ -396,7 +419,11 @@ def _grouping_from_archive(archive, relative):
             comparison = {kavita_normalized(value) for value in series + sorts} - {""}
             result = {"path": relative, "authors": author_aliases, "projected_aliases": projected,
                     "current_aliases": current, "comparison_aliases": comparison, "metadata": inventory,
-                    "has_series_metadata": removable}
+                    "has_series_metadata": removable,
+                    "title_keys": {kavita_normalized(value) for value in titles} - {""},
+                    "creator_keys": {author_normalized(value) for value in authors} - {""},
+                    "title": titles[0] if titles else None,
+                    "creator": next((value for value in authors if value), None)}
             if indexed_without_title:
                 result["strip_refusal"] = "stripping active series would leave no first dc:title for Kavita indexing"
             return result
@@ -449,6 +476,21 @@ def collision_conflicts(identity, identities, new_file=False):
         if common:
             conflicts.append({"path": other["path"], "aliases": sorted(common)})
     return conflicts
+
+
+def dedicated_grouping(identity, identities):
+    """Same-title/different-creator policy includes existing mixed-author groups."""
+    collisions = [other for other in identities if other["path"] != identity["path"]
+                  and identity.get("title_keys", set()) & other.get("title_keys", set())
+                  and identity.get("creator_keys", set()) != other.get("creator_keys", set())]
+    if not collisions:
+        return None
+    if (len(identity["title_keys"]) != 1 or len(identity["creator_keys"]) != 1
+            or not identity["title"] or not identity["creator"]
+            or any(len(other.get("creator_keys", set())) != 1
+                   or len(other.get("title_keys", set())) != 1 for other in collisions)):
+        raise Refused("same-title cross-author grouping has ambiguous title/creator metadata")
+    return f"{identity['title']} ({identity['creator']})"
 
 
 def identity_preflight(root, deadline):
@@ -753,7 +795,7 @@ def _replace(descriptor, folder, name, original, original_info, candidate):
 
 
 def strip_existing(path, root, state, settle_seconds, dry_run=False, expected_sha256=None,
-                   expected_source_identity=None):
+                   expected_source_identity=None, grouping=None):
     relative = os.path.relpath(path, root)
     if relative == ".." or relative.startswith("../"):
         raise Refused("EPUB is outside EBOOK_ROOT")
@@ -768,9 +810,11 @@ def strip_existing(path, root, state, settle_seconds, dry_run=False, expected_sh
             raise Changed("source changed since grouping preflight")
         if time.time() - max(info.st_mtime, info.st_ctime) < settle_seconds:
             return {"result": "settling", "path": relative}
-        candidate, inventory = sanitized_epub(raw)
-        result = {"result": "untagged", "path": relative}
-        if not inventory:
+        candidate, inventory = sanitized_epub(raw, grouping)
+        result = {"result": "grouped" if grouping is not None else "untagged", "path": relative}
+        if grouping is not None:
+            result["grouping"] = grouping
+        if candidate == raw:
             return result
         result.update(result="would_strip" if dry_run else "stripped", metadata=inventory,
                       original_sha256=sha256(raw), sanitized_sha256=sha256(candidate))
@@ -791,15 +835,21 @@ def strip_converted(path, relative, root, state, dry_run=False, identities=None)
     validate_paths(root, state)
     with safe_directory(os.path.dirname(path)) as directory:
         raw, info = read_regular(directory, os.path.basename(path))
-        candidate, inventory = sanitized_epub(raw)
+        original_identity = grouping_identity(raw, relative)
+        grouping = dedicated_grouping(original_identity, identities or [])
+        candidate, inventory = sanitized_epub(raw, grouping)
         identity = grouping_identity(candidate, relative)
         if not identity["projected_aliases"]:
             raise Refused("converted EPUB has no title grouping identity after series removal")
+        if grouping:
+            identity["projected_aliases"] = {kavita_normalized(grouping)}
         conflicts = collision_conflicts(identity, identities or [], new_file=True)
         if conflicts:
             raise Refused(f"converted EPUB would create a cross-author grouping collision: {conflicts}")
         result = {"metadata": inventory}
-        if inventory:
+        if grouping:
+            result["grouping"] = grouping
+        if candidate != raw:
             if not dry_run:
                 result["backup_manifest"] = backup_original(raw, relative, candidate, info, state, "converted")
             # A dry conversion already writes solely into its disposable /tmp workspace.

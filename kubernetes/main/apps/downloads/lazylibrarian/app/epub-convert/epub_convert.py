@@ -12,7 +12,8 @@ What one run does (CronJob lazylibrarian-epub-convert, hourly):
      one never convert at the same time. A lock older than LOCK_STALE_SECONDS is
      from a killed run and is taken over.
   2. When STRIP_SERIES_METADATA=1, visits existing EPUBs independently, removes
-     only approved series metadata, verifies a backup outside EBOOK_ROOT and
+     approved series metadata (same-title/different-author books receive the
+     owner-ruled Title (Author) tag and index 1), verifies a backup outside EBOOK_ROOT and
      replaces each unchanged source atomically. The gate defaults OFF. Dry runs
      log extracted series/index metadata for the reading-list inventory.
      Conversion then walks EBOOK_ROOT. A folder holding .epub/.pdf is ineligible
@@ -57,6 +58,8 @@ LOCK_STALE_SECONDS, KAVITA_URL, KAVITA_API_KEY, EBOOK_CONVERT, EBOOK_META.
 STRIP_SERIES_METADATA=1 enables metadata removal, STRIP_ONLY=1 disables conversion,
 STRIP_FOLDERS_JSON selects exact relative book folders (unset means all EPUBs).
 --restore-backup <manifest> restores one original, under the same lock and scan contract.
+--consolidate-copies <snapshot> manually retains unprotected extras outside EBooks;
+it requires a fresh complete dependency census and never runs from the strip gate.
 Backup retention and rollout: .agents/runbooks/lazylibrarian-epub-metadata.md.
 """
 
@@ -77,6 +80,7 @@ import urllib.parse
 import urllib.request
 
 import epub_metadata
+import epub_copies
 
 EBOOK_ROOT = os.environ.get("EBOOK_ROOT", "/data/cephfs-hdd/data/media/books/EBooks")
 STATE_DIR = os.environ.get("STATE_DIR", "/data/cephfs-hdd/data/media/books/.epub-convert")
@@ -608,7 +612,7 @@ def strip_folders():
 
 def strip_series_pass(folders, run_started):
     global SERIES_IDENTITIES
-    counts = {"stripped": 0, "would_strip": 0, "untagged": 0, "settling": 0,
+    counts = {"stripped": 0, "would_strip": 0, "untagged": 0, "grouped": 0, "settling": 0,
               "refused": 0, "deferred": 0, "collision_held": 0, "configured_held": 0}
     SERIES_IDENTITIES, errors = epub_metadata.identity_preflight(EBOOK_ROOT, run_started + RUN_BUDGET_SECONDS)
     for error in errors:
@@ -647,22 +651,27 @@ def strip_series_pass(folders, run_started):
                     identity = identities.get(relative)
                     if identity is None:
                         raise epub_metadata.Refused("EPUB appeared after grouping preflight")
-                    if not identity["has_series_metadata"]:
+                    grouping = epub_metadata.dedicated_grouping(identity, SERIES_IDENTITIES)
+                    if not identity["has_series_metadata"] and grouping is None:
                         counts["untagged"] += 1
                         continue
                     if identity.get("strip_refusal"):
                         raise epub_metadata.Refused(identity["strip_refusal"])
-                    conflicts = epub_metadata.collision_conflicts(identity, SERIES_IDENTITIES)
+                    projected = dict(identity)
+                    if grouping:
+                        projected["projected_aliases"] = {epub_metadata.kavita_normalized(grouping)}
+                    conflicts = epub_metadata.collision_conflicts(projected, SERIES_IDENTITIES)
                     if conflicts:
                         result = {"result": "collision_held", "path": relative, "conflicts": conflicts,
                                   "metadata": identity["metadata"],
                                   "detail": "stripping would create a cross-author Kavita grouping collision"}
                     else:
                         result = epub_metadata.strip_existing(path, EBOOK_ROOT, STATE_DIR, SETTLE_SECONDS,
-                                                             DRY_RUN, expected_source_identity=identity["source_identity"])
+                                                             DRY_RUN, expected_source_identity=identity["source_identity"],
+                                                             grouping=grouping)
                         if result["result"] == "stripped":
-                            identity["current_aliases"] = identity["projected_aliases"]
-                            identity["comparison_aliases"] = identity["projected_aliases"]
+                            identity["current_aliases"] = projected["projected_aliases"]
+                            identity["comparison_aliases"] = projected["projected_aliases"]
                 except Exception as err:  # one refused file never changes any other file's eligibility
                     result = {"result": "refused", "path": os.path.relpath(path, EBOOK_ROOT),
                               "detail": f"{type(err).__name__}: {err}"[:500]}
@@ -684,14 +693,20 @@ def main():
     signal.signal(signal.SIGTERM, _terminate)
     run_started = time.monotonic()
     restore = None
+    copies = None
     if len(sys.argv) > 1:
-        if len(sys.argv) != 3 or sys.argv[1] != "--restore-backup":
-            log("epub_convert_run_failed", error="usage: epub_convert.py [--restore-backup <manifest>]")
+        if len(sys.argv) != 3 or sys.argv[1] not in ("--restore-backup", "--consolidate-copies"):
+            log("epub_convert_run_failed", error="usage: epub_convert.py [--restore-backup <manifest> | --consolidate-copies <snapshot>]")
             return 1
-        restore = sys.argv[2]
+        if sys.argv[1] == "--restore-backup":
+            restore = sys.argv[2]
+        else:
+            copies = sys.argv[2]
     try:
         epub_metadata.validate_paths(EBOOK_ROOT, STATE_DIR)
         LIBRARY_HOLDS = epub_metadata.library_hold_folders(EBOOK_ROOT)
+        if copies and (STRIP_SERIES_METADATA or STRIP_ONLY or "STRIP_FOLDERS_JSON" in os.environ):
+            raise epub_metadata.Refused("copy consolidation requires stripping/conversion modes off")
         if STRIP_ONLY and not STRIP_SERIES_METADATA and not restore:
             raise epub_metadata.Refused("STRIP_ONLY requires STRIP_SERIES_METADATA=1")
         folders = strip_folders() if STRIP_SERIES_METADATA and not restore else []
@@ -704,6 +719,17 @@ def main():
     if not DRY_RUN and lock is None:
         return 0
     try:
+        if copies:
+            try:
+                counts = epub_copies.consolidate(copies, EBOOK_ROOT, STATE_DIR, SETTLE_SECONDS,
+                                                LIBRARY_HOLDS, log, DRY_RUN,
+                                                run_started + RUN_BUDGET_SECONDS)
+            except Exception as err:
+                log("epub_copy_consolidate", result="refused", detail=f"{type(err).__name__}: {err}"[:500], dry_run=DRY_RUN)
+                return 1
+            if counts["moved"]:
+                log("epub_copy_consolidate_scan", kavita_scan=kavita_scan())
+            return 1 if counts["refused"] else 0
         if restore:
             try:
                 result = epub_metadata.restore_backup(restore, EBOOK_ROOT, STATE_DIR, DRY_RUN)

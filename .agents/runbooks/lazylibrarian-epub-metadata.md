@@ -18,7 +18,10 @@ including targeted one-offs; the read-only collision census still includes their
 metadata. A held folder is reported separately and is never called untagged.
 The configured hold is Daniel Silva/Ransom. Its EPUB has a saved Kavita reading
 location and session history, so its original metadata and files remain intact
-until [the state-preservation decision](https://github.com/thaynes43/haynesnetwork/issues/840).
+until its saved reading state has been idle for 30 days, as ruled in
+[the state-preservation decision](https://github.com/thaynes43/haynesnetwork/issues/840).
+No progress migration is authorized. Removing this hold requires a separate reviewed
+GitOps change after the idle check; the converter never ages a hold out itself.
 Compare that state before and after every migration scan. This hold stays in git
 when the temporary migration pauses are removed and hourly stripping is enabled.
 
@@ -32,14 +35,21 @@ a removed ID cause refusal.
 
 Before any edit, a bounded read-only preflight reads every EPUB's title, creator,
 series and main-title sort aliases using Kavita 0.9.0.2 name normalization. A tagged
-file that would create a cross-author group is held, with conflicting paths logged.
-The guard leaves existing shared title groups alone. An unreadable identity, unsafe
+file with the same title as a different author's book receives the owner's
+[Title (Author) grouping tag](https://github.com/thaynes43/haynesnetwork/issues/830):
+calibre:series is the unchanged OPF title followed by the unchanged OPF creator in
+parentheses, and calibre:series_index is 1. This also separates existing mixed-author
+groups, including untagged EPUBs. Only unambiguous title/creator metadata qualifies;
+missing or conflicting identities remain held. Ordinary books still lose their
+grouping tags. The inserted tags are the only additional OPF bytes, and an already
+correct pair is unchanged. An unreadable identity, unsafe
 path or exhausted preflight budget stops the entire mutation pass, including
 conversion. The census reads container and OPF metadata only, with a 4 MiB limit per
 XML document, 10,000 ZIP entries and bounded central-directory reads. It accepts
 harmless DTD declarations and refuses entity definitions or resolution. In Kavita's
 metadata-enabled Books library, an untagged EPUB with no title is known to be
-unindexed and contributes no grouping aliases. Untagged EPUBs are never rewritten.
+unindexed and contributes no grouping aliases. Untagged EPUBs are changed only when
+the same-title, different-author policy requires the dedicated grouping tag.
 
 Full archive validation applies to files being changed: at most 256 MiB compressed
 and 512 MiB expanded, every ZIP member's CRC checked, and a first, stored mimetype.
@@ -61,7 +71,8 @@ refuses the edit.
 
 The job verifies the backup before writing a hidden sibling temporary EPUB. It
 validates every ZIP CRC, first/stored mimetype, every declared package document,
-absence of removed tags and dangling refinements, and unchanged unrelated bytes
+absence of removed tags (or the exact approved dedicated tag/index pair), no dangling
+refinements, and unchanged unrelated bytes
 and ZIP metadata. It rechecks source inode, size, timestamps and hash before atomic
 replacement. Symlinked paths, hardlinked EPUBs, nonregular inputs, signed EPUBs,
 unsupported ZIP encodings, changing and unsettled inputs are refused or deferred.
@@ -137,7 +148,7 @@ Wait for the Job to finish before collecting complete logs. Preserve JSONL outsi
 public git, on durable storage under books/.epub-convert/inventory/.
 epub_series_strip lines contain extracted names/indexes for Libretto reading order,
 source/candidate hashes and collision Holds. Refusal/preflight lines identify exact
-paths. epub_series_strip_census counts stripped, would-strip, untagged, settling,
+paths. epub_series_strip_census counts stripped, would-strip, untagged, unchanged grouped, settling,
 refused, deferred and collision-held. A refusal or exhausted budget exits nonzero;
 collision Holds allow remaining eligible files to finish.
 
@@ -178,3 +189,64 @@ shared lock, a synced sibling temporary file, source recheck and atomic replacem
 touches book/author folders and queues one Kavita scan. Verify scan and app state,
 end activity and retain backups. Restore reinstates grouping metadata; resolve its
 policy before re-enabling the gate.
+
+## Same-title copy consolidation
+
+The owner's [keep one copy ruling](https://github.com/thaynes43/haynesnetwork/issues/831)
+uses a separate manual `--consolidate-copies <snapshot.json>` command, under the
+converter lock. STRIP_SERIES_METADATA never enables moves. Do not combine this
+command with conversion or stripping. First run with DRY_RUN=1 and a read-only
+library mount, inspect every retained copy and intended move, then produce a fresh
+reviewed snapshot and apply under the same operational pauses.
+
+The snapshot is private operational data outside EBooks, not a committed manifest.
+Schema 1 contains `created_at` (UTC ISO timestamp), `ebook_root`, and four complete
+source sections: `lazylibrarian`, `census`, `kavita`, `app_wants`. Each section has
+`complete: true` and `checked_at`. Every timestamp must be within five minutes of
+application. Missing, incomplete, stale or future evidence refuses the command.
+The operator must obtain complete current reads, never infer an empty dependency
+list from an API error or partial page. Parent migration coordination owns those
+reads and all service pauses. The converter rechecks snapshot freshness for each
+move; expiry ends application safely with remaining copies intact.
+
+`files` is the complete EPUB census, each entry `{path, sha256}` relative to
+EBOOK_ROOT. It must exactly match the fresh read-only converter census, and every
+hash must match before any moves. `lazylibrarian.pointers` contains all nonempty
+BookFile paths, each `{book_id, path}` relative to EBOOK_ROOT. Include pointers to
+other formats too: these do not establish an EPUB keeper. Paths outside EBooks
+must be ruled out by the reviewed collector, not silently omitted from a complete
+claim. The other sections contain `protected_paths` (exact relative files or
+folders) with `path` and a nonempty `reason` describing the dependency. Census
+repairs and Census Holds must be represented. Kavita protection includes every
+saved progress/session/bookmark/annotation dependency, including a nonempty XPath
+with zero numeric counters. App wants include every dependent active request and
+pairing/library anchor. Resolve ids to all affected file paths before declaring a
+source complete; unresolved or partially read state refuses snapshot production.
+
+Groups require one unambiguous OPF title and creator shared by all their copies;
+they are not grouped by folder spelling or fuzzy title matching. Exactly one
+existing EPUB in the group must be pointed to by BookFile, with one LL book id.
+That copy stays. No keeper or competing BookFile copies retain the entire group
+for review. An extra pointed to by any LL record, a configured library hold, any
+source protection, or an ancestor `.ll_ignore` stays and is listed for review.
+An `.ll_ignore` file is treated as folder protection regardless of its content;
+its symlink or an unsafe directory refuses the operation. The Ransom hold applies
+to this command and descendants as it does to every other mutation.
+
+Only verified, settled, single-link regular EPUBs can move. The destination is
+STATE_DIR/copies, outside EBooks and on the same filesystem. Each move has a
+durable hash/path manifest, original owner/mode and the evidence-snapshot hash.
+The converter uses a no-overwrite hard link followed by removal of the original
+directory entry, verifies both bytes and source identity before removal, and never
+deletes the retained destination. Cross-device moves, symlinks, hash divergence,
+source/directory races and a conflicting destination refuse. This retains the
+original inode and bytes; originals are kept indefinitely. A crash between link
+and source-entry removal leaves both names and requires review, never automatic
+cleanup. Do not manually delete the protected in-library name to finish a move.
+
+`epub_copy_consolidate` logs every keeper, protected copy and move; its census
+counts retained, protected, moved, would-move, settling and review groups. One scan
+is queued only after real moves. A move failure exits nonzero. Restore a moved copy
+only under the operational pause after validating its manifest/checksum and that
+its original path is still absent; return the saved inode without overwrite,
+then touch book/author directories and verify the scan, dependencies and coverage.
