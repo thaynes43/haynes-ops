@@ -73,6 +73,20 @@ books, Goodreads, collections and format-pairing CronJobs. Libretto's configured
 LazyLibrarian URL is temporarily empty so no acquisition context can be created
 while Kavita identities change. Existing recipe policies remain intact. Verify
 those deployed settings before running manual Jobs with the reviewed app image.
+Confirm the runtime configuration directly without printing credentials:
+
+    kubectl exec -n media deployment/libretto -- node --input-type=module -e '
+    import { loadConfig } from "/app/dist/config.js";
+    import { createLogger } from "/app/dist/logger.js";
+    import { createAcquireContext } from "/app/dist/acquire/acquire.js";
+    const config = loadConfig();
+    const disabled = process.env.LAZYLIBRARIAN_URL === "" &&
+      config.lazyLibrarian === undefined &&
+      createAcquireContext(config, createLogger("silent")) === undefined;
+    console.log(JSON.stringify({ acquisitionDisabled: disabled }));
+    if (!disabled) process.exitCode = 1;
+    '
+
 After successful backfill, pairing and reading-list verification, restore all
 five schedules and Libretto's URL in git together with the scheduled strip gate.
 If the migration stops early, restore the schedules and URL through git while
