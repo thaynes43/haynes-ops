@@ -35,6 +35,7 @@ SIG_POD_QUERY="( (${SIG_POD_WAITING} == 1) or (${SIG_POD_PHASE} == 1) ) and ( ($
 #   A0. own Job converged — the pod's OWN Job reports succeeded>=1 (2026-09-13)
 #   A.  superseded — its owning CronJob has a NEWER Job that succeeded
 #   B.  ancient    — Failed and older than COORD_STALE_POD_HOURS (default 24h)
+#   C.  ad-hoc     — its owning Job has NO ownerReferences and NO Flux apply label (2026-10-08)
 # Why: failedJobsHistory retention keeps Error/Init:Error pods in the API for days;
 # the phase query counted them forever, so one ghost list (11 pods, 4–17 days old)
 # re-paged critical every 6h and re-summoned remediate (07-24/25/28 — each run
@@ -48,7 +49,7 @@ SIG_POD_QUERY="( (${SIG_POD_WAITING} == 1) or (${SIG_POD_PHASE} == 1) ) and ( ($
 # can still satisfy the query via the offset side while KSM series linger).
 COORD_STALE_POD_HOURS="${COORD_STALE_POD_HOURS:-24}"
 pod_is_stale_corpse() {  # $1=ns $2=pod ; rc0 = drop from the coordination set
-  local ns="$1" pod="$2" out rc pj phase start job cj jobs newer_ok
+  local ns="$1" pod="$2" out rc pj phase start job cj jobs newer_ok own_ok adhoc
   out="$(kubectl -n "$ns" get pod "$pod" -o json 2>&1)"; rc=$?
   if [ "$rc" -ne 0 ]; then
     case "$out" in
@@ -94,6 +95,33 @@ pod_is_stale_corpse() {  # $1=ns $2=pod ; rc0 = drop from the coordination set
               | select((.status.succeeded // 0) >= 1) ] | length' 2>/dev/null)"
         [ "${newer_ok:-0}" -gt 0 ] 2>/dev/null && return 0
       fi
+      # C. ad-hoc — the owning Job was created by hand (2026-10-08). A Job with NO
+      # ownerReferences (not spawned by a CronJob or an operator CR) and NO Flux apply
+      # label (Flux stamps kustomize.toolkit.fluxcd.io/name or helm.toolkit.fluxcd.io/name
+      # on every object it applies) reached the cluster through kubectl: a dev-env
+      # probe, or a `kubectl create job --from=cronjob/...` manual run. No merge to main
+      # can have changed such a Job, so its Failed pod is never an upgrade regression —
+      # yet triage ATTRIBUTES it as one whenever its pod template borrows a Flux
+      # workload's app.kubernetes.io/name and that app's path merged inside the
+      # lookback window.
+      #
+      # Observed: downloads/books-825-fresh-census-projection-1008-0338 (a dev-env
+      # probe for haynesnetwork#825, exit 1, superseded by the dev's own -0344 rerun
+      # three minutes later) carried app.kubernetes.io/name=books-census; 021f52d
+      # (haynesnetwork v0.110.3) had touched books-census/app/cronjob.yaml 34 minutes
+      # earlier. Triage classed it class=upgrade, spent a remediate run to conclude
+      # "not a regression", recorded result=failed and paged via esc-shepherd-80441793
+      # at 04:00Z. Every further Error probe from that session would have re-keyed the
+      # sig and paged again until the merge aged out of the 3h window. Flux-applied
+      # one-shot Jobs (ai/vexa-vexa-minio-init, frontend/haynes-quest-db-init) carry
+      # the Flux labels and stay in the set; CronJob/operator Jobs carry an
+      # ownerReference and stay. A Job missing from the listing yields "" -> keep.
+      adhoc="$(printf '%s' "$jobs" | jq -r --arg j "$job" '
+        ([.items[] | select(.metadata.name==$j)][0] // empty)
+        | if (((.metadata.ownerReferences // []) | length) == 0)
+             and ((((.metadata.labels // {}) | keys | map(select(test("toolkit\\.fluxcd\\.io/name$")))) | length) == 0)
+          then "1" else "0" end' 2>/dev/null)"
+      [ "${adhoc:-0}" = "1" ] && return 0
     fi
   fi
   # B. ancient — Failed longer than the ceiling (a live cron failure re-fails on
@@ -197,7 +225,7 @@ collect_regressions() {
       if _alert="$(pod_failure_is_the_alert "$_ns" "$_pod")"; then
         type log >/dev/null 2>&1 && log "coordination: dropped failure-is-the-alert pod ${_ns}/${_pod} (terminal exit is the transport of critical alert '${_alert}'; Alertmanager pages it — not a deploy-health signal)"
       elif pod_is_stale_corpse "$_ns" "$_pod"; then
-        type log >/dev/null 2>&1 && log "coordination: dropped stale corpse pod ${_ns}/${_pod} (superseded/ancient/gone)"
+        type log >/dev/null 2>&1 && log "coordination: dropped stale corpse pod ${_ns}/${_pod} (superseded/ancient/ad-hoc/gone)"
       else
         _kept="${_kept}${_id}"$'\n'
       fi
