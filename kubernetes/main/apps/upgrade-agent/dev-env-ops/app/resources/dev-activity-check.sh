@@ -83,8 +83,10 @@ fi
 # drops it anyway. The operator writes expiresAt as a metav1.Time (whole seconds, UTC);
 # the sub() strips fractional seconds in case a writer adds them, because jq's
 # fromdateiso8601 refuses them and the declaration would vanish without a word.
+# TZ=UTC for jq: jq 1.6 (Debian bookworm) parses fromdateiso8601 in local time, and
+# under the pod's TZ=America/New_York it lands an hour late during DST.
 v2_declared="$(kubectl get activities.dev-env.haynesops.com -n "${DEV_ENV_V2_NS:-dev-env-system}" -o json 2>/dev/null \
-  | jq -c --argjson now "$now" '[ .items[]?
+  | TZ=UTC jq -c --argjson now "$now" '[ .items[]?
       | { id: .metadata.name, who: .spec.declaredBy, session: (.spec.session // "-"),
           what: .spec.description, scope: (.spec.scope // []), source: "v2",
           expires: (((.spec.expiresAt // "") | sub("\\.[0-9]+"; "") | fromdateiso8601?) // 0) }
@@ -148,7 +150,7 @@ if command -v gh >/dev/null 2>&1; then
   GH_TOKEN="$(cat /creds/gh_token 2>/dev/null || true)" \
     prs="$(gh pr list --repo thaynes43/haynes-ops --state open \
              --json number,title,updatedAt,headRefName --limit 15 2>/dev/null \
-           | jq -r --argjson now "$now" --argjson lb "$(( LOOKBACK_H * 3600 ))" '
+           | TZ=UTC jq -r --argjson now "$now" --argjson lb "$(( LOOKBACK_H * 3600 ))" '
                .[]? | select(((.updatedAt | fromdateiso8601?) // 0) > ($now - $lb))
                | "#\(.number) \(.headRefName) — \(.title)"' 2>/dev/null | head -10)"
 fi

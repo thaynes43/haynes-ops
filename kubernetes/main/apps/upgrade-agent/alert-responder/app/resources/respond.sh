@@ -299,7 +299,8 @@ if [ -z "$alerts" ]; then
   log "Alertmanager unreachable/empty response — nothing to do (Alertmanager pages independently; the gate covers blind spots)."
   exit 0
 fi
-candidates="$(printf '%s' "$alerts" | jq -c --arg sev "$SEVERITY" --arg allow "$ALLOWLIST" --arg deny "$DENYLIST" --arg ignore "$IGNORE_PAIRS" --argjson now "$NOW" --argjson maxage "$(( MAX_AGE_HOURS * 3600 ))" '
+# TZ=UTC for jq: jq 1.6 (Debian bookworm) parses fromdateiso8601 in local time, and under the pod's TZ=America/New_York it lands an hour late during DST.
+candidates="$(printf '%s' "$alerts" | TZ=UTC jq -c --arg sev "$SEVERITY" --arg allow "$ALLOWLIST" --arg deny "$DENYLIST" --arg ignore "$IGNORE_PAIRS" --argjson now "$NOW" --argjson maxage "$(( MAX_AGE_HOURS * 3600 ))" '
   ($ignore | split(" ") | map(select(. != ""))) as $ignorepairs
   | [ .[]
     | select(.labels.severity == $sev)
