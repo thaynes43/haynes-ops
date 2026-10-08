@@ -1,0 +1,20 @@
+---
+# The shelf needs no network. The operator reaches it by exec, through the API server and
+# the kubelet, never the pod network. The dev-agents policies (session-platform,
+# session-web) select every pod in the namespace, so this denies all of it for the shelf.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-shelf
+  namespace: dev-agents
+spec:
+  description: dev-env shelf (D-67), no network in or out
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-shelf
+  ingressDeny:
+    - fromEntities:
+        - all
+  egressDeny:
+    - toEntities:
+        - all
