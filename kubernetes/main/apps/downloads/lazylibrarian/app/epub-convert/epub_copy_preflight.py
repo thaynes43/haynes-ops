@@ -47,6 +47,7 @@ def collect_library(root, budget):
     if budget <= 0:
         raise metadata.Refused("positive bounded capture budget is required")
     holds = metadata.library_hold_folders(root)
+    started_at = now()
     deadline = time.monotonic() + min(300, budget)
     identities, errors = metadata.identity_preflight(root, deadline)
     files = []
@@ -73,7 +74,7 @@ def collect_library(root, budget):
         errors += after_errors
         if before_map != after_map:
             errors.append({"path": ".", "detail": "complete library census changed during capture"})
-    return {"schema": 1, "ebook_root": root, "checked_at": now(), "complete": not errors,
+    return {"schema": 1, "ebook_root": root, "started_at": started_at, "checked_at": now(), "complete": not errors,
             "quiesced": False, "files": files, "errors": errors,
             "configured_hold_folders": sorted(holds),
             "bytes_hashed": sum(row["source_identity"][2] for row in files), "production_writes": 0}
@@ -104,18 +105,23 @@ def kavita_dependencies(db_path, proof, root):
         con.execute("PRAGMA query_only=ON")
         con.execute("BEGIN")
         files = [dict(row) for row in con.execute(
-            "SELECT f.FilePath AS path,c.Id AS chapter_id,v.Id AS volume_id,s.Id AS series_id "
-            "FROM MangaFile f JOIN Chapter c ON c.Id=f.ChapterId JOIN Volume v ON v.Id=c.VolumeId "
-            "JOIN Series s ON s.Id=v.SeriesId")]
-        series_ids = [str(row[0]) for row in con.execute("SELECT Id FROM Series")]
+            "SELECT f.FilePath AS path,f.ChapterId AS chapter_id,v.Id AS volume_id,s.Id AS series_id "
+            "FROM MangaFile f LEFT JOIN Chapter c ON c.Id=f.ChapterId LEFT JOIN Volume v ON v.Id=c.VolumeId "
+            "LEFT JOIN Series s ON s.Id=v.SeriesId")]
+        current_ids = {kind: {row[0] for row in con.execute(f'SELECT Id FROM "{kind}"')}
+                       for kind in ("Series", "Chapter", "Volume")}
         states = {table: [dict(row) for row in con.execute(f'SELECT * FROM "{table}"')] for table in STATE_TABLES}
         con.rollback()
     finally:
         con.close()
-    series_files, protected, errors = {key: [] for key in series_ids}, [], []
+    series_files, protected, errors = {str(key): [] for key in current_ids["Series"]}, [], []
+    history_evidence = []
     for row in files:
         if row["path"].startswith(root + "/"):
-            series_files[str(row["series_id"])].append(library_path(row["path"], root))
+            if any(row[key] is None for key in ("chapter_id", "volume_id", "series_id")):
+                errors.append(f"unresolved Kavita file relationship: {row['path']}")
+            else:
+                series_files[str(row["series_id"])].append(library_path(row["path"], root))
     for table, rows in states.items():
         for state in rows:
             references = [state]
@@ -132,6 +138,12 @@ def kavita_dependencies(db_path, proof, root):
                     references = ([{"SeriesId": value} for value in history["SeriesIds"]]
                                   + [{"ChapterId": value} for value in history["ChapterIds"]]
                                   + history["Activities"])
+                    # A removed chapter id still resolves through its own
+                    # historical activity's current series/volume, never names.
+                    references = [next((activity for activity in history["Activities"]
+                                        if (ref.get("ChapterId") and activity.get("ChapterId") == ref["ChapterId"])
+                                        or (ref.get("SeriesId") and activity.get("SeriesId") == ref["SeriesId"])), ref)
+                                  for ref in references]
                 except (KeyError, TypeError, ValueError):
                     errors.append(f"unresolved Kavita reading history: {state.get('Id')}")
                     references = []
@@ -144,13 +156,24 @@ def kavita_dependencies(db_path, proof, root):
                             or (ref.get("SeriesId") and ref["SeriesId"] == row["series_id"])
                             or (ref.get("VolumeId") and ref["VolumeId"] == row["volume_id"])]
                 if not resolved:
-                    errors.append(f"unresolved Kavita state dependency: {table}/{state.get('Id')}")
+                    ids = {kind: ref.get(kind + "Id") for kind in current_ids if ref.get(kind + "Id")}
+                    if (table == "AppUserReadingHistory" and ids
+                            and all(value not in current_ids[kind] for kind, value in ids.items())
+                            and not any(row["chapter_id"] == ref.get("ChapterId") for row in files)):
+                        evidence = {"history_id": state["Id"], "ids": ids,
+                                    "whole_row_sha256": metadata.sha256(json.dumps(state, sort_keys=True, separators=(",", ":")).encode()),
+                                    "classification": "disconnected legacy activity",
+                                    "proof": "ids absent from full Series/Chapter/Volume; no MangaFile chapter reference"}
+                        if evidence not in history_evidence:
+                            history_evidence.append(evidence)
+                    else:
+                        errors.append(f"unresolved Kavita state dependency: {table}/{state.get('Id')}")
                 matches += resolved
             for row in matches:
                 if row["path"].startswith(root + "/"):
                     protected.append({"path": library_path(row["path"], root),
                                       "reason": f"{table}/{state.get('Id')} saved state"})
-    return series_files, protected, errors, {table: len(rows) for table, rows in states.items()}
+    return series_files, protected, errors, {table: len(rows) for table, rows in states.items()}, history_evidence
 
 
 def prepare(library, ll, app, series_files, kavita_protected, kavita_errors, kavita_proof,
@@ -210,17 +233,24 @@ def prepare(library, ll, app, series_files, kavita_protected, kavita_errors, kav
         section["quiesced"] = attestation.get("quiesced") is True
         section["quiescence_proof"] = attestation.get("proof")
         section["quiescence_checked_at"] = attestation.get("checked_at")
+        section["quiescence_established_at"] = attestation.get("established_at")
         if section["quiesced"] and (not isinstance(section["quiescence_proof"], str) or not section["quiescence_proof"].strip()):
             section["quiesced"] = False
         if section["quiesced"]:
             try:
                 copies.fresh(attestation.get("checked_at"))
+                established = copies.timestamp_epoch(attestation.get("established_at"))
+                if established > min(copies.timestamp_epoch(section["checked_at"]),
+                                     copies.timestamp_epoch(library.get("started_at")),
+                                     copies.timestamp_epoch(attestation["checked_at"])):
+                    raise metadata.Refused("writer fence was established after a capture")
                 # The apply window cannot outlive the older writer evidence.
                 section["source_captured_at"] = section["checked_at"]
                 if copies.timestamp_epoch(attestation["checked_at"]) < copies.timestamp_epoch(section["checked_at"]):
                     section["checked_at"] = attestation["checked_at"]
-            except metadata.Refused:
+            except metadata.Refused as err:
                 section["quiesced"] = False
+                blockers.append(f"{source}: {err}")
         if not section["quiesced"]:
             blockers.append(f"{source} writer quiescence is unproven")
         if not section["complete"]:
@@ -295,15 +325,17 @@ def main():
         return 0 if result["complete"] else 1
     library, ll, app, proof, census = (load(args.library), ll_capture(args.ll_sql), load(args.app_audit),
                                      load(args.kavita_proof), load(args.census_protections))
-    series, protected, errors, state_counts = kavita_dependencies(args.kavita_db, proof, library["ebook_root"])
+    series, protected, errors, state_counts, history_evidence = kavita_dependencies(args.kavita_db, proof, library["ebook_root"])
     snapshot, report = prepare(library, ll, app, series, protected, errors, proof, census,
                                load(args.writer_attestations) if args.writer_attestations else {})
+    snapshot["kavita"]["disconnected_history"] = history_evidence
     output = Path(args.output).resolve()
     if os.path.commonpath((str(output), library["ebook_root"])) == library["ebook_root"]:
         raise metadata.Refused("private snapshot output must be outside EBooks")
     output.mkdir(parents=True, exist_ok=False)
     (output / "snapshot.json").write_text(json.dumps(snapshot, indent=2, ensure_ascii=False) + "\n")
-    (output / "report.json").write_text(json.dumps({**report, "kavita_state_counts": state_counts}, indent=2, ensure_ascii=False) + "\n")
+    (output / "report.json").write_text(json.dumps({**report, "kavita_state_counts": state_counts,
+                                                 "disconnected_history": history_evidence}, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({"output": str(output), "apply_ready": report["apply_ready"],
                       "epub_count": report["epub_count"], "same_author_groups": report["same_author_groups"],
                       "ambiguous_files": len(report["ambiguous_files"]), "blockers": len(report["blockers"]),

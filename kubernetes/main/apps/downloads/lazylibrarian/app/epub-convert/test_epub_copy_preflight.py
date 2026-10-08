@@ -31,6 +31,7 @@ class PreflightTests(unittest.TestCase):
         self.proof = {"capturedAt": self.timestamp, "readOnlySource": True, "before": ["stable"], "after": ["stable"]}
         self.census = {"checked_at": self.timestamp, "complete": True, "protected_paths": []}
         self.attestations = {source: {"checked_at": self.timestamp, "quiesced": True,
+                                     "established_at": self.timestamp,
                                      "proof": "reviewed runtime writer hold remains active"}
                              for source in preflight.copies.SOURCES}
 
@@ -67,10 +68,29 @@ class PreflightTests(unittest.TestCase):
     def test_older_quiescence_evidence_caps_source_expiry(self):
         old = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=250)).isoformat()
         self.attestations["kavita"]["checked_at"] = old
+        self.attestations["kavita"]["established_at"] = old
         evidence, report = self.prepare()
         self.assertTrue(report["apply_ready"])
         self.assertEqual(evidence["kavita"]["checked_at"], old)
         self.assertEqual(evidence["kavita"]["source_captured_at"], self.timestamp)
+
+    def test_stop_after_capture_or_census_start_never_backdates_quiescence(self):
+        library = preflight.collect_library(self.root, 5)
+        later = preflight.now()
+        self.attestations["kavita"].update(established_at=later, checked_at=later)
+        evidence, report = self.prepare(library=library)
+        self.assertFalse(report["apply_ready"])
+        self.assertFalse(evidence["kavita"]["quiesced"])
+        self.assertTrue(any("after a capture" in reason for reason in report["blockers"]))
+        # Even fresh captures after the stop cannot legitimize a census begun
+        # before that fence. Refresh all captures but retain the census start.
+        self.proof["capturedAt"] = later
+        evidence, report = self.prepare(library=library)
+        self.assertFalse(report["apply_ready"])
+        self.assertFalse(evidence["kavita"]["quiesced"])
+        self.attestations["kavita"].pop("established_at")
+        evidence, report = self.prepare(library=library)
+        self.assertFalse(evidence["kavita"]["quiesced"])
 
     def test_parked_landed_request_anchor_and_any_saved_state_protect_extra(self):
         self.app["app"]["items"] = [{"id": "item", "source": "kavita", "external_id": 7, "deleted_at": None}]
@@ -116,17 +136,53 @@ class PreflightTests(unittest.TestCase):
         con.commit()
         con.close()
         before = Path(path).read_bytes()
-        series, protected, errors, counts = preflight.kavita_dependencies(path, self.proof, self.root)
+        series, protected, errors, counts, disconnected = preflight.kavita_dependencies(path, self.proof, self.root)
         self.assertEqual(series["7"], [self.extra])
         self.assertEqual(protected[0]["path"], self.extra)
         self.assertEqual(errors, [])
         self.assertEqual(counts["AppUserProgresses"], 1)
         self.assertTrue(any("AppUserReadingSession/11" in row["reason"] for row in protected))
         self.assertTrue(any("AppUserReadingHistory/13" in row["reason"] for row in protected))
+        self.assertEqual(disconnected, [])
         self.assertEqual(Path(path).read_bytes(), before)
         self.assertFalse(Path(path + "-journal").exists())
         with self.assertRaises(metadata.Refused):
             preflight.kavita_dependencies(path, {**self.proof, "after": ["changed"]}, self.root)
+
+    def test_history_removed_chapter_uses_current_series_and_disconnected_ids_are_explicit(self):
+        path = os.path.join(self.tmp.name, "legacy.db")
+        con = sqlite3.connect(path)
+        con.executescript('CREATE TABLE Series(Id INTEGER); CREATE TABLE Volume(Id INTEGER,SeriesId INTEGER); '
+                          'CREATE TABLE Chapter(Id INTEGER,VolumeId INTEGER); '
+                          'CREATE TABLE MangaFile(FilePath TEXT,ChapterId INTEGER);')
+        for table in preflight.STATE_TABLES:
+            con.execute(f'CREATE TABLE "{table}"(Id INTEGER,SeriesId INTEGER,ChapterId INTEGER,VolumeId INTEGER,Data TEXT)')
+        con.execute('INSERT INTO Series VALUES(7)')
+        con.execute('INSERT INTO Volume VALUES(8,7)')
+        con.execute('INSERT INTO Chapter VALUES(9,8)')
+        con.execute('INSERT INTO MangaFile VALUES(?,9)', (self.root + "/" + self.extra,))
+        history = {"SeriesIds": [7, 70], "ChapterIds": [90, 900],
+                   "Activities": [{"SeriesId": 7, "VolumeId": 8, "ChapterId": 90},
+                                  {"SeriesId": 70, "VolumeId": 80, "ChapterId": 900}]}
+        con.execute('INSERT INTO AppUserReadingHistory(Id,Data) VALUES(13,?)', (json.dumps(history),))
+        con.commit()
+        con.close()
+        before = Path(path).read_bytes()
+        _series, protected, errors, _counts, disconnected = preflight.kavita_dependencies(path, self.proof, self.root)
+        self.assertEqual(errors, [])
+        self.assertTrue(any(row["path"] == self.extra for row in protected))
+        self.assertEqual(len(disconnected), 1)
+        self.assertEqual(disconnected[0]["ids"], {"Series": 70, "Volume": 80, "Chapter": 900})
+        self.assertEqual(len(disconnected[0]["whole_row_sha256"]), 64)
+        self.assertEqual(Path(path).read_bytes(), before)
+        # Any existing id or orphan MangaFile forbids claiming disconnection.
+        con = sqlite3.connect(path)
+        con.execute('INSERT INTO Volume VALUES(80,70)')
+        con.execute('INSERT INTO MangaFile VALUES(?,900)', (self.root + "/" + self.keeper,))
+        con.commit()
+        con.close()
+        _series, _protected, errors, _counts, _disconnected = preflight.kavita_dependencies(path, self.proof, self.root)
+        self.assertTrue(any("file relationship" in error for error in errors))
 
     def test_ll_source_copy_must_be_read_only_and_stable(self):
         path = os.path.join(self.tmp.name, "ll.jsonl")

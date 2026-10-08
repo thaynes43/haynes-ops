@@ -242,11 +242,22 @@ all LL BookFile SQL rows, a stat-guarded Kavita database copy and explicit censu
 protections. It produces a private candidate/protection report and schema-1
 snapshot. Captures retain their original timestamps; stale/partial inputs and
 missing writer attestations are reported as blockers rather than made fresh or
-complete. App request anchors resolve through the actual Kavita file map; an
+complete. Each writer attestation supplies `established_at`, a fresh `checked_at`
+and observable `proof` for the continuously held fence. The fence must have been
+established at or before both the source capture and the library census start.
+A stop performed after either capture cannot make that earlier capture safe.
+App request anchors resolve through the actual Kavita file map; an
 unresolved request dependency blocks snapshot completeness, including parked and
 landed requests that retain a library anchor. Any saved Kavita state
 row protects its joined files, including zero-counter locations. The report is
 exploratory while any blocker remains and is never permission to move a file.
+Aggregated reading history resolves removed chapter ids through the same stored
+activity's current series/volume, protecting that work's current files. A legacy
+activity is classified as disconnected only when all of its series/chapter/volume
+ids are absent from the complete current tables and no MangaFile references its
+chapter. The report retains its ids and whole-row checksum. It never rewrites or
+omits the historical row. Unknown current references or orphan file relationships
+keep the source incomplete.
 
 Live observation on 2026-10-08 found LL's `showJobs` failing HTTP 500 and
 `showThreads` returning Code 501 because psutil is absent. These are unknown idle
