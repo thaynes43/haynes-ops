@@ -38,10 +38,13 @@ class CopyTests(unittest.TestCase):
                 if name.endswith(".epub"):
                     path = os.path.join(folder, name)
                     files.append({"path": os.path.relpath(path, self.root), "sha256": metadata.sha256(read(path))})
-        return {"schema": 1, "created_at": now, "ebook_root": self.root, "files": files,
+        writer = {"capture_started_at": now, "quiescence_established_at": now, "quiescence_checked_at": now,
+                  "quiescence_proof": "explicit complete writer fence held through application"}
+        return {"schema": 1, "created_at": now, "library_capture_started_at": now,
+                "ebook_root": self.root, "files": files,
                 "lazylibrarian": {"complete": True, "quiesced": True, "checked_at": now,
-                                  "pointers": [{"book_id": "ll-book-1", "path": self.keeper}]},
-                **{source: {"complete": True, "quiesced": True, "checked_at": now, "protected_paths": []}
+                                  **writer, "pointers": [{"book_id": "ll-book-1", "path": self.keeper}]},
+                **{source: {"complete": True, "quiesced": True, "checked_at": now, **writer, "protected_paths": []}
                    for source in copies.SOURCES[1:]}}
 
     def run_copies(self, data=None, dry_run=False, holds=frozenset()):
@@ -199,6 +202,7 @@ class CopyTests(unittest.TestCase):
                         self.run_copies(data)
         data = self.evidence_data()
         data["kavita"]["checked_at"] = "2020-01-01T00:00:00Z"
+        data["kavita"]["capture_started_at"] = data["kavita"]["quiescence_established_at"] = "2020-01-01T00:00:00Z"
         with self.assertRaisesRegex(metadata.Refused, "stale"):
             self.run_copies(data)
         data = self.evidence_data()
@@ -209,6 +213,26 @@ class CopyTests(unittest.TestCase):
         data["files"][0]["sha256"] = "0" * 64
         with self.assertRaisesRegex(metadata.Changed, "hash/identity"):
             self.run_copies(data)
+        self.assertFalse(os.path.exists(self.state))
+        self.assertEqual(read(os.path.join(self.root, self.extra)), self.raw)
+
+    def test_complete_snapshot_consumer_refuses_missing_or_reversed_source_start_evidence(self):
+        for source in copies.SOURCES:
+            with self.subTest(source=source):
+                data = self.evidence_data()
+                data[source].pop("capture_started_at")
+                with self.assertRaises(metadata.Refused):
+                    self.run_copies(data)
+                data = self.evidence_data()
+                data[source]["quiescence_established_at"] = (
+                    datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=1)).isoformat()
+                with self.assertRaisesRegex(metadata.Refused, "ordering"):
+                    self.run_copies(data)
+                data = self.evidence_data()
+                data[source]["checked_at"] = (
+                    datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)).isoformat()
+                with self.assertRaisesRegex(metadata.Refused, "ordering"):
+                    self.run_copies(data)
         self.assertFalse(os.path.exists(self.state))
         self.assertEqual(read(os.path.join(self.root, self.extra)), self.raw)
 
@@ -345,6 +369,8 @@ class CopyTests(unittest.TestCase):
         data["created_at"] = old
         for source in copies.SOURCES:
             data[source]["checked_at"] = old
+            for field in ("capture_started_at", "quiescence_established_at", "quiescence_checked_at"):
+                data[source][field] = old
         original_hash = copies.hash_file
         keeper_reads = [0]
 
@@ -370,6 +396,8 @@ class CopyTests(unittest.TestCase):
         data["created_at"] = old
         for source in copies.SOURCES:
             data[source]["checked_at"] = old
+            for field in ("capture_started_at", "quiescence_established_at", "quiescence_checked_at"):
+                data[source][field] = old
         original_stat = os.stat
 
         def expires_after_path_check(path, *args, **kwargs):

@@ -24,12 +24,14 @@ class PreflightTests(unittest.TestCase):
         for path in (self.keeper, self.extra):
             write(os.path.join(self.root, path), fixture())
         self.timestamp = preflight.now()
-        self.ll = {"capturedAt": self.timestamp, "llBooks": [
+        self.ll = {"captureStartedAt": self.timestamp, "capturedAt": self.timestamp, "llBooks": [
             {"BookID": "1", "BookFile": self.root + "/" + self.keeper}]}
-        self.app = {"captured_at": self.timestamp, "read_only": "on", "scope": "full",
+        self.app = {"capture_started_at": self.timestamp, "captured_at": self.timestamp,
+                    "completed_at": self.timestamp, "read_only": "on", "scope": "full",
                     "app": {"items": [], "wants": []}}
-        self.proof = {"capturedAt": self.timestamp, "readOnlySource": True, "before": ["stable"], "after": ["stable"]}
-        self.census = {"checked_at": self.timestamp, "complete": True, "protected_paths": []}
+        self.proof = {"captureStartedAt": self.timestamp, "capturedAt": self.timestamp,
+                      "readOnlySource": True, "before": ["stable"], "after": ["stable"]}
+        self.census = {"capture_started_at": self.timestamp, "checked_at": self.timestamp, "complete": True, "protected_paths": []}
         self.attestations = {source: {"checked_at": self.timestamp, "quiesced": True,
                                      "established_at": self.timestamp,
                                      "proof": "reviewed runtime writer hold remains active"}
@@ -71,8 +73,9 @@ class PreflightTests(unittest.TestCase):
         self.attestations["kavita"]["established_at"] = old
         evidence, report = self.prepare()
         self.assertTrue(report["apply_ready"])
-        self.assertEqual(evidence["kavita"]["checked_at"], old)
-        self.assertEqual(evidence["kavita"]["source_captured_at"], self.timestamp)
+        self.assertEqual(evidence["kavita"]["checked_at"], self.timestamp)
+        self.assertEqual(evidence["kavita"]["quiescence_checked_at"], old)
+        self.assertLess(preflight.copies.expiry_deadline(evidence) - preflight.time.monotonic(), 51)
 
     def test_stop_after_capture_or_census_start_never_backdates_quiescence(self):
         library = preflight.collect_library(self.root, 5)
@@ -82,15 +85,45 @@ class PreflightTests(unittest.TestCase):
         self.assertFalse(report["apply_ready"])
         self.assertFalse(evidence["kavita"]["quiesced"])
         self.assertTrue(any("after a capture" in reason for reason in report["blockers"]))
-        # Even fresh captures after the stop cannot legitimize a census begun
-        # before that fence. Refresh all captures but retain the census start.
-        self.proof["capturedAt"] = later
+        # Fresh source captures after the stop cannot legitimize a library census
+        # begun before the fence was established.
+        self.proof["captureStartedAt"] = self.proof["capturedAt"] = later
         evidence, report = self.prepare(library=library)
         self.assertFalse(report["apply_ready"])
         self.assertFalse(evidence["kavita"]["quiesced"])
         self.attestations["kavita"].pop("established_at")
         evidence, report = self.prepare(library=library)
         self.assertFalse(evidence["kavita"]["quiesced"])
+
+    def test_fence_after_source_start_before_completion_and_missing_start_refuse(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        at = lambda delta: (now + datetime.timedelta(seconds=delta)).isoformat()
+        for data, start, end in ((self.ll, "captureStartedAt", "capturedAt"),
+                                 (self.proof, "captureStartedAt", "capturedAt"),
+                                 (self.app, "capture_started_at", "completed_at"),
+                                 (self.census, "capture_started_at", "checked_at")):
+            data[start], data[end] = at(-20), at(-1)
+        for value in self.attestations.values():
+            value.update(established_at=at(-5), checked_at=at(-1))
+        evidence, report = self.prepare()
+        self.assertFalse(report["apply_ready"])
+        self.assertTrue(all(not evidence[source]["quiesced"] for source in self.attestations))
+        for data, start in ((self.ll, "captureStartedAt"), (self.proof, "captureStartedAt"),
+                            (self.app, "capture_started_at"), (self.census, "capture_started_at")):
+            data.pop(start)
+        for value in self.attestations.values():
+            value.update(established_at=at(-25))
+        evidence, report = self.prepare()
+        self.assertFalse(report["apply_ready"])
+        self.assertTrue(all(not evidence[source]["complete"] for source in self.attestations))
+        self.assertTrue(all(not evidence[source]["quiesced"] for source in self.attestations))
+
+    def test_source_completion_before_start_refuses_even_under_earlier_fence(self):
+        self.ll["captureStartedAt"] = preflight.now()
+        evidence, report = self.prepare()
+        self.assertFalse(report["apply_ready"])
+        self.assertFalse(evidence["lazylibrarian"]["complete"])
+        self.assertTrue(any("completion precedes" in reason for reason in report["blockers"]))
 
     def test_parked_landed_request_anchor_and_any_saved_state_protect_extra(self):
         self.app["app"]["items"] = [{"id": "item", "source": "kavita", "external_id": 7, "deleted_at": None}]

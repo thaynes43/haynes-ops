@@ -525,6 +525,58 @@ def collision_conflicts(identity, identities, new_file=False):
     return conflicts
 
 
+def grouping_author_identity(raw, identity, proof):
+    """Resolve a reviewed exact-file credit for grouping only, preserving raw aliases."""
+    if (not isinstance(proof, dict) or proof.get("schema") != 1 or proof.get("kind") != "grouping_author"
+            or proof.get("approved_for_grouping") is not True or proof.get("path") != identity["path"]
+            or sha256(raw) != proof.get("source_sha256")):
+        raise Refused("grouping author proof must bind the exact approved file/path/hash")
+    _infos, members, _comment, _updates, _inventory = inspect_epub(raw, require_canonical=False)
+    container, *_unused = xml_nodes(members["META-INF/container.xml"])
+    packages = [node["attrs"].get("full-path") for node in container
+                if node["name"] == CONTAINER + "rootfile"
+                and node["attrs"].get("media-type") == "application/oebps-package+xml"]
+    if len(packages) != 1:
+        raise Refused("grouping author proof requires one exact OPF")
+    opf = members[packages[0]]
+    nodes, *_unused = xml_nodes(opf)
+    direct = [node for node in nodes if node["parent"] and node["parent"]["name"] == OPF + "metadata"]
+    titles = [node["text"].strip() for node in direct if node["name"] == DC + "title"]
+    creators = [node for node in direct if node["name"] == DC + "creator"]
+    raw_creators = [node["text"].strip() for node in creators]
+    identifiers = [node["text"].strip() for node in direct if node["name"] == DC + "identifier"]
+    author = proof.get("author")
+    isbn = proof.get("isbn")
+    if (sha256(opf) != proof.get("raw_opf_sha256") or titles != [proof.get("title")]
+            or raw_creators != proof.get("raw_creators") or not isinstance(isbn, str)
+            or len(isbn) != 13 or not isbn.isdecimal() or isbn not in identifiers
+            or not isinstance(author, str) or author not in raw_creators
+            or not isinstance(proof.get("evidence"), str) or not proof["evidence"].strip()):
+        raise Refused("grouping author proof title/ISBN/raw credits/OPF/evidence mismatch")
+    selected = [node for node in creators if node["text"].strip() == author]
+    if len(selected) != 1:
+        raise Refused("grouping author proof must select one unchanged raw creator")
+    roles = []
+    role = selected[0]["attrs"].get(OPF + "role") or selected[0]["attrs"].get("role")
+    if role:
+        roles.append(role.strip().lower())
+    identifier = selected[0]["attrs"].get("id") or selected[0]["attrs"].get("http://www.w3.org/XML/1998/namespace}id")
+    if identifier:
+        roles += [node["text"].strip().lower() for node in direct
+                  if node["attrs"].get("property") == "role" and node["attrs"].get("refines") == "#" + identifier]
+    if (any(value not in ("aut", "author") for value in roles)
+            or any(node["attrs"].get("property") == "role" and not node["attrs"].get("refines") for node in direct)):
+        raise Refused("grouping author proof cannot override an explicit non-author role")
+    member = proof.get("evidence_member")
+    if (not isinstance(member, str) or not member.endswith((".xhtml", ".html", ".htm"))
+            or member not in members or sha256(members[member]) != proof.get("evidence_member_sha256")):
+        raise Refused("grouping author proof owned frontmatter checksum mismatch")
+    # Deliberately do not change creator_keys/authors: ordinary stripping and
+    # copy consolidation still use the original conservative identity.
+    return {**identity, "author_keys": {author_normalized(author)}, "author": author,
+            "author_refusal": None, "grouping_author_proof_sha256": sha256(json.dumps(proof, sort_keys=True).encode())}
+
+
 def author_identity_conflicts(identity, identities):
     """Do not invent different people from conflicting credits with a shared alias."""
     def aliases(row):

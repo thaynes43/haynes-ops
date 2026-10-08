@@ -51,11 +51,14 @@ def require_fresh(snapshot):
     fresh(snapshot["created_at"])
     for source in SOURCES:
         fresh(snapshot[source]["checked_at"])
+        fresh(snapshot[source]["capture_started_at"])
+        fresh(snapshot[source]["quiescence_checked_at"])
 
 
 def expiry_deadline(snapshot):
     expiry = min(timestamp_epoch(snapshot["created_at"]),
-                 *(timestamp_epoch(snapshot[source]["checked_at"]) for source in SOURCES)) + SNAPSHOT_MAX_AGE
+                 *(timestamp_epoch(snapshot[source][key]) for source in SOURCES
+                   for key in ("checked_at", "capture_started_at", "quiescence_checked_at"))) + SNAPSHOT_MAX_AGE
     return time.monotonic() + max(0, expiry - time.time())
 
 
@@ -74,6 +77,13 @@ def load_snapshot(path, root):
             raise metadata.Refused(f"complete {source} dependency read is required")
         if section.get("quiesced") is not True:
             raise metadata.Refused(f"explicit {source} writer quiescence is required")
+        start, finish, established, verified = (timestamp_epoch(section.get(key)) for key in
+                                                ("capture_started_at", "checked_at", "quiescence_established_at", "quiescence_checked_at"))
+        library_start = timestamp_epoch(snapshot.get("library_capture_started_at"))
+        if established > min(start, library_start, verified) or start > finish:
+            raise metadata.Refused(f"{source} fence/capture start ordering is invalid")
+        if not isinstance(section.get("quiescence_proof"), str) or not section["quiescence_proof"].strip():
+            raise metadata.Refused(f"observable {source} writer quiescence proof is required")
     require_fresh(snapshot)
     files = snapshot.get("files")
     if not isinstance(files, list):

@@ -56,6 +56,18 @@ metadata-enabled Books library, an untagged EPUB with no title is known to be
 unindexed and contributes no grouping aliases. Untagged EPUBs are changed only when
 the same-title, different-author policy requires the dedicated grouping tag.
 
+A reviewed private manifest may resolve one known ambiguous creator credit for
+grouping only. `grouping_author_identity` requires the exact relative file path,
+whole-file SHA-256, OPF SHA-256, title, ISBN, ordered raw creator list and owned
+frontmatter member SHA-256. Its selected author must already be an unchanged raw
+creator, with no explicit non-author role, and the manifest records the primary
+publisher/provider evidence. A different file, hash, title, ISBN or credit refuses
+the exception. This supports the publisher-verified R.L. Stine edition of The Face
+whose second raw creator is its cover artist. It never edits creator credits or
+roles, changes copy-consolidation eligibility, or establishes a general alias.
+Ordinary scheduled stripping does not load these private proofs. The reviewed
+stage writes only `The Face (R.L. Stine)` and index 1; all other metadata stays exact.
+
 Full archive validation applies to files being changed: at most 256 MiB compressed
 and 512 MiB expanded, every ZIP member's CRC checked, and a first, stored mimetype.
 With stripping disabled, ordinary conversion publishes in fixed-size chunks and
@@ -100,11 +112,15 @@ books, Goodreads, collections and format-pairing CronJobs. Libretto's configured
 LazyLibrarian URL is temporarily empty so no acquisition context can be created
 while Kavita identities change. Existing recipe policies remain intact. Verify
 those deployed settings before running manual Jobs with the reviewed app image.
-Declare activity before deploying the pause and keep its downloads/lazylibrarian
-scope live until restoration, renewing before expiry if needed. A pause lasting
-3h15m triggers `LazyLibrarianEpubConvertSilent`; that heartbeat absence is expected
-for the declared suspended converter. The scoped declaration lets remediation
-recognize this work while leaving alerts outside the migration scope actionable.
+Before a pause, checkpoint the exact schedules and acquisition setting in the
+migration report. Prepare and review one GitOps PR that reverses the pause, and
+arm a recovery watchdog before merging the pause. Pause only for approved metadata
+edits, Kavita scans, file validation and reading-state comparison. Restore the five
+schedules and Libretto URL immediately after that window succeeds or fails, with
+the strip gate still off. Restore before app, pairing or reading-list verification,
+long waits, or uncertain investigation. Enable hourly stripping later in a separate
+GitOps PR after those checks pass. Declare the tight maintenance window before
+deploying its pause and end the activity promptly after restoration.
 Confirm the runtime configuration directly without printing credentials:
 
     kubectl exec -n media deployment/libretto -- node --input-type=module -e '
@@ -118,11 +134,6 @@ Confirm the runtime configuration directly without printing credentials:
     console.log(JSON.stringify({ acquisitionDisabled: disabled }));
     if (!disabled) process.exitCode = 1;
     '
-
-After successful backfill, pairing and reading-list verification, restore all
-five schedules and Libretto's URL in git together with the scheduled strip gate.
-If the migration stops early, restore the schedules and URL through git while
-keeping the strip gate off; never leave the temporary pause as an implicit handoff.
 
 Clone the CronJob's pinned image, service account, NFS mount, worker-node affinity,
 one-CPU limit and non-root user into each temporary Job. This prepares and submits
@@ -207,7 +218,12 @@ reviewed snapshot and apply under the same operational pauses.
 The snapshot is private operational data outside EBooks, not a committed manifest.
 Schema 1 contains `created_at` (UTC ISO timestamp), `ebook_root`, and four complete
 source sections: `lazylibrarian`, `census`, `kavita`, `app_wants`. Each section has
-`complete: true`, `quiesced: true` and `checked_at`. Every timestamp must be within five minutes of
+`complete: true`, `quiesced: true`, `capture_started_at` and `checked_at`, plus
+`quiescence_established_at`, `quiescence_checked_at` and observable `quiescence_proof`.
+Source captures must record their start before the first read/copy, and completion
+must not precede that start. The fence must precede each source start and the
+`library_capture_started_at`. Missing starts or reversed ordering refuse the
+snapshot. Capture and verification timestamps must be within five minutes of
 application. Missing, incomplete, stale or future evidence refuses the command.
 The operator must obtain complete current reads, never infer an empty dependency
 list from an API error or partial page. Parent migration coordination owns those
@@ -248,6 +264,10 @@ complete. Each writer attestation supplies `established_at`, a fresh `checked_at
 and observable `proof` for the continuously held fence. The fence must have been
 established at or before both the source capture and the library census start.
 A stop performed after either capture cannot make that earlier capture safe.
+LL and Kavita capture inputs use `captureStartedAt`; the app transaction audit and
+census protection input use `capture_started_at`. The library collector records
+`started_at` before its first filesystem read. Missing start evidence is unknown,
+even when the capture completion is recent.
 App request anchors resolve through the actual Kavita file map; an
 unresolved request dependency blocks snapshot completeness, including parked and
 landed requests that retain a library anchor. Any saved Kavita state

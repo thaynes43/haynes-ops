@@ -41,13 +41,13 @@ def library_path(value, root):
 
 
 def collect_library(root, budget):
+    started_at = now()
     root = os.path.abspath(root)
     with metadata.safe_directory(root):
         pass
     if budget <= 0:
         raise metadata.Refused("positive bounded capture budget is required")
     holds = metadata.library_hold_folders(root)
-    started_at = now()
     deadline = time.monotonic() + min(300, budget)
     identities, errors = metadata.identity_preflight(root, deadline)
     files = []
@@ -216,14 +216,19 @@ def prepare(library, ll, app, series_files, kavita_protected, kavita_errors, kav
                     app_errors.append(f"want {want['id']} live Kavita anchor {key} has no file map")
             app_protected += [{"path": path, "reason": f"app want {want['id']} {field} {item['id']}"} for path in paths]
     snapshot = {"schema": 1, "created_at": now(), "ebook_root": root,
+                "library_capture_started_at": library.get("started_at"),
                 "files": [{"path": row["path"], "sha256": row["sha256"]} for row in library["files"]],
-                "lazylibrarian": {"complete": not blockers, "checked_at": ll["capturedAt"], "pointers": pointers},
+                "lazylibrarian": {"complete": not blockers, "capture_started_at": ll.get("captureStartedAt"),
+                                  "checked_at": ll["capturedAt"], "pointers": pointers},
                 "census": {"complete": census.get("complete") is True, "checked_at": census.get("checked_at"),
+                           "capture_started_at": census.get("capture_started_at"),
                            "protected_paths": census.get("protected_paths", [])},
                 "kavita": {"complete": not kavita_errors, "checked_at": kavita_proof["capturedAt"],
+                           "capture_started_at": kavita_proof.get("captureStartedAt"),
                            "protected_paths": kavita_protected},
                 "app_wants": {"complete": app.get("read_only") == "on" and app.get("scope") == "full" and not app_errors,
-                              "checked_at": app["captured_at"], "protected_paths": app_protected}}
+                              "capture_started_at": app.get("capture_started_at"),
+                              "checked_at": app.get("completed_at", app["captured_at"]), "protected_paths": app_protected}}
     if library.get("complete") is not True:
         blockers.append("library census is incomplete")
     blockers += kavita_errors + app_errors
@@ -234,20 +239,25 @@ def prepare(library, ll, app, series_files, kavita_protected, kavita_errors, kav
         section["quiescence_proof"] = attestation.get("proof")
         section["quiescence_checked_at"] = attestation.get("checked_at")
         section["quiescence_established_at"] = attestation.get("established_at")
+        try:
+            start = copies.timestamp_epoch(section["capture_started_at"])
+            finish = copies.timestamp_epoch(section["checked_at"])
+            if start > finish:
+                raise metadata.Refused("source completion precedes capture start")
+            copies.fresh(section["capture_started_at"])
+        except metadata.Refused as err:
+            section["complete"] = False
+            blockers.append(f"{source}: {err}")
         if section["quiesced"] and (not isinstance(section["quiescence_proof"], str) or not section["quiescence_proof"].strip()):
             section["quiesced"] = False
         if section["quiesced"]:
             try:
                 copies.fresh(attestation.get("checked_at"))
                 established = copies.timestamp_epoch(attestation.get("established_at"))
-                if established > min(copies.timestamp_epoch(section["checked_at"]),
+                if established > min(copies.timestamp_epoch(section["capture_started_at"]),
                                      copies.timestamp_epoch(library.get("started_at")),
                                      copies.timestamp_epoch(attestation["checked_at"])):
                     raise metadata.Refused("writer fence was established after a capture")
-                # The apply window cannot outlive the older writer evidence.
-                section["source_captured_at"] = section["checked_at"]
-                if copies.timestamp_epoch(attestation["checked_at"]) < copies.timestamp_epoch(section["checked_at"]):
-                    section["checked_at"] = attestation["checked_at"]
             except metadata.Refused as err:
                 section["quiesced"] = False
                 blockers.append(f"{source}: {err}")

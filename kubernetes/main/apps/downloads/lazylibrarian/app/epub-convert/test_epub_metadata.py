@@ -395,6 +395,55 @@ class ConversionPublicationTests(unittest.TestCase):
 
 
 class GroupingTests(unittest.TestCase):
+    def author_proof_fixture(self):
+        opf = OPF.replace(b'<dc:creator id="author">', b'<dc:creator>Cover Artist</dc:creator><dc:creator id="author">')
+        raw = fixture(opf=opf)
+        identity = metadata.grouping_identity(raw, "Suzanne Collins/Book/known.epub")
+        proof = {"schema": 1, "kind": "grouping_author", "approved_for_grouping": True,
+                 "path": identity["path"], "source_sha256": metadata.sha256(raw), "raw_opf_sha256": metadata.sha256(opf),
+                 "title": "Mockingjay & more", "isbn": "9780439023511",
+                 "raw_creators": ["Cover Artist", "Suzanne Collins"], "author": "Suzanne Collins",
+                 "evidence": "Owner reviewed exact publisher ISBN and owned title-page credit",
+                 "evidence_member": "OEBPS/chapter.xhtml",
+                 "evidence_member_sha256": metadata.sha256(b"<html><body>A chapter.</body></html>")}
+        return raw, identity, proof
+
+    def test_exact_grouping_only_author_proof_preserves_raw_creators_and_other_metadata(self):
+        raw, identity, proof = self.author_proof_fixture()
+        resolved = metadata.grouping_author_identity(raw, identity, proof)
+        self.assertTrue(identity["author_refusal"])
+        self.assertIsNone(resolved["author_refusal"])
+        self.assertEqual(resolved["author"], "Suzanne Collins")
+        self.assertEqual(resolved["creator_keys"], identity["creator_keys"])
+        self.assertEqual(resolved["authors"], identity["authors"])
+        peer = metadata.grouping_identity(fixture(opf=OPF.replace(b'Suzanne Collins', b'Other Author')),
+                                          "Other Author/Book/other.epub")
+        group = metadata.dedicated_grouping(resolved, [resolved, peer])
+        candidate, _ = metadata.sanitized_epub(raw, group)
+        with zipfile.ZipFile(io.BytesIO(candidate)) as archive:
+            opf = archive.read("OEBPS/book.opf")
+            self.assertIn(b'<dc:creator>Cover Artist</dc:creator>', opf)
+            self.assertIn(b'<dc:creator id="author">Suzanne Collins</dc:creator>', opf)
+            self.assertIn(b'<dc:identifier id="isbn">9780439023511</dc:identifier>', opf)
+        self.assertTrue(metadata.grouping_identity(candidate, identity["path"])["author_refusal"])
+
+    def test_grouping_author_proof_refuses_unbound_file_metadata_or_explicit_non_author_role(self):
+        raw, identity, proof = self.author_proof_fixture()
+        for changes in ({"path": "Other/Book/new.epub"}, {"source_sha256": "0" * 64},
+                        {"raw_opf_sha256": "0" * 64}, {"title": "Other"}, {"isbn": "9780000000001"},
+                        {"raw_creators": list(reversed(proof["raw_creators"]))}, {"author": "Invented Author"},
+                        {"evidence_member_sha256": "0" * 64}, {"approved_for_grouping": False}):
+            with self.subTest(changes=changes), self.assertRaises(metadata.Refused):
+                metadata.grouping_author_identity(raw, identity, {**proof, **changes})
+        with self.assertRaises(metadata.Refused):
+            metadata.grouping_author_identity(raw + b"new arrival bytes", identity, proof)
+        opf = OPF.replace(b'<dc:creator id="author">', b'<dc:creator id="author" xmlns:opf="http://www.idpf.org/2007/opf" opf:role="trl">')
+        translated = fixture(opf=opf)
+        translated_proof = {**proof, "source_sha256": metadata.sha256(translated), "raw_opf_sha256": metadata.sha256(opf),
+                            "raw_creators": ["Suzanne Collins"]}
+        with self.assertRaisesRegex(metadata.Refused, "non-author role"):
+            metadata.grouping_author_identity(translated, metadata.grouping_identity(translated, identity["path"]), translated_proof)
+
     def test_creator_spelling_variants_with_shared_author_alias_do_not_invent_two_people(self):
         first = metadata.grouping_identity(fixture(), "Suzanne Collins/Book/first.epub")
         second = metadata.grouping_identity(fixture(opf=OPF.replace(b'Suzanne Collins', b'Suzanne C. Collins')),
