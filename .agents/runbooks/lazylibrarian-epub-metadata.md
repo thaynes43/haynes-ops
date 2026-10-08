@@ -5,8 +5,9 @@ The existing hourly converter implements
 and [the converter design](https://github.com/thaynes43/haynesnetwork/blob/main/docs/designs/028-integrations-tab-goodreads-requests.md#amendment-2026-10-07-one-kavita-series-per-book-issue-825-adr-105).
 The work order is [issue 825](https://github.com/thaynes43/haynesnetwork/issues/825).
 
-The CronJob ships with STRIP_SERIES_METADATA=0. Conversion of MOBI/AZW3-only
-folders continues. Metadata removal requires STRIP_SERIES_METADATA=1.
+The CronJob enables STRIP_SERIES_METADATA=1 after the verified issue825 backfill.
+Conversion of MOBI/AZW3-only folders continues, and new conversion outputs are
+stripped before publication. Set STRIP_SERIES_METADATA=0 to disable metadata removal.
 STRIP_ONLY=1 skips conversion and partial-file cleanup; use it for inventory and
 backfill Jobs. STRIP_FOLDERS_JSON selects exact relative book folders and requires
 STRIP_ONLY=1. Without that variable the pass visits all EPUBs under EBOOK_ROOT.
