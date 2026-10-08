@@ -73,6 +73,11 @@ books, Goodreads, collections and format-pairing CronJobs. Libretto's configured
 LazyLibrarian URL is temporarily empty so no acquisition context can be created
 while Kavita identities change. Existing recipe policies remain intact. Verify
 those deployed settings before running manual Jobs with the reviewed app image.
+Declare activity before deploying the pause and keep its downloads/lazylibrarian
+scope live until restoration, renewing before expiry if needed. A pause lasting
+3h15m triggers `LazyLibrarianEpubConvertSilent`; that heartbeat absence is expected
+for the declared suspended converter. The scoped declaration lets remediation
+recognize this work while leaving alerts outside the migration scope actionable.
 Confirm the runtime configuration directly without printing credentials:
 
     kubectl exec -n media deployment/libretto -- node --input-type=module -e '
