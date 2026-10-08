@@ -149,7 +149,8 @@ def main():
         parser.add_argument('--' + name, required=True)
     args = parser.parse_args()
     helper = load_helper(args.checkpoint_helper, args.checkpoint_sha256)
-    state = helper.read_json(args.phase_state); helper.validate_state(state, args.restore_pr)
+    state, state_sha256 = helper.read_json(args.phase_state)
+    helper.validate_state(state, args.restore_pr)
     if state['complete'] or not state.get('window_started_at'):
         raise Refused("copy delivery requires the active bounded phase")
     rows = [r for r in state['owned_jobs'] if (r['namespace'], r['name']) == (args.namespace, args.job)]
@@ -167,7 +168,7 @@ def main():
     if {r['name']: r['sha256'] for r in header['files']} != expected:
         raise Refused("local proof files differ from the durable ready manifest hashes")
     # Re-read the exact ledger after GETs; never transfer on a changed checkpoint.
-    if helper.read_json(args.phase_state) != state:
+    if helper.read_json(args.phase_state) != (state, state_sha256):
         raise Refused("copy phase ledger changed during delivery preparation")
     gate(environment)
     stream_to_receiver(command, paths, state['phase_token'], row['uid'], args.pod_uid,

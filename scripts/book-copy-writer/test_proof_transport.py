@@ -246,6 +246,48 @@ class ProofTransportTests(unittest.TestCase):
                                    '--', 'nice', '-n', '19', 'python', '/copy-writer/proof_transport.py', 'receive'])
         self.assertNotIn('attach', command)
 
+    def run_sender_cli(self, reads):
+        helper, row, job, pod = self.target()
+        state = {'complete': False, 'window_started_at': 'fixture',
+                 'phase_token': self.phase, 'owned_jobs': [row]}
+        with tempfile.TemporaryDirectory() as root:
+            paths = {}
+            for name, raw in self.raw.items():
+                path = Path(root, name); path.write_bytes(raw); paths[name] = str(path)
+            args = ['proof_sender.py', '--checkpoint-helper', 'fixture-helper', '--checkpoint-sha256', '0' * 64,
+                    '--phase-state', 'fixture-ledger', '--restore-pr', '3609', '--namespace', row['namespace'],
+                    '--job', row['name'], '--pod', pod['metadata']['name'], '--pod-uid', self.pod_uid,
+                    '--snapshot', paths['snapshot.json'], '--selection', paths['selection.json'],
+                    '--app-capture', paths['app-capture.json']]
+            helper.read_json = mock.Mock(side_effect=reads(state))
+            helper.validate_state = mock.Mock()
+            with mock.patch.object(sys, 'argv', args), mock.patch.object(proof_sender, 'load_helper', return_value=helper), \
+                    mock.patch.object(proof_sender, 'get', side_effect=[job, pod]) as get, \
+                    mock.patch.object(proof_sender, 'stream_to_receiver') as deliver, \
+                    mock.patch('builtins.print'):
+                try:
+                    proof_sender.main()
+                finally:
+                    self.assertEqual(helper.read_json.call_args_list,
+                                     [mock.call('fixture-ledger'), mock.call('fixture-ledger')])
+                    helper.validate_state.assert_called_once_with(state, '3609')
+                    self.assertEqual(get.call_count, 2)
+                    self.delivery_calls = deliver.call_count
+        return self.delivery_calls
+
+    def test_sender_cli_unpacks_checkpoint_read_and_delivers_unchanged_ledger(self):
+        # The real core/COPY checkpoint API returns (parsed object, byte SHA).
+        self.assertEqual(self.run_sender_cli(lambda state: [(state, '1' * 64), (state, '1' * 64)]), 1)
+
+    def test_sender_cli_refuses_changed_ledger_rows_or_only_changed_bytes(self):
+        # Semantically equal JSON with different bytes must also stop delivery.
+        variants = [lambda state: [(state, '1' * 64), (state, '2' * 64)],
+                    lambda state: [(state, '1' * 64), ({**state, 'complete': True}, '1' * 64)]]
+        for reads in variants:
+            with self.subTest(reads=reads), self.assertRaisesRegex(Refused, 'ledger changed'):
+                self.run_sender_cli(reads)
+            self.assertEqual(self.delivery_calls, 0)
+
     def test_sender_rejects_reused_names_owner_changes_and_workload_injections(self):
         mutations = [lambda row, job, pod: job['metadata'].update(uid='foreign'),
                      lambda row, job, pod: pod['metadata'].update(uid='foreign'),
