@@ -19,7 +19,9 @@ import epub_copies as copies
 import epub_metadata as metadata
 
 STATE_TABLES = ("AppUserProgresses", "AppUserBookmark", "AppUserAnnotation", "AppUserReadingSession",
-                "AppUserReadingSessionActivityData", "AppUserReadingHistory", "AppUserTableOfContent")
+                "AppUserReadingSessionActivityData", "AppUserReadingHistory", "AppUserTableOfContent",
+                "ReadingListItem", "ReadingListRemapRule", "AppUserWantToRead", "AppUserCollectionSeries",
+                "AppUserRating", "AppUserChapterRating", "AppUserOnDeckRemoval")
 
 
 def now():
@@ -104,6 +106,15 @@ def kavita_dependencies(db_path, proof, root):
     try:
         con.execute("PRAGMA query_only=ON")
         con.execute("BEGIN")
+        for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'"):
+            name = row[0]
+            if name not in STATE_TABLES and (name.startswith("AppUser") or "ReadingList" in name or "Collection" in name):
+                columns = {column[1] for column in con.execute(f'PRAGMA table_info("{name}")')}
+                references_books = bool(columns & {"SeriesId", "ChapterId", "VolumeId"}) or any(
+                    fk[2] in ("Series", "Chapter", "Volume", "MangaFile")
+                    for fk in con.execute(f'PRAGMA foreign_key_list("{name}")'))
+                if references_books:
+                    raise metadata.Refused(f"unknown saved-book dependency table: {name}")
         files = [dict(row) for row in con.execute(
             "SELECT f.FilePath AS path,f.ChapterId AS chapter_id,v.Id AS volume_id,s.Id AS series_id "
             "FROM MangaFile f LEFT JOIN Chapter c ON c.Id=f.ChapterId LEFT JOIN Volume v ON v.Id=c.VolumeId "
@@ -125,6 +136,9 @@ def kavita_dependencies(db_path, proof, root):
     for table, rows in states.items():
         for state in rows:
             references = [state]
+            state_key = state.get("Id", f"{state.get('CollectionsId')}:{state.get('ItemsId')}")
+            if table == "AppUserCollectionSeries":
+                references = [{"SeriesId": state["ItemsId"]}]
             if table == "AppUserReadingSession":
                 references = [activity for activity in states["AppUserReadingSessionActivityData"]
                               if activity.get("AppUserReadingSessionId") == state.get("Id")]
@@ -167,12 +181,12 @@ def kavita_dependencies(db_path, proof, root):
                         if evidence not in history_evidence:
                             history_evidence.append(evidence)
                     else:
-                        errors.append(f"unresolved Kavita state dependency: {table}/{state.get('Id')}")
+                        errors.append(f"unresolved Kavita state dependency: {table}/{state_key}")
                 matches += resolved
             for row in matches:
                 if row["path"].startswith(root + "/"):
                     protected.append({"path": library_path(row["path"], root),
-                                      "reason": f"{table}/{state.get('Id')} saved state"})
+                                      "reason": f"{table}/{state_key} saved dependency"})
     return series_files, protected, errors, {table: len(rows) for table, rows in states.items()}, history_evidence
 
 

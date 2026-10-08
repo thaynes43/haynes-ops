@@ -156,7 +156,7 @@ class PreflightTests(unittest.TestCase):
                           'CREATE TABLE Chapter(Id INTEGER,VolumeId INTEGER); '
                           'CREATE TABLE MangaFile(FilePath TEXT,ChapterId INTEGER);')
         for table in preflight.STATE_TABLES:
-            con.execute(f'CREATE TABLE "{table}"(Id INTEGER,SeriesId INTEGER,ChapterId INTEGER,PagesRead INTEGER,LastXPath TEXT,Data TEXT,AppUserReadingSessionId INTEGER)')
+            con.execute(f'CREATE TABLE "{table}"(Id INTEGER,SeriesId INTEGER,ChapterId INTEGER,PagesRead INTEGER,LastXPath TEXT,Data TEXT,AppUserReadingSessionId INTEGER,CollectionsId INTEGER,ItemsId INTEGER)')
         con.execute('INSERT INTO Series VALUES(7)')
         con.execute('INSERT INTO Volume VALUES(8,7)')
         con.execute('INSERT INTO Chapter VALUES(9,8)')
@@ -166,6 +166,8 @@ class PreflightTests(unittest.TestCase):
         con.execute('INSERT INTO AppUserReadingSessionActivityData(Id,SeriesId,ChapterId,AppUserReadingSessionId) VALUES(12,7,9,11)')
         con.execute('INSERT INTO AppUserReadingHistory(Id,Data) VALUES(13,?)',
                     (json.dumps({"SeriesIds": [7], "ChapterIds": [9], "Activities": []}),))
+        con.execute('INSERT INTO ReadingListItem(Id,SeriesId,ChapterId) VALUES(14,7,9)')
+        con.execute('INSERT INTO AppUserCollectionSeries(CollectionsId,ItemsId) VALUES(15,7)')
         con.commit()
         con.close()
         before = Path(path).read_bytes()
@@ -177,6 +179,8 @@ class PreflightTests(unittest.TestCase):
         self.assertTrue(any("AppUserReadingSession/11" in row["reason"] for row in protected))
         self.assertTrue(any("AppUserReadingHistory/13" in row["reason"] for row in protected))
         self.assertEqual(disconnected, [])
+        self.assertTrue(any("ReadingListItem/14" in row["reason"] for row in protected))
+        self.assertTrue(any("AppUserCollectionSeries/" in row["reason"] for row in protected))
         self.assertEqual(Path(path).read_bytes(), before)
         self.assertFalse(Path(path + "-journal").exists())
         with self.assertRaises(metadata.Refused):
@@ -189,7 +193,7 @@ class PreflightTests(unittest.TestCase):
                           'CREATE TABLE Chapter(Id INTEGER,VolumeId INTEGER); '
                           'CREATE TABLE MangaFile(FilePath TEXT,ChapterId INTEGER);')
         for table in preflight.STATE_TABLES:
-            con.execute(f'CREATE TABLE "{table}"(Id INTEGER,SeriesId INTEGER,ChapterId INTEGER,VolumeId INTEGER,Data TEXT)')
+            con.execute(f'CREATE TABLE "{table}"(Id INTEGER,SeriesId INTEGER,ChapterId INTEGER,VolumeId INTEGER,Data TEXT,ItemsId INTEGER,CollectionsId INTEGER)')
         con.execute('INSERT INTO Series VALUES(7)')
         con.execute('INSERT INTO Volume VALUES(8,7)')
         con.execute('INSERT INTO Chapter VALUES(9,8)')
@@ -216,6 +220,12 @@ class PreflightTests(unittest.TestCase):
         con.close()
         _series, _protected, errors, _counts, _disconnected = preflight.kavita_dependencies(path, self.proof, self.root)
         self.assertTrue(any("file relationship" in error for error in errors))
+        con = sqlite3.connect(path)
+        con.execute('CREATE TABLE AppUserFutureSavedLocation(Id INTEGER,ChapterId INTEGER)')
+        con.commit()
+        con.close()
+        with self.assertRaisesRegex(metadata.Refused, "unknown saved-book dependency table"):
+            preflight.kavita_dependencies(path, self.proof, self.root)
 
     def test_ll_source_copy_must_be_read_only_and_stable(self):
         path = os.path.join(self.tmp.name, "ll.jsonl")

@@ -208,6 +208,9 @@ policy before re-enabling the gate.
 
 ## Same-title copy consolidation
 
+The normative [same-title grouping and retained-copy decision](https://github.com/thaynes43/haynesnetwork/blob/main/docs/adrs/106-distinguish-and-retain-same-title-books.md)
+permits the narrowly scoped grouping tags and guarded copy retention below.
+
 The owner's [keep one copy ruling](https://github.com/thaynes43/haynesnetwork/issues/831)
 uses a separate manual `--consolidate-copies <snapshot.json>` command, under the
 converter lock. STRIP_SERIES_METADATA never enables moves. Do not combine this
@@ -245,6 +248,11 @@ saved progress/session/bookmark/annotation dependency, including a nonempty XPat
 with zero numeric counters. App wants include every dependent active request and
 pairing/library anchor. Resolve ids to all affected file paths before declaring a
 source complete; unresolved or partially read state refuses snapshot production.
+Kavita protections also include current reading-list items, list-remap rules,
+user collections, wants, ratings, custom contents and on-deck preferences. Protect
+all joined chapter/volume/series files; do not assume the BookFile keeper can replace
+a referenced copy or rewrite the list to permit a move. Unknown saved-book
+dependency tables or orphan file relationships keep the source incomplete.
 Quiescence is a separate required attestation, never inferred from freshness or
 two identical database reads. Stop dependency writers for the complete application
 window and record observable proof. This includes LazyLibrarian's internal import/
