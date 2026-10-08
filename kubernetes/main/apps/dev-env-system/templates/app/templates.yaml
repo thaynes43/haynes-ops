@@ -10,7 +10,7 @@
 # tracks this line with its own regex manager (.renovate/customManagers.json5), and the
 # dev-env manual-merge rule applies. A change here reaches NEW sessions only: running
 # pods keep their image and are reported Outdated (D-44).
-image: ghcr.io/thaynes43/dev-env:2.5.0@sha256:944a9dbd02f22bf0082d0504126e2e1156e360700d5f4b2cfba2b8b58ddcb371
+image: ghcr.io/thaynes43/dev-env:2.6.0@sha256:ea7d29e85e62d9f8843b506b41791664ddaf9bf20a735bf3eba163620bbb3429
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
