@@ -80,12 +80,14 @@ fi
 # remediation lane can reach with `agent-run msg <session>`), so the matching and
 # the report below treat both alike. Until cutover both sources are read
 # (DESIGN-001 6.9). The operator deletes an expired one within a minute; this check
-# drops it anyway.
+# drops it anyway. The operator writes expiresAt as a metav1.Time (whole seconds, UTC);
+# the sub() strips fractional seconds in case a writer adds them, because jq's
+# fromdateiso8601 refuses them and the declaration would vanish without a word.
 v2_declared="$(kubectl get activities.dev-env.haynesops.com -n "${DEV_ENV_V2_NS:-dev-env-system}" -o json 2>/dev/null \
   | jq -c --argjson now "$now" '[ .items[]?
       | { id: .metadata.name, who: .spec.declaredBy, session: (.spec.session // "-"),
           what: .spec.description, scope: (.spec.scope // []), source: "v2",
-          expires: (((.spec.expiresAt // "") | fromdateiso8601?) // 0) }
+          expires: (((.spec.expiresAt // "") | sub("\\.[0-9]+"; "") | fromdateiso8601?) // 0) }
       | select(.expires > $now) ]' 2>/dev/null)" || v2_declared='[]'
 [ -n "$v2_declared" ] || v2_declared='[]'
 declared="$(jq -nc --argjson a "$declared" --argjson b "$v2_declared" '$a + $b' 2>/dev/null)" || true
