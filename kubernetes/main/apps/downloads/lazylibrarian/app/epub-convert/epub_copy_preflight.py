@@ -427,6 +427,7 @@ def prepare(library, ll, app, series_files, kavita_protected, kavita_errors, kav
                            "capture_started_at": kavita_proof.get("captureStartedAt"),
                            "protected_paths": kavita_protected},
                 "app_wants": {"complete": app.get("read_only") == "on" and app.get("scope") == "full" and not app_errors,
+                              "source_sha256": metadata.sha256(json.dumps(app, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()),
                               "capture_started_at": app.get("capture_started_at"),
                               "checked_at": app.get("completed_at", app["captured_at"]), "protected_paths": app_protected}}
     if library.get("complete") is not True:
