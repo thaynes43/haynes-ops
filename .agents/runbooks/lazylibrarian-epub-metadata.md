@@ -65,8 +65,13 @@ publisher/provider evidence. A different file, hash, title, ISBN or credit refus
 the exception. This supports the publisher-verified R.L. Stine edition of The Face
 whose second raw creator is its cover artist. It never edits creator credits or
 roles, changes copy-consolidation eligibility, or establishes a general alias.
-Ordinary scheduled stripping does not load these private proofs. The reviewed
-stage writes only `The Face (R.L. Stine)` and index 1; all other metadata stays exact.
+The supported manual entrypoint is `epub_convert.py --strip-author-proof <manifest.json>`,
+with `STRIP_ONLY=1`, `STRIP_SERIES_METADATA=1` and explicit `STRIP_FOLDERS_JSON`
+that includes the approved file. The manifest is the schema-1 `grouping_author`
+record described above, outside EBooks. It is loaded and validated against the
+complete current identity census and source bytes before any metadata edit. A
+missing, changed or out-of-scope proof refuses the entire pass. Ordinary scheduled
+stripping and copy retention do not load these proofs. The reviewed stage writes only `The Face (R.L. Stine)` and index 1; all other metadata stays exact.
 
 Full archive validation applies to files being changed: at most 256 MiB compressed
 and 512 MiB expanded, every ZIP member's CRC checked, and a first, stored mimetype.
@@ -249,7 +254,16 @@ with zero numeric counters. App wants include every dependent active request and
 pairing/library anchor. Resolve ids to all affected file paths before declaring a
 source complete; unresolved or partially read state refuses snapshot production.
 Kavita protections also include current reading-list items, list-remap rules,
-user collections, wants, ratings, custom contents and on-deck preferences. Protect
+user collections, wants, ratings, custom contents, on-deck preferences, per-series
+reading profiles, scrobble state, curated series relations, blacklists and legacy
+collection membership. JSON series references and indirect metadata/event foreign
+keys must resolve too. The schema inventory follows all foreign-key paths to work
+and user tables, regardless of names; unfamiliar populated user tables or
+unclassified work-reference tables refuse. Explicitly classified catalog metadata
+(titles, genre/person/tag joins, imported provider metadata and parser-error
+diagnostic keys) is a rebuildable
+read model, not saved user state. Identity/authentication, global reader settings,
+library permissions, device and dashboard tables have no physical copy binding. Protect
 all joined chapter/volume/series files; do not assume the BookFile keeper can replace
 a referenced copy or rewrite the list to permit a move. Unknown saved-book
 dependency tables or orphan file relationships keep the source incomplete.

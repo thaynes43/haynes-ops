@@ -21,7 +21,50 @@ import epub_metadata as metadata
 STATE_TABLES = ("AppUserProgresses", "AppUserBookmark", "AppUserAnnotation", "AppUserReadingSession",
                 "AppUserReadingSessionActivityData", "AppUserReadingHistory", "AppUserTableOfContent",
                 "ReadingListItem", "ReadingListRemapRule", "AppUserWantToRead", "AppUserCollectionSeries",
-                "AppUserRating", "AppUserChapterRating", "AppUserOnDeckRemoval")
+                "AppUserRating", "AppUserChapterRating", "AppUserOnDeckRemoval", "AppUserReadingProfiles",
+                "ScrobbleEvent", "ScrobbleHold", "ScrobbleError", "SeriesRelation", "SeriesBlacklist",
+                "CollectionTagSeriesMetadata")
+
+# Explicit catalog read models and non-book-specific account/configuration tables.
+# MediaError stores parser-failure diagnostic keys, not work/user bindings.
+# New work/user FK paths cannot acquire this exemption by their names.
+CATALOG_TABLES = frozenset(("Series", "Volume", "Chapter", "MangaFile", "SeriesMetadata",
+    "GenreSeriesMetadata", "ChapterGenre", "ChapterTag", "SeriesMetadataTag", "ChapterPeople",
+    "SeriesMetadataPeople", "ExternalSeriesMetadata", "ExternalRating", "ExternalReview",
+    "ExternalRecommendation", "ExternalRatingExternalSeriesMetadata", "ExternalReviewExternalSeriesMetadata",
+    "ExternalRecommendationExternalSeriesMetadata", "MediaError"))
+ACCOUNT_TABLES = frozenset(("AspNetUsers", "AspNetUserClaims", "AspNetUserLogins", "AspNetUserRoles",
+    "AspNetUserTokens", "AppUserAuthKey", "AppUserExternalSource", "AppUserLibrary", "AppUserPreferences",
+    "AppUserDashboardStream", "AppUserSideNavStream", "ClientDevice", "ClientDeviceHistory", "Device",
+    "EmailHistory", "ReadingList", "AppUserCollection"))
+
+
+def inspect_dependency_schema(con):
+    """Follow arbitrary FK names transitively; unfamiliar saved work state refuses."""
+    names = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    quote = lambda name: '"' + name.replace('"', '""') + '"'
+    columns = {name: {row[1] for row in con.execute(f'PRAGMA table_info({quote(name)})')} for name in names}
+    links = {name: {row[2] for row in con.execute(f'PRAGMA foreign_key_list({quote(name)})')} for name in names}
+    work, users = set(CATALOG_TABLES) & names, {"AspNetUsers"} & names
+    for scope in (work, users):
+        changed = True
+        while changed:
+            additions = {name for name in names if links[name] & scope} - scope
+            changed = bool(additions)
+            scope.update(additions)
+    for name in names - set(STATE_TABLES) - CATALOG_TABLES:
+        book_columns = any(column in {"SeriesId", "ChapterId", "VolumeId", "SeriesIds", "ChapterIds", "VolumeIds", "FilePath"}
+                           for column in columns[name])
+        # Known account tables are exempt only while they still lack work links.
+        if name in work or book_columns:
+            raise metadata.Refused(f"unknown saved-book dependency table: {name}")
+        if (name in users or any(column in {"AppUserId", "UserId"} for column in columns[name])) and name not in ACCOUNT_TABLES:
+            if con.execute(f'SELECT EXISTS(SELECT 1 FROM {quote(name)})').fetchone()[0]:
+                raise metadata.Refused(f"unknown populated user dependency table: {name}")
+    missing = set(STATE_TABLES) - names
+    if missing:
+        raise metadata.Refused(f"missing saved-book dependency tables: {sorted(missing)}")
+    return columns
 
 
 def now():
@@ -106,22 +149,17 @@ def kavita_dependencies(db_path, proof, root):
     try:
         con.execute("PRAGMA query_only=ON")
         con.execute("BEGIN")
-        for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'"):
-            name = row[0]
-            if name not in STATE_TABLES and (name.startswith("AppUser") or "ReadingList" in name or "Collection" in name):
-                columns = {column[1] for column in con.execute(f'PRAGMA table_info("{name}")')}
-                references_books = bool(columns & {"SeriesId", "ChapterId", "VolumeId"}) or any(
-                    fk[2] in ("Series", "Chapter", "Volume", "MangaFile")
-                    for fk in con.execute(f'PRAGMA foreign_key_list("{name}")'))
-                if references_books:
-                    raise metadata.Refused(f"unknown saved-book dependency table: {name}")
+        columns = inspect_dependency_schema(con)
+        library_column = "s.LibraryId" if "LibraryId" in columns["Series"] else "NULL"
         files = [dict(row) for row in con.execute(
-            "SELECT f.FilePath AS path,f.ChapterId AS chapter_id,v.Id AS volume_id,s.Id AS series_id "
+            f"SELECT f.FilePath AS path,f.ChapterId AS chapter_id,v.Id AS volume_id,s.Id AS series_id,{library_column} AS library_id "
             "FROM MangaFile f LEFT JOIN Chapter c ON c.Id=f.ChapterId LEFT JOIN Volume v ON v.Id=c.VolumeId "
             "LEFT JOIN Series s ON s.Id=v.SeriesId")]
         current_ids = {kind: {row[0] for row in con.execute(f'SELECT Id FROM "{kind}"')}
                        for kind in ("Series", "Chapter", "Volume")}
         states = {table: [dict(row) for row in con.execute(f'SELECT * FROM "{table}"')] for table in STATE_TABLES}
+        metadata_series = ({row["Id"]: row["SeriesId"] for row in con.execute('SELECT Id,SeriesId FROM SeriesMetadata')}
+                           if "SeriesMetadata" in columns else {})
         con.rollback()
     finally:
         con.close()
@@ -139,6 +177,35 @@ def kavita_dependencies(db_path, proof, root):
             state_key = state.get("Id", f"{state.get('CollectionsId')}:{state.get('ItemsId')}")
             if table == "AppUserCollectionSeries":
                 references = [{"SeriesId": state["ItemsId"]}]
+            elif table == "CollectionTagSeriesMetadata":
+                key = state.get("SeriesMetadatasId")
+                if key not in metadata_series:
+                    errors.append(f"unresolved legacy collection metadata: {key}")
+                    references = []
+                else:
+                    references = [{"SeriesId": metadata_series[key]}]
+            elif table == "SeriesRelation":
+                references = [state, {"SeriesId": state.get("TargetSeriesId")}]
+            elif table == "ScrobbleError":
+                references = ([state] if any(state.get(key) for key in ("SeriesId", "ChapterId", "VolumeId")) else []) + [event for event in states["ScrobbleEvent"]
+                                        if event.get("Id") == state.get("ScrobbleEventId1")]
+                if state.get("ScrobbleEventId1") and not any(event.get("Id") == state["ScrobbleEventId1"] for event in states["ScrobbleEvent"]):
+                    errors.append(f"unresolved scrobble event: {state_key}")
+            elif table == "AppUserReadingProfiles":
+                try:
+                    series_ids, library_ids = (json.loads(state[field]) for field in ("SeriesIds", "LibraryIds"))
+                    if (not isinstance(series_ids, list) or not isinstance(library_ids, list)
+                            or any(type(value) is not int or value <= 0 for value in series_ids + library_ids)):
+                        raise ValueError("invalid profile ids")
+                    references = [{"SeriesId": value} for value in series_ids]
+                    for value in library_ids:
+                        mapped = [row for row in files if row["library_id"] == value]
+                        if not mapped:
+                            errors.append(f"unresolved profile library: {state_key}/{value}")
+                        references += [{"SeriesId": row["series_id"]} for row in mapped]
+                except (KeyError, TypeError, ValueError):
+                    errors.append(f"unresolved reading-profile references: {state_key}")
+                    references = []
             if table == "AppUserReadingSession":
                 references = [activity for activity in states["AppUserReadingSessionActivityData"]
                               if activity.get("AppUserReadingSessionId") == state.get("Id")]

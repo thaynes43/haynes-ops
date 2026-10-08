@@ -19,8 +19,8 @@
 # to the epub (EBOOK_TYPE lists epub first); Kavita gets one library scan per
 # run that converted something.
 #
-# Metadata removal (https://github.com/thaynes43/haynesnetwork/issues/825) ships
-# gated OFF. A separate pass strips only approved embedded grouping metadata,
+# Metadata maintenance (https://github.com/thaynes43/haynesnetwork/issues/825) is controlled
+# by STRIP_SERIES_METADATA. A separate pass applies only approved grouping edits,
 # after verified backups under books/.epub-convert/backup. It shares this lock
 # and queues one scan after successful changes. Stage and restore procedure:
 # .agents/runbooks/lazylibrarian-epub-metadata.md. Enable only after app safeguards,

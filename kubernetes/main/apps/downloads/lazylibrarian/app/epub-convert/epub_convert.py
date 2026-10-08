@@ -611,7 +611,46 @@ def strip_folders():
     return folders
 
 
-def strip_series_pass(folders, run_started):
+def load_grouping_author_proof(manifest_path, folders):
+    """Manual exact-file proof, validated before any pass may edit the library."""
+    path = os.path.abspath(manifest_path)
+    if os.path.commonpath((path, os.path.abspath(EBOOK_ROOT))) == os.path.abspath(EBOOK_ROOT):
+        raise epub_metadata.Refused("grouping author manifest must be outside EBOOK_ROOT")
+    with epub_metadata.safe_directory(os.path.dirname(path)) as directory:
+        raw, _info = epub_metadata.read_regular(directory, os.path.basename(path), 1024 * 1024)
+    proof = json.loads(raw, object_pairs_hook=epub_copies.unique_object)
+    if not isinstance(proof, dict):
+        raise epub_metadata.Refused("grouping author manifest must be an exact proof record")
+    relative = epub_copies.relative_path(proof.get("path"))
+    source = os.path.join(EBOOK_ROOT, relative)
+    if not any(os.path.commonpath((folder, source)) == folder for folder in folders):
+        raise epub_metadata.Refused("grouping author proof is outside the approved strip folders")
+    return proof
+
+
+def apply_grouping_author_proof(identities, proof, deadline):
+    """Return a grouping-only census; ordinary identities/credits remain unchanged."""
+    found = False
+    resolved = []
+    for identity in identities:
+        if identity["path"] != proof.get("path"):
+            resolved.append(identity)
+            continue
+        if time.monotonic() >= deadline:
+            raise epub_metadata.Refused("run budget exhausted before author proof verification")
+        source = os.path.join(EBOOK_ROOT, identity["path"])
+        with epub_metadata.safe_directory(os.path.dirname(source)) as directory:
+            raw, info = epub_metadata.read_regular(directory, os.path.basename(source))
+        if epub_metadata._identity(info) != identity["source_identity"]:
+            raise epub_metadata.Changed("author proof source changed since complete identity census")
+        resolved.append(epub_metadata.grouping_author_identity(raw, identity, proof))
+        found = True
+    if not found:
+        raise epub_metadata.Refused("author proof source is absent from the complete identity census")
+    return resolved
+
+
+def strip_series_pass(folders, run_started, author_proof=None):
     global SERIES_IDENTITIES
     counts = {"stripped": 0, "would_strip": 0, "untagged": 0, "grouped": 0, "settling": 0,
               "refused": 0, "deferred": 0, "collision_held": 0, "configured_held": 0}
@@ -622,6 +661,16 @@ def strip_series_pass(folders, run_started):
         counts.update(refused=len(errors), preflight_failed=True)
         log("epub_series_strip_census", **counts, dry_run=DRY_RUN)
         return counts
+    if author_proof is not None:
+        try:
+            SERIES_IDENTITIES = apply_grouping_author_proof(SERIES_IDENTITIES, author_proof,
+                                                          run_started + RUN_BUDGET_SECONDS)
+            log("epub_grouping_author_proof", result="verified", path=author_proof["path"],
+                source_sha256=author_proof["source_sha256"], dry_run=DRY_RUN)
+        except Exception as err:
+            counts.update(refused=1, preflight_failed=True)
+            log("epub_grouping_author_proof", result="refused", detail=f"{type(err).__name__}: {err}"[:500], dry_run=DRY_RUN)
+            return counts
     identities = {identity["path"]: identity for identity in SERIES_IDENTITIES}
     log("epub_series_preflight", result="ok", epub_count=len(SERIES_IDENTITIES), dry_run=DRY_RUN)
     for root in folders:
@@ -699,15 +748,19 @@ def main():
     restore = None
     restore_copy = None
     copies = None
+    author_manifest = None
+    author_proof = None
     if len(sys.argv) > 1:
-        if (len(sys.argv) != 3 or sys.argv[1] not in ("--restore-backup", "--restore-retained-copy", "--consolidate-copies")
-                or not sys.argv[2].strip()):
-            log("epub_convert_run_failed", error="usage: epub_convert.py [--restore-backup <manifest> | --restore-retained-copy <manifest> | --consolidate-copies <snapshot>]")
+        valid = (len(sys.argv) == 3 and sys.argv[1] in ("--restore-backup", "--restore-retained-copy", "--consolidate-copies", "--strip-author-proof"))
+        if not valid or not sys.argv[2].strip():
+            log("epub_convert_run_failed", error="usage: epub_convert.py [--restore-backup <manifest> | --restore-retained-copy <manifest> | --strip-author-proof <manifest> | --consolidate-copies <snapshot>]")
             return 1
         if sys.argv[1] == "--restore-backup":
             restore = sys.argv[2]
         elif sys.argv[1] == "--restore-retained-copy":
             restore_copy = sys.argv[2]
+        elif sys.argv[1] == "--strip-author-proof":
+            author_manifest = sys.argv[2]
         else:
             copies = sys.argv[2]
     try:
@@ -718,6 +771,10 @@ def main():
         if STRIP_ONLY and not STRIP_SERIES_METADATA and not restore:
             raise epub_metadata.Refused("STRIP_ONLY requires STRIP_SERIES_METADATA=1")
         folders = strip_folders() if STRIP_SERIES_METADATA and not restore else []
+        if author_manifest:
+            if not (STRIP_ONLY and STRIP_SERIES_METADATA and "STRIP_FOLDERS_JSON" in os.environ):
+                raise epub_metadata.Refused("manual author proof requires STRIP_ONLY=1, STRIP_SERIES_METADATA=1 and explicit strip folders")
+            author_proof = load_grouping_author_proof(author_manifest, folders)
         if "STRIP_FOLDERS_JSON" in os.environ and not STRIP_ONLY and not restore:
             raise epub_metadata.Refused("targeted stripping requires STRIP_ONLY=1 to isolate the stage")
     except (ValueError, OSError) as err:
@@ -759,7 +816,7 @@ def main():
             return 0
         if not DRY_RUN and not STRIP_ONLY:
             clean_partials(EBOOK_ROOT)
-        series = strip_series_pass(folders, run_started) if STRIP_SERIES_METADATA else {"stripped": 0, "refused": 0, "deferred": 0}
+        series = strip_series_pass(folders, run_started, author_proof) if STRIP_SERIES_METADATA else {"stripped": 0, "refused": 0, "deferred": 0}
         held = load_held(STATE_DIR)
         now = time.time()
         results = {}

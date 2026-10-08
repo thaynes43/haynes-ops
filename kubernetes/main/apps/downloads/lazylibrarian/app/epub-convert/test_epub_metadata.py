@@ -444,6 +444,38 @@ class GroupingTests(unittest.TestCase):
         with self.assertRaisesRegex(metadata.Refused, "non-author role"):
             metadata.grouping_author_identity(translated, metadata.grouping_identity(translated, identity["path"]), translated_proof)
 
+    def test_manual_proof_entrypoint_is_gated_and_verifies_before_any_edit(self):
+        raw, identity, proof = self.author_proof_fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            root, state = os.path.join(tmp, "EBooks"), os.path.join(tmp, ".epub-convert")
+            source = os.path.join(root, identity["path"])
+            peer = os.path.join(root, "Other Author/Book/peer.epub")
+            write(source, raw)
+            write(peer, fixture(opf=OPF.replace(b'Suzanne Collins', b'Other Author')))
+            manifest = os.path.join(tmp, "author.json")
+            write(manifest, json.dumps(proof).encode())
+            env = {"STRIP_FOLDERS_JSON": '["Suzanne Collins/Book", "Other Author/Book"]'}
+            output = io.StringIO()
+            before = snapshot(root)
+            with mock.patch.multiple(epub_convert, EBOOK_ROOT=root, STATE_DIR=state, DRY_RUN=True,
+                                     STRIP_SERIES_METADATA=True, STRIP_ONLY=True, SETTLE_SECONDS=0), \
+                    mock.patch.dict(os.environ, env), mock.patch.object(sys, "argv", [SCRIPT, "--strip-author-proof", manifest]), \
+                    contextlib.redirect_stdout(output):
+                self.assertEqual(epub_convert.main(), 0)
+                self.assertIn('"msg":"epub_grouping_author_proof","result":"verified"', output.getvalue())
+                self.assertIn('"grouping":"Mockingjay & more (Suzanne Collins)"', output.getvalue())
+                self.assertEqual(snapshot(root), before)
+                # Gate refusal occurs before the lock or any source mutation.
+                with mock.patch.object(epub_convert, "STRIP_ONLY", False), mock.patch.object(epub_convert, "take_lock") as lock:
+                    self.assertEqual(epub_convert.main(), 1)
+                    lock.assert_not_called()
+                write(manifest, json.dumps({**proof, "source_sha256": "0" * 64}).encode())
+                self.assertEqual(epub_convert.main(), 1)
+                self.assertEqual(snapshot(root), before)
+                write(manifest, json.dumps({**proof, "path": "Absent/Book/missing.epub"}).encode())
+                self.assertEqual(epub_convert.main(), 1)
+                self.assertEqual(snapshot(root), before)
+
     def test_creator_spelling_variants_with_shared_author_alias_do_not_invent_two_people(self):
         first = metadata.grouping_identity(fixture(), "Suzanne Collins/Book/first.epub")
         second = metadata.grouping_identity(fixture(opf=OPF.replace(b'Suzanne Collins', b'Suzanne C. Collins')),

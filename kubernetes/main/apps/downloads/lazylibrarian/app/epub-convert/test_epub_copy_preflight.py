@@ -156,7 +156,7 @@ class PreflightTests(unittest.TestCase):
                           'CREATE TABLE Chapter(Id INTEGER,VolumeId INTEGER); '
                           'CREATE TABLE MangaFile(FilePath TEXT,ChapterId INTEGER);')
         for table in preflight.STATE_TABLES:
-            con.execute(f'CREATE TABLE "{table}"(Id INTEGER,SeriesId INTEGER,ChapterId INTEGER,PagesRead INTEGER,LastXPath TEXT,Data TEXT,AppUserReadingSessionId INTEGER,CollectionsId INTEGER,ItemsId INTEGER)')
+            con.execute(f'CREATE TABLE "{table}"(Id INTEGER,SeriesId INTEGER,ChapterId INTEGER,PagesRead INTEGER,LastXPath TEXT,Data TEXT,AppUserReadingSessionId INTEGER,CollectionsId INTEGER,ItemsId INTEGER,TargetSeriesId INTEGER,ScrobbleEventId1 INTEGER,SeriesMetadatasId INTEGER,SeriesIds TEXT,LibraryIds TEXT)')
         con.execute('INSERT INTO Series VALUES(7)')
         con.execute('INSERT INTO Volume VALUES(8,7)')
         con.execute('INSERT INTO Chapter VALUES(9,8)')
@@ -168,6 +168,14 @@ class PreflightTests(unittest.TestCase):
                     (json.dumps({"SeriesIds": [7], "ChapterIds": [9], "Activities": []}),))
         con.execute('INSERT INTO ReadingListItem(Id,SeriesId,ChapterId) VALUES(14,7,9)')
         con.execute('INSERT INTO AppUserCollectionSeries(CollectionsId,ItemsId) VALUES(15,7)')
+        con.execute('INSERT INTO AppUserReadingProfiles(Id,SeriesIds,LibraryIds) VALUES(16,?,?)', ('[7]', '[]'))
+        con.execute('INSERT INTO ScrobbleHold(Id,SeriesId) VALUES(17,7)')
+        con.execute('INSERT INTO ScrobbleEvent(Id,SeriesId) VALUES(18,7)')
+        con.execute('INSERT INTO ScrobbleError(Id,ScrobbleEventId1) VALUES(19,18)')
+        con.execute('INSERT INTO SeriesRelation(Id,SeriesId,TargetSeriesId) VALUES(20,7,7)')
+        con.execute('CREATE TABLE SeriesMetadata(Id INTEGER,SeriesId INTEGER)')
+        con.execute('INSERT INTO SeriesMetadata VALUES(21,7)')
+        con.execute('INSERT INTO CollectionTagSeriesMetadata(Id,SeriesMetadatasId) VALUES(22,21)')
         con.commit()
         con.close()
         before = Path(path).read_bytes()
@@ -181,6 +189,8 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(disconnected, [])
         self.assertTrue(any("ReadingListItem/14" in row["reason"] for row in protected))
         self.assertTrue(any("AppUserCollectionSeries/" in row["reason"] for row in protected))
+        for name in ("AppUserReadingProfiles/16", "ScrobbleHold/17", "ScrobbleError/19", "SeriesRelation/20", "CollectionTagSeriesMetadata/22"):
+            self.assertTrue(any(name in row["reason"] for row in protected), name)
         self.assertEqual(Path(path).read_bytes(), before)
         self.assertFalse(Path(path + "-journal").exists())
         with self.assertRaises(metadata.Refused):
@@ -226,6 +236,25 @@ class PreflightTests(unittest.TestCase):
         con.close()
         with self.assertRaisesRegex(metadata.Refused, "unknown saved-book dependency table"):
             preflight.kavita_dependencies(path, self.proof, self.root)
+
+    def test_arbitrary_indirect_work_and_unknown_populated_user_tables_refuse(self):
+        # Table naming cannot bypass the dependency boundary.
+        for ddl in ('CREATE TABLE NovelFutureBinding(Id INTEGER,JoinId INTEGER REFERENCES ReadingListItem(Id)); INSERT INTO NovelFutureBinding VALUES(1,1);',
+                    'CREATE TABLE NovelUserBinding(Id INTEGER,AppUserId INTEGER); INSERT INTO NovelUserBinding VALUES(1,2);'):
+            with self.subTest(ddl=ddl):
+                path = os.path.join(self.tmp.name, "future.db")
+                if os.path.exists(path):
+                    os.unlink(path)
+                con = sqlite3.connect(path)
+                con.executescript('CREATE TABLE Series(Id INTEGER); CREATE TABLE Volume(Id INTEGER,SeriesId INTEGER); '
+                                  'CREATE TABLE Chapter(Id INTEGER,VolumeId INTEGER); CREATE TABLE MangaFile(FilePath TEXT,ChapterId INTEGER);')
+                for table in preflight.STATE_TABLES:
+                    con.execute(f'CREATE TABLE "{table}"(Id INTEGER,SeriesId INTEGER REFERENCES Series(Id),ChapterId INTEGER,Data TEXT)')
+                con.executescript(ddl)
+                con.commit()
+                con.close()
+                with self.assertRaisesRegex(metadata.Refused, "unknown .*dependency table"):
+                    preflight.kavita_dependencies(path, self.proof, self.root)
 
     def test_ll_source_copy_must_be_read_only_and_stable(self):
         path = os.path.join(self.tmp.name, "ll.jsonl")
