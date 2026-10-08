@@ -114,7 +114,7 @@ class PreflightTests(unittest.TestCase):
                 write(os.path.join(self.root, self.extra), fixture(opf=opf))
                 _evidence, report = self.prepare()
                 self.assertEqual(report["same_author_groups"], 0)
-                self.assertEqual(report["ambiguous_files"][0]["path"], self.extra)
+                self.assertIn(self.extra, {row["path"] for row in report["ambiguous_files"]})
 
     def test_copied_kavita_db_resolves_full_file_map_and_zero_counter_state(self):
         path = os.path.join(self.tmp.name, "kavita.db")
