@@ -57,9 +57,21 @@ class CatalogSecurityTests(unittest.TestCase):
         self.assertIn(("", "pods/attach", "create"), granted)
 
     def test_controller_and_authority_groups_have_no_permissions(self):
-        groups = ["rbac.authorization.k8s.io", "admissionregistration.k8s.io", "apiextensions.k8s.io", "apiregistration.k8s.io", "dev-env.haynesops.com", "kyverno.io", "policies.kyverno.io", "future.kyverno.io", "external-secrets.io", "generators.external-secrets.io", "future.external-secrets.io", "source.toolkit.fluxcd.io", "future.fluxcd.io"]
+        groups = ["rbac.authorization.k8s.io", "admissionregistration.k8s.io", "apiextensions.k8s.io", "apiregistration.k8s.io", "flowcontrol.apiserver.k8s.io", "dev-env.haynesops.com", "kyverno.io", "policies.kyverno.io", "future.kyverno.io", "external-secrets.io", "generators.external-secrets.io", "future.external-secrets.io", "source.toolkit.fluxcd.io", "future.fluxcd.io"]
         snapshot = catalog.normalize([listing(g + "/v1", ["objects", "objects/future"]) for g in groups] + [listing("v1", ["pods"])])
         self.assertEqual({group for group, _, _ in permissions(catalog.role(snapshot))}, {""})
+
+    def test_cilium_is_fail_closed_except_namespaced_network_policy(self):
+        blocked = ["ciliumendpoints", "ciliumidentities", "ciliumcidrgroups", "ciliumloadbalancerippools", "ciliuml2announcementpolicies", "ciliumnodes", "ciliumlocalredirectpolicies", "ciliumclusterwidenetworkpolicies", "futureciliumstate", "ciliumnetworkpoliciesevil"]
+        snapshot = catalog.normalize([listing("cilium.io/v2", [name for parent in blocked for name in (parent, parent + "/status")] + ["ciliumnetworkpolicies", "ciliumnetworkpolicies/status", "ciliumnetworkpolicies/status/future"])])
+        self.assertEqual({r for _, r, _ in permissions(catalog.role(snapshot))}, {"ciliumnetworkpolicies", "ciliumnetworkpolicies/status", "ciliumnetworkpolicies/status/future"})
+        cluster_scoped = catalog.normalize([listing("cilium.io/v2", ["ciliumnetworkpolicies"], namespaced=False), listing("v1", ["pods"])])
+        self.assertFalse(any(g == "cilium.io" for g, _, _ in permissions(catalog.role(cluster_scoped))))
+
+    def test_actual_role_cilium_and_flow_control_exclusions(self):
+        granted = permissions(json.loads(catalog.DEFAULT_ROLE.read_text()))
+        self.assertFalse(any(g == "flowcontrol.apiserver.k8s.io" for g, _, _ in granted))
+        self.assertEqual({r for g, r, _ in granted if g == "cilium.io"}, {"ciliumnetworkpolicies", "ciliumnetworkpolicies/status"})
 
     def test_dangerous_verbs_are_removed_even_in_a_new_group(self):
         snapshot = catalog.normalize([listing("new.example/v1", ["widgets"], ["get", "create", "bind", "escalate", "impersonate"])])
@@ -169,6 +181,77 @@ class DiscoveryContractTests(unittest.TestCase):
             path.write_text("kind: CustomResourceDefinition\n" + yaml.safe_dump({"spec": updated["spec"]}))
             with self.assertRaises(catalog.CatalogError):
                 catalog.check_crds(complete, Path(temp))
+
+
+class RepoCRDSyncTests(unittest.TestCase):
+    def setUp(self):
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML is installed by hosted CI for repo CRD coverage")
+        self.yaml = yaml
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+
+    def write_crd(self, group="dev-env.haynesops.com", name="newcrds", versions=None, scope="Namespaced", kind="Fixture"):
+        spec = {"group": group, "names": {"plural": name, "kind": kind}, "scope": scope, "versions": versions or [{"name": "v1", "served": True, "subresources": {"status": {}, "scale": {}}}]}
+        self.root.joinpath("crd.yaml").write_text("kind: CustomResourceDefinition\n" + self.yaml.safe_dump({"spec": spec}))
+
+    def test_new_excluded_crd_passes_predeploy_without_permission_growth(self):
+        initial = catalog.normalize([listing("v1", ["pods"])])
+        self.write_crd()
+        with self.assertRaises(catalog.CatalogError):
+            catalog.check_crds(initial, self.root)
+        merged = catalog.sync_crds(initial, self.root)
+        catalog.check_crds(merged, self.root)
+        self.assertEqual(catalog.role(initial), catalog.role(merged))
+        self.assertNotEqual(initial, merged)  # Runtime discovery must still flag absence.
+        self.assertEqual(merged, catalog.sync_crds(merged, self.root))
+        records = {r["resource"]: r for r in merged["resources"]}
+        self.assertEqual(records["newcrds/scale"]["kinds"], ["Scale"])
+        self.assertEqual(records["newcrds/status"]["verbs"], ["get", "patch", "update"])
+
+    def test_new_version_preserves_captured_metadata_and_permissions(self):
+        initial = catalog.normalize([listing("v1", ["pods"]), listing("sample.example/v1", ["widgets"], ["get", "patch"])])
+        self.write_crd(group="sample.example", name="widgets", versions=[{"name": "v1", "served": True}, {"name": "v2", "served": True}, {"name": "v3", "served": False}])
+        merged = catalog.sync_crds(initial, self.root)
+        catalog.check_crds(merged, self.root)
+        self.assertEqual(catalog.role(initial), catalog.role(merged))
+        original_pod = next(r for r in initial["resources"] if r["resource"] == "pods")
+        self.assertIn(original_pod, merged["resources"])
+        widget = next(r for r in merged["resources"] if r["resource"] == "widgets")
+        self.assertEqual(widget["versions"], ["v1", "v2"])
+        self.assertEqual(widget["verbs"], ["get", "patch"])
+
+    def test_retired_version_remains_until_explicit_live_capture(self):
+        initial = catalog.normalize([listing("dev-env.haynesops.com/v1", ["widgets"]), listing("dev-env.haynesops.com/v2", ["widgets"]), listing("v1", ["pods"])])
+        self.write_crd(name="widgets", versions=[{"name": "v1", "served": False}, {"name": "v2", "served": True}])
+        self.assertEqual(initial, catalog.sync_crds(initial, self.root))
+
+    def test_scope_or_kind_conflict_fails_instead_of_rewriting_source(self):
+        initial = catalog.normalize([listing("v1", ["pods"]), listing("sample.example/v1", ["widgets"])])
+        for changed in [{"scope": "Cluster"}, {"kind": "ChangedKind"}]:
+            self.write_crd(group="sample.example", name="widgets", **changed)
+            with self.subTest(changed=changed), self.assertRaises(catalog.CatalogError):
+                catalog.sync_crds(initial, self.root)
+
+    def test_new_cilium_data_plane_declaration_adds_no_permission(self):
+        initial = catalog.normalize([listing("v1", ["pods"])])
+        self.write_crd(group="cilium.io", name="futurestate", scope="Cluster")
+        merged = catalog.sync_crds(initial, self.root)
+        catalog.check_crds(merged, self.root)
+        self.assertEqual(catalog.role(initial), catalog.role(merged))
+
+    def test_unknown_subresources_and_conflicting_declarations_fail_closed(self):
+        initial = catalog.normalize([listing("v1", ["pods"])])
+        self.write_crd(versions=[{"name": "v1", "served": True, "subresources": {"future": {}}}])
+        with self.assertRaises(catalog.CatalogError):
+            catalog.sync_crds(initial, self.root)
+        self.write_crd()
+        self.root.joinpath("other.yaml").write_text(self.root.joinpath("crd.yaml").read_text().replace("scope: Namespaced", "scope: Cluster"))
+        with self.assertRaises(catalog.CatalogError):
+            catalog.sync_crds(initial, self.root)
 
 
 if __name__ == "__main__":

@@ -12,16 +12,23 @@ GitOps companion, not a new access decision or a change to the baseline roles.
 generator reads every served API version and merges the same group/resource across
 versions. It excludes Secrets and their subresources, ServiceAccount tokens, the
 node proxy, ephemeral containers, bind/escalate/impersonate, RBAC, CSR approval,
-admission controls, Kyverno, CRDs, APIServices, Flux, External Secrets, cluster-wide
-Cilium policies, and dev-env CRDs. It grants no wildcard or non-resource permission.
+admission controls, Kyverno, CRDs, APIServices, Flux, External Secrets, API Priority
+and Fairness configuration, and dev-env CRDs. Within `cilium.io`, only namespaced
+`ciliumnetworkpolicies` and their subresources are allowed; every other resource,
+including future data-plane resources, is excluded. Cilium endpoint/identity state,
+CIDR groups, redirect policy, node/IPAM, LB pools and L2 announcements can bypass
+network isolation or alter LAN traffic even without modifying a cluster-wide policy.
+The identity guard refuses these Cilium resources and the flow-control group as a
+backstop. The role grants no wildcard or non-resource permission.
 It additionally excludes pod port-forward and pod/Service proxy endpoints: they
 bypass network/ingress isolation and lack the privileged-target admission lookup
 that covers both pod exec and attach. Those paths fail closed until a guard is
 deliberately designed and verified.
 The existing identity and exec guards still apply to every `grant-*` identity;
 they keep dev-env and controller namespaces protected and refuse privilege or new
-Secret references in workloads. This change modifies neither those guards nor the
-baseline roles, and binds the new role to no identity. Their present coverage does
+Secret references in workloads. This change tightens only the identity guard's
+protected-object exclusions, changes no baseline role, and binds the new role to no
+identity. Their present coverage does
 not establish an owner authentication boundary; the verified gap below blocks human
 approval enablement.
 
@@ -29,6 +36,9 @@ The checked-in `rbac/app/catalog/discovery.json` holds API metadata only: group,
 resource/subresource, served versions, kind, namespace scope and advertised verbs.
 It contains no object instances, names, credentials, cluster addresses or timestamps.
 `generate.py` uses Python's standard library for capture, generation and live checks.
+`sync-crds` adds expected metadata from declared repo CRDs before deployment while
+preserving captured metadata for existing resources. A snapshot can therefore
+temporarily describe resources or versions that Flux has not installed yet.
 
 ## CI and live drift
 
@@ -36,7 +46,31 @@ Hosted PR CI regenerates the role from the snapshot, checks forbidden permission
 and checks that Flux-managed CRDs under `kubernetes/main/apps` have their served
 resources in the snapshot. Historical bootstrap CRD backups are outside that scan.
 It does not receive cluster credentials. PyYAML is used only for the optional
-repo-CRD check; the generator and in-cluster checker have no third-party dependency.
+repo-CRD check and explicit metadata synchronization command; generation and the
+in-cluster checker have no third-party dependency.
+
+When a PR adds a repo-managed CRD, served version, or status/scale subresource, update
+the snapshot in that same PR **before deployment**, with no cluster access:
+
+```bash
+catalog=kubernetes/main/apps/dev-env-system/rbac/app/catalog/generate.py
+nice -n 19 python3 "$catalog" sync-crds --crd-root kubernetes/main/apps
+nice -n 19 python3 "$catalog" render
+nice -n 19 python3 "$catalog" check --crd-root kubernetes/main/apps
+```
+
+Install CI's pinned `PyYAML==6.0.3` if the optional parser is unavailable. The command
+derives only CRD API metadata and standard advertised root/status/scale verbs, checks
+scope/kind conflicts, and keeps every previously captured resource and its metadata.
+The role's exclusions also apply to these expected entries: a new dev-env CRD or
+served version adds no grant permission. Review permission changes for a CRD in any
+allowed group. Snapshot and generated role are reviewed together; the required CI
+check then passes without waiting for a deployment that requires that same check.
+
+The runtime checker intentionally reports a mismatch until Flux installs those
+expected resources/versions. Once the CRD has reconciled, verify discovery matches.
+For removed versions/resources, retain old metadata in the premerge update and use
+`capture` after deployment to remove stale discovery entries through a follow-up PR.
 
 The CPU-limited `dev-env-grant-discovery` CronJob compares the snapshot with live
 discovery every 30 minutes. Its explicit RBAC permits only GET on `/api`, `/api/*`,

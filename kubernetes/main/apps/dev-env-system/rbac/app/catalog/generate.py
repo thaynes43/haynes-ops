@@ -2,7 +2,8 @@
 """Explicit dev-env break-glass RBAC from Kubernetes discovery, never object data.
 
 Capture/render/check-live use only Python's standard library. The optional
---crd-root CI coverage check imports PyYAML to read repo-managed CRD manifests.
+--crd-root CI coverage check and offline sync-crds command import PyYAML to read
+repo-managed CRD manifests.
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ EXCLUDED_GROUPS = frozenset(
         "kyverno.io",
         "external-secrets.io",
         "fluxcd.io",
+        "flowcontrol.apiserver.k8s.io",
     }
 )
 EXCLUDED_RESOURCES = {
@@ -61,8 +63,9 @@ EXCLUDED_RESOURCES = {
         }
     ),
     "certificates.k8s.io": frozenset({"certificatesigningrequests/approval"}),
-    "cilium.io": frozenset({"ciliumclusterwidenetworkpolicies"}),
 }
+CRD_RESOURCE_VERBS = tuple(sorted(ALLOWED_VERBS))
+CRD_SUBRESOURCE_VERBS = ("get", "patch", "update")
 GROUP_RE = re.compile(r"(?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)?\Z")
 RESOURCE_RE = re.compile(r"[a-z0-9][a-z0-9.-]*(?:/[a-z0-9][a-z0-9.-]*)*\Z")
 VERSION_RE = re.compile(r"v[0-9]+(?:(?:alpha|beta)[0-9]+)?\Z")
@@ -170,6 +173,11 @@ def validate_snapshot(snapshot: dict) -> dict:
 def excluded(group: str, resource: str) -> bool:
     if group in EXCLUDED_GROUPS or group.endswith((".fluxcd.io", ".external-secrets.io", ".kyverno.io")):
         return True
+    # Data-plane identity, node/IPAM, redirects and shared CIDR/LB configuration
+    # bypass namespace policy just as directly as the excluded cluster-wide policy.
+    # Fail closed for future Cilium resources; permit only the namespaced policy API.
+    if group == "cilium.io":
+        return resource != "ciliumnetworkpolicies" and not resource.startswith("ciliumnetworkpolicies/")
     return any(resource == blocked or resource.startswith(blocked + "/") for blocked in EXCLUDED_RESOURCES.get(group, ()))
 
 
@@ -177,7 +185,7 @@ def role(snapshot: dict) -> dict:
     buckets = collections.defaultdict(list)
     for record in validate_snapshot(snapshot)["resources"]:
         group, resource = record["apiGroup"], record["resource"]
-        if excluded(group, resource):
+        if excluded(group, resource) or (group == "cilium.io" and not record["namespaced"]):
             continue
         verbs = tuple(v for v in record["verbs"] if v in ALLOWED_VERBS)
         if verbs:
@@ -190,7 +198,7 @@ def role(snapshot: dict) -> dict:
         "metadata": {
             "name": ROLE_NAME,
             "labels": {"dev-env.haynesops.com/grant-role": "true"},
-            "annotations": {"dev-env.haynesops.com/catalog-source": "API discovery minus DESIGN-001 D-27 exclusions; see catalog/generate.py"},
+            "annotations": {"dev-env.haynesops.com/catalog-source": "API discovery and declared repo CRDs minus DESIGN-001 D-27 exclusions; see catalog/generate.py"},
         },
         "rules": [{"apiGroups": [group], "resources": sorted(resources), "verbs": list(verbs)} for (group, verbs), resources in sorted(buckets.items())],
     }
@@ -291,13 +299,16 @@ def discover(read) -> dict:
     return normalize(lists)
 
 
-def check_crds(snapshot: dict, root: Path):
+def repo_crds(root: Path) -> list[tuple[Path, dict]]:
+    """Read explicit repo CRDs, never embedded blueprints or object instances."""
     try:
         import yaml
     except ImportError:
-        raise CatalogError("repo CRD coverage needs PyYAML; CI installs its pinned version") from None
-    indexed = {(r["apiGroup"], r["resource"]): r for r in snapshot["resources"]}
-    checked = 0
+        raise CatalogError("repo CRD coverage/sync needs PyYAML; CI installs its pinned version") from None
+    if not root.is_dir():
+        raise CatalogError("repo CRD root is not a directory")
+    declarations = []
+    declared_identities = {}
     for path in sorted(root.rglob("*.yaml")) + sorted(root.rglob("*.yml")):
         contents = path.read_text()
         # Skip embedded Authentik blueprints and ordinary Kubernetes manifests.
@@ -311,25 +322,90 @@ def check_crds(snapshot: dict, root: Path):
             if not isinstance(document, dict) or document.get("kind") != "CustomResourceDefinition":
                 continue
             spec = document.get("spec", {})
-            group, name = spec.get("group"), spec.get("names", {}).get("plural")
-            record = indexed.get((group, name))
-            served = {v["name"] for v in spec.get("versions", []) if v.get("served")}
-            if not record or not served or not served.issubset(record["versions"]) or record["namespaced"] != (spec.get("scope") == "Namespaced") or spec.get("names", {}).get("kind") not in record["kinds"]:
-                raise CatalogError(f"repo CRD is missing/stale in discovery: {group}/{name} ({path}); capture discovery after its CRD deploy and regenerate")
-            for version in spec.get("versions", []):
-                if not version.get("served"):
-                    continue
-                for subresource in version.get("subresources", {}):
-                    subrecord = indexed.get((group, f"{name}/{subresource}"))
-                    if not subrecord or version["name"] not in subrecord["versions"]:
-                        raise CatalogError(f"repo CRD subresource/version is missing in discovery: {group}/{name}/{subresource}/{version['name']}")
-            checked += 1
-    print(f"repo-managed CRD coverage passed ({checked} CRDs)")
+            if not isinstance(spec, dict) or not isinstance(spec.get("names"), dict) or spec.get("scope") not in {"Namespaced", "Cluster"}:
+                raise CatalogError(f"invalid repo CRD metadata: {path}")
+            group, name, kind = spec.get("group"), spec["names"].get("plural"), spec["names"].get("kind")
+            versions = spec.get("versions")
+            if not isinstance(group, str) or not group or not isinstance(versions, list) or not versions:
+                raise CatalogError(f"invalid repo CRD group/versions: {path}")
+            seen_versions = set()
+            for version in versions:
+                if not isinstance(version, dict) or not isinstance(version.get("name"), str) or not VERSION_RE.fullmatch(version["name"]) or not isinstance(version.get("served"), bool):
+                    raise CatalogError(f"invalid repo CRD version: {path}")
+                if version["name"] in seen_versions:
+                    raise CatalogError(f"duplicate repo CRD version: {path}")
+                seen_versions.add(version["name"])
+                subresources = version.get("subresources", {})
+                if not isinstance(subresources, dict) or set(subresources) - {"status", "scale"}:
+                    raise CatalogError(f"unknown repo CRD subresource: {path}")
+                # Reuse the strict discovery field validation for declared metadata.
+                normalize([{"groupVersion": f"{group}/{version['name']}", "resources": [{"name": name, "kind": kind, "namespaced": spec["scope"] == "Namespaced", "verbs": list(CRD_RESOURCE_VERBS)}]}])
+            if not any(v["served"] for v in versions):
+                raise CatalogError(f"repo CRD has no served version: {path}")
+            identity = (group, name)
+            metadata = (spec["scope"], kind)
+            if identity in declared_identities and declared_identities[identity] != metadata:
+                raise CatalogError(f"conflicting repo CRD scope/kind: {group}/{name} ({path})")
+            declared_identities[identity] = metadata
+            declarations.append((path, spec))
+    return declarations
+
+
+def sync_crds(snapshot: dict, root: Path) -> dict:
+    """Add declarations before deploy; preserve all captured records and metadata.
+
+    Existing scope/kind conflicts fail rather than rewriting live-derived metadata.
+    Retiring versions is a capture-after-deploy operation, never a silent prune.
+    """
+    snapshot = validate_snapshot(snapshot)
+    indexed = {(r["apiGroup"], r["resource"]): r for r in snapshot["resources"]}
+    lists = []
+    # Reconstitute existing metadata without dropping kinds, versions or verbs.
+    for record in snapshot["resources"]:
+        for version in record["versions"]:
+            gv = f"{record['apiGroup']}/{version}" if record["apiGroup"] else version
+            lists.append({"groupVersion": gv, "resources": [{"name": record["resource"], "kind": kind, "namespaced": record["namespaced"], "verbs": record["verbs"]} for kind in record["kinds"]]})
+    for path, spec in repo_crds(root):
+        group, name, kind = spec["group"], spec["names"]["plural"], spec["names"]["kind"]
+        namespaced = spec["scope"] == "Namespaced"
+        for version in spec["versions"]:
+            if not version["served"]:
+                continue
+            resources = [(name, kind, CRD_RESOURCE_VERBS)]
+            resources.extend((f"{name}/{subresource}", "Scale" if subresource == "scale" else kind, CRD_SUBRESOURCE_VERBS) for subresource in sorted(version.get("subresources", {})))
+            entries = []
+            for resource, resource_kind, standard_verbs in resources:
+                captured = indexed.get((group, resource))
+                if captured and (captured["namespaced"] != namespaced or resource_kind not in captured["kinds"]):
+                    raise CatalogError(f"repo CRD conflicts with captured scope/kind: {group}/{resource} ({path})")
+                entries.append({"name": resource, "kind": resource_kind, "namespaced": namespaced, "verbs": captured["verbs"] if captured else list(standard_verbs)})
+            lists.append({"groupVersion": f"{group}/{version['name']}", "resources": entries})
+    return normalize(lists)
+
+
+def check_crds(snapshot: dict, root: Path):
+    indexed = {(r["apiGroup"], r["resource"]): r for r in snapshot["resources"]}
+    declarations = repo_crds(root)
+    for path, spec in declarations:
+        group, name = spec["group"], spec["names"]["plural"]
+        record = indexed.get((group, name))
+        served = {v["name"] for v in spec.get("versions", []) if v.get("served")}
+        if not record or not served or not served.issubset(record["versions"]) or record["namespaced"] != (spec.get("scope") == "Namespaced") or spec.get("names", {}).get("kind") not in record["kinds"]:
+            raise CatalogError(f"repo CRD is missing/stale in discovery: {group}/{name} ({path}); run sync-crds --crd-root {root} before deployment, then render")
+        for version in spec.get("versions", []):
+            if not version.get("served"):
+                continue
+            for subresource in version.get("subresources", {}):
+                subrecord = indexed.get((group, f"{name}/{subresource}"))
+                expected_kind = "Scale" if subresource == "scale" else spec["names"]["kind"]
+                if not subrecord or version["name"] not in subrecord["versions"] or subrecord["namespaced"] != (spec["scope"] == "Namespaced") or expected_kind not in subrecord["kinds"]:
+                    raise CatalogError(f"repo CRD subresource/version is missing in discovery: {group}/{name}/{subresource}/{version['name']}; run sync-crds --crd-root {root} before deployment, then render")
+    print(f"repo-managed CRD coverage passed ({len(declarations)} CRDs)")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("capture", "render", "check", "check-live"))
+    parser.add_argument("command", choices=("capture", "sync-crds", "render", "check", "check-live"))
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--role", type=Path, default=DEFAULT_ROLE)
     parser.add_argument("--in-cluster", action="store_true")
@@ -342,6 +418,13 @@ def main() -> int:
             print(f"captured {len(snapshot['resources'])} discovered resources; no object data")
             return 0
         snapshot = validate_snapshot(json.loads(args.snapshot.read_text()))
+        if args.command == "sync-crds":
+            if not args.crd_root:
+                raise CatalogError("sync-crds requires --crd-root; it reads local manifests only")
+            merged = sync_crds(snapshot, args.crd_root)
+            args.snapshot.write_text(serialized(merged))
+            print(f"synchronized repo CRDs offline ({len(merged['resources']) - len(snapshot['resources'])} new resources); captured metadata preserved")
+            return 0
         if args.command == "check-live":
             live = discover(DiscoveryReader(args.in_cluster))
             if live != snapshot:
