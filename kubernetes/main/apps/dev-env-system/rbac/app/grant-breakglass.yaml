@@ -7,7 +7,7 @@
       "dev-env.haynesops.com/grant-role": "true"
     },
     "annotations": {
-      "dev-env.haynesops.com/catalog-source": "API discovery minus DESIGN-001 D-27 exclusions; see catalog/generate.py"
+      "dev-env.haynesops.com/catalog-source": "API discovery and declared repo CRDs minus DESIGN-001 D-27 exclusions; see catalog/generate.py"
     }
   },
   "rules": [
@@ -481,17 +481,7 @@
         "cilium.io"
       ],
       "resources": [
-        "ciliumcidrgroups",
-        "ciliumendpoints",
-        "ciliumexternalworkloads",
-        "ciliumidentities",
-        "ciliuml2announcementpolicies",
-        "ciliumloadbalancerippools",
-        "ciliumlocalredirectpolicies",
-        "ciliumnetworkpolicies",
-        "ciliumnodeconfigs",
-        "ciliumnodes",
-        "ciliumpodippools"
+        "ciliumnetworkpolicies"
       ],
       "verbs": [
         "create",
@@ -509,12 +499,7 @@
         "cilium.io"
       ],
       "resources": [
-        "ciliumexternalworkloads/status",
-        "ciliumidentities/status",
-        "ciliuml2announcementpolicies/status",
-        "ciliumloadbalancerippools/status",
-        "ciliumnetworkpolicies/status",
-        "ciliumnodes/status"
+        "ciliumnetworkpolicies/status"
       ],
       "verbs": [
         "get",
@@ -719,39 +704,6 @@
       "resources": [
         "dnsendpoints/status",
         "dnsrecords/status"
-      ],
-      "verbs": [
-        "get",
-        "patch",
-        "update"
-      ]
-    },
-    {
-      "apiGroups": [
-        "flowcontrol.apiserver.k8s.io"
-      ],
-      "resources": [
-        "flowschemas",
-        "prioritylevelconfigurations"
-      ],
-      "verbs": [
-        "create",
-        "delete",
-        "deletecollection",
-        "get",
-        "list",
-        "patch",
-        "update",
-        "watch"
-      ]
-    },
-    {
-      "apiGroups": [
-        "flowcontrol.apiserver.k8s.io"
-      ],
-      "resources": [
-        "flowschemas/status",
-        "prioritylevelconfigurations/status"
       ],
       "verbs": [
         "get",
