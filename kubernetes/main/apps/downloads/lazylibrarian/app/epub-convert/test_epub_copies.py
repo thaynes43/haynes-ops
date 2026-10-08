@@ -73,6 +73,155 @@ class CopyTests(unittest.TestCase):
         self.assertEqual(manifest["relative_path"], self.extra)
         self.assertEqual(manifest["evidence_sha256"], metadata.sha256(read(self.evidence)))
 
+    def run_selected(self, paths, data=None, changes=None, dry_run=False, logger=None):
+        data = data or self.evidence_data()
+        write(self.evidence, json.dumps(data).encode())
+        hashes = {row["path"]: row["sha256"] for row in data["files"]}
+        selection = {"schema": 1, "kind": "copy_selection", "approved_for_retention": True,
+                     "snapshot_sha256": metadata.sha256(read(self.evidence)),
+                     "entries": [{"path": path, "sha256": hashes[path], "keeper": self.keeper,
+                                  "keeper_sha256": hashes[self.keeper]} for path in paths]}
+        selection.update(changes or {})
+        target = os.path.join(self.tmp.name, "selection.json")
+        write(target, json.dumps(selection).encode())
+        self.lines = []
+        return copies.consolidate(self.evidence, self.root, self.state, 0, frozenset(),
+                                  logger or (lambda msg, **fields: self.lines.append({"msg": msg, **fields})),
+                                  dry_run, selection_path=target)
+
+    def test_ordered_selection_verifies_first_and_keeps_unselected_copy_without_rehash(self):
+        second, unselected = "Suzanne Collins/Second/copy.epub", "Suzanne Collins/Third/copy.epub"
+        for path in (second, unselected):
+            write(os.path.join(self.root, path), self.raw)
+        original_hash = copies.hash_file
+        hashes = []
+        def observed(directory, name, deadline):
+            hashes.append((os.readlink(f"/proc/self/fd/{directory}"), name))
+            return original_hash(directory, name, deadline)
+        with mock.patch.object(copies, "hash_file", side_effect=observed):
+            counts = self.run_selected([second, self.extra])
+        self.assertEqual((counts["moved"], counts["refused"]), (2, 0))
+        self.assertEqual(read(os.path.join(self.root, unselected)), self.raw)
+        moves = [row for row in self.lines if row.get("result") == "moved"]
+        self.assertEqual([row["path"] for row in moves], [second, self.extra])
+        proof_index = next(i for i, row in enumerate(self.lines) if row["msg"] == "epub_copy_stage_proof")
+        last_move = next(i for i, row in enumerate(self.lines) if row.get("result") == "moved" and row["path"] == self.extra)
+        self.assertLess(proof_index, last_move)
+        proof = self.lines[proof_index]
+        self.assertTrue(proof["protected_bytes_verified"])
+        self.assertEqual(proof["unchanged_epubs"], 3)
+        self.assertEqual(sum(folder == os.path.dirname(os.path.join(self.root, unselected)) for folder, _name in hashes), 1)
+
+    def test_selection_binding_protection_and_duplicates_refuse_before_any_move(self):
+        data = self.evidence_data()
+        variants = ({"snapshot_sha256": "0" * 64}, {"approved_for_retention": False}, {"entries": []}, {"schema": True},
+                    *({"entries": [{"path": path, "sha256": digest, "keeper": keeper, "keeper_sha256": keeper_digest}]}
+                      for path, digest, keeper, keeper_digest in (
+                          (self.extra, "0" * 64, self.keeper, metadata.sha256(self.raw)),
+                          ("Suzanne Collins/Unknown/missing.epub", metadata.sha256(self.raw), self.keeper, metadata.sha256(self.raw)),
+                          (self.keeper, metadata.sha256(self.raw), self.keeper, metadata.sha256(self.raw)),
+                          (self.extra, metadata.sha256(self.raw), self.keeper, "0" * 64))))
+        before = snapshot(self.root)
+        for changes in variants:
+            with self.subTest(changes=changes), self.assertRaises(metadata.Refused):
+                self.run_selected([self.extra], data=data, changes=changes)
+            self.assertEqual(snapshot(self.root), before)
+        with self.assertRaises(metadata.Refused):
+            self.run_selected([self.extra, self.extra], data=data)
+        data["kavita"]["protected_paths"] = [{"path": self.extra, "reason": "saved reading-list chapter"}]
+        with self.assertRaises(metadata.Refused):
+            self.run_selected([self.extra], data=data)
+        self.assertEqual(snapshot(self.root), before)
+        self.assertFalse(os.path.exists(self.state))
+
+    def test_first_stage_detects_changed_protected_file_and_stops_remaining_moves(self):
+        second, protected = "Suzanne Collins/Second/copy.epub", "Suzanne Collins/Protected/copy.epub"
+        for path in (second, protected):
+            write(os.path.join(self.root, path), self.raw)
+        data = self.evidence_data()
+        data["kavita"]["protected_paths"] = [{"path": protected, "reason": "saved chapter"}]
+        def logger(msg, **fields):
+            self.lines.append({"msg": msg, **fields})
+            if fields.get("result") == "moved" and fields["path"] == self.extra:
+                write(os.path.join(self.root, protected), self.raw + b"racing writer")
+        counts = self.run_selected([self.extra, second], data=data, logger=logger)
+        self.assertEqual((counts["moved"], counts["refused"]), (1, 1))
+        self.assertEqual(read(os.path.join(self.root, second)), self.raw)
+        self.assertEqual(read(os.path.join(self.root, self.keeper)), self.raw)
+        self.assertFalse(any(row["msg"] == "epub_copy_stage_phase" for row in self.lines))
+        manifest = next(row["backup_manifest"] for row in self.lines if row.get("result") == "moved")
+        self.assertEqual(read(os.path.join(os.path.dirname(manifest), json.loads(read(manifest))["backup_file"])), self.raw)
+
+    def test_first_stage_detects_unapproved_sidecar_change_and_stops_remaining(self):
+        second = "Suzanne Collins/Second/copy.epub"
+        sidecar = os.path.join(self.root, "Suzanne Collins/Mockingjay/book.opf")
+        write(os.path.join(self.root, second), self.raw)
+        write(sidecar, b"unchanged library sidecar")
+        def logger(msg, **fields):
+            self.lines.append({"msg": msg, **fields})
+            if fields.get("result") == "moved":
+                write(sidecar, b"changed by an unfenced publisher")
+        counts = self.run_selected([self.extra, second], logger=logger)
+        self.assertEqual((counts["moved"], counts["refused"]), (1, 1))
+        self.assertEqual(read(os.path.join(self.root, second)), self.raw)
+        self.assertFalse(any(row["msg"] == "epub_copy_stage_phase" for row in self.lines))
+
+    def test_new_epub_during_initial_hash_refuses_before_any_selected_move(self):
+        before = snapshot(self.root)
+        original_hash = copies.hash_file
+        added = False
+        def racing_hash(directory, name, deadline):
+            nonlocal added
+            result = original_hash(directory, name, deadline)
+            if not added:
+                write(os.path.join(self.root, "Suzanne Collins/New/unobserved.epub"), self.raw)
+                added = True
+            return result
+        with mock.patch.object(copies, "hash_file", side_effect=racing_hash), self.assertRaises(metadata.Changed):
+            self.run_selected([self.extra])
+        after = snapshot(self.root)
+        self.assertTrue(all(after[path] == value for path, value in before.items() if value[2] is not None))
+        self.assertFalse(os.path.exists(self.state))
+
+    def test_selection_expiry_after_first_move_keeps_rest_and_verified_retained_bytes(self):
+        second = "Suzanne Collins/Second/copy.epub"
+        write(os.path.join(self.root, second), self.raw)
+        clock = time.monotonic()
+        def logger(msg, **fields):
+            nonlocal clock
+            self.lines.append({"msg": msg, **fields})
+            if fields.get("result") == "moved":
+                clock += copies.SNAPSHOT_MAX_AGE + 1
+        with mock.patch.object(copies.time, "monotonic", side_effect=lambda: clock):
+            counts = self.run_selected([self.extra, second], logger=logger)
+        self.assertEqual((counts["moved"], counts["refused"]), (1, 1))
+        self.assertEqual(read(os.path.join(self.root, second)), self.raw)
+        result = next(row for row in self.lines if row.get("result") == "moved")
+        manifest = json.loads(read(result["backup_manifest"]))
+        self.assertEqual(read(os.path.join(self.state, "copies", manifest["backup_file"])), self.raw)
+        self.assertFalse(any(row["msg"] == "epub_copy_stage_phase" for row in self.lines))
+
+    def test_cli_selection_requires_consolidation_and_existing_manual_gates(self):
+        self.run_selected([self.extra], dry_run=True)
+        selection = os.path.join(self.tmp.name, "selection.json")
+        script = os.path.join(os.path.dirname(__file__), "epub_convert.py")
+        env = dict(os.environ, EBOOK_ROOT=self.root, STATE_DIR=self.state, SETTLE_SECONDS="0",
+                   STRIP_SERIES_METADATA="0", STRIP_ONLY="0", DRY_RUN="1", KAVITA_URL="", KAVITA_API_KEY="")
+        env.pop("STRIP_FOLDERS_JSON", None)
+        for arguments in (["--copy-selection", selection],
+                          ["--restore-retained-copy", self.evidence, "--copy-selection", selection]):
+            result = subprocess.run([sys.executable, script, *arguments], env=env, capture_output=True, text=True, timeout=20)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("usage:", result.stdout)
+        arguments = ["--consolidate-copies", self.evidence, "--copy-selection", selection]
+        result = subprocess.run([sys.executable, script, *arguments], env=env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        env["STRIP_SERIES_METADATA"] = "1"
+        result = subprocess.run([sys.executable, script, *arguments], env=env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("modes off", result.stdout)
+        self.assertFalse(os.path.exists(self.state))
+
     def moved_manifest(self):
         self.assertEqual(self.run_copies()["moved"], 1)
         manifest_path = next(line["backup_manifest"] for line in self.lines if line.get("result") == "moved")
@@ -297,6 +446,20 @@ class CopyTests(unittest.TestCase):
         self.assertEqual(counts["refused"], 1)
         self.assertEqual(read(os.path.join(self.root, self.extra)), self.raw)
         self.assertFalse(os.path.exists(os.path.join(self.state, "copies")))
+
+    def test_eligibility_refusal_logs_final_census_without_any_move(self):
+        marker = os.path.join(os.path.dirname(os.path.join(self.root, self.extra)), ".ll_ignore")
+        os.symlink(os.path.join(self.tmp.name, "missing"), marker)
+        before = snapshot(self.root)
+        with mock.patch.object(copies, "move_copy") as move:
+            counts = self.run_copies()
+        move.assert_not_called()
+        self.assertEqual((counts["moved"], counts["refused"]), (0, 1))
+        census = [row for row in self.lines if row["msg"] == "epub_copy_consolidate_census"]
+        self.assertEqual(len(census), 1)
+        self.assertEqual({key: census[0][key] for key in counts}, counts)
+        self.assertEqual(snapshot(self.root), before)
+        self.assertFalse(os.path.exists(self.state))
 
     def test_cross_device_backup_refuses_without_removing_source(self):
         original_fstat = os.fstat
