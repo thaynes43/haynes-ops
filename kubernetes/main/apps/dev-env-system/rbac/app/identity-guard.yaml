@@ -21,6 +21,7 @@
 #   5. a PersistentVolume with a hostPath or local source;
 #   6. writes to RBAC objects, admission policies and webhooks, Kyverno policies,
 #      CustomResourceDefinitions, APIServices, API Priority/Fairness configuration,
+#      Traefik, Gateway API, External DNS and Kubernetes Ingress (including subresources),
 #      every cilium.io resource except namespaced CiliumNetworkPolicy, and the
 #      dev-env.haynesops.com objects; TokenRequests, ephemeral containers, the node
 #      proxy and CSR approval (the break-glass role leaves these out too; this is the
@@ -184,7 +185,9 @@ spec:
       expression: >-
         variables.group in ['rbac.authorization.k8s.io', 'admissionregistration.k8s.io', 'kyverno.io',
           'policies.kyverno.io', 'apiextensions.k8s.io', 'apiregistration.k8s.io',
+          'traefik.io', 'gateway.networking.k8s.io', 'externaldns.k8s.io',
           'flowcontrol.apiserver.k8s.io', 'dev-env.haynesops.com'] ||
+        (variables.group == 'networking.k8s.io' && variables.resource == 'ingresses') ||
         (variables.group == 'cilium.io' &&
           !(variables.resource == 'ciliumnetworkpolicies' && variables.targetNamespace != '')) ||
         (variables.group == 'certificates.k8s.io' && variables.subresource == 'approval') ||
