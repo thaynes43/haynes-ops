@@ -60,6 +60,8 @@ def load_snapshot(path, root):
         section = snapshot.get(source)
         if not isinstance(section, dict) or section.get("complete") is not True:
             raise metadata.Refused(f"complete {source} dependency read is required")
+        if section.get("quiesced") is not True:
+            raise metadata.Refused(f"explicit {source} writer quiescence is required")
     require_fresh(snapshot)
     files = snapshot.get("files")
     if not isinstance(files, list):

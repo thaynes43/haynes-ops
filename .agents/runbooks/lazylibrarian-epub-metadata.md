@@ -202,7 +202,7 @@ reviewed snapshot and apply under the same operational pauses.
 The snapshot is private operational data outside EBooks, not a committed manifest.
 Schema 1 contains `created_at` (UTC ISO timestamp), `ebook_root`, and four complete
 source sections: `lazylibrarian`, `census`, `kavita`, `app_wants`. Each section has
-`complete: true` and `checked_at`. Every timestamp must be within five minutes of
+`complete: true`, `quiesced: true` and `checked_at`. Every timestamp must be within five minutes of
 application. Missing, incomplete, stale or future evidence refuses the command.
 The operator must obtain complete current reads, never infer an empty dependency
 list from an API error or partial page. Parent migration coordination owns those
@@ -222,6 +222,38 @@ saved progress/session/bookmark/annotation dependency, including a nonempty XPat
 with zero numeric counters. App wants include every dependent active request and
 pairing/library anchor. Resolve ids to all affected file paths before declaring a
 source complete; unresolved or partially read state refuses snapshot production.
+Quiescence is a separate required attestation, never inferred from freshness or
+two identical database reads. Stop dependency writers for the complete application
+window and record observable proof. This includes LazyLibrarian's internal import/
+postprocess work and manual/library-scan entrypoints, Kavita readers and background
+jobs, app requests/pairing jobs, and census-repair writers. Pausing only the app's
+five sync CronJobs and Libretto acquisition is insufficient. If idle cannot be
+established and held, keep the corresponding copies protected and do not apply.
+
+The read-only `epub_copy_preflight.py` adapter collects the current library's OPF
+identity, stable source identity, SHA-256 and ancestor ignore markers without
+changing files. Its prepare command combines this full census with the app audit,
+all LL BookFile SQL rows, a stat-guarded Kavita database copy and explicit census
+protections. It produces a private candidate/protection report and schema-1
+snapshot. Captures retain their original timestamps; stale/partial inputs and
+missing writer attestations are reported as blockers rather than made fresh or
+complete. App request anchors resolve through the actual Kavita file map; an
+unresolved active dependency blocks snapshot completeness. Any saved Kavita state
+row protects its joined files, including zero-counter locations. The report is
+exploratory while any blocker remains and is never permission to move a file.
+
+Live observation on 2026-10-08 found LL's `showJobs` failing HTTP 500 and
+`showThreads` returning Code 501 because psutil is absent. These are unknown idle
+state, not proof of inactivity. LL's internal PostProcessor defaults to a ten-minute
+schedule, and API/manual imports and library scans are independent entrypoints.
+Suspend `lazylibrarian-library-scan` through git as well as the converter when
+consolidating. Kavita's production API does not expose its complete Hangfire queue;
+scan completion also does not stop readers from writing locations and sessions.
+A reviewed GitOps downtime hold of LL and Kavita, verified with no running app
+containers and no active LL library-scan Job, is the comprehensive writer hold.
+Without such a hold or an equally observable gate covering all those entrypoints,
+their quiescence attestations stay false and consolidation stays blocked. The
+parent migration session owns any downtime decision, declarations and restoration.
 
 Groups require one unambiguous OPF title and creator shared by all their copies;
 they are not grouped by folder spelling or fuzzy title matching. Exactly one

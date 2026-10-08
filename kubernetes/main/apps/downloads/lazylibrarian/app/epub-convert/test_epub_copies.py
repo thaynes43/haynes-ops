@@ -39,9 +39,9 @@ class CopyTests(unittest.TestCase):
                     path = os.path.join(folder, name)
                     files.append({"path": os.path.relpath(path, self.root), "sha256": metadata.sha256(read(path))})
         return {"schema": 1, "created_at": now, "ebook_root": self.root, "files": files,
-                "lazylibrarian": {"complete": True, "checked_at": now,
+                "lazylibrarian": {"complete": True, "quiesced": True, "checked_at": now,
                                   "pointers": [{"book_id": "ll-book-1", "path": self.keeper}]},
-                **{source: {"complete": True, "checked_at": now, "protected_paths": []}
+                **{source: {"complete": True, "quiesced": True, "checked_at": now, "protected_paths": []}
                    for source in copies.SOURCES[1:]}}
 
     def run_copies(self, data=None, dry_run=False, holds=frozenset()):
@@ -100,6 +100,14 @@ class CopyTests(unittest.TestCase):
                 data[source]["complete"] = False
                 with self.assertRaisesRegex(metadata.Refused, "complete"):
                     self.run_copies(data)
+                for attestation in (False, None):
+                    data = self.evidence_data()
+                    if attestation is None:
+                        data[source].pop("quiesced")
+                    else:
+                        data[source]["quiesced"] = attestation
+                    with self.assertRaisesRegex(metadata.Refused, "quiescence"):
+                        self.run_copies(data)
         data = self.evidence_data()
         data["kavita"]["checked_at"] = "2020-01-01T00:00:00Z"
         with self.assertRaisesRegex(metadata.Refused, "stale"):
