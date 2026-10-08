@@ -41,12 +41,10 @@ pve get /cluster/ha/status/current            # raw API, any path
 pve --ro get /nodes/twin-top/status
 ```
 
-**Flag order (2026-09-22):** the global flags — `--ro --yes --raw --any --node <name>` —
-are parsed by a loop that runs **before** the verb and stops at the first non-flag word.
-A trailing `--yes` is therefore passed through as a path/parameter and the write is refused
-with *"add --yes to perform this write"*. Put every global flag **before** the verb:
-`pve --yes delete /cluster/ha/resources/vm:104`, not `pve delete … --yes`. (A dev-env PR
-making them position-independent is held as a draft — it bounces the pod.)
+**Flag order (2026-09-22):** global flags `--ro --yes --raw --any --node <name>`
+may appear before or after the verb. Both `pve --yes delete <path>` and
+`pve delete <path> --yes` set write confirmation. The position-independent parser
+is deployed; a trailing flag is no longer treated as an API parameter.
 
 Writes print the resolved URL and refuse without `--yes`. Anything disruptive (start,
 stop, reset) — `declare-activity start … --scope <worker>` first, the same as a pod
