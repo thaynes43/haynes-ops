@@ -37,6 +37,8 @@ ACCOUNT_TABLES = frozenset(("AspNetUsers", "AspNetUserClaims", "AspNetUserLogins
     "AspNetUserTokens", "AppUserAuthKey", "AppUserExternalSource", "AppUserLibrary", "AppUserPreferences",
     "AppUserDashboardStream", "AppUserSideNavStream", "ClientDevice", "ClientDeviceHistory", "Device",
     "EmailHistory", "ReadingList", "AppUserCollection"))
+LOCK_TABLES = frozenset(("Chapter", "Volume", "Series", "SeriesMetadata", "CollectionTag",
+                         "ReadingList", "AppUserCollection", "Person"))
 
 
 def inspect_dependency_schema(con):
@@ -141,7 +143,121 @@ def ll_capture(path):
     return row
 
 
-def kavita_dependencies(db_path, proof, root):
+def saved_metadata_locks(con, columns, files, root):
+    """Resolve saved locks in this same complete, read-only source transaction."""
+    quote = lambda name: '"' + name.replace('"', '""') + '"'
+    links = {table: [dict(row) for row in con.execute(f'PRAGMA foreign_key_list({quote(table)})')]
+             for table in columns}
+    series_metadata = {row["Id"]: row["SeriesId"] for row in con.execute('SELECT Id,SeriesId FROM SeriesMetadata')} if "SeriesMetadata" in columns else {}
+    indexes = {key: collections.defaultdict(list) for key in ("chapter_id", "volume_id", "series_id")}
+    for row in files:
+        for key, index in indexes.items():
+            index[row[key]].append(row)
+    protected, errors, evidence = [], [], {"tables": {}, "unknown_empty_lock_tables": []}
+
+    def members(table, field, value):
+        if table not in columns or field not in columns[table]:
+            raise metadata.Refused(f"incomplete locked metadata membership: {table}/{field}")
+        return [dict(row) for row in con.execute(f'SELECT * FROM {quote(table)} WHERE {quote(field)}=?', (value,))]
+
+    def resolve(kind, value, label):
+        if kind == "SeriesMetadata":
+            value = series_metadata.get(value)
+            kind = "Series"
+        key = {"Chapter": "chapter_id", "Volume": "volume_id", "Series": "series_id"}[kind]
+        matches = indexes[key].get(value, []) if type(value) is int and value > 0 else []
+        if not matches:
+            errors.append(f"unresolved locked metadata reference: {label}/{kind}/{value}")
+        return matches
+
+    for table, fields in sorted(columns.items()):
+        locks = sorted(field for field in fields if field.endswith("Locked"))
+        if not locks:
+            continue
+        if table not in LOCK_TABLES:
+            if con.execute(f'SELECT EXISTS(SELECT 1 FROM {quote(table)})').fetchone()[0]:
+                raise metadata.Refused(f"unknown populated metadata lock table: {table}")
+            evidence["unknown_empty_lock_tables"].append({"table": table, "lock_columns": locks})
+            continue
+        invalid = " OR ".join(f'(typeof({quote(field)})!=\'integer\' OR {quote(field)} NOT IN (0,1))' for field in locks)
+        if con.execute(f'SELECT EXISTS(SELECT 1 FROM {quote(table)} WHERE {invalid})').fetchone()[0]:
+            raise metadata.Refused(f"invalid saved metadata lock flag: {table}")
+        active = " OR ".join(f'{quote(field)}=1' for field in locks)
+        rows = [dict(row) for row in con.execute(f'SELECT * FROM {quote(table)} WHERE {active}')]
+        table_evidence = {"lock_columns": locks, "rows": []}
+        evidence["tables"][table] = table_evidence
+        for state in rows:
+            key = state.get("Id")
+            if type(key) is not int or key <= 0:
+                raise metadata.Refused(f"invalid locked metadata row id: {table}")
+            label = f"{table}/{key}"
+            active_locks = [field for field in locks if state[field] == 1]
+            relationships, matches = {}, []
+            errors_before = len(errors)
+            # Preserve the complete saved row and exact linked rows, including
+            # relational metadata values and proven empty memberships.
+            for related, fks in links.items():
+                for fk in fks:
+                    if fk["table"] == table and fk["to"] == "Id":
+                        relationships[f"{related}/{fk['from']}"] = members(related, fk["from"], key)
+            if table in ("Chapter", "Volume", "Series"):
+                matches = resolve(table, key, label)
+            elif table == "SeriesMetadata":
+                matches = resolve("Series", state.get("SeriesId"), label)
+            elif table == "ReadingList":
+                linked = members("ReadingListItem", "ReadingListId", key)
+                relationships["ReadingListItem/ReadingListId"] = linked
+                for row in linked:
+                    refs = [(kind, row.get(kind + "Id")) for kind in ("Chapter", "Volume", "Series") if row.get(kind + "Id")]
+                    if not refs:
+                        errors.append(f"unresolved locked metadata membership: {label}/ReadingListItem")
+                    for kind, value in refs:
+                        matches += resolve(kind, value, label)
+            elif table == "AppUserCollection":
+                linked = members("AppUserCollectionSeries", "CollectionsId", key)
+                relationships["AppUserCollectionSeries/CollectionsId"] = linked
+                for row in linked:
+                    matches += resolve("Series", row.get("ItemsId"), label)
+            elif table == "CollectionTag":
+                linked = members("CollectionTagSeriesMetadata", "CollectionTagsId", key)
+                relationships["CollectionTagSeriesMetadata/CollectionTagsId"] = linked
+                for row in linked:
+                    matches += resolve("SeriesMetadata", row.get("SeriesMetadatasId"), label)
+            else:
+                person_dependents = {"Person"}
+                while True:
+                    related = {name for name, fks in links.items() if any(fk["table"] in person_dependents for fk in fks)}
+                    if related <= person_dependents:
+                        break
+                    person_dependents.update(related)
+                for related in person_dependents - {"Person", "ChapterPeople", "SeriesMetadataPeople", "PersonAlias"}:
+                    if con.execute(f'SELECT EXISTS(SELECT 1 FROM {quote(related)})').fetchone()[0]:
+                        raise metadata.Refused(f"unknown populated locked person membership: {related}")
+                for related, target, field in (("ChapterPeople", "Chapter", "ChapterId"),
+                                               ("SeriesMetadataPeople", "SeriesMetadata", "SeriesMetadataId")):
+                    linked = members(related, "PersonId", key)
+                    if field not in columns[related]:
+                        raise metadata.Refused(f"incomplete locked person membership: {related}/{field}")
+                    relationships[f"{related}/PersonId"] = linked
+                    for row in linked:
+                        matches += resolve(target, row.get(field), label)
+                for related, fks in links.items():
+                    if related in ("ChapterPeople", "SeriesMetadataPeople", "PersonAlias"):
+                        continue
+                    for fk in fks:
+                        if fk["table"] == "Person" and members(related, fk["from"], key):
+                            raise metadata.Refused(f"unknown populated locked person membership: {related}")
+            paths = sorted({library_path(row["path"], root) for row in matches if row["path"].startswith(root + "/")})
+            for path in paths:
+                protected.append({"path": path, "reason": f"{label} saved metadata locks: {', '.join(active_locks)}"})
+            table_evidence["rows"].append({"row": state, "active_locks": active_locks,
+                                          "relationships": relationships, "mapped_paths": paths,
+                                          "resolution": "unresolved" if len(errors) != errors_before else
+                                                        "resolved_current_files" if matches else "resolved_empty_current_membership"})
+    return protected, errors, evidence
+
+
+def kavita_dependencies(db_path, proof, root, lock_evidence=None):
     if proof.get("readOnlySource") is not True or not proof.get("before") or proof["before"] != proof.get("after"):
         raise metadata.Refused("Kavita database copy needs identical before/after source stats")
     con = sqlite3.connect(Path(db_path).resolve().as_uri() + "?mode=ro", uri=True)
@@ -160,10 +276,13 @@ def kavita_dependencies(db_path, proof, root):
         states = {table: [dict(row) for row in con.execute(f'SELECT * FROM "{table}"')] for table in STATE_TABLES}
         metadata_series = ({row["Id"]: row["SeriesId"] for row in con.execute('SELECT Id,SeriesId FROM SeriesMetadata')}
                            if "SeriesMetadata" in columns else {})
+        locked_paths, lock_errors, locks = saved_metadata_locks(con, columns, files, root)
         con.rollback()
     finally:
         con.close()
-    series_files, protected, errors = {str(key): [] for key in current_ids["Series"]}, [], []
+    series_files, protected, errors = {str(key): [] for key in current_ids["Series"]}, locked_paths, lock_errors
+    if lock_evidence is not None:
+        lock_evidence.update(locks)
     history_evidence = []
     for row in files:
         if row["path"].startswith(root + "/"):
@@ -420,10 +539,12 @@ def main():
         return 0 if result["complete"] else 1
     library, ll, app, proof, census = (load(args.library), ll_capture(args.ll_sql), load(args.app_audit),
                                      load(args.kavita_proof), load(args.census_protections))
-    series, protected, errors, state_counts, history_evidence = kavita_dependencies(args.kavita_db, proof, library["ebook_root"])
+    locks = {}
+    series, protected, errors, state_counts, history_evidence = kavita_dependencies(args.kavita_db, proof, library["ebook_root"], locks)
     snapshot, report = prepare(library, ll, app, series, protected, errors, proof, census,
                                load(args.writer_attestations) if args.writer_attestations else {})
     snapshot["kavita"]["disconnected_history"] = history_evidence
+    snapshot["kavita"]["saved_metadata_locks"] = locks
     output = Path(args.output).resolve()
     if os.path.commonpath((str(output), library["ebook_root"])) == library["ebook_root"]:
         raise metadata.Refused("private snapshot output must be outside EBooks")

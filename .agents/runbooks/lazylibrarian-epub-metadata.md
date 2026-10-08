@@ -259,7 +259,10 @@ reading profiles, scrobble state, curated series relations, blacklists and legac
 collection membership. JSON series references and indirect metadata/event foreign
 keys must resolve too. The schema inventory follows all foreign-key paths to work
 and user tables, regardless of names; unfamiliar populated user tables or
-unclassified work-reference tables refuse. Explicitly classified catalog metadata
+unclassified work-reference tables refuse. Saved Kavita metadata locks protect every
+current file linked to the locked chapter, volume, series, series metadata, collection,
+reading list or person. Unknown populated lock tables, invalid flags and unresolved
+locked references block copy movement. Explicitly classified catalog metadata without saved locks
 (titles, genre/person/tag joins, imported provider metadata and parser-error
 diagnostic keys) is a rebuildable
 read model, not saved user state. Identity/authentication, global reader settings,

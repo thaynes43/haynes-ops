@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -255,6 +256,155 @@ class PreflightTests(unittest.TestCase):
                 con.close()
                 with self.assertRaisesRegex(metadata.Refused, "unknown .*dependency table"):
                     preflight.kavita_dependencies(path, self.proof, self.root)
+
+    def locked_db(self):
+        path = os.path.join(self.tmp.name, "locked.db")
+        con = sqlite3.connect(path)
+        con.executescript('CREATE TABLE Series(Id INTEGER,SortName TEXT,SortNameLocked INTEGER DEFAULT 0); '
+                          'CREATE TABLE Volume(Id INTEGER,SeriesId INTEGER,CoverImage TEXT,CoverImageLocked INTEGER DEFAULT 0); '
+                          'CREATE TABLE Chapter(Id INTEGER,VolumeId INTEGER,TitleName TEXT,TitleNameLocked INTEGER DEFAULT 0); '
+                          'CREATE TABLE MangaFile(FilePath TEXT,ChapterId INTEGER); '
+                          'CREATE TABLE SeriesMetadata(Id INTEGER,SeriesId INTEGER,Language TEXT,LanguageLocked INTEGER DEFAULT 0); '
+                          'CREATE TABLE CollectionTag(Id INTEGER,CoverImage TEXT,CoverImageLocked INTEGER DEFAULT 0); '
+                          'CREATE TABLE ReadingList(Id INTEGER,CoverImage TEXT,CoverImageLocked INTEGER DEFAULT 0); '
+                          'CREATE TABLE AppUserCollection(Id INTEGER,CoverImage TEXT,CoverImageLocked INTEGER DEFAULT 0); '
+                          'CREATE TABLE Person(Id INTEGER,CoverImage TEXT,CoverImageLocked INTEGER DEFAULT 0); '
+                          'CREATE TABLE PersonAlias(Id INTEGER,Alias TEXT,PersonId INTEGER REFERENCES Person(Id)); '
+                          'CREATE TABLE ChapterPeople(ChapterId INTEGER REFERENCES Chapter(Id),PersonId INTEGER REFERENCES Person(Id)); '
+                          'CREATE TABLE SeriesMetadataPeople(SeriesMetadataId INTEGER REFERENCES SeriesMetadata(Id),PersonId INTEGER REFERENCES Person(Id));')
+        for table in preflight.STATE_TABLES:
+            con.execute(f'CREATE TABLE "{table}"(Id INTEGER,SeriesId INTEGER,ChapterId INTEGER,VolumeId INTEGER,Data TEXT,ItemsId INTEGER,CollectionsId INTEGER,ReadingListId INTEGER,CollectionTagsId INTEGER,SeriesMetadatasId INTEGER)')
+        con.executescript("INSERT INTO Series(Id,SortName) VALUES(7,'Saved sort'); INSERT INTO Volume(Id,SeriesId,CoverImage) VALUES(8,7,'Saved cover'); "
+                          "INSERT INTO Chapter(Id,VolumeId,TitleName) VALUES(9,8,'Saved extra'),(10,8,'Saved keeper'); "
+                          "INSERT INTO SeriesMetadata(Id,SeriesId,Language) VALUES(21,7,'Saved language'); "
+                          "INSERT INTO CollectionTag(Id,CoverImage) VALUES(12,'Saved collection'); INSERT INTO ReadingList(Id,CoverImage) VALUES(13,'Saved list'); "
+                          "INSERT INTO AppUserCollection(Id,CoverImage) VALUES(14,'Saved user collection'); INSERT INTO Person(Id,CoverImage) VALUES(15,'Saved portrait'); "
+                          "INSERT INTO ReadingListItem(Id,ReadingListId,ChapterId) VALUES(30,13,9); "
+                          "INSERT INTO AppUserCollectionSeries(CollectionsId,ItemsId) VALUES(14,7); "
+                          "INSERT INTO CollectionTagSeriesMetadata(CollectionTagsId,SeriesMetadatasId) VALUES(12,21); "
+                          "INSERT INTO ChapterPeople VALUES(10,15); INSERT INTO SeriesMetadataPeople VALUES(21,15); "
+                          "INSERT INTO PersonAlias VALUES(40,'Saved alias',15);")
+        con.executemany('INSERT INTO MangaFile VALUES(?,?)', [(self.root + "/" + self.extra, 9), (self.root + "/" + self.keeper, 10)])
+        return path, con
+
+    def test_all_eight_lock_tables_protect_every_linked_file_and_preserve_saved_state(self):
+        path, con = self.locked_db()
+        for table, flag in (("Chapter", "TitleNameLocked"), ("Series", "SortNameLocked"), ("SeriesMetadata", "LanguageLocked")):
+            con.execute(f'UPDATE "{table}" SET {flag}=1' + (' WHERE Id=9' if table == "Chapter" else ''))
+        for table in ("Volume", "CollectionTag", "ReadingList", "AppUserCollection", "Person"):
+            con.execute(f'UPDATE "{table}" SET CoverImageLocked=1')
+        con.commit(); con.close()
+        before = Path(path).read_bytes(); locks = {}
+        _series, protected, errors, _counts, _history = preflight.kavita_dependencies(path, self.proof, self.root, locks)
+        self.assertEqual(errors, [])
+        for table in preflight.LOCK_TABLES:
+            rows = locks["tables"][table]["rows"]
+            self.assertEqual(len(rows), 1, table)
+            self.assertEqual(rows[0]["resolution"], "resolved_current_files", table)
+            self.assertTrue(any(table + "/" in item["reason"] and "saved metadata locks" in item["reason"] for item in protected), table)
+        self.assertEqual(locks["tables"]["Person"]["rows"][0]["mapped_paths"], sorted([self.keeper, self.extra]))
+        self.assertEqual(locks["tables"]["Chapter"]["rows"][0]["mapped_paths"], [self.extra])
+        self.assertEqual(locks["tables"]["Person"]["rows"][0]["relationships"]["PersonAlias/PersonId"][0]["Alias"], "Saved alias")
+        self.assertEqual(locks["tables"]["SeriesMetadata"]["rows"][0]["row"]["Language"], "Saved language")
+        self.assertEqual(Path(path).read_bytes(), before)
+        self.assertFalse(Path(path + "-journal").exists())
+        evidence, report = self.prepare(protected=protected)
+        self.assertTrue(report["apply_ready"])
+        extra = next(row for row in report["groups"][0]["copies"] if row["path"] == self.extra)
+        self.assertTrue(any("saved metadata locks" in reason for reason in extra["protected_reasons"]))
+
+    def test_known_empty_locked_memberships_are_explicit_and_keep_raw_rows(self):
+        path, con = self.locked_db()
+        for table in ("CollectionTag", "ReadingList", "AppUserCollection", "Person"):
+            con.execute(f'UPDATE "{table}" SET CoverImageLocked=1')
+        for table in ("ReadingListItem", "AppUserCollectionSeries", "CollectionTagSeriesMetadata", "ChapterPeople", "SeriesMetadataPeople"):
+            con.execute(f'DELETE FROM "{table}"')
+        con.commit(); con.close(); locks = {}
+        _series, protected, errors, _counts, _history = preflight.kavita_dependencies(path, self.proof, self.root, locks)
+        self.assertEqual(errors, []); self.assertEqual(protected, [])
+        for table in ("CollectionTag", "ReadingList", "AppUserCollection", "Person"):
+            row = locks["tables"][table]["rows"][0]
+            self.assertEqual(row["resolution"], "resolved_empty_current_membership")
+            self.assertTrue(row["row"]["CoverImage"].startswith("Saved "))
+            self.assertEqual(row["mapped_paths"], [])
+            self.assertTrue(row["relationships"])
+
+    def test_unresolved_partial_locked_membership_blocks_whole_snapshot(self):
+        path, con = self.locked_db()
+        con.execute('UPDATE ReadingList SET CoverImageLocked=1')
+        con.execute('INSERT INTO ReadingListItem(Id,ReadingListId,ChapterId) VALUES(31,13,999)')
+        con.commit(); con.close(); locks = {}
+        _series, protected, errors, _counts, _history = preflight.kavita_dependencies(path, self.proof, self.root, locks)
+        self.assertTrue(any("locked metadata reference" in error for error in errors))
+        self.assertEqual(locks["tables"]["ReadingList"]["rows"][0]["resolution"], "unresolved")
+        _evidence, report = self.prepare(protected=protected, errors=errors)
+        self.assertFalse(report["apply_ready"])
+        self.assertTrue(all(row["protected_reasons"] for row in report["groups"][0]["copies"]))
+
+    def test_missing_membership_data_is_not_a_resolved_empty_lock(self):
+        path, con = self.locked_db()
+        con.execute('UPDATE Person SET CoverImageLocked=1'); con.execute('DROP TABLE SeriesMetadataPeople')
+        con.commit(); con.close()
+        with self.assertRaisesRegex(metadata.Refused, "incomplete locked metadata membership"):
+            preflight.kavita_dependencies(path, self.proof, self.root)
+
+    def test_unknown_populated_lock_table_refuses_even_when_its_flags_are_zero(self):
+        path, con = self.locked_db()
+        con.execute('CREATE TABLE FutureMetadata(Id INTEGER,TitleLocked INTEGER)'); con.execute('INSERT INTO FutureMetadata VALUES(1,0)')
+        con.commit(); con.close()
+        with self.assertRaisesRegex(metadata.Refused, "unknown populated metadata lock table"):
+            preflight.kavita_dependencies(path, self.proof, self.root)
+
+    def test_unknown_empty_lock_table_is_recorded_as_proven_empty(self):
+        path, con = self.locked_db()
+        con.execute('CREATE TABLE FutureMetadata(Id INTEGER,TitleLocked INTEGER)'); con.commit(); con.close(); locks = {}
+        preflight.kavita_dependencies(path, self.proof, self.root, locks)
+        self.assertEqual(locks["unknown_empty_lock_tables"], [{"table": "FutureMetadata", "lock_columns": ["TitleLocked"]}])
+
+    def test_invalid_lock_flags_refuse_without_source_writes(self):
+        path, con = self.locked_db(); con.commit(); con.close()
+        for invalid in (None, "unknown", 2, -1):
+            with self.subTest(flag=invalid):
+                con = sqlite3.connect(path); con.execute('UPDATE Series SET SortNameLocked=?', (invalid,)); con.commit(); con.close()
+                before = Path(path).read_bytes()
+                with self.assertRaisesRegex(metadata.Refused, "invalid saved metadata lock flag"):
+                    preflight.kavita_dependencies(path, self.proof, self.root)
+                self.assertEqual(Path(path).read_bytes(), before)
+
+    def test_unknown_indirect_person_metadata_refuses_for_a_locked_person(self):
+        path, con = self.locked_db()
+        con.execute('UPDATE Person SET CoverImageLocked=1')
+        con.executescript('CREATE TABLE FutureAliasState(Id INTEGER,AliasId INTEGER REFERENCES PersonAlias(Id)); INSERT INTO FutureAliasState VALUES(1,40);')
+        con.commit(); con.close()
+        with self.assertRaisesRegex(metadata.Refused, "unknown populated locked person membership"):
+            preflight.kavita_dependencies(path, self.proof, self.root)
+
+    def test_prepare_command_binds_saved_lock_rows_and_empty_memberships_into_snapshot(self):
+        path, con = self.locked_db()
+        con.execute('UPDATE Series SET SortNameLocked=1')
+        con.execute('UPDATE ReadingList SET CoverImageLocked=1')
+        con.execute('DELETE FROM ReadingListItem'); con.commit(); con.close()
+        values = {"library": preflight.collect_library(self.root, 5), "app-audit": self.app,
+                  "kavita-proof": self.proof, "census-protections": self.census,
+                  "writer-attestations": self.attestations}
+        args = ["epub_copy_preflight.py", "prepare", "--kavita-db", path]
+        for name, value in values.items():
+            file = Path(self.tmp.name) / (name + ".json"); file.write_text(json.dumps(value))
+            args += ["--" + name, str(file)]
+        ll = Path(self.tmp.name) / "ll.jsonl"
+        ll.write_text(json.dumps({**self.ll, "type": "ll-books-sql-capture", "readOnly": True, "sourceWrites": 0,
+                                  "sourceFingerprintBefore": ["stable"], "sourceFingerprintAfter": ["stable"]}) + "\n")
+        output = Path(self.tmp.name) / "private-snapshot"
+        args += ["--ll-sql", str(ll), "--output", str(output)]
+        with mock.patch.object(sys, "argv", args), mock.patch("builtins.print"):
+            self.assertEqual(preflight.main(), 0)
+        snapshot = json.loads((output / "snapshot.json").read_text())
+        locks = snapshot["kavita"]["saved_metadata_locks"]["tables"]
+        self.assertEqual(locks["Series"]["rows"][0]["row"]["SortName"], "Saved sort")
+        self.assertEqual(locks["ReadingList"]["rows"][0]["resolution"], "resolved_empty_current_membership")
+        self.assertEqual(locks["ReadingList"]["rows"][0]["relationships"]["ReadingListItem/ReadingListId"], [])
+        self.assertTrue(any(row["path"] == self.extra and "saved metadata locks" in row["reason"]
+                            for row in snapshot["kavita"]["protected_paths"]))
 
     def test_ll_source_copy_must_be_read_only_and_stable(self):
         path = os.path.join(self.tmp.name, "ll.jsonl")
