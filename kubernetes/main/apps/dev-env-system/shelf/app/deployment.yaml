@@ -1,0 +1,80 @@
+---
+# The shelf (thaynes43/dev-env DESIGN-001 D-67).
+# - It mounts only dev-env-shared, at /home/dev/.shared as a session does, and runs
+#   `agentd shelf`, which refuses to start without that mount and then waits.
+# - The operator finds the pod by app.kubernetes.io/name=dev-env-shelf, Running and Ready,
+#   and runs `agentd ctl rescues|hold-rescue|prune` in container "shelf" by exec.
+# - A prune and a hold share a flock on .shelf.lock on the volume, so a rollout's
+#   surge pod beside the old one is safe.
+# - The image follows dev-env-templates' agent pin: bump both together. Renovate's
+#   kubernetes manager tracks this line, and the dev-env manual-merge rule applies.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dev-env-shelf
+  namespace: dev-agents
+  labels:
+    app.kubernetes.io/name: dev-env-shelf
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-shelf
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dev-env-shelf
+    spec:
+      serviceAccountName: dev-env-shelf
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # The session pods' identity (DESIGN-001 3.6): the rescues on the volume are uid
+      # 1000's, mode 0700. OnRootMismatch: the volume root is already 1000's, so the
+      # kubelet never walks it.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: shelf
+          image: ghcr.io/thaynes43/dev-env:2.7.0@sha256:db6cb82379fc8795f49b87b16232758513d6b5de08c0b4f6f1a69e49773165f0
+          args: ["shelf"]
+          env:
+            - name: HOME
+              value: /home/dev
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # A CPU limit is mandatory in dev-agents (Kyverno dev-env-require-cpu-limit).
+          # A prune's exec runs in this container and shares these limits.
+          resources:
+            requests:
+              cpu: 5m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: shared
+              mountPath: /home/dev/.shared
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: shared
+          persistentVolumeClaim:
+            claimName: dev-env-shared
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
