@@ -292,7 +292,9 @@ Its separately authorized watcher produced readiness at 22:28:16.020693Z,
 bound to PID 969255/start ticks 233611013 and exact packet/phase/source closure.
 The coordinator verified that live readiness before authorizing one exercise.
 A later peer readiness observation at 22:29:10 was after the exercise; its
-incorrect "no exercise yet" claim is explicitly superseded by immutable
+original receipt
+`d0ba25c78047c66a9d836391cfb2f6bf86a846b85991089cef749621f8aebac1`
+and incorrect "no exercise yet" claim are explicitly superseded by immutable
 correction `29223553ec3da49a8c47f38adadcbe976c66bb61de11d1c1631968501a0896e7`.
 It does not replace the coordinator's prior authorization-time proof.
 
