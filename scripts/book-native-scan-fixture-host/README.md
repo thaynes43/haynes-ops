@@ -36,6 +36,10 @@ endpoint/BPF shapes refuse. Fresh native production tag/imageID/TZ/eight module 
 must agree with the reviewed tuple after the original Job start. Repeat that identity
 check before accepting the result. No provider, production API, service bearer or
 network fetch is part of child execution; delivery and handback use native exec only.
+Persist the raw server dry-run Job and first observed running Job/Pod privately
+before their admission comparisons. Job and Pod drift have distinct refusal codes;
+the retained bytes support an exact comparison after UID cleanup. This evidence
+does not admit additional defaults or relax any pre-input gate.
 
 Create every private output exclusively in a mode-0700 directory; files are mode
 0600, verified and fsynced. Upload bounded exact input files with atomic final rename,
