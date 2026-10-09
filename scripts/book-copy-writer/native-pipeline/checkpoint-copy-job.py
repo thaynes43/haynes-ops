@@ -424,6 +424,7 @@ def verify_owned_pod(row,job,pod,pod_uid,allow_completed=False):
  if (not allow_completed or (ns,name)!=MAIN or pod.get('status',{}).get('phase')!='Succeeded'
      or set(statuses[0].get('state',{}))!={'terminated'} or type(terminated.get('exitCode')) is not int
      or terminated['exitCode']!=0 or terminated.get('reason')!='Completed' or job.get('status',{}).get('active',0)!=0
+     or job.get('status',{}).get('failed',0)!=0
      or not any(c.get('type')=='Complete' and c.get('status')=='True' for c in conditions)
      or any(c.get('type')=='Failed' and c.get('status')=='True' for c in conditions)):raise Refused('actual original container is not in the required running or completed MAIN state')
 def lookup_lease_pod(row,pod_uid):

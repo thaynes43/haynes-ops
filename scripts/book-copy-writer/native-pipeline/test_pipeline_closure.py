@@ -162,6 +162,7 @@ class PipelineCases(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(helper.Refused):
                 helper.verify_owned_pod(row, job, altered, pod_uid, True)
         for status in ({'active': 1, 'conditions': [{'type': 'Complete', 'status': 'True'}]},
+                       {'active': 0, 'failed': 1, 'conditions': [{'type': 'Complete', 'status': 'True'}]},
                        {'active': 0, 'conditions': []},
                        {'active': 0, 'conditions': [{'type': 'Complete', 'status': 'True'}, {'type': 'Failed', 'status': 'True'}]}):
             altered = copy.deepcopy(job); altered['status'] = status
