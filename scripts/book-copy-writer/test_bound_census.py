@@ -52,6 +52,19 @@ def bound_records(root):
 
 
 class BoundTests(unittest.TestCase):
+    def test_distinct_stat_guard_keeps_actual_queries_before_and_after_complete_walk(self):
+        with tempfile.TemporaryDirectory() as root:
+            write(os.path.join(root, 'folder/a.txt'), b'a')
+            write(os.path.join(root, 'folder/b.txt'), b'b')
+            events = []
+            values, _ = bound.stat_census(root, time.monotonic() + 10,
+                                         lambda: events.append('query'), lambda: events.append('local'))
+            self.assertEqual(set(values), {'folder/a.txt', 'folder/b.txt'})
+            self.assertEqual(events[0], 'query')
+            self.assertEqual(events[-1], 'query')
+            self.assertEqual(events.count('query'), 2)
+            self.assertEqual(events.count('local'), 4)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

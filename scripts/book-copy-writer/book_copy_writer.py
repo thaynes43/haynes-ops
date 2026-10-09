@@ -4,12 +4,16 @@ import argparse
 import contextlib
 import json
 import os
+import secrets
 import signal
 import stat
 import sys
 import time
+import threading
 
 import psycopg
+from psycopg import sql
+from psycopg.pq import TransactionStatus
 from psycopg.rows import dict_row
 
 import epub_copies as copies
@@ -18,6 +22,7 @@ import epub_metadata as metadata
 TABLES = ("book_requests", "books_items")
 HEALTH_SQL = """SELECT pg_backend_pid() AS pid, pg_is_in_recovery() AS standby,
  current_setting('transaction_read_only') AS read_only,
+ current_setting('hnet.copy_fence_nonce', true) AS nonce,
  ARRAY(SELECT c.relname::text FROM pg_locks l JOIN pg_class c ON c.oid=l.relation
  JOIN pg_namespace n ON n.oid=c.relnamespace WHERE l.pid=pg_backend_pid()
  AND l.locktype='relation' AND l.mode='ShareLock' AND l.granted AND n.nspname='public'
@@ -73,28 +78,48 @@ def derive_app(rows):
 
 
 class PrimaryShareFence:
-    def __init__(self, dsn, deadline_epoch, connect=psycopg.connect):
+    def __init__(self, dsn, deadline_epoch, connect=psycopg.connect, phase_token=None):
         if not 0 < deadline_epoch - time.time() <= 300:
             raise metadata.Refused("absolute writer deadline must be within 300 seconds")
         self.deadline = time.monotonic() + deadline_epoch - time.time()
         self.dsn, self.connect, self.db, self.pid = dsn, connect, None, None
+        phase = phase_token if phase_token is not None else os.environ.get('COPY_PHASE_TOKEN')
+        if not isinstance(phase, str) or len(phase) != 32 or any(c not in '0123456789abcdef' for c in phase):
+            raise metadata.Refused('copy fence requires the exact phase token')
+        self._phase, self._nonce = phase, None
+        self._owned_db, self._owned_pid, self._owner_thread, self._owner_process = None, None, None, None
+        self._entered, self._lost, self._last_health = False, False, None
+
+    def refuse(self, reason):
+        self._lost = True
+        raise metadata.Refused(reason)
 
     def remaining(self):
         left = self.deadline - time.monotonic()
         if left <= 0:
-            raise metadata.Refused("writer fence deadline expired")
+            self.refuse("writer fence deadline expired")
         return left
 
     def __enter__(self):
+        if self._entered:
+            self.refuse('copy fence cannot reconnect or re-enter')
+        self._entered, self._owner_thread = True, threading.get_ident()
+        self._owner_process = os.getpid()
         self.db = self.connect(self.dsn, autocommit=True, row_factory=dict_row,
                                connect_timeout=max(1, min(3, int(self.remaining()))),
                                application_name="issue831-manual-copy-writer")
+        self._owned_db, self._owned_pid = self.db, self.db.info.backend_pid
+        self.pid = self._owned_pid
         try:
             row = self.db.execute("SELECT pg_is_in_recovery() AS standby, "
                                   "current_setting('server_version_num')::int AS version").fetchone()
             if row["standby"] or not 160000 <= row["version"] < 170000:
                 raise metadata.Refused("copy fence requires a PostgreSQL 16 primary")
             self.db.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            self._nonce = self._phase + ':' + secrets.token_hex(32)
+            # SET is a utility statement: no RR snapshot is established before
+            # both SHARE locks. SELECT set_config would violate this ordering.
+            self.db.execute(sql.SQL('SET LOCAL hnet.copy_fence_nonce = {}').format(sql.Literal(self._nonce)))
             self.db.execute("SET LOCAL statement_timeout='2s'")
             self.db.execute("SET LOCAL idle_in_transaction_session_timeout='300s'")
             # No SELECT establishes the RR snapshot until both locks are held.
@@ -105,18 +130,36 @@ class PrimaryShareFence:
             self.__exit__(*sys.exc_info())
             raise
 
-    def health(self):
+    def local_health(self):
         self.remaining()
+        if (self._lost or self._owner_thread != threading.get_ident() or self._owner_process != os.getpid()
+                or self.db is None or self.db is not self._owned_db):
+            self.refuse('writer owning thread or original connection changed')
+        if (self.db.closed or self.db.broken or self.db.info.backend_pid != self._owned_pid
+                or self.db.info.transaction_status != TransactionStatus.INTRANS):
+            self.refuse('writer original connection or transaction ended')
+
+    def health(self):
+        """Every call queries the original transaction; never cached authority."""
+        self.local_health()
+        started = time.monotonic()
         try:
             row = self.db.execute(HEALTH_SQL).fetchone()
         except psycopg.Error as err:
+            self._lost = True
             raise metadata.Refused("writer database connection/query failed") from err
-        if (row["standby"] or row["read_only"] != "on" or row["share_tables"] != list(TABLES)
-                or (self.pid is not None and row["pid"] != self.pid)):
-            raise metadata.Refused("writer backend or complete SHARE fence changed")
-        self.pid = row["pid"]
-        self.remaining()
+        self.local_health()
+        if (not row or row["standby"] or row["read_only"] != "on" or row["share_tables"] != list(TABLES)
+                or row["pid"] != self._owned_pid or row["nonce"] != self._nonce):
+            self.refuse("writer transaction nonce, backend or complete SHARE fence changed")
+        self._last_health = started
         return row
+
+    def scan_guard(self):
+        """Stat-only guard; every accepted whole walk still has real brackets."""
+        self.local_health()
+        if self._last_health is None or time.monotonic() - self._last_health >= 1:
+            self.health()
 
     def compare_capture(self, capture, source_sha256):
         self.health()
@@ -136,13 +179,16 @@ class PrimaryShareFence:
         self.health()
 
     def __exit__(self, *_):
-        if self.db is not None:
+        # A substituted connection is never adopted or rolled back. Release only
+        # the original transaction that this process actually acquired.
+        self._lost = True
+        if self._owned_db is not None:
             try:
-                self.db.execute("ROLLBACK")
+                self._owned_db.execute("ROLLBACK")
             except Exception:
                 pass
             finally:
-                self.db.close()
+                self._owned_db.close()
                 self.db = None
 
 
@@ -154,6 +200,7 @@ class ScopedFileActions:
         self.original_os, self.original_move = copies.os, copies.move_copy
         self.original_verify, self.original_write = copies.verify_first_retention, metadata._write_file
         self.original_fingerprints, self.bound = copies.file_fingerprints, bound
+        self.original_hash = copies.hash_file
 
     def __getattr__(self, name):
         return getattr(self.original_os, name)
@@ -233,16 +280,23 @@ class ScopedFileActions:
         self.fence.health()
         return proof
 
+    def hash(self, directory, name, deadline):
+        return self.original_hash(directory, name, deadline, health=self.fence.health)
+
     def fingerprints(self, root, deadline, health=None, max_files=None):
-        if health is not None and health != self.fence.health:
+        if health is not None and health not in (self.fence.health, self.fence.scan_guard):
             raise metadata.Refused("manual fingerprint guard cannot be replaced")
         if max_files not in (None, 10000):
             raise metadata.Refused("manual fingerprint count cap cannot be replaced")
-        return self.original_fingerprints(root, deadline, health=self.fence.health, max_files=10000)
+        self.fence.health()
+        value = self.original_fingerprints(root, deadline, health=self.fence.scan_guard, max_files=10000)
+        self.fence.health()
+        return value
 
     def __enter__(self):
         copies.os, copies.move_copy, copies.verify_first_retention = self, self.move, self.verify
         metadata._write_file = self.write_manifest
+        copies.hash_file = self.hash
         if self.bound:
             copies.file_fingerprints = self.fingerprints
         return self
@@ -251,6 +305,7 @@ class ScopedFileActions:
         copies.os, copies.move_copy, copies.verify_first_retention = self.original_os, self.original_move, self.original_verify
         metadata._write_file = self.original_write
         copies.file_fingerprints = self.original_fingerprints
+        copies.hash_file = self.original_hash
 
 
 @contextlib.contextmanager
@@ -294,7 +349,7 @@ def run(args, environ=os.environ):
     previous = {s: signal.signal(s, terminated) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGALRM)}
     try:
         signal.setitimer(signal.ITIMER_REAL, max(0.001, deadline - time.time()))
-        with PrimaryShareFence(environ["DATABASE_URL"], deadline) as fence:
+        with PrimaryShareFence(environ["DATABASE_URL"], deadline, phase_token=environ.get('COPY_PHASE_TOKEN')) as fence:
             fence.compare_capture(capture, source_sha256)
             log("epub_copy_writer_fence", backend_pid=fence.pid, share_tables=list(TABLES), read_only="on")
             dry_run = environ.get("DRY_RUN", "1") != "0"
@@ -303,6 +358,7 @@ def run(args, environ=os.environ):
                 options = {"selection_path": args.selection}
                 if bound:
                     options["health"] = fence.health
+                    options["scan_guard"] = fence.scan_guard
                 counts = consolidate(args.snapshot, root, state, 900, holds, log,
                                      dry_run, fence.deadline, **options)
             fence.health()

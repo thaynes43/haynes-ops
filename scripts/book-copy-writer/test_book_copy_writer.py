@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import threading
 import unittest
 from unittest import mock
 
@@ -154,7 +155,137 @@ class WriterTests(unittest.TestCase):
             write(os.path.join(self.root, path), self.raw)
 
     def fence(self, ttl=10):
-        return writer.PrimaryShareFence(self.pg.dsn, time.time() + ttl)
+        return writer.PrimaryShareFence(self.pg.dsn, time.time() + ttl, phase_token='a' * 32)
+
+    def test_nonce_set_local_precedes_locks_without_an_early_rr_snapshot(self):
+        statements = []
+        admin = self.pg.admin
+        class ObservedConnection:
+            def __init__(self, db): self.db = db
+            def __getattr__(self, name): return getattr(self.db, name)
+            def execute(self, query, *args, **kwargs):
+                text = query.as_string(self.db) if isinstance(query, writer.sql.Composable) else query
+                statements.append(text)
+                result = self.db.execute(query, *args, **kwargs)
+                if text.startswith('SET LOCAL hnet.copy_fence_nonce'):
+                    admin.execute("UPDATE books_items SET saved='committed-before-lock' WHERE id=1")
+                return result
+        def connect(*args, **kwargs):
+            return ObservedConnection(writer.psycopg.connect(*args, **kwargs))
+        try:
+            with writer.PrimaryShareFence(self.pg.dsn, time.time() + 10, connect=connect,
+                                          phase_token='a' * 32) as fence:
+                self.assertIn('committed-before-lock', self.capture(fence)['full_table_rows']['books_items'])
+                start = statements.index('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                end = next(i for i, text in enumerate(statements) if text.startswith('LOCK TABLE'))
+                between = statements[start + 1:end]
+                self.assertEqual(sum(text.startswith('SET LOCAL hnet.copy_fence_nonce') for text in between), 1)
+                self.assertFalse(any(text.startswith('SELECT') for text in between))
+        finally:
+            admin.execute("UPDATE books_items SET saved='complete' WHERE id=1")
+
+    def test_same_pid_rollback_rebegin_with_share_locks_cannot_adopt_a_new_transaction(self):
+        with self.fence() as fence:
+            pid = fence.pid
+            fence.db.execute('ROLLBACK')
+            fence.db.execute('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            fence.db.execute('LOCK TABLE public.book_requests, public.books_items IN SHARE MODE NOWAIT')
+            self.assertEqual(fence.db.info.backend_pid, pid)
+            with self.assertRaises(metadata.Refused): fence.health()
+            with self.assertRaises(metadata.Refused): fence.scan_guard()
+            with self.assertRaises(metadata.Refused): fence.__enter__()
+
+    def test_missing_share_locks_and_standby_refuse_uncached_authority(self):
+        with self.fence() as fence:
+            fence.db.execute('ROLLBACK')
+            fence.db.execute('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            fence.db.execute(writer.sql.SQL('SET LOCAL hnet.copy_fence_nonce = {}').format(writer.sql.Literal(fence._nonce)))
+            fence.db.execute('LOCK TABLE public.book_requests IN SHARE MODE NOWAIT')
+            with self.assertRaises(metadata.Refused): fence.health()
+        with self.fence() as fence:
+            row = {**fence.health(), 'standby': True}
+            with mock.patch.object(fence.db, 'execute', return_value=mock.Mock(fetchone=lambda: row)), \
+                    self.assertRaises(metadata.Refused): fence.health()
+
+    def test_replaced_connection_refuses_before_query_and_never_closes_the_replacement(self):
+        with writer.psycopg.connect(self.pg.dsn, autocommit=True) as replacement:
+            with self.fence() as fence:
+                original = fence.db
+                fence.db = replacement
+                with mock.patch.object(replacement, 'execute', side_effect=AssertionError('no replacement SQL')), \
+                        self.assertRaises(metadata.Refused): fence.scan_guard()
+            self.assertTrue(original.closed)
+            self.assertFalse(replacement.closed)
+
+    def test_worker_thread_and_inherited_process_refuse_before_sql(self):
+        with self.fence() as fence:
+            failures = []
+            def foreign():
+                try: fence.health()
+                except metadata.Refused: failures.append(True)
+            with mock.patch.object(fence.db, 'execute', side_effect=AssertionError('no foreign SQL')):
+                thread = threading.Thread(target=foreign)
+                thread.start(); thread.join(timeout=1)
+                self.assertFalse(thread.is_alive())
+                self.assertEqual(failures, [True])
+        with self.fence() as fence:
+            with mock.patch.object(writer.os, 'getpid', return_value=fence._owner_process + 1), \
+                    mock.patch.object(fence.db, 'execute', side_effect=AssertionError('no inherited SQL')), \
+                    self.assertRaises(metadata.Refused): fence.scan_guard()
+
+    def test_stat_guard_checks_every_entry_but_real_sql_at_one_second_and_health_is_uncached(self):
+        with self.fence() as fence:
+            now = time.monotonic()
+            with mock.patch.object(writer.time, 'monotonic', return_value=now): fence.health()
+            with mock.patch.object(fence.db, 'execute', wraps=fence.db.execute) as execute:
+                with mock.patch.object(writer.time, 'monotonic', return_value=now + .999):
+                    fence.scan_guard(); fence.scan_guard()
+                self.assertEqual(execute.call_count, 0)
+                with mock.patch.object(writer.time, 'monotonic', return_value=now + 1): fence.scan_guard()
+                self.assertEqual(execute.call_count, 1)
+                with mock.patch.object(writer.time, 'monotonic', return_value=now + 1.001):
+                    fence.health(); fence.health()
+                self.assertEqual(execute.call_count, 3)
+                fence.deadline = now - 1
+                with self.assertRaises(metadata.Refused): fence.scan_guard()
+                self.assertEqual(execute.call_count, 3)
+
+    def test_stat_walk_post_query_refuses_backend_loss_before_proof_is_returned(self):
+        import bound_census
+        with self.fence() as fence:
+            scan = fence.scan_guard
+            killed = False
+            def lose_after_stat_guard():
+                nonlocal killed
+                scan()
+                if not killed:
+                    killed = True
+                    self.pg.admin.execute('SELECT pg_terminate_backend(%s)', (fence.pid,))
+            with self.assertRaises(metadata.Refused):
+                bound_census.stat_census(self.root, fence.deadline, fence.health, lose_after_stat_guard)
+        self.assertFalse(os.path.exists(self.state))
+
+    def test_cached_stat_guard_checks_closed_connection_before_any_sql(self):
+        with self.fence() as fence:
+            fence.db.close()
+            with mock.patch.object(fence.db, 'execute', side_effect=AssertionError('no SQL on closed connection')), \
+                    self.assertRaises(metadata.Refused): fence.scan_guard()
+
+    def test_retained_hash_checks_after_network_gap_with_descriptor_still_open(self):
+        folder = os.path.dirname(os.path.join(self.root, self.extra))
+        with self.fence() as fence, metadata.safe_directory(folder) as directory:
+            before = os.stat('copy.epub', dir_fd=directory)
+            health = fence.health
+            count = 0
+            def race():
+                nonlocal count
+                health(); count += 1
+                if count == 2:
+                    os.utime(os.path.join(folder, 'copy.epub'), ns=(before.st_atime_ns, before.st_mtime_ns + 10))
+            with mock.patch.object(fence, 'health', side_effect=race), \
+                    writer.ScopedFileActions(fence, self.root, self.state), \
+                    self.assertRaises(metadata.Changed):
+                copies.hash_file(directory, 'copy.epub', fence.deadline)
 
     def capture(self, fence):
         rows = writer.capture_rows(fence.db)
@@ -325,12 +456,18 @@ class WriterTests(unittest.TestCase):
                 self.assertEqual(fence.health()["share_tables"], list(writer.TABLES))
                 self.blocked("book_requests")
                 return actual_read(*args, **kwargs)
-            with writer.ScopedFileActions(fence, self.root, self.state, bound=True), \
+            with writer.ScopedFileActions(fence, self.root, self.state, bound=True) as scope, \
+                 mock.patch.object(scope, 'original_fingerprints', wraps=scope.original_fingerprints) as all_walks, \
+                 mock.patch.object(bound_census, 'stat_census', wraps=bound_census.stat_census) as stat_walks, \
                  mock.patch.object(bound_census, "selected_file", side_effect=guarded_read), \
                  mock.patch.object(metadata, "identity_preflight", side_effect=AssertionError("manual must reuse sealed unselected identities")):
                 result = copies.consolidate_bound(evidence, self.root, self.state, 0, frozenset(),
                                                   lambda msg, **fields: self.lines.append({"msg": msg, **fields}),
-                                                  deadline=fence.deadline, selection_path=selection, health=fence.health)
+                                                  deadline=fence.deadline, selection_path=selection,
+                                                  health=fence.health, scan_guard=fence.scan_guard)
+                self.assertEqual((stat_walks.call_count, all_walks.call_count), (2, 3))
+                self.assertTrue(all(call.kwargs['scan_guard'] == fence.scan_guard for call in stat_walks.call_args_list))
+                self.assertTrue(all(call.kwargs['health'] == fence.scan_guard for call in all_walks.call_args_list))
             self.assertEqual(set(selected), {self.keeper, self.extra})
             self.assertEqual((result["moved"], result["refused"]), (1, 0))
             self.assertTrue(any(row["msg"] == "epub_copy_stage_proof" for row in self.lines))
