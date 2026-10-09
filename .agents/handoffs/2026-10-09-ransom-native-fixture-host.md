@@ -167,3 +167,51 @@ blocked filesystem at the original cap remains unknown.
 The earlier02e7 source-only peer receipt (superseded for this delta) is
 cb8f9dbbad3e25a7385a7242bf6ef2e3e8be2eea0cca6029d3840fec576f2b3f.
 No runtime outcome is inferred from source tests or that review.
+
+## Exact native projection successor publication
+
+Ops #3676 merged `6f255ce4da7283da066ee0a8ceaca0c8fa6961a2`. Exact PR head
+`a5dc3e975ec1033a3ea8aab829dd3cb5308cb926` passed native 37995407410, complete
+copy build/PG16 37995407415, host 37995407447, Flux and Diff checks. Actual advisory
+37995407496 / updated 6089153211 reported No findings. Original source review receipt
+SHA `726e92446289109834254a3eabd96bf411dc283738803dc86dbcd9f876706bb4`, exact sort
+overload/public diagnostics delta receipt SHA
+`d1c4fe5840227b553586aeb00c6f8a9820c52ea43195ac2ddb1eecdabc80f78d`, and bounded
+builder/cache delta receipt SHA
+`2d8caa3d5b9be265d7c27e24762a9461d78db828970639fbf206250a7164b0bf` cover the final
+source. Main 37995955784 repeated the full native controls and hard deadline, then
+published the same tested image without rebuilding:
+`ghcr.io/thaynes43/book-native-scan-fixture@sha256:909a98b9bab8342aee77c1f1dc1bc9aa26d48ca958646b95bfe3ca809e365c75`.
+
+The rehashed official cosign 3.1.3 binary (SHA
+`4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71`) verified that
+exact digest, repository, push/main workflow identity and merge SHA, trusted
+certificate chain and offline transparency inclusion. One valid signature is in
+`/tmp/hn-ransom-projection-publication-proof-1009/cosign.json`, SHA
+`bbe5636f5dca049a93a85e562edc287c1340187225ad7fab35456b2240c45042`.
+Independent anonymous registry metadata verification and one bounded 49,453,800-byte
+public fixture-layer inspection prove all five actual generic module hashes equal
+the passing PR receipt; all eight inherited native base diff IDs equal the prior
+verified production-base fixture. Fresh read-only production image/UID and eight
+native module hashes match that receipt, closing all 13 modules. Registry receipt
+`/tmp/hn-ransom-projection-publication-proof-1009/registry-proof.json` SHA
+`0dadfdc6c75161131cf894c93a2d7ab6d63f02e338f7a6416372e8cf5bb84b21` binds this evidence.
+The immutable native base remains `ca6af7a1`, source `6bcd5689`, EF package 10.0.6,
+apphost runtime .NET 10.0.1, New York local zone and original 180/200-second clocks.
+
+The host's only executable change is this new immutable fixture digest; the public
+prepared approval stays CLOSED with runtime/production/root approvals false. Main's
+13-module artifact download exposed the exact official Actions hostname
+`productionresultssa7.blob.core.windows.net`, absent from the enumerated live/repo
+allowlist. Root ratified adding only that hostname to both corresponding DNS and
+HTTPS CNP entries, outside the pod-bouncing resources. Main artifact comparison
+waits for verified GitOps apply; no proxy, wildcard or alternate download is used.
+
+CI bootstrap blocker #3678 is closed with actual same-digest cache/full native and
+copy PASS evidence, comment 6089877441. Native two-color nondeterminism is governed
+only by the strict candidate-cover bytes and two nullable uppercase RGB predicates;
+the deterministic-color premise remains withdrawn. Source tests and publication
+grant no actual scan result. A fresh immutable private CLOSED packet, independent
+review and separately named exact root one-Job GO still precede isolated execution.
+No production writer/COPY/EPUB/list write, strip enable or service/library hold is
+authorized here.
