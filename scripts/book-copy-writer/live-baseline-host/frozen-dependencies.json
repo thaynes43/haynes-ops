@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "runtime_authorization": false,
+  "dependencies": {
+    "helper": {
+      "path": "dependencies/checkpoint-copy-job.py",
+      "sha256": "b328a4b810b731208349b3f4148015372968cbdfbdc63daa64e305d3f9aa78c9",
+      "reviewed_source_path": "/home/dev/work/hn-825c-fence-prepared/copy-bound-census-consumers-prepared-v2/checkpoint-copy-job.py"
+    },
+    "sender": {
+      "path": "dependencies/deliver-private-inputs.py",
+      "sha256": "a8c82c523ec45386388315e855dcfb460632b7435e8593ad605a6092b9377ad9",
+      "reviewed_source_path": "/home/dev/work/hn-825c-fence-prepared/private-input-delivery-prepared-v2/deliver-private-inputs.py"
+    },
+    "receiver": {
+      "path": "dependencies/receive-private-inputs.py",
+      "sha256": "36c64a36df09a1125839d5a29febc1ace81d59d2ea45b386105875a7923898a6",
+      "reviewed_source_path": "/home/dev/work/hn-825c-fence-prepared/private-input-delivery-prepared-v2/receive-private-inputs.py"
+    },
+    "native_verifier": {
+      "path": "dependencies/prepare-native-source-contract.py",
+      "sha256": "67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f",
+      "reviewed_source_path": "/home/dev/work/hn-825c-fence-prepared/copy-bound-producers-prepared-v2/prepare-native-source-contract.py"
+    },
+    "collector": {
+      "path": "dependencies/bound_census_collectors.py",
+      "sha256": "c22d220cafebf8c18e9b3f2bfe46156be9e3cc13fd8521532dddd12f97877b6d",
+      "reviewed_source_path": "/home/dev/work/hn-825c-fence-prepared/copy-bound-producers-prepared-v2/bound_census_collectors.py"
+    },
+    "ack_receiver": {
+      "path": "receive-live-baseline-ack.py",
+      "sha256": "de30ca5463b6564146f4fe71c79a6502487941ccfc09d7967054abeceff421f3",
+      "reviewed_source_path": "/home/dev/work/hn-825c-fence-prepared/live-byte-baseline-lifecycle-prepared-v2/receive-live-baseline-ack.py"
+    },
+    "selected_scope": {
+      "private": true,
+      "sha256": "286819c1b24b2d4eed007db517a571f80338dbb24b09114ae4424614fd502ba0",
+      "reviewed_source_path": "/home/dev/work/hn-825c-fence-prepared/copy-bound-producers-prepared-v2/selected-read-only-stage-scope.json",
+      "contents_in_git": false
+    }
+  },
+  "v2_packet_sha256": "c9501cdf207add2242176a63da81f573abb74d23799788a51018f69878f559fe"
+}

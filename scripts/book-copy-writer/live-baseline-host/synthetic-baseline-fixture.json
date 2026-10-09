@@ -1,0 +1,139 @@
+{
+  "baseline": {
+    "all_file_fingerprints": {
+      ".ll_ignore": [
+        [
+          "66310",
+          "2418067973",
+          "0",
+          "1791508026227306520",
+          "1791508026227306520",
+          "1"
+        ],
+        "33188",
+        "1000",
+        "1000"
+      ],
+      "Author/Book.epub": [
+        [
+          "66310",
+          "2551295366",
+          "630",
+          "1791508026227202759",
+          "1791508026227202759",
+          "1"
+        ],
+        "33188",
+        "1000",
+        "1000"
+      ],
+      "notes.pdf": [
+        [
+          "66310",
+          "2418067969",
+          "22",
+          "1791508026227306520",
+          "1791508026227306520",
+          "1"
+        ],
+        "33188",
+        "1000",
+        "1000"
+      ]
+    },
+    "capture_started_at": "2026-10-09T01:07:06.227392+00:00",
+    "complete": true,
+    "completed_at": "2026-10-09T01:07:06.228621+00:00",
+    "ebook_root": "/tmp/copy-bound-unit-only-v2-_bg7r7j9",
+    "files": [
+      {
+        "author": "Author",
+        "author_keys": [
+          "author"
+        ],
+        "author_refusal": null,
+        "authors": [
+          "author"
+        ],
+        "comparison_aliases": [],
+        "creator": "Author",
+        "creator_keys": [
+          "author"
+        ],
+        "current_aliases": [
+          "book"
+        ],
+        "has_series_metadata": false,
+        "metadata": [],
+        "packages": [
+          {
+            "path": "content.opf",
+            "raw_opf_sha256": "608e85dc3587344b778fa31143e9b4dcc15771235de0dcc69f7547b360c3ed05"
+          }
+        ],
+        "path": "Author/Book.epub",
+        "projected_aliases": [
+          "book"
+        ],
+        "sha256": "4547e88c120ced1b0c8ec1716283c631166d633f3260c19d2d7385ea7788dc5d",
+        "source_identity": [
+          "66310",
+          "2551295366",
+          "630",
+          "1791508026227202759",
+          "1791508026227202759",
+          "1"
+        ],
+        "title": "Book",
+        "title_keys": [
+          "book"
+        ]
+      }
+    ],
+    "kind": "live_byte_baseline",
+    "module_sha256": {
+      "epub_copies.py": "31134ebfc895e4b8cd5f4f1e4a495572d31c165a42d1ded207da58f3469ee7b6",
+      "epub_metadata.py": "ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773"
+    },
+    "production_writes": 0,
+    "read_only": true,
+    "read_only_stage_measurement": {
+      "all_file_count": 3,
+      "completed_at": "2026-10-09T01:07:06.229890+00:00",
+      "epub_count": 1,
+      "production_writes": 0,
+      "qualification": "One sequential read-only observation; no availability guarantee.",
+      "selected_byte_seconds": 0.0003974689170718193,
+      "selected_bytes": "630",
+      "selected_distinct_count": 1,
+      "selected_started_at": "2026-10-09T01:07:06.229223+00:00",
+      "started_at": "2026-10-09T01:07:06.228631+00:00",
+      "stat_scope": "actual complete stat_census: two walks plus every immediate parent/permission check",
+      "stat_seconds": 0.0005897032096982002
+    },
+    "schema": 1,
+    "source_binding": {
+      "image": "ghcr.io/thaynes43/book-copy-writer:test@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "image_id": "ghcr.io/thaynes43/book-copy-writer:test@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "job_uid": "10000000-0000-4000-8000-000000000001",
+      "mount_root": "/tmp/copy-bound-unit-only-v2-_bg7r7j9",
+      "namespace": "frontend",
+      "nfs_export": "/hdd-nfs-repl",
+      "nfs_server": "gasha01.haynesnetwork",
+      "node": "talosw01",
+      "pod_name": "unit-baseline-pod",
+      "pod_spec_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "pod_uid": "20000000-0000-4000-8000-000000000002",
+      "restarts": 0,
+      "root_identity6": [
+        "66310",
+        "2418067968",
+        "55",
+        "1791508026227306520",
+        "1791508026227306520",
+        "3"
+      ]
+    },
+    "stable_before_after": true
+  }
+}
