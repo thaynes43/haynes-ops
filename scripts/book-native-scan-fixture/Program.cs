@@ -14,6 +14,7 @@ string stage = "admission";
 FixturePacket? packet = null;
 var exitCode = 2;
 string? resultJson = null;
+var diagnosticSaved = false;
 Timer? alarm = null;
 try
 {
@@ -47,7 +48,7 @@ try
         NativeProof.GenericSelfTest();
         stage = "public-self-test-native-bindings";
         NativeBindings.Inspect();
-        output.WriteLine($"PASS native local/UTC clock controls, 13 packet refusals, durable-ACK/live-native refusals, typed saved-state barriers, actual five-row inverse, color/cover guards, EF10.0.6 virtual hooks and pending/deferred controls; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
+        output.WriteLine($"PASS native local/UTC clock controls, 13 packet refusals, durable-ACK/live-native refusals, typed saved-state barriers, actual five-row inverse, color/cover guards, EF10.0.6 virtual hooks, pending/deferred, exact parser constructors and private owned-diagnostic controls; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
         return 0;
     }
     FixtureProtocol.Require(args.SequenceEqual(new[] { "--prepared-private-fixture" }), "unknown entrypoint");
@@ -183,12 +184,14 @@ catch (Exception error)
     {
         // Do not expose runtime vendor errors: they can contain private state or credentials.
         resultJson = JsonSerializer.Serialize(new { result = "REFUSED", stage, kind = error.GetType().Name, outcome = "unknown", productionAuthorization = false });
+        if (packet is not null && File.Exists("/kavita/config/proof-before.json"))
+            diagnosticSaved = NativeProof.SaveFailureDiagnostic(packet, stage, error);
     }
 }
 try
 {
     if (packet is not null && File.Exists("/kavita/config/proof-before.json"))
-        await NativeProof.HandBackEvidence(packet, output, exitCode == 0 ? "passed-private-proof" : "unknown");
+        await NativeProof.HandBackEvidence(packet, output, exitCode == 0 ? "passed-private-proof" : "unknown", diagnosticSaved);
 }
 catch (Exception error)
 {
@@ -256,9 +259,44 @@ static class ProcessDeadline
 }
 
 sealed record DatabaseSnapshot(string SchemaSha256, Dictionary<string, List<SortedDictionary<string, string>>> Tables);
+sealed record OwnedCallsite(int MethodToken, int IlOffset);
+sealed record PrivateFailureDiagnostic(int Schema, string Stage, string Kind, string HarnessSha256, OwnedCallsite[] OwnedCallsites);
 
 static class NativeProof
 {
+    internal static PrivateFailureDiagnostic FailureDiagnostic(string stage, Exception error, string harnessSha256)
+    {
+        FixtureProtocol.Require(new[] { "admission", "native-build", "native-projection", "native-scan", "native-cleanup-predicate", "state-readback", "private-inverse" }.Contains(stage)
+            && FixtureProtocol.IsHash(harnessSha256) && System.Text.RegularExpressions.Regex.IsMatch(error.GetType().Name, "^[A-Za-z][A-Za-z0-9]{0,95}$"), "private diagnostic identity differs");
+        // Numeric positions in the hash-bound harness only. No PDB path/line,
+        // exception message/argument, vendor frame or textual stack is retained.
+        var owned = (new System.Diagnostics.StackTrace(error, false).GetFrames() ?? [])
+            .Where(f => f.GetMethod()?.Module.Assembly == typeof(NativeProof).Assembly)
+            .Select(f => new OwnedCallsite(f.GetMethod()!.MetadataToken, f.GetILOffset())).Distinct().Take(8).ToArray();
+        FixtureProtocol.Require(owned.Length > 0 && owned.All(c => (c.MethodToken & unchecked((int)0xff000000)) == 0x06000000
+            && (c.MethodToken & 0x00ffffff) > 0 && c.IlOffset is >= -1 and <= 1048576), "private owned diagnostic callsite differs");
+        return new(1, stage, error.GetType().Name, harnessSha256, owned);
+    }
+    public static bool SaveFailureDiagnostic(FixturePacket packet, string stage, Exception error)
+        => TryPublishDiagnostic("/kavita/config/proof-diagnostic.json", stage, error, packet.HarnessSha256);
+    internal static bool TryPublishDiagnostic(string path, string stage, Exception error, string harnessSha256)
+    {
+        try
+        {
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(FailureDiagnostic(stage, error, harnessSha256));
+            FixtureProtocol.Require(bytes.Length <= 4096, "private diagnostic size differs");
+            using (var file = new FileStream(path + ".partial", new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite }))
+            { file.Write(bytes); file.Flush(true); }
+            File.Move(path + ".partial", path, overwrite: false);
+            return true;
+        }
+        catch (Exception)
+        {
+            // Diagnostic loss never replaces the original UNKNOWN or blocks its
+            // database proof handback/ACK. No partial target is included as evidence.
+            return false;
+        }
+    }
     public static void RequirePrivateUmask() => FixtureProtocol.Require(File.ReadLines("/proc/self/status").Single(line => line.StartsWith("Umask:", StringComparison.Ordinal)).Split(':', 2)[1].Trim() == "0077", "fixture did not inherit its restrictive launch umask");
     public static string Digest(DatabaseSnapshot snapshot) => FixtureProtocol.HashText(JsonSerializer.Serialize(snapshot));
     public static void RequirePrivateTmpfs(string path)
@@ -411,7 +449,7 @@ static class NativeProof
         using var file = new FileStream(path, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite });
         JsonSerializer.Serialize(file, value); file.Flush(true);
     }
-    public static async Task HandBackEvidence(FixturePacket packet, TextWriter output, string outcome)
+    public static async Task HandBackEvidence(FixturePacket packet, TextWriter output, string outcome, bool diagnosticSaved)
     {
         var pins = new List<FilePin>();
         foreach (var name in new[] { "before", "after-build", "after-bind", "after", "inverse" })
@@ -422,6 +460,12 @@ static class NativeProof
                 PrivateFile(path, 32 * 1024 * 1024);
                 pins.Add(new(path, FixtureProtocol.Sha(await File.ReadAllBytesAsync(path))));
             }
+        }
+        if (outcome == "unknown" && diagnosticSaved)
+        {
+            const string diagnostic = "/kavita/config/proof-diagnostic.json";
+            PrivateFile(diagnostic, 4096);
+            pins.Add(new(diagnostic, FixtureProtocol.Sha(await File.ReadAllBytesAsync(diagnostic))));
         }
         var receipt = new { schema = 1, packet.Phase, packet.JobUid, packet.PodUid, outcome, proofFiles = pins, productionAuthorization = false };
         var receiptBytes = JsonSerializer.SerializeToUtf8Bytes(receipt);
@@ -484,6 +528,37 @@ static class NativeProof
         : cell == "null:" ? DBNull.Value : throw new InvalidOperationException("unsupported native cell");
     public static void GenericSelfTest()
     {
+        const string secretControl = "synthetic-private-message/path/XPath/value";
+        PrivateFailureDiagnostic diagnostic;
+        try { throw new InvalidOperationException(secretControl); }
+        catch (InvalidOperationException error) { diagnostic = FailureDiagnostic("native-projection", error, new string('a', 64)); }
+        var diagnosticJson = JsonSerializer.Serialize(diagnostic);
+        FixtureProtocol.Require(diagnostic.OwnedCallsites.Length is > 0 and <= 8 && diagnostic.Kind == "InvalidOperationException"
+            && !diagnosticJson.Contains(secretControl, StringComparison.Ordinal) && !diagnosticJson.Contains("GenericSelfTest", StringComparison.Ordinal), "private diagnostic exposed text or lost owned positions");
+        foreach (var bad in new[] { "private/value", "native-projection/private" })
+        {
+            var diagnosticRefused = false;
+            try { _ = FailureDiagnostic(bad, new InvalidOperationException(secretControl), new string('a', 64)); } catch (InvalidOperationException) { diagnosticRefused = true; }
+            FixtureProtocol.Require(diagnosticRefused, "private diagnostic accepted an unowned stage");
+        }
+        var diagnosticDirectory = Path.Combine(Path.GetTempPath(), "ransom-diagnostic-control-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(diagnosticDirectory);
+        try
+        {
+            Exception captured;
+            try { throw new InvalidOperationException(secretControl); } catch (InvalidOperationException error) { captured = error; }
+            var diagnosticPath = Path.Combine(diagnosticDirectory, "proof-diagnostic.json");
+            FixtureProtocol.Require(!TryPublishDiagnostic(diagnosticPath, "unowned-stage", captured, new string('a', 64))
+                && !File.Exists(diagnosticPath), "diagnostic derivation failure published a target");
+            FixtureProtocol.Require(TryPublishDiagnostic(diagnosticPath, "native-projection", captured, new string('a', 64))
+                && !File.Exists(diagnosticPath + ".partial"), "complete private diagnostic was not atomically published");
+            PrivateFile(diagnosticPath, 4096);
+            var savedBytes = File.ReadAllBytes(diagnosticPath);
+            FixtureProtocol.Require(!TryPublishDiagnostic(diagnosticPath, "native-projection", captured, new string('a', 64))
+                && savedBytes.SequenceEqual(File.ReadAllBytes(diagnosticPath)), "diagnostic write failure replaced an existing target");
+            FixtureProtocol.Require(!TryPublishDiagnostic(Path.Combine(diagnosticDirectory, "missing", "proof-diagnostic.json"), "native-projection", captured, new string('a', 64)), "diagnostic write failure escaped its guard");
+        }
+        finally { Directory.Delete(diagnosticDirectory, recursive: true); }
         var before = new DatabaseSnapshot("synthetic-schema", new Dictionary<string, List<SortedDictionary<string, string>>>
         {
             ["Series"] = [new(StringComparer.Ordinal) { ["Id"] = "int:1", ["Name"] = "text:Before", ["ISBN"] = "text:synthetic", ["Inker"] = "text:synthetic" }],

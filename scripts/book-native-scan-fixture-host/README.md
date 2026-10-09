@@ -63,8 +63,16 @@ and deliver the approved packet last. Never print payloads or native private log
 Copy every receipt-listed full-state proof plus the receipt privately, verify hashes
 and fsync files/directories before an exact phase/Job/Pod/receipt-SHA ACK. No missing,
 late or partial ACK is a success. The child must reach Pod Succeeded / container Completed with integer exit zero and
-a current Job Complete, active zero, succeeded one and failed zero, and provide and provide its actual
+a current Job Complete, active zero, succeeded one and failed zero, and provide its actual
 native PASS, including unchanged saved/user/curation/lock rows and retained IDs.
+
+UNKNOWN handback may also include the one fixed private `proof-diagnostic.json`, capped
+at4096 bytes: exact harness SHA, fixed stage/type and at most eight owned numeric
+MethodToken/IL-offset pairs. Exact keys/types, bounds and scope are checked before
+ACK; messages, paths, arguments or vendor frames refuse. A failed or missing
+diagnostic leaves UNKNOWN and preserves the original database-proof handback/ACK.
+This file is not a database
+proof and cannot replace any of the five mandatory proofs on a successful receipt.
 
 On success, refusal, upload failure, expiry or interruption, foreground-delete only
 the recorded Job UID; atomically publish the fsynced raw creation response before checking admission;

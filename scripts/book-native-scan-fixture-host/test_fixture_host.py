@@ -233,7 +233,35 @@ class HostTests(unittest.TestCase):
             h.validate_receipt(raw, {**event, "proofFiles": pins[:1], "receiptSha256": h.sha(raw)}, PHASE, JOBUID, PODUID)
         receipt["outcome"] = "unknown"
         raw = h.canonical(receipt)
+        # Missing/failed diagnostics must preserve the original UNKNOWN DBproof handback.
         h.validate_receipt(raw, {**event, "proofFiles": pins[:1], "receiptSha256": h.sha(raw)}, PHASE, JOBUID, PODUID)
+        receipt["proofFiles"] = pins[:1] + [{"Path": h.DIAGNOSTIC, "Sha256": "a" * 64}]
+        raw = h.canonical(receipt)
+        h.validate_receipt(raw, {**event, "proofFiles": receipt["proofFiles"], "receiptSha256": h.sha(raw)}, PHASE, JOBUID, PODUID)
+        receipt["outcome"] = "passed-private-proof"
+        raw = h.canonical(receipt)
+        with self.assertRaisesRegex(h.Refused, "passed_proof_incomplete"):
+            h.validate_receipt(raw, {**event, "proofFiles": receipt["proofFiles"], "receiptSha256": h.sha(raw)}, PHASE, JOBUID, PODUID)
+
+    def test_private_diagnostic_has_only_bounded_owned_numeric_callsites(self):
+        good = {"Schema": 1, "Stage": "native-projection", "Kind": "InvalidOperationException", "HarnessSha256": "a" * 64,
+                "OwnedCallsites": [{"MethodToken": 0x06000001, "IlOffset": -1}, {"MethodToken": 0x06000002, "IlOffset": 123}]}
+        self.assertEqual(h.validate_diagnostic(h.canonical(good), "a" * 64), good)
+        changes = (lambda v: v.update(Message="synthetic-private-value"), lambda v: v.update(Stage="private/path"),
+                   lambda v: v.update(Kind="vendor message/path"), lambda v: v.update(HarnessSha256="b" * 64),
+                   lambda v: v.update(Schema=True), lambda v: v.update(OwnedCallsites=[]),
+                   lambda v: v.update(OwnedCallsites=v["OwnedCallsites"] * 5),
+                   lambda v: v["OwnedCallsites"][0].update(MethodToken=0x02000001),
+                   lambda v: v["OwnedCallsites"][0].update(MethodToken=0x100000000 + 0x06000001),
+                   lambda v: v["OwnedCallsites"][0].update(MethodToken=0x06000001 - 0x100000000),
+                   lambda v: v["OwnedCallsites"][0].update(IlOffset=True),
+                   lambda v: v["OwnedCallsites"][0].update(IlOffset=1048577),
+                   lambda v: v["OwnedCallsites"][0].update(Path="private/path"))
+        for change in changes:
+            bad = copy.deepcopy(good)
+            change(bad)
+            with self.assertRaises(h.Refused):
+                h.validate_diagnostic(h.canonical(bad), "a" * 64)
 
     def test_private_copy_is_exclusive_fsynced_hash_verified_and_symlink_refused(self):
         with tempfile.TemporaryDirectory() as directory:

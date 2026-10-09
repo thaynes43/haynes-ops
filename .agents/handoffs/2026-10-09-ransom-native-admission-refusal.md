@@ -312,3 +312,76 @@ The production writer remains seven initial catalog fields only and unapproved.
 The diagnostic inverse's additional restoration fields grant no production writer
 scope. #3571 remains held/strip0; whole saved-state and watched-root safety gates
 are unchanged.
+
+## Isolated successor v8: UNKNOWN before scan (22:17 UTC)
+
+Source #3676 merged `6f255ce4`; host/image pin #3681 merged `37e52a19`.
+The signed image is `909a98b9`, with all 13 main-artifact module hashes and SDK
+reference identical to the passing PR build. GitOps applied the exact official
+Actions artifact hostname to both dev-env DNS/HTTPS entries without a pod bounce.
+The main-artifact/CNP closure receipt SHA is
+`ff4d0a9d063d73798f4051f5442d439792df5a126926ae707bf297e050ee94f6`.
+
+Independent peer preparation receipt
+`ff7a4bcd84a6a1ff409e9431d2d15d39009991c16af089ba007c318fe5176785`
+passed immutable CLOSED v8
+`2b1825673bcfb9694ce226a3e763645f5cd3a01fba016199bdd4eebf72aa1960`,
+phase `34a6dac5-c698-4ce8-b0c0-6afad6a76705`, manifest
+`4c2a788eeafccce8bfb4b8bc66ca1a4cd2743c45c342326255d5ca1cd0779b11`.
+The peer independently read all 82 tables/34,433 typed rows: only the seven approved
+candidate catalog cells changed; all 25 scan Before cells, the 12 clocks/11 fixed
+scalars/two native colors, and the 32-cell/five-row inverse union were exact.
+
+Root issued one isolated Job GO against that packet. Its separate approval SHA
+`d488ac478244bb195fe3b7f0bed1e5d9d77131711b2b7c3397ffd45a6de14853`
+changed only the three outer approval flags and two fresh timestamps; production
+writer approval stayed false and nested approval remained closed until actual
+UID/clock/network/module binding. The actual Job UID was
+`8afba98d-7ca5-48e9-a516-6137cbf76d33`; Pod UID
+`a9d41b94-9477-43f0-b8b8-e9335da6e55d`. Original execution180/total-cleanup200
+caps were retained. No production mount/write or service/library hold occurred.
+
+Actual admission, all 13 modules/input custody and realized CEP+BPF deny passed.
+Native before and after-Build proofs were byte-identical, SHA
+`faf18c55f5e29f5676734e38294cb149fb59c2950ace15760285a019d56fe43d`.
+Their durable handback receipt/ACK completed. The native terminal event was
+`REFUSED`, stage `native-projection`, kind `InvalidOperationException`; the host
+honestly recorded `UNKNOWN`/`child_terminal_failure`. No after-bind, cover-helper,
+25-cell scan, 32-cell inverse, zero exit or Job Complete proof exists. Source
+ordering places this refusal before ScanSeries. No replay was attempted.
+
+The exact owned UID cleanup completed22:17:45, before either original deadline;
+retained and fresh full native Job/Pod unions were zero. Host receipt SHA
+`dcd543f238eb9b71c92148b600359632e5439fcf8e58e0ca584af3335d8d730b`,
+cleanup SHA `f975bc2501059e067ab482a3b14d2ec0900b4ca230daf0bb8c8b578c53984926`,
+watchdog SHA `4e1e21656bcaa46c1f9a5b022206e39c89f9905fef4893041e96eb29eded6f83`.
+Private evidence remains under
+`/home/dev/work/hn-ransom-native-fixture-actual-909a-v8-1009`; peer actual receipt
+`b060dd3a64122cbd913e3a40fd9833ed38d60177fee45d52ad9cc57eed473eff`
+independently confirms UNKNOWN and all proved/unproved boundaries.
+
+Static inspection found a concrete fixture construction defect consistent with
+this terminal stage/type, **not a retained proof of the original exact throw**:
+BasicParser requires IDirectoryService and IDefaultParser, but the fixture asks
+ActivatorUtilities to create it without the image parser. The pinned native
+service collection does not register IDefaultParser. Native
+[ReadingItemService:36–38](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/Reading/ReadingItemService.cs#L36)
+explicitly creates ImageParser, BasicParser(directoryService,imageParser), then
+BookParser(directoryService,bookService,basicParser).
+
+Root ratified that exact constructor-chain correction and finite public controls
+against the pinned constructors, while preserving the same scoped directory/book/
+unit/context and every 25/32 predicate. A bounded PRIVATE diagnostic will retain
+only the fixed fixture stage, exception type and owned compiled method/IL offsets
+in the existing hash-bound proof handback/ACK. It excludes exception messages,
+arguments, file paths, vendor frames, SQLite cells and EPUB/XPath values; public
+runtime errors remain stage/type only. Ordinary diagnostic derivation/write failures
+remain UNKNOWN and preserve the existing database-proof handback/ACK. Only a fully
+valid mode0600 temporary diagnostic, flushed and atomically renamed, is included;
+partial targets are never evidence. Missing diagnostics cannot prove a callsite or
+advance PASS; malformed present diagnostics refuse. Actual Claude advisory
+6090381814 identified the initial mandatory-diagnostic evidence-loss path; the
+bounded catch/atomic publication and finite failed/missing diagnostic controls fix
+that finding without replacing the original stage/type or database proof gates.
+These source corrections grant no runtime approval: new image/source/host closure,
+fresh CLOSED packet, peer audit and a separately named root GO precede another Job.

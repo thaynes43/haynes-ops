@@ -193,6 +193,24 @@ synthetic titles check that binding. Only the explicit public `--self-test` fail
 output may include a phase and a reason capped at 256 characters; runtime/private
 failure messages remain redacted.
 
+The metadata projection follows the pinned native ReadingItemService constructor
+chain: ImageParser, BasicParser with that image parser, then BookParser with that
+basic parser and the same scoped directory/book services. Finite controls use the
+actual compiled constructors with inert synthetic service proxies: the missing
+IDefaultParser dependency must refuse, and the exact chain must construct without
+invoking any native service method or starting a host.
+
+After an admitted private proof begins, an UNKNOWN outcome attempts one bounded
+fixed `proof-diagnostic.json` alongside the database proofs through the existing
+hash-bound receipt/ACK. It contains only the fixed fixture stage/type, harness SHA
+and at most eight owned harness MethodToken/IL-offset pairs. Only a complete mode0600
+temporary file, flushed and atomically renamed, is included. Ordinary diagnostic
+derivation/write failures preserve the original UNKNOWN and its database-proof
+handback/ACK; missing diagnostics cannot prove a callsite. No exception message,
+argument, source/PDB path, vendor frame or textual stack is retained. A successful
+receipt still requires exactly all five database proofs. The failed v8 run retains
+UNKNOWN; this correction grants no subsequent runtime authority.
+
 CI records only official SDK and generic/native module hashes. On main fixture-source
 changes it publishes
 the same tested image without rebuilding and signs its digest. Fresh root review must

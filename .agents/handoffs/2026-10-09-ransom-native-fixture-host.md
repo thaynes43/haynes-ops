@@ -215,3 +215,20 @@ grant no actual scan result. A fresh immutable private CLOSED packet, independen
 review and separately named exact root one-Job GO still precede isolated execution.
 No production writer/COPY/EPUB/list write, strip enable or service/library hold is
 authorized here.
+
+## v8 actual disposition and bounded correction
+
+The main artifact/CNP closure completed without a dev-env bounce (receipt
+`ff4d0a9d063d73798f4051f5442d439792df5a126926ae707bf297e050ee94f6`).
+The independently audited CLOSED v8 packet and single root-authorized22:17 run
+returned UNKNOWN before native scan, with durable before/after-Build proof/ACK
+and exact UID GC/full native union0. The admission-refusal companion records the
+exact packet, runtime receipts and every proved/unproved boundary.
+
+The narrow successor follows pinned ImageParser→BasicParser→BookParser constructor
+wiring and retains bounded private owned-callsite diagnostics through the same
+receipt/ACK. Runtime diagnostics contain no exception messages, vendor stack,
+paths, arguments or private values. Public errors remain stage/type only. Successful
+handback still requires every database proof; an unknown diagnostic cannot stand
+in for a scan or inverse proof. Original180/200 caps and all production gates stay
+closed. The consumed v8 GO cannot authorize another execution.
