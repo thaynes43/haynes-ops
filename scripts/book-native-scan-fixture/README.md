@@ -163,3 +163,13 @@ changes it publishes
 the same tested image without rebuilding and signs its digest. Fresh root review must
 bind that image, apphost/runtime/assembly/source receipt and the reviewed private input
 packet before runtime. This source package is preparation, not catalog-writer approval.
+
+Native SQLite scan timestamps have no offset suffix. The tagged native code writes
+local fields with DateTime.Now and `*Utc` fields with DateTime.UtcNow. Interpret
+`*Utc` cells explicitly as UTC and other scan clocks in the verified New York local
+zone, using invariant culture; do not apply the local offset to a UTC cell. The
+actual-runtime self-test checks matching local/UTC instants, explicit offsets and
+malformed, stale and future refusals through the same bounded-clock helper. This
+changes no allowance or state preservation rule. The earlier published diagnostic
+image is obsolete for private execution until the reviewed successor is signed
+and hash-bound by the host.
