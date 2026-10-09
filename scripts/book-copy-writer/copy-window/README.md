@@ -123,8 +123,11 @@ is empty, a private immutable packet/owner-SHA retirement receipt permits cold
 retries without inspecting a later reused PID. An empty original group before
 the first proof is also safe; another group's reused PID is never killed.
 Linux retains the number while the original PGID has members, so a different
-leader birth proves retirement and a missing leader leaves identifiable original
-descendants. The immutable receipt records which proof established retirement.
+leader birth proves retirement. A missing leader with members requires prior
+owner-bound custody captured while the original leader birth was proved on both
+sides of the snapshot; an already exited replacement leader is otherwise
+indistinguishable. Only captured identities are signaled. The immutable receipt
+records which proof established retirement.
 
 Rehearsal operational caps are exercise 90s, staging arm 120s and recovery 50s
 from the first recovery attempt. The watcher uses its existing 10s poll interval;

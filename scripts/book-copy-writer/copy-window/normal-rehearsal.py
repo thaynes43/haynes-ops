@@ -135,17 +135,32 @@ def retire_exercise(packet):
         try:current=start_ticks(pid)
         except FileNotFoundError:current=None
         members=group_members(pid)
-        # Linux retains the number while the original PGID has members. A
-        # different leader birth therefore identifies a replacement group;
-        # an absent leader with surviving PGID members identifies our orphans.
+        # A different live leader birth proves original retirement. Missing
+        # leader + members is ambiguous unless captured under its original birth.
         try:latest=start_ticks(pid)
         except FileNotFoundError:latest=None
         replacement=any(v not in (None,owner['start_ticks']) for v in (current,latest))
         basis='replacement_pid' if replacement else 'empty_original_group'
         if members and not replacement:
+            custody_path=runtime/'exercise-members.json'
+            if custody_path.exists():
+                custody=json.loads(read_private(custody_path))
+                require(set(custody)=={'schema','packet_sha256','phase_token','owner_sha256','original_group','members'}
+                    and all(custody[k]==binding[k] for k in ('schema','packet_sha256','phase_token','owner_sha256','original_group'))
+                    and isinstance(custody['members'],dict) and 0<len(custody['members'])<=64
+                    and custody['members'].get(str(pid))==owner['start_ticks'],'captured member custody changed')
+                captured={int(k):v for k,v in custody['members'].items()}
+            else:
+                require(current==latest==owner['start_ticks'] and members.get(pid)==owner['start_ticks']
+                    and len(members)<=64,'missing leader member custody unproved')
+                captured=members.copy()
+                cache.write_private(custody_path,canonical({k:binding[k] for k in
+                    ('schema','packet_sha256','phase_token','owner_sha256','original_group')}|
+                    {'members':{str(k):v for k,v in captured.items()}}))
             until=time.monotonic()+2
             while members:
                 require(time.monotonic()<until and len(members)<=64,'exercise group retirement unproved/cap')
+                require(all(captured.get(member)==birth for member,birth in members.items()),'new member custody unproved')
                 for member,birth in members.items():signal_member(member,birth,pid)
                 try:current=start_ticks(pid)
                 except FileNotFoundError:current=None

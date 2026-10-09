@@ -200,17 +200,33 @@ class NormalCases(unittest.TestCase):
             proof=json.loads(normal.read_private(runtime/'exercise-retired.json'))
             self.assertEqual(proof['basis'],'replacement_pid');self.assertEqual(proof['group_members'],{})
 
-    def test_missing_exercise_leader_retires_original_orphan_group(self):
+    def test_prior_captured_missing_leader_retires_original_orphan_group(self):
         with tempfile.TemporaryDirectory() as directory:
             runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
             packet={'directory':directory,'phase_token':fixtures.PHASE};pid=os.getpid()+100000
             owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
                 'phase_token':fixtures.PHASE,'pid':pid,'start_ticks':'original','pgid':pid}
             cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            custody={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'owner_sha256':normal.sha(normal.canonical(owner)),
+                'original_group':pid,'members':{str(pid):'original',str(pid+1):'owned-descendant'}}
+            cache.write_private(runtime/'exercise-members.json',normal.canonical(custody))
             with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',side_effect=[{pid+1:'owned-descendant'},{}]),mock.patch.object(normal,'signal_member') as retire:
                 normal.retire_exercise(packet);retire.assert_called_once_with(pid+1,'owned-descendant',pid)
             proof=json.loads(normal.read_private(runtime/'exercise-retired.json'))
             self.assertEqual(proof['basis'],'retired_owned_group');self.assertEqual(proof['group_members'],{})
+
+    def test_replacement_group_with_exited_leader_has_no_original_custody(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
+            packet={'directory':directory,'phase_token':fixtures.PHASE};pid=os.getpid()+100000
+            owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'pid':pid,'start_ticks':'original','pgid':pid}
+            cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',return_value={pid+1:'foreign-orphan'}),mock.patch.object(normal,'signal_member') as retire:
+                with self.assertRaisesRegex(ValueError,'member custody unproved'):normal.retire_exercise(packet)
+                retire.assert_not_called()
+            self.assertFalse((runtime/'exercise-members.json').exists());self.assertFalse((runtime/'exercise-retired.json').exists())
 
     def test_final_signal_uses_captured_pidfd_when_numeric_pid_is_replaced(self):
         pid,fd=12345,99;numeric={'birth':'original'};handles={fd:'original'};signaled=[]

@@ -46,8 +46,10 @@ group permits retirement even if the old PID was reused outside that group.
 retains an ID while any PID/PGID/SID member references it; allocation releases
 the ID only afterward. Thus a different leader birth proves original retirement,
 including a replacement leading a new group. It is never signaled. A missing
-leader with surviving original PGID members permits captured descendant
-retirement. [Python's pidfd signal API](https://docs.python.org/3.11/library/signal.html#signal.pidfd_send_signal)
+leader with members is ambiguous: a replacement group may also have lost its
+leader. Require private owner-bound custody captured while the original leader
+birth was proved before/after the member snapshot, then signal only those
+captured identities. First-observed missing leader without custody refuses.+[Python's pidfd signal API](https://docs.python.org/3.11/library/signal.html#signal.pidfd_send_signal)
 targets the captured process handle across the final numeric PID reuse gap.
 
 The rehearsal has no Stop clocks or COPY lease. Its closed operational bounds are
@@ -114,6 +116,10 @@ descendant controls. Runtime containment and restoration proof remains absent.
 The complete eighteen-case Normal suite passed in 0.365s under serial
 `nice -n 19`; the five targeted signal/replacement/orphan/actual-descendant
 controls passed in 0.154s. No runtime API or service hold was used.
+The coordinator's final review added the ambiguous missing-leader case: durable
+captured-member custody, prior-captured orphan retirement and an exited
+replacement group's refusal. Those three controls passed in 0.126s serially
+under `nice -n 19`, with no numeric group signal or native API.
 
 The independently reviewed #3667 successor was `f9f654b6` (receipt
 `89ffe7fc818cc66273505adcd6f4580fdeb5108ae7f280d4ad9b38133095e738`)
