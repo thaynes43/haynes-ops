@@ -73,7 +73,7 @@ static class NativeProjection
             && NativeProof.Row(before, "Chapter", packet.Target.Chapter)["CoverImageLocked"] == "int:0", "native projection lock differs");
         var sort = (string)Property(parsed, "Series");
         if (NativeProof.Row(before, "Library", packet.Target.Library)["RemovePrefixForSortName"] == "int:1")
-            sort = (string)Invoke(NativeBindings.Type("Kavita.Services", "Kavita.Services.Helpers.BookSortTitlePrefixHelper"), null, "GetSortTitle", sort);
+            sort = (string)SortTitleMethod().Invoke(null, [sort])!;
         var seriesSort = (string)Property(parsed, "SeriesSort");
         if (!string.IsNullOrEmpty(seriesSort)) sort = seriesSort;
         FixtureProtocol.Require(sort == "Ransom", "native unlocked sort projection differs");
@@ -207,6 +207,13 @@ static class NativeProjection
         FixtureProtocol.Require(calls.Length == 1 && calls[0].Op == OpCodes.Callvirt && Resolve(cancellation, calls[0]) == boolean
             && instructions.Count(i => i.Integer == 1) == 1 && boolean.IsVirtual, "actual EF cancellation overload does not dispatch virtually to bool overload");
     }
+    static MethodInfo SortTitleMethod()
+    {
+        var type = NativeBindings.Type("Kavita.Services", "Kavita.Services.Helpers.BookSortTitlePrefixHelper");
+        var method = type.GetMethod("GetSortTitle", [typeof(string)]);
+        FixtureProtocol.Require(method is not null && method.IsPublic && method.IsStatic && method.ReturnType == typeof(string), "native string sort helper signature differs");
+        return method!;
+    }
     public static void InspectSaveHooks()
     {
         FixtureProtocol.Require(CoverPath("/tmp/synthetic-cover", "projection.jpg") == "/tmp/synthetic-cover/projection.jpg", "native cover basename was not joined to its directory");
@@ -241,10 +248,12 @@ static class NativeProjection
             ("Kavita.Services", "Kavita.Services.Helpers.KoreaderHelper", "HashContents", 1),
             ("Kavita.Services", "Kavita.Services.Helpers.ParsedCountHelper", "GetCalculatedCount", 1),
             ("Kavita.Services", "Kavita.Services.Helpers.ParsedCountHelper", "GetTotalCount", 1),
-            ("Kavita.Services", "Kavita.Services.Helpers.BookSortTitlePrefixHelper", "GetSortTitle", 1),
             ("Kavita.Services", "Kavita.Services.ImageService", "CalculateColorScape", 1),
             ("Kavita.Services", "Kavita.Services.Scanner.BookParser", "Parse", 6) })
             FixtureProtocol.Require(NativeBindings.Type(assembly, name).GetMethods().Count(m => m.Name == method && m.GetParameters().Length == arguments) == 1, "native projection helper signature differs");
+        var sortTitle = SortTitleMethod();
+        foreach (var title in new[] { "The Ransom", "Ransom" })
+            FixtureProtocol.Require((string)sortTitle.Invoke(null, [title])! == "Ransom", "native string sort helper control differs");
         FixtureProtocol.Require(NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.ProcessSeries").GetMethod("DeterminePublicationStatus", BindingFlags.NonPublic | BindingFlags.Instance)?.GetParameters().Length == 2, "native publication helper signature differs");
         var image = NativeBindings.Type("Kavita.Services", "Kavita.Services.ImageService");
         var calculate = image.GetMethod("CalculateColorScape", [typeof(string)])!;

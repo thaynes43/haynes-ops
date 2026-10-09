@@ -177,7 +177,7 @@ source/build files. No private database, EPUB, approval packet or user payload r
 the build context, CI image or Actions artifact.
 
 For fixture source changes CI launches that actual apphost in the exact native base with network none/read-only,
-500m CPU and `nice -n 19`. The finite self-test checks 11 malformed packet refusals,
+500m CPU and `nice -n 19`. The finite self-test checks 13 malformed packet refusals,
 three durable-ACK refusals, six fresh live-native drift refusals, storage-type boundaries, saved-state mutation/removal
 refusals, exact inverse and actual published reflection signatures, without building
 the host or scanning any fixture. A separate finite child blocks on a full undrained
@@ -187,6 +187,11 @@ checks cover the prepared manifest, current GitOps version/TZ and
 build-context barriers. Initial public CI run 37968299781 passed compilation and native
 apphost launch at f657b5d8, without private inputs or host/scan. Subsequent source changes
 require their own current-head pass; neither launch establishes scanner behavior.
+The native sort helper is bound to its exact `string` parameter and return type;
+its separate span overload is never called through untyped reflection. Two fixed
+synthetic titles check that binding. Only the explicit public `--self-test` failure
+output may include a phase and a reason capped at 256 characters; runtime/private
+failure messages remain redacted.
 
 CI records only official SDK and generic/native module hashes. On main fixture-source
 changes it publishes
