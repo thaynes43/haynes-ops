@@ -48,7 +48,8 @@ native PASS, including unchanged saved/user/curation/lock rows and retained IDs.
 
 On success, refusal, upload failure, expiry or interruption, foreground-delete only
 the recorded Job UID; atomically publish the fsynced raw creation response before checking admission;
-handled signals stay blocked through link/unlink and directory fsync,
+Linux renameat2(RENAME_NOREPLACE) publishes its fsynced bytes without any two-link
+intermediate; fsync the final directory without masking the original deadline,
 so an injected spec still permits cleanup of its exact name/phase/UID. A valid raw CREATE response proves that namespace/name/UID is owned even if
 admission changes its labels; unknown transport recovery still requires matching phase; collect complete unfiltered raw Jobs and Pods and prove the
 union of exact name, phase label and controller owner is empty. Do not trust a label

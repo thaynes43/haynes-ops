@@ -1,6 +1,8 @@
 """Closed private native fixture transport; preparation is not execution authority."""
 import argparse
 import copy
+import ctypes
+import errno
 import datetime as dt
 import fcntl
 import hashlib
@@ -94,23 +96,40 @@ def save_private(path, raw):
         os.close(directory)
 
 
+def rename_noreplace(directory, source, destination):
+    # Same Linux no-replace publication primitive as native SOURCE outcome_mailbox.
+    libc = ctypes.CDLL(None, use_errno=True)
+    rename = getattr(libc, "renameat2", None)
+    require(rename is not None, "atomic_noreplace_unsupported")
+    rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    rename.restype = ctypes.c_int
+    if rename(directory, source.encode(), directory, destination.encode(), 1) != 0:
+        if ctypes.get_errno() == errno.EEXIST:
+            raise FileExistsError(destination)
+        raise Refused("atomic_noreplace_refused")
+
+
 def atomic_private_marker(path, value):
     path = Path(path)
     pending = path.with_name(path.name + ".pending-" + str(uuid.uuid4()))
     save_private(pending, value)
-    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGALRM, signal.SIGTERM, signal.SIGINT})
+    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    source = os.open(pending, os.O_RDONLY | os.O_NOFOLLOW)
     try:
-        os.link(pending, path, follow_symlinks=False)  # exclusive final publication
-        pending.unlink()
-        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        before = os.fstat(source)
+        named = os.stat(pending.name, dir_fd=directory, follow_symlinks=False)
+        fields = ("st_dev", "st_ino", "st_size", "st_mode", "st_nlink", "st_mtime_ns")
+        require(before.st_nlink == 1 and all(getattr(before, k) == getattr(named, k) for k in fields), "atomic_stage_changed")
+        rename_noreplace(directory, pending.name, path.name)
+        # File bytes were already fsynced. The final entry is atomic/no-replace
+        # and never has a second link, even across SIGKILL or a pod crash.
+        os.fsync(directory)
+        after = os.fstat(source)
+        named = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
+        require(all(getattr(before, k) == getattr(after, k) == getattr(named, k) for k in fields), "atomic_final_changed")
     finally:
-        # A deferred handled signal may raise here only after readable one-link
-        # custody and its directory entry are durable. SIGKILL remains unknown.
-        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        os.close(source)
+        os.close(directory)
 
 
 def retire_collection(fixture, out):

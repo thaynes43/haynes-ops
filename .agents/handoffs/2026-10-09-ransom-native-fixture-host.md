@@ -152,3 +152,13 @@ before staging unlink, leaving a two-link receipt that the private reader refuse
 Handled signals are blocked through link/unlink and directory fsync. A finite real
 SIGTERM-at-link control proves deferred interruption leaves complete one-link
 readable custody. SIGKILL or a blocked filesystem still yields unknown at the cap.
+
+Root refined custody publication to the already reviewed Linux SOURCE pattern:
+renameat2(RENAME_NOREPLACE), with staged inode/file fsync and final directory fsync.
+This removes the two-link intermediate even across SIGKILL/pod crash and does not
+mask a deadline through PVC fsync. Finite actual rename/no-overwrite and real
+post-rename SIGTERM controls retain complete single-link custody; interruption/
+blocked filesystem at the original cap remains unknown.
+The earlier02e7 source-only peer receipt (superseded for this delta) is
+cb8f9dbbad3e25a7385a7242bf6ef2e3e8be2eea0cca6029d3840fec576f2b3f.
+No runtime outcome is inferred from source tests or that review.

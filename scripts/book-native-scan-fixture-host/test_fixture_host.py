@@ -366,17 +366,17 @@ class HostTests(unittest.TestCase):
                 h.atomic_private_marker(path, {"phase": "other"})
             self.assertEqual(json.loads(h.read_private(path)), {"phase": PHASE})
 
-    def test_signal_at_atomic_link_is_deferred_until_one_link_receipt_is_durable(self):
-        real_link = h.os.link
-        def interrupted_link(*args, **kwargs):
-            real_link(*args, **kwargs)
+    def test_signal_after_atomic_rename_leaves_complete_single_link_custody(self):
+        real_rename = h.rename_noreplace
+        def interrupted_rename(*args, **kwargs):
+            real_rename(*args, **kwargs)
             h.os.kill(os.getpid(), h.signal.SIGTERM)
         def stop(*_): raise h.Refused("synthetic_interruption")
         previous_handler = h.signal.signal(h.signal.SIGTERM, stop)
         try:
             with tempfile.TemporaryDirectory() as out:
                 path = Path(out) / "created-job.json"
-                with mock.patch.object(h.os, "link", side_effect=interrupted_link), self.assertRaisesRegex(h.Refused, "synthetic_interruption"):
+                with mock.patch.object(h, "rename_noreplace", side_effect=interrupted_rename), self.assertRaisesRegex(h.Refused, "synthetic_interruption"):
                     h.atomic_private_marker(path, {"phase": PHASE})
                 self.assertEqual(path.stat().st_nlink, 1)
                 self.assertEqual(json.loads(h.read_private(path)), {"phase": PHASE})
