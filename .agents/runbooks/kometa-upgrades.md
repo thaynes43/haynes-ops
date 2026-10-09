@@ -81,5 +81,8 @@ and investigate egress/source errors before choosing an explicit rollback.
 All three production launchers mount the same Ceph block PVC at `/config` and
 hold `/config/.run.lock`. Waiting and acquisition are logged separately; Job
 elapsed time/alerting includes the wait. Preserve tini `-g -s`, inheritable lock
-descriptor, and the 23-hour production deadline across changes. The Oct 9 probe
+descriptor, and the three-hour production deadline across changes. This deadline
+bounds waiting plus execution; an exceeded budget fails the Job and releases the
+lock. The next daily run can retry idempotent ratings/overlay work. Do not enlarge
+the cap to accommodate a slow provider or a non-native collection sort. The Oct 9 probe
 verified cross-process `flock` exclusion and release on the actual PVC backend.

@@ -82,8 +82,24 @@ preceding 59-minute movie pass.
 Serialize all three launchers with a shared advisory lock at
 `/config/.run.lock`. Keep the descriptor across exec into the existing Kometa
 interpreter, and let tini forward termination to the process group. Log both
-waiting and acquisition. Keep the existing 23-hour Job deadline, which bounds
-waiting plus execution; keep all schedules, providers and thresholds.
+waiting and acquisition. Tighten each Job's deadline from 23 hours to three hours,
+bounding waiting plus execution; keep all schedules, providers and thresholds.
+
+A separate completed-run Loki query for Sep 10–Oct 9 found collections maximum
+50:18 across 30 completions and overlays maximum 45:52 across 29 completions.
+The missing Sep 13 overlay was the previously documented nine-hour wedged run.
+The older [full-badge overlay QA](kometa-qa-2026-07-07.md#task-4--overlay-coverage-qa-kometa-overlays-drain-kometa-244)
+completed in 72:13, and the documented July 19 cold/quota operations catch-up
+took about 2h15m. With the one-hour gap before overlays, those two older costs
+combine into about 2h27m of overlay Job elapsed, within the three-hour cap.
+The July 25 8h19m collection run was an already-fixed non-native sort defect,
+not a legitimate mode to preserve. No legitimate run over three hours was found.
+An unusually slow combination can exhaust its budget while waiting or processing;
+the failed Job releases the lock and the next daily run retries normal work.
+This prevents all-day starvation without hiding the earlier alert thresholds.
+
+Completed-run query:
+`{namespace="media",pod=~"kometa-(overlays|collections)-.*"} |= "Start Time:" |= "Finished:"`.
 
 Enable `--timings` only for operations. The
 [upstream instrumentation](https://github.com/Kometa-Team/Kometa/blob/v2.5.2/modules/timings.py#L260)
