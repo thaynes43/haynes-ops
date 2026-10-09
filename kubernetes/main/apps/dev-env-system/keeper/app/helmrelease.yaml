@@ -49,14 +49,17 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Keeper-only offline CA validator; operator/broker retain their pins.
-              # Signed/verified keyless from main 3b0d043 by publish.yml (run 37983647998).
-              tag: sha-3b0d043@sha256:5d5ea30cd0bebb1aa1373512a4517fe97b6ca79528d2db29f00041ba8549d790
+              # Keeper-only fresh-login acceptance; operator/broker retain their pins.
+              # Signed/verified from main f810766 by publish.yml (run 37996909724).
+              tag: sha-f810766@sha256:54a41f6677b8a900315f891a488fbbcdb8ad6cd5ff79c1896db11cba68fdcedd
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:
               - /usr/local/bin/dev-env-keeper
-            # No flags: the defaults are plan 01's names (--secret-namespace dev-agents,
+            # Bounded keeper-only fresh-login and immediate-renewal acceptance.
+            args:
+              - --enable-codex-auth=true
+            # Other flags retain the defaults: plan 01's names (--secret-namespace dev-agents,
             # --gh-token-secret dev-env-gh-token, --github-app-dir
             # /etc/dev-env-keeper/github-dev-bot, the Lease in POD_NAMESPACE, v1's
             # down-scoped token permissions, metrics :8080, probes :8081).
@@ -102,12 +105,43 @@ spec:
               readOnlyRootFilesystem: true
               capabilities:
                 drop: [ALL]
+          # Idle until a separately authorized authenticated exec starts a fresh
+          # native ceremony. No App, CA, Secret or ServiceAccount volume is mounted.
+          codex-login:
+            image:
+              repository: ghcr.io/thaynes43/dev-env-codex-login
+              tag: sha-f810766@sha256:fa5b41ef702e93477f57874cc5bdff8bfff1e4cb4ca8fd91d3e54b52d931c27d
+              pullPolicy: IfNotPresent
+            # Clear the API service environment Kubernetes injects even when
+            # enableServiceLinks is false; the native helper also uses a minimal env.
+            env:
+              KUBERNETES_SERVICE_HOST: ""
+              KUBERNETES_SERVICE_PORT: ""
+              KUBERNETES_SERVICE_PORT_HTTPS: ""
+              KUBERNETES_PORT: ""
+              KUBERNETES_PORT_443_TCP: ""
+              KUBERNETES_PORT_443_TCP_ADDR: ""
+              KUBERNETES_PORT_443_TCP_PORT: ""
+              KUBERNETES_PORT_443_TCP_PROTO: ""
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
     defaultPodOptions:
       annotations:
         # The timezone init has no CPU limit; keep this keeper rollout bounded.
         k8tz.io/inject: "false"
-      automountServiceAccountToken: true
+      automountServiceAccountToken: false
       enableServiceLinks: false
+      shareProcessNamespace: false
       securityContext:
         # distroless nonroot; fsGroup lets it read the 0440 App files.
         runAsNonRoot: true
@@ -126,9 +160,11 @@ spec:
         type: secret
         name: dev-env-keeper-github-dev-bot
         defaultMode: 0440
-        globalMounts:
-          - path: /etc/dev-env-keeper/github-dev-bot
-            readOnly: true
+        advancedMounts:
+          dev-env-keeper:
+            app:
+              - path: /etc/dev-env-keeper/github-dev-bot
+                readOnly: true
       # Keeper-only D-69/D-72 input. The default --ssh-ca-dir reads these two keys;
       # --enable-proxmox-grants stays absent/default false in keeper and broker.
       # Key-pair validation, node trust, SSH targets/host pins, egress and provider
@@ -137,12 +173,55 @@ spec:
         type: secret
         name: dev-env-keeper-ssh-ca
         defaultMode: 0440
-        globalMounts:
-          - path: /etc/dev-env-keeper/ssh-ca
-            readOnly: true
+        advancedMounts:
+          dev-env-keeper:
+            app:
+              - path: /etc/dev-env-keeper/ssh-ca
+                readOnly: true
+      # Only the main keeper can use the Kubernetes API. Project the normal
+      # in-cluster token/CA/namespace path explicitly with pod automount disabled.
+      kube-api-access:
+        type: custom
+        volumeSpec:
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  expirationSeconds: 3600
+                  path: token
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        apiVersion: v1
+                        fieldPath: metadata.namespace
+        advancedMounts:
+          dev-env-keeper:
+            app:
+              - path: /var/run/secrets/kubernetes.io/serviceaccount
+                readOnly: true
+      # Staging is ephemeral; only the main keeper owns the durable private Secret.
+      # The inner directory/socket are made 0700/0600 by the enabled source worker.
+      codex-login:
+        type: emptyDir
+        medium: Memory
+        sizeLimit: 16Mi
+        advancedMounts:
+          dev-env-keeper:
+            app:
+              - path: /run/dev-env-codex-login
+            codex-login:
+              - path: /run/dev-env-codex-login
       tmp:
         type: emptyDir
         medium: Memory
         sizeLimit: 16Mi
-        globalMounts:
-          - path: /tmp
+        advancedMounts:
+          dev-env-keeper:
+            app:
+              - path: /tmp

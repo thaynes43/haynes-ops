@@ -1,11 +1,12 @@
 ---
 # The keeper, dev-env-system/dev-env-keeper (DESIGN-001 3.1, 6.4, 6.11, D-52): the least
 # plan 01 needs, exactly the Roles internal/keeper's envtest suite runs it with.
-#   - dev-agents: `patch` on the four credential Secrets by name. It merges each token
+#   - dev-agents: `patch` on three credential Secrets by name. It merges each token
 #     with one JSON merge patch and never creates, lists or reads them; GitOps creates
 #     them empty (KICKOFF 8.8).
 #   - dev-env-system: its leader-election Lease and the Event leader election records.
-# D-69's credential-job, named journal and session-pod rights are separately scoped
+# Codex's named journal/projection GET/CAS is scoped in keeper-codex-auth.yaml.
+# D-69's credential-job, journal and session-pod rights are separately scoped
 # in keeper-credentials.yaml. Login Secret get/update and TokenReview for the endpoint
 # that serves the operator remain plan 03 work.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -20,7 +21,6 @@ rules:
       - dev-env-gh-token
       - dev-env-ops-gh-token
       - dev-env-claude-live
-      - dev-env-codex-live
     verbs: [patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
