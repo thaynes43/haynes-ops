@@ -24,4 +24,3 @@ resources:
   - ./operator/ks.yaml
   - ./broker/ks.yaml
   - ./keeper/ks.yaml
-  - ./workspace-trial/ks.yaml
