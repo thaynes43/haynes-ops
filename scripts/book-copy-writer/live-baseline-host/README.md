@@ -47,8 +47,12 @@ packet and command. A prior authorization is consumed by its single attempt;
 do not retry, change pins, extend a deadline, overwrite an output, or restamp an
 artifact. Keep original capture clocks. This read-only lifecycle is independent
 of the web app release, but cannot authorize COPY or replace a fresh post-release
-app capture. The future paused SOURCE/COPY chain keeps its separate original
-180-second artifact expiry and 170-second restoration trigger.
+app capture. The frozen LIVE profile keeps its 180-second collection and
+200-second total lifecycle bounds. The signed consumer instead expires byte
+evidence 300 seconds after the original capture start, without resetting it at
+completion or SOURCE assembly; see `bound-census-contract.json` and
+`bound_census.baseline_expiry`. The future paused SOURCE/COPY chain retains the
+170-second restoration trigger and every earlier applicable admission deadline.
 
 To prepare a packet, run `prepare-review-packet.py` with absolute
 `--selected-scope`, `--output-dir`, `--packet-dir`, and `--kubeconfig` paths.
