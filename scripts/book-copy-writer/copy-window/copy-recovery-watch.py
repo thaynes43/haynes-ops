@@ -72,7 +72,6 @@ class Watchdog:
         temporary.chmod(0o600);temporary.replace(self.state_path)
 
     def run(self,args,timeout=45,input_text=None):
-        if self.cached:timeout=min(timeout,5)
         env=dict(os.environ);env['GH_TOKEN']=Path('/creds/gh_token').read_text().strip()
         result=subprocess.run(args,env=env,input=input_text,text=True,capture_output=True,timeout=timeout)
         if result.returncode:
@@ -573,6 +572,23 @@ class Watchdog:
             self.recover_cluster(self.restored_main(self.state['expected_restored_sha']));return True
         if self.cached and self.state.get('normal_inverse_verified_at') and self.state.get('normal_inverse_merge_sha'):
             return self.tick_cached({},dict(mergeCommit={'oid':self.state['normal_inverse_merge_sha']}))
+        if self.cached:
+            # A dropped staging hold can apply Stop before activation/its clock.
+            # Revoke before retarget, reviews or even merged-PR metadata reads.
+            phase=self.phase_checkpoint()
+            started=phase.get('first_service_stop_observed_at') or phase.get('window_started_at')
+            try:
+                with cache.wall_guard(5):actuated=self.stop_actuated()
+            except Exception:
+                self.revoke_cached('pre_activation_native_proof_lost');raise
+            if started or actuated:
+                if started:self.state.setdefault('window_started_at',started)
+                else:self.state.setdefault('actual_stop_origin_unknown',True)
+                self.save();self.revoke_cached('stop_before_normal_inverse_accepted')
+                restore=json.loads(self.run(['gh','pr','view',self.args.restore,'--repo',REPO,
+                                             '--json','state,mergeCommit'],timeout=5))
+                if restore.get('state')=='MERGED':return self.tick_cached({},restore)
+                raise RuntimeError('Unexpected Stop before merged Normal inverse; COPY revoked, writer cleanup requested, remaining holds retained; Normal restoration unproved.')
         pause=self.view(self.args.pause)
         if pause['state']=='MERGED':
             self.state.setdefault('pause_merged_at',pause['mergedAt']);self.save()

@@ -109,6 +109,16 @@ class CachedSourceCases(unittest.TestCase):
             with cache.wall_guard(.02):cache.check_live(r,get,legacy.CONTRACT,PHASE)
         self.assertLess(time.monotonic()-at,.5);self.assertIsNotNone(children[0].poll())
 
+    def test_cache_alarm_does_not_shorten_retarget_or_flux_restoration_commands(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory)
+            result=subprocess.CompletedProcess([],0,'','')
+            with mock.patch.object(Path,'read_text',return_value='public-fixture-token'),mock.patch.object(legacy.watch.subprocess,'run',return_value=result) as run:
+                w.run(['bash','retarget-restore.sh'],timeout=120)
+                self.assertEqual(run.call_args.kwargs['timeout'],120)
+                w.run(['flux','reconcile','source','git','haynes-ops','--timeout=30s'])
+                self.assertEqual(run.call_args.kwargs['timeout'],45)
+
     def test_parent_hold_source_controller_and_artifact_drift_refuse(self):
         for target in ('sourceuid','resume','owner','controlleruid','restart','parent','hold','bytes'):
             r,s,p,parents,holds,raw=fixture()
@@ -295,6 +305,22 @@ class CachedSourceCases(unittest.TestCase):
         self.assertFalse(w.runtime_current_normal());strip['value']='0'
         hold=next(e for e in env if e['name']=='LIBRARY_HOLD_FOLDERS_JSON');hold['value']='[]'
         self.assertFalse(w.runtime_current_normal())
+
+    def test_accidental_staging_stop_revokes_before_open_inverse_queries_and_retains_holds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);w.stop_actuated=lambda:True
+            w.view=lambda *_:self.fail('unclocked Stop must not wait retarget/CI/advisory')
+            def merged_metadata(argv,**kwargs):
+                self.assertEqual(w.events,['writers-pg-absent'])
+                self.assertEqual(argv[-1],'state,mergeCommit');self.assertEqual(kwargs['timeout'],5)
+                return json.dumps({'state':'OPEN'})
+            w.run=merged_metadata
+            with self.assertRaises(RuntimeError):w.tick()
+            self.assertTrue(w.state['actual_stop_origin_unknown']);self.assertTrue(w.stop.exists())
+            self.assertNotIn('window_started_at',w.state);self.assertEqual(w.events,['writers-pg-absent'])
+            first=w.state['copy_authority_revoked_at'];w.run=lambda *_args,**_kw:json.dumps({'state':'MERGED','mergeCommit':{'oid':NORMAL_SHA}})
+            self.assertTrue(w.tick());self.assertEqual(w.state['copy_authority_revoked_at'],first)
+            self.assertEqual(w.events[-1],'restore-latest-normal')
 
 
 if __name__=='__main__':unittest.main()

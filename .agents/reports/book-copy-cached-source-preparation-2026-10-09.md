@@ -41,8 +41,13 @@ owned-writer/PG absence precede controlled source/application release; actual
 Normal follows application restoration. Unexpected hold loss before the bound
 activation record, source/controller replacement, changed artifact or unknown
 intent refuses COPY. Cold restart retains original clocks and ownership.
-Missing activation budget with actual/partial Stop immediately revokes and
-restores with the origin truthfully unknown. The active cached path uses the
+Missing activation budget with actual/partial Stop immediately revokes and retires
+writers, with the origin truthfully unknown. If the inverse is already accepted,
+restoration starts immediately. A dropped staging hold before inverse merge also
+revokes before retarget/advisory calls; only bounded merge metadata is read after
+cleanup. An open inverse keeps remaining holds and records Normal restoration as
+unproved. This accidental unclocked Stop cannot promise the 300s ceiling, and
+never waits for the 600s staging clock to revoke. The active cached path uses the
 previously accepted merged-inverse identity, without new GitHub comments/checks
 queries. Due restoration revokes and retires writers before attempting Git
 availability. Actual Normal includes the converter's current job template,
@@ -93,9 +98,13 @@ Primary sources:
 - [v1.9.6 kustomize handler](https://github.com/fluxcd/kustomize-controller/blob/v1.9.6/internal/controller/kustomization_controller.go)
   fetches an existing Git source artifact without requiring that source to be unsuspended.
 
-Source validation: final combined 46/46 finite tests (21 new +25 legacy) passed in
-6.791s under the dedicated hash-pinned host venv and `nice -n 19`; diff-check was
-clean. Independent review remains required before merge.
+Source validation: combined 46/46 finite tests (21 new +25 legacy) passed in
+6.791s under the dedicated hash-pinned host venv and `nice -n 19`. After advisory
+and peer corrections, the 23 focused cache tests passed in 0.500s; diff-check was
+clean. The owning five-second cache cap is scoped to cache reads; original 120s
+retarget and 30s Flux command limits are preserved. A finite command fixture
+prevents accidentally applying the cache cap to restoration commands.
+Independent review remains required before merge.
 Fixtures cover raw native UID/RV/token drain, parent hold persistence,
 artifact/controller loss, full manifest/cap drift, original clocks/cold recovery,
 partial Stop before checkpoint, Git outage after revocation, no active advisory

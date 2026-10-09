@@ -65,8 +65,16 @@ Only after complete independent arming does the supervisor atomically publish
 activation-ready with the accepted cache/inverse hashes and a durable conservative
 `actuation_budget_started_at` before first app release. This is an earlier budget
 origin, not an invented actual Stop observation. Missing origin with actual or
-partial Stop revokes and restores immediately. Cold recovery retains the original
+partial Stop revokes immediately; restoration requires the accepted Normal
+inverse described below. Cold recovery retains the original
 origin, even if the supervisor dies between release and its first Stop checkpoint.
+If a staging hold unexpectedly drops before the inverse is merged, native Stop
+detection revokes and retires writers before retarget/CI/advisory. The watcher
+reads only bounded merge metadata afterward. An open inverse retains remaining
+holds and truthfully reports Normal restoration unproved; that unclocked failure
+cannot promise automatic recovery within 300s. It never waits 600s to revoke.
+The five-second cache wall cap does not shorten the existing still-Normal inverse
+retarget or Flux restoration commands.
 
 Prestage failure: restore exact normal main plus actual still-normal workloads
 before releasing any hold. Post-Stop: first prove current restored Normal inverse-descendant main and
