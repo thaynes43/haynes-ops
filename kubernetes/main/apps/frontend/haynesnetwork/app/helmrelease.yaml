@@ -690,7 +690,7 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "22 * * * *"
-          suspend: true
+          suspend: false
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
@@ -724,7 +724,7 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "41 * * * *"
-          suspend: true
+          suspend: false
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
@@ -792,7 +792,7 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "27 * * * *"
-          suspend: true
+          suspend: false
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
@@ -834,7 +834,7 @@ spec:
           restartPolicy: Never
         cronjob:
           schedule: "32 * * * *"
-          suspend: true
+          suspend: false
           backoffLimit: 1
           concurrencyPolicy: Forbid
           failedJobsHistory: 2
