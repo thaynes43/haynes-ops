@@ -94,9 +94,10 @@ def group_members(pgid):
             members[int(entry.name)]=fields[19]
     return members
 
-def signal_member(pid,birth,pgid):
+def signal_member(pid,birth,pgid,sig=signal.SIGKILL):
     # Signal the captured process handle, never a possibly reused numeric PID or
     # group. Opening before validation also protects the final signal gap.
+    require(sig in (signal.SIGKILL,signal.SIGSTOP),'unreviewed exercise signal')
     try:fd=os.pidfd_open(pid,0)
     except ProcessLookupError:return
     try:
@@ -107,9 +108,25 @@ def signal_member(pid,birth,pgid):
         info=dict(line.split(':',1) for line in (Path('/proc/self/fdinfo')/str(fd)).read_text().splitlines() if ':' in line)
         if int(info['Pid'].strip())==-1:return
         require(int(info['Pid'].strip())==pid,'captured pidfd identity changed')
-        try:signal.pidfd_send_signal(fd,signal.SIGKILL)
+        try:signal.pidfd_send_signal(fd,sig)
         except ProcessLookupError:pass
     finally:os.close(fd)
+
+def member_state(pid,birth,pgid):
+    try:fields=(Path('/proc')/str(pid)/'stat').read_text().rsplit(')',1)[1].split()
+    except FileNotFoundError:return None
+    if fields[19]!=birth or fields[0] in ('Z','X'):return None
+    require(int(fields[2])==pgid,'captured exercise member changed group')
+    return fields[0]
+
+def stop_member(pid,birth,pgid,until):
+    signal_member(pid,birth,pgid,signal.SIGSTOP)
+    while True:
+        require(time.monotonic()<until,'exercise stop acknowledgement deadline')
+        state=member_state(pid,birth,pgid)
+        if state is None:return False
+        if state in ('T','t'):return True
+        time.sleep(.01)
 
 def retire_exercise(packet):
     cache,_,_=modules()
@@ -171,6 +188,9 @@ def retire_exercise(packet):
                 captured.add((proof['pid'],proof['start_ticks']))
             require(len(captured)<=64,'captured member identity cap')
             until=time.monotonic()+2
+            leader_stopped=False
+            if current==latest==owner['start_ticks'] and members.get(pid)==owner['start_ticks']:
+                leader_stopped=stop_member(pid,owner['start_ticks'],pid,until)
             while members:
                 require(time.monotonic()<until and len(members)<=64,'exercise group retirement unproved/cap')
                 try:before=start_ticks(pid)
@@ -180,6 +200,8 @@ def retire_exercise(packet):
                 except FileNotFoundError:after=None
                 if any(v not in (None,owner['start_ticks']) for v in (before,after)):
                     basis='replacement_pid';break
+                if leader_stopped and members.get(pid)==owner['start_ticks']:
+                    require(member_state(pid,owner['start_ticks'],pid) in ('T','t'),'original exercise leader resumed')
                 unknown=set(members.items())-captured
                 if unknown:
                     require(before==after==owner['start_ticks'] and members.get(pid)==owner['start_ticks'],
@@ -191,7 +213,13 @@ def retire_exercise(packet):
                         cache.write_private(runtime/('exercise-member-'+sha(raw)+'.json'),raw)
                         captured.add((member,birth))
                 require(time.monotonic()<until and len(members)<=64,'exercise group retirement unproved/cap')
-                for member,birth in members.items():signal_member(member,birth,pid)
+                nonleaders={member:birth for member,birth in members.items() if member!=pid}
+                for member,birth in nonleaders.items():
+                    if stop_member(member,birth,pid,until):signal_member(member,birth,pid)
+                if members and not nonleaders:
+                    require(leader_stopped and member_state(pid,owner['start_ticks'],pid) in ('T','t'),
+                        'original exercise leader stop unproved')
+                    signal_member(pid,owner['start_ticks'],pid)
                 try:current=start_ticks(pid)
                 except FileNotFoundError:current=None
                 if current not in (None,owner['start_ticks']):basis='replacement_pid';break

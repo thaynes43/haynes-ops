@@ -53,6 +53,13 @@ captured identities. While that original leader still brackets a fresh snapshot,
 new members receive immutable per-member custody supplements before any signal,
 with at most 64 captured identities in total. Original custody is never replaced.
 A missing leader permits only prior custody; unknown survivors refuse.
+The coordinator ratified a further narrow owning-process signal correction:
+persist custody, pidfd-stop the original leader and prove its birth/group/T/t
+state, then stop/retire captured nonleaders while that leader retains the group
+number. The leader is killed last after no nonleaders remain, followed by full
+empty-group proof. The original 64-identity, 2s retirement and 50s restoration
+bounds remain. Non-atomic snapshots and external process loss still can refuse;
+no universal fork exclusion, service signal or new runtime authority is claimed.
 [Python's pidfd signal API](https://docs.python.org/3.11/library/signal.html#signal.pidfd_send_signal)
 targets the captured process handle across the final numeric PID reuse gap.
 
@@ -139,6 +146,18 @@ unknown refusal, the 64-identity cap and wrong-owner proof refusal. The complete
 23-case Normal suite passed serially under `nice -n 19` in 0.441s. Independent
 successor review and the actual current advisory disposition remain pending;
 no runtime API, native hold or Job was used.
+Independent `13963a9b` source review passed, receipt
+`e4947acc97c6ec9ca0a34472f5aba5f303ff5ac511ae03aa9302b69dd2a8dc30`;
+four focused methods passed in 0.062s. Advisory `6088820407` was then updated
+at 21:21:11Z with the additional kill-round fork availability defect: a new
+child can outlive the leader killed in the same round. The stop/leader-last
+successor addresses that separate finding; the earlier PASS does not cover it.
+The three focused controls cover a descendant fork during retirement with
+leader-last ordering, actual stopped-state acknowledgement within the original
+deadline, and resumed-leader refusal before any descendant kill. The complete
+26-case Normal suite passed in 0.696s serially under `nice -n 19`, including the
+actual sleeping process/descendant pidfd control. Successor independent review
+and actual current advisory remain pending. No native API or service hold ran.
 An uncaptured surviving process can still prevent proven retirement; its parent
 may have died before its command timeout was enforced. Do not promise that such
 an orphan exits within 50s. Record the miss and continue bounded safe attempts,

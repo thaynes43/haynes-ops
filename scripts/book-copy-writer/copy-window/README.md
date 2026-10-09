@@ -132,6 +132,13 @@ same original leader birth may add immutable per-member custody supplements
 before any signal. The original custody is never overwritten, and at most 64
 identities may be captured. With a missing leader, only previously captured
 identities are admitted; an unknown survivor still refuses restoration.
+The proved original leader is stopped through its captured pidfd after custody
+is durable, with actual birth/group and T/t state required. Captured nonleaders
+are likewise stopped and retired within the same two-second retirement budget.
+The stopped leader retains the group number during fresh custody rounds and is
+killed last only after no nonleaders remain. Empty-group proof still follows;
+unknown survivors or an external identity/state change refuse. These signals
+apply only to the dedicated exercise processes, never a service or native Job.
 
 Rehearsal operational caps are exercise 90s, staging arm 120s and recovery 50s
 from the first recovery attempt. The watcher uses its existing 10s poll interval;

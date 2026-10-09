@@ -5,6 +5,7 @@ import fcntl
 import importlib.util
 import json
 import os
+import signal
 from pathlib import Path
 import sys
 import subprocess
@@ -211,7 +212,7 @@ class NormalCases(unittest.TestCase):
                 'phase_token':fixtures.PHASE,'owner_sha256':normal.sha(normal.canonical(owner)),
                 'original_group':pid,'members':{str(pid):'original',str(pid+1):'owned-descendant'}}
             cache.write_private(runtime/'exercise-members.json',normal.canonical(custody))
-            with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',side_effect=[{pid+1:'owned-descendant'},{pid+1:'owned-descendant'},{}]),mock.patch.object(normal,'signal_member') as retire:
+            with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',side_effect=[{pid+1:'owned-descendant'},{pid+1:'owned-descendant'},{}]),mock.patch.object(normal,'stop_member',return_value=True),mock.patch.object(normal,'signal_member') as retire:
                 normal.retire_exercise(packet);retire.assert_called_once_with(pid+1,'owned-descendant',pid)
             proof=json.loads(normal.read_private(runtime/'exercise-retired.json'))
             self.assertEqual(proof['basis'],'retired_owned_group');self.assertEqual(proof['group_members'],{})
@@ -238,12 +239,12 @@ class NormalCases(unittest.TestCase):
             def interrupted(member,birth,group):
                 proofs=list(runtime.glob('exercise-member-*.json'));self.assertEqual(len(proofs),1)
                 self.assertEqual(json.loads(normal.read_private(proofs[0]))['pid'],pid+1)
-                self.assertEqual((member,birth,group),(pid,'original',pid))
-                raise ValueError('interrupted after original leader retirement')
-            with mock.patch.object(normal,'start_ticks',return_value='original'),mock.patch.object(normal,'group_members',side_effect=[{pid:'original'},{pid:'original',pid+1:'late-child'}]),mock.patch.object(normal,'signal_member',side_effect=interrupted):
+                self.assertEqual((member,birth,group),(pid+1,'late-child',pid))
+                raise ValueError('interrupted after descendant retirement')
+            with mock.patch.object(normal,'start_ticks',return_value='original'),mock.patch.object(normal,'group_members',side_effect=[{pid:'original'},{pid:'original',pid+1:'late-child'}]),mock.patch.object(normal,'stop_member',return_value=True),mock.patch.object(normal,'member_state',return_value='T'),mock.patch.object(normal,'signal_member',side_effect=interrupted):
                 with self.assertRaisesRegex(ValueError,'interrupted'):normal.retire_exercise(packet)
             original=normal.read_private(runtime/'exercise-members.json')
-            with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',side_effect=[{pid+1:'late-child'},{pid+1:'late-child'},{}]),mock.patch.object(normal,'signal_member') as retire:
+            with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',side_effect=[{pid+1:'late-child'},{pid+1:'late-child'},{}]),mock.patch.object(normal,'stop_member',return_value=True),mock.patch.object(normal,'signal_member') as retire:
                 normal.retire_exercise(packet);retire.assert_called_once_with(pid+1,'late-child',pid)
             self.assertEqual(normal.read_private(runtime/'exercise-members.json'),original)
             self.assertEqual(json.loads(normal.read_private(runtime/'exercise-retired.json'))['basis'],'retired_owned_group')
@@ -276,10 +277,57 @@ class NormalCases(unittest.TestCase):
                 'phase_token':fixtures.PHASE,'owner_sha256':normal.sha(normal.canonical(owner)),
                 'original_group':pid,'members':{str(pid):'original'}|{str(pid+i):'old' for i in range(1,64)}}
             cache.write_private(runtime/'exercise-members.json',normal.canonical(custody))
-            with mock.patch.object(normal,'start_ticks',return_value='original'),mock.patch.object(normal,'group_members',return_value={pid:'original',pid+64:'new'}),mock.patch.object(normal,'signal_member') as retire:
+            with mock.patch.object(normal,'start_ticks',return_value='original'),mock.patch.object(normal,'group_members',return_value={pid:'original',pid+64:'new'}),mock.patch.object(normal,'stop_member',return_value=True),mock.patch.object(normal,'member_state',return_value='T'),mock.patch.object(normal,'signal_member') as retire:
                 with self.assertRaisesRegex(ValueError,'captured member identity cap'):normal.retire_exercise(packet)
                 retire.assert_not_called()
             self.assertEqual(list(runtime.glob('exercise-member-*.json')),[])
+
+    def test_stopped_leader_retains_custody_through_descendant_fork_and_is_killed_last(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
+            packet={'directory':directory,'phase_token':fixtures.PHASE};pid=os.getpid()+100000
+            owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'pid':pid,'start_ticks':'original','pgid':pid}
+            cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            calls=[];alive=True
+            def birth(_):
+                if alive:return 'original'
+                raise FileNotFoundError
+            def stop(member,ticks,group,until):
+                self.assertTrue((runtime/'exercise-members.json').exists())
+                calls.append(('stop',member));return True
+            def kill(member,ticks,group):
+                nonlocal alive
+                calls.append(('kill',member))
+                if member==pid:alive=False
+            snapshots=[{pid:'original'},{pid:'original',pid+1:'child'},
+                {pid:'original',pid+2:'late-grandchild'},{pid:'original',pid+2:'late-grandchild'},
+                {pid:'original'},{pid:'original'},{}]
+            with mock.patch.object(normal,'start_ticks',side_effect=birth),mock.patch.object(normal,'group_members',side_effect=snapshots),mock.patch.object(normal,'stop_member',side_effect=stop),mock.patch.object(normal,'member_state',return_value='T'),mock.patch.object(normal,'signal_member',side_effect=kill):
+                normal.retire_exercise(packet)
+            self.assertEqual(calls,[('stop',pid),('stop',pid+1),('kill',pid+1),('stop',pid+2),('kill',pid+2),('kill',pid)])
+            self.assertEqual(len(list(runtime.glob('exercise-member-*.json'))),2)
+            self.assertEqual(json.loads(normal.read_private(runtime/'exercise-retired.json'))['group_members'],{})
+
+    def test_stop_requires_actual_state_acknowledgement_and_original_deadline(self):
+        with mock.patch.object(normal,'signal_member') as send,mock.patch.object(normal,'member_state',side_effect=['S','T']),mock.patch.object(normal.time,'monotonic',return_value=1):
+            self.assertTrue(normal.stop_member(12345,'original',12345,2))
+            send.assert_called_once_with(12345,'original',12345,signal.SIGSTOP)
+        with mock.patch.object(normal,'signal_member') as send,mock.patch.object(normal,'member_state',return_value='S'),mock.patch.object(normal.time,'monotonic',return_value=2):
+            with self.assertRaisesRegex(ValueError,'stop acknowledgement deadline'):normal.stop_member(12345,'original',12345,2)
+            send.assert_called_once_with(12345,'original',12345,signal.SIGSTOP)
+
+    def test_resumed_original_leader_refuses_before_descendant_kill(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
+            packet={'directory':directory,'phase_token':fixtures.PHASE};pid=os.getpid()+100000
+            owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'pid':pid,'start_ticks':'original','pgid':pid}
+            cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            with mock.patch.object(normal,'start_ticks',return_value='original'),mock.patch.object(normal,'group_members',return_value={pid:'original',pid+1:'child'}),mock.patch.object(normal,'stop_member',return_value=True),mock.patch.object(normal,'member_state',return_value='S'),mock.patch.object(normal,'signal_member') as kill:
+                with self.assertRaisesRegex(ValueError,'leader resumed'):normal.retire_exercise(packet)
+                kill.assert_not_called()
+            self.assertFalse((runtime/'exercise-retired.json').exists())
 
     def test_member_supplement_wrong_owner_refuses_before_signal(self):
         with tempfile.TemporaryDirectory() as directory:
