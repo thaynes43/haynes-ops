@@ -79,6 +79,17 @@ retirement and PID replacement refusal, retirement→barrier→restore ordering,
 all seven RV barriers and stale hold/foreign-owner refusal. No production API,
 hold or Job was used.
 
+Independent review of exact `b2c3336c` passed source preparation, receipt
+`275f538a8fbb7c0d6fb120e42c51a71d87b139357061d73603e60bf1d8ff3f8b`.
+It pins nine source/doc/test/CI blobs and independently passed twelve Normal
+cases in 0.273s plus four parent/release/retirement controls in 0.040s, serially
+under `nice -n 19`. Current advisory comment `6088820407`, updated
+2026-10-09 20:52:55Z, explicitly reviewed that commit and reported no findings.
+The writer-image validation failed before tests on the unchanged Docker Hub
+base digest's HTTP 429; source/window checks passed. This report-only commit
+records the review without changing the reviewed executable files. Runtime
+containment and restoration proof remains absent.
+
 The independently reviewed #3667 successor was `f9f654b6` (receipt
 `89ffe7fc818cc66273505adcd6f4580fdeb5108ae7f280d4ad9b38133095e738`)
 and its current advisory explicitly reported no findings. It merged at
