@@ -314,8 +314,8 @@ class NormalCases(unittest.TestCase):
             self.assertTrue(normal.stop_member(12345,'original',12345,2))
             send.assert_called_once_with(12345,'original',12345,signal.SIGSTOP)
         with mock.patch.object(normal,'signal_member') as send,mock.patch.object(normal,'member_state',return_value='S'),mock.patch.object(normal.time,'monotonic',return_value=2):
-            with self.assertRaisesRegex(ValueError,'stop acknowledgement deadline'):normal.stop_member(12345,'original',12345,2)
-            send.assert_called_once_with(12345,'original',12345,signal.SIGSTOP)
+            with self.assertRaisesRegex(ValueError,'stop dispatch deadline'):normal.stop_member(12345,'original',12345,2)
+            send.assert_not_called()
 
     def test_resumed_original_leader_refuses_before_descendant_kill(self):
         with tempfile.TemporaryDirectory() as directory:

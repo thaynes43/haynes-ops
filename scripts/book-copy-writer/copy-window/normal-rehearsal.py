@@ -120,6 +120,7 @@ def member_state(pid,birth,pgid):
     return fields[0]
 
 def stop_member(pid,birth,pgid,until):
+    require(time.monotonic()<until,'exercise stop dispatch deadline')
     signal_member(pid,birth,pgid,signal.SIGSTOP)
     while True:
         require(time.monotonic()<until,'exercise stop acknowledgement deadline')
@@ -215,10 +216,13 @@ def retire_exercise(packet):
                 require(time.monotonic()<until and len(members)<=64,'exercise group retirement unproved/cap')
                 nonleaders={member:birth for member,birth in members.items() if member!=pid}
                 for member,birth in nonleaders.items():
-                    if stop_member(member,birth,pid,until):signal_member(member,birth,pid)
+                    if stop_member(member,birth,pid,until):
+                        require(time.monotonic()<until,'exercise kill dispatch deadline')
+                        signal_member(member,birth,pid)
                 if members and not nonleaders:
                     require(leader_stopped and member_state(pid,owner['start_ticks'],pid) in ('T','t'),
                         'original exercise leader stop unproved')
+                    require(time.monotonic()<until,'exercise kill dispatch deadline')
                     signal_member(pid,owner['start_ticks'],pid)
                 try:current=start_ticks(pid)
                 except FileNotFoundError:current=None
