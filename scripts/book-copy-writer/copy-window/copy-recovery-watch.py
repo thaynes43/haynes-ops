@@ -350,7 +350,8 @@ class Watchdog:
             self.run(['flux','reconcile','kustomization',name,'-n',namespace,'--timeout=30s'])
         if not self.runtime_restored(sha):raise RuntimeError('Restored source fetched; waiting for app/KS convergence.')
         self.retire_hold_annotations()
-        if self.state.get('service_ceiling_missed_at') or self.state.get('original_clock_unproved_at'):
+        if (self.state.get('service_ceiling_missed_at') or self.state.get('original_clock_unproved_at')
+                or self.state.get('normal_rehearsal_recovery_budget_missed_at')):
             self.state.update(complete=False,recover_ks=False,safety_recovery_complete=True,safety_recovery_completed_at=stamp())
         else:
             self.state.setdefault('completed_at',stamp())

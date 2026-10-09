@@ -293,6 +293,7 @@ def watcher(packet,initialize=True):
             if self.state.get('normal_only_rehearsal_complete'):
                 with cache.wall_guard(BOUNDS['safety_attempt']):
                     self.cleanup_phase_jobs();self.recover_cluster(self.current_main())
+                self.record_normal_result()
                 self.state['normal_rehearsal_reverified_at']=watch.stamp();self.save();return True
             started=watch.epoch(self.state['armed_at'])
             if not self.stop.exists() and not getattr(self,'requested_cancel',False) and time.time()<started+BOUNDS['arm']:return False
@@ -310,9 +311,15 @@ def watcher(packet,initialize=True):
                 if time.time()>=origin+BOUNDS['recovery']:
                     self.state.setdefault('normal_rehearsal_recovery_budget_missed_at',watch.stamp());self.save()
                 raise
-            self.state['normal_only_rehearsal_complete']=True;self.state['copy_runtime_authorized']=False
-            self.state['normal_rehearsal_recovered_within_budget']=not bool(self.state.get('normal_rehearsal_recovery_budget_missed_at'))
+            self.record_normal_result()
             self.save();return True
+        def record_normal_result(self):
+            missed=bool(self.state.get('normal_rehearsal_recovery_budget_missed_at'))
+            self.state.update(normal_only_rehearsal_complete=True,copy_runtime_authorized=False,
+                              normal_rehearsal_recovered_within_budget=not missed)
+            if missed:
+                self.state.update(complete=False,safety_recovery_complete=True)
+                self.state.setdefault('safety_recovery_completed_at',self.state.get('completed_at') or watch.stamp())
         def fence_hold_requests(self):
             # Retiring the client does not retire a submitted API request. Every
             # hold uses an RV test; advance each owned object's RV before release.
