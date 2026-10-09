@@ -74,7 +74,9 @@ recipe/list/source payloads and journals stay private and never enter public git
 The native sync adapter is used only after every old chapter key is proved present
 exactly once in the approved desired plan. The outbound guard rejects `delete-item`
 even if the adapter later attempts it. Every old item ID and its non-order payload
-must survive final readback. A lost response, partial journal, rejected readback or
+must survive final readback. Item-to-chapter proof is cleared at both scope boundaries
+and bound to the exact list ID that was freshly read; one list's item IDs cannot
+authorize another list's ordering. A lost response, partial journal, rejected readback or
 unknown child result halts; do not replay, adopt a saved recipe/list or roll back
 implicitly. ROOT reviews actual receipts before a separate exact recovery.
 
@@ -99,7 +101,7 @@ nice -n 19 python3 -B scripts/book-reading-list-stage/test_run_stage.py
 The finite tests cover complete-identity/preservation/recipe/endpoint admission,
 native controller/image drift, approved helper drift, immutable ACK ordering and
 unknown outcomes. The actual child runs against local adapter fixtures to prove
-add/order preservation, chapter drift, lost intent ACK and run/store drift during
+add/order preservation in one- and two-list stages, chapter drift, lost intent ACK and run/store drift during
 ACK without any cluster/vendor call. The deployed read-only interface check found
 Node 22.23.3, America/New_York scheduling, all five required native adapter methods,
 normal acquisition configured and child acquisition absent. This is interface

@@ -97,7 +97,7 @@ async function main(workerSha256) {
   let expectedStore = structuredClone(approval.recipeStore);
   let mutations = 0;
   const state = { librettoOrigin: `http://127.0.0.1:${config.port}`, kavitaOrigin: new URL(config.kavita.url).origin,
-    active: undefined, saveRecipe: undefined, listId: undefined, listTitle: undefined, description: undefined, itemKeys: new Map() };
+    active: undefined, saveRecipe: undefined, listId: undefined, listTitle: undefined, description: undefined, itemKeys: new Map(), itemKeysListId: undefined };
   const originalFetch = globalThis.fetch;
   async function runGuard() {
     guard();
@@ -150,6 +150,7 @@ async function main(workerSha256) {
     if (state.active && url.origin === state.kavitaOrigin && url.pathname === '/api/ReadingList/items' && Number(url.searchParams.get('readingListId')) === state.listId && response.ok) {
       const rows = await response.clone().json();
       state.itemKeys = new Map(rows.map((row) => [row.id, chapterKey(row)]));
+      state.itemKeysListId = state.listId;
     }
     return response;
   };
@@ -208,6 +209,8 @@ async function main(workerSha256) {
       await storeGuard();
     }
     state.active = scope;
+    state.itemKeys = new Map();
+    state.itemKeysListId = undefined;
     state.listId = scope.ownedListId === null ? undefined : scope.ownedListId;
     state.listTitle = owned?.name ?? recipe.name;
     state.description = owned ? withUpdatedMarker(owned.description, recipe.id, recipe.category) : buildCollectionDescription(recipe.id, recipe.category);
@@ -229,6 +232,8 @@ async function main(workerSha256) {
     assertPreserved(scope.beforeItems, after, scope.desiredChapters);
     await journal('readback', { recipeId: recipe.id, listId: state.listId, result, items: after });
     state.active = undefined;
+    state.itemKeys = new Map();
+    state.itemKeysListId = undefined;
     await runGuard();
     await storeGuard();
   }

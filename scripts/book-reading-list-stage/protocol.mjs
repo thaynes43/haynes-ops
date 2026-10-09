@@ -139,6 +139,7 @@ export function permits(url, method, body, state) {
   if (url.pathname === '/api/ReadingList/update-by-chapter')
     return Object.keys(body).sort().join(',') === 'chapterId,readingListId,seriesId' && scope.desiredChapters.some((r) => chapterKey(r) === chapterKey(body));
   if (url.pathname === '/api/ReadingList/update-position') {
+    if (state.itemKeysListId !== state.listId) return false;
     if (Object.keys(body).sort().join(',') !== 'fromPosition,readingListId,readingListItemId,toPosition') return false;
     const key = state.itemKeys.get(body.readingListItemId);
     const wantedPosition = scope.desiredChapters.findIndex((r) => chapterKey(r) === key);

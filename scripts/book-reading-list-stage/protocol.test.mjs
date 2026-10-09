@@ -75,7 +75,7 @@ test('new recipes must stay manual acquisitionfalse and cannot adopt an existing
 test('mutation boundary allows exact chapter/order/metadata and rejects every deletion and normal apply', () => {
   const scope = approval().scopes[0];
   const state = { librettoOrigin: 'http://libretto', kavitaOrigin: 'http://kavita', active: scope,
-    listId: 9, listTitle: 'Example', description: '[libretto:example]', itemKeys: new Map([[23, '7:11'], [25, '7:99']]) };
+    listId: 9, listTitle: 'Example', description: '[libretto:example]', itemKeysListId: 9, itemKeys: new Map([[23, '7:11'], [25, '7:99']]) };
   const check = (path, body) => permits(new URL(path, 'http://kavita'), 'POST', body, state);
   assert(check('/api/ReadingList/update-by-chapter', { readingListId: 9, seriesId: 7, chapterId: 12 }));
   assert(check('/api/ReadingList/update-position', { readingListId: 9, readingListItemId: 23, fromPosition: 0, toPosition: 1 }));
@@ -88,6 +88,8 @@ test('mutation boundary allows exact chapter/order/metadata and rejects every de
   assert(!check('/api/ReadingList/update-position', { readingListId: 9, readingListItemId: 25, fromPosition: 2, toPosition: -1 }));
   assert(!permits(new URL('/api/apply', 'http://libretto'), 'POST', { scope: 'example' }, state));
   assert(!permits(new URL('/api', 'http://lazylibrarian'), 'GET', undefined, state));
+  state.listId = 10;
+  assert(!check('/api/ReadingList/update-position', { readingListId: 10, readingListItemId: 23, fromPosition: 0, toPosition: 1 }), 'prior-list item proof cannot authorize next scope');
 });
 test('recipe PUT boundary requires exact approved complete payload', () => {
   const state = { librettoOrigin: 'http://libretto', kavitaOrigin: 'http://kavita', saveRecipe: recipe };

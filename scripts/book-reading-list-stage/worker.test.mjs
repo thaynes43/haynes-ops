@@ -8,13 +8,18 @@ import { createInterface } from 'node:readline';
 import { hash, sha, storeHash } from './protocol.mjs';
 
 // A local external-adapter fixture drives the real child protocol. No network/cluster.
-async function fixture(drift) {
+async function fixture(drift, batch = false) {
   const dir = await mkdtemp(join(tmpdir(), 'libretto-list-stage-fixture-'));
   const root = join(dir, 'app/dist');
   const recipe = { id: 'example', name: 'Example', enabled: true, targets: [{ server: 'kavita', libraryId: '1' }],
     variables: { ordered: true, syncMode: 'sync', schedule: 'manual', acquisitionEnabled: true } };
   const old = { id: 23, seriesId: 7, chapterId: 11, order: 0, progress: 0.5 };
   const collection = { id: 'readinglist:9', libraryId: '1', name: 'Example', description: '[libretto:example]', tags: [], itemIds: ['7'], kind: 'kavita_reading_list' };
+  const secondRecipe = { ...recipe, id: 'second', name: 'Second' };
+  const secondCollection = { ...collection, id: 'readinglist:10', name: 'Second', description: '[libretto:second]' };
+  const secondOld = { ...old, id: 25, progress: 0.75 };
+  const recipeStore = batch ? [recipe, secondRecipe] : [recipe];
+  const collections = batch ? [collection, secondCollection] : [collection];
   const files = {
     'config.js': `export function loadConfig(e=process.env){return {port:9999,kavita:{url:'http://kavita'},apiKey:'fixture',runsFile:${JSON.stringify(join(dir, 'runs.json'))},lazyLibrarian:e.LAZYLIBRARIAN_URL===''?undefined:{url:'http://ll'}}}`,
     'logger.js': `export const createLogger=()=>({});`,
@@ -22,20 +27,21 @@ async function fixture(drift) {
     'core/match.js': `export const recipeMatchOptions=()=>({}); export const matchWorks=()=>({matchedIds:['7'],matchedWorks:[]});`,
     'core/reconciler.js': `export async function reconcileTarget(r,l,t){await t.listItems(l.libraryId);const c=(await t.listCollections(l.libraryId))[0];await t.updateCollection(c.id,{});return {counts:{removed:0}};}`,
     'core/scheduler.js': `export {};`,
-    'target/marker.js': `export const recipeIdFromDescription=s=>s==='[libretto:example]'?'example':undefined;export const buildCollectionDescription=()=> '[libretto:example]';export const withUpdatedMarker=s=>s;`,
+    'target/marker.js': `export const recipeIdFromDescription=s=>s==='[libretto:example]'?'example':s==='[libretto:second]'?'second':undefined;export const buildCollectionDescription=()=> '[libretto:example]';export const withUpdatedMarker=s=>s;`,
     'acquire/acquire.js': `export const createAcquireContext=c=>c.lazyLibrarian?{}:undefined;`,
     'target/kavita.js': `
 export class KavitaTarget {
  async listItems(){return [{id:'7'}]}
- async listCollections(){return [${JSON.stringify(collection)}]}
+ async listCollections(){return ${JSON.stringify(collections)}}
  async currentChapters(){return [{id:11},{id:${drift ? 99 : 12}}]}
  async readingListPlan(){await this.currentChapters('7');return {selective:true,order:[{seriesId:'7',chapterId:12},{seriesId:'7',chapterId:11}]}}
- async readingListItems(){return (await fetch('http://kavita/api/ReadingList/items?readingListId=9')).json()}
- async updateCollection(){
+ async readingListItems(id){return (await fetch('http://kavita/api/ReadingList/items?readingListId='+id)).json()}
+ async updateCollection(containerId){
+  const id=Number(containerId.split(':')[1]);const addedItem=id===9?24:26;
   await this.readingListPlan();
-  await fetch('http://kavita/api/ReadingList/update-by-chapter',{method:'POST',body:JSON.stringify({readingListId:9,seriesId:7,chapterId:12})});
-  await this.readingListItems();
-  await fetch('http://kavita/api/ReadingList/update-position',{method:'POST',body:JSON.stringify({readingListId:9,readingListItemId:24,fromPosition:1,toPosition:0})});
+  await fetch('http://kavita/api/ReadingList/update-by-chapter',{method:'POST',body:JSON.stringify({readingListId:id,seriesId:7,chapterId:12})});
+  await this.readingListItems(id);
+  await fetch('http://kavita/api/ReadingList/update-position',{method:'POST',body:JSON.stringify({readingListId:id,readingListItemId:addedItem,fromPosition:1,toPosition:0})});
  }
  async createCollection(){throw new Error('not used')}
 }`,
@@ -54,14 +60,14 @@ export class KavitaTarget {
   const preload = join(dir, 'preload.mjs');
   await writeFile(preload, `
 import {appendFile,readFile} from 'node:fs/promises';
-let items=[${JSON.stringify(old)}];
+const lists={9:[${JSON.stringify(old)}],10:[${JSON.stringify(secondOld)}]};
 globalThis.fetch=async (resource,init={})=>{
  const u=new URL(resource);const body=init.body?JSON.parse(init.body):undefined;
- if(u.pathname==='/api/recipes'){const changed=await readFile(${JSON.stringify(join(dir, 'store-drift'))}).then(()=>true,()=>false);const recipe=${JSON.stringify(recipe)};return Response.json({issues:[],recipes:[changed?{...recipe,enabled:false}:recipe]})}
+ if(u.pathname==='/api/recipes'){const changed=await readFile(${JSON.stringify(join(dir, 'store-drift'))}).then(()=>true,()=>false);const recipes=${JSON.stringify(recipeStore)};return Response.json({issues:[],recipes:changed?recipes.map(recipe=>({...recipe,enabled:false})):recipes})}
  if(u.pathname==='/health')return Response.json({status:'ok'});
- if(u.pathname==='/api/ReadingList/items')return Response.json(items);
- if(u.pathname==='/api/ReadingList/update-by-chapter'){await appendFile(${JSON.stringify(join(dir, 'writes'))},'add\\n');items.push({id:24,seriesId:7,chapterId:12,order:1});return Response.json(true)}
- if(u.pathname==='/api/ReadingList/update-position'){await appendFile(${JSON.stringify(join(dir, 'writes'))},'order\\n');const i=items.findIndex(r=>r.id===body.readingListItemId);items.unshift(items.splice(i,1)[0]);items=items.map((r,order)=>({...r,order}));return Response.json(true)}
+ if(u.pathname==='/api/ReadingList/items')return Response.json(lists[u.searchParams.get('readingListId')]);
+ if(u.pathname==='/api/ReadingList/update-by-chapter'){await appendFile(${JSON.stringify(join(dir, 'writes'))},'add:'+body.readingListId+'\\n');lists[body.readingListId].push({id:body.readingListId===9?24:26,seriesId:7,chapterId:12,order:1});return Response.json(true)}
+ if(u.pathname==='/api/ReadingList/update-position'){await appendFile(${JSON.stringify(join(dir, 'writes'))},'order:'+body.readingListId+'\\n');const items=lists[body.readingListId];const i=items.findIndex(r=>r.id===body.readingListItemId);if(i<0)throw new Error('fixture foreign-list item');items.unshift(items.splice(i,1)[0]);lists[body.readingListId]=items.map((r,order)=>({...r,order}));return Response.json(true)}
  throw new Error('unexpected fixture endpoint');
 };`);
   const protocol = await readFile(new URL('./protocol.mjs', import.meta.url));
@@ -74,15 +80,20 @@ globalThis.fetch=async (resource,init={})=>{
     capturedAt: new Date().toISOString(), stage: 'initial', libraryId: '1', native: {}, compiledModules,
     helpers: { bundleSha256: sha(worker), launcherSha256: 'a'.repeat(64), protocolSha256: sha(protocol), workerSha256: 'b'.repeat(64) },
     runsSha256: sha(runs), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    recipeStore: [recipe], recipeStoreSha256: storeHash([recipe]),
+    recipeStore, recipeStoreSha256: storeHash(recipeStore),
     artifacts: [{ path: '/private/source', sha256: 'a'.repeat(64), capturedAt: new Date().toISOString() }],
     scopes: [{ recipe, save: false, ownedListId: 9, beforeCollection: collection, beforeItems: [old], works, worksSha256: hash(works),
       desiredChapters: [{ seriesId: '7', chapterId: 12 }, { seriesId: '7', chapterId: 11 }], chapterSnapshots: { 7: [{ id: 11 }, { id: 12 }] } }] };
+  if (batch) {
+    approval.stage = 'batch';
+    approval.initialReceipt = { reviewed: true, sha256: 'c'.repeat(64) };
+    approval.scopes.push({ ...approval.scopes[0], recipe: secondRecipe, ownedListId: 10, beforeCollection: secondCollection, beforeItems: [secondOld] });
+  }
   return { dir, worker, preload, approval, runsFile: join(dir, 'runs.json') };
 }
 
 async function run(drift, mode = 'normal') {
-  const f = await fixture(drift);
+  const f = await fixture(drift, mode === 'batch');
   const child = spawn(process.execPath, ['--import', f.preload, '--input-type=module', '-e', f.worker], { stdio: ['pipe', 'pipe', 'pipe'] });
   const events = [];
   const exited = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code) => resolve(code)); });
@@ -143,4 +154,13 @@ test('native run or recipe drift during durable intent ACK prevents the first ou
     assert.equal(writes, '', mode);
     assert.deepEqual(events.map((event) => event.type), ['before', 'intent', 'fatal'], mode);
   }
+});
+test('two-scope actual child batch uses each owned list item proof and preserves both original IDs', async () => {
+  const { code, events, writes } = await run(false, 'batch');
+  assert.equal(code, 0);
+  assert.equal(writes, 'add:9\norder:9\nadd:10\norder:10\n');
+  const readbacks = events.filter((event) => event.type === 'readback');
+  assert.deepEqual(readbacks.map((event) => event.data.listId), [9, 10]);
+  assert.deepEqual(readbacks.map((event) => [event.data.items[1].id, event.data.items[1].progress]), [[23, 0.5], [25, 0.75]]);
+  assert.equal(events.at(-1).data.recipeCount, 2);
 });
