@@ -576,6 +576,40 @@ class FileTests(unittest.TestCase):
         self.assertFalse(result.stderr, result.stderr)
         return result, [json.loads(line) for line in result.stdout.splitlines()]
 
+    def test_hourly_failed_identity_preflight_preserves_partials_and_skips_conversion(self):
+        partial = os.path.join(os.path.dirname(self.path), ".Mockingjay.epub.partial")
+        write(partial, b"interrupted conversion")
+        write(os.path.join(self.root, "Unknown", "Broken", "Broken.epub"), b"broken ZIP")
+        write(os.path.join(self.root, "Other", "Pending", "Pending.mobi"), b"pending conversion")
+        before = snapshot(self.root)
+        result, lines = self.run_script(STRIP_ONLY="0")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertEqual(snapshot(self.root), before, "failed global preflight permits no library mutation")
+        self.assertTrue(any(row.get("msg") == "epub_series_preflight" and row.get("result") == "refused" for row in lines))
+        self.assertFalse(any(row.get("msg") in ("epub_convert_partial_removed", "epub_convert") for row in lines))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "backup")))
+
+    def test_hourly_successful_preflight_precedes_partial_cleanup(self):
+        partial = os.path.join(os.path.dirname(self.path), ".Mockingjay.epub.partial")
+        write(partial, b"interrupted conversion")
+        result, lines = self.run_script(STRIP_ONLY="0")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertFalse(os.path.exists(partial))
+        preflight = next(i for i, row in enumerate(lines) if row.get("msg") == "epub_series_preflight" and row.get("result") == "ok")
+        cleanup = next(i for i, row in enumerate(lines) if row.get("msg") == "epub_convert_partial_removed")
+        self.assertLess(preflight, cleanup)
+
+    def test_strip_disabled_hourly_cleanup_preserves_existing_epub(self):
+        partial = os.path.join(os.path.dirname(self.path), ".Mockingjay.epub.partial")
+        write(partial, b"interrupted conversion")
+        before = snapshot(self.root)[os.path.relpath(self.path, self.root)]
+        result, lines = self.run_script(STRIP_ONLY="0", STRIP_SERIES_METADATA="0")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertFalse(os.path.exists(partial))
+        self.assertEqual(snapshot(self.root)[os.path.relpath(self.path, self.root)], before)
+        self.assertTrue(any(row.get("msg") == "epub_convert_partial_removed" for row in lines))
+        self.assertFalse(any(row.get("msg") == "epub_series_preflight" for row in lines))
+
     def test_dry_run_inventory_and_untagged_do_not_write(self):
         before = snapshot(self.tmp.name)
         result = self.strip(dry_run=True)

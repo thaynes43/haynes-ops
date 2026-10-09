@@ -818,9 +818,9 @@ def main():
             log("epub_series_restore", **result, dry_run=DRY_RUN,
                 kavita_scan=kavita_scan() if result["result"] == "restored" else "dry_run")
             return 0
-        if not DRY_RUN and not STRIP_ONLY:
-            clean_partials(EBOOK_ROOT)
         series = strip_series_pass(folders, run_started, author_proof) if STRIP_SERIES_METADATA else {"stripped": 0, "refused": 0, "deferred": 0}
+        if not DRY_RUN and not STRIP_ONLY and not series.get("preflight_failed"):
+            clean_partials(EBOOK_ROOT)
         held = load_held(STATE_DIR)
         now = time.time()
         results = {}
