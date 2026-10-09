@@ -21,5 +21,6 @@
   "expectedLiveNative": null,
   "uploads": [],
   "sourceProof": null,
+  "nativeFileTimestampBinding": null,
   "fixturePacket": null
 }

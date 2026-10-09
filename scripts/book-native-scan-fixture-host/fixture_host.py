@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 import uuid
+import schema_codec
 
 NS = "media"
 LABEL = "book-native-fixture"
@@ -116,6 +117,39 @@ def owned_pods(pods, name, phase, uid):
     return result
 
 
+def file_timestamp_binding(raw, pin):
+    lines = raw.decode("ascii").splitlines()
+    require(len(lines) == 3 and lines[0] == lines[2] and lines[1].split()[0] == pin["sha256"], "candidate_file_observation_changed")
+    values = lines[0].split("|")
+    require(len(values) == 4 and re.fullmatch("[0-9]+", values[0]) and re.fullmatch("[0-9]+", values[2]) and int(values[2]) == pin["size"] and re.fullmatch("[0-9]+:[0-9]+", values[3]), "candidate_file_stat_shape")
+    fractional = re.search(r"\.([0-9]{9}) [+-][0-9]{4}$", values[1])
+    require(fractional is not None, "candidate_file_time_precision")
+    mtime_ns = int(values[0]) * 1_000_000_000 + int(fractional[1])
+    local, utc = schema_codec.file_times(mtime_ns)
+    return {"Path": pin["target"], "Sha256": pin["sha256"], "Size": pin["size"], "MtimeNanoseconds": mtime_ns, "Inode": values[3], "LastModified": "text:" + local, "LastModifiedUtc": "text:" + utc, "ObservedAt": stamp()}
+
+
+def created_uid(expected, actual):
+    metadata = actual.get("metadata", {})
+    require(actual.get("apiVersion") == "batch/v1" and actual.get("kind") == "Job" and metadata.get("namespace") == NS and metadata.get("name") == expected["metadata"]["name"] and isinstance(metadata.get("uid"), str) and bool(metadata["uid"]), "raw_created_identity")
+    return metadata["uid"]
+
+
+def cleanup_pods(pods, name, phase, uid):
+    """Known controller UID proves ownership even when admission changed labels."""
+    result = []
+    for pod in inventory(pods, "Pod")["items"]:
+        m = pod["metadata"]
+        owners = m.get("ownerReferences", [])
+        labels = m.get("labels", {})
+        candidate = labels.get(LABEL) == phase or uid is not None and labels.get("batch.kubernetes.io/controller-uid") == uid or any(o.get("kind") == "Job" and (o.get("name") == name or uid is not None and o.get("uid") == uid) for o in owners)
+        if not candidate:
+            continue
+        require(uid is not None and len(owners) == 1 and owners[0].get("kind") == "Job" and owners[0].get("apiVersion") == "batch/v1" and owners[0].get("controller") is True and owners[0].get("name") == name and owners[0].get("uid") == uid and labels.get("batch.kubernetes.io/controller-uid") in (None, uid), "cleanup_pod_conflict")
+        result.append(pod)
+    return result
+
+
 def manifest(template, phase):
     require(str(uuid.UUID(phase)) == phase, "phase_uuid")
     value = copy.deepcopy(template["job"])
@@ -194,6 +228,21 @@ def pod_binding(job, pod, expected, phase):
     require(len(statuses) == 1 and statuses[0]["name"] == "native-scanner" and statuses[0].get("restartCount") == 0 and statuses[0].get("imageID", "").endswith(IMAGE.split("@", 1)[1]), "actual_image_or_restart")
 
 
+def completed(job, pod):
+    status = job.get("status", {})
+    conditions = status.get("conditions", [])
+    require(type(status.get("failed", 0)) is int and status.get("failed", 0) == 0 and not any(c.get("type") == "Failed" and c.get("status") == "True" for c in conditions), "actual_job_failed")
+    states = pod.get("status", {}).get("containerStatuses", [])
+    require(len(states) == 1 and states[0].get("restartCount") == 0, "terminal_restart_count")
+    terminated = states[0].get("state", {}).get("terminated")
+    if terminated:
+        require(type(terminated.get("exitCode")) is int and terminated["exitCode"] == 0 and terminated.get("reason") == "Completed", "child_terminal_failure")
+    if not any(c.get("type") == "Complete" and c.get("status") == "True" for c in conditions):
+        return False
+    require(pod.get("status", {}).get("phase") == "Succeeded" and terminated is not None and type(status.get("active", 0)) is int and status.get("active", 0) == 0 and type(status.get("succeeded")) is int and status["succeeded"] == 1, "actual_job_pod_completion")
+    return True
+
+
 def realized_deny(cnp, cep, native, pod_uid, phase):
     require(cnp.get("spec") == {"endpointSelector": {"matchLabels": {"app.kubernetes.io/name": APP}}, "ingressDeny": [{"fromEntities": ["all"]}], "egressDeny": [{"toEntities": ["all"]}]}, "purpose_policy_changed")
     require(any(c.get("type") == "Valid" and c.get("status") == "True" for c in cnp.get("status", {}).get("conditions", [])), "purpose_policy_invalid")
@@ -240,6 +289,9 @@ class Native:
             if payload is not None:
                 source.write(payload)
                 source.seek(0)
+            if args[0] == "kubectl":
+                args = [args[0], "--request-timeout=" + format(max(.001, until - time.time()), ".3f") + "s", *args[1:]]
+            require(time.time() < until, "native_request_deadline")
             process = subprocess.Popen(args, stdin=source, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output = bytearray()
             total = 0
@@ -286,20 +338,20 @@ class Native:
         require(len(found) <= 1, "cleanup_conflicting_jobs")
         if found:
             job = found[0]
-            declared(expected, job)
-            require(job["metadata"]["name"] == name and job["metadata"].get("labels", {}).get(LABEL) == phase and uid in (None, job["metadata"]["uid"]), "cleanup_reused_name")
+            require(job["metadata"]["name"] == name and job["metadata"].get("namespace") == NS and (job["metadata"].get("labels", {}).get(LABEL) == phase if uid is None else job["metadata"].get("uid") == uid), "cleanup_reused_name")
             uid = job["metadata"]["uid"]
             options = {"apiVersion": "v1", "kind": "DeleteOptions", "propagationPolicy": "Foreground", "preconditions": {"uid": uid}}
             self.call(["kubectl", "delete", "--raw", f"/apis/batch/v1/namespaces/{NS}/jobs/{name}", "-f", "-"], canonical(options))
         else:
-            for pod in owned_pods(self.list("Pod"), name, phase, uid):
+            for pod in cleanup_pods(self.list("Pod"), name, phase, uid):
                 options = {"apiVersion": "v1", "kind": "DeleteOptions", "propagationPolicy": "Foreground", "preconditions": {"uid": pod["metadata"]["uid"]}}
                 self.call(["kubectl", "delete", "--raw", f"/api/v1/namespaces/{NS}/pods/{pod['metadata']['name']}", "-f", "-"], canonical(options))
         while True:
             jobs, pods = self.list("Job"), self.list("Pod")
             require(not any(j["metadata"]["name"] == name and uid is not None and j["metadata"]["uid"] != uid for j in jobs["items"]), "cleanup_name_reused")
             leftovers = [j for j in jobs["items"] if j["metadata"]["name"] == name or j["metadata"].get("labels", {}).get(LABEL) == phase or uid is not None and j["metadata"].get("uid") == uid]
-            if not leftovers and not owned_pods(pods, name, phase, uid):
+            if not leftovers and not cleanup_pods(pods, name, phase, uid):
+                require(time.time() < self.end, "cleanup_original_cap")
                 save_private(self.out / "cleanup-jobs.json", jobs)
                 save_private(self.out / "cleanup-pods.json", pods)
                 save_private(self.out / "cleanup-receipt.json", {"phase": phase, "jobUid": uid, "observedAt": stamp(), "allOwnedJobsPodsAbsent": True})
@@ -317,11 +369,16 @@ def validate_approval(value, now):
     for pin in source_pins:
         path = Path(pin["path"])
         require(path.is_absolute() and not path.is_symlink() and path.stat().st_size <= 1024 * 1024 and sha(path.read_bytes()) == pin["sha256"], "approved_source_changed")
+    required_paths = {Path(__file__).resolve(), Path(schema_codec.__file__).resolve(), Path(value["templatePath"]).resolve()}
+    require(required_paths <= {Path(p["path"]).resolve() for p in source_pins}, "approved_import_template_closure")
     require(value["expectedLiveNative"]["ImageTag"] == "0.9.0.2" and value["expectedLiveNative"]["ImageDigest"] == NATIVE and value["expectedLiveNative"]["TimeZone"] == "America/New_York" and set(value["expectedLiveNative"]["Modules"]) == set(MODULES), "native_source_tuple")
     uploads = value.get("uploads", [])
     require(len(uploads) == 5 and len({p["target"] for p in uploads}) == 5 and {p["target"] for p in uploads} == {"/fixture-input/original.db", "/fixture-input/original.epub", "/kavita/config/kavita.db", "/kavita/config/appsettings.json", value["fixturePacket"]["TargetFilePath"]}, "private_upload_scope")
     for pin in uploads:
         require(sha(read_private(pin["path"])) == pin["sha256"], "approved_private_input_changed")
+    require(value.get("nativeFileTimestampBinding") == {"path": value["fixturePacket"]["TargetFilePath"], "kind": "native-fs-last-write-dotnet-10.0.1-new-york", "fields": ["LastModified", "LastModifiedUtc"]}, "reviewed_file_timestamp_policy")
+    file_rules = [r for r in value["fixturePacket"]["ScanAllowances"] if r["Table"] == "MangaFile" and r["Field"] in ("LastModified", "LastModifiedUtc")]
+    require(len(file_rules) == 2 and {r["Field"] for r in file_rules} == {"LastModified", "LastModifiedUtc"} and all(r["Id"] == 3570 and r["After"] is None and r["ScanClock"] is False for r in file_rules), "reviewed_file_timestamp_slots")
     # Explicit exact private packet values are reviewed, not inferred from results.
     require(value["fixturePacket"].get("ExplicitRootFixtureApproval") is False and value["fixturePacket"]["Target"] == {"Library": 1, "Series": 1650, "Volume": 1800, "Chapter": 3358, "File": 3570}, "reviewed_private_target")
     require(value["fixturePacket"]["ImageDigest"] == IMAGE.split("@", 1)[1] and re.fullmatch("[0-9a-f]{64}", value["fixturePacket"]["ExpectedSchemaSha256"]), "private_native_schema")
@@ -394,10 +451,12 @@ class Fixture(Native):
         admitted = json.loads(self.call(["kubectl", "create", "--dry-run=server", "-f", "-", "-o", "json"], canonical(self.ready)))
         declared(self.ready, admitted)
         save_private(self.out / "server-dry-run.json", admitted)
-        created = json.loads(self.call(["kubectl", "create", "-f", "-", "-o", "json"], canonical(self.ready)))
-        self.uid = created["metadata"]["uid"]
+        save_private(self.out / "create-intent.json", {"phase": self.phase, "name": self.name, "startedAt": stamp()})
+        created_raw = self.call(["kubectl", "create", "-f", "-", "-o", "json"], canonical(self.ready))
+        save_private(self.out / "created-job.json", created_raw)
+        created = json.loads(created_raw)
+        self.uid = created_uid(self.ready, created)
         declared(self.ready, created)
-        save_private(self.out / "created-job.json", created)
         while True:
             job = self.get("job", self.name)
             require(job["metadata"]["uid"] == self.uid and not job.get("status", {}).get("failed"), "fixture_failed")
@@ -418,18 +477,27 @@ class Fixture(Native):
         source = copy.deepcopy(self.approval["sourceProof"])
         require("LiveNative" not in source, "old_live_proof_present")
         source["LiveNative"] = native
-        source_raw, network_raw = canonical(source), canonical(network)
-        packet = copy.deepcopy(self.approval["fixturePacket"])
-        packet.update(ExplicitRootFixtureApproval=True, Phase=self.phase, JobUid=self.uid, PodUid=self.pod_uid, Node="talosw01", JobStartedAt=stamp(self.job_started), ExpiresAt=stamp(self.end), PrivateSourceProofSha256=sha(source_raw), NetworkDenyProofSha256=sha(network_raw))
-        packet["Inputs"] = [{"Path": p["target"], "Sha256": p["sha256"]} for p in self.approval["uploads"]] + [{"Path": "/fixture-input/source-proof.json", "Sha256": sha(source_raw)}, {"Path": "/fixture-input/network-deny-proof.json", "Sha256": sha(network_raw)}]
-        save_private(self.out / "actual-source-proof.json", source_raw)
-        save_private(self.out / "actual-network-proof.json", network_raw)
-        save_private(self.out / "actual-approved-packet.json", packet)
         for pin in self.approval["uploads"]:
             raw = read_private(pin["path"])
             require(sha(raw) == pin["sha256"], "private_input_changed_at_send")
             self.binding()
             self.upload(pod["metadata"]["name"], pin["target"], raw)
+        candidate = next(p for p in self.approval["uploads"] if p["target"] == self.approval["fixturePacket"]["TargetFilePath"])
+        candidate = {**candidate, "size": len(read_private(candidate["path"]))}
+        program = 'set -eu; stat -c "%Y|%y|%s|%d:%i" -- "$1"; sha256sum -- "$1"; stat -c "%Y|%y|%s|%d:%i" -- "$1"'
+        observed = file_timestamp_binding(self.call(["kubectl", "exec", "-n", NS, pod["metadata"]["name"], "-c", "native-scanner", "--", "sh", "-c", program, "fixture-stat", candidate["target"]]), candidate)
+        source["CandidateFileTimestamp"] = observed
+        save_private(self.out / "actual-candidate-file-timestamp.json", observed)
+        source_raw, network_raw = canonical(source), canonical(network)
+        packet = copy.deepcopy(self.approval["fixturePacket"])
+        for rule in packet["ScanAllowances"]:
+            if rule["Table"] == "MangaFile" and rule["Field"] in ("LastModified", "LastModifiedUtc"):
+                rule["After"] = observed[rule["Field"]]
+        packet.update(ExplicitRootFixtureApproval=True, Phase=self.phase, JobUid=self.uid, PodUid=self.pod_uid, Node="talosw01", JobStartedAt=stamp(self.job_started), ExpiresAt=stamp(self.end), PrivateSourceProofSha256=sha(source_raw), NetworkDenyProofSha256=sha(network_raw))
+        packet["Inputs"] = [{"Path": p["target"], "Sha256": p["sha256"]} for p in self.approval["uploads"]] + [{"Path": "/fixture-input/source-proof.json", "Sha256": sha(source_raw)}, {"Path": "/fixture-input/network-deny-proof.json", "Sha256": sha(network_raw)}]
+        save_private(self.out / "actual-source-proof.json", source_raw)
+        save_private(self.out / "actual-network-proof.json", network_raw)
+        save_private(self.out / "actual-approved-packet.json", packet)
         self.upload(pod["metadata"]["name"], "/fixture-input/source-proof.json", source_raw)
         self.upload(pod["metadata"]["name"], "/fixture-input/network-deny-proof.json", network_raw)
         self.binding()
@@ -464,10 +532,7 @@ class Fixture(Native):
         self.upload(pod["metadata"]["name"], "/fixture-input/evidence-ack.json", canonical(ack))
         while True:
             job, current = self.binding()
-            states = current["status"]["containerStatuses"]
-            terminated = states[0].get("state", {}).get("terminated")
-            if terminated:
-                require(terminated.get("exitCode") == 0, "child_terminal_failure")
+            if completed(job, current):
                 break
             time.sleep(.2)
         final_raw = self.call(["kubectl", "logs", "-n", NS, pod["metadata"]["name"], "-c", "native-scanner"])
@@ -484,40 +549,57 @@ def cleanup_locked(state, out):
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if (Path(out) / "cleanup-receipt.json").exists():
             return
+        retired = Path(out) / "execution-retired.json"
+        require(retired.exists() and json.loads(read_private(retired))["phase"] == state["phase"], "requests_not_retired")
         uid = None
         created = Path(out) / "created-job.json"
         if created.exists():
-            job = json.loads(read_private(created, 1024 * 1024))
-            declared(state["manifest"], job)
-            uid = job["metadata"]["uid"]
+            uid = created_uid(state["manifest"], json.loads(read_private(created, 1024 * 1024)))
+        # Lost CREATE transport can recover only after its own durable intent and
+        # full initial absence, never by adopting an arbitrary matching name.
+        elif (Path(out) / "create-intent.json").exists():
+            initial = inventory(json.loads(read_private(Path(out) / "initial-jobs.json", 16 * 1024 * 1024)), "Job")
+            name = state["manifest"]["metadata"]["name"]
+            require(not any(j["metadata"]["name"] == name or j["metadata"].get("labels", {}).get(LABEL) == state["phase"] for j in initial["items"]), "recovery_initial_absence")
+        else:
+            require(not any(j["metadata"]["name"] == state["manifest"]["metadata"]["name"] or j["metadata"].get("labels", {}).get(LABEL) == state["phase"] for j in Native(out, state["end"] + 20).list("Job")["items"]), "unowned_creation_without_intent")
         Native(out, state["end"] + 20).cleanup(state["manifest"], state["phase"], uid)
     finally:
         os.close(lock)
 
 
+def kill_owned_runner(state):
+    pid = state["runnerPid"]
+    try:
+        ticks = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+        if ticks == state["runnerStartTicks"] and os.getpgid(pid) == pid:
+            os.killpg(pid, signal.SIGKILL)
+    except (ProcessLookupError, FileNotFoundError):
+        pass
+
+
 def watchdog(path):
     state = json.loads(read_private(path, 1024 * 1024))
     out = Path(path).parent
-    while time.time() < state["end"]:
+    cap = state["end"] + 20
+    last_error = None
+    while time.time() < cap:
         if (out / "cleanup-receipt.json").exists():
+            save_private(out / "watchdog-receipt.json", {"phase": state["phase"], "allOwnedJobsPodsAbsent": True, "observedAt": stamp()})
             return
-        time.sleep(max(0, min(1, state["end"] - time.time())))
-    try:
-        pid = state["runnerPid"]
-        try:
-            ticks = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
-            if ticks == state["runnerStartTicks"] and os.getpgid(pid) == pid:
-                # All native requests inherit the dedicated runner group. Kill
-                # the group before cleanup so an orphan create/upload cannot
-                # resume after the final union proof.
-                os.killpg(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        except FileNotFoundError:
-            pass
-        cleanup_locked(state, out)
-    except Exception as error:
-        save_private(out / "watchdog-refused.json", {"kind": type(error).__name__, "code": str(error) if isinstance(error, Refused) else None, "unknown": True})
+        if time.time() >= state["end"] and (out / "execution-retired.json").exists():
+            try:
+                cleanup_locked(state, out)
+            except Exception as error:
+                last_error = type(error).__name__
+        time.sleep(max(0, min(.2, cap - time.time())))
+    if (out / "cleanup-receipt.json").exists():
+        save_private(out / "watchdog-receipt.json", {"phase": state["phase"], "allOwnedJobsPodsAbsent": True, "observedAt": stamp()})
+        return
+    # Never begin cleanup with zero budget. No 220s extension. A main host that
+    # has not retired its request process cannot establish absence at all.
+    kill_owned_runner(state)
+    save_private(out / "watchdog-receipt.json", {"phase": state["phase"], "unknown": True, "allOwnedJobsPodsAbsent": False, "lastCleanupKind": last_error, "observedAt": stamp()})
 
 
 def run(approval_path, out, approved_sha):
@@ -538,6 +620,10 @@ def run(approval_path, out, approved_sha):
     own_pin = next(p for p in approval["sourcePins"] if Path(p["path"]).resolve() == Path(__file__).resolve())
     require(sha(frozen_source) == own_pin["sha256"], "host_source_changed_before_watchdog")
     save_private(out / "frozen-host.py", frozen_source)
+    codec_source = Path(schema_codec.__file__).read_bytes()
+    codec_pin = next(p for p in approval["sourcePins"] if Path(p["path"]).resolve() == Path(schema_codec.__file__).resolve())
+    require(sha(codec_source) == codec_pin["sha256"], "codec_changed_before_watchdog")
+    save_private(out / "schema_codec.py", codec_source)
     watcher = subprocess.Popen([sys.executable, "-B", str(out / "frozen-host.py"), "--watchdog", str(out / "watchdog-state.json")], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     save_private(out / "watchdog-process.json", {"pid": watcher.pid, "observedAt": stamp(), "originalEnd": stamp(fixture.end)})
     def stop(*_):
@@ -551,6 +637,9 @@ def run(approval_path, out, approved_sha):
     except BaseException as error:
         result.update(kind=type(error).__name__, code=str(error) if isinstance(error, Refused) else None)
     finally:
+        # collect() has fully unwound Native.call, which kills and reaps its
+        # active subprocess in finally; no collection method is called again.
+        save_private(out / "execution-retired.json", {"phase": fixture.phase, "retiredAt": stamp(), "runnerPid": os.getpid()})
         signal.setitimer(signal.ITIMER_REAL, max(.001, fixture.end + 20 - time.time()))
         try:
             cleanup_locked(state, out)
@@ -599,5 +688,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main() or 0)
     except Exception as error:
-        print(json.dumps({"result": "REFUSED", "kind": type(error).__name__, "code": str(error) if isinstance(error, Refused) else None, "jobsCreated": 0}))
+        print(json.dumps({"result": "REFUSED", "kind": type(error).__name__, "code": str(error) if isinstance(error, Refused) else None, "outcome": "unknown", "productionAuthorization": False}))
         sys.exit(2)

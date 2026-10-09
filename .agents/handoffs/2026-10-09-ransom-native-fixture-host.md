@@ -73,3 +73,28 @@ Hold every dependent identity-changing file until same-ID preservation is proved
 Idle 30 days is not progress-loss permission. A read-before-write dependency check is
 not atomic with native scanning or new reading. Hidden conversion output before
 atomic publication must be assessed separately from visible existing EPUBs.
+
+Advisory #3663 fixes retain raw CREATE bytes/UID before admission refusal, permit
+UID deletion of that owned creation despite injected spec or phase labels, and
+require initial full absence plus matching phase for unknown transport recovery.
+A durable execution-retired marker follows request kill/reap; neither cleanup path
+can claim union absence first. Independent cleanup runs inside 180–200s, permits
+valid main GC, and at 200 kills only the exact dedicated group if absence is missing;
+a frozen host/API outage stays unknown with no 220s extension. Actual terminal proof
+requires Job Complete/active0/failed0/succeeded1 and Pod Succeeded/Completed/exit0.
+
+Private inputs are prepared only: unchanged original clone, exactly seven candidate
+catalog cells, one approved series-only OPF member, 82 tables/34,433 rows and 1,931
+complete retained parsed keys. The proposed nine native metadata allowances are
+four bounded series scan timestamps, exact series SortName, candidate file byte
+count/Koreader hash and two exact file last-write timestamps. The latter are bound
+from actual uploaded filesystem state before packet release, using the pinned
+.NET 10.0.1 SQLite representation and New York zone; they are not widened scan clocks.
+No private fixture, Job, actual scanner or production writer has run.
+
+Current source has an unpublished conversion stage before atomic visible publication
+and a separate visible existing-file strip pass. Desired TMPDIR=/tmp is an emptyDir,
+but fresh actual mounts and all watched roots remain a gate. One shared strip flag
+enables both paths, so staging-only enable cannot be assumed. #3571 remains held/zero;
+existing identity-changing maintenance requires sealed native-ID preservation, not
+an idle or read-before-write dependency test alone.

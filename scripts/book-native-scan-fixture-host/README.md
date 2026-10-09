@@ -18,8 +18,12 @@ native scanner behavior until the private fixture runs and passes.
 The source wrapper waits for the atomic approved packet before starting the apphost.
 This permits Cilium endpoint realization and fresh production module evidence before
 delivery. It never extends the original Job start + 180s clock. Bound stdout, exec,
-API requests and input sizes. A separate host watchdog cleans up at original start +
-200s even if the main launcher blocks or receives an interruption. The worker has one
+API requests and input sizes. At 180s the host stops collection and retires its active native request process.
+Only its durable retirement marker permits a union-absence receipt. An independent
+watchdog attempts UID cleanup during 180–200s alongside main foreground cleanup;
+it leaves valid cleanup running and kills only the exact dedicated host group at
+200s if absence remains unproved. A frozen launcher or API outage produces durable
+unknown, with no extension or claimed absence. The worker has one
 attempt, node talosw01, nice 19, CPU <=500m, no host/PVC/NFS mount, no token, no injected
 container and only four memory emptyDirs. The clone itself contains authentication
 and private user rows; network isolation must be proved before those bytes enter it.
@@ -37,11 +41,14 @@ Create every private output exclusively in a mode-0700 directory; files are mode
 and deliver the approved packet last. Never print payloads or native private logs.
 Copy every receipt-listed full-state proof plus the receipt privately, verify hashes
 and fsync files/directories before an exact phase/Job/Pod/receipt-SHA ACK. No missing,
-late or partial ACK is a success. The child must terminate zero and provide its actual
+late or partial ACK is a success. The child must reach Pod Succeeded / container Completed with integer exit zero and
+a current Job Complete, active zero, succeeded one and failed zero, and provide and provide its actual
 native PASS, including unchanged saved/user/curation/lock rows and retained IDs.
 
 On success, refusal, upload failure, expiry or interruption, foreground-delete only
-the recorded Job UID; collect complete unfiltered raw Jobs and Pods and prove the
+the recorded Job UID; persist the raw creation response before checking admission,
+so an injected spec still permits cleanup of its exact name/phase/UID. A valid raw CREATE response proves that namespace/name/UID is owned even if
+admission changes its labels; unknown transport recovery still requires matching phase; collect complete unfiltered raw Jobs and Pods and prove the
 union of exact name, phase label and controller owner is empty. Do not trust a label
 selector alone. Preserve unknown private evidence and halt without automatic retry.
 An unacknowledged creation requires a complete native lookup of the exact reviewed
@@ -71,3 +78,16 @@ The primary implementation is [.NET 10.0.1 DefaultJavaScriptEncoder](https://git
 and [its HTML block list](https://github.com/dotnet/runtime/blob/v10.0.1/src/libraries/System.Text.Encodings.Web/src/System/Text/Encodings/Web/AllowedBmpCodePointsBitmap.cs).
 Native BPF validation uses [Cilium 1.20.2 policy map flags/keys](https://github.com/cilium/cilium/blob/v1.20.2/pkg/maps/policymap/policymap.go),
 not a claim that the future endpoint already exists.
+
+The two native file-modified fields come from the uploaded candidate file’s actual
+last-write timestamp, observed before the packet releases the scanner. Bind their
+exact .NET 10.0.1 SQLite text representations using the verified New York zone; do
+not admit them under a widened scanner-time range. The four series scan timestamps
+remain bounded by the actual native invocation. CI checks a finite generic timestamp
+against the same official runtime, without a private schema or book.
+
+The new-conversion path uses an unpublished temporary EPUB before atomic publication,
+while the existing-strip pass acts inside a watched library. The desired Cron uses
+its own /tmp emptyDir, but fresh runtime mounts and every native watched root still
+need proof. One current STRIP_SERIES_METADATA flag enables both paths, so enabling
+only unpublished conversion needs a reviewed separation. The flag stays zero.

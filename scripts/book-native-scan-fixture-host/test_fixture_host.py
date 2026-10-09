@@ -187,21 +187,108 @@ class HostTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             schema_codec.schema_sha([("trigger", "name", "table", "sql")])
 
-    def test_watchdog_kills_only_exact_owned_group_before_cleanup(self):
+    def test_terminal_zero_requires_current_completed_job_and_pod(self):
+        _, job, pod = objects()
+        pod["status"]["containerStatuses"][0]["state"] = {"terminated": {"exitCode": 0, "reason": "Completed"}}
+        self.assertFalse(h.completed(job, pod))
+        job["status"] = {"conditions": [{"type": "Complete", "status": "True"}], "active": 0, "failed": 0, "succeeded": 1}
+        pod["status"]["phase"] = "Succeeded"
+        self.assertTrue(h.completed(job, pod))
+        for change in (lambda j, p: p["status"].update(phase="Running"), lambda j, p: j["status"].update(active=1), lambda j, p: j["status"].update(failed=1), lambda j, p: j["status"].update(succeeded=True), lambda j, p: j["status"]["conditions"].append({"type": "Failed", "status": "True"}), lambda j, p: p["status"]["containerStatuses"][0]["state"]["terminated"].update(reason="Error")):
+            bad_job, bad_pod = copy.deepcopy(job), copy.deepcopy(pod)
+            change(bad_job, bad_pod)
+            with self.assertRaises(h.Refused):
+                h.completed(bad_job, bad_pod)
+
+    def test_raw_creation_is_durable_before_admission_refusal(self):
+        manifest, job, _ = objects()
+        job["spec"]["template"]["spec"]["containers"].append({"name": "injected"})
         with tempfile.TemporaryDirectory() as out:
-            state = {"phase": PHASE, "end": 0, "runnerPid": 876543210, "runnerStartTicks": "bound"}
+            fixture = h.Fixture.__new__(h.Fixture)
+            fixture.out, fixture.ready, fixture.phase, fixture.name, fixture.uid = Path(out), manifest, PHASE, manifest["metadata"]["name"], None
+            fixture.list = mock.Mock(side_effect=[inv("Job"), inv("Pod")])
+            fixture.call = mock.Mock(side_effect=[h.canonical(manifest), h.canonical(job)])
+            with self.assertRaisesRegex(h.Refused, "native_admission_drift"):
+                fixture.collect()
+            self.assertEqual(fixture.uid, JOBUID)
+            self.assertEqual(json.loads(h.read_private(Path(out) / "created-job.json")), job)
+
+    def test_known_create_uid_cleanup_allows_injected_spec_and_phase(self):
+        manifest, job, _ = objects()
+        job["spec"]["template"]["spec"]["containers"].append({"name": "injected"})
+        job["metadata"]["labels"].pop(h.LABEL)
+        with tempfile.TemporaryDirectory() as out:
+            h.save_private(Path(out) / "created-job.json", job)
+            h.save_private(Path(out) / "execution-retired.json", {"phase": PHASE})
+            with mock.patch.object(h.Native, "list", side_effect=[inv("Job", [job]), inv("Job"), inv("Pod")]), mock.patch.object(h.Native, "call", return_value=b"{}") as call:
+                h.cleanup_locked({"manifest": manifest, "phase": PHASE, "end": time.time() + 2}, out)
+            self.assertEqual(json.loads(call.call_args.args[1])["preconditions"], {"uid": JOBUID})
+
+    def test_unknown_create_recovery_never_adopts_foreign_phase(self):
+        manifest, job, _ = objects()
+        job["metadata"]["labels"][h.LABEL] = str(uuid.uuid4())
+        with tempfile.TemporaryDirectory() as out:
+            h.save_private(Path(out) / "initial-jobs.json", inv("Job"))
+            h.save_private(Path(out) / "create-intent.json", {"phase": PHASE})
+            h.save_private(Path(out) / "execution-retired.json", {"phase": PHASE})
+            with mock.patch.object(h.Native, "list", return_value=inv("Job", [job])), mock.patch.object(h.Native, "call") as call:
+                with self.assertRaisesRegex(h.Refused, "cleanup_reused_name"):
+                    h.cleanup_locked({"manifest": manifest, "phase": PHASE, "end": time.time() + 2}, out)
+            call.assert_not_called()
+
+    def test_cleanup_cannot_prove_absence_before_request_retirement(self):
+        manifest, _, _ = objects()
+        with tempfile.TemporaryDirectory() as out, mock.patch.object(h.Native, "cleanup") as cleanup:
+            with self.assertRaisesRegex(h.Refused, "requests_not_retired"):
+                h.cleanup_locked({"manifest": manifest, "phase": PHASE, "end": 0}, out)
+            cleanup.assert_not_called()
+
+    def test_watchdog_preserves_valid_main_gc_near_200_cap(self):
+        with tempfile.TemporaryDirectory() as out:
+            state = {"phase": PHASE, "end": 180, "runnerPid": 876543210, "runnerStartTicks": "bound"}
             path = Path(out) / "state.json"
             h.save_private(path, state)
-            proc = "876543210 (fixture) " + " ".join(["0"] * 19 + ["bound"])
-            actions = []
-            with mock.patch.object(Path, "read_text", return_value=proc), mock.patch.object(h.os, "getpgid", return_value=876543210), mock.patch.object(h.os, "killpg", side_effect=lambda *_: actions.append("kill")), mock.patch.object(h, "cleanup_locked", side_effect=lambda *_: actions.append("cleanup")):
-                h.watchdog(path)
-            self.assertEqual(actions, ["kill", "cleanup"])
-            reused = proc.replace("bound", "reused")
-            with mock.patch.object(Path, "read_text", return_value=reused), mock.patch.object(h.os, "killpg") as kill, mock.patch.object(h, "cleanup_locked") as cleanup:
+            h.save_private(Path(out) / "execution-retired.json", {"phase": PHASE})
+            clock = [171.0]
+            def sleep(_): clock[0] += 9
+            def cleanup(*_):
+                if clock[0] < 198:
+                    raise BlockingIOError("main GC owns lock")
+                h.save_private(Path(out) / "cleanup-receipt.json", {"allOwnedJobsPodsAbsent": True})
+            with mock.patch.object(h.time, "time", side_effect=lambda: clock[0]), mock.patch.object(h.time, "sleep", side_effect=sleep), mock.patch.object(h, "cleanup_locked", side_effect=cleanup), mock.patch.object(h, "kill_owned_runner") as kill:
                 h.watchdog(path)
             kill.assert_not_called()
-            cleanup.assert_called_once()
+            self.assertTrue(json.loads(h.read_private(Path(out) / "watchdog-receipt.json"))["allOwnedJobsPodsAbsent"])
+
+    def test_frozen_or_pending_create_at_200_is_unknown_without_api_extension(self):
+        with tempfile.TemporaryDirectory() as out:
+            state = {"phase": PHASE, "end": 180, "runnerPid": 876543210, "runnerStartTicks": "bound"}
+            path = Path(out) / "state.json"
+            h.save_private(path, state)
+            clock = [179.0]
+            def sleep(_): clock[0] += 7
+            with mock.patch.object(h.time, "time", side_effect=lambda: clock[0]), mock.patch.object(h.time, "sleep", side_effect=sleep), mock.patch.object(h, "cleanup_locked") as cleanup, mock.patch.object(h, "kill_owned_runner") as kill:
+                h.watchdog(path)
+            cleanup.assert_not_called()
+            kill.assert_called_once_with(state)
+            self.assertTrue(json.loads(h.read_private(Path(out) / "watchdog-receipt.json"))["unknown"])
+
+    def test_runner_pid_reuse_never_kills_another_group(self):
+        state = {"runnerPid": 876543210, "runnerStartTicks": "bound"}
+        proc = "876543210 (fixture) " + " ".join(["0"] * 19 + ["reused"])
+        with mock.patch.object(Path, "read_text", return_value=proc), mock.patch.object(h.os, "killpg") as kill:
+            h.kill_owned_runner(state)
+        kill.assert_not_called()
+
+    def test_exact_native_file_time_binding_truncates_to_100ns_and_uses_ny_zone(self):
+        self.assertEqual(schema_codec.file_times(946782245123456799), ["2000-01-01 22:04:05.1234567", "2000-01-02 03:04:05.1234567"])
+        pin = {"target": "/candidate.epub", "sha256": "a" * 64, "size": 7}
+        row = "946782245|2000-01-01 22:04:05.123456799 -0500|7|1:23"
+        raw = (row + "\n" + pin["sha256"] + "  /candidate.epub\n" + row + "\n").encode()
+        proof = h.file_timestamp_binding(raw, pin)
+        self.assertEqual(proof["LastModifiedUtc"], "text:2000-01-02 03:04:05.1234567")
+        with self.assertRaisesRegex(h.Refused, "candidate_file_observation_changed"):
+            h.file_timestamp_binding(raw.replace(b"1:23", b"1:24", 1), pin)
 
 
 if __name__ == "__main__":

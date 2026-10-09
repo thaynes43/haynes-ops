@@ -5,6 +5,8 @@ serialization and all scanner/state decisions remain in the actual C# fixture.
 Non-ASCII native schemas refuse until a reviewed codec successor exists.
 """
 import hashlib
+import datetime as dt
+from zoneinfo import ZoneInfo
 
 
 def quote(value):
@@ -35,9 +37,20 @@ def schema_sha(rows):
     return hashlib.sha256(serialized(schema).encode("ascii")).hexdigest()
 
 
+def file_times(mtime_ns):
+    if type(mtime_ns) is not int or not 0 <= mtime_ns < 253402300799000000000:
+        raise ValueError("native file timestamp refused")
+    seconds, nanoseconds = divmod(mtime_ns, 1_000_000_000)
+    utc = dt.datetime.fromtimestamp(seconds, dt.timezone.utc)
+    fraction = format(nanoseconds // 100, "07d").rstrip("0")
+    suffix = "." + fraction if fraction else ""
+    return [value.strftime("%Y-%m-%d %H:%M:%S") + suffix for value in (utc.astimezone(ZoneInfo("America/New_York")), utc)]
+
+
 GOLDEN = ["simple", 'quote"and\'single', "<&+>`", "\\\t\n\r\b\f", "\x00\x0b\x7f", "/plain path", "text:CREATE TABLE \"Synthetic\" (\"Value\" TEXT DEFAULT 'x');"]
 
 
 if __name__ == "__main__":
     print(serialized(GOLDEN))
     print(serialized([serialized(GOLDEN), serialized(["text:index", "null:"])]))
+    print(serialized(file_times(946782245123456700)))
