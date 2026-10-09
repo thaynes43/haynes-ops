@@ -48,6 +48,7 @@ try
         return 0;
     }
     FixtureProtocol.Require(args.SequenceEqual(new[] { "--prepared-private-fixture" }), "unknown entrypoint");
+    NativeProof.RequirePrivateUmask();
     FixtureProtocol.Require(!File.Exists("/var/run/secrets/kubernetes.io/serviceaccount/token"), "service-account token is mounted");
     foreach (var mount in new[] { "/fixture-input", "/kavita/config", "/data/cephfs-hdd/data/media/books/EBooks", "/tmp" })
         NativeProof.RequirePrivateTmpfs(mount);
@@ -82,6 +83,7 @@ try
     NativeProof.RequireTarget(before, packet);
     NativeProof.SavePrivate("/kavita/config/proof-before.json", before);
     stage = "native-build";
+    NativeProof.RequirePrivateUmask();
     // Suppress native console logs; private vendor log files remain in tmpfs.
     Console.SetOut(TextWriter.Null);
     Console.SetError(TextWriter.Null);
@@ -152,6 +154,7 @@ try
     NativeProof.SavePrivate("/kavita/config/proof-after.json", after);
     NativeProof.RequireTarget(after, packet);
     NativeProof.RequireScanDelta(before, after, packet, started, finished);
+    NativeProof.RequirePrivateUmask();
     NativeProjection.RequireAfterCover(before, after, packet, nativeProjection!);
     stage = "private-inverse";
     NativeProof.InvertCatalog(packet, original, before, after, started, finished);
@@ -244,6 +247,7 @@ sealed record DatabaseSnapshot(string SchemaSha256, Dictionary<string, List<Sort
 
 static class NativeProof
 {
+    public static void RequirePrivateUmask() => FixtureProtocol.Require(File.ReadLines("/proc/self/status").Single(line => line.StartsWith("Umask:", StringComparison.Ordinal)).Split(':', 2)[1].Trim() == "0077", "fixture did not inherit its restrictive launch umask");
     public static string Digest(DatabaseSnapshot snapshot) => FixtureProtocol.HashText(JsonSerializer.Serialize(snapshot));
     public static void RequirePrivateTmpfs(string path)
     {

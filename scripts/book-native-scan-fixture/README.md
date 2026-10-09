@@ -64,6 +64,10 @@ Only Volume1800 PrimaryColor/SecondaryColor admit native-generated null or exact
 uppercase #RRGGBB, with pinned CalculateColorScape/UpdateColorScape method provenance;
 every other cell retains its strict predicate. There is no reseeding, repeated draw
 or rescan, and different encoded bytes refuse. The actual helper UnitOfWork context
+inherits the sealed launch gate's umask077, checked from /proc/self/status before
+Build/helpers and after scan. Native cover files must already be600; no post-write
+chmod may conceal their original custody.
+The actual helper UnitOfWork context
 must be the scoped DataContext, with no Added/Modified/Deleted entries after
 DetectChanges and no persisted row changes. No tracker clearing or saving is allowed.
 The actual EF10.0.6 cancellation overload must decode to virtual bool-overload dispatch;

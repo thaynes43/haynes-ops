@@ -35,6 +35,7 @@ static class NativeProjection
     }
     public static async Task<ProjectionProof> Derive(IServiceProvider services, FixturePacket packet, DatabaseSnapshot before)
     {
+        NativeProof.RequirePrivateUmask();
         var bookType = NativeBindings.Type("Kavita.API", "Kavita.API.Services.IBookService");
         var book = services.GetRequiredService(bookType);
         FixtureProtocol.Require(book.GetType().FullName == "Kavita.Services.BookService", "native book implementation differs");
