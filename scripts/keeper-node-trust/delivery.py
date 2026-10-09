@@ -195,6 +195,21 @@ def install_nodes(job_name, pod_name):
             producer.stderr.close()
 
 
+def rollback_node(node):
+    remote = shlex.join(["python3", "-B", "-c", node_source(), "rollback"])
+    result = subprocess.run(["hw-ssh", node, remote], capture_output=True, timeout=25)
+    if result.returncode:
+        reason = refusal_reason(result.stdout)
+        if reason is not None:
+            print(json.dumps({"node": node, "refused": reason}), flush=True)
+        raise ValueError("RollbackFailed")
+    receipt = json.loads(result.stdout)
+    if receipt not in ({"result": "rolled-back", "originalBytesPreserved": True},
+                       {"result": "already-rolled-back"}):
+        raise ValueError("RollbackReceipt")
+    print(json.dumps({"node": node, **receipt}, sort_keys=True))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="operation", required=True)
@@ -212,12 +227,7 @@ def main():
     elif args.operation == "install":
         install_nodes(args.job, args.pod)
     else:
-        remote = shlex.join(["python3", "-B", "-c", node_source(), "rollback"])
-        result = subprocess.run(["hw-ssh", args.node, remote], capture_output=True, timeout=25, check=True)
-        receipt = json.loads(result.stdout)
-        if receipt.get("result") not in {"rolled-back", "already-rolled-back"}:
-            raise ValueError("RollbackReceipt")
-        print(json.dumps({"node": args.node, **receipt}, sort_keys=True))
+        rollback_node(args.node)
 
 
 if __name__ == "__main__":

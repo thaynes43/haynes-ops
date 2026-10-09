@@ -2,12 +2,15 @@
 
 import base64
 import copy
+from contextlib import redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import delivery
 import node_install
@@ -119,6 +122,17 @@ class Guards(unittest.TestCase):
                     b'{"result":"refused","reason":"LaterEdit","extra":"payload"}',
                     b'{"result":"refused","reason":["LaterEdit"]}', b'{}' * 3000):
             self.assertIsNone(delivery.refusal_reason(raw))
+
+    def test_rollback_reports_only_allowlisted_refusal(self):
+        for raw, expected in ((b'{"result":"refused","reason":"LaterEdit"}',
+                               '{"node": "pve04", "refused": "LaterEdit"}\n'),
+                              (b'arbitrary remote output', '')):
+            output = io.StringIO()
+            failed = delivery.subprocess.CompletedProcess([], 1, stdout=raw, stderr=b'undisplayed')
+            with patch.object(delivery.subprocess, "run", return_value=failed), redirect_stdout(output):
+                with self.assertRaisesRegex(ValueError, "RollbackFailed"):
+                    delivery.rollback_node("pve04")
+            self.assertEqual(output.getvalue(), expected)
 
 
 if __name__ == "__main__":
