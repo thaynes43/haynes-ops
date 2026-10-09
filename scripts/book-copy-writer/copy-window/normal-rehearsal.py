@@ -289,6 +289,8 @@ def watcher(packet,initialize=True):
             require(not (argv[0]=='gh' or (argv[0]=='kubectl' and argv[1] in ('create','apply','replace'))),'no Git merge or resource producer')
             return super().run([packet['binaries'][argv[0]]['path'],*argv[1:]],timeout=timeout,input_text=input_text)
         def tick(self):
+            if self.state.get('normal_rehearsal_recovery_budget_missed_at'):
+                self.state.update(complete=False,normal_rehearsal_recovered_within_budget=False,copy_runtime_authorized=False);self.save()
             require(not Path(args.cached_source_activation).exists() and not Path(args.cached_source_receipt).exists(),'Stop artifacts forbidden in Normal rehearsal')
             if self.state.get('normal_only_rehearsal_complete'):
                 with cache.wall_guard(BOUNDS['safety_attempt']):

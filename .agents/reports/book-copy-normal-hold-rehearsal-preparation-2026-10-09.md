@@ -349,6 +349,11 @@ The actual advisory findings `4235127776`/`4235138148` also require preserving
 historical raw `completed_at` when no safety timestamp exists. That Normal-only
 fallback and its real-generic cold-state counterexample are included; a new
 verification time never replaces the original restoration proof.
+Historical raw `complete=true` is normalized false on recognizing the Normal
+miss, before either the scoped tick or generic recovery performs any cleanup,
+network proof or progress save. The real cold fixture includes that actual
+legacy flag and an early unavailable-cleanup case; unknown recovery cannot
+leave a persisted successful guarantee.
 
 Unused prepared Stop/inverse drafts
 [#3659](https://github.com/thaynes43/haynes-ops/pull/3659) and

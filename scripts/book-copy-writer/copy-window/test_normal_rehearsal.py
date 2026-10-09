@@ -130,7 +130,8 @@ class NormalCases(unittest.TestCase):
             w,_,_,watch=normal.watcher(packet,initialize=False)
             origin='1970-01-01T00:00:10+00:00';miss='1970-01-01T00:01:00+00:00'
             w.state={'complete':False,'normal_rehearsal_restore_started_at':origin,
-                     'normal_rehearsal_recovery_budget_missed_at':miss}
+                     'normal_rehearsal_recovery_budget_missed_at':miss,
+                     'normal_rehearsal_recovered_within_budget':True,'copy_runtime_authorized':True}
             saved=[];w.save=lambda:saved.append(copy.deepcopy(w.state))
             w.cleanup_phase_jobs=lambda:None;w.desired_restored=lambda _:None
             w.phase_checkpoint=lambda:{'phase_token':fixtures.PHASE};w.stop_actuated=lambda:False
@@ -145,13 +146,21 @@ class NormalCases(unittest.TestCase):
             self.assertEqual(w.state['safety_recovery_reverified_at'],later)
             # The actual historical state had generic completed_at but no
             # safety timestamp; cold correction must keep that first proof.
-            w.state.pop('safety_recovery_completed_at');w.state['completed_at']=first
+            w.state.pop('safety_recovery_completed_at');w.state.update(complete=True,completed_at=first)
             with mock.patch.object(watch,'stamp',return_value=later):w.recover_cluster(fixtures.NORMAL_SHA)
             self.assertEqual(w.state['safety_recovery_completed_at'],first)
             self.assertFalse(w.state['complete'])
             w.runtime_restored=lambda _:False
             with self.assertRaisesRegex(RuntimeError,'waiting for app/KS convergence'):w.recover_cluster(fixtures.NORMAL_SHA)
             self.assertTrue(all(row.get('complete') is False for row in saved))
+            w.state['complete']=True
+            w.cleanup_phase_jobs=lambda:(_ for _ in ()).throw(RuntimeError('cleanup unknown'))
+            with self.assertRaisesRegex(RuntimeError,'cleanup unknown'):w.recover_cluster(fixtures.NORMAL_SHA)
+            self.assertFalse(saved[-1]['complete'])
+            w.state.update(complete=True,normal_only_rehearsal_complete=True)
+            with self.assertRaisesRegex(RuntimeError,'cleanup unknown'):w.tick()
+            self.assertFalse(saved[-1]['complete'])
+            self.assertTrue(all(row.get('normal_rehearsal_recovered_within_budget') is False and row.get('copy_runtime_authorized') is False for row in saved))
             self.assertEqual((w.state['normal_rehearsal_restore_started_at'],w.state['normal_rehearsal_recovery_budget_missed_at']),(origin,miss))
 
     def test_cancel_closes_registration_before_any_process_or_hold(self):

@@ -334,6 +334,8 @@ class Watchdog:
             if patch:self.run(['kubectl','patch',resource,name,'-n',ns,'--type=json','-p',json.dumps(patch,separators=(',',':'))],timeout=10)
 
     def recover_cluster(self,sha):
+        if self.state.get('normal_rehearsal_recovery_budget_missed_at'):
+            self.state.update(complete=False,normal_rehearsal_recovered_within_budget=False,copy_runtime_authorized=False);self.save()
         self.cleanup_phase_jobs()
         self.desired_restored(sha)
         phase=self.phase_checkpoint()
