@@ -103,6 +103,9 @@ spec:
               capabilities:
                 drop: [ALL]
     defaultPodOptions:
+      annotations:
+        # The timezone init has no CPU limit; keep this keeper rollout bounded.
+        k8tz.io/inject: "false"
       automountServiceAccountToken: true
       enableServiceLinks: false
       securityContext:
@@ -125,6 +128,17 @@ spec:
         defaultMode: 0440
         globalMounts:
           - path: /etc/dev-env-keeper/github-dev-bot
+            readOnly: true
+      # Keeper-only D-69/D-72 input. The default --ssh-ca-dir reads these two keys;
+      # --enable-proxmox-grants stays absent/default false in keeper and broker.
+      # Key-pair validation, node trust, SSH targets/host pins, egress and provider
+      # acceptance remain prerequisites; this mount does not activate minting.
+      ssh-ca:
+        type: secret
+        name: dev-env-keeper-ssh-ca
+        defaultMode: 0440
+        globalMounts:
+          - path: /etc/dev-env-keeper/ssh-ca
             readOnly: true
       tmp:
         type: emptyDir
