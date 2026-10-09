@@ -98,7 +98,7 @@ try
     var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
     FixtureProtocol.Require(!lifetime.ApplicationStarted.IsCancellationRequested, "native host was started");
     object? nativeDbBinding = null;
-    object? nativeProjection = null;
+    ProjectionProof? nativeProjection = null;
     using (var scope = host.Services.CreateScope())
     {
         nativeDbBinding = NativeBindings.ProvePrivateDbContext(scope.ServiceProvider, packet.CandidateDbPath);
@@ -152,6 +152,7 @@ try
     NativeProof.SavePrivate("/kavita/config/proof-after.json", after);
     NativeProof.RequireTarget(after, packet);
     NativeProof.RequireScanDelta(before, after, packet, started, finished);
+    NativeProjection.RequireAfterCover(before, after, packet, nativeProjection!);
     stage = "private-inverse";
     NativeProof.InvertCatalog(packet, original, before, after, started, finished);
     var inverse = NativeProof.ReadDatabase(packet.CandidateDbPath);
@@ -383,6 +384,7 @@ static class NativeProof
                 FixtureProtocol.RequireScanClock(allowance.Field, actual, started, finished);
                 if (allowance.Table == "Series" && allowance.Field == "LastFolderScanned") FixtureProtocol.Require(actual != allowance.Before, "native scanner returned without target scan evidence");
             }
+            else if (allowance.NativeColor) FixtureProtocol.RequireNativeColor(actual);
             else FixtureProtocol.Require(actual == allowance.After, "native explicit scan cell differs");
             changes.Add(new(allowance.Table, allowance.Id, allowance.Field, allowance.Before, actual));
         }
@@ -530,7 +532,7 @@ static class NativeProof
             Apply(packet.CatalogDelta);
             var before = ReadDatabase(path);
             var changes = packet.ScanAllowances.Select(r => new CellChange(r.Table, r.Id, r.Field, r.Before,
-                r.ScanClock ? r.Field.EndsWith("Utc", StringComparison.Ordinal) ? "text:2026-10-09 19:00:00" : "text:2026-10-09 15:00:00" : r.After!)).ToArray();
+                r.ScanClock ? r.Field.EndsWith("Utc", StringComparison.Ordinal) ? "text:2026-10-09 19:00:00" : "text:2026-10-09 15:00:00" : r.NativeColor ? "text:#112233" : r.After!)).ToArray();
             Apply(changes);
             var after = ReadDatabase(path);
             RequireScanDelta(before, after, packet, now, now);
@@ -542,6 +544,7 @@ static class NativeProof
             }
             foreach (var (table, id, field, wrong) in new[] {
                 ("Chapter", packet.Target.Chapter, "Count", "int:7"),
+                ("Volume", packet.Target.Volume, "PrimaryColor", "text:#aabbcc"),
                 ("MangaFile", packet.Target.File, "LastFileAnalysisUtc", "text:2026-10-09 19:00:02"),
                 ("Series", 999, "UnchangedText", "text:drift"),
                 ("AppUserProgresses", 1, "Progress", "text:drift") })
@@ -560,9 +563,9 @@ static class NativeProof
             RequireDelta(original, ReadDatabase(path), []);
             Refuses(() => NativeProjection.NextRowVersion("int:4294967294"));
             Refuses(() => NativeProjection.NextRowVersion("int:-1"));
-            var values = packet.ScanAllowances.Where(r => !r.ScanClock).ToDictionary(r => r.Table + ":" + r.Field, r => r.After!);
+            var values = packet.ScanAllowances.Where(r => !r.ScanClock && !r.NativeColor).ToDictionary(r => r.Table + ":" + r.Field, r => r.After!);
             NativeProjection.RequireValues(packet, values);
-            values["Volume:PrimaryColor"] = "text:#ffffff";
+            values["Chapter:Count"] = "int:99";
             Refuses(() => NativeProjection.RequireValues(packet, values));
         }
         finally { File.Delete(path); }

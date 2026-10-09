@@ -56,9 +56,14 @@ the scanner. Any undeclared metadata difference refuses. Only explicitly reviewe
 catalog-derived scan fields may differ. The exact successor admits 25 changed cells
 on Series1650, Volume1800, Chapter3358, MangaFile3570 and SeriesMetadata1650. Before
 ScanSeries, the actual native book/parser/count/chapter/publication/Koreader helpers
-derive the thirteen scalar values. A separate private cover directory uses native
-GetCoverImage, cloned EncodeMediaAs/CoverImageSize and CalculateColorScape; computed
-colors must equal the approved private scalars. The actual helper UnitOfWork context
+derive eleven deterministic scalar values. A separate private cover directory uses
+native GetCoverImage and cloned EncodeMediaAs/CoverImageSize. The actual volume cover
+used after scan must have identical encoded bytes. Native CalculateColorScape uses
+Random-initialized k-means; the former deterministic color premise is withdrawn.
+Only Volume1800 PrimaryColor/SecondaryColor admit native-generated null or exact
+uppercase #RRGGBB, with pinned CalculateColorScape/UpdateColorScape method provenance;
+every other cell retains its strict predicate. There is no reseeding, repeated draw
+or rescan, and different encoded bytes refuse. The actual helper UnitOfWork context
 must be the scoped DataContext, with no Added/Modified/Deleted entries after
 DetectChanges and no persisted row changes. No tracker clearing or saving is allowed.
 The actual EF10.0.6 cancellation overload must decode to virtual bool-overload dispatch;

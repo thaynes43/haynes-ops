@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace NativeScannerFixture;
 
+sealed record ProjectionProof(int ScalarCount, string ScalarSha256, string CoverSha256, string NativeCoverDirectory, string NativeSettingsSha256, int PendingEntityCount);
+
 // Purpose-only projection for the five reviewed Ransom rows. No database writer.
 static class NativeProjection
 {
@@ -31,11 +33,14 @@ static class NativeProjection
         FixtureProtocol.Require(!entries.Cast<object>().Any(e => Property(e, "State").ToString() is "Added" or "Modified" or "Deleted"), "native projection left pending entity changes");
         // Never Clear, AcceptAllChanges, save or discard a scope to hide pending work.
     }
-    public static async Task<object> Derive(IServiceProvider services, FixturePacket packet, DatabaseSnapshot before)
+    public static async Task<ProjectionProof> Derive(IServiceProvider services, FixturePacket packet, DatabaseSnapshot before)
     {
         var bookType = NativeBindings.Type("Kavita.API", "Kavita.API.Services.IBookService");
         var book = services.GetRequiredService(bookType);
         FixtureProtocol.Require(book.GetType().FullName == "Kavita.Services.BookService", "native book implementation differs");
+        var image = services.GetRequiredService(NativeBindings.Type("Kavita.API", "Kavita.API.Services.IImageService"));
+        FixtureProtocol.Require(image.GetType().FullName == "Kavita.Services.ImageService"
+            && book.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance).Count(f => ReferenceEquals(f.GetValue(book), image)) == 1, "native cover encoder binding differs");
         var comic = Invoke(bookType, book, "GetComicInfo", packet.TargetFilePath);
         var direct = Invoke(bookType, book, "ParseInfo", packet.TargetFilePath);
         var basic = ActivatorUtilities.CreateInstance(services, NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.BasicParser"));
@@ -63,7 +68,8 @@ static class NativeProjection
             && Property(chapter, "Title").Equals("Ransom") && range == "Ransom", "native chapter projection differs");
         FixtureProtocol.Require(NativeProof.Row(before, "Series", packet.Target.Series)["SortNameLocked"] == "int:0"
             && NativeProof.Row(before, "SeriesMetadata", packet.Target.Series)["PublicationStatusLocked"] == "int:0"
-            && NativeProof.Row(before, "Volume", packet.Target.Volume)["CoverImageLocked"] == "int:0", "native projection lock differs");
+            && NativeProof.Row(before, "Volume", packet.Target.Volume)["CoverImageLocked"] == "int:0"
+            && NativeProof.Row(before, "Chapter", packet.Target.Chapter)["CoverImageLocked"] == "int:0", "native projection lock differs");
         var sort = (string)Property(parsed, "Series");
         if (NativeProof.Row(before, "Library", packet.Target.Library)["RemovePrefixForSortName"] == "int:1")
             sort = (string)Invoke(NativeBindings.Type("Kavita.Services", "Kavita.Services.Helpers.BookSortTitlePrefixHelper"), null, "GetSortTitle", sort);
@@ -106,7 +112,6 @@ static class NativeProjection
         var coverName = (string)Invoke(bookType, book, "GetCoverImage", packet.TargetFilePath, "projection", coverDirectory, encode, size);
         var cover = CoverPath(coverDirectory, coverName);
         NativeProof.PrivateFile(cover, 8 * 1024 * 1024);
-        var colors = Invoke(NativeBindings.Type("Kavita.Services", "Kavita.Services.ImageService"), null, "CalculateColorScape", cover);
         var values = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["Series:SortName"] = FixtureProtocol.Cell(sort), ["Chapter:Count"] = FixtureProtocol.Cell(count),
@@ -114,15 +119,17 @@ static class NativeProjection
             ["Chapter:Title"] = FixtureProtocol.Cell(Property(chapter, "Title")), ["Chapter:TotalCount"] = FixtureProtocol.Cell(total),
             ["MangaFile:Bytes"] = FixtureProtocol.Cell(new FileInfo(packet.TargetFilePath).Length), ["MangaFile:KoreaderHash"] = FixtureProtocol.Cell(koreader),
             ["SeriesMetadata:TotalCount"] = FixtureProtocol.Cell(Property(metadata, "TotalCount")), ["SeriesMetadata:PublicationStatus"] = FixtureProtocol.Cell(Convert.ToInt32(Property(metadata, "PublicationStatus"), CultureInfo.InvariantCulture)),
-            ["SeriesMetadata:RowVersion"] = NextRowVersion(NativeProof.Row(before, "SeriesMetadata", packet.Target.Series)["RowVersion"]),
-            ["Volume:PrimaryColor"] = FixtureProtocol.Cell(Property(colors, "Primary")), ["Volume:SecondaryColor"] = FixtureProtocol.Cell(Property(colors, "Secondary"))
+            ["SeriesMetadata:RowVersion"] = NextRowVersion(NativeProof.Row(before, "SeriesMetadata", packet.Target.Series)["RowVersion"])
         };
         FixtureProtocol.Require(values["MangaFile:Bytes"] == "int:1081344", "pinned candidate byte count differs");
         RequireValues(packet, values);
         RequireNoPending(services);
         // Only hashes/counts may escape; native values and cover bytes stay private.
-        return new { scalarCount = values.Count, scalarSha256 = FixtureProtocol.HashText(JsonSerializer.Serialize(values)),
-            coverSha256 = FixtureProtocol.Sha(File.ReadAllBytes(cover)), nativeSettingsSha256 = FixtureProtocol.HashText(encode + ":" + size), pendingEntityCount = 0 };
+        var directoryType = NativeBindings.Type("Kavita.API", "Kavita.API.Services.IDirectoryService");
+        var nativeCoverDirectory = Path.GetFullPath((string)Property(services.GetRequiredService(directoryType), "CoverImageDirectory"));
+        FixtureProtocol.Require(nativeCoverDirectory == "/kavita/config/covers", "native cover directory differs from tagged private binding");
+        return new(values.Count, FixtureProtocol.HashText(JsonSerializer.Serialize(values)), FixtureProtocol.Sha(File.ReadAllBytes(cover)),
+            nativeCoverDirectory, FixtureProtocol.HashText(encode + ":" + size), 0);
     }
     public static string NextRowVersion(string cell)
     {
@@ -142,9 +149,25 @@ static class NativeProjection
     }
     public static void RequireValues(FixturePacket packet, IReadOnlyDictionary<string, string> values)
     {
-        FixtureProtocol.Require(values.Count == 13 && packet.ScanAllowances.Count(r => !r.ScanClock) == values.Count, "native scalar derivation scope differs");
-        foreach (var rule in packet.ScanAllowances.Where(r => !r.ScanClock))
+        FixtureProtocol.Require(values.Count == 11 && packet.ScanAllowances.Count(r => !r.ScanClock && !r.NativeColor) == values.Count, "native scalar derivation scope differs");
+        foreach (var rule in packet.ScanAllowances.Where(r => !r.ScanClock && !r.NativeColor))
             FixtureProtocol.Require(values.TryGetValue(rule.Table + ":" + rule.Field, out var derived) && derived == rule.After, "approved scalar differs from independent native derivation");
+    }
+    public static void RequireAfterCover(DatabaseSnapshot before, DatabaseSnapshot after, FixturePacket packet, ProjectionProof proof)
+    {
+        var volume = NativeProof.Row(after, "Volume", packet.Target.Volume);
+        FixtureProtocol.Require(volume["CoverImage"] == NativeProof.Row(before, "Volume", packet.Target.Volume)["CoverImage"]
+            && volume["CoverImage"] == NativeProof.Row(after, "Chapter", packet.Target.Chapter)["CoverImage"], "native volume cover binding differs");
+        RequireCoverBytes(proof.NativeCoverDirectory, volume["CoverImage"], proof.CoverSha256);
+    }
+    internal static void RequireCoverBytes(string directory, string nativeCell, string expectedSha256)
+    {
+        FixtureProtocol.Require(nativeCell.StartsWith("text:", StringComparison.Ordinal) && FixtureProtocol.IsHash(expectedSha256), "native cover cell/hash differs");
+        var name = nativeCell[5..];
+        FixtureProtocol.Require(name.Length is > 0 and <= 255 && name == Path.GetFileName(name) && !name.Contains("..", StringComparison.Ordinal), "native cover file is outside its exact directory");
+        var path = Path.Combine(directory, name);
+        NativeProof.PrivateFile(path, 8 * 1024 * 1024);
+        FixtureProtocol.Require(FixtureProtocol.Sha(File.ReadAllBytes(path)) == expectedSha256, "actual native volume cover differs from independently encoded candidate");
     }
 
     sealed record Instruction(OpCode Op, int? Token, int? Integer);
@@ -192,6 +215,25 @@ static class NativeProjection
             try { CoverPath("/tmp/synthetic-cover", name); } catch (InvalidOperationException) { pathRefused = true; }
             FixtureProtocol.Require(pathRefused, "unsafe native cover basename accepted");
         }
+        foreach (var color in new[] { "null:", "text:#000000", "text:#A1B2C3", "text:#FFFFFF" }) FixtureProtocol.RequireNativeColor(color);
+        foreach (var color in new[] { "text:#abcdef", "text:#12345", "text:#1234567", "text:#GG0000", "text: #112233", "int:123456", "blob:AQI=" })
+        {
+            var colorRefused = false;
+            try { FixtureProtocol.RequireNativeColor(color); } catch (InvalidOperationException) { colorRefused = true; }
+            FixtureProtocol.Require(colorRefused, "malformed native color was accepted");
+        }
+        var coverControl = Path.Combine(Path.GetTempPath(), "ransom-cover-control-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(coverControl);
+        try
+        {
+            var path = Path.Combine(coverControl, "projection.jpg");
+            File.WriteAllBytes(path, [1, 2, 3]); File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            RequireCoverBytes(coverControl, "text:projection.jpg", FixtureProtocol.Sha([1, 2, 3]));
+            var wrongCoverRefused = false;
+            try { RequireCoverBytes(coverControl, "text:projection.jpg", FixtureProtocol.Sha([3, 2, 1])); } catch (InvalidOperationException) { wrongCoverRefused = true; }
+            FixtureProtocol.Require(wrongCoverRefused, "different native cover bytes were accepted");
+        }
+        finally { Directory.Delete(coverControl, recursive: true); }
         foreach (var (assembly, name, method, arguments) in new[] {
             ("Kavita.Services", "Kavita.Services.Extensions.ChapterExtensions", "UpdateFrom", 2),
             ("Kavita.Services", "Kavita.Services.Extensions.ChapterExtensions", "GetNumberTitle", 1),
@@ -203,6 +245,17 @@ static class NativeProjection
             ("Kavita.Services", "Kavita.Services.Scanner.BookParser", "Parse", 6) })
             FixtureProtocol.Require(NativeBindings.Type(assembly, name).GetMethods().Count(m => m.Name == method && m.GetParameters().Length == arguments) == 1, "native projection helper signature differs");
         FixtureProtocol.Require(NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.ProcessSeries").GetMethod("DeterminePublicationStatus", BindingFlags.NonPublic | BindingFlags.Instance)?.GetParameters().Length == 2, "native publication helper signature differs");
+        var image = NativeBindings.Type("Kavita.Services", "Kavita.Services.ImageService");
+        var calculate = image.GetMethod("CalculateColorScape", [typeof(string)])!;
+        var update = image.GetMethods().Single(m => m.Name == "UpdateColorScape" && m.GetParameters().Length == 1);
+        var updateCalls = Instructions(update).Where(i => i.Token.HasValue).Select(i => Resolve(update, i)).ToArray();
+        FixtureProtocol.Require(calculate.ReturnType.FullName == "Kavita.Models.DTOs.ColorScape" && calculate.IsStatic
+            && update.ReturnType == typeof(void) && updateCalls.Count(m => m == calculate) == 1
+            && updateCalls.Count(m => m.Name == "set_PrimaryColor") == 1 && updateCalls.Count(m => m.Name == "set_SecondaryColor") == 1,
+            "compiled native colorscape assignment surface differs");
+        var calculateCalls = Instructions(calculate).Where(i => i.Token.HasValue).Select(i => Resolve(calculate, i)).ToArray();
+        FixtureProtocol.Require(calculateCalls.Count(m => m.DeclaringType == image && m.Name == "GetPrimarySecondaryColors") == 1
+            && calculateCalls.Count(m => m.DeclaringType == image && m.Name == "RgbToHex") == 2, "compiled native color output surface differs");
         var ef = NativeBindings.Type("Microsoft.EntityFrameworkCore", "Microsoft.EntityFrameworkCore.DbContext");
         FixtureProtocol.Require(ef.Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.StartsWith("10.0.6", StringComparison.Ordinal) == true, "actual EF package is not 10.0.6");
         var cancellation = ef.GetMethod("SaveChangesAsync", [typeof(CancellationToken)])!;

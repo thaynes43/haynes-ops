@@ -11,7 +11,7 @@ namespace NativeScannerFixture;
 public sealed record TargetIds(int Library, int Series, int Volume, int Chapter, int File);
 public sealed record FilePin(string Path, string Sha256);
 public sealed record CellChange(string Table, int Id, string Field, string Before, string After);
-public sealed record ScanAllowance(string Table, int Id, string Field, string Before, string? After, bool ScanClock);
+public sealed record ScanAllowance(string Table, int Id, string Field, string Before, string? After, bool ScanClock, bool NativeColor = false);
 public sealed record ParsedKey(string Name, string NormalizedName, int Format);
 public sealed record EpubMemberDelta(string Member, string BeforeSha256, string AfterSha256);
 public sealed record EvidenceAck(string Phase, string JobUid, string PodUid, string ReceiptSha256, bool DurablyCopied);
@@ -44,6 +44,9 @@ public static class FixtureProtocol
         ["Volume"] = ["PrimaryColor", "SecondaryColor", "LastModified", "LastModifiedUtc"]
     };
     public static bool IsScanClock(string field) => field is "LastModified" or "LastModifiedUtc" or "LastFolderScanned" or "LastFolderScannedUtc" or "LastFileAnalysis" or "LastFileAnalysisUtc";
+    public static bool IsNativeColor(string table, string field) => table == "Volume" && field is "PrimaryColor" or "SecondaryColor";
+    public static void RequireNativeColor(string cell) => Require(cell == "null:" || (cell.StartsWith("text:#", StringComparison.Ordinal)
+        && cell.Length == 12 && cell[6..].All(c => c is >= '0' and <= '9' or >= 'A' and <= 'F')), "native color grammar differs");
     public static readonly Dictionary<string, string> FixedScanValues = new(StringComparer.Ordinal)
     {
         ["Series:SortName"] = "text:Ransom", ["Chapter:Count"] = "int:0", ["Chapter:IsSpecial"] = "int:1",
@@ -89,7 +92,8 @@ public static class FixtureProtocol
             Require(rule.Id == TargetRowId(packet, rule.Table), "scan allowance includes another work");
             Require(!rule.Field.EndsWith("Locked", StringComparison.Ordinal) && !rule.Field.Contains("Override", StringComparison.OrdinalIgnoreCase), "saved lock/override cannot be allowed");
             Require(!packet.CatalogDelta.Any(c => c.Table == rule.Table && c.Id == rule.Id && c.Field == rule.Field), "scan cannot change the reviewed work key");
-            Require(rule.ScanClock != (rule.After is not null), "each allowance needs exactly one explicit value or bounded scan clock");
+            Require(rule.NativeColor == IsNativeColor(rule.Table, rule.Field) && !(rule.NativeColor && rule.ScanClock)
+                && (rule.ScanClock || rule.NativeColor) == (rule.After is null), "each allowance must use its exact scalar, clock or native-color policy");
             Require(rule.ScanClock == IsScanClock(rule.Field), "scan-clock policy differs");
             if (FixedScanValues.TryGetValue(rule.Table + ":" + rule.Field, out var fixedValue)) Require(rule.After == fixedValue, "fixed native scalar differs");
             if (rule.Table == "SeriesMetadata" && rule.Field == "RowVersion") Require(rule.After == NativeProjection.NextRowVersion(rule.Before), "exact native uint token differs");
@@ -170,7 +174,7 @@ public static class FixtureProtocol
         var good = new FixturePacket(1, true, Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), "talosw01", NativeImageDigest, hash, now, now.AddSeconds(180), paths.Select(p => new FilePin(p, hash)).ToArray(), target, hash, hash, paths[0], paths[1], paths[2], delta, [], [new("Ransom", "ransom", 3)], hash, hash, [new("fixture.opf", hash, new string('b', 64))]);
         good = good with { ScanAllowances = ScanFields.SelectMany(pair => pair.Value.Select(field => new ScanAllowance(pair.Key, TargetRowId(good, pair.Key), field,
             field == "RowVersion" ? "int:100" : IsScanClock(field) ? "text:2000-01-01 00:00:00" : field is "Count" or "TotalCount" or "IsSpecial" or "Bytes" or "PublicationStatus" ? "int:4" : "text:before",
-            IsScanClock(field) ? null : FixedScanValues.TryGetValue(pair.Key + ":" + field, out var value) ? value : field == "RowVersion" ? "int:102" : field == "KoreaderHash" ? "text:" + new string('a', 32) : "text:#112233", IsScanClock(field)))).ToArray() };
+            IsScanClock(field) || IsNativeColor(pair.Key, field) ? null : FixedScanValues.TryGetValue(pair.Key + ":" + field, out var value) ? value : field == "RowVersion" ? "int:102" : "text:" + new string('a', 32), IsScanClock(field), IsNativeColor(pair.Key, field)))).ToArray() };
         SyntheticPacket = good;
         Validate(good, now);
         var invalid = new[] {
@@ -179,7 +183,9 @@ public static class FixtureProtocol
             good with { ScanAllowances = [new("AppUserProgresses", target.Series, "BookScrollId", "text:before", "text:after", false)] },
             good with { ScanAllowances = [good.ScanAllowances[0], new("Series", target.Series, "NameLocked", "int:0", "int:1", false)] },
             good with { ScanAllowances = [good.ScanAllowances[0], new("Series", 99, "Name", "text:before", "text:after", false)] },
-            good with { Inputs = good.Inputs[..5] }, good with { RetainedParsedKeys = [good.RetainedParsedKeys[0], good.RetainedParsedKeys[0]] }
+            good with { Inputs = good.Inputs[..5] }, good with { RetainedParsedKeys = [good.RetainedParsedKeys[0], good.RetainedParsedKeys[0]] },
+            good with { ScanAllowances = good.ScanAllowances.Append(new("Volume", target.Volume, "CoverImage", "text:old", "text:new", false)).ToArray() },
+            good with { ScanAllowances = good.ScanAllowances.Select(r => r.NativeColor ? r with { After = "text:#112233" } : r).ToArray() }
         };
         foreach (var candidate in invalid)
         {
