@@ -1,5 +1,6 @@
 """Finite public-only preparation checks; no API, private input or runtime action."""
 import json
+import re
 from pathlib import Path
 import unittest
 
@@ -30,7 +31,9 @@ class PreparedFixtureTests(unittest.TestCase):
         self.assertFalse(self.pod["automountServiceAccountToken"])
         self.assertNotIn("serviceAccountName", self.pod)
         self.assertNotIn("envFrom", self.container)
-        self.assertEqual({entry["name"] for entry in self.container["env"]}, {"POD_UID", "NODE_NAME"})
+        self.assertEqual({entry["name"] for entry in self.container["env"]}, {"POD_UID", "NODE_NAME", "TZ"})
+        self.assertEqual(next(e["value"] for e in self.container["env"] if e["name"] == "TZ"), "America/New_York")
+        self.assertEqual(self.job["spec"]["template"]["metadata"]["annotations"], {"k8tz.io/inject": "false"})
         for volume in self.pod["volumes"]:
             self.assertEqual(set(volume), {"name", "emptyDir"})
             self.assertEqual(volume["emptyDir"]["medium"], "Memory")
@@ -40,7 +43,7 @@ class PreparedFixtureTests(unittest.TestCase):
 
     def test_explicit_deny_overrides_additive_allow(self):
         deny = self.packet["networkDeny"]["spec"]
-        self.assertEqual(deny["endpointSelector"]["matchLabels"], self.job["spec"]["template"]["metadata"]["labels"])
+        self.assertEqual(deny["endpointSelector"]["matchLabels"], {"app.kubernetes.io/name": self.job["spec"]["template"]["metadata"]["labels"]["app.kubernetes.io/name"]})
         self.assertEqual(deny["ingressDeny"], [{"fromEntities": ["all"]}])
         self.assertEqual(deny["egressDeny"], [{"toEntities": ["all"]}])
         self.assertNotIn("egress", deny)
@@ -50,6 +53,18 @@ class PreparedFixtureTests(unittest.TestCase):
         self.assertEqual(allow[0], "**")
         allowed_files = [line[1:] for line in allow if line.startswith("!") and not line.endswith("/")]
         self.assertEqual(set(allowed_files), {"scripts/book-native-scan-fixture/" + name for name in ("Dockerfile", "NativeScannerFixture.csproj", "FixtureProtocol.cs", "Program.cs")})
+
+    def test_native_version_and_timezone_match_gitops_source(self):
+        release = (ROOT.parents[1] / "kubernetes/main/apps/media/kavita/app/helmrelease.yaml").read_text()
+        image = re.search(r"repository: docker\.io/jvmilazz0/kavita\s+tag: ([^\s]+)", release)
+        self.assertIsNotNone(image)
+        tag = image.group(1)
+        docker = (ROOT / "Dockerfile").read_text()
+        protocol = (ROOT / "FixtureProtocol.cs").read_text()
+        self.assertIn(f"kavita:{tag}@sha256:", docker)
+        self.assertIn(f'NativeTag = "{tag}"', protocol)
+        self.assertIn("TZ: America/New_York", release)
+        self.assertIn('NativeTimeZone = "America/New_York"', protocol)
 
 
 if __name__ == "__main__":

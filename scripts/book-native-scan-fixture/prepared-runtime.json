@@ -4,14 +4,14 @@
   "job": {
     "apiVersion": "batch/v1",
     "kind": "Job",
-    "metadata": {"name": "REVIEWED_EXACT_PHASE_NAME", "namespace": "media", "labels": {"book-native-fixture": "REVIEWED_EXACT_PHASE"}},
+    "metadata": {"name": "REVIEWED_EXACT_PHASE_NAME", "namespace": "media", "labels": {"book-native-fixture": "REVIEWED_EXACT_PHASE"}, "annotations": {"k8tz.io/inject": "false"}},
     "spec": {
       "activeDeadlineSeconds": 180,
       "backoffLimit": 0,
       "parallelism": 1,
       "completions": 1,
       "template": {
-        "metadata": {"labels": {"book-native-fixture": "REVIEWED_EXACT_PHASE"}},
+        "metadata": {"labels": {"book-native-fixture": "REVIEWED_EXACT_PHASE", "app.kubernetes.io/name": "book-native-scan-fixture"}, "annotations": {"k8tz.io/inject": "false"}},
         "spec": {
           "nodeName": "talosw01",
           "automountServiceAccountToken": false,
@@ -25,6 +25,7 @@
             "command": ["nice", "-n", "19", "/fixture/NativeScannerFixture"],
             "args": ["--prepared-private-fixture"],
             "env": [
+              {"name": "TZ", "value": "America/New_York"},
               {"name": "POD_UID", "valueFrom": {"fieldRef": {"fieldPath": "metadata.uid"}}},
               {"name": "NODE_NAME", "valueFrom": {"fieldRef": {"fieldPath": "spec.nodeName"}}}
             ],
@@ -52,7 +53,7 @@
     "kind": "CiliumNetworkPolicy",
     "metadata": {"name": "REVIEWED_EXACT_PHASE_NAME", "namespace": "media"},
     "spec": {
-      "endpointSelector": {"matchLabels": {"book-native-fixture": "REVIEWED_EXACT_PHASE"}},
+      "endpointSelector": {"matchLabels": {"app.kubernetes.io/name": "book-native-scan-fixture"}},
       "ingressDeny": [{"fromEntities": ["all"]}],
       "egressDeny": [{"toEntities": ["all"]}]
     }

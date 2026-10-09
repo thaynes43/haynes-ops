@@ -20,10 +20,16 @@ All actual database/auth fields, EPUBs, saved state, source inventories and raw 
 snapshots stay private. Public CI compiles and launches only generic protocol tests and
 native reflection against the exact deployed image. The dev pod has no SDK and MCR DNS
 is denied; no alternate proxy or allowlist bypass was attempted. The already ratified
-official public CI builder is the compilation path. Five finite public Python tests
+official public CI builder is the compilation path. Six finite public Python tests
 passed locally under nice 19; initial source f657b5d8 compiled and launched its actual
 apphost/reflection in the pinned native image in CI run 37968299781. Added exact native
 DI DbContext path/inode and pre-scan no-constructor-write checks await current-head CI.
+
+Advisory version/TZ finding is addressed by a tag-bound immutable native base, a
+HelmRelease-triggered source admission test and actual native timezone ID/offset check;
+fresh live imageID/module/TZ proof remains mandatory before runtime. Independent review
+found deadline telemetry could block hard exit on full stdout. Its callback now exits
+without output, with a finite undrained-pipe child regression in generic CI. No load loop.
 
 The proposed runtime uses only tmpfs, no production PVC/hostPath/network credentials or
 service-account token, explicit Cilium all-entity network deny, one worker on talosw01,

@@ -5,11 +5,13 @@ on:
     paths:
       - scripts/book-native-scan-fixture/**
       - .github/workflows/book-native-scan-fixture.yml
+      - kubernetes/main/apps/media/kavita/app/helmrelease.yaml
   push:
     branches: [main]
     paths:
       - scripts/book-native-scan-fixture/**
       - .github/workflows/book-native-scan-fixture.yml
+      - kubernetes/main/apps/media/kavita/app/helmrelease.yaml
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -53,6 +55,9 @@ jobs:
             --cap-drop ALL --security-opt no-new-privileges --user 1000:1000 \
             --tmpfs /tmp:rw,uid=1000,gid=1000,size=16m \
             --entrypoint nice native-scanner-fixture:validation -n 19 /fixture/NativeScannerFixture --self-test
+          docker run --rm --network none --read-only --cpus .5 --memory 256m \
+            --cap-drop ALL --security-opt no-new-privileges --user 1000:1000 \
+            --entrypoint nice native-scanner-fixture:validation -n 19 /fixture/NativeScannerFixture --self-test-deadline
           docker run --rm --network none --read-only --cpus .5 --memory 256m \
             --entrypoint sh native-scanner-fixture:validation -c \
             'sha256sum /fixture/NativeScannerFixture /fixture/NativeScannerFixture.dll /fixture/libcoreclr.so /fixture/libhostfxr.so /fixture/System.Private.CoreLib.dll /kavita/Kavita.Server.dll /kavita/Kavita.API.dll /kavita/Kavita.Models.dll /kavita/Kavita.Services.dll /kavita/Kavita.Database.dll' > native-module-pins.txt

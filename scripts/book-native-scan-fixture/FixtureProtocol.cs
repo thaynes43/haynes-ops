@@ -27,6 +27,8 @@ public sealed record FixturePacket(int Schema, bool ExplicitRootFixtureApproval,
 public static class FixtureProtocol
 {
     public const string NativeImageDigest = "sha256:ca6af7a18d7124d014702983c2364e485294f808c1552e9555f2595b7cda7982";
+    public const string NativeTag = "0.9.0.2";
+    public const string NativeTimeZone = "America/New_York";
     public const string SourceCommit = "6bcd5689385d0e96824982d843c54f15ce784ddc";
     public const string NativeAssembly = "/kavita/Kavita.Server.dll";
     public static readonly HashSet<string> CatalogTables = ["Series", "Volume", "Chapter", "MangaFile", "SeriesMetadata", "ExternalSeriesMetadata"];

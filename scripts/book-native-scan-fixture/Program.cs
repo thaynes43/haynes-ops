@@ -17,6 +17,23 @@ string? resultJson = null;
 Timer? alarm = null;
 try
 {
+    if (args.SequenceEqual(new[] { "--self-test-deadline-child" }))
+    {
+        using var deadline = ProcessDeadline.Arm(DateTimeOffset.UtcNow.AddMilliseconds(250));
+        // One finite write fills an undrained pipe; no polling or CPU load loop.
+        Console.Out.Write(new string('x', 4 * 1024 * 1024));
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        return 99;
+    }
+    if (args.SequenceEqual(new[] { "--self-test-deadline" }))
+    {
+        using var child = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!, "--self-test-deadline-child") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false })!;
+        try { await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3)); }
+        catch { child.Kill(entireProcessTree: true); throw; }
+        FixtureProtocol.Require(child.ExitCode == 124, "original deadline depended on stdout drainage");
+        output.WriteLine("PASS original deadline hard-exits with full undrained stdout; no native host/scan/input");
+        return 0;
+    }
     AssemblyLoadContext.Default.Resolving += (_, name) =>
     {
         var path = Path.Combine("/kavita", name.Name + ".dll");
@@ -27,7 +44,7 @@ try
         FixtureProtocol.SelfTest();
         NativeProof.GenericSelfTest();
         NativeBindings.Inspect();
-        output.WriteLine("PASS 11 packet refusals, 3 durable-ACK refusals, typed cells, saved-state barriers, inverse and actual native reflection signatures; no native host/scan started");
+        output.WriteLine($"PASS 11 packet refusals, 3 durable-ACK refusals, typed cells, saved-state barriers, inverse and actual native reflection signatures; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
         return 0;
     }
     FixtureProtocol.Require(args.SequenceEqual(new[] { "--prepared-private-fixture" }), "unknown entrypoint");
@@ -42,7 +59,7 @@ try
     FixtureProtocol.Require(Environment.GetEnvironmentVariable("POD_UID") == packet.PodUid && Environment.GetEnvironmentVariable("NODE_NAME") == packet.Node, "native Pod/node differs");
     FixtureProtocol.Require(FixtureProtocol.Sha(await File.ReadAllBytesAsync(typeof(FixtureProtocol).Assembly.Location)) == packet.HarnessSha256, "reviewed harness differs");
     FixtureProtocol.Require(FixtureProtocol.Sha(await File.ReadAllBytesAsync(FixtureProtocol.NativeAssembly)) == packet.NativeAssemblySha256, "published native assembly differs");
-    alarm = new Timer(_ => { output.WriteLine(JsonSerializer.Serialize(new { result = "REFUSED", stage = "original-deadline", outcome = "unknown" })); Environment.Exit(124); }, null, packet.ExpiresAt - DateTimeOffset.UtcNow, Timeout.InfiniteTimeSpan);
+    alarm = ProcessDeadline.Arm(packet.ExpiresAt);
     foreach (var pin in packet.Inputs)
     {
         FixtureProtocol.Require(!pin.Path.Contains("..") && (pin.Path.StartsWith("/fixture-input/", StringComparison.Ordinal) || pin.Path == packet.CandidateDbPath || pin.Path == packet.TargetFilePath || pin.Path == "/kavita/config/appsettings.json"), "private pin is outside input scope");
@@ -132,7 +149,7 @@ try
         nativeSource = FixtureProtocol.SourceCommit, nativeBaseImage = FixtureProtocol.NativeImageDigest,
         tableCount = before.Tables.Count, targetIds = packet.Target, nativeScanStartedAt = started, nativeScanFinishedAt = finished,
         beforeSha256 = NativeProof.Digest(before), afterSha256 = NativeProof.Digest(after), inverseSha256 = NativeProof.Digest(inverse),
-        nativeDbBinding, hostApplicationStarted = false, savedAndCurationRowsExact = true, cleanupRemoved = 0, catalogInverseExact = true, productionWrites = 0, productionAuthorization = false });
+        nativeDbBinding, timeZone = TimeZoneInfo.Local.Id, currentTimeZoneOffset = TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow), hostApplicationStarted = false, savedAndCurationRowsExact = true, cleanupRemoved = 0, catalogInverseExact = true, productionWrites = 0, productionAuthorization = false });
     exitCode = 0;
 }
 catch (Exception error)
@@ -160,6 +177,8 @@ static class NativeBindings
     public static void Inspect()
     {
         FixtureProtocol.Require(RuntimeInformation.FrameworkDescription == ".NET 10.0.1", "generic apphost runtime differs from native 10.0.1");
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(FixtureProtocol.NativeTimeZone);
+        FixtureProtocol.Require(Environment.GetEnvironmentVariable("TZ") == FixtureProtocol.NativeTimeZone && TimeZoneInfo.Local.Id == zone.Id && TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow) == zone.GetUtcOffset(DateTimeOffset.UtcNow), "native timezone/offset differs");
         var program = Type("Kavita.Server", "Kavita.Server.Program");
         FixtureProtocol.Require(program.GetMethod("CreateHostBuilder", BindingFlags.NonPublic | BindingFlags.Static)?.ReturnType == typeof(IHostBuilder), "native builder signature differs");
         var scan = Type("Kavita.API", "Kavita.API.Services.Scanner.IScannerService").GetMethod("ScanSeries", new[] { typeof(int), typeof(bool) });
@@ -199,6 +218,12 @@ static class NativeBindings
         var task = value as Task ?? throw new InvalidOperationException("native operation did not return a task");
         await task.WaitAsync(until - DateTimeOffset.UtcNow);
     }
+}
+
+static class ProcessDeadline
+{
+    // Telemetry must never precede or block termination (including a full stdout pipe).
+    public static Timer Arm(DateTimeOffset until) => new(_ => Environment.Exit(124), null, until - DateTimeOffset.UtcNow, Timeout.InfiniteTimeSpan);
 }
 
 sealed record DatabaseSnapshot(string SchemaSha256, Dictionary<string, List<SortedDictionary<string, string>>> Tables);

@@ -13,8 +13,8 @@ required before any owner ruling authorizes that new production writer.
 
 ## Exact native execution architecture
 
-Use the deployed native image digest
-`docker.io/jvmilazz0/kavita@sha256:ca6af7a18d7124d014702983c2364e485294f808c1552e9555f2595b7cda7982`.
+Use the deployed native tag and image digest
+`docker.io/jvmilazz0/kavita:0.9.0.2@sha256:ca6af7a18d7124d014702983c2364e485294f808c1552e9555f2595b7cda7982`.
 Its published Kavita.Server.dll uses self-contained Core/ASP.NET 10.0.1. Tagged source
 commit is `6bcd5689385d0e96824982d843c54f15ce784ddc`. A generic source-only .NET harness
 loads the actual native assembly, reflects its private CreateHostBuilder and builds
@@ -76,6 +76,16 @@ ApplicationStarted must remain false before/after native invocation. Future root
 proof additionally verifies realized network deny and no admitted outbound traffic;
 these source checks do not replace that external isolation proof.
 
+The fixture sets the live `America/New_York` timezone and opts out of k8tz injection on
+Job and Pod metadata. Native runtime admission checks actual TimeZoneInfo.Local ID and
+current offset, not just the TZ environment string; CI exercises those checks in the
+exact native image. A new init container or timezone mount is not implicitly admitted.
+The version check compares Dockerfile/protocol tag and timezone to the current Kavita
+HelmRelease; changes there trigger this workflow and stale version bindings refuse.
+Before runtime, freshly verify the actual production Pod imageID/native module bytes
+and timezone: a matching mutable tag alone is insufficient. Do not change production
+deployment pins or assume the prepared Job's admission equals the source template.
+
 Each before/after-Build/after-binding/after/inverse snapshot is created mode 0600 and
 fsynced. A refusal after
 native execution still offers its available before/after evidence. The child emits only
@@ -125,7 +135,10 @@ CI launches that actual apphost in the exact native base with network none/read-
 500m CPU and `nice -n 19`. The finite self-test checks 11 malformed packet refusals,
 three durable-ACK refusals, storage-type boundaries, saved-state mutation/removal
 refusals, exact inverse and actual published reflection signatures, without building
-the host or scanning any fixture. Five Python checks cover the prepared manifest and
+the host or scanning any fixture. A separate finite child blocks on a full undrained
+stdout pipe; the original deadline must still exit it with code 124. The hard-exit
+callback performs no telemetry or other blocking output before termination. Six Python
+checks cover the prepared manifest, current GitOps version/TZ and
 build-context barriers. Initial public CI run 37968299781 passed compilation and native
 apphost launch at f657b5d8, without private inputs or host/scan. Subsequent source changes
 require their own current-head pass; neither launch establishes scanner behavior.

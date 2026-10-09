@@ -12,9 +12,9 @@ RUN test "$(dotnet --version)" = "10.0.101" \
     && test -f /published/libhostfxr.so \
     && test -f /published/libcoreclr.so
 
-FROM docker.io/jvmilazz0/kavita@sha256:ca6af7a18d7124d014702983c2364e485294f808c1552e9555f2595b7cda7982
+FROM docker.io/jvmilazz0/kavita:0.9.0.2@sha256:ca6af7a18d7124d014702983c2364e485294f808c1552e9555f2595b7cda7982
 COPY --from=build /published /fixture
-ENV LD_LIBRARY_PATH=/kavita DOTNET_EnableDiagnostics=0
+ENV LD_LIBRARY_PATH=/kavita DOTNET_EnableDiagnostics=0 TZ=America/New_York
 WORKDIR /kavita
 USER 1000:1000
 ENTRYPOINT ["/fixture/NativeScannerFixture"]
