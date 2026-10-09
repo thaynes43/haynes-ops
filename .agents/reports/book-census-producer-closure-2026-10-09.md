@@ -206,13 +206,20 @@ selected-41 byte rereads. The final generic `Stop` contained no counters; the
 actual cutoff stage and bytes completed are unrecoverable. No performance
 guarantee or CPU-limit remedy follows from these observations.
 
-Root ratified preparation, but not execution, of one diagnostic worker probe:
+Root initially ratified preparation of one diagnostic worker probe:
 one unchanged walk, one unchanged per-file permission pass, and one fixed EPUB
 read of at most 64 MiB with before/after descriptor/path checks. Its proposed
 hard bounds are 90 seconds, 500m CPU and 256 MiB, on `talosw01` with the same
 read-only mount, signed image and security profile. It emits only aggregate
 stage telemetry, with no baseline artifact, ACK, COPY claim, full hashing or
 retry. Independent review of the concrete script, manifest, hashes and cleanup,
-followed by fresh root GO, is required before execution. Any algorithm change
-waits for those timings. The original 180/200-second lifecycle and 180-second
-artifact expiry / 170-second restoration trigger remain unchanged.
+followed by fresh root GO, was required before execution. Root later ratified
+exactly one reviewed invocation, which completed with native cleanup proved;
+its measured stages, receipt hashes, and limits are recorded in
+[the diagnostic report](book-census-native-diagnostic-2026-10-09.md).
+The original full producer's 180/200-second lifecycle remains unproved. Correct
+the earlier conflation of that collection budget with artifact age: the signed
+consumer expires bytes 300 seconds after their original capture start, without
+reset at completion or SOURCE assembly. The 170-second restoration trigger
+remains unchanged. No new producer attempt, optimization, pause, or COPY is
+authorized by the diagnostic.
