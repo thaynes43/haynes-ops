@@ -1,0 +1,22 @@
+---
+# Disposable synthetic Git/build fixture only; never dev-env-shared or a v1 claim.
+# Intentionally NOT prune-protected: the reviewed cleanup removes this GitOps app
+# after the bounded Jobs exit. StorageClass Delete reclaims only this new volume.
+# No real repositories, credentials, enrollment or conversation state belongs here.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+    dev-env.haynesops.com/trial-source-commit: 0e0931ad3e4a733f3a4064251b9b548c164abcab
+    dev-env.haynesops.com/trial-source-sha256: 1eea7dd7b14993bc1bfca91d6132b95232816b44c2da8e742aab4d2518979e79
+  name: dev-env-workspace-cephfs-trial
+  namespace: dev-agents
+  labels:
+    dev-env.haynesops.com/purpose: disposable-workspace-trial
+spec:
+  accessModes: [ReadWriteMany]
+  volumeMode: Filesystem
+  storageClassName: ceph-filesystem
+  resources:
+    requests:
+      storage: 1Gi
