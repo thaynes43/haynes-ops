@@ -67,7 +67,17 @@ original. Only separately reviewed OPF before/after hashes from the sanctioned
 series-only strip proof may differ; that private byte proof must establish the allowed
 OPF deletion semantics. This harness does not infer a new stripping policy.
 
-Each before/after/inverse snapshot is created mode 0600 and fsynced. A refusal after
+The full baseline is captured before native Build. Readback immediately after Build,
+then after resolving scanner/job-store/DbContext dependencies but before ScanSeries,
+must be identical across every table and schema; no constructor write allowance exists.
+The actual native DI DataContext connection must report exactly the candidate path in
+PRAGMA database_list and its live open file inode must match that private input file.
+ApplicationStarted must remain false before/after native invocation. Future root runtime
+proof additionally verifies realized network deny and no admitted outbound traffic;
+these source checks do not replace that external isolation proof.
+
+Each before/after-Build/after-binding/after/inverse snapshot is created mode 0600 and
+fsynced. A refusal after
 native execution still offers its available before/after evidence. The child emits only
 the receipt's aggregate hashes/UIDs, then waits at most 30 seconds **within the original
 deadline** for an exact phase/Job/Pod/receipt-SHA durable-copy ACK. The host must copy all
@@ -116,8 +126,9 @@ CI launches that actual apphost in the exact native base with network none/read-
 three durable-ACK refusals, storage-type boundaries, saved-state mutation/removal
 refusals, exact inverse and actual published reflection signatures, without building
 the host or scanning any fixture. Five Python checks cover the prepared manifest and
-build-context barriers. Compilation and this native launch remain unproved until CI
-passes; they do not establish actual scanner behavior.
+build-context barriers. Initial public CI run 37968299781 passed compilation and native
+apphost launch at f657b5d8, without private inputs or host/scan. Subsequent source changes
+require their own current-head pass; neither launch establishes scanner behavior.
 
 CI records only official SDK and generic/native module hashes. On main it publishes
 the same tested image without rebuilding and signs its digest. Fresh root review must

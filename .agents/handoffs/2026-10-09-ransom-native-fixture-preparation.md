@@ -21,7 +21,9 @@ snapshots stay private. Public CI compiles and launches only generic protocol te
 native reflection against the exact deployed image. The dev pod has no SDK and MCR DNS
 is denied; no alternate proxy or allowlist bypass was attempted. The already ratified
 official public CI builder is the compilation path. Five finite public Python tests
-passed locally under nice 19; native C# compile/runtime launch is pending CI.
+passed locally under nice 19; initial source f657b5d8 compiled and launched its actual
+apphost/reflection in the pinned native image in CI run 37968299781. Added exact native
+DI DbContext path/inode and pre-scan no-constructor-write checks await current-head CI.
 
 The proposed runtime uses only tmpfs, no production PVC/hostPath/network credentials or
 service-account token, explicit Cilium all-entity network deny, one worker on talosw01,

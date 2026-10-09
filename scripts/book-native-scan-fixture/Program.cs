@@ -57,7 +57,7 @@ try
     NativeProof.RequireDelta(original, before, packet.CatalogDelta);
     NativeProof.RequireTarget(before, packet);
     NativeProof.SavePrivate("/kavita/config/proof-before.json", before);
-    stage = "native-scan";
+    stage = "native-build";
     // Suppress native console logs; private vendor log files remain in tmpfs.
     Console.SetOut(TextWriter.Null);
     Console.SetError(TextWriter.Null);
@@ -68,20 +68,32 @@ try
     var builder = (IHostBuilder)(create.Invoke(null, new object[] { Array.Empty<string>() }) ?? throw new InvalidOperationException("native builder missing"));
     // Build only. Main/Start/Run and all hosted services are never invoked.
     using var host = builder.Build();
+    var afterBuild = NativeProof.ReadDatabase(packet.CandidateDbPath);
+    NativeProof.SavePrivate("/kavita/config/proof-after-build.json", afterBuild);
+    NativeProof.RequireDelta(before, afterBuild, []);
+    var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+    FixtureProtocol.Require(!lifetime.ApplicationStarted.IsCancellationRequested, "native host was started");
+    object? nativeDbBinding = null;
     using (var scope = host.Services.CreateScope())
     {
+        nativeDbBinding = NativeBindings.ProvePrivateDbContext(scope.ServiceProvider, packet.CandidateDbPath);
         var scannerType = NativeBindings.Type("Kavita.API", "Kavita.API.Services.Scanner.IScannerService");
         var scanner = scope.ServiceProvider.GetRequiredService(scannerType);
         FixtureProtocol.Require(scanner.GetType().FullName == "Kavita.Services.Scanner.ScannerService", "scanner is not the published native implementation");
         // Initialize the native in-memory job store without starting its server.
         var storage = NativeBindings.Type("Hangfire.Core", "Hangfire.JobStorage");
         _ = scope.ServiceProvider.GetRequiredService(storage);
+        var afterBinding = NativeProof.ReadDatabase(packet.CandidateDbPath);
+        NativeProof.SavePrivate("/kavita/config/proof-after-bind.json", afterBinding);
+        NativeProof.RequireDelta(before, afterBinding, []);
+        stage = "native-scan";
         var scan = scannerType.GetMethod("ScanSeries", new[] { typeof(int), typeof(bool) }) ?? throw new MissingMethodException();
         await NativeBindings.Await(scan.Invoke(scanner, new object[] { packet.Target.Series, true }), packet.ExpiresAt);
     }
     stage = "native-cleanup-predicate";
     using (var scope = host.Services.CreateScope())
     {
+        _ = NativeBindings.ProvePrivateDbContext(scope.ServiceProvider, packet.CandidateDbPath);
         var unitType = NativeBindings.Type("Kavita.API", "Kavita.API.Database.IUnitOfWork");
         var unit = scope.ServiceProvider.GetRequiredService(unitType);
         var repo = unitType.GetProperty("SeriesRepository")!.GetValue(unit) ?? throw new InvalidOperationException("native repository missing");
@@ -103,6 +115,7 @@ try
         FixtureProtocol.Require(!removed.Cast<object>().Any(), "actual cleanup would remove a retained work");
         // Never commit cleanup removals or run a partial-corpus library scan.
     }
+    FixtureProtocol.Require(!lifetime.ApplicationStarted.IsCancellationRequested, "native hosted workers were started");
     host.Dispose();
     var finished = DateTimeOffset.UtcNow;
     stage = "state-readback";
@@ -119,7 +132,7 @@ try
         nativeSource = FixtureProtocol.SourceCommit, nativeBaseImage = FixtureProtocol.NativeImageDigest,
         tableCount = before.Tables.Count, targetIds = packet.Target, nativeScanStartedAt = started, nativeScanFinishedAt = finished,
         beforeSha256 = NativeProof.Digest(before), afterSha256 = NativeProof.Digest(after), inverseSha256 = NativeProof.Digest(inverse),
-        savedAndCurationRowsExact = true, cleanupRemoved = 0, catalogInverseExact = true, productionWrites = 0, productionAuthorization = false });
+        nativeDbBinding, hostApplicationStarted = false, savedAndCurationRowsExact = true, cleanupRemoved = 0, catalogInverseExact = true, productionWrites = 0, productionAuthorization = false });
     exitCode = 0;
 }
 catch (Exception error)
@@ -153,6 +166,33 @@ static class NativeBindings
         FixtureProtocol.Require(scan?.ReturnType == typeof(Task), "native scanner signature differs");
         _ = Type("Kavita.Models", "Kavita.Models.Parser.ParsedSeries");
         _ = Type("Microsoft.Data.Sqlite", "Microsoft.Data.Sqlite.SqliteConnection");
+        _ = Type("Kavita.Database", "Kavita.Database.DataContext");
+        FixtureProtocol.Require(Type("Microsoft.EntityFrameworkCore.Relational", "Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions").GetMethods().Count(m => m.Name == "GetDbConnection" && m.GetParameters().Length == 1) == 1, "native database facade binding differs");
+    }
+    public static object ProvePrivateDbContext(IServiceProvider services, string path)
+    {
+        var context = services.GetRequiredService(Type("Kavita.Database", "Kavita.Database.DataContext"));
+        var facade = context.GetType().GetProperty("Database")!.GetValue(context)!;
+        var extensions = Type("Microsoft.EntityFrameworkCore.Relational", "Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions");
+        var get = extensions.GetMethods().Single(m => m.Name == "GetDbConnection" && m.GetParameters().Length == 1);
+        var connection = (DbConnection)get.Invoke(null, new[] { facade })!;
+        FixtureProtocol.Require(connection.GetType().FullName == "Microsoft.Data.Sqlite.SqliteConnection", "native DI context uses another database driver");
+        var wasClosed = connection.State == System.Data.ConnectionState.Closed;
+        if (wasClosed) connection.Open();
+        try
+        {
+            using var query = connection.CreateCommand(); query.CommandText = "PRAGMA database_list"; query.CommandTimeout = 1;
+            using var reader = query.ExecuteReader(); var bound = new List<string>();
+            while (reader.Read()) if (reader.GetString(1) != "temp") bound.Add(reader.GetString(2));
+            FixtureProtocol.Require(bound.Count == 1 && Path.GetFullPath(bound[0]) == path, "native DI context is outside the candidate clone");
+            using var reference = File.OpenRead(path);
+            var referenceFd = reference.SafeFileHandle.DangerousGetHandle().ToInt32();
+            var inode = File.ReadLines($"/proc/self/fdinfo/{referenceFd}").Single(l => l.StartsWith("ino:\t", StringComparison.Ordinal))[5..];
+            var nativeFds = Directory.EnumerateFiles("/proc/self/fd").Where(f => Path.GetFileName(f) != referenceFd.ToString() && new FileInfo(f).LinkTarget == path).ToArray();
+            FixtureProtocol.Require(nativeFds.Length > 0 && nativeFds.All(f => File.ReadLines($"/proc/self/fdinfo/{Path.GetFileName(f)}").Single(l => l.StartsWith("ino:\t", StringComparison.Ordinal))[5..] == inode), "native DI clone inode differs");
+            return new { path, inode, nativeConnectionType = connection.GetType().FullName, nativeOpenFileCount = nativeFds.Length };
+        }
+        finally { if (wasClosed) connection.Close(); }
     }
     public static async Task Await(object? value, DateTimeOffset until)
     {
@@ -313,7 +353,7 @@ static class NativeProof
     public static async Task HandBackEvidence(FixturePacket packet, TextWriter output, string outcome)
     {
         var pins = new List<FilePin>();
-        foreach (var name in new[] { "before", "after", "inverse" })
+        foreach (var name in new[] { "before", "after-build", "after-bind", "after", "inverse" })
         {
             var path = $"/kavita/config/proof-{name}.json";
             if (File.Exists(path))
