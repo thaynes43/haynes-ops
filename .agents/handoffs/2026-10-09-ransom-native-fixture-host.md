@@ -1,6 +1,11 @@
 # #825 private native scanner publication and host preparation
 
-Preparation only. No Job, native scan, production SQL/EPUB/library/list mutation,
+Historical preparation record; the [actual diagnostic results](2026-10-09-ransom-native-admission-refusal.md)
+supersede its earlier no-Job statements and nine-cell metadata projection. The third
+isolated native scan preserved IDs/protected rows but returned UNKNOWN on 25 target
+metadata changes; no inverse/PASS or production writer approval exists.
+
+At this preparation checkpoint there had been no Job, native scan, production SQL/EPUB/library/list mutation,
 service pause or hourly gate enable is authorized or executed by this record.
 
 Ops #3657 merged `1c2f3a120d6a872dc3a02bccf32b0af155ec0372`. Main publisher
