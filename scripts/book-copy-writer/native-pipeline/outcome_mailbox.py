@@ -1,5 +1,6 @@
 """One private outcome request, executed only by the SOURCE connection owner."""
 import contextlib
+import ctypes
 import hashlib
 import json
 import os
@@ -27,6 +28,47 @@ def canonical(value):
 
 def sha(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def publish_response(directory, encoded, metadata, epoch):
+    """Only expose complete fsynced bytes; stale staging/final names refuse."""
+    temporary = '.' + RESPONSE + '.publish'
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                 0o600, dir_fd=directory)
+    try:
+        with os.fdopen(os.dup(fd), 'wb') as output:
+            output.write(encoded); output.flush(); os.fsync(output.fileno())
+        before = os.fstat(fd)
+        current = os.stat(temporary, dir_fd=directory, follow_symlinks=False)
+        fields = ('st_dev', 'st_ino', 'st_size', 'st_mode', 'st_uid', 'st_gid', 'st_mtime_ns', 'st_ctime_ns', 'st_nlink')
+        if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+                or stat.S_IMODE(before.st_mode) != 0o600 or before.st_size != len(encoded)
+                or before.st_uid != os.getuid() or before.st_gid != os.getgid()
+                or any(getattr(before, k) != getattr(current, k) for k in fields)
+                or not time.time() < epoch):
+            raise metadata.Refused('outcome staged response changed or expired')
+        rename = ctypes.CDLL(None, use_errno=True).renameat2
+        rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        if rename(directory, temporary.encode(), directory, RESPONSE.encode(), 1) != 0:
+            raise metadata.Refused('outcome response no-replace publication refused')
+        os.fsync(directory)
+        # Rename may update ctime, while all other file properties must remain
+        # unchanged. The post-rename descriptor and final path must match fully.
+        after = os.fstat(fd)
+        current = os.stat(RESPONSE, dir_fd=directory, follow_symlinks=False)
+        if (any(getattr(before, k) != getattr(after, k) for k in fields if k != 'st_ctime_ns')
+                or any(getattr(after, k) != getattr(current, k) for k in fields) or not time.time() < epoch):
+            raise metadata.Refused('outcome published response changed or expired')
+    finally:
+        try:
+            current = os.stat(temporary, dir_fd=directory, follow_symlinks=False)
+            own = os.fstat(fd)
+            if (own.st_dev, own.st_ino) == (current.st_dev, current.st_ino):
+                os.unlink(temporary, dir_fd=directory)
+        except FileNotFoundError:
+            pass
+        os.close(fd)
 
 
 @contextlib.contextmanager
@@ -135,9 +177,8 @@ class SourceOutcome:
             if len(encoded) > CAP_RESPONSE:
                 raise self.metadata.Refused('outcome private response exceeds unchanged cap')
             with self.metadata.safe_directory(self.directory) as directory:
-                fd = os.open(RESPONSE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
-                with os.fdopen(fd, 'wb') as output:
-                    output.write(encoded); output.flush(); os.fsync(output.fileno())
+                self.metadata._same_directory(directory, self.directory)
+                publish_response(directory, encoded, self.metadata, epoch)
                 self.metadata._same_directory(directory, self.directory)
             self.completed = True
             self.emit({'type': 'copy-outcome-ready', 'phase_token': request['phase_token'],

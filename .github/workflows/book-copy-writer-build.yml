@@ -57,13 +57,16 @@ jobs:
         run: |
           set -euo pipefail
           trap 'docker rm -f copy-writer-pg16 >/dev/null 2>&1 || true' EXIT
-          docker run --detach --name copy-writer-pg16 --cpus 1 --memory 256m \
-            --tmpfs /var/lib/postgresql/data:rw,size=128m \
-            -e POSTGRES_DB=copy_writer_fixture -e POSTGRES_USER=postgres \
-            -e POSTGRES_PASSWORD=isolated-fixture postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d \
-            -c shared_buffers=16MB -c max_connections=8 -c max_worker_processes=0 \
-            -c autovacuum=off -c jit=off
-          timeout 20 bash -c 'until docker exec copy-writer-pg16 pg_isready -U postgres -d copy_writer_fixture; do sleep .2; done'
+          start_pg16() {
+            docker run --detach --name copy-writer-pg16 --cpus 1 --memory 256m \
+              --tmpfs /var/lib/postgresql/data:rw,size=128m \
+              -e POSTGRES_DB=copy_writer_fixture -e POSTGRES_USER=postgres \
+              -e POSTGRES_PASSWORD=isolated-fixture postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d \
+              -c shared_buffers=16MB -c max_connections=8 -c max_worker_processes=0 \
+              -c autovacuum=off -c jit=off
+            timeout 20 bash -c 'until docker exec copy-writer-pg16 pg_isready -U postgres -d copy_writer_fixture; do sleep .2; done'
+          }
+          start_pg16
           docker run --rm --read-only --cpus 1 --memory 256m --user 1000:1000 \
             --network container:copy-writer-pg16 --tmpfs /tmp:rw,uid=1000,gid=1000,size=64m \
             -e COPY_TEST_DSN='host=127.0.0.1 user=postgres password=isolated-fixture dbname=copy_writer_fixture' \
@@ -71,6 +74,10 @@ jobs:
             -v "$GITHUB_WORKSPACE/scripts/book-copy-writer:/writer-tests:ro" \
             -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-tests:ro" \
             --entrypoint nice book-copy-writer:validation -n 19 python /writer-tests/test_book_copy_writer.py
+          # Both suites prove public-table locks. Give SOURCE a new tmpfs
+          # database rather than reusing the writer suite's fixture tables.
+          docker rm -f copy-writer-pg16
+          start_pg16
           docker run --rm --read-only --cpus 1 --memory 256m --user 1000:1000 \
             --network container:copy-writer-pg16 --tmpfs /tmp:rw,uid=1000,gid=1000,size=64m \
             -e COPY_TEST_DSN='host=127.0.0.1 user=postgres password=isolated-fixture dbname=copy_writer_fixture' \

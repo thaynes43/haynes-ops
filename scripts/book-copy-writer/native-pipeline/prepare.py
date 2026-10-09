@@ -120,7 +120,7 @@ def materialize(directory, signature_receipt, registry_proof):
                                    'original_byte_start_age_seconds': 300,
                                    'restoration_trigger_seconds': 170, 'source_abort_seconds': 250},
               'unbound': ['current Stop/inverse/watch/supervisor exact heads and paused-window math',
-                          'outcome owner-query protocol and final independent source closure review',
+                          'final independent source closure review and actual MAIN receipt/outcome request',
                           'server admission and current full name/phase/UID native absence',
                           'actual corpus/progress/locks/wants, capture clocks and native UID proofs',
                           'fresh exact root runtime authorization']}

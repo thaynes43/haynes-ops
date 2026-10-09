@@ -41,9 +41,18 @@ database or proof authority. The unchanged 12-second outcome ceiling and origina
 first-stop+250 ceiling both apply. Failure starts writer-first restore without
 waiting for outcome. The 10-second PG-free MAIN bridge stays a separate proof
 before MAIN admission and makes no held-fence or database-health claim.
+The response is staged, fsynced and atomically published without replacement;
+the polling exchange cannot observe partial bytes. A completed MAIN receipt
+requires the actual original Pod's exit-zero/Completed termination as well as
+the Job's inactive Complete/nonfailed status; Running is not completion proof.
 
 The fresh app collector uses the verified `v0.110.5` index
 `e264e8a63b7a6b8865bfb51ecb38c398534d492ba64c6956960dedd8e6e64c6a`.
+The independent current-app import receipt
+`1d6e82aef11deb04c5ece3c5307c2818b00abf38aab7cd0a1225c26ad1119354`
+records one actual Pod with that image ID, seven reached sync-module hashes
+matching the released source, a successful `LL_BOOKS_SQL` import and all required
+Node builtin imports. It constructed no database and made no service calls.
 The prospective scope is the exact PLAN-074 two-extra profile
 `3f3cb56027c880e4f21151b8b8d025a217a52df7e9373d13dbac8699d9dcb666`:
 two extra paths, their authoritative keeper, and exactly three distinct selected
@@ -69,21 +78,31 @@ Finite validation uses only temporary files and one isolated PostgreSQL 16
 fixture, serially under `nice -n 19`. No CPU stress, wide/repeated timing suite,
 production DB, full-corpus probe or runtime attempt is part of this preparation.
 
-Finite source validation: 18 SOURCE/owner-outcome cases passed in 1.336 seconds
-using one isolated PG16 fixture, and eight pure closure/import/closed-command
-cases passed in 0.093 seconds. The outcome cases exercise actual tempfile
+Finite source validation after the publication/completion corrections: 19
+SOURCE/owner-outcome cases passed in 1.222 seconds using one isolated PG16
+fixture, and nine pure closure/import/closed-command cases passed in 0.119
+seconds. The outcome cases exercise actual tempfile
 retentions, both walk SQL brackets, lost backend after a walk, same-backend new
 transaction refusal, foreign-thread refusal before SQL, same-byte request inode
 replacement, identity/module/scope/deadline controls, child exchange without PG
 and an actual alarm interrupting blocked fake I/O without extending the original
-alarm. CI runs both suites at one CPU, serially; no live data is mounted.
+alarm. New cases interleave a real reader during a partial private response
+write, refuse replacing the final response, and refuse Job Complete/Pod Running,
+nonzero exit, wrong termination reason, active/noncomplete/failed Job states.
+CI runs both suites at one CPU, serially; no live data is mounted.
 
 The generic package is reviewable separately from private runtime preparation.
 It is not a full private packet. The retained native bind and ACK sources remain
 byte-identical; receiver copies identity and sender image/helper/collector pins
 needed new successors. Assembly also depends on host PyYAML: its exact environment
-must be pinned in the eventual packet. Current app raw deployment proof is not a
-full reachability test of the generic vendor capture program's `/sync` import.
-Those external closure checks and the independent Stop/inverse/watch/supervisor
+must be pinned in the eventual packet. The separate current-app receipt closes
+the generic vendor capture program's actual `/sync` import path and Node builtins;
+it does not execute a capture. Host dependency closure and the independent Stop/inverse/watch/supervisor
 integration remain explicit prerequisites; no image or code is adopted by these
 fixtures.
+
+Initial CI did not reach the SOURCE PG cases: the preceding writer suite left
+its public fixture tables in the shared throwaway database. The suites now use
+fresh serial tmpfs PG16 containers, preserving actual public-table lock checks
+without production database access or schema substitutions. Local results alone
+do not establish CI success.

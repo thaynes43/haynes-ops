@@ -29,7 +29,9 @@ its once-bound transaction immediately at request admission, brackets each of
 the outcome's two full walks with actual health and guards every entry and hash.
 The request carries exact SOURCE identity, current module map, approved three-path
 scope and the checked complete MAIN receipt SHA. No second request or response
-is accepted. The host must match the raw response SHA against the unique current
+is accepted. SOURCE writes/fsyncs the response under a private staging name and
+publishes it with atomic no-replace rename plus directory fsync, so a polling
+child cannot observe an incomplete response. The host must match the raw response SHA against the unique current
 `copy-outcome-ready` owner event, then check request/MAIN receipt/scope/module
 bindings and the existing retained receipt schema. Failure restores writer first
 without waiting for outcome. The PG-free MAIN bridge is a separate ten-second
@@ -40,7 +42,10 @@ complete proof/32 MiB artifact/1 MiB aggregate logs, original byte-start age 300
 seconds and the separate restoration trigger 170 seconds. SOURCE retains its
 first-stop-derived deadline and 250-second abort/reserve profile. Native actual
 UID/spec/image binding, private input/artifact ACK, exit-zero completion and
-actual-UID Foreground full-union cleanup remain mandatory.
+actual-UID Foreground full-union cleanup remain mandatory. Completed MAIN proof
+requires both a Complete/nonfailed/inactive Job and its Succeeded original Pod
+with a terminated exit-zero/Completed container; a running Pod is never a
+completed receipt, even when its Job reports Complete.
 
 Finite fixtures use only fake/native test PG16 connections and temporary files.
 Run necessary suites serially under `nice -n 19`; never use CPU busy loops,

@@ -32,7 +32,7 @@ INTENTS = {SOURCE:'COPY_SOURCE_PHASE_READY',MAIN:'COPY_PROOF_HASHES_JSON',('down
 LEASE_KEYS = {'job_namespace','job_name','job_uid','pod_uid','backend_pid','application_name'}
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
 FROZEN_TEMPLATES = {
- 'COPY_SOURCE_PHASE_READY': ('pg-nfs-readonly-source-template.prepared.json','4f905dff9983fd50b9f508f1c46c403b0d78e070fc828f21820334fe2cf5d308'),
+ 'COPY_SOURCE_PHASE_READY': ('pg-nfs-readonly-source-template.prepared.json','e893ddc8b30aa5d8414d67e5e625ed0f23b7645c38f0bc414242dd4a1c4e4854'),
  'LIDARR_CAPTURE_PHASE_READY': ('lidarr-copy-source-template.prepared.json','8ce4ecfa3efbf8db2456f469d6b3645a444d8c8637da6bc94e2a0b1e668e9ee6'),
 }
 ROW_KEYS = {'namespace','name','uid','phase_token','writer','source_manifest_sha256','initial_manifest_sha256','initial_manifest','gate_env','mutable_env','ready_manifest_sha256','ready_manifest','registered_at','bound_at','observed_at'}
@@ -419,13 +419,13 @@ def verify_owned_pod(row,job,pod,pod_uid,allow_completed=False):
  if (len(statuses)!=1 or statuses[0].get('name')!=c['name'] or statuses[0].get('restartCount')!=0
      or image_identity(statuses[0].get('imageID','').removeprefix('docker-pullable://'))!=image_identity(c['image'])):raise Refused('actual original container or image differs')
  running=pod.get('status',{}).get('phase')=='Running' and set(statuses[0].get('state',{}))=={'running'}
- if running:return
+ if running and not allow_completed:return
  conditions=job.get('status',{}).get('conditions',[]);terminated=statuses[0].get('state',{}).get('terminated',{})
  if (not allow_completed or (ns,name)!=MAIN or pod.get('status',{}).get('phase')!='Succeeded'
      or set(statuses[0].get('state',{}))!={'terminated'} or type(terminated.get('exitCode')) is not int
      or terminated['exitCode']!=0 or terminated.get('reason')!='Completed' or job.get('status',{}).get('active',0)!=0
      or not any(c.get('type')=='Complete' and c.get('status')=='True' for c in conditions)
-     or any(c.get('type')=='Failed' and c.get('status')=='True' for c in conditions)):raise Refused('actual original container is neither running nor an explicitly accepted completed MAIN')
+     or any(c.get('type')=='Failed' and c.get('status')=='True' for c in conditions)):raise Refused('actual original container is not in the required running or completed MAIN state')
 def lookup_lease_pod(row,pod_uid):
  result=subprocess.run(['kubectl','get','pods','-n',row['namespace'],'-l','batch.kubernetes.io/controller-uid='+row['uid'],'-o','json'],capture_output=True,timeout=5)
  if result.returncode or len(result.stdout)>2*1024*1024:raise Refused('exact lease Pod inventory failed or exceeds cap')

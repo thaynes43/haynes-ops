@@ -127,6 +127,47 @@ class PipelineCases(unittest.TestCase):
                           ('proof_sender.py', '30ca6db3c0b82257d7196706794f6e107945fb17d36cb7f44cfd7d9ece9cadf4')]:
             self.assertEqual(digest(HERE / name), sha)
 
+    def test_complete_job_requires_actual_original_main_pod_zero_exit(self):
+        ready = json.loads((HERE / 'copy-writer-source-template.prepared.json').read_bytes())
+        ns, name = helper.MAIN
+        job_uid, pod_uid = '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'
+        phase = 'a' * 32
+        for meta in (ready['metadata'], ready['spec']['template']['metadata']):
+            meta.setdefault('labels', {})[helper.LABEL] = phase
+        row = {'ready_manifest': ready, 'uid': job_uid, 'namespace': ns, 'name': name, 'phase_token': phase}
+        job = copy.deepcopy(ready)
+        job['metadata']['uid'] = job_uid
+        generated = {'batch.kubernetes.io/controller-uid': job_uid, 'controller-uid': job_uid,
+                     'batch.kubernetes.io/job-name': name, 'job-name': name}
+        job['spec']['template']['metadata']['labels'].update(generated)
+        job['spec']['selector'] = {'matchLabels': {'batch.kubernetes.io/controller-uid': job_uid}}
+        job['status'] = {'active': 0, 'conditions': [{'type': 'Complete', 'status': 'True'}]}
+        pod = {'metadata': {'namespace': ns, 'name': 'synthetic-main-pod', 'uid': pod_uid,
+                            'labels': {helper.LABEL: phase, **generated}, 'annotations': {'k8tz.io/inject': 'false'},
+                            'ownerReferences': [{'apiVersion': 'batch/v1', 'kind': 'Job', 'name': name,
+                                                 'uid': job_uid, 'controller': True}]},
+               'spec': copy.deepcopy(job['spec']['template']['spec']),
+               'status': {'phase': 'Running', 'containerStatuses': [{
+                   'name': ready['spec']['template']['spec']['containers'][0]['name'], 'restartCount': 0,
+                   'imageID': pins.IMAGE, 'state': {'running': {}}}]}}
+        pod['spec']['nodeName'] = 'talosw01'
+        self.assertTrue(helper.declared_matches(ready, job))
+        helper.verify_owned_pod(row, job, pod, pod_uid)
+        with self.assertRaises(helper.Refused): helper.verify_owned_pod(row, job, pod, pod_uid, True)
+        pod['status']['phase'] = 'Succeeded'
+        pod['status']['containerStatuses'][0]['state'] = {'terminated': {'exitCode': 0, 'reason': 'Completed'}}
+        helper.verify_owned_pod(row, job, pod, pod_uid, True)
+        for field, value in [('exitCode', 1), ('reason', 'Error')]:
+            altered = copy.deepcopy(pod); altered['status']['containerStatuses'][0]['state']['terminated'][field] = value
+            with self.subTest(field=field), self.assertRaises(helper.Refused):
+                helper.verify_owned_pod(row, job, altered, pod_uid, True)
+        for status in ({'active': 1, 'conditions': [{'type': 'Complete', 'status': 'True'}]},
+                       {'active': 0, 'conditions': []},
+                       {'active': 0, 'conditions': [{'type': 'Complete', 'status': 'True'}, {'type': 'Failed', 'status': 'True'}]}):
+            altered = copy.deepcopy(job); altered['status'] = status
+            with self.subTest(status=status), self.assertRaises(helper.Refused):
+                helper.verify_owned_pod(row, altered, pod, pod_uid, True)
+
     def test_bootstrap_closed_guard_no_payload_import_or_full_pipe_wait(self):
         command = bootstrap_payload.program({'fixture.py': b'raise RuntimeError("must not execute")'}, 'fixture.py', 'COPY_SOURCE_PHASE_READY')
         # The child fills its own pipe before executing the exact closed guard.

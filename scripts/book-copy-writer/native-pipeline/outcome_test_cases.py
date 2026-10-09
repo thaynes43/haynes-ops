@@ -106,6 +106,44 @@ class OutcomeCases:
         self.assertEqual(response['request_sha256'], mailbox.sha(mailbox.canonical(request)))
         self.assertEqual(response['main_receipt_sha256'], request['main_receipt_sha256'])
 
+    def test_owner_response_partial_staging_is_invisible_and_final_is_no_replace(self):
+        request, env, directory, verifier = self.outcome_fixture()
+        self.publish_request(directory, request)
+        original = mailbox.os.fdopen
+        observations = []
+        class InterleavedOutput:
+            def __init__(self, output): self.output = output
+            def __enter__(self): self.output.__enter__(); return self
+            def __exit__(self, *args): return self.output.__exit__(*args)
+            def write(output, raw):
+                # Force a real reader between two writes to the private stage.
+                midpoint = len(raw) // 2
+                output.output.write(raw[:midpoint]); output.output.flush()
+                fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                try:
+                    with self.assertRaises(FileNotFoundError):
+                        transport.read_private(fd, mailbox.RESPONSE, mailbox.CAP_RESPONSE, 0o600)
+                    observations.append(True)
+                finally: os.close(fd)
+                output.output.write(raw[midpoint:])
+            def flush(self): return self.output.flush()
+            def fileno(self): return self.output.fileno()
+        def opened(fd, mode, *args, **kwargs):
+            output = original(fd, mode, *args, **kwargs)
+            return InterleavedOutput(output) if mode == 'wb' else output
+        with self.fence() as fence, self.controller(fence) as controller, mock.patch.object(mailbox.os, 'fdopen', side_effect=opened):
+            self.assertTrue(self.owner(verifier, controller, env, directory).process_pending())
+        self.assertEqual(observations, [True])
+        response = (directory / mailbox.RESPONSE).read_bytes()
+        self.assertEqual(json.loads(response)['outcome']['actual_moved_count'], 2)
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            with self.assertRaises(metadata.Refused):
+                mailbox.publish_response(fd, b'cannot overwrite\n', metadata, time.time() + 1)
+        finally: os.close(fd)
+        self.assertEqual((directory / mailbox.RESPONSE).read_bytes(), response)
+        self.assertFalse((directory / ('.' + mailbox.RESPONSE + '.publish')).exists())
+
     def test_owner_outcome_lost_backend_after_first_walk_publishes_no_response(self):
         request, env, directory, verifier = self.outcome_fixture(); self.publish_request(directory, request)
         original = copies.file_fingerprints
