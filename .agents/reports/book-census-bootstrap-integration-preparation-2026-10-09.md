@@ -55,8 +55,12 @@ re-pinning that old producer to the new image would refuse and stop SOURCE.
 A new SOURCE adapter must serialize SQL on the owner thread. A watchdog may
 signal an owning-process deadline, but cannot query or adopt its PG connection.
 Full app row/schema captures and complete SOURCE permission/fingerprint proof
-remain mandatory; owner-thread health and its bounded native lease events must
-remain valid throughout capture and the subsequent holding interval.
+remain mandatory. The SOURCE successor must call its local scan guard at every
+entry and uncached actual health before and after each complete traversal, not
+merely around the combined stat stage. Actual SQL runs on the owner thread at
+most one elapsed second apart while guards advance; holding-interval health and
+bounded native lease events also remain serialized on that thread. These guards
+do not provide cached authority for an accepted traversal or later mutation.
 
 Fresh pipeline preparation must also close the new image/module pins in the
 SOURCE adapter, MAIN source-identity checker, trusted assembly and outcome
