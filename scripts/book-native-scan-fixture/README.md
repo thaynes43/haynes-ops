@@ -1,0 +1,125 @@
+# Private native Kavita scanner fixture (preparation only)
+
+This fixture prepares the actual scanner proof for haynesnetwork #825 / #840. It is
+not a production catalog writer, scan, strip or runtime approval. The same-ID candidate
+and completed offline forward/inverse evidence are in haynesnetwork PR #871. All raw
+database, EPUB, user state and authentication fields remain private. Never send those
+payloads to public git, GitHub Actions, build contexts or CI artifacts.
+
+The reviewed candidate changes three Series keys and four Volume keys while retaining
+the existing series/volume/chapter/file IDs. Offline SQL shape proves only those fields
+changed and the inverse restored all logical rows. Actual scanner execution remains
+required before any owner ruling authorizes that new production writer.
+
+## Exact native execution architecture
+
+Use the deployed native image digest
+`docker.io/jvmilazz0/kavita@sha256:ca6af7a18d7124d014702983c2364e485294f808c1552e9555f2595b7cda7982`.
+Its published Kavita.Server.dll uses self-contained Core/ASP.NET 10.0.1. Tagged source
+commit is `6bcd5689385d0e96824982d843c54f15ce784ddc`. A generic source-only .NET harness
+loads the actual native assembly, reflects its private CreateHostBuilder and builds
+its dependency-injection graph. Never invoke Program.Main, host.Start/Run, startup
+migrations or any hosted/Hangfire worker. Build only the generic harness in CI; no
+private fixture input is part of any build or image.
+
+The future isolated worker contains only emptyDirs: the private original and candidate
+native database copies, exact original/stripped one-EPUB pair and immutable proof input.
+The candidate EPUB is mounted at its actual scanner path and candidate DB at the
+native config path. No production mount/PVC/hostPath, ingress, external service token,
+service-account token or provider/acquisition path is allowed. The clone itself has
+authentication fields and therefore remains entirely private. Require an independently
+verified network-deny barrier; an empty list of mounted credentials does not establish
+network isolation. Keep the production service and schedules running.
+
+`prepared-runtime.json` is deliberately a non-applicable preparation wrapper, with
+runtime approval false and unresolved exact phase/image fields. Its worker is fixed to
+talosw01, one attempt, original 180-second deadline, 500m maximum CPU, nonroot/read-only
+root filesystem and four memory emptyDirs. The separate proposed Cilium policy uses
+explicit all-entity ingress/egress **deny**, which takes precedence over additive allow
+rules. Before a future Job, adopt the exact phase policy through GitOps, verify actual
+policy/endpoint realization and bind the independent proof to its exact Job/Pod UIDs.
+The source template alone does not establish that live isolation. The child checks
+exact tmpfs mounts and refuses a service-account token; those are additional guards.
+
+Before loading native services, verify exact input byte hashes, schema, triggers,
+full original/candidate row delta, retained target IDs, full private saved/curation/lock
+rows, original EPUB hash and stripped-member preservation. Snapshot all native rows.
+Then execute the actual native ScannerService.ScanSeries(targetSeriesId, true), never
+a full library scan: only the one target EPUB is mounted. Resolve and exercise actual
+SeriesRepository cleanup using the **complete retained parsed-name set** from approved
+full source evidence, not just the target or an inferred partial corpus. No unrelated
+work may be treated as missing. Never execute a Python/C# rewritten scanner algorithm
+as a substitute for the actual native methods.
+
+Compare every saved-state/history/curation/lock row verbatim and all retained IDs after
+the scanner. Any undeclared metadata difference refuses. Only explicitly reviewed
+catalog-derived scan fields may differ. A catalog inverse must independently restore
+the declared old keys and pass complete row checks; no overwrite/replacement of a live
+database or saved-state write is included. Emit aggregate identities/hashes only;
+native logs and private payloads stay in the private workspace, never public CI logs.
+
+The native method can return early, so Task completion alone is insufficient: the
+target's LastFolderScanned must change inside the actual invocation's time interval.
+Native ScanSeries may enqueue its normal in-memory jobs; no host or Hangfire server
+is started to run those jobs. Dispose the built native host before full readback.
+Check every EPUB member's identity/order, metadata and content hash against the exact
+original. Only separately reviewed OPF before/after hashes from the sanctioned
+series-only strip proof may differ; that private byte proof must establish the allowed
+OPF deletion semantics. This harness does not infer a new stripping policy.
+
+Each before/after/inverse snapshot is created mode 0600 and fsynced. A refusal after
+native execution still offers its available before/after evidence. The child emits only
+the receipt's aggregate hashes/UIDs, then waits at most 30 seconds **within the original
+deadline** for an exact phase/Job/Pod/receipt-SHA durable-copy ACK. The host must copy all
+receipt-listed snapshots to an exclusive private directory, verify their exact bytes,
+fsync files/directories, and atomically deliver the ACK. Missing/mismatched/late ACK is
+unknown outcome, not success. Terminal private handback never authorizes retry.
+
+Private input files are delivered with mode 0600 and no symlink ancestry; the approved
+packet is delivered last by atomic rename after all pinned input bytes are durable.
+Future host preparation must bind full native inventories, input hashes, signed image,
+manifest/admission/defaults and source receipt before delivery. Foreground deletion by
+the exact recorded Job UID and independent complete raw Job/Pod union absence are
+required on success, refusal, expired capture and host interruption. No host launcher
+or runtime execution authority is supplied by this preparation commit; that exact
+delivery/cleanup packet must receive independent review and root GO before any Job.
+
+## Gates before any test Job
+
+This source is preparation only. Root must first review the completed candidate plan
+and independent receipt, then the exact generic assembly/build/runtime hashes, native
+source/image/module pins, private input SHA, schema and precise allowlisted metadata,
+prepared manifest and closed native Job/Pod UID lifecycle. No Job is created here.
+Use one worker, `nice -n 19`, CPU limit at most 500m, bounded memory and no wide/looped
+tests. A proposed fixture's original Job deadline is at most 180s; complete exact-UID
+foreground cleanup and independent all-owned Job/Pod union absence remain mandatory.
+Unknown outcome preserves private evidence and halts without retry or broader scan.
+
+The current dev pod has no SDK, and `mcr.microsoft.com` is not resolvable through its
+allowlist. Do not use a proxy or mirror workaround. Generic compiler setup may run on
+CI using the official version/checksum; its exact assembly and runtime source must be
+reviewed before a worker can run. No actual scanner proof is claimed until that exact
+isolated native invocation completes with preserved state and cleanup evidence.
+
+## Generic build and finite validation
+
+The path-scoped workflow resolves the official SDK 10.0.101 image to an immutable
+digest once, checks that SDK version, and publishes a self-contained linux-x64 apphost
+with Core/ASP.NET runtime 10.0.1. The final image derives from the exact deployed Kavita
+digest above; it does not rely on a dotnet muxer/shared-framework installation in that
+image. A Dockerfile-specific deny-all build context includes only the four generic
+source/build files. No private database, EPUB, approval packet or user payload reaches
+the build context, CI image or Actions artifact.
+
+CI launches that actual apphost in the exact native base with network none/read-only,
+500m CPU and `nice -n 19`. The finite self-test checks 11 malformed packet refusals,
+three durable-ACK refusals, storage-type boundaries, saved-state mutation/removal
+refusals, exact inverse and actual published reflection signatures, without building
+the host or scanning any fixture. Five Python checks cover the prepared manifest and
+build-context barriers. Compilation and this native launch remain unproved until CI
+passes; they do not establish actual scanner behavior.
+
+CI records only official SDK and generic/native module hashes. On main it publishes
+the same tested image without rebuilding and signs its digest. Fresh root review must
+bind that image, apphost/runtime/assembly/source receipt and the reviewed private input
+packet before runtime. This source package is preparation, not catalog-writer approval.
