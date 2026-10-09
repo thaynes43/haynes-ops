@@ -127,6 +127,11 @@ leases, replay or new window approval. Actual later Normal is recorded as
 ownership or Normal intent conflict still refuses. A historical success recorded
 before the original ceiling is preserved on later cold rechecks; fresh bounded
 convergence verification closes authority without rewriting its completed time.
+Invalid persisted clocks or failed fresh activation/clock proof enter the same
+bounded safety path with `original_clock_unproved_at`, preserving the original
+values and permanently revoked COPY. They do not assert a measured deadline miss
+or strand owned holds solely because clock validation failed. Exact phase/UID/PG
+ownership and current Normal still precede every source/app release.
 
 Original clocks remain independent. LIVE collection is 180s / host total 200s.
 Consumer byte expiry is earliest original byte capture start +300s. Actual first

@@ -83,6 +83,13 @@ lease or replay occurs. Original clocks and `complete=false` remain; a successfu
 fresh Normal proof records `safety_recovery_complete`, never an in-window result.
 Unknown ownership or unavailable/conflicting Normal intent remains unproved and
 requires intervention. An expired window is not a reason to abandon restoration.
+Invalid persisted clocks (including a backwards wall-clock step) and failed
+fresh activation/clock proofs also permanently revoke COPY and enter the same
+bounded cleanup-only Normal recovery. The original values remain unchanged;
+`original_clock_unproved_at` records that the guarantee is unproved, rather than
+asserting a measured +300s expiry. Later Normal sets only the safety completion
+field. Failure of exact phase/UID/PG ownership or current Normal intent still
+refuses source/app release.
 
 Read-only feasibility evidence: OPERATOR can patch the GitRepository; actual
 source/kustomize controllers are v1.9.6. Source and all four application
@@ -113,12 +120,14 @@ Primary sources:
 - [v1.9.6 kustomize handler](https://github.com/fluxcd/kustomize-controller/blob/v1.9.6/internal/controller/kustomization_controller.go)
   fetches an existing Git source artifact without requiring that source to be unsuspended.
 
-Source validation: final combined 54/54 finite tests (29 cache +25 legacy) passed
-in 6.789s under the dedicated hash-pinned host venv and `nice -n 19`; diff-check
-was clean. The owning five-second cache cap is scoped to cache reads; original 120s
+Source validation: the combined 54/54 finite tests (29 cache +25 legacy) passed
+in 6.789s under the dedicated hash-pinned host venv and `nice -n 19`. After the
+invalid-clock correction, 33/33 focused cache tests passed in 0.884s, including
+backwards-clock/cold-reload cleanup, unavailable Normal refusal and atomic refusal
+to adopt an invalid fresh origin. Current-head CI and independent review must
+pass again before merge. The owning five-second cache cap is scoped to cache reads; original 120s
 retarget and 30s Flux command limits are preserved. A finite command fixture
 prevents accidentally applying the cache cap to restoration commands.
-Independent review remains required before merge.
 Fixtures cover raw native UID/RV/token drain, parent hold persistence,
 artifact/controller loss, full manifest/cap drift, original clocks/cold recovery,
 partial Stop before checkpoint, Git outage after revocation, no active advisory

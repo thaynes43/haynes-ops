@@ -278,7 +278,7 @@ class Watchdog:
             self.source(sha)
             self.run(['flux','reconcile','kustomization',name,'-n',namespace,'--timeout=30s'])
         if not self.runtime_restored(sha):raise RuntimeError('Restored source fetched; waiting for app/KS convergence.')
-        if self.state.get('service_ceiling_missed_at'):
+        if self.state.get('service_ceiling_missed_at') or self.state.get('original_clock_unproved_at'):
             self.state.update(complete=False,recover_ks=False,safety_recovery_complete=True,safety_recovery_completed_at=stamp())
         else:
             self.state.setdefault('completed_at',stamp())
@@ -576,20 +576,23 @@ class Watchdog:
 
     def original_service_origin(self):
         # Private original clocks only; no API/Git command may precede binding.
+        candidate=dict(self.state)
         phase=self.phase_checkpoint()
         started=phase.get('first_service_stop_observed_at') or phase.get('window_started_at')
         if started:
-            if self.state.get('window_started_at') not in (None,started):raise RuntimeError('Original Stop origin changed.')
-            self.state.setdefault('window_started_at',started)
+            if candidate.get('window_started_at') not in (None,started):raise RuntimeError('Original Stop origin changed.')
+            candidate.setdefault('window_started_at',started)
         if Path(self.args.cached_source_activation).exists():
             receipt,digest=self.cached_receipt()
             value=json.loads(cache.read_private(self.args.cached_source_activation))
             budget=cache.activation(value,phase['phase_token'],digest,receipt['normal_inverse_merge_sha'])
             if budget<epoch(self.state['armed_at']) or budget>instant().timestamp():raise RuntimeError('Original budget origin outside arm/current clock.')
-            if self.state.get('actuation_budget_started_at') not in (None,value['actuation_budget_started_at']):raise RuntimeError('Original budget origin changed.')
-            self.state.setdefault('actuation_budget_started_at',value['actuation_budget_started_at'])
-        origins=[epoch(self.state[k]) for k in ('actuation_budget_started_at','window_started_at') if self.state.get(k)]
+            if candidate.get('actuation_budget_started_at') not in (None,value['actuation_budget_started_at']):raise RuntimeError('Original budget origin changed.')
+            candidate.setdefault('actuation_budget_started_at',value['actuation_budget_started_at'])
+        origins=[epoch(candidate[k]) for k in ('actuation_budget_started_at','window_started_at') if candidate.get(k)]
         if any(origin<epoch(self.state['armed_at']) or origin>instant().timestamp() for origin in origins):raise RuntimeError('Original service origin invalid/future.')
+        for field in ('actuation_budget_started_at','window_started_at'):
+            if field in candidate:self.state.setdefault(field,candidate[field])
         self.save()
         return min(origins) if origins else None
 
@@ -600,10 +603,17 @@ class Watchdog:
         self.state.update(recovery_reason='original_service_ceiling_expired',complete=False,recover_ks=True)
         self.save();self.stop.touch(mode=0o600)
 
-    def safety_recovery(self):
-        # A missed window stays invalid. This bounded cleanup-only attempt has
+    def clock_unproved(self):
+        self.state.setdefault('original_clock_unproved_at',stamp())
+        self.state.setdefault('copy_authority_revoked_at',stamp())
+        self.state.update(recovery_reason='original_service_clock_unproved',complete=False,recover_ks=True)
+        self.save();self.stop.touch(mode=0o600)
+
+    def safety_recovery(self,clock_unproved=False):
+        # A revoked window stays invalid. This bounded cleanup-only attempt has
         # no producer/replay/ACK or COPY lease, and never resets original clocks.
-        self.ceiling_missed()
+        if clock_unproved or self.state.get('original_clock_unproved_at'):self.clock_unproved()
+        else:self.ceiling_missed()
         with cache.wall_guard(60):
             self.cleanup_phase_jobs()
             merge=self.state.get('normal_inverse_merge_sha')
@@ -629,6 +639,7 @@ class Watchdog:
         return min(origins) if origins else None
 
     def service_budget(self,origin,action):
+        if self.state.get('original_clock_unproved_at'):return self.safety_recovery(clock_unproved=True)
         completed=self.state.get('completed_at')
         if (self.state.get('complete') is True and not self.state.get('service_ceiling_missed_at')
             and completed and origin<=epoch(completed)<=min(origin+300,instant().timestamp())):
@@ -643,11 +654,10 @@ class Watchdog:
 
     def tick(self):
         if self.cached:
+            if self.state.get('original_clock_unproved_at'):return self.safety_recovery(clock_unproved=True)
             try:origin=self.persisted_service_origin()
             except Exception:
-                self.state.setdefault('copy_authority_revoked_at',stamp())
-                self.state.update(recovery_reason='persisted_original_clock_invalid',complete=False,recover_ks=True)
-                self.save();self.stop.touch(mode=0o600);raise
+                return self.safety_recovery(clock_unproved=True)
             if origin is not None:return self.service_budget(origin,self.bind_clock_tick)
             return self.bind_clock_tick()
         return self.tick_body()
@@ -656,8 +666,7 @@ class Watchdog:
         try:
             with cache.wall_guard(5):origin=self.original_service_origin()
         except Exception:
-            with cache.wall_guard(5):self.revoke_cached('original_clock_proof_lost')
-            raise
+            return self.safety_recovery(clock_unproved=True)
         if origin is not None:return self.service_budget(origin,self.tick_body)
         return self.tick_body()
 

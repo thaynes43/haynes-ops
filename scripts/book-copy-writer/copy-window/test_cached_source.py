@@ -419,5 +419,54 @@ class CachedSourceCases(unittest.TestCase):
             self.assertNotIn('service_ceiling_missed_at',w.state);self.assertIn('copy_authority_revoked_at',w.state)
             self.assertEqual(w.state['window_started_at'],original)
 
+    def test_invalid_persisted_clock_cold_recovery_retires_writers_and_keeps_original_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);original='1970-01-01T00:16:40+00:00'
+            w.state.update(window_started_at=original,normal_inverse_merge_sha=NORMAL_SHA)
+            w.scopes=list(wc.SCOPES);w.phase_checkpoint=lambda:dict(phase_token=PHASE)
+            w.stop_actuated=lambda:True;w.desired_restored=lambda _:w.events.append('normal-git')
+            w.source=lambda _:w.events.append('normal-source')
+            w.run=lambda argv,**_:w.events.append('restore-app') if argv[0]=='flux' else self.fail('no producer/replay')
+            w.runtime_restored=lambda _:True;w.note=lambda _:None
+            w.recover_cluster=types.MethodType(legacy.watch.Watchdog.recover_cluster,w)
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(100,dt.timezone.utc)):self.assertTrue(w.tick())
+            self.assertEqual(w.events[0],'writers-pg-absent');self.assertFalse(w.state['complete']);self.assertTrue(w.state['safety_recovery_complete'])
+            self.assertIn('original_clock_unproved_at',w.state);self.assertNotIn('service_ceiling_missed_at',w.state)
+            self.assertEqual(w.state['window_started_at'],original)
+            unproved=w.state['original_clock_unproved_at'];revoked=w.state['copy_authority_revoked_at']
+            cold=self.watcher(directory);cold.state=copy.deepcopy(w.state);cold.events=w.events;cold.scopes=w.scopes
+            cold.phase_checkpoint=w.phase_checkpoint;cold.stop_actuated=w.stop_actuated;cold.desired_restored=w.desired_restored
+            cold.source=w.source;cold.run=w.run;cold.runtime_restored=w.runtime_restored;cold.note=w.note
+            cold.recover_cluster=types.MethodType(legacy.watch.Watchdog.recover_cluster,cold)
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(200,dt.timezone.utc)):self.assertTrue(cold.tick())
+            self.assertEqual((cold.state['window_started_at'],cold.state['original_clock_unproved_at'],cold.state['copy_authority_revoked_at']),(original,unproved,revoked))
+            self.assertFalse(cold.state['complete'])
+
+    def test_fresh_clock_proof_failure_recovers_only_normal_after_owned_retirement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);w.state.update(normal_inverse_merge_sha=NORMAL_SHA)
+            w.original_service_origin=lambda:(_ for _ in ()).throw(ValueError('changed activation'))
+            w.recover_cluster=lambda _:w.events.append('restore-latest-normal')
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(100,dt.timezone.utc)):self.assertTrue(w.tick())
+            self.assertEqual(w.events,['writers-pg-absent','restore-latest-normal'])
+            self.assertTrue(w.stop.exists());self.assertFalse(w.state['complete']);self.assertIn('original_clock_unproved_at',w.state)
+            self.assertNotIn('window_started_at',w.state);self.assertNotIn('actuation_budget_started_at',w.state)
+
+    def test_unproved_clock_unavailable_normal_never_releases_source_or_apps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);original='1970-01-01T00:16:40+00:00'
+            w.state.update(window_started_at=original,normal_inverse_merge_sha=NORMAL_SHA)
+            w.restored_main=lambda _:(_ for _ in ()).throw(TimeoutError('Normal unavailable'))
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(100,dt.timezone.utc)),self.assertRaises(TimeoutError):w.tick()
+            self.assertEqual(w.events,['writers-pg-absent']);self.assertTrue(w.stop.exists());self.assertFalse(w.state['complete'])
+            self.assertIn('original_clock_unproved_at',w.state);self.assertNotIn('service_ceiling_missed_at',w.state)
+            self.assertNotIn('safety_recovery_complete',w.state);self.assertEqual(w.state['window_started_at'],original)
+
+    def test_fresh_future_origin_is_not_partially_adopted_on_refusal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);w.phase_checkpoint=lambda:dict(phase_token=PHASE,first_service_stop_observed_at='1970-01-01T00:16:40+00:00')
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(100,dt.timezone.utc)),self.assertRaises(RuntimeError):w.original_service_origin()
+            self.assertNotIn('window_started_at',w.state);self.assertNotIn('actuation_budget_started_at',w.state)
+
 
 if __name__=='__main__':unittest.main()
