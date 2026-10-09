@@ -276,3 +276,90 @@ catch includes that type, with both finite counterexamples returning false and
 the same `ServiceCeiling` propagation control retained. This supersedes the
 `622228c1` malformed-proof result; no other authority or scope changed.
 The necessary single updated method passed in 0.066s under serial `nice -n 19`.
+
+The final source `521faef0` passed independent review (receipt
+`f2fa62b0d1c4332343bb3fc138c6356b660b305ff22b79b00da69e4e429ac36f`),
+all current CI and the actual no-findings advisory `6090219388`. PR
+[#3682](https://github.com/thaynes43/haynes-ops/pull/3682) merged at `08a9659e`
+on 2026-10-09 22:22:44Z. Source and all six relevant Kustomizations converged
+to current main `489a2189` before the new attempt. All four Deployment
+UID/generation/spec hashes and all six service Pod UID/spec hashes stayed
+unchanged across the targeted Source reconciliation.
+
+One new unused Normal-only packet `ff1fa31b` passed independent preparation
+review `7f411f353b94519df5bf22bb2e5bbe25da2b63964607a6eb80520902ae423539`.
+Its separately authorized watcher produced readiness at 22:28:16.020693Z,
+bound to PID 969255/start ticks 233611013 and exact packet/phase/source closure.
+The coordinator verified that live readiness before authorizing one exercise.
+A later peer readiness observation at 22:29:10 was after the exercise; its
+original receipt
+`d0ba25c78047c66a9d836391cfb2f6bf86a846b85991089cef749621f8aebac1`
+and incorrect "no exercise yet" claim are explicitly superseded by immutable
+correction `29223553ec3da49a8c47f38adadcbe976c66bb61de11d1c1631968501a0896e7`.
+It does not replace the coordinator's prior authorization-time proof.
+
+The exercise exited zero and proved fresh same-UID handler drains for both
+actually suspended parents, all four app Kustomizations and the Source, with
+the actual Normal archive bytes and unchanged source-controller identity.
+It applied no Stop contract and created no producers. Cancellation began
+restoration at 22:29:08.925175Z. The original 50-second recovery budget was
+missed at 22:29:58.925777Z and remained recorded. After the fixed 10-second
+retry wait, bounded safety recovery restored actual Normal at
+22:31:07.270425Z, **118.345250 seconds** after the original recovery origin;
+the subsequent safety attempt took approximately 58 seconds.
+
+The result is **RECOVERED_AFTER_MISSED_BUDGET**. Fresh read-only final checks
+at 22:32:18–22:32:20Z confirmed Source and all six Kustomizations unsuspended
+and Ready on `489a2189`, all seven phase-owner annotations retired, full
+owned Job/Pod union and both PostgreSQL leases absent, and the watcher exited.
+All four Deployment specs/UIDs/generations and all six service Pod UIDs/specs
+remained unchanged. No COPY, producer, library/list mutation or strip enable
+occurred. The actual final receipt is
+`24621b9e917bd82d1c4c37727fd71499b46de1dc8f06f6a5e71faeaa35818c6e`;
+private raw proof and original clocks remain preserved.
+
+The historical raw watcher state set generic `complete=true` even while its
+Normal-specific within-budget result was false. The scoped source correction
+keeps `complete=false` after a Normal recovery miss and records completed safety
+restoration separately, including cold verification. It does not change the
+failed timing result or authorize another attempt. The unresolved 50-second
+performance gate is tracked in
+[#3684](https://github.com/thaynes43/haynes-ops/issues/3684), with exact cold-start
+context and next finite work. No original per-call timing was retained; the
+serial recovery prefix is an implementation observation, not a proven cause.
+No recovery budget is widened. Cached-Stop/COPY readiness remains unproved.
+The generic recovery terminal condition also treats the Normal miss marker as
+safety-only before saving any result, closing the crash gap between generic
+restoration and the scoped Normal result helper. A failed cold verification
+cannot persist a successful in-budget result. Independent actual audit receipt
+`521a89a5be91e629ba2a19594f69fe3e1baba89d6a4c9f9fa47163ee2092f158`
+confirmed the disposed result, held/drained identities, seven request barriers,
+retired ownership and fresh writer/PG absence without advancing any gate.
+Three focused finite controls passed serially under `nice -n 19` in 0.021s:
+no saved generic completion after a miss, failed cold verification preserving
+the original miss, scoped cold-result correction and historical in-budget proof.
+They use fake services/clocks and make no production API call.
+The Normal-only generic safety branch preserves its first safety-completion
+timestamp; a later successful cold proof has a separate reverified timestamp.
+The finite control exercises the real generic path at both fake times so the
+scoped helper cannot conceal a timestamp overwrite. Other recovery modes keep
+their existing timestamp behavior.
+The single extended real-generic control passed in 0.008s under serial `nice -n 19`.
+The actual advisory findings `4235127776`/`4235138148` also require preserving
+historical raw `completed_at` when no safety timestamp exists. That Normal-only
+fallback and its real-generic cold-state counterexample are included; a new
+verification time never replaces the original restoration proof.
+Historical raw `complete=true` is normalized false on recognizing the Normal
+miss, before either the scoped tick or generic recovery performs any cleanup,
+network proof or progress save. The real cold fixture includes that actual
+legacy flag and an early unavailable-cleanup case; unknown recovery cannot
+leave a persisted successful guarantee.
+
+Unused prepared Stop/inverse drafts
+[#3659](https://github.com/thaynes43/haynes-ops/pull/3659) and
+[#3660](https://github.com/thaynes43/haynes-ops/pull/3660) were closed without merge
+or application after this failed timing gate. Their branches remain preserved at
+`7bcdbb188bba43daeb00c4d3b852d71b9281bdf8` and
+`27156481c649fe20acc008cfd1a4c4f1cba575fe` respectively; no branch was deleted.
+Any future pair requires a fresh full packet and separate authorization.
+The hourly-strip draft #3571 remains held.

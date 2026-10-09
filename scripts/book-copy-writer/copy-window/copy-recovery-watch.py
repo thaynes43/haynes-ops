@@ -334,6 +334,8 @@ class Watchdog:
             if patch:self.run(['kubectl','patch',resource,name,'-n',ns,'--type=json','-p',json.dumps(patch,separators=(',',':'))],timeout=10)
 
     def recover_cluster(self,sha):
+        if self.state.get('normal_rehearsal_recovery_budget_missed_at'):
+            self.state.update(complete=False,normal_rehearsal_recovered_within_budget=False,copy_runtime_authorized=False);self.save()
         self.cleanup_phase_jobs()
         self.desired_restored(sha)
         phase=self.phase_checkpoint()
@@ -350,8 +352,14 @@ class Watchdog:
             self.run(['flux','reconcile','kustomization',name,'-n',namespace,'--timeout=30s'])
         if not self.runtime_restored(sha):raise RuntimeError('Restored source fetched; waiting for app/KS convergence.')
         self.retire_hold_annotations()
-        if self.state.get('service_ceiling_missed_at') or self.state.get('original_clock_unproved_at'):
-            self.state.update(complete=False,recover_ks=False,safety_recovery_complete=True,safety_recovery_completed_at=stamp())
+        if (self.state.get('service_ceiling_missed_at') or self.state.get('original_clock_unproved_at')
+                or self.state.get('normal_rehearsal_recovery_budget_missed_at')):
+            self.state.update(complete=False,recover_ks=False,safety_recovery_complete=True)
+            at=stamp()
+            if self.state.get('normal_rehearsal_recovery_budget_missed_at'):
+                if 'safety_recovery_completed_at' in self.state or self.state.get('completed_at'):self.state['safety_recovery_reverified_at']=at
+                self.state.setdefault('safety_recovery_completed_at',self.state.get('completed_at') or at)
+            else:self.state['safety_recovery_completed_at']=at
         else:
             self.state.setdefault('completed_at',stamp())
             self.state.update(complete=True,recover_ks=False,normal_reverified_at=stamp())

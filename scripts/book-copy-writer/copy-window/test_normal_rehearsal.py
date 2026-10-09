@@ -109,12 +109,59 @@ class NormalCases(unittest.TestCase):
             packet={'directory':directory,'repo_dir':'unused','binaries':{}}
             w,_,_,_=normal.watcher(packet,initialize=False);w.state={'armed_at':'1970-01-01T00:00:01+00:00',
                 'normal_rehearsal_restore_started_at':'1970-01-01T00:00:10+00:00'};w.save=lambda:None
-            w.cleanup_phase_jobs=lambda:None;w.current_main=lambda:fixtures.NORMAL_SHA;w.recover_cluster=lambda _:None
+            w.cleanup_phase_jobs=lambda:None;w.current_main=lambda:fixtures.NORMAL_SHA
+            def recovered(_):w.state.update(complete=True,completed_at='1970-01-01T00:03:20+00:00')
+            w.recover_cluster=recovered
             w.fence_hold_requests=lambda:None
             with mock.patch.object(normal.time,'time',return_value=200),mock.patch.object(normal,'retire_exercise'):self.assertTrue(w.tick())
             self.assertEqual(w.state['normal_rehearsal_restore_started_at'],'1970-01-01T00:00:10+00:00')
             self.assertFalse(w.state['normal_rehearsal_recovered_within_budget']);self.assertFalse(w.state['copy_runtime_authorized'])
+            self.assertFalse(w.state['complete']);self.assertTrue(w.state['safety_recovery_complete'])
+            self.assertEqual(w.state['safety_recovery_completed_at'],'1970-01-01T00:03:20+00:00')
+            with mock.patch.object(normal.time,'time',return_value=300):self.assertTrue(w.tick())
+            self.assertFalse(w.state['complete']);self.assertFalse(w.state['normal_rehearsal_recovered_within_budget'])
+            self.assertEqual(w.state['safety_recovery_completed_at'],'1970-01-01T00:03:20+00:00')
             self.assertNotIn('window_started_at',w.state);self.assertNotIn('actuation_budget_started_at',w.state)
+
+    def test_normal_miss_never_persists_generic_complete_even_before_helper_or_failed_cold_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700)
+            packet={'directory':directory,'repo_dir':'unused','binaries':{}}
+            w,_,_,watch=normal.watcher(packet,initialize=False)
+            origin='1970-01-01T00:00:10+00:00';miss='1970-01-01T00:01:00+00:00'
+            w.state={'complete':False,'normal_rehearsal_restore_started_at':origin,
+                     'normal_rehearsal_recovery_budget_missed_at':miss,
+                     'normal_rehearsal_recovered_within_budget':True,'copy_runtime_authorized':True}
+            saved=[];w.save=lambda:saved.append(copy.deepcopy(w.state))
+            w.cleanup_phase_jobs=lambda:None;w.desired_restored=lambda _:None
+            w.phase_checkpoint=lambda:{'phase_token':fixtures.PHASE};w.stop_actuated=lambda:False
+            w.runtime_still_normal=lambda:True;w.source=lambda _:None;w.release_ks=lambda *_:None
+            w.run=lambda *_:None;w.runtime_restored=lambda _:True;w.retire_hold_annotations=lambda:None;w.note=lambda _:None
+            first='1970-01-01T00:03:20+00:00';later='1970-01-01T00:04:20+00:00'
+            with mock.patch.object(watch,'stamp',return_value=first):w.recover_cluster(fixtures.NORMAL_SHA)
+            self.assertTrue(w.state['safety_recovery_complete']);self.assertFalse(w.state['complete'])
+            self.assertTrue(saved);self.assertTrue(all(row.get('complete') is False for row in saved))
+            with mock.patch.object(watch,'stamp',return_value=later):w.recover_cluster(fixtures.NORMAL_SHA)
+            self.assertEqual(w.state['safety_recovery_completed_at'],first)
+            self.assertEqual(w.state['safety_recovery_reverified_at'],later)
+            # The actual historical state had generic completed_at but no
+            # safety timestamp; cold correction must keep that first proof.
+            w.state.pop('safety_recovery_completed_at');w.state.update(complete=True,completed_at=first)
+            with mock.patch.object(watch,'stamp',return_value=later):w.recover_cluster(fixtures.NORMAL_SHA)
+            self.assertEqual(w.state['safety_recovery_completed_at'],first)
+            self.assertFalse(w.state['complete'])
+            w.runtime_restored=lambda _:False
+            with self.assertRaisesRegex(RuntimeError,'waiting for app/KS convergence'):w.recover_cluster(fixtures.NORMAL_SHA)
+            self.assertTrue(all(row.get('complete') is False for row in saved))
+            w.state['complete']=True
+            w.cleanup_phase_jobs=lambda:(_ for _ in ()).throw(RuntimeError('cleanup unknown'))
+            with self.assertRaisesRegex(RuntimeError,'cleanup unknown'):w.recover_cluster(fixtures.NORMAL_SHA)
+            self.assertFalse(saved[-1]['complete'])
+            w.state.update(complete=True,normal_only_rehearsal_complete=True)
+            with self.assertRaisesRegex(RuntimeError,'cleanup unknown'):w.tick()
+            self.assertFalse(saved[-1]['complete'])
+            self.assertTrue(all(row.get('normal_rehearsal_recovered_within_budget') is False and row.get('copy_runtime_authorized') is False for row in saved))
+            self.assertEqual((w.state['normal_rehearsal_restore_started_at'],w.state['normal_rehearsal_recovery_budget_missed_at']),(origin,miss))
 
     def test_cancel_closes_registration_before_any_process_or_hold(self):
         with tempfile.TemporaryDirectory() as directory:
