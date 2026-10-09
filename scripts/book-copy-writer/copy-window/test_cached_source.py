@@ -394,14 +394,46 @@ class CachedSourceCases(unittest.TestCase):
         goal,converter,cm,ks=converter_fixture()
         before=copy.deepcopy(goal['converter_job_template'])
         expected,proof=cache.rendered_converter_template(goal,converter['spec']['jobTemplate'],ks,cm)
-        self.assertTrue(cache.includes(converter['spec']['jobTemplate'],expected))
+        self.assertTrue(cache.job_template_equal(converter['spec']['jobTemplate'],expected))
         index=cache.converter_reference(before)
         before['spec']['template']['spec']['volumes'][index]['configMap']['name']=cm['metadata']['name']
         self.assertEqual(expected,before);self.assertEqual(proof['uid'],cm['metadata']['uid'])
         self.assertEqual(set(proof['input_sha256']),set(cache.CONVERTER_INPUTS))
         self.assertEqual(wc.PATHS,tuple(legacy.NORMAL))
         converter['spec']['jobTemplate']['spec']['activeDeadlineSeconds']+=1
-        self.assertFalse(cache.includes(converter['spec']['jobTemplate'],expected))
+        self.assertFalse(cache.job_template_equal(converter['spec']['jobTemplate'],expected))
+
+    def test_job_template_allows_only_exact_omitted_api_defaults(self):
+        goal,converter,cm,ks=converter_fixture();actual=converter['spec']['jobTemplate']
+        expected,_=cache.rendered_converter_template(goal,actual,ks,cm)
+        actual['metadata']={};pod=actual['spec']['template']['spec']
+        pod.update(dnsPolicy='ClusterFirst',schedulerName='default-scheduler',terminationGracePeriodSeconds=30)
+        pod['containers'][0].update(imagePullPolicy='IfNotPresent',terminationMessagePath='/dev/termination-log',terminationMessagePolicy='File')
+        pod['volumes'][0]['configMap']['defaultMode']=420
+        self.assertTrue(cache.job_template_equal(actual,expected))
+        for path,bad in ((('metadata',),{'extra':'unapproved'}),
+            (('spec','template','spec','dnsPolicy'),'Default'),
+            (('spec','template','spec','schedulerName'),'unapproved'),
+            (('spec','template','spec','terminationGracePeriodSeconds'),30.0),
+            (('spec','template','spec','containers',0,'imagePullPolicy'),'Always'),
+            (('spec','template','spec','containers',0,'terminationMessagePath'),'/tmp/extra'),
+            (('spec','template','spec','containers',0,'terminationMessagePolicy'),'FallbackToLogsOnError'),
+            (('spec','template','spec','volumes',0,'configMap','defaultMode'),420.0)):
+            with self.subTest(path=path):
+                changed=copy.deepcopy(actual);row=changed
+                for key in path[:-1]:row=row[key]
+                row[path[-1]]=bad;self.assertFalse(cache.job_template_equal(changed,expected))
+
+    def test_job_template_refuses_added_initcontainers_args_envfrom_and_unknown_fields(self):
+        goal,converter,cm,ks=converter_fixture();actual=converter['spec']['jobTemplate']
+        expected,_=cache.rendered_converter_template(goal,actual,ks,cm)
+        for target,key,value in (('pod','initContainers',[dict(name='extra',image='unapproved')]),
+                                ('container','args',['unapproved']),('container','envFrom',[dict(configMapRef=dict(name='unapproved'))]),
+                                ('pod','automountServiceAccountToken',True)):
+            with self.subTest(key=key):
+                changed=copy.deepcopy(actual);pod=changed['spec']['template']['spec']
+                (pod if target=='pod' else pod['containers'][0])[key]=value
+                self.assertFalse(cache.job_template_equal(changed,expected))
 
     def test_converter_generator_refuses_unapproved_inputs_settings_and_keys(self):
         for change in ('missing-input','extra-input','options','wrong-file','duplicate-file','extra-key','global-transform'):

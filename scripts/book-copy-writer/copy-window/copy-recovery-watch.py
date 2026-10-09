@@ -245,7 +245,7 @@ class Watchdog:
                 ks=self.kube('kustomization','lazylibrarian','downloads')
                 cm=self.kube('configmap',cm_name,'downloads')
                 expected,proof=cache.rendered_converter_template(goal,actual,ks,cm)
-                if not cache.includes(actual,expected):return False
+                if not cache.job_template_equal(actual,expected):return False
                 again=self.kube('configmap',cm_name,'downloads')
                 ks_again=self.kube('kustomization','lazylibrarian','downloads')
                 cache.identity(again,'ConfigMap',cm_name,'downloads')

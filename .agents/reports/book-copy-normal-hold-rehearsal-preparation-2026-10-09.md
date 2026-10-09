@@ -233,3 +233,17 @@ all four actual Git inputs at `6f255ce4` with three data keys and 134,768 script
 bytes. No candidate runtime API write, hold, producer or rehearsal retry occurred.
 Current-head CI, actual advisory disposition and independent peer review still
 gate merge; runtime hold/drain/recovery assurance remains unproved.
+
+Independent peer review of `1b640bcc` passed the CM binding and seven new finite
+methods, but found that the preexisting subset comparator also accepted extra
+JobTemplate fields such as an added initContainer. That source is superseded by
+the strict comparator correction: strip only eight omitted fields when their
+values and types equal the actual known defaults (empty JobTemplate metadata,
+IfNotPresent, /dev/termination-log, File, ClusterFirst, default-scheduler, integer
+30s grace and integer 420 ConfigMap mode), then require typed equality in both
+directions. Explicitly declared values always remain exact. Added initContainers,
+args, envFrom, unknown fields or changed/default-type values refuse. Three
+necessary focused controls passed in 0.194s serially under `nice -n 19`, including
+the existing actual strip/hold protection case. The only subset JobTemplate
+comparison in the shared watcher was the converter; other CronJob image/suspend
+checks and the six service-goal paths remain unchanged.

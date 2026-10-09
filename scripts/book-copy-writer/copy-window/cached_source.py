@@ -413,6 +413,36 @@ def includes(actual, expected):
     return type(actual) is type(expected) and actual == expected
 
 
+def job_template_equal(actual, expected):
+    """Allow only eight individually proved omitted API defaults; reject extras."""
+    if not includes(actual, expected):
+        return False
+    normalized = copy.deepcopy(actual)
+    defaults = (
+        (('metadata',), {}),
+        (('spec', 'template', 'spec', 'containers', 0, 'imagePullPolicy'), 'IfNotPresent'),
+        (('spec', 'template', 'spec', 'containers', 0, 'terminationMessagePath'), '/dev/termination-log'),
+        (('spec', 'template', 'spec', 'containers', 0, 'terminationMessagePolicy'), 'File'),
+        (('spec', 'template', 'spec', 'dnsPolicy'), 'ClusterFirst'),
+        (('spec', 'template', 'spec', 'schedulerName'), 'default-scheduler'),
+        (('spec', 'template', 'spec', 'terminationGracePeriodSeconds'), 30),
+        (('spec', 'template', 'spec', 'volumes', 0, 'configMap', 'defaultMode'), 420),
+    )
+    for path, value in defaults:
+        a, e = normalized, expected
+        try:
+            for key in path[:-1]:
+                a, e = a[key], e[key]
+        except (KeyError, IndexError, TypeError):
+            continue  # Missing paths gain no exemption from final exact equality.
+        key = path[-1]
+        if key not in e and key in a:
+            if type(a[key]) is not type(value) or a[key] != value:
+                return False
+            del a[key]
+    return includes(normalized, expected) and includes(expected, normalized)
+
+
 def release_patch(source, uid, phase, *, kind='GitRepository', name=SOURCE[1], namespace='flux-system', spec=None):
     identity(source, kind, name, namespace)
     wc.require(source['metadata']['uid'] == uid, 'owned source replaced before resume')
