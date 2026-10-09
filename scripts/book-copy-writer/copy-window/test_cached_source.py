@@ -97,6 +97,12 @@ def fixture():
 
 
 class CachedSourceCases(unittest.TestCase):
+    def configure_converter_fixture(self,w,main=NORMAL_SHA):
+        w.args=types.SimpleNamespace(repo_dir='public-fixture');w.current_main=lambda:main
+        def git(repo,*argv):
+            if argv[0]=='merge-base':return b''
+            return converter_inputs()[argv[1].split(':',1)[1]]
+        patch=mock.patch.object(wc,'git',side_effect=git);patch.start();self.addCleanup(patch.stop)
     def test_exact_source_and_four_suspend_tokens_without_generation_advance(self):
         r,s,p,parents,holds,raw=fixture()
         cache.validate(r,s,p,parents,holds,raw,legacy.CONTRACT,PHASE)
@@ -375,6 +381,7 @@ class CachedSourceCases(unittest.TestCase):
     def test_actual_converter_strip_or_ransom_hold_drift_prevents_terminal_normal(self):
         w=object.__new__(legacy.watch.Watchdog);w.cached=True
         w.normal_goal,converter,cm,ks=converter_fixture();w.state={};w.save=lambda:None
+        self.configure_converter_fixture(w)
         def get(kind,name,ns):
             if kind=='configmap':return cm
             if kind=='kustomization':return ks
@@ -479,6 +486,7 @@ class CachedSourceCases(unittest.TestCase):
             with self.subTest(change=change):
                 w=object.__new__(legacy.watch.Watchdog);w.cached=True;w.normal_goal,converter,cm,ks=converter_fixture()
                 w.state={};w.save=lambda:None;counts={'configmap':0,'kustomization':0}
+                self.configure_converter_fixture(w)
                 if change=='cold-uid':w.state={'normal_converter_custody':{'downloads/'+cm['metadata']['name']:{'uid':'old-owned-uid'}}}
                 def get(kind,name,ns):
                     if kind in counts:
@@ -510,6 +518,7 @@ class CachedSourceCases(unittest.TestCase):
         current=copy.deepcopy(old);current['converter_generator']['revision']='c'*40
         current['converter_generator']['data']['epub_convert.py']+='new reviewed script\n'
         w.normal_goal=current;w.state={'pre_pause_main_sha':NORMAL_SHA};w.args=types.SimpleNamespace(repo_dir='public-fixture');w.save=lambda:None
+        self.configure_converter_fixture(w,main='c'*40)
         def get(kind,name,ns):
             if kind=='configmap':return cm
             if kind=='kustomization':return ks
@@ -517,13 +526,62 @@ class CachedSourceCases(unittest.TestCase):
             if name=='lazylibrarian-epub-convert':return converter
             return dict(spec={'suspend':False,'jobTemplate':{'spec':{'template':{'spec':{'containers':[dict(image=i) for i in old['cron_images'].get(name,[])]}}}}})
         w.kube=get;w.deployment_normal=lambda *_:True
-        with self.assertRaises(ValueError):w.runtime_current_normal()
+        self.assertFalse(w.runtime_current_normal())
         def blob(repo,*argv):
+            if argv[0]=='merge-base':return b''
             self.assertEqual(argv[0],'show');self.assertTrue(argv[1].startswith(NORMAL_SHA+':'))
             return converter_inputs()[argv[1].split(':',1)[1]]
         with mock.patch.object(wc,'blobs',return_value=legacy.NORMAL),mock.patch.object(wc,'git',side_effect=blob):
             self.assertTrue(w.runtime_still_normal())
         self.assertIs(w.normal_goal,current)
+        self.assertFalse(w.held_original_converter_goal)
+
+    def test_applied_revision_accepts_only_reachable_byte_identical_auxiliary_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo=Path(directory);inputs=converter_inputs()
+            def git(*argv):return subprocess.check_output(['git','-C',str(repo),*argv],stderr=subprocess.DEVNULL).decode().strip()
+            git('init','-q','-b','main');git('config','user.name','Finite Fixture');git('config','user.email','fixture@example.invalid')
+            for path,raw in inputs.items():
+                target=repo/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(raw)
+            git('add','.');git('commit','-qm','original');base=git('rev-parse','HEAD')
+            (repo/'unrelated.txt').write_text('public finite unrelated main change\n');git('add','.');git('commit','-qm','unrelated');later=git('rev-parse','HEAD')
+            goal,converter,cm,ks=converter_fixture();goal['converter_generator']=cache.converter_generator(inputs,base)
+            ks['status']['lastAppliedRevision']='main@sha1:'+later
+            w=object.__new__(legacy.watch.Watchdog);w.args=types.SimpleNamespace(repo_dir=str(repo));w.normal_goal=goal
+            w.state={'pre_pause_main_sha':base};w.save=lambda:None;w.current_main=lambda:later
+            w.kube=lambda kind,*_:copy.deepcopy(ks if kind=='kustomization' else cm)
+            w.runtime_current_normal=lambda:w.converter_normal(converter['spec']['jobTemplate'])
+            self.assertFalse(w.converter_normal(converter['spec']['jobTemplate']))  # Current/final remains exact.
+            with mock.patch.object(wc,'blobs',return_value=legacy.NORMAL):
+                self.assertTrue(w.runtime_still_normal())
+                proof=w.state['normal_converter_custody']['downloads/'+cm['metadata']['name']]
+                self.assertEqual((proof['goal_revision'],proof['revision'],proof['reachable_main_revision']),(base,later,later))
+                self.assertFalse(w.held_original_converter_goal)
+                # A lagging current/final revision stays refused, even with equal data.
+                goal['converter_generator']=cache.converter_generator(inputs,later);ks['status']['lastAppliedRevision']='main@sha1:'+base
+                self.assertFalse(w.converter_normal(converter['spec']['jobTemplate']))
+                w.state['pre_pause_main_sha']=later
+                self.assertFalse(w.runtime_still_normal())  # Applied is not a descendant of this baseline.
+                w.state['pre_pause_main_sha']=base
+                # Even comment-only generator drift changes one of the four blobs.
+                target=repo/cache.CONVERTER_INPUTS[0];target.write_bytes(target.read_bytes()+b'\n# changed auxiliary input\n')
+                git('add','.');git('commit','-qm','generator drift');changed=git('rev-parse','HEAD')
+                w.current_main=lambda:changed;ks['status']['lastAppliedRevision']='main@sha1:'+changed
+                self.assertFalse(w.runtime_still_normal())
+                git('checkout','-q','--orphan','foreign');git('commit','-qm','unrelated root');foreign=git('rev-parse','HEAD')
+                w.current_main=lambda:later;ks['status']['lastAppliedRevision']='main@sha1:'+foreign
+                self.assertFalse(w.runtime_still_normal())
+
+    def test_converter_malformed_data_is_false_and_service_ceiling_propagates(self):
+        w=object.__new__(legacy.watch.Watchdog);w.normal_goal,converter,cm,ks=converter_fixture();w.state={};w.save=lambda:None
+        self.configure_converter_fixture(w);w.kube=lambda kind,*_:copy.deepcopy(ks if kind=='kustomization' else cm)
+        for broken in (None,{},dict(spec={'template':{'spec':{'volumes':[]}}})):
+            with self.subTest(broken=broken):self.assertFalse(w.converter_normal(broken))
+        for bad in ('feature@sha1:'+NORMAL_SHA,'main@sha1:not-a-sha',None):
+            ks['status']['lastAppliedRevision']=bad;self.assertFalse(w.converter_normal(converter['spec']['jobTemplate']))
+        ks['status']['lastAppliedRevision']='main@sha1:'+NORMAL_SHA
+        with mock.patch.object(w,'current_main',side_effect=legacy.watch.ServiceCeiling()):
+            with self.assertRaises(legacy.watch.ServiceCeiling):w.converter_normal(converter['spec']['jobTemplate'])
 
     def test_accidental_staging_stop_revokes_before_open_inverse_queries_and_retains_holds(self):
         with tempfile.TemporaryDirectory() as directory:

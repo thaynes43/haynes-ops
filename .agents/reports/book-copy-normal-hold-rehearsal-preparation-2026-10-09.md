@@ -247,3 +247,26 @@ necessary focused controls passed in 0.194s serially under `nice -n 19`, includi
 the existing actual strip/hold protection case. The only subset JobTemplate
 comparison in the shared watcher was the converter; other CronJob image/suspend
 checks and the six service-goal paths remain unchanged.
+
+The actual `b82c792a` advisory (`6090032193`, `6090093642`) reported HIGH
+`4234924494` and MEDIUM `4234924813`; green advisory execution was not a clean
+review. An unrelated later commit applied before a hold can otherwise strand
+the held-original cancellation proof. The ratified successor permits that
+case only inside `runtime_still_normal`: parse the exact applied main SHA,
+prove it is a descendant of the original baseline and reachable from freshly
+fetched main, and read all four auxiliary blobs at that applied SHA. All four
+hashes and all three data values must equal the original goal. Current/final
+Normal and arming still require exact current main; deliberate arming refusal
+while Flux lags remains a preflight gate, addressed by normal convergence before
+the fresh attempt. Inventory, complete data, UID/RV and the remaining service
+fields are still checked. The held-only flag is restored in `finally`, including
+failure. Malformed converter shapes and typed proof failures return unhealthy;
+the owning `ServiceCeiling` control and other `BaseException`s propagate.
+
+Five necessary successor methods passed serially under `nice -n 19` in 1.057s.
+A real finite Git fixture proves unrelated descendant acceptance only for the
+held original, current/final lag refusal, changed auxiliary content refusal,
+older/non-descendant and foreign-root refusal. Malformed volume/revision cases
+return false, while the actual service-ceiling exception propagates. Existing
+strip/hold, bracketed UID/RV/cold custody and original/current-goal controls also
+pass. No cluster write, hold, producer or rehearsal retry was performed.
