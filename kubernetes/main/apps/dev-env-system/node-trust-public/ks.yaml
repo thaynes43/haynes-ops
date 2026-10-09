@@ -6,6 +6,9 @@ metadata:
   namespace: dev-env-system
 spec:
   targetNamespace: dev-env-system
+  dependsOn:
+    - name: external-secrets-stores
+      namespace: external-secrets
   path: ./kubernetes/main/apps/dev-env-system/node-trust-public/app
   prune: true
   sourceRef:

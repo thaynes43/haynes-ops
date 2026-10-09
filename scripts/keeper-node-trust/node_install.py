@@ -16,6 +16,15 @@ from public_key import LIMIT, MARKER, authorized_line, normalize_public
 RECEIPT = ".keeper-node-trust.receipt.json"
 BACKUP_PREFIX = ".authorized_keys.before-keeper-ca."
 MAX_AUTHORIZED = 65536
+REFUSAL_REASONS = frozenset({
+    "DirectoryMetadata", "FileMetadata", "FileSize", "ConcurrentEdit",
+    "MissingExpectedFile", "StageOwner", "ReceiptFormat", "ReceiptIdentity",
+    "ReceiptDigest", "LockMetadata", "ConcurrentInstaller", "ReceiptConflict",
+    "BackupIdentity", "LaterEdit", "ExistingKeyConflict", "PreservationCheck",
+    "MissingReceipt", "RollbackCheck", "Operation", "AccountIdentity",
+    "PublicKeySize", "PublicKeyLines", "PublicKeyType", "PublicKeyWireType",
+    "PublicKeyWireSize", "PublicKeyEncoding", "PublicKeyFormat", "UnexpectedFailure",
+})
 
 
 def refuse(reason):
@@ -225,7 +234,8 @@ if __name__ == "__main__":
     try:
         main()
     except ValueError as exc:
-        print(json.dumps({"result": "refused", "reason": str(exc)}))
+        reason = str(exc) if str(exc) in REFUSAL_REASONS else "UnexpectedFailure"
+        print(json.dumps({"result": "refused", "reason": reason}))
         sys.exit(1)
     except Exception:
         print(json.dumps({"result": "refused", "reason": "UnexpectedFailure"}))

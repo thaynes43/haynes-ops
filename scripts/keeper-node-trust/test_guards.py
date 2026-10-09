@@ -105,12 +105,20 @@ class Guards(unittest.TestCase):
         pod["status"] = {"phase": "Running"}
         delivery.validate_admitted(job, pod)
         for key, value in (("automountServiceAccountToken", True),
+                           ("priorityClassName", "household"),
                            ("initContainers", [{"name": "unexpected"}]),
                            ("volumes", [{"name": "private", "secret": {"secretName": "dev-env-keeper-ssh-ca"}}])):
             changed = copy.deepcopy(pod)
             changed["spec"][key] = value
             with self.assertRaises(ValueError):
                 delivery.validate_admitted(job, changed)
+
+    def test_refusal_output_is_bounded_and_strictly_allowlisted(self):
+        self.assertEqual(delivery.refusal_reason(b'{"result":"refused","reason":"LaterEdit"}'), "LaterEdit")
+        for raw in (b'{"result":"refused","reason":"arbitrary output"}', b'not json',
+                    b'{"result":"refused","reason":"LaterEdit","extra":"payload"}',
+                    b'{"result":"refused","reason":["LaterEdit"]}', b'{}' * 3000):
+            self.assertIsNone(delivery.refusal_reason(raw))
 
 
 if __name__ == "__main__":

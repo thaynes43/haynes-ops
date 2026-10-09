@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 
+from node_install import REFUSAL_REASONS
+
 HERE = Path(__file__).resolve().parent
 NAMESPACE = "dev-env-system"
 SECRET = "dev-env-keeper-node-trust-public"
@@ -59,6 +61,7 @@ def render_job(name, worker):
                      "ttlSecondsAfterFinished": 300,
                      "template": {"metadata": {"annotations": annotations},
                                   "spec": {"restartPolicy": "Never", "serviceAccountName": "default",
+                                           "priorityClassName": "dev-env-agent",
                                            "automountServiceAccountToken": False,
                                            "nodeSelector": {"kubernetes.io/hostname": worker},
                                            "affinity": {"nodeAffinity": {"requiredDuringSchedulingIgnoredDuringExecution": {
@@ -91,6 +94,7 @@ def validate_admitted(job, pod):
             or pod["metadata"].get("annotations", {}).get("k8tz.io/inject") != "false"
             or spec.get("automountServiceAccountToken") is not False
             or spec.get("serviceAccountName") != "default"
+            or spec.get("priorityClassName") != "dev-env-agent"
             or spec.get("initContainers") or spec.get("ephemeralContainers")
             or len(spec.get("containers", [])) != 1
             or spec.get("volumes") != wanted["volumes"]
@@ -111,6 +115,20 @@ def validate_admitted(job, pod):
         raise ValueError("AdmittedEnvironmentGuard")
     if pod.get("status", {}).get("phase") != "Running":
         raise ValueError("PodNotRunning")
+
+
+def refusal_reason(raw):
+    if len(raw) > 4096:
+        return None
+    try:
+        result = json.loads(raw)
+    except (ValueError, UnicodeError):
+        return None
+    if (not isinstance(result, dict) or set(result) != {"result", "reason"}
+            or result["result"] != "refused" or not isinstance(result["reason"], str)
+            or result["reason"] not in REFUSAL_REASONS):
+        return None
+    return result["reason"]
 
 
 def install_nodes(job_name, pod_name):
@@ -148,6 +166,9 @@ def install_nodes(job_name, pod_name):
             producer.stdout.close()
             producer.wait(timeout=5)
             if consumer.returncode or producer.returncode:
+                reason = refusal_reason(consumer.stdout)
+                if reason is not None:
+                    print(json.dumps({"node": node, "refused": reason}), flush=True)
                 raise ValueError("PublicTransferOrInstallFailed")
             receipt = json.loads(consumer.stdout)
             if (set(receipt) != {"result", "originalBytesPreserved", "backup"}
