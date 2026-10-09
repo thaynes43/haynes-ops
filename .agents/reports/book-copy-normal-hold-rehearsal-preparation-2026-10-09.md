@@ -163,6 +163,12 @@ acknowledgement checked the deadline after sending STOP. The final correction
 checks the same original deadline before every STOP and KILL dispatch, as well
 as while awaiting actual state. The expired-budget fixture now requires zero
 signals. Three focused controls passed in 0.163s under serial `nice -n 19`.
+Independent exact `84f73ee9` review passed, receipt
+`e7635686812453acd3c7f0449b7116ed60fc87947050eb74e87729a35882d642`,
+pinning nine files and independently passing those three controls in 0.153s.
+It supersedes the earlier source receipts for the stop/leader-last and dispatch
+corrections. Actual current advisory and required checks still gate merge;
+this is preparation evidence, with no runtime packet or hold.
 An uncaptured surviving process can still prevent proven retirement; its parent
 may have died before its command timeout was enforced. Do not promise that such
 an orphan exits within 50s. Record the miss and continue bounded safe attempts,
