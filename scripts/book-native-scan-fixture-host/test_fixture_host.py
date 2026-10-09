@@ -218,10 +218,48 @@ class HostTests(unittest.TestCase):
             fixture.out, fixture.ready, fixture.phase, fixture.name, fixture.uid = Path(out), manifest, PHASE, manifest["metadata"]["name"], None
             fixture.list = mock.Mock(side_effect=[inv("Job"), inv("Pod")])
             fixture.call = mock.Mock(side_effect=[h.canonical(manifest), h.canonical(job)])
-            with self.assertRaisesRegex(h.Refused, "native_admission_drift"):
+            with self.assertRaisesRegex(h.Refused, "native_job_admission_drift"):
                 fixture.collect()
             self.assertEqual(fixture.uid, JOBUID)
             self.assertEqual(json.loads(h.read_private(Path(out) / "created-job.json")), job)
+
+    def test_dry_run_refusal_retains_raw_response_without_creation(self):
+        manifest, admitted, _ = objects()
+        admitted["spec"]["template"]["spec"]["hostNetwork"] = True
+        with tempfile.TemporaryDirectory() as out:
+            fixture = h.Fixture.__new__(h.Fixture)
+            fixture.out, fixture.ready, fixture.phase, fixture.name = Path(out), manifest, PHASE, manifest["metadata"]["name"]
+            fixture.list = mock.Mock(side_effect=[inv("Job"), inv("Pod")])
+            fixture.call = mock.Mock(return_value=h.canonical(admitted))
+            with self.assertRaisesRegex(h.Refused, "native_job_admission_drift"):
+                fixture.collect()
+            self.assertEqual(json.loads(h.read_private(Path(out) / "server-dry-run.json")), admitted)
+            self.assertEqual(fixture.call.call_count, 1)
+            self.assertIn("--dry-run=server", fixture.call.call_args.args[0])
+            self.assertFalse((Path(out) / "create-intent.json").exists())
+
+    def test_running_admission_refusal_retains_job_and_pod_before_private_input(self):
+        manifest, created, original_pod = objects()
+        for kind in ("job", "pod"):
+            observed, pod = copy.deepcopy(created), copy.deepcopy(original_pod)
+            if kind == "job":
+                observed["spec"]["template"]["spec"]["hostNetwork"] = True
+            else:
+                pod["spec"]["initContainers"] = [{"name": "injected"}]
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as out:
+                fixture = h.Fixture.__new__(h.Fixture)
+                fixture.out, fixture.ready, fixture.phase, fixture.name, fixture.uid = Path(out), manifest, PHASE, manifest["metadata"]["name"], None
+                fixture.list = mock.Mock(side_effect=[inv("Job"), inv("Pod"), inv("Pod", [pod])])
+                fixture.call = mock.Mock(side_effect=[h.canonical(manifest), h.canonical(created)])
+                fixture.get = mock.Mock(return_value=observed)
+                fixture.network, fixture.upload = mock.Mock(), mock.Mock()
+                with self.assertRaisesRegex(h.Refused, f"native_{kind}_admission_drift"):
+                    fixture.collect()
+                self.assertEqual(json.loads(h.read_private(Path(out) / "admission-observed-job.json")), observed)
+                self.assertEqual(json.loads(h.read_private(Path(out) / "admission-observed-pod.json")), pod)
+                self.assertEqual(fixture.call.call_count, 2)
+                fixture.network.assert_not_called()
+                fixture.upload.assert_not_called()
 
     def test_known_create_uid_cleanup_allows_injected_spec_and_phase(self):
         manifest, job, _ = objects()

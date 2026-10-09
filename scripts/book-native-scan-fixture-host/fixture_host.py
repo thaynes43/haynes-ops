@@ -260,7 +260,7 @@ def declared(expected, actual, pod=False):
                 field = entry.get("valueFrom", {}).get("fieldRef", {})
                 if field.get("apiVersion") == "v1":
                     field.pop("apiVersion")
-    require(expected == actual, "native_admission_drift")
+    require(expected == actual, "native_pod_admission_drift" if pod else "native_job_admission_drift")
 
 
 def pod_binding(job, pod, expected, phase):
@@ -520,8 +520,8 @@ class Fixture(Native):
         save_private(self.out / "initial-jobs.json", jobs)
         save_private(self.out / "initial-pods.json", pods)
         admitted = json.loads(self.call(["kubectl", "create", "--dry-run=server", "-f", "-", "-o", "json"], canonical(self.ready)))
-        declared(self.ready, admitted)
         save_private(self.out / "server-dry-run.json", admitted)
+        declared(self.ready, admitted)
         save_private(self.out / "create-intent.json", {"phase": self.phase, "name": self.name, "startedAt": stamp()})
         created_raw = self.call(["kubectl", "create", "-f", "-", "-o", "json"], canonical(self.ready))
         atomic_private_marker(self.out / "created-job.json", created_raw)
@@ -538,6 +538,8 @@ class Fixture(Native):
                 pod = found[0]
                 break
             time.sleep(.2)
+        save_private(self.out / "admission-observed-job.json", job)
+        save_private(self.out / "admission-observed-pod.json", pod)
         pod_binding(job, pod, self.ready, self.phase)
         self.job_started = epoch(job["status"]["startTime"])
         require(self.job_started <= time.time() < self.end <= self.job_started + 180, "original_job_clock")
