@@ -106,3 +106,13 @@ its public fixture tables in the shared throwaway database. The suites now use
 fresh serial tmpfs PG16 containers, preserving actual public-table lock checks
 without production database access or schema substitutions. Local results alone
 do not establish CI success.
+After that correction, CI passed the PG SOURCE suite and exposed a separate
+shallow-mount import failure: identity constants eagerly indexed a repository
+ancestor that `/writer-tests/native-pipeline` does not have. Identity import now
+uses root-safe parent traversal; a finite fixture exercises that exact pathname
+and the private captured runtime-module bundle. Module byte hashes remain strict.
+
+Independent corrected component review at `eff8550b` is recorded by receipt
+`56d99b805c5b8625338227d5b433895bdd3a6e05672044c2355331318254c332`.
+It covers atomic response publication, strict native completed MAIN, exact pins
+and the owner-outcome source boundary. It is source-only and authorizes no runtime.

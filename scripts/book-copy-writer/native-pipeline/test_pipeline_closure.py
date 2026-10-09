@@ -45,6 +45,18 @@ def assignments(path):
 
 
 class PipelineCases(unittest.TestCase):
+    def test_identity_import_supports_shallow_ci_mount_and_private_module_bundle(self):
+        source = (HERE / 'pipeline_pins.py').read_bytes()
+        scope = {'__file__': '/writer-tests/native-pipeline/pipeline_pins.py'}
+        exec(compile(source, scope['__file__'], 'exec'), scope)
+        self.assertEqual(scope['HERE'], Path('/writer-tests/native-pipeline'))
+        self.assertEqual(scope['REPO'], Path('/'))
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / 'runtime-modules'; bundle.mkdir()
+            (bundle / 'epub_copies.py').write_text('private pin-checked fixture')
+            with mock.patch.object(pins, 'HERE', Path(directory)):
+                self.assertEqual(pins.module_source('epub_copies.py'), bundle / 'epub_copies.py')
+
     def test_complete_current_runtime_and_scope_source_pins(self):
         modules = Path('/copy-writer')
         for name, expected in pins.MODULES.items():

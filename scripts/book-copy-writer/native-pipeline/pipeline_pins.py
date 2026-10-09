@@ -1,8 +1,10 @@
 """Reviewed successor identities. No API access or runtime authorization."""
 from pathlib import Path
 
-HERE = Path(__file__).parent
-REPO = HERE.parents[2]
+HERE = Path(__file__).resolve().parent
+# A shallow read-only CI mount need not expose the repository's ancestors.
+# Parent traversal saturates at root; importing identities performs no reads.
+REPO = HERE.parent.parent.parent
 IMAGE = 'ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c'
 APP_IMAGE = 'ghcr.io/thaynes43/haynesnetwork:v0.110.5@sha256:e264e8a63b7a6b8865bfb51ecb38c398534d492ba64c6956960dedd8e6e64c6a'
 IMAGE_SOURCE = '7c99b2afbeed3ec04af55493509169e0778d6418'
@@ -38,6 +40,9 @@ SELECTED_SCOPE = {
 
 
 def module_source(name):
+    packaged = HERE / 'runtime-modules' / name
+    if packaged.is_file():
+        return packaged
     if name in ('epub_copies.py', 'epub_metadata.py', 'epub_copy_preflight.py'):
         return REPO / 'kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert' / name
     return HERE.parent / name
