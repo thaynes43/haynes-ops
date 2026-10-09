@@ -1,0 +1,18 @@
+---
+# Root-authorized isolation preparation; grants no fixture Job or catalog-write GO.
+# Explicit deny takes precedence over additive allow policies. No existing app match.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: book-native-scan-fixture
+  namespace: media
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: book-native-scan-fixture
+  ingressDeny:
+    - fromEntities:
+        - all
+  egressDeny:
+    - toEntities:
+        - all
