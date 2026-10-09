@@ -1,0 +1,41 @@
+name: Native Scanner Fixture Host
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/book-native-scan-fixture-host/**
+      - scripts/book-native-scan-fixture/prepared-runtime.json
+      - .github/workflows/book-native-scan-fixture-host.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/book-native-scan-fixture-host/**
+      - scripts/book-native-scan-fixture/prepared-runtime.json
+      - .github/workflows/book-native-scan-fixture-host.yml
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: Native scanner host - Success
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Finite private-transport and native identity guard tests
+        run: nice -n 19 python3 -B scripts/book-native-scan-fixture-host/test_fixture_host.py
+      - name: Cross-check generic schema encoding against the exact official .NET runtime
+        run: |
+          set -euo pipefail
+          mkdir "${RUNNER_TEMP}/schema-codec"
+          nice -n 19 python3 -B scripts/book-native-scan-fixture-host/schema_codec.py > "${RUNNER_TEMP}/schema-expected.txt"
+          docker run --rm --network none --read-only --cpus .5 --memory 512m \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,size=128m --user "$(id -u):$(id -g)" \
+            -e DOTNET_CLI_HOME=/tmp/dotnet-home -e TZ=America/New_York \
+            -v "$PWD/scripts/book-native-scan-fixture-host:/source:ro" \
+            -v "${RUNNER_TEMP}/schema-codec:/out:rw" \
+            mcr.microsoft.com/dotnet/sdk:10.0.101@sha256:5504edd1267dd4deab3443f960cfab219249c8bd935fbcc358f1c24aeae23fe0 \
+            sh -c 'if ! nice -n 19 dotnet publish /source/SchemaCodec.csproj -m:1 -o /out -p:BaseIntermediateOutputPath=/tmp/obj/ -p:BaseOutputPath=/tmp/bin/ -p:UseAppHost=false -p:CopyRetryCount=0 -p:RestoreSources= > /out/build.log 2>&1; then cat /out/build.log >&2; exit 1; fi; nice -n 19 dotnet /out/SchemaCodec.dll' > "${RUNNER_TEMP}/schema-actual.txt"
+          cmp "${RUNNER_TEMP}/schema-expected.txt" "${RUNNER_TEMP}/schema-actual.txt"
