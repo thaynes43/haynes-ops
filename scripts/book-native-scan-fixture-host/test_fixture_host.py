@@ -233,8 +233,8 @@ class HostTests(unittest.TestCase):
             h.validate_receipt(raw, {**event, "proofFiles": pins[:1], "receiptSha256": h.sha(raw)}, PHASE, JOBUID, PODUID)
         receipt["outcome"] = "unknown"
         raw = h.canonical(receipt)
-        with self.assertRaisesRegex(h.Refused, "unknown_diagnostic_missing"):
-            h.validate_receipt(raw, {**event, "proofFiles": pins[:1], "receiptSha256": h.sha(raw)}, PHASE, JOBUID, PODUID)
+        # Missing/failed diagnostics must preserve the original UNKNOWN DBproof handback.
+        h.validate_receipt(raw, {**event, "proofFiles": pins[:1], "receiptSha256": h.sha(raw)}, PHASE, JOBUID, PODUID)
         receipt["proofFiles"] = pins[:1] + [{"Path": h.DIAGNOSTIC, "Sha256": "a" * 64}]
         raw = h.canonical(receipt)
         h.validate_receipt(raw, {**event, "proofFiles": receipt["proofFiles"], "receiptSha256": h.sha(raw)}, PHASE, JOBUID, PODUID)

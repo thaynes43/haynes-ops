@@ -375,6 +375,13 @@ unit/context and every 25/32 predicate. A bounded PRIVATE diagnostic will retain
 only the fixed fixture stage, exception type and owned compiled method/IL offsets
 in the existing hash-bound proof handback/ACK. It excludes exception messages,
 arguments, file paths, vendor frames, SQLite cells and EPUB/XPath values; public
-runtime errors remain stage/type only. Missing or malformed diagnostics refuse.
+runtime errors remain stage/type only. Ordinary diagnostic derivation/write failures
+remain UNKNOWN and preserve the existing database-proof handback/ACK. Only a fully
+valid mode0600 temporary diagnostic, flushed and atomically renamed, is included;
+partial targets are never evidence. Missing diagnostics cannot prove a callsite or
+advance PASS; malformed present diagnostics refuse. Actual Claude advisory
+6090381814 identified the initial mandatory-diagnostic evidence-loss path; the
+bounded catch/atomic publication and finite failed/missing diagnostic controls fix
+that finding without replacing the original stage/type or database proof gates.
 These source corrections grant no runtime approval: new image/source/host closure,
 fresh CLOSED packet, peer audit and a separately named root GO precede another Job.

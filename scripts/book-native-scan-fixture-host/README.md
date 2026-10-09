@@ -66,10 +66,12 @@ late or partial ACK is a success. The child must reach Pod Succeeded / container
 a current Job Complete, active zero, succeeded one and failed zero, and provide its actual
 native PASS, including unchanged saved/user/curation/lock rows and retained IDs.
 
-UNKNOWN handback also requires the one fixed private `proof-diagnostic.json`, capped
+UNKNOWN handback may also include the one fixed private `proof-diagnostic.json`, capped
 at4096 bytes: exact harness SHA, fixed stage/type and at most eight owned numeric
 MethodToken/IL-offset pairs. Exact keys/types, bounds and scope are checked before
-ACK; messages, paths, arguments or vendor frames refuse. This file is not a database
+ACK; messages, paths, arguments or vendor frames refuse. A failed or missing
+diagnostic leaves UNKNOWN and preserves the original database-proof handback/ACK.
+This file is not a database
 proof and cannot replace any of the five mandatory proofs on a successful receipt.
 
 On success, refusal, upload failure, expiry or interruption, foreground-delete only

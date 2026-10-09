@@ -200,10 +200,13 @@ actual compiled constructors with inert synthetic service proxies: the missing
 IDefaultParser dependency must refuse, and the exact chain must construct without
 invoking any native service method or starting a host.
 
-After an admitted private proof begins, an UNKNOWN outcome durably returns one
+After an admitted private proof begins, an UNKNOWN outcome attempts one bounded
 fixed `proof-diagnostic.json` alongside the database proofs through the existing
 hash-bound receipt/ACK. It contains only the fixed fixture stage/type, harness SHA
-and at most eight owned harness MethodToken/IL-offset pairs. No exception message,
+and at most eight owned harness MethodToken/IL-offset pairs. Only a complete mode0600
+temporary file, flushed and atomically renamed, is included. Ordinary diagnostic
+derivation/write failures preserve the original UNKNOWN and its database-proof
+handback/ACK; missing diagnostics cannot prove a callsite. No exception message,
 argument, source/PDB path, vendor frame or textual stack is retained. A successful
 receipt still requires exactly all five database proofs. The failed v8 run retains
 UNKNOWN; this correction grants no subsequent runtime authority.

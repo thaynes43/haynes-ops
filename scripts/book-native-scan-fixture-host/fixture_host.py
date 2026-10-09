@@ -362,7 +362,6 @@ def validate_receipt(raw, event, phase, job_uid, pod_uid):
     pins = value.get("proofFiles", [])
     require(1 <= len(pins) <= 6 and len({p["Path"] for p in pins}) == len(pins) and all(p["Path"] in PROOFS | {DIAGNOSTIC} and re.fullmatch("[0-9a-f]{64}", p["Sha256"]) for p in pins) and pins == event["proofFiles"], "receipt_scope")
     require(value["outcome"] != "passed-private-proof" or {p["Path"] for p in pins} == PROOFS, "passed_proof_incomplete")
-    require(value["outcome"] != "unknown" or DIAGNOSTIC in {p["Path"] for p in pins}, "unknown_diagnostic_missing")
     return value
 
 
