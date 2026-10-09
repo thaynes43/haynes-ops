@@ -146,3 +146,9 @@ Retirement now retains explicit ownership of every request until actual exit/rea
 Signal masking closes the spawn-to-registration gap; a kill followed by wait timeout
 leaves the request tracked and refuses the retirement marker/absence. The finite
 synthetic timeout regression proves this without a load or blocked native process.
+
+The final advisory found the exclusive-link custody publication could be interrupted
+before staging unlink, leaving a two-link receipt that the private reader refused.
+Handled signals are blocked through link/unlink and directory fsync. A finite real
+SIGTERM-at-link control proves deferred interruption leaves complete one-link
+readable custody. SIGKILL or a blocked filesystem still yields unknown at the cap.

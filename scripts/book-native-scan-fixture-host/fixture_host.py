@@ -98,13 +98,19 @@ def atomic_private_marker(path, value):
     path = Path(path)
     pending = path.with_name(path.name + ".pending-" + str(uuid.uuid4()))
     save_private(pending, value)
-    os.link(pending, path, follow_symlinks=False)  # exclusive final publication
-    pending.unlink()
-    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGALRM, signal.SIGTERM, signal.SIGINT})
     try:
-        os.fsync(directory)
+        os.link(pending, path, follow_symlinks=False)  # exclusive final publication
+        pending.unlink()
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
     finally:
-        os.close(directory)
+        # A deferred handled signal may raise here only after readable one-link
+        # custody and its directory entry are durable. SIGKILL remains unknown.
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
 
 
 def retire_collection(fixture, out):

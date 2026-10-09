@@ -366,6 +366,24 @@ class HostTests(unittest.TestCase):
                 h.atomic_private_marker(path, {"phase": "other"})
             self.assertEqual(json.loads(h.read_private(path)), {"phase": PHASE})
 
+    def test_signal_at_atomic_link_is_deferred_until_one_link_receipt_is_durable(self):
+        real_link = h.os.link
+        def interrupted_link(*args, **kwargs):
+            real_link(*args, **kwargs)
+            h.os.kill(os.getpid(), h.signal.SIGTERM)
+        def stop(*_): raise h.Refused("synthetic_interruption")
+        previous_handler = h.signal.signal(h.signal.SIGTERM, stop)
+        try:
+            with tempfile.TemporaryDirectory() as out:
+                path = Path(out) / "created-job.json"
+                with mock.patch.object(h.os, "link", side_effect=interrupted_link), self.assertRaisesRegex(h.Refused, "synthetic_interruption"):
+                    h.atomic_private_marker(path, {"phase": PHASE})
+                self.assertEqual(path.stat().st_nlink, 1)
+                self.assertEqual(json.loads(h.read_private(path)), {"phase": PHASE})
+                self.assertEqual(list(Path(out).glob("*.pending-*")), [])
+        finally:
+            h.signal.signal(h.signal.SIGTERM, previous_handler)
+
     def test_exact_native_file_time_binding_truncates_to_100ns_and_uses_ny_zone(self):
         self.assertEqual(schema_codec.file_times(946782245123456799), ["2000-01-01 22:04:05.1234567", "2000-01-02 03:04:05.1234567"])
         pin = {"target": "/candidate.epub", "sha256": "a" * 64, "size": 7}

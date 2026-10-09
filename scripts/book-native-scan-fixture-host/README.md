@@ -47,7 +47,8 @@ a current Job Complete, active zero, succeeded one and failed zero, and provide 
 native PASS, including unchanged saved/user/curation/lock rows and retained IDs.
 
 On success, refusal, upload failure, expiry or interruption, foreground-delete only
-the recorded Job UID; atomically publish the fsynced raw creation response before checking admission,
+the recorded Job UID; atomically publish the fsynced raw creation response before checking admission;
+handled signals stay blocked through link/unlink and directory fsync,
 so an injected spec still permits cleanup of its exact name/phase/UID. A valid raw CREATE response proves that namespace/name/UID is owned even if
 admission changes its labels; unknown transport recovery still requires matching phase; collect complete unfiltered raw Jobs and Pods and prove the
 union of exact name, phase label and controller owner is empty. Do not trust a label
