@@ -1,5 +1,9 @@
 # Native book census timing diagnostic — 2026-10-09
 
+This records the earlier sampled diagnostic. The later, separately authorized
+[full LIVE diagnostic](book-census-full-live-diagnostic-2026-10-09.md) passed its
+complete read-only lifecycle; neither result authorizes COPY.
+
 The one ratified diagnostic completed in 25.154 seconds, with native exit zero
 and independent proof that its Job and all matching Pods were absent. It measured
 a complete filesystem walk, the unchanged permission pass, and one 64 MiB file
