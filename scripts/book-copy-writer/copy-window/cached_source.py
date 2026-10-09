@@ -1,5 +1,6 @@
 """Phase-owned cached Git source proof. No hold/merge/Job operations."""
 import gzip
+import copy
 from contextlib import contextmanager
 import ctypes
 import datetime as dt
@@ -95,7 +96,7 @@ def write_private(path, raw):
 
 
 def identity(row, kind, name, namespace='flux-system'):
-    api = {'Pod': 'v1', 'GitRepository': 'source.toolkit.fluxcd.io/v1',
+    api = {'Pod': 'v1', 'ConfigMap': 'v1', 'GitRepository': 'source.toolkit.fluxcd.io/v1',
            'Kustomization': 'kustomize.toolkit.fluxcd.io/v1'}[kind]
     wc.require(row.get('kind') == kind and row.get('apiVersion') == api and row.get('metadata', {}).get('name') == name
                and row['metadata'].get('namespace') == namespace, 'native object identity changed')
@@ -338,6 +339,70 @@ def normal_goal(normal):
                 cron_images['haynesnetwork-' + name] = [image(c) for c in book['containers'].values()]
     return dict(deployments=deployments, helm_values=helm_values, cron_images=cron_images,
                 converter_job_template=converter['spec']['jobTemplate'])
+
+
+CONVERTER_APP = 'kubernetes/main/apps/downloads/lazylibrarian/app'
+CONVERTER_NAME = 'lazylibrarian-epub-convert'
+CONVERTER_FILES = {name: CONVERTER_APP + '/epub-convert/' + name for name in
+                   ('epub_convert.py', 'epub_metadata.py', 'epub_copies.py')}
+CONVERTER_INPUTS = (CONVERTER_APP + '/kustomization.yaml', *CONVERTER_FILES.values())
+
+
+def converter_generator(inputs, revision):
+    """Four auxiliary same-revision inputs; the six service-goal paths stay fixed."""
+    wc.require(re.fullmatch('[0-9a-f]{40}', revision) and set(inputs) == set(CONVERTER_INPUTS),
+               'converter generator revision/input closure')
+    wc.require(all(isinstance(raw, bytes) and 0 < len(raw) <= 1024 * 1024 for raw in inputs.values())
+               and sum(map(len, inputs.values())) <= 1024 * 1024, 'converter generator byte cap')
+    doc = wc.yaml.safe_load(inputs[CONVERTER_INPUTS[0]])
+    wc.require(isinstance(doc, dict) and doc.get('apiVersion') == 'kustomize.config.k8s.io/v1beta1'
+               and doc.get('kind') == 'Kustomization'
+               and set(doc) <= {'apiVersion', 'kind', 'components', 'resources', 'configMapGenerator', 'generatorOptions'}
+               and doc.get('generatorOptions') == {'annotations': {'kustomize.toolkit.fluxcd.io/substitute': 'disabled'}},
+               'unexpected converter generator configuration')
+    generators = doc.get('configMapGenerator')
+    wc.require(isinstance(generators, list) and all(isinstance(x, dict) for x in generators),
+               'converter generator list')
+    found = [g for g in generators if g.get('name') == CONVERTER_NAME]
+    files = [name + '=./epub-convert/' + name for name in CONVERTER_FILES]
+    wc.require(len(found) == 1 and set(found[0]) == {'name', 'files'}
+               and isinstance(found[0]['files'], list) and len(found[0]['files']) == len(files)
+               and set(found[0]['files']) == set(files), 'unexpected converter generator files/keys')
+    return dict(revision=revision, data={name: inputs[path].decode('utf-8') for name, path in CONVERTER_FILES.items()},
+                input_sha256={path: wc.sha(raw) for path, raw in inputs.items()})
+
+
+def converter_reference(template):
+    volumes = template['spec']['template']['spec']['volumes']
+    found = [i for i, v in enumerate(volumes) if v.get('configMap', {}).get('name') == CONVERTER_NAME]
+    wc.require(len(found) == 1, 'exact raw converter ConfigMap reference missing')
+    return found[0]
+
+
+def rendered_converter_template(goal, actual, ks, cm):
+    """Prove the applied generated name and complete content before replacing it."""
+    generator = goal['converter_generator']; expected = copy.deepcopy(goal['converter_job_template'])
+    index = converter_reference(expected)
+    name = actual['spec']['template']['spec']['volumes'][index]['configMap']['name']
+    wc.require(isinstance(name, str) and bool(name), 'rendered converter name missing')
+    identity(ks, 'Kustomization', 'lazylibrarian', 'downloads')
+    spec, status = ks['spec'], ks.get('status', {})
+    wc.require(spec.get('path') == './' + CONVERTER_APP and spec.get('targetNamespace') == 'downloads'
+               and spec.get('sourceRef') == {'kind': 'GitRepository', 'name': 'haynes-ops', 'namespace': 'flux-system'}
+               and status.get('lastAppliedRevision') == 'main@sha1:' + generator['revision']
+               and any(x.get('type') == 'Ready' and x.get('status') == 'True' for x in status.get('conditions', []))
+               and not any(x.get('type') in ('Reconciling', 'Stalled') and x.get('status') == 'True' for x in status.get('conditions', [])),
+               'converter current Flux source/revision/Ready unproved')
+    entries = status.get('inventory', {}).get('entries')
+    wc.require(isinstance(entries, list) and sum(x == {'id': 'downloads_' + name + '__ConfigMap', 'v': 'v1'} for x in entries) == 1,
+               'converter exact Flux ConfigMap inventory unproved')
+    identity(cm, 'ConfigMap', name, 'downloads')
+    wc.require(cm.get('data') == generator['data'] and cm.get('binaryData', {}) == {},
+               'converter complete Git generator data differs')
+    expected['spec']['template']['spec']['volumes'][index]['configMap']['name'] = name
+    return expected, dict(namespace='downloads', name=name, uid=cm['metadata']['uid'],
+                         resourceVersion=cm['metadata']['resourceVersion'], revision=generator['revision'],
+                         input_sha256=generator['input_sha256'])
 
 
 def includes(actual, expected):

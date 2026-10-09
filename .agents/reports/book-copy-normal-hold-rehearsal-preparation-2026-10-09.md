@@ -188,3 +188,48 @@ Validation will use finite fake-native, fake-clock and private local Git fixture
 under `nice -n 19`, serially. No stress, busy loops, wide test runs, native holds,
 Jobs or library writes are permitted during preparation. Runtime proof remains
 missing until the exact closed rehearsal is separately approved and run.
+
+The first exact Normal-only watcher launch on 2026-10-09 at 21:52:01Z refused
+before readiness (exit 2). Packet `5ff97f17` and its initial state are preserved;
+no exercise, hold, producer or data write occurred. Private refusal receipt
+`f6657dd08c183a553bea8d6676d66d369b3c1fc36fe46d2f1638eddeb054c519`
+records fresh unsuspended Source and all six Kustomizations. The runtime check
+compared the raw converter ConfigMap reference `lazylibrarian-epub-convert`
+against Kustomize's generated `lazylibrarian-epub-convert-6hf7f7477c`; this was
+the sole JobTemplate mismatch. Four HelmRelease values/Ready/generation checks,
+four Deployment/Pod/image checks and the six active CronJob checks passed.
+The Source artifact was still at `0555d861` while remote main was `6f255ce4`.
+The attempt remains refused and provides no hold/drain/recovery runtime proof.
+
+The ratified source correction adds four auxiliary inputs from the same immutable
+current Git SHA: the LL app Kustomization and all three converter generator files.
+It preserves the canonical six service-goal paths. Before accepting the generated
+reference, require the exact current-revision Ready LL Flux inventory and its
+source/path/target namespace, then bind the actual downloads ConfigMap name and
+UID plus every data key and byte to that complete generator. Recheck its UID/RV
+after the JobTemplate comparison. Only that proved name is substituted in a copy
+of the expected template; all remaining declared fields retain their checks.
+Unexpected generator settings, file/key/data changes, binary data, inventory,
+revision or identity drift refuse. A source-fixed attempt requires a new unused
+packet, current Source convergence, peer review and separate runtime authorization.
+The four auxiliary blobs are read by immutable SHA for both current Normal and
+the held original Normal goal. They do not enter the six-manifest archive/Stop
+contract. Actual CM UID custody survives a cold reload; UID/RV of both CM and LL
+Kustomization must remain stable across each proof. Suspension does not need an
+invented observed-generation advance: held ownership/drain remains the existing
+separate proof, while this check requires the original applied revision and Ready
+inventory. Kustomize's generated content suffix and reference rewrite are documented
+by [Kubernetes](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/);
+Flux's [inventory schema](https://github.com/fluxcd/kustomize-controller/blob/main/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml)
+defines the exact namespace/name/group/kind reference used here.
+
+Eight focused finite methods passed serially under `nice -n 19` (seven in 1.358s,
+then the added held-original/current-main counterexample in 0.131s). They cover
+the real raw/generated reference mismatch, every remaining declared template
+field, complete generator closure, inventory/revision/source drift, all script
+keys/data/binary data, bracketed UID/RV replacement and cold UID custody, and
+the unchanged six-file archive contract. The source-only same-SHA probe accepted
+all four actual Git inputs at `6f255ce4` with three data keys and 134,768 script
+bytes. No candidate runtime API write, hold, producer or rehearsal retry occurred.
+Current-head CI, actual advisory disposition and independent peer review still
+gate merge; runtime hold/drain/recovery assurance remains unproved.

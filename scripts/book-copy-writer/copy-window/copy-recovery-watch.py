@@ -127,13 +127,18 @@ class Watchdog:
         self.run(['git','-C',self.args.repo_dir,'fetch','origin','main:refs/remotes/origin/main'],timeout=10 if self.cached else 45)
         return self.run(['git','-C',self.args.repo_dir,'rev-parse','origin/main'],timeout=5 if self.cached else 45).strip()
 
+    def bind_converter_generator(self,goal,sha):
+        goal['converter_generator']=cache.converter_generator(
+            {path:contract.git(self.args.repo_dir,'show',sha+':'+path) for path in cache.CONVERTER_INPUTS},sha)
+        return goal
+
     def desired_restored(self,sha):
         # Read immutable YAML from the fetched canonical clone; never checkout or push main.
         import yaml
         self.run(['git','-C',self.args.repo_dir,'fetch','origin','main:refs/remotes/origin/main'])
         normal=contract.blobs(self.args.repo_dir,sha)
         if self.cached:
-            self.normal_goal=cache.normal_goal(normal)
+            self.normal_goal=self.bind_converter_generator(cache.normal_goal(normal),sha)
             return
         for path in contract.PATHS:
             contract.require(contract.sha(normal[path])==self.contract['manifests'][path]['normal_sha256'],'exact normal main manifest bytes differ')
@@ -233,7 +238,24 @@ class Watchdog:
             ('frontend','haynesnetwork-'+n) for n in contract.BOOK_CONTROLLERS]:
             cron=self.kube('cronjob',name,ns)
             if cron['spec'].get('suspend') is not False:return False
-            if name=='lazylibrarian-epub-convert' and not cache.includes(cron['spec'].get('jobTemplate'),goal['converter_job_template']):return False
+            if name=='lazylibrarian-epub-convert':
+                actual=cron['spec'].get('jobTemplate')
+                index=cache.converter_reference(goal['converter_job_template'])
+                cm_name=actual['spec']['template']['spec']['volumes'][index]['configMap']['name']
+                ks=self.kube('kustomization','lazylibrarian','downloads')
+                cm=self.kube('configmap',cm_name,'downloads')
+                expected,proof=cache.rendered_converter_template(goal,actual,ks,cm)
+                if not cache.includes(actual,expected):return False
+                again=self.kube('configmap',cm_name,'downloads')
+                ks_again=self.kube('kustomization','lazylibrarian','downloads')
+                cache.identity(again,'ConfigMap',cm_name,'downloads')
+                cache.identity(ks_again,'Kustomization','lazylibrarian','downloads')
+                if any(before['metadata'][key]!=after['metadata'][key] for before,after in ((cm,again),(ks,ks_again))
+                       for key in ('uid','resourceVersion')):return False
+                custody=self.state.setdefault('normal_converter_custody',{})
+                owned=custody.get('downloads/'+cm_name)
+                if owned is not None and owned['uid']!=proof['uid']:return False
+                custody['downloads/'+cm_name]=proof;self.save()
             if ns=='frontend' and [c['image'] for c in cron['spec']['jobTemplate']['spec']['template']['spec']['containers']]!=goal['cron_images'][name]:return False
         for (ns,name),desired in goal['deployments'].items():
             if not self.deployment_normal(name,ns,desired['replicas']):return False
@@ -245,7 +267,8 @@ class Watchdog:
         # before releasing holds needed to apply that upgrade.
         current=self.normal_goal
         try:
-            self.normal_goal=cache.normal_goal(contract.blobs(self.args.repo_dir,self.state['pre_pause_main_sha']))
+            baseline=self.state['pre_pause_main_sha']
+            self.normal_goal=self.bind_converter_generator(cache.normal_goal(contract.blobs(self.args.repo_dir,baseline)),baseline)
             return self.runtime_current_normal()
         finally:self.normal_goal=current
 
