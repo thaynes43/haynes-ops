@@ -77,3 +77,53 @@ One shared flag enables both unpublished conversion and visible existing-file
 strip; saved-dependency read-before-write and 30-day idle do not preserve native
 IDs atomically against scanning/new reading. No production writer is approved by
 this failed isolated diagnostic or its evidence fix.
+
+## Second authorized diagnostic: exact generated Pod metadata
+
+Evidence-only [#3668](https://github.com/thaynes43/haynes-ops/pull/3668) merged
+`ab7218dc179a20fd60f3d16cc3e7b9e93e8e7ce8`; exact head
+`04e56042b77649ded4b408e77d8324ad7f33ffb2` passed all CI and actual clean advisory
+6088274196/6088286991. Independent source/prepared-delta receipt SHA
+`ce8e518aa9ab042fc319722331588fa5929114dcae8fd431e80a4fd1ba43d445`.
+Coordinator separately authorized phase `dc4aa9fd-102e-44c3-975a-5ed26615ad05`,
+Job `media/ransom-native-fixture-dc4aa9fd`, closed v4 packet SHA
+`5394ffd8b075e9d08221a719cc4d10ef1e0e2f16a955a720d9e73378f6e2371f`.
+New immutable authorized approval SHA
+`a47ae14715f280e0ab69190cf0bc11024d33dd55677c270d8c7afff4b6815ea4`
+bound fresh launch clocks 20:01:24.681309Z–20:06:24.681309Z; production writer
+approval remained false, with original execution180/total200 and all input gates.
+
+The second actual run refused `native_pod_admission_drift` before inputs. Retained
+Job `3d972168-afde-4d00-b9d7-e6938f7c78e0` passes the exact comparison. Retained
+Pod `57a09487-51e2-4f80-8cec-eb1027656dff` has identical executable spec and these
+six generated-metadata differences: omitted typed PodList-child apiVersion/kind,
+the singleton `batch.kubernetes.io/job-tracking` finalizer, region=main/zone=w,
+and the single Cilium eth0/default/current-Pod-IP network-status annotation.
+Normalized difference receipt SHA
+`b00aa340962ef0e04ab1fb89794088a6e54a288ea205c07ab1805f06455bae3c`.
+
+Private outcome `/home/dev/work/hn-ransom-native-fixture-actual-dc4aa9fd-1009`:
+host receipt SHA `382a3707c954c1d232760ac14cff3749e59a9c501c77914a1824f940ce588c17`;
+exact UID foreground/full-union cleanup at 20:01:43.308391Z SHA
+`814932488a5d030fde150ab6e0d6656a5f94e1c998f990c8004badf66d1da1c8`;
+watchdog SHA `c24f452b7e6c2e1611699725bbfdb8afbf127dce6b09eb10182bfa4738eb746a`.
+Independent retained/fresh complete union owned0/0 RV819314483/819314488 and
+exact refusal audit receipt SHA
+`eb353ec03b48b934edfe8761de3f4a92368ba9185c0e2498a4fcca910415b4a0` at
+`/home/dev/work/hn-ransom-native-fixture-actual-dc4aa9fd-independent-audit-1009/independent-review.json`.
+There is still no private delivery, native scan or saved-state proof.
+
+The ratified preparation correction uses a fresh exact named Pod GET with the
+same namespace/name/UID and explicit v1/Pod. It retains list/Get/Node observations,
+requires the singleton tracking finalizer, validates the exact observed CNI key set
+as one Cilium eth0/default attachment/current Pod IP/empty DNS/valid MAC and
+PodCIDR-local gateway, and requires region/zone to match a fresh named target Node.
+Only these verified fields leave the comparison copy; all other metadata and
+every executable field remain exact. Actual target Node observed UID
+`b7ef4b0a-524b-411b-9b47-79e3c37e7269`, labels main/w and PodCIDR10.42.3.0/24;
+the next phase must freshly read it. No guessed defaults or RBAC change.
+
+Finite generic controls cover wrong named-GET UID/type/namespace/name, extra
+finalizer, topology mismatch, additional CNI attachment/IP/key, changed reviewed
+annotation/extra labels and executable-spec injection. A newly reviewed closed
+packet and another separate exact GO are needed before any further diagnostic.

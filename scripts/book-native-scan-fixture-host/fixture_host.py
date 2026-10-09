@@ -6,6 +6,7 @@ import errno
 import datetime as dt
 import fcntl
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -263,14 +264,43 @@ def declared(expected, actual, pod=False):
     require(expected == actual, "native_pod_admission_drift" if pod else "native_job_admission_drift")
 
 
-def pod_binding(job, pod, expected, phase):
+def verified_generated_pod_metadata(pod, node):
+    """Remove only observed native metadata after proving its exact provenance."""
+    require(node.get("apiVersion") == "v1" and node.get("kind") == "Node" and node.get("metadata", {}).get("name") == pod["spec"]["nodeName"] == "talosw01" and bool(node["metadata"].get("uid")), "actual_node_identity")
+    value = copy.deepcopy(pod)
+    metadata = value["metadata"]
+    require(metadata.get("finalizers") == ["batch.kubernetes.io/job-tracking"], "native_pod_finalizers")
+    metadata.pop("finalizers")
+    for label in ("topology.kubernetes.io/region", "topology.kubernetes.io/zone"):
+        native = node["metadata"].get("labels", {}).get(label)
+        require(isinstance(native, str) and bool(native) and metadata.get("labels", {}).get(label) == native, "native_pod_topology")
+        metadata["labels"].pop(label)
+    annotations = metadata.get("annotations", {})
+    encoded = annotations.get("k8s.v1.cni.cncf.io/network-status")
+    require(isinstance(encoded, str), "native_cni_annotation_missing")
+    attachment = json.loads(encoded)
+    require(isinstance(attachment, list) and len(attachment) == 1 and isinstance(attachment[0], dict), "native_cni_attachment_count")
+    cni = attachment[0]
+    require(set(cni) == {"name", "interface", "ips", "mac", "default", "dns", "gateway"}, "native_cni_attachment_keys")
+    pod_ip = pod.get("status", {}).get("podIP")
+    require(cni["name"] == "cilium" and cni["interface"] == "eth0" and cni["default"] is True and cni["dns"] == {} and cni["ips"] == [pod_ip] and pod.get("status", {}).get("podIPs") == [{"ip": pod_ip}], "native_cni_attachment_identity")
+    require(isinstance(cni["mac"], str) and re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", cni["mac"]) and isinstance(cni["gateway"], list) and len(cni["gateway"]) == 1, "native_cni_address_shape")
+    subnet = ipaddress.ip_network(node["spec"]["podCIDR"])
+    require(ipaddress.ip_address(pod_ip) in subnet and ipaddress.ip_address(cni["gateway"][0]) in subnet, "native_cni_node_subnet")
+    annotations.pop("k8s.v1.cni.cncf.io/network-status")
+    if not annotations:
+        metadata.pop("annotations")
+    return value
+
+
+def pod_binding(job, pod, expected, phase, node):
     declared(expected, job)
     require(job["metadata"].get("labels", {}).get(LABEL) == phase, "job_phase")
     owned_pods({"apiVersion": "v1", "kind": "PodList", "metadata": {"resourceVersion": "checked"}, "items": [pod]}, expected["metadata"]["name"], phase, job["metadata"]["uid"])
     want = {"apiVersion": "v1", "kind": "Pod", "metadata": copy.deepcopy(expected["spec"]["template"]["metadata"]), "spec": copy.deepcopy(expected["spec"]["template"]["spec"])}
     want["metadata"]["name"] = pod["metadata"]["name"]
     want["metadata"]["namespace"] = NS
-    declared(want, pod, True)
+    declared(want, verified_generated_pod_metadata(pod, node), True)
     statuses = pod.get("status", {}).get("containerStatuses", [])
     require(len(statuses) == 1 and statuses[0]["name"] == "native-scanner" and statuses[0].get("restartCount") == 0 and statuses[0].get("imageID", "").endswith(IMAGE.split("@", 1)[1]), "actual_image_or_restart")
 
@@ -483,8 +513,23 @@ class Fixture(Native):
         require(job["metadata"]["uid"] == self.uid, "job_uid_changed")
         pods = owned_pods(self.list("Pod"), self.name, self.phase, self.uid)
         require(len(pods) == 1 and pods[0]["metadata"]["uid"] == self.pod_uid, "fixture_pod_changed")
-        pod_binding(job, pods[0], self.ready, self.phase)
-        return job, pods[0]
+        pod = self.named_pod(pods[0])
+        pod_binding(job, pod, self.ready, self.phase, self.fixture_node(pod))
+        return job, pod
+
+    def named_pod(self, listed, retain=False):
+        pod = self.get("pod", listed["metadata"]["name"])
+        if retain:
+            save_private(self.out / "admission-observed-pod.json", pod)
+        require(pod.get("apiVersion") == "v1" and pod.get("kind") == "Pod" and pod.get("metadata", {}).get("namespace") == NS and isinstance(pod["metadata"].get("uid"), str) and bool(pod["metadata"]["uid"]) and all(pod["metadata"].get(key) == listed["metadata"].get(key) for key in ("namespace", "name", "uid")), "named_pod_identity_changed")
+        return pod
+
+    def fixture_node(self, pod, retain=False):
+        require(pod["spec"]["nodeName"] == self.ready["spec"]["template"]["spec"]["nodeName"], "fixture_node_changed")
+        node = self.get("node", pod["spec"]["nodeName"])
+        if retain:
+            save_private(self.out / "admission-observed-node.json", node)
+        return node
 
     def network(self, pod, prefix="before"):
         cnp = self.get("ciliumnetworkpolicy", "book-native-scan-fixture")
@@ -539,8 +584,10 @@ class Fixture(Native):
                 break
             time.sleep(.2)
         save_private(self.out / "admission-observed-job.json", job)
-        save_private(self.out / "admission-observed-pod.json", pod)
-        pod_binding(job, pod, self.ready, self.phase)
+        save_private(self.out / "admission-observed-pod-list.json", pod)
+        pod = self.named_pod(pod, retain=True)
+        node = self.fixture_node(pod, retain=True)
+        pod_binding(job, pod, self.ready, self.phase, node)
         self.job_started = epoch(job["status"]["startTime"])
         require(self.job_started <= time.time() < self.end <= self.job_started + 180, "original_job_clock")
         save_private(self.out / "running-job.json", job)

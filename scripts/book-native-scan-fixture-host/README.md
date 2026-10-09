@@ -40,6 +40,13 @@ Persist the raw server dry-run Job and first observed running Job/Pod privately
 before their admission comparisons. Job and Pod drift have distinct refusal codes;
 the retained bytes support an exact comparison after UID cleanup. This evidence
 does not admit additional defaults or relax any pre-input gate.
+Use a fresh named Pod GET with the same namespace/name/UID as the typed list
+selection. Only verified generated Pod metadata is removed from its comparison
+copy: the exact batch job-tracking finalizer, one Cilium eth0/default attachment
+with the actual Pod IP, empty DNS and native local gateway, and region/zone labels
+equal to a fresh named target Node. Every other label/annotation and executable
+spec, container, mount, environment and security field remains exact. Retain the
+first list-selected Pod, named Pod and Node privately before these checks.
 
 Create every private output exclusively in a mode-0700 directory; files are mode
 0600, verified and fsynced. Upload bounded exact input files with atomic final rename,

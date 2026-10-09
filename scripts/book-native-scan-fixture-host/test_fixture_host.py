@@ -21,6 +21,10 @@ JOBUID = "22222222-2222-4222-8222-222222222222"
 PODUID = "33333333-3333-4333-8333-333333333333"
 
 
+def node():
+    return {"apiVersion": "v1", "kind": "Node", "metadata": {"name": "talosw01", "uid": "44444444-4444-4444-8444-444444444444", "labels": {"topology.kubernetes.io/region": "main", "topology.kubernetes.io/zone": "w"}}, "spec": {"podCIDR": "10.42.3.0/24"}}
+
+
 def objects():
     manifest = h.manifest(TEMPLATE, PHASE)
     job = copy.deepcopy(manifest)
@@ -29,7 +33,10 @@ def objects():
     pod = {"apiVersion": "v1", "kind": "Pod", "metadata": copy.deepcopy(template["metadata"]), "spec": copy.deepcopy(template["spec"])}
     pod["metadata"].update(name="fixture-pod", namespace="media", uid=PODUID, ownerReferences=[{"kind": "Job", "apiVersion": "batch/v1", "controller": True, "name": job["metadata"]["name"], "uid": JOBUID}])
     pod["metadata"]["labels"]["batch.kubernetes.io/controller-uid"] = JOBUID
-    pod["status"] = {"phase": "Running", "containerStatuses": [{"name": "native-scanner", "restartCount": 0, "imageID": h.IMAGE}]}
+    pod["metadata"]["labels"].update(node()["metadata"]["labels"])
+    pod["metadata"]["finalizers"] = ["batch.kubernetes.io/job-tracking"]
+    pod["metadata"].setdefault("annotations", {})["k8s.v1.cni.cncf.io/network-status"] = json.dumps([{"name": "cilium", "interface": "eth0", "ips": ["10.42.3.129"], "mac": "32:e6:57:96:8f:b0", "default": True, "dns": {}, "gateway": ["10.42.3.185"]}])
+    pod["status"] = {"phase": "Running", "podIP": "10.42.3.129", "podIPs": [{"ip": "10.42.3.129"}], "containerStatuses": [{"name": "native-scanner", "restartCount": 0, "imageID": h.IMAGE}]}
     return manifest, job, pod
 
 
@@ -52,7 +59,7 @@ class HostTests(unittest.TestCase):
         job["spec"].update(completionMode="NonIndexed", suspend=False, manualSelector=False, selector={"matchLabels": {"batch.kubernetes.io/controller-uid": JOBUID}})
         pod["spec"].update(dnsPolicy="ClusterFirst", schedulerName="default-scheduler", serviceAccountName="default", serviceAccount="default")
         pod["spec"]["containers"][0].update(terminationMessagePath="/dev/termination-log", terminationMessagePolicy="File")
-        h.pod_binding(job, pod, manifest, PHASE)
+        h.pod_binding(job, pod, manifest, PHASE, node())
         self.assertEqual(manifest["spec"]["activeDeadlineSeconds"], 180)
         self.assertFalse(manifest["spec"]["template"]["spec"]["enableServiceLinks"])
 
@@ -63,7 +70,7 @@ class HostTests(unittest.TestCase):
             bad = copy.deepcopy(pod)
             change(bad)
             with self.assertRaises(h.Refused):
-                h.pod_binding(job, bad, manifest, PHASE)
+                h.pod_binding(job, bad, manifest, PHASE, node())
 
     def test_actual_image_restart_or_owner_conflict_refuses(self):
         manifest, job, pod = objects()
@@ -71,7 +78,55 @@ class HostTests(unittest.TestCase):
             bad = copy.deepcopy(pod)
             change(bad)
             with self.assertRaises(h.Refused):
-                h.pod_binding(job, bad, manifest, PHASE)
+                h.pod_binding(job, bad, manifest, PHASE, node())
+
+    def test_named_pod_get_requires_exact_typed_list_identity(self):
+        _, _, actual = objects()
+        listed = copy.deepcopy(actual)
+        listed.pop("apiVersion")
+        listed.pop("kind")
+        with tempfile.TemporaryDirectory() as out:
+            fixture = h.Fixture.__new__(h.Fixture)
+            fixture.out, fixture.get = Path(out), mock.Mock(return_value=actual)
+            self.assertEqual(fixture.named_pod(listed, retain=True), actual)
+            self.assertEqual(json.loads(h.read_private(Path(out) / "admission-observed-pod.json")), actual)
+            self.assertEqual(fixture.get.call_args.args, ("pod", actual["metadata"]["name"]))
+        changes = (lambda p: p["metadata"].update(uid=str(uuid.uuid4())), lambda p: p.update(kind="Node"), lambda p: p.pop("apiVersion"), lambda p: p["metadata"].update(namespace="other"), lambda p: p["metadata"].update(name="reused"))
+        for change in changes:
+            bad = copy.deepcopy(actual)
+            change(bad)
+            fixture = h.Fixture.__new__(h.Fixture)
+            fixture.get = mock.Mock(return_value=bad)
+            with self.assertRaisesRegex(h.Refused, "named_pod_identity_changed"):
+                fixture.named_pod(listed)
+
+    def test_generated_pod_metadata_is_verified_and_other_metadata_stays_exact(self):
+        manifest, job, pod = objects()
+        h.pod_binding(job, pod, manifest, PHASE, node())
+        def attachment_change(p, change):
+            key = "k8s.v1.cni.cncf.io/network-status"
+            value = json.loads(p["metadata"]["annotations"][key])
+            change(value)
+            p["metadata"]["annotations"][key] = json.dumps(value)
+        changes = (
+            lambda p: p["metadata"]["finalizers"].append("injected/finalizer"),
+            lambda p: p["metadata"]["labels"].update({"topology.kubernetes.io/zone": "other"}),
+            lambda p: attachment_change(p, lambda a: a.append(copy.deepcopy(a[0]))),
+            lambda p: attachment_change(p, lambda a: a[0]["ips"].append("10.42.3.130")),
+            lambda p: attachment_change(p, lambda a: a[0].update(ips=["10.42.3.130"])),
+            lambda p: attachment_change(p, lambda a: a[0].update(extra=True)),
+            lambda p: attachment_change(p, lambda a: a[0].update(name="secondary")),
+            lambda p: attachment_change(p, lambda a: a[0].update(gateway=["10.42.4.1"])),
+            lambda p: p["metadata"]["annotations"].update({"injected/annotation": "unexpected"}),
+            lambda p: p["metadata"]["annotations"].update({"k8tz.io/inject": "true"}),
+            lambda p: p["metadata"]["labels"].update({"injected/label": "unexpected"}),
+            lambda p: p["spec"].update(hostNetwork=True),
+        )
+        for change in changes:
+            bad = copy.deepcopy(pod)
+            change(bad)
+            with self.assertRaises(h.Refused):
+                h.pod_binding(job, bad, manifest, PHASE, node())
 
     def test_union_finds_owner_only_pod_with_missing_phase(self):
         manifest, _, pod = objects()
@@ -251,7 +306,7 @@ class HostTests(unittest.TestCase):
                 fixture.out, fixture.ready, fixture.phase, fixture.name, fixture.uid = Path(out), manifest, PHASE, manifest["metadata"]["name"], None
                 fixture.list = mock.Mock(side_effect=[inv("Job"), inv("Pod"), inv("Pod", [pod])])
                 fixture.call = mock.Mock(side_effect=[h.canonical(manifest), h.canonical(created)])
-                fixture.get = mock.Mock(return_value=observed)
+                fixture.get = mock.Mock(side_effect=[observed, pod, node()])
                 fixture.network, fixture.upload = mock.Mock(), mock.Mock()
                 with self.assertRaisesRegex(h.Refused, f"native_{kind}_admission_drift"):
                     fixture.collect()
