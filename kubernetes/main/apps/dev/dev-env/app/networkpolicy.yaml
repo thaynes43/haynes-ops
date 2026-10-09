@@ -105,6 +105,8 @@ spec:
               - matchName: "productionresultssa0.blob.core.windows.net"
               - matchName: "productionresultssa1.blob.core.windows.net"
               - matchName: "productionresultssa5.blob.core.windows.net"
+              # Observed main native fixture 13-module Actions artifact closure.
+              - matchName: "productionresultssa7.blob.core.windows.net"
               - matchName: "productionresultssa10.blob.core.windows.net"
               - matchName: "productionresultssa15.blob.core.windows.net"
               - matchName: "productionresultssa19.blob.core.windows.net"
@@ -461,6 +463,7 @@ spec:
         - matchName: "productionresultssa0.blob.core.windows.net"
         - matchName: "productionresultssa1.blob.core.windows.net"
         - matchName: "productionresultssa5.blob.core.windows.net"
+        - matchName: "productionresultssa7.blob.core.windows.net"
         - matchName: "productionresultssa10.blob.core.windows.net"
         - matchName: "productionresultssa15.blob.core.windows.net"
         - matchName: "productionresultssa19.blob.core.windows.net"

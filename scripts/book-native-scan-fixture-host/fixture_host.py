@@ -24,7 +24,7 @@ import schema_codec
 NS = "media"
 LABEL = "book-native-fixture"
 APP = "book-native-scan-fixture"
-IMAGE = "ghcr.io/thaynes43/book-native-scan-fixture@sha256:be740bbdebb77c4d0a8d284778bc4dbe86d64b54feb0e203836ad37e54e5e25e"
+IMAGE = "ghcr.io/thaynes43/book-native-scan-fixture@sha256:909a98b9bab8342aee77c1f1dc1bc9aa26d48ca958646b95bfe3ca809e365c75"
 NATIVE = "sha256:ca6af7a18d7124d014702983c2364e485294f808c1552e9555f2595b7cda7982"
 GATE = "set -eu; umask 077; while [ ! -f /fixture-input/approved-packet.json ]; do sleep 1; done; exec nice -n 19 /fixture/NativeScannerFixture --prepared-private-fixture"
 UPLOAD = "set -eu; umask 077; p=$1; h=$2; [ ! -e \"$p\" ]; [ ! -L \"$p\" ]; [ ! -e \"$p.partial\" ]; [ ! -L \"$p.partial\" ]; mkdir -p -- \"$(dirname -- \"$p\")\"; cat > \"$p.partial\"; chmod 600 \"$p.partial\"; [ \"$(sha256sum -- \"$p.partial\" | cut -d ' ' -f 1)\" = \"$h\" ]; sync -f \"$p.partial\"; mv -n -- \"$p.partial\" \"$p\"; [ ! -e \"$p.partial\" ]; [ ! -L \"$p\" ]; [ \"$(sha256sum -- \"$p\" | cut -d ' ' -f 1)\" = \"$h\" ]; sync -f \"$(dirname -- \"$p\")\"; printf '%s\\n' \"$h\""
