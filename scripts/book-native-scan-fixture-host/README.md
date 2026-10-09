@@ -19,7 +19,8 @@ The source wrapper waits for the atomic approved packet before starting the apph
 This permits Cilium endpoint realization and fresh production module evidence before
 delivery. It never extends the original Job start + 180s clock. Bound stdout, exec,
 API requests and input sizes. At 180s the host stops collection and retires its active native request process.
-Only its durable retirement marker permits a union-absence receipt. An independent
+Only actual exit/reap of every owned request permits its durable retirement marker,
+and only that marker permits a union-absence receipt. An independent
 watchdog attempts UID cleanup during 180–200s alongside main foreground cleanup;
 it leaves valid cleanup running and kills only the exact dedicated host group at
 200s if absence remains unproved. A frozen launcher or API outage produces durable

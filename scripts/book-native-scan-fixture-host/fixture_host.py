@@ -111,6 +111,7 @@ def retire_collection(fixture, out):
     # The original collection alarm must not interrupt a completed collect while
     # its retirement marker is being fsynced. Keep the same absolute 200s cap.
     signal.setitimer(signal.ITIMER_REAL, max(.001, fixture.end + 20 - time.time()))
+    require(not fixture.requests, "active_request_not_reaped")
     atomic_private_marker(Path(out) / "execution-retired.json", {"phase": fixture.phase, "retiredAt": stamp(), "runnerPid": os.getpid()})
 
 
@@ -302,6 +303,7 @@ def validate_receipt(raw, event, phase, job_uid, pod_uid):
 class Native:
     def __init__(self, out, end):
         self.out, self.end = Path(out), end
+        self.requests = set()
 
     def call(self, args, payload=None, limit=1024 * 1024, seconds=10):
         until = min(self.end, time.time() + seconds)
@@ -311,10 +313,18 @@ class Native:
                 source.write(payload)
                 source.seek(0)
             require(time.time() < until, "native_request_deadline")
-            process = subprocess.Popen(args, stdin=source, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            process = None
             output = bytearray()
             total = 0
             try:
+                # A pending deadline signal after registration still enters the
+                # outer cleanup finally, so it kills/reaps the owned request.
+                previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGALRM, signal.SIGTERM, signal.SIGINT})
+                try:
+                    process = subprocess.Popen(args, stdin=source, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.requests.add(process)
+                finally:
+                    signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
                 with selectors.DefaultSelector() as select:
                     select.register(process.stdout, selectors.EVENT_READ, True)
                     select.register(process.stderr, selectors.EVENT_READ, False)
@@ -332,11 +342,16 @@ class Native:
                     require(process.wait(timeout=max(.001, until - time.time())) == 0, "native_request_refused")
                 return bytes(output)
             finally:
-                if process.poll() is None:
-                    process.kill()
-                    process.wait(timeout=2)
-                process.stdout.close()
-                process.stderr.close()
+                if process is not None:
+                    try:
+                        if process.poll() is None:
+                            process.kill()
+                            process.wait(timeout=2)
+                    finally:
+                        if process.poll() is not None:
+                            self.requests.discard(process)
+                        process.stdout.close()
+                        process.stderr.close()
 
     def get(self, resource, name):
         return json.loads(self.call(["kubectl", "get", resource, name, "-n", NS, "-o", "json"]))

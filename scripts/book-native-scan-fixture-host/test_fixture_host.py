@@ -327,8 +327,24 @@ class HostTests(unittest.TestCase):
             h.kill_owned_runner(state)
         kill.assert_not_called()
 
+    def test_killed_but_unreaped_request_cannot_publish_retirement(self):
+        process = mock.Mock()
+        process.poll.return_value = None
+        process.wait.side_effect = h.subprocess.TimeoutExpired("synthetic", 2)
+        with tempfile.TemporaryDirectory() as out:
+            native = h.Native(out, time.time() + 3)
+            native.phase = PHASE
+            with mock.patch.object(h.subprocess, "Popen", return_value=process), mock.patch.object(h.selectors, "DefaultSelector", side_effect=h.Refused("synthetic_request")):
+                with self.assertRaises(h.subprocess.TimeoutExpired):
+                    native.call(["synthetic"], seconds=2)
+            self.assertEqual(native.requests, {process})
+            process.kill.assert_called_once()
+            with mock.patch.object(h.signal, "setitimer"), self.assertRaisesRegex(h.Refused, "active_request_not_reaped"):
+                h.retire_collection(native, out)
+            self.assertFalse((Path(out) / "execution-retired.json").exists())
+
     def test_cleanup_deadline_is_armed_before_atomic_retirement_io(self):
-        fixture = type("FakeFixture", (), {"end": 180, "phase": PHASE})()
+        fixture = type("FakeFixture", (), {"end": 180, "phase": PHASE, "requests": set()})()
         order = []
         def timer(_, seconds):
             self.assertAlmostEqual(seconds, 20.1)

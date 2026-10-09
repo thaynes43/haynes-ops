@@ -141,3 +141,8 @@ Both created and recovered custody responses use exclusive atomic publication of
 fully fsynced bytes; an interrupted partial staging file cannot shadow the unknown
 CREATE recovery path. Finite control proves such a partial stage still requires
 fresh exact-phase native UID recovery before cleanup. Final source local tests31PASS.
+
+Retirement now retains explicit ownership of every request until actual exit/reap.
+Signal masking closes the spawn-to-registration gap; a kill followed by wait timeout
+leaves the request tracked and refuses the retirement marker/absence. The finite
+synthetic timeout regression proves this without a load or blocked native process.
