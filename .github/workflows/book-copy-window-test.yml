@@ -32,4 +32,5 @@ jobs:
       - name: Finite serial fake API, fake clock and local Git replay checks
         run: |
           nice -n 19 python3 -B scripts/book-copy-writer/copy-window/test_window.py
+          nice -n 19 python3 -B scripts/book-copy-writer/copy-window/test_cached_source.py
           bash -n scripts/book-copy-writer/copy-window/retarget-restore.sh
