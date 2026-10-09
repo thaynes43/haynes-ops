@@ -96,7 +96,7 @@ def save_private(path, raw):
 
 def atomic_private_marker(path, value):
     path = Path(path)
-    pending = path.with_name(path.name + ".pending")
+    pending = path.with_name(path.name + ".pending-" + str(uuid.uuid4()))
     save_private(pending, value)
     os.link(pending, path, follow_symlinks=False)  # exclusive final publication
     pending.unlink()
@@ -484,7 +484,7 @@ class Fixture(Native):
         save_private(self.out / "server-dry-run.json", admitted)
         save_private(self.out / "create-intent.json", {"phase": self.phase, "name": self.name, "startedAt": stamp()})
         created_raw = self.call(["kubectl", "create", "-f", "-", "-o", "json"], canonical(self.ready))
-        save_private(self.out / "created-job.json", created_raw)
+        atomic_private_marker(self.out / "created-job.json", created_raw)
         created = json.loads(created_raw)
         self.uid = created_uid(self.ready, created)
         declared(self.ready, created)
@@ -600,7 +600,7 @@ def cleanup_locked(state, out):
                 recovered = Native(out, state["end"] + 20).get("job", name)
                 require(recovered.get("metadata", {}).get("labels", {}).get(LABEL) == state["phase"], "cleanup_reused_name")
                 created_uid(state["manifest"], recovered)
-                save_private(recovered_path, recovered)
+                atomic_private_marker(recovered_path, recovered)
             uid = created_uid(state["manifest"], recovered)
             # A lost creation response plus NotFound is still unknown: an API
             # commit may be late. Never turn that observation into absence.

@@ -270,6 +270,19 @@ class HostTests(unittest.TestCase):
             with self.assertRaisesRegex(h.Refused, "actual_fixture_modules_changed_before_input"):
                 fixture.fixture_modules({"metadata": {"name": "synthetic"}})
 
+    def test_interrupted_custody_stage_recovers_only_current_exact_phase_uid(self):
+        manifest, job, _ = objects()
+        with tempfile.TemporaryDirectory() as out:
+            h.save_private(Path(out) / "created-job.json.pending-interrupted", b'{"metadata":')
+            h.save_private(Path(out) / "initial-jobs.json", inv("Job"))
+            h.save_private(Path(out) / "create-intent.json", {"phase": PHASE})
+            h.save_private(Path(out) / "execution-retired.json", {"phase": PHASE})
+            with mock.patch.object(h.Native, "get", return_value=job), mock.patch.object(h.Native, "cleanup") as cleanup:
+                h.cleanup_locked({"manifest": manifest, "phase": PHASE, "end": time.time() + 2}, out)
+            self.assertEqual(cleanup.call_args.args[2], JOBUID)
+            self.assertEqual(json.loads(h.read_private(Path(out) / "recovered-job.json")), job)
+            self.assertFalse((Path(out) / "created-job.json").exists())
+
     def test_cleanup_cannot_prove_absence_before_request_retirement(self):
         manifest, _, _ = objects()
         with tempfile.TemporaryDirectory() as out, mock.patch.object(h.Native, "cleanup") as cleanup:

@@ -136,3 +136,8 @@ known-admission-drift/lost-create boundaries. New-head CI and independent review
 precede source merge. Private host approval/input packet remain prepared false and
 unbound to a runtime clock. No Job or native scan, production metadata/EPUB change,
 list write, schedule pause or global strip enable occurred.
+
+Both created and recovered custody responses use exclusive atomic publication of
+fully fsynced bytes; an interrupted partial staging file cannot shadow the unknown
+CREATE recovery path. Finite control proves such a partial stage still requires
+fresh exact-phase native UID recovery before cleanup. Final source local tests31PASS.
