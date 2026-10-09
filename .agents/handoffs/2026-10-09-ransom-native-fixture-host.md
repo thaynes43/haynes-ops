@@ -1,0 +1,75 @@
+# #825 private native scanner publication and host preparation
+
+Preparation only. No Job, native scan, production SQL/EPUB/library/list mutation,
+service pause or hourly gate enable is authorized or executed by this record.
+
+Ops #3657 merged `1c2f3a120d6a872dc3a02bccf32b0af155ec0372`. Main publisher
+run [37971642354](https://github.com/thaynes43/haynes-ops/actions/runs/37971642354)
+passed the actual self-contained apphost in the exact Kavita base: .NET 10.0.1,
+America/New_York/current offset, native reflection, no host/scan and the undrained
+stdout hard-deadline check. It published the same tested image without rebuilding:
+`ghcr.io/thaynes43/book-native-scan-fixture@sha256:80dec7a2ce706440b6ff590fa618a161dd08f4044561d1255f28111fe565b9ad`.
+
+Official verified cosign 3.1.3 binary SHA
+`4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71`
+verified the exact digest with GitHub workflow identity
+`book-native-scan-fixture.yml@refs/heads/main`, issuer
+`https://token.actions.githubusercontent.com`, repository and merge SHA. One valid
+signature passed trusted CA-chain and offline transparency inclusion. Private receipt
+`/tmp/hn-native-fixture-publication-proof-1009/cosign.json` SHA
+`1d36be602d839002fdc4562bf8c21558a3c9285a5c48b72c26b5f305ff5b975b`.
+
+Anonymous native GHCR manifest/config/digest verification and one bounded 49,433,039B
+public fixture-layer extraction pinned actual apphost
+`e69bf8acaebacfcbf629421cda294fcf3b3bef50ee7a7618500e1663a7edadec`,
+harness DLL `67b20cd19abc5ffbb1d2e763a8ce521a5abad4246151ee0dffd819eadf1eb3b4`,
+coreclr `6fa2a199e10062c461e41ec16363fa230b055b0725849f0fd03d98e2985f7cf4`,
+hostfxr `c3e2533b589029a1fa65cddd8830ccf9b74beee5d5766ee910f043f9822d6f11`
+and CoreLib `c0200fae4e13e3b4c394e6d4f6bf478f7966f380f2caadfbdff28981949b7ba6`.
+Private public-byte receipt `registry-proof.json` SHA
+`c588d5544705094a7c7d1f71ff6e5dceb64c860b83b59b988492269e893fc217`.
+Eight production native module hashes were independently read through the actual
+Kavita Pod; their frozen base/image consistency must be freshly rebound inside a
+future Job phase. No old current-source observation is reused as fresh authority.
+The Actions generic receipt download was refused at an unallowlisted Azure blob
+hostname; no proxy, mirror or allowlist workaround was attempted.
+
+Final source peer receipt for `aff866f73bb7573bc389ec236ca06cb118f7b4e5` supersedes
+the earlier 6400 receipt: ten exact files, seven finite guards, source-only PASS,
+SHA `5d39b3588e691a177e05cdc87325f5410a46ed29b93d3bbd1655f0643547c558`.
+Its private path is
+`/home/dev/work/hn-825-ransom-native-fixture-independent-review-aff866.json`.
+It established no actual scanner, private fixture or library COPY result.
+
+Ops #3658 installed the purpose-only policy through GitOps: Kustomization Ready,
+CNP `media/book-native-scan-fixture`, UID `e1646b24-a200-45cf-bdee-40c3db1955af`,
+RV `819122067`, Valid=True, exact app selector and explicit all-entity ingress/egress
+deny. There were zero matching Pods. That is installed-source proof; future endpoint
+and native BPF realization remain pre-input gates. The new host preparation uses
+strict actual admission, the original 180s worker clock, a frozen independent 200s
+cleanup watchdog, private fsynced packet-last transport, full-state handback/ACK and
+exact UID deletion plus complete unfiltered native union proof. Unknown shapes and
+outcomes refuse; no automatic retry. Its prepared approval cannot execute.
+
+Owner-boundary premise audit: #840's
+[6059299582](https://github.com/thaynes43/haynesnetwork/issues/840#issuecomment-6059299582)
+is a bot-recorded coordinator ruling to keep the whole Ransom folder held and avoid
+progress migration, then use series-only strip after 30 days actual activity. It does
+not state a human catalog-SQL prohibition. The #835/#838/#839/#842 recordings limit
+other **EPUB** metadata changes. Accepted ADR-046 makes hnet's books integration
+read-only; ADR-105/106 govern allowed EPUB rewriting and backup/fence preservation.
+They supply no blanket ban on a separately documented manual technical repair.
+The seven-field same-ID writer remains new and unapproved here; coordinator ratifies
+the real permission/design premise only after actual native proof. Do not ask an owner
+question based on an invented ban or an agent-authored work order.
+
+Hourly safety remains open and #3571 stays held. Current automatic existing-file strip
+has configured holds/collision/filesystem guards but no native saved-dependency fence.
+The 16:34 diagnostic clone has 17 progress rows, 11 sessions, 20 activities, 9 history
+rows, 259 reading-list items and 49 curated links; it does not prove Ransom is the only
+affected work. Before admitting existing maintenance, freshly close the full 21-table,
+saved-list/curation/lock scope against actual physical OPF/projected native identity.
+Hold every dependent identity-changing file until same-ID preservation is proved.
+Idle 30 days is not progress-loss permission. A read-before-write dependency check is
+not atomic with native scanning or new reading. Hidden conversion output before
+atomic publication must be assessed separately from visible existing EPUBs.
