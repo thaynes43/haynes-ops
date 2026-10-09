@@ -241,3 +241,43 @@ assembly, checker and outcome module pins and a verified signed image before a
 new COPY-compatible capture. A baseline created with the old fe12 copy module
 cannot be relabeled to match the new MAIN module. These are integration gates,
 not authority to create a successor Job or reset an artifact clock.
+
+## Published source and scheduled converter verification
+
+Health PR #3653 merged at `7c99b2afbeed3ec04af55493509169e0778d6418` on
+2026-10-09 at 17:30:35Z. Its exact main
+[publication run](https://github.com/thaynes43/haynes-ops/actions/runs/37966779884)
+passed the complete pinned-image PostgreSQL 16 suite (27 tests), bound suite
+(17 tests) and the remaining finite transport/native/performance checks. The
+published immutable image is
+`ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c`.
+
+Cosign 3.1.3 verified that exact digest with normal Fulcio certificate-chain, SCT
+and Rekor checks, exact GitHub issuer, repository, main workflow identity
+`.github/workflows/book-copy-writer-build.yml@refs/heads/main`, and source SHA
+`7c99b2afbeed3ec04af55493509169e0778d6418`; no verification bypass flags were used.
+The receipt SHA-256 is
+`9bc68e6f5c21ac436838786f10ccc93db776108b9e897a7558730e4b9bd99ddc`.
+Registry COPY layers verified all six bundled files against the exact merged
+Git blobs, with image user `1000:1000`, workdir `/copy-writer`, and its unchanged
+manual writer entrypoint:
+
+| File | SHA-256 |
+| --- | --- |
+| `requirements.txt` | `830451570988c97907965090ff7d83b327681336527f6f06dc92d0c74411becc` |
+| `epub_copies.py` | `b79389c89bd5a57b4737ad693d2c209bc513e818343064ec04c8f0fcfb24a7da` |
+| `epub_metadata.py` | `ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773` |
+| `book_copy_writer.py` | `fbfec65f4af933da6ec9aca90536501e4514cebfb8e378584e3085a993493880` |
+| `bound_census.py` | `47c62c82277e5511d5011845ff0600acd0f1d97212077f41b31fba40775065f3` |
+| `proof_transport.py` | `096ba710805623638b87d8c31f6be2653fe57ae0377bf35a27dabf014755e8a5` |
+
+Flux applied LL revision `a7636ee760f9909875fc1cc81f8e804356c6ead9`, which contains
+the health merge. The live scheduled converter points to
+`lazylibrarian-epub-convert-6hf7f7477c`; its actual `epub_copies.py` hash matches
+the table, schedule remains `20 * * * *`, `suspend=false`, and
+`STRIP_SERIES_METADATA=0`. The LL Deployment remains ready 1/1 at generation 29
+and has no volume referencing the converter ConfigMap; this update causes no
+expected LL service restart. This is source publication and scheduled-template
+verification only. The signed image does not sign an injected reader payload,
+and fresh pipeline bindings, independent packet review and explicit runtime
+approval remain required before any manual Job, pause or COPY.
