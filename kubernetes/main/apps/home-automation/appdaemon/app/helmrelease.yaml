@@ -37,13 +37,24 @@ spec:
                 enabled: true
                 custom: true
                 spec:
-                  tcpSocket:
+                  httpGet:
+                    path: /api/appdaemon
                     port: &port 5050
                   initialDelaySeconds: 5
                   periodSeconds: 10
-                  timeoutSeconds: 1
+                  timeoutSeconds: 3
                   failureThreshold: 3
               readiness: *probes
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/appdaemon
+                    port: *port
+                  periodSeconds: 10
+                  timeoutSeconds: 3
+                  failureThreshold: 18
             securityContext:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
