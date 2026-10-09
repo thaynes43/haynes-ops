@@ -6,6 +6,7 @@ import errno
 import datetime as dt
 import fcntl
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -132,10 +133,11 @@ def atomic_private_marker(path, value):
         os.close(directory)
 
 
-def retire_collection(fixture, out):
+def retire_collection(fixture, out, original_execution_end=None):
     # The original collection alarm must not interrupt a completed collect while
     # its retirement marker is being fsynced. Keep the same absolute 200s cap.
-    signal.setitimer(signal.ITIMER_REAL, max(.001, fixture.end + 20 - time.time()))
+    execution_end = fixture.end if original_execution_end is None else original_execution_end
+    signal.setitimer(signal.ITIMER_REAL, max(.001, execution_end + 20 - time.time()))
     require(not fixture.requests, "active_request_not_reaped")
     atomic_private_marker(Path(out) / "execution-retired.json", {"phase": fixture.phase, "retiredAt": stamp(), "runnerPid": os.getpid()})
 
@@ -263,14 +265,51 @@ def declared(expected, actual, pod=False):
     require(expected == actual, "native_pod_admission_drift" if pod else "native_job_admission_drift")
 
 
-def pod_binding(job, pod, expected, phase):
+def verified_generated_pod_metadata(pod, node, allow_removed_finalizer=False):
+    """Remove only observed native metadata after proving its exact provenance."""
+    require(node.get("apiVersion") == "v1" and node.get("kind") == "Node" and node.get("metadata", {}).get("name") == pod["spec"]["nodeName"] == "talosw01" and bool(node["metadata"].get("uid")), "actual_node_identity")
+    value = copy.deepcopy(pod)
+    metadata = value["metadata"]
+    finalizers = metadata.get("finalizers", [])
+    require(finalizers == ["batch.kubernetes.io/job-tracking"] or allow_removed_finalizer and finalizers == [], "native_pod_finalizers")
+    metadata.pop("finalizers", None)
+    for label in ("topology.kubernetes.io/region", "topology.kubernetes.io/zone"):
+        native = node["metadata"].get("labels", {}).get(label)
+        require(isinstance(native, str) and bool(native) and metadata.get("labels", {}).get(label) == native, "native_pod_topology")
+        metadata["labels"].pop(label)
+    annotations = metadata.get("annotations", {})
+    encoded = annotations.get("k8s.v1.cni.cncf.io/network-status")
+    require(isinstance(encoded, str), "native_cni_annotation_missing")
+    attachment = json.loads(encoded)
+    require(isinstance(attachment, list) and len(attachment) == 1 and isinstance(attachment[0], dict), "native_cni_attachment_count")
+    cni = attachment[0]
+    require(set(cni) == {"name", "interface", "ips", "mac", "default", "dns", "gateway"}, "native_cni_attachment_keys")
+    pod_ip = pod.get("status", {}).get("podIP")
+    require(cni["name"] == "cilium" and cni["interface"] == "eth0" and cni["default"] is True and cni["dns"] == {} and cni["ips"] == [pod_ip] and pod.get("status", {}).get("podIPs") == [{"ip": pod_ip}], "native_cni_attachment_identity")
+    require(isinstance(cni["mac"], str) and re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", cni["mac"]) and isinstance(cni["gateway"], list) and len(cni["gateway"]) == 1, "native_cni_address_shape")
+    subnet = ipaddress.ip_network(node["spec"]["podCIDR"])
+    require(ipaddress.ip_address(pod_ip) in subnet and ipaddress.ip_address(cni["gateway"][0]) in subnet, "native_cni_node_subnet")
+    annotations.pop("k8s.v1.cni.cncf.io/network-status")
+    if not annotations:
+        metadata.pop("annotations")
+    return value
+
+
+def pod_binding(job, pod, expected, phase, node, after_ack=False):
     declared(expected, job)
     require(job["metadata"].get("labels", {}).get(LABEL) == phase, "job_phase")
     owned_pods({"apiVersion": "v1", "kind": "PodList", "metadata": {"resourceVersion": "checked"}, "items": [pod]}, expected["metadata"]["name"], phase, job["metadata"]["uid"])
     want = {"apiVersion": "v1", "kind": "Pod", "metadata": copy.deepcopy(expected["spec"]["template"]["metadata"]), "spec": copy.deepcopy(expected["spec"]["template"]["spec"])}
     want["metadata"]["name"] = pod["metadata"]["name"]
     want["metadata"]["namespace"] = NS
-    declared(want, pod, True)
+    removed = after_ack and pod["metadata"].get("finalizers", []) == []
+    if removed:
+        states = pod.get("status", {}).get("containerStatuses", [])
+        require(pod.get("status", {}).get("phase") == "Succeeded" and len(states) == 1 and bool(states[0].get("state", {}).get("terminated")), "native_terminal_finalizer_removed")
+        # Validates the native Completed/exit0/restarts0 and failed-Job guards.
+        # Complete may still be pending; it remains mandatory for final success.
+        completed(job, pod)
+    declared(want, verified_generated_pod_metadata(pod, node, removed), True)
     statuses = pod.get("status", {}).get("containerStatuses", [])
     require(len(statuses) == 1 and statuses[0]["name"] == "native-scanner" and statuses[0].get("restartCount") == 0 and statuses[0].get("imageID", "").endswith(IMAGE.split("@", 1)[1]), "actual_image_or_restart")
 
@@ -450,11 +489,29 @@ class Fixture(Native):
         self.approval = approval
         self.start = time.time()
         super().__init__(out, self.start + 180)
+        self.original_end = self.end
         self.phase = approval["phase"]
         self.ready = manifest(json.loads(Path(approval["templatePath"]).read_text()), self.phase)
         require(sha(canonical(self.ready)) == approval["manifestSha256"], "reviewed_manifest_changed")
         self.name = self.ready["metadata"]["name"]
         self.uid = self.pod_uid = None
+
+    def bind_job_clock(self, job):
+        require(job["metadata"]["uid"] == self.uid, "job_clock_uid_changed")
+        self.job_started = epoch(job["status"]["startTime"])
+        self.end = min(self.original_end, self.job_started + 180)
+        require(self.job_started <= time.time() < self.end <= self.original_end, "original_job_clock")
+        signal.setitimer(signal.ITIMER_REAL, max(.001, self.end - time.time()))
+        save_private(self.out / "actual-execution-clock.json", {"originalHostExecutionEnd": stamp(self.original_end), "jobStartedAt": stamp(self.job_started), "collectionExpiresAt": stamp(self.end), "originalHostCleanupEnd": stamp(self.original_end + 20)})
+
+    def approved_packet(self, source_raw, network_raw, observed):
+        packet = copy.deepcopy(self.approval["fixturePacket"])
+        for rule in packet["ScanAllowances"]:
+            if rule["Table"] == "MangaFile" and rule["Field"] in ("LastModified", "LastModifiedUtc"):
+                rule["After"] = observed[rule["Field"]]
+        packet.update(ExplicitRootFixtureApproval=True, Phase=self.phase, JobUid=self.uid, PodUid=self.pod_uid, Node="talosw01", JobStartedAt=stamp(self.job_started), ExpiresAt=stamp(self.end), PrivateSourceProofSha256=sha(source_raw), NetworkDenyProofSha256=sha(network_raw))
+        packet["Inputs"] = [{"Path": p["target"], "Sha256": p["sha256"]} for p in self.approval["uploads"]] + [{"Path": "/fixture-input/source-proof.json", "Sha256": sha(source_raw)}, {"Path": "/fixture-input/network-deny-proof.json", "Sha256": sha(network_raw)}]
+        return packet
 
     def native_now(self):
         expected = self.approval["expectedLiveNative"]
@@ -478,13 +535,28 @@ class Fixture(Native):
         result = {"ObservedAt": observed, "PodUid": before["metadata"]["uid"], "ImageTag": expected["ImageTag"], "ImageDigest": NATIVE, "TimeZone": lines[8], "ActualUtcOffset": ("-" if offset[0] == "-" else "") + offset[1:] + ":00", "Modules": [{"Path": path, "Sha256": modules[path]} for path in MODULES]}
         return result
 
-    def binding(self):
+    def binding(self, after_ack=False):
         job = self.get("job", self.name)
         require(job["metadata"]["uid"] == self.uid, "job_uid_changed")
         pods = owned_pods(self.list("Pod"), self.name, self.phase, self.uid)
         require(len(pods) == 1 and pods[0]["metadata"]["uid"] == self.pod_uid, "fixture_pod_changed")
-        pod_binding(job, pods[0], self.ready, self.phase)
-        return job, pods[0]
+        pod = self.named_pod(pods[0])
+        pod_binding(job, pod, self.ready, self.phase, self.fixture_node(pod), after_ack)
+        return job, pod
+
+    def named_pod(self, listed, retain=False):
+        pod = self.get("pod", listed["metadata"]["name"])
+        if retain:
+            save_private(self.out / "admission-observed-pod.json", pod)
+        require(pod.get("apiVersion") == "v1" and pod.get("kind") == "Pod" and pod.get("metadata", {}).get("namespace") == NS and isinstance(pod["metadata"].get("uid"), str) and bool(pod["metadata"]["uid"]) and all(pod["metadata"].get(key) == listed["metadata"].get(key) for key in ("namespace", "name", "uid")), "named_pod_identity_changed")
+        return pod
+
+    def fixture_node(self, pod, retain=False):
+        require(pod["spec"]["nodeName"] == self.ready["spec"]["template"]["spec"]["nodeName"], "fixture_node_changed")
+        node = self.get("node", pod["spec"]["nodeName"])
+        if retain:
+            save_private(self.out / "admission-observed-node.json", node)
+        return node
 
     def network(self, pod, prefix="before"):
         cnp = self.get("ciliumnetworkpolicy", "book-native-scan-fixture")
@@ -539,10 +611,11 @@ class Fixture(Native):
                 break
             time.sleep(.2)
         save_private(self.out / "admission-observed-job.json", job)
-        save_private(self.out / "admission-observed-pod.json", pod)
-        pod_binding(job, pod, self.ready, self.phase)
-        self.job_started = epoch(job["status"]["startTime"])
-        require(self.job_started <= time.time() < self.end <= self.job_started + 180, "original_job_clock")
+        save_private(self.out / "admission-observed-pod-list.json", pod)
+        pod = self.named_pod(pod, retain=True)
+        node = self.fixture_node(pod, retain=True)
+        pod_binding(job, pod, self.ready, self.phase, node)
+        self.bind_job_clock(job)
         save_private(self.out / "running-job.json", job)
         save_private(self.out / "running-pod.json", pod)
         network = self.network(pod)
@@ -563,12 +636,7 @@ class Fixture(Native):
         source["CandidateFileTimestamp"] = observed
         save_private(self.out / "actual-candidate-file-timestamp.json", observed)
         source_raw, network_raw = canonical(source), canonical(network)
-        packet = copy.deepcopy(self.approval["fixturePacket"])
-        for rule in packet["ScanAllowances"]:
-            if rule["Table"] == "MangaFile" and rule["Field"] in ("LastModified", "LastModifiedUtc"):
-                rule["After"] = observed[rule["Field"]]
-        packet.update(ExplicitRootFixtureApproval=True, Phase=self.phase, JobUid=self.uid, PodUid=self.pod_uid, Node="talosw01", JobStartedAt=stamp(self.job_started), ExpiresAt=stamp(self.end), PrivateSourceProofSha256=sha(source_raw), NetworkDenyProofSha256=sha(network_raw))
-        packet["Inputs"] = [{"Path": p["target"], "Sha256": p["sha256"]} for p in self.approval["uploads"]] + [{"Path": "/fixture-input/source-proof.json", "Sha256": sha(source_raw)}, {"Path": "/fixture-input/network-deny-proof.json", "Sha256": sha(network_raw)}]
+        packet = self.approved_packet(source_raw, network_raw, observed)
         save_private(self.out / "actual-source-proof.json", source_raw)
         save_private(self.out / "actual-network-proof.json", network_raw)
         save_private(self.out / "actual-approved-packet.json", packet)
@@ -605,7 +673,7 @@ class Fixture(Native):
         save_private(self.out / "evidence-ack.json", ack)
         self.upload(pod["metadata"]["name"], "/fixture-input/evidence-ack.json", canonical(ack))
         while True:
-            job, current = self.binding()
+            job, current = self.binding(after_ack=True)
             if completed(job, current):
                 break
             time.sleep(.2)
@@ -724,7 +792,7 @@ def run(approval_path, out, approved_sha):
     finally:
         # collect() has fully unwound Native.call, which kills and reaps its
         # active subprocess in finally; no collection method is called again.
-        retire_collection(fixture, out)
+        retire_collection(fixture, out, state["end"])
         try:
             cleanup_locked(state, out)
             require((out / "cleanup-receipt.json").exists(), "cleanup_unproved")

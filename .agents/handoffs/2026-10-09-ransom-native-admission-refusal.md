@@ -77,3 +77,79 @@ One shared flag enables both unpublished conversion and visible existing-file
 strip; saved-dependency read-before-write and 30-day idle do not preserve native
 IDs atomically against scanning/new reading. No production writer is approved by
 this failed isolated diagnostic or its evidence fix.
+
+## Second authorized diagnostic: exact generated Pod metadata
+
+Evidence-only [#3668](https://github.com/thaynes43/haynes-ops/pull/3668) merged
+`ab7218dc179a20fd60f3d16cc3e7b9e93e8e7ce8`; exact head
+`04e56042b77649ded4b408e77d8324ad7f33ffb2` passed all CI and actual clean advisory
+6088274196/6088286991. Independent source/prepared-delta receipt SHA
+`ce8e518aa9ab042fc319722331588fa5929114dcae8fd431e80a4fd1ba43d445`.
+Coordinator separately authorized phase `dc4aa9fd-102e-44c3-975a-5ed26615ad05`,
+Job `media/ransom-native-fixture-dc4aa9fd`, closed v4 packet SHA
+`5394ffd8b075e9d08221a719cc4d10ef1e0e2f16a955a720d9e73378f6e2371f`.
+New immutable authorized approval SHA
+`a47ae14715f280e0ab69190cf0bc11024d33dd55677c270d8c7afff4b6815ea4`
+bound fresh launch clocks 20:01:24.681309Z–20:06:24.681309Z; production writer
+approval remained false, with original execution180/total200 and all input gates.
+
+The second actual run refused `native_pod_admission_drift` before inputs. Retained
+Job `3d972168-afde-4d00-b9d7-e6938f7c78e0` passes the exact comparison. Retained
+Pod `57a09487-51e2-4f80-8cec-eb1027656dff` has identical executable spec and these
+six generated-metadata differences: omitted typed PodList-child apiVersion/kind,
+the singleton `batch.kubernetes.io/job-tracking` finalizer, region=main/zone=w,
+and the single Cilium eth0/default/current-Pod-IP network-status annotation.
+Normalized difference receipt SHA
+`b00aa340962ef0e04ab1fb89794088a6e54a288ea205c07ab1805f06455bae3c`.
+
+Private outcome `/home/dev/work/hn-ransom-native-fixture-actual-dc4aa9fd-1009`:
+host receipt SHA `382a3707c954c1d232760ac14cff3749e59a9c501c77914a1824f940ce588c17`;
+exact UID foreground/full-union cleanup at 20:01:43.308391Z SHA
+`814932488a5d030fde150ab6e0d6656a5f94e1c998f990c8004badf66d1da1c8`;
+watchdog SHA `c24f452b7e6c2e1611699725bbfdb8afbf127dce6b09eb10182bfa4738eb746a`.
+Independent retained/fresh complete union owned0/0 RV819314483/819314488 and
+exact refusal audit receipt SHA
+`eb353ec03b48b934edfe8761de3f4a92368ba9185c0e2498a4fcca910415b4a0` at
+`/home/dev/work/hn-ransom-native-fixture-actual-dc4aa9fd-independent-audit-1009/independent-review.json`.
+There is still no private delivery, native scan or saved-state proof.
+
+The ratified preparation correction uses a fresh exact named Pod GET with the
+same namespace/name/UID and explicit v1/Pod. It retains list/Get/Node observations,
+requires the singleton tracking finalizer, validates the exact observed CNI key set
+as one Cilium eth0/default attachment/current Pod IP/empty DNS/valid MAC and
+PodCIDR-local gateway, and requires region/zone to match a fresh named target Node.
+Only these verified fields leave the comparison copy; all other metadata and
+every executable field remain exact. Actual target Node observed UID
+`b7ef4b0a-524b-411b-9b47-79e3c37e7269`, labels main/w and PodCIDR10.42.3.0/24;
+the next phase must freshly read it. No guessed defaults or RBAC change.
+
+Finite generic controls cover wrong named-GET UID/type/namespace/name, extra
+finalizer, topology mismatch, additional CNI attachment/IP/key, changed reviewed
+annotation/extra labels and executable-spec injection. A newly reviewed closed
+packet and another separate exact GO are needed before any further diagnostic.
+
+Root review caught the post-ACK finalizer transition before source merge/runtime.
+The actual server is v1.35.5; its
+[tagged controller](https://github.com/kubernetes/kubernetes/blob/v1.35.5/pkg/controller/job/job_controller.go#L1120)
+removes Pod finalizers before completion counters and Job Complete. The successor
+therefore permits missing/empty tracking finalizers only after durable evidence ACK
+for the same owned/spec-exact Pod Succeeded with one native Completed/exit0/restarts0
+container and no failed Job. A pending Job Complete remains pending; overall success
+still requires Complete/active0/failed0/succeeded1. Running/pre-input requires the
+singleton and unexpected finalizers always refuse. A finite regression through the
+host's real binding method proves pre-ACK refusal, post-ACK pending, then Complete success, with
+negative running/exit/restart/finalizer/spec variants.
+The final local serial `nice -n 19` suite passed 38/38 in 0.166s and diff checks
+passed; these generic fixtures use no API, database, native scanner or Job.
+
+Before another run, retained actual timestamps also proved the old Job-clock gate
+would reject: host start20:01:36.0722086 versus native Job start20:01:36Z. Root
+ratified shortening collection expiry to the earlier of original host execution end
+and exact owned Job start+180. The collection alarm and packet use that earlier end;
+the immutable watchdog state and foreground cleanup retain original host200, never
+a fresh admission-relative window. Finite second-truncated/later-Job cases prove
+exact packet expiry inside both clocks and original cleanup cap. A bounded sleeping
+request is killed/reaped at the shortened request deadline before retirement; the
+existing unreaped-request refusal remains. Final serial nice19 suite40/40 PASS0.236s.
+Earlier e199/v6 source/prepared readiness is superseded for this clock correction;
+no further Job is authorized here.

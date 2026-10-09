@@ -40,6 +40,22 @@ Persist the raw server dry-run Job and first observed running Job/Pod privately
 before their admission comparisons. Job and Pod drift have distinct refusal codes;
 the retained bytes support an exact comparison after UID cleanup. This evidence
 does not admit additional defaults or relax any pre-input gate.
+Use a fresh named Pod GET with the same namespace/name/UID as the typed list
+selection. Only verified generated Pod metadata is removed from its comparison
+copy: the exact batch job-tracking finalizer, one Cilium eth0/default attachment
+with the actual Pod IP, empty DNS and native local gateway, and region/zone labels
+equal to a fresh named target Node. Every other label/annotation and executable
+spec, container, mount, environment and security field remains exact. Retain the
+first list-selected Pod, named Pod and Node privately before these checks.
+After durable evidence ACK, the controller may remove the tracking finalizer before
+Job Complete is reported. Permit its absence only for the same owned/configured
+Pod Succeeded with one native container Completed/exit0/restarts0 and no failed Job
+state. Job Complete remains required for overall success. Running and pre-input
+admission still require the singleton; unexpected finalizers always refuse.
+Native Job startTime may be second-truncated. Collection expiry is the earlier of
+the original host execution end and that exact owned Job start plus180; the alarm
+is shortened before inputs and the packet uses that expiry. Original host/watchdog
+execution180/cleanup200 remain upper bounds. Admission never starts a new window.
 
 Create every private output exclusively in a mode-0700 directory; files are mode
 0600, verified and fsynced. Upload bounded exact input files with atomic final rename,
