@@ -53,9 +53,26 @@ as a substitute for the actual native methods.
 
 Compare every saved-state/history/curation/lock row verbatim and all retained IDs after
 the scanner. Any undeclared metadata difference refuses. Only explicitly reviewed
-catalog-derived scan fields may differ. A catalog inverse must independently restore
-the declared old keys and pass complete row checks; no overwrite/replacement of a live
-database or saved-state write is included. Emit aggregate identities/hashes only;
+catalog-derived scan fields may differ. The exact successor admits 25 changed cells
+on Series1650, Volume1800, Chapter3358, MangaFile3570 and SeriesMetadata1650. Before
+ScanSeries, the actual native book/parser/count/chapter/publication/Koreader helpers
+derive the thirteen scalar values. A separate private cover directory uses native
+GetCoverImage, cloned EncodeMediaAs/CoverImageSize and CalculateColorScape; computed
+colors must equal the approved private scalars. The actual helper UnitOfWork context
+must be the scoped DataContext, with no Added/Modified/Deleted entries after
+DetectChanges and no persisted row changes. No tracker clearing or saving is allowed.
+The actual EF10.0.6 cancellation overload must decode to virtual bool-overload dispatch;
+both native async hooks and the native uint increment hook are checked. RowVersion is
+original+2 without overflow. The twelve scan clocks are bounded by ScanSeries itself,
+with the existing one-second allowance and New York/UTC interpretation. File upload
+mtime is custody evidence and cannot fill these scan values.
+
+The inverse restores all 32 distinct cells from the immutable original snapshot in
+one transaction: five UPDATEs compare every post-scan row column, including nullable,
+unchanged and typed values, and each must affect exactly one row. Final schema, all
+rows/IDs/FKs and typed-cell digest must equal the original before commit. No
+INSERT/DELETE, saved-state write, rescan or database replacement is allowed. These
+checks grant no production catalog writer approval. Emit aggregate identities/hashes only;
 native logs and private payloads stay in the private workspace, never public CI logs.
 
 The native method can return early, so Task completion alone is insufficient: the
@@ -69,7 +86,9 @@ OPF deletion semantics. This harness does not infer a new stripping policy.
 
 The full baseline is captured before native Build. Readback immediately after Build,
 then after resolving scanner/job-store/DbContext dependencies but before ScanSeries,
-must be identical across every table and schema; no constructor write allowance exists.
+and all native projection helpers, must be identical across every table and schema;
+no constructor/helper write allowance exists. The scoped pending-state check also
+prevents deferred writes from entering the scan.
 The actual native DI DataContext connection must report exactly the candidate path in
 PRAGMA database_list and its live open file inode must match that private input file.
 ApplicationStarted must remain false before/after native invocation. Future root runtime
