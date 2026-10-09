@@ -91,6 +91,13 @@ mistake that briefly supplied both `value` and `valueFrom` was caught by peer
 review, removed before any launch, and covered by the new regression. Provisional
 packets remain unexecuted; the original failed V2 packet and receipt are preserved.
 
+Independent final V3 review passed all 14 packet/source pins, the private scope
+and contract bindings, raw native inventories, the exact manifest delta, and
+26 finite tests in 0.531 seconds. It made no runtime or COPY claim. The private
+review receipt is
+`/home/dev/work/hn-831-live-native-inventory-independent-review-final26.json`,
+SHA `ca9ee853fa38a2a4fd0ed120c70add5b1d9638b21944f1f8ea6aff7eb9177fea`.
+
 Production services, CronJobs, Flux, library data, and app settings remained in
 their normal state. This Python NFS-only lifecycle is independent of the pending
 haynesnetwork v0.110.5 release. It supplies no app capture and no COPY approval;
