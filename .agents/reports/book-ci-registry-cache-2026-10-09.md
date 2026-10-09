@@ -64,7 +64,14 @@ the routing change. Fifteen finite offline cases now pass in 0.026s under nice19
 including unchanged canonical digests, whole-profile mirror disabling, truthful
 action outputs and all other failures refusing without outputs. Structured action
 inputs and a quoted `PG_IMAGE` environment value carry the selected route.
-The final routing head still requires actual full CI and independent/advisory read.
+Independent routing review at `100c18c1` passed, receipt
+`9fed2061d294ba59b5a9e57506e8391510d15205bfb2ab0f5e8f4b246e3d194f`,
+pinning six Git blobs and independently passing three focused routing/output
+methods in 0.010s under nice19. Copy run37992854821 passed the full existing
+build and suites; actual advisory `6089462758` reported no findings and confirmed
+the earlier cache-miss finding resolved. The report-only final head still
+requires its own completed CI and advisory read before merge. No runtime image
+adoption, cluster Job, holds or library changes are authorized by this evidence.
 
 Primary instructions: [Google public Docker Hub cache](https://docs.cloud.google.com/artifact-registry/docs/pull-cached-dockerhub-images),
 [Docker BuildKit mirror configuration](https://docs.docker.com/build/ci/github-actions/configure-builder/#registry-mirror).
