@@ -118,6 +118,9 @@ class Run:
   # Native typed lists may omit each item's redundant type/version fields.
   require(all(isinstance(item,dict) and item.get('kind',item_kind)==item_kind and item.get('apiVersion',api)==api
               and isinstance(item.get('metadata'),dict) and item['metadata'].get('namespace')==NS for item in value['items']),'native_inventory_item')
+  # Preserve the typed envelope's identity for comparisons of individual objects.
+  for item in value['items']:
+   item.setdefault('kind',item_kind);item.setdefault('apiVersion',api)
   return value
  def exact_pods(self,pods):
   require(pods.get('kind')=='PodList' and isinstance(pods.get('items'),list),'complete_pod_inventory')

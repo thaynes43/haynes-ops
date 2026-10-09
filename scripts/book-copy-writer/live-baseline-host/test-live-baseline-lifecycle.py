@@ -126,7 +126,7 @@ class InventoryTests(unittest.TestCase):
    with self.subTest(bad=bad),patch.object(self.run,'command',return_value=host.canonical(self.native(items=[bad]))):
     with self.assertRaises(host.Refused):self.run.inventory('pods')
   native_item={'metadata':{'namespace':host.NS}}
-  with patch.object(self.run,'command',return_value=host.canonical(self.native(items=[native_item]))):self.assertEqual(self.run.inventory('pods')['items'],[native_item])
+  with patch.object(self.run,'command',return_value=host.canonical(self.native(items=[native_item]))):self.assertEqual(self.run.inventory('pods')['items'],[{**native_item,'kind':'Pod','apiVersion':'v1'}])
  def owned_pod(self):
   return {'apiVersion':'v1','kind':'Pod','metadata':{'name':'unit','namespace':host.NS,'uid':'22222222-2222-4222-8222-222222222222','labels':{host.LABEL:self.run.phase,'batch.kubernetes.io/controller-uid':self.run.uid},'ownerReferences':[{'apiVersion':'batch/v1','kind':'Job','name':host.NAME,'uid':self.run.uid,'controller':True,'blockOwnerDeletion':True}]}}
  def test_phase_controller_owner_name_or_uid_union_blocks_false_absence(self):
@@ -153,4 +153,20 @@ class InventoryTests(unittest.TestCase):
   with patch.object(self.run,'inventory',return_value=self.native('jobs',[job])),patch.object(self.run,'command') as command:
    with self.assertRaises(host.Refused):self.run.cleanup()
   command.assert_not_called()
+ def test_actual_admission_defaults_and_omitted_item_types_reach_uid_cleanup(self):
+  defaults=json.loads((HERE/'synthetic-admitted-job-defaults.json').read_bytes());ready=json.loads((HERE/'live-baseline-closed-manifest.json').read_bytes());job=copy.deepcopy(ready)
+  job['spec'].update(defaults['spec_defaults']);job['spec']['selector']=defaults['selector'];job['metadata']['uid']=defaults['job_uid']
+  job['spec']['template']['metadata']['labels'].update({key:value.replace('__JOB_NAME__',host.NAME) for key,value in defaults['controller_labels'].items()})
+  # Native raw JobList entries omit these redundant fields; this reproduces the
+  # actual V3 cleanup failure, using actual admission defaults and fake UIDs.
+  del job['kind'];del job['apiVersion'];self.assertFalse(helper.declared_matches(ready,job));self.run.ready=ready;self.run.uid=defaults['job_uid'];self.run.phase=ready['metadata']['labels'][host.LABEL];self.run.helper=helper;self.run.result={};self.run.out=Path('/unit-only')
+  collector=load('bound_census_collectors',HERE/'dependencies/bound_census_collectors.py');previous=sys.modules.get('bound_census_collectors');sys.modules['bound_census_collectors']=collector
+  try:self.run.verifier=load('native_verifier',HERE/'dependencies/prepare-native-source-contract.py')
+  finally:
+   if previous is None:sys.modules.pop('bound_census_collectors',None)
+   else:sys.modules['bound_census_collectors']=previous
+  initial=self.native('jobs',[job]);empty_jobs=self.native('jobs');empty_pods=self.native('pods');gets=[host.canonical(initial),b'{}',host.canonical(empty_jobs),host.canonical(empty_pods)]
+  with patch.object(self.run,'command',side_effect=gets) as command,patch.object(self.run,'check'),patch.object(host,'private'):
+   self.run.cleanup()
+  deletion=command.call_args_list[1];self.assertEqual(deletion.args[0],['kubectl','delete','--raw',f'/apis/batch/v1/namespaces/{host.NS}/jobs/{host.NAME}','-f','-']);self.assertEqual(json.loads(deletion.args[1])['preconditions'],{'uid':self.run.uid});self.assertTrue(self.run.result['job_and_all_owned_pods_absent'])
 if __name__=='__main__':unittest.main()

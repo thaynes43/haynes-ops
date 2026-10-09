@@ -1,10 +1,10 @@
 # Book census producer closure — 2026-10-09
 
-The signed image and read-only mount are verified. The first actual V2 host
-attempt refused before creating a Job or reading corpus bytes. A narrow host
-inventory correction has passed finite tests and server admission, and is
-prepared for independent review and a separately ratified attempt. No COPY or
-production pause is authorized by this evidence.
+The signed image and read-only mount are verified. V2 refused before creating a
+Job; the separately ratified V3 reached the original 180-second capture deadline
+and refused without an artifact or ACK. Independent foreground cleanup then
+proved its Job and all matching Pods absent. The complete live producer lifecycle
+is still unproved; no COPY or production pause is authorized by this evidence.
 
 ## Image and preparation
 
@@ -103,3 +103,46 @@ their normal state. This Python NFS-only lifecycle is independent of the pending
 haynesnetwork v0.110.5 release. It supplies no app capture and no COPY approval;
 future mutation must use the fresh expanded corpus and deployed app version,
 with original expiry/restoration bounds and without reusing the old 1956 approval.
+
+## Actual V3 attempt and remaining runtime gate
+
+[Ops #3638](https://github.com/thaynes43/haynes-ops/pull/3638) merged the durable
+host package at `b3f4a689`. Required checks and the advisory review passed, with
+no findings. Root separately ratified one exact V3 attempt. It ran from
+15:28:22.291056Z to 15:31:22.133909Z (179.843 seconds). Native worker, image,
+read-only mount, Job/Pod ownership, server admission and private input delivery
+passed. The producer emitted `live-baseline-refused` with error class `Stop` and
+zero production writes. The Job reached `DeadlineExceeded`. No complete baseline,
+original capture/measurement clocks, fresh corpus count, retrieved artifact,
+delivery ACK, or successful completion can be claimed.
+
+Automatic cleanup refused because native typed list items omit their redundant
+`kind` / `apiVersion`, while `helper.declared_matches` expects those fields on
+the individual Job. The list envelope itself passed validation. Only the exact
+owned Job was then deleted with a UID precondition and foreground propagation.
+At 15:33:33.915754Z, independent complete raw `JobList` / `PodList` inventories
+(resource version `818882625`, no continuation) proved the full union of name,
+UID, phase label, controller UID, and Job owner name/UID absent. The host refusal
+receipt remains unchanged; its absence claim remains false. The separate private
+cleanup receipt records the independently verified result.
+
+The narrow correction restores omitted item type/version fields from the already
+verified typed envelope, after rejecting any explicit mismatch or wrong namespace.
+A fixture derived from actual server admission, with synthetic identities and no
+progress data, exercises the real helper comparison and foreground cleanup path.
+It does not change the manifest, image, capture clocks, expiry, cap, or retry count.
+Twenty-seven finite tests pass under `nice -n 19` (0.540 seconds); the new cleanup
+case proves the unnormalized actual-admission shape fails the real helper, then
+passes the strict typed inventory, real helper and native absence verifier after
+normalization. This cleanup correction does not prove that full capture fits
+180 seconds. The last
+sampled cumulative CPU counter was only 12.358 seconds; increasing the CPU limit
+is not supported by that evidence. Stage timing and NFS work require diagnosis
+before another capture can be ratified. No retry or new phase was attempted.
+
+Private runtime evidence is under
+`/home/dev/work/hn-831-copy05-live-byte-baseline-actual-v3/`, including the original
+host receipt, admitted/created native objects, input transport receipt, refusal
+log, and independent cleanup receipt. No private input, credential, or progress
+receipt is committed. Production services, CronJobs, Flux and library data
+remained in their normal state throughout.

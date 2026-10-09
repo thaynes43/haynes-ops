@@ -11,6 +11,11 @@ uses the exact namespace API endpoints through `kubectl get --raw`; it requires
 typed responses, the expected API version, a resource version, and a complete
 unpaginated inventory. It retains the union of phase, controller UID, and Job
 owner name/UID when checking owned Pods and the foreground UID deletion guards.
+Native typed-list items can omit redundant type/version fields. After validating
+the parent envelope and rejecting any explicit item mismatch, the host restores
+only those omitted fields from the known endpoint type for the existing Job
+comparison. The actual V3 deadline refusal and independently verified cleanup are
+recorded in the linked [report](../../../.agents/reports/book-census-producer-closure-2026-10-09.md).
 
 The old V2 packet and failed receipt remain unchanged outside git. The V3 review
 packet binds a new name, phase, output directory, manifest, launcher, and test
