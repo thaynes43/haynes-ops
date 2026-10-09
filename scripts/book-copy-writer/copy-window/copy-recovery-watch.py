@@ -276,7 +276,7 @@ class Watchdog:
             if owned is not None and owned['uid']!=proof['uid']:return False
             proof.update(goal_revision=original['revision'],reachable_main_revision=main)
             custody['downloads/'+cm_name]=proof;self.save();return True
-        except (ValueError,KeyError,IndexError,TypeError,subprocess.CalledProcessError):
+        except (ValueError,KeyError,IndexError,TypeError,AttributeError,subprocess.CalledProcessError):
             return False  # Unhealthy/unknown is never a successful Normal proof.
 
     def runtime_still_normal(self):

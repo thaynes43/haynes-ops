@@ -270,3 +270,9 @@ older/non-descendant and foreign-root refusal. Malformed volume/revision cases
 return false, while the actual service-ceiling exception propagates. Existing
 strip/hold, bracketed UID/RV/cold custody and original/current-goal controls also
 pass. No cluster write, hold, producer or rehearsal retry was performed.
+The successor peer review caught two additional malformed shapes: null KS status
+and a null ConfigMap object raise `AttributeError`. The narrow ordinary-error
+catch includes that type, with both finite counterexamples returning false and
+the same `ServiceCeiling` propagation control retained. This supersedes the
+`622228c1` malformed-proof result; no other authority or scope changed.
+The necessary single updated method passed in 0.066s under serial `nice -n 19`.

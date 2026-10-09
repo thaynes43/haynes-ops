@@ -580,6 +580,10 @@ class CachedSourceCases(unittest.TestCase):
         for bad in ('feature@sha1:'+NORMAL_SHA,'main@sha1:not-a-sha',None):
             ks['status']['lastAppliedRevision']=bad;self.assertFalse(w.converter_normal(converter['spec']['jobTemplate']))
         ks['status']['lastAppliedRevision']='main@sha1:'+NORMAL_SHA
+        with mock.patch.object(w,'kube',side_effect=lambda kind,*_:dict(status=None) if kind=='kustomization' else copy.deepcopy(cm)):
+            self.assertFalse(w.converter_normal(converter['spec']['jobTemplate']))
+        with mock.patch.object(w,'kube',side_effect=lambda kind,*_:copy.deepcopy(ks) if kind=='kustomization' else None):
+            self.assertFalse(w.converter_normal(converter['spec']['jobTemplate']))
         with mock.patch.object(w,'current_main',side_effect=legacy.watch.ServiceCeiling()):
             with self.assertRaises(legacy.watch.ServiceCeiling):w.converter_normal(converter['spec']['jobTemplate'])
 
