@@ -122,3 +122,28 @@ cleanup remain fail-closed. Future COPY needs its own fresh, coherent SOURCE/MAI
 and dependency proofs, actual Normal hold/drain/recovery evidence, exact Stop and
 inverse/watch closure, unchanged lease/reserve arithmetic, and explicit root GO.
 This expired diagnostic artifact may not be adopted or restamped for that work.
+
+## Normal rehearsal start refused
+
+The separately authorized Normal watcher launch exited 2 before producing a
+Ready receipt or arming its state. The exercise was not started, and no hold,
+Stop, Job creation, strip operation, library mutation or reading-list write
+occurred. The private runtime residue consists of initial watcher state and its
+lock. Root ended the activity at `2026-10-09T21:53:03Z`.
+
+The known startup mismatch was the converter CronJob template's
+`/spec/template/spec/volumes/0/configMap/name`: the raw Git name was compared to
+the actual Kustomize-generated ConfigMap name. The read-only failure receipt
+records the other deployment/image, HelmRelease generation/Ready and CronJob
+checks passing. It separately records all six Kustomizations and the Git Source
+unsuspended, with no owned hold annotations. This is a failed startup, not a
+successful hold/drain/recovery rehearsal; no automatic retry is authorized.
+
+Private failed-start receipt:
+`/home/dev/work/hn-831-normal-only-start-refusal-1009.json`, SHA
+`f6657dd08c183a553bea8d6676d66d369b3c1fc36fe46d2f1638eddeb054c519`.
+Its exact hash and no-Ready/no-exercise/no-hold fields were independently checked
+before this report. A reviewed correction and fresh root authorization remain
+necessary before a new rehearsal. The LIVE baseline remains permanently
+non-COPY and expired at its original `21:47:12.083643Z` deadline regardless of
+the rehearsal's result.
