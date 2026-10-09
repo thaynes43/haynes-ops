@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "prepared_only": true,
+  "runtime_authorization": false,
+  "normal_source": "d782455e8175374f779c64b1e10a53221c9c0928",
+  "scope_sha256": "3f3cb56027c880e4f21151b8b8d025a217a52df7e9373d13dbac8699d9dcb666",
+  "image": "ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c",
+  "app_image": "ghcr.io/thaynes43/haynesnetwork:v0.110.5@sha256:e264e8a63b7a6b8865bfb51ecb38c398534d492ba64c6956960dedd8e6e64c6a",
+  "modules": {
+    "epub_copies.py": "b79389c89bd5a57b4737ad693d2c209bc513e818343064ec04c8f0fcfb24a7da",
+    "epub_metadata.py": "ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773",
+    "book_copy_writer.py": "fbfec65f4af933da6ec9aca90536501e4514cebfb8e378584e3085a993493880",
+    "bound_census.py": "47c62c82277e5511d5011845ff0600acd0f1d97212077f41b31fba40775065f3",
+    "proof_transport.py": "096ba710805623638b87d8c31f6be2653fe57ae0377bf35a27dabf014755e8a5"
+  },
+  "manifests": {
+    "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert-cronjob.yaml": {
+      "normal_sha256": "f16d2322a993618971e0ad85ad906fe2c5ab5dbdd65f75f4a79f029c3f253bee",
+      "stop_sha256": "1a95370b5d55ef2dbd494192ea588eaff1bca398213b91260a6af109f23eed02"
+    },
+    "kubernetes/main/apps/downloads/lazylibrarian/app/library-scan-cronjob.yaml": {
+      "normal_sha256": "d17684c1ab915b0a10f715ae8ca1c63702ee4c714ee64e7233c60682a622b4c0",
+      "stop_sha256": "b085145372a1921cf3458bf1d682e89f6a45ff14870cca1e4ae7fc504053ed33"
+    },
+    "kubernetes/main/apps/downloads/lazylibrarian/app/helmrelease.yaml": {
+      "normal_sha256": "98063fcd2fae749db091c4bbde96a2cabfad557bc77abe6ea616f6f203d7efcd",
+      "stop_sha256": "4d1ee2c73afbd44249f8cc1b6d3a6ef3252c2b18c4075ab8b9b595fe5e56ff5c"
+    },
+    "kubernetes/main/apps/frontend/haynesnetwork/app/helmrelease.yaml": {
+      "normal_sha256": "f490fa3017bde1c7a6500860a9a583f018beb20a3ce4ae3cb154ef472a60c456",
+      "stop_sha256": "2bb484a93fac3ff44ac288d43791e9104e40b8334ec80459a21e259d878dc7b0"
+    },
+    "kubernetes/main/apps/media/kavita/app/helmrelease.yaml": {
+      "normal_sha256": "44d39e67c07a5d8decb9af6b7bcace5804e524104cfbc7aeb3bd14497c2df156",
+      "stop_sha256": "894622a8e2ecdee5ef31a8eb1e0a7946b80c5df097c7946981e4c74c8a021788"
+    },
+    "kubernetes/main/apps/media/libretto/app/helmrelease.yaml": {
+      "normal_sha256": "cf1c9aadc1600d6a81f904ae1d27a273aaee2ded6ee9836cf8158761bc878b36",
+      "stop_sha256": "c3f83f13c33ec72dc861aa99ef7114a1f51a466bf91a93e74a566f6c835a849a"
+    }
+  },
+  "clocks": {
+    "live": 180,
+    "live_host_total": 200,
+    "original_byte_age": 300,
+    "restore_trigger": 170,
+    "source_abort": 250,
+    "restore_reserve": 50,
+    "service_ceiling": 300,
+    "publisher_start_age": 65,
+    "publisher_finish_age": 35
+  }
+}
