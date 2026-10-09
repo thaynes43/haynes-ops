@@ -148,11 +148,12 @@ class PrimaryShareFence:
 
 class ScopedFileActions:
     """Wrap only copies.os and its manifest writer, never the shared os module."""
-    def __init__(self, fence, root, state):
+    def __init__(self, fence, root, state, bound=False):
         self.fence, self.root, self.state = fence, os.path.abspath(root), os.path.abspath(state)
         self.active = None
         self.original_os, self.original_move = copies.os, copies.move_copy
         self.original_verify, self.original_write = copies.verify_first_retention, metadata._write_file
+        self.original_fingerprints, self.bound = copies.file_fingerprints, bound
 
     def __getattr__(self, name):
         return getattr(self.original_os, name)
@@ -232,14 +233,24 @@ class ScopedFileActions:
         self.fence.health()
         return proof
 
+    def fingerprints(self, root, deadline, health=None, max_files=None):
+        if health is not None and health != self.fence.health:
+            raise metadata.Refused("manual fingerprint guard cannot be replaced")
+        if max_files not in (None, 10000):
+            raise metadata.Refused("manual fingerprint count cap cannot be replaced")
+        return self.original_fingerprints(root, deadline, health=self.fence.health, max_files=10000)
+
     def __enter__(self):
         copies.os, copies.move_copy, copies.verify_first_retention = self, self.move, self.verify
         metadata._write_file = self.write_manifest
+        if self.bound:
+            copies.file_fingerprints = self.fingerprints
         return self
 
     def __exit__(self, *_):
         copies.os, copies.move_copy, copies.verify_first_retention = self.original_os, self.original_move, self.original_verify
         metadata._write_file = self.original_write
+        copies.file_fingerprints = self.original_fingerprints
 
 
 @contextlib.contextmanager
@@ -269,6 +280,15 @@ def run(args, environ=os.environ):
     if not isinstance(source_sha256, str) or len(source_sha256) != 64:
         raise metadata.Refused("snapshot must bind its complete app capture SHA-256")
     deadline = min(args.deadline_epoch, time.time() + max(0, copies.expiry_deadline(snapshot) - time.monotonic()))
+    bound = getattr(args, "bound_census", False)
+    if bound:
+        import bound_census
+        deadline = min(deadline, time.time() + max(0, bound_census.baseline_expiry(snapshot.get("bound_census", {}))
+                                                   - time.monotonic()))
+        source = snapshot["bound_census"].get("current_validation", {}).get("source_binding", {})
+        if (source.get("job_uid") != capture.get("job_uid") or source.get("pod_uid") != capture.get("pod_uid")
+                or not environ.get("COPY_PHASE_TOKEN") or capture.get("phase_token") != environ["COPY_PHASE_TOKEN"]):
+            raise metadata.Refused("bound current census belongs to a different source/phase")
     def terminated(signum, _frame):
         raise DeadlineExpired("signal/deadline stopped the owning copy process")
     previous = {s: signal.signal(s, terminated) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGALRM)}
@@ -278,10 +298,13 @@ def run(args, environ=os.environ):
             fence.compare_capture(capture, source_sha256)
             log("epub_copy_writer_fence", backend_pid=fence.pid, share_tables=list(TABLES), read_only="on")
             dry_run = environ.get("DRY_RUN", "1") != "0"
-            with contextlib.nullcontext() if dry_run else converter_lock(state), ScopedFileActions(fence, root, state):
-                counts = copies.consolidate(args.snapshot, root, state, 900, holds, log,
-                                            dry_run, fence.deadline,
-                                            selection_path=args.selection)
+            with contextlib.nullcontext() if dry_run else converter_lock(state), ScopedFileActions(fence, root, state, bound):
+                consolidate = copies.consolidate_bound if bound else copies.consolidate
+                options = {"selection_path": args.selection}
+                if bound:
+                    options["health"] = fence.health
+                counts = consolidate(args.snapshot, root, state, 900, holds, log,
+                                     dry_run, fence.deadline, **options)
             fence.health()
             return 1 if counts["refused"] else 0
     finally:
@@ -296,6 +319,7 @@ def main():
     parser.add_argument("--selection")
     parser.add_argument("--app-capture")
     parser.add_argument("--wait-proofs", action="store_true")
+    parser.add_argument("--bound-census", action="store_true")
     parser.add_argument("--deadline-epoch", required=True, type=float)
     args = parser.parse_args()
     try:

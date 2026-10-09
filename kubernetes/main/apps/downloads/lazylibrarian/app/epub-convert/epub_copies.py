@@ -348,12 +348,14 @@ def load_selection(path, root, evidence_hash, eligible, hashes):
     return chosen, metadata.sha256(raw)
 
 
-def file_fingerprints(root, deadline):
+def file_fingerprints(root, deadline, health=None, max_files=None):
     """Read every library file's identity without rehashing the complete corpus."""
     result = {}
     def walk_error(error):
         raise error
     for folder, dirs, names in os.walk(root, followlinks=False, onerror=walk_error):
+        if health is not None:
+            health()
         if time.monotonic() >= deadline:
             raise metadata.Refused("source expiry reached during complete file census")
         for name in dirs:
@@ -361,8 +363,12 @@ def file_fingerprints(root, deadline):
                 raise metadata.Refused("symlinked directory in complete file census")
         with metadata.safe_directory(folder) as directory:
             for name in names:
+                if health is not None:
+                    health()
                 if time.monotonic() >= deadline:
                     raise metadata.Refused("source expiry reached during complete file census")
+                if max_files is not None and len(result) >= max_files:
+                    raise metadata.Refused("manual complete file census exceeds its count cap")
                 info = os.stat(name, dir_fd=directory, follow_symlinks=False)
                 result[os.path.relpath(os.path.join(folder, name), root)] = (
                     metadata._identity(info), info.st_mode, info.st_uid, info.st_gid)
@@ -370,7 +376,7 @@ def file_fingerprints(root, deadline):
 
 
 def verify_first_retention(result, keeper, root, state, hashes, files, all_files,
-                           snapshot, evidence_hash, deadline):
+                           snapshot, evidence_hash, deadline, fingerprint_options=None):
     """Prove the first retained copy and complete remaining census before continuing."""
     path = result["path"]
     manifest_path = result["backup_manifest"]
@@ -405,7 +411,7 @@ def verify_first_retention(result, keeper, root, state, hashes, files, all_files
         digest, current = hash_file(directory, os.path.basename(keeper), deadline)
         if digest != hashes[keeper] or metadata._identity(current) != metadata._identity(files[keeper]):
             raise metadata.Changed("first-stage keeper changed")
-    remaining = file_fingerprints(root, deadline)
+    remaining = file_fingerprints(root, deadline, **(fingerprint_options or {}))
     if remaining != {name: info for name, info in all_files.items() if name != path}:
         raise metadata.Changed("unapproved library file changed after first retention")
     require_fresh(snapshot)
@@ -435,6 +441,35 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
         if digest != hashes[path] or metadata._identity(info) != identity["source_identity"]:
             raise metadata.Changed(f"copy census hash/identity changed: {path}")
         files[path] = info
+    return _apply_copy_census(snapshot, hashes, pointers, protected, evidence_hash, identities, files,
+                              root, state, settle_seconds, holds, log, dry_run, deadline, selection_path)
+
+
+def consolidate_bound(snapshot_path, root, state, settle_seconds, holds, log, dry_run=False,
+                      deadline=float("inf"), selection_path=None, health=None):
+    """Explicit manual-only entry; hourly consolidation retains its full census."""
+    if health is None:
+        raise metadata.Refused("manual bound census requires the owning database health guard")
+    import bound_census
+    snapshot, hashes, pointers, protected, evidence_hash = load_snapshot(snapshot_path, root)
+    deadline = min(deadline, expiry_deadline(snapshot))
+    identities, files, deadline = bound_census.prepare(snapshot, hashes, root, selection_path,
+                                                       evidence_hash, deadline, health)
+    log("epub_copy_bound_census", result="verified", byte_baseline_sha256=snapshot["bound_census"]["byte_baseline_sha256"],
+        byte_capture_started_at=snapshot["bound_census"]["byte_capture_started_at"],
+        byte_completed_at=snapshot["bound_census"]["byte_completed_at"],
+        current_validation=snapshot["bound_census"]["current_validation"], dry_run=dry_run)
+    expected = {path: (tuple(bound_census.stat_value(n) for n in value[0]),
+                       *(bound_census.stat_value(n) for n in value[1:]))
+                for path, value in snapshot["bound_census"]["all_file_fingerprints"].items()}
+    return _apply_copy_census(snapshot, hashes, pointers, protected, evidence_hash, identities, files,
+                              root, state, settle_seconds, holds, log, dry_run, deadline, selection_path, expected,
+                              {"health": health, "max_files": bound_census.MAX_FILES})
+
+
+def _apply_copy_census(snapshot, hashes, pointers, protected, evidence_hash, identities, files,
+                       root, state, settle_seconds, holds, log, dry_run, deadline, selection_path,
+                       expected_fingerprints=None, fingerprint_options=None):
     require_fresh(snapshot)
     groups = {}
     counts = {"moved": 0, "would_move": 0, "retained": 0, "protected": 0, "settling": 0,
@@ -486,7 +521,9 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
         return counts
     chosen, selection_hash = (load_selection(selection_path, root, evidence_hash, eligible, hashes)
                               if selection_path else (list(eligible), None))
-    all_files = file_fingerprints(root, deadline) if selection_path else None
+    all_files = file_fingerprints(root, deadline, **(fingerprint_options or {})) if selection_path else None
+    if expected_fingerprints is not None and all_files != expected_fingerprints:
+        raise metadata.Changed("complete bound census changed before first selected move")
     if all_files is not None:
         visible_epubs = {path for path in all_files if path.lower().endswith(".epub")
                          and all(not part.startswith(".") for part in path.split("/"))}
@@ -495,6 +532,7 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
         for path, original in files.items():
             if all_files.get(path) != (metadata._identity(original), original.st_mode, original.st_uid, original.st_gid):
                 raise metadata.Changed("hashed EPUB changed before selection application")
+    completed_paths = set()
     for index, path in enumerate(chosen):
         keeper, info = eligible[path], files[path]
 
@@ -520,11 +558,14 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
             result = move_copy(path, root, state, hashes[path], metadata._identity(info),
                                evidence_hash, guard, dry_run, deadline)
             counts[result["result"]] += 1
+            if result["result"] == "moved":
+                completed_paths.add(path)
             log("epub_copy_consolidate", **result, keeper=keeper, dry_run=dry_run,
                 phase="first" if selection_path and index == 0 else "remaining" if selection_path else "all")
             if selection_path and index == 0 and not dry_run:
                 proof = verify_first_retention(result, keeper, root, state, hashes, files, all_files,
-                                               snapshot, evidence_hash, deadline)
+                                               snapshot, evidence_hash, deadline,
+                                               **({"fingerprint_options": fingerprint_options} if fingerprint_options else {}))
                 log("epub_copy_stage_proof", result="verified", stage="first", selection_sha256=selection_hash, **proof)
                 if len(chosen) > 1:
                     log("epub_copy_stage_phase", result="started", phase="remaining", approved=len(chosen) - 1,
@@ -535,5 +576,19 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
                 detail=f"{type(err).__name__}: {err}"[:500], dry_run=dry_run)
             # An expired/racing snapshot must not authorize subsequent moves.
             break
+    if expected_fingerprints is not None:
+        try:
+            final = file_fingerprints(root, deadline, **(fingerprint_options or {}))
+            if final != {path: value for path, value in expected_fingerprints.items() if path not in completed_paths}:
+                raise metadata.Changed("complete library differs after selected retention")
+            require_fresh(snapshot)
+            if time.monotonic() >= deadline:
+                raise metadata.Refused("bound deadline expired during final census")
+            log("epub_copy_bound_final", result="verified", moved_paths=sorted(completed_paths),
+                unchanged_files=len(final), dry_run=dry_run)
+        except Exception as err:
+            counts["refused"] += 1
+            log("epub_copy_bound_final", result="refused", moved_paths=sorted(completed_paths),
+                detail=f"{type(err).__name__}: {err}"[:500], dry_run=dry_run)
     log("epub_copy_consolidate_census", **counts, dry_run=dry_run)
     return counts

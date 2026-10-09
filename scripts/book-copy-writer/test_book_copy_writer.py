@@ -304,6 +304,59 @@ class WriterTests(unittest.TestCase):
         manifest = json.loads(read(proof["backup_manifest"]))
         self.assertEqual(read(os.path.join(self.state, "copies", manifest["backup_file"])), self.raw)
 
+    def test_manual_bound_entry_owns_real_share_locks_through_selected_reads_and_first_move(self):
+        import bound_census
+        from test_bound_census import bound_records
+        proof = bound_records(self.root)
+        with self.fence() as fence:
+            capture = self.capture(fence)
+            evidence, selection = self.selection(capture)
+            snapshot = json.loads(read(evidence)); snapshot["bound_census"] = proof
+            write(evidence, json.dumps(snapshot).encode())
+            chosen = json.loads(read(selection))
+            chosen["snapshot_sha256"] = metadata.sha256(read(evidence))
+            chosen["bound_census_baseline_sha256"] = proof["byte_baseline_sha256"]
+            write(selection, json.dumps(chosen).encode())
+            fence.compare_capture(capture, snapshot["app_wants"]["source_sha256"])
+            actual_read = bound_census.selected_file
+            selected = []
+            def guarded_read(*args, **kwargs):
+                selected.append(args[2])
+                self.assertEqual(fence.health()["share_tables"], list(writer.TABLES))
+                self.blocked("book_requests")
+                return actual_read(*args, **kwargs)
+            with writer.ScopedFileActions(fence, self.root, self.state, bound=True), \
+                 mock.patch.object(bound_census, "selected_file", side_effect=guarded_read), \
+                 mock.patch.object(metadata, "identity_preflight", side_effect=AssertionError("manual must reuse sealed unselected identities")):
+                result = copies.consolidate_bound(evidence, self.root, self.state, 0, frozenset(),
+                                                  lambda msg, **fields: self.lines.append({"msg": msg, **fields}),
+                                                  deadline=fence.deadline, selection_path=selection, health=fence.health)
+            self.assertEqual(set(selected), {self.keeper, self.extra})
+            self.assertEqual((result["moved"], result["refused"]), (1, 0))
+            self.assertTrue(any(row["msg"] == "epub_copy_stage_proof" for row in self.lines))
+        self.assertEqual(read(os.path.join(self.root, self.keeper)), self.raw)
+        self.assertFalse(Path(self.root, self.extra).exists())
+
+    def test_manual_entry_refuses_wrong_source_phase_before_database_connection(self):
+        from test_bound_census import bound_records
+        with self.fence() as fence:
+            capture = self.capture(fence)
+        proof = bound_records(self.root)
+        capture.update(job_uid=proof["current_validation"]["source_binding"]["job_uid"],
+                       pod_uid=proof["current_validation"]["source_binding"]["pod_uid"], phase_token="a" * 32)
+        evidence, selection = self.selection(capture)
+        snapshot = json.loads(read(evidence)); snapshot["bound_census"] = proof
+        write(evidence, json.dumps(snapshot).encode())
+        app_capture = self.tmp.name + "/capture.json"
+        write(app_capture, json.dumps(capture).encode())
+        env = {"EBOOK_ROOT": self.root, "STATE_DIR": self.state, "STRIP_SERIES_METADATA": "0",
+               "LIBRARY_HOLD_FOLDERS_JSON": '["Daniel Silva/Ransom"]', "COPY_PHASE_TOKEN": "b" * 32}
+        args = mock.Mock(snapshot=evidence, selection=selection, app_capture=app_capture,
+                         bound_census=True, deadline_epoch=time.time() + 10)
+        with mock.patch.object(writer, "PrimaryShareFence") as connect, self.assertRaises(metadata.Refused):
+            writer.run(args, env)
+        connect.assert_not_called()
+
     def test_final_unlink_rechecks_identity_after_health_network_gap(self):
         folder = os.path.dirname(os.path.join(self.root, self.extra))
         os.makedirs(self.state + "/copies")
