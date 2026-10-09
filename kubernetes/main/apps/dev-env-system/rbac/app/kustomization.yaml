@@ -8,6 +8,7 @@ resources:
   - ./operator.yaml
   - ./keeper.yaml
   - ./keeper-credentials.yaml
+  - ./keeper-codex-auth.yaml
   - ./broker.yaml
   - ./broker-credentials.yaml
   - ./broker-guard.yaml

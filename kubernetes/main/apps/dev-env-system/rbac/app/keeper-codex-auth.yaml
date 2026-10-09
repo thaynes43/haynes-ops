@@ -1,0 +1,40 @@
+---
+# The private journal and monotonic public projection each use one named GET/CAS.
+# No create/list/watch/update permission, and no additional principal is bound.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper-codex-auth
+  namespace: dev-env-system
+rules:
+  - apiGroups: ['']
+    resources: [secrets]
+    resourceNames: [dev-env-keeper-codex-auth]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper-codex-auth
+  namespace: dev-env-system
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-codex-auth}
+subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper-codex-auth
+  namespace: dev-agents
+rules:
+  - apiGroups: ['']
+    resources: [secrets]
+    resourceNames: [dev-env-codex-live]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper-codex-auth
+  namespace: dev-agents
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-codex-auth}
+subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]
