@@ -381,7 +381,7 @@ class Watchdog:
         if not comments:return False
         comment=max(comments,key=lambda row:epoch(row.get('updatedAt') or row['createdAt']))
         body=comment['body']
-        return bool(re.search(r'No findings|(?:Verdict:|review[^\n]*:)\s*(?:\*\*)?Looks good',body,re.I)) and not re.search(r'(?:Verdict:|review[^\n]*:)\s*(?:\*\*)?Needs changes',body,re.I)
+        return contract.clean_advisory(body)
 
     def retarget_argv(self):
         argv=['bash',self.args.retarget_script,self.args.restore_worktree,self.args.pause,self.args.restore,self.args.pause_head,self.args.restore_branch]

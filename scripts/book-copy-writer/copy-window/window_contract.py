@@ -6,6 +6,7 @@ import copy
 import datetime as dt
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
 
@@ -23,6 +24,12 @@ PATHS = (
 URL = 'http://lazylibrarian.downloads.svc.cluster.local:5299'
 SCOPES = (('frontend', 'haynesnetwork'), ('media', 'libretto'), ('downloads', 'lazylibrarian'), ('media', 'kavita'))
 BOOK_CONTROLLERS = ('sync-books', 'sync-books-collections', 'sync-format-pairing', 'sync-goodreads')
+
+
+def clean_advisory(body):
+    """A favorable verdict never disposes findings. Require explicit absence."""
+    return (isinstance(body, str) and bool(re.search(r'\bNo findings\b', body, re.I))
+            and not re.search(r'\b(?:CRITICAL|HIGH|MEDIUM|LOW|Needs changes)\b|\[P[0-3]\]', body, re.I))
 
 
 def require(ok, message):

@@ -110,7 +110,7 @@ def clean_gates(pr):
  comments=[r for r in pr['comments'] if r.get('author',{}).get('login','').lower() in ('claude','claude[bot]') and epoch(r.get('updatedAt') or r['createdAt'])>=at]
  if not comments:return False
  body=max(comments,key=lambda r:epoch(r.get('updatedAt') or r['createdAt']))['body']
- return bool(re.search(r'No findings|review[^\n]*:\s*(?:\*\*)?Looks good',body,re.I)) and not re.search(r'Needs changes',body,re.I)
+ return window.clean_advisory(body)
 
 def pinned_artifact(entry,cap):
  if not isinstance(entry,dict) or set(entry)!={'path','sha256'} or not Path(entry['path']).is_absolute() or not re.fullmatch('[0-9a-f]{64}',entry['sha256']):raise Refused('exact private artifact descriptor required')
@@ -880,7 +880,7 @@ def validate(c):
   if set(c[key])!={'path','sha256'} or hashlib.sha256(Path(c[key]['path']).read_bytes()).hexdigest()!=c[key]['sha256']:raise Refused('exact root scope artifact changed')
  inputs=c['source_private_input']
  if not isinstance(inputs,dict) or set(inputs)!={'sender','receiver','native_verifier','collector'}:raise Refused('complete exact private-input source closure required')
- pins={'sender':'5d14ab430b0bf5b002b9b4959a7f8a5e0c667f77410225680b4f5bf26b948dde','receiver':'fbf7998738652db4023721731526b343faff4b2d880d24e811a63a95eaab2d3e','native_verifier':'67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f','collector':'6e758e34db12fb82d4d6050c460d17a815d5b608c511a1d7bc9f94886342a61a'}
+ pins={'sender':'675d47a66657445846f6f5cdc6646e640daf17d97914eb2b0abda02d756cce82','receiver':'fbf7998738652db4023721731526b343faff4b2d880d24e811a63a95eaab2d3e','native_verifier':'67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f','collector':'6e758e34db12fb82d4d6050c460d17a815d5b608c511a1d7bc9f94886342a61a'}
  for key,digest in pins.items():
   if inputs[key].get('sha256')!=digest:raise Refused('private-input reviewed source pin differs')
   pinned_artifact(inputs[key],1024*1024)

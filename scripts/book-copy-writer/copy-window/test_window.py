@@ -34,6 +34,18 @@ STOP = wc.stop_blobs(NORMAL)
 
 
 class ContractTests(unittest.TestCase):
+    def test_favorable_verdict_does_not_resolve_advisory_findings(self):
+        self.assertTrue(wc.clean_advisory('Verdict: Looks good. No findings.'))
+        for body in ('Verdict: Looks good', 'Verdict: Looks good\nMEDIUM: unsafe gate',
+                     'No findings.\n[P2] unsafe gate', 'No findings. Needs changes'):
+            self.assertFalse(wc.clean_advisory(body))
+        stamp='1970-01-01T00:00:02+00:00'
+        checks=[dict(name=name,status='COMPLETED',conclusion='SUCCESS',startedAt=stamp) for name in ('Flux Local - Success','Diff Scope - Success','Claude Review (advisory)')]
+        pr=dict(statusCheckRollup=checks,commits=[dict(committedDate='1970-01-01T00:00:01+00:00')],comments=[dict(author={'login':'claude[bot]'},createdAt=stamp,updatedAt=stamp,body='Verdict: Looks good\nMEDIUM: unsafe gate')])
+        self.assertFalse(watch.Watchdog.clean_gates(pr));self.assertFalse(supervisor.clean_gates(pr))
+        pr['comments'][0]['body']='No findings.'
+        self.assertTrue(watch.Watchdog.clean_gates(pr));self.assertTrue(supervisor.clean_gates(pr))
+
     def test_exact_normal_stop_pair(self):
         wc.validate_pair(NORMAL, STOP, CONTRACT)
         self.assertEqual(CONTRACT['clocks'], dict(live=180, live_host_total=200, original_byte_age=300, restore_trigger=170, source_abort=250, restore_reserve=50, service_ceiling=300, publisher_start_age=65, publisher_finish_age=35))

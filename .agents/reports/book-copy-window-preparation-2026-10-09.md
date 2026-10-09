@@ -45,7 +45,7 @@ is held stacked draft head `27156481` (+7/-9). The inverse is intentionally not
 base-main/green yet; reviewed replay and new current-main gates remain mandatory.
 Neither PR was merged or applied. These replace the closed, never-used examples.
 
-The tracked package passed 24 finite tests serially under `nice -n 19` in 6.106s.
+The tracked package passed 25 finite tests serially under `nice -n 19` in 6.279s.
 A real private local bare Git repository plus fake `gh` responses proved Stop
 squash replay, exact before/after blob recovery, validation commit and a second
 idempotent invocation. The public dummy test credential bypassed real credential
@@ -81,3 +81,11 @@ signed image index `e264e8a6…4c6a`. Receipt SHA
 binds this read-only import check; it invoked no capture, database constructor,
 query, API or library operation. This adds exact import reachability to the prior
 eight-module deployment audit without claiming an actual producer run.
+
+The independent code review found that a favorable advisory verdict can coexist
+with unresolved MEDIUM findings. Both supervisor and watcher now require an
+explicit no-findings current comment and refuse severity/needs-changes markers;
+a finite actual gate fixture covers the contradictory verdict. SOURCE review
+also corrected partial response publication and Complete-Job/running-Pod
+acceptance; successor sender pin `675d47a6…cce82` binds that reviewed completion
+helper. The SOURCE component remains a separate source-only preparation.

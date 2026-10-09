@@ -35,7 +35,9 @@ normal actual workloads. The copy-aware `retarget-restore.sh` replays the stacke
 inverse onto the actual squash main commit, checks all six full blob pairs and
 pushes a validation commit to request current-main checks/advisory. Prearm requires
 an **open, exact-head, base-main** inverse with every required check and a clean
-current normal advisory. Pending checks cannot start Stop clocks or authorize
+current normal advisory explicitly reporting no findings. A favorable verdict
+with an unresolved severity finding refuses; it is not a clean disposition.
+Pending checks cannot start Stop clocks or authorize
 application of desired Stop. Staging must fit the original 600s live arm ceiling;
 otherwise the watcher requests recovery and retains holds until normal is proved.
 
@@ -82,6 +84,17 @@ applicable clocks, not a new duration after receipt delivery. SOURCE, assembly,
 native binding and complete PG-owner/LL/Kavita protection must finish with enough
 remaining margin; otherwise refuse and restore. Full-corpus performance remains
 unproved until a separately ratified fresh read-only LIVE attempt completes.
+
+The host Python/YAML dependency must be captured in a task-private venv;
+do not adopt an unknown global module at execution. `requirements-ci.txt` is the
+binary-only shared PyYAML6.0.3 pin for host CPython3.11 and CI3.12 (also listed
+3.13/3.14 wheel hashes). The authoritative wheel digest is available from
+[PyPI metadata](https://pypi.org/pypi/PyYAML/6.0.3/json). Prepare it with
+`python3 -m venv /absolute/private/host-venv` and that venv's `python -m pip install
+--only-binary=:all: --require-hashes -r requirements-ci.txt`. A future packet must
+bind its interpreter/version/module closure and exact PATH so supervisor,
+watcher, replay and assembly use the same approved dependency. This source PR
+has not frozen that execution environment or granted runtime approval.
 
 Run finite verification serially under `nice -n 19`:
 
