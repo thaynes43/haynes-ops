@@ -116,7 +116,10 @@ Recovery retires that exact group, then applies UID/spec/phase/RV-tested metadat
 barriers on all seven resources before any release. Submitted hold patches test
 the earlier RV and therefore cannot re-hold a resource after its barrier. Killing
 a client alone is not server-request retirement. Reused PID, unknown surviving
-group or foreign ownership refuses release truthfully.
+group or foreign ownership refuses release truthfully. Once the original group
+is empty, a private immutable packet/owner-SHA retirement receipt permits cold
+retries without inspecting a later reused PID. An empty original group before
+the first proof is also safe; another group's reused PID is never killed.
 
 Rehearsal operational caps are exercise 90s, staging arm 120s and recovery 50s
 from the first recovery attempt. The watcher uses its existing 10s poll interval;

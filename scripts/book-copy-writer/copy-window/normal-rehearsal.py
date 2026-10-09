@@ -95,26 +95,37 @@ def group_members(pgid):
     return members
 
 def retire_exercise(packet):
+    cache,_,_=modules()
     runtime=Path(packet['directory'])/'runtime'
     with registration_lock(runtime):
         require((runtime/'cancel').exists(),'cancel before exercise retirement')
         path=runtime/'exercise-owner.json'
         if not path.exists():return
-        owner=json.loads(read_private(path));pid=owner.get('pid')
+        owner_raw=read_private(path);owner=json.loads(owner_raw);pid=owner.get('pid')
         require(set(owner)=={'schema','packet_sha256','phase_token','pid','start_ticks','pgid'}
             and owner['schema']==1 and owner['packet_sha256']==sha(canonical(packet))
             and owner['phase_token']==packet['phase_token'] and type(pid) is int and pid>1
             and pid!=os.getpid() and owner['pgid']==pid,'exercise owner binding')
+        retired=runtime/'exercise-retired.json'
+        binding={'schema':1,'packet_sha256':sha(canonical(packet)),
+            'phase_token':packet['phase_token'],'owner_sha256':sha(owner_raw),'original_group':pid,'group_members':{}}
+        if retired.exists():
+            value=json.loads(read_private(retired))
+            require(set(value)==set(binding)|{'retired_at'} and all(value[k]==v for k,v in binding.items())
+                and isinstance(value['retired_at'],str),'exercise retirement receipt changed')
+            return
         try:current=start_ticks(pid)
         except FileNotFoundError:current=None
-        require(current in (None,owner['start_ticks']),'exercise PID replaced')
         members=group_members(pid)
         if members:
-            require(current==owner['start_ticks'],'surviving exercise group ownership unproved')
+            require(current==owner['start_ticks'],'exercise PID replaced or surviving group ownership unproved')
             os.killpg(pid,signal.SIGKILL)
             until=time.monotonic()+2
             while group_members(pid):
                 require(time.monotonic()<until,'exercise group retirement unproved');time.sleep(.05)
+        # Empty original group means no request authority survives, including
+        # when the old PID was reused in another group before first observation.
+        cache.write_private(retired,canonical(dict(binding,retired_at=dt.datetime.now(dt.timezone.utc).isoformat())))
 
 def prepare(output,repo,host_path=HOST_PROOF,host_sha=HOST_PROOF_SHA):
     cache,_,_=modules();output=Path(output).absolute();output.mkdir(mode=0o700,parents=False,exist_ok=False)

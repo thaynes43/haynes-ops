@@ -161,6 +161,35 @@ class NormalCases(unittest.TestCase):
                 self.assertTrue(w.tick())
             self.assertEqual(calls,['request group retired','RV barriers','writer/PG absence','restore/release'])
 
+    def test_empty_original_group_with_reused_pid_persists_cold_retirement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
+            packet={'directory':directory,'phase_token':fixtures.PHASE}
+            owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'pid':os.getpid()+100000,'start_ticks':'original','pgid':os.getpid()+100000}
+            cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            with mock.patch.object(normal,'start_ticks',return_value='replacement'),mock.patch.object(normal,'group_members',return_value={}) as group,mock.patch.object(normal.os,'killpg') as kill:
+                normal.retire_exercise(packet);group.assert_called_once_with(owner['pgid']);kill.assert_not_called()
+            proof=normal.read_private(runtime/'exercise-retired.json')
+            with mock.patch.object(normal,'start_ticks',side_effect=AssertionError('retired identity must not be readopted')),mock.patch.object(normal,'group_members',side_effect=AssertionError('new group is not owned')),mock.patch.object(normal.os,'killpg') as kill:
+                normal.retire_exercise(packet);kill.assert_not_called()
+            self.assertEqual(normal.read_private(runtime/'exercise-retired.json'),proof)
+
+    def test_retirement_receipt_wrong_owner_binding_refuses_without_kill(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
+            packet={'directory':directory,'phase_token':fixtures.PHASE};pid=os.getpid()+100000
+            owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'pid':pid,'start_ticks':'original','pgid':pid}
+            cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            wrong={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'owner_sha256':'0'*64,'original_group':pid,'retired_at':'private-proof'}
+            wrong['group_members']={}
+            cache.write_private(runtime/'exercise-retired.json',normal.canonical(wrong))
+            with mock.patch.object(normal.os,'killpg') as kill,self.assertRaisesRegex(ValueError,'receipt changed'):
+                normal.retire_exercise(packet)
+            kill.assert_not_called()
+
     def test_seven_rv_barriers_reject_delayed_hold_and_unknown_owner(self):
         with tempfile.TemporaryDirectory() as directory:
             packet,ready,state,observer,_,_=self.fake(directory)

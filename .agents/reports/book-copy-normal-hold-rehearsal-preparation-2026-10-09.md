@@ -36,6 +36,11 @@ patch either committed before its barrier and is restored, or refuses its stale
 RV afterward. This closes the arm-expiry race where recovery could finish while
 the exercise retained request authority. It does not claim that killing a client
 retires a server request. No new exercise may be registered after cancellation.
+Persist immutable packet/phase/owner-SHA-bound retirement proof as soon as the
+original group is empty. Cold retries use that proof rather than re-adopting a
+later process with a reused PID. Before the first proof, a full empty original
+group permits retirement even if the old PID was reused outside that group.
+A surviving group with a missing/reused owner remains unknown and is not killed.
 
 The rehearsal has no Stop clocks or COPY lease. Its closed operational bounds are
 exercise 90s, staging arm 120s, recovery 50s from the first recovery attempt;
@@ -83,12 +88,18 @@ Independent review of exact `b2c3336c` passed source preparation, receipt
 `275f538a8fbb7c0d6fb120e42c51a71d87b139357061d73603e60bf1d8ff3f8b`.
 It pins nine source/doc/test/CI blobs and independently passed twelve Normal
 cases in 0.273s plus four parent/release/retirement controls in 0.040s, serially
-under `nice -n 19`. Current advisory comment `6088820407`, updated
+under `nice -n 19`. Advisory comment `6088820407`, updated
 2026-10-09 20:52:55Z, explicitly reviewed that commit and reported no findings.
 The writer-image validation failed before tests on the unchanged Docker Hub
 base digest's HTTP 429; source/window checks passed. This report-only commit
-records the review without changing the reviewed executable files. Runtime
-containment and restoration proof remains absent.
+records that review without changing its executable files. The subsequent
+`d2aea652` advisory found a real cold retry gap (`4234474264`): checking a PID
+again after group retirement could strand holds if that PID was later reused.
+The successor persists immutable owner-bound full zero-group proof and reuses
+it on retries. Two new cold-proof/binding controls plus actual group retirement
+passed in 0.180s, serially under `nice -n 19`. The older source PASS is superseded
+pending independent successor review. Runtime containment and restoration proof
+remains absent.
 
 The independently reviewed #3667 successor was `f9f654b6` (receipt
 `89ffe7fc818cc66273505adcd6f4580fdeb5108ae7f280d4ad9b38133095e738`)
