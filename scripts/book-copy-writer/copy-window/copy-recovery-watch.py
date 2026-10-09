@@ -352,7 +352,12 @@ class Watchdog:
         self.retire_hold_annotations()
         if (self.state.get('service_ceiling_missed_at') or self.state.get('original_clock_unproved_at')
                 or self.state.get('normal_rehearsal_recovery_budget_missed_at')):
-            self.state.update(complete=False,recover_ks=False,safety_recovery_complete=True,safety_recovery_completed_at=stamp())
+            self.state.update(complete=False,recover_ks=False,safety_recovery_complete=True)
+            at=stamp()
+            if self.state.get('normal_rehearsal_recovery_budget_missed_at'):
+                if 'safety_recovery_completed_at' in self.state:self.state['safety_recovery_reverified_at']=at
+                self.state.setdefault('safety_recovery_completed_at',at)
+            else:self.state['safety_recovery_completed_at']=at
         else:
             self.state.setdefault('completed_at',stamp())
             self.state.update(complete=True,recover_ks=False,normal_reverified_at=stamp())

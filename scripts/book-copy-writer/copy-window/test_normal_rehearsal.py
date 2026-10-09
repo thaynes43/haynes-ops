@@ -127,7 +127,7 @@ class NormalCases(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700)
             packet={'directory':directory,'repo_dir':'unused','binaries':{}}
-            w,_,_,_=normal.watcher(packet,initialize=False)
+            w,_,_,watch=normal.watcher(packet,initialize=False)
             origin='1970-01-01T00:00:10+00:00';miss='1970-01-01T00:01:00+00:00'
             w.state={'complete':False,'normal_rehearsal_restore_started_at':origin,
                      'normal_rehearsal_recovery_budget_missed_at':miss}
@@ -136,9 +136,13 @@ class NormalCases(unittest.TestCase):
             w.phase_checkpoint=lambda:{'phase_token':fixtures.PHASE};w.stop_actuated=lambda:False
             w.runtime_still_normal=lambda:True;w.source=lambda _:None;w.release_ks=lambda *_:None
             w.run=lambda *_:None;w.runtime_restored=lambda _:True;w.retire_hold_annotations=lambda:None;w.note=lambda _:None
-            w.recover_cluster(fixtures.NORMAL_SHA)
+            first='1970-01-01T00:03:20+00:00';later='1970-01-01T00:04:20+00:00'
+            with mock.patch.object(watch,'stamp',return_value=first):w.recover_cluster(fixtures.NORMAL_SHA)
             self.assertTrue(w.state['safety_recovery_complete']);self.assertFalse(w.state['complete'])
             self.assertTrue(saved);self.assertTrue(all(row.get('complete') is False for row in saved))
+            with mock.patch.object(watch,'stamp',return_value=later):w.recover_cluster(fixtures.NORMAL_SHA)
+            self.assertEqual(w.state['safety_recovery_completed_at'],first)
+            self.assertEqual(w.state['safety_recovery_reverified_at'],later)
             w.runtime_restored=lambda _:False
             with self.assertRaisesRegex(RuntimeError,'waiting for app/KS convergence'):w.recover_cluster(fixtures.NORMAL_SHA)
             self.assertTrue(all(row.get('complete') is False for row in saved))

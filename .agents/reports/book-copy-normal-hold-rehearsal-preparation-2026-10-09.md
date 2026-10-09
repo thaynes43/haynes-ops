@@ -339,3 +339,18 @@ Three focused finite controls passed serially under `nice -n 19` in 0.021s:
 no saved generic completion after a miss, failed cold verification preserving
 the original miss, scoped cold-result correction and historical in-budget proof.
 They use fake services/clocks and make no production API call.
+The Normal-only generic safety branch preserves its first safety-completion
+timestamp; a later successful cold proof has a separate reverified timestamp.
+The finite control exercises the real generic path at both fake times so the
+scoped helper cannot conceal a timestamp overwrite. Other recovery modes keep
+their existing timestamp behavior.
+The single extended real-generic control passed in 0.008s under serial `nice -n 19`.
+
+Unused prepared Stop/inverse drafts
+[#3659](https://github.com/thaynes43/haynes-ops/pull/3659) and
+[#3660](https://github.com/thaynes43/haynes-ops/pull/3660) were closed without merge
+or application after this failed timing gate. Their branches remain preserved at
+`7bcdbb188bba43daeb00c4d3b852d71b9281bdf8` and
+`27156481c649fe20acc008cfd1a4c4f1cba575fe` respectively; no branch was deleted.
+Any future pair requires a fresh full packet and separate authorization.
+The hourly-strip draft #3571 remains held.
