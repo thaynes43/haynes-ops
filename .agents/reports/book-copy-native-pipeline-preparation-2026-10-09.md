@@ -175,6 +175,14 @@ suite. The other current copy-window readers have no masked spawn registration
 or owning Python signal handler, so that precise mask-bypass premise does not
 apply to them. No frozen archive or runtime module was changed.
 
+Independent exact-source review at `36958a97f9a948d67c121aadc8bfb276483864b0`
+passed the real live-drain signal fixture in 0.079 seconds and both pre-execute
+refusal controls in 0.076 seconds under `nice -n 19`. Receipt
+`/home/dev/work/hn-831-live-host-independent-review-36958a97-1009.json`, SHA
+`c8e81716615781568cd7af2cc25cbd13add26367fd1cd38b00710a9d46b62f8f`,
+supersedes the earlier final-source receipt. This citation changes no executable
+source; exact-head CI/advisory and a fresh private packet remain required.
+
 Source PR [#3661](https://github.com/thaynes43/haynes-ops/pull/3661) merged as
 `b5defb2a1ca11a6bbfeb17e8a79903252ac12f87` after exact head
 `576cf1be3541b59c7b93602f0e916cd82271e109` passed all required checks and its
