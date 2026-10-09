@@ -393,7 +393,7 @@ eligible unprotected extra under that complete snapshot. Missing, repeated, chan
 protected or keeper entries refuse the entire selection before any move. Narrowing
 scope never removes source files, dependencies or protections from the snapshot.
 
-The invocation hashes the complete current corpus once. It moves the first exact
+The default invocation hashes the complete current corpus once. It moves the first exact
 selected extra, verifies the retained bytes/manifest/ownership, absent original and
 unchanged keeper, then verifies the complete remaining file census against the
 original fingerprints. This includes every protected EPUB and non-EPUB library
@@ -413,8 +413,8 @@ refuses any mismatch, lost connection or deadline. The image contains the pinned
 install nothing. Source-capture locks stay held until the writer stops, and the recovery supervisor stops owned
 writers before releasing its locks or restoring services.
 
-The copy-only image is built from `scripts/book-copy-writer/Dockerfile`. It bundles the reviewed, unchanged
-`epub_copies.py` and `epub_metadata.py`; it has no Calibre conversion or metadata-stripping entrypoint. Its workflow
+The copy-only image is built from `scripts/book-copy-writer/Dockerfile`. It bundles the reviewed
+`epub_copies.py`, `epub_metadata.py` and manual `bound_census.py`; it has no Calibre conversion or metadata-stripping entrypoint. Its workflow
 builds and tests PRs without publishing, publishes only main, and signs the immutable image digest. Pin that actual
 published digest in the reviewed manual Job before a maintenance window; building the image does not deploy it.
 
@@ -471,6 +471,13 @@ connects to production or installs packages in a runtime Pod.
 
 The [bounded proof contract](https://github.com/thaynes43/haynesnetwork/blob/main/docs/designs/028-integrations-tab-goodreads-requests.md)
 defines the separate live byte evidence and fenced current validation below.
+
+Select this manual mode explicitly with `--bound-census`. Its proof stays inside
+the existing `snapshot.json` transport; no fourth file or larger transport cap is
+accepted. The proof keeps the original complete byte capture and its absolute
+expiry, plus the current SOURCE stat census and actual native identities. SOURCE
+produces schema-2 `stat_census` evidence without reading EPUB bytes. The trusted
+assembly derives the byte census only after comparing every current fingerprint.
 
 The complete byte and OPF census may be collected while production is running. It is
 not a dependency snapshot or permission to move files. It must retain SHA-256, raw OPF
