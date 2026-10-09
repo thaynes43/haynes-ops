@@ -65,8 +65,9 @@ uppercase #RRGGBB, with pinned CalculateColorScape/UpdateColorScape method prove
 every other cell retains its strict predicate. There is no reseeding, repeated draw
 or rescan, and different encoded bytes refuse. A valid native color may equal its
 original value; requiring a random output to differ would introduce another chance
-of refusal. The fixture process inherits the sealed launch gate's umask077, checked from /proc/self/status before
-Build/helpers and after scan. Native cover files must already be600; no post-write
+of refusal. The fixture process inherits the sealed launch gate's umask 077, checked
+from /proc/self/status before Build/helpers and after scan. Native cover files must
+already be 0600; no post-write
 chmod may conceal their original custody.
 The actual helper UnitOfWork context
 must be the scoped DataContext, with no Added/Modified/Deleted entries after
