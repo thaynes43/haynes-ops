@@ -322,5 +322,102 @@ class CachedSourceCases(unittest.TestCase):
             self.assertTrue(w.tick());self.assertEqual(w.state['copy_authority_revoked_at'],first)
             self.assertEqual(w.events[-1],'restore-latest-normal')
 
+    def test_cold_origin_binds_immutable_budget_before_commands_and_takes_earliest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);raw=json.dumps(fixture()[0]).encode();cache.write_private(w.args.cached_source_receipt,raw)
+            active=dict(schema=1,phase_token=PHASE,cached_source_receipt_sha256=wc.sha(raw),normal_inverse_merge_sha=NORMAL_SHA,
+                        armed_ready=True,actuation_budget_started_at='1970-01-01T00:01:40+00:00')
+            cache.write_private(w.args.cached_source_activation,json.dumps(active).encode())
+            w.phase_checkpoint=lambda:dict(phase_token=PHASE,window_started_at='1970-01-01T00:03:20+00:00')
+            w.run=lambda *_a,**_k:self.fail('origin binding must precede all native/Git commands')
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(250,dt.timezone.utc)):
+                self.assertEqual(w.original_service_origin(),100)
+                cold=self.watcher(directory);cold.state=copy.deepcopy(w.state);cold.phase_checkpoint=w.phase_checkpoint;cold.run=w.run
+                self.assertEqual(cold.original_service_origin(),100)
+            self.assertEqual(cold.state['window_started_at'],'1970-01-01T00:03:20+00:00')
+
+    def test_individually_valid_commands_cumulatively_hit_original_ceiling_and_reap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);origin=time.time()-299.85;original=dt.datetime.fromtimestamp(origin,dt.timezone.utc).isoformat()
+            w.state['window_started_at']=original;w.original_service_origin=lambda:origin
+            children=[];real_popen=subprocess.Popen
+            def child(*args,**kwargs):
+                value=real_popen(*args,**kwargs);children.append(value);return value
+            def work():
+                legacy.watch.Watchdog.run(w,[sys.executable,'-c','import time;time.sleep(.01)'],timeout=45)
+                legacy.watch.Watchdog.run(w,[sys.executable,'-c','import time;time.sleep(5)'],timeout=45)
+                self.fail('no command may pass original ceiling')
+            w.tick_body=work;at=time.monotonic()
+            with mock.patch.object(Path,'read_text',return_value='public-fixture-token'),mock.patch.object(subprocess,'Popen',side_effect=child),self.assertRaises(TimeoutError):w.tick()
+            self.assertLess(time.monotonic()-at,.75);self.assertEqual(len(children),2);self.assertTrue(all(p.poll() is not None for p in children))
+            self.assertIn('service_ceiling_missed_at',w.state);self.assertFalse(w.state['complete']);self.assertTrue(w.stop.exists())
+            self.assertEqual(w.state['window_started_at'],original)
+
+    def test_service_control_inside_cached_proof_cannot_enter_exception_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);raw=json.dumps(fixture()[0]).encode();cache.write_private(w.args.cached_source_receipt,raw)
+            w.state.update(normal_inverse_verified_at='accepted',normal_inverse_merge_sha=NORMAL_SHA)
+            origin=time.time()-299.9;w.state['window_started_at']=dt.datetime.fromtimestamp(origin,dt.timezone.utc).isoformat()
+            children=[];real_popen=subprocess.Popen
+            def child(*args,**kwargs):
+                value=real_popen(*args,**kwargs);children.append(value);return value
+            def get(*_):
+                legacy.watch.Watchdog.run(w,[sys.executable,'-c','import time;time.sleep(5)'],timeout=45)
+                self.fail('blocked child must be retired')
+            w.kube=get
+            def proof():
+                with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(origin+100,dt.timezone.utc)):
+                    return w.tick_cached({},dict(mergeCommit={'oid':NORMAL_SHA}))
+            with mock.patch.object(Path,'read_text',return_value='public-fixture-token'),mock.patch.object(subprocess,'Popen',side_effect=child),self.assertRaises(TimeoutError):w.service_budget(origin,proof)
+            self.assertEqual(w.events,[]);self.assertEqual(len(children),1);self.assertIsNotNone(children[0].poll())
+            self.assertIn('service_ceiling_missed_at',w.state);self.assertTrue(w.stop.exists())
+
+    def test_expired_cold_window_runs_only_safety_normal_proof_and_never_becomes_complete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);original='1970-01-01T00:00:10+00:00'
+            w.state.update(window_started_at=original,normal_inverse_merge_sha=NORMAL_SHA)
+            w.original_service_origin=lambda:self.fail('persisted expiry must cap commands before new clock proof')
+            w.scopes=list(wc.SCOPES);w.phase_checkpoint=lambda:dict(phase_token=PHASE,window_started_at=original)
+            w.stop_actuated=lambda:True;w.desired_restored=lambda _:w.events.append('normal-git')
+            w.source=lambda _:w.events.append('normal-source')
+            def run(argv,**_):
+                self.assertEqual(argv[0],'flux');self.assertIn(argv[1],('resume','reconcile'));w.events.append('restore-app')
+            w.run=run;w.runtime_restored=lambda _:True;w.note=lambda _:None
+            w.recover_cluster=types.MethodType(legacy.watch.Watchdog.recover_cluster,w)
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(400,dt.timezone.utc)):self.assertTrue(w.tick())
+            self.assertFalse(w.state['complete']);self.assertTrue(w.state['safety_recovery_complete'])
+            self.assertLess(w.events.index('writers-pg-absent'),w.events.index('normal-source'))
+            self.assertLess(w.events.index('normal-git'),w.events.index('normal-source'))
+            missed=w.state['service_ceiling_missed_at'];revoked=w.state['copy_authority_revoked_at']
+            cold=self.watcher(directory);cold.state=copy.deepcopy(w.state);cold.scopes=w.scopes;cold.phase_checkpoint=w.phase_checkpoint
+            cold.original_service_origin=w.original_service_origin;cold.stop_actuated=w.stop_actuated;cold.desired_restored=w.desired_restored
+            cold.source=w.source;cold.run=w.run;cold.runtime_restored=w.runtime_restored;cold.note=w.note;cold.events=w.events
+            cold.recover_cluster=types.MethodType(legacy.watch.Watchdog.recover_cluster,cold)
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(450,dt.timezone.utc)):self.assertTrue(cold.tick())
+            self.assertEqual((cold.state['window_started_at'],cold.state['service_ceiling_missed_at'],cold.state['copy_authority_revoked_at']),(original,missed,revoked))
+            self.assertFalse(cold.state['complete'])
+
+    def test_safety_recovery_with_unavailable_normal_never_releases_source_or_apps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);w.state.update(window_started_at='1970-01-01T00:00:10+00:00',normal_inverse_merge_sha=NORMAL_SHA)
+            w.restored_main=lambda _:(_ for _ in ()).throw(TimeoutError('unavailable'))
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(400,dt.timezone.utc)),self.assertRaises(TimeoutError):w.tick()
+            self.assertEqual(w.events,['writers-pg-absent']);self.assertFalse(w.state['complete']);self.assertIn('service_ceiling_missed_at',w.state)
+
+    def test_late_cold_recheck_preserves_historical_success_before_original_ceiling(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);original='1970-01-01T00:00:10+00:00';completed='1970-01-01T00:03:00+00:00'
+            w.state.update(window_started_at=original,normal_inverse_merge_sha=NORMAL_SHA,complete=True,completed_at=completed)
+            w.scopes=list(wc.SCOPES);w.phase_checkpoint=lambda:dict(phase_token=PHASE,window_started_at=original)
+            w.stop_actuated=lambda:False;w.desired_restored=lambda _:w.events.append('normal-git')
+            w.runtime_still_normal=lambda:True;w.source=lambda _:w.events.append('normal-source')
+            w.run=lambda argv,**_:w.events.append('restore-app') if argv[0]=='flux' else self.fail('no producer/replay')
+            w.runtime_restored=lambda _:True;w.note=lambda _:None
+            w.recover_cluster=types.MethodType(legacy.watch.Watchdog.recover_cluster,w)
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(400,dt.timezone.utc)):self.assertTrue(w.tick())
+            self.assertTrue(w.state['complete']);self.assertEqual(w.state['completed_at'],completed)
+            self.assertNotIn('service_ceiling_missed_at',w.state);self.assertIn('copy_authority_revoked_at',w.state)
+            self.assertEqual(w.state['window_started_at'],original)
+
 
 if __name__=='__main__':unittest.main()

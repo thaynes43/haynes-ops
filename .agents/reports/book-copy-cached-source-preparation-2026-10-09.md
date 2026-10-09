@@ -68,6 +68,21 @@ All original bounds remain: LIVE 180s / host 200s, earliest original byte captur
 Stop +170s, SOURCE/host abort +250s and service
 ceiling +300s (50s restoration reserve), publisher start +65s / finish +35s.
 Global source hold requires declared cluster activity with TTL at most two hours.
+One owning timer must bound the entire cached active tick/restoration by the
+original earlier budget/actual Stop origin +300s, including Git fetch before
+cluster recovery and all Flux calls. Cold reload binds the immutable origin
+before commands; nested five-second cache checks preserve the outer timer. The
+still-Normal 120s retarget is outside the Stop budget. Expiry kills/reaps the
+current command, permanently revokes COPY and records missed/incomplete recovery;
+it cannot reset the origin or manufacture terminal Normal.
+After a recorded miss, the coordinator ratified bounded idempotent safety
+recovery toward Normal. Each attempt has a separate 60s operational cap and the
+existing command limits, with the original 10s retry wait. It may only retire
+owned writers/PG and restore current Normal source/apps; no producer, ACK, new
+lease or replay occurs. Original clocks and `complete=false` remain; a successful
+fresh Normal proof records `safety_recovery_complete`, never an in-window result.
+Unknown ownership or unavailable/conflicting Normal intent remains unproved and
+requires intervention. An expired window is not a reason to abandon restoration.
 
 Read-only feasibility evidence: OPERATOR can patch the GitRepository; actual
 source/kustomize controllers are v1.9.6. Source and all four application
@@ -98,10 +113,9 @@ Primary sources:
 - [v1.9.6 kustomize handler](https://github.com/fluxcd/kustomize-controller/blob/v1.9.6/internal/controller/kustomization_controller.go)
   fetches an existing Git source artifact without requiring that source to be unsuspended.
 
-Source validation: combined 46/46 finite tests (21 new +25 legacy) passed in
-6.791s under the dedicated hash-pinned host venv and `nice -n 19`. After advisory
-and peer corrections, the 23 focused cache tests passed in 0.500s; diff-check was
-clean. The owning five-second cache cap is scoped to cache reads; original 120s
+Source validation: final combined 54/54 finite tests (29 cache +25 legacy) passed
+in 6.789s under the dedicated hash-pinned host venv and `nice -n 19`; diff-check
+was clean. The owning five-second cache cap is scoped to cache reads; original 120s
 retarget and 30s Flux command limits are preserved. A finite command fixture
 prevents accidentally applying the cache cap to restoration commands.
 Independent review remains required before merge.
@@ -111,5 +125,11 @@ partial Stop before checkpoint, Git outage after revocation, no active advisory
 queries and actual converter drift. A finite blocked-child fixture proves the
 owning cache check is capped at five seconds with kill/reap. The seal has one
 30s wall cap, nested caps preserve it, and curl separately caps time/body/output.
+Real finite child fixtures also prove individually valid commands cumulatively
+hit the original service ceiling and are reaped; expiry inside nested cache proof
+bypasses its ordinary failure fallback. Cold fixtures preserve the earliest
+activation/actual Stop origin, original miss/revocation stamps and `complete=false`
+through cleanup-only safety recovery. A later cold recheck preserves historical
+Normal proof completed before the ceiling without retroactively marking a miss.
 Private receipts use exclusive, fsynced no-replace publication. No test reads
 credentials, changes native holds or creates a Job.

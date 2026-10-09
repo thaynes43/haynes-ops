@@ -110,6 +110,24 @@ incomplete recovery. It never extends the 300s ceiling. Actual still-Normal
 hold/drain/parent persistence and restoration-budget rehearsal remains required;
 this package is **not actual Stop-ready** from finite fixtures alone.
 
+The entire cached active/restoration tick has one owning original
+`min(pre-release budget, actual Stop) +300s` deadline. It includes Git fetch and
+all sequential Flux operations; individually valid command caps cannot extend
+the sum. The control exception bypasses ordinary cache-proof failure fallbacks,
+and nested five-second guards retain the outer remaining timer. Cold state binds
+the immutable origin before commands. An expired prior origin caps recovery
+before any new clock-proof read; no new duration is minted.
+
+A missed ceiling permanently revokes COPY and records `complete=false` plus the
+original miss. Cleanup-only safety restoration continues in bounded 60s attempts
+with the existing 10s retry wait. Each attempt proves owned writer/PG retirement
+and current Normal Git before source/app release. It cannot produce Jobs, ACKs,
+leases, replay or new window approval. Actual later Normal is recorded as
+`safety_recovery_complete`, never a claim that the 300s guarantee was met. Unknown
+ownership or Normal intent conflict still refuses. A historical success recorded
+before the original ceiling is preserved on later cold rechecks; fresh bounded
+convergence verification closes authority without rewriting its completed time.
+
 Original clocks remain independent. LIVE collection is 180s / host total 200s.
 Consumer byte expiry is earliest original byte capture start +300s. Actual first
 LL/Kavita Stop starts the watcher +170s restoration trigger, supervisor +250s

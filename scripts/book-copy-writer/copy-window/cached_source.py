@@ -28,14 +28,18 @@ MAX_EXPANDED = 64 * 1024 * 1024
 
 
 @contextmanager
-def wall_guard(seconds):
+def wall_guard(seconds, *, error=TimeoutError):
     """Owning main-thread wall cap; nested guards never extend an outer cap."""
-    wc.require(type(seconds) in (int, float) and 0 < seconds <= 30, 'wall guard cap')
+    wc.require(type(seconds) in (int, float) and 0 < seconds <= 300, 'wall guard cap')
     previous = signal.getsignal(signal.SIGALRM)
     timer = signal.getitimer(signal.ITIMER_REAL)
     start = time.monotonic()
-    def expired(*_):
-        raise TimeoutError('cached source wall budget expired')
+    earlier = bool(timer[0] and timer[0] <= seconds)
+    def expired(signum, frame):
+        # Preserve the outer control exception when its earlier deadline wins.
+        # A nested proof-failure handler must not swallow the service ceiling.
+        if earlier and callable(previous):previous(signum, frame)
+        raise error('cached source wall budget expired')
     signal.signal(signal.SIGALRM, expired)
     signal.setitimer(signal.ITIMER_REAL, min(seconds, timer[0]) if timer[0] else seconds)
     try:

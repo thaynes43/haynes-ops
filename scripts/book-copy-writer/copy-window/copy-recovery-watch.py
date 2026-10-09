@@ -27,6 +27,9 @@ def terminal_success(row):
     try:return isinstance(row.get('completedAt'),str) and bool(row['completedAt']) and epoch(row['completedAt'])>0
     except (ValueError,TypeError):return False
 
+class ServiceCeiling(BaseException):
+    """Owning original clock control; proof-failure fallbacks cannot swallow it."""
+
 class Watchdog:
     cached=False
     def __init__(self,args):
@@ -275,7 +278,12 @@ class Watchdog:
             self.source(sha)
             self.run(['flux','reconcile','kustomization',name,'-n',namespace,'--timeout=30s'])
         if not self.runtime_restored(sha):raise RuntimeError('Restored source fetched; waiting for app/KS convergence.')
-        self.state.update(complete=True,recover_ks=False,completed_at=stamp());self.save()
+        if self.state.get('service_ceiling_missed_at'):
+            self.state.update(complete=False,recover_ks=False,safety_recovery_complete=True,safety_recovery_completed_at=stamp())
+        else:
+            self.state.setdefault('completed_at',stamp())
+            self.state.update(complete=True,recover_ks=False,normal_reverified_at=stamp())
+        self.save()
         self.note('Recovery verified: six CronJobs false, acquisition restored, every scoped KS resumed and Ready on exact restored SHA.')
 
     def phase_checkpoint(self):
@@ -566,7 +574,94 @@ class Watchdog:
             self.recover_cluster(self.restored_main(merge));return True
         return False
 
+    def original_service_origin(self):
+        # Private original clocks only; no API/Git command may precede binding.
+        phase=self.phase_checkpoint()
+        started=phase.get('first_service_stop_observed_at') or phase.get('window_started_at')
+        if started:
+            if self.state.get('window_started_at') not in (None,started):raise RuntimeError('Original Stop origin changed.')
+            self.state.setdefault('window_started_at',started)
+        if Path(self.args.cached_source_activation).exists():
+            receipt,digest=self.cached_receipt()
+            value=json.loads(cache.read_private(self.args.cached_source_activation))
+            budget=cache.activation(value,phase['phase_token'],digest,receipt['normal_inverse_merge_sha'])
+            if budget<epoch(self.state['armed_at']) or budget>instant().timestamp():raise RuntimeError('Original budget origin outside arm/current clock.')
+            if self.state.get('actuation_budget_started_at') not in (None,value['actuation_budget_started_at']):raise RuntimeError('Original budget origin changed.')
+            self.state.setdefault('actuation_budget_started_at',value['actuation_budget_started_at'])
+        origins=[epoch(self.state[k]) for k in ('actuation_budget_started_at','window_started_at') if self.state.get(k)]
+        if any(origin<epoch(self.state['armed_at']) or origin>instant().timestamp() for origin in origins):raise RuntimeError('Original service origin invalid/future.')
+        self.save()
+        return min(origins) if origins else None
+
+    def ceiling_missed(self):
+        # Do not run another phase command or mint a later deadline after expiry.
+        self.state.setdefault('service_ceiling_missed_at',stamp())
+        self.state.setdefault('copy_authority_revoked_at',stamp())
+        self.state.update(recovery_reason='original_service_ceiling_expired',complete=False,recover_ks=True)
+        self.save();self.stop.touch(mode=0o600)
+
+    def safety_recovery(self):
+        # A missed window stays invalid. This bounded cleanup-only attempt has
+        # no producer/replay/ACK or COPY lease, and never resets original clocks.
+        self.ceiling_missed()
+        with cache.wall_guard(60):
+            self.cleanup_phase_jobs()
+            merge=self.state.get('normal_inverse_merge_sha')
+            if not merge:raise RuntimeError('Safety recovery lacks accepted Normal inverse identity; root intervention required.')
+            self.recover_cluster(self.restored_main(merge))
+        return True
+
+    def reverify_completed_normal(self):
+        # Preserve the historical in-window proof. Late fresh convergence is
+        # bounded cleanup/restoration only, never a new COPY window.
+        self.state.setdefault('copy_authority_revoked_at',stamp());self.save()
+        self.stop.touch(mode=0o600)
+        with cache.wall_guard(60):
+            self.cleanup_phase_jobs()
+            merge=self.state.get('normal_inverse_merge_sha')
+            if not merge:raise RuntimeError('Completed recovery lacks Normal inverse identity.')
+            self.recover_cluster(self.restored_main(merge))
+        return True
+
+    def persisted_service_origin(self):
+        origins=[epoch(self.state[k]) for k in ('actuation_budget_started_at','window_started_at') if self.state.get(k)]
+        if any(origin<epoch(self.state['armed_at']) or origin>instant().timestamp() for origin in origins):raise RuntimeError('Persisted original service origin invalid/future.')
+        return min(origins) if origins else None
+
+    def service_budget(self,origin,action):
+        completed=self.state.get('completed_at')
+        if (self.state.get('complete') is True and not self.state.get('service_ceiling_missed_at')
+            and completed and origin<=epoch(completed)<=min(origin+300,instant().timestamp())):
+            return self.reverify_completed_normal()
+        remaining=origin+300-instant().timestamp()
+        if remaining<=0 or self.state.get('service_ceiling_missed_at'):return self.safety_recovery()
+        try:
+            with cache.wall_guard(min(300,remaining),error=ServiceCeiling):return action()
+        except ServiceCeiling:
+            self.ceiling_missed()
+            raise TimeoutError('Original service ceiling missed; bounded safety recovery follows.')
+
     def tick(self):
+        if self.cached:
+            try:origin=self.persisted_service_origin()
+            except Exception:
+                self.state.setdefault('copy_authority_revoked_at',stamp())
+                self.state.update(recovery_reason='persisted_original_clock_invalid',complete=False,recover_ks=True)
+                self.save();self.stop.touch(mode=0o600);raise
+            if origin is not None:return self.service_budget(origin,self.bind_clock_tick)
+            return self.bind_clock_tick()
+        return self.tick_body()
+
+    def bind_clock_tick(self):
+        try:
+            with cache.wall_guard(5):origin=self.original_service_origin()
+        except Exception:
+            with cache.wall_guard(5):self.revoke_cached('original_clock_proof_lost')
+            raise
+        if origin is not None:return self.service_budget(origin,self.tick_body)
+        return self.tick_body()
+
+    def tick_body(self):
         if self.state.get('complete'):
             # A stop/restart never skips fresh convergence verification.
             self.recover_cluster(self.restored_main(self.state['expected_restored_sha']));return True
