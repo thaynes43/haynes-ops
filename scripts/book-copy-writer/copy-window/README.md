@@ -127,7 +127,11 @@ leader birth proves retirement. A missing leader with members requires prior
 owner-bound custody captured while the original leader birth was proved on both
 sides of the snapshot; an already exited replacement leader is otherwise
 indistinguishable. Only captured identities are signaled. The immutable receipt
-records which proof established retirement.
+records which proof established retirement. A fresh snapshot bracketed by that
+same original leader birth may add immutable per-member custody supplements
+before any signal. The original custody is never overwritten, and at most 64
+identities may be captured. With a missing leader, only previously captured
+identities are admitted; an unknown survivor still refuses restoration.
 
 Rehearsal operational caps are exercise 90s, staging arm 120s and recovery 50s
 from the first recovery attempt. The watcher uses its existing 10s poll interval;

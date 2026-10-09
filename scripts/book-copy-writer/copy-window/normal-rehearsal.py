@@ -149,18 +149,48 @@ def retire_exercise(packet):
                     and all(custody[k]==binding[k] for k in ('schema','packet_sha256','phase_token','owner_sha256','original_group'))
                     and isinstance(custody['members'],dict) and 0<len(custody['members'])<=64
                     and custody['members'].get(str(pid))==owner['start_ticks'],'captured member custody changed')
-                captured={int(k):v for k,v in custody['members'].items()}
+                captured={(int(k),v) for k,v in custody['members'].items()}
             else:
                 require(current==latest==owner['start_ticks'] and members.get(pid)==owner['start_ticks']
                     and len(members)<=64,'missing leader member custody unproved')
-                captured=members.copy()
+                captured=set(members.items())
                 cache.write_private(custody_path,canonical({k:binding[k] for k in
                     ('schema','packet_sha256','phase_token','owner_sha256','original_group')}|
-                    {'members':{str(k):v for k,v in captured.items()}}))
+                    {'members':{str(k):v for k,v in captured}}))
+            # Supplements are immutable custody, not a mutable replacement of
+            # the original snapshot. Cold retries admit only bound proof bytes.
+            supplements=list(runtime.glob('exercise-member-*.json'))
+            require(len(supplements)<=64,'captured member proof cap')
+            for proof_path in supplements:
+                raw=read_private(proof_path);proof=json.loads(raw)
+                require(set(proof)=={'schema','packet_sha256','phase_token','owner_sha256','original_group','pid','start_ticks'}
+                    and all(proof[k]==binding[k] for k in ('schema','packet_sha256','phase_token','owner_sha256','original_group'))
+                    and type(proof['pid']) is int and proof['pid']>1
+                    and isinstance(proof['start_ticks'],str) and 0<len(proof['start_ticks'])<=64
+                    and proof_path.name=='exercise-member-'+sha(canonical(proof))+'.json','captured member supplement changed')
+                captured.add((proof['pid'],proof['start_ticks']))
+            require(len(captured)<=64,'captured member identity cap')
             until=time.monotonic()+2
             while members:
                 require(time.monotonic()<until and len(members)<=64,'exercise group retirement unproved/cap')
-                require(all(captured.get(member)==birth for member,birth in members.items()),'new member custody unproved')
+                try:before=start_ticks(pid)
+                except FileNotFoundError:before=None
+                members=group_members(pid)
+                try:after=start_ticks(pid)
+                except FileNotFoundError:after=None
+                if any(v not in (None,owner['start_ticks']) for v in (before,after)):
+                    basis='replacement_pid';break
+                unknown=set(members.items())-captured
+                if unknown:
+                    require(before==after==owner['start_ticks'] and members.get(pid)==owner['start_ticks'],
+                        'new member custody unproved')
+                    require(len(captured|unknown)<=64,'captured member identity cap')
+                    for member,birth in sorted(unknown):
+                        proof={k:binding[k] for k in ('schema','packet_sha256','phase_token','owner_sha256','original_group')}
+                        proof.update(pid=member,start_ticks=birth);raw=canonical(proof)
+                        cache.write_private(runtime/('exercise-member-'+sha(raw)+'.json'),raw)
+                        captured.add((member,birth))
+                require(time.monotonic()<until and len(members)<=64,'exercise group retirement unproved/cap')
                 for member,birth in members.items():signal_member(member,birth,pid)
                 try:current=start_ticks(pid)
                 except FileNotFoundError:current=None

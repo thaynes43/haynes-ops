@@ -211,7 +211,7 @@ class NormalCases(unittest.TestCase):
                 'phase_token':fixtures.PHASE,'owner_sha256':normal.sha(normal.canonical(owner)),
                 'original_group':pid,'members':{str(pid):'original',str(pid+1):'owned-descendant'}}
             cache.write_private(runtime/'exercise-members.json',normal.canonical(custody))
-            with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',side_effect=[{pid+1:'owned-descendant'},{}]),mock.patch.object(normal,'signal_member') as retire:
+            with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',side_effect=[{pid+1:'owned-descendant'},{pid+1:'owned-descendant'},{}]),mock.patch.object(normal,'signal_member') as retire:
                 normal.retire_exercise(packet);retire.assert_called_once_with(pid+1,'owned-descendant',pid)
             proof=json.loads(normal.read_private(runtime/'exercise-retired.json'))
             self.assertEqual(proof['basis'],'retired_owned_group');self.assertEqual(proof['group_members'],{})
@@ -227,6 +227,75 @@ class NormalCases(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'member custody unproved'):normal.retire_exercise(packet)
                 retire.assert_not_called()
             self.assertFalse((runtime/'exercise-members.json').exists());self.assertFalse((runtime/'exercise-retired.json').exists())
+
+    def test_live_new_member_persists_custody_before_signal_and_cold_orphan_retirement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
+            packet={'directory':directory,'phase_token':fixtures.PHASE};pid=os.getpid()+100000
+            owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'pid':pid,'start_ticks':'original','pgid':pid}
+            cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            def interrupted(member,birth,group):
+                proofs=list(runtime.glob('exercise-member-*.json'));self.assertEqual(len(proofs),1)
+                self.assertEqual(json.loads(normal.read_private(proofs[0]))['pid'],pid+1)
+                self.assertEqual((member,birth,group),(pid,'original',pid))
+                raise ValueError('interrupted after original leader retirement')
+            with mock.patch.object(normal,'start_ticks',return_value='original'),mock.patch.object(normal,'group_members',side_effect=[{pid:'original'},{pid:'original',pid+1:'late-child'}]),mock.patch.object(normal,'signal_member',side_effect=interrupted):
+                with self.assertRaisesRegex(ValueError,'interrupted'):normal.retire_exercise(packet)
+            original=normal.read_private(runtime/'exercise-members.json')
+            with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',side_effect=[{pid+1:'late-child'},{pid+1:'late-child'},{}]),mock.patch.object(normal,'signal_member') as retire:
+                normal.retire_exercise(packet);retire.assert_called_once_with(pid+1,'late-child',pid)
+            self.assertEqual(normal.read_private(runtime/'exercise-members.json'),original)
+            self.assertEqual(json.loads(normal.read_private(runtime/'exercise-retired.json'))['basis'],'retired_owned_group')
+
+    def test_missing_leader_unknown_new_member_is_never_adopted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
+            packet={'directory':directory,'phase_token':fixtures.PHASE};pid=os.getpid()+100000
+            owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'pid':pid,'start_ticks':'original','pgid':pid}
+            cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            custody={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'owner_sha256':normal.sha(normal.canonical(owner)),
+                'original_group':pid,'members':{str(pid):'original'}}
+            cache.write_private(runtime/'exercise-members.json',normal.canonical(custody))
+            with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',return_value={pid+1:'unknown'}),mock.patch.object(normal,'signal_member') as retire:
+                with self.assertRaisesRegex(ValueError,'new member custody unproved'):normal.retire_exercise(packet)
+                retire.assert_not_called()
+            self.assertEqual(list(runtime.glob('exercise-member-*.json')),[])
+            self.assertFalse((runtime/'exercise-retired.json').exists())
+
+    def test_live_member_supplement_cannot_exceed_original_identity_cap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
+            packet={'directory':directory,'phase_token':fixtures.PHASE};pid=os.getpid()+100000
+            owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'pid':pid,'start_ticks':'original','pgid':pid}
+            cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            custody={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'owner_sha256':normal.sha(normal.canonical(owner)),
+                'original_group':pid,'members':{str(pid):'original'}|{str(pid+i):'old' for i in range(1,64)}}
+            cache.write_private(runtime/'exercise-members.json',normal.canonical(custody))
+            with mock.patch.object(normal,'start_ticks',return_value='original'),mock.patch.object(normal,'group_members',return_value={pid:'original',pid+64:'new'}),mock.patch.object(normal,'signal_member') as retire:
+                with self.assertRaisesRegex(ValueError,'captured member identity cap'):normal.retire_exercise(packet)
+                retire.assert_not_called()
+            self.assertEqual(list(runtime.glob('exercise-member-*.json')),[])
+
+    def test_member_supplement_wrong_owner_refuses_before_signal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
+            packet={'directory':directory,'phase_token':fixtures.PHASE};pid=os.getpid()+100000
+            owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'pid':pid,'start_ticks':'original','pgid':pid}
+            cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            binding={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'owner_sha256':normal.sha(normal.canonical(owner)),'original_group':pid}
+            cache.write_private(runtime/'exercise-members.json',normal.canonical(binding|{'members':{str(pid):'original'}}))
+            bad=binding|{'owner_sha256':'0'*64,'pid':pid+1,'start_ticks':'child'};raw=normal.canonical(bad)
+            cache.write_private(runtime/('exercise-member-'+normal.sha(raw)+'.json'),raw)
+            with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',return_value={pid+1:'child'}),mock.patch.object(normal,'signal_member') as retire:
+                with self.assertRaisesRegex(ValueError,'supplement changed'):normal.retire_exercise(packet)
+                retire.assert_not_called()
 
     def test_final_signal_uses_captured_pidfd_when_numeric_pid_is_replaced(self):
         pid,fd=12345,99;numeric={'birth':'original'};handles={fd:'original'};signaled=[]

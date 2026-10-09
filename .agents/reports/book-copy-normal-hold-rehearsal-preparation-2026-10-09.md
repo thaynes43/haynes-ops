@@ -49,7 +49,11 @@ including a replacement leading a new group. It is never signaled. A missing
 leader with members is ambiguous: a replacement group may also have lost its
 leader. Require private owner-bound custody captured while the original leader
 birth was proved before/after the member snapshot, then signal only those
-captured identities. First-observed missing leader without custody refuses.+[Python's pidfd signal API](https://docs.python.org/3.11/library/signal.html#signal.pidfd_send_signal)
+captured identities. While that original leader still brackets a fresh snapshot,
+new members receive immutable per-member custody supplements before any signal,
+with at most 64 captured identities in total. Original custody is never replaced.
+A missing leader permits only prior custody; unknown survivors refuse.
+[Python's pidfd signal API](https://docs.python.org/3.11/library/signal.html#signal.pidfd_send_signal)
 targets the captured process handle across the final numeric PID reuse gap.
 
 The rehearsal has no Stop clocks or COPY lease. Its closed operational bounds are
@@ -123,8 +127,18 @@ under `nice -n 19`, with no numeric group signal or native API.
 Independent exact `fff72d74` review passed, receipt
 `f66a1d814ff4438f9cc9165c27745b6f7a5904ff5e75ed6d223bdb5e9e5792b7`,
 pinning nine files and independently passing six focused custody/pidfd controls
-in 0.190s. It supersedes the earlier receipts. Current advisory `6088820407`,
-updated 2026-10-09 21:08:58Z, reviewed that successor and reports no findings.
+in 0.190s. It supersedes the earlier receipts. Advisory `6088820407` briefly
+reported no findings at 2026-10-09 21:08:58Z, then was replaced at 21:11:36Z
+with a real MEDIUM finding: a new member observed while the original leader
+was proved could never enter immutable custody. That successor adds bounded
+immutable supplements under the same original-leader proof; the prior PASS
+does not cover this correction.
+The four new controls prove durable custody before signaling a newly observed
+live-leader child, cold orphan retirement from that supplement, missing-leader
+unknown refusal, the 64-identity cap and wrong-owner proof refusal. The complete
+23-case Normal suite passed serially under `nice -n 19` in 0.441s. Independent
+successor review and the actual current advisory disposition remain pending;
+no runtime API, native hold or Job was used.
 An uncaptured surviving process can still prevent proven retirement; its parent
 may have died before its command timeout was enforced. Do not promise that such
 an orphan exits within 50s. Record the miss and continue bounded safe attempts,
