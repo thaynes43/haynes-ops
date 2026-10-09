@@ -44,7 +44,7 @@ try
         FixtureProtocol.SelfTest();
         NativeProof.GenericSelfTest();
         NativeBindings.Inspect();
-        output.WriteLine($"PASS 11 packet refusals, 3 durable-ACK refusals, typed cells, saved-state barriers, inverse and actual native reflection signatures; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
+        output.WriteLine($"PASS 11 packet refusals, 3 durable-ACK refusals, 6 live-native drift refusals, typed cells, saved-state barriers, inverse and actual native reflection signatures; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
         return 0;
     }
     FixtureProtocol.Require(args.SequenceEqual(new[] { "--prepared-private-fixture" }), "unknown entrypoint");
@@ -67,6 +67,13 @@ try
         FixtureProtocol.Require(FixtureProtocol.Sha(await File.ReadAllBytesAsync(pin.Path)) == pin.Sha256, "private bytes changed");
     }
     NativeBindings.Inspect();
+    using (var source = JsonDocument.Parse(await File.ReadAllBytesAsync("/fixture-input/source-proof.json")))
+    {
+        var live = source.RootElement.GetProperty("LiveNative").Deserialize<LiveNativeProof>() ?? throw new InvalidOperationException("fresh live native proof missing");
+        FixtureProtocol.ValidateLiveNative(packet, live, DateTimeOffset.UtcNow);
+        foreach (var module in live.Modules)
+            FixtureProtocol.Require(FixtureProtocol.Sha(await File.ReadAllBytesAsync(module.Path)) == module.Sha256, "actual deployed native module differs from fixture; reviewed successor required");
+    }
     NativeProof.RequireEpubMemberDelta(packet);
     var original = NativeProof.ReadDatabase(packet.OriginalDbPath);
     var before = NativeProof.ReadDatabase(packet.CandidateDbPath);

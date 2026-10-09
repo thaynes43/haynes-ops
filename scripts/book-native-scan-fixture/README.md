@@ -80,11 +80,26 @@ The fixture sets the live `America/New_York` timezone and opts out of k8tz injec
 Job and Pod metadata. Native runtime admission checks actual TimeZoneInfo.Local ID and
 current offset, not just the TZ environment string; CI exercises those checks in the
 exact native image. A new init container or timezone mount is not implicitly admitted.
-The version check compares Dockerfile/protocol tag and timezone to the current Kavita
-HelmRelease; changes there trigger this workflow and stale version bindings refuse.
+The guard always compares exact Dockerfile/protocol tag and digest internally. This
+reviewed diagnostic Dockerfile alone is excluded from Renovate; production upgrades
+remain independent. A production-only tag/TZ upgrade reports the frozen fixture obsolete,
+passes its informational source check and never builds/publishes a fixture image. An
+actual fixture-source build must match the current HelmRelease tag/TZ. A finite two-path
+regression proves a production-only upgrade succeeds while an obsolete source build or
+internal digest drift refuses. Source changes alone and explicit dispatch may publish.
 Before runtime, freshly verify the actual production Pod imageID/native module bytes
 and timezone: a matching mutable tag alone is insufficient. Do not change production
 deployment pins or assume the prepared Job's admission equals the source template.
+
+The private source proof has a required `LiveNative` object: observed-at time, native
+Pod UID, exact tag/image digest, actual timezone/current offset and all eight native
+module path/SHA pairs listed by FixtureProtocol.NativeModules. Capture those actual
+read-only production facts after the fixture Job's original start and before private
+input delivery; no previous/restamped identity is accepted. The child checks the full
+tuple and compares every module to the actual fixture's native bytes before Build.
+Changed live tag, imageID, module or timezone refuses until a reviewed successor exists.
+This exact-version guard is independent of whether production-upgrade CI is required.
+The future host must check live identity again before ratifying the resulting proof.
 
 Each before/after-Build/after-binding/after/inverse snapshot is created mode 0600 and
 fsynced. A refusal after
@@ -131,19 +146,20 @@ image. A Dockerfile-specific deny-all build context includes only the four gener
 source/build files. No private database, EPUB, approval packet or user payload reaches
 the build context, CI image or Actions artifact.
 
-CI launches that actual apphost in the exact native base with network none/read-only,
+For fixture source changes CI launches that actual apphost in the exact native base with network none/read-only,
 500m CPU and `nice -n 19`. The finite self-test checks 11 malformed packet refusals,
-three durable-ACK refusals, storage-type boundaries, saved-state mutation/removal
+three durable-ACK refusals, six fresh live-native drift refusals, storage-type boundaries, saved-state mutation/removal
 refusals, exact inverse and actual published reflection signatures, without building
 the host or scanning any fixture. A separate finite child blocks on a full undrained
 stdout pipe; the original deadline must still exit it with code 124. The hard-exit
-callback performs no telemetry or other blocking output before termination. Six Python
+callback performs no telemetry or other blocking output before termination. Seven Python
 checks cover the prepared manifest, current GitOps version/TZ and
 build-context barriers. Initial public CI run 37968299781 passed compilation and native
 apphost launch at f657b5d8, without private inputs or host/scan. Subsequent source changes
 require their own current-head pass; neither launch establishes scanner behavior.
 
-CI records only official SDK and generic/native module hashes. On main it publishes
+CI records only official SDK and generic/native module hashes. On main fixture-source
+changes it publishes
 the same tested image without rebuilding and signs its digest. Fresh root review must
 bind that image, apphost/runtime/assembly/source receipt and the reviewed private input
 packet before runtime. This source package is preparation, not catalog-writer approval.

@@ -15,6 +15,7 @@ public sealed record ScanAllowance(string Table, int Id, string Field, string Be
 public sealed record ParsedKey(string Name, string NormalizedName, int Format);
 public sealed record EpubMemberDelta(string Member, string BeforeSha256, string AfterSha256);
 public sealed record EvidenceAck(string Phase, string JobUid, string PodUid, string ReceiptSha256, bool DurablyCopied);
+public sealed record LiveNativeProof(DateTimeOffset ObservedAt, string PodUid, string ImageTag, string ImageDigest, string TimeZone, TimeSpan ActualUtcOffset, FilePin[] Modules);
 public sealed record FixturePacket(int Schema, bool ExplicitRootFixtureApproval, string Phase,
     string JobUid, string PodUid, string Node, string ImageDigest, string HarnessSha256,
     DateTimeOffset JobStartedAt, DateTimeOffset ExpiresAt, FilePin[] Inputs,
@@ -31,6 +32,7 @@ public static class FixtureProtocol
     public const string NativeTimeZone = "America/New_York";
     public const string SourceCommit = "6bcd5689385d0e96824982d843c54f15ce784ddc";
     public const string NativeAssembly = "/kavita/Kavita.Server.dll";
+    public static readonly string[] NativeModules = [NativeAssembly, "/kavita/Kavita.API.dll", "/kavita/Kavita.Models.dll", "/kavita/Kavita.Services.dll", "/kavita/Kavita.Database.dll", "/kavita/Microsoft.Data.Sqlite.dll", "/kavita/Microsoft.EntityFrameworkCore.dll", "/kavita/Microsoft.EntityFrameworkCore.Relational.dll"];
     public static readonly HashSet<string> CatalogTables = ["Series", "Volume", "Chapter", "MangaFile", "SeriesMetadata", "ExternalSeriesMetadata"];
     public static string Sha(byte[] value) => Convert.ToHexStringLower(SHA256.HashData(value));
     public static string HashText(string value) => Sha(Encoding.UTF8.GetBytes(value));
@@ -94,6 +96,14 @@ public static class FixtureProtocol
     public static void ValidateAck(FixturePacket p, EvidenceAck ack, string receiptSha256) => Require(
         ack.Phase == p.Phase && ack.JobUid == p.JobUid && ack.PodUid == p.PodUid && ack.ReceiptSha256 == receiptSha256 && ack.DurablyCopied,
         "private artifact durable ACK differs");
+    public static void ValidateLiveNative(FixturePacket p, LiveNativeProof proof, DateTimeOffset now)
+    {
+        Require(proof.ObservedAt >= p.JobStartedAt && proof.ObservedAt <= now && now < p.ExpiresAt, "fresh live native proof outside original Job phase");
+        Require(Guid.TryParseExact(proof.PodUid, "D", out _) && proof.ImageTag == NativeTag && proof.ImageDigest == NativeImageDigest && proof.TimeZone == NativeTimeZone, "production native identity changed; reviewed successor required");
+        Require(proof.ActualUtcOffset == TimeZoneInfo.FindSystemTimeZoneById(NativeTimeZone).GetUtcOffset(proof.ObservedAt), "live native timezone offset differs");
+        Require(proof.Modules.Select(m => m.Path).Order(StringComparer.Ordinal).SequenceEqual(NativeModules.Order(StringComparer.Ordinal)) && proof.Modules.All(m => IsHash(m.Sha256)), "complete current native module closure missing");
+        Require(proof.Modules.Single(m => m.Path == NativeAssembly).Sha256 == p.NativeAssemblySha256, "live native assembly changed");
+    }
     public static void SelfTest()
     {
         Require(Cell("1") != Cell(1L) && Cell(1L) != Cell(1.0), "typed storage boundaries lost");
@@ -128,6 +138,14 @@ public static class FixtureProtocol
             var refused = false;
             try { ValidateAck(good, bad, hash); } catch (InvalidOperationException) { refused = true; }
             Require(refused, "invalid durable evidence ACK accepted");
+        }
+        var live = new LiveNativeProof(now, Guid.NewGuid().ToString(), NativeTag, NativeImageDigest, NativeTimeZone, TimeZoneInfo.FindSystemTimeZoneById(NativeTimeZone).GetUtcOffset(now), NativeModules.Select(path => new FilePin(path, hash)).ToArray());
+        ValidateLiveNative(good, live, now);
+        foreach (var bad in new[] { live with { ImageDigest = "sha256:" + new string('b', 64) }, live with { ImageTag = "different" }, live with { TimeZone = "UTC" }, live with { ActualUtcOffset = TimeSpan.Zero }, live with { ObservedAt = now.AddSeconds(-1) }, live with { Modules = live.Modules[..7] } })
+        {
+            var refused = false;
+            try { ValidateLiveNative(good, bad, now); } catch (InvalidOperationException) { refused = true; }
+            Require(refused, "stale or different live native proof accepted");
         }
     }
 }
