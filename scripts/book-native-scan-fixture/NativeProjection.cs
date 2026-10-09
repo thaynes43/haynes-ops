@@ -102,8 +102,10 @@ static class NativeProjection
         FixtureProtocol.Require(!Directory.Exists(coverDirectory), "cover derivation directory already exists");
         Directory.CreateDirectory(coverDirectory);
         File.SetUnixFileMode(coverDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        var cover = (string)Invoke(bookType, book, "GetCoverImage", packet.TargetFilePath, "projection", coverDirectory, encode, size);
-        FixtureProtocol.Require(Path.GetDirectoryName(Path.GetFullPath(cover)) == coverDirectory && new FileInfo(cover).LinkTarget is null && new FileInfo(cover).Length is > 0 and <= 8 * 1024 * 1024, "native cover derivation missing or outside private directory");
+        // The pinned native helper returns a basename, not the output's full path.
+        var coverName = (string)Invoke(bookType, book, "GetCoverImage", packet.TargetFilePath, "projection", coverDirectory, encode, size);
+        var cover = CoverPath(coverDirectory, coverName);
+        NativeProof.PrivateFile(cover, 8 * 1024 * 1024);
         var colors = Invoke(NativeBindings.Type("Kavita.Services", "Kavita.Services.ImageService"), null, "CalculateColorScape", cover);
         var values = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -128,6 +130,15 @@ static class NativeProjection
             && uint.TryParse(cell[4..], NumberStyles.None, CultureInfo.InvariantCulture, out var original)
             && original <= uint.MaxValue - 2, "native uint token overflows or differs");
         return "int:" + (uint.Parse(cell[4..], CultureInfo.InvariantCulture) + 2).ToString(CultureInfo.InvariantCulture);
+    }
+    internal static string CoverPath(string directory, string name)
+    {
+        FixtureProtocol.Require(Path.IsPathFullyQualified(directory) && name.Length is > 0 and <= 128
+            && name == Path.GetFileName(name) && name.StartsWith("projection.", StringComparison.Ordinal)
+            && !name.Contains("..", StringComparison.Ordinal), "native cover basename differs");
+        var path = Path.GetFullPath(Path.Combine(directory, name));
+        FixtureProtocol.Require(Path.GetDirectoryName(path) == directory, "native cover is outside the separate private directory");
+        return path;
     }
     public static void RequireValues(FixturePacket packet, IReadOnlyDictionary<string, string> values)
     {
@@ -174,6 +185,13 @@ static class NativeProjection
     }
     public static void InspectSaveHooks()
     {
+        FixtureProtocol.Require(CoverPath("/tmp/synthetic-cover", "projection.jpg") == "/tmp/synthetic-cover/projection.jpg", "native cover basename was not joined to its directory");
+        foreach (var name in new[] { "/tmp/projection.jpg", "../projection.jpg", "another.jpg" })
+        {
+            var pathRefused = false;
+            try { CoverPath("/tmp/synthetic-cover", name); } catch (InvalidOperationException) { pathRefused = true; }
+            FixtureProtocol.Require(pathRefused, "unsafe native cover basename accepted");
+        }
         foreach (var (assembly, name, method, arguments) in new[] {
             ("Kavita.Services", "Kavita.Services.Extensions.ChapterExtensions", "UpdateFrom", 2),
             ("Kavita.Services", "Kavita.Services.Extensions.ChapterExtensions", "GetNumberTitle", 1),
