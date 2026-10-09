@@ -146,3 +146,73 @@ host receipt, admitted/created native objects, input transport receipt, refusal
 log, and independent cleanup receipt. No private input, credential, or progress
 receipt is committed. Production services, CronJobs, Flux and library data
 remained in their normal state throughout.
+
+## Read-only deployment verification after v0.110.5
+
+[App #866](https://github.com/thaynes43/haynesnetwork/pull/866) merged at
+`68a3ccd9ce59c69983b7f2d3962a0d00fce0ab41`.
+The [v0.110.5 tag](https://github.com/thaynes43/haynesnetwork/tree/v0.110.5)
+resolves to released source `8374aeca2456ec7aba035530be4755fd89216cf1`.
+[Ops #3639](https://github.com/thaynes43/haynes-ops/pull/3639) updated the app and
+its download CronJobs. Independent native checks after reconciliation confirmed:
+
+- Deployment generation 216 was observed; all three replicas were updated,
+  available and Ready on v0.110.5, with zero restarts and exact image ID
+  `sha256:e264e8a63b7a6b8865bfb51ecb38c398534d492ba64c6956960dedd8e6e64c6a`.
+- All three Pods' `init-db`, `migrate` and `k8tz` init containers exited zero.
+  Bounded startup and migrator log inspection found zero error/fatal/panic lines;
+  no raw logs or private data were copied into this report.
+- All 22 frontend haynesnetwork CronJob templates, plus downloads `books-census`
+  and `owed-checks`, used v0.110.5 and were unsuspended.
+- Each of the three Pods matched released git blob bytes for the eight modules
+  below. The API router is compiled into the Next.js bundle; it has no raw TS
+  module in the runtime image, so no raw router SHA claim is made.
+- The live converter retained `STRIP_SERIES_METADATA=0` and was unsuspended.
+  Libretto had one Ready replica, a configured acquisition endpoint, and a
+  selective runtime environment check confirmed the endpoint remained enabled.
+  No environment credentials were read or printed.
+
+| Released source module | SHA256, identical in all three Pods |
+| --- | --- |
+| `packages/domain/src/book-requests.ts` | `4c1a27ab355e25deec322747d420b8da634c0b4adcbb5d0917dc02c32a0b838f` |
+| `packages/domain/src/collection-wants-sync.ts` | `04953c98d084948ae844feadeb8b046458337e9cfb739274cc1aad7850bbed45` |
+| `packages/domain/src/format-pairing.ts` | `a0476659be99875d13e2b9b4ea1ab9cd5285e9c63d4f3742c2f025d5871b2d19` |
+| `packages/domain/src/goodreads-sync.ts` | `9178f70f339a14468daad33008a31609d772600b3c3e34e83602846883e3e6d2` |
+| `packages/domain/src/ll-book-check.ts` | `15ed9e458abefb0871b3821d18a7ba00bdbbba4ecd5dea77f79c9cd236b64119` |
+| `packages/domain/src/ll-release.ts` | `2012538c4d6757668eb08b06698308f21a8a4b1d1d71f9aae0b197d8f9a75134` |
+| `packages/domain/src/pairing-work-identity.ts` | `11fa398e5278731f33fdab2d359c73e5ab09fbf014b381789bd3ce55fed5714c` |
+| `packages/sync/src/goodreads.ts` | `b678c95a5fd28ec5ea862c47c160ae8a1a35d90cbbb51e45aff3813db8dfd5d5` |
+
+The verification used read-only native queries, selective source hashes and
+bounded logs. It created no Job, restarted no workload, and made no app, library
+or list write. Root reconciled the three release scopes and ended deployment
+activity at 15:51:44Z. This deployment proof does not supply the outstanding
+native producer artifact, app capture, or COPY authorization.
+
+## Qualified performance diagnosis and next probe
+
+A separate stat-only LazyLibrarian/CephFS snapshot at 15:37:25Z counted 4,816
+files, 2,077 directories and 1,963 visible EPUBs totalling 8,532,610,673 bytes.
+The retained selected-41 sizes totalled 296,546,588 bytes. This snapshot is not
+native NFS identity/byte proof and cannot be adopted as the required fresh
+baseline. Input delivery consumed about 2.26 seconds of the original capture
+window, leaving about 177.449 seconds. Reading whole plus selected EPUB bytes
+alone would require about 49.76 MB/s, before ZIP/OPF, path and metadata work.
+
+Retrospective metrics showed 12.358097 cumulative container CPU seconds and zero
+throttled periods out of 1,688. The collector performs five full walks, complete
+EPUB SHA and ZIP identity reads, 4,816 repeated parent permission checks, and the
+selected-41 byte rereads. The final generic `Stop` contained no counters; the
+actual cutoff stage and bytes completed are unrecoverable. No performance
+guarantee or CPU-limit remedy follows from these observations.
+
+Root ratified preparation, but not execution, of one diagnostic worker probe:
+one unchanged walk, one unchanged per-file permission pass, and one fixed EPUB
+read of at most 64 MiB with before/after descriptor/path checks. Its proposed
+hard bounds are 90 seconds, 500m CPU and 256 MiB, on `talosw01` with the same
+read-only mount, signed image and security profile. It emits only aggregate
+stage telemetry, with no baseline artifact, ACK, COPY claim, full hashing or
+retry. Independent review of the concrete script, manifest, hashes and cleanup,
+followed by fresh root GO, is required before execution. Any algorithm change
+waits for those timings. The original 180/200-second lifecycle and 180-second
+artifact expiry / 170-second restoration trigger remain unchanged.
