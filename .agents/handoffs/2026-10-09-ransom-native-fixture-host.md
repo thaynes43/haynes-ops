@@ -232,3 +232,50 @@ paths, arguments or private values. Public errors remain stage/type only. Succes
 handback still requires every database proof; an unknown diagnostic cannot stand
 in for a scan or inverse proof. Original180/200 caps and all production gates stay
 closed. The consumed v8 GO cannot authorize another execution.
+
+## Corrected parser publication and CLOSED host pin (22:44 UTC)
+
+PR #3683 merged `5dda767686b9a6c81744b8bf67f9db73aa7e3025` after exact head
+`84927e921eade21a412c41e44793ebb644e6dcb4` passed full native compilation,
+real compiled constructor/diagnostic-failure controls, original hard deadline and
+42 host controls. Actual Claude advisory38000525439 comments6090365030/6090487737
+reported No findings; the prior diagnostic-loss HIGH6090381814 was fixed and
+disposed in6090437746. Independent final source receipt
+`/tmp/hn-ransom-native-parser-peer-84927e92.json`, SHA
+`7f0bb574ed4e95bb00cd8f9aa11bc2333bc576487e9fc829eb5fc432e0274645`,
+pins all eight changed files, including exact positive int32 MethodDef bounds.
+
+Main workflow38000667440 repeated the complete native controls and published the
+same tested image without rebuilding:
+`ghcr.io/thaynes43/book-native-scan-fixture@sha256:53dfa0670e616e9b6845ccb2dc8f8dbf40cc3e28a7367d0b0ce105d2a6a196b4`.
+The rehashed official cosign3.1.3 binary verified this exact digest, source5dda,
+repository, push/main workflow name/subject/issuer, trusted certificate chain and
+offline transparency inclusion. Cosign receipt SHA
+`cdbe65d4b6190208ccb48081c276c3f611d74bab519e8f76888e847984be99c0`.
+
+Main's 13-module artifact and official SDK reference compare byte-identical to the
+passed PR38000525402 artifact; module file SHA
+`13b719a2353abc6a79af940bf82b9076c528c81d12f9f72883843886a9d06e3b`,
+SDK file SHA `be7c118c7618eade5afaadd08da1d0e5d2a09005123ef91549cebf94860fadcf`.
+An independent anonymous registry read hashes the actual five generic modules in
+one bounded49,464,311-byte fixture layer and proves all eight native base diff IDs
+unchanged. Registry receipt SHA
+`59fa5f91e5775bc029704d041d7da9e949e96ddd72f52198e82ede86a75269ac`.
+Fresh read-only current production hashing matches the eight native artifact
+modules, same Pod UID565e49a9-405c-4d0f-acb7-3c18daa3dd2b/restart0; receipt SHA
+`d74c772705a5ed71ee94d67d218b3df6cf10072a2a94bcf2cfd35aaaf49780b4`.
+
+The complete immutable13-module closure is
+`/tmp/hn-ransom-parser-publication-proof-1009/module-closure.json`, SHA
+`889403dea9d7724d7bf3bd1cd13a82b0d3bee1c5df50f8e54ddc53b720449ac1`.
+This follow-on changes only the host image constant and matching public prepared
+default to that verified image. Prepared/root/runtime/production flags remain
+CLOSED. No cluster policy, workload, native base, SDK, predicate or clock changes.
+
+**Actual v8 remains UNKNOWN**, independently confirmed by receiptb060dd3a;
+after-bind/helper-cover, scan25, inverse32 and zero-exit Job Complete remain unproved.
+The constructor defect is corrected and covered by public compiled controls, not
+by a later private execution. No fresh runtime packet or additional Job was
+prepared. A later actual proof requires new exact source/image/host closure, a
+fresh CLOSED packet, independent audit and separately named root one-Job GO.
+Production Ransom writer/COPY/EPUB/list/strip/hold authority remains absent.
