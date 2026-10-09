@@ -120,6 +120,16 @@ The coordinator's final review added the ambiguous missing-leader case: durable
 captured-member custody, prior-captured orphan retirement and an exited
 replacement group's refusal. Those three controls passed in 0.126s serially
 under `nice -n 19`, with no numeric group signal or native API.
+Independent exact `fff72d74` review passed, receipt
+`f66a1d814ff4438f9cc9165c27745b6f7a5904ff5e75ed6d223bdb5e9e5792b7`,
+pinning nine files and independently passing six focused custody/pidfd controls
+in 0.190s. It supersedes the earlier receipts. Current advisory `6088820407`,
+updated 2026-10-09 21:08:58Z, reviewed that successor and reports no findings.
+An uncaptured surviving process can still prevent proven retirement; its parent
+may have died before its command timeout was enforced. Do not promise that such
+an orphan exits within 50s. Record the miss and continue bounded safe attempts,
+with coordinator intervention if ownership stays unknown. No extra stop/signal
+authority is inferred from the advisory's optional suggestion.
 
 The independently reviewed #3667 successor was `f9f654b6` (receipt
 `89ffe7fc818cc66273505adcd6f4580fdeb5108ae7f280d4ad9b38133095e738`)
