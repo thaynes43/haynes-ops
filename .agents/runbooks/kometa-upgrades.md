@@ -78,9 +78,14 @@ files. It is an in-memory snapshot reused by both libraries, not a persistent
 120-day cache. A dataset outage can fail operations; preserve existing ratings
 and investigate egress/source errors before choosing an explicit rollback.
 
-All three production launchers mount the same Ceph block PVC at `/config` and
-hold `/config/.run.lock`. Waiting and acquisition are logged separately; Job
-elapsed time/alerting includes the wait. Preserve tini `-g -s`, inheritable lock
+All three production launchers mount the same RWO Ceph block PVC at `/config` and
+hold `/config/.run.lock`. Waiting and acquisition are logged separately. If an
+overlapping Job schedules on another node, RWO volume attachment can hold its pod
+in `ContainerCreating` with `Multi-Attach` events before the launcher starts; no
+lock-wait line exists yet. Inspect `kubectl describe pod -n media <pod>` and its
+events in that case. Same-node processes coordinate with `flock`; cross-node
+mounts additionally wait for attachment. Job elapsed time/alerting includes both
+waits. Preserve tini `-g -s`, inheritable lock
 descriptor, and the three-hour production deadline across changes. This deadline
 bounds waiting plus execution; an exceeded budget fails the Job and releases the
 lock. The next daily run can retry idempotent ratings/overlay work. Do not enlarge

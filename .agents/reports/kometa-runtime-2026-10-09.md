@@ -84,6 +84,10 @@ Serialize all three launchers with a shared advisory lock at
 interpreter, and let tini forward termination to the process group. Log both
 waiting and acquisition. Tighten each Job's deadline from 23 hours to three hours,
 bounding waiting plus execution; keep all schedules, providers and thresholds.
+The Ceph block PVC is RWO: a cross-node overlapping pod can instead wait for
+volume attachment in `ContainerCreating` with `Multi-Attach` events before the
+launcher starts, so it has no lock-wait log yet. Check pod events as well as the
+launcher logs; elapsed alerts and hard deadlines include either wait.
 
 A separate completed-run Loki query for Sep 10–Oct 9 found collections maximum
 50:18 across 30 completions and overlays maximum 45:52 across 29 completions.

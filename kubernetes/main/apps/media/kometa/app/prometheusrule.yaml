@@ -85,8 +85,8 @@ spec:
         - alert: KometaOperationsRunTooLong
           annotations:
             summary: >-
-              {{ $labels.job_name }} has been running over 1h. Check the shared
-              run-lock wait, IMDb dataset/source timing and MDBList 429s;
+              {{ $labels.job_name }} has been running over 1h. Check pod volume
+              attachment events, shared run-lock wait, IMDb source timing and MDBList 429s;
               a warm MDBList cache does not cache direct IMDb service lookups.
           expr: |
             (time() - kube_job_status_start_time{namespace="media", job_name=~"kometa-operations-.*"}) > 3600
