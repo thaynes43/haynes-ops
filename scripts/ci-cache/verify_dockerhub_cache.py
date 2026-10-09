@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+from pathlib import Path
 import re
 import signal
 import urllib.error
@@ -15,11 +16,7 @@ INDEX_TYPES = {'application/vnd.oci.image.index.v1+json',
 MANIFEST_TYPES = {'application/vnd.oci.image.manifest.v1+json',
                   'application/vnd.docker.distribution.manifest.v2+json'}
 ACCEPT = ', '.join(sorted(INDEX_TYPES | MANIFEST_TYPES))
-IMAGES = {
-    'python': ('library/python', 'sha256:f85c5697265c178cc6887276c55fe16cf3d14ca35c3df6a5eab3b360534a55d2'),
-    'postgres': ('library/postgres', 'sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d'),
-    'kavita': ('jvmilazz0/kavita', 'sha256:ca6af7a18d7124d014702983c2364e485294f808c1552e9555f2595b7cda7982'),
-}
+ROOT = Path(__file__).resolve().parents[2]
 PROFILES = {'copy-writer': ('python', 'postgres'), 'native-scanner': ('kavita',)}
 
 
@@ -44,6 +41,31 @@ def decode(raw):
     value = json.loads(raw, object_pairs_hook=unique)
     require(isinstance(value, dict), 'metadata_object')
     return value
+
+
+def canonical_image(name, root=ROOT):
+    sources = {'python': ('scripts/book-copy-writer/Dockerfile', 'library/python', r'(?:python|library/python|docker\.io/(?:library/)?python)', 'from'),
+               'kavita': ('scripts/book-native-scan-fixture/Dockerfile', 'jvmilazz0/kavita', r'(?:docker\.io/)?jvmilazz0/kavita', 'from'),
+               'postgres': ('.github/workflows/book-copy-writer-build.yml', 'library/postgres', r'(?:(?:mirror\.gcr\.io|docker\.io)/library/|library/)?postgres', 'workflow')}
+    require(name in sources, 'reviewed_image_source')
+    path, repository, pattern, kind = sources[name]
+    with (root / path).open('rb') as source:
+        raw = source.read(CAP + 1)
+    require(0 < len(raw) <= CAP, 'canonical_source_cap')
+    text = raw.decode('utf-8')
+    if kind == 'from':
+        candidates = [line for line in text.splitlines()
+                      if re.match(r'^[ \t]*FROM\s', line, re.IGNORECASE)
+                      and re.search(r'(?:^|\s)' + pattern + r'(?=[:@\s]|$)', line)]
+        require(len(candidates) == 1, 'unique_canonical_image_ref')
+        match = re.fullmatch(r'[ \t]*(?i:FROM)[ \t]+(' + pattern + r':[A-Za-z0-9_][A-Za-z0-9_.-]*@(sha256:[0-9a-f]{64}))'
+                             r'(?:[ \t]+(?i:AS)[ \t]+[A-Za-z0-9_-]+)?[ \t]*(?:#[^\r\n]*)?', candidates[0])
+    else:
+        candidates = re.findall(r'(?<![A-Za-z0-9_./-])' + pattern + r':[^\s\x27\x22\\]+', text)
+        require(len(candidates) == 1, 'unique_canonical_image_ref')
+        match = re.fullmatch(r'(' + pattern + r':16(?:\.[0-9]+)*(?:-[A-Za-z0-9_.-]+)?@(sha256:[0-9a-f]{64}))', candidates[0])
+    require(match is not None, 'literal_digest_reference_required')
+    return repository, match[2]
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -72,7 +94,7 @@ def descriptor(value):
 
 
 def verify(name, read=fetch):
-    repository, pinned = IMAGES[name]
+    repository, pinned = canonical_image(name)
     raw = read(repository, 'manifests', pinned)
     require('sha256:' + hashlib.sha256(raw).hexdigest() == pinned, 'index_sha256')
     index = decode(raw)

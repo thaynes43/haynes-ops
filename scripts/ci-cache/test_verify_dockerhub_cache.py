@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import tempfile
 import unittest
 import urllib.error
 from unittest import mock
@@ -42,7 +43,7 @@ class CacheCases(unittest.TestCase):
 
     def verify_fixture(self, fixture, read=None):
         raw, child, pin = fixture
-        with mock.patch.dict(cache.IMAGES, {'synthetic': ('library/synthetic', pin)}):
+        with mock.patch.object(cache, 'canonical_image', return_value=('library/synthetic', pin)):
             return cache.verify('synthetic', read=read or mock.Mock(side_effect=[raw, child]))
 
     def test_exact_pinned_index_unique_platform_and_child_are_proved(self):
@@ -123,9 +124,42 @@ class CacheCases(unittest.TestCase):
         copyfile = (root / 'scripts/book-copy-writer/Dockerfile').read_text()
         nativefile = (root / 'scripts/book-native-scan-fixture/Dockerfile').read_text()
         workflow = (root / '.github/workflows/book-copy-writer-build.yml').read_text()
-        self.assertIn(cache.IMAGES['python'][1], copyfile)
-        self.assertIn(cache.IMAGES['kavita'][1], nativefile)
-        self.assertIn('mirror.gcr.io/library/postgres:16@' + cache.IMAGES['postgres'][1], workflow)
+        self.assertIn(cache.canonical_image('python')[1], copyfile)
+        self.assertIn(cache.canonical_image('kavita')[1], nativefile)
+        self.assertIn('mirror.gcr.io/library/postgres:16@' + cache.canonical_image('postgres')[1], workflow)
+
+    def test_changed_canonical_pins_are_the_only_cache_authority(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = {'python': 'scripts/book-copy-writer/Dockerfile',
+                     'kavita': 'scripts/book-native-scan-fixture/Dockerfile',
+                     'postgres': '.github/workflows/book-copy-writer-build.yml'}
+            references = {'python': 'python:3.14-slim', 'kavita': 'docker.io/jvmilazz0/kavita:0.9.0.2',
+                          'postgres': 'mirror.gcr.io/library/postgres:16'}
+            for name, path in paths.items():
+                source = root / path; source.parent.mkdir(parents=True, exist_ok=True)
+                for changed in ('1', '2'):
+                    pin = 'sha256:' + changed * 64
+                    source.write_text(('FROM ' if name != 'postgres' else 'docker run ') + references[name] + '@' + pin + '\n')
+                    self.assertEqual(cache.canonical_image(name, root)[1], pin)
+
+    def test_tag_only_interpolated_malformed_and_ambiguous_sources_refuse(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); source = root / 'scripts/book-copy-writer/Dockerfile'
+            source.parent.mkdir(parents=True)
+            valid = 'FROM python:3.14-slim@sha256:' + '1' * 64 + '\n'
+            for text in ('FROM python:3.14-slim\n', 'FROM python:${TAG}@sha256:' + '1' * 64,
+                         'FROM ${PYTHON_IMAGE}\n', 'FROM --platform=linux/amd64 python:3.14-slim@sha256:' + '1' * 64,
+                         'FROM docker.io/library/library/python:3.14-slim@sha256:' + '1' * 64,
+                         valid + valid, 'FROM python:3.14-slim@sha256:bad\n'):
+                with self.subTest(text=text), self.assertRaises(cache.Refused):
+                    source.write_text(text); cache.canonical_image('python', root)
+            pg = root / '.github/workflows/book-copy-writer-build.yml'; pg.parent.mkdir(parents=True)
+            ref = 'mirror.gcr.io/library/postgres:16@sha256:' + '1' * 64
+            for text in ('docker run postgres:16', 'docker run postgres:${TAG}@sha256:' + '1' * 64,
+                         'docker run postgres:17@sha256:' + '1' * 64, ref + '\n' + ref):
+                with self.subTest(text=text), self.assertRaises(cache.Refused):
+                    pg.write_text(text); cache.canonical_image('postgres', root)
 
     def test_runner_failure_keeps_exact_http_category_without_remote_payload(self):
         output = io.StringIO()
