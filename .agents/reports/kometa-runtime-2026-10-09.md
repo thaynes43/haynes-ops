@@ -165,11 +165,10 @@ Kustomize rendering and whitespace checks passed. The image probe caught and
 corrected the need for tini's own `--` separator before Python; Kometa flags are
 then forwarded without a separator so argparse sees them.
 
-No full Kometa run was triggered before deployment. A bounded manual operations
-Job after review/merge/Flux reconciliation will use the normal daily ratings
-mutation, shared lock and a 10–15 minute deadline while all three jobs are idle.
-Inspect provider timings and actual run completion before claiming a recovered
-whole-job runtime. The Sep 21 bulk-path baseline is a measurement, not a guarantee.
+No full Kometa run was triggered before deployment. After review, merge and Flux
+reconciliation, the bounded live verification below confirmed the whole-job
+runtime recovery using the normal daily ratings mutation. The Sep 21 baseline
+and this verification are measurements, not guarantees for every future run.
 
 Changing to `mdb_imdb` with the current 120-day cache would materially reduce
 freshness. Shortening MDBList expiry applies to all its cached fields, and the
@@ -178,3 +177,68 @@ requires roughly 889 item refreshes per day before other MDBList uses; existing
 cache ages make the first refresh much larger. This is not a transparent
 substitute for current direct daily IMDb ratings. Weekly IMDb operations also
 change freshness and retain the same one-run cost.
+
+## Deployed verification — 2026-10-09
+
+[PR #3635](https://github.com/thaynes43/haynes-ops/pull/3635) merged as
+`a9c6c14523b1cfa906f95e4e2e9f6113a255f890` at 14:41:40Z. Flux `media/kometa`
+reported Ready/Healthy at that exact revision. All three live CronJobs had the
+shared launcher/tini command and 10,800-second deadlines; operations selected
+`dataset` and `--timings`, while the other two retained the upstream path.
+The live launcher matched the merged file (SHA-256
+`5169451c48d3229294ca2fbef27ec0310a2ec61f309aebcfeb543b9dea14c328`).
+
+After confirming all Kometa Jobs were idle, the authorized verification Job
+`kometa-operations-verify-1009` was created from the deployed operations CronJob
+on ready worker talosw01, with the normal production PVC/config/cache, shared
+lock, a 900-second deadline and no retries. Activity `act-144340-749963` was
+declared for `media,kometa` and ended after cleanup.
+
+| Measurement | Result |
+| --- | --- |
+| Kubernetes Job | 14:43:41Z–14:45:12Z; **91 seconds**, succeeded |
+| App container | 14:43:52Z–14:45:09Z; exit 0, no restarts |
+| Kometa summary | 10:43:52–10:45:09 EDT; logged **1:16** |
+| Timing registry wall clock | **77.275 seconds** |
+| Movies operations | 5,253 movies; **48.859 seconds** (log rounds to 0:48) |
+| Shows operations | 971 shows; **10.287 seconds** (log rounds to 0:10) |
+| Shared lock wait | **0.000 seconds** |
+
+The Job's 91 seconds includes startup and completion reporting. Kometa's text
+summary and timing registry use different measurement boundaries/rounding;
+they must not be reported as the Kubernetes Job duration. Library totals were
+two items larger than the overnight run, so the improvement did not come from
+processing fewer titles.
+
+The saved export `/config/logs/timings-20261009-104509.json` recorded:
+
+| HTTP source | Calls | Recorded seconds |
+| --- | ---: | ---: |
+| IMDb utilities per-title service | **0** | **0** |
+| Official IMDb ratings dataset | **1** | **0.072** |
+| MDBList | **18** | **2.506** |
+| Plex, all request tags | **632** | **31.398** |
+| Other setup providers/health checks | **33** | **0.625** |
+
+Plex comprised 63 batch metadata reads (26.236s), 471 single-item reloads
+(1.524s) and 98 other calls (3.639s). The dataset timer measures the streaming
+request through response headers, excluding the subsequent body streaming,
+decompression and parsing; the earlier bounded full-path probe measured about
+2.3 seconds. HTTP library context is unassigned in this exporter, so the
+per-library figures above come from its operations buckets, not an invented
+provider split.
+
+Exactly one dataset download was logged. Normal writes committed 18 movie and
+four show IMDb ratings, plus one movie RT audience rating. 6,201 of 6,224 items
+needed no edits. There were no rating-write failures, traceback, timeout, 429
+or service-fallback messages. The eleven MDBList 404s named the same eleven
+items as the overnight run, with no newly failing items; these are existing
+provider coverage gaps, not a restoration regression.
+The fourteen existing mapping warnings also matched the overnight set exactly.
+
+The verification Job was removed after recording its status/logs. A separate
+90-second, read-only PVC inspection Job retrieved only timing aggregates, then
+was removed. The activity declaration ended promptly. Scheduled Jobs, normal
+configuration and cache settings were preserved; no overlays or collections
+run was triggered. The restored daily path recovered from the overnight
+77-minute run to this 91-second Job without weakening its alert threshold.
