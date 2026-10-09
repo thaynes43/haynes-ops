@@ -8,6 +8,11 @@ using Microsoft.Extensions.DependencyInjection;
 namespace NativeScannerFixture;
 
 sealed record ProjectionProof(int ScalarCount, string ScalarSha256, string CoverSha256, string NativeCoverDirectory, string NativeSettingsSha256, int PendingEntityCount);
+public class ConstructorOnlyProxy : DispatchProxy
+{
+    protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        => throw new InvalidOperationException("constructor control invoked a native service method");
+}
 
 // Purpose-only projection for the five reviewed Ransom rows. No database writer.
 static class NativeProjection
@@ -44,9 +49,8 @@ static class NativeProjection
             && book.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance).Count(f => ReferenceEquals(f.GetValue(book), image)) == 1, "native cover encoder binding differs");
         var comic = Invoke(bookType, book, "GetComicInfo", packet.TargetFilePath);
         var direct = Invoke(bookType, book, "ParseInfo", packet.TargetFilePath);
-        var basic = ActivatorUtilities.CreateInstance(services, NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.BasicParser"));
         var parserType = NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.BookParser");
-        var parser = ActivatorUtilities.CreateInstance(services, parserType, basic);
+        var parser = CreateParserGraph(services);
         var libraryType = NativeBindings.Type("Kavita.Models", "Kavita.Models.Entities.Enums.LibraryType");
         var parsed = Invoke(parserType, parser, "Parse", packet.TargetFilePath, Path.GetDirectoryName(packet.TargetFilePath), "/data/cephfs-hdd/data/media/books/EBooks", Enum.Parse(libraryType, "Book"), true, comic);
         var scannerParser = NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.Parser");
@@ -214,8 +218,42 @@ static class NativeProjection
         FixtureProtocol.Require(method is not null && method.IsPublic && method.IsStatic && method.ReturnType == typeof(string), "native string sort helper signature differs");
         return method!;
     }
+    static object CreateParserGraph(IServiceProvider services)
+    {
+        // Follow the exact pinned ReadingItemService constructor chain. IDefaultParser
+        // is a constructor dependency, not a registered native scoped service.
+        var imageParser = ActivatorUtilities.CreateInstance(services, NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.ImageParser"));
+        var basic = ActivatorUtilities.CreateInstance(services, NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.BasicParser"), imageParser);
+        return ActivatorUtilities.CreateInstance(services, NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.BookParser"), basic);
+    }
+    static void InspectParserConstructors()
+    {
+        var directory = NativeBindings.Type("Kavita.API", "Kavita.API.Services.IDirectoryService");
+        var book = NativeBindings.Type("Kavita.API", "Kavita.API.Services.IBookService");
+        var defaultParser = NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.IDefaultParser");
+        var image = NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.ImageParser");
+        var basic = NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.BasicParser");
+        var parser = NativeBindings.Type("Kavita.Services", "Kavita.Services.Scanner.BookParser");
+        foreach (var (type, parameters) in new[] { (image, new[] { directory }), (basic, new[] { directory, defaultParser }), (parser, new[] { directory, book, basic }) })
+        {
+            var constructors = type.GetConstructors();
+            FixtureProtocol.Require(constructors.Length == 1 && constructors[0].GetParameters().Select(p => p.ParameterType).SequenceEqual(parameters), "native parser constructor signature differs");
+        }
+        FixtureProtocol.Require(defaultParser.IsAssignableFrom(image) && defaultParser.IsAssignableFrom(basic), "native parser constructor argument differs");
+        // Real compiled native constructors, inert synthetic service proxies only.
+        // No Build, service method, file/database access, host start or native scan.
+        using var services = new ServiceCollection()
+            .AddSingleton(directory, DispatchProxy.Create(directory, typeof(ConstructorOnlyProxy)))
+            .AddSingleton(book, DispatchProxy.Create(book, typeof(ConstructorOnlyProxy))).BuildServiceProvider();
+        var missingRefused = false;
+        try { _ = ActivatorUtilities.CreateInstance(services, basic); }
+        catch (InvalidOperationException) { missingRefused = true; }
+        FixtureProtocol.Require(missingRefused && services.GetService(defaultParser) is null, "missing native image-parser dependency did not refuse");
+        FixtureProtocol.Require(CreateParserGraph(services).GetType() == parser, "exact native parser constructor chain differs");
+    }
     public static void InspectSaveHooks()
     {
+        InspectParserConstructors();
         FixtureProtocol.Require(CoverPath("/tmp/synthetic-cover", "projection.jpg") == "/tmp/synthetic-cover/projection.jpg", "native cover basename was not joined to its directory");
         foreach (var name in new[] { "/tmp/projection.jpg", "../projection.jpg", "another.jpg" })
         {

@@ -31,6 +31,7 @@ UPLOAD = "set -eu; umask 077; p=$1; h=$2; [ ! -e \"$p\" ]; [ ! -L \"$p\" ]; [ ! 
 FIXTURE_MODULES = ["/fixture/NativeScannerFixture", "/fixture/NativeScannerFixture.dll", "/fixture/libcoreclr.so", "/fixture/libhostfxr.so", "/fixture/System.Private.CoreLib.dll"]
 MODULES = ["/kavita/" + n + ".dll" for n in ("Kavita.Server", "Kavita.API", "Kavita.Models", "Kavita.Services", "Kavita.Database", "Microsoft.Data.Sqlite", "Microsoft.EntityFrameworkCore", "Microsoft.EntityFrameworkCore.Relational")]
 PROOFS = {"/kavita/config/proof-" + n + ".json" for n in ("before", "after-build", "after-bind", "after", "inverse")}
+DIAGNOSTIC = "/kavita/config/proof-diagnostic.json"
 
 
 class Refused(Exception):
@@ -359,8 +360,23 @@ def validate_receipt(raw, event, phase, job_uid, pod_uid):
     value = json.loads(raw)
     require(value.get("schema") == 1 and value.get("Phase") == phase and value.get("JobUid") == job_uid and value.get("PodUid") == pod_uid and value.get("productionAuthorization") is False and value.get("outcome") in ("passed-private-proof", "unknown"), "receipt_identity")
     pins = value.get("proofFiles", [])
-    require(1 <= len(pins) <= 5 and len({p["Path"] for p in pins}) == len(pins) and all(p["Path"] in PROOFS and re.fullmatch("[0-9a-f]{64}", p["Sha256"]) for p in pins) and pins == event["proofFiles"], "receipt_scope")
+    require(1 <= len(pins) <= 6 and len({p["Path"] for p in pins}) == len(pins) and all(p["Path"] in PROOFS | {DIAGNOSTIC} and re.fullmatch("[0-9a-f]{64}", p["Sha256"]) for p in pins) and pins == event["proofFiles"], "receipt_scope")
     require(value["outcome"] != "passed-private-proof" or {p["Path"] for p in pins} == PROOFS, "passed_proof_incomplete")
+    require(value["outcome"] != "unknown" or DIAGNOSTIC in {p["Path"] for p in pins}, "unknown_diagnostic_missing")
+    return value
+
+
+def validate_diagnostic(raw, harness_sha):
+    require(len(raw) <= 4096, "diagnostic_size")
+    value = json.loads(raw)
+    require(type(value) is dict and set(value) == {"Schema", "Stage", "Kind", "HarnessSha256", "OwnedCallsites"} and type(value["Schema"]) is int and value["Schema"] == 1 and value["HarnessSha256"] == harness_sha
+            and isinstance(value["Stage"], str) and value["Stage"] in {"admission", "native-build", "native-projection", "native-scan", "native-cleanup-predicate", "state-readback", "private-inverse"}
+            and isinstance(value["Kind"], str) and re.fullmatch("[A-Za-z][A-Za-z0-9]{0,95}", value["Kind"]), "diagnostic_identity")
+    calls = value["OwnedCallsites"]
+    require(isinstance(calls, list) and 1 <= len(calls) <= 8 and all(type(c) is dict and set(c) == {"MethodToken", "IlOffset"}
+            and type(c["MethodToken"]) is int and c["MethodToken"] & 0xff000000 == 0x06000000 and c["MethodToken"] & 0x00ffffff > 0
+            and type(c["IlOffset"]) is int and -1 <= c["IlOffset"] <= 1048576 for c in calls)
+            and len({(c["MethodToken"], c["IlOffset"]) for c in calls}) == len(calls), "diagnostic_owned_scope")
     return value
 
 
@@ -663,6 +679,8 @@ class Fixture(Native):
             raw = self.call(["kubectl", "exec", "-n", NS, pod["metadata"]["name"], "-c", "native-scanner", "--", "cat", pin["Path"]], limit=32 * 1024 * 1024)
             require(sha(raw) == pin["Sha256"], "private_proof_copy_hash")
             save_private(self.out / Path(pin["Path"]).name, raw)
+            if pin["Path"] == DIAGNOSTIC:
+                validate_diagnostic(raw, self.approval["fixturePacket"]["HarnessSha256"])
         save_private(self.out / "proof-receipt.json", receipt)
         _, current = self.binding()
         self.native_now()
