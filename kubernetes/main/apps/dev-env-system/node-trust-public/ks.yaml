@@ -1,0 +1,21 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: dev-env-keeper-node-trust-public
+  namespace: dev-env-system
+spec:
+  targetNamespace: dev-env-system
+  dependsOn:
+    - name: external-secrets-stores
+      namespace: external-secrets
+  path: ./kubernetes/main/apps/dev-env-system/node-trust-public/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m

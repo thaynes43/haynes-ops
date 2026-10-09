@@ -1,0 +1,25 @@
+---
+name: Keeper Node Trust Test
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/keeper-node-trust/**
+      - kubernetes/main/apps/dev-env-system/node-trust-public/**
+      - .github/workflows/keeper-node-trust-test.yml
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  fixtures:
+    name: Keeper Node Trust Fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Finite filesystem and admission fixtures
+        run: nice -n 19 python3 -B scripts/keeper-node-trust/test_guards.py
