@@ -522,9 +522,9 @@ static class NativeProof
             && !diagnosticJson.Contains(secretControl, StringComparison.Ordinal) && !diagnosticJson.Contains("GenericSelfTest", StringComparison.Ordinal), "private diagnostic exposed text or lost owned positions");
         foreach (var bad in new[] { "private/value", "native-projection/private" })
         {
-            var refused = false;
-            try { _ = FailureDiagnostic(bad, new InvalidOperationException(secretControl), new string('a', 64)); } catch (InvalidOperationException) { refused = true; }
-            FixtureProtocol.Require(refused, "private diagnostic accepted an unowned stage");
+            var diagnosticRefused = false;
+            try { _ = FailureDiagnostic(bad, new InvalidOperationException(secretControl), new string('a', 64)); } catch (InvalidOperationException) { diagnosticRefused = true; }
+            FixtureProtocol.Require(diagnosticRefused, "private diagnostic accepted an unowned stage");
         }
         var before = new DatabaseSnapshot("synthetic-schema", new Dictionary<string, List<SortedDictionary<string, string>>>
         {
