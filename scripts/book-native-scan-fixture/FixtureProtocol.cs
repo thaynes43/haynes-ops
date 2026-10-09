@@ -173,7 +173,7 @@ public static class FixtureProtocol
         var paths = new[] { "/kavita/config/kavita.db", "/fixture-input/original.db", "/data/cephfs-hdd/data/media/books/EBooks/Fixture/Work.epub", "/kavita/config/appsettings.json", "/fixture-input/source-proof.json", "/fixture-input/network-deny-proof.json", "/fixture-input/original.epub" };
         var good = new FixturePacket(1, true, Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), "talosw01", NativeImageDigest, hash, now, now.AddSeconds(180), paths.Select(p => new FilePin(p, hash)).ToArray(), target, hash, hash, paths[0], paths[1], paths[2], delta, [], [new("Ransom", "ransom", 3)], hash, hash, [new("fixture.opf", hash, new string('b', 64))]);
         good = good with { ScanAllowances = ScanFields.SelectMany(pair => pair.Value.Select(field => new ScanAllowance(pair.Key, TargetRowId(good, pair.Key), field,
-            field == "RowVersion" ? "int:100" : IsScanClock(field) ? "text:2000-01-01 00:00:00" : field is "Count" or "TotalCount" or "IsSpecial" or "Bytes" or "PublicationStatus" ? "int:4" : "text:before",
+            field == "RowVersion" ? "int:100" : IsScanClock(field) ? "text:2000-01-01 00:00:00" : IsNativeColor(pair.Key, field) ? "text:#AABBCC" : field is "Count" or "TotalCount" or "IsSpecial" or "Bytes" or "PublicationStatus" ? "int:4" : "text:before",
             IsScanClock(field) || IsNativeColor(pair.Key, field) ? null : FixedScanValues.TryGetValue(pair.Key + ":" + field, out var value) ? value : field == "RowVersion" ? "int:102" : "text:" + new string('a', 32), IsScanClock(field), IsNativeColor(pair.Key, field)))).ToArray() };
         SyntheticPacket = good;
         Validate(good, now);

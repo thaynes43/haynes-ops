@@ -382,7 +382,7 @@ static class NativeProof
         {
             var actual = Row(after, allowance.Table, allowance.Id)[allowance.Field];
             FixtureProtocol.Require(Row(before, allowance.Table, allowance.Id)[allowance.Field] == allowance.Before, "allowance before cell differs");
-            FixtureProtocol.Require(actual != allowance.Before, "native reviewed scan cell did not change");
+            FixtureProtocol.Require(allowance.NativeColor || actual != allowance.Before, "native reviewed scan cell did not change");
             if (allowance.ScanClock)
             {
                 FixtureProtocol.RequireScanClock(allowance.Field, actual, started, finished);
@@ -540,6 +540,10 @@ static class NativeProof
             Apply(changes);
             var after = ReadDatabase(path);
             RequireScanDelta(before, after, packet, now, now);
+            var unchangedColor = Copy(after);
+            Row(unchangedColor, "Volume", packet.Target.Volume)["PrimaryColor"] = Row(before, "Volume", packet.Target.Volume)["PrimaryColor"];
+            Sort(unchangedColor);
+            RequireScanDelta(before, unchangedColor, packet, now, now);
             void Refuses(Action action)
             {
                 var refused = false;

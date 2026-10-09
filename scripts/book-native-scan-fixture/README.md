@@ -53,7 +53,7 @@ as a substitute for the actual native methods.
 
 Compare every saved-state/history/curation/lock row verbatim and all retained IDs after
 the scanner. Any undeclared metadata difference refuses. Only explicitly reviewed
-catalog-derived scan fields may differ. The exact successor admits 25 changed cells
+catalog-derived scan fields may differ. The exact successor admits 25 scan cells
 on Series1650, Volume1800, Chapter3358, MangaFile3570 and SeriesMetadata1650. Before
 ScanSeries, the actual native book/parser/count/chapter/publication/Koreader helpers
 derive eleven deterministic scalar values. A separate private cover directory uses
@@ -63,8 +63,9 @@ Random-initialized k-means; the former deterministic color premise is withdrawn.
 Only Volume1800 PrimaryColor/SecondaryColor admit native-generated null or exact
 uppercase #RRGGBB, with pinned CalculateColorScape/UpdateColorScape method provenance;
 every other cell retains its strict predicate. There is no reseeding, repeated draw
-or rescan, and different encoded bytes refuse. The actual helper UnitOfWork context
-inherits the sealed launch gate's umask077, checked from /proc/self/status before
+or rescan, and different encoded bytes refuse. A valid native color may equal its
+original value; requiring a random output to differ would introduce another chance
+of refusal. The fixture process inherits the sealed launch gate's umask077, checked from /proc/self/status before
 Build/helpers and after scan. Native cover files must already be600; no post-write
 chmod may conceal their original custody.
 The actual helper UnitOfWork context
