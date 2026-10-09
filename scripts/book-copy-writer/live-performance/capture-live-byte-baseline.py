@@ -26,15 +26,23 @@ class Stop(BaseException):
 
 def best_effort_event(event):
     """Fixed aggregate telemetry only: a full log pipe must not delay exit."""
+    descriptor, blocking = None, None
     try:
         raw = json.dumps(event, separators=(',', ':')).encode() + b'\n'
         if len(raw) > 512:
             return
         descriptor = sys.stdout.fileno()
+        blocking = os.get_blocking(descriptor)
         os.set_blocking(descriptor, False)
         os.write(descriptor, raw)
     except Exception:
         pass
+    finally:
+        if descriptor is not None and blocking is not None:
+            try:
+                os.set_blocking(descriptor, blocking)
+            except OSError:
+                pass
 
 
 def await_delivery_ack(environ, binding, baseline_sha256, deadline, collectors, metadata, copies):

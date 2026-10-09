@@ -52,7 +52,10 @@ file/byte totals every 128 emitted rows and at the end. The per-file workers
 never log. Events contain no filenames, OPF, identities, reader data, or error
 messages; each event is capped at 512 bytes. Even the maximum 10,000-file census
 stays below the unchanged 1 MiB log cap. A full log pipe may drop telemetry but
-cannot delay refusal. Signal/deadline exceptions propagate out of telemetry;
+cannot delay refusal. Each event restores the original stdout blocking flag
+before the required ready/delivered control messages; a finite full-pipe fixture
+checks that those messages remain intact after the pipe drains.
+Signal/deadline exceptions propagate out of telemetry;
 these observations neither extend clocks nor authorize incomplete proof.
 
 ## Fused permissions with complete identity checks

@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import select
 import subprocess
 import sys
 import tempfile
@@ -390,6 +391,52 @@ class ClosureTests(unittest.TestCase):
                 child.wait(timeout=1)
             os.close(write_fd)
             os.close(read_fd)
+
+    def test_ready_message_survives_full_pipe_after_best_effort_telemetry(self):
+        read_fd, write_fd = os.pipe()
+        notify_read, notify_write = os.pipe()
+        child = None
+        try:
+            os.set_blocking(write_fd, False)
+            capacity = fcntl.fcntl(write_fd, fcntl.F_GETPIPE_SZ)
+            self.assertLessEqual(capacity, 1024 * 1024)
+            self.assertEqual(os.write(write_fd, b'x' * capacity), capacity)
+            os.set_blocking(write_fd, True)
+            source = '''
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location('producer', sys.argv[1])
+producer = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(producer)
+producer.best_effort_event({'type': 'census-progress', 'completed_files': 128})
+assert os.get_blocking(1)
+os.write(int(sys.argv[2]), b'1')
+print(json.dumps({'type': 'live-baseline-ready', 'sha256': 'a' * 64}), flush=True)
+print(json.dumps({'type': 'live-baseline-delivered', 'sha256': 'a' * 64}), flush=True)
+'''
+            child = subprocess.Popen([sys.executable, '-B', '-c', source,
+                                      str(HERE / 'capture-live-byte-baseline.py'), str(notify_write)],
+                                     stdout=write_fd, stderr=subprocess.PIPE,
+                                     pass_fds=(notify_write,))
+            self.assertEqual(select.select([notify_read], [], [], 2)[0], [notify_read])
+            self.assertEqual(os.read(notify_read, 1), b'1')
+            remaining = capacity
+            while remaining:
+                drained = os.read(read_fd, remaining)
+                self.assertTrue(drained)
+                self.assertEqual(drained, b'x' * len(drained))
+                remaining -= len(drained)
+            self.assertEqual(child.wait(timeout=2), 0)
+            self.assertEqual(child.communicate(timeout=1)[1], b'')
+            records = [json.loads(line) for line in os.read(read_fd, 4096).splitlines()]
+            self.assertEqual([row['type'] for row in records],
+                             ['live-baseline-ready', 'live-baseline-delivered'])
+            self.assertTrue(all(row['sha256'] == 'a' * 64 for row in records))
+        finally:
+            if child is not None and child.poll() is None:
+                child.kill()
+                child.wait(timeout=1)
+            for descriptor in (read_fd, write_fd, notify_read, notify_write):
+                os.close(descriptor)
 
 
 if __name__ == '__main__':

@@ -22,23 +22,27 @@ No byte clock is reset: future adoption must preserve LIVE 180-second collection
 and the 170-second restoration trigger. Future selection must use the fresh
 exact reviewed three-path scope; the consumed old archive and packets are intact.
 
-One serial `nice -n 19` final run passed all 22 finite fixtures in 0.767 seconds.
-The independent reviewer passed all 22 in 0.765 seconds and reviewed the five
-candidate source/CI files. Coverage includes complete legacy/candidate schema
+One serial `nice -n 19` final run passed all 23 finite fixtures in 0.781 seconds.
+The independent reviewer previously passed all 22 in 0.765 seconds and reviewed
+the five candidate source/CI files, then passed the four focused stdout/signal/pin
+fixtures in 0.060 seconds after the advisory correction. Coverage includes complete legacy/candidate schema
 and byte/OPF equality; original reader AST equality; two-stream/reorder bounds;
 first error behind a blocked earlier index; deadline and signal hard exit;
-full undrained stdout at the closed gate; directory/file replacement and other
+full undrained stdout at the closed gate and intact ready/delivered messages after
+telemetry restores stdout's original blocking flag; directory/file replacement and other
 mutation refusals; protection/cap preservation; and telemetry limits with
 deadline propagation. CI runs the same suite in a network-isolated one-CPU,
 128 MiB container. These are correctness fixtures, not throughput measurements.
 
 Independent final source receipt:
-`/home/dev/work/hn-831-live-performance-independent-source-review-final22.json`,
-SHA `9354305a370f25ec44c412a741130fc84e4cad6c273fd2e68edbe7a75926caf9`.
+`/home/dev/work/hn-831-live-performance-independent-source-review-stdout23.json`,
+SHA `1614a837dc4f21c5d36d48c1b9390c152494c5e67228f20f6027a158a1351027`.
+It retains the prior 22-fixture source-review receipt
+`9354305a370f25ec44c412a741130fc84e4cad6c273fd2e68edbe7a75926caf9`.
 Collector SHA:
 `6e758e34db12fb82d4d6050c460d17a815d5b608c511a1d7bc9f94886342a61a`.
 Entrypoint SHA:
-`db3391f8f4dcce40d76ad69da01e80e45e6eff8af4ad454040eb8360c10f6ed7`.
+`f4724ca42ae9e85aaef949861e6ce50982c5941ccc6e74a3498d44033cbef841`.
 
 Required next boundary: source PR/checks/advisory and root merge, then a reviewed
 image/native bootstrap integration with actual immutable image/module/code pins,
