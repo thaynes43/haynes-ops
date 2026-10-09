@@ -39,17 +39,18 @@ jobs:
           persist-credentials: false
 
       - name: Verify exact public cached index and amd64 manifest metadata
+        id: cache
         timeout-minutes: 2
+        env:
+          CANONICAL_POSTGRES_IMAGE: docker.io/library/postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
         run: |
           nice -n 19 python3 -B scripts/ci-cache/test_verify_dockerhub_cache.py
-          nice -n 19 python3 -B scripts/ci-cache/verify_dockerhub_cache.py --profile copy-writer
+          nice -n 19 python3 -B scripts/ci-cache/verify_dockerhub_cache.py --profile copy-writer --github-output "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
-          buildkitd-config-inline: |
-            [registry."docker.io"]
-              mirrors = ["mirror.gcr.io"]
+          buildkitd-config-inline: ${{ steps.cache.outputs.buildkit_config }}
 
       - name: Build the pinned driver image without publishing
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -66,6 +67,8 @@ jobs:
       - name: Verify the actual runtime driver and complete finite PG16 failure tests
         timeout-minutes: 3
         shell: bash
+        env:
+          PG_IMAGE: ${{ steps.cache.outputs.postgres_image }}
         run: |
           set -euo pipefail
           trap 'docker rm -f copy-writer-pg16 >/dev/null 2>&1 || true' EXIT
@@ -73,7 +76,7 @@ jobs:
             docker run --detach --name copy-writer-pg16 --cpus 1 --memory 256m \
               --tmpfs /var/lib/postgresql/data:rw,size=128m \
               -e POSTGRES_DB=copy_writer_fixture -e POSTGRES_USER=postgres \
-              -e POSTGRES_PASSWORD=isolated-fixture mirror.gcr.io/library/postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d \
+              -e POSTGRES_PASSWORD=isolated-fixture "$PG_IMAGE" \
               -c shared_buffers=16MB -c max_connections=8 -c max_worker_processes=0 \
               -c autovacuum=off -c jit=off
             timeout 20 bash -c 'until docker exec copy-writer-pg16 pg_isready -U postgres -d copy_writer_fixture; do sleep .2; done'

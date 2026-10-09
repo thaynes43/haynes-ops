@@ -43,7 +43,7 @@ def decode(raw):
     return value
 
 
-def canonical_image(name, root=ROOT):
+def canonical_source(name, root=ROOT):
     sources = {'python': ('scripts/book-copy-writer/Dockerfile', 'library/python', r'(?:python|library/python|docker\.io/(?:library/)?python)', 'from'),
                'kavita': ('scripts/book-native-scan-fixture/Dockerfile', 'jvmilazz0/kavita', r'(?:docker\.io/)?jvmilazz0/kavita', 'from'),
                'postgres': ('.github/workflows/book-copy-writer-build.yml', 'library/postgres', r'(?:(?:mirror\.gcr\.io|docker\.io)/library/|library/)?postgres', 'workflow')}
@@ -65,7 +65,12 @@ def canonical_image(name, root=ROOT):
         require(len(candidates) == 1, 'unique_canonical_image_ref')
         match = re.fullmatch(r'(' + pattern + r':16(?:\.[0-9]+)*(?:-[A-Za-z0-9_.-]+)?@(sha256:[0-9a-f]{64}))', candidates[0])
     require(match is not None, 'literal_digest_reference_required')
-    return repository, match[2]
+    return repository, match[2], match[1]
+
+
+def canonical_image(name, root=ROOT):
+    repository, pinned, _ = canonical_source(name, root)
+    return repository, pinned
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -123,9 +128,42 @@ def verify(name, read=fetch):
             'index_platform': 'linux/amd64', 'verified_cache': HOST}
 
 
+def resolve_profile(profile):
+    images = []
+    for name in PROFILES[profile]:
+        repository, pinned = canonical_image(name)
+        try:
+            images.append(verify(name))
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                raise
+            images.append({'image': name, 'repository': repository, 'index_digest': pinned,
+                           'cache_verified': False, 'http_status': 404})
+    verified = all('verified_cache' in row for row in images)
+    result = {'schema': 1, 'cache_verified': verified, 'images': images,
+              'registry_route': 'verified_cache' if verified else 'canonical_dockerhub',
+              'buildkit_config': '[registry."docker.io"]\nmirrors = ["mirror.gcr.io"]' if verified else ''}
+    if 'postgres' in PROFILES[profile]:
+        repository, _, reference = canonical_source('postgres')
+        # The literal source provides the tag and digest. Normalize only its registry.
+        tag_digest = reference.split(':', 1)[1]
+        result['postgres_image'] = f'{HOST if verified else "docker.io"}/{repository}:{tag_digest}'
+    return result
+
+
+def action_outputs(path, result):
+    # All values are fixed routing text or strictly parsed public image references.
+    with path.open('a', encoding='utf-8') as output:
+        output.write('cache_verified=' + str(result['cache_verified']).lower() + '\n')
+        output.write('buildkit_config<<CACHE_CONFIG\n' + result['buildkit_config'] + '\nCACHE_CONFIG\n')
+        if 'postgres_image' in result:
+            output.write('postgres_image=' + result['postgres_image'] + '\n')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--profile', choices=PROFILES, required=True)
+    parser.add_argument('--github-output', type=Path)
     args = parser.parse_args()
 
     def stop(*_):
@@ -134,8 +172,10 @@ def main():
     signal.signal(signal.SIGALRM, stop)
     signal.setitimer(signal.ITIMER_REAL, 60)
     try:
-        result = [verify(name) for name in PROFILES[args.profile]]
-        print(json.dumps({'schema': 1, 'cache_verified': True, 'images': result}, sort_keys=True))
+        result = resolve_profile(args.profile)
+        if args.github_output:
+            action_outputs(args.github_output, result)
+        print(json.dumps(result, sort_keys=True))
     except Exception as error:
         code = str(error) if isinstance(error, Refused) else 'cache_transport_or_json_refused'
         print(json.dumps({'schema': 1, 'cache_verified': False, 'code': code,

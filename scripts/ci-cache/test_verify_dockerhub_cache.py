@@ -126,7 +126,10 @@ class CacheCases(unittest.TestCase):
         workflow = (root / '.github/workflows/book-copy-writer-build.yml').read_text()
         self.assertIn(cache.canonical_image('python')[1], copyfile)
         self.assertIn(cache.canonical_image('kavita')[1], nativefile)
-        self.assertIn('mirror.gcr.io/library/postgres:16@' + cache.canonical_image('postgres')[1], workflow)
+        self.assertIn('docker.io/library/postgres:16@' + cache.canonical_image('postgres')[1], workflow)
+        self.assertIn('PG_IMAGE: ${{ steps.cache.outputs.postgres_image }}', workflow)
+        self.assertIn('"$PG_IMAGE"', workflow)
+        self.assertIn('buildkitd-config-inline: ${{ steps.cache.outputs.buildkit_config }}', workflow)
 
     def test_changed_canonical_pins_are_the_only_cache_authority(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -163,7 +166,7 @@ class CacheCases(unittest.TestCase):
 
     def test_runner_failure_keeps_exact_http_category_without_remote_payload(self):
         output = io.StringIO()
-        error = urllib.error.HTTPError('https://private.invalid/never-output', 404,
+        error = urllib.error.HTTPError('https://private.invalid/never-output', 401,
                                        'never-output-body', {}, None)
         with mock.patch.object(cache, 'verify', side_effect=error), \
              mock.patch('sys.argv', ['verify', '--profile', 'native-scanner']), \
@@ -173,9 +176,68 @@ class CacheCases(unittest.TestCase):
         self.assertEqual(exit.exception.code, 2)
         value = json.loads(output.getvalue())
         self.assertFalse(value['cache_verified'])
-        self.assertEqual(value['http_status'], 404)
+        self.assertEqual(value['http_status'], 401)
         self.assertNotIn('never-output', output.getvalue())
         self.assertEqual([call.args[1] for call in timer.call_args_list], [60, 0])
+
+    def test_only_exact_404_routes_whole_profile_to_unchanged_canonical_refs(self):
+        miss = urllib.error.HTTPError('https://private.invalid/never-output', 404,
+                                     'never-output-body', {}, None)
+        pins = {name: cache.canonical_image(name)[1] for name in cache.PROFILES['copy-writer']}
+        for failed in ('python', 'postgres'):
+            def verify(name):
+                if name == failed:
+                    raise miss
+                return {'image': name, 'index_digest': pins[name], 'verified_cache': cache.HOST}
+            with self.subTest(failed=failed), mock.patch.object(cache, 'verify', side_effect=verify):
+                result = cache.resolve_profile('copy-writer')
+            self.assertFalse(result['cache_verified'])
+            self.assertEqual(result['registry_route'], 'canonical_dockerhub')
+            self.assertEqual(result['buildkit_config'], '')
+            self.assertEqual(result['postgres_image'], 'docker.io/library/postgres:16@' + pins['postgres'])
+            refused = next(row for row in result['images'] if row['image'] == failed)
+            self.assertEqual(refused['index_digest'], pins[failed])
+            self.assertEqual(refused['http_status'], 404)
+            self.assertNotIn('verified_cache', refused)
+            self.assertNotIn('never-output', json.dumps(result))
+
+    def test_verified_profile_alone_selects_cache_and_other_errors_remain_fatal(self):
+        with mock.patch.object(cache, 'verify', side_effect=lambda name: {'image': name, 'verified_cache': cache.HOST}):
+            result = cache.resolve_profile('copy-writer')
+        self.assertTrue(result['cache_verified'])
+        self.assertEqual(result['registry_route'], 'verified_cache')
+        self.assertIn('mirrors = ["mirror.gcr.io"]', result['buildkit_config'])
+        self.assertEqual(result['postgres_image'], 'mirror.gcr.io/library/postgres:16@' + cache.canonical_image('postgres')[1])
+        errors = [urllib.error.HTTPError('private', status, 'private', {}, None)
+                  for status in (401, 403, 429, 500)] + [TimeoutError(), cache.Refused('index_sha256'),
+                                                      cache.Refused('unique_linux_amd64')]
+        miss = urllib.error.HTTPError('private', 404, 'private', {}, None)
+        for error in errors:
+            with self.subTest(error=type(error).__name__), \
+                 mock.patch.object(cache, 'verify', side_effect=[miss, error]), self.assertRaises(type(error)):
+                cache.resolve_profile('copy-writer')
+
+    def test_404_action_outputs_are_truthful_and_fatal_errors_publish_no_route(self):
+        miss = urllib.error.HTTPError('https://private.invalid/never-output', 404,
+                                     'never-output-body', {}, None)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'actions-output'; path.touch()
+            stdout = io.StringIO()
+            argv = ['verify', '--profile', 'native-scanner', '--github-output', str(path)]
+            with mock.patch.object(cache, 'verify', side_effect=miss), mock.patch('sys.argv', argv), \
+                 mock.patch.object(cache.signal, 'signal'), mock.patch.object(cache.signal, 'setitimer'), \
+                 contextlib.redirect_stdout(stdout):
+                cache.main()
+            result = json.loads(stdout.getvalue())
+            self.assertFalse(result['cache_verified'])
+            self.assertNotIn('never-output', stdout.getvalue())
+            self.assertEqual(path.read_text(), 'cache_verified=false\nbuildkit_config<<CACHE_CONFIG\n\nCACHE_CONFIG\n')
+            path.write_text('')
+            with mock.patch.object(cache, 'verify', side_effect=TimeoutError()), mock.patch('sys.argv', argv), \
+                 mock.patch.object(cache.signal, 'signal'), mock.patch.object(cache.signal, 'setitimer'), \
+                 contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+                cache.main()
+            self.assertEqual(path.read_text(), '')
 
 
 if __name__ == '__main__':
