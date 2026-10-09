@@ -1,0 +1,25 @@
+---
+# Dedicated disposable feasibility data only (Accepted dev-env ADR-002).
+# This inventory owns exactly one NEW trial PVC. Intentional GitOps removal after
+# all fixture pods finish/delete will prune that claim and its Delete-reclaim PV.
+# Removing it while a fixture pod exists would leave that pod without its PVC.
+# Permanent workspaces need separate Retain/prune protection; this is not one.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-workspace-trial
+  namespace: dev-env-system
+spec:
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  path: ./kubernetes/main/apps/dev-env-system/workspace-trial/app
+  targetNamespace: dev-agents
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 3m
