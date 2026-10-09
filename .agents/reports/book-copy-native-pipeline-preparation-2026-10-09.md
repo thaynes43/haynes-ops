@@ -119,6 +119,70 @@ and the owner-outcome source boundary. It is source-only and authorizes no runti
 
 ## Merged component evidence and remaining window preparation
 
+### LIVE host terminal cap correction preparation
+
+The separately prepared full LIVE diagnostic packet did not launch. Independent
+review found that its host could catch the original 200-second alarm, then wait
+for children and fsync its receipt beyond that cap. This successor keeps the
+original collection 180 / total 200 bounds and adds an owning hard terminal
+deadline across retirement, native cleanup, receipt publication and final
+stdout. Child requests must be reaped before authoritative absence; every wait
+uses remaining original time. Deadline refusal emits bounded aggregate telemetry
+and exits without claiming completion. Earlier UID custody supports independent
+cleanup; kernel hard-NFS or API failure cannot be turned into an absence claim.
+Finite scaled subprocess fixtures cover a collection alarm during cleanup,
+stalled receipt/output and child retirement. This is source preparation only;
+the old diagnostic packet remains blocked and needs new pins, independent
+review and root exact-command GO. No Job, capture, hold or COPY was performed.
+
+The same review found the lost-CREATE sibling: local request retirement does not
+prove a server commit absent. Fresh initial native inventories and CREATE intent
+are retained; only recovered actual same-phase manifest-bound UID custody permits
+positive cleanup after a lost response. Empty inventory without that custody is
+unknown and cannot produce a completed baseline or definitive absence receipt.
+
+The current advisory found two further host boundaries. The log drain thread
+must inherit blocked ALRM/TERM/INT signals when it starts, so process delivery
+cannot run the main Python handler during masked subprocess ownership
+registration. Only thread start and spawn registration are masked; main's prior
+mask is restored immediately. Pre-execute pin/schema refusals retain their
+bounded internal refusal code; only the actual terminal timer reports the
+original total deadline. Finite controls include a live non-main thread during
+process-signal delivery and actual bad-contract/bad-pin entrypoint refusals.
+The sibling frozen baseline host is not adopted by this successor; its archive
+remains unchanged. The two EPUB reader threads own no host request registrations.
+
+The twelve finite host cases passed under `nice -n 19`, serially: eleven in the
+2.107-second initial run and the corrected typed-inventory fixture in 0.008
+seconds. Ten existing source/import/closed-profile cases passed in 0.097
+seconds. CI runs all twelve host cases offline with one CPU / 128 MiB; the
+reviewed signed runtime modules and collector/bootstrap payload are unchanged.
+This local evidence does not replace exact-head CI or independent review.
+
+Independent review of exact source `15551830e25f6e5397d5472d02f5944d272189f5`
+passed all twelve finite cases in 2.178 seconds under `nice -n 19`. Private
+receipt `/home/dev/work/hn-831-live-host-independent-review-15551830-1009.json`,
+SHA `faa48f4963a34c07d8b2e5f21515d86fd020e99d2ef3b73864eadfaf12149b0b`,
+binds the five source/doc/test/CI files. The subsequently added receipt citation
+does not change executable source. The old diagnostic packet is still blocked;
+source merge, fresh immutable packet review and root GO remain required.
+
+The subsequent advisory corrections supersede that receipt as final source
+approval. All fourteen finite cases passed serially under `nice -n 19` in
+2.274 seconds, including inherited drain-thread signal custody and actual
+entrypoint bad-schema/bad-pin aggregate reasons. CI invokes the same complete
+suite. The other current copy-window readers have no masked spawn registration
+or owning Python signal handler, so that precise mask-bypass premise does not
+apply to them. No frozen archive or runtime module was changed.
+
+Independent exact-source review at `36958a97f9a948d67c121aadc8bfb276483864b0`
+passed the real live-drain signal fixture in 0.079 seconds and both pre-execute
+refusal controls in 0.076 seconds under `nice -n 19`. Receipt
+`/home/dev/work/hn-831-live-host-independent-review-36958a97-1009.json`, SHA
+`c8e81716615781568cd7af2cc25cbd13add26367fd1cd38b00710a9d46b62f8f`,
+supersedes the earlier final-source receipt. This citation changes no executable
+source; exact-head CI/advisory and a fresh private packet remain required.
+
 Source PR [#3661](https://github.com/thaynes43/haynes-ops/pull/3661) merged as
 `b5defb2a1ca11a6bbfeb17e8a79903252ac12f87` after exact head
 `576cf1be3541b59c7b93602f0e916cd82271e109` passed all required checks and its

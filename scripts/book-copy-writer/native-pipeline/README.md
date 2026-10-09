@@ -54,6 +54,27 @@ must close all source/image/manifest/scope hashes and use fresh name, phase and
 unused output. Private actual contracts and packets stay outside git. Any runtime
 attempt needs independent review and a new explicit root exact-command GO.
 
+The LIVE host owns one original 180-second collection deadline and one original
+200-second total deadline. Collection refusal enters retirement and cleanup;
+the terminal deadline hard-exits across request/log retirement, joins and private
+receipt publication. All waits use the remaining original budget. Requests must
+actually exit and be reaped before authoritative native absence is accepted.
+At the cap the host kills its registered child groups best effort and emits only
+a bounded nonblocking aggregate refusal. It cannot claim a valid completion or
+absence; earlier actual UID custody remains available for independent cleanup.
+A success receipt requires publication checks before and after fsync plus an
+actual exit-zero host outcome. Final stdout cannot introduce an unbounded wait.
+The log drain starts with ALRM/TERM/INT blocked in its inherited thread mask;
+main's prior mask is restored immediately. This keeps a process-wide signal from
+bypassing the brief main-thread subprocess-registration mask. No I/O is masked.
+Actual terminal expiry reports the original total deadline; earlier internal
+pin/schema refusals preserve their bounded refusal code in one aggregate event.
+The host retains complete initial inventories and immutable CREATE intent before
+creation. A lost CREATE response plus an empty inventory remains unknown after
+transport retirement; positive cleanup requires recovered actual same-phase,
+manifest-bound Job UID custody. An unresolved server commit cannot become a
+definitive absence or completion claim.
+
 `prepare.py` only materializes immutable private successor sources, signed-runtime
 module bytes, saved-state preflight, exact closed templates and a fresh closed
 LIVE phase. Its result explicitly reports `full_pipeline_ready: false`; no launch
