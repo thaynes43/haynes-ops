@@ -140,9 +140,6 @@ class NormalCases(unittest.TestCase):
                 owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
                     'phase_token':fixtures.PHASE,'pid':child.pid,'start_ticks':normal.start_ticks(child.pid),'pgid':child.pid}
                 cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
-                with mock.patch.object(normal,'start_ticks',return_value='replaced'),mock.patch.object(normal.os,'killpg') as kill:
-                    with self.assertRaisesRegex(ValueError,'PID replaced'):normal.retire_exercise(packet)
-                    kill.assert_not_called()
                 normal.retire_exercise(packet);self.assertEqual(child.wait(timeout=1),-9)
                 self.assertEqual(normal.group_members(child.pid),{})
             finally:
@@ -185,10 +182,59 @@ class NormalCases(unittest.TestCase):
             wrong={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
                 'phase_token':fixtures.PHASE,'owner_sha256':'0'*64,'original_group':pid,'retired_at':'private-proof'}
             wrong['group_members']={}
+            wrong['basis']='empty_original_group'
             cache.write_private(runtime/'exercise-retired.json',normal.canonical(wrong))
             with mock.patch.object(normal.os,'killpg') as kill,self.assertRaisesRegex(ValueError,'receipt changed'):
                 normal.retire_exercise(packet)
             kill.assert_not_called()
+
+    def test_reused_pid_leads_foreign_group_original_is_retired_without_kill(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
+            packet={'directory':directory,'phase_token':fixtures.PHASE};pid=os.getpid()+100000
+            owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'pid':pid,'start_ticks':'original','pgid':pid}
+            cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            with mock.patch.object(normal,'start_ticks',return_value='replacement'),mock.patch.object(normal,'group_members',return_value={pid:'replacement'}),mock.patch.object(normal.os,'killpg') as kill:
+                normal.retire_exercise(packet);kill.assert_not_called()
+            proof=json.loads(normal.read_private(runtime/'exercise-retired.json'))
+            self.assertEqual(proof['basis'],'replacement_pid');self.assertEqual(proof['group_members'],{})
+
+    def test_missing_exercise_leader_retires_original_orphan_group(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700);(runtime/'cancel').touch(mode=0o600)
+            packet={'directory':directory,'phase_token':fixtures.PHASE};pid=os.getpid()+100000
+            owner={'schema':1,'packet_sha256':normal.sha(normal.canonical(packet)),
+                'phase_token':fixtures.PHASE,'pid':pid,'start_ticks':'original','pgid':pid}
+            cache.write_private(runtime/'exercise-owner.json',normal.canonical(owner))
+            with mock.patch.object(normal,'start_ticks',side_effect=FileNotFoundError),mock.patch.object(normal,'group_members',side_effect=[{pid+1:'owned-descendant'},{}]),mock.patch.object(normal,'signal_member') as retire:
+                normal.retire_exercise(packet);retire.assert_called_once_with(pid+1,'owned-descendant',pid)
+            proof=json.loads(normal.read_private(runtime/'exercise-retired.json'))
+            self.assertEqual(proof['basis'],'retired_owned_group');self.assertEqual(proof['group_members'],{})
+
+    def test_final_signal_uses_captured_pidfd_when_numeric_pid_is_replaced(self):
+        pid,fd=12345,99;numeric={'birth':'original'};handles={fd:'original'};signaled=[]
+        fields=['S','1',str(pid)]+['0']*16+['original']
+        class FakePath:
+            def __init__(self,value):self.value=str(value)
+            def __truediv__(self,value):return FakePath(self.value+'/'+str(value))
+            def read_text(self):
+                if self.value.endswith('/stat'):return str(pid)+' (exercise) '+' '.join(fields)
+                return 'Pid:\t'+str(pid)+'\n'
+        def send(handle,sig):
+            numeric['birth']='replacement';signaled.append((handles[handle],sig))
+        with mock.patch.object(normal,'Path',FakePath),mock.patch.object(normal.os,'pidfd_open',return_value=fd),mock.patch.object(normal.os,'close'),mock.patch.object(normal.signal,'pidfd_send_signal',side_effect=send),mock.patch.object(normal.os,'killpg') as group:
+            normal.signal_member(pid,'original',pid);group.assert_not_called()
+        self.assertEqual(numeric['birth'],'replacement');self.assertEqual(signaled,[('original',9)])
+
+    def test_replacement_before_pidfd_validation_is_never_signaled(self):
+        pid,fd=12345,99;fields=['S','1',str(pid)]+['0']*16+['replacement']
+        class FakePath:
+            def __init__(self,value):self.value=str(value)
+            def __truediv__(self,value):return self
+            def read_text(self):return str(pid)+' (replacement) '+' '.join(fields)
+        with mock.patch.object(normal,'Path',FakePath),mock.patch.object(normal.os,'pidfd_open',return_value=fd),mock.patch.object(normal.os,'close') as close,mock.patch.object(normal.signal,'pidfd_send_signal') as send:
+            normal.signal_member(pid,'original',pid);send.assert_not_called();close.assert_called_once_with(fd)
 
     def test_seven_rv_barriers_reject_delayed_hold_and_unknown_owner(self):
         with tempfile.TemporaryDirectory() as directory:

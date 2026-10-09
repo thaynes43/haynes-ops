@@ -29,7 +29,9 @@ controllers, STRIP=0, the Ransom hold and acquisition on.
 Before the first suspend, register the exercise's dedicated process group with
 the immutable packet/phase and actual PID/start ticks under a local registration
 lock. Recovery cancels further registration and retires that exact group before
-issuing any restore. A replaced PID or unknown surviving group refuses release.
+issuing any restore. Captured members are signaled through stable pidfds after
+PID/start-ticks/group validation; no numeric process-group kill is used. Unknown
+identity refuses release.
 After retirement, UID/spec/phase/RV-tested annotation barriers on all seven
 resources invalidate each previously submitted hold patch's old RV. A delayed
 patch either committed before its barrier and is restored, or refuses its stale
@@ -40,7 +42,13 @@ Persist immutable packet/phase/owner-SHA-bound retirement proof as soon as the
 original group is empty. Cold retries use that proof rather than re-adopting a
 later process with a reused PID. Before the first proof, a full empty original
 group permits retirement even if the old PID was reused outside that group.
-A surviving group with a missing/reused owner remains unknown and is not killed.
+[Linux 6.18 PID allocation](https://github.com/torvalds/linux/blob/v6.18/kernel/pid.c#L329-L349)
+retains an ID while any PID/PGID/SID member references it; allocation releases
+the ID only afterward. Thus a different leader birth proves original retirement,
+including a replacement leading a new group. It is never signaled. A missing
+leader with surviving original PGID members permits captured descendant
+retirement. [Python's pidfd signal API](https://docs.python.org/3.11/library/signal.html#signal.pidfd_send_signal)
+targets the captured process handle across the final numeric PID reuse gap.
 
 The rehearsal has no Stop clocks or COPY lease. Its closed operational bounds are
 exercise 90s, staging arm 120s, recovery 50s from the first recovery attempt;
@@ -98,8 +106,14 @@ again after group retirement could strand holds if that PID was later reused.
 The successor persists immutable owner-bound full zero-group proof and reuses
 it on retries. Two new cold-proof/binding controls plus actual group retirement
 passed in 0.180s, serially under `nice -n 19`. The older source PASS is superseded
-pending independent successor review. Runtime containment and restoration proof
-remains absent.
+pending independent successor review. Its `737feeb4` successor then exposed
+the replacement-as-group-leader/orphan cases (`4234498865`). The final correction
+uses the verified Linux allocation rule and per-member pidfds, with finite
+replacement-at-signal, replacement-before-validation, orphan and actual
+descendant controls. Runtime containment and restoration proof remains absent.
+The complete eighteen-case Normal suite passed in 0.365s under serial
+`nice -n 19`; the five targeted signal/replacement/orphan/actual-descendant
+controls passed in 0.154s. No runtime API or service hold was used.
 
 The independently reviewed #3667 successor was `f9f654b6` (receipt
 `89ffe7fc818cc66273505adcd6f4580fdeb5108ae7f280d4ad9b38133095e738`)

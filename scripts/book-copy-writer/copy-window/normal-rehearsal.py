@@ -94,6 +94,23 @@ def group_members(pgid):
             members[int(entry.name)]=fields[19]
     return members
 
+def signal_member(pid,birth,pgid):
+    # Signal the captured process handle, never a possibly reused numeric PID or
+    # group. Opening before validation also protects the final signal gap.
+    try:fd=os.pidfd_open(pid,0)
+    except ProcessLookupError:return
+    try:
+        try:fields=(Path('/proc')/str(pid)/'stat').read_text().rsplit(')',1)[1].split()
+        except FileNotFoundError:return
+        if fields[19]!=birth:return
+        require(int(fields[2])==pgid,'captured exercise member changed group')
+        info=dict(line.split(':',1) for line in (Path('/proc/self/fdinfo')/str(fd)).read_text().splitlines() if ':' in line)
+        if int(info['Pid'].strip())==-1:return
+        require(int(info['Pid'].strip())==pid,'captured pidfd identity changed')
+        try:signal.pidfd_send_signal(fd,signal.SIGKILL)
+        except ProcessLookupError:pass
+    finally:os.close(fd)
+
 def retire_exercise(packet):
     cache,_,_=modules()
     runtime=Path(packet['directory'])/'runtime'
@@ -111,21 +128,34 @@ def retire_exercise(packet):
             'phase_token':packet['phase_token'],'owner_sha256':sha(owner_raw),'original_group':pid,'group_members':{}}
         if retired.exists():
             value=json.loads(read_private(retired))
-            require(set(value)==set(binding)|{'retired_at'} and all(value[k]==v for k,v in binding.items())
-                and isinstance(value['retired_at'],str),'exercise retirement receipt changed')
+            require(set(value)==set(binding)|{'retired_at','basis'} and all(value[k]==v for k,v in binding.items())
+                and isinstance(value['retired_at'],str) and value['basis'] in
+                ('empty_original_group','replacement_pid','retired_owned_group'),'exercise retirement receipt changed')
             return
         try:current=start_ticks(pid)
         except FileNotFoundError:current=None
         members=group_members(pid)
-        if members:
-            require(current==owner['start_ticks'],'exercise PID replaced or surviving group ownership unproved')
-            os.killpg(pid,signal.SIGKILL)
+        # Linux retains the number while the original PGID has members. A
+        # different leader birth therefore identifies a replacement group;
+        # an absent leader with surviving PGID members identifies our orphans.
+        try:latest=start_ticks(pid)
+        except FileNotFoundError:latest=None
+        replacement=any(v not in (None,owner['start_ticks']) for v in (current,latest))
+        basis='replacement_pid' if replacement else 'empty_original_group'
+        if members and not replacement:
             until=time.monotonic()+2
-            while group_members(pid):
-                require(time.monotonic()<until,'exercise group retirement unproved');time.sleep(.05)
+            while members:
+                require(time.monotonic()<until and len(members)<=64,'exercise group retirement unproved/cap')
+                for member,birth in members.items():signal_member(member,birth,pid)
+                try:current=start_ticks(pid)
+                except FileNotFoundError:current=None
+                if current not in (None,owner['start_ticks']):basis='replacement_pid';break
+                members=group_members(pid)
+                if members:time.sleep(.05)
+            else:basis='retired_owned_group'
         # Empty original group means no request authority survives, including
         # when the old PID was reused in another group before first observation.
-        cache.write_private(retired,canonical(dict(binding,retired_at=dt.datetime.now(dt.timezone.utc).isoformat())))
+        cache.write_private(retired,canonical(dict(binding,basis=basis,retired_at=dt.datetime.now(dt.timezone.utc).isoformat())))
 
 def prepare(output,repo,host_path=HOST_PROOF,host_sha=HOST_PROOF_SHA):
     cache,_,_=modules();output=Path(output).absolute();output.mkdir(mode=0o700,parents=False,exist_ok=False)

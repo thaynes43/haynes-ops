@@ -115,11 +115,16 @@ ticks under a private local registration lock. Cancellation closes registration.
 Recovery retires that exact group, then applies UID/spec/phase/RV-tested metadata
 barriers on all seven resources before any release. Submitted hold patches test
 the earlier RV and therefore cannot re-hold a resource after its barrier. Killing
-a client alone is not server-request retirement. Reused PID, unknown surviving
-group or foreign ownership refuses release truthfully. Once the original group
+a client alone is not server-request retirement. Captured members are signaled
+through stable pidfds after PID/birth/group checks, never through a numeric
+group kill. Unknown identity or foreign ownership refuses release truthfully.
+Once the original group
 is empty, a private immutable packet/owner-SHA retirement receipt permits cold
 retries without inspecting a later reused PID. An empty original group before
 the first proof is also safe; another group's reused PID is never killed.
+Linux retains the number while the original PGID has members, so a different
+leader birth proves retirement and a missing leader leaves identifiable original
+descendants. The immutable receipt records which proof established retirement.
 
 Rehearsal operational caps are exercise 90s, staging arm 120s and recovery 50s
 from the first recovery attempt. The watcher uses its existing 10s poll interval;
