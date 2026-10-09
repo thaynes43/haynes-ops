@@ -552,6 +552,17 @@ class HostTests(unittest.TestCase):
         with self.assertRaisesRegex(h.Refused, "candidate_file_observation_changed"):
             h.file_timestamp_binding(raw.replace(b"1:23", b"1:24", 1), pin)
 
+    def test_upload_file_observation_cannot_fill_native_scan_clock_slots(self):
+        self.assertIn("umask 077;", h.GATE)
+        fixture = h.Fixture.__new__(h.Fixture)
+        rules = [{"Table": "MangaFile", "Id": 3570, "Field": name, "Before": "text:old", "After": None, "ScanClock": True} for name in ("LastModified", "LastModifiedUtc")]
+        fixture.approval = {"fixturePacket": {"ScanAllowances": rules}, "uploads": []}
+        fixture.phase, fixture.uid, fixture.pod_uid = PHASE, JOBUID, PODUID
+        fixture.job_started, fixture.end = 100, 280
+        packet = fixture.approved_packet(b"synthetic-source", b"synthetic-network", {"LastModified": "text:wrong-mtime", "LastModifiedUtc": "text:wrong-mtime"})
+        self.assertEqual(packet["ScanAllowances"], rules)
+        self.assertEqual(fixture.approval["fixturePacket"]["ScanAllowances"], rules)
+
 
 if __name__ == "__main__":
     unittest.main()

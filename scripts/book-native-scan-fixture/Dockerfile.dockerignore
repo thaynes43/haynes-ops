@@ -5,3 +5,4 @@
 !scripts/book-native-scan-fixture/NativeScannerFixture.csproj
 !scripts/book-native-scan-fixture/FixtureProtocol.cs
 !scripts/book-native-scan-fixture/Program.cs
+!scripts/book-native-scan-fixture/NativeProjection.cs

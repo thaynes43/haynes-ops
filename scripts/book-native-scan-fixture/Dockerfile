@@ -2,7 +2,7 @@ ARG SDK_IMAGE
 FROM ${SDK_IMAGE} AS build
 WORKDIR /build
 COPY scripts/book-native-scan-fixture/NativeScannerFixture.csproj ./
-COPY scripts/book-native-scan-fixture/FixtureProtocol.cs scripts/book-native-scan-fixture/Program.cs ./
+COPY scripts/book-native-scan-fixture/FixtureProtocol.cs scripts/book-native-scan-fixture/Program.cs scripts/book-native-scan-fixture/NativeProjection.cs ./
 RUN test "$(dotnet --version)" = "10.0.101" \
     && nice -n 19 dotnet publish -c Release -r linux-x64 --self-contained true \
        -p:RuntimeFrameworkVersion=10.0.1 -p:TargetLatestRuntimePatch=false \

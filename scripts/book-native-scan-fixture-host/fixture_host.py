@@ -476,9 +476,9 @@ def validate_approval(value, now):
     require(len(uploads) == 5 and len({p["target"] for p in uploads}) == 5 and {p["target"] for p in uploads} == {"/fixture-input/original.db", "/fixture-input/original.epub", "/kavita/config/kavita.db", "/kavita/config/appsettings.json", value["fixturePacket"]["TargetFilePath"]}, "private_upload_scope")
     for pin in uploads:
         require(sha(read_private(pin["path"])) == pin["sha256"], "approved_private_input_changed")
-    require(value.get("nativeFileTimestampBinding") == {"path": value["fixturePacket"]["TargetFilePath"], "kind": "native-fs-last-write-dotnet-10.0.1-new-york", "fields": ["LastModified", "LastModifiedUtc"]}, "reviewed_file_timestamp_policy")
+    require(value.get("nativeFileTimestampBinding") is None, "obsolete_file_timestamp_policy")
     file_rules = [r for r in value["fixturePacket"]["ScanAllowances"] if r["Table"] == "MangaFile" and r["Field"] in ("LastModified", "LastModifiedUtc")]
-    require(len(file_rules) == 2 and {r["Field"] for r in file_rules} == {"LastModified", "LastModifiedUtc"} and all(r["Id"] == 3570 and r["After"] is None and r["ScanClock"] is False for r in file_rules), "reviewed_file_timestamp_slots")
+    require(len(file_rules) == 2 and {r["Field"] for r in file_rules} == {"LastModified", "LastModifiedUtc"} and all(r["Id"] == 3570 and r["After"] is None and r["ScanClock"] is True for r in file_rules), "reviewed_scan_timestamp_slots")
     # Explicit exact private packet values are reviewed, not inferred from results.
     require(value["fixturePacket"].get("ExplicitRootFixtureApproval") is False and value["fixturePacket"]["Target"] == {"Library": 1, "Series": 1650, "Volume": 1800, "Chapter": 3358, "File": 3570}, "reviewed_private_target")
     require(value["fixturePacket"]["ImageDigest"] == IMAGE.split("@", 1)[1] and re.fullmatch("[0-9a-f]{64}", value["fixturePacket"]["ExpectedSchemaSha256"]), "private_native_schema")
@@ -506,9 +506,7 @@ class Fixture(Native):
 
     def approved_packet(self, source_raw, network_raw, observed):
         packet = copy.deepcopy(self.approval["fixturePacket"])
-        for rule in packet["ScanAllowances"]:
-            if rule["Table"] == "MangaFile" and rule["Field"] in ("LastModified", "LastModifiedUtc"):
-                rule["After"] = observed[rule["Field"]]
+        # File observation proves upload custody only; native hooks set scan clocks.
         packet.update(ExplicitRootFixtureApproval=True, Phase=self.phase, JobUid=self.uid, PodUid=self.pod_uid, Node="talosw01", JobStartedAt=stamp(self.job_started), ExpiresAt=stamp(self.end), PrivateSourceProofSha256=sha(source_raw), NetworkDenyProofSha256=sha(network_raw))
         packet["Inputs"] = [{"Path": p["target"], "Sha256": p["sha256"]} for p in self.approval["uploads"]] + [{"Path": "/fixture-input/source-proof.json", "Sha256": sha(source_raw)}, {"Path": "/fixture-input/network-deny-proof.json", "Sha256": sha(network_raw)}]
         return packet

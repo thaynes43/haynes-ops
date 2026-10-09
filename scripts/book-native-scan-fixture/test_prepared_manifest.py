@@ -66,7 +66,7 @@ class PreparedFixtureTests(unittest.TestCase):
         allow = (ROOT / "Dockerfile.dockerignore").read_text().splitlines()
         self.assertEqual(allow[0], "**")
         allowed_files = [line[1:] for line in allow if line.startswith("!") and not line.endswith("/")]
-        self.assertEqual(set(allowed_files), {"scripts/book-native-scan-fixture/" + name for name in ("Dockerfile", "NativeScannerFixture.csproj", "FixtureProtocol.cs", "Program.cs")})
+        self.assertEqual(set(allowed_files), {"scripts/book-native-scan-fixture/" + name for name in ("Dockerfile", "NativeScannerFixture.csproj", "FixtureProtocol.cs", "Program.cs", "NativeProjection.cs")})
 
     def test_native_version_digest_timezone_and_source_admission(self):
         release = (ROOT.parents[1] / "kubernetes/main/apps/media/kavita/app/helmrelease.yaml").read_text()

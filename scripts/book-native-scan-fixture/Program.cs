@@ -41,13 +41,17 @@ try
     };
     if (args.SequenceEqual(new[] { "--self-test" }))
     {
+        stage = "public-self-test-protocol";
         FixtureProtocol.SelfTest();
+        stage = "public-self-test-inverse";
         NativeProof.GenericSelfTest();
+        stage = "public-self-test-native-bindings";
         NativeBindings.Inspect();
-        output.WriteLine($"PASS 4 native local/UTC clock controls and 5 clock refusals, 11 packet refusals, 3 durable-ACK refusals, 6 live-native drift refusals, typed cells, saved-state barriers, inverse and actual native reflection signatures; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
+        output.WriteLine($"PASS native local/UTC clock controls, 13 packet refusals, durable-ACK/live-native refusals, typed saved-state barriers, actual five-row inverse, color/cover guards, EF10.0.6 virtual hooks and pending/deferred controls; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
         return 0;
     }
     FixtureProtocol.Require(args.SequenceEqual(new[] { "--prepared-private-fixture" }), "unknown entrypoint");
+    NativeProof.RequirePrivateUmask();
     FixtureProtocol.Require(!File.Exists("/var/run/secrets/kubernetes.io/serviceaccount/token"), "service-account token is mounted");
     foreach (var mount in new[] { "/fixture-input", "/kavita/config", "/data/cephfs-hdd/data/media/books/EBooks", "/tmp" })
         NativeProof.RequirePrivateTmpfs(mount);
@@ -82,10 +86,11 @@ try
     NativeProof.RequireTarget(before, packet);
     NativeProof.SavePrivate("/kavita/config/proof-before.json", before);
     stage = "native-build";
+    NativeProof.RequirePrivateUmask();
     // Suppress native console logs; private vendor log files remain in tmpfs.
     Console.SetOut(TextWriter.Null);
     Console.SetError(TextWriter.Null);
-    var started = DateTimeOffset.UtcNow;
+    DateTimeOffset started = default, finished = default;
     Directory.SetCurrentDirectory("/kavita");
     var program = Assembly.LoadFrom(FixtureProtocol.NativeAssembly).GetType("Kavita.Server.Program", true)!;
     var create = program.GetMethod("CreateHostBuilder", BindingFlags.NonPublic | BindingFlags.Static) ?? throw new MissingMethodException();
@@ -98,6 +103,7 @@ try
     var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
     FixtureProtocol.Require(!lifetime.ApplicationStarted.IsCancellationRequested, "native host was started");
     object? nativeDbBinding = null;
+    ProjectionProof? nativeProjection = null;
     using (var scope = host.Services.CreateScope())
     {
         nativeDbBinding = NativeBindings.ProvePrivateDbContext(scope.ServiceProvider, packet.CandidateDbPath);
@@ -107,12 +113,17 @@ try
         // Initialize the native in-memory job store without starting its server.
         var storage = NativeBindings.Type("Hangfire.Core", "Hangfire.JobStorage");
         _ = scope.ServiceProvider.GetRequiredService(storage);
+        stage = "native-projection";
+        nativeProjection = await NativeProjection.Derive(scope.ServiceProvider, packet, before);
         var afterBinding = NativeProof.ReadDatabase(packet.CandidateDbPath);
         NativeProof.SavePrivate("/kavita/config/proof-after-bind.json", afterBinding);
         NativeProof.RequireDelta(before, afterBinding, []);
+        NativeProjection.RequireNoPending(scope.ServiceProvider);
         stage = "native-scan";
         var scan = scannerType.GetMethod("ScanSeries", new[] { typeof(int), typeof(bool) }) ?? throw new MissingMethodException();
+        started = DateTimeOffset.UtcNow;
         await NativeBindings.Await(scan.Invoke(scanner, new object[] { packet.Target.Series, true }), packet.ExpiresAt);
+        finished = DateTimeOffset.UtcNow;
     }
     stage = "native-cleanup-predicate";
     using (var scope = host.Services.CreateScope())
@@ -141,28 +152,38 @@ try
     }
     FixtureProtocol.Require(!lifetime.ApplicationStarted.IsCancellationRequested, "native hosted workers were started");
     host.Dispose();
-    var finished = DateTimeOffset.UtcNow;
     stage = "state-readback";
     var after = NativeProof.ReadDatabase(packet.CandidateDbPath);
     NativeProof.SavePrivate("/kavita/config/proof-after.json", after);
     NativeProof.RequireTarget(after, packet);
     NativeProof.RequireScanDelta(before, after, packet, started, finished);
+    NativeProof.RequirePrivateUmask();
+    NativeProjection.RequireAfterCover(before, after, packet, nativeProjection!);
     stage = "private-inverse";
-    NativeProof.InvertCatalog(packet);
+    NativeProof.InvertCatalog(packet, original, before, after, started, finished);
     var inverse = NativeProof.ReadDatabase(packet.CandidateDbPath);
-    NativeProof.RequireDelta(after, inverse, packet.CatalogDelta.Select(c => c with { Before = c.After, After = c.Before }).ToArray());
+    NativeProof.RequireDelta(original, inverse, []);
     NativeProof.SavePrivate("/kavita/config/proof-inverse.json", inverse);
     resultJson = JsonSerializer.Serialize(new { result = "PASS_ACTUAL_NATIVE_SCANNER_PRIVATE_FIXTURE", packet.Phase, packet.JobUid, packet.PodUid,
         nativeSource = FixtureProtocol.SourceCommit, nativeBaseImage = FixtureProtocol.NativeImageDigest,
         tableCount = before.Tables.Count, targetIds = packet.Target, nativeScanStartedAt = started, nativeScanFinishedAt = finished,
         beforeSha256 = NativeProof.Digest(before), afterSha256 = NativeProof.Digest(after), inverseSha256 = NativeProof.Digest(inverse),
-        nativeDbBinding, timeZone = TimeZoneInfo.Local.Id, currentTimeZoneOffset = TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow), hostApplicationStarted = false, savedAndCurationRowsExact = true, cleanupRemoved = 0, catalogInverseExact = true, productionWrites = 0, productionAuthorization = false });
+        nativeDbBinding, nativeProjection, restoredCellCount = 32, timeZone = TimeZoneInfo.Local.Id, currentTimeZoneOffset = TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow), hostApplicationStarted = false, savedAndCurationRowsExact = true, cleanupRemoved = 0, catalogInverseExact = true, productionWrites = 0, productionAuthorization = false });
     exitCode = 0;
 }
 catch (Exception error)
 {
-    // Do not expose vendor errors: they can contain private state or credentials.
-    resultJson = JsonSerializer.Serialize(new { result = "REFUSED", stage, kind = error.GetType().Name, outcome = "unknown", productionAuthorization = false });
+    if (args.SequenceEqual(new[] { "--self-test" }))
+    {
+        // This entrypoint has only public synthetic controls and never opens native host/private inputs.
+        var reason = error.GetBaseException().Message;
+        resultJson = JsonSerializer.Serialize(new { result = "REFUSED", stage, kind = error.GetType().Name, reason = reason[..Math.Min(reason.Length, 256)], outcome = "unknown", productionAuthorization = false });
+    }
+    else
+    {
+        // Do not expose runtime vendor errors: they can contain private state or credentials.
+        resultJson = JsonSerializer.Serialize(new { result = "REFUSED", stage, kind = error.GetType().Name, outcome = "unknown", productionAuthorization = false });
+    }
 }
 try
 {
@@ -194,6 +215,7 @@ static class NativeBindings
         _ = Type("Microsoft.Data.Sqlite", "Microsoft.Data.Sqlite.SqliteConnection");
         _ = Type("Kavita.Database", "Kavita.Database.DataContext");
         FixtureProtocol.Require(Type("Microsoft.EntityFrameworkCore.Relational", "Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions").GetMethods().Count(m => m.Name == "GetDbConnection" && m.GetParameters().Length == 1) == 1, "native database facade binding differs");
+        NativeProjection.InspectSaveHooks();
     }
     public static object ProvePrivateDbContext(IServiceProvider services, string path)
     {
@@ -237,6 +259,7 @@ sealed record DatabaseSnapshot(string SchemaSha256, Dictionary<string, List<Sort
 
 static class NativeProof
 {
+    public static void RequirePrivateUmask() => FixtureProtocol.Require(File.ReadLines("/proc/self/status").Single(line => line.StartsWith("Umask:", StringComparison.Ordinal)).Split(':', 2)[1].Trim() == "0077", "fixture did not inherit its restrictive launch umask");
     public static string Digest(DatabaseSnapshot snapshot) => FixtureProtocol.HashText(JsonSerializer.Serialize(snapshot));
     public static void RequirePrivateTmpfs(string path)
     {
@@ -282,7 +305,7 @@ static class NativeProof
         if (File.Exists(path)) return;
         await found.Task.WaitAsync(wait);
     }
-    static DbConnection Connection(string path, bool readOnly)
+    internal static DbConnection Connection(string path, bool readOnly)
     {
         var type = NativeBindings.Type("Microsoft.Data.Sqlite", "Microsoft.Data.Sqlite.SqliteConnection");
         var connection = (DbConnection)Activator.CreateInstance(type)!;
@@ -290,17 +313,21 @@ static class NativeProof
         connection.Open();
         return connection;
     }
-    static DbCommand Command(DbConnection db, string sql)
+    static DbCommand Command(DbConnection db, string sql, DbTransaction? transaction = null)
     {
-        var command = db.CreateCommand(); command.CommandText = sql; command.CommandTimeout = 1; return command;
+        var command = db.CreateCommand(); command.CommandText = sql; command.CommandTimeout = 1; command.Transaction = transaction; return command;
     }
     public static DatabaseSnapshot ReadDatabase(string path)
     {
         using var db = Connection(path, true);
-        using (var check = Command(db, "PRAGMA quick_check")) FixtureProtocol.Require((string?)check.ExecuteScalar() == "ok", "native database integrity failed");
-        using (var fk = Command(db, "PRAGMA foreign_key_check")) using (var reader = fk.ExecuteReader()) FixtureProtocol.Require(!reader.Read(), "native FK check failed");
+        return ReadDatabase(db);
+    }
+    static DatabaseSnapshot ReadDatabase(DbConnection db, DbTransaction? transaction = null)
+    {
+        using (var check = Command(db, "PRAGMA quick_check", transaction)) FixtureProtocol.Require((string?)check.ExecuteScalar() == "ok", "native database integrity failed");
+        using (var fk = Command(db, "PRAGMA foreign_key_check", transaction)) using (var reader = fk.ExecuteReader()) FixtureProtocol.Require(!reader.Read(), "native FK check failed");
         var names = new List<string>(); var schema = new List<string>();
-        using (var query = Command(db, "SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name"))
+        using (var query = Command(db, "SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name", transaction))
         using (var reader = query.ExecuteReader()) while (reader.Read())
         {
             FixtureProtocol.Require(reader.GetString(0) != "trigger", "unexpected native trigger");
@@ -313,7 +340,7 @@ static class NativeProof
         {
             FixtureProtocol.Require(!name.Contains('"'), "unsafe native table name");
             var rows = new List<SortedDictionary<string, string>>();
-            using var query = Command(db, $"SELECT * FROM \"{name}\""); using var reader = query.ExecuteReader();
+            using var query = Command(db, $"SELECT * FROM \"{name}\"", transaction); using var reader = query.ExecuteReader();
             while (reader.Read())
             {
                 FixtureProtocol.Require(++total <= 100_000, "native row bound exceeded");
@@ -325,7 +352,7 @@ static class NativeProof
         }
         return new(FixtureProtocol.HashText(JsonSerializer.Serialize(schema)), tables);
     }
-    static SortedDictionary<string, string> Row(DatabaseSnapshot db, string table, int id) => db.Tables[table].Single(r => r.TryGetValue("Id", out var key) && key == FixtureProtocol.Cell(id));
+    internal static SortedDictionary<string, string> Row(DatabaseSnapshot db, string table, int id) => db.Tables[table].Single(r => r.TryGetValue("Id", out var key) && key == FixtureProtocol.Cell(id));
     static DatabaseSnapshot Copy(DatabaseSnapshot value) => new(value.SchemaSha256,
         value.Tables.ToDictionary(pair => pair.Key, pair => pair.Value.Select(row => new SortedDictionary<string, string>(row, StringComparer.Ordinal)).ToList()));
     static void Sort(DatabaseSnapshot value) { foreach (var name in value.Tables.Keys.ToArray()) value.Tables[name] = value.Tables[name].OrderBy(FixtureProtocol.CanonicalRow, StringComparer.Ordinal).ToList(); }
@@ -367,11 +394,13 @@ static class NativeProof
         {
             var actual = Row(after, allowance.Table, allowance.Id)[allowance.Field];
             FixtureProtocol.Require(Row(before, allowance.Table, allowance.Id)[allowance.Field] == allowance.Before, "allowance before cell differs");
+            FixtureProtocol.Require(allowance.NativeColor || actual != allowance.Before, "native reviewed scan cell did not change");
             if (allowance.ScanClock)
             {
                 FixtureProtocol.RequireScanClock(allowance.Field, actual, started, finished);
                 if (allowance.Table == "Series" && allowance.Field == "LastFolderScanned") FixtureProtocol.Require(actual != allowance.Before, "native scanner returned without target scan evidence");
             }
+            else if (allowance.NativeColor) FixtureProtocol.RequireNativeColor(actual);
             else FixtureProtocol.Require(actual == allowance.After, "native explicit scan cell differs");
             changes.Add(new(allowance.Table, allowance.Id, allowance.Field, allowance.Before, actual));
         }
@@ -411,19 +440,48 @@ static class NativeProof
         FixtureProtocol.ValidateAck(packet, ack, receiptSha256);
         FixtureProtocol.Require(DateTimeOffset.UtcNow < packet.ExpiresAt, "original proof clock expired after ACK");
     }
-    public static void InvertCatalog(FixturePacket packet)
+    public static void InvertCatalog(FixturePacket packet, DatabaseSnapshot original, DatabaseSnapshot before, DatabaseSnapshot after, DateTimeOffset started, DateTimeOffset finished)
     {
+        RequireDelta(original, before, packet.CatalogDelta);
+        RequireScanDelta(before, after, packet, started, finished);
+        var restore = packet.CatalogDelta.Select(c => (c.Table, c.Id, c.Field))
+            .Concat(packet.ScanAllowances.Select(c => (c.Table, c.Id, c.Field))).ToArray();
+        FixtureProtocol.Require(restore.Length == 32 && restore.Distinct().Count() == 32 && restore.Select(c => (c.Table, c.Id)).Distinct().Count() == 5, "inverse is not the exact 32-cell five-row restoration");
+        // Reconstruct the exact approved after-state from immutable original values.
+        var expectedChanges = restore.Select(c => new CellChange(c.Table, c.Id, c.Field, Row(original, c.Table, c.Id)[c.Field], Row(after, c.Table, c.Id)[c.Field])).ToArray();
+        RequireDelta(original, after, expectedChanges);
         using var db = Connection(packet.CandidateDbPath, false); using var transaction = db.BeginTransaction();
-        foreach (var change in packet.CatalogDelta)
+        RequireDelta(after, ReadDatabase(db, transaction), []);
+        foreach (var group in restore.GroupBy(c => (c.Table, c.Id)))
         {
-            using var command = Command(db, $"UPDATE {change.Table} SET {change.Field}=@value WHERE Id=@id AND {change.Field}=@old"); command.Transaction = transaction;
-            foreach (var (name, value) in new[] { ("@value", Decode(change.Before)), ("@id", (object)change.Id), ("@old", Decode(change.After)) })
+            var current = Row(after, group.Key.Table, group.Key.Id);
+            var initial = Row(original, group.Key.Table, group.Key.Id);
+            FixtureProtocol.Require(current.Keys.SequenceEqual(initial.Keys) && current.Keys.All(k => !k.Contains('"')), "inverse row shape differs");
+            var fields = group.Select(c => c.Field).ToArray();
+            // IS handles nullable values; typeof plus binary comparison preserves native storage types and exact strings.
+            using var command = Command(db, $"UPDATE \"{group.Key.Table}\" SET " + string.Join(",", fields.Select((f, i) => $"\"{f}\"=@v{i}"))
+                + " WHERE " + string.Join(" AND ", current.Select((pair, i) => $"typeof(\"{pair.Key}\")=@t{i} AND \"{pair.Key}\" COLLATE BINARY IS @c{i}")), transaction);
+            static void Bind(DbCommand command, string name, object value)
             { var parameter = command.CreateParameter(); parameter.ParameterName = name; parameter.Value = value; command.Parameters.Add(parameter); }
-            FixtureProtocol.Require(command.ExecuteNonQuery() == 1, "inverse before key changed");
+            for (var i = 0; i < fields.Length; i++) Bind(command, "@v" + i, Decode(initial[fields[i]]));
+            var index = 0;
+            foreach (var pair in current)
+            {
+                Bind(command, "@c" + index, Decode(pair.Value));
+                Bind(command, "@t" + index, pair.Value.StartsWith("int:", StringComparison.Ordinal) ? "integer" : pair.Value.StartsWith("real:", StringComparison.Ordinal) ? "real" : pair.Value.Split(':', 2)[0]);
+                index++;
+            }
+            FixtureProtocol.Require(command.ExecuteNonQuery() == 1, "inverse full-row after-value CAS differs");
         }
+        // A partial restoration, constraint, trigger or any protected drift rolls back before commit.
+        RequireDelta(original, ReadDatabase(db, transaction), []);
         transaction.Commit();
     }
-    static object Decode(string cell) => cell.StartsWith("text:") ? cell[5..] : cell.StartsWith("int:") ? long.Parse(cell[4..], System.Globalization.CultureInfo.InvariantCulture) : cell.StartsWith("real:") ? double.Parse(cell[5..], System.Globalization.CultureInfo.InvariantCulture) : throw new InvalidOperationException("unsupported catalog cell");
+    static object Decode(string cell) => cell.StartsWith("text:", StringComparison.Ordinal) ? cell[5..]
+        : cell.StartsWith("int:", StringComparison.Ordinal) ? long.Parse(cell[4..], System.Globalization.CultureInfo.InvariantCulture)
+        : cell.StartsWith("real:", StringComparison.Ordinal) ? double.Parse(cell[5..], System.Globalization.CultureInfo.InvariantCulture)
+        : cell.StartsWith("blob:", StringComparison.Ordinal) ? Convert.FromBase64String(cell[5..])
+        : cell == "null:" ? DBNull.Value : throw new InvalidOperationException("unsupported native cell");
     public static void GenericSelfTest()
     {
         var before = new DatabaseSnapshot("synthetic-schema", new Dictionary<string, List<SortedDictionary<string, string>>>
@@ -445,5 +503,91 @@ static class NativeProof
         var inverse = Copy(after); Row(inverse, "Series", 1)["Name"] = "text:Before"; Sort(inverse);
         RequireDelta(after, inverse, [new("Series", 1, "Name", "text:After", "text:Before")]);
         FixtureProtocol.Require(Digest(before) == Digest(inverse), "generic inverse did not restore exact rows");
+        PurposeSelfTest();
+    }
+    static void PurposeSelfTest()
+    {
+        var packet = FixtureProtocol.SyntheticPacket ?? throw new InvalidOperationException("synthetic packet missing");
+        var now = DateTimeOffset.Parse("2026-10-09T19:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        var path = Path.Combine(Path.GetTempPath(), "ransom-inverse-control-" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            File.WriteAllBytes(path, []);
+            using (var db = Connection(path, false))
+            {
+                var seed = packet.CatalogDelta.Select(c => (c.Table, c.Id, c.Field, c.Before))
+                    .Concat(packet.ScanAllowances.Select(c => (c.Table, c.Id, c.Field, c.Before))).GroupBy(c => (c.Table, c.Id));
+                foreach (var group in seed)
+                {
+                    var row = group.ToDictionary(c => c.Field, c => c.Before);
+                    row.Add("Id", FixtureProtocol.Cell(group.Key.Id));
+                    row.Add("UnchangedNullable", "null:"); row.Add("UnchangedBlob", "blob:AQI=");
+                    row.Add("UnchangedReal", "real:1.5"); row.Add("UnchangedText", "text:CaseSensitive");
+                    using (var create = Command(db, $"CREATE TABLE \"{group.Key.Table}\" (" + string.Join(",", row.Select(p => $"\"{p.Key}\" " + (p.Value.StartsWith("int:", StringComparison.Ordinal) ? "INTEGER" : p.Value.StartsWith("real:", StringComparison.Ordinal) ? "REAL" : p.Value.StartsWith("text:", StringComparison.Ordinal) ? "TEXT" : "BLOB"))) + ")")) create.ExecuteNonQuery();
+                    using var insert = Command(db, $"INSERT INTO \"{group.Key.Table}\" (" + string.Join(",", row.Keys.Select(k => $"\"{k}\"")) + ") VALUES (" + string.Join(",", row.Select((_, i) => "@p" + i)) + ")");
+                    var index = 0;
+                    foreach (var pair in row)
+                    { var parameter = insert.CreateParameter(); parameter.ParameterName = "@p" + index++; parameter.Value = Decode(pair.Value); insert.Parameters.Add(parameter); }
+                    insert.ExecuteNonQuery();
+                }
+                using var saved = Command(db, "CREATE TABLE AppUserProgresses (Id INTEGER, Progress TEXT); INSERT INTO AppUserProgresses VALUES (1,'synthetic'); INSERT INTO Series (Id,UnchangedText) VALUES (999,'other')"); saved.ExecuteNonQuery();
+            }
+            packet = packet with { CandidateDbPath = path };
+            var original = ReadDatabase(path);
+            void Apply(IEnumerable<CellChange> cells)
+            {
+                using var db = Connection(path, false);
+                foreach (var cell in cells)
+                {
+                    using var command = Command(db, $"UPDATE \"{cell.Table}\" SET \"{cell.Field}\"=@value WHERE Id=@id");
+                    foreach (var (name, value) in new[] { ("@value", Decode(cell.After)), ("@id", (object)cell.Id) })
+                    { var parameter = command.CreateParameter(); parameter.ParameterName = name; parameter.Value = value; command.Parameters.Add(parameter); }
+                    FixtureProtocol.Require(command.ExecuteNonQuery() == 1, "synthetic setup update differs");
+                }
+            }
+            Apply(packet.CatalogDelta);
+            var before = ReadDatabase(path);
+            var changes = packet.ScanAllowances.Select(r => new CellChange(r.Table, r.Id, r.Field, r.Before,
+                r.ScanClock ? r.Field.EndsWith("Utc", StringComparison.Ordinal) ? "text:2026-10-09 19:00:00" : "text:2026-10-09 15:00:00" : r.NativeColor ? "text:#112233" : r.After!)).ToArray();
+            Apply(changes);
+            var after = ReadDatabase(path);
+            RequireScanDelta(before, after, packet, now, now);
+            var unchangedColor = Copy(after);
+            Row(unchangedColor, "Volume", packet.Target.Volume)["PrimaryColor"] = Row(before, "Volume", packet.Target.Volume)["PrimaryColor"];
+            Sort(unchangedColor);
+            RequireScanDelta(before, unchangedColor, packet, now, now);
+            void Refuses(Action action)
+            {
+                var refused = false;
+                try { action(); } catch (InvalidOperationException) { refused = true; }
+                FixtureProtocol.Require(refused, "finite purpose-only guard accepted invalid state");
+            }
+            foreach (var (table, id, field, wrong) in new[] {
+                ("Chapter", packet.Target.Chapter, "Count", "int:7"),
+                ("Volume", packet.Target.Volume, "PrimaryColor", "text:#aabbcc"),
+                ("MangaFile", packet.Target.File, "LastFileAnalysisUtc", "text:2026-10-09 19:00:02"),
+                ("Series", 999, "UnchangedText", "text:drift"),
+                ("AppUserProgresses", 1, "Progress", "text:drift") })
+            {
+                var bad = Copy(after); Row(bad, table, id)[field] = wrong; Sort(bad);
+                Refuses(() => InvertCatalog(packet, original, before, bad, now, now));
+                RequireDelta(after, ReadDatabase(path), []);
+            }
+            var incomplete = packet with { ScanAllowances = packet.ScanAllowances[..24] };
+            Refuses(() => InvertCatalog(incomplete, original, before, after, now, now));
+            // Full current-state and nullable/unchanged fields are guarded by the real transaction helper.
+            Apply([new("Series", packet.Target.Series, "UnchangedNullable", "null:", "text:drift")]);
+            Refuses(() => InvertCatalog(packet, original, before, after, now, now));
+            Apply([new("Series", packet.Target.Series, "UnchangedNullable", "text:drift", "null:")]);
+            InvertCatalog(packet, original, before, after, now, now);
+            RequireDelta(original, ReadDatabase(path), []);
+            Refuses(() => NativeProjection.NextRowVersion("int:4294967294"));
+            Refuses(() => NativeProjection.NextRowVersion("int:-1"));
+            var values = packet.ScanAllowances.Where(r => !r.ScanClock && !r.NativeColor).ToDictionary(r => r.Table + ":" + r.Field, r => r.After!);
+            NativeProjection.RequireValues(packet, values);
+            values["Chapter:Count"] = "int:99";
+            Refuses(() => NativeProjection.RequireValues(packet, values));
+        }
+        finally { File.Delete(path); }
     }
 }

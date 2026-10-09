@@ -53,9 +53,37 @@ as a substitute for the actual native methods.
 
 Compare every saved-state/history/curation/lock row verbatim and all retained IDs after
 the scanner. Any undeclared metadata difference refuses. Only explicitly reviewed
-catalog-derived scan fields may differ. A catalog inverse must independently restore
-the declared old keys and pass complete row checks; no overwrite/replacement of a live
-database or saved-state write is included. Emit aggregate identities/hashes only;
+catalog-derived scan fields may differ. The exact successor admits 25 scan cells
+on Series1650, Volume1800, Chapter3358, MangaFile3570 and SeriesMetadata1650. Before
+ScanSeries, the actual native book/parser/count/chapter/publication/Koreader helpers
+derive eleven deterministic scalar values. A separate private cover directory uses
+native GetCoverImage and cloned EncodeMediaAs/CoverImageSize. The actual volume cover
+used after scan must have identical encoded bytes. Native CalculateColorScape uses
+Random-initialized k-means; the former deterministic color premise is withdrawn.
+Only Volume1800 PrimaryColor/SecondaryColor admit native-generated null or exact
+uppercase #RRGGBB, with pinned CalculateColorScape/UpdateColorScape method provenance;
+every other cell retains its strict predicate. There is no reseeding, repeated draw
+or rescan, and different encoded bytes refuse. A valid native color may equal its
+original value; requiring a random output to differ would introduce another chance
+of refusal. The fixture process inherits the sealed launch gate's umask 077, checked
+from /proc/self/status before Build/helpers and after scan. Native cover files must
+already be 0600; no post-write
+chmod may conceal their original custody.
+The actual helper UnitOfWork context
+must be the scoped DataContext, with no Added/Modified/Deleted entries after
+DetectChanges and no persisted row changes. No tracker clearing or saving is allowed.
+The actual EF10.0.6 cancellation overload must decode to virtual bool-overload dispatch;
+both native async hooks and the native uint increment hook are checked. RowVersion is
+original+2 without overflow. The twelve scan clocks are bounded by ScanSeries itself,
+with the existing one-second allowance and New York/UTC interpretation. File upload
+mtime is custody evidence and cannot fill these scan values.
+
+The inverse restores all 32 distinct cells from the immutable original snapshot in
+one transaction: five UPDATEs compare every post-scan row column, including nullable,
+unchanged and typed values, and each must affect exactly one row. Final schema, all
+rows/IDs/FKs and typed-cell digest must equal the original before commit. No
+INSERT/DELETE, saved-state write, rescan or database replacement is allowed. These
+checks grant no production catalog writer approval. Emit aggregate identities/hashes only;
 native logs and private payloads stay in the private workspace, never public CI logs.
 
 The native method can return early, so Task completion alone is insufficient: the
@@ -69,7 +97,9 @@ OPF deletion semantics. This harness does not infer a new stripping policy.
 
 The full baseline is captured before native Build. Readback immediately after Build,
 then after resolving scanner/job-store/DbContext dependencies but before ScanSeries,
-must be identical across every table and schema; no constructor write allowance exists.
+and all native projection helpers, must be identical across every table and schema;
+no constructor/helper write allowance exists. The scoped pending-state check also
+prevents deferred writes from entering the scan.
 The actual native DI DataContext connection must report exactly the candidate path in
 PRAGMA database_list and its live open file inode must match that private input file.
 ApplicationStarted must remain false before/after native invocation. Future root runtime
@@ -147,7 +177,7 @@ source/build files. No private database, EPUB, approval packet or user payload r
 the build context, CI image or Actions artifact.
 
 For fixture source changes CI launches that actual apphost in the exact native base with network none/read-only,
-500m CPU and `nice -n 19`. The finite self-test checks 11 malformed packet refusals,
+500m CPU and `nice -n 19`. The finite self-test checks 13 malformed packet refusals,
 three durable-ACK refusals, six fresh live-native drift refusals, storage-type boundaries, saved-state mutation/removal
 refusals, exact inverse and actual published reflection signatures, without building
 the host or scanning any fixture. A separate finite child blocks on a full undrained
@@ -157,6 +187,11 @@ checks cover the prepared manifest, current GitOps version/TZ and
 build-context barriers. Initial public CI run 37968299781 passed compilation and native
 apphost launch at f657b5d8, without private inputs or host/scan. Subsequent source changes
 require their own current-head pass; neither launch establishes scanner behavior.
+The native sort helper is bound to its exact `string` parameter and return type;
+its separate span overload is never called through untyped reflection. Two fixed
+synthetic titles check that binding. Only the explicit public `--self-test` failure
+output may include a phase and a reason capped at 256 characters; runtime/private
+failure messages remain redacted.
 
 CI records only official SDK and generic/native module hashes. On main fixture-source
 changes it publishes
