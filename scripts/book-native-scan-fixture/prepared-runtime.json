@@ -1,0 +1,61 @@
+{
+  "preparedOnly": true,
+  "runtimeApproval": false,
+  "job": {
+    "apiVersion": "batch/v1",
+    "kind": "Job",
+    "metadata": {"name": "REVIEWED_EXACT_PHASE_NAME", "namespace": "media", "labels": {"book-native-fixture": "REVIEWED_EXACT_PHASE"}, "annotations": {"k8tz.io/inject": "false"}},
+    "spec": {
+      "activeDeadlineSeconds": 180,
+      "backoffLimit": 0,
+      "parallelism": 1,
+      "completions": 1,
+      "template": {
+        "metadata": {"labels": {"book-native-fixture": "REVIEWED_EXACT_PHASE", "app.kubernetes.io/name": "book-native-scan-fixture"}, "annotations": {"k8tz.io/inject": "false"}},
+        "spec": {
+          "nodeName": "talosw01",
+          "automountServiceAccountToken": false,
+          "restartPolicy": "Never",
+          "terminationGracePeriodSeconds": 1,
+          "securityContext": {"runAsUser": 1000, "runAsGroup": 1000, "runAsNonRoot": true, "fsGroup": 1000, "seccompProfile": {"type": "RuntimeDefault"}},
+          "containers": [{
+            "name": "native-scanner",
+            "image": "REVIEWED_SIGNED_GENERIC_IMAGE_AT_DIGEST",
+            "imagePullPolicy": "IfNotPresent",
+            "command": ["nice", "-n", "19", "/fixture/NativeScannerFixture"],
+            "args": ["--prepared-private-fixture"],
+            "env": [
+              {"name": "TZ", "value": "America/New_York"},
+              {"name": "POD_UID", "valueFrom": {"fieldRef": {"fieldPath": "metadata.uid"}}},
+              {"name": "NODE_NAME", "valueFrom": {"fieldRef": {"fieldPath": "spec.nodeName"}}}
+            ],
+            "resources": {"requests": {"cpu": "100m", "memory": "256Mi"}, "limits": {"cpu": "500m", "memory": "1Gi"}},
+            "securityContext": {"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": {"drop": ["ALL"]}},
+            "volumeMounts": [
+              {"name": "inputs", "mountPath": "/fixture-input"},
+              {"name": "catalog", "mountPath": "/kavita/config"},
+              {"name": "books", "mountPath": "/data/cephfs-hdd/data/media/books/EBooks"},
+              {"name": "temp", "mountPath": "/tmp"}
+            ]
+          }],
+          "volumes": [
+            {"name": "inputs", "emptyDir": {"medium": "Memory", "sizeLimit": "64Mi"}},
+            {"name": "catalog", "emptyDir": {"medium": "Memory", "sizeLimit": "256Mi"}},
+            {"name": "books", "emptyDir": {"medium": "Memory", "sizeLimit": "8Mi"}},
+            {"name": "temp", "emptyDir": {"medium": "Memory", "sizeLimit": "64Mi"}}
+          ]
+        }
+      }
+    }
+  },
+  "networkDeny": {
+    "apiVersion": "cilium.io/v2",
+    "kind": "CiliumNetworkPolicy",
+    "metadata": {"name": "REVIEWED_EXACT_PHASE_NAME", "namespace": "media"},
+    "spec": {
+      "endpointSelector": {"matchLabels": {"app.kubernetes.io/name": "book-native-scan-fixture"}},
+      "ingressDeny": [{"fromEntities": ["all"]}],
+      "egressDeny": [{"toEntities": ["all"]}]
+    }
+  }
+}

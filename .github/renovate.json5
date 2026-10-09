@@ -56,6 +56,9 @@
     // PRs (terraform/compose bumps under archive/alumni/) until added here.
     '.archive/**',
     'archive/**',
+    // Reviewed diagnostic source/image/assembly closure; production Kavita upgrades
+    // remain independent. Rebind this fixture only in a reviewed successor.
+    'scripts/book-native-scan-fixture/Dockerfile',
   ],
   flux: {
     managerFilePatterns: [
