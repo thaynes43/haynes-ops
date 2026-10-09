@@ -698,6 +698,41 @@ class FileTests(unittest.TestCase):
         self.assertFalse(os.path.lexists(partial))
         self.assertEqual(read(self.path), raw)
 
+    def test_hourly_unpaired_authorless_hardlink_does_not_block_other_cleanup(self):
+        raw = fixture(opf=OPF.replace(b'<dc:creator id="author">Suzanne Collins</dc:creator>', b""))
+        write(self.path, raw)
+        os.link(self.path, os.path.join(self.tmp.name, "unrelated-hardlink"))
+        partial = os.path.join(self.root, "Other", "Pending", ".Pending.epub.partial")
+        write(partial, b"interrupted conversion")
+        result, lines = self.run_script(STRIP_ONLY="0")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        counts = next(row for row in lines if row["msg"] == "epub_series_strip_census")
+        self.assertNotIn("preflight_failed", counts)
+        self.assertEqual((counts["settling"], counts["refused"]), (0, 1))
+        self.assertFalse(os.path.lexists(partial))
+        self.assertEqual(os.stat(self.path).st_nlink, 2)
+        self.assertEqual(read(self.path), raw)
+
+    def test_publication_pair_probe_refuses_symlink_changed_source_and_partial_race(self):
+        partial = os.path.join(os.path.dirname(self.path), ".Mockingjay.epub.partial")
+        os.symlink(self.path, partial)
+        self.assertFalse(epub_convert.interrupted_publication_pair(self.path, metadata._identity(os.stat(self.path))))
+        os.unlink(partial)
+        os.link(self.path, partial)
+        expected = metadata._identity(os.stat(self.path))
+        original_stat = os.stat
+        def racing_stat(name, *args, **kwargs):
+            info = original_stat(name, *args, **kwargs)
+            if name == os.path.basename(partial):
+                os.unlink(partial)  # External fixture race after the partial stat.
+            return info
+        with mock.patch.object(epub_convert.os, "stat", side_effect=racing_stat):
+            with self.assertRaises(metadata.Changed):
+                epub_convert.interrupted_publication_pair(self.path, expected)
+        self.assertEqual(read(self.path), self.original)
+        with self.assertRaises(metadata.Changed):
+            epub_convert.interrupted_publication_pair(self.path, expected)
+
     def test_dry_run_inventory_and_untagged_do_not_write(self):
         before = snapshot(self.tmp.name)
         result = self.strip(dry_run=True)
