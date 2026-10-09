@@ -49,14 +49,17 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Keeper-only disabled Codex auth source; operator/broker retain their pins.
+              # Keeper-only fresh-login acceptance; operator/broker retain their pins.
               # Signed/verified from main f810766 by publish.yml (run 37996909724).
               tag: sha-f810766@sha256:54a41f6677b8a900315f891a488fbbcdb8ad6cd5ff79c1896db11cba68fdcedd
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:
               - /usr/local/bin/dev-env-keeper
-            # No flags: the defaults are plan 01's names (--secret-namespace dev-agents,
+            # Bounded keeper-only fresh-login and immediate-renewal acceptance.
+            args:
+              - --enable-codex-auth=true
+            # Other flags retain the defaults: plan 01's names (--secret-namespace dev-agents,
             # --gh-token-secret dev-env-gh-token, --github-app-dir
             # /etc/dev-env-keeper/github-dev-bot, the Lease in POD_NAMESPACE, v1's
             # down-scoped token permissions, metrics :8080, probes :8081).
