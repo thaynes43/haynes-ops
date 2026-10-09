@@ -33,4 +33,5 @@ jobs:
         run: |
           nice -n 19 python3 -B scripts/book-copy-writer/copy-window/test_window.py
           nice -n 19 python3 -B scripts/book-copy-writer/copy-window/test_cached_source.py
+          nice -n 19 python3 -B scripts/book-copy-writer/copy-window/test_normal_rehearsal.py
           bash -n scripts/book-copy-writer/copy-window/retarget-restore.sh

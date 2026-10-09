@@ -119,9 +119,9 @@ def handled(before, after, token, kind, name, namespace='flux-system'):
                'new handler did not acknowledge token')
 
 
-def artifact_bytes(source, raw, contract, stop_sha):
+def artifact_contents(source, raw, revision):
     artifact = source.get('status', {}).get('artifact', {})
-    wc.require(artifact.get('revision') == 'main@sha1:' + stop_sha, 'cached source is not exact Stop')
+    wc.require(artifact.get('revision') == 'main@sha1:' + revision, 'cached source revision changed')
     wc.require(type(artifact.get('size')) is int and 0 < artifact['size'] <= MAX_ARTIFACT
                and len(raw) == artifact['size'], 'artifact byte size changed')
     wc.require(artifact.get('digest') == 'sha256:' + hashlib.sha256(raw).hexdigest(), 'artifact digest changed')
@@ -140,10 +140,29 @@ def artifact_bytes(source, raw, contract, stop_sha):
                        'artifact manifest must be one bounded regular file')
             with archive.extractfile(member) as stream:
                 found[name] = stream.read(member.size + 1)
-            wc.require(len(found[name]) == member.size
-                       and wc.sha(found[name]) == contract['manifests'][name]['stop_sha256'],
-                       'artifact Stop manifest bytes changed')
+            wc.require(len(found[name]) == member.size, 'artifact manifest size changed')
     wc.require(set(found) == set(wc.PATHS), 'artifact six manifests missing')
+    return found
+
+
+def artifact_bytes(source, raw, contract, stop_sha):
+    found=artifact_contents(source,raw,stop_sha)
+    wc.require(all(wc.sha(found[path]) == contract['manifests'][path]['stop_sha256'] for path in wc.PATHS),
+               'artifact Stop manifest bytes changed')
+
+
+def held(proof, actual, name, namespace, phase):
+    before, after=proof['before'],proof['after']
+    handled(before,after,proof['token'],'Kustomization',name,namespace)
+    identity(actual,'Kustomization',name,namespace)
+    wc.require(before['spec'].get('suspend',False) is False and after['spec']==dict(before['spec'],suspend=True)
+               and actual['metadata']['uid']==after['metadata']['uid'] and actual['spec']==after['spec'],
+               'Kustomization hold identity/spec changed')
+    for row in (after,actual):
+        wc.require(row['metadata'].get('annotations',{}).get(OWNER)==phase
+                   and row['metadata'].get('annotations',{}).get(REQUEST)==proof['token']
+                   and row.get('status',{}).get('lastHandledReconcileAt')==proof['token'],
+                   'Kustomization hold owner/drain changed')
 
 
 def controller(receipt, actual):
@@ -180,38 +199,20 @@ def validate(receipt, source, controller_pod, parents, holds, raw, contract, pha
                'frozen artifact metadata changed')
     controller(receipt, controller_pod)
     wc.require(set(parents) == set(PARENTS) and set(receipt['parents']) == set(PARENTS), 'both parents required')
+    wc.require(re.fullmatch('[0-9a-f]{40}',receipt.get('normal_main_sha','')), 'parent Normal baseline missing')
     for name in PARENTS:
         proof = receipt['parents'][name]
-        handled(proof['before'], proof['after'], proof['token'], 'Kustomization', name)
-        current = parents[name]
-        identity(current, 'Kustomization', name)
-        wc.require(current['metadata']['uid'] == proof['after']['metadata']['uid']
-                   and current['spec'] == proof['after']['spec']
-                   and current['spec'].get('suspend', False) is False,
-                   'parent replaced or unexpectedly held')
-        for row in (proof['after'], current):
-            s = row.get('status', {})
-            wc.require(s.get('lastHandledReconcileAt') == proof['token']
-                       and s.get('observedGeneration') == row['metadata']['generation']
-                       and s.get('lastAppliedRevision') == 'main@sha1:' + receipt['stop_main_sha']
-                       and any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in s.get('conditions', [])),
-                       'parent did not preserve exact frozen source reconcile')
+        held(proof,parents[name],name,'flux-system',phase)
+        before=proof['before'];status=before.get('status',{})
+        wc.require(status.get('observedGeneration')==before['metadata']['generation']
+                   and status.get('lastAppliedRevision')=='main@sha1:'+receipt['normal_main_sha']
+                   and any(c.get('type')=='Ready' and c.get('status')=='True' for c in status.get('conditions',[])),
+                   'parent was not Normal and Ready before hold')
     wc.require(set(receipt['holds']) == {ns + '/' + name for ns, name in wc.SCOPES}, 'four held proofs required')
     if require_holds:wc.require(set(holds) == set(wc.SCOPES), 'four actual holds required')
     for ns, name in wc.SCOPES:
         proof = receipt['holds'][ns + '/' + name]
-        handled(proof['before'], proof['after'], proof['token'], 'Kustomization', name, ns)
-        wc.require(proof['before']['spec'].get('suspend', False) is False
-                   and proof['after']['spec'] == dict(proof['before']['spec'], suspend=True),
-                   'historical application hold spec changed')
-        if require_holds:
-            current = holds[(ns, name)]
-            identity(current, 'Kustomization', name, ns)
-            wc.require(current['metadata']['uid'] == proof['after']['metadata']['uid']
-                       and current['spec'] == proof['after']['spec'] and current['spec'].get('suspend') is True
-                       and current['metadata'].get('annotations', {}).get(REQUEST) == proof['token']
-                       and current.get('status', {}).get('lastHandledReconcileAt') == proof['token'],
-                       'application hold did not drain/persist parent reconcile')
+        held(proof,holds[(ns,name)] if require_holds else proof['after'],name,ns,phase)
     artifact_bytes(source, raw, contract, receipt['stop_main_sha'])
 
 
@@ -347,9 +348,13 @@ def includes(actual, expected):
     return type(actual) is type(expected) and actual == expected
 
 
-def release_patch(source, uid, phase):
-    identity(source, 'GitRepository', SOURCE[1])
+def release_patch(source, uid, phase, *, kind='GitRepository', name=SOURCE[1], namespace='flux-system', spec=None):
+    identity(source, kind, name, namespace)
     wc.require(source['metadata']['uid'] == uid, 'owned source replaced before resume')
+    if spec is not None:
+        expected=dict(spec);actual=dict(source['spec'])
+        expected.pop('suspend',None);actual.pop('suspend',None)
+        wc.require(actual==expected,'owned resource spec changed before resume')
     if source['spec'].get('suspend', False) is False:
         return None
     wc.require(source['metadata'].get('annotations', {}).get(OWNER) == phase, 'foreign source hold cannot be released')
@@ -358,3 +363,18 @@ def release_patch(source, uid, phase):
             dict(op='test', path='/metadata/annotations/' + OWNER.replace('/', '~1'), value=phase),
             dict(op='test', path='/spec/suspend', value=True),
             dict(op='replace', path='/spec/suspend', value=False)]
+
+
+def retire_owner_patch(row,uid,phase,*,kind,name,namespace,spec):
+    identity(row,kind,name,namespace)
+    expected=dict(spec);actual=dict(row['spec']);expected.pop('suspend',None);actual.pop('suspend',None)
+    wc.require(row['metadata']['uid']==uid and actual==expected and row['spec'].get('suspend',False) is False,
+               'owned annotation retirement identity/spec/resume changed')
+    owner=row['metadata'].get('annotations',{}).get(OWNER)
+    if owner is None:return None
+    wc.require(owner==phase,'foreign phase annotation cannot be retired')
+    return [dict(op='test',path='/metadata/uid',value=uid),
+            dict(op='test',path='/metadata/resourceVersion',value=row['metadata']['resourceVersion']),
+            dict(op='test',path='/spec',value=row['spec']),
+            dict(op='test',path='/metadata/annotations/'+OWNER.replace('/','~1'),value=phase),
+            dict(op='remove',path='/metadata/annotations/'+OWNER.replace('/','~1'))]

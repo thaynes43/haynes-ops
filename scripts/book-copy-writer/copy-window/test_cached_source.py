@@ -57,18 +57,20 @@ def fixture():
     parents, actual_parents, holds, actual_holds={},{},{},{}
     for name in cache.PARENTS:
         before=native('Kustomization',name);before['spec']={'path':'./kubernetes/main/'+name}
-        final=copy.deepcopy(before);final['metadata']['resourceVersion']='2';final['metadata']['annotations'][cache.REQUEST]='new-'+name
-        final['status']={'lastHandledReconcileAt':'new-'+name,'observedGeneration':1,'lastAppliedRevision':'main@sha1:'+STOP_SHA,'conditions':[dict(type='Ready',status='True')]}
+        before['status']={'observedGeneration':1,'lastAppliedRevision':'main@sha1:'+NORMAL_SHA,'conditions':[dict(type='Ready',status='True')]}
+        final=copy.deepcopy(before);final['metadata'].update(resourceVersion='2',generation=2)
+        final['metadata']['annotations']={cache.REQUEST:'new-'+name,cache.OWNER:PHASE};final['spec']['suspend']=True
+        final['status']['lastHandledReconcileAt']='new-'+name
         parents[name]={'before':before,'after':final,'token':'new-'+name};actual_parents[name]=copy.deepcopy(final)
     for ns,name in wc.SCOPES:
         before=native('Kustomization',name,ns);before['spec']={'path':'./'+ns+'/'+name}
         final=copy.deepcopy(before);final['metadata'].update(resourceVersion='2',generation=2)
-        final['spec']['suspend']=True;final['metadata']['annotations'][cache.REQUEST]='new-'+name
+        final['spec']['suspend']=True;final['metadata']['annotations']={cache.REQUEST:'new-'+name,cache.OWNER:PHASE}
         # Suspend acknowledgment must not depend on observedGeneration advancing.
         final['status']={'lastHandledReconcileAt':'new-'+name,'observedGeneration':1}
         holds[ns+'/'+name]={'before':before,'after':final,'token':'new-'+name};actual_holds[(ns,name)]=copy.deepcopy(final)
     receipt=dict(schema=1,phase_token=PHASE,pause_pr='3659',restore_pr='3660',restore_head='d'*40,
-        stop_main_sha=STOP_SHA,normal_inverse_merge_sha=NORMAL_SHA,source_before=source,source_after=after,
+        stop_main_sha=STOP_SHA,normal_main_sha=NORMAL_SHA,normal_inverse_merge_sha=NORMAL_SHA,source_before=source,source_after=after,
         source_token='source-new',controller_pod=pod,parents=parents,holds=holds)
     return receipt,copy.deepcopy(after),copy.deepcopy(pod),actual_parents,actual_holds,raw
 
@@ -127,7 +129,7 @@ class CachedSourceCases(unittest.TestCase):
             elif target=='owner':s['metadata']['annotations'][cache.OWNER]='other'
             elif target=='controlleruid':p['metadata']['uid']='replacement'
             elif target=='restart':p['status']['containerStatuses'][0]['restartCount']=1
-            elif target=='parent':parents['cluster']['status']['lastAppliedRevision']='main@sha1:'+NORMAL_SHA
+            elif target=='parent':parents['cluster']['spec']['suspend']=False
             elif target=='hold':holds[wc.SCOPES[0]]['spec']['suspend']=False
             else:raw=raw[:-1]+b'!'
             with self.assertRaises(ValueError):cache.validate(r,s,p,parents,holds,raw,legacy.CONTRACT,PHASE)
@@ -216,7 +218,66 @@ class CachedSourceCases(unittest.TestCase):
         w.restored_main=lambda merge:NORMAL_SHA;w.events=[]
         w.cleanup_phase_jobs=lambda:w.events.append('writers-pg-absent')
         w.recover_cluster=lambda sha:w.events.append('restore-latest-normal')
+        w.release_ks=lambda ns,name:w.events.append('release-owned-ks')
+        w.retire_hold_annotations=lambda:w.events.append('retire-owned-annotations')
         return w
+
+    def test_held_parent_requires_original_normal_and_owner_without_generation_claim(self):
+        for change in ('initial-revision','initial-ready','owner','spec'):
+            r,s,p,parents,holds,raw=fixture()
+            if change=='initial-revision':r['parents']['cluster']['before']['status']['lastAppliedRevision']='main@sha1:'+STOP_SHA
+            elif change=='initial-ready':r['parents']['cluster']['before']['status']['conditions'][0]['status']='False'
+            elif change=='owner':parents['cluster']['metadata']['annotations'][cache.OWNER]='foreign'
+            else:parents['cluster']['spec']['path']='another-root'
+            with self.assertRaises(ValueError):cache.validate(r,s,p,parents,holds,raw,legacy.CONTRACT,PHASE)
+
+    def test_owned_kustomization_release_refuses_replacement_foreign_phase_and_spec_drift(self):
+        r,_,_,parents,holds,_=fixture()
+        for ns,name in list(wc.SCOPES)+[('flux-system',n) for n in cache.PARENTS]:
+            actual=parents[name] if ns=='flux-system' else holds[(ns,name)]
+            before=r['parents'][name]['before'] if ns=='flux-system' else r['holds'][ns+'/'+name]['before']
+            args=dict(kind='Kustomization',name=name,namespace=ns,spec=before['spec'])
+            patch=cache.release_patch(actual,before['metadata']['uid'],PHASE,**args)
+            self.assertEqual(patch[0]['value'],before['metadata']['uid']);self.assertEqual(patch[1]['value'],actual['metadata']['resourceVersion'])
+            for field in ('uid','owner','spec'):
+                bad=copy.deepcopy(actual)
+                if field=='uid':bad['metadata']['uid']='replacement'
+                elif field=='owner':bad['metadata']['annotations'][cache.OWNER]='foreign'
+                else:bad['spec']['path']='another-root'
+                with self.assertRaises(ValueError):cache.release_patch(bad,before['metadata']['uid'],PHASE,**args)
+
+    def test_normal_artifact_contents_compares_real_git_bytes_without_stop_contract(self):
+        r,s,*_=fixture();raw=archive(legacy.NORMAL)
+        s['status']['artifact'].update(revision='main@sha1:'+NORMAL_SHA,size=len(raw),digest='sha256:'+wc.sha(raw))
+        self.assertEqual(cache.artifact_contents(s,raw,NORMAL_SHA),legacy.NORMAL)
+        with self.assertRaises(ValueError):cache.artifact_bytes(s,raw,legacy.CONTRACT,NORMAL_SHA)
+
+    def test_recovered_owner_retirement_allows_new_phase_without_erasing_foreign_owner(self):
+        r,source,_,parents,holds,_=fixture()
+        rows=[('GitRepository','haynes-ops','flux-system',source,r['source_before'])]+[
+            ('Kustomization',name,ns,holds[(ns,name)],r['holds'][ns+'/'+name]['before']) for ns,name in wc.SCOPES]+[
+            ('Kustomization',name,'flux-system',parents[name],r['parents'][name]['before']) for name in cache.PARENTS]
+        for kind,name,ns,row,before in rows:
+            row['spec']['suspend']=False
+            patch=cache.retire_owner_patch(row,before['metadata']['uid'],PHASE,kind=kind,name=name,namespace=ns,spec=before['spec'])
+            self.assertEqual(patch[-1]['op'],'remove');self.assertEqual(patch[2]['value'],row['spec'])
+            foreign=copy.deepcopy(row);foreign['metadata']['annotations'][cache.OWNER]='foreign'
+            with self.assertRaises(ValueError):cache.retire_owner_patch(foreign,before['metadata']['uid'],PHASE,kind=kind,name=name,namespace=ns,spec=before['spec'])
+            row['metadata']['annotations'].pop(cache.OWNER)
+            self.assertIsNone(cache.retire_owner_patch(row,before['metadata']['uid'],PHASE,kind=kind,name=name,namespace=ns,spec=before['spec']))
+            self.assertNotIn(cache.OWNER,row['metadata']['annotations'])
+
+    def test_real_cached_release_method_patches_owned_uid_and_never_resumes_by_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);r,_,_,parents,_,_=fixture();row=parents['cluster']
+            w.state['cached_ks_owners']={'flux-system/cluster':{'uid':row['metadata']['uid'],'spec':r['parents']['cluster']['before']['spec'],'phase_token':PHASE}}
+            w.kube=lambda *args:row;calls=[];w.run=lambda argv,**kwargs:calls.append((argv,kwargs))
+            legacy.watch.Watchdog.release_ks(w,'flux-system','cluster')
+            self.assertEqual(calls[0][0][:4],['kubectl','patch','kustomization','cluster'])
+            patch=json.loads(calls[0][0][-1]);self.assertEqual(patch[0]['value'],row['metadata']['uid']);self.assertEqual(patch[1]['value'],row['metadata']['resourceVersion'])
+            self.assertFalse(any(args[0]=='flux' for args,_ in calls));calls.clear();row['metadata']['uid']='replacement'
+            with self.assertRaises(ValueError):legacy.watch.Watchdog.release_ks(w,'flux-system','cluster')
+            self.assertEqual(calls,[])
 
     def test_inverse_already_merged_waits_without_active_ci_or_immediate_restoration(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -255,7 +316,7 @@ class CachedSourceCases(unittest.TestCase):
             w.run=lambda argv:w.events.append('app-'+argv[1]);w.runtime_restored=lambda sha:True;w.note=lambda text:None
             legacy.watch.Watchdog.recover_cluster(w,NORMAL_SHA)
             self.assertEqual(w.events[:3],['writers-pg-absent','normal-git','source-normal'])
-            self.assertLess(w.events.index('writers-pg-absent'),w.events.index('app-resume'))
+            self.assertLess(w.events.index('writers-pg-absent'),w.events.index('release-owned-ks'))
 
     def test_crash_after_partial_release_is_bounded_by_durable_pre_release_origin(self):
         with tempfile.TemporaryDirectory() as directory:

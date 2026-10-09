@@ -35,8 +35,10 @@ normal actual workloads. The copy-aware `retarget-restore.sh` replays the stacke
 inverse onto the actual squash main commit, checks all six full blob pairs and
 pushes a validation commit to request current-main checks/advisory. Before Stop
 application the same GitRepository is held and drained with a fresh requested
-token, its actual Stop artifact is byte-verified, and both parent reconciles must
-preserve the source/four application holds. The inverse then receives current
+token, its actual Stop artifact is byte-verified, and both parent Kustomizations
+are actually held and fresh-handler-drained. Their pre-hold proof must be Normal
+and Ready; their held proof binds same UID/spec/phase/token, without claiming
+observedGeneration advanced or Stop was applied by a held parent. The inverse then receives current
 required checks and an advisory explicitly reporting no findings and is **merged
 to Normal main while actual services remain Normal**. A favorable verdict with
 an unresolved severity finding refuses. Pending checks cannot start Stop clocks.
@@ -45,7 +47,7 @@ Staging fits the original 600s arm ceiling; a separate runtime GO is required.
 `seal-cached-source.py` performs read-only Git/native verification of the private
 draft receipt and publishes one immutable 0600 seal. Its JSON binds phase, Stop
 SHA, PR pair/inverse head and merge SHA, before/after source and all four
-Kustomizations, fresh handled request tokens, both parent reconciles and the
+Kustomizations, fresh handled request tokens, both actual parent holds and the
 source-controller Pod. It never suspends resources or creates Jobs. The whole
 seal is capped at 30s. Each bracketed actual cache check has an owning five-second
 wall cap, bounds curl's body to 8MiB (expanded archive 64MiB) and reaps its child on
@@ -80,10 +82,41 @@ Prestage failure: restore exact normal main plus actual still-normal workloads
 before releasing any hold. Post-Stop: first prove current restored Normal inverse-descendant main and
 owned writer-first Job/Pod UID plus PG-lease absence; then controlled KS resume
 applies restoration. The phase-owned Git source resumes against that current
-Normal first. Each app resume repeats source/absence proof. Terminal
-success requires every normal controller and all four resumed KS Ready on the
+Normal first. Each app/parent release repeats source/absence proof and uses a
+recorded UID/spec/phase plus RV-tested patch. App holds release first, followed by
+`cluster-apps` and `cluster`. A foreign/replaced/changed hold refuses release.
+Terminal success requires every normal controller and all six resumed KS Ready on the
 exact restored SHA. Incomplete recovery stays armed and incomplete. No fallback
 releases a hold against paused source, ignores a reused UID, or invents success.
+Only after all actual Normal convergence is proved does recovery remove its own
+phase annotation from the seven resumed resources, with same UID/spec/RV tests.
+Other controller annotations and fresh reconcile requests remain. A foreign phase
+annotation refuses retirement. This lets a later fresh phase establish ownership.
+
+`normal-rehearsal.py` prepares and executes a separate Normal-only cancellation
+rehearsal. Preparation copies the generic source closure and a reviewed exact
+host Python/PyYAML dependency receipt into a fresh private directory; it performs
+no API calls. Use the dedicated hash-pinned Python 3.11.2/PyYAML 6.0.3 venv and
+isolated mode (`-I -B`). A replacement host receipt must be independently reviewed
+and supplied with its exact SHA; never silently use globally installed packages.
+
+The runtime interface is two separately owned processes, both requiring the
+exact closed packet SHA as `--go`: first `--watch`, then `--exercise --ready` with
+the watcher's private PID/start-ticks-bound readiness receipt. Recovery is armed
+before any hold. Exercise holds/drains `cluster`, `cluster-apps`, the four apps,
+then Source, proves real Normal archive bytes against Normal Git, and always
+requests cancellation. It never invokes the Stop sealer, activation or producers.
+The observer does not rewrite recovery state. No runtime is authorized by these
+source instructions; the coordinator must review the fresh packet and declare
+activity immediately before giving a separate exact runtime GO.
+
+Rehearsal operational caps are exercise 90s, staging arm 120s, cancellation
+recovery 50s. An in-budget historical proof survives cold re-verification. A miss
+is retained truthfully while recovery continues in bounded 60s safety attempts
+with the original 10s retry wait. These are Normal-only operational measurements,
+not new Stop/COPY clocks or a proof of the actual service ceiling. SIGTERM/INT
+request recovery rather than abandoning holds. Actual API/source outage or
+unknown ownership remains incomplete; a killed pod still needs cold recovery.
 
 The source supervisor's external caller closure is coordinated with the fresh
 `native-pipeline` package. All helper paths/hashes, new phase and role names,

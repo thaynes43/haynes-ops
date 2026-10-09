@@ -286,8 +286,17 @@ class Supervisor:
    self.status.setdefault('capture_placement',{})[ns]={'claim':name,'claim_uid':pvc['metadata']['uid'],'node':pods[0]['spec']['nodeName']}
   for ns,name in SCOPES:
    if self.get('kustomization',name,ns)['spec'].get('suspend') is not True:raise Refused('all four KS must be held while workloads are live')
-  proof=json.loads(pinned_artifact(self.c['hold_receipt'],1024*1024))
-  window.validate_holds(proof,{(ns,name):self.get('kustomization',name,ns) for ns,name in SCOPES},time.time())
+  if self.c.get('cached_source_receipt'):
+   proof=json.loads(pinned_artifact(self.c['cached_source_receipt'],1024*1024))
+   contract=json.loads(pinned_artifact(self.c['manifest_contract'],1024*1024))
+   cache.check_live(proof,self.get,contract,self.status['phase_token'],holds=True)
+   owners=watch.get('cached_ks_owners',{})
+   for ns,name in SCOPES+[('flux-system',n) for n in cache.PARENTS]:
+    hold=proof['parents'][name] if ns=='flux-system' else proof['holds'][ns+'/'+name]
+    if owners.get(ns+'/'+name)!={'uid':hold['before']['metadata']['uid'],'spec':hold['before']['spec'],'phase_token':self.status['phase_token']}:raise Refused('watchdog does not own same exact six hold identities')
+  else:
+   proof=json.loads(pinned_artifact(self.c['hold_receipt'],1024*1024))
+   window.validate_holds(proof,{(ns,name):self.get('kustomization',name,ns) for ns,name in SCOPES},time.time())
   normal=window.blobs(self.c['repo_dir'],proof['normal_main_sha'])
   contract=json.loads(pinned_artifact(self.c['manifest_contract'],1024*1024))
   for path in window.PATHS:

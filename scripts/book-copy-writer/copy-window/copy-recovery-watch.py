@@ -65,6 +65,14 @@ class Watchdog:
             self.state['cached_source_owner']={'uid':source['metadata']['uid'],'spec':source['spec'],
                 'phase_token':self.phase_checkpoint()['phase_token']}
             self.save()
+        if self.cached and not self.state.get('cached_ks_owners'):
+            owners={};phase=self.phase_checkpoint()['phase_token']
+            for namespace,name in self.recovery_scopes():
+                row=self.kube('kustomization',name,namespace)
+                cache.identity(row,'Kustomization',name,namespace)
+                if row['spec'].get('suspend',False) is not False:raise RuntimeError('Kustomization already held before recovery ownership.')
+                owners[namespace+'/'+name]={'uid':row['metadata']['uid'],'spec':row['spec'],'phase_token':phase}
+            self.state['cached_ks_owners']=owners;self.save()
 
     def note(self,message):
         with self.log.open('a') as stream:stream.write(stamp()+' '+message+'\n')
@@ -254,13 +262,33 @@ class Watchdog:
 
     def runtime_restored(self,sha):
         if not self.runtime_workloads_normal():return False
-        for namespace,name in self.scopes:
+        for namespace,name in self.recovery_scopes():
             ks=self.kube('kustomization',name,namespace)
             if ks['spec'].get('suspend',False) is not False:return False
             status=ks.get('status',{})
             if status.get('lastAppliedRevision','').rsplit(':',1)[-1]!=sha:return False
             if not any(c.get('type')=='Ready' and c.get('status')=='True' for c in status.get('conditions',[])):return False
         return True
+
+    def recovery_scopes(self):
+        return self.scopes+([('flux-system',name) for name in reversed(cache.PARENTS)] if self.cached else [])
+
+    def release_ks(self,namespace,name):
+        if not self.cached:
+            self.run(['flux','resume','kustomization',name,'-n',namespace]);return
+        owned=self.state['cached_ks_owners'][namespace+'/'+name]
+        row=self.kube('kustomization',name,namespace)
+        patch=cache.release_patch(row,owned['uid'],owned['phase_token'],kind='Kustomization',name=name,namespace=namespace,spec=owned['spec'])
+        if patch:self.run(['kubectl','patch','kustomization',name,'-n',namespace,'--type=json','-p',json.dumps(patch,separators=(',',':'))],timeout=10)
+
+    def retire_hold_annotations(self):
+        if not self.cached:return
+        resources=[('gitrepository','GitRepository','flux-system','haynes-ops',self.state['cached_source_owner'])]+[
+            ('kustomization','Kustomization',ns,name,self.state['cached_ks_owners'][ns+'/'+name]) for ns,name in self.recovery_scopes()]
+        for resource,kind,ns,name,owned in resources:
+            row=self.kube(resource,name,ns)
+            patch=cache.retire_owner_patch(row,owned['uid'],owned['phase_token'],kind=kind,name=name,namespace=ns,spec=owned['spec'])
+            if patch:self.run(['kubectl','patch',resource,name,'-n',ns,'--type=json','-p',json.dumps(patch,separators=(',',':'))],timeout=10)
 
     def recover_cluster(self,sha):
         self.cleanup_phase_jobs()
@@ -271,13 +299,14 @@ class Watchdog:
         still_normal=self.runtime_still_normal if self.cached else self.runtime_workloads_normal
         if not stopped and not still_normal():raise RuntimeError('Prestage cancellation lacks actual still-normal workload proof; retain holds.')
         self.state.update(expected_restored_sha=sha,recover_ks=True);self.save()
-        for namespace,name in self.scopes:
+        for namespace,name in self.recovery_scopes():
             self.source(sha)
             self.cleanup_phase_jobs()
-            self.run(['flux','resume','kustomization',name,'-n',namespace])
+            self.release_ks(namespace,name)
             self.source(sha)
             self.run(['flux','reconcile','kustomization',name,'-n',namespace,'--timeout=30s'])
         if not self.runtime_restored(sha):raise RuntimeError('Restored source fetched; waiting for app/KS convergence.')
+        self.retire_hold_annotations()
         if self.state.get('service_ceiling_missed_at') or self.state.get('original_clock_unproved_at'):
             self.state.update(complete=False,recover_ks=False,safety_recovery_complete=True,safety_recovery_completed_at=stamp())
         else:
