@@ -168,6 +168,16 @@ class HostTests(unittest.TestCase):
             with self.assertRaisesRegex(h.Refused, "native_output_cap"):
                 native.call([sys.executable, "-c", "import sys; sys.stdout.write('x'*4096)"], limit=1024, seconds=2)
 
+    def test_contextless_native_kubectl_keeps_original_argv_and_deadline(self):
+        # The deployed kubectl loses in-cluster fallback when a timeout override
+        # is injected. Exercise the real bounded pipe path without any API call.
+        real_popen = h.subprocess.Popen
+        def local_cli(args, **kwargs):
+            return real_popen([sys.executable, "-c", "import json,sys;print(json.dumps(sys.argv[1:]))", *args[1:]], **kwargs)
+        with tempfile.TemporaryDirectory() as out, mock.patch.object(h.subprocess, "Popen", side_effect=local_cli):
+            raw = h.Native(out, time.time() + 3).call(["kubectl", "get", "pods"], seconds=2)
+        self.assertEqual(json.loads(raw), ["get", "pods"])
+
     def test_prepared_or_production_writer_go_is_refused_before_any_runtime(self):
         for value in ({"schema": 1, "runtimeApproval": False}, {"schema": 1, "explicitRootFixtureApproval": True, "runtimeApproval": True, "productionWriterApproval": True}):
             with self.assertRaisesRegex(h.Refused, "exact_root_fixture_go"):
@@ -231,10 +241,34 @@ class HostTests(unittest.TestCase):
             h.save_private(Path(out) / "initial-jobs.json", inv("Job"))
             h.save_private(Path(out) / "create-intent.json", {"phase": PHASE})
             h.save_private(Path(out) / "execution-retired.json", {"phase": PHASE})
-            with mock.patch.object(h.Native, "list", return_value=inv("Job", [job])), mock.patch.object(h.Native, "call") as call:
+            with mock.patch.object(h.Native, "get", return_value=job), mock.patch.object(h.Native, "call") as call:
                 with self.assertRaisesRegex(h.Refused, "cleanup_reused_name"):
                     h.cleanup_locked({"manifest": manifest, "phase": PHASE, "end": time.time() + 2}, out)
             call.assert_not_called()
+
+    def test_lost_create_not_found_is_unknown_without_absence_claim(self):
+        manifest, _, _ = objects()
+        with tempfile.TemporaryDirectory() as out:
+            h.save_private(Path(out) / "initial-jobs.json", inv("Job"))
+            h.save_private(Path(out) / "create-intent.json", {"phase": PHASE})
+            h.save_private(Path(out) / "execution-retired.json", {"phase": PHASE})
+            with mock.patch.object(h.Native, "get", side_effect=h.Refused("native_request_refused")), mock.patch.object(h.Native, "cleanup") as cleanup:
+                with self.assertRaises(h.Refused):
+                    h.cleanup_locked({"manifest": manifest, "phase": PHASE, "end": time.time() + 2}, out)
+            cleanup.assert_not_called()
+            self.assertFalse((Path(out) / "cleanup-receipt.json").exists())
+
+    def test_actual_admitted_fixture_modules_are_checked_before_private_upload(self):
+        with tempfile.TemporaryDirectory() as out:
+            fixture = h.Fixture.__new__(h.Fixture)
+            paths = h.FIXTURE_MODULES + h.MODULES
+            fixture.out = Path(out)
+            fixture.approval = {"expectedFixtureModules": {p: "a" * 64 for p in paths}}
+            fixture.call = mock.Mock(return_value=("\n".join("a" * 64 + "  " + p for p in paths) + "\n").encode())
+            self.assertEqual(fixture.fixture_modules({"metadata": {"name": "synthetic"}}), fixture.approval["expectedFixtureModules"])
+            fixture.call.return_value = fixture.call.return_value.replace(b"a" * 64, b"b" * 64, 1)
+            with self.assertRaisesRegex(h.Refused, "actual_fixture_modules_changed_before_input"):
+                fixture.fixture_modules({"metadata": {"name": "synthetic"}})
 
     def test_cleanup_cannot_prove_absence_before_request_retirement(self):
         manifest, _, _ = objects()

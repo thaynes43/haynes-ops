@@ -105,3 +105,34 @@ binds both intermediate and build outputs inside writable /tmp, retaining read-o
 source and network-none. Native encoder/timestamp execution still requires actual
 new-head CI PASS. The cleanup transition arms the same original200 cap before
 retirement I/O and atomically publishes the fully fsynced marker.
+
+Clock-correct successor ops #3665 merged `154e82329874ca0dd2be25c15bf4a536f285ed5a`;
+normal publisher run37978805611 passed and signed image
+`ghcr.io/thaynes43/book-native-scan-fixture@sha256:be740bbdebb77c4d0a8d284778bc4dbe86d64b54feb0e203836ad37e54e5e25e`.
+Official cosign3.1.3 verified exact main workflow/issuer/repository/source SHA, trusted
+certificate chain and offline transparency inclusion. Private public-source receipts:
+`/tmp/hn-native-clock-publication-proof-1009/cosign.json`, SHA
+`b1338471a255eab0728a71801daf9a1a0e24365fe605bdba2822d68995e3bb18`;
+registry receipt SHA `8b4e3f99de05f369c690ebe5aaf2b2fd54c31133e88a6d66199e8367377c8e03`.
+Its one 49,433,032-byte fixture layer contains only /fixture members; the immutable
+base uncompressed layer hashes remain equal. Registry harness DLL SHA
+`d8211c0b97a27612f6a887166975a95c348c7d09329f1b2b534a1dee2696f5fc`;
+apphost/runtime hashes remain equal to the earlier verified exact-runtime package.
+The actual admitted Pod must prove these five fixture files and all eight native
+DLL hashes by native exec before any private input. This is a future enforced gate,
+not a claim that a fixture Pod was created or its runtime observed.
+
+A real bounded readonly command proved kubectl v1.37.1 loses contextless in-cluster
+fallback when its request-timeout override is added; the same original argv succeeds
+with the normal mounted SA/environment and original production Pod UID. The host
+retains its own absolute request deadline and kill/reap instead of changing auth.
+Unknown CREATE transport plus NotFound cannot establish absence after a potentially
+late server commit; only a recovered matching-phase UID supplies cleanup authority.
+
+The official runtime schema/file-time codec CI passed after redirecting the build
+output to writable /tmp. Current finite local host checks: 30/30 serial nice19 PASS,
+including real bounded pipe argv transport, exact metadata/terminal/retirement/
+known-admission-drift/lost-create boundaries. New-head CI and independent review still
+precede source merge. Private host approval/input packet remain prepared false and
+unbound to a runtime clock. No Job or native scan, production metadata/EPUB change,
+list write, schedule pause or global strip enable occurred.

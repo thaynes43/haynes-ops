@@ -91,3 +91,12 @@ while the existing-strip pass acts inside a watched library. The desired Cron us
 its own /tmp emptyDir, but fresh runtime mounts and every native watched root still
 need proof. One current STRIP_SERIES_METADATA flag enables both paths, so enabling
 only unpublished conversion needs a reviewed separation. The flag stays zero.
+
+Before private upload, native exec must also prove the actual fixture apphost, harness,
+self-contained runtime and eight `/kavita` modules against the signed registry/native
+closure. Keep normal in-cluster endpoint environment and mounted launcher SA intact.
+Kubectl v1.37.1 in this contextless pod falls back to localhost when its request-timeout
+flag is set; the host therefore uses its own absolute bounded subprocess kill/reap,
+without inventing a kubeconfig or exposing a token. A lost CREATE response followed
+by NotFound remains unknown; only a recovered exact-phase owned UID can authorize
+cleanup and eventual union absence.

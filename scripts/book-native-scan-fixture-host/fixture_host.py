@@ -21,10 +21,11 @@ import schema_codec
 NS = "media"
 LABEL = "book-native-fixture"
 APP = "book-native-scan-fixture"
-IMAGE = "ghcr.io/thaynes43/book-native-scan-fixture@sha256:80dec7a2ce706440b6ff590fa618a161dd08f4044561d1255f28111fe565b9ad"
+IMAGE = "ghcr.io/thaynes43/book-native-scan-fixture@sha256:be740bbdebb77c4d0a8d284778bc4dbe86d64b54feb0e203836ad37e54e5e25e"
 NATIVE = "sha256:ca6af7a18d7124d014702983c2364e485294f808c1552e9555f2595b7cda7982"
 GATE = "set -eu; umask 077; while [ ! -f /fixture-input/approved-packet.json ]; do sleep 1; done; exec nice -n 19 /fixture/NativeScannerFixture --prepared-private-fixture"
 UPLOAD = "set -eu; umask 077; p=$1; h=$2; [ ! -e \"$p\" ]; [ ! -L \"$p\" ]; [ ! -e \"$p.partial\" ]; [ ! -L \"$p.partial\" ]; mkdir -p -- \"$(dirname -- \"$p\")\"; cat > \"$p.partial\"; chmod 600 \"$p.partial\"; [ \"$(sha256sum -- \"$p.partial\" | cut -d ' ' -f 1)\" = \"$h\" ]; sync -f \"$p.partial\"; mv -n -- \"$p.partial\" \"$p\"; [ ! -e \"$p.partial\" ]; [ ! -L \"$p\" ]; [ \"$(sha256sum -- \"$p\" | cut -d ' ' -f 1)\" = \"$h\" ]; sync -f \"$(dirname -- \"$p\")\"; printf '%s\\n' \"$h\""
+FIXTURE_MODULES = ["/fixture/NativeScannerFixture", "/fixture/NativeScannerFixture.dll", "/fixture/libcoreclr.so", "/fixture/libhostfxr.so", "/fixture/System.Private.CoreLib.dll"]
 MODULES = ["/kavita/" + n + ".dll" for n in ("Kavita.Server", "Kavita.API", "Kavita.Models", "Kavita.Services", "Kavita.Database", "Microsoft.Data.Sqlite", "Microsoft.EntityFrameworkCore", "Microsoft.EntityFrameworkCore.Relational")]
 PROOFS = {"/kavita/config/proof-" + n + ".json" for n in ("before", "after-build", "after-bind", "after", "inverse")}
 
@@ -309,8 +310,6 @@ class Native:
             if payload is not None:
                 source.write(payload)
                 source.seek(0)
-            if args[0] == "kubectl":
-                args = [args[0], "--request-timeout=" + format(max(.001, until - time.time()), ".3f") + "s", *args[1:]]
             require(time.time() < until, "native_request_deadline")
             process = subprocess.Popen(args, stdin=source, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output = bytearray()
@@ -392,6 +391,8 @@ def validate_approval(value, now):
     required_paths = {Path(__file__).resolve(), Path(schema_codec.__file__).resolve(), Path(value["templatePath"]).resolve()}
     require(required_paths <= {Path(p["path"]).resolve() for p in source_pins}, "approved_import_template_closure")
     require(value["expectedLiveNative"]["ImageTag"] == "0.9.0.2" and value["expectedLiveNative"]["ImageDigest"] == NATIVE and value["expectedLiveNative"]["TimeZone"] == "America/New_York" and set(value["expectedLiveNative"]["Modules"]) == set(MODULES), "native_source_tuple")
+    fixture_modules = value.get("expectedFixtureModules", {})
+    require(set(fixture_modules) == set(FIXTURE_MODULES + MODULES) and all(re.fullmatch("[0-9a-f]{64}", v) for v in fixture_modules.values()) and fixture_modules["/fixture/NativeScannerFixture.dll"] == value["fixturePacket"]["HarnessSha256"] and all(fixture_modules[p] == value["expectedLiveNative"]["Modules"][p] for p in MODULES), "reviewed_admitted_module_closure")
     uploads = value.get("uploads", [])
     require(len(uploads) == 5 and len({p["target"] for p in uploads}) == 5 and {p["target"] for p in uploads} == {"/fixture-input/original.db", "/fixture-input/original.epub", "/kavita/config/kavita.db", "/kavita/config/appsettings.json", value["fixturePacket"]["TargetFilePath"]}, "private_upload_scope")
     for pin in uploads:
@@ -463,6 +464,16 @@ class Fixture(Native):
             save_private(self.out / (prefix + "-" + name), value)
         return proof
 
+    def fixture_modules(self, pod):
+        expected = self.approval["expectedFixtureModules"]
+        raw = self.call(["kubectl", "exec", "-n", NS, pod["metadata"]["name"], "-c", "native-scanner", "--", "sha256sum", *FIXTURE_MODULES, *MODULES])
+        lines = raw.decode("ascii").splitlines()
+        require(len(lines) == len(expected), "actual_fixture_module_count")
+        actual = dict((line.split()[1], line.split()[0]) for line in lines)
+        require(actual == expected, "actual_fixture_modules_changed_before_input")
+        save_private(self.out / "actual-fixture-module-pins.json", actual)
+        return actual
+
     def collect(self):
         jobs, pods = self.list("Job"), self.list("Pod")
         require(not any(j["metadata"]["name"] == self.name or j["metadata"].get("labels", {}).get(LABEL) == self.phase for j in jobs["items"]) and not owned_pods(pods, self.name, self.phase, None), "initial_owned_absence")
@@ -497,6 +508,7 @@ class Fixture(Native):
         source = copy.deepcopy(self.approval["sourceProof"])
         require("LiveNative" not in source, "old_live_proof_present")
         source["LiveNative"] = native
+        source["AdmittedFixtureModules"] = self.fixture_modules(pod)
         for pin in self.approval["uploads"]:
             raw = read_private(pin["path"])
             require(sha(raw) == pin["sha256"], "private_input_changed_at_send")
@@ -581,6 +593,17 @@ def cleanup_locked(state, out):
             initial = inventory(json.loads(read_private(Path(out) / "initial-jobs.json", 16 * 1024 * 1024)), "Job")
             name = state["manifest"]["metadata"]["name"]
             require(not any(j["metadata"]["name"] == name or j["metadata"].get("labels", {}).get(LABEL) == state["phase"] for j in initial["items"]), "recovery_initial_absence")
+            recovered_path = Path(out) / "recovered-job.json"
+            if recovered_path.exists():
+                recovered = json.loads(read_private(recovered_path, 1024 * 1024))
+            else:
+                recovered = Native(out, state["end"] + 20).get("job", name)
+                require(recovered.get("metadata", {}).get("labels", {}).get(LABEL) == state["phase"], "cleanup_reused_name")
+                created_uid(state["manifest"], recovered)
+                save_private(recovered_path, recovered)
+            uid = created_uid(state["manifest"], recovered)
+            # A lost creation response plus NotFound is still unknown: an API
+            # commit may be late. Never turn that observation into absence.
         else:
             require(not any(j["metadata"]["name"] == state["manifest"]["metadata"]["name"] or j["metadata"].get("labels", {}).get(LABEL) == state["phase"] for j in Native(out, state["end"] + 20).list("Job")["items"]), "unowned_creation_without_intent")
         Native(out, state["end"] + 20).cleanup(state["manifest"], state["phase"], uid)
