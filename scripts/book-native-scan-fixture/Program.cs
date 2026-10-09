@@ -41,8 +41,11 @@ try
     };
     if (args.SequenceEqual(new[] { "--self-test" }))
     {
+        stage = "public-self-test-protocol";
         FixtureProtocol.SelfTest();
+        stage = "public-self-test-inverse";
         NativeProof.GenericSelfTest();
+        stage = "public-self-test-native-bindings";
         NativeBindings.Inspect();
         output.WriteLine($"PASS native local/UTC clock controls, 13 packet refusals, durable-ACK/live-native refusals, typed saved-state barriers, actual five-row inverse, color/cover guards, EF10.0.6 virtual hooks and pending/deferred controls; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
         return 0;
@@ -170,8 +173,17 @@ try
 }
 catch (Exception error)
 {
-    // Do not expose vendor errors: they can contain private state or credentials.
-    resultJson = JsonSerializer.Serialize(new { result = "REFUSED", stage, kind = error.GetType().Name, outcome = "unknown", productionAuthorization = false });
+    if (args.SequenceEqual(new[] { "--self-test" }))
+    {
+        // This entrypoint has only public synthetic controls and never opens native host/private inputs.
+        var reason = error.GetBaseException().Message;
+        resultJson = JsonSerializer.Serialize(new { result = "REFUSED", stage, kind = error.GetType().Name, reason = reason[..Math.Min(reason.Length, 256)], outcome = "unknown", productionAuthorization = false });
+    }
+    else
+    {
+        // Do not expose runtime vendor errors: they can contain private state or credentials.
+        resultJson = JsonSerializer.Serialize(new { result = "REFUSED", stage, kind = error.GetType().Name, outcome = "unknown", productionAuthorization = false });
+    }
 }
 try
 {
