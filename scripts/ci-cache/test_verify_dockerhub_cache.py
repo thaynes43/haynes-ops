@@ -124,20 +124,27 @@ class CacheCases(unittest.TestCase):
         copyfile = (root / 'scripts/book-copy-writer/Dockerfile').read_text()
         nativefile = (root / 'scripts/book-native-scan-fixture/Dockerfile').read_text()
         workflow = (root / '.github/workflows/book-copy-writer-build.yml').read_text()
+        nativeworkflow = (root / '.github/workflows/book-native-scan-fixture.yml').read_text()
+        builderfile = (root / 'scripts/ci-cache/buildkit/Dockerfile').read_text()
         self.assertIn(cache.canonical_image('python')[1], copyfile)
         self.assertIn(cache.canonical_image('kavita')[1], nativefile)
         self.assertIn('docker.io/library/postgres:16@' + cache.canonical_image('postgres')[1], workflow)
         self.assertIn('PG_IMAGE: ${{ steps.cache.outputs.postgres_image }}', workflow)
         self.assertIn('"$PG_IMAGE"', workflow)
         self.assertIn('buildkitd-config-inline: ${{ steps.cache.outputs.buildkit_config }}', workflow)
+        self.assertIn(cache.canonical_image('buildkit')[1], builderfile)
+        for text in (workflow, nativeworkflow):
+            self.assertIn('driver-opts: image=${{ steps.cache.outputs.buildkit_image }}', text)
 
     def test_changed_canonical_pins_are_the_only_cache_authority(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             paths = {'python': 'scripts/book-copy-writer/Dockerfile',
                      'kavita': 'scripts/book-native-scan-fixture/Dockerfile',
+                     'buildkit': 'scripts/ci-cache/buildkit/Dockerfile',
                      'postgres': '.github/workflows/book-copy-writer-build.yml'}
             references = {'python': 'python:3.14-slim', 'kavita': 'docker.io/jvmilazz0/kavita:0.9.0.2',
+                          'buildkit': 'docker.io/moby/buildkit:buildx-stable-1',
                           'postgres': 'mirror.gcr.io/library/postgres:16'}
             for name, path in paths.items():
                 source = root / path; source.parent.mkdir(parents=True, exist_ok=True)
@@ -183,23 +190,26 @@ class CacheCases(unittest.TestCase):
     def test_only_exact_404_routes_whole_profile_to_unchanged_canonical_refs(self):
         miss = urllib.error.HTTPError('https://private.invalid/never-output', 404,
                                      'never-output-body', {}, None)
-        pins = {name: cache.canonical_image(name)[1] for name in cache.PROFILES['copy-writer']}
-        for failed in ('python', 'postgres'):
-            def verify(name):
-                if name == failed:
-                    raise miss
-                return {'image': name, 'index_digest': pins[name], 'verified_cache': cache.HOST}
-            with self.subTest(failed=failed), mock.patch.object(cache, 'verify', side_effect=verify):
-                result = cache.resolve_profile('copy-writer')
-            self.assertFalse(result['cache_verified'])
-            self.assertEqual(result['registry_route'], 'canonical_dockerhub')
-            self.assertEqual(result['buildkit_config'], '')
-            self.assertEqual(result['postgres_image'], 'docker.io/library/postgres:16@' + pins['postgres'])
-            refused = next(row for row in result['images'] if row['image'] == failed)
-            self.assertEqual(refused['index_digest'], pins[failed])
-            self.assertEqual(refused['http_status'], 404)
-            self.assertNotIn('verified_cache', refused)
-            self.assertNotIn('never-output', json.dumps(result))
+        for profile, names in cache.PROFILES.items():
+            pins = {name: cache.canonical_image(name)[1] for name in names}
+            for failed in names:
+                def verify(name):
+                    if name == failed:
+                        raise miss
+                    return {'image': name, 'index_digest': pins[name], 'verified_cache': cache.HOST}
+                with self.subTest(profile=profile, failed=failed), mock.patch.object(cache, 'verify', side_effect=verify):
+                    result = cache.resolve_profile(profile)
+                self.assertFalse(result['cache_verified'])
+                self.assertEqual(result['registry_route'], 'canonical_dockerhub')
+                self.assertEqual(result['buildkit_config'], '')
+                self.assertEqual(result['buildkit_image'], 'docker.io/moby/buildkit:buildx-stable-1@' + pins['buildkit'])
+                if 'postgres' in names:
+                    self.assertEqual(result['postgres_image'], 'docker.io/library/postgres:16@' + pins['postgres'])
+                refused = next(row for row in result['images'] if row['image'] == failed)
+                self.assertEqual(refused['index_digest'], pins[failed])
+                self.assertEqual(refused['http_status'], 404)
+                self.assertNotIn('verified_cache', refused)
+                self.assertNotIn('never-output', json.dumps(result))
 
     def test_verified_profile_alone_selects_cache_and_other_errors_remain_fatal(self):
         with mock.patch.object(cache, 'verify', side_effect=lambda name: {'image': name, 'verified_cache': cache.HOST}):
@@ -208,6 +218,10 @@ class CacheCases(unittest.TestCase):
         self.assertEqual(result['registry_route'], 'verified_cache')
         self.assertIn('mirrors = ["mirror.gcr.io"]', result['buildkit_config'])
         self.assertEqual(result['postgres_image'], 'mirror.gcr.io/library/postgres:16@' + cache.canonical_image('postgres')[1])
+        self.assertEqual(result['buildkit_image'], 'mirror.gcr.io/moby/buildkit:buildx-stable-1@' + cache.canonical_image('buildkit')[1])
+        with mock.patch.object(cache, 'verify', side_effect=lambda name: {'image': name, 'verified_cache': cache.HOST}):
+            native = cache.resolve_profile('native-scanner')
+        self.assertEqual(native['buildkit_image'], result['buildkit_image'])
         errors = [urllib.error.HTTPError('private', status, 'private', {}, None)
                   for status in (401, 403, 429, 500)] + [TimeoutError(), cache.Refused('index_sha256'),
                                                       cache.Refused('unique_linux_amd64')]
@@ -231,7 +245,7 @@ class CacheCases(unittest.TestCase):
             result = json.loads(stdout.getvalue())
             self.assertFalse(result['cache_verified'])
             self.assertNotIn('never-output', stdout.getvalue())
-            self.assertEqual(path.read_text(), 'cache_verified=false\nbuildkit_config<<CACHE_CONFIG\n\nCACHE_CONFIG\n')
+            self.assertEqual(path.read_text(), 'cache_verified=false\nbuildkit_config<<CACHE_CONFIG\n\nCACHE_CONFIG\nbuildkit_image=docker.io/moby/buildkit:buildx-stable-1@' + cache.canonical_image('buildkit')[1] + '\n')
             path.write_text('')
             with mock.patch.object(cache, 'verify', side_effect=TimeoutError()), mock.patch('sys.argv', argv), \
                  mock.patch.object(cache.signal, 'signal'), mock.patch.object(cache.signal, 'setitimer'), \

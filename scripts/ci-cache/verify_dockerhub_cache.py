@@ -17,7 +17,7 @@ MANIFEST_TYPES = {'application/vnd.oci.image.manifest.v1+json',
                   'application/vnd.docker.distribution.manifest.v2+json'}
 ACCEPT = ', '.join(sorted(INDEX_TYPES | MANIFEST_TYPES))
 ROOT = Path(__file__).resolve().parents[2]
-PROFILES = {'copy-writer': ('python', 'postgres'), 'native-scanner': ('kavita',)}
+PROFILES = {'copy-writer': ('python', 'postgres', 'buildkit'), 'native-scanner': ('kavita', 'buildkit')}
 
 
 class Refused(RuntimeError):
@@ -46,6 +46,7 @@ def decode(raw):
 def canonical_source(name, root=ROOT):
     sources = {'python': ('scripts/book-copy-writer/Dockerfile', 'library/python', r'(?:python|library/python|docker\.io/(?:library/)?python)', 'from'),
                'kavita': ('scripts/book-native-scan-fixture/Dockerfile', 'jvmilazz0/kavita', r'(?:docker\.io/)?jvmilazz0/kavita', 'from'),
+               'buildkit': ('scripts/ci-cache/buildkit/Dockerfile', 'moby/buildkit', r'(?:docker\.io/)?moby/buildkit', 'from'),
                'postgres': ('.github/workflows/book-copy-writer-build.yml', 'library/postgres', r'(?:(?:mirror\.gcr\.io|docker\.io)/library/|library/)?postgres', 'workflow')}
     require(name in sources, 'reviewed_image_source')
     path, repository, pattern, kind = sources[name]
@@ -143,11 +144,13 @@ def resolve_profile(profile):
     result = {'schema': 1, 'cache_verified': verified, 'images': images,
               'registry_route': 'verified_cache' if verified else 'canonical_dockerhub',
               'buildkit_config': '[registry."docker.io"]\nmirrors = ["mirror.gcr.io"]' if verified else ''}
-    if 'postgres' in PROFILES[profile]:
-        repository, _, reference = canonical_source('postgres')
+    for name in ('postgres', 'buildkit'):
+        if name not in PROFILES[profile]:
+            continue
+        repository, _, reference = canonical_source(name)
         # The literal source provides the tag and digest. Normalize only its registry.
         tag_digest = reference.split(':', 1)[1]
-        result['postgres_image'] = f'{HOST if verified else "docker.io"}/{repository}:{tag_digest}'
+        result[name + '_image'] = f'{HOST if verified else "docker.io"}/{repository}:{tag_digest}'
     return result
 
 
@@ -156,8 +159,10 @@ def action_outputs(path, result):
     with path.open('a', encoding='utf-8') as output:
         output.write('cache_verified=' + str(result['cache_verified']).lower() + '\n')
         output.write('buildkit_config<<CACHE_CONFIG\n' + result['buildkit_config'] + '\nCACHE_CONFIG\n')
-        if 'postgres_image' in result:
-            output.write('postgres_image=' + result['postgres_image'] + '\n')
+        for name in ('postgres', 'buildkit'):
+            key = name + '_image'
+            if key in result:
+                output.write(key + '=' + result[key] + '\n')
 
 
 def main():

@@ -53,6 +53,7 @@ jobs:
         if: steps.scope.outputs.build == 'true'
         with:
           buildkitd-config-inline: ${{ steps.cache.outputs.buildkit_config }}
+          driver-opts: image=${{ steps.cache.outputs.buildkit_image }}
       - name: Resolve the official exact SDK image once
         id: sdk
         if: steps.scope.outputs.build == 'true'
