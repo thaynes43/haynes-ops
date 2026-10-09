@@ -252,6 +252,8 @@ class HostTests(unittest.TestCase):
                    lambda v: v.update(Schema=True), lambda v: v.update(OwnedCallsites=[]),
                    lambda v: v.update(OwnedCallsites=v["OwnedCallsites"] * 5),
                    lambda v: v["OwnedCallsites"][0].update(MethodToken=0x02000001),
+                   lambda v: v["OwnedCallsites"][0].update(MethodToken=0x100000000 + 0x06000001),
+                   lambda v: v["OwnedCallsites"][0].update(MethodToken=0x06000001 - 0x100000000),
                    lambda v: v["OwnedCallsites"][0].update(IlOffset=True),
                    lambda v: v["OwnedCallsites"][0].update(IlOffset=1048577),
                    lambda v: v["OwnedCallsites"][0].update(Path="private/path"))

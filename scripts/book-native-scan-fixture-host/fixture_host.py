@@ -373,7 +373,7 @@ def validate_diagnostic(raw, harness_sha):
             and isinstance(value["Kind"], str) and re.fullmatch("[A-Za-z][A-Za-z0-9]{0,95}", value["Kind"]), "diagnostic_identity")
     calls = value["OwnedCallsites"]
     require(isinstance(calls, list) and 1 <= len(calls) <= 8 and all(type(c) is dict and set(c) == {"MethodToken", "IlOffset"}
-            and type(c["MethodToken"]) is int and c["MethodToken"] & 0xff000000 == 0x06000000 and c["MethodToken"] & 0x00ffffff > 0
+            and type(c["MethodToken"]) is int and 0x06000001 <= c["MethodToken"] <= 0x06ffffff
             and type(c["IlOffset"]) is int and -1 <= c["IlOffset"] <= 1048576 for c in calls)
             and len({(c["MethodToken"], c["IlOffset"]) for c in calls}) == len(calls), "diagnostic_owned_scope")
     return value
