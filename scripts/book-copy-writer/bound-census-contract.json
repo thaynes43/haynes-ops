@@ -1,0 +1,135 @@
+{
+  "api": {
+    "assembly": "bind_live_baseline(baseline, sealed_artifact_sha256, current_stat_census, ebook_root) -> (derived_library, bound_census)",
+    "cli": "book_copy_writer.py --bound-census --wait-proofs --deadline-epoch SAME_FROZEN_EPOCH",
+    "main": "epub_copies.consolidate_bound(..., selection_path=exact_selection, health=own_primary_share_health)",
+    "module": "bound_census.py"
+  },
+  "current_stat_census": {
+    "forbidden_borrowed_fields": [
+      "files",
+      "sha256",
+      "packages"
+    ],
+    "kind": "stat_census",
+    "lease": "actual SOURCE owns PRIMARY PG16 read-only SHARE; trusted host assembly checks current lease and exact native ownership before deriving",
+    "required_fields": [
+      "ebook_root",
+      "started_at",
+      "checked_at",
+      "complete",
+      "quiesced",
+      "production_writes",
+      "all_file_fingerprints",
+      "permissions",
+      "derived_ignore_markers",
+      "additional_protected_paths",
+      "configured_hold_folders",
+      "source_binding"
+    ],
+    "required_values": {
+      "complete": true,
+      "production_writes": 0,
+      "quiesced": false
+    },
+    "schema": 2
+  },
+  "kind": "manual_bound_census_interface",
+  "live_byte_baseline": {
+    "extra_private_measurements": "producer may retain byte_counts, stage_measurements and complete host provenance in the sealed artifact; assembly does not infer identity from measurements",
+    "files": "every visible EPUB: existing serialized role-aware grouping_identity fields, source_identity six strings, sha256, packages [{path,raw_opf_sha256}]",
+    "kind": "live_byte_baseline",
+    "module_sha256": "exact epub_copies.py and epub_metadata.py runtime file hashes",
+    "required_fields": [
+      "ebook_root",
+      "capture_started_at",
+      "completed_at",
+      "complete",
+      "stable_before_after",
+      "read_only",
+      "production_writes",
+      "module_sha256",
+      "source_binding",
+      "all_file_fingerprints",
+      "files"
+    ],
+    "required_values": {
+      "complete": true,
+      "production_writes": 0,
+      "read_only": true,
+      "stable_before_after": true
+    },
+    "schema": 1
+  },
+  "main_guards": [
+    "own PG health and fixed earliest deadline",
+    "complete current stat set equals sealed strings before selected reads",
+    "all distinct selected keepers and extras whole SHA/raw OPF/complete role-aware parsed identity before first move",
+    "complete stat walk remains exact before first move",
+    "original ordered first-retention proof and per-move guards",
+    "manual final complete stat set equals original minus exactly actual moved paths; partial moved receipts remain on refusal"
+  ],
+  "production_actions": 0,
+  "schema": 1,
+  "selection": {
+    "additional_exact_binding": "bound_census_baseline_sha256 equals sealed LIVE artifact SHA",
+    "entries": "unchanged ordered exact path+sha256+keeper+keeper_sha256 schema"
+  },
+  "snapshot_bound_census": {
+    "byte_age_max_seconds": 300,
+    "current_validation_exact_keys": [
+      "capture_started_at",
+      "checked_at",
+      "source_binding"
+    ],
+    "exact_keys": [
+      "schema",
+      "kind",
+      "byte_baseline_sha256",
+      "byte_capture_started_at",
+      "byte_completed_at",
+      "byte_source_binding",
+      "module_sha256",
+      "current_validation",
+      "files",
+      "all_file_fingerprints"
+    ],
+    "kind": "bound_census",
+    "original_byte_clocks": "preserved exactly; never replaced by current stat clocks",
+    "schema": 1
+  },
+  "source_binding": {
+    "actual_native_bindings": "host verifies Job/Pod UIDs, full Pod spec SHA, imageID, DAPI node/name/UID and RO bind view over exact backing NFS",
+    "exact_keys": [
+      "namespace",
+      "pod_name",
+      "pod_uid",
+      "job_uid",
+      "node",
+      "image",
+      "image_id",
+      "pod_spec_sha256",
+      "restarts",
+      "mount_root",
+      "nfs_server",
+      "nfs_export",
+      "root_identity6"
+    ],
+    "restarts": 0,
+    "same_backing_between_byte_and_stat": "node, mount_root, nfs_server, nfs_export and root device/inode must agree; source Pod/Job/image identities may differ"
+  },
+  "stat_encoding": {
+    "all_file_fingerprints": "path -> [[dev, ino, size, mtime_ns, ctime_ns, nlink], mode, uid, gid]",
+    "file_source_identity": "source_identity: six decimal strings in identity6 order",
+    "integer_values": "canonical decimal strings only; no numeric JSON values, leading zeros, plus signs, float notation or values beyond uint64",
+    "parent_permission_identity": "all stat values in current permissions use the same decimal-string encoding",
+    "source_root_identity": "source_binding.root_identity6: six decimal strings"
+  },
+  "unchanged": [
+    "ordinary hourly/default full census API",
+    "three proof transfer caps 16MiB/1MiB/32MiB",
+    "receiver EOF/hash/fsync/no-overwrite protocol",
+    "SOURCE and MAIN own PG fences",
+    "no actual freshness, quiescence, publication or performance claim from this interface"
+  ]
+}

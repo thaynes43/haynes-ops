@@ -438,3 +438,38 @@ The focused image tests run once, sequentially at nice 19 with one CPU. Their is
 reads continue while both table writers are blocked, supervisor-connection EOF leaves the copy writer's own locks
 held, and backend loss, changed captures, unknown lock state and deadlines prevent further file actions. No test
 connects to production or installs packages in a runtime Pod.
+
+### Bounded live byte evidence for the manual writer
+
+The [bounded proof contract](https://github.com/thaynes43/haynesnetwork/blob/main/docs/designs/028-integrations-tab-goodreads-requests.md)
+defines the separate live byte evidence and fenced current validation below.
+
+The complete byte and OPF census may be collected while production is running. It is
+not a dependency snapshot or permission to move files. It must retain SHA-256, raw OPF
+and parsed identity for every EPUB, plus device, inode, size, modification time, change
+time, link count, mode, UID and GID for every library file. The collector must prove
+a complete stable traversal, unchanged source descriptors and paths, and its actual
+Pod/node/mount and immutable program identity. Partial or portable fingerprints that
+omit device identity cannot support reuse.
+
+Inside the short window, SOURCE still owns its primary PostgreSQL 16 read-only SHARE
+fence and freshly captures all app and vendor dependencies after the service stops.
+It traverses the entire library again. The trusted assembly compares the complete
+path set and every full fingerprint with the reviewed live census while SOURCE's
+lease remains healthy. Only exact matches may reuse those
+byte and OPF facts; additions, removals, races, unsafe links or any changed field
+refuse the operation and restore production. Retain the original byte-capture clocks
+and hashes alongside the distinct current validation clocks. No old capture becomes
+a new byte read. This proof concerns the configured publishing paths and does not
+claim privileged storage or undiscovered aliases incapable of arbitrary writes.
+
+MAIN owns its own primary read-only SHARE fence, independently validates the complete
+current path/fingerprint set, and rehashes and parses every selected keeper and extra
+before the first move. It checks descriptor/path identity and PostgreSQL health at
+every file boundary and retains the first verified archive before continuing the
+exact remainder. Unknown or changed inputs refuse; no refresh, retry or new census
+is performed while paused. This removes redundant whole-corpus byte reads from the
+pause without reducing selected-file or dependency checks. Normal hourly behavior
+is unchanged. Keep the existing absolute expiry, exact writer ownership and restore
+watcher. Any performance claim must come from actual completed captures, not the
+faster of inconsistent earlier timings.
