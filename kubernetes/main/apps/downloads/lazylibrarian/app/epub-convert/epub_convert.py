@@ -656,6 +656,12 @@ def strip_series_pass(folders, run_started, author_proof=None):
     counts = {"stripped": 0, "would_strip": 0, "untagged": 0, "grouped": 0, "settling": 0,
               "refused": 0, "deferred": 0, "collision_held": 0, "configured_held": 0}
     SERIES_IDENTITIES, errors = epub_metadata.identity_preflight(EBOOK_ROOT, run_started + RUN_BUDGET_SECONDS)
+    if not DRY_RUN and not STRIP_ONLY:
+        for identity in SERIES_IDENTITIES:
+            if identity["source_identity"][-1] == 2 and (not identity["title_keys"]
+                    or len(identity["author_keys"]) != 1 or identity.get("author_refusal")):
+                errors.append({"path": identity["path"],
+                               "detail": "interrupted publication identity needs a title and unambiguous author"})
     for error in errors:
         log("epub_series_preflight", result="refused", **error, dry_run=DRY_RUN)
     if errors:
@@ -708,6 +714,18 @@ def strip_series_pass(folders, run_started, author_proof=None):
                         continue
                     if identity.get("strip_refusal"):
                         raise epub_metadata.Refused(identity["strip_refusal"])
+                    if not DRY_RUN and not STRIP_ONLY and identity["source_identity"][-1] == 2:
+                        with epub_metadata.safe_directory(folder) as directory:
+                            published = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                            partial = os.stat("." + name + ".partial", dir_fd=directory, follow_symlinks=False)
+                            if epub_metadata._identity(published) != identity["source_identity"]:
+                                raise epub_metadata.Changed("publication pair changed since grouping preflight")
+                            if (stat.S_ISREG(partial.st_mode) and partial.st_nlink == 2
+                                    and (partial.st_dev, partial.st_ino) == (published.st_dev, published.st_ino)):
+                                counts["settling"] += 1
+                                log("epub_series_strip", result="settling", path=relative,
+                                    detail="verified interrupted publication pair awaits partial cleanup", dry_run=DRY_RUN)
+                                continue
                     projected = dict(identity)
                     if grouping:
                         projected["projected_aliases"] = {epub_metadata.kavita_normalized(grouping)}

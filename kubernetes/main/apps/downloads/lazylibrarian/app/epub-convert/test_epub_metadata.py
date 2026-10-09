@@ -47,8 +47,8 @@ OPF = b'''<?xml version="1.0" encoding="UTF-8"?>
 CONTAINER = b'''<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="OEBPS/book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'''
 
 
-def fixture(opf=OPF, mimetype_first=True, mimetype_stored=True, extra_members=None, zero_attributes=()):
-    members = [("mimetype", b"application/epub+zip"), ("META-INF/container.xml", CONTAINER),
+def fixture(opf=OPF, mimetype_first=True, mimetype_stored=True, extra_members=None, zero_attributes=(), container=CONTAINER):
+    members = [("mimetype", b"application/epub+zip"), ("META-INF/container.xml", container),
                ("OEBPS/book.opf", opf), ("OEBPS/chapter.xhtml", b"<html><body>A chapter.</body></html>"),
                ("OEBPS/cover.jpg", bytes(range(256)))]
     if not mimetype_first:
@@ -609,6 +609,94 @@ class FileTests(unittest.TestCase):
         self.assertEqual(snapshot(self.root)[os.path.relpath(self.path, self.root)], before)
         self.assertTrue(any(row.get("msg") == "epub_convert_partial_removed" for row in lines))
         self.assertFalse(any(row.get("msg") == "epub_series_preflight" for row in lines))
+
+    def test_hourly_interrupted_publication_pair_recovers_without_false_strip_failure(self):
+        partial = os.path.join(os.path.dirname(self.path), ".Mockingjay.epub.partial")
+        os.link(self.path, partial)
+        result, lines = self.run_script(STRIP_ONLY="0")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        counts = next(row for row in lines if row["msg"] == "epub_series_strip_census")
+        self.assertEqual((counts["settling"], counts["refused"], counts["stripped"]), (1, 0, 0))
+        self.assertFalse(os.path.lexists(partial))
+        self.assertEqual(os.stat(self.path).st_nlink, 1)
+        self.assertEqual(read(self.path), self.original)
+        result, lines = self.run_script(STRIP_ONLY="0")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(next(row for row in lines if row["msg"] == "epub_series_strip_census")["stripped"], 1)
+        self.assertEqual(read(self.path), metadata.sanitized_epub(self.original)[0])
+
+    def test_hourly_unproved_hardlink_still_refuses_stripping(self):
+        os.link(self.path, os.path.join(self.tmp.name, "unapproved-hardlink"))
+        result, lines = self.run_script(STRIP_ONLY="0")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        counts = next(row for row in lines if row["msg"] == "epub_series_strip_census")
+        self.assertEqual((counts["settling"], counts["refused"]), (0, 1))
+        self.assertEqual(os.stat(self.path).st_nlink, 2)
+        self.assertEqual(read(self.path), self.original)
+
+    def test_hourly_malformed_identity_pair_preserves_both_names(self):
+        write(self.path, b"broken ZIP")
+        partial = os.path.join(os.path.dirname(self.path), ".Mockingjay.epub.partial")
+        os.link(self.path, partial)
+        before = snapshot(self.root)
+        result, lines = self.run_script(STRIP_ONLY="0")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertEqual(snapshot(self.root), before)
+        self.assertEqual(os.stat(self.path).st_nlink, 2)
+        self.assertFalse(any(row.get("msg") == "epub_convert_partial_removed" for row in lines))
+
+    def test_hourly_missing_author_pair_preserves_both_names(self):
+        write(self.path, fixture(opf=OPF.replace(b'<dc:creator id="author">Suzanne Collins</dc:creator>', b"")))
+        partial = os.path.join(os.path.dirname(self.path), ".Mockingjay.epub.partial")
+        os.link(self.path, partial)
+        before = snapshot(self.root)
+        result, lines = self.run_script(STRIP_ONLY="0")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertEqual(snapshot(self.root), before)
+        self.assertEqual(os.stat(self.path).st_nlink, 2)
+        self.assertFalse(any(row.get("msg") == "epub_convert_partial_removed" for row in lines))
+
+    def test_hourly_publication_pair_with_third_link_refuses(self):
+        partial = os.path.join(os.path.dirname(self.path), ".Mockingjay.epub.partial")
+        os.link(self.path, partial)
+        os.link(self.path, os.path.join(self.tmp.name, "unapproved-third-link"))
+        before = snapshot(self.root)
+        result, lines = self.run_script(STRIP_ONLY="0")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        counts = next(row for row in lines if row["msg"] == "epub_series_strip_census")
+        self.assertEqual((counts["settling"], counts["refused"]), (0, 1))
+        self.assertEqual(snapshot(self.root), before)
+        self.assertEqual(os.stat(self.path).st_nlink, 3)
+
+    def test_hourly_conflicting_rootfile_authors_preserve_publication_pair(self):
+        container = CONTAINER.replace(b"</rootfiles>", b'<rootfile full-path="OEBPS/other.opf" media-type="application/oebps-package+xml"/></rootfiles>')
+        other = OPF.replace(b"Suzanne Collins", b"Other Author")
+        raw = fixture(container=container, extra_members=[("OEBPS/other.opf", other)])
+        identity = metadata.grouping_identity(raw, "Suzanne Collins/Mockingjay/Mockingjay.epub")
+        self.assertEqual(len(identity["author_keys"]), 2)
+        self.assertIsNone(identity["author_refusal"])
+        write(self.path, raw)
+        partial = os.path.join(os.path.dirname(self.path), ".Mockingjay.epub.partial")
+        os.link(self.path, partial)
+        before = snapshot(self.root)
+        result, lines = self.run_script(STRIP_ONLY="0")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertEqual(snapshot(self.root), before)
+        self.assertEqual(os.stat(self.path).st_nlink, 2)
+        self.assertFalse(any(row.get("msg") == "epub_convert_partial_removed" for row in lines))
+
+    def test_hourly_repeated_rootfile_author_can_settle_publication_pair(self):
+        container = CONTAINER.replace(b"</rootfiles>", b'<rootfile full-path="OEBPS/other.opf" media-type="application/oebps-package+xml"/></rootfiles>')
+        raw = fixture(container=container, extra_members=[("OEBPS/other.opf", OPF)])
+        self.assertEqual(len(metadata.grouping_identity(raw, "Suzanne Collins/Mockingjay/Mockingjay.epub")["author_keys"]), 1)
+        write(self.path, raw)
+        partial = os.path.join(os.path.dirname(self.path), ".Mockingjay.epub.partial")
+        os.link(self.path, partial)
+        result, lines = self.run_script(STRIP_ONLY="0")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(next(row for row in lines if row["msg"] == "epub_series_strip_census")["settling"], 1)
+        self.assertFalse(os.path.lexists(partial))
+        self.assertEqual(read(self.path), raw)
 
     def test_dry_run_inventory_and_untagged_do_not_write(self):
         before = snapshot(self.tmp.name)
