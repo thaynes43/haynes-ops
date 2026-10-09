@@ -1,5 +1,9 @@
 # Bounded LIVE census source preparation — 2026-10-09
 
+This records source preparation before runtime approval. The later
+[full LIVE diagnostic](book-census-full-live-diagnostic-2026-10-09.md) separately
+completed one approved lifecycle within the original bounds, with no COPY use.
+
 Root ratified this source preparation after the measured diagnostic. The
 candidate is in `scripts/book-copy-writer/live-performance/`; it is not an
 admitted native package or runtime packet. No live corpus was read, no Job was
