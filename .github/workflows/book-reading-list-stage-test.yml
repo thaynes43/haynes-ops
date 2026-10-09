@@ -1,0 +1,40 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Book Reading List Stage Test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/book-reading-list-stage/**
+      - .github/workflows/book-reading-list-stage-test.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Book Reading List Stage Test - Success
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use deployed Node major
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: '22.23.3'
+      - name: Use Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Finite serial protocol and real-child fixtures
+        run: nice -n 19 node --test --test-concurrency=1 scripts/book-reading-list-stage/protocol.test.mjs scripts/book-reading-list-stage/worker.test.mjs
+      - name: Finite host transport and native fixtures
+        run: nice -n 19 python3 -B scripts/book-reading-list-stage/test_run_stage.py
