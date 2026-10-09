@@ -355,8 +355,8 @@ class Watchdog:
             self.state.update(complete=False,recover_ks=False,safety_recovery_complete=True)
             at=stamp()
             if self.state.get('normal_rehearsal_recovery_budget_missed_at'):
-                if 'safety_recovery_completed_at' in self.state:self.state['safety_recovery_reverified_at']=at
-                self.state.setdefault('safety_recovery_completed_at',at)
+                if 'safety_recovery_completed_at' in self.state or self.state.get('completed_at'):self.state['safety_recovery_reverified_at']=at
+                self.state.setdefault('safety_recovery_completed_at',self.state.get('completed_at') or at)
             else:self.state['safety_recovery_completed_at']=at
         else:
             self.state.setdefault('completed_at',stamp())

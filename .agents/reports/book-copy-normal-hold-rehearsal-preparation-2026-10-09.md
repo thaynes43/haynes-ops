@@ -345,6 +345,10 @@ The finite control exercises the real generic path at both fake times so the
 scoped helper cannot conceal a timestamp overwrite. Other recovery modes keep
 their existing timestamp behavior.
 The single extended real-generic control passed in 0.008s under serial `nice -n 19`.
+The actual advisory findings `4235127776`/`4235138148` also require preserving
+historical raw `completed_at` when no safety timestamp exists. That Normal-only
+fallback and its real-generic cold-state counterexample are included; a new
+verification time never replaces the original restoration proof.
 
 Unused prepared Stop/inverse drafts
 [#3659](https://github.com/thaynes43/haynes-ops/pull/3659) and

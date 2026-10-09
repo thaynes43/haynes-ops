@@ -143,6 +143,12 @@ class NormalCases(unittest.TestCase):
             with mock.patch.object(watch,'stamp',return_value=later):w.recover_cluster(fixtures.NORMAL_SHA)
             self.assertEqual(w.state['safety_recovery_completed_at'],first)
             self.assertEqual(w.state['safety_recovery_reverified_at'],later)
+            # The actual historical state had generic completed_at but no
+            # safety timestamp; cold correction must keep that first proof.
+            w.state.pop('safety_recovery_completed_at');w.state['completed_at']=first
+            with mock.patch.object(watch,'stamp',return_value=later):w.recover_cluster(fixtures.NORMAL_SHA)
+            self.assertEqual(w.state['safety_recovery_completed_at'],first)
+            self.assertFalse(w.state['complete'])
             w.runtime_restored=lambda _:False
             with self.assertRaisesRegex(RuntimeError,'waiting for app/KS convergence'):w.recover_cluster(fixtures.NORMAL_SHA)
             self.assertTrue(all(row.get('complete') is False for row in saved))
