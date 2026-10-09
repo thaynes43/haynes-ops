@@ -19,10 +19,12 @@ inverse onto actual squash `main` and require its exact six-file manifest bytes,
 semantic fields, required checks and clean current advisory. Only then may a
 fresh reviewed supervisor/packet be armed. Actual Stop needs separate runtime GO.
 
-Any pre-stage cancellation must recover normal Git before releasing a hold.
-The watcher retains holds when it cannot prove exact normal source, no owned
-Jobs/Pods or PG leases, and actual normal controller state. It reports incomplete
-recovery truthfully; retry cannot authorize COPY or reset clocks. Desired Stop
+Any pre-stage cancellation must recover normal Git and prove workloads are still
+normal before releasing a hold. After actual Stop, the watcher first proves exact
+normal Git/source and absence of owned Jobs/Pods and PG leases, then releases the
+application holds to apply restoration. Actual normal controller and Flux state
+must be proved before terminal success; lack of convergence reports incomplete
+recovery truthfully. A retry cannot authorize COPY or reset clocks. Desired Stop
 must never be applied while inverse checks are still pending.
 
 The six changed manifests contain only six schedule suspensions, two temporary
