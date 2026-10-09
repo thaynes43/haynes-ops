@@ -83,6 +83,8 @@ spec:
               # dev-env v2's /v1 API (KICKOFF 8.9, D-46, D-50): the v2 agent-run in this
               # pod calls it by the certificate's full name.
               - matchName: "dev-env-operator.dev-env-system.svc.cluster.local"
+              # Exact Flux artifact host observed in GitRepository.status.artifact.url.
+              - matchName: "source-controller.flux-system.svc.cluster.local."
               # SaaS Omni — the ONLY Omni now, and the instance that registers every
               # node (talosm0x). The self-hosted frontend/omni svc entry was dropped
               # 2026-09-22 with that instance's decommission. Node triage runs through
@@ -356,6 +358,16 @@ spec:
       toPorts:
         - ports:
             - port: "8443"
+              protocol: TCP
+    # Read-only Flux artifact custody for the cached Stop preflight. Service
+    # TCP/80 targets the source-controller Pod's named http port TCP/9090.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: flux-system
+            app: source-controller
+      toPorts:
+        - ports:
+            - port: "9090"
               protocol: TCP
     # 2c. (removed 2026-09-22) in-cluster egress to the self-hosted Omni
     #     (frontend/omni:8080) went with that instance's decommission. All Omni
