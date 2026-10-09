@@ -116,3 +116,58 @@ Independent corrected component review at `eff8550b` is recorded by receipt
 `56d99b805c5b8625338227d5b433895bdd3a6e05672044c2355331318254c332`.
 It covers atomic response publication, strict native completed MAIN, exact pins
 and the owner-outcome source boundary. It is source-only and authorizes no runtime.
+
+## Merged component evidence and remaining window preparation
+
+Source PR [#3661](https://github.com/thaynes43/haynes-ops/pull/3661) merged as
+`b5defb2a1ca11a6bbfeb17e8a79903252ac12f87` after exact head
+`576cf1be3541b59c7b93602f0e916cd82271e109` passed all required checks and its
+actual current advisory reported no findings. The successful
+[CI run](https://github.com/thaynes43/haynes-ops/actions/runs/37974980912)
+ran all 19 SOURCE/owner-outcome cases in 0.383s and all ten pure closure cases in
+0.401s. Independent final source receipt
+`5642d0c1d81ec264d383f8dfe3ef29c10d830db5e2e3fbe2bb8f3acb23cc6b52`
+adds the shallow/private-bundle fixture and verifies all 20 reviewed files and
+unchanged executable pins against the corrected source review.
+
+One private source component package was materialized without an API call,
+process launch or PG/library operation. Its review SHA is
+`532e78a802f2241b170a31ef1beedf08f95460ba77b243fe25402fdf5811a4e7`.
+Every captured generic file was compared with merged `b5defb2a`; all captured
+file hashes match. It contains the seven pinned runtime/preflight files, the
+reviewed bootstrap closure, current scope and closed templates. It explicitly
+reports `full_pipeline_ready: false` and `runtime_authorization: false`; its fresh
+LIVE phase is not approval to launch.
+
+The private local COPY ledger preparation receipt
+`b54162fbded78bad1d78edbc4107c38ee5a50d37bc5a46be767628ba7e1e1394`
+registers the five closed intents for inverse #3660. All gates remain closed,
+all actual Job/Pod/backend IDs remain null, and no window has started. Server
+dry-run accepted the closed LIVE profile and the five phase-labelled COPY
+profiles; each matches its exact declared workload. The five-role admission
+receipt is `fc7d6410b8ca55a786ca0ac53fe8a6b4fe98921d70d312d37bfd8f21fdf21488`.
+An initial comparison of an unregistered bare SOURCE template refused because
+the helper requires registration phase labels; this was not an execution or
+producer failure. Dry-run response UIDs are not actual producer identity proof.
+No Job was created or started, and no library/progress/locks/wants were refreshed.
+All raw admitted objects and ledger details remain private.
+
+The dedicated host environment has Python 3.11.2 and binary-only,
+hash-required PyYAML 6.0.3 from official PyPI, with the cp311 x86-64 wheel hash
+`b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d`.
+Private receipt `c405f58100d4ba9549742522201edd03a9c63984db613fbbae921101467c4a82`
+records the interpreter executable hash and all 26 installed dependency files,
+checking each hashed wheel RECORD entry. This is host dependency preparation,
+not OCI authentication or runtime authorization. The final packet must bind its
+exact interpreter/dependency environment and every invoked child command.
+
+Window source PR [#3662](https://github.com/thaynes43/haynes-ops/pull/3662) merged
+as `74c81761af89f8bd4c3823c8c2cb81749d9c4890`. Full packet freeze is postponed
+for the separately ratified cached Git source preparation: prove actual normal
+held workloads, pin and drain the exact Stop artifact, merge the fully reviewed
+Normal inverse before applying Stop, and recover a verified current Normal
+descendant without waiting for active CI. The new caller closure, native hold /
+source lifecycle rehearsal, recovery ordering and original lease math require
+independent review. No source suspension, hold, Stop, capture or COPY has been
+authorized by any receipt above. Existing byte freshness, clocks and historical
+failure evidence remain unchanged.
