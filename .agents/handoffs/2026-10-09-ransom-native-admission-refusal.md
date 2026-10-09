@@ -127,3 +127,17 @@ Finite generic controls cover wrong named-GET UID/type/namespace/name, extra
 finalizer, topology mismatch, additional CNI attachment/IP/key, changed reviewed
 annotation/extra labels and executable-spec injection. A newly reviewed closed
 packet and another separate exact GO are needed before any further diagnostic.
+
+Root review caught the post-ACK finalizer transition before source merge/runtime.
+The actual server is v1.35.5; its
+[tagged controller](https://github.com/kubernetes/kubernetes/blob/v1.35.5/pkg/controller/job/job_controller.go#L1120)
+removes Pod finalizers before completion counters and Job Complete. The successor
+therefore permits missing/empty tracking finalizers only after durable evidence ACK
+for the same owned/spec-exact Pod Succeeded with one native Completed/exit0/restarts0
+container and no failed Job. A pending Job Complete remains pending; overall success
+still requires Complete/active0/failed0/succeeded1. Running/pre-input requires the
+singleton and unexpected finalizers always refuse. A finite regression through the
+host's real binding method proves pre-ACK refusal, post-ACK pending, then Complete success, with
+negative running/exit/restart/finalizer/spec variants.
+The final local serial `nice -n 19` suite passed 38/38 in 0.166s and diff checks
+passed; these generic fixtures use no API, database, native scanner or Job.

@@ -47,6 +47,11 @@ with the actual Pod IP, empty DNS and native local gateway, and region/zone labe
 equal to a fresh named target Node. Every other label/annotation and executable
 spec, container, mount, environment and security field remains exact. Retain the
 first list-selected Pod, named Pod and Node privately before these checks.
+After durable evidence ACK, the controller may remove the tracking finalizer before
+Job Complete is reported. Permit its absence only for the same owned/configured
+Pod Succeeded with one native container Completed/exit0/restarts0 and no failed Job
+state. Job Complete remains required for overall success. Running and pre-input
+admission still require the singleton; unexpected finalizers always refuse.
 
 Create every private output exclusively in a mode-0700 directory; files are mode
 0600, verified and fsynced. Upload bounded exact input files with atomic final rename,

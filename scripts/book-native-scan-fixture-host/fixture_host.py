@@ -264,13 +264,14 @@ def declared(expected, actual, pod=False):
     require(expected == actual, "native_pod_admission_drift" if pod else "native_job_admission_drift")
 
 
-def verified_generated_pod_metadata(pod, node):
+def verified_generated_pod_metadata(pod, node, allow_removed_finalizer=False):
     """Remove only observed native metadata after proving its exact provenance."""
     require(node.get("apiVersion") == "v1" and node.get("kind") == "Node" and node.get("metadata", {}).get("name") == pod["spec"]["nodeName"] == "talosw01" and bool(node["metadata"].get("uid")), "actual_node_identity")
     value = copy.deepcopy(pod)
     metadata = value["metadata"]
-    require(metadata.get("finalizers") == ["batch.kubernetes.io/job-tracking"], "native_pod_finalizers")
-    metadata.pop("finalizers")
+    finalizers = metadata.get("finalizers", [])
+    require(finalizers == ["batch.kubernetes.io/job-tracking"] or allow_removed_finalizer and finalizers == [], "native_pod_finalizers")
+    metadata.pop("finalizers", None)
     for label in ("topology.kubernetes.io/region", "topology.kubernetes.io/zone"):
         native = node["metadata"].get("labels", {}).get(label)
         require(isinstance(native, str) and bool(native) and metadata.get("labels", {}).get(label) == native, "native_pod_topology")
@@ -293,14 +294,21 @@ def verified_generated_pod_metadata(pod, node):
     return value
 
 
-def pod_binding(job, pod, expected, phase, node):
+def pod_binding(job, pod, expected, phase, node, after_ack=False):
     declared(expected, job)
     require(job["metadata"].get("labels", {}).get(LABEL) == phase, "job_phase")
     owned_pods({"apiVersion": "v1", "kind": "PodList", "metadata": {"resourceVersion": "checked"}, "items": [pod]}, expected["metadata"]["name"], phase, job["metadata"]["uid"])
     want = {"apiVersion": "v1", "kind": "Pod", "metadata": copy.deepcopy(expected["spec"]["template"]["metadata"]), "spec": copy.deepcopy(expected["spec"]["template"]["spec"])}
     want["metadata"]["name"] = pod["metadata"]["name"]
     want["metadata"]["namespace"] = NS
-    declared(want, verified_generated_pod_metadata(pod, node), True)
+    removed = after_ack and pod["metadata"].get("finalizers", []) == []
+    if removed:
+        states = pod.get("status", {}).get("containerStatuses", [])
+        require(pod.get("status", {}).get("phase") == "Succeeded" and len(states) == 1 and bool(states[0].get("state", {}).get("terminated")), "native_terminal_finalizer_removed")
+        # Validates the native Completed/exit0/restarts0 and failed-Job guards.
+        # Complete may still be pending; it remains mandatory for final success.
+        completed(job, pod)
+    declared(want, verified_generated_pod_metadata(pod, node, removed), True)
     statuses = pod.get("status", {}).get("containerStatuses", [])
     require(len(statuses) == 1 and statuses[0]["name"] == "native-scanner" and statuses[0].get("restartCount") == 0 and statuses[0].get("imageID", "").endswith(IMAGE.split("@", 1)[1]), "actual_image_or_restart")
 
@@ -508,13 +516,13 @@ class Fixture(Native):
         result = {"ObservedAt": observed, "PodUid": before["metadata"]["uid"], "ImageTag": expected["ImageTag"], "ImageDigest": NATIVE, "TimeZone": lines[8], "ActualUtcOffset": ("-" if offset[0] == "-" else "") + offset[1:] + ":00", "Modules": [{"Path": path, "Sha256": modules[path]} for path in MODULES]}
         return result
 
-    def binding(self):
+    def binding(self, after_ack=False):
         job = self.get("job", self.name)
         require(job["metadata"]["uid"] == self.uid, "job_uid_changed")
         pods = owned_pods(self.list("Pod"), self.name, self.phase, self.uid)
         require(len(pods) == 1 and pods[0]["metadata"]["uid"] == self.pod_uid, "fixture_pod_changed")
         pod = self.named_pod(pods[0])
-        pod_binding(job, pod, self.ready, self.phase, self.fixture_node(pod))
+        pod_binding(job, pod, self.ready, self.phase, self.fixture_node(pod), after_ack)
         return job, pod
 
     def named_pod(self, listed, retain=False):
@@ -652,7 +660,7 @@ class Fixture(Native):
         save_private(self.out / "evidence-ack.json", ack)
         self.upload(pod["metadata"]["name"], "/fixture-input/evidence-ack.json", canonical(ack))
         while True:
-            job, current = self.binding()
+            job, current = self.binding(after_ack=True)
             if completed(job, current):
                 break
             time.sleep(.2)

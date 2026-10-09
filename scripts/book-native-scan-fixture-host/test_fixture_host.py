@@ -128,6 +128,37 @@ class HostTests(unittest.TestCase):
             with self.assertRaises(h.Refused):
                 h.pod_binding(job, bad, manifest, PHASE, node())
 
+    def test_post_ack_finalizer_removal_waits_for_native_job_complete(self):
+        manifest, pending, pod = objects()
+        pod["metadata"].pop("finalizers")
+        pod["status"]["phase"] = "Succeeded"
+        pod["status"]["containerStatuses"][0]["state"] = {"terminated": {"exitCode": 0, "reason": "Completed"}}
+        pending["status"] = {"active": 1, "failed": 0}
+        complete = copy.deepcopy(pending)
+        complete["status"] = {"conditions": [{"type": "Complete", "status": "True"}], "active": 0, "failed": 0, "succeeded": 1}
+        fixture = h.Fixture.__new__(h.Fixture)
+        fixture.ready, fixture.phase, fixture.name, fixture.uid, fixture.pod_uid = manifest, PHASE, manifest["metadata"]["name"], JOBUID, PODUID
+        fixture.list = mock.Mock(return_value=inv("Pod", [pod]))
+        fixture.get = mock.Mock(side_effect=[pending, pod, node(), pending, pod, node(), complete, pod, node()])
+        with self.assertRaisesRegex(h.Refused, "native_pod_finalizers"):
+            fixture.binding()
+        job, current = fixture.binding(after_ack=True)
+        self.assertFalse(h.completed(job, current))
+        job, current = fixture.binding(after_ack=True)
+        self.assertTrue(h.completed(job, current))
+        changes = (
+            lambda p: p["status"].update(phase="Running"),
+            lambda p: p["status"]["containerStatuses"][0]["state"]["terminated"].update(exitCode=1),
+            lambda p: p["status"]["containerStatuses"][0].update(restartCount=1),
+            lambda p: p["metadata"].update(finalizers=["injected/finalizer"]),
+            lambda p: p["spec"].update(hostNetwork=True),
+        )
+        for change in changes:
+            bad = copy.deepcopy(pod)
+            change(bad)
+            with self.assertRaises(h.Refused):
+                h.pod_binding(pending, bad, manifest, PHASE, node(), after_ack=True)
+
     def test_union_finds_owner_only_pod_with_missing_phase(self):
         manifest, _, pod = objects()
         pod["metadata"]["labels"].pop(h.LABEL)
