@@ -141,6 +141,17 @@ are retained; only recovered actual same-phase manifest-bound UID custody permit
 positive cleanup after a lost response. Empty inventory without that custody is
 unknown and cannot produce a completed baseline or definitive absence receipt.
 
+The current advisory found two further host boundaries. The log drain thread
+must inherit blocked ALRM/TERM/INT signals when it starts, so process delivery
+cannot run the main Python handler during masked subprocess ownership
+registration. Only thread start and spawn registration are masked; main's prior
+mask is restored immediately. Pre-execute pin/schema refusals retain their
+bounded internal refusal code; only the actual terminal timer reports the
+original total deadline. Finite controls include a live non-main thread during
+process-signal delivery and actual bad-contract/bad-pin entrypoint refusals.
+The sibling frozen baseline host is not adopted by this successor; its archive
+remains unchanged. The two EPUB reader threads own no host request registrations.
+
 The twelve finite host cases passed under `nice -n 19`, serially: eleven in the
 2.107-second initial run and the corrected typed-inventory fixture in 0.008
 seconds. Ten existing source/import/closed-profile cases passed in 0.097
@@ -155,6 +166,14 @@ SHA `faa48f4963a34c07d8b2e5f21515d86fd020e99d2ef3b73864eadfaf12149b0b`,
 binds the five source/doc/test/CI files. The subsequently added receipt citation
 does not change executable source. The old diagnostic packet is still blocked;
 source merge, fresh immutable packet review and root GO remain required.
+
+The subsequent advisory corrections supersede that receipt as final source
+approval. All fourteen finite cases passed serially under `nice -n 19` in
+2.274 seconds, including inherited drain-thread signal custody and actual
+entrypoint bad-schema/bad-pin aggregate reasons. CI invokes the same complete
+suite. The other current copy-window readers have no masked spawn registration
+or owning Python signal handler, so that precise mask-bypass premise does not
+apply to them. No frozen archive or runtime module was changed.
 
 Source PR [#3661](https://github.com/thaynes43/haynes-ops/pull/3661) merged as
 `b5defb2a1ca11a6bbfeb17e8a79903252ac12f87` after exact head

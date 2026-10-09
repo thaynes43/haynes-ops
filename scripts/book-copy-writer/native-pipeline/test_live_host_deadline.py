@@ -197,6 +197,58 @@ class HostDeadlineCases(unittest.TestCase):
             self.assertFalse(value['cleanup_complete'])
             run.cleanup.assert_not_called()
 
+    def test_live_drain_cannot_deliver_signal_during_spawn_registration(self):
+        code, output, errors, directory, elapsed = self.subprocess_case('''
+        r.end=r.start+.50;r.total=r.start+1.25
+        alive=threading.Event();done=threading.Event();masks=[]
+        def drain():
+            masks.append(signal.pthread_sigmask(signal.SIG_BLOCK,set()))
+            alive.set();done.wait(2)
+        previous=signal.pthread_sigmask(signal.SIG_BLOCK,set())
+        r.start_drain(drain);assert alive.wait(.25)
+        assert signal.pthread_sigmask(signal.SIG_BLOCK,set())==previous
+        assert {signal.SIGALRM,signal.SIGTERM,signal.SIGINT}<=masks[0]
+        popen=h.subprocess.Popen;children=[]
+        def interrupted_spawn(*a,**kw):
+            child=popen(*a,**kw);children.append(child)
+            os.kill(os.getpid(),signal.SIGTERM)
+            time.sleep(.03)
+            assert child not in r.requests
+            return child
+        h.subprocess.Popen=interrupted_spawn
+        r.collect=lambda:r.command([sys.executable,'-c','import time;time.sleep(5)'])
+        def cleanup():
+            assert len(children)==1 and children[0].returncode is not None and not r.requests
+            done.set();r.thread.join(.25);assert not r.thread.is_alive()
+            (out/'live-thread-registration-proved').write_text('proved')
+        r.cleanup=cleanup
+        result=r.execute();assert result['refused'] and not result['baseline_complete']
+        signal.setitimer(signal.ITIMER_REAL,0)
+        ''')
+        self.assertEqual(code, 0, errors)
+        self.assertTrue((directory / 'live-thread-registration-proved').exists())
+        self.assertLess(elapsed, 2)
+
+    def test_pre_execute_contract_and_pin_refusals_keep_internal_code(self):
+        for bad_pin, expected in ((False, 'launch_contract_schema'), (True, 'reviewed_helper_pin')):
+            with self.subTest(code=expected):
+                code, output, errors, directory, elapsed = self.subprocess_case(f'''
+                keys=['output_dir','phase_token','closed_manifest','helper','sender','receiver','native_verifier','collector','ack_receiver','selected_scope']
+                contract={{k:{{'path':'/unused','sha256':'0'*64}} for k in keys}}
+                contract.update(schema={1 if bad_pin else 2},output_dir=str(out/'unused-output'),phase_token='a'*32)
+                path=out/'bad-contract.json';path.write_text(json.dumps(contract))
+                sys.argv=['host','--contract',str(path),'--root-authorization',h.GO]
+                h.main()
+                ''')
+                self.assertEqual(code, 2, errors)
+                events = [json.loads(line) for line in output.splitlines()]
+                self.assertEqual(len(events), 1)
+                self.assertEqual(events[0]['code'], expected)
+                self.assertEqual(events[0]['error_class'], 'Refused')
+                self.assertNotIn(b'original_host_total_deadline', output)
+                self.assertFalse((directory / 'unused-output' / 'actual-receipt.json').exists())
+                self.assertLess(elapsed, 2)
+
     def cleanup_fixture(self, directory):
         run = host.Run.__new__(host.Run)
         run.start, run.total = time.time(), time.time() + 2

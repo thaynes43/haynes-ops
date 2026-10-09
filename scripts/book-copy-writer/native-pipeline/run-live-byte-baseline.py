@@ -45,7 +45,7 @@ def best_effort_event(value):
    try:os.set_blocking(fd,blocking)
    except OSError:pass
 
-def hard_exit(requests=()):
+def hard_exit(requests=(),code='original_host_total_deadline',details=None):
  # Never join, wait or fsync at the original terminal deadline. Unknown remains
  # unknown; retained earlier UID custody supports independent native cleanup.
  try:
@@ -53,7 +53,9 @@ def hard_exit(requests=()):
    try:
     if child.poll() is None:os.killpg(child.pid,signal.SIGKILL)
    except (ProcessLookupError,OSError):pass
-  best_effort_event({'type':'live-host-refused','code':'original_host_total_deadline','completion_unknown':True})
+  event={'type':'live-host-refused','code':code,'completion_unknown':True}
+  if details is not None:event.update(details)
+  best_effort_event(event)
  finally:os._exit(2)
 
 def completed(ready,job,pod,native,helper):
@@ -117,6 +119,13 @@ class Run:
   previous=signal.pthread_sigmask(signal.SIG_BLOCK,{signal.SIGALRM,signal.SIGTERM,signal.SIGINT})
   try:
    child=subprocess.Popen(args,start_new_session=True,**kwargs);self.requests.add(child);return child
+  finally:signal.pthread_sigmask(signal.SIG_SETMASK,previous)
+ def start_drain(self,target):
+  # Python handlers run on main even when the OS delivers to another thread.
+  # Inherit this mask so the drain cannot bypass launch's registration mask.
+  previous=signal.pthread_sigmask(signal.SIG_BLOCK,{signal.SIGALRM,signal.SIGTERM,signal.SIGINT})
+  try:
+   self.thread=threading.Thread(target=target,daemon=True);self.thread.start()
   finally:signal.pthread_sigmask(signal.SIG_SETMASK,previous)
  def retire_process(self,child,close=True):
   if child.poll() is None:
@@ -224,7 +233,7 @@ class Run:
          with self.lock:self.events.append(event)
      require(not pending and self.stream.wait(timeout=1)==0,'log_transport_refused')
    except BaseException:self.log_error='bounded_live_log_refused'
-  self.thread=threading.Thread(target=drain,daemon=True);self.thread.start()
+  self.start_drain(drain)
  def collect(self):
   spec=self.ready;require(spec['metadata']['name']==NAME and spec['metadata']['namespace']==NS and spec['metadata']['labels'][LABEL]==self.phase and spec['spec']['template']['metadata']['labels'][LABEL]==self.phase,'closed_manifest_identity')
   c=spec['spec']['template']['spec']['containers'][0];env={e['name']:e for e in c['env']};require(c['image']==IMAGE and env['COPY_BASELINE_PHASE_READY'].get('value')=='0' and env['COPY_BASELINE_DEADLINE_EPOCH'].get('value')=='0' and env['COPY_BASELINE_MODULE_SHA256_JSON'].get('value')=='{}' and spec['spec']['activeDeadlineSeconds']==180 and spec['spec']['backoffLimit']==0,'closed_live_profile')
@@ -321,5 +330,6 @@ def main():
   signal.setitimer(signal.ITIMER_REAL,200)
   c=decode(Path(a.contract).read_bytes());require(set(c)=={'schema','output_dir','phase_token','closed_manifest','helper','sender','receiver','native_verifier','collector','ack_receiver','selected_scope'} and c['schema']==1,'launch_contract_schema');active=Run(c,started);result=active.execute();active.remaining(200);best_effort_event({k:result.get(k) for k in ('baseline_complete','refused','job_uid','pod_uid','job_and_all_owned_pods_absent','actual_seconds')});active.remaining(200);os._exit(0 if result.get('baseline_complete') and result.get('job_and_all_owned_pods_absent') else 2)
  except BaseException as error:
-  best_effort_event({'type':'live-host-refused','code':'host_finalization_unproved','error_class':type(error).__name__[:80]});hard_exit(active.requests if active is not None else ())
+  code=str(error) if isinstance(error,Refused) and re.fullmatch('[a-z0-9_]{1,80}',str(error)) else 'host_finalization_unproved'
+  hard_exit(active.requests if active is not None else (),code,{'error_class':type(error).__name__[:80]})
 if __name__=='__main__':main()

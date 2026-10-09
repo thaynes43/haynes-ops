@@ -64,6 +64,11 @@ a bounded nonblocking aggregate refusal. It cannot claim a valid completion or
 absence; earlier actual UID custody remains available for independent cleanup.
 A success receipt requires publication checks before and after fsync plus an
 actual exit-zero host outcome. Final stdout cannot introduce an unbounded wait.
+The log drain starts with ALRM/TERM/INT blocked in its inherited thread mask;
+main's prior mask is restored immediately. This keeps a process-wide signal from
+bypassing the brief main-thread subprocess-registration mask. No I/O is masked.
+Actual terminal expiry reports the original total deadline; earlier internal
+pin/schema refusals preserve their bounded refusal code in one aggregate event.
 The host retains complete initial inventories and immutable CREATE intent before
 creation. A lost CREATE response plus an empty inventory remains unknown after
 transport retirement; positive cleanup requires recovered actual same-phase,
