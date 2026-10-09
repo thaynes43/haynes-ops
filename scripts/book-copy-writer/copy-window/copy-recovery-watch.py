@@ -127,13 +127,18 @@ class Watchdog:
         self.run(['git','-C',self.args.repo_dir,'fetch','origin','main:refs/remotes/origin/main'],timeout=10 if self.cached else 45)
         return self.run(['git','-C',self.args.repo_dir,'rev-parse','origin/main'],timeout=5 if self.cached else 45).strip()
 
+    def bind_converter_generator(self,goal,sha):
+        goal['converter_generator']=cache.converter_generator(
+            {path:contract.git(self.args.repo_dir,'show',sha+':'+path) for path in cache.CONVERTER_INPUTS},sha)
+        return goal
+
     def desired_restored(self,sha):
         # Read immutable YAML from the fetched canonical clone; never checkout or push main.
         import yaml
         self.run(['git','-C',self.args.repo_dir,'fetch','origin','main:refs/remotes/origin/main'])
         normal=contract.blobs(self.args.repo_dir,sha)
         if self.cached:
-            self.normal_goal=cache.normal_goal(normal)
+            self.normal_goal=self.bind_converter_generator(cache.normal_goal(normal),sha)
             return
         for path in contract.PATHS:
             contract.require(contract.sha(normal[path])==self.contract['manifests'][path]['normal_sha256'],'exact normal main manifest bytes differ')
@@ -233,21 +238,59 @@ class Watchdog:
             ('frontend','haynesnetwork-'+n) for n in contract.BOOK_CONTROLLERS]:
             cron=self.kube('cronjob',name,ns)
             if cron['spec'].get('suspend') is not False:return False
-            if name=='lazylibrarian-epub-convert' and not cache.includes(cron['spec'].get('jobTemplate'),goal['converter_job_template']):return False
+            if name=='lazylibrarian-epub-convert' and not self.converter_normal(cron['spec'].get('jobTemplate')):return False
             if ns=='frontend' and [c['image'] for c in cron['spec']['jobTemplate']['spec']['template']['spec']['containers']]!=goal['cron_images'][name]:return False
         for (ns,name),desired in goal['deployments'].items():
             if not self.deployment_normal(name,ns,desired['replicas']):return False
         return True
+
+    def converter_normal(self,actual):
+        # Current/final Normal keeps exact current main. Only held-original
+        # Normal may prove a later applied descendant with identical inputs.
+        try:
+            goal=self.normal_goal;index=cache.converter_reference(goal['converter_job_template'])
+            cm_name=actual['spec']['template']['spec']['volumes'][index]['configMap']['name']
+            ks=self.kube('kustomization','lazylibrarian','downloads')
+            revision=ks.get('status',{}).get('lastAppliedRevision','')
+            match=re.fullmatch('main@sha1:([0-9a-f]{40})',revision)
+            if not match:return False
+            applied=match.group(1);main=self.current_main();original=goal['converter_generator']
+            held=getattr(self,'held_original_converter_goal',False)
+            if not held and (applied!=original['revision'] or main!=original['revision']):return False
+            contract.git(self.args.repo_dir,'merge-base','--is-ancestor',applied,main)
+            if held:contract.git(self.args.repo_dir,'merge-base','--is-ancestor',original['revision'],applied)
+            bound=self.bind_converter_generator(dict(goal),applied)
+            observed=bound['converter_generator']
+            if observed['input_sha256']!=original['input_sha256'] or observed['data']!=original['data']:return False
+            cm=self.kube('configmap',cm_name,'downloads')
+            expected,proof=cache.rendered_converter_template(bound,actual,ks,cm)
+            if not cache.job_template_equal(actual,expected):return False
+            again=self.kube('configmap',cm_name,'downloads')
+            ks_again=self.kube('kustomization','lazylibrarian','downloads')
+            cache.identity(again,'ConfigMap',cm_name,'downloads')
+            cache.identity(ks_again,'Kustomization','lazylibrarian','downloads')
+            if any(before['metadata'][key]!=after['metadata'][key] for before,after in ((cm,again),(ks,ks_again))
+                   for key in ('uid','resourceVersion')):return False
+            custody=self.state.setdefault('normal_converter_custody',{})
+            owned=custody.get('downloads/'+cm_name)
+            if owned is not None and owned['uid']!=proof['uid']:return False
+            proof.update(goal_revision=original['revision'],reachable_main_revision=main)
+            custody['downloads/'+cm_name]=proof;self.save();return True
+        except (ValueError,KeyError,IndexError,TypeError,AttributeError,subprocess.CalledProcessError):
+            return False  # Unhealthy/unknown is never a successful Normal proof.
 
     def runtime_still_normal(self):
         # Held apps can still be on the original Normal version while newer
         # reviewed Normal intent waits on remote main. Do not demand its upgrade
         # before releasing holds needed to apply that upgrade.
         current=self.normal_goal
+        held=getattr(self,'held_original_converter_goal',False)
         try:
-            self.normal_goal=cache.normal_goal(contract.blobs(self.args.repo_dir,self.state['pre_pause_main_sha']))
+            baseline=self.state['pre_pause_main_sha']
+            self.normal_goal=self.bind_converter_generator(cache.normal_goal(contract.blobs(self.args.repo_dir,baseline)),baseline)
+            self.held_original_converter_goal=True
             return self.runtime_current_normal()
-        finally:self.normal_goal=current
+        finally:self.normal_goal=current;self.held_original_converter_goal=held
 
     def stop_actuated(self):
         # This chooses restoration ordering only, never a new COPY clock/GO.

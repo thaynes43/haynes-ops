@@ -30,8 +30,29 @@ seal=importlib.util.module_from_spec(seal_spec);seal_spec.loader.exec_module(sea
 
 
 def native(kind, name, ns='flux-system'):
-    return dict(kind=kind, apiVersion={'GitRepository':'source.toolkit.fluxcd.io/v1','Kustomization':'kustomize.toolkit.fluxcd.io/v1','Pod':'v1'}[kind],
+    return dict(kind=kind, apiVersion={'GitRepository':'source.toolkit.fluxcd.io/v1','Kustomization':'kustomize.toolkit.fluxcd.io/v1','Pod':'v1','ConfigMap':'v1'}[kind],
         metadata=dict(name=name,namespace=ns,uid=ns+'/'+name,resourceVersion='1',generation=1,annotations={}),spec={},status={})
+
+
+def converter_inputs():
+    doc=dict(apiVersion='kustomize.config.k8s.io/v1beta1',kind='Kustomization',
+        configMapGenerator=[dict(name=cache.CONVERTER_NAME,files=[name+'=./epub-convert/'+name for name in cache.CONVERTER_FILES])],
+        generatorOptions={'annotations':{'kustomize.toolkit.fluxcd.io/substitute':'disabled'}})
+    return {cache.CONVERTER_INPUTS[0]:wc.yaml.safe_dump(doc).encode(),
+        **{path:('# public finite '+name+'\n').encode() for name,path in cache.CONVERTER_FILES.items()}}
+
+
+def converter_fixture():
+    goal=cache.normal_goal(legacy.NORMAL);goal['converter_generator']=cache.converter_generator(converter_inputs(),NORMAL_SHA)
+    converter=wc.yaml.safe_load(legacy.NORMAL[wc.PATHS[0]]);index=cache.converter_reference(goal['converter_job_template'])
+    cm_name='lazylibrarian-epub-convert-finite'
+    converter['spec']['jobTemplate']['spec']['template']['spec']['volumes'][index]['configMap']['name']=cm_name
+    cm=native('ConfigMap',cm_name,'downloads');cm['data']=copy.deepcopy(goal['converter_generator']['data'])
+    ks=native('Kustomization','lazylibrarian','downloads');ks['spec']=dict(path='./'+cache.CONVERTER_APP,targetNamespace='downloads',
+        sourceRef=dict(kind='GitRepository',name='haynes-ops',namespace='flux-system'))
+    ks['status']=dict(lastAppliedRevision='main@sha1:'+NORMAL_SHA,conditions=[dict(type='Ready',status='True')],
+        inventory=dict(entries=[dict(id='downloads_'+cm_name+'__ConfigMap',v='v1')]))
+    return goal,converter,cm,ks
 
 
 def archive(blobs=None):
@@ -76,6 +97,12 @@ def fixture():
 
 
 class CachedSourceCases(unittest.TestCase):
+    def configure_converter_fixture(self,w,main=NORMAL_SHA):
+        w.args=types.SimpleNamespace(repo_dir='public-fixture');w.current_main=lambda:main
+        def git(repo,*argv):
+            if argv[0]=='merge-base':return b''
+            return converter_inputs()[argv[1].split(':',1)[1]]
+        patch=mock.patch.object(wc,'git',side_effect=git);patch.start();self.addCleanup(patch.stop)
     def test_exact_source_and_four_suspend_tokens_without_generation_advance(self):
         r,s,p,parents,holds,raw=fixture()
         cache.validate(r,s,p,parents,holds,raw,legacy.CONTRACT,PHASE)
@@ -352,9 +379,12 @@ class CachedSourceCases(unittest.TestCase):
             self.assertEqual(w.events,['writers-pg-absent']);self.assertTrue(w.stop.exists());self.assertFalse(w.state['complete'])
 
     def test_actual_converter_strip_or_ransom_hold_drift_prevents_terminal_normal(self):
-        w=object.__new__(legacy.watch.Watchdog);w.cached=True;w.normal_goal=cache.normal_goal(legacy.NORMAL)
-        converter=wc.yaml.safe_load(legacy.NORMAL[wc.PATHS[0]])
+        w=object.__new__(legacy.watch.Watchdog);w.cached=True
+        w.normal_goal,converter,cm,ks=converter_fixture();w.state={};w.save=lambda:None
+        self.configure_converter_fixture(w)
         def get(kind,name,ns):
+            if kind=='configmap':return cm
+            if kind=='kustomization':return ks
             if kind=='helmrelease':return dict(metadata={'generation':1},spec={'values':w.normal_goal['helm_values'][(ns,name)]},status={'observedGeneration':1,'conditions':[dict(type='Ready',status='True')]})
             if name=='lazylibrarian-epub-convert':return converter
             images=w.normal_goal['cron_images'].get(name,[])
@@ -366,6 +396,196 @@ class CachedSourceCases(unittest.TestCase):
         self.assertFalse(w.runtime_current_normal());strip['value']='0'
         hold=next(e for e in env if e['name']=='LIBRARY_HOLD_FOLDERS_JSON');hold['value']='[]'
         self.assertFalse(w.runtime_current_normal())
+
+    def test_generated_converter_name_requires_complete_same_revision_data(self):
+        goal,converter,cm,ks=converter_fixture()
+        before=copy.deepcopy(goal['converter_job_template'])
+        expected,proof=cache.rendered_converter_template(goal,converter['spec']['jobTemplate'],ks,cm)
+        self.assertTrue(cache.job_template_equal(converter['spec']['jobTemplate'],expected))
+        index=cache.converter_reference(before)
+        before['spec']['template']['spec']['volumes'][index]['configMap']['name']=cm['metadata']['name']
+        self.assertEqual(expected,before);self.assertEqual(proof['uid'],cm['metadata']['uid'])
+        self.assertEqual(set(proof['input_sha256']),set(cache.CONVERTER_INPUTS))
+        self.assertEqual(wc.PATHS,tuple(legacy.NORMAL))
+        converter['spec']['jobTemplate']['spec']['activeDeadlineSeconds']+=1
+        self.assertFalse(cache.job_template_equal(converter['spec']['jobTemplate'],expected))
+
+    def test_job_template_allows_only_exact_omitted_api_defaults(self):
+        goal,converter,cm,ks=converter_fixture();actual=converter['spec']['jobTemplate']
+        expected,_=cache.rendered_converter_template(goal,actual,ks,cm)
+        actual['metadata']={};pod=actual['spec']['template']['spec']
+        pod.update(dnsPolicy='ClusterFirst',schedulerName='default-scheduler',terminationGracePeriodSeconds=30)
+        pod['containers'][0].update(imagePullPolicy='IfNotPresent',terminationMessagePath='/dev/termination-log',terminationMessagePolicy='File')
+        pod['volumes'][0]['configMap']['defaultMode']=420
+        self.assertTrue(cache.job_template_equal(actual,expected))
+        for path,bad in ((('metadata',),{'extra':'unapproved'}),
+            (('spec','template','spec','dnsPolicy'),'Default'),
+            (('spec','template','spec','schedulerName'),'unapproved'),
+            (('spec','template','spec','terminationGracePeriodSeconds'),30.0),
+            (('spec','template','spec','containers',0,'imagePullPolicy'),'Always'),
+            (('spec','template','spec','containers',0,'terminationMessagePath'),'/tmp/extra'),
+            (('spec','template','spec','containers',0,'terminationMessagePolicy'),'FallbackToLogsOnError'),
+            (('spec','template','spec','volumes',0,'configMap','defaultMode'),420.0)):
+            with self.subTest(path=path):
+                changed=copy.deepcopy(actual);row=changed
+                for key in path[:-1]:row=row[key]
+                row[path[-1]]=bad;self.assertFalse(cache.job_template_equal(changed,expected))
+
+    def test_job_template_refuses_added_initcontainers_args_envfrom_and_unknown_fields(self):
+        goal,converter,cm,ks=converter_fixture();actual=converter['spec']['jobTemplate']
+        expected,_=cache.rendered_converter_template(goal,actual,ks,cm)
+        for target,key,value in (('pod','initContainers',[dict(name='extra',image='unapproved')]),
+                                ('container','args',['unapproved']),('container','envFrom',[dict(configMapRef=dict(name='unapproved'))]),
+                                ('pod','automountServiceAccountToken',True)):
+            with self.subTest(key=key):
+                changed=copy.deepcopy(actual);pod=changed['spec']['template']['spec']
+                (pod if target=='pod' else pod['containers'][0])[key]=value
+                self.assertFalse(cache.job_template_equal(changed,expected))
+
+    def test_converter_generator_refuses_unapproved_inputs_settings_and_keys(self):
+        for change in ('missing-input','extra-input','options','wrong-file','duplicate-file','extra-key','global-transform'):
+            with self.subTest(change=change):
+                inputs=converter_inputs();doc=wc.yaml.safe_load(inputs[cache.CONVERTER_INPUTS[0]])
+                if change=='missing-input':inputs.pop(cache.CONVERTER_INPUTS[1])
+                elif change=='extra-input':inputs['unapproved.py']=b'public'
+                elif change=='options':doc['configMapGenerator'][0]['options']={'disableNameSuffixHash':True}
+                elif change=='wrong-file':doc['configMapGenerator'][0]['files'][0]='other.py=./other.py'
+                elif change=='duplicate-file':doc['configMapGenerator'][0]['files'][1]=doc['configMapGenerator'][0]['files'][0]
+                elif change=='extra-key':doc['configMapGenerator'][0]['literals']=['extra=1']
+                else:doc['namePrefix']='unapproved-'
+                inputs[cache.CONVERTER_INPUTS[0]]=wc.yaml.safe_dump(doc).encode()
+                with self.assertRaises(ValueError):cache.converter_generator(inputs,NORMAL_SHA)
+
+    def test_converter_refuses_wrong_inventory_name_uid_or_complete_data(self):
+        for change in ('inventory','name','uid','namespace','script','extra-data','binary-data'):
+            with self.subTest(change=change):
+                goal,converter,cm,ks=converter_fixture()
+                if change=='inventory':ks['status']['inventory']['entries']=[]
+                elif change=='name':cm['metadata']['name']='another-generated-name'
+                elif change=='uid':cm['metadata']['uid']=''
+                elif change=='namespace':cm['metadata']['namespace']='media'
+                elif change=='script':cm['data']['epub_copies.py']+='changed'
+                elif change=='extra-data':cm['data']['extra.py']='unexpected'
+                else:cm['binaryData']={'extra':'AA=='}
+                with self.assertRaises(ValueError):cache.rendered_converter_template(goal,converter['spec']['jobTemplate'],ks,cm)
+
+    def test_converter_refuses_current_revision_and_flux_binding_drift(self):
+        for change in ('source','path','namespace','revision','ready','reconciling'):
+            with self.subTest(change=change):
+                goal,converter,cm,ks=converter_fixture()
+                if change=='source':ks['spec']['sourceRef']['name']='other'
+                elif change=='path':ks['spec']['path']='./other'
+                elif change=='namespace':ks['spec']['targetNamespace']='media'
+                elif change=='revision':ks['status']['lastAppliedRevision']='main@sha1:'+STOP_SHA
+                elif change=='ready':ks['status']['conditions'][0]['status']='False'
+                else:ks['status']['conditions'].append(dict(type='Reconciling',status='True'))
+                with self.assertRaises(ValueError):cache.rendered_converter_template(goal,converter['spec']['jobTemplate'],ks,cm)
+
+    def test_converter_bracket_rejects_replacement_rv_and_cold_uid_drift(self):
+        for change in ('cm-uid','cm-rv','ks-uid','ks-rv','cold-uid'):
+            with self.subTest(change=change):
+                w=object.__new__(legacy.watch.Watchdog);w.cached=True;w.normal_goal,converter,cm,ks=converter_fixture()
+                w.state={};w.save=lambda:None;counts={'configmap':0,'kustomization':0}
+                self.configure_converter_fixture(w)
+                if change=='cold-uid':w.state={'normal_converter_custody':{'downloads/'+cm['metadata']['name']:{'uid':'old-owned-uid'}}}
+                def get(kind,name,ns):
+                    if kind in counts:
+                        counts[kind]+=1;row=copy.deepcopy(cm if kind=='configmap' else ks)
+                        if counts[kind]==2 and change.startswith('cm-' if kind=='configmap' else 'ks-'):
+                            row['metadata']['uid' if change.endswith('uid') else 'resourceVersion']='changed'
+                        return row
+                    if kind=='helmrelease':return dict(metadata={'generation':1},spec={'values':w.normal_goal['helm_values'][(ns,name)]},status={'observedGeneration':1,'conditions':[dict(type='Ready',status='True')]})
+                    if name=='lazylibrarian-epub-convert':return converter
+                    return dict(spec={'suspend':False,'jobTemplate':{'spec':{'template':{'spec':{'containers':[dict(image=i) for i in w.normal_goal['cron_images'].get(name,[])]}}}}})
+                w.kube=get;w.deployment_normal=lambda *_:True
+                self.assertFalse(w.runtime_current_normal())
+                if change!='cold-uid':self.assertNotIn('downloads/'+cm['metadata']['name'],w.state.get('normal_converter_custody',{}))
+
+    def test_converter_auxiliary_reads_use_same_sha_and_keep_six_archive_paths(self):
+        w=object.__new__(legacy.watch.Watchdog);w.args=types.SimpleNamespace(repo_dir='public-fixture')
+        inputs=converter_inputs();calls=[]
+        def get(repo,*argv):
+            calls.append((repo,argv));self.assertEqual(argv[0],'show');self.assertTrue(argv[1].startswith(NORMAL_SHA+':'))
+            return inputs[argv[1].split(':',1)[1]]
+        with mock.patch.object(wc,'git',side_effect=get):goal=w.bind_converter_generator(cache.normal_goal(legacy.NORMAL),NORMAL_SHA)
+        self.assertEqual(len(calls),4);self.assertEqual(goal['converter_generator']['revision'],NORMAL_SHA)
+        source=native('GitRepository','haynes-ops');raw=archive({**legacy.NORMAL,**inputs})
+        source['status']['artifact']=dict(revision='main@sha1:'+NORMAL_SHA,size=len(raw),digest='sha256:'+wc.sha(raw))
+        self.assertEqual(cache.artifact_contents(source,raw,NORMAL_SHA),legacy.NORMAL)
+
+    def test_held_original_normal_uses_original_generator_without_adopting_new_main(self):
+        w=object.__new__(legacy.watch.Watchdog);w.cached=True;old,converter,cm,ks=converter_fixture()
+        current=copy.deepcopy(old);current['converter_generator']['revision']='c'*40
+        current['converter_generator']['data']['epub_convert.py']+='new reviewed script\n'
+        w.normal_goal=current;w.state={'pre_pause_main_sha':NORMAL_SHA};w.args=types.SimpleNamespace(repo_dir='public-fixture');w.save=lambda:None
+        self.configure_converter_fixture(w,main='c'*40)
+        def get(kind,name,ns):
+            if kind=='configmap':return cm
+            if kind=='kustomization':return ks
+            if kind=='helmrelease':return dict(metadata={'generation':1},spec={'values':old['helm_values'][(ns,name)]},status={'observedGeneration':1,'conditions':[dict(type='Ready',status='True')]})
+            if name=='lazylibrarian-epub-convert':return converter
+            return dict(spec={'suspend':False,'jobTemplate':{'spec':{'template':{'spec':{'containers':[dict(image=i) for i in old['cron_images'].get(name,[])]}}}}})
+        w.kube=get;w.deployment_normal=lambda *_:True
+        self.assertFalse(w.runtime_current_normal())
+        def blob(repo,*argv):
+            if argv[0]=='merge-base':return b''
+            self.assertEqual(argv[0],'show');self.assertTrue(argv[1].startswith(NORMAL_SHA+':'))
+            return converter_inputs()[argv[1].split(':',1)[1]]
+        with mock.patch.object(wc,'blobs',return_value=legacy.NORMAL),mock.patch.object(wc,'git',side_effect=blob):
+            self.assertTrue(w.runtime_still_normal())
+        self.assertIs(w.normal_goal,current)
+        self.assertFalse(w.held_original_converter_goal)
+
+    def test_applied_revision_accepts_only_reachable_byte_identical_auxiliary_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo=Path(directory);inputs=converter_inputs()
+            def git(*argv):return subprocess.check_output(['git','-C',str(repo),*argv],stderr=subprocess.DEVNULL).decode().strip()
+            git('init','-q','-b','main');git('config','user.name','Finite Fixture');git('config','user.email','fixture@example.invalid')
+            for path,raw in inputs.items():
+                target=repo/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(raw)
+            git('add','.');git('commit','-qm','original');base=git('rev-parse','HEAD')
+            (repo/'unrelated.txt').write_text('public finite unrelated main change\n');git('add','.');git('commit','-qm','unrelated');later=git('rev-parse','HEAD')
+            goal,converter,cm,ks=converter_fixture();goal['converter_generator']=cache.converter_generator(inputs,base)
+            ks['status']['lastAppliedRevision']='main@sha1:'+later
+            w=object.__new__(legacy.watch.Watchdog);w.args=types.SimpleNamespace(repo_dir=str(repo));w.normal_goal=goal
+            w.state={'pre_pause_main_sha':base};w.save=lambda:None;w.current_main=lambda:later
+            w.kube=lambda kind,*_:copy.deepcopy(ks if kind=='kustomization' else cm)
+            w.runtime_current_normal=lambda:w.converter_normal(converter['spec']['jobTemplate'])
+            self.assertFalse(w.converter_normal(converter['spec']['jobTemplate']))  # Current/final remains exact.
+            with mock.patch.object(wc,'blobs',return_value=legacy.NORMAL):
+                self.assertTrue(w.runtime_still_normal())
+                proof=w.state['normal_converter_custody']['downloads/'+cm['metadata']['name']]
+                self.assertEqual((proof['goal_revision'],proof['revision'],proof['reachable_main_revision']),(base,later,later))
+                self.assertFalse(w.held_original_converter_goal)
+                # A lagging current/final revision stays refused, even with equal data.
+                goal['converter_generator']=cache.converter_generator(inputs,later);ks['status']['lastAppliedRevision']='main@sha1:'+base
+                self.assertFalse(w.converter_normal(converter['spec']['jobTemplate']))
+                w.state['pre_pause_main_sha']=later
+                self.assertFalse(w.runtime_still_normal())  # Applied is not a descendant of this baseline.
+                w.state['pre_pause_main_sha']=base
+                # Even comment-only generator drift changes one of the four blobs.
+                target=repo/cache.CONVERTER_INPUTS[0];target.write_bytes(target.read_bytes()+b'\n# changed auxiliary input\n')
+                git('add','.');git('commit','-qm','generator drift');changed=git('rev-parse','HEAD')
+                w.current_main=lambda:changed;ks['status']['lastAppliedRevision']='main@sha1:'+changed
+                self.assertFalse(w.runtime_still_normal())
+                git('checkout','-q','--orphan','foreign');git('commit','-qm','unrelated root');foreign=git('rev-parse','HEAD')
+                w.current_main=lambda:later;ks['status']['lastAppliedRevision']='main@sha1:'+foreign
+                self.assertFalse(w.runtime_still_normal())
+
+    def test_converter_malformed_data_is_false_and_service_ceiling_propagates(self):
+        w=object.__new__(legacy.watch.Watchdog);w.normal_goal,converter,cm,ks=converter_fixture();w.state={};w.save=lambda:None
+        self.configure_converter_fixture(w);w.kube=lambda kind,*_:copy.deepcopy(ks if kind=='kustomization' else cm)
+        for broken in (None,{},dict(spec={'template':{'spec':{'volumes':[]}}})):
+            with self.subTest(broken=broken):self.assertFalse(w.converter_normal(broken))
+        for bad in ('feature@sha1:'+NORMAL_SHA,'main@sha1:not-a-sha',None):
+            ks['status']['lastAppliedRevision']=bad;self.assertFalse(w.converter_normal(converter['spec']['jobTemplate']))
+        ks['status']['lastAppliedRevision']='main@sha1:'+NORMAL_SHA
+        with mock.patch.object(w,'kube',side_effect=lambda kind,*_:dict(status=None) if kind=='kustomization' else copy.deepcopy(cm)):
+            self.assertFalse(w.converter_normal(converter['spec']['jobTemplate']))
+        with mock.patch.object(w,'kube',side_effect=lambda kind,*_:copy.deepcopy(ks) if kind=='kustomization' else None):
+            self.assertFalse(w.converter_normal(converter['spec']['jobTemplate']))
+        with mock.patch.object(w,'current_main',side_effect=legacy.watch.ServiceCeiling()):
+            with self.assertRaises(legacy.watch.ServiceCeiling):w.converter_normal(converter['spec']['jobTemplate'])
 
     def test_accidental_staging_stop_revokes_before_open_inverse_queries_and_retains_holds(self):
         with tempfile.TemporaryDirectory() as directory:

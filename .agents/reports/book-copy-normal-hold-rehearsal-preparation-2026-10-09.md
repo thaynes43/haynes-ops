@@ -188,3 +188,91 @@ Validation will use finite fake-native, fake-clock and private local Git fixture
 under `nice -n 19`, serially. No stress, busy loops, wide test runs, native holds,
 Jobs or library writes are permitted during preparation. Runtime proof remains
 missing until the exact closed rehearsal is separately approved and run.
+
+The first exact Normal-only watcher launch on 2026-10-09 at 21:52:01Z refused
+before readiness (exit 2). Packet `5ff97f17` and its initial state are preserved;
+no exercise, hold, producer or data write occurred. Private refusal receipt
+`f6657dd08c183a553bea8d6676d66d369b3c1fc36fe46d2f1638eddeb054c519`
+records fresh unsuspended Source and all six Kustomizations. The runtime check
+compared the raw converter ConfigMap reference `lazylibrarian-epub-convert`
+against Kustomize's generated `lazylibrarian-epub-convert-6hf7f7477c`; this was
+the sole JobTemplate mismatch. Four HelmRelease values/Ready/generation checks,
+four Deployment/Pod/image checks and the six active CronJob checks passed.
+The Source artifact was still at `0555d861` while remote main was `6f255ce4`.
+The attempt remains refused and provides no hold/drain/recovery runtime proof.
+
+The ratified source correction adds four auxiliary inputs from the same immutable
+current Git SHA: the LL app Kustomization and all three converter generator files.
+It preserves the canonical six service-goal paths. Before accepting the generated
+reference, require the exact current-revision Ready LL Flux inventory and its
+source/path/target namespace, then bind the actual downloads ConfigMap name and
+UID plus every data key and byte to that complete generator. Recheck its UID/RV
+after the JobTemplate comparison. Only that proved name is substituted in a copy
+of the expected template; all remaining declared fields retain their checks.
+Unexpected generator settings, file/key/data changes, binary data, inventory,
+revision or identity drift refuse. A source-fixed attempt requires a new unused
+packet, current Source convergence, peer review and separate runtime authorization.
+The four auxiliary blobs are read by immutable SHA for both current Normal and
+the held original Normal goal. They do not enter the six-manifest archive/Stop
+contract. Actual CM UID custody survives a cold reload; UID/RV of both CM and LL
+Kustomization must remain stable across each proof. Suspension does not need an
+invented observed-generation advance: held ownership/drain remains the existing
+separate proof, while this check requires the original applied revision and Ready
+inventory. Kustomize's generated content suffix and reference rewrite are documented
+by [Kubernetes](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/);
+Flux's [inventory schema](https://github.com/fluxcd/kustomize-controller/blob/main/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml)
+defines the exact namespace/name/group/kind reference used here.
+
+Eight focused finite methods passed serially under `nice -n 19` (seven in 1.358s,
+then the added held-original/current-main counterexample in 0.131s). They cover
+the real raw/generated reference mismatch, every remaining declared template
+field, complete generator closure, inventory/revision/source drift, all script
+keys/data/binary data, bracketed UID/RV replacement and cold UID custody, and
+the unchanged six-file archive contract. The source-only same-SHA probe accepted
+all four actual Git inputs at `6f255ce4` with three data keys and 134,768 script
+bytes. No candidate runtime API write, hold, producer or rehearsal retry occurred.
+Current-head CI, actual advisory disposition and independent peer review still
+gate merge; runtime hold/drain/recovery assurance remains unproved.
+
+Independent peer review of `1b640bcc` passed the CM binding and seven new finite
+methods, but found that the preexisting subset comparator also accepted extra
+JobTemplate fields such as an added initContainer. That source is superseded by
+the strict comparator correction: strip only eight omitted fields when their
+values and types equal the actual known defaults (empty JobTemplate metadata,
+IfNotPresent, /dev/termination-log, File, ClusterFirst, default-scheduler, integer
+30s grace and integer 420 ConfigMap mode), then require typed equality in both
+directions. Explicitly declared values always remain exact. Added initContainers,
+args, envFrom, unknown fields or changed/default-type values refuse. Three
+necessary focused controls passed in 0.194s serially under `nice -n 19`, including
+the existing actual strip/hold protection case. The only subset JobTemplate
+comparison in the shared watcher was the converter; other CronJob image/suspend
+checks and the six service-goal paths remain unchanged.
+
+The actual `b82c792a` advisory (`6090032193`, `6090093642`) reported HIGH
+`4234924494` and MEDIUM `4234924813`; green advisory execution was not a clean
+review. An unrelated later commit applied before a hold can otherwise strand
+the held-original cancellation proof. The ratified successor permits that
+case only inside `runtime_still_normal`: parse the exact applied main SHA,
+prove it is a descendant of the original baseline and reachable from freshly
+fetched main, and read all four auxiliary blobs at that applied SHA. All four
+hashes and all three data values must equal the original goal. Current/final
+Normal and arming still require exact current main; deliberate arming refusal
+while Flux lags remains a preflight gate, addressed by normal convergence before
+the fresh attempt. Inventory, complete data, UID/RV and the remaining service
+fields are still checked. The held-only flag is restored in `finally`, including
+failure. Malformed converter shapes and typed proof failures return unhealthy;
+the owning `ServiceCeiling` control and other `BaseException`s propagate.
+
+Five necessary successor methods passed serially under `nice -n 19` in 1.057s.
+A real finite Git fixture proves unrelated descendant acceptance only for the
+held original, current/final lag refusal, changed auxiliary content refusal,
+older/non-descendant and foreign-root refusal. Malformed volume/revision cases
+return false, while the actual service-ceiling exception propagates. Existing
+strip/hold, bracketed UID/RV/cold custody and original/current-goal controls also
+pass. No cluster write, hold, producer or rehearsal retry was performed.
+The successor peer review caught two additional malformed shapes: null KS status
+and a null ConfigMap object raise `AttributeError`. The narrow ordinary-error
+catch includes that type, with both finite counterexamples returning false and
+the same `ServiceCeiling` propagation control retained. This supersedes the
+`622228c1` malformed-proof result; no other authority or scope changed.
+The necessary single updated method passed in 0.066s under serial `nice -n 19`.
