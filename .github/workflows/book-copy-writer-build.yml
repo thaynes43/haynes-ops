@@ -71,6 +71,13 @@ jobs:
             -v "$GITHUB_WORKSPACE/scripts/book-copy-writer:/writer-tests:ro" \
             -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-tests:ro" \
             --entrypoint nice book-copy-writer:validation -n 19 python /writer-tests/test_book_copy_writer.py
+          docker run --rm --read-only --cpus 1 --memory 256m --user 1000:1000 \
+            --network container:copy-writer-pg16 --tmpfs /tmp:rw,uid=1000,gid=1000,size=64m \
+            -e COPY_TEST_DSN='host=127.0.0.1 user=postgres password=isolated-fixture dbname=copy_writer_fixture' \
+            -e COPY_TEST_MODULES=/epub-tests \
+            -v "$GITHUB_WORKSPACE/scripts/book-copy-writer:/writer-tests:ro" \
+            -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-tests:ro" \
+            --entrypoint nice book-copy-writer:validation -n 19 python -B /writer-tests/native-pipeline/test_source_health.py
 
       - name: Verify bounded proof stdin transport without a network
         run: |
@@ -107,6 +114,16 @@ jobs:
             -v "$GITHUB_WORKSPACE/scripts/book-copy-writer:/writer-tests:ro" \
             -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-tests:ro" \
             --entrypoint nice book-copy-writer:validation -n 19 python -B /writer-tests/live-performance/test_collectors.py
+
+      - name: Verify coherent closed native pipeline source dependencies without a network
+        timeout-minutes: 1
+        run: |
+          docker run --rm --read-only --network none --cpus 1 --memory 128m --user 1000:1000 \
+            --tmpfs /tmp:rw,uid=1000,gid=1000,size=16m \
+            -e COPY_TEST_MODULES=/epub-tests \
+            -v "$GITHUB_WORKSPACE/scripts/book-copy-writer:/writer-tests:ro" \
+            -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-tests:ro" \
+            --entrypoint nice book-copy-writer:validation -n 19 python -B /writer-tests/native-pipeline/test_pipeline_closure.py
 
       - name: Preserve the exact validated image for main-only publication
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
