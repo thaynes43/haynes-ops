@@ -270,6 +270,18 @@
       matchPackageNames: ['/linuxserver/calibre$/'],
       automerge: false,
     },
+    // Kometa (2026-10-09) — operations restores the daily official IMDb ratings
+    // dataset with a narrowly guarded get_rating compatibility patch. Revalidate
+    // the new image's source, CLI, fork/signal behavior and dataset probe before
+    // approving a bump; manifest validation alone cannot exercise that contract.
+    // This name rule follows and overrides the media/** automerge rule above.
+    // Runbook: .agents/runbooks/kometa-upgrades.md.
+    {
+      description: 'kometa image — manual merge only (revalidate the guarded daily IMDb dataset path first)',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['/kometateam/kometa$/'],
+      automerge: false,
+    },
     // Immich carve-out REMOVED 2026-07-05 (hands-off directive). Immich minor/patch/
     // digest now auto-merge via the photos leaf-app rule above — it is not cluster-
     // breaking, and the safety net (flux-local + health gate + auto-revert + the daily

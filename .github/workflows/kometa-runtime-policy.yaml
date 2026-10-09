@@ -1,0 +1,38 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Kometa Runtime and Upgrade Policy
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/media/kometa/app/config/serial-run.py
+      - kubernetes/main/apps/media/kometa/app/helmrelease.yaml
+      - scripts/kometa-serial-run-test.py
+      - scripts/kometa-image-probe.py
+      - scripts/pr-disposition-test.cjs
+      - .renovate/autoMerge.json5
+      - .github/workflows/pr-disposition.yml
+      - .github/workflows/kometa-runtime-policy.yaml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Kometa Runtime and Upgrade Policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Bounded launcher and upgrade label regressions
+        run: |
+          python3 scripts/kometa-serial-run-test.py
+          node scripts/pr-disposition-test.cjs
+      - name: Check image probe syntax
+        run: python3 -c 'import ast,pathlib; ast.parse(pathlib.Path("scripts/kometa-image-probe.py").read_text())'

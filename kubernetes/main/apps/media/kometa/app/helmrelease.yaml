@@ -20,16 +20,17 @@ spec:
   values:
     # Three cadences, one config, ALL NIGHTLY (overlays went nightly
     # 2026-08-01 so new content gets badges next morning instead of
-    # waiting for Saturday): operations 03:00 (~5m warm) → overlays
+    # waiting for Saturday): operations 03:00 → overlays
     # 04:00 (~75m — a FIXED ~0.7s/item pass over every overlaid item,
     # trial-proven churn-independent, so nightly costs the same as
     # weekly did) → collections 06:30 (~40-55m; Saturdays add the
-    # weekly(saturday) audio-collection filter passes). Spacing gives
-    # each run ~2x its healthy ceiling before the next starts, and the
-    # PrometheusRule runaway alerts (ops >1h, overlays >2h, collections
-    # >2h) page well before neighbors could ever overlap. Overlays
-    # runtime scales with LIBRARY SIZE, not new-content volume — if it
-    # drifts toward 2h, shrink the pass (drop the ratings overlay
+    # weekly(saturday) audio-collection filter passes). The PrometheusRule
+    # alerts page on ops >1h, overlays >2h and collections >2h; elapsed
+    # time includes waiting for the lock. Overlay runtime scales with
+    # LIBRARY SIZE, not new-content volume.
+    # All three hold /config/.run.lock: an overrun delays its neighbor rather
+    # than concurrently editing the shared cache or rendering stale ratings.
+    # If overlays drift toward 2h, shrink the pass (drop the ratings overlay
     # first) rather than re-spacing the schedule.
     controllers:
       collections:
@@ -79,6 +80,7 @@ spec:
             image:
               repository: docker.io/kometateam/kometa
               tag: v2.5.2
+            command: ["/tini", "-g", "-s", "--", "/.venv/bin/python3", "/config/git/serial-run.py"]
             args: ["--run", "--collections-only"]
             env:
               TZ: America/New_York
@@ -132,7 +134,11 @@ spec:
           # across different days, de-synchronizing the expiry. Runs at 03:00 — BEFORE the
           # 04:00 nightly overlays (whose ratings badges redraw off scores this run just
           # refreshed) and the 06:30 collections (which consume the ratings). ~2h during
-          # the initial catch-up week, then minutes once the cache is warm. The plex
+          # the initial catch-up week, then minutes once the cache is warm. v2.5.0
+          # changed IMDb to one uncached HTTP lookup per title (77m on 2026-10-09).
+          # The operations-only launcher restores the current image's original
+          # daily official ratings dataset path; RT still uses the MDBList cache.
+          # Its source guard must be revalidated on a Kometa image upgrade. The plex
           # upgrade preflight (shepherd) holds a Plex merge while this runs.
           schedule: "0 3 * * *"
           timeZone: America/New_York
@@ -157,7 +163,11 @@ spec:
         containers:
           app:
             <<: *app
-            args: ["--run", "--operations-only"]
+            args: ["--run", "--operations-only", "--timings"]
+            env:
+              TZ: America/New_York
+              # Explicit rollback: upstream restores the unmodified service path.
+              HNET_IMDB_RATINGS_SOURCE: dataset
     defaultPodOptions:
       securityContext:
         runAsNonRoot: true
