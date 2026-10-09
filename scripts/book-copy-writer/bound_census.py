@@ -206,20 +206,22 @@ def bind_live_baseline(baseline, baseline_sha256, current, root):
     return library, bound
 
 
-def stat_census(root, deadline, health):
+def stat_census(root, deadline, health, scan_guard=None):
     """One exhaustive local walk; retain real stat results and every device ID."""
     values, infos = {}, {}
+    guard = health if scan_guard is None else scan_guard
     def failed(error):
         raise error
+    health()
     for folder, dirs, names in os.walk(root, followlinks=False, onerror=failed):
-        health()
+        guard()
         if time.monotonic() >= deadline:
             raise metadata.Refused("bound stat census deadline expired")
         if any(os.path.islink(os.path.join(folder, name)) for name in dirs):
             raise metadata.Refused("symlinked directory prevents complete bound census")
         with metadata.safe_directory(folder) as directory:
             for name in names:
-                health()
+                guard()
                 if time.monotonic() >= deadline or len(values) >= MAX_FILES:
                     raise metadata.Refused("bound stat census deadline/count cap exceeded")
                 info = os.stat(name, dir_fd=directory, follow_symlinks=False)
@@ -273,7 +275,7 @@ def selected_file(directory, name, relative, deadline, health):
     return digest.hexdigest(), identity, packages, before
 
 
-def prepare(snapshot, hashes, root, selection_path, evidence_hash, deadline, health):
+def prepare(snapshot, hashes, root, selection_path, evidence_hash, deadline, health, scan_guard=None):
     if not selection_path:
         raise metadata.Refused("bound census requires explicit root-reviewed selection")
     if os.path.commonpath((os.path.abspath(root), os.path.abspath(selection_path))) == os.path.abspath(root):
@@ -308,7 +310,7 @@ def prepare(snapshot, hashes, root, selection_path, evidence_hash, deadline, hea
     if (not stat.S_ISDIR(root_info.st_mode) or fingerprint(root_info)[0][:2]
             != bound["current_validation"]["source_binding"]["root_identity6"][:2]):
         raise metadata.Changed("MAIN root device/inode differs from current SOURCE")
-    before, infos = stat_census(root, deadline, health)
+    before, infos = stat_census(root, deadline, health, scan_guard=scan_guard)
     if before != bound["all_file_fingerprints"]:
         raise metadata.Changed("complete current path/fingerprint set differs from live evidence")
     for path in sorted(selected):
@@ -319,7 +321,7 @@ def prepare(snapshot, hashes, root, selection_path, evidence_hash, deadline, hea
                 or packages != rows[path]["packages"]
                 or any(serialized(identity.get(key)) != serialized(rows[path].get(key)) for key in IDENTITY_FIELDS)):
             raise metadata.Changed("selected whole bytes, OPF or complete identity differ")
-    after, _ = stat_census(root, deadline, health)
+    after, _ = stat_census(root, deadline, health, scan_guard=scan_guard)
     if after != before:
         raise metadata.Changed("complete library changed while selected cohort was verified")
     copies.require_fresh(snapshot)

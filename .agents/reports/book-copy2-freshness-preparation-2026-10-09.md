@@ -186,3 +186,46 @@ the unrelated diagnostic does not establish a bug or permission to extend it.
 None exists merely because an old packet reviewed cleanly. A first-stage refusal
 must preserve actual receipts and restore production, without refresh, restamping,
 scope expansion or automatic retry.
+
+## Manual health implementation preparation
+
+After the design clarification merged in haynesnetwork#870, the coordinator
+authorized this implementation and finite validation only. The writer will own one
+original connection and thread, a phase-bound cryptographic transaction-local nonce
+installed exactly once with `SET LOCAL`, and an uncached actual health query that
+checks that nonce, backend, both SHARE locks, primary/read-only state, local
+`INTRANS` state and the existing deadline. The nonce-setting utility statement must
+not establish the repeatable-read snapshot before both locks; a real PostgreSQL 16
+fixture must prove a writer that commits before locking is included or locking
+refuses, rather than accepting an early stale snapshot.
+
+A separate stat guard will check local identity/state on every entry, with actual
+SQL no more than one elapsed second apart while guards advance. All five full
+walks retain uncached actual queries before and after traversal. Every selected,
+keeper and retained whole-file read remains sequential, with uncached queries
+before and after bytes and final descriptor/path checks after the network gap.
+Link, unlink and manifest publication retain their existing uncached mutation
+queries and final local identity checks. The ordinary hourly entry point retains
+its defaults; no transaction is shared with the LIVE byte-reader threads.
+
+Finite validation must cover lost/replaced connections, owner-thread substitution,
+same-PID rollback/re-BEGIN, missing locks, standby, expiry, query cadence, final
+identity races and truthful partial-retention receipts. No source clock, five-walk
+proof, bridge cap, image adoption, paused operation or fresh runtime approval is
+changed by this implementation preparation.
+
+Local finite validation used an isolated temporary PostgreSQL 16.14 server and
+hash-pinned psycopg 3.3.6 binary driver, serial at `nice -n 19`: the initial writer
+suite passed 26/26 in 1.849 seconds, followed by three focused cases after the final
+fixture changes in 1.087 seconds. Those final cases prove an actual missing SHARE
+lock refuses even if its nonce is copied, closed connections refuse before SQL,
+and the complete manual path retains two bound stat walks plus three fingerprint
+walks. The initial bound suite passed 16/16 in 0.117 seconds, and its added separate
+guard/bracket case passed in 0.004 seconds. Ordinary hourly copy behavior passed
+30/30 in 0.701 seconds with default guards absent. The actual startup-order fixture
+included a commit after nonce installation but before locking; no `SELECT` occurs
+between `BEGIN` and both SHARE locks. Backend loss after a stat guard refuses at
+the uncached post-walk query; backend loss after first retention preserves that
+actual receipt and halts the remainder. No production database, library, Job or
+new image was used by these tests. CI and independent source review remain gates
+before this source preparation is merged or adopted.

@@ -121,8 +121,10 @@ def load_snapshot(path, root):
     return snapshot, hashes, by_path, protected, metadata.sha256(raw)
 
 
-def hash_file(directory, name, deadline):
+def hash_file(directory, name, deadline, health=None):
     """Stream the complete census without buffering unrelated large EPUBs."""
+    if health is not None:
+        health()
     fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
     with os.fdopen(fd, "rb") as source:
         before = os.fstat(source.fileno())
@@ -137,6 +139,13 @@ def hash_file(directory, name, deadline):
                 break
             digest.update(chunk)
             size += len(chunk)
+        if health is not None:
+            health()
+            current = os.stat(name, dir_fd=directory, follow_symlinks=False)
+            after = os.fstat(source.fileno())
+            complete = lambda info: (metadata._identity(info), info.st_mode, info.st_uid, info.st_gid)
+            if complete(before) != complete(current) or complete(before) != complete(after):
+                raise metadata.Changed('manual retained/keeper descriptor or path changed after health check')
         if size != before.st_size or metadata._identity(before) != metadata._identity(os.fstat(source.fileno())):
             raise metadata.Changed("EPUB changed during copy census")
     return digest.hexdigest(), before
@@ -446,7 +455,7 @@ def consolidate(snapshot_path, root, state, settle_seconds, holds, log, dry_run=
 
 
 def consolidate_bound(snapshot_path, root, state, settle_seconds, holds, log, dry_run=False,
-                      deadline=float("inf"), selection_path=None, health=None):
+                      deadline=float("inf"), selection_path=None, health=None, scan_guard=None):
     """Explicit manual-only entry; hourly consolidation retains its full census."""
     if health is None:
         raise metadata.Refused("manual bound census requires the owning database health guard")
@@ -454,7 +463,7 @@ def consolidate_bound(snapshot_path, root, state, settle_seconds, holds, log, dr
     snapshot, hashes, pointers, protected, evidence_hash = load_snapshot(snapshot_path, root)
     deadline = min(deadline, expiry_deadline(snapshot))
     identities, files, deadline = bound_census.prepare(snapshot, hashes, root, selection_path,
-                                                       evidence_hash, deadline, health)
+                                                       evidence_hash, deadline, health, scan_guard=scan_guard)
     log("epub_copy_bound_census", result="verified", byte_baseline_sha256=snapshot["bound_census"]["byte_baseline_sha256"],
         byte_capture_started_at=snapshot["bound_census"]["byte_capture_started_at"],
         byte_completed_at=snapshot["bound_census"]["byte_completed_at"],
@@ -464,7 +473,8 @@ def consolidate_bound(snapshot_path, root, state, settle_seconds, holds, log, dr
                 for path, value in snapshot["bound_census"]["all_file_fingerprints"].items()}
     return _apply_copy_census(snapshot, hashes, pointers, protected, evidence_hash, identities, files,
                               root, state, settle_seconds, holds, log, dry_run, deadline, selection_path, expected,
-                              {"health": health, "max_files": bound_census.MAX_FILES})
+                              {"health": health if scan_guard is None else scan_guard,
+                               "max_files": bound_census.MAX_FILES})
 
 
 def _apply_copy_census(snapshot, hashes, pointers, protected, evidence_hash, identities, files,
