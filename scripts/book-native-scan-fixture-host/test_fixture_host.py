@@ -159,6 +159,40 @@ class HostTests(unittest.TestCase):
             with self.assertRaises(h.Refused):
                 h.pod_binding(pending, bad, manifest, PHASE, node(), after_ack=True)
 
+    def test_owned_job_second_truncation_shortens_alarm_and_packet(self):
+        original_end = h.epoch("2026-10-09T20:01:36.072208Z") + 180
+        job_start = h.epoch("2026-10-09T20:01:36Z")
+        for native_start, expected_end in ((job_start, job_start + 180), (job_start + 1, original_end)):
+            with tempfile.TemporaryDirectory() as out:
+                fixture = h.Fixture.__new__(h.Fixture)
+                h.Native.__init__(fixture, out, original_end)
+                fixture.original_end, fixture.uid, fixture.pod_uid, fixture.phase = original_end, JOBUID, PODUID, PHASE
+                fixture.approval = {"fixturePacket": {"ScanAllowances": []}, "uploads": []}
+                job = {"metadata": {"uid": JOBUID}, "status": {"startTime": h.stamp(native_start)}}
+                with mock.patch.object(h.time, "time", return_value=native_start + 3), mock.patch.object(h.signal, "setitimer") as timer:
+                    fixture.bind_job_clock(job)
+                    self.assertEqual(timer.call_args.args[1], expected_end - (native_start + 3))
+                packet = fixture.approved_packet(b"synthetic-source", b"synthetic-network", {})
+                self.assertEqual(h.epoch(packet["ExpiresAt"]), expected_end)
+                self.assertLessEqual(expected_end, native_start + 180)
+                self.assertLessEqual(expected_end, original_end)
+                with mock.patch.object(h.time, "time", return_value=expected_end), mock.patch.object(h.signal, "setitimer") as cleanup_timer:
+                    h.retire_collection(fixture, out, original_end)
+                    self.assertEqual(cleanup_timer.call_args.args[1], original_end + 20 - expected_end)
+                self.assertTrue((Path(out) / "execution-retired.json").exists())
+
+    def test_shortened_request_deadline_reaps_blocked_child_before_retirement(self):
+        with tempfile.TemporaryDirectory() as out:
+            original_end = time.time() + 180
+            native = h.Native(out, time.time() + .05)
+            native.phase = PHASE
+            with self.assertRaisesRegex(h.Refused, "native_request_deadline"):
+                native.call([sys.executable, "-c", "import time; time.sleep(5)"], seconds=1)
+            self.assertFalse(native.requests)
+            with mock.patch.object(h.signal, "setitimer"):
+                h.retire_collection(native, out, original_end)
+            self.assertTrue((Path(out) / "execution-retired.json").exists())
+
     def test_union_finds_owner_only_pod_with_missing_phase(self):
         manifest, _, pod = objects()
         pod["metadata"]["labels"].pop(h.LABEL)

@@ -141,3 +141,15 @@ host's real binding method proves pre-ACK refusal, post-ACK pending, then Comple
 negative running/exit/restart/finalizer/spec variants.
 The final local serial `nice -n 19` suite passed 38/38 in 0.166s and diff checks
 passed; these generic fixtures use no API, database, native scanner or Job.
+
+Before another run, retained actual timestamps also proved the old Job-clock gate
+would reject: host start20:01:36.0722086 versus native Job start20:01:36Z. Root
+ratified shortening collection expiry to the earlier of original host execution end
+and exact owned Job start+180. The collection alarm and packet use that earlier end;
+the immutable watchdog state and foreground cleanup retain original host200, never
+a fresh admission-relative window. Finite second-truncated/later-Job cases prove
+exact packet expiry inside both clocks and original cleanup cap. A bounded sleeping
+request is killed/reaped at the shortened request deadline before retirement; the
+existing unreaped-request refusal remains. Final serial nice19 suite40/40 PASS0.236s.
+Earlier e199/v6 source/prepared readiness is superseded for this clock correction;
+no further Job is authorized here.
