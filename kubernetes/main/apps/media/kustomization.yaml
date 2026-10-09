@@ -11,6 +11,7 @@ resources:
   # Flux-Kustomizations
   - ./audiobookshelf/ks.yaml
   - ./bazarr/ks.yaml
+  - ./book-native-scan-fixture/ks.yaml
   - ./kavita/ks.yaml
   - ./kometa/ks.yaml
   - ./libretto/ks.yaml
