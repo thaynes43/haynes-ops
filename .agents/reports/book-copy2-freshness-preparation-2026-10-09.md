@@ -229,3 +229,15 @@ the uncached post-walk query; backend loss after first retention preserves that
 actual receipt and halts the remainder. No production database, library, Job or
 new image was used by these tests. CI and independent source review remain gates
 before this source preparation is merged or adopted.
+
+The independent six-file source/finite-proof review at `e879823b` found no blocker.
+Integration still needs a fresh SOURCE successor: the frozen V2 SOURCE payload's
+heartbeat thread calls `pg.health()` after four seconds, which this owner-thread
+guard correctly refuses. The successor must serialize SQL on its owning thread and
+bracket each complete traversal with actual health queries; an event heartbeat may
+not query PostgreSQL from a worker. Preserve the consumed SOURCE payload unchanged.
+The changed `epub_copies.py` hash also requires synchronized LIVE/SOURCE/MAIN,
+assembly, checker and outcome module pins and a verified signed image before a
+new COPY-compatible capture. A baseline created with the old fe12 copy module
+cannot be relabeled to match the new MAIN module. These are integration gates,
+not authority to create a successor Job or reset an artifact clock.
