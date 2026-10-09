@@ -33,18 +33,54 @@ describes the API; it does not replace this actual parent-persistence proof.
 Desired Stop can be staged on Git main only while those verified holds preserve
 normal actual workloads. The copy-aware `retarget-restore.sh` replays the stacked
 inverse onto the actual squash main commit, checks all six full blob pairs and
-pushes a validation commit to request current-main checks/advisory. Prearm requires
-an **open, exact-head, base-main** inverse with every required check and a clean
-current normal advisory explicitly reporting no findings. A favorable verdict
-with an unresolved severity finding refuses; it is not a clean disposition.
-Pending checks cannot start Stop clocks or authorize
-application of desired Stop. Staging must fit the original 600s live arm ceiling;
-otherwise the watcher requests recovery and retains holds until normal is proved.
+pushes a validation commit to request current-main checks/advisory. Before Stop
+application the same GitRepository is held and drained with a fresh requested
+token, its actual Stop artifact is byte-verified, and both parent reconciles must
+preserve the source/four application holds. The inverse then receives current
+required checks and an advisory explicitly reporting no findings and is **merged
+to Normal main while actual services remain Normal**. A favorable verdict with
+an unresolved severity finding refuses. Pending checks cannot start Stop clocks.
+Staging fits the original 600s arm ceiling; a separate runtime GO is required.
+
+`seal-cached-source.py` performs read-only Git/native verification of the private
+draft receipt and publishes one immutable 0600 seal. Its JSON binds phase, Stop
+SHA, PR pair/inverse head and merge SHA, before/after source and all four
+Kustomizations, fresh handled request tokens, both parent reconciles and the
+source-controller Pod. It never suspends resources or creates Jobs. The whole
+seal is capped at 30s. Each bracketed actual cache check has an owning five-second
+wall cap, bounds curl's body to 8MiB (expanded archive 64MiB) and reaps its child on
+failure. Artifact bytes are parsed in memory; nothing is extracted.
+
+Future supervisor config must include `cached_source_receipt` as an absolute
+private `{path, sha256}` descriptor and `cached_source_activation` as an initially
+absent absolute path beside the private watch state. Start the watcher with both
+`--cached-source-receipt` and `--cached-source-activation`. These fields augment
+the original phase/helper/hold/contract closure; no existing consumed config can
+be restamped. Direct source-controller HTTP requires the separately reviewed
+exact DNS/backend policy in #3666. Freeze host Python/YAML plus curl/git/gh/Flux/
+kubectl executable identities in the fresh packet; no unknown host closure is
+approved by this source package.
+
+Only after complete independent arming does the supervisor atomically publish
+activation-ready with the accepted cache/inverse hashes and a durable conservative
+`actuation_budget_started_at` before first app release. This is an earlier budget
+origin, not an invented actual Stop observation. Missing origin with actual or
+partial Stop revokes immediately; restoration requires the accepted Normal
+inverse described below. Cold recovery retains the original
+origin, even if the supervisor dies between release and its first Stop checkpoint.
+If a staging hold unexpectedly drops before the inverse is merged, native Stop
+detection revokes and retires writers before retarget/CI/advisory. The watcher
+reads only bounded merge metadata afterward. An open inverse retains remaining
+holds and truthfully reports Normal restoration unproved; that unclocked failure
+cannot promise automatic recovery within 300s. It never waits 600s to revoke.
+The five-second cache wall cap does not shorten the existing still-Normal inverse
+retarget or Flux restoration commands.
 
 Prestage failure: restore exact normal main plus actual still-normal workloads
-before releasing any hold. Post-Stop: first prove exact restored normal main and
+before releasing any hold. Post-Stop: first prove current restored Normal inverse-descendant main and
 owned writer-first Job/Pod UID plus PG-lease absence; then controlled KS resume
-applies restoration. Each resume repeats exact source/absence proof. Terminal
+applies restoration. The phase-owned Git source resumes against that current
+Normal first. Each app resume repeats source/absence proof. Terminal
 success requires every normal controller and all four resumed KS Ready on the
 exact restored SHA. Incomplete recovery stays armed and incomplete. No fallback
 releases a hold against paused source, ignores a reused UID, or invents success.
@@ -62,25 +98,49 @@ Fresh closure hashes and independent review remain required before execution. Th
 packets remain untouched. Private data, native capture artifacts, credentials,
 journals and signed runtime approval stay outside public git.
 
-Concurrent Git activity is checked from freshly fetched main. An unrelated
-commit is retained by inverse replay and recovery uses the latest descendant of
-the inverse merge after checking its exact normal six blobs. An unexpected change
-inside the six phase manifests permanently revokes that COPY phase, touches Stop,
-performs writer-first UID/PG cleanup and records the original refusal durably.
-The watcher retains holds and refuses to replay the frozen normal image/settings.
-A cold restart preserves revocation; it cannot authorize more writes. Recovery of
-such a conflict requires an independently reviewed current-main inverse/contract
-that preserves the unrelated change. This unresolved conflict path cannot promise
-the 300s service ceiling; the preparation is **not ready for actual Stop** until a
-concrete bounded recovery decision is ratified. Activity declarations do not lock
-Git or waive this check.
+The accepted cached active path performs no new GitHub advisory/CI/merge requests.
+It restores from freshly fetched current Normal main descending from the accepted
+merged inverse. An unrelated commit is retained. Reviewed newer images, replica
+counts and settings on the same six paths are honored at restoration; no old blobs
+are reset. Unsafe current intent (Stop, strip enabled, Ransom hold removed or
+acquisition off) refuses terminal Normal. Native proof includes actual current
+converter template flags and current desired controller images/replicas. Source/
+API outage, lost artifact or unproved writer/PG cleanup remains truthfully
+incomplete recovery. It never extends the 300s ceiling. Actual still-Normal
+hold/drain/parent persistence and restoration-budget rehearsal remains required;
+this package is **not actual Stop-ready** from finite fixtures alone.
+
+The entire cached active/restoration tick has one owning original
+`min(pre-release budget, actual Stop) +300s` deadline. It includes Git fetch and
+all sequential Flux operations; individually valid command caps cannot extend
+the sum. The control exception bypasses ordinary cache-proof failure fallbacks,
+and nested five-second guards retain the outer remaining timer. Cold state binds
+the immutable origin before commands. An expired prior origin caps recovery
+before any new clock-proof read; no new duration is minted.
+
+A missed ceiling permanently revokes COPY and records `complete=false` plus the
+original miss. Cleanup-only safety restoration continues in bounded 60s attempts
+with the existing 10s retry wait. Each attempt proves owned writer/PG retirement
+and current Normal Git before source/app release. It cannot produce Jobs, ACKs,
+leases, replay or new window approval. Actual later Normal is recorded as
+`safety_recovery_complete`, never a claim that the 300s guarantee was met. Unknown
+ownership or Normal intent conflict still refuses. A historical success recorded
+before the original ceiling is preserved on later cold rechecks; fresh bounded
+convergence verification closes authority without rewriting its completed time.
+Invalid persisted clocks or failed fresh activation/clock proof enter the same
+bounded safety path with `original_clock_unproved_at`, preserving the original
+values and permanently revoked COPY. They do not assert a measured deadline miss
+or strand owned holds solely because clock validation failed. Exact phase/UID/PG
+ownership and current Normal still precede every source/app release.
 
 Original clocks remain independent. LIVE collection is 180s / host total 200s.
 Consumer byte expiry is earliest original byte capture start +300s. Actual first
 LL/Kavita Stop starts the watcher +170s restoration trigger, supervisor +250s
 abort, +300s service ceiling and 50s restoration reserve. Final eight-publisher
 capture adds start+65s and finish+35s. MAIN's deadline is the minimum of those
-applicable clocks, not a new duration after receipt delivery. SOURCE, assembly,
+applicable clocks, also clamped by the earlier immutable pre-release budget
+origin. The watcher requests restore no later than that earlier origin +170s;
+it never waits for new advisory calls before revocation/writer cleanup. SOURCE, assembly,
 native binding and complete PG-owner/LL/Kavita protection must finish with enough
 remaining margin; otherwise refuse and restore. Full-corpus performance remains
 unproved until a separately ratified fresh read-only LIVE attempt completes.
@@ -100,6 +160,7 @@ Run finite verification serially under `nice -n 19`:
 
 ```sh
 nice -n 19 python3 -B scripts/book-copy-writer/copy-window/test_window.py
+nice -n 19 python3 -B scripts/book-copy-writer/copy-window/test_cached_source.py
 bash -n scripts/book-copy-writer/copy-window/retarget-restore.sh
 ```
 

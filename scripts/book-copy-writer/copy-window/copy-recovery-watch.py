@@ -9,6 +9,7 @@ import re
 import subprocess
 import time
 import window_contract as contract
+import cached_source as cache
 
 REPO='thaynes43/haynes-ops'
 CORE_SCOPES=[('frontend','haynesnetwork'),('media','libretto'),('downloads','lazylibrarian')]
@@ -26,9 +27,15 @@ def terminal_success(row):
     try:return isinstance(row.get('completedAt'),str) and bool(row['completedAt']) and epoch(row['completedAt'])>0
     except (ValueError,TypeError):return False
 
+class ServiceCeiling(BaseException):
+    """Owning original clock control; proof-failure fallbacks cannot swallow it."""
+
 class Watchdog:
+    cached=False
     def __init__(self,args):
         self.args=args
+        self.cached=bool(getattr(args,'cached_source_receipt',None))
+        self.normal_goal=None
         self.contract=json.loads(Path(args.manifest_contract).read_bytes())
         if args.include_kavita:self.phase_checkpoint()
         self.scopes=CORE_SCOPES+([('media','kavita')] if args.include_kavita else [])
@@ -50,6 +57,13 @@ class Watchdog:
             self.desired_restored(baseline)
             if not self.runtime_workloads_normal():raise RuntimeError('Actual workloads must be normal before arming recovery.')
             self.state.update(pre_pause_main_sha=baseline,baseline_checked_at=stamp(),armed_ready=True)
+            self.save()
+        if self.cached and not self.state.get('cached_source_owner'):
+            source=self.kube('gitrepository','haynes-ops','flux-system')
+            cache.identity(source,'GitRepository','haynes-ops')
+            if source['spec'].get('suspend',False) is not False:raise RuntimeError('Source was already held before recovery ownership.')
+            self.state['cached_source_owner']={'uid':source['metadata']['uid'],'spec':source['spec'],
+                'phase_token':self.phase_checkpoint()['phase_token']}
             self.save()
 
     def note(self,message):
@@ -83,22 +97,36 @@ class Watchdog:
 
     def source(self,sha):
         # Do this before EVERY KS resume/reconcile; do not apply a stale pause artifact.
+        if self.cached:
+            owned=self.state['cached_source_owner']
+            source=self.kube('gitrepository','haynes-ops','flux-system')
+            spec=dict(source['spec']);spec.pop('suspend',None)
+            original=dict(owned['spec']);original.pop('suspend',None)
+            if spec!=original:raise RuntimeError('Owned Git source spec changed; cannot adopt another source.')
+            patch=cache.release_patch(source,owned['uid'],owned['phase_token'])
+            if patch:
+                self.state.setdefault('source_resume_requested_at',stamp());self.save()
+                self.run(['kubectl','patch','gitrepository','haynes-ops','-n','flux-system',
+                          '--type=json','-p',json.dumps(patch,separators=(',',':'))],timeout=10)
         self.run(['flux','reconcile','source','git','haynes-ops','-n','flux-system','--timeout=30s'])
         source=self.kube('gitrepository','haynes-ops','flux-system')
         revision=source.get('status',{}).get('artifact',{}).get('revision','')
         ready=any(c.get('type')=='Ready' and c.get('status')=='True' for c in source.get('status',{}).get('conditions',[]))
-        if not ready or revision.rsplit(':',1)[-1]!=sha:
+        if not ready or source['spec'].get('suspend',False) is not False or revision.rsplit(':',1)[-1]!=sha:
             raise RuntimeError('GitRepository has not fetched the exact restored main SHA; KS remain held.')
 
     def current_main(self):
-        self.run(['git','-C',self.args.repo_dir,'fetch','origin','main:refs/remotes/origin/main'])
-        return self.run(['git','-C',self.args.repo_dir,'rev-parse','origin/main']).strip()
+        self.run(['git','-C',self.args.repo_dir,'fetch','origin','main:refs/remotes/origin/main'],timeout=10 if self.cached else 45)
+        return self.run(['git','-C',self.args.repo_dir,'rev-parse','origin/main'],timeout=5 if self.cached else 45).strip()
 
     def desired_restored(self,sha):
         # Read immutable YAML from the fetched canonical clone; never checkout or push main.
         import yaml
         self.run(['git','-C',self.args.repo_dir,'fetch','origin','main:refs/remotes/origin/main'])
         normal=contract.blobs(self.args.repo_dir,sha)
+        if self.cached:
+            self.normal_goal=cache.normal_goal(normal)
+            return
         for path in contract.PATHS:
             contract.require(contract.sha(normal[path])==self.contract['manifests'][path]['normal_sha256'],'exact normal main manifest bytes differ')
         contract.expected_stop(normal)
@@ -124,6 +152,9 @@ class Watchdog:
                 if 'replicas' in ctrl:raise RuntimeError('Maintenance replica fields must return to absent/default1.')
 
     def deployment_normal(self,name,namespace,target):
+        if self.cached:
+            desired=self.normal_goal['deployments'][(namespace,name)]
+            target=desired['replicas']
         deployment=self.kube('deployment',name,namespace)
         meta,spec,status=deployment['metadata'],deployment['spec'],deployment.get('status',{})
         if (spec.get('replicas',1)!=target or status.get('observedGeneration')!=meta['generation']
@@ -132,7 +163,9 @@ class Watchdog:
         pods=[p for p in self.inventory('Pod',namespace) if all(p['metadata'].get('labels',{}).get(k)==v for k,v in selector.items())]
         if len(pods)!=target:return False
         expected=[(c['name'],c['image']) for c in spec['template']['spec']['containers']]
-        if name=='haynesnetwork-main':
+        if self.cached:
+            if expected!=desired['images']:return False
+        elif name=='haynesnetwork-main':
             app=self.contract['app_image']
             if expected!=[('app',app.split('@',1)[0])] and expected!=[('app',app)]:return False
         for pod in pods:
@@ -145,13 +178,17 @@ class Watchdog:
                     or parent[0].get('name')!=name or parent[0].get('uid')!=meta.get('uid')):return False
             states=pod.get('status',{}).get('containerStatuses',[])
             if len(states)!=len(expected) or {s['name'] for s in states}!={n for n,_ in expected} or any(s.get('ready') is not True or 'running' not in s.get('state',{}) for s in states):return False
-            if name=='haynesnetwork-main' and not states[0].get('imageID','').endswith(self.contract['app_image'].split('@',1)[1]):return False
+            if self.cached:
+                images=dict(expected)
+                if any('@sha256:' in images[s['name']] and not s.get('imageID','').endswith(images[s['name']].split('@',1)[1]) for s in states):return False
+            elif name=='haynesnetwork-main' and not states[0].get('imageID','').endswith(self.contract['app_image'].split('@',1)[1]):return False
             if name=='libretto':
                 env=[e for c in pod['spec']['containers'] for e in c.get('env',[]) if e['name']=='LAZYLIBRARIAN_URL']
                 if len(env)!=1 or env[0].get('value')!=URL:return False
         return True
 
     def runtime_workloads_normal(self):
+        if self.cached:return self.runtime_current_normal()
         for namespace,names in BOOK_CRONS.items():
             for name in names:
                 job=self.kube('cronjob',name,namespace)
@@ -176,6 +213,45 @@ class Watchdog:
             if not self.deployment_normal(name,namespace,target):return False
         return True
 
+    def runtime_current_normal(self):
+        goal=self.normal_goal
+        if goal is None:return False
+        for (ns,name),values in goal['helm_values'].items():
+            release=self.kube('helmrelease',name,ns)
+            status=release.get('status',{})
+            if (release['spec'].get('values')!=values or status.get('observedGeneration')!=release['metadata']['generation']
+                or not any(c.get('type')=='Ready' and c.get('status')=='True' for c in status.get('conditions',[]))):return False
+        for ns,name in [('downloads','lazylibrarian-epub-convert'),('downloads','lazylibrarian-library-scan')]+[
+            ('frontend','haynesnetwork-'+n) for n in contract.BOOK_CONTROLLERS]:
+            cron=self.kube('cronjob',name,ns)
+            if cron['spec'].get('suspend') is not False:return False
+            if name=='lazylibrarian-epub-convert' and not cache.includes(cron['spec'].get('jobTemplate'),goal['converter_job_template']):return False
+            if ns=='frontend' and [c['image'] for c in cron['spec']['jobTemplate']['spec']['template']['spec']['containers']]!=goal['cron_images'][name]:return False
+        for (ns,name),desired in goal['deployments'].items():
+            if not self.deployment_normal(name,ns,desired['replicas']):return False
+        return True
+
+    def runtime_still_normal(self):
+        # Held apps can still be on the original Normal version while newer
+        # reviewed Normal intent waits on remote main. Do not demand its upgrade
+        # before releasing holds needed to apply that upgrade.
+        current=self.normal_goal
+        try:
+            self.normal_goal=cache.normal_goal(contract.blobs(self.args.repo_dir,self.state['pre_pause_main_sha']))
+            return self.runtime_current_normal()
+        finally:self.normal_goal=current
+
+    def stop_actuated(self):
+        # This chooses restoration ordering only, never a new COPY clock/GO.
+        for ns,name in [('downloads','lazylibrarian'),('media','kavita')]:
+            if self.kube('deployment',name,ns)['spec'].get('replicas',1)==0:return True
+        for ns,name in [('downloads','lazylibrarian-epub-convert'),('downloads','lazylibrarian-library-scan')]+[
+            ('frontend','haynesnetwork-'+n) for n in contract.BOOK_CONTROLLERS]:
+            if self.kube('cronjob',name,ns)['spec'].get('suspend') is True:return True
+        libre=self.kube('deployment','libretto','media')
+        return any(e.get('name')=='LAZYLIBRARIAN_URL' and e.get('value')==''
+                   for c in libre['spec']['template']['spec']['containers'] for e in c.get('env',[]))
+
     def runtime_restored(self,sha):
         if not self.runtime_workloads_normal():return False
         for namespace,name in self.scopes:
@@ -191,7 +267,9 @@ class Watchdog:
         self.desired_restored(sha)
         phase=self.phase_checkpoint()
         stopped=bool(phase and (phase.get('first_service_stop_observed_at') or phase.get('window_started_at')))
-        if not stopped and not self.runtime_workloads_normal():raise RuntimeError('Prestage cancellation lacks actual still-normal workload proof; retain holds.')
+        if self.cached:stopped=stopped or self.stop_actuated()
+        still_normal=self.runtime_still_normal if self.cached else self.runtime_workloads_normal
+        if not stopped and not still_normal():raise RuntimeError('Prestage cancellation lacks actual still-normal workload proof; retain holds.')
         self.state.update(expected_restored_sha=sha,recover_ks=True);self.save()
         for namespace,name in self.scopes:
             self.source(sha)
@@ -200,7 +278,12 @@ class Watchdog:
             self.source(sha)
             self.run(['flux','reconcile','kustomization',name,'-n',namespace,'--timeout=30s'])
         if not self.runtime_restored(sha):raise RuntimeError('Restored source fetched; waiting for app/KS convergence.')
-        self.state.update(complete=True,recover_ks=False,completed_at=stamp());self.save()
+        if self.state.get('service_ceiling_missed_at') or self.state.get('original_clock_unproved_at'):
+            self.state.update(complete=False,recover_ks=False,safety_recovery_complete=True,safety_recovery_completed_at=stamp())
+        else:
+            self.state.setdefault('completed_at',stamp())
+            self.state.update(complete=True,recover_ks=False,normal_reverified_at=stamp())
+        self.save()
         self.note('Recovery verified: six CronJobs false, acquisition restored, every scoped KS resumed and Ready on exact restored SHA.')
 
     def phase_checkpoint(self):
@@ -413,16 +496,214 @@ class Watchdog:
         self.cleanup_phase_jobs()
         raise RuntimeError('Phase manifest drift: COPY revoked; exact current-main recovery requires reviewed inverse/contract; retain holds.')
 
+    def cached_receipt(self):
+        raw=cache.read_private(self.args.cached_source_receipt)
+        digest=contract.sha(raw)
+        if self.state.get('cached_source_receipt_sha256') not in (None,digest):
+            raise RuntimeError('Sealed cached source receipt changed.')
+        value=json.loads(raw)
+        owned=self.state['cached_source_owner']
+        if (value.get('phase_token')!=owned['phase_token'] or value['source_before']['metadata']['uid']!=owned['uid']
+            or value['source_before']['spec']!=owned['spec'] or str(value.get('pause_pr'))!=self.args.pause
+            or str(value.get('restore_pr'))!=self.args.restore):raise RuntimeError('Cached source ownership/PR pair changed.')
+        self.state.setdefault('cached_source_receipt_sha256',digest);self.save()
+        return value,digest
+
+    def revoke_cached(self,reason):
+        self.state.setdefault('copy_authority_revoked_at',stamp())
+        self.state.update(recovery_reason=reason,complete=False,recover_ks=True);self.save()
+        self.stop.touch(mode=0o600)
+        self.cleanup_phase_jobs()
+
+    def tick_cached(self,pause,restore):
+        # The normal inverse is already merged. No checks, advisory or merge is
+        # consulted during an actual Stop; current main remains restoration intent.
+        merge=restore['mergeCommit']['oid']
+        if self.state.get('normal_inverse_merge_sha') not in (None,merge):
+            self.revoke_cached('normal_inverse_identity_changed');raise RuntimeError('Inverse merge changed.')
+        self.state.setdefault('normal_inverse_merge_sha',merge);self.save()
+        phase=self.phase_checkpoint()
+        started=phase.get('first_service_stop_observed_at') or phase.get('window_started_at')
+        if started:self.state.setdefault('window_started_at',started);self.save()
+        origin=self.state.get('window_started_at') or self.state['armed_at']
+        limit=self.args.deadline if self.state.get('window_started_at') else self.args.arm_deadline
+        stale=bool(started and phase.get('heartbeat_required') and not phase.get('complete')
+                   and (not phase.get('heartbeat') or instant().timestamp()-epoch(phase['heartbeat'])>15))
+        due=self.stop.exists() or stale or instant().timestamp()-epoch(origin)>=limit
+        if due:
+            self.revoke_cached('original_restore_due')
+            self.recover_cluster(self.restored_main(merge));return True
+        if not self.state.get('normal_inverse_verified_at'):
+            # This Git/merged-PR verification happens during still-Normal stage.
+            # No GitHub advisory/CI query precedes recovery after acceptance.
+            try:self.restored_main(merge)
+            except Exception:
+                self.revoke_cached('current_remote_main_not_normal');raise
+            self.state['normal_inverse_verified_at']=stamp();self.save()
+        if not Path(self.args.cached_source_receipt).exists():
+            # Still-normal staging has not sealed the cache. No activation.
+            if started or Path(self.args.cached_source_activation).exists() or self.stop_actuated():
+                if not started:self.state.setdefault('actual_stop_origin_unknown',True);self.save()
+                self.revoke_cached('activation_without_sealed_cache')
+                self.recover_cluster(self.restored_main(merge));return True
+            return False
+        try:
+            receipt,digest=self.cached_receipt()
+            if receipt.get('normal_inverse_merge_sha')!=merge:raise RuntimeError('Cache does not bind merged Normal inverse.')
+            active=Path(self.args.cached_source_activation).exists()
+            if active:
+                value=json.loads(cache.read_private(self.args.cached_source_activation))
+                budget=cache.activation(value,phase['phase_token'],digest,merge)
+                if budget<epoch(self.state['armed_at']) or budget>instant().timestamp():raise RuntimeError('Budget origin outside original arm/current clock.')
+                if self.state.get('actuation_budget_started_at') not in (None,value['actuation_budget_started_at']):raise RuntimeError('Budget origin changed across restart.')
+                self.state.setdefault('actuation_budget_started_at',value['actuation_budget_started_at']);self.save()
+                # The immutable earlier origin bounds a crash before the actual
+                # Stop observation. It never claims an observed Stop or resets it.
+                if instant().timestamp()-min(budget,epoch(started) if started else budget)>=self.args.deadline:
+                    self.revoke_cached('pre_release_budget_restore_due');self.recover_cluster(self.restored_main(merge));return True
+            elif started or self.stop_actuated():
+                if not started:self.state.setdefault('actual_stop_origin_unknown',True);self.save()
+                raise RuntimeError('Actual Stop without bound activation.')
+            cap=epoch(self.state['actuation_budget_started_at'])+self.args.deadline if self.state.get('actuation_budget_started_at') else None
+            cache.check_live(receipt,self.kube,self.contract,phase['phase_token'],holds=not active,deadline=cap)
+            self.state.setdefault('cached_source_ready_at',stamp());self.save()
+        except Exception:
+            if not started and not self.state.get('actuation_budget_started_at') and Path(self.args.cached_source_activation).exists():
+                self.state.setdefault('actual_stop_origin_unknown',True);self.save()
+            self.revoke_cached('cached_source_or_hold_proof_lost')
+            self.recover_cluster(self.restored_main(merge));return True
+        return False
+
+    def original_service_origin(self):
+        # Private original clocks only; no API/Git command may precede binding.
+        candidate=dict(self.state)
+        phase=self.phase_checkpoint()
+        started=phase.get('first_service_stop_observed_at') or phase.get('window_started_at')
+        if started:
+            if candidate.get('window_started_at') not in (None,started):raise RuntimeError('Original Stop origin changed.')
+            candidate.setdefault('window_started_at',started)
+        if Path(self.args.cached_source_activation).exists():
+            receipt,digest=self.cached_receipt()
+            value=json.loads(cache.read_private(self.args.cached_source_activation))
+            budget=cache.activation(value,phase['phase_token'],digest,receipt['normal_inverse_merge_sha'])
+            if budget<epoch(self.state['armed_at']) or budget>instant().timestamp():raise RuntimeError('Original budget origin outside arm/current clock.')
+            if candidate.get('actuation_budget_started_at') not in (None,value['actuation_budget_started_at']):raise RuntimeError('Original budget origin changed.')
+            candidate.setdefault('actuation_budget_started_at',value['actuation_budget_started_at'])
+        origins=[epoch(candidate[k]) for k in ('actuation_budget_started_at','window_started_at') if candidate.get(k)]
+        if any(origin<epoch(self.state['armed_at']) or origin>instant().timestamp() for origin in origins):raise RuntimeError('Original service origin invalid/future.')
+        for field in ('actuation_budget_started_at','window_started_at'):
+            if field in candidate:self.state.setdefault(field,candidate[field])
+        self.save()
+        return min(origins) if origins else None
+
+    def ceiling_missed(self):
+        # Do not run another phase command or mint a later deadline after expiry.
+        self.state.setdefault('service_ceiling_missed_at',stamp())
+        self.state.setdefault('copy_authority_revoked_at',stamp())
+        self.state.update(recovery_reason='original_service_ceiling_expired',complete=False,recover_ks=True)
+        self.save();self.stop.touch(mode=0o600)
+
+    def clock_unproved(self):
+        self.state.setdefault('original_clock_unproved_at',stamp())
+        self.state.setdefault('copy_authority_revoked_at',stamp())
+        self.state.update(recovery_reason='original_service_clock_unproved',complete=False,recover_ks=True)
+        self.save();self.stop.touch(mode=0o600)
+
+    def safety_recovery(self,clock_unproved=False):
+        # A revoked window stays invalid. This bounded cleanup-only attempt has
+        # no producer/replay/ACK or COPY lease, and never resets original clocks.
+        if clock_unproved or self.state.get('original_clock_unproved_at'):self.clock_unproved()
+        else:self.ceiling_missed()
+        with cache.wall_guard(60):
+            self.cleanup_phase_jobs()
+            merge=self.state.get('normal_inverse_merge_sha')
+            if not merge:raise RuntimeError('Safety recovery lacks accepted Normal inverse identity; root intervention required.')
+            self.recover_cluster(self.restored_main(merge))
+        return True
+
+    def reverify_completed_normal(self):
+        # Preserve the historical in-window proof. Late fresh convergence is
+        # bounded cleanup/restoration only, never a new COPY window.
+        self.state.setdefault('copy_authority_revoked_at',stamp());self.save()
+        self.stop.touch(mode=0o600)
+        with cache.wall_guard(60):
+            self.cleanup_phase_jobs()
+            merge=self.state.get('normal_inverse_merge_sha')
+            if not merge:raise RuntimeError('Completed recovery lacks Normal inverse identity.')
+            self.recover_cluster(self.restored_main(merge))
+        return True
+
+    def persisted_service_origin(self):
+        origins=[epoch(self.state[k]) for k in ('actuation_budget_started_at','window_started_at') if self.state.get(k)]
+        if any(origin<epoch(self.state['armed_at']) or origin>instant().timestamp() for origin in origins):raise RuntimeError('Persisted original service origin invalid/future.')
+        return min(origins) if origins else None
+
+    def service_budget(self,origin,action):
+        if self.state.get('original_clock_unproved_at'):return self.safety_recovery(clock_unproved=True)
+        completed=self.state.get('completed_at')
+        if (self.state.get('complete') is True and not self.state.get('service_ceiling_missed_at')
+            and completed and origin<=epoch(completed)<=min(origin+300,instant().timestamp())):
+            return self.reverify_completed_normal()
+        remaining=origin+300-instant().timestamp()
+        if remaining<=0 or self.state.get('service_ceiling_missed_at'):return self.safety_recovery()
+        try:
+            with cache.wall_guard(min(300,remaining),error=ServiceCeiling):return action()
+        except ServiceCeiling:
+            self.ceiling_missed()
+            raise TimeoutError('Original service ceiling missed; bounded safety recovery follows.')
+
     def tick(self):
+        if self.cached:
+            if self.state.get('original_clock_unproved_at'):return self.safety_recovery(clock_unproved=True)
+            try:origin=self.persisted_service_origin()
+            except Exception:
+                return self.safety_recovery(clock_unproved=True)
+            if origin is not None:return self.service_budget(origin,self.bind_clock_tick)
+            return self.bind_clock_tick()
+        return self.tick_body()
+
+    def bind_clock_tick(self):
+        try:
+            with cache.wall_guard(5):origin=self.original_service_origin()
+        except Exception:
+            return self.safety_recovery(clock_unproved=True)
+        if origin is not None:return self.service_budget(origin,self.tick_body)
+        return self.tick_body()
+
+    def tick_body(self):
         if self.state.get('complete'):
             # A stop/restart never skips fresh convergence verification.
             self.recover_cluster(self.restored_main(self.state['expected_restored_sha']));return True
+        if self.cached and self.state.get('normal_inverse_verified_at') and self.state.get('normal_inverse_merge_sha'):
+            return self.tick_cached({},dict(mergeCommit={'oid':self.state['normal_inverse_merge_sha']}))
+        if self.cached:
+            # A dropped staging hold can apply Stop before activation/its clock.
+            # Revoke before retarget, reviews or even merged-PR metadata reads.
+            phase=self.phase_checkpoint()
+            started=phase.get('first_service_stop_observed_at') or phase.get('window_started_at')
+            try:
+                with cache.wall_guard(5):actuated=self.stop_actuated()
+            except Exception:
+                self.revoke_cached('pre_activation_native_proof_lost');raise
+            if started or actuated:
+                if started:self.state.setdefault('window_started_at',started)
+                else:self.state.setdefault('actual_stop_origin_unknown',True)
+                self.save();self.revoke_cached('stop_before_normal_inverse_accepted')
+                restore=json.loads(self.run(['gh','pr','view',self.args.restore,'--repo',REPO,
+                                             '--json','state,mergeCommit'],timeout=5))
+                if restore.get('state')=='MERGED':return self.tick_cached({},restore)
+                raise RuntimeError('Unexpected Stop before merged Normal inverse; COPY revoked, writer cleanup requested, remaining holds retained; Normal restoration unproved.')
         pause=self.view(self.args.pause)
         if pause['state']=='MERGED':
             self.state.setdefault('pause_merged_at',pause['mergedAt']);self.save()
             restore=self.view(self.args.restore)
             if restore['state']=='MERGED':
+                if self.cached:return self.tick_cached(pause,restore)
                 self.recover_cluster(self.restored_main(restore['mergeCommit']['oid']));return True
+            if self.cached:
+                phase=self.phase_checkpoint()
+                if phase.get('first_service_stop_observed_at') or phase.get('window_started_at'):
+                    self.revoke_cached('actual_stop_before_normal_inverse_merged')
             self.guard_phase_git()
             if restore['baseRefName']!='main' or not self.state.get('inverse_retargeted'):
                 self.run(self.retarget_argv(),timeout=120)
@@ -477,6 +758,8 @@ def main():
     parser.add_argument('--retarget-script',default=str(Path(__file__).with_name('retarget-restore.sh')))
     parser.add_argument('--include-kavita',action='store_true')
     parser.add_argument('--phase-state',required=True)
+    parser.add_argument('--cached-source-receipt',help='Immutable private receipt, sealed while all services remain Normal.')
+    parser.add_argument('--cached-source-activation',help='Immutable supervisor activation-ready record path, initially absent.')
     parser.add_argument('--deadline',type=int,default=170)
     parser.add_argument('--arm-deadline',type=int,default=600,help='Maximum live-workload staging time before recovery is requested.')
     parser.add_argument('--state',required=True)
@@ -487,6 +770,7 @@ def main():
     args=parser.parse_args()
     if not args.include_kavita or args.deadline!=170:parser.error('Fresh COPY requires four apps and unchanged 170s restore trigger.')
     if args.arm_deadline<=0 or args.arm_deadline>600:parser.error('Arm deadline must be <=600s.')
+    if bool(args.cached_source_receipt)!=bool(args.cached_source_activation):parser.error('Both cached source receipt and activation paths are required together.')
     Watchdog(args).loop()
 
 if __name__=='__main__':main()

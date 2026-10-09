@@ -31,6 +31,7 @@ import tempfile
 import time
 import uuid
 import window_contract as window
+import cached_source as cache
 
 SCOPES=[('frontend','haynesnetwork'),('media','libretto'),('downloads','lazylibrarian'),('media','kavita')]
 CRONS=[('downloads','lazylibrarian-epub-convert'),('downloads','lazylibrarian-library-scan')]+[
@@ -210,6 +211,8 @@ class Supervisor:
   typed,resource=types[kind];endpoint='/api/v1/'+(f'namespaces/{ns}/' if ns else '')+resource
   return window.typed_inventory(json.loads(self.run(['kubectl','get','--raw',endpoint])),typed,'v1',ns)
  def inverse_green(self):
+  if self.c.get('cached_source_receipt'):
+   return self.merged_inverse_ready()
   pr=json.loads(self.run(['gh','pr','view',str(self.c['restore_pr']),'--repo',REPO,'--json',
    'state,baseRefName,headRefOid,statusCheckRollup,comments,commits,files']))
   pages=json.loads(self.run(['gh','api','--paginate','--slurp',f"repos/{REPO}/issues/{self.c['restore_pr']}/comments?per_page=100"]))
@@ -235,12 +238,43 @@ class Supervisor:
   contract=json.loads(pinned_artifact(self.c['manifest_contract'],1024*1024))
   window.verify_git_pair(self.c['repo_dir'],base,self.c['restore_head'],contract,'inverse')
   self.status['inverse_green_checked_at']=now();self.save()
+ def cached_guard(self,holds):
+  raw=pinned_artifact(self.c['cached_source_receipt'],1024*1024)
+  receipt=json.loads(raw)
+  contract=json.loads(pinned_artifact(self.c['manifest_contract'],1024*1024))
+  deadline=None if self.deadline is None else self.deadline-int(self.c['restore_reserve_seconds'])
+  cache.check_live(receipt,self.get,contract,self.status['phase_token'],holds=holds,deadline=deadline)
+  return receipt,hashlib.sha256(raw).hexdigest()
+ def merged_inverse_ready(self):
+  receipt,_sha=self.cached_guard(True)
+  pr=json.loads(self.run(['gh','pr','view',str(self.c['restore_pr']),'--repo',REPO,'--json',
+   'state,baseRefName,headRefOid,mergeCommit,statusCheckRollup,comments,commits,files']))
+  pages=json.loads(self.run(['gh','api','--paginate','--slurp',f"repos/{REPO}/issues/{self.c['restore_pr']}/comments?per_page=100"]))
+  pr['comments']=[{'author':{'login':r['user']['login']},'body':r['body'],'createdAt':r['created_at'],'updatedAt':r['updated_at']} for page in pages for r in page]
+  merge=receipt.get('normal_inverse_merge_sha')
+  if (pr['state']!='MERGED' or pr['baseRefName']!='main' or pr['headRefOid']!=self.c['restore_head']
+      or pr.get('mergeCommit',{}).get('oid')!=merge or str(receipt.get('restore_pr'))!=str(self.c['restore_pr'])
+      or not clean_gates(pr)):raise Refused('reviewed Normal inverse must already be merged before Stop')
+  self.run(['git','-C',self.c['repo_dir'],'fetch','origin','main:refs/remotes/origin/main'])
+  current=self.run(['git','-C',self.c['repo_dir'],'rev-parse','origin/main']).strip()
+  self.run(['git','-C',self.c['repo_dir'],'merge-base','--is-ancestor',merge,current])
+  contract=json.loads(pinned_artifact(self.c['manifest_contract'],1024*1024))
+  parent=self.run(['git','-C',self.c['repo_dir'],'rev-parse',merge+'^']).strip()
+  window.verify_git_pair(self.c['repo_dir'],parent,merge,contract,'inverse')
+  window.validate_pair(window.blobs(self.c['repo_dir'],merge),window.blobs(self.c['repo_dir'],receipt['stop_main_sha']),contract)
+  cache.normal_goal(window.blobs(self.c['repo_dir'],current))
+  self.status.update(inverse_green_checked_at=now(),normal_inverse_merge_sha=merge);self.save()
  def arm(self):
   self.inverse_green()
   watch=json.loads(Path(self.c['watchdog_state']).read_text())
   if not watch.get('armed_ready') or watch.get('complete') or not watch.get('recover_ks') or str(watch['restore_pr'])!=str(self.c['restore_pr']) or sorted(map(tuple,watch['scopes']))!=sorted(SCOPES):raise Refused('four-app recovery watchdog is not pre-armed')
   if Path(self.c['watchdog_stop']).exists():raise Refused('watchdog already has a stop request')
   if watch.get('copy_authority_revoked_at'):raise Refused('watchdog revoked this phase; fresh packet/phase required')
+  if self.c.get('cached_source_receipt'):
+   if (watch.get('cached_source_receipt_sha256')!=self.c['cached_source_receipt']['sha256']
+       or not watch.get('cached_source_ready_at')
+       or watch.get('normal_inverse_merge_sha')!=self.status.get('normal_inverse_merge_sha')):
+    raise Refused('watchdog has not accepted the same sealed cached source/Normal inverse')
   if time.time()-epoch(watch['armed_at'])>=int(self.c['arm_deadline_seconds']):raise Refused('pre-stage watchdog arm deadline already expired')
   for ns,name in [('downloads','lazylibrarian'),('media','kavita')]:
    d=self.get('deployment',name,ns)
@@ -259,16 +293,24 @@ class Supervisor:
   for path in window.PATHS:
    if window.sha(normal[path])!=contract['manifests'][path]['normal_sha256']:raise Refused('held preflight normal main differs')
   self.status.update(phase='armed_while_live',armed_ready=True);self.save()
+  if self.c.get('cached_source_receipt'):
+   self.status['actuation_budget_started_at']=now();self.save()
+   cache.write_private(self.c['cached_source_activation'],(json.dumps({'schema':1,
+    'phase_token':self.status['phase_token'],'cached_source_receipt_sha256':self.c['cached_source_receipt']['sha256'],
+    'normal_inverse_merge_sha':self.status['normal_inverse_merge_sha'],'armed_ready':True,
+    'actuation_budget_started_at':self.status['actuation_budget_started_at']},sort_keys=True)+'\n').encode())
  def wait_for_stop(self):
   expires=time.monotonic()+int(self.c['arm_deadline_seconds'])
   while time.monotonic()<expires:
    if self.stop or Path(self.c['watchdog_stop']).exists():raise Refused('stop before outage')
+   if self.c.get('cached_source_receipt') and time.time()>=epoch(self.status['actuation_budget_started_at'])+170:raise Refused('pre-release conservative restoration trigger reached')
    for ns,name in [('downloads','lazylibrarian'),('media','kavita')]:
     d=self.get('deployment',name,ns)
     pods=self.list('pods',ns);selector=d['spec']['selector']['matchLabels']
     terminating=any(all(p['metadata'].get('labels',{}).get(k)==v for k,v in selector.items()) and p['metadata'].get('deletionTimestamp') for p in pods)
     if d['spec'].get('replicas',1)==0 or d.get('status',{}).get('readyReplicas',0)<1 or terminating:
      started=now();self.deadline=epoch(started)+int(self.c['max_service_absence_seconds'])
+     if self.c.get('cached_source_receipt'):self.deadline=min(self.deadline,epoch(self.status['actuation_budget_started_at'])+300)
      # The separate copy ledger starts only at the first observed absence. Its
      # ready binder derives the same <=250-second abort clock from this marker.
      ledger_path=Path(self.c['copy_phase_state']);ledger,_sha=self.checkpoint.read_json(ledger_path)
@@ -543,6 +585,7 @@ class Supervisor:
   with contextlib.redirect_stdout(io.StringIO()):self.checkpoint.main(['--phase-state',self.c['copy_phase_state'],'--restore-pr',str(self.c['restore_pr']),'bind','--namespace',ns,'--name',name,'--initial-manifest-sha256',row['initial_manifest_sha256'],'--env-file',str(values_path),'--output',str(ready)])
   self.status['writer_deadline_epoch']=deadline;self.save();self.guard_lease();return ready
  def create_job(self,path,writer=False):
+  if self.c.get('cached_source_receipt'):self.cached_guard(False)
   spec=json.loads(Path(path).read_bytes());ns,name=self.checkpoint.validate_job(spec,self.status['phase_token']);row=self.row((ns,name));gate,_,_=self.checkpoint.profile(spec)
   podspec=spec['spec']['template']['spec'];container=podspec['containers'][0]
   if (row['uid'] is not None or row['writer']!=writer or row['ready_manifest'] is None or self.checkpoint.digest(Path(path).read_bytes())!=row['ready_manifest_sha256']
@@ -864,7 +907,7 @@ class Supervisor:
   raise Refused('watcher restoration verification pending; never report complete')
 
 def validate(c):
- required={'repo_dir','manifest_contract','hold_receipt','restore_pr','restore_head','watchdog_state','watchdog_stop','evidence_dir','copy_phase_state','copy_checkpoint_helper','copy_checkpoint_helper_sha256',
+ required={'repo_dir','manifest_contract','hold_receipt','restore_pr','restore_head','watchdog_state','watchdog_stop','evidence_dir','copy_phase_state','copy_checkpoint_helper','copy_checkpoint_helper_sha256','cached_source_receipt','cached_source_activation',
  'readonly_capture_jobs','copy_job','arm_deadline_seconds','max_service_absence_seconds','restore_reserve_seconds','publisher_guard','publisher_guard_sha256','publisher_scope_sha256','publisher_scope_hook','publisher_config','publisher_config_sha256',
  'assembly_script','assembly_script_sha256','delivery_script','delivery_script_sha256','outcome_script','outcome_script_sha256','kavita_exporters_dir','kavita_exporter_sha256','live_byte_baseline','source_private_input','selection_approval','census_holds','ll_sql_sha256'}
  if set(c)!=required or 'REPLACE' in json.dumps(c):raise Refused('exact reviewed callback configuration is required')
@@ -876,8 +919,10 @@ def validate(c):
  if set(c['kavita_exporter_sha256'])!=exporters:raise Refused('complete reviewed raw vendor exporters required')
  for name,digest in c['kavita_exporter_sha256'].items():
   if hashlib.sha256((Path(c['kavita_exporters_dir'])/name).read_bytes()).hexdigest()!=digest:raise Refused('raw vendor exporter pin changed')
- for key in ('manifest_contract','hold_receipt','live_byte_baseline','selection_approval','census_holds'):
+ for key in ('manifest_contract','hold_receipt','live_byte_baseline','selection_approval','census_holds','cached_source_receipt'):
   if set(c[key])!={'path','sha256'} or hashlib.sha256(Path(c[key]['path']).read_bytes()).hexdigest()!=c[key]['sha256']:raise Refused('exact root scope artifact changed')
+ activation=Path(c['cached_source_activation'])
+ if not activation.is_absolute() or activation.parent!=Path(c['watchdog_state']).parent or activation.exists():raise Refused('fresh private activation path alongside watchdog required')
  inputs=c['source_private_input']
  if not isinstance(inputs,dict) or set(inputs)!={'sender','receiver','native_verifier','collector'}:raise Refused('complete exact private-input source closure required')
  pins={'sender':'675d47a66657445846f6f5cdc6646e640daf17d97914eb2b0abda02d756cce82','receiver':'fbf7998738652db4023721731526b343faff4b2d880d24e811a63a95eaab2d3e','native_verifier':'67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f','collector':'6e758e34db12fb82d4d6050c460d17a815d5b608c511a1d7bc9f94886342a61a'}
