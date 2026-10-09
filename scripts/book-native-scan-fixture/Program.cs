@@ -44,7 +44,7 @@ try
         FixtureProtocol.SelfTest();
         NativeProof.GenericSelfTest();
         NativeBindings.Inspect();
-        output.WriteLine($"PASS 4 native local/UTC clock controls and 5 clock refusals, 11 packet refusals, 3 durable-ACK refusals, 6 live-native drift refusals, typed cells, saved-state barriers, inverse and actual native reflection signatures; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
+        output.WriteLine($"PASS native local/UTC clock controls, 13 packet refusals, durable-ACK/live-native refusals, typed saved-state barriers, actual five-row inverse, color/cover guards, EF10.0.6 virtual hooks and pending/deferred controls; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
         return 0;
     }
     FixtureProtocol.Require(args.SequenceEqual(new[] { "--prepared-private-fixture" }), "unknown entrypoint");
