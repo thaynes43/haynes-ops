@@ -1,9 +1,12 @@
-# #825 isolated Ransom native fixture: admission refusal
+# #825 isolated Ransom native fixture: actual diagnostic results
 
-The one explicitly authorized isolated run refused before private delivery or native
-scanner execution. Exact UID foreground deletion and complete native Jobs/Pods
-union absence passed. This supplies no native scanner or saved-state preservation
-proof and authorizes no production SQL, EPUB change, COPY, pause or hourly enable.
+The first two separately authorized attempts refused before private delivery. The
+third reached the actual private native scanner and preserved all IDs and protected
+tables, but refused its incomplete metadata projection; the inverse did not run.
+All three exact UID foreground cleanups and full native Jobs/Pods union-absence
+checks passed. There is no overall fixture PASS or production SQL, EPUB change,
+COPY, pause or hourly-enable authority. The latest result and bounded successor
+proposal are below; earlier receipts remain historical evidence.
 
 Reviewed source [#3663](https://github.com/thaynes43/haynes-ops/pull/3663) merged
 `f259c42c75d83213e14ceaa260be99e91e62679c`; source head was
@@ -153,3 +156,147 @@ request is killed/reaped at the shortened request deadline before retirement; th
 existing unreaped-request refusal remains. Final serial nice19 suite40/40 PASS0.236s.
 Earlier e199/v6 source/prepared readiness is superseded for this clock correction;
 no further Job is authorized here.
+
+## Third authorized diagnostic: protected state preserved, projection refused
+
+[#3670](https://github.com/thaynes43/haynes-ops/pull/3670) merged
+`5d79226aed1954907c7b4dad7abdea4e79d751a4` after required checks, actual clean
+advisory 6088622247 and independent source/prepared receipt SHA
+`0bf453b860dba43ce5bc03f7576fd97649f31a6e0478d973910cc587fe9fac0a`.
+Source head `fda011704fdee2c74a8806a26ee438f70ce8b5f6`; host SHA
+`5cc8370407c01838177086a061d81f806ef6bfc186b29759e84d4ca0b9c728f1`.
+Coordinator separately authorized exactly phase
+`9fbf2867-e125-42b1-816f-e43e4d50cc93`, Job
+`media/ransom-native-fixture-9fbf2867`, closed-v7 packet SHA
+`aaa97536e3f7ecb73c360f5ef7e97f6db28855288a2d4f8e489d811e63332558`.
+New immutable authorized approval SHA
+`5106470196795eba0a3e2589c26e50731acfcebd08206b0a8719c6c2635611ea`
+changed authorized flags and fresh clocks only; productionWriterApproval=false.
+
+Actual Job UID `7453916b-fda2-468d-b729-9fad2b7720ec`, Pod UID
+`5ff77473-f42e-4c49-9d47-76032fa90cdb`. Typed named Pod/same-UID admission,
+fresh node/topology/CNI, realized Cilium endpoint and BPF all-deny, and all 13
+admitted fixture/native module hashes passed before private uploads. Image remained
+the signed clock-correct `sha256:be740bbdebb77c4d0a8d284778bc4dbe86d64b54feb0e203836ad37e54e5e25e`.
+Actual owned Job start20:23:54Z shortened collection expiry to20:26:54Z, inside
+original host execution20:26:54.506732Z; original total cleanup20:27:14.506732Z
+never extended. Five private inputs and the actual bound packet were delivered.
+
+Private outcome directory:
+`/home/dev/work/hn-ransom-native-fixture-actual-9fbf2867-1009`.
+Full snapshots before native Build, after Build and after DI binding have identical
+SHA `faf18c55f5e29f5676734e38294cb149fb59c2950ace15760285a019d56fe43d`;
+there were no constructor/DI writes. The actual tagged ScanSeries(1650,true)
+completed and the native cleanup predicate returned zero removals with the complete
+1,931 retained parsed keys. After-scan snapshot SHA
+`27f1110e64a1c56ddb9bab5ac915b04490820011a37117e593d50fa74ae86930`
+retains all 82 schemas, 34,433 rows, IDs, target relations and seven candidate keys.
+Only five exact target catalog rows changed: Series1650, Volume1800, Chapter3358,
+MangaFile3570, SeriesMetadata1650. All 77 other tables, including all protected
+saved reading/history/list/curation/lock rows, are verbatim. No private row payload,
+XPath, authentication material or EPUB bytes are published here.
+
+There are 25 native changed cells. Sixteen were undeclared by the original nine-cell
+projection; two declared file timestamps differed from the filesystem assumption.
+The strict fixture correctly returned UNKNOWN/exit2, after durable custody and ACK
+of four snapshots; state-readback refused and private inverse was not reached.
+Proof receipt SHA `f1011a711adc25c37c720e20da5a2398f343f8e5cd784786f6b034cb98cff09d`;
+host UNKNOWN/child_terminal_failure receipt SHA
+`7b395180995110b569c55588a899fc2a3cfedf363f6bc3d1f3d44b7f8812faae`.
+Private full delta analysis SHA
+`e8ace3f1929622dd1271902e96b7a873e8d207dba475f836adc648e95cf59180`.
+This is protected equality and ID-preservation evidence, not an inverse or PASS.
+
+Requests retired before exact UID foreground deletion. Complete retained union
+absence at20:24:26.060557Z receipt SHA
+`2fb604c085455c1b7afa47bfcef96e34e1f5408a96a98278d48a15e972f81b41`;
+independent watchdog SHA
+`6061d7957b342fdd9c20845005d83862a58dd420e3c9dd8fe4323ef5eeef00bd`.
+Independent actual audit matched the 25-cell delta and all protected equality,
+proof/ACK pins and fresh complete owned union0/0 RV819352208/819352213. Receipt
+`/home/dev/work/hn-ransom-native-fixture-actual-9fbf2867-independent-audit-1009/independent-review.json`,
+SHA `e6c020665ac5c89c42f7c53908a35aea0d46fd9f83580cd3456e76f14e2fb89e`.
+No production data or service/schedule state changed; no retry is authorized.
+
+## Concrete successor projection proposal (not code or runtime approval)
+
+Retain the seven initial catalog-key changes exactly. Admit only the following 25
+scan cells on those five exact target rows; every other cell/row/schema remains
+strictly identical to the candidate-before snapshot. No wildcard metadata, lock,
+override, ID, relation or saved-state allowance is added; EPUB title/contributor/
+ISBN bytes remain unchanged.
+The native title/range here are existing target chapter presentation metadata, not
+an EPUB content/title edit. Source is the deployed 0.9.0.2 commit
+`6bcd5689385d0e96824982d843c54f15ce784ddc`; candidate EPUB is independently pinned
+and changes only the previously reviewed OPF series metadata.
+Original EPUB SHA `e4969ea19b51a3d65efbb0cdce7bea08a0a8434c98ff123a772a2f59a8733e7a`;
+candidate SHA `d92d855ff8529887a5820642763673d9b572c494d6f0322d7d901dd8eb525ea0`.
+The exact original/candidate clone and settings/input hashes remain in the immutable
+private packet. Each successor must bind its reviewed source, actual native eight
+module bytes and those same candidate bytes; mutable native tags are insufficient.
+
+| Exact row | Native scan fields | Required projection and derivation |
+| --- | --- | --- |
+| Series1650 | SortName; LastFolderScanned/local+Utc; LastModified/local+Utc | SortName=`Ransom` from the candidate's unchanged title and unlocked native sort fallback. Four bounded native clocks. [ProcessSeries:134–153,170](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/Scanner/ProcessSeries.cs#L134). |
+| Chapter3358 | Count, IsSpecial, Range, Title, TotalCount; LastModified/local+Utc | Exact Count0, IsSpecial1, Range/Title=`Ransom`, TotalCount1. No series markers produces loose-leaf/default chapter; native SpecialInfo, chapter update and count helpers produce these values. [BookService:1443](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/BookService.cs#L1443), [ParserExtensions:30](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/Extensions/ParserExtensions.cs#L30), [ChapterExtensions:15–48](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/Extensions/ChapterExtensions.cs#L15), [ParsedCountHelper](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/Helpers/ParsedCountHelper.cs), [BookService:699–706](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/BookService.cs#L699). |
+| MangaFile3570 | Bytes, KoreaderHash; LastModified/local+Utc; LastFileAnalysis/local+Utc | Bytes1081344 and exact candidate native partial-MD5 hash, independently rederived from the pinned candidate by native KoreaderHelper. Four bounded native clocks. [ProcessSeries:822–835](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/Scanner/ProcessSeries.cs#L822), [WordCountAnalyzer:230–233](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/Metadata/WordCountAnalyzerService.cs#L230). |
+| SeriesMetadata1650 | TotalCount, PublicationStatus, RowVersion | Exact TotalCount1, Completed enum2 and original uint RowVersion+2 without overflow. Unlocked single EPUB has MaxCount1/TotalCount1. [ProcessSeries:530–579](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/Scanner/ProcessSeries.cs#L530), [PublicationStatus](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Models/Entities/Enums/PublicationStatus.cs). Both exact native DataContext async overrides invoke OnSaveChanges; metadata's hook increments once per call. [DataContext:579–618](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Database/DataContext.cs#L579), [SeriesMetadata:100–103](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Models/Entities/Metadata/SeriesMetadata.cs#L100). Native compiled cancellation-to-bool-overload virtual dispatch must be verified as described below; any other token increment refuses. |
+| Volume1800 | PrimaryColor, SecondaryColor; LastModified/local+Utc | Exact two private color scalars must be independently computed **before scan** using native BookService.GetCoverImage on the pinned candidate, separate private output directory and the cloned native EncodeMediaAs/CoverImageSize settings, then native ImageService.CalculateColorScape. Require equality to the approved scalars, not an echo of observed after-values. [BookService:1807–1840](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/BookService.cs#L1807), [MetadataService:128–140](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/MetadataService.cs#L128), [ImageService:513–524,733–739](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Services/ImageService.cs#L513). |
+
+Before scan, invoke native BookParser/BookService metadata helpers to corroborate
+the expected loose-leaf title/count/format projection and native Koreader hash;
+invoke the isolated cover derivation above. Preserve all database rows after these
+read/temporary-file operations, proved by the existing after-bind full snapshot.
+Also require no Added/Modified/Deleted entries pending in the actual native scoped
+DataContext after helper projection and before scanner invocation: unchanged
+SQLite alone cannot prove no deferred constructor/helper write. Inspect the same
+native context used by those helpers after DetectChanges, without clearing or
+accepting their changes. A pending change refuses; the scan may use a fresh native
+scope only after this proof, never to conceal pending entries.
+Missing/ambiguous parsing, changed settings/cover derivation, helper failure or any
+constructor/helper write refuses. Publish only aggregate derivation hashes/counts;
+the exact scalars and cover bytes remain private. All actual live/image/source/
+module/deny gates, Build-only semantics and original180/200 clocks remain unchanged.
+
+The twelve local/UTC clocks use the exact tagged DateTime.Now/UtcNow semantics and
+the verified New York zone, bounded inside the actual native scan invocation with
+the existing one-second representation allowance. *Utc is invariant UTC; local is
+New York. Retain the mandatory changed LastFolderScanned and stale/future/malformed
+refusals. DataContext's modified-entity hook overwrites LastModified with save time
+[at569–575](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Database/DataContext.cs#L569);
+therefore the two original filesystem-time assumptions are withdrawn, not widened
+to arbitrary values. LastFileAnalysis is native scan-time work analysis, not a file
+mtime [MangaFile:73–76](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Models/Entities/MangaFile.cs#L73).
+
+The native runtime is10.0.1 but its EntityFrameworkCore package is10.0.6: the
+tagged [Database project](https://github.com/Kareadita/Kavita/blob/6bcd5689385d0e96824982d843c54f15ce784ddc/Kavita.Database/Kavita.Database.csproj)
+and a bounded current production dependency-manifest read agree. Do not substitute
+the runtime version for the EF version. The official10.0.6 source tag was unavailable
+(404); [10.0.1's primary overload source](https://github.com/dotnet/efcore/blob/v10.0.1/src/EFCore/DbContext.cs#L731)
+explains the proposed dispatch but is not an exact-package proof. Require a finite
+self-test against the pinned **actual** native EF assembly: reflection/decoded method
+body must prove its cancellation overload calls the bool overload virtually, while
+the exact tagged native DataContext overrides and metadata increment hook remain
+bound. Actual observed +2 alone does not authorize arbitrary RowVersion changes.
+
+The private inverse must restore **all 32 distinct cells** (seven initial keys plus
+25 validated scan metadata cells) from the immutable original snapshot, in one
+transaction on only the isolated candidate database. Guard exact schema/full
+after-state, IDs and every old/current cell before updating; predicate **every**
+post-scan value in each of the five row UPDATEs, including unchanged and nullable
+columns with exact native type semantics; require each update
+hits its one intended row. No INSERT/DELETE, saved-state write, DB replacement,
+native rescan or production connection. Restore token/clocks/colors too. Final full
+schema, every table/row/ID, foreign-key integrity and typed-cell digest must equal the original snapshot,
+not merely after-minus-seven-keys. Unexpected write/trigger/constraint or partial
+inverse refuses and rolls back. Finite controls must prove wrong scalar/clock,
+another-row drift, protected-cell drift and incomplete inverse refusal using the
+actual guard helper; full offline/native proof remains required before PASS.
+
+This proposal needs coordinator ratification and independent source/derivation
+review before implementation; any new source/image/host/packet requires normal
+CI/advisory/published signature/module closure and a separately named one-Job GO.
+The production writer remains seven initial catalog fields only and unapproved.
+The diagnostic inverse's additional restoration fields grant no production writer
+scope. #3571 remains held/strip0; whole saved-state and watched-root safety gates
+are unchanged.
