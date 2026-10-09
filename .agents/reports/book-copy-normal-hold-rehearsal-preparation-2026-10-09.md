@@ -26,8 +26,21 @@ until their children have been restored. Terminal proof requires all six
 Kustomizations resumed, Ready and applied on current Normal, plus actual Normal
 controllers, STRIP=0, the Ransom hold and acquisition on.
 
+Before the first suspend, register the exercise's dedicated process group with
+the immutable packet/phase and actual PID/start ticks under a local registration
+lock. Recovery cancels further registration and retires that exact group before
+issuing any restore. A replaced PID or unknown surviving group refuses release.
+After retirement, UID/spec/phase/RV-tested annotation barriers on all seven
+resources invalidate each previously submitted hold patch's old RV. A delayed
+patch either committed before its barrier and is restored, or refuses its stale
+RV afterward. This closes the arm-expiry race where recovery could finish while
+the exercise retained request authority. It does not claim that killing a client
+retires a server request. No new exercise may be registered after cancellation.
+
 The rehearsal has no Stop clocks or COPY lease. Its closed operational bounds are
-exercise 90s, staging arm 120s, cancellation recovery 50s; bounded 60s safety
+exercise 90s, staging arm 120s, recovery 50s from the first recovery attempt;
+the existing 10s watcher poll latency and total cancellation-to-restoration time
+must be measured separately. Bounded 60s safety
 attempts and 10s waits continue after an honestly recorded miss. Its independent
 recovery process must be armed before exercise; it must report restoration
 timing honestly rather than treating Normal-only success as the actual Stop
@@ -57,6 +70,14 @@ Normal byte comparison, cancellation after lost patch replies/PG refusal, no
 observer state writes, PID-reuse refusal, prior-phase annotation retirement,
 nonblocking aggregate output and original cold budget/historical proof. This is
 source validation; no real hold/drain/recovery timing has been measured.
+
+The request-retirement correction adds four focused controls. All twelve
+Normal-only cases passed in 0.237s; the strengthened real descendant-group and
+delayed server-RV controls passed in 0.123s, serially under `nice -n 19`.
+They cover cancellation before registration, exact owner/request descendant
+retirement and PID replacement refusal, retirement→barrier→restore ordering,
+all seven RV barriers and stale hold/foreign-owner refusal. No production API,
+hold or Job was used.
 
 The independently reviewed #3667 successor was `f9f654b6` (receipt
 `89ffe7fc818cc66273505adcd6f4580fdeb5108ae7f280d4ad9b38133095e738`)

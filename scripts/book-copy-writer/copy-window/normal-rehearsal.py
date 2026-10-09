@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Closed Normal-only containment rehearsal. Preparation does not call APIs."""
 import argparse
+from contextlib import contextmanager
 import copy
 import datetime as dt
 import hashlib
@@ -60,6 +61,60 @@ def modules():
 def start_ticks(pid):
     row=Path('/proc')/str(pid)/'stat'
     return row.read_text().rsplit(')',1)[1].split()[19]
+
+@contextmanager
+def registration_lock(runtime):
+    import fcntl
+    fd=os.open(runtime/'exercise-registration.lock',os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+    try:
+        fcntl.flock(fd,fcntl.LOCK_EX)
+        yield
+    finally:os.close(fd)
+
+def register_exercise(packet,ready):
+    cache,_,_=modules();runtime=Path(packet['directory'])/'runtime'
+    with registration_lock(runtime):
+        require(not (runtime/'cancel').exists(),'exercise registration closed')
+        state=assert_watch(ready,packet)
+        require(not state.get('normal_rehearsal_restore_started_at'),'recovery already started')
+        if os.getpgid(0)!=os.getpid():os.setsid()
+        require(os.getpgid(0)==os.getpid(),'exercise needs its dedicated process group')
+        cache.write_private(runtime/'exercise-owner.json',canonical({'schema':1,
+            'packet_sha256':sha(canonical(packet)),'phase_token':packet['phase_token'],
+            'pid':os.getpid(),'start_ticks':start_ticks(os.getpid()),'pgid':os.getpgid(0)}))
+
+def group_members(pgid):
+    entries=list(Path('/proc').iterdir());require(len(entries)<=4096,'process inventory cap')
+    members={}
+    for entry in entries:
+        if not entry.name.isdigit():continue
+        try:fields=(entry/'stat').read_text().rsplit(')',1)[1].split()
+        except FileNotFoundError:continue
+        if int(fields[2])==pgid and fields[0] not in ('Z','X'):
+            members[int(entry.name)]=fields[19]
+    return members
+
+def retire_exercise(packet):
+    runtime=Path(packet['directory'])/'runtime'
+    with registration_lock(runtime):
+        require((runtime/'cancel').exists(),'cancel before exercise retirement')
+        path=runtime/'exercise-owner.json'
+        if not path.exists():return
+        owner=json.loads(read_private(path));pid=owner.get('pid')
+        require(set(owner)=={'schema','packet_sha256','phase_token','pid','start_ticks','pgid'}
+            and owner['schema']==1 and owner['packet_sha256']==sha(canonical(packet))
+            and owner['phase_token']==packet['phase_token'] and type(pid) is int and pid>1
+            and pid!=os.getpid() and owner['pgid']==pid,'exercise owner binding')
+        try:current=start_ticks(pid)
+        except FileNotFoundError:current=None
+        require(current in (None,owner['start_ticks']),'exercise PID replaced')
+        members=group_members(pid)
+        if members:
+            require(current==owner['start_ticks'],'surviving exercise group ownership unproved')
+            os.killpg(pid,signal.SIGKILL)
+            until=time.monotonic()+2
+            while group_members(pid):
+                require(time.monotonic()<until,'exercise group retirement unproved');time.sleep(.05)
 
 def prepare(output,repo,host_path=HOST_PROOF,host_sha=HOST_PROOF_SHA):
     cache,_,_=modules();output=Path(output).absolute();output.mkdir(mode=0o700,parents=False,exist_ok=False)
@@ -130,6 +185,8 @@ def watcher(packet,initialize=True):
             if remaining<=0:self.state.setdefault('normal_rehearsal_recovery_budget_missed_at',watch.stamp());self.save()
             try:
                 with cache.wall_guard(min(remaining,BOUNDS['recovery']) if remaining>0 else BOUNDS['safety_attempt']):
+                    retire_exercise(packet)
+                    self.fence_hold_requests()
                     self.cleanup_phase_jobs();self.recover_cluster(self.current_main())
             except TimeoutError:
                 if time.time()>=origin+BOUNDS['recovery']:
@@ -138,6 +195,31 @@ def watcher(packet,initialize=True):
             self.state['normal_only_rehearsal_complete']=True;self.state['copy_runtime_authorized']=False
             self.state['normal_rehearsal_recovered_within_budget']=not bool(self.state.get('normal_rehearsal_recovery_budget_missed_at'))
             self.save();return True
+        def fence_hold_requests(self):
+            # Retiring the client does not retire a submitted API request. Every
+            # hold uses an RV test; advance each owned object's RV before release.
+            owners=[('GitRepository','haynes-ops','flux-system',self.state['cached_source_owner'])]
+            owners += [('Kustomization',name,ns,self.state['cached_ks_owners'][ns+'/'+name])
+                       for ns,name in PARENTS+APPS]
+            for kind,name,ns,owned in owners:
+                row=self.kube(kind.lower(),name,ns);cache.identity(row,kind,name,ns)
+                spec=dict(row['spec']);spec.pop('suspend',None)
+                expected=dict(owned['spec']);expected.pop('suspend',None)
+                require(row['metadata']['uid']==owned['uid'] and spec==expected,'request barrier owned spec/UID changed')
+                phase=packet['phase_token'];annotations=row['metadata'].get('annotations',{})
+                require(annotations.get(cache.OWNER) in (None,phase),'request barrier foreign phase')
+                token=uuid.uuid4().hex
+                patch=[{'op':'test','path':'/metadata/uid','value':owned['uid']},
+                    {'op':'test','path':'/metadata/resourceVersion','value':row['metadata']['resourceVersion']},
+                    {'op':'test','path':'/spec','value':row['spec']},
+                    {'op':'add','path':'/metadata/annotations','value':dict(annotations,**{cache.OWNER:phase,cache.REQUEST:token})}]
+                self.run(['kubectl','patch',kind.lower(),name,'-n',ns,'--type=json','-p',json.dumps(patch)],timeout=10)
+                after=self.kube(kind.lower(),name,ns);cache.identity(after,kind,name,ns)
+                require(after['metadata']['uid']==owned['uid'] and after['spec']==row['spec']
+                    and after['metadata']['resourceVersion']!=row['metadata']['resourceVersion']
+                    and after['metadata'].get('annotations',{}).get(cache.OWNER)==phase
+                    and after['metadata'].get('annotations',{}).get(cache.REQUEST)==token,'request barrier unproved')
+            self.state['normal_rehearsal_requests_retired_at']=watch.stamp();self.save()
     if initialize:instance=NormalWatch(args)
     else:
         instance=object.__new__(NormalWatch);instance.args=args;instance.cached=True;instance.normal_goal=None
@@ -190,6 +272,7 @@ def exercise(packet,ready_path):
     proofs={}
     try:
         with cache.wall_guard(BOUNDS['exercise']):
+            register_exercise(packet,ready)
             before_main=w.current_main();w.desired_restored(before_main)
             require(before_main==state['pre_pause_main_sha'] and w.runtime_workloads_normal(),'current main/services must remain original Normal before hold')
             w.cleanup_phase_jobs()

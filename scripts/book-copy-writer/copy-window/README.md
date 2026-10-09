@@ -110,8 +110,18 @@ The observer does not rewrite recovery state. No runtime is authorized by these
 source instructions; the coordinator must review the fresh packet and declare
 activity immediately before giving a separate exact runtime GO.
 
-Rehearsal operational caps are exercise 90s, staging arm 120s, cancellation
-recovery 50s. An in-budget historical proof survives cold re-verification. A miss
+Before any hold, exercise registers its dedicated process group and PID/start
+ticks under a private local registration lock. Cancellation closes registration.
+Recovery retires that exact group, then applies UID/spec/phase/RV-tested metadata
+barriers on all seven resources before any release. Submitted hold patches test
+the earlier RV and therefore cannot re-hold a resource after its barrier. Killing
+a client alone is not server-request retirement. Reused PID, unknown surviving
+group or foreign ownership refuses release truthfully.
+
+Rehearsal operational caps are exercise 90s, staging arm 120s and recovery 50s
+from the first recovery attempt. The watcher uses its existing 10s poll interval;
+actual cancellation detection and total restoration timing must also be recorded.
+An in-budget historical proof survives cold re-verification. A miss
 is retained truthfully while recovery continues in bounded 60s safety attempts
 with the original 10s retry wait. These are Normal-only operational measurements,
 not new Stop/COPY clocks or a proof of the actual service ceiling. SIGTERM/INT
