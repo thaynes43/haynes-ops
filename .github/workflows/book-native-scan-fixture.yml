@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - scripts/book-native-scan-fixture/**
+      - scripts/ci-cache/**
       - .github/workflows/book-native-scan-fixture.yml
       - kubernetes/main/apps/media/kavita/app/helmrelease.yaml
       - .github/renovate.json5
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - scripts/book-native-scan-fixture/**
+      - scripts/ci-cache/**
       - .github/workflows/book-native-scan-fixture.yml
       - kubernetes/main/apps/media/kavita/app/helmrelease.yaml
       - .github/renovate.json5
@@ -40,8 +42,18 @@ jobs:
         env:
           FIXTURE_SOURCE_BUILD: ${{ steps.scope.outputs.build }}
         run: nice -n 19 python3 -B scripts/book-native-scan-fixture/test_prepared_manifest.py
+      - name: Verify exact public cached native index and amd64 manifest metadata
+        timeout-minutes: 2
+        if: steps.scope.outputs.build == 'true'
+        run: |
+          nice -n 19 python3 -B scripts/ci-cache/test_verify_dockerhub_cache.py
+          nice -n 19 python3 -B scripts/ci-cache/verify_dockerhub_cache.py --profile native-scanner
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: steps.scope.outputs.build == 'true'
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
       - name: Resolve the official exact SDK image once
         id: sdk
         if: steps.scope.outputs.build == 'true'

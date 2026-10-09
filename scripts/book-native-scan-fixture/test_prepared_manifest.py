@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent
 
 
 def needs_source_build(files, event):
-    return event == "workflow_dispatch" or any(path.startswith("scripts/book-native-scan-fixture/") or path == ".github/workflows/book-native-scan-fixture.yml" for path in files)
+    return event == "workflow_dispatch" or any(path.startswith(("scripts/book-native-scan-fixture/", "scripts/ci-cache/")) or path == ".github/workflows/book-native-scan-fixture.yml" for path in files)
 
 
 def admit_version(release_tag, release_tz, docker_tag, docker_digest, protocol_tag, protocol_digest, protocol_tz, source_build):
@@ -90,6 +90,7 @@ class PreparedFixtureTests(unittest.TestCase):
         self.assertFalse(needs_source_build(["kubernetes/main/apps/media/kavita/app/helmrelease.yaml"], "push"))
         self.assertFalse(needs_source_build([".github/renovate.json5"], "push"))
         self.assertTrue(needs_source_build(["scripts/book-native-scan-fixture/Program.cs"], "push"))
+        self.assertTrue(needs_source_build(["scripts/ci-cache/verify_dockerhub_cache.py"], "pull_request"))
         args = ("new-production-version", "UTC", "frozen", "digest", "frozen", "digest", "America/New_York")
         self.assertEqual(admit_version(*args, source_build=False), "obsolete-no-build-no-publication")
         with self.assertRaises(AssertionError):
