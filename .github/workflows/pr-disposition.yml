@@ -15,9 +15,9 @@
 #   disposition:stranded    — needs ATTENTION: a shepherd HOLD (automation wanted to merge
 #                             but a gap blocked it — fix the gap), a cluster-breaker, or a
 #                             major that deserves release-note eyes before merging.
-#   disposition:manual-only — needs only a MINDLESS human merge: repo tooling outside
-#                             kubernetes/** (no health gate can ever own it), or a bump the
-#                             shepherd examined and ruled OUT-OF-SCOPE. Merge and move on
+#   disposition:manual-only — requires a supervised merge: repository tooling,
+#                             image compatibility checks, a chosen restart window,
+#                             or a bump the shepherd ruled OUT-OF-SCOPE.
 #                             (2026-07-17, split out of stranded so the two are separable).
 #
 # Read-only classification; only manipulates its own four labels. Runs on a schedule
@@ -97,6 +97,12 @@ jobs:
               // qbittorrent — PATCH auto-merges within the MAM-approved minor line (let the
               // path-tier prediction handle it); MINOR/MAJOR/digest are automerge:false → manual.
               { re: /^kubernetes\/[^/]+\/apps\/downloads\/qbittorrent\//, dispo: 'disposition:manual-only', patchAuto: true },
+              // LazyLibrarian + calibre — source overlays/converter checks must be
+              // reviewed before merging either image (both live in this app path).
+              { re: /^kubernetes\/[^/]+\/apps\/downloads\/lazylibrarian\//, dispo: 'disposition:manual-only' },
+              // Kometa — revalidate the guarded daily IMDb dataset compatibility
+              // path against the proposed image before merging.
+              { re: /^kubernetes\/[^/]+\/apps\/media\/kometa\//, dispo: 'disposition:manual-only' },
             ];
             const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded', 'disposition:manual-only'];
             // Exact login: a substring match let any account with "renovate" in its

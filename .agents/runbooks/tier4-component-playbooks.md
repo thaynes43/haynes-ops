@@ -815,8 +815,10 @@ Caveats: no data loss in Flux itself; CRs persist across a controller revert —
 3. If EITHER is non-empty ⇒ **DEFER** (do not merge): `DEFER: #<N> waits for Kometa idle`. The shepherd retries on its next 4h run. It is a wait, not a `HOLD`: HOLD pages the owner, DEFER escalates only if the wait lasts ~8h (#3287).
 4. **Imminent-run guard:** also DEFER if `date` (America/New_York) is within ~30 min BEFORE a Kometa cron start:
    - `kometa-collections` — daily **06:30**
-   - `kometa-overlays` — **Sat 01:00**
-   - `kometa-operations` — **Sun 01:00** (the long one — ran 2h15m on 2026-07-19)
+   - `kometa-overlays` — daily **04:00**
+   - `kometa-operations` — daily **03:00**
+   - A Job waiting on `/config/.run.lock` still counts as active. The shared
+     lock coordinates the three schedules; a Plex upgrade must wait for all.
 5. Only when idle AND not imminent AND every check is green ⇒ `gh pr merge <N> --auto --squash --delete-branch`. Class-1 pace (merge freely once the preflight passes); do NOT `silence.sh` it (not cluster-infra).
 
 The shepherd's fixed 4h schedule (0/4/8/12/16/20 UTC) does not line up with the Kometa cron starts, so in practice the preflight mostly guards against a Kometa job that **overran** (like the 2026-07-19 `operations` run) rather than an imminent start.

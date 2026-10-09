@@ -10,6 +10,7 @@ resources:
 configMapGenerator:
   - name: kometa-config-files
     files:
+      - serial-run.py=./config/serial-run.py
       - movies-franchises.yml=./config/movies-franchises.yml
       - movies-people.yml=./config/movies-people.yml
       - movies-lists.yml=./config/movies-lists.yml

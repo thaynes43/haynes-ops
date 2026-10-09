@@ -51,9 +51,12 @@ spec:
         # Runaway-RUN alerts: the failure rule above never fires on a run that
         # is merely absurdly slow (the 2026-07-25 collections run took 8h19m —
         # a mass collection reorder, see config/movies-collections.yml ORDER
-        # DOCTRINE — and nobody was paged). Thresholds are ~2x the healthy
-        # ceiling per cadence: collections ~40-55m, overlays ~1-2h weekly,
-        # operations ~3-4m steady-state. kube_job_status_active guards the
+        # DOCTRINE — and nobody was paged). Historical baselines per cadence:
+        # collections ~40-55m, overlays ~40-75m nightly,
+        # operations ~3-4m on the bulk IMDb dataset path. The v2.5.x per-title
+        # IMDb service path grew to 77m; do not hide it by raising the threshold.
+        # Waiting for the shared run lock also counts toward Job elapsed time.
+        # kube_job_status_active guards the
         # expression to in-flight jobs only.
         - alert: KometaCollectionsRunTooLong
           annotations:
@@ -82,8 +85,9 @@ spec:
         - alert: KometaOperationsRunTooLong
           annotations:
             summary: >-
-              {{ $labels.job_name }} has been running over 1h (healthy: ~5m
-              once the MDBList cache is warm). Check for MDBList 429s.
+              {{ $labels.job_name }} has been running over 1h. Check pod volume
+              attachment events, shared run-lock wait, IMDb source timing and MDBList 429s;
+              a warm MDBList cache does not cache direct IMDb service lookups.
           expr: |
             (time() - kube_job_status_start_time{namespace="media", job_name=~"kometa-operations-.*"}) > 3600
             and on (namespace, job_name) kube_job_status_active{namespace="media"} > 0

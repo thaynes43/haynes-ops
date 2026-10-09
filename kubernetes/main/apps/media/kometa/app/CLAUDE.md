@@ -78,3 +78,11 @@ second category label on one collection.
    in `config/movies-collections.yml`. Watch runs for "Moving" lines (Loki:
    `{namespace="media", pod=~"kometa-.*"} |= "Moving "`) — a spike means a
    non-native order snuck back in or a list order cascaded.
+8. **All three jobs use `config/serial-run.py` and the shared `/config/.run.lock`.**
+   Keep the launcher, PVC mount and tini process-group forwarding on operations,
+   overlays and collections. Operations additionally selects the current image's
+   daily official IMDb ratings dataset path; its source hash deliberately refuses
+   an unreviewed upstream change. Kometa image upgrades are manual: follow
+   `.agents/runbooks/kometa-upgrades.md`, including the real-image probe. Reverting
+   `HNET_IMDB_RATINGS_SOURCE` to `upstream` in git disables only that compatibility
+   patch while retaining serialization and timing diagnostics.
