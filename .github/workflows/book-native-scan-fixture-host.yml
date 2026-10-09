@@ -37,5 +37,5 @@ jobs:
             -v "$PWD/scripts/book-native-scan-fixture-host:/source:ro" \
             -v "${RUNNER_TEMP}/schema-codec:/out:rw" \
             mcr.microsoft.com/dotnet/sdk:10.0.101@sha256:5504edd1267dd4deab3443f960cfab219249c8bd935fbcc358f1c24aeae23fe0 \
-            sh -c 'if ! nice -n 19 dotnet publish /source/SchemaCodec.csproj -m:1 -o /out -p:BaseIntermediateOutputPath=/tmp/obj/ -p:RestoreSources= > /out/build.log 2>&1; then cat /out/build.log >&2; exit 1; fi; nice -n 19 dotnet /out/SchemaCodec.dll' > "${RUNNER_TEMP}/schema-actual.txt"
+            sh -c 'if ! nice -n 19 dotnet publish /source/SchemaCodec.csproj -m:1 -o /out -p:BaseIntermediateOutputPath=/tmp/obj/ -p:BaseOutputPath=/tmp/bin/ -p:UseAppHost=false -p:CopyRetryCount=0 -p:RestoreSources= > /out/build.log 2>&1; then cat /out/build.log >&2; exit 1; fi; nice -n 19 dotnet /out/SchemaCodec.dll' > "${RUNNER_TEMP}/schema-actual.txt"
           cmp "${RUNNER_TEMP}/schema-expected.txt" "${RUNNER_TEMP}/schema-actual.txt"

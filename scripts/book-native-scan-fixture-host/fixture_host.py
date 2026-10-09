@@ -93,6 +93,26 @@ def save_private(path, raw):
         os.close(directory)
 
 
+def atomic_private_marker(path, value):
+    path = Path(path)
+    pending = path.with_name(path.name + ".pending")
+    save_private(pending, value)
+    os.link(pending, path, follow_symlinks=False)  # exclusive final publication
+    pending.unlink()
+    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def retire_collection(fixture, out):
+    # The original collection alarm must not interrupt a completed collect while
+    # its retirement marker is being fsynced. Keep the same absolute 200s cap.
+    signal.setitimer(signal.ITIMER_REAL, max(.001, fixture.end + 20 - time.time()))
+    atomic_private_marker(Path(out) / "execution-retired.json", {"phase": fixture.phase, "retiredAt": stamp(), "runnerPid": os.getpid()})
+
+
 def inventory(value, kind):
     api, envelope = ("batch/v1", "JobList") if kind == "Job" else ("v1", "PodList")
     require(value.get("apiVersion") == api and value.get("kind") == envelope and isinstance(value.get("items"), list), "raw_inventory_type")
@@ -639,8 +659,7 @@ def run(approval_path, out, approved_sha):
     finally:
         # collect() has fully unwound Native.call, which kills and reaps its
         # active subprocess in finally; no collection method is called again.
-        save_private(out / "execution-retired.json", {"phase": fixture.phase, "retiredAt": stamp(), "runnerPid": os.getpid()})
-        signal.setitimer(signal.ITIMER_REAL, max(.001, fixture.end + 20 - time.time()))
+        retire_collection(fixture, out)
         try:
             cleanup_locked(state, out)
             require((out / "cleanup-receipt.json").exists(), "cleanup_unproved")

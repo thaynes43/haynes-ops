@@ -280,6 +280,29 @@ class HostTests(unittest.TestCase):
             h.kill_owned_runner(state)
         kill.assert_not_called()
 
+    def test_cleanup_deadline_is_armed_before_atomic_retirement_io(self):
+        fixture = type("FakeFixture", (), {"end": 180, "phase": PHASE})()
+        order = []
+        def timer(_, seconds):
+            self.assertAlmostEqual(seconds, 20.1)
+            order.append("200-cap")
+        def marker(*_):
+            self.assertEqual(order, ["200-cap"])
+            order.append("retired")
+        with mock.patch.object(h.time, "time", return_value=179.9), mock.patch.object(h.signal, "setitimer", side_effect=timer), mock.patch.object(h, "atomic_private_marker", side_effect=marker):
+            h.retire_collection(fixture, "/synthetic")
+        self.assertEqual(order, ["200-cap", "retired"])
+
+    def test_retirement_marker_is_complete_and_exclusive_on_publication(self):
+        with tempfile.TemporaryDirectory() as out:
+            path = Path(out) / "marker.json"
+            h.atomic_private_marker(path, {"phase": PHASE})
+            self.assertEqual(json.loads(h.read_private(path)), {"phase": PHASE})
+            self.assertFalse(path.with_name(path.name + ".pending").exists())
+            with self.assertRaises(FileExistsError):
+                h.atomic_private_marker(path, {"phase": "other"})
+            self.assertEqual(json.loads(h.read_private(path)), {"phase": PHASE})
+
     def test_exact_native_file_time_binding_truncates_to_100ns_and_uses_ny_zone(self):
         self.assertEqual(schema_codec.file_times(946782245123456799), ["2000-01-01 22:04:05.1234567", "2000-01-02 03:04:05.1234567"])
         pin = {"target": "/candidate.epub", "sha256": "a" * 64, "size": 7}

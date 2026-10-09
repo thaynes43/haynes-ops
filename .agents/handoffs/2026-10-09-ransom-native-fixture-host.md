@@ -98,3 +98,10 @@ but fresh actual mounts and all watched roots remain a gate. One shared strip fl
 enables both paths, so staging-only enable cannot be assumed. #3571 remains held/zero;
 existing identity-changing maintenance requires sealed native-ID preservation, not
 an idle or read-before-write dependency test alone.
+
+The first actual host CI exposed a build-output path error (MSB3027/MSB3021):
+publication `-o` did not redirect intermediate `/source/bin` writes. The successor
+binds both intermediate and build outputs inside writable /tmp, retaining read-only
+source and network-none. Native encoder/timestamp execution still requires actual
+new-head CI PASS. The cleanup transition arms the same original200 cap before
+retirement I/O and atomically publishes the fully fsynced marker.
