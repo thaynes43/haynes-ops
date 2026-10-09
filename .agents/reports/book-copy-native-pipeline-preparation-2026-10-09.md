@@ -119,6 +119,35 @@ and the owner-outcome source boundary. It is source-only and authorizes no runti
 
 ## Merged component evidence and remaining window preparation
 
+### LIVE host terminal cap correction preparation
+
+The separately prepared full LIVE diagnostic packet did not launch. Independent
+review found that its host could catch the original 200-second alarm, then wait
+for children and fsync its receipt beyond that cap. This successor keeps the
+original collection 180 / total 200 bounds and adds an owning hard terminal
+deadline across retirement, native cleanup, receipt publication and final
+stdout. Child requests must be reaped before authoritative absence; every wait
+uses remaining original time. Deadline refusal emits bounded aggregate telemetry
+and exits without claiming completion. Earlier UID custody supports independent
+cleanup; kernel hard-NFS or API failure cannot be turned into an absence claim.
+Finite scaled subprocess fixtures cover a collection alarm during cleanup,
+stalled receipt/output and child retirement. This is source preparation only;
+the old diagnostic packet remains blocked and needs new pins, independent
+review and root exact-command GO. No Job, capture, hold or COPY was performed.
+
+The same review found the lost-CREATE sibling: local request retirement does not
+prove a server commit absent. Fresh initial native inventories and CREATE intent
+are retained; only recovered actual same-phase manifest-bound UID custody permits
+positive cleanup after a lost response. Empty inventory without that custody is
+unknown and cannot produce a completed baseline or definitive absence receipt.
+
+The twelve finite host cases passed under `nice -n 19`, serially: eleven in the
+2.107-second initial run and the corrected typed-inventory fixture in 0.008
+seconds. Ten existing source/import/closed-profile cases passed in 0.097
+seconds. CI runs all twelve host cases offline with one CPU / 128 MiB; the
+reviewed signed runtime modules and collector/bootstrap payload are unchanged.
+This local evidence does not replace exact-head CI or independent review.
+
 Source PR [#3661](https://github.com/thaynes43/haynes-ops/pull/3661) merged as
 `b5defb2a1ca11a6bbfeb17e8a79903252ac12f87` after exact head
 `576cf1be3541b59c7b93602f0e916cd82271e109` passed all required checks and its

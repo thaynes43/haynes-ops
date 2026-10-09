@@ -32,6 +32,30 @@ def pinned(entry,cap=1024*1024):
 def load(name,entry):
  raw=pinned(entry);spec=importlib.util.spec_from_loader(name,loader=None,origin=entry['path']);m=importlib.util.module_from_spec(spec);m.__file__=entry['path'];exec(compile(raw,entry['path'],'exec'),m.__dict__);return m
 
+def best_effort_event(value):
+ # A terminal refusal or final stdout must not wait behind an undrained pipe.
+ fd=blocking=None
+ try:
+  raw=canonical(value)+b'\n'
+  if len(raw)>512:return
+  fd=sys.stdout.fileno();blocking=os.get_blocking(fd);os.set_blocking(fd,False);os.write(fd,raw)
+ except Exception:pass
+ finally:
+  if fd is not None and blocking is not None:
+   try:os.set_blocking(fd,blocking)
+   except OSError:pass
+
+def hard_exit(requests=()):
+ # Never join, wait or fsync at the original terminal deadline. Unknown remains
+ # unknown; retained earlier UID custody supports independent native cleanup.
+ try:
+  for child in tuple(requests):
+   try:
+    if child.poll() is None:os.killpg(child.pid,signal.SIGKILL)
+   except (ProcessLookupError,OSError):pass
+  best_effort_event({'type':'live-host-refused','code':'original_host_total_deadline','completion_unknown':True})
+ finally:os._exit(2)
+
 def completed(ready,job,pod,native,helper):
  # Only this exact read-only LIVE profile may complete here. Do not widen the
  # checkpoint helper's separate completed-MAIN-only lease verification.
@@ -60,7 +84,7 @@ def validate_baseline(value,event,native,selected):
 
 class Run:
  def __init__(self,c,started_at=None):
-  self.start=time.time() if started_at is None else started_at;self.c=c;self.out=Path(c['output_dir']);self.out.mkdir(mode=0o700,exist_ok=False);self.end=self.start+180;self.total=self.start+200;self.uid=None;self.pod_uid=None;self.native=None;self.stream=None;self.events=[];self.log_error=None;self.lock=threading.Lock();self.result={'schema':1,'started_at':stamp(),'phase_token':c['phase_token'],'job_uid':None,'pod_uid':None,'baseline_complete':False,'production_library_writes':0,'PG_operations':0}
+  self.start=time.time() if started_at is None else started_at;self.c=c;self.out=Path(c['output_dir']);self.out.mkdir(mode=0o700,exist_ok=False);self.end=self.start+180;self.total=self.start+200;self.uid=None;self.pod_uid=None;self.create_attempted=False;self.native=None;self.stream=None;self.thread=None;self.requests=set();self.events=[];self.log_error=None;self.lock=threading.Lock();self.result={'schema':1,'started_at':stamp(),'phase_token':c['phase_token'],'job_uid':None,'pod_uid':None,'baseline_complete':False,'production_library_writes':0,'PG_operations':0,'original_host_total_deadline_epoch':self.total,'host_exit_zero_required':True}
   require(re.fullmatch('[0-9a-f]{32}',c['phase_token']) is not None,'phase_token')
   for name,sha in PINS.items():
    if name!='closed_manifest':require(c[name].get('sha256')==sha,'reviewed_'+name+'_pin')
@@ -80,9 +104,48 @@ class Run:
    meta['labels'][LABEL]='0'*32
   require(hashlib.sha256(canonical(reviewed)+b'\n').hexdigest()==PINS['closed_manifest'],'closed_live_template_changed')
  def check(self,cleanup=False):require(time.time()<(self.total if cleanup else self.end),'host_absolute_deadline')
- def command(self,args,payload=None,cap=2*1024*1024,seconds=5,cleanup=False):
-  self.check(cleanup);limit=min(self.total if cleanup else self.end,time.time()+seconds);p=subprocess.Popen(args,stdin=subprocess.PIPE if payload is not None else subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+ def hard_stop(self,*_):hard_exit(self.requests)
+ def remaining(self,maximum):
+  left=self.total-time.time()
+  if left<=0:self.hard_stop()
+  return min(maximum,left)
+ def arm_terminal(self):
+  signal.signal(signal.SIGALRM,self.hard_stop)
+  signal.setitimer(signal.ITIMER_REAL,self.remaining(200))
+ def launch(self,args,**kwargs):
+  # Only protect spawn -> ownership registration; no mask around IO or waits.
+  previous=signal.pthread_sigmask(signal.SIG_BLOCK,{signal.SIGALRM,signal.SIGTERM,signal.SIGINT})
   try:
+   child=subprocess.Popen(args,start_new_session=True,**kwargs);self.requests.add(child);return child
+  finally:signal.pthread_sigmask(signal.SIG_SETMASK,previous)
+ def retire_process(self,child,close=True):
+  if child.poll() is None:
+   # These are owned ephemeral host transports, not service workloads. Spawn's
+   # brief handled-signal mask can be inherited; SIGKILL needs no child handler.
+   os.killpg(child.pid,signal.SIGKILL)
+  try:child.wait(timeout=self.remaining(2))
+  except subprocess.TimeoutExpired:
+   os.killpg(child.pid,signal.SIGKILL)
+   try:child.wait(timeout=self.remaining(2))
+   except subprocess.TimeoutExpired:raise Refused('owned_request_reap_unproved')
+  self.requests.discard(child)
+  if close:
+   for f in (child.stdin,child.stdout,child.stderr):
+    if f is not None:f.close()
+ def retire_transports(self):
+  for child in tuple(self.requests):
+   if child is not self.stream:self.retire_process(child)
+  if self.stream is not None:
+   self.retire_process(self.stream,False)
+   if self.thread is not None:
+    self.thread.join(timeout=self.remaining(1));require(not self.thread.is_alive(),'log_retirement_unproved')
+   for f in (self.stream.stdin,self.stream.stdout,self.stream.stderr):
+    if f is not None:f.close()
+  require(not self.requests,'active_request_not_reaped')
+ def command(self,args,payload=None,cap=2*1024*1024,seconds=5,cleanup=False):
+  self.check(cleanup);limit=min(self.total if cleanup else self.end,time.time()+seconds);p=None
+  try:
+   p=self.launch(args,stdin=subprocess.PIPE if payload is not None else subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
    require(payload is None or len(payload)<=2*1024*1024,'native_stdin_cap')
    raw=bytearray();total=0;position=0
    with selectors.DefaultSelector() as selector:
@@ -105,10 +168,7 @@ class Run:
       if key.data=='out':raw.extend(chunk)
    require(time.time()<limit and p.wait(timeout=max(.001,limit-time.time()))==0,'native_command_refused');return bytes(raw)
   finally:
-   if p.poll() is None:os.killpg(p.pid,signal.SIGKILL)
-   p.wait(timeout=2)
-   for f in (p.stdin,p.stdout,p.stderr):
-    if f is not None:f.close()
+   if p is not None:self.retire_process(p)
  def get(self,kind,name,cleanup=False):return json.loads(self.command(['kubectl','get',kind,name,'-n',NS,'-o','json'],cleanup=cleanup))
  def inventory(self,kind,cleanup=False):
   # kubectl get -o json synthesizes a generic List and discards native list
@@ -145,7 +205,7 @@ class Run:
   if self.native:require(same_native(native,self.native),'native_source_changed')
   return job,pod,native
  def logs(self,pod):
-  fd=os.open(self.out/'actual-log.jsonl',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);self.stream=subprocess.Popen(['kubectl','logs','--follow','-n',NS,pod['metadata']['name'],'-c','census'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+  fd=os.open(self.out/'actual-log.jsonl',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);self.stream=self.launch(['kubectl','logs','--follow','-n',NS,pod['metadata']['name'],'-c','census'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
   def drain():
    try:
     total=0;pending=bytearray()
@@ -170,8 +230,11 @@ class Run:
   c=spec['spec']['template']['spec']['containers'][0];env={e['name']:e for e in c['env']};require(c['image']==IMAGE and env['COPY_BASELINE_PHASE_READY'].get('value')=='0' and env['COPY_BASELINE_DEADLINE_EPOCH'].get('value')=='0' and env['COPY_BASELINE_MODULE_SHA256_JSON'].get('value')=='{}' and spec['spec']['activeDeadlineSeconds']==180 and spec['spec']['backoffLimit']==0,'closed_live_profile')
   env['COPY_BASELINE_PHASE_READY']['value']='1';env['COPY_BASELINE_DEADLINE_EPOCH']['value']=str(int(self.end));env['COPY_BASELINE_MODULE_SHA256_JSON']['value']=canonical(MODULES).decode();private(self.out/'ready-manifest.json',spec)
   jobs=self.inventory('jobs');pods=self.inventory('pods');require(not any(j['metadata']['name']==NAME for j in jobs['items']) and not self.exact_pods(pods),'initial_owned_name_absence')
+  private(self.out/'actual-initial-jobs.json',jobs);private(self.out/'actual-initial-pods.json',pods)
   admitted=json.loads(self.command(['kubectl','create','--dry-run=server','-f','-','-o','json'],canonical(spec)));require(self.helper.declared_matches(spec,admitted),'server_admission_differs');private(self.out/'server-dry-run.json',admitted)
-  created=json.loads(self.command(['kubectl','create','-f','-','-o','json'],canonical(spec)));self.uid=created['metadata']['uid'];self.result['job_uid']=self.uid;private(self.out/'actual-created-job.json',created)
+  private(self.out/'actual-create-intent.json',{'schema':1,'namespace':NS,'name':NAME,'phase_token':self.phase,'manifest_sha256':hashlib.sha256(canonical(spec)).hexdigest(),'intent_at':stamp()})
+  self.create_attempted=True;self.result['create_outcome_unknown']=True
+  created=json.loads(self.command(['kubectl','create','-f','-','-o','json'],canonical(spec)));self.uid=created['metadata']['uid'];self.result.update(job_uid=self.uid,create_outcome_unknown=False);private(self.out/'actual-created-job.json',created)
   while True:
    self.check();job=self.get('job',NAME);pods=self.exact_pods(self.inventory('pods'));require(not job.get('status',{}).get('failed') and len(pods)<=1,'live_job_failed')
    if pods and pods[0]['status']['phase']=='Running':break
@@ -206,9 +269,16 @@ class Run:
   jobs=self.inventory('jobs',True);found=[j for j in jobs['items'] if j['metadata']['name']==NAME]
   require(len(found)<=1,'cleanup_job_duplicate')
   if found:
-   j=found[0];require(j['metadata'].get('labels',{}).get(LABEL)==self.phase and self.uid in (None,j['metadata']['uid']) and self.helper.declared_matches(self.ready,j),'cleanup_job_reused');self.uid=j['metadata']['uid'];self.result['job_uid']=self.uid
+   j=found[0];require(self.create_attempted and j['metadata'].get('labels',{}).get(LABEL)==self.phase and self.uid in (None,j['metadata']['uid']) and self.helper.declared_matches(self.ready,j),'cleanup_job_reused')
+   if self.uid is None:private(self.out/'actual-recovered-job.json',j)
+   self.uid=j['metadata']['uid'];self.result.update(job_uid=self.uid,create_outcome_unknown=False)
    self.command(['kubectl','delete','--raw',f'/apis/batch/v1/namespaces/{NS}/jobs/{NAME}','-f','-'],canonical({'apiVersion':'v1','kind':'DeleteOptions','propagationPolicy':'Foreground','preconditions':{'uid':self.uid}}),cleanup=True)
   else:
+   if self.create_attempted and self.uid is None:
+    # Request retirement cannot prove a late server-side CREATE did not commit.
+    # Retain observations without asserting absence or adopting orphan identity.
+    private(self.out/'unknown-create-observed-jobs.json',jobs);private(self.out/'unknown-create-observed-pods.json',self.inventory('pods',True));self.result['create_outcome_unknown']=True
+    raise Refused('create_transport_commit_unknown')
    for p in self.exact_pods(self.inventory('pods',True)):
     self.command(['kubectl','delete','--raw',f"/api/v1/namespaces/{NS}/pods/{p['metadata']['name']}",'-f','-'],canonical({'apiVersion':'v1','kind':'DeleteOptions','propagationPolicy':'Foreground','preconditions':{'uid':p['metadata']['uid']}}),cleanup=True)
   while True:
@@ -223,35 +293,33 @@ class Run:
   require(len(matches)==1 and matches[0]=={'type':'live-baseline-delivered','sha256':event['sha256'],'job_uid':self.uid,'pod_uid':self.pod_uid,'production_writes':0},'delivered_owned_log')
  def execute(self):
   old={}
-  def stop(*_):raise Refused('host_alarm_or_signal')
+  def stop(*_):
+   self.arm_terminal();raise Refused('host_alarm_or_signal')
   try:
    for sig in (signal.SIGALRM,signal.SIGTERM,signal.SIGINT):old[sig]=signal.signal(sig,stop)
-   signal.setitimer(signal.ITIMER_REAL,self.total-time.time());self.collect()
+   signal.setitimer(signal.ITIMER_REAL,max(.000001,self.end-time.time()));self.collect()
   except BaseException as e:self.result.update(refused=True,error_class=type(e).__name__,error_code=str(e) if isinstance(e,Refused) else None,baseline_complete=False)
   finally:
-   try:self.cleanup()
-   except BaseException as e:self.result.update(cleanup_complete=False,cleanup_error_class=type(e).__name__)
-   if self.stream is not None:
-    if self.stream.poll() is None:os.killpg(self.stream.pid,signal.SIGTERM)
-    try:self.stream.wait(timeout=2)
-    except subprocess.TimeoutExpired:os.killpg(self.stream.pid,signal.SIGKILL);self.stream.wait(timeout=2)
-    self.thread.join(timeout=1)
+   self.arm_terminal()
+   try:
+    self.retire_transports();self.cleanup();self.result['cleanup_complete']=True
+   except BaseException as e:self.result.update(baseline_complete=False,cleanup_complete=False,cleanup_error_class=type(e).__name__)
    if self.log_error is not None and self.result.get('baseline_complete'):self.result.update(baseline_complete=False,refused=True,error_code=self.log_error)
-   self.result.update(finished_at=stamp(),actual_seconds=time.time()-self.start);private(self.out/'actual-receipt.json',self.result)
-   signal.setitimer(signal.ITIMER_REAL,0)
+   self.remaining(200);self.result.update(finished_at=stamp(),actual_seconds=time.time()-self.start);private(self.out/'actual-receipt.json',self.result);self.remaining(200)
+   # The enclosing main keeps the same hard +200 alarm through final stdout and
+   # direct process exit. Do not disarm it before receipt/output finalization.
    for sig,handler in old.items():signal.signal(sig,handler)
   return self.result
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--contract',required=True);p.add_argument('--root-authorization');a=p.parse_args()
- if a.root_authorization!=GO:print(json.dumps({'prepared_only':True,'production_actions':0}));return
- started=time.time();previous={}
- def stop(*_):raise Refused('original_host_absolute_deadline_or_signal')
+ if a.root_authorization!=GO:best_effort_event({'prepared_only':True,'production_actions':0});os._exit(0)
+ started=time.time();active=None
+ def stop(*_):hard_exit(active.requests if active is not None else ())
  try:
-  for sig in (signal.SIGALRM,signal.SIGTERM,signal.SIGINT):previous[sig]=signal.signal(sig,stop)
+  for sig in (signal.SIGALRM,signal.SIGTERM,signal.SIGINT):signal.signal(sig,stop)
   signal.setitimer(signal.ITIMER_REAL,200)
-  c=decode(Path(a.contract).read_bytes());require(set(c)=={'schema','output_dir','phase_token','closed_manifest','helper','sender','receiver','native_verifier','collector','ack_receiver','selected_scope'} and c['schema']==1,'launch_contract_schema');result=Run(c,started).execute();print(json.dumps({k:result.get(k) for k in ('baseline_complete','refused','job_uid','pod_uid','job_and_all_owned_pods_absent','actual_seconds')}));raise SystemExit(0 if result.get('baseline_complete') and result.get('job_and_all_owned_pods_absent') else 2)
- finally:
-  signal.setitimer(signal.ITIMER_REAL,0)
-  for sig,handler in previous.items():signal.signal(sig,handler)
+  c=decode(Path(a.contract).read_bytes());require(set(c)=={'schema','output_dir','phase_token','closed_manifest','helper','sender','receiver','native_verifier','collector','ack_receiver','selected_scope'} and c['schema']==1,'launch_contract_schema');active=Run(c,started);result=active.execute();active.remaining(200);best_effort_event({k:result.get(k) for k in ('baseline_complete','refused','job_uid','pod_uid','job_and_all_owned_pods_absent','actual_seconds')});active.remaining(200);os._exit(0 if result.get('baseline_complete') and result.get('job_and_all_owned_pods_absent') else 2)
+ except BaseException as error:
+  best_effort_event({'type':'live-host-refused','code':'host_finalization_unproved','error_class':type(error).__name__[:80]});hard_exit(active.requests if active is not None else ())
 if __name__=='__main__':main()
