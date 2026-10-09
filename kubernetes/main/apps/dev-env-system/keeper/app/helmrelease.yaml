@@ -50,8 +50,8 @@ spec:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
               # Keeper-only disabled Codex auth source; operator/broker retain their pins.
-              # Signed/verified from main bcb2599 by publish.yml (run 37993851005).
-              tag: sha-bcb2599@sha256:2478d68b450a1f960fd6866398673012ece87ee42cda8793d7835a931c736758
+              # Signed/verified from main f810766 by publish.yml (run 37996909724).
+              tag: sha-f810766@sha256:54a41f6677b8a900315f891a488fbbcdb8ad6cd5ff79c1896db11cba68fdcedd
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:
@@ -107,7 +107,7 @@ spec:
           codex-login:
             image:
               repository: ghcr.io/thaynes43/dev-env-codex-login
-              tag: sha-bcb2599@sha256:28e6f53e58d0bc133914c8b95323fbf961bc983c8e81fe18092af5e312a72d8f
+              tag: sha-f810766@sha256:fa5b41ef702e93477f57874cc5bdff8bfff1e4cb4ca8fd91d3e54b52d931c27d
               pullPolicy: IfNotPresent
             # Clear the API service environment Kubernetes injects even when
             # enableServiceLinks is false; the native helper also uses a minimal env.
