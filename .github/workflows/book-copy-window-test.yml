@@ -1,0 +1,35 @@
+name: COPY window preparation tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/book-copy-writer/copy-window/**
+      - .github/workflows/book-copy-window-test.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/book-copy-writer/copy-window/**
+      - .github/workflows/book-copy-window-test.yml
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  finite:
+    name: COPY window source - Success
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install exact binary-only YAML fixture dependency
+        run: |
+          python3 -c 'import sys; assert sys.version_info[:2] == (3, 12)'
+          python3 -m pip install --only-binary=:all: --require-hashes --disable-pip-version-check -r scripts/book-copy-writer/copy-window/requirements-ci.txt
+      - name: Finite serial fake API, fake clock and local Git replay checks
+        run: |
+          nice -n 19 python3 -B scripts/book-copy-writer/copy-window/test_window.py
+          bash -n scripts/book-copy-writer/copy-window/retarget-restore.sh
