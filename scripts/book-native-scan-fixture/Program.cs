@@ -44,7 +44,7 @@ try
         FixtureProtocol.SelfTest();
         NativeProof.GenericSelfTest();
         NativeBindings.Inspect();
-        output.WriteLine($"PASS 11 packet refusals, 3 durable-ACK refusals, 6 live-native drift refusals, typed cells, saved-state barriers, inverse and actual native reflection signatures; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
+        output.WriteLine($"PASS 4 native local/UTC clock controls and 5 clock refusals, 11 packet refusals, 3 durable-ACK refusals, 6 live-native drift refusals, typed cells, saved-state barriers, inverse and actual native reflection signatures; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
         return 0;
     }
     FixtureProtocol.Require(args.SequenceEqual(new[] { "--prepared-private-fixture" }), "unknown entrypoint");
@@ -369,7 +369,7 @@ static class NativeProof
             FixtureProtocol.Require(Row(before, allowance.Table, allowance.Id)[allowance.Field] == allowance.Before, "allowance before cell differs");
             if (allowance.ScanClock)
             {
-                FixtureProtocol.Require(actual.StartsWith("text:") && DateTimeOffset.TryParse(actual[5..], out var time) && time >= started.AddSeconds(-1) && time <= finished.AddSeconds(1), "native scan clock outside invocation");
+                FixtureProtocol.RequireScanClock(allowance.Field, actual, started, finished);
                 if (allowance.Table == "Series" && allowance.Field == "LastFolderScanned") FixtureProtocol.Require(actual != allowance.Before, "native scanner returned without target scan evidence");
             }
             else FixtureProtocol.Require(actual == allowance.After, "native explicit scan cell differs");

@@ -104,8 +104,41 @@ public static class FixtureProtocol
         Require(proof.Modules.Select(m => m.Path).Order(StringComparer.Ordinal).SequenceEqual(NativeModules.Order(StringComparer.Ordinal)) && proof.Modules.All(m => IsHash(m.Sha256)), "complete current native module closure missing");
         Require(proof.Modules.Single(m => m.Path == NativeAssembly).Sha256 == p.NativeAssemblySha256, "live native assembly changed");
     }
+    public static void RequireScanClock(string field, string actual, DateTimeOffset started, DateTimeOffset finished)
+    {
+        var styles = field.EndsWith("Utc", StringComparison.Ordinal)
+            ? DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal
+            : DateTimeStyles.AssumeLocal;
+        Require(actual.StartsWith("text:", StringComparison.Ordinal)
+            && DateTimeOffset.TryParse(actual[5..], CultureInfo.InvariantCulture, styles, out var time)
+            && time >= started.AddSeconds(-1) && time <= finished.AddSeconds(1), "native scan clock outside invocation");
+    }
+    public static void ScanClockSelfTest()
+    {
+        Require(TimeZoneInfo.Local.Id == NativeTimeZone, "clock fixture local timezone differs");
+        var at = DateTimeOffset.Parse("2026-10-09T19:00:00Z", CultureInfo.InvariantCulture);
+        foreach (var (field, cell) in new[] {
+            ("LastFolderScanned", "text:2026-10-09 15:00:00"),
+            ("LastFolderScannedUtc", "text:2026-10-09 19:00:00"),
+            ("LastModified", "text:2026-10-09T15:00:00-04:00"),
+            ("LastModifiedUtc", "text:2026-10-09T19:00:00+00:00") })
+            RequireScanClock(field, cell, at, at);
+        foreach (var (field, cell) in new[] {
+            ("LastFolderScannedUtc", "text:2026-10-09 15:00:00"),
+            ("LastFolderScanned", "text:2026-10-09 19:00:00"),
+            ("LastModifiedUtc", "text:2026-10-09 18:59:58"),
+            ("LastModifiedUtc", "text:2026-10-09 19:00:02"),
+            ("LastModifiedUtc", "text:not-a-timestamp") })
+        {
+            var refused = false;
+            try { RequireScanClock(field, cell, at, at); }
+            catch (InvalidOperationException) { refused = true; }
+            Require(refused, "invalid native UTC/local scan clock accepted");
+        }
+    }
     public static void SelfTest()
     {
+        ScanClockSelfTest();
         Require(Cell("1") != Cell(1L) && Cell(1L) != Cell(1.0), "typed storage boundaries lost");
         Require(Cell(new byte[] { 1, 2 }) == "blob:AQI=", "binary storage changed");
         Require(!CatalogTables.Contains("AppUserProgresses") && !CatalogTables.Contains("AppUserReadingHistory") && !CatalogTables.Contains("ReadingListItem"), "saved-state table allowance");
