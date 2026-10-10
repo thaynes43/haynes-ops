@@ -5,6 +5,17 @@ installed modules; reviewed bootstrap payloads have independent source hashes.
 It grants no Job, full capture, pause, reading-state write, move or COPY approval.
 The historical frozen archives and consumed packets remain intact.
 
+The current LIVE collector replenishes its two readers on completion rather
+than ordered emission, with an eight-path maximum lookahead and the same
+two-slot queues. Received rows count against the unchanged 16 MiB identity
+half-proof cap before buffering; complete output still follows input path order.
+The finite blocked-first-reader fixture verifies continued work, both bounds,
+and exact ordered completion. This corrects idle-reader scheduling observed in
+the expired October 10 attempt; it gives no live completion-time guarantee.
+Both bootstrap payloads and their caller/supervisor pins close this source
+change. The six installed runtime modules, historical archives, native
+verification/ACK, selection and all safety clocks remain unchanged.
+
 LIVE, SOURCE, trusted assembly, MAIN and the identity/outcome checkers must use
 the same exact copies/metadata module versions. Preserve original byte start,
 completion and age; never repair an incompatible baseline by changing hashes or

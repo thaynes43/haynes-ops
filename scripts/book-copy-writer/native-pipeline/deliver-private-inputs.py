@@ -18,9 +18,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 import importlib
 r = importlib.import_module('receive-private-inputs')
 IMAGE = 'ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c'
-HELPER_SHA = 'c0894d655c677a5f3ba41911d0efb6f43310dc63f451530bba9f402d328046e0'
+HELPER_SHA = '88b2b04cafbea2badca40c5f4d282866fe481ebc533202241639143fe89f8bf3'
 NATIVE_SHA = '67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f'
-COLLECTOR_SHA = '6e758e34db12fb82d4d6050c460d17a815d5b608c511a1d7bc9f94886342a61a'
+COLLECTOR_SHA = '03f6163873b75f2bf0dc6896851b9da568d5e370ef39b56983eed64def2eb5f0'
 KEYS = {'schema','mode','manifest','helper','native_verifier','receiver','native_binding','selected_scope',
         'phase_state','source_fence','namespace','job_name','job_uid','pod_name','pod_uid','phase_token',
         'deadline_epoch','restore_pr','phase_identity_sha256','image'}

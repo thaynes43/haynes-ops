@@ -17,7 +17,7 @@ ROOT = '/data/cephfs-hdd/data/media/books/EBooks'
 OUTPUT = '/tmp/live-byte-baseline.json'
 ACK = '/tmp/live-baseline-delivery-ack.json'
 # A future immutable packet must close these collector and entrypoint bytes.
-COLLECTOR_SHA256 = '6e758e34db12fb82d4d6050c460d17a815d5b608c511a1d7bc9f94886342a61a'
+COLLECTOR_SHA256 = '03f6163873b75f2bf0dc6896851b9da568d5e370ef39b56983eed64def2eb5f0'
 
 
 class Stop(BaseException):
