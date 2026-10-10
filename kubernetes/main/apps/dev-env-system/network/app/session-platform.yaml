@@ -24,6 +24,12 @@ spec:
   endpointSelector:
     matchLabels:
       io.kubernetes.pod.namespace: dev-agents
+    # The zero-task fixture has its own closed policy; no additive MCP/API tier.
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: NotIn
+        values:
+          - dev-env-owned-native-lifecycle
   ingress:
     - {}
   egress:

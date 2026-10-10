@@ -10,3 +10,4 @@ resources:
   - ./operator.yaml
   - ./broker.yaml
   - ./keeper.yaml
+  - ./native-lifecycle-offline.json

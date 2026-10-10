@@ -9,10 +9,14 @@ kind: Kustomization
 metadata:
   name: &app dev-env-network
   namespace: dev-env-system
+  labels:
+    dev-env.haynesops.com/native-fixture-version: native-fixture-cc8ba3c
 spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
+      # Spec change advances generation; old Ready cannot satisfy the lockstep gate.
+      dev-env.haynesops.com/native-fixture-version: native-fixture-cc8ba3c
   path: ./kubernetes/main/apps/dev-env-system/network/app
   prune: true
   sourceRef:

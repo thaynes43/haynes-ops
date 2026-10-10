@@ -1,0 +1,205 @@
+{
+  "kind": "Pod",
+  "apiVersion": "v1",
+  "metadata": {
+    "name": "dev-env-owned-native-lifecycle",
+    "namespace": "dev-agents",
+    "labels": {
+      "app.kubernetes.io/name": "dev-env-owned-native-lifecycle"
+    },
+    "annotations": {
+      "dev-env.haynesops.com/coordinator-host": "owned-native-fixture",
+      "k8tz.io/inject": "false"
+    }
+  },
+  "spec": {
+    "volumes": [
+      {
+        "name": "home",
+        "emptyDir": {
+          "sizeLimit": "64Mi"
+        }
+      },
+      {
+        "name": "tmp",
+        "emptyDir": {
+          "sizeLimit": "16Mi"
+        }
+      },
+      {
+        "name": "api-token",
+        "projected": {
+          "sources": [
+            {
+              "serviceAccountToken": {
+                "audience": "dev-env-operator",
+                "expirationSeconds": 600,
+                "path": "token"
+              }
+            }
+          ],
+          "defaultMode": 288
+        }
+      },
+      {
+        "name": "api-ca",
+        "configMap": {
+          "name": "dev-env-api-ca",
+          "items": [
+            {
+              "key": "ca.crt",
+              "path": "ca.crt"
+            }
+          ],
+          "defaultMode": 292
+        }
+      },
+      {
+        "name": "codex-access",
+        "secret": {
+          "secretName": "dev-env-codex-live",
+          "items": [
+            {
+              "key": "access.json",
+              "path": "access.json"
+            }
+          ],
+          "defaultMode": 288
+        }
+      }
+    ],
+    "containers": [
+      {
+        "name": "fixture",
+        "image": "ghcr.io/thaynes43/dev-env:2.11.0@sha256:98761577d27feded51427a8097a9cf9492c2e7ee62b6e9a99df27bf52017532d",
+        "command": [
+          "/bin/sh",
+          "-ceu"
+        ],
+        "args": [
+          "umask 077; mkdir -p /fixture/home/.codex/app-server-daemon /fixture/home/.agentd /fixture/home/work; test ! -e /fixture/home/.codex/app-server-daemon/settings.json; printf '%s\\n' '{\"updater\":{\"autoUpdateEnabled\":false}}' > /fixture/home/.codex/app-server-daemon/settings.json; printf \"owned native stop canary\\n\" > /fixture/home/work/canary; exec sleep 100"
+        ],
+        "env": [
+          {
+            "name": "HOME",
+            "value": "/fixture/home"
+          },
+          {
+            "name": "AGENTD_OWNED_CODEX_HOST_ENABLED",
+            "value": "true"
+          },
+          {
+            "name": "AGENTD_API_URL",
+            "value": "https://dev-env-operator.dev-env-system.svc.cluster.local:8443"
+          },
+          {
+            "name": "AGENTD_API_TOKEN_FILE",
+            "value": "/var/run/secrets/dev-env/token"
+          },
+          {
+            "name": "AGENTD_API_CA_FILE",
+            "value": "/opt/dev-env/api-ca/ca.crt"
+          },
+          {
+            "name": "AGENTD_CODEX_ACCESS_FILE",
+            "value": "/opt/dev-env/codex-access/access.json"
+          },
+          {
+            "name": "DEV_ENV_POD_UID",
+            "valueFrom": {
+              "fieldRef": {
+                "apiVersion": "v1",
+                "fieldPath": "metadata.uid"
+              }
+            }
+          }
+        ],
+        "resources": {
+          "limits": {
+            "cpu": "250m",
+            "memory": "256Mi"
+          },
+          "requests": {
+            "cpu": "50m",
+            "memory": "128Mi"
+          }
+        },
+        "volumeMounts": [
+          {
+            "name": "home",
+            "mountPath": "/fixture"
+          },
+          {
+            "name": "tmp",
+            "mountPath": "/tmp"
+          },
+          {
+            "name": "api-token",
+            "readOnly": true,
+            "mountPath": "/var/run/secrets/dev-env"
+          },
+          {
+            "name": "api-ca",
+            "readOnly": true,
+            "mountPath": "/opt/dev-env/api-ca"
+          },
+          {
+            "name": "codex-access",
+            "readOnly": true,
+            "mountPath": "/opt/dev-env/codex-access"
+          }
+        ],
+        "terminationMessagePath": "/dev/termination-log",
+        "terminationMessagePolicy": "File",
+        "imagePullPolicy": "IfNotPresent",
+        "securityContext": {
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ]
+          },
+          "readOnlyRootFilesystem": true,
+          "allowPrivilegeEscalation": false
+        }
+      }
+    ],
+    "restartPolicy": "Never",
+    "terminationGracePeriodSeconds": 5,
+    "activeDeadlineSeconds": 120,
+    "dnsPolicy": "ClusterFirst",
+    "nodeSelector": {
+      "topology.kubernetes.io/zone": "w"
+    },
+    "serviceAccountName": "dev-env-owned-native-fixture",
+    "automountServiceAccountToken": false,
+    "securityContext": {
+      "runAsUser": 1000,
+      "runAsGroup": 1000,
+      "runAsNonRoot": true,
+      "fsGroup": 1000,
+      "seccompProfile": {
+        "type": "RuntimeDefault"
+      }
+    },
+    "schedulerName": "default-scheduler",
+    "tolerations": [
+      {
+        "key": "node.kubernetes.io/not-ready",
+        "operator": "Exists",
+        "effect": "NoExecute",
+        "tolerationSeconds": 300
+      },
+      {
+        "key": "node.kubernetes.io/unreachable",
+        "operator": "Exists",
+        "effect": "NoExecute",
+        "tolerationSeconds": 300
+      }
+    ],
+    "priorityClassName": "dev-env-agent",
+    "priority": -10,
+    "enableServiceLinks": false,
+    "preemptionPolicy": "Never"
+  },
+  "status": {}
+}
