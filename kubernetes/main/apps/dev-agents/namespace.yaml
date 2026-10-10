@@ -14,6 +14,8 @@ metadata:
     # label is for anything that needs to tell these namespaces apart.
     dev-env.haynesops.com/role: agents
   annotations:
+    # Keep admission from adding an init container without session resource limits.
+    k8tz.io/inject: "false"
     # Session volumes live here: a pruned namespace would take them with it
     # (.agents/rules/flux-pvc-prune-safety.md).
     kustomize.toolkit.fluxcd.io/prune: disabled
