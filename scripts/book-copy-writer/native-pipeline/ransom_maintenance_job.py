@@ -639,9 +639,17 @@ class HostAdmission:
         return self.watch.kube(kind, name, namespace)
 
     def list(self, kind, namespace=None):
-        kinds = {"pods": "Pod", "pvc": "PersistentVolumeClaim", "pv": "PersistentVolume"}
-        argv = ["kubectl", "get", kind] + (["-n", namespace] if namespace else ["-A"] if kind != "pv" else []) + ["-o", "json"]
-        return self.supervisor.window.typed_inventory(json.loads(self.run(argv)), kinds[kind], "v1", namespace)
+        kinds = {"pods": ("Pod", "pods"), "pvc": ("PersistentVolumeClaim", "persistentvolumeclaims"),
+                 "pv": ("PersistentVolume", "persistentvolumes")}
+        catalog.require(kind in kinds, "unsupported authoritative inventory kind")
+        catalog.require(namespace is None or isinstance(namespace, str)
+                        and re.fullmatch(r"[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?", namespace),
+                        "inventory namespace differs")
+        catalog.require(kind != "pv" or namespace is None, "PV inventory is cluster-scoped")
+        typed, resource = kinds[kind]
+        endpoint = "/api/v1/" + (f"namespaces/{namespace}/" if namespace is not None else "") + resource
+        return self.supervisor.window.typed_inventory(
+            json.loads(self.run(["kubectl", "get", "--raw", endpoint])), typed, "v1", namespace)
 
     def save(self):
         pass  # Existing service predicate's timestamp is diagnostic, not authority.
