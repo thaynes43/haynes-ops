@@ -16,9 +16,10 @@ Reading-list stages use this separate child-only admission and require no pause 
 
 The normal service, schedules and global environment remain live. `loadConfig` is
 called with a child-only empty LazyLibrarian endpoint; no service setting changes.
-Preparation and a merged helper do not grant apply authority. Finish library recovery,
-fresh source/physical-file/preservation proofs and independent review, then ROOT must
-ratify the exact private approval SHA and phase before execution.
+Preparation and a merged helper do not grant apply authority. Fresh scoped
+source/physical-file/preservation proofs and ROOT ratification of the exact private
+approval SHA and phase are required. A proved reading-list scope can proceed
+independently of unresolved COPY paths; unresolved chapter identities remain held.
 
 ## Missing canonical works
 
@@ -33,6 +34,11 @@ The worker applies this policy to both the approved preview and the native adapt
 plan before reconciliation. The complete fresh chapter snapshots, physical proof
 artifact, original item payloads and exact ordered plan remain required. This policy
 is child-local; the deployed Libretto modules and normal acquisition are unchanged.
+An explicit `canonicalPolicy: missing-works-only` scope binds
+`physicalProofArtifactSha256` and `physicalChapterProofs`. Before execution, the host
+projects every chapter's canonical owner and conservative proof strength from that
+actual artifact and requires exact equality to the inline proofs. Existing artifact
+identity guards then protect the same bytes at every mutable intent ACK.
 
 ## Private approval and admission
 

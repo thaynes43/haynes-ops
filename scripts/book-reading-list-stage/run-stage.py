@@ -269,6 +269,9 @@ def main():
     subprocess.run(['node', '--input-type=module', '-e', validator], cwd=ROOT, input=raw,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=5)
     artifact_identities = {}
+    physical_proofs = {}
+    proof_shas = {scope.get('physicalProofArtifactSha256') for scope in approval['scopes']
+                  if scope.get('canonicalPolicy') is not None}
     for artifact in approval['artifacts'] + ([approval['initialReceipt']] if approval.get('initialReceipt') else []):
         value, info = read_private(artifact['path'], 32 * 1024 * 1024)
         if sha(value) != artifact['sha256']:
@@ -279,6 +282,13 @@ def main():
                     or receipt.get('completed') is not True or receipt.get('recipeCount') != 1 or receipt.get('childExit') != 0):
                 raise ValueError('initial receipt is not an actually completed one-recipe stage')
         artifact_identities[artifact['path']] = info
+        if artifact['sha256'] in proof_shas:
+            physical_proofs[artifact['sha256']] = json.loads(value, object_pairs_hook=unique)
+    if proof_shas:
+        validator = "import {validatePhysicalProofArtifacts} from './protocol.mjs'; let raw=''; for await (const c of process.stdin) raw+=c; const v=JSON.parse(raw); validatePhysicalProofArtifacts(v.approval,v.artifacts);"
+        subprocess.run(['node', '--input-type=module', '-e', validator], cwd=ROOT,
+                       input=canonical({'approval': approval, 'artifacts': physical_proofs}),
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=5)
     if not args.execute:
         print(json.dumps({'validated': True, 'clusterCalls': 0, 'runtimeWrites': 0, 'phase': approval['phase']}))
         return

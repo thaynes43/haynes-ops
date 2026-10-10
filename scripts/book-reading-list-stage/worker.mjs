@@ -168,6 +168,7 @@ async function main(workerSha256) {
   target.readingListPlan = async (...args) => {
     const plan = await nativePlan(...args);
     if (readScope?.canonicalPolicy === undefined) return plan;
+    assert(Array.isArray(args[2]) && args[2].length > 0, 'canonical matched-work call is incomplete');
     const { selectBookChapters } = await import(`${root}/target/kavita-chapters.js`);
     const assignments = new Map();
     for (const id of [...new Set(plan.order.map((row) => String(row.seriesId)))]) {

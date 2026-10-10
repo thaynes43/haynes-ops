@@ -103,6 +103,28 @@ export function assertNoRemoval(before, desired) {
   const wanted = new Set(desired.map(chapterKey));
   assert(before.every((r) => wanted.has(chapterKey(r))), 'plan would remove an existing item');
 }
+export function validatePhysicalProofArtifacts(approval, artifacts) {
+  for (const scope of approval.scopes) {
+    if (scope.canonicalPolicy === undefined) continue;
+    const recipe = artifacts[scope.physicalProofArtifactSha256]?.recipes?.[scope.recipe.id];
+    assert.equal(recipe?.verified, true, 'physical recipe proof is incomplete');
+    const projected = recipe.chapters.map((chapter) => {
+      assert.equal(chapter.canonicalWorkIdentityVerified, true, 'physical chapter identity is incomplete');
+      assert(chapter.files?.length, 'physical source file proof absent');
+      const owners = new Set(chapter.files.map((file) => {
+        assert.equal(file.rawIdentityVerified, true);
+        assert.equal(file.fingerprintVerified, true);
+        assert(['isbn', 'full-title-and-full-author'].includes(file.proofRoute));
+        return hash(file.canonicalWork);
+      }));
+      assert.equal(owners.size, 1, 'physical files have ambiguous canonical owners');
+      return { seriesId: String(chapter.seriesId), chapterId: chapter.chapterId,
+        canonicalWorkSha256: [...owners][0],
+        proofRoute: chapter.files.every((file) => file.proofRoute === 'isbn') ? 'isbn' : 'full-title-and-full-author' };
+    });
+    assert.deepEqual(scope.physicalChapterProofs, projected, 'inline physical proofs differ from pinned artifact contents');
+  }
+}
 // The same filtered plan feeds preview admission and the native adapter's write.
 // Owners come from the deployed selector; strengths come from reviewed physical evidence.
 export function missingCanonicalWorkPlan(plan, before, assignments, physicalProofs) {
