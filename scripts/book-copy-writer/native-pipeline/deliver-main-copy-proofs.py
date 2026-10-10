@@ -21,9 +21,9 @@ BASE = Path(__file__).parent
 BUNDLE = BASE / 'runtime-modules'
 PACKET = BASE
 HELPER = Path(__file__).parent / 'checkpoint-copy-job.py'
-HELPER_SHA = '88b2b04cafbea2badca40c5f4d282866fe481ebc533202241639143fe89f8bf3'
+HELPER_SHA = '8b5f9f156c30af99c0abd52ee6639428dc212c90b09279c783e47d86d44f12ad'
 SENDER_SHA = '30ca6db3c0b82257d7196706794f6e107945fb17d36cb7f44cfd7d9ece9cadf4'
-BRIDGE_SHA = 'e5ba6985ab4e68d8418b160f092c00429090831a869036afc6b8d649e4ba45ec'
+BRIDGE_SHA = 'f97513ee27eaa8b28b30ca34ab1dc54e60e10564ee0e784782b433f8661b7c50'
 TRANSPORT_SHA = '096ba710805623638b87d8c31f6be2653fe57ae0377bf35a27dabf014755e8a5'
 MAIN = ('frontend', 'issue831-copy-selected-1009-03')
 SHA = re.compile(r'[0-9a-f]{64}')
@@ -137,7 +137,7 @@ def frozen_deadline(contract, publisher, now):
     start, end = epoch(publisher.get('capture_started_at')), epoch(publisher.get('captured_at'))
     if not first <= now or not start <= end <= now:
         raise Refused('actual stop/publisher capture ordering differs')
-    deadline = math.floor(min(first + 250, start + 65, end + 35))
+    deadline = math.floor(min(first + 170, start + 65, end + 35))
     if deadline <= now:
         raise Refused('frozen publisher/maintenance lease expired')
     return deadline

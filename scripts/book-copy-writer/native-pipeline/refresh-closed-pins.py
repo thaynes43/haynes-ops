@@ -25,6 +25,14 @@ def replace_constant(file, variable, value):
 
 
 def refresh():
+    files = {name: (HERE / name).read_bytes() for name in
+             ('bound_census_collectors.py', 'capture-live-byte-baseline.py')}
+    path = HERE / 'live-baseline-closed-manifest.json'
+    template = json.loads(path.read_bytes())
+    template['spec']['template']['spec']['containers'][0]['command'] = ['nice', '-n', '19', 'python', '-B', '-c',
+        program(files, 'capture-live-byte-baseline.py', 'COPY_BASELINE_PHASE_READY')]
+    path.write_text(json.dumps(template, sort_keys=True, separators=(',', ':')) + '\n')
+    replace_constant('pipeline_pins.py', 'LIVE_ENTRY_SHA256', sha('capture-live-byte-baseline.py'))
     for variable, name in [('OUTCOME_MAILBOX_SHA256', 'outcome_mailbox.py'), ('OUTCOME_VERIFIER_SHA256', 'verify-copy-outcome-readonly.py')]:
         replace_constant('capture-source-stat-census.py', variable, sha(name))
     files = {name: (HERE / name).read_bytes() for name in
@@ -46,7 +54,8 @@ def refresh():
         replace_constant(file, variable, sha(name))
     path = HERE / 'run-live-byte-baseline.py'
     source = path.read_text()
-    for key, name in [('helper', 'checkpoint-copy-job.py'), ('sender', 'deliver-private-inputs.py')]:
+    for key, name in [('helper', 'checkpoint-copy-job.py'), ('sender', 'deliver-private-inputs.py'),
+                      ('closed_manifest', 'live-baseline-closed-manifest.json')]:
         source, count = re.subn("'" + key + "':'[0-9a-f]{64}'", "'" + key + "':'" + sha(name) + "'", source)
         if count != 1:
             raise ValueError('successor host source pin missing')

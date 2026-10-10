@@ -9,7 +9,7 @@ import argparse,ast,datetime as dt,hashlib,importlib.util,json,os,signal,stat,sy
 from pathlib import Path
 HERE=Path(__file__).parent
 ROOT='/data/cephfs-hdd/data/media/books/EBooks'
-BOUND_MODULE_PINS={'bound_census.py': '47c62c82277e5511d5011845ff0600acd0f1d97212077f41b31fba40775065f3', 'epub_copies.py': 'b79389c89bd5a57b4737ad693d2c209bc513e818343064ec04c8f0fcfb24a7da', 'epub_metadata.py': 'ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773'}
+BOUND_MODULE_PINS={'bound_census.py': 'd3df953dc7105d9d2535b0d370bb53c266ab46f018beac72652f681d91d52c38', 'epub_copies.py': 'b79389c89bd5a57b4737ad693d2c209bc513e818343064ec04c8f0fcfb24a7da', 'epub_metadata.py': 'ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773'}
 class Refused(RuntimeError):pass
 def stamp():return dt.datetime.now(dt.timezone.utc).isoformat()
 def epoch(s):return dt.datetime.fromisoformat(s.replace('Z','+00:00')).timestamp()
@@ -136,7 +136,7 @@ def assemble(c,output):
  if c.get('schema')!=1 or c.get('root_approved') is not True:raise Refused('root-approved complete assembly contract required')
  helper=module('copy_checkpoint',HERE/'checkpoint-copy-job.py');state,_=helper.read_json(Path(c['phase_state']));helper.validate_state(state,c['restore_pr']);helper.validate_leases(state,require_all=True)
  if state['phase_token']!=c['phase_token'] or 'window_started_at' not in state or state['complete']:raise Refused('fresh actual COPY phase required')
- abort=epoch(state['window_started_at'])+250
+ abort=epoch(state['window_started_at'])+170
  if not time.time()<abort:raise Refused('assembly phase deadline expired')
  def stopped(*_):raise Refused('bounded private assembly deadline or signal')
  previous={s:signal.signal(s,stopped) for s in (signal.SIGALRM,signal.SIGTERM,signal.SIGINT)};signal.setitimer(signal.ITIMER_REAL,min(25,abort-time.time()))

@@ -1,8 +1,10 @@
 # Fresh COPY2 window preparation
 
 This tracked successor prepares a Stop/inverse/watch pair for the current
-haynesnetwork v0.110.5 and signed writer source `7c99b2af`. It grants no runtime
-authorization. Do not arm, suspend Flux, merge Stop, create producers or run MAIN
+haynesnetwork v0.110.5. The retained image/source `7c99b2af` is historical;
+the prospective byte lifetime requires a newly published signed runtime and
+exact registry module closure before a packet can qualify it. This source
+grants no runtime authorization. Do not arm, suspend Flux, merge Stop, create producers or run MAIN
 from this README. Root/coordinator must independently review a fresh exact packet
 within the owner's authorized scope and grant each live stage separately.
 
@@ -56,13 +58,18 @@ an unresolved severity finding refuses. Pending checks cannot start Stop clocks.
 The default live-workload staging ceiling remains 600s. A fresh, explicitly
 reviewed **cached-source** attempt may select `--arm-deadline` up to 1800s for this still-Normal
 staging only: inverse retarget, required checks/advisory, sealing and fresh LIVE.
-Allow the complete 200s LIVE host bound plus 30s bind reserve before its original
+Allow the complete 260s LIVE host bound plus 30s bind reserve before its original
 arm expiry. This does not reset or extend an already armed attempt, authorize
 Stop/COPY, or guarantee CI will finish within the selected ceiling. A separate
 runtime GO is required. After the conservative pre-release origin or actual Stop,
-the original 170s restore trigger, 300s service ceiling and 50s restoration reserve
-apply; the staging ceiling cannot replace them. Byte capture remains bounded by
-its original 300s clock and Normal rehearsal retains its separate 120s arm.
+the 170s restore trigger and 300s service ceiling remain fixed. The prospective
+restoration reserve is 130s (170 + 130 = 300); its actual cold timing remains
+unproved. The staging ceiling cannot replace these clocks. Manual byte evidence
+expires 600s after its original earliest capture, with activation admitted only
+while that original capture is at most 300s old. The supervisor rechecks that
+age after arming immediately before publishing the conservative activation
+origin. Generic metadata freshness stays 300s. Normal rehearsal retains its
+separate historical 120s arm and 50s recovery budget.
 Above 600s, both cached receipt and activation paths must be configured; a
 non-cached watcher or supervisor cannot adopt the larger staging allowance.
 
@@ -346,3 +353,19 @@ writes. They cover squash replay/idempotence, whole-blob drift, strict typed raw
 inventory, completed parent hold proof, pre-/post-Stop cleanup ordering, pending
 inverse gates, source/cleanup refusal and original restoration/publisher clocks.
 Never run CPU stress, busy loops, wide parallel or repeated load tests here.
+
+The prospective LIVE collector/Job is bounded at 240s and its host at 260s,
+including cleanup. These limits respond to the measured V12 153.754472s byte
+stage and V11 39.645623s post-byte tail (209.380831s projected total, not an
+actual completion). They do not change any prior attempt: V11 cold restoration
+127.249103s failed its original 50s reserve; V12 staging restoration
+50.427959s also exceeded 50s and did not exercise stopped services. The new
+130s cold reserve is prospective, with no timing PASS or guarantee. Publisher
+65s/35s and health 12s caps remain fixed. SOURCE and MAIN abort by the original
+conservative activation + 170s, reserving 130s inside the service 300s ceiling.
+
+Changing byte reuse modifies the signed `bound_census.py` runtime module. A
+fresh packet must bind the actually published signed image and registry module
+closure before using the prospective contract; the prior signed image cannot
+be represented as containing the new byte lifetime. No source change or test
+authorizes another phase, service Stop, collection or writer.

@@ -98,6 +98,11 @@ def publisher_writer_deadline(scope,phase_deadline,reserve,at):
 def fresh(value,age=300):
  delta=time.time()-epoch(value)
  if delta < -5 or delta > age:raise Refused('source/health timestamp is future or expired')
+def byte_activation_admission(baseline,at):
+ if (type(baseline.get('schema')) is not int or baseline['schema']!=1
+     or baseline.get('kind')!='live_byte_baseline' or baseline.get('complete') is not True):raise Refused('complete pinned LIVE baseline required before activation')
+ start,finish=epoch(baseline['capture_started_at']),epoch(baseline['completed_at'])
+ if not start<=finish<=at or not 0<=at-start<=300:raise Refused('original byte activation admission expired or future')
 def prospective_moves(report):
  return sum(not row['keeper'] and not row['protected_reasons']
             for group in report['groups'] for row in group['copies'])
@@ -315,7 +320,9 @@ class Supervisor:
    if window.sha(normal[path])!=contract['manifests'][path]['normal_sha256']:raise Refused('held preflight normal main differs')
   self.status.update(phase='armed_while_live',armed_ready=True,watchdog_armed_at=watch['armed_at']);self.save()
   if self.c.get('cached_source_receipt'):
-   self.status['actuation_budget_started_at']=now();self.save()
+   baseline=json.loads(pinned_artifact(self.c['live_byte_baseline'],32*1024*1024))
+   activation_at=now();byte_activation_admission(baseline,epoch(activation_at))
+   self.status['actuation_budget_started_at']=activation_at;self.save()
    cache.write_private(self.c['cached_source_activation'],(json.dumps({'schema':1,
     'phase_token':self.status['phase_token'],'cached_source_receipt_sha256':self.c['cached_source_receipt']['sha256'],
     'normal_inverse_merge_sha':self.status['normal_inverse_merge_sha'],'armed_ready':True,
@@ -362,7 +369,7 @@ class Supervisor:
      started=now();self.deadline=epoch(started)+int(self.c['max_service_absence_seconds'])
      if self.c.get('cached_source_receipt'):self.deadline=min(self.deadline,epoch(self.status['actuation_budget_started_at'])+300)
      # The separate copy ledger starts only at the first observed absence. Its
-     # ready binder derives the same <=250-second abort clock from this marker.
+     # ready binder derives the same <=170-second abort clock from this marker.
      ledger_path=Path(self.c['copy_phase_state']);ledger,_sha=self.checkpoint.read_json(ledger_path)
      self.checkpoint.validate_state(ledger,self.c['restore_pr'])
      if 'window_started_at' in ledger:raise Refused('copy ledger already started another window')
@@ -385,7 +392,7 @@ class Supervisor:
     fresh(event['at'],12)
     expected_name='issue825-duplicate-share-fence-'+self.status['phase_token']
     if (type(event.get('backend_pid')) is not int or event['backend_pid']<=0 or event.get('application_name')!=expected_name
-        or event.get('deadline_epoch_ms')!=int((self.deadline-50)*1000)):raise Refused('SOURCE actual backend/name/deadline differs')
+        or event.get('deadline_epoch_ms')!=int((self.deadline-int(self.c['restore_reserve_seconds']))*1000)):raise Refused('SOURCE actual backend/name/deadline differs')
     if self.lock_pid is not None and event['backend_pid']!=self.lock_pid:raise Refused('SOURCE backend changed')
     if kind=='fence_healthy':
      if event.get('share_tables')!=['book_requests','books_items'] or event.get('read_only')!='on':raise Refused('SOURCE locks/read-only state lost')
@@ -537,14 +544,14 @@ class Supervisor:
    self.save();time.sleep(.2)
   raise Refused('owned PVC helper did not become Running within bounded readiness')
  def native_start(self):
-  key=('media','issue831-lidarr-source-1009-03');deadline=min(self.deadline-50,time.time()+115)
+  key=('media','issue831-lidarr-source-1009-03');deadline=min(self.deadline-int(self.c['restore_reserve_seconds']),time.time()+115)
   ready=self.bind(key,{'LIDARR_CAPTURE_PHASE_READY':'1','LIDARR_CAPTURE_DEADLINE_EPOCH':f'{deadline:.6f}'})
   self.create_job(ready);self.wait_pod(key)
  def lock_start(self):
   # There is no host/exec PG keeper. Actual SOURCE PID1 owns the backend and TTL.
   self.service_fence();fence={'schema':1,'phase_token':self.status['phase_token'],'first_service_stop_observed_at':self.status['first_service_stop_observed_at'],
    'service_fence_checked_at':self.status['service_fence_checked_at'],'publisher_scope_sha256':self.c['publisher_scope_sha256']}
-  key=self.checkpoint.SOURCE;ready=self.bind(key,{'COPY_SOURCE_PHASE_READY':'1','COPY_SOURCE_DEADLINE_EPOCH':f'{self.deadline-50:.6f}','COPY_SOURCE_FENCE_JSON':json.dumps(fence,sort_keys=True,separators=(',',':'))})
+  key=self.checkpoint.SOURCE;ready=self.bind(key,{'COPY_SOURCE_PHASE_READY':'1','COPY_SOURCE_DEADLINE_EPOCH':f'{self.deadline-int(self.c["restore_reserve_seconds"]):.6f}','COPY_SOURCE_FENCE_JSON':json.dumps(fence,sort_keys=True,separators=(',',':'))})
   self.create_job(ready);self.source_pod=self.wait_pod(key);container=self.row(key)['ready_manifest']['spec']['template']['spec']['containers'][0]['name']
   err=self.out/'source-log-stream.stderr';self.source_err=open(err,'xb');os.chmod(err,0o600)
   self.lock=subprocess.Popen(['kubectl','logs','--follow','-n',key[0],self.source_pod['metadata']['name'],'-c',container],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=self.source_err,text=True,bufsize=1)
@@ -579,7 +586,7 @@ class Supervisor:
   self.run_monitored(['nice','-n','19','python3',items['native_verifier']['path'],'--manifest',str(manifest_path),'--job',str(job_path),'--pod',str(pod_path),'--phase',self.status['phase_token'],'--job-uid',row['uid'],'--pod-uid',pod['metadata']['uid'],'--module-hashes',str(modules_path),'--observed-at',observed,'--helper',self.c['copy_checkpoint_helper'],'--helper-sha256',self.c['copy_checkpoint_helper_sha256'],'--output',str(native)],3)
   self.last_heartbeat=0;self.heartbeat();state,_sha=self.ledger();identity=copy.deepcopy(state);del identity['heartbeat']
   artifact=lambda path:{'path':str(path),'sha256':hashlib.sha256(Path(path).read_bytes()).hexdigest()}
-  contract={'schema':1,'mode':'SOURCE','manifest':artifact(manifest_path),'helper':{'path':self.c['copy_checkpoint_helper'],'sha256':self.c['copy_checkpoint_helper_sha256']},'native_verifier':items['native_verifier'],'receiver':items['receiver'],'native_binding':artifact(native),'selected_scope':None,'phase_state':self.c['copy_phase_state'],'source_fence':{'pg_backend_pid':self.lock_pid,'pg_health_at':self.status['pg_health_at']},'namespace':key[0],'job_name':key[1],'job_uid':row['uid'],'pod_name':pod['metadata']['name'],'pod_uid':pod['metadata']['uid'],'phase_token':self.status['phase_token'],'deadline_epoch':str(math.floor(self.deadline-50)),'restore_pr':self.c['restore_pr'],'phase_identity_sha256':hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest(),'image':INPUT_IMAGE}
+  contract={'schema':1,'mode':'SOURCE','manifest':artifact(manifest_path),'helper':{'path':self.c['copy_checkpoint_helper'],'sha256':self.c['copy_checkpoint_helper_sha256']},'native_verifier':items['native_verifier'],'receiver':items['receiver'],'native_binding':artifact(native),'selected_scope':None,'phase_state':self.c['copy_phase_state'],'source_fence':{'pg_backend_pid':self.lock_pid,'pg_health_at':self.status['pg_health_at']},'namespace':key[0],'job_name':key[1],'job_uid':row['uid'],'pod_name':pod['metadata']['name'],'pod_uid':pod['metadata']['uid'],'phase_token':self.status['phase_token'],'deadline_epoch':str(math.floor(self.deadline-int(self.c['restore_reserve_seconds']))),'restore_pr':self.c['restore_pr'],'phase_identity_sha256':hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest(),'image':INPUT_IMAGE}
   path=directory/'delivery-contract.json';receipt=directory/'delivery-receipt.jsonl';private_json(path,contract);self.ledger_frozen=True
   try:
    self.run_monitored(['nice','-n','19','python3',items['sender']['path'],'--contract',str(path),'--receipt',str(receipt)],12)
@@ -645,7 +652,7 @@ class Supervisor:
       or len(podspec['containers'])!=1 or str(container['resources']['limits']['cpu'])!='1' or container['command'][:3]!=['nice','-n','19']):raise Refused('worker differs from exact durable one-CPU ready intent')
   if gate=='COPY_PROOF_HASHES_JSON':
    self.require_retired_readers_absent();self.checkpoint.validate_copy_template(spec);deadline=float(next(v['value'] for v in container['env'] if v['name']=='COPY_DEADLINE_EPOCH'))
-   lease=publisher_writer_deadline(self.status['publisher_scope'],self.deadline,50,time.time())
+   lease=publisher_writer_deadline(self.status['publisher_scope'],self.deadline,int(self.c['restore_reserve_seconds']),time.time())
    if not time.time()<deadline<=lease or deadline!=self.status['writer_deadline_epoch']:raise Refused('MAIN frozen deadline differs from actual final publisher scope')
   if gate=='COPY_CAPTURE_PHASE_READY':
    placement=self.status['capture_placement'][ns]
@@ -660,7 +667,7 @@ class Supervisor:
  def fetch(self,key,name,cap):
   if name not in {'app-capture.json','library.json','permissions.json','copy-proof.json','ll-sql.jsonl','lazylibrarian.db','lazylibrarian.db-wal','lazylibrarian.db-shm','kavita.db','kavita.db-wal','kavita.db-shm'}:raise Refused('source transport path outside fixed private files')
   pod=self.actual_pod(key);row=self.row(key);container=row['ready_manifest']['spec']['template']['spec']['containers'][0]['name'];directory=self.out/key[1];directory.mkdir(mode=0o700,exist_ok=True);target=directory/name
-  deadline=min(self.deadline-50,time.time()+10)
+  deadline=min(self.deadline-int(self.c['restore_reserve_seconds']),time.time()+10)
   if key==self.checkpoint.SOURCE:
    program="import os,signal,stat,sys,time;signal.signal(signal.SIGALRM,lambda *_:sys.exit(2));signal.setitimer(signal.ITIMER_REAL,max(.001,float(sys.argv[3])-time.time()));fd=os.open('/tmp/'+sys.argv[1],os.O_RDONLY|os.O_NOFOLLOW);a=os.fstat(fd);assert stat.S_ISREG(a.st_mode) and a.st_nlink==1 and 0<a.st_size<=int(sys.argv[2]);f=os.fdopen(fd,'rb');raw=f.read(int(sys.argv[2])+1);b=os.fstat(f.fileno());assert len(raw)==a.st_size and (a.st_dev,a.st_ino,a.st_size,a.st_mtime_ns,a.st_ctime_ns)==(b.st_dev,b.st_ino,b.st_size,b.st_mtime_ns,b.st_ctime_ns);sys.stdout.buffer.write(raw)"
    argv=['nice','-n','19','python','-c',program,name,str(cap),f'{deadline:.6f}']
@@ -834,7 +841,7 @@ class Supervisor:
     self.verify_outcome(events);return
    time.sleep(.1)
  def verify_outcome(self,events):
-  # MAIN already exited successfully. Original Stop+250 remains the ceiling;
+  # MAIN already exited successfully. Original Stop+170 remains the ceiling;
   # SOURCE owns actual SQL, walks and retained reads on its original thread.
   self.status['writer_may_mutate']=False;self.save();self.guard_lease();self.service_fence()
   key=self.checkpoint.SOURCE;pod=self.actual_pod(key);row=self.row(key);script=Path(self.c['outcome_script'])
@@ -842,8 +849,8 @@ class Supervisor:
   completed=self.status['main_completion_receipt'];pinned_artifact(completed,16*1024*1024)
   library=json.loads(Path(self.status['library']['path']).read_bytes());receipt=json.loads(Path(self.status['assembly_receipt']).read_bytes());selection=json.loads(Path(receipt['proof_files']['selection.json']['path']).read_bytes())
   payload={'phase_token':self.status['phase_token'],'job_uid':row['uid'],'pod_uid':pod['metadata']['uid'],'library':library,'selection':selection,'events':events,'snapshot_sha256':receipt['proof_files']['snapshot.json']['sha256']}
-  end=min(self.deadline-50,time.time()+12)
-  modules={**MODULES,'book_copy_writer.py':'fbfec65f4af933da6ec9aca90536501e4514cebfb8e378584e3085a993493880','bound_census.py':'47c62c82277e5511d5011845ff0600acd0f1d97212077f41b31fba40775065f3'}
+  end=min(self.deadline-int(self.c['restore_reserve_seconds']),time.time()+12)
+  modules={**MODULES,'book_copy_writer.py':'fbfec65f4af933da6ec9aca90536501e4514cebfb8e378584e3085a993493880','bound_census.py':'d3df953dc7105d9d2535b0d370bb53c266ab46f018beac72652f681d91d52c38'}
   request={'schema':1,'type':'copy_outcome_request','phase_token':self.status['phase_token'],'job_uid':row['uid'],'pod_uid':pod['metadata']['uid'],'runtime_module_sha256':modules,'selected_scope_sha256':'1754edf94c3735c5c7cf6a78d30e3bea3b110e7b48a77ef1fea6e16e91c82663','main_receipt_sha256':completed['sha256'],'deadline_epoch':end,'payload':payload}
   raw=json.dumps(request,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()+b'\n'
   self.status['outcome_request_sha256']=hashlib.sha256(raw).hexdigest();self.outcome_ready=None;self.save()
@@ -964,7 +971,7 @@ def validate(c):
  optional={'review_disposition','review_operation'}
  if set(c) not in (required,required|optional) or 'REPLACE' in json.dumps(c):raise Refused('exact reviewed callback configuration is required')
  if optional.issubset(c) and set(c['review_operation'])!={'source_commit','stop_pr','stop_head'}:raise Refused('review operation incomplete')
- if c['max_service_absence_seconds']!=300 or c['restore_reserve_seconds']!=50 or not 1<=c['arm_deadline_seconds']<=(1800 if c['cached_source_receipt'] else 600):raise Refused('cached staging1–1800/non-cached1–600/phase300/abort250/reserve50 are fixed')
+ if c['max_service_absence_seconds']!=300 or c['restore_reserve_seconds']!=130 or not 1<=c['arm_deadline_seconds']<=(1800 if c['cached_source_receipt'] else 600):raise Refused('cached staging1–1800/non-cached1–600/phase300/abort170/reserve130 are fixed')
  if not re.fullmatch('[0-9a-f]{40}',c['restore_head']) or not re.fullmatch('[0-9a-f]{64}',c['publisher_scope_sha256']):raise Refused('exact inverse and scope hashes required')
  for key in ('copy_checkpoint_helper','publisher_guard','publisher_config','assembly_script','delivery_script','outcome_script'):
   if hashlib.sha256(Path(c[key]).read_bytes()).hexdigest()!=c[key+'_sha256']:raise Refused('reviewed callback component changed: '+key)

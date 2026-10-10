@@ -5,7 +5,7 @@ from pathlib import Path
 IMAGE='ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c'
 MODULES={'epub_copies.py':'b79389c89bd5a57b4737ad693d2c209bc513e818343064ec04c8f0fcfb24a7da','epub_metadata.py':'ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773'}
 LABEL='issue825.haynesnetwork/phase';NAME='issue831-live-byte-baseline-1009-03';NS='frontend';GO='ACTUAL_PARENT_BOUND_LIVE_BASELINE_RO_GO'
-PINS={'helper':'88b2b04cafbea2badca40c5f4d282866fe481ebc533202241639143fe89f8bf3','sender':'8d3cb8b3242a14ba5a07a25dca14d16220bf86be85d95cb18a1b3eeae7fd8c81','receiver':'fbf7998738652db4023721731526b343faff4b2d880d24e811a63a95eaab2d3e','native_verifier':'67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f','collector':'03f6163873b75f2bf0dc6896851b9da568d5e370ef39b56983eed64def2eb5f0','selected_scope':'1754edf94c3735c5c7cf6a78d30e3bea3b110e7b48a77ef1fea6e16e91c82663','ack_receiver':'de30ca5463b6564146f4fe71c79a6502487941ccfc09d7967054abeceff421f3','closed_manifest':'359300dae399b47d9d41ea9b31778f15aeb508b069bba628272a1a79bf52e92e'}
+PINS={'helper':'8b5f9f156c30af99c0abd52ee6639428dc212c90b09279c783e47d86d44f12ad','sender':'b3143e2ab297f9bb3c758a142dd1b88c50f5ef0dd20a2a18496bac9e4922c1fe','receiver':'fbf7998738652db4023721731526b343faff4b2d880d24e811a63a95eaab2d3e','native_verifier':'67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f','collector':'03f6163873b75f2bf0dc6896851b9da568d5e370ef39b56983eed64def2eb5f0','selected_scope':'1754edf94c3735c5c7cf6a78d30e3bea3b110e7b48a77ef1fea6e16e91c82663','ack_receiver':'de30ca5463b6564146f4fe71c79a6502487941ccfc09d7967054abeceff421f3','closed_manifest':'a49f6a329779fd9323a881f6eeb0588050d18cff2f91c020ede97daf018fa9ba'}
 class Refused(RuntimeError):pass
 
 def require(ok,code):
@@ -86,7 +86,7 @@ def validate_baseline(value,event,native,selected):
 
 class Run:
  def __init__(self,c,started_at=None):
-  self.start=time.time() if started_at is None else started_at;self.c=c;self.out=Path(c['output_dir']);self.out.mkdir(mode=0o700,exist_ok=False);self.end=self.start+180;self.total=self.start+200;self.uid=None;self.pod_uid=None;self.create_attempted=False;self.native=None;self.stream=None;self.thread=None;self.requests=set();self.events=[];self.log_error=None;self.lock=threading.Lock();self.result={'schema':1,'started_at':stamp(),'phase_token':c['phase_token'],'job_uid':None,'pod_uid':None,'baseline_complete':False,'production_library_writes':0,'PG_operations':0,'original_host_total_deadline_epoch':self.total,'host_exit_zero_required':True}
+  self.start=time.time() if started_at is None else started_at;self.c=c;self.out=Path(c['output_dir']);self.out.mkdir(mode=0o700,exist_ok=False);self.end=self.start+240;self.total=self.start+260;self.uid=None;self.pod_uid=None;self.create_attempted=False;self.native=None;self.stream=None;self.thread=None;self.requests=set();self.events=[];self.log_error=None;self.lock=threading.Lock();self.result={'schema':1,'started_at':stamp(),'phase_token':c['phase_token'],'job_uid':None,'pod_uid':None,'baseline_complete':False,'production_library_writes':0,'PG_operations':0,'original_host_total_deadline_epoch':self.total,'host_exit_zero_required':True}
   require(re.fullmatch('[0-9a-f]{32}',c['phase_token']) is not None,'phase_token')
   for name,sha in PINS.items():
    if name!='closed_manifest':require(c[name].get('sha256')==sha,'reviewed_'+name+'_pin')
@@ -113,7 +113,7 @@ class Run:
   return min(maximum,left)
  def arm_terminal(self):
   signal.signal(signal.SIGALRM,self.hard_stop)
-  signal.setitimer(signal.ITIMER_REAL,self.remaining(200))
+  signal.setitimer(signal.ITIMER_REAL,self.remaining(260))
  def launch(self,args,**kwargs):
   # Only protect spawn -> ownership registration; no mask around IO or waits.
   previous=signal.pthread_sigmask(signal.SIG_BLOCK,{signal.SIGALRM,signal.SIGTERM,signal.SIGINT})
@@ -236,7 +236,7 @@ class Run:
   self.start_drain(drain)
  def collect(self):
   spec=self.ready;require(spec['metadata']['name']==NAME and spec['metadata']['namespace']==NS and spec['metadata']['labels'][LABEL]==self.phase and spec['spec']['template']['metadata']['labels'][LABEL]==self.phase,'closed_manifest_identity')
-  c=spec['spec']['template']['spec']['containers'][0];env={e['name']:e for e in c['env']};require(c['image']==IMAGE and env['COPY_BASELINE_PHASE_READY'].get('value')=='0' and env['COPY_BASELINE_DEADLINE_EPOCH'].get('value')=='0' and env['COPY_BASELINE_MODULE_SHA256_JSON'].get('value')=='{}' and spec['spec']['activeDeadlineSeconds']==180 and spec['spec']['backoffLimit']==0,'closed_live_profile')
+  c=spec['spec']['template']['spec']['containers'][0];env={e['name']:e for e in c['env']};require(c['image']==IMAGE and env['COPY_BASELINE_PHASE_READY'].get('value')=='0' and env['COPY_BASELINE_DEADLINE_EPOCH'].get('value')=='0' and env['COPY_BASELINE_MODULE_SHA256_JSON'].get('value')=='{}' and spec['spec']['activeDeadlineSeconds']==240 and spec['spec']['backoffLimit']==0,'closed_live_profile')
   env['COPY_BASELINE_PHASE_READY']['value']='1';env['COPY_BASELINE_DEADLINE_EPOCH']['value']=str(int(self.end));env['COPY_BASELINE_MODULE_SHA256_JSON']['value']=canonical(MODULES).decode();private(self.out/'ready-manifest.json',spec)
   jobs=self.inventory('jobs');pods=self.inventory('pods');require(not any(j['metadata']['name']==NAME for j in jobs['items']) and not self.exact_pods(pods),'initial_owned_name_absence')
   private(self.out/'actual-initial-jobs.json',jobs);private(self.out/'actual-initial-pods.json',pods)
@@ -314,8 +314,8 @@ class Run:
     self.retire_transports();self.cleanup();self.result['cleanup_complete']=True
    except BaseException as e:self.result.update(baseline_complete=False,cleanup_complete=False,cleanup_error_class=type(e).__name__)
    if self.log_error is not None and self.result.get('baseline_complete'):self.result.update(baseline_complete=False,refused=True,error_code=self.log_error)
-   self.remaining(200);self.result.update(finished_at=stamp(),actual_seconds=time.time()-self.start);private(self.out/'actual-receipt.json',self.result);self.remaining(200)
-   # The enclosing main keeps the same hard +200 alarm through final stdout and
+   self.remaining(260);self.result.update(finished_at=stamp(),actual_seconds=time.time()-self.start);private(self.out/'actual-receipt.json',self.result);self.remaining(260)
+   # The enclosing main keeps the same hard +260 alarm through final stdout and
    # direct process exit. Do not disarm it before receipt/output finalization.
    for sig,handler in old.items():signal.signal(sig,handler)
   return self.result
@@ -327,8 +327,8 @@ def main():
  def stop(*_):hard_exit(active.requests if active is not None else ())
  try:
   for sig in (signal.SIGALRM,signal.SIGTERM,signal.SIGINT):signal.signal(sig,stop)
-  signal.setitimer(signal.ITIMER_REAL,200)
-  c=decode(Path(a.contract).read_bytes());require(set(c)=={'schema','output_dir','phase_token','closed_manifest','helper','sender','receiver','native_verifier','collector','ack_receiver','selected_scope'} and c['schema']==1,'launch_contract_schema');active=Run(c,started);result=active.execute();active.remaining(200);best_effort_event({k:result.get(k) for k in ('baseline_complete','refused','job_uid','pod_uid','job_and_all_owned_pods_absent','actual_seconds')});active.remaining(200);os._exit(0 if result.get('baseline_complete') and result.get('job_and_all_owned_pods_absent') else 2)
+  signal.setitimer(signal.ITIMER_REAL,260)
+  c=decode(Path(a.contract).read_bytes());require(set(c)=={'schema','output_dir','phase_token','closed_manifest','helper','sender','receiver','native_verifier','collector','ack_receiver','selected_scope'} and c['schema']==1,'launch_contract_schema');active=Run(c,started);result=active.execute();active.remaining(260);best_effort_event({k:result.get(k) for k in ('baseline_complete','refused','job_uid','pod_uid','job_and_all_owned_pods_absent','actual_seconds')});active.remaining(260);os._exit(0 if result.get('baseline_complete') and result.get('job_and_all_owned_pods_absent') else 2)
  except BaseException as error:
   code=str(error) if isinstance(error,Refused) and re.fullmatch('[a-z0-9_]{1,80}',str(error)) else 'host_finalization_unproved'
   hard_exit(active.requests if active is not None else (),code,{'error_class':type(error).__name__[:80]})

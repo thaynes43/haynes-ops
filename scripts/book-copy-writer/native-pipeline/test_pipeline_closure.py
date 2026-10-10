@@ -3,6 +3,9 @@
 import ast
 import base64
 import copy
+import contextlib
+import datetime
+import io
 import hashlib
 import importlib.machinery
 import importlib.util
@@ -45,6 +48,88 @@ def assignments(path):
 
 
 class PipelineCases(unittest.TestCase):
+    def test_prospective_live_240_host_260_keep_original_start_and_closed_handoff(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);phase='a'*32
+            selected=root/'selected.json';selected.write_bytes(prepare.canonical(pins.SELECTED_SCOPE))
+            template=json.loads((HERE/'live-baseline-closed-manifest.json').read_bytes())
+            for metadata in (template['metadata'],template['spec']['template']['metadata']):metadata['labels'][pins.LABEL]=phase
+            manifest=root/'manifest.json';manifest.write_bytes(prepare.canonical(template))
+            files={'closed_manifest':manifest,'selected_scope':selected,'helper':HERE/'checkpoint-copy-job.py',
+                   'sender':HERE/'deliver-private-inputs.py','receiver':HERE/'receive-private-inputs.py',
+                   'native_verifier':HERE/'prepare-native-source-contract.py','collector':HERE/'bound_census_collectors.py',
+                   'ack_receiver':HERE/'receive-live-baseline-ack.py'}
+            config=dict(output_dir=str(root/'actual'),phase_token=phase,
+                        **{key:dict(path=str(path.resolve()),sha256=digest(path)) for key,path in files.items()})
+            with mock.patch.object(host.time,'time',return_value=125):run=host.Run(config,100)
+            self.assertEqual((run.start,run.end,run.total),(100,340,360))
+            with mock.patch.object(host.time,'time',return_value=340):
+                with self.assertRaises(host.Refused):run.check()
+                run.check(cleanup=True);self.assertEqual(run.remaining(260),20)
+            with mock.patch.object(host.time,'time',return_value=360):
+                with self.assertRaises(host.Refused):run.check(cleanup=True)
+        result=subprocess.run([sys.executable,'-B',str(HERE/'run-live-and-copy.py'),
+            '--live-launcher','/unopened','--live-launcher-sha256','0'*64,'--contract','/unopened',
+            '--contract-sha256','0'*64],capture_output=True,check=True)
+        self.assertEqual(json.loads(result.stdout),dict(prepared_only=True,production_actions=0))
+
+    def test_source_cli_accepts_original_170_abort_and_refuses_later_epoch(self):
+        at=1791600000
+        class FixedDatetime(datetime.datetime):
+            @classmethod
+            def now(cls,tz=None):return cls.fromtimestamp(at,tz)
+        for seconds in (170,170.000001):
+            with self.subTest(seconds=seconds),tempfile.TemporaryDirectory() as directory, \
+                 mock.patch.object(helper.dt,'datetime',FixedDatetime),contextlib.redirect_stdout(io.StringIO()):
+                root=Path(directory);ledger=root/'phase.json';prefix=['--phase-state',str(ledger),'--restore-pr','1']
+                helper.main(prefix+['init'])
+                for name in prepare.TEMPLATES:
+                    if name=='live-baseline-closed-manifest.json':continue
+                    template=HERE/name;initial=root/name
+                    helper.main(prefix+['register','--manifest',str(template),'--source-sha256',digest(template),
+                        '--output',str(initial)]+(['--writer'] if name=='copy-writer-source-template.prepared.json' else []))
+                helper.main(prefix+['start-window'])
+                state,_=helper.read_json(ledger)
+                row=next(row for row in state['owned_jobs'] if (row['namespace'],row['name'])==helper.SOURCE);env=root/'env.json'
+                fence=dict(schema=1,phase_token=state['phase_token'],first_service_stop_observed_at=state['window_started_at'],
+                           service_fence_checked_at=state['window_started_at'],publisher_scope_sha256='a'*64)
+                helper.save(env,dict(COPY_SOURCE_PHASE_READY='1',COPY_SOURCE_DEADLINE_EPOCH=f'{at+seconds:.6f}',COPY_SOURCE_FENCE_JSON=json.dumps(fence)))
+                output=root/'ready.json';argv=prefix+['bind','--namespace',helper.SOURCE[0],'--name',helper.SOURCE[1],
+                    '--initial-manifest-sha256',row['initial_manifest_sha256'],'--env-file',str(env),'--output',str(output)]
+                with mock.patch.object(helper,'lookup_job',return_value=None) as native:
+                    if seconds>170:
+                        with self.assertRaisesRegex(helper.Refused,'phase abort clock'):helper.main(argv)
+                        self.assertFalse(output.exists());native.assert_not_called()
+                    else:
+                        helper.main(argv);self.assertTrue(output.exists());native.assert_called_once()
+                        actual,_=helper.read_json(ledger);self.assertEqual(actual['window_started_at'],state['window_started_at'])
+
+    def test_noncanonical_prelive_config_refuses_before_capture_or_exec(self):
+        handoff=load('finite_handoff','run-live-and-copy.py')
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);phase='a'*32
+            def artifact(name,value):
+                path=root/name;raw=json.dumps(value,separators=(',',':')).encode();path.write_bytes(raw);path.chmod(0o600)
+                return dict(path=str(path),sha256=hashlib.sha256(raw).hexdigest())
+            state=artifact('phase',dict(phase_token=phase,complete=False,owned_jobs=[dict(uid=None)]))
+            live=artifact('live',dict(phase_token='b'*32,output_dir=str(root/'live-output')))
+            config=artifact('config',dict(copy_phase_state=state['path'],cached_source_receipt=dict(path='/private',sha256='c'*64),
+                max_service_absence_seconds=300,restore_reserve_seconds=130,arm_deadline_seconds=1800,
+                selection_approval=dict(sha256=handoff.SELECTION),watchdog_state=str(root/'watch'),
+                live_byte_baseline=dict(path=str(root/'live-output/live-byte-baseline.json'),sha256=None)))
+            supervisor=root/'supervisor.py';supervisor.write_bytes(b'# inert pinned fixture\n');supervisor.chmod(0o600)
+            contract=artifact('handoff',dict(schema=1,phase_token=phase,phase_state=state,live_contract=live,prelive_config=config,
+                supervisor=dict(path=str(supervisor),sha256=digest(supervisor))))
+            argv=['handoff','--live-launcher',str(HERE/'run-live-byte-baseline.py'),
+                '--live-launcher-sha256',digest(HERE/'run-live-byte-baseline.py'),'--contract',contract['path'],
+                '--contract-sha256',contract['sha256'],'--root-authorization',handoff.GO]
+            with mock.patch.object(handoff.sys,'argv',argv),mock.patch.object(handoff.subprocess,'run') as capture, \
+                 mock.patch.object(handoff.os,'execv') as writer:
+                with self.assertRaisesRegex(RuntimeError,'preapproved_config_changed'):handoff.main()
+                capture.assert_not_called();writer.assert_not_called()
+            self.assertFalse((root/'supervisor-config.actual.json').exists())
+            self.assertFalse((root/'live-output').exists())
+
     def test_identity_import_supports_shallow_ci_mount_and_private_module_bundle(self):
         source = (HERE / 'pipeline_pins.py').read_bytes()
         scope = {'__file__': '/writer-tests/native-pipeline/pipeline_pins.py'}
@@ -101,7 +186,7 @@ class PipelineCases(unittest.TestCase):
             self.assertFalse(value['spec']['template']['spec']['automountServiceAccountToken'])
             self.assertTrue(container['securityContext']['readOnlyRootFilesystem'])
             if name == 'live-baseline-closed-manifest.json':
-                self.assertEqual(value['spec']['activeDeadlineSeconds'], 180)
+                self.assertEqual(value['spec']['activeDeadlineSeconds'], 240)
                 self.assertEqual(container['resources']['limits'], {'cpu': '1', 'memory': '512Mi'})
                 self.assertEqual(env['COPY_BASELINE_PHASE_READY']['value'], '0')
             else:

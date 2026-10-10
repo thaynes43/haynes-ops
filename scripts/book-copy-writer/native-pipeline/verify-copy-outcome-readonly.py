@@ -6,7 +6,7 @@ import hashlib,json,os,signal,stat,sys,time
 from pathlib import Path
 sys.path.insert(0,'/copy-writer')
 import epub_copies as copies,epub_metadata as metadata,bound_census as bound
-PINS={'epub_copies.py':'b79389c89bd5a57b4737ad693d2c209bc513e818343064ec04c8f0fcfb24a7da','epub_metadata.py':'ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773','bound_census.py':'47c62c82277e5511d5011845ff0600acd0f1d97212077f41b31fba40775065f3'}
+PINS={'epub_copies.py':'b79389c89bd5a57b4737ad693d2c209bc513e818343064ec04c8f0fcfb24a7da','epub_metadata.py':'ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773','bound_census.py':'d3df953dc7105d9d2535b0d370bb53c266ab46f018beac72652f681d91d52c38'}
 def fingerprints(deadline,health,scan_guard):
  health()
  result={p:[[str(n)for n in v[0]],*(str(n)for n in v[1:])]for p,v in copies.file_fingerprints(ROOT,deadline,health=scan_guard,max_files=bound.MAX_FILES).items()}

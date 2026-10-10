@@ -48,10 +48,10 @@ bindings and the existing retained receipt schema. Failure restores writer first
 without waiting for outcome. The PG-free MAIN bridge is a separate ten-second
 pre-admission proof and conveys no held-fence or database-health authority.
 
-Keep LIVE Job/collection 180 seconds, host total 200 seconds including cleanup,
-complete proof/32 MiB artifact/1 MiB aggregate logs, original byte-start age 300
-seconds and the separate restoration trigger 170 seconds. SOURCE retains its
-first-stop-derived deadline and 250-second abort/reserve profile. Native actual
+Keep prospective LIVE Job/collection 240 seconds, host total 260 seconds including cleanup,
+complete proof/32 MiB artifact/1 MiB aggregate logs, original byte-start lifetime 600
+seconds (activation admission at most 300 seconds after that same original start) and the separate restoration trigger 170 seconds. SOURCE retains its
+first-stop-derived deadline and 170-second abort with a 130-second restoration reserve. Native actual
 UID/spec/image binding, private input/artifact ACK, exit-zero completion and
 actual-UID Foreground full-union cleanup remain mandatory. Completed MAIN proof
 requires both a Complete/nonfailed/inactive Job and its Succeeded original Pod
@@ -65,8 +65,8 @@ must close all source/image/manifest/scope hashes and use fresh name, phase and
 unused output. Private actual contracts and packets stay outside git. Any runtime
 attempt needs independent review and a new explicit root exact-command GO.
 
-The LIVE host owns one original 180-second collection deadline and one original
-200-second total deadline. Collection refusal enters retirement and cleanup;
+The LIVE host owns one original 240-second collection deadline and one original
+260-second total deadline. Collection refusal enters retirement and cleanup;
 the terminal deadline hard-exits across request/log retirement, joins and private
 receipt publication. All waits use the remaining original budget. Requests must
 actually exit and be reaped before authoritative native absence is accepted.
@@ -98,3 +98,20 @@ files; its exact dependency environment must be closed before a runtime packet.
 after a reviewed source edit. It never changes signed runtime module identities,
 baseline timestamps/hashes or historical archives. Validate its output with the
 finite closure suite and obtain new review before any packet is executed.
+
+The generic metadata freshness remains 300s; only manual sealed byte evidence
+has a 600s lifetime. No completion, binding, SOURCE assembly or activation may
+reset its original earliest timestamp. The supervisor rechecks the 300s
+activation admission after arm. The 300s service ceiling and 170s restoration
+trigger are unchanged; the prospective 130s cold restoration reserve has no
+actual timing proof. Historical attempts retain their original bounds/results.
+The changed bound-census module requires a new actual signed publication and
+registry module receipt before packet preparation can qualify that runtime.
+Frozen `live-baseline-host` archives keep their historical 180s/200s contract.
+
+`run-live-and-copy.py` is the previously independently reviewed automatic
+handoff, now tracked with the prospective reserve/admission values. One exact
+conditional root GO owns LIVE and its exit-zero/ACK/full-cleanup gate, the single
+baseline-hash config binding and direct existing supervisor exec. It performs
+no post-LIVE object census or model handoff. Its pre-exec original-byte age
+check cannot replace the supervisor's final post-arm activation age check.
