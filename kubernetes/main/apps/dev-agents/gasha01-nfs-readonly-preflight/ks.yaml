@@ -1,0 +1,23 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# Disposable metadata-only NFS discovery; never a workspace acceptance result.
+# Keep the terminated Job and binding evidence until an explicitly reviewed cleanup.
+# Cleanup must first prove termination, then stage pruning and remove this inventory.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: gasha01-nfs-readonly-preflight
+  namespace: dev-agents
+spec:
+  dependsOn:
+    - name: dev-env-scheduling
+      namespace: dev-env-system
+  path: ./kubernetes/main/apps/dev-agents/gasha01-nfs-readonly-preflight/app
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 4m
