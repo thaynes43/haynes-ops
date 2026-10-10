@@ -319,6 +319,19 @@ def record_lock_custody(config, event, lease):
             catalog.metadata._write_file(fd, output.name, catalog.canonical(proof))
 
 
+def accepted_watcher_cache(config, watch, phase):
+    path = watch.args.cached_source_receipt
+    sha = watch.state.get("cached_source_receipt_sha256")
+    catalog.require(path == config["watcher_arguments"]["cached_source_receipt"]
+                    and phase["phase_token"] == config["phase_token"]
+                    and watch.state["cached_source_owner"]["phase_token"] == phase["phase_token"]
+                    and isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{64}", sha),
+                    "original watcher has not accepted this phase's exact cache")
+    receipt = json.loads(private(path, sha))
+    catalog.require(receipt["phase_token"] == phase["phase_token"], "accepted cache phase differs")
+    return receipt
+
+
 def maintenance_watchdog(base, core, config, supervisor, publishers):
     """Only the distinct ledger admission differs; cleanup/restore stay inherited."""
     class MaintenanceWatchdog(base.Watchdog):
@@ -388,7 +401,7 @@ def maintenance_watchdog(base, core, config, supervisor, publishers):
                 observer.remaining()
                 base.Watchdog.verify_phase_absent(self, phase)
                 self.verify_cached_stop_holds(self.state["cached_stop_actuation_binding"])
-                supervisor.cache.check_live(json.loads(private(config["cached_source_receipt"]["path"], config["cached_source_receipt"]["sha256"])),
+                supervisor.cache.check_live(accepted_watcher_cache(config, self, phase),
                     observer.get, json.loads(private(config["manifest_contract"]["path"], config["manifest_contract"]["sha256"])),
                     phase["phase_token"], deadline=observer.operation["original_abort_epoch"])
             observer.guard_lease = guard

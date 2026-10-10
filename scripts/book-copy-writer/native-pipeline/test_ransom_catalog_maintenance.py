@@ -23,6 +23,28 @@ import ransom_maintenance_job as maintenance
 
 
 class CatalogMaintenanceTests(unittest.TestCase):
+    def test_cleanup_uses_only_original_watchers_accepted_private_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "cache.json"
+            receipt = {"phase_token": "a" * 32, "exact": "accepted"}
+            path.write_bytes(catalog.canonical(receipt));path.chmod(0o600)
+            phase = {"phase_token": receipt["phase_token"]}
+            config = {"phase_token": phase["phase_token"],
+                      "watcher_arguments": {"cached_source_receipt": str(path)},
+                      "cached_source_receipt": None}  # Prearm field is never authority.
+            watch = SimpleNamespace(args=SimpleNamespace(cached_source_receipt=str(path)),
+                                    state={"cached_source_owner": phase.copy()})
+            with self.assertRaises(catalog.Refused):maintenance.accepted_watcher_cache(config, watch, phase)
+            watch.state["cached_source_receipt_sha256"] = "0" * 64
+            with self.assertRaises(catalog.Refused):maintenance.accepted_watcher_cache(config, watch, phase)
+            watch.state["cached_source_receipt_sha256"] = catalog.digest(receipt)
+            self.assertEqual(maintenance.accepted_watcher_cache(config, watch, phase), receipt)
+            config["watcher_arguments"]["cached_source_receipt"] = str(path.with_name("foreign.json"))
+            with self.assertRaises(catalog.Refused):maintenance.accepted_watcher_cache(config, watch, phase)
+            config["watcher_arguments"]["cached_source_receipt"] = str(path)
+            watch.state["cached_source_owner"]["phase_token"] = "b" * 32
+            with self.assertRaises(catalog.Refused):maintenance.accepted_watcher_cache(config, watch, phase)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.base = Path(self.temp.name)
