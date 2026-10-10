@@ -1,0 +1,35 @@
+{
+  "apiVersion": "cilium.io/v2",
+  "kind": "CiliumClusterwideNetworkPolicy",
+  "metadata": {
+    "name": "dev-env-owned-native-lifecycle-baseline"
+  },
+  "spec": {
+    "endpointSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/name": "dev-env-owned-native-lifecycle",
+        "io.kubernetes.pod.namespace": "dev-agents"
+      }
+    },
+    "enableDefaultDeny": {
+      "ingress": true,
+      "egress": true
+    },
+    "ingressDeny": [
+      {
+        "fromEntities": [
+          "all"
+        ]
+      }
+    ],
+    "egressDeny": [
+      {
+        "toEntities": [
+          "world",
+          "host",
+          "remote-node"
+        ]
+      }
+    ]
+  }
+}

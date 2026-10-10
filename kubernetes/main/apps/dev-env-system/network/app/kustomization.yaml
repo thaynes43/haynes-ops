@@ -10,4 +10,6 @@ resources:
   - ./operator.yaml
   - ./broker.yaml
   - ./keeper.yaml
+  # Clusterwide immutable fence survives deletion of the source-inspected CNP.
+  - ./native-lifecycle-baseline.json
   - ./native-lifecycle-offline.json
