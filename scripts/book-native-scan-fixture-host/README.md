@@ -25,8 +25,13 @@ watchdog attempts UID cleanup during 180–200s alongside main foreground cleanu
 it leaves valid cleanup running and kills only the exact dedicated host group at
 200s if absence remains unproved. A frozen launcher or API outage produces durable
 unknown, with no extension or claimed absence. The worker has one
-attempt, node talosw01, nice 19, CPU <=500m, no host/PVC/NFS mount, no token, no injected
-container and only four memory emptyDirs. The clone itself contains authentication
+attempt, node talosw01, nice 19, CPU <=500m, a fixed 1Gi memory request and 2Gi limit,
+no host/PVC/NFS mount, no token, no injected container and only four memory emptyDirs.
+Their 64Mi/256Mi/8Mi/64Mi caps remain fixed. Historical v11 was OOMKilled with exit
+137 under the former 1Gi limit, with no native preservation proof; the allocation
+stage remains unknown. The successor changes only the exact approved memory
+resources, with the same input bytes, image, proof logic and 180/200-second clocks.
+The clone itself contains authentication
 and private user rows; network isolation must be proved before those bytes enter it.
 
 Before delivery, inspect complete native Job/Pod inventories, strict admission,

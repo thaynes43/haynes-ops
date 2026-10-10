@@ -289,6 +289,12 @@ def watcher(packet,initialize=True):
             require(not (argv[0]=='gh' or (argv[0]=='kubectl' and argv[1] in ('create','apply','replace'))),'no Git merge or resource producer')
             # Finite aggregate labels never retain argv, SQL, output or secrets.
             label=('recovery/' if self.state.get('normal_rehearsal_restore_started_at') else 'arming/')+argv[0]+'/'+(argv[1] if argv[0]!='git' else ('fetch' if 'fetch' in argv else 'read'))
+            if argv[:3]==['flux','reconcile','source'] and argv[3:8]==['git','haynes-ops','-n','flux-system','--timeout=30s']:
+                label+='/source/flux-system/haynes-ops'
+            elif argv[:3]==['flux','reconcile','kustomization'] and len(argv)>5 and argv[4]=='-n':
+                for namespace,name in self.recovery_scopes():
+                    if argv[3]==name and argv[5]==namespace:
+                        label+='/kustomization/'+namespace+'/'+name;break
             started=time.monotonic();failed=True
             try:
                 result=super().run([packet['binaries'][argv[0]]['path'],*argv[1:]],timeout=timeout,input_text=input_text)

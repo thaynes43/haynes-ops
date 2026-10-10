@@ -545,6 +545,24 @@ class NormalCases(unittest.TestCase):
             self.assertEqual(w.state['normal_rehearsal_restore_started_at'],'original');self.assertEqual(w.save.call_count,2)
             self.assertNotIn('private',json.dumps(w.state))
 
+    def test_flux_timings_bind_only_fixed_owned_scopes_including_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            packet={'directory':directory,'repo_dir':'unused','binaries':{'flux':{'path':'/test/flux'}}}
+            (Path(directory)/'runtime').mkdir(mode=0o700)
+            w,_,_,watch=normal.watcher(packet,initialize=False);w.state={'normal_rehearsal_restore_started_at':'original'};w.save=mock.Mock()
+            commands=[['flux','reconcile','source','git','haynes-ops','-n','flux-system','--timeout=30s'],
+                ['flux','reconcile','kustomization','cluster','-n','flux-system','--timeout=30s'],
+                ['flux','reconcile','kustomization','private-secret','-n','private-namespace']]
+            with mock.patch.object(watch.Watchdog,'run',side_effect=['private output',watch.ServiceCeiling(),'private output']),mock.patch.object(normal.time,'monotonic',side_effect=[10,10.25,20,20.5,30,30.75]):
+                w.run(commands[0])
+                with self.assertRaises(watch.ServiceCeiling):w.run(commands[1])
+                w.run(commands[2])
+            timings=w.state['normal_rehearsal_call_timings']
+            self.assertEqual(set(timings),{'recovery/flux/reconcile/source/flux-system/haynes-ops',
+                'recovery/flux/reconcile/kustomization/flux-system/cluster','recovery/flux/reconcile'})
+            self.assertEqual(timings['recovery/flux/reconcile/kustomization/flux-system/cluster'],dict(count=1,seconds=.5,maximum_seconds=.5,failures=1))
+            self.assertNotIn('private',json.dumps(w.state));self.assertEqual(w.save.call_count,3)
+
     def test_historically_in_budget_normal_cold_recheck_does_not_invent_miss(self):
         with tempfile.TemporaryDirectory() as directory:
             runtime=Path(directory)/'runtime';runtime.mkdir(mode=0o700)

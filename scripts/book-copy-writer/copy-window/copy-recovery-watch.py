@@ -348,6 +348,15 @@ class Watchdog:
                              'Owned Kustomization has a foreign phase.')
             if cache.release_patch(row,owned['uid'],owned['phase_token'],kind='Kustomization',name=name,namespace=namespace,spec=owned['spec']):
                 raise RuntimeError('Owned Kustomization unexpectedly held again; refuse reconcile.')
+            generation=row['metadata'].get('generation');status=row.get('status',{})
+            # Fresh Source proof precedes this call. Only actual convergence on
+            # the released generation makes a further forced request redundant.
+            if (type(generation) is int and generation>0
+                    and type(status.get('observedGeneration')) is int and status['observedGeneration']==generation
+                    and status.get('lastAppliedRevision')=='main@sha1:'+sha
+                    and any(c.get('type')=='Ready' and c.get('status')=='True'
+                            and type(c.get('observedGeneration')) is int and c['observedGeneration']==generation
+                            for c in status.get('conditions',[]))):return
         self.run(['flux','reconcile','kustomization',name,'-n',namespace,'--timeout=30s'])
 
     def verify_recovery_absence(self):

@@ -279,3 +279,41 @@ by a later private execution. No fresh runtime packet or additional Job was
 prepared. A later actual proof requires new exact source/image/host closure, a
 fresh CLOSED packet, independent audit and separately named root one-Job GO.
 Production Ransom writer/COPY/EPUB/list/strip/hold authority remains absent.
+
+## v11 historical isolated outcome and bounded memory correction
+
+The separately reviewed CLOSED v11 packet (`dc42cbd5`), manifest (`0754ff10`) and
+Pathfinder peer (`a1db0402`) authorized one historical isolated run only. Its separate
+authorized copy SHA was `c38cfceffb2a17a277fea01d4fa9c5d9d766d555c65d2a93a730d38c201951db`.
+Actual source, all 13 modules and CEP/native BPF deny passed before the five private
+historical inputs and two runtime proof inputs were delivered. No production mount,
+service-account token, service/Flux mutation or production book write occurred.
+
+The result is **UNKNOWN**. The first failing owned Pod response proves Failed,
+native-scanner OOMKilled, exit 137, restart zero; the host correctly refused that
+terminal state. No ready event, private proof receipt, ACK, native scan result,
+32-cell inverse or all-82-table equality was retained. The latest bounded native
+output was empty. Allocation stage and managed heap size remain unproved.
+
+Exact Job/Pod UID cleanup completed at 02:05:03 UTC on 2026-10-10, before the original
+02:07:18 collection and 02:07:38 cleanup caps. The watchdog agreed. A fresh complete
+typed media JobList/PodList at resourceVersion 819886498 contained no native fixture
+or owned UID. Root ended the scoped declaration; no automatic retry is allowed.
+Private aggregate receipt:
+`/home/dev/work/hn-ransom-native-fixture-actual-53df-v11-1010/aggregate-actual-v11-proof.json`,
+SHA `41f053e976f328a7acc8dd694d2636aa58ec119d4b548ccec9fc18b7ab1dc9a2`.
+
+Root ratified the minimum template correction: memory request 1Gi, limit 2Gi.
+CPU request 100m/limit 500m, 180/200 clocks, tmpfs caps 64Mi/256Mi/8Mi/64Mi,
+signed 53df image, 13-module closure, exact historical input bytes, full 82-table
+snapshots, typed inverse, 1931 retained keys and all isolation/authority guards
+stay fixed. The five uploads total 27,779,816 bytes. Earlier private whole-table
+proof files are each 20,941,939 bytes; whole snapshots, deep copies and JSON/hash
+buffers share the container limit with tmpfs and the native host. This explains
+the bounded resource choice without attributing the OOM to an unobserved stage.
+No processor-count or GC override is justified by retained runtime evidence.
+
+Fresh CLOSED preparation and one independent review still precede a separate exact
+root one-Job GO. Historical fixture success would prove the scanner path, not current
+production catalog, file, reading state or idle eligibility. The Ransom whole-folder
+hold and disabled strip flag remain; seven production catalog fields remain unapproved.
