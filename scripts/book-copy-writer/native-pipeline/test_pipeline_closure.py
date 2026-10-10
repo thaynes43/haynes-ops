@@ -49,6 +49,80 @@ def assignments(path):
 
 
 class PipelineCases(unittest.TestCase):
+    def test_reviewed_cephfs_profile_refuses_foreign_identity_or_changed_source(self):
+        guard = load('finite_normal_profiles', 'publisher-scope-guard.py')
+        profiles = guard.normal_profiles()
+        self.assertEqual(len(profiles), 145)
+        row = copy.deepcopy(profiles['572bd232-c8b4-4caa-8a68-8bdc8b0891eb'])
+        entry = row['source_mounts'][0]; binding = entry['claim_binding']
+        # A finite model exercises the real matcher; it is never a live Pod proof.
+        pod = {'metadata': {'namespace': row['namespace'], 'name': row['pod_name'],
+                            'uid': row['pod_uid'], 'ownerReferences': row['direct_owner_references']},
+               'spec': {'nodeName': row['node'],
+                        'containers': [{'name': entry['container'], 'image': row['images'][entry['container']],
+                                        'volumeMounts': [entry['mount']]}],
+                        'volumes': [{'name': entry['mount']['name'],
+                                     'persistentVolumeClaim': {'claimName': binding['claim_name']}}]},
+               'status': {kind: [{'name': name, 'imageID': image} for name, image in values.items()]
+                          for kind, values in row['captured_image_ids'].items()}}
+        row['full_spec_sha256'] = guard.digest(pod['spec'])
+        fixture = {row['pod_uid']: row}
+        key = (row['namespace'], binding['claim_name'])
+        storage = {key: {'claim_uid': binding['claim_uid'], 'pv_uid': binding['pv_uid'],
+                         'source': copy.deepcopy(entry['source'])}}
+        self.assertFalse(guard.possible_ebooks_mount(pod, entry['mount'], storage,
+                         profiles=fixture, container_name=entry['container']))
+        foreign = copy.deepcopy(pod); foreign['metadata']['uid'] = 'different-pod-same-cephfs-driver'
+        with self.assertRaisesRegex(guard.Refused, 'unclassified'):
+            guard.possible_ebooks_mount(foreign, entry['mount'], storage,
+                                       profiles=fixture, container_name=entry['container'])
+        changed = copy.deepcopy(storage)
+        changed[key]['source']['csi']['volumeAttributes']['subvolumePath'] = '/different-subvolume'
+        with self.assertRaisesRegex(guard.Refused, 'physical source changed'):
+            guard.possible_ebooks_mount(pod, entry['mount'], changed,
+                                       profiles=fixture, container_name=entry['container'])
+        legacy_image = copy.deepcopy(pod)
+        legacy_image['status']['containerStatuses'][0]['imageID'] = None
+        with self.assertRaisesRegex(guard.Refused, 'actual imageID changed or missing'):
+            guard.possible_ebooks_mount(legacy_image, entry['mount'], storage,
+                                       profiles=fixture, container_name=entry['container'])
+
+    def test_unstarted_profile_requires_pending_and_no_container_statuses(self):
+        guard = load('finite_unstarted_profile', 'publisher-scope-guard.py')
+        row = copy.deepcopy(guard.normal_profiles()['01f14cb4-f359-491b-b523-92c3b32404dd'])
+        self.assertTrue(row['unstarted_snapshot'])
+        self.assertEqual(sum(len(values) for values in row['captured_image_ids'].values()), 7)
+        self.assertTrue(all(image is None for values in row['captured_image_ids'].values()
+                           for image in values.values()))
+        entry = row['source_mounts'][0]
+        pod = {'metadata': {'namespace': row['namespace'], 'name': row['pod_name'],
+                            'uid': row['pod_uid'], 'ownerReferences': row['direct_owner_references']},
+               'spec': {'nodeName': row['node'],
+                        'containers': [{'name': name, 'image': row['images'][name]}
+                                       for name in row['captured_image_ids']['containerStatuses']],
+                        'initContainers': [{'name': name, 'image': row['images'][name]}
+                                           for name in row['captured_image_ids']['initContainerStatuses']],
+                        'volumes': [{'name': entry['mount']['name'], **entry['source']}]},
+               'status': {'phase': 'Pending'}}
+        pod['spec']['containers'][0]['volumeMounts'] = [entry['mount']]
+        row['full_spec_sha256'] = guard.digest(pod['spec'])
+        fixture = {row['pod_uid']: row}
+        self.assertFalse(guard.possible_ebooks_mount(pod, entry['mount'], {},
+                         profiles=fixture, container_name=entry['container']))
+        variants = {'Running without IDs': copy.deepcopy(pod), 'foreign UID': copy.deepcopy(pod),
+                    'changed full spec': copy.deepcopy(pod), 'changed source': copy.deepcopy(pod)}
+        variants['Running without IDs']['status']['phase'] = 'Running'
+        variants['foreign UID']['metadata']['uid'] = 'foreign-cilium-pod'
+        variants['changed full spec']['spec']['hostNetwork'] = False
+        variants['changed source']['spec']['volumes'][0]['hostPath']['path'] = '/different-host-path'
+        for kind in ('containerStatuses', 'initContainerStatuses', 'ephemeralContainerStatuses'):
+            variants[kind] = copy.deepcopy(pod)
+            variants[kind]['status'][kind] = [{'name': 'first-status', 'imageID': None}]
+        for name, changed in variants.items():
+            with self.subTest(name=name), self.assertRaises(guard.Refused):
+                guard.possible_ebooks_mount(changed, entry['mount'], {},
+                                           profiles=fixture, container_name=entry['container'])
+
     def test_fresh_publisher_assembly_includes_exact_policy_and_refuses_missing_or_changed_input(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); bundle = root / 'publisher'; bundle.mkdir()

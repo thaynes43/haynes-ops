@@ -39,13 +39,36 @@ exec. Successor publisher bundles copy this bridge from the reviewed source
 commit and derive all nine program checksums from their actual bytes. The frozen
 private bundles and their historical checksums remain intact.
 
-Publisher preparation also places the unchanged private
+Publisher preparation also places the reviewed
 `approved-normal-write-profiles.json` beside the publisher guard. The existing
 `prepare.materialize_publisher_policy` reads the guard's exact policy checksum,
 verifies the supplied private bytes, and publishes a mode-0600 sibling with a
 path/checksum reference for the publisher closure. A missing or changed policy
-refuses preparation. The policy table stays outside git; this closes a missing
-data dependency without changing its Pod, mount, alias or ownership checks.
+refuses preparation. Normal-write profiles bind an exact Pod UID, complete spec,
+owner, captured image IDs, container mount, and physical source; a shared driver,
+namespace or declared image never admits a different workload. Profile updates
+retain the prior entries except for explicitly reviewed identity replacements.
+Raw Pod inventories remain private. A policy publication must first audit every
+included string for credentials and user payloads; only the exact matching
+fields and their hashes belong in the source closure. The assembly helper stays
+separately pinned outside the original 38-file runtime source archive.
+
+The prepared 145-row policy adds only the exact CephFS claim/subvolume bindings
+for dev-env-shelf, zwave and immich-machine-learning, and replaces the captured
+kube-apiserver identity on talosm03 and Cilium identity on talosw04. Cilium's
+single `unstarted_snapshot` row records absent image IDs for every declared
+container and init container. It additionally requires Pending phase and empty
+container, init-container and ephemeral-container status lists. Any phase change
+or first status entry refuses, even when image IDs remain absent. This records
+an observed unstarted state; it proves neither executed-image identity nor
+arbitrary privileged write incapability. All other profiles keep their existing
+image comparisons. This table does not authorize a copy window.
+
+The existing provenance and role summaries describe the original snapshot;
+current row changes have separate retained inventory and source-binding
+receipts. The publication audit found no credential values or user payloads:
+env, command, args and annotations are absent, full specs remain bound by hashes,
+and CSI secret references contain only reference names and namespaces.
 
 The SOURCE controller owns its original PostgreSQL 16 connection and transaction.
 It calls the published local scan guard at every entry. Actual uncached health
