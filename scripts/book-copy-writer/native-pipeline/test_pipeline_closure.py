@@ -179,6 +179,8 @@ class PipelineCases(unittest.TestCase):
             }
             with mock.patch.object(handoff,'SELECTION',refs['selection_approval']['sha256']), \
                  mock.patch.object(handoff,'HOST_PATH',str(tool_dir)), \
+                 mock.patch.object(handoff.shutil,'which',side_effect=lambda name,path:
+                     str(tool_dir/name) if path==str(tool_dir) and (tool_dir/name).is_file() else None), \
                  mock.patch.dict(sys.modules,{'yaml':types.ModuleType('yaml')}), \
                  mock.patch.object(handoff.sys,'argv',argv), \
                  mock.patch.object(handoff.subprocess,'run',side_effect=RuntimeError('finite_live_boundary')) as capture, \
