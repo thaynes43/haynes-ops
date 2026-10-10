@@ -33,8 +33,12 @@ network isolation. Keep the production service and schedules running.
 
 `prepared-runtime.json` is deliberately a non-applicable preparation wrapper, with
 runtime approval false and unresolved exact phase/image fields. Its worker is fixed to
-talosw01, one attempt, original 180-second deadline, 500m maximum CPU, nonroot/read-only
-root filesystem and four memory emptyDirs. The separate proposed Cilium policy uses
+talosw01, one attempt, original 180-second deadline, 500m maximum CPU, 1Gi memory
+request and 2Gi memory limit, nonroot/read-only root filesystem and four memory
+emptyDirs with unchanged 64Mi/256Mi/8Mi/64Mi caps. The historical v11 fixture was
+OOMKilled (exit 137) under its former 1Gi limit before proof handback; its exact
+allocation stage is unproved. The bounded successor retains the signed image,
+whole-table snapshots, inverse and original 180/200-second clocks. The separate proposed Cilium policy uses
 explicit all-entity ingress/egress **deny**, which takes precedence over additive allow
 rules. Before a future Job, adopt the exact phase policy through GitOps, verify actual
 policy/endpoint realization and bind the independent proof to its exact Job/Pod UIDs.

@@ -83,6 +83,27 @@ class HostTests(unittest.TestCase):
         self.assertEqual(manifest["spec"]["activeDeadlineSeconds"], 180)
         self.assertFalse(manifest["spec"]["template"]["spec"]["enableServiceLinks"])
 
+    def test_exact_two_gib_memory_and_unchanged_cpu_tmpfs_admission(self):
+        manifest, job, pod = objects()
+        spec = manifest["spec"]["template"]["spec"]
+        self.assertEqual(spec["containers"][0]["resources"], {
+            "requests": {"cpu": "100m", "memory": "1Gi"},
+            "limits": {"cpu": "500m", "memory": "2Gi"},
+        })
+        self.assertEqual([v["emptyDir"] for v in spec["volumes"]], [
+            {"medium": "Memory", "sizeLimit": size} for size in ("64Mi", "256Mi", "8Mi", "64Mi")
+        ])
+        self.assertEqual(manifest["spec"]["activeDeadlineSeconds"], 180)
+        h.pod_binding(job, pod, manifest, PHASE, node())
+        bad_job = copy.deepcopy(job)
+        bad_job["spec"]["template"]["spec"]["containers"][0]["resources"]["limits"]["memory"] = "3Gi"
+        with self.assertRaisesRegex(h.Refused, "native_job_admission_drift"):
+            h.pod_binding(bad_job, pod, manifest, PHASE, node())
+        bad_pod = copy.deepcopy(pod)
+        bad_pod["spec"]["containers"][0]["resources"]["requests"]["memory"] = "2Gi"
+        with self.assertRaisesRegex(h.Refused, "native_pod_admission_drift"):
+            h.pod_binding(job, bad_pod, manifest, PHASE, node())
+
     def test_new_mount_init_or_network_namespace_refuses(self):
         manifest, job, pod = objects()
         changes = (lambda p: p["spec"].update(initContainers=[{"name": "extra"}]), lambda p: p["spec"].update(hostNetwork=True), lambda p: p["spec"]["volumes"].append({"name": "prod", "persistentVolumeClaim": {"claimName": "kavita"}}), lambda p: p["spec"].update(automountServiceAccountToken=True))
