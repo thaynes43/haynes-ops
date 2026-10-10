@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { deadline, validateApproval, validateRecipeSave, hash, sha, storeHash,
-  assertNoRemoval, assertPreserved, permits, assertRunAdmission } from './protocol.mjs';
+  assertNoRemoval, assertPreserved, permits, assertRunAdmission, missingCanonicalWorkPlan, validatePhysicalProofArtifacts } from './protocol.mjs';
 
 const now = Date.parse('2026-10-09T16:00:00Z');
 const recipe = { id: 'example', name: 'Example', enabled: true, targets: [{ server: 'kavita', libraryId: '1' }],
@@ -53,6 +53,42 @@ test('foreign and duplicate old items refuse native sync plan', () => {
   assertNoRemoval([old], desired);
   assert.throws(() => assertNoRemoval([{ ...old, chapterId: 99 }], desired), /remove/);
   assert.throws(() => assertNoRemoval([old, { ...old, id: 24 }], desired), /duplicate existing chapter/);
+});
+test('missing-work plan retains existing copies, chooses strongest then lowest chapter, and refuses ambiguous owners', () => {
+  const order = [11, 12, 13, 20, 21, 30, 31].map((chapterId) => ({ seriesId: '7', chapterId }));
+  const before = [{ ...old }, { ...old, id: 24, chapterId: 12 }];
+  const assignments = new Map(order.map((row) => [`7:${row.chapterId}`, [row.chapterId < 20 ? 'old-work' : row.chapterId < 30 ? 'isbn-work' : 'title-work']]));
+  const proofs = order.filter((row) => row.chapterId >= 20).map((row) => ({ ...row,
+    canonicalWorkSha256: assignments.get(`7:${row.chapterId}`)[0],
+    proofRoute: row.chapterId === 21 ? 'isbn' : 'full-title-and-full-author' }));
+  const plan = { selective: true, order, expected: new Map([['7', order.map((row) => row.chapterId)]]), fingerprints: new Map([['7', 'unchanged-full-series']]) };
+  const preview = missingCanonicalWorkPlan(plan, before, assignments, proofs);
+  assert.deepEqual(preview.order.map((row) => row.chapterId), [11, 12, 21, 30]);
+  assert.deepEqual(preview.expected.get('7'), [11, 12, 21, 30]);
+  assert.equal(preview.fingerprints, plan.fingerprints);
+  assert.deepEqual(missingCanonicalWorkPlan(plan, before, assignments, proofs), preview);
+  assert.deepEqual(plan.order, order);
+  const ambiguous = new Map(assignments); ambiguous.set('7:20', ['isbn-work', 'another-work']);
+  assert.throws(() => missingCanonicalWorkPlan(plan, before, ambiguous, proofs), /ambiguous/);
+  assert.throws(() => missingCanonicalWorkPlan(plan, before, assignments, []), /physical proof/);
+  const foreign = proofs.map((proof) => ({ ...proof, canonicalWorkSha256: 'foreign-work' }));
+  assert.throws(() => missingCanonicalWorkPlan(plan, before, assignments, foreign), /canonical owner/);
+});
+test('inline candidate strengths and owners must equal actual pinned physical proof contents', () => {
+  const work = { title: 'Example', authors: ['Example Author'] };
+  const physical = { recipes: { example: { verified: true, chapters: [{ seriesId: '7', chapterId: 12,
+    canonicalWorkIdentityVerified: true, files: [{ canonicalWork: work, rawIdentityVerified: true,
+      fingerprintVerified: true, proofRoute: 'full-title-and-full-author' }] }] } } };
+  const a = approval(), scope = a.scopes[0];
+  Object.assign(scope, { canonicalPolicy: 'missing-works-only', physicalProofArtifactSha256: 'c'.repeat(64),
+    physicalChapterProofs: [{ seriesId: '7', chapterId: 12, canonicalWorkSha256: hash(work), proofRoute: 'full-title-and-full-author' }] });
+  const artifacts = { ['c'.repeat(64)]: physical };
+  validatePhysicalProofArtifacts(a, artifacts);
+  scope.physicalChapterProofs[0].proofRoute = 'isbn';
+  assert.throws(() => validatePhysicalProofArtifacts(a, artifacts), /artifact contents/);
+  scope.physicalChapterProofs[0].proofRoute = 'full-title-and-full-author';
+  scope.physicalChapterProofs[0].canonicalWorkSha256 = hash({ ...work, authors: ['Foreign Author'] });
+  assert.throws(() => validatePhysicalProofArtifacts(a, artifacts), /artifact contents/);
 });
 test('readback preserves each old item ID and every non-order field', () => {
   const after = [{ id: 24, seriesId: 7, chapterId: 12, order: 0 }, { ...old, order: 1 }];

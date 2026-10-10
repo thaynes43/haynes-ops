@@ -3,7 +3,7 @@ import { readFile, readdir, lstat } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
 import { canonical, hash, sha, chapterKey, storeHash, validateApproval, deadline,
-  assertNoRemoval, assertPreserved, assertRunAdmission, permits } from './protocol.mjs';
+  assertNoRemoval, assertPreserved, assertRunAdmission, permits, missingCanonicalWorkPlan } from './protocol.mjs';
 
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
 const lines = input[Symbol.asyncIterator]();
@@ -163,6 +163,24 @@ async function main(workerSha256) {
     assert(readScope?.chapterSnapshots[id], 'current chapter scope is unapproved');
     assert.equal(hash(rows), hash(readScope.chapterSnapshots[id]), 'current physical chapter identity changed');
     return rows;
+  };
+  const nativePlan = target.readingListPlan.bind(target);
+  target.readingListPlan = async (...args) => {
+    const plan = await nativePlan(...args);
+    if (readScope?.canonicalPolicy === undefined) return plan;
+    assert(Array.isArray(args[2]) && args[2].length > 0, 'canonical matched-work call is incomplete');
+    const { selectBookChapters } = await import(`${root}/target/kavita-chapters.js`);
+    const assignments = new Map();
+    for (const id of [...new Set(plan.order.map((row) => String(row.seriesId)))]) {
+      const matches = args[2].filter((match) => String(match.itemId) === id);
+      const selected = selectBookChapters(id, readScope.chapterSnapshots[id], matches);
+      for (const [match, chapterIds] of selected) for (const chapterId of chapterIds) {
+        const key = chapterKey({ seriesId: id, chapterId });
+        if (!assignments.has(key)) assignments.set(key, new Set());
+        assignments.get(key).add(hash(match.work));
+      }
+    }
+    return missingCanonicalWorkPlan(plan, readScope.beforeItems, assignments, readScope.physicalChapterProofs);
   };
   await runGuard();
   await storeGuard();

@@ -16,9 +16,29 @@ Reading-list stages use this separate child-only admission and require no pause 
 
 The normal service, schedules and global environment remain live. `loadConfig` is
 called with a child-only empty LazyLibrarian endpoint; no service setting changes.
-Preparation and a merged helper do not grant apply authority. Finish library recovery,
-fresh source/physical-file/preservation proofs and independent review, then ROOT must
-ratify the exact private approval SHA and phase before execution.
+Preparation and a merged helper do not grant apply authority. Fresh scoped
+source/physical-file/preservation proofs and ROOT ratification of the exact private
+approval SHA and phase are required. A proved reading-list scope can proceed
+independently of unresolved COPY paths; unresolved chapter identities remain held.
+
+## Missing canonical works
+
+DESIGN-037 permits multiple legitimate copies of a work; it does not require adding
+an extra copy. The completion policy for this stage preserves every existing item
+and adds only canonical works absent from the list. A new work gets one physically
+proved chapter: prefer an exact ISBN proof over full title and contributor proof,
+then the lowest chapter ID among equally proved copies. Ambiguous canonical owners
+refuse. Existing duplicates remain, and the outbound no-deletion guard stays intact.
+
+The worker applies this policy to both the approved preview and the native adapter's
+plan before reconciliation. The complete fresh chapter snapshots, physical proof
+artifact, original item payloads and exact ordered plan remain required. This policy
+is child-local; the deployed Libretto modules and normal acquisition are unchanged.
+An explicit `canonicalPolicy: missing-works-only` scope binds
+`physicalProofArtifactSha256` and `physicalChapterProofs`. Before execution, the host
+projects every chapter's canonical owner and conservative proof strength from that
+actual artifact and requires exact equality to the inline proofs. Existing artifact
+identity guards then protect the same bytes at every mutable intent ACK.
 
 ## Private approval and admission
 

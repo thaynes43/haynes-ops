@@ -8,12 +8,16 @@ import { createInterface } from 'node:readline';
 import { hash, sha, storeHash } from './protocol.mjs';
 
 // A local external-adapter fixture drives the real child protocol. No network/cluster.
-async function fixture(drift, batch = false) {
+async function fixture(drift, batch = false, policy = false, badCall = false) {
   const dir = await mkdtemp(join(tmpdir(), 'libretto-list-stage-fixture-'));
   const root = join(dir, 'app/dist');
   const recipe = { id: 'example', name: 'Example', enabled: true, targets: [{ server: 'kavita', libraryId: '1' }],
     variables: { ordered: true, syncMode: 'sync', schedule: 'manual', acquisitionEnabled: true } };
   const old = { id: 23, seriesId: 7, chapterId: 11, order: 0, progress: 0.5 };
+  const works = policy ? [{ title: 'Existing', authors: ['Author'], identifiers: [] },
+    { title: 'Missing', authors: ['Author'], identifiers: [] }] :
+    [{ title: 'Example', authors: ['Example Author'], identifiers: [] }];
+  const matches = works.map((work) => ({ itemId: '7', work }));
   const collection = { id: 'readinglist:9', libraryId: '1', name: 'Example', description: '[libretto:example]', tags: [], itemIds: ['7'], kind: 'kavita_reading_list' };
   const secondRecipe = { ...recipe, id: 'second', name: 'Second' };
   const secondCollection = { ...collection, id: 'readinglist:10', name: 'Second', description: '[libretto:second]' };
@@ -24,7 +28,7 @@ async function fixture(drift, batch = false) {
     'config.js': `export function loadConfig(e=process.env){return {port:9999,kavita:{url:'http://kavita'},apiKey:'fixture',runsFile:${JSON.stringify(join(dir, 'runs.json'))},lazyLibrarian:e.LAZYLIBRARIAN_URL===''?undefined:{url:'http://ll'}}}`,
     'logger.js': `export const createLogger=()=>({});`,
     'recipes/schema.js': `export const recipeSchema={parse:r=>r};`,
-    'core/match.js': `export const recipeMatchOptions=()=>({}); export const matchWorks=()=>({matchedIds:['7'],matchedWorks:[]});`,
+    'core/match.js': `export const recipeMatchOptions=()=>({}); export const matchWorks=()=>({matchedIds:['7'],matchedWorks:${policy ? badCall ? 'undefined' : JSON.stringify(matches) : '[]'}});`,
     'core/reconciler.js': `export async function reconcileTarget(r,l,t){await t.listItems(l.libraryId);const c=(await t.listCollections(l.libraryId))[0];await t.updateCollection(c.id,{});return {counts:{removed:0}};}`,
     'core/scheduler.js': `export {};`,
     'target/marker.js': `export const recipeIdFromDescription=s=>s==='[libretto:example]'?'example':s==='[libretto:second]'?'second':undefined;export const buildCollectionDescription=()=> '[libretto:example]';export const withUpdatedMarker=s=>s;`,
@@ -33,12 +37,13 @@ async function fixture(drift, batch = false) {
 export class KavitaTarget {
  async listItems(){return [{id:'7'}]}
  async listCollections(){return ${JSON.stringify(collections)}}
- async currentChapters(){return [{id:11},{id:${drift ? 99 : 12}}]}
- async readingListPlan(){await this.currentChapters('7');return {selective:true,order:[{seriesId:'7',chapterId:12},{seriesId:'7',chapterId:11}]}}
+ async currentChapters(){return [{id:11},{id:${drift ? 99 : 12}}${policy ? ',{id:13}' : ''}]}
+ async readingListPlan(){await this.currentChapters('7');return {selective:true,expected:new Map([['7',[11,12${policy ? ',13' : ''}]]]),order:[{seriesId:'7',chapterId:12},${policy ? "{seriesId:'7',chapterId:13}," : ''}{seriesId:'7',chapterId:11}]}}
  async readingListItems(id){return (await fetch('http://kavita/api/ReadingList/items?readingListId='+id)).json()}
  async updateCollection(containerId){
   const id=Number(containerId.split(':')[1]);const addedItem=id===9?24:26;
-  await this.readingListPlan();
+  const plan=await this.readingListPlan(${policy ? "['7'],'1'," + JSON.stringify(matches) : ''});
+  ${policy ? "if(plan.order.some(row=>row.chapterId===13)||plan.expected.get('7').includes(13))throw new Error('unfiltered native write plan');" : ''}
   await fetch('http://kavita/api/ReadingList/update-by-chapter',{method:'POST',body:JSON.stringify({readingListId:id,seriesId:7,chapterId:12})});
   await this.readingListItems(id);
   await fetch('http://kavita/api/ReadingList/update-position',{method:'POST',body:JSON.stringify({readingListId:id,readingListItemId:addedItem,fromPosition:1,toPosition:0})});
@@ -46,6 +51,7 @@ export class KavitaTarget {
  async createCollection(){throw new Error('not used')}
 }`,
   };
+  if (policy) files['target/kavita-chapters.js'] = `export const selectBookChapters=(id,chapters,matches)=>new Map(matches.map(match=>[match,match.work.title==='Existing'?[11]:[12,13]]));`;
   for (const [relative, source] of Object.entries(files)) {
     const path = join(root, relative);
     await mkdir(join(path, '..'), { recursive: true });
@@ -75,7 +81,6 @@ globalThis.fetch=async (resource,init={})=>{
     .replace("from './protocol.mjs';", `from 'data:text/javascript;base64,${protocol.toString('base64')}';`)
     .replace("const root = '/app/dist';", `const root = ${JSON.stringify(root)};`);
   const compiledModules = Object.fromEntries(Object.entries(files).map(([name, source]) => [name, sha(source)]));
-  const works = [{ title: 'Example', authors: ['Example Author'], identifiers: [] }];
   const approval = { schema: 1, explicitRootApproval: true, phase: '11111111-2222-3333-4444-555555555555',
     capturedAt: new Date().toISOString(), stage: 'initial', libraryId: '1', native: {}, compiledModules,
     helpers: { bundleSha256: sha(worker), launcherSha256: 'a'.repeat(64), protocolSha256: sha(protocol), workerSha256: 'b'.repeat(64) },
@@ -89,11 +94,15 @@ globalThis.fetch=async (resource,init={})=>{
     approval.initialReceipt = { reviewed: true, sha256: 'c'.repeat(64) };
     approval.scopes.push({ ...approval.scopes[0], recipe: secondRecipe, ownedListId: 10, beforeCollection: secondCollection, beforeItems: [secondOld] });
   }
+  if (policy) Object.assign(approval.scopes[0], { canonicalPolicy: 'missing-works-only',
+    physicalProofArtifactSha256: 'a'.repeat(64), chapterSnapshots: { 7: [{ id: 11 }, { id: 12 }, { id: 13 }] },
+    physicalChapterProofs: [12, 13].map((chapterId) => ({ seriesId: '7', chapterId,
+      canonicalWorkSha256: hash(works[1]), proofRoute: chapterId === 12 ? 'isbn' : 'full-title-and-full-author' })) });
   return { dir, worker, preload, approval, runsFile: join(dir, 'runs.json') };
 }
 
 async function run(drift, mode = 'normal') {
-  const f = await fixture(drift, mode === 'batch');
+  const f = await fixture(drift, mode === 'batch', mode.startsWith('canonical'), mode === 'canonical-bad-call');
   const child = spawn(process.execPath, ['--import', f.preload, '--input-type=module', '-e', f.worker], { stdio: ['pipe', 'pipe', 'pipe'] });
   const events = [];
   const exited = new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code) => resolve(code)); });
@@ -134,6 +143,17 @@ test('real child protocol adds/orders through adapter, completes ACK chain and p
   assert.equal(after[1].id, 23);
   assert.equal(after[1].progress, 0.5);
   assert.equal(events.at(-1).data.everyExistingItemIdPreserved, true);
+});
+test('canonical policy reaches actual child preflight and native writer; incomplete matcher refuses before intent', async () => {
+  const good = await run(false, 'canonical');
+  assert.equal(good.code, 0);
+  assert.equal(good.writes, 'add:9\norder:9\n');
+  assert.deepEqual(good.events.find((event) => event.type === 'readback').data.items.map((row) => row.chapterId), [12, 11]);
+  const bad = await run(false, 'canonical-bad-call');
+  assert.equal(bad.code, 2);
+  assert.equal(bad.writes, '');
+  assert.equal(bad.events.some((event) => event.type === 'intent'), false);
+  assert.match(bad.events.at(-1).error, /matched-work call is incomplete/);
 });
 test('changed authoritative chapter refuses actual child before any mutation intent', async () => {
   const { code, events } = await run(true);
