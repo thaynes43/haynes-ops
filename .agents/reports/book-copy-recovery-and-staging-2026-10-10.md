@@ -1,5 +1,13 @@
 # Book recovery and staging evidence — 2026-10-10
 
+The earlier metadata backfill completed **290 verified EPUB metadata-edit
+operations**. The October 8 verification matched 289 current paths to their
+verified candidates; LazyLibrarian had replaced one historical edition. Retained
+originals and ZIP members were verified. This records completed historical edits,
+not a claim that every later scan passed. Three Pathfinder EPUBs subsequently
+became unmapped at the normal nightly scan; that regression remains #864 until
+the repair and real scheduled-scan proof pass. Do not replay the completed backfill.
+
 The completed reading-list work added **116 missing book entries across 39 lists**:
 19 entries in eight existing lists and 97 entries in 31 new lists. Existing
 entries were preserved. Libretto now has 106 recipes; the original 75 recipes and
@@ -12,20 +20,56 @@ matching; reading lists provide series order without relying on the imported
 EPUB series fields.
 
 Remaining work is the two selected Pathfinder duplicate copies, fresh accounting
-for the other duplicate groups, Ransom’s verified 30-day reading-idle gate,
-the real nightly Kavita scan, and the subsequent hourly
-strip validation. The hourly strip remains off. The recovery evidence below
-records what actually ran; a safe restoration does not establish COPY success.
+for the other duplicate groups, Ransom’s seven-field catalog ruling and guarded
+repair, the real nightly Kavita scan, and subsequent hourly strip validation.
+A separate 15:52Z read-only check now confirms Ransom has been idle for 75 days;
+the required catalog ruling was asked after verification and remains pending.
+Its whole-folder hold and the hourly strip remain in place. The recovery evidence
+below records what actually ran; safe restoration does not establish COPY success.
 
-The latest V18 attempt passed its fresh read-only capture in 91.698357s but refused
+The latest closed attempt, V20, corrected the private receipt publication defect
+from V19. The existing private reader and independent review passed before the
+launch. Its fresh read-only capture completed in 86.566465s, including delivery
+acknowledgement and removal of its temporary Job and Pod. It then stopped after
+the publisher capture because the phase package omitted the publisher guard's
+`approved-normal-write-profiles.json` input. The file writer never started:
+**zero duplicate copies moved**, and neither the LazyLibrarian nor Kavita Native
+exporter ran. This was another cleanup-runner defect, not an additional metadata
+fix. The earlier receipt defect and this omitted input explain attempts that
+consumed time without advancing the book cleanup.
+
+Cold service restoration completed in **85.934463s**, within the existing 130s
+reserve. Final audit `edbeb69c` at 15:47:29Z proves Normal `98722be5`, all seven
+controllers healthy and unheld without owners, all four original Deployment
+UIDs and exact Normal specs restored, and six healthy service Pods. LazyLibrarian,
+Kavita and Libretto Pods were replaced by the Stop/restore cycle. No temporary
+phase Jobs, Pods or either primary process group remain, and the watcher retired.
+Archived activation and cache receipts remain evidence, not active holds. No
+further attempt has run under this phase; its original clocks are unchanged.
+
+The Slskd page is resolved. Ops #3762 expanded its existing claim from 2 GiB to
+4 GiB without restarting the application. Metrics show about 52% free space, and
+the exact AlertManager alert cleared. The owner confirmed the page named
+`downloads/slskd`. This was application database/history storage, not book scratch
+space; the book source already uses `gasha01`.
+
+The omitted policy input was fixed by ops #3768, merged at 16:03:33Z as
+`d71fd3688e959ea650c021787beb3153c0225f56`. A focused regression and distinct
+review passed. The offline check reproduced the missing-file failure, then
+accepted the original policy and all eight retained publisher rows. It could
+not prove the full inventory guard because contemporaneous Pod/PVC/PV arguments
+were not retained. The actual Claude advisory failed after 410 ms without
+substantive findings or an underlying reason; Root read and recorded it before
+merging. This preparation fix preserves the qualified image, original runtime
+programs, policy bytes and timing limits. It is not a successful duplicate cleanup.
+
+The historical V18 attempt passed its fresh read-only capture in 91.698357s but refused
 the publisher before MAIN or the book Native exporters started: 66 subprocesses
 succeeded in 34.9337s (84 trace events including telemetry), then one new Sonarr
 series/path differed from the reviewed stable scope. That path is outside EBooks;
 all prior items/paths and the other seven publisher rows remain exact. The
-prospective baseline update remains a proposal. Further staging is held until
-the Slskd capacity correction is deployed and verified. The owner confirmed
-Alertmanager's `KubePersistentVolumeFillingUp (downloads)` page names
-`downloads/slskd`. Zero copies moved. Actual cold restoration completed in 69.567367s under the 130s
+prospective baseline update was subsequently ratified for only its two named
+scope leaves, before V19. Zero copies moved. Actual cold restoration completed in 69.567367s under the 130s
 reserve. Final audit `3bcea491` proves current Normal `55f3cac8`, all seven healthy
 unheld controllers without owners, full temporary Job/Pod and both primary process
 group absence, restored Normal service specs and a retired watcher.
@@ -780,7 +824,7 @@ binding requires Root's explicit review of this exact delta and the existing
 fresh capture, before/after stability, alias, ownership and original-clock gates;
 arbitrary future drift remains refused.
 
-## PVC paging investigation and pending Slskd capacity correction
+## PVC paging investigation and Slskd capacity correction
 
 The owner reported repeated book/PVC pages, so all prospective COPY phases were
 held. The read-only event snapshot at approximately 13:55Z contained no current
@@ -821,9 +865,9 @@ and before-change PVC/PV/Pod identities, has SHA
 Root authorized the single GitOps change `slskd/ks.yaml`:
 `VOLSYNC_CAPACITY: 2Gi → 4Gi`. The existing shared component applies this scalar
 to the same prune-protected claim and VolSync restore capacity. It changes no
-claim identity, storage class, mount or app configuration. Merge/deployment and
-verification of actual claim/filesystem expansion, unchanged PVC and Pod UIDs,
-health and alert clearance remain pending; no completed expansion is claimed.
+claim identity, storage class, mount or app configuration. At preparation,
+merge/deployment and verification of expansion, health and alert clearance were
+pending. The actual deployment and clearance are recorded below.
 
 The retained V18 volume mapping (SHA
 `1372665cbee7889a4dc29a73ce964512d64e850328440e036b61e397027153de`)
@@ -834,3 +878,132 @@ midnight VolSync clone claims had successful provisioning records and backup
 logs reporting zero errors. None of this establishes the cause of any
 unidentified phone page. The offered gasha NAS is already the book-read source;
 no new scratch migration is authorized or required by the measured Slskd issue.
+
+### Actual expansion and alert clearance
+
+Ops PR #3762 merged as `b8b7fd5299dad6b15fa4b6d86566400e48806699` at
+14:21:43Z. The successful current-head rendered CI diff changed only Slskd's
+capacity substitution, existing claim request and restore capacity from 2Gi to
+4Gi. The Source → cluster-apps → slskd reconcile chain completed at 14:22:46Z.
+
+The 14:23:55Z read-only verification proved the same PVC
+`a08e09bf-86cd-4b69-acdc-7b07815e5dee`, bound to the same PV
+`pvc-f491a7b9-0b92-4424-ad92-20caf50f2de4`, had request/capacity **4Gi**,
+remained Bound and had no resize conditions. `/config` had **4,054,752 KiB**
+filesystem capacity and **2,111,416 KiB available**. The same Pod UID
+`16e11775-0140-4406-9e35-a30bf27f18b7` remained Ready with its unchanged
+**35** prior restarts; `/health` succeeded. No restart, pruning or direct storage
+mutation was needed. Actual verification SHA:
+`128b714884f31f7f1d092024410f0e152370f3aac25f58867c3b0d4df4ede206`.
+
+At 14:23:55Z the monitor still sampled the prior filesystem size and both
+volume alerts remained active. The single later check at **14:27:31Z** showed
+**4,152,066,048 bytes** capacity and **2,161,086,464 bytes available**
+(approximately **52.05% free**); the exact Slskd PVC volume-alert query returned
+no series, and Alertmanager returned HTTP 200 with no matching active,
+silenced or inhibited alerts. Clearance receipt SHA:
+`582b9c1346924b07766dd69de8cc69b733ad6d76121bc775e35cea331e79bebb`.
+This closes the measured Slskd capacity incident and does not authorize a new
+book runtime phase or establish any COPY gain.
+
+### V19 actual outcome: private review artifact refused before activation
+
+V19 used the qualified image and unchanged clocks, with only the two explicitly
+approved publisher-scope digest leaves rebound. Stop #3763 merged as
+`a86abab6ec1c6e4dff22ca587ce9be91418bef2f`; its exact inverse #3764 merged as
+`3f46cd0cedd47f785c65be772b6223a3a7fdeda0`. The original staging clock remained
+14:43:38.048338Z → 15:13:38.048338Z.
+
+The sole combined invocation completed LIVE in **86.581288 seconds**, with a
+complete baseline, ACK and full foreground Job/Pod cleanup (LIVE receipt SHA
+`7ea33c3603c1812c8885a67b5b1fe318b56f1cdeadbdde1511a5a33c484d13e6`).
+The supervisor then refused before activation: the approved exact inverse
+review artifact was mode **0644**, while the existing `cached_source.read_private`
+requires private permissions. The independent peer receipt was also 0644 and
+would fail the same guard. Their bytes, owner and single-link identities matched
+their pins; the local byte-reader validation had missed this physical permission
+requirement. No consumed artifact or clock was changed after refusal. Diagnosis
+SHA: `22c70274b5c21925f41070f85e368b041763a7a6288acfd9fada252ae7d07393`.
+
+All five producer UIDs and MAIN remained null: **zero book moves**, no Stop
+actuation, and no LL/Kavita Native exports. Recovery request
+15:05:45.560381Z → watcher Normal verification 15:06:39.402743Z took
+**53.842362 seconds** in staging; the supervisor interval was **54.554692 seconds**.
+This is not a cold recovery test. Current all-user Ransom eligibility and broader
+#831 native mapping/accounting remain unverified because no fresh Native inputs
+were produced.
+
+Root's corrected final audit passed at 15:08:06Z, SHA
+`f8e36aa4c55ccf393144132c977bd9224ed7345140c219c14d299208216a1480`:
+full typed phase Job/Pod union and both primary PG leases absent first, all seven
+controllers strictly current Normal/unheld/owner-free, unchanged four deployment
+UIDs/generations/full specs and six healthy Pod identities, and the original
+watcher group retired. The initial argument-free audit invocation failed before
+producing a receipt; its partial output directory was preserved before the
+corrected invocation. Combined exit 0 denotes completed recovery, not COPY success.
+
+### V20 actual outcome: required publisher profile absent after Stop
+
+V20 preserved the image, programs and clock matrix. Its newly consumed review
+artifacts were created exclusively with mode 0600, and the actual private reader
+and review loader passed before LIVE. Stop #3765 merged as
+`b2064b099befbf857bf8166ac774ad272f9c0fa5`; inverse #3766 merged as
+`98722be545d32e0c40625167539f4447caceff48`. The original staging clock remained
+15:23:04.998272Z → 15:53:04.998272Z.
+
+LIVE completed in **86.566465 seconds**, with a complete baseline, ACK and full
+owned Job/Pod cleanup (receipt SHA
+`6e940889e3e92d37bff7712ce9e5a3f4c8d0cf3b2c8006725bf477b7dbdcedae`).
+Actual conservative activation began at 15:43:49.495802Z; the first service Stop
+was observed at 15:44:23.601009Z. SOURCE and the Lidarr reader were created. The
+publisher capture completed and passed its reviewed scope digest, then
+`publisher-scope-guard.normal_profiles()` raised `FileNotFoundError`: the adjacent
+`publisher/approved-normal-write-profiles.json` was absent. The guard requires
+its existing exact SHA
+`a5f076a6131d94820791ee040510d6544a2fccd4aa0c5e5e5449555b01e490e0`.
+Retained diagnosis SHA:
+`61835aaaefb394fe3c9663229bd299a7455c66561fa84d9017ce183c4064a378`.
+
+MAIN and the LL/Kavita Native reader UIDs remained null: **zero COPY book moves**,
+no MAIN ACK, and no fresh all-user Kavita export. The source counts of 1,970 EPUBs
+and 4,845 files are scope observations, not verified canonical-work or reading
+eligibility accounting. Current Ransom eligibility and broader #831 native
+mapping/accounting were not established by this runtime.
+
+Restore request 15:45:41.430026Z → watcher completion 15:47:07.364470Z took
+**85.934444 seconds**, within the unchanged 130-second reserve for this actual
+cold operation. The following Normal re-verification timestamp was 19 microseconds
+later, giving **85.934463 seconds**; the supervisor interval was separately
+**86.757161 seconds**. These measurements do not guarantee a future recovery time.
+
+Root's sole final audit passed at 15:47:29Z, SHA
+`edbeb69c501e48982b8ebb47f198d4b8b5f0de84653eebbece155b010ad659a8`:
+full typed phase Job/Pod union and both primary PG leases absent first, all seven
+controllers strictly current Normal/unheld/owner-free, the same four deployment
+UIDs with exact restored Normal specs, six current healthy Pods, and the original
+watcher group retired and empty. Deployment generations and Pod identities
+changed as expected after actual Stop. Archived cache and activation files
+remain; they do not represent active authority. Root ended the scoped activity.
+Combined exit 0 denotes completed restoration, not COPY success.
+
+### Fresh Ransom eligibility premise after safe restoration
+
+After V20's safe closure, a separately authorized use of the existing read-only
+Kavita export route passed stable Pod, whole-folder and database-sidecar checks.
+The fresh all-user target evidence establishes the 30-day reading and file idle
+premise. Current Library/Series/Volume/Chapter/File IDs remain
+`1 / 1650 / 1800 / 3358 / 3570`, the seven proposed catalog cells still match
+their reviewed before-values, and no competing same-library alias was found.
+The private aggregate seal is
+`e6e88737ddf50f93c8e233e2acb9dd6ac86843dd6636576d7c3a6ac4764f8937`;
+raw user identities and reading locations are excluded from this report.
+
+The target's five reading-state tables match the prior production capture,
+the immutable Kavita image identity matches, and all six folder stat rows match.
+Applicability addendum SHA:
+`572f884f14426ae94fa780803f232726ca40073688e558fe463610171a9cc2a2`.
+The earlier actual Native v13 scanner result remains historical; no new scanner,
+catalog writer or strip was run, and no equality claim covers all current global
+database tables. The seven-cell catalog writer still requires the existing
+PLAN-074 owner ruling and its guarded preservation procedure. The whole-folder
+hold and global hourly gate remain in place.
