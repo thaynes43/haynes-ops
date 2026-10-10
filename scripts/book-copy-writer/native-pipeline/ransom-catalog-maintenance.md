@@ -27,17 +27,17 @@ each update and before commit. It has no standalone CLI and does not turn a
 receipt or boolean into an exclusive service fence. Owner approval and a separate
 Root runtime GO must be bound before an admitted caller can use it.
 
-One prospective execution choice is a separately reviewed finite Job using the
-already qualified book-copy-writer digest `628e97b8…`, its existing Python/SQLite
-and metadata functions, and the existing checkpoint/delivery/foreground cleanup
-mechanism. Run it on the actual Kavita PVC's supported node after Kavita stops;
-mount only that config claim read/write and the existing book state retention
-directory outside EBooks. Deliver this pinned component and its private contract
-through the bounded one-Job private receiver. Do not change the six installed runtime
-modules, the consumed COPY scope, its image, or use a fixture DB replacement as a
-production writer. The actual Job, PVC/PV/UID placement, host guard, watcher,
-original clock and delivery hashes are concrete admission fields, whose actual
-values must be frozen and reviewed before execution.
+The implemented `ransom_maintenance_job.py` entrypoint admits one finite Job
+using the already qualified book-copy-writer digest `628e97b8…`, its existing
+Python/SQLite and metadata functions, and the existing checkpoint/foreground
+cleanup mechanism. It places the Job on the actual Kavita PVC's supported node
+after Kavita stops, mounts that config claim read/write and the existing books
+NFS export, and restricts publication to the Ransom path and exact backup paths
+outside EBooks. Its bounded private receiver delivers the pinned component and
+contract. The six installed runtime modules, consumed COPY scope and image stay
+unchanged; no fixture DB replacement provides production authority. Actual
+Job/PVC/PV/UID placement, host guard, watcher, original clock and delivery hashes
+remain unbound admission fields to freeze and review before execution.
 
 Before mutation, retain a verified consistent complete SQLite backup outside
 EBooks and publish its private manifest. Retain the original EPUB indefinitely
