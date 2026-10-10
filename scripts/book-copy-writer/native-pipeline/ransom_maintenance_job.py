@@ -1,0 +1,657 @@
+"""Distinct Ransom one-Job admission; frozen COPY predicates are never changed."""
+import contextlib
+import argparse
+import ast
+import copy
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import selectors
+import signal
+import sqlite3
+import subprocess
+import sys
+import time
+from types import ModuleType, SimpleNamespace
+import urllib.request
+
+# Support the exact isolated host/Job entrypoint without PYTHONPATH. The host
+# source and installed image metadata helper must be the already qualified bytes.
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+metadata_candidates = [HERE / "epub_metadata.py", Path("/copy-writer/epub_metadata.py")]
+if len(HERE.parents) > 2:
+    metadata_candidates.append(HERE.parents[2] / "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert/epub_metadata.py")
+metadata_source = next((path for path in metadata_candidates if path.is_file()), None)
+if metadata_source is not None:
+    if hashlib.sha256(metadata_source.read_bytes()).hexdigest() != "ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773":
+        raise ValueError("qualified metadata source bytes differ")
+    sys.path.insert(0, str(metadata_source.parent))
+import ransom_catalog_maintenance as catalog
+
+IMAGE = "ghcr.io/thaynes43/book-copy-writer@sha256:628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601"
+LIBRARY = "/data/cephfs-hdd/data/media/books/EBooks"
+STATE = "/data/cephfs-hdd/data/media/books/.epub-convert"
+DB = "/kavita/config/kavita.db"
+LABEL = "issue825.haynesnetwork/phase"
+PG_NAME = "issue831-manual-copy-writer"
+
+
+def private(path, sha=None, cap=32 * 1024 * 1024):
+    with catalog.metadata.safe_directory(str(Path(path).parent)) as directory:
+        raw, info = catalog.metadata.read_regular(directory, Path(path).name, cap)
+    catalog.require(info.st_uid == os.getuid() and info.st_nlink == 1 and info.st_mode & 0o777 == 0o600,
+                    "private maintenance input identity/mode differs")
+    catalog.require(sha is None or hashlib.sha256(raw).hexdigest() == sha, "maintenance source hash differs")
+    return raw
+
+
+def module(name, ref):
+    raw = private(ref["path"], ref["sha256"])
+    loaded = ModuleType(name)
+    loaded.__file__ = ref["path"]
+    sys.modules[name] = loaded
+    exec(compile(raw, ref["path"], "exec"), loaded.__dict__)
+    return loaded
+
+
+def one_job_phase(config, core):
+    phase = json.loads(private(config["phase_state"]))
+    core.validate_state(phase, config["restore_pr"])
+    catalog.require(phase["phase_token"] == config["phase_token"] and len(phase["owned_jobs"]) == 1,
+                    "maintenance requires exactly one registered Job")
+    job = phase["owned_jobs"][0]
+    template = config["job_manifest"]["spec"]["template"]["spec"]
+    volumes = {volume["name"]: volume for volume in template["volumes"]}
+    expected = job_manifest(config["phase_token"], config["job_name"],
+                            template["nodeSelector"]["kubernetes.io/hostname"], config["claim_name"], volumes["books"]["nfs"])
+    catalog.require(job["writer"] is True and job["gate_env"] is None and not job["mutable_env"]
+                    and job["ready_manifest"] == config["job_manifest"] == expected
+                    and job["namespace"] == "media" and job["name"] == config["job_name"],
+                    "maintenance checkpoint intent differs")
+    # Separate private owner, not an unknown extra field in the generic ledger.
+    lease = json.loads(private(config["pg_owner"]))
+    catalog.require(set(lease) == {"phase_token", "application_name", "backend_pid", "job_uid", "pod_uid"}
+                    and lease["phase_token"] == phase["phase_token"] and lease["application_name"] == PG_NAME,
+                    "maintenance PG owner differs")
+    if lease["backend_pid"] is not None:
+        catalog.require(type(lease["backend_pid"]) is int and lease["backend_pid"] > 0
+                        and lease["job_uid"] == job["uid"] and isinstance(lease["pod_uid"], str)
+                        and re.fullmatch(r"[0-9a-f-]{36}", lease["pod_uid"]), "maintenance live PG binding differs")
+    else:
+        catalog.require(lease["job_uid"] is None and lease["pod_uid"] is None, "partial PG binding differs")
+    projected = copy.deepcopy(phase)
+    projected["pg_leases"] = [lease]
+    return projected
+
+
+def maintenance_watchdog(base, core, config):
+    """Only the distinct ledger admission differs; cleanup/restore stay inherited."""
+    class MaintenanceWatchdog(base.Watchdog):
+        def phase_checkpoint(self):
+            return one_job_phase(config, core)
+        def verify_phase_absent(self, phase):
+            uid = phase["owned_jobs"][0]["uid"]
+            for namespace in ("frontend", "downloads"):
+                for kind in ("Job", "Pod"):
+                    for item in self.inventory(kind, namespace):
+                        meta = item["metadata"]
+                        if (meta.get("labels", {}).get(LABEL) == phase["phase_token"]
+                                or uid is not None and any(o.get("kind") == "Job" and o.get("uid") == uid
+                                                          for o in meta.get("ownerReferences", []))):
+                            raise base.PhaseResourcesPresent("Unexpected maintenance phase resource; retain holds")
+            return super().verify_phase_absent(phase)
+    return MaintenanceWatchdog
+
+
+def job_manifest(phase, name, node, claim, nfs):
+    """Root must bind fresh actual claim/PV/node/export identities before CREATE."""
+    catalog.require(re.fullmatch(r"[0-9a-f]{32}", phase) and re.fullmatch(r"ransom-maintenance-[a-z0-9-]+", name)
+                    and isinstance(node, str) and node and isinstance(claim, str) and claim
+                    and set(nfs) == {"server", "path"} and all(isinstance(v, str) and v for v in nfs.values()),
+                    "maintenance manifest bindings missing")
+    labels = {LABEL: phase}
+    return {"apiVersion": "batch/v1", "kind": "Job", "metadata": {"name": name, "namespace": "media", "labels": labels},
+            "spec": {"backoffLimit": 0, "activeDeadlineSeconds": 250, "template": {
+                "metadata": {"labels": labels, "annotations": {"k8tz.io/inject": "false"}},
+                "spec": {"nodeSelector": {"kubernetes.io/hostname": node}, "restartPolicy": "Never",
+                         "automountServiceAccountToken": False,
+                         "securityContext": {"runAsUser": 1000, "runAsGroup": 1000, "runAsNonRoot": True},
+                         "containers": [{"name": "maintenance", "image": IMAGE,
+                                         "command": ["python", "-I", "-c", "import time; time.sleep(250)"],
+                                         "resources": {"requests": {"cpu": "25m", "memory": "128Mi"},
+                                                       "limits": {"cpu": "500m", "memory": "512Mi"}},
+                                         "volumeMounts": [{"name": "config", "mountPath": "/kavita/config"},
+                                                          {"name": "books", "mountPath": "/data/cephfs-hdd/data/media/books"},
+                                                          {"name": "private", "mountPath": "/maintenance"}]}],
+                         "volumes": [{"name": "config", "persistentVolumeClaim": {"claimName": claim}},
+                                     {"name": "books", "nfs": nfs},
+                                     {"name": "private", "emptyDir": {"medium": "Memory", "sizeLimit": "64Mi"}}]}}}}
+
+
+@contextlib.contextmanager
+def publication_guard(guard, retention, source_hash, candidate_hash):
+    """Process-only exact file publication hook, using unchanged metadata CAS."""
+    metadata = catalog.metadata
+    write, replace, existing_replace = metadata._write_file, os.replace, metadata._replace
+    replacement = None
+    relative = os.path.relpath(catalog.FILE, LIBRARY)
+    stem = metadata.sha256(relative.encode()) + "-" + source_hash
+    folder, basename = os.path.split(catalog.FILE)
+    allowed = {str(Path(retention)): {"catalog-before.json"},
+               STATE + "/backup": {stem + ".epub", stem + ".json"}}
+    def checked_write(fd, name, raw, mode=0o600):
+        actual = os.readlink("/proc/self/fd/" + str(fd))
+        partial = actual == folder and re.fullmatch(r"\." + re.escape(basename) + r"\.strip-[0-9a-f]{16}\.partial", name)
+        catalog.require(mode == 0o600 and (name in allowed.get(actual, set()) or partial), "publication escaped exact maintenance paths/mode")
+        if partial:
+            catalog.require(metadata.sha256(raw) in (source_hash, candidate_hash), "publication bytes differ")
+        guard()
+        return write(fd, name, raw, mode)
+    def checked_replace(src, dst, *, src_dir_fd=None, dst_dir_fd=None):
+        catalog.require(src_dir_fd is not None and src_dir_fd == dst_dir_fd
+                        and os.readlink("/proc/self/fd/" + str(dst_dir_fd)) == folder and dst == basename
+                        and re.fullmatch(r"\." + re.escape(basename) + r"\.strip-[0-9a-f]{16}\.partial", src),
+                        "replacement escaped exact Ransom EPUB")
+        guard()  # Immediately before the existing atomic publication.
+        current, info = metadata.read_regular(dst_dir_fd, dst)
+        catalog.require(replacement is not None and current == replacement[0]
+                        and metadata._identity(info) == replacement[1], "source changed during host publication guard")
+        return replace(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+    def bound_replace(fd, directory, name, original, info, candidate):
+        nonlocal replacement
+        catalog.require(directory == folder and name == basename
+                        and {metadata.sha256(original), metadata.sha256(candidate)} == {source_hash, candidate_hash},
+                        "exact EPUB replacement byte pair differs")
+        replacement = (original, metadata._identity(info))
+        try:return existing_replace(fd, directory, name, original, info, candidate)
+        finally:replacement = None
+    metadata._write_file, os.replace = checked_write, checked_replace
+    metadata._replace = bound_replace
+    try:
+        yield
+    finally:
+        metadata._write_file, os.replace = write, replace
+        metadata._replace = existing_replace
+
+
+def worker(operation, dsn, ask_host, writer):
+    """One original process/connection; no reconnect, cached guard or COPY manifest."""
+    catalog.require(operation["library_root"] == LIBRARY and operation["database_path"] == DB
+                    and operation["state_directory"] == STATE and operation["owner_approved"] is True
+                    and operation["root_runtime_go"] is True and operation["prepared_only"] is False,
+                    "maintenance worker authority/scope differs")
+    catalog.require(operation["retention_directory"] == STATE + "/ransom-maintenance/" + operation["phase_token"],
+                    "exact outside-library retention path differs")
+    before = json.loads(private(operation["before"]["path"], operation["before"]["sha256"]))
+    os.environ["LIBRARY_HOLD_FOLDERS_JSON"] = json.dumps(operation["process_holds"])
+    catalog.require("Daniel Silva/Ransom" in operation["original_holds"]
+                    and operation["process_holds"] == [h for h in operation["original_holds"] if h != "Daniel Silva/Ransom"],
+                    "one-process hold exclusion differs")
+    with writer.PrimaryShareFence(dsn, operation["original_abort_epoch"], phase_token=operation["phase_token"]) as fence:
+        def guard():
+            fence.health()
+            catalog.require(time.time() < operation["original_abort_epoch"], "original worker clock expired")
+            ask_host(fence.pid)
+            fence.health()
+        guard()
+        with catalog.metadata.safe_directory(operation["retention_directory"], create=True):pass
+        with writer.converter_lock(STATE), contextlib.closing(sqlite3.connect(DB, isolation_level=None)) as db:
+            db.execute("PRAGMA foreign_keys=ON")
+            with publication_guard(guard, operation["retention_directory"], operation["original_epub_sha256"], operation["candidate_epub_sha256"]):
+                if operation["action"] == "inverse-after-scan":
+                    after = json.loads(private(operation["post_scan"]["path"], operation["post_scan"]["sha256"]))
+                    result = catalog.invert_after_scan(db, before, after, operation, guard, operation["retention_directory"])
+                    guard()
+                    result["epub"] = catalog.metadata.restore_backup(operation["epub_backup_manifest"], LIBRARY, STATE)
+                elif operation["action"] == "inverse-before-scan":
+                    result = catalog.apply(db, before, operation, guard, operation["retention_directory"], inverse=True)
+                    guard()
+                    result["epub"] = catalog.metadata.restore_backup(operation["epub_backup_manifest"], LIBRARY, STATE)
+                else:
+                    catalog.require(operation["action"] == "forward", "unknown maintenance action")
+                    result = catalog.apply(db, before, operation, guard, operation["retention_directory"])
+                    guard()
+                    with catalog.metadata.safe_directory(str(Path(catalog.FILE).parent)) as fd:
+                        raw, info = catalog.metadata.read_regular(fd, Path(catalog.FILE).name)
+                    catalog.require(catalog.metadata.sha256(raw) == operation["original_epub_sha256"], "EPUB admission source differs")
+                    candidate, _ = catalog.metadata.sanitized_epub(raw, None)
+                    catalog.require(catalog.metadata.sha256(candidate) == operation["candidate_epub_sha256"], "EPUB admitted candidate differs")
+                    result["epub"] = catalog.metadata.strip_existing(catalog.FILE, LIBRARY, STATE, 900,
+                        expected_sha256=operation["original_epub_sha256"], expected_source_identity=catalog.metadata._identity(info), grouping=None)
+                    catalog.require(result["epub"]["result"] == "stripped", "EPUB did not publish exact strip")
+                guard()
+                expected = before if operation["action"].startswith("inverse-") else catalog.expected_after(before)
+                catalog.require(catalog.snapshot(db) == expected, "complete protected state changed before worker exit")
+                return result
+
+
+def worker_main():
+    sys.path.insert(0, "/copy-writer")
+    import book_copy_writer as writer
+    operation = json.loads(private("/maintenance/operation.json"))
+    # Credential crosses only the existing private stdin stream, never argv/log/files.
+    secret = json.loads(sys.stdin.readline(65536))
+    catalog.require(set(secret) == {"dsn"} and isinstance(secret["dsn"], str), "private PG input differs")
+    count = 0
+    def ask_host(pid):
+        nonlocal count
+        count += 1
+        catalog.require(count <= 32, "finite maintenance guard count exceeded")
+        request = {"event": "guard", "phase_token": operation["phase_token"], "sequence": count, "backend_pid": pid}
+        print(json.dumps(request), flush=True)
+        # Host process has original timeout; independent Job cleanup revokes on its death.
+        ack = json.loads(sys.stdin.readline(4096))
+        catalog.require(ack == {"event": "guard-ok", "phase_token": request["phase_token"], "sequence": count},
+                        "fresh host service acknowledgement differs")
+    def expired(*_):
+        raise writer.DeadlineExpired("original maintenance abort clock")
+    signal.signal(signal.SIGALRM, expired)
+    signal.signal(signal.SIGTERM, expired)
+    remaining = operation["original_abort_epoch"] - time.time()
+    catalog.require(0 < remaining <= 170, "worker original admission clock differs")
+    signal.setitimer(signal.ITIMER_REAL, remaining)
+    try:
+        result = worker(operation, secret["dsn"], ask_host, writer)
+        print(json.dumps({"event": "complete", "phase_token": operation["phase_token"], "result": result}), flush=True)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+
+
+class HostAdmission:
+    """Exact one-Job bridge to existing service, publisher and recovery guards."""
+    def __init__(self, config, watch, core, pod_guard, supervisor, publisher_guard):
+        self.c, self.watch, self.core, self.pod_guard = config, watch, core, pod_guard
+        self.publishers, self.supervisor = publisher_guard, supervisor
+        self.status = {"phase_token": config["phase_token"], "writer_may_mutate": True,
+                       "publisher_scope_proof": config["publisher_proof"]["path"]}
+        private(config["publisher_proof"]["path"], config["publisher_proof"]["sha256"])
+        self.lock_ready = True
+        self.execution = None
+        self.jobs = []
+        self.stop = False
+        self.operation = json.loads(private(config["operation"]["path"], config["operation"]["sha256"]))
+        catalog.require(self.operation["phase_token"] == config["phase_token"]
+                        and self.operation["root_runtime_go"] is True and self.operation["owner_approved"] is True
+                        and self.operation["prepared_only"] is False, "Root/owner runtime binding differs")
+
+    def run(self, argv, timeout=10):
+        return self.watch.run(argv, timeout=min(timeout, max(.001, self.remaining())))
+
+    def get(self, kind, name, namespace):
+        if not namespace:
+            return json.loads(self.run(["kubectl", "get", kind, name, "-o", "json"]))
+        return self.watch.kube(kind, name, namespace)
+
+    def list(self, kind, namespace=None):
+        kinds = {"pods": "Pod", "pvc": "PersistentVolumeClaim", "pv": "PersistentVolume"}
+        argv = ["kubectl", "get", kind] + (["-n", namespace] if namespace else ["-A"] if kind != "pv" else []) + ["-o", "json"]
+        return self.supervisor.window.typed_inventory(json.loads(self.run(argv)), kinds[kind], namespace)
+
+    def save(self):
+        pass  # Existing service predicate's timestamp is diagnostic, not authority.
+
+    def remaining(self):
+        left = self.operation["original_abort_epoch"] - time.time()
+        catalog.require(left > 0, "original maintenance abort reached")
+        return left
+
+    def guard_lease(self, require_lock=True):
+        self.remaining()
+        catalog.require(not Path(self.c["watcher_stop"]).exists() and not self.stop
+                        and (self.execution is None or self.execution.poll() is None), "maintenance owner revoked")
+
+    def guard(self, require_pod=True):
+        self.guard_lease()
+        state = json.loads(private(self.c["watcher_state"]))
+        catalog.require(state.get("cached_stop_actuation_complete_at") and not state.get("complete")
+                        and not state.get("copy_authority_revoked_at") and state.get("armed_ready") is True,
+                        "independent maintenance watcher not active after complete Stop")
+        origin = self.supervisor.epoch(state["actuation_budget_started_at"])
+        catalog.require(self.operation["original_abort_epoch"] == origin + 170
+                        and self.supervisor.epoch(state["armed_at"]) + self.watch.args.arm_deadline > time.time(),
+                        "original maintenance clock binding differs")
+        kernel = Path("/proc/" + str(self.c["watcher_pid"]) + "/stat").read_text().rsplit(")", 1)[1].split()
+        catalog.require(kernel[0] not in ("Z", "X") and int(kernel[2]) == self.c["watcher_pgid"]
+                        and int(kernel[19]) == self.c["watcher_birth"], "independent watcher original group changed")
+        phase = one_job_phase(self.c, self.core)
+        self.watch.state = state  # Read-only context, never a second watchdog owner.
+        self.watch.verify_cached_stop_holds(state["cached_stop_actuation_binding"])
+        receipt = json.loads(private(self.c["cached_source_receipt"]["path"], self.c["cached_source_receipt"]["sha256"]))
+        contract = json.loads(private(self.c["manifest_contract"]["path"], self.c["manifest_contract"]["sha256"]))
+        self.supervisor.cache.check_live(receipt, self.get, contract, phase["phase_token"], deadline=self.operation["original_abort_epoch"])
+        row = phase["owned_jobs"][0]
+        if require_pod:
+            actual = self.get("job", row["name"], row["namespace"])
+            pods = self.watch.owned_job_pods(self.list("pods", "media"), row, row["uid"])
+            catalog.require(len(pods) == 1 and pods[0]["metadata"]["uid"] == self.c["pod_uid"], "maintenance Pod custody differs")
+            self.pod_guard.verify_owned_pod(row, actual, pods[0], self.c["pod_uid"])
+        else:
+            catalog.require(row["uid"] is None, "maintenance Job already created; never retry CREATE")
+            self.watch.verify_phase_absent(phase)
+        claim = self.get("pvc", self.c["claim_name"], "media")
+        pv = self.get("pv", self.c["pv_name"], "")
+        catalog.require(claim["metadata"]["uid"] == self.c["claim_uid"] and claim["spec"] == self.c["claim_spec"]
+                        and claim.get("status", {}).get("phase") == "Bound" and pv["metadata"]["uid"] == self.c["pv_uid"]
+                        and pv["spec"] == self.c["pv_spec"]
+                        and claim["spec"].get("volumeName") == self.c["pv_name"]
+                        and pv["spec"]["claimRef"]["uid"] == self.c["claim_uid"], "maintenance PVC/PV identity or placement changed")
+        self.jobs = [row]
+        self.supervisor.Supervisor.service_fence(self)  # Full existing stopped services + live publisher/storage predicate.
+        self.guard_lease()
+
+    def deliver(self, name, raw):
+        """Exact private delivery after complete Job/Pod/custody admission."""
+        catalog.require(name in {"ransom_catalog_maintenance.py", "ransom_maintenance_job.py", "before.json", "post-scan.json", "operation.json"}
+                        and isinstance(raw, bytes) and 0 < len(raw) <= 32 * 1024 * 1024, "maintenance delivery scope/cap differs")
+        self.guard()
+        sha = hashlib.sha256(raw).hexdigest()
+        receiver = "import os,sys,hashlib; p=sys.argv[1]; b=sys.stdin.buffer.read(33554433); assert len(b)<=33554432 and hashlib.sha256(b).hexdigest()==sys.argv[2]; f=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600); h=os.fdopen(f,'wb'); h.write(b); h.flush(); os.fsync(h.fileno()); h.close()"
+        argv = ["kubectl", "exec", "-i", "-n", "media", self.c["pod_name"], "-c", "maintenance", "--", "python", "-I", "-c", receiver, "/maintenance/" + name, sha]
+        result = subprocess.run(argv, input=raw, capture_output=True, timeout=min(10, self.remaining()))
+        catalog.require(result.returncode == 0, "owned private delivery failed")
+        self.guard()
+
+    def create(self):
+        self.guard(require_pod=False)
+        ready = self.core.encoded(self.c["job_manifest"])
+        result = subprocess.run(["kubectl", "create", "-f", "-", "-o", "json"], input=ready,
+                                capture_output=True, timeout=min(10, self.remaining()))
+        catalog.require(result.returncode == 0, "maintenance CREATE failed; no retry/adoption")
+        actual = json.loads(result.stdout)
+        catalog.require(self.core.declared_matches(self.c["job_manifest"], actual), "created maintenance manifest differs")
+        arguments = SimpleNamespace(command="observe", namespace="media", name=self.c["job_name"], restore_pr=self.c["restore_pr"])
+        self.core.process(arguments, Path(self.c["phase_state"]))
+        until = min(time.monotonic() + 15, time.monotonic() + self.remaining())
+        while time.monotonic() < until:
+            phase = one_job_phase(self.c, self.core)
+            row = phase["owned_jobs"][0]
+            pods = self.watch.owned_job_pods(self.list("pods", "media"), row, row["uid"])
+            catalog.require(len(pods) <= 1, "multiple maintenance Pods")
+            if pods and pods[0].get("status", {}).get("phase") == "Running":
+                self.c["pod_name"], self.c["pod_uid"] = pods[0]["metadata"]["name"], pods[0]["metadata"]["uid"]
+                self.guard()
+                for ref in self.c["bootstrap_sources"]:
+                    catalog.require(ref["name"] in {"ransom_catalog_maintenance.py", "ransom_maintenance_job.py"}, "bootstrap source scope differs")
+                    self.deliver(ref["name"], private(ref["path"], ref["sha256"]))
+                return {"job_uid": row["uid"], "pod_name": self.c["pod_name"], "pod_uid": self.c["pod_uid"]}
+            self.guard_lease();time.sleep(.2)
+        raise catalog.Refused("maintenance original Pod readiness expired")
+
+    def inspect(self):
+        self.guard()
+        # Same pinned component reads a fresh full typed snapshot at stopped-service admission.
+        code = "import sys;sys.path[:0]=['/maintenance','/copy-writer'];import ransom_maintenance_job as m;m.inspection_main()"
+        result = subprocess.run(["kubectl", "exec", "-n", "media", self.c["pod_name"], "-c", "maintenance", "--", "python", "-I", "-B", "-c", code],
+                                capture_output=True, timeout=min(60, self.remaining()))
+        catalog.require(result.returncode == 0 and len(result.stdout) <= 65536, "stopped current inspection failed")
+        self.guard()
+        proof = json.loads(result.stdout)
+        catalog.require(proof["before_path"] == "/maintenance/before.json", "inspection private path differs")
+        catalog.require(proof["schema_sha256"] == self.c["approved_schema_sha256"], "current Native schema differs from reviewed application")
+        raw = subprocess.run(["kubectl", "exec", "-n", "media", self.c["pod_name"], "-c", "maintenance", "--", "cat", proof["before_path"]],
+                             capture_output=True, timeout=min(60, self.remaining()))
+        catalog.require(raw.returncode == 0 and len(raw.stdout) <= 32 * 1024 * 1024
+                        and hashlib.sha256(raw.stdout).hexdigest() == proof["before_sha256"], "fresh stopped Native transfer differs")
+        self.guard()
+        target = Path(self.c["inspection_output"])
+        with catalog.metadata.safe_directory(str(target.parent)) as fd:
+            catalog.metadata._write_file(fd, target.name, raw.stdout)
+        return dict(proof, retained_before_path=str(target))
+
+    def execute(self, dsn):
+        """Finite synchronous guard channel; existing watcher owns independent cleanup."""
+        catalog.require(self.operation["schema_sha256"] == self.c["approved_schema_sha256"], "worker Native schema admission differs")
+        self.guard()
+        argv = ["kubectl", "exec", "-i", "-n", "media", self.c["pod_name"], "-c", "maintenance", "--", "python", "-I", "-B", "-c",
+                "import sys;sys.path[:0]=['/maintenance','/copy-writer'];import ransom_maintenance_job as m;m.worker_main()"]
+        diagnostic = Path(self.c["execution_stderr"])
+        fd = os.open(diagnostic, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        complete, sequence = None, 0
+        with os.fdopen(fd, "wb") as stderr:
+            process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr, start_new_session=True)
+            self.execution = process
+            process.stdin.write((json.dumps({"dsn": dsn}) + "\n").encode()); process.stdin.flush()
+            selector, pending = selectors.DefaultSelector(), bytearray()
+            selector.register(process.stdout, selectors.EVENT_READ)
+            try:
+                while complete is None:
+                    self.guard_lease()
+                    catalog.require(selector.select(timeout=min(3, self.remaining())), "maintenance guard channel died or timed out")
+                    chunk = os.read(process.stdout.fileno(), 4096)
+                    catalog.require(chunk, "maintenance worker exited before complete")
+                    pending.extend(chunk)
+                    catalog.require(len(pending) <= 65536, "maintenance protocol output cap exceeded")
+                    while b"\n" in pending:
+                        line, _, pending = pending.partition(b"\n")
+                        event = json.loads(line)
+                        catalog.require(event.get("phase_token") == self.c["phase_token"], "worker event phase differs")
+                        if event.get("event") == "guard":
+                            sequence += 1
+                            catalog.require(set(event) == {"event", "phase_token", "sequence", "backend_pid"}
+                                            and event["sequence"] == sequence and sequence <= 32
+                                            and type(event["backend_pid"]) is int and event["backend_pid"] > 0,
+                                            "maintenance guard event differs")
+                            lease = {"phase_token": event["phase_token"], "application_name": PG_NAME,
+                                     "backend_pid": event["backend_pid"], "job_uid": one_job_phase(self.c, self.core)["owned_jobs"][0]["uid"], "pod_uid": self.c["pod_uid"]}
+                            current = json.loads(private(self.c["pg_owner"]))
+                            catalog.require(current["backend_pid"] is None or current == lease, "PG backend changed or reconnected")
+                            self.core.save(Path(self.c["pg_owner"]), lease)
+                            self.guard()
+                            process.stdin.write((json.dumps({"event": "guard-ok", "phase_token": event["phase_token"], "sequence": sequence}) + "\n").encode());process.stdin.flush()
+                        else:
+                            catalog.require(set(event) == {"event", "phase_token", "result"} and event["event"] == "complete"
+                                            and complete is None, "unknown or repeated maintenance outcome")
+                            complete = event["result"]
+                process.stdin.close()
+                catalog.require(process.wait(timeout=min(3, self.remaining())) == 0 and not pending,
+                                "maintenance process did not close cleanly")
+                return complete
+            finally:
+                selector.close()
+                if process.poll() is None:
+                    os.killpg(process.pid, signal.SIGTERM)
+                    try:process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:os.killpg(process.pid, signal.SIGKILL);process.wait(timeout=2)
+                # Killing kubectl is insufficient: existing watcher deletes exact writer FIRST,
+                # proves full Job/Pod union and primary backend absence, then restores Normal.
+                Path(self.c["watcher_stop"]).touch(mode=0o600, exist_ok=True)
+                self.execution = None
+
+
+def inspection_main():
+    """Read-only production DB handle; no catalog/EPUB operation or PG credential."""
+    with contextlib.closing(sqlite3.connect("file:" + DB + "?mode=ro", uri=True, isolation_level=None)) as db:
+        db.execute("PRAGMA query_only=ON");db.execute("BEGIN")
+        before = catalog.snapshot(db)
+        catalog.preconditions(before, time.time())
+        catalog.expected_after(before)
+        db.rollback()
+    raw = catalog.canonical(before)
+    catalog.require(len(raw) <= 32 * 1024 * 1024, "full stopped Native snapshot exceeds private cap")
+    path = "/maintenance/before.json"
+    with catalog.metadata.safe_directory("/maintenance") as fd:
+        catalog.metadata._write_file(fd, "before.json", raw)
+    info = os.stat(DB, follow_symlinks=False)
+    return print(json.dumps({"schema": 1, "before_path": path, "before_sha256": hashlib.sha256(raw).hexdigest(),
+                            "logical_before_sha256": catalog.digest(before), "schema_sha256": catalog.digest(before["schema"]),
+                            "database_device_inode": [info.st_dev, info.st_ino]}))
+
+
+def load_sources(config):
+    refs = config["sources"]
+    needed = {"window_contract", "cached_source", "watcher", "checkpoint", "pod_guard", "supervisor", "publisher_guard"}
+    catalog.require(set(refs) == needed, "maintenance dependency closure differs")
+    for ref in refs.values():private(ref["path"], ref["sha256"])
+    sys.path.insert(0, str(Path(refs["watcher"]["path"]).parent))
+    module("window_contract", refs["window_contract"])
+    module("cached_source", refs["cached_source"])
+    return {name: module("maintenance_" + name, refs[name]) for name in ("watcher", "checkpoint", "pod_guard", "supervisor", "publisher_guard")}
+
+
+def make_watch(config, sources, *, arm=False):
+    args = SimpleNamespace(**config["watcher_arguments"])
+    catalog.require(args.phase_state == config["phase_state"] and str(args.restore) == config["restore_pr"]
+                    and args.state == config["watcher_state"] and args.stop == config["watcher_stop"]
+                    and args.include_kavita is True and args.deadline == 170 and 0 < args.arm_deadline <= 1800
+                    and args.cached_source_receipt and args.cached_source_activation,
+                    "maintenance watcher literal/original clock binding differs")
+    klass = maintenance_watchdog(sources["watcher"], sources["checkpoint"], config)
+    if arm:return klass(args)
+    # Reuse existing observer methods without constructor writes/re-arm.
+    watch = klass.__new__(klass)
+    watch.args, watch.cached = args, True
+    watch.state_path, watch.stop, watch.log = Path(args.state), Path(args.stop), Path(args.log)
+    watch.state = json.loads(private(args.state))
+    watch.contract = json.loads(private(args.manifest_contract))
+    watch.scopes = sources["watcher"].CORE_SCOPES + [("media", "kavita")]
+    watch.save = lambda: None
+    return watch
+
+
+def native_reader(ref):
+    """Use the existing read-only DB/WAL reader without executing its CLI main."""
+    tree = ast.parse(private(ref["path"], ref["sha256"]))
+    wanted = {"remote", "source_stat", "capture"}
+    tree.body = [node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))
+                 or isinstance(node, ast.FunctionDef) and node.name in wanted
+                 or isinstance(node, ast.Assign) and all(isinstance(target, ast.Name) and target.id in {"FILES", "SOURCE_DIR"} for target in node.targets)]
+    catalog.require({node.name for node in tree.body if isinstance(node, ast.FunctionDef)} == wanted,
+                    "existing Native capture function set differs")
+    scope = {}
+    exec(compile(tree, ref["path"], "exec"), scope)
+    return scope["capture"]
+
+
+def scan_after_normal(config, watch, capture, token):
+    """Existing target admin route, real commit evidence, full fresh preservation."""
+    catalog.require(config["owner_approved"] is True and config["root_scan_go"] is True
+                    and config["prepared_only"] is False, "target scan admission missing")
+    until = config["original_scan_deadline_epoch"]
+    catalog.require(0 < until - time.time() <= 300, "original target scan clock invalid")
+    watch.desired_restored(config["normal_merge_sha"])
+    def normal():
+        catalog.require(time.time() < until, "original scan admission expired")
+        watch.state = json.loads(private(watch.args.state))
+        catalog.require(watch.state.get("complete") is True, "writer-first recovery incomplete")
+        watch.verify_phase_absent(watch.phase_checkpoint())
+        catalog.require(watch.runtime_restored(config["normal_merge_sha"]), "current Normal scan boundary lost")
+        source = watch.kube("gitrepository", "haynes-ops", "flux-system")
+        catalog.require(source["spec"].get("suspend", False) is False
+                        and source["status"]["artifact"]["revision"] == "main@sha1:" + config["normal_merge_sha"], "Normal Source differs")
+        for namespace, name in watch.recovery_scopes():
+            ks = watch.kube("kustomization", name, namespace)
+            catalog.require(ks["metadata"]["uid"] == watch.state["cached_ks_owners"][namespace + "/" + name]["uid"]
+                            and sys.modules["cached_source"].OWNER not in ks["metadata"].get("annotations", {})
+                            and ks["status"].get("observedGeneration") == ks["metadata"]["generation"], "Normal controller custody differs")
+        pod = watch.kube("pod", config["native_pod_name"], "media")
+        states = pod.get("status", {}).get("containerStatuses", [])
+        catalog.require(pod["metadata"]["uid"] == config["native_pod_uid"] and not pod["metadata"].get("deletionTimestamp")
+                        and pod["spec"] == config["native_pod_spec"] and pod.get("status", {}).get("phase") == "Running"
+                        and len(states) == 1 and states[0]["name"] == "app" and states[0]["restartCount"] == 0
+                        and states[0].get("ready") is True and "running" in states[0].get("state", {})
+                        and states[0]["imageID"].endswith(config["native_image"].split("@", 1)[1]), "native scanner identity changed")
+    def files():
+        raw = watch.run(["kubectl", "exec", "-n", "media", config["native_pod_name"], "-c", "app", "--",
+                         "find", str(Path(catalog.FILE).parent), "-maxdepth", "1", "-type", "f", "-exec", "sha256sum", "{}", "+"], timeout=10)
+        rows = sorted(raw.splitlines())
+        catalog.require(len(rows) == 5 and all(re.fullmatch(r"[0-9a-f]{64}  " + re.escape(str(Path(catalog.FILE).parent)) + r"/[^/\n]+", line) for line in rows), "target five-file scope differs")
+        return rows
+    def fresh(directory):
+        normal()
+        path, receipt = capture(config["native_pod_name"], Path(directory))
+        catalog.require(receipt["before"] == receipt["after"] and receipt["readOnlySource"] is True, "Native DB copy unstable")
+        with contextlib.closing(sqlite3.connect("file:" + str(path.resolve()) + "?mode=ro", uri=True)) as db:
+            db.execute("PRAGMA query_only=ON");db.execute("BEGIN")
+            state = catalog.snapshot(db);db.rollback()
+        normal()
+        return state
+    original = json.loads(private(config["original_rows"]["path"], config["original_rows"]["sha256"]))
+    before, before_files = fresh(config["scan_before_directory"]), files()
+    catalog.require(before == catalog.expected_after(original), "protected state drift before target scan; hold retained")
+    normal()
+    started = time.time()
+    request = urllib.request.Request("http://kavita.media.svc.cluster.local:5000/api/Series/scan",
+        data=b'{"libraryId":1,"seriesId":1650}', headers={"Content-Type": "application/json", "Authorization": "Bearer " + token}, method="POST")
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args):raise catalog.Refused("native API redirect refused")
+    with urllib.request.build_opener(NoRedirect).open(request, timeout=min(10, until - time.time())) as response:
+        catalog.require(response.status == 200, "target scan enqueue failed")
+        response.read(65536)
+    since = dt.datetime.fromtimestamp(started, dt.timezone.utc).isoformat().replace("+00:00", "Z")
+    process = subprocess.Popen(["kubectl", "logs", "--follow", "-n", "media", config["native_pod_name"], "-c", "app", "--since-time=" + since, "--timestamps"],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+    selector, seen, pending, count = selectors.DefaultSelector(), [], bytearray(), 0
+    selector.register(process.stdout, selectors.EVENT_READ)
+    try:
+        while len(seen) < 2:
+            catalog.require(time.time() < until and process.poll() is None, "target native completion not observed")
+            catalog.require(selector.select(timeout=min(3, until - time.time())), "target native completion stream stalled")
+            chunk = os.read(process.stdout.fileno(), 4096);catalog.require(chunk, "native log stream closed")
+            pending.extend(chunk);count += len(chunk)
+            catalog.require(count <= 1024 * 1024 and len(pending) <= 65536, "native scan log cap exceeded")
+            while b"\n" in pending:
+                line, _, pending = pending.partition(b"\n")
+                text = line.decode("utf-8")
+                marker = "Beginning file scan on Ransom" if not seen else "Finished series update on Ransom in "
+                if marker in text:
+                    at = dt.datetime.fromisoformat(text.split(" ", 1)[0].replace("Z", "+00:00")).timestamp()
+                    catalog.require(started - 1 <= at <= time.time() + 1 and (not seen or at >= seen[0]), "native start/commit time differs")
+                    seen.append(at)
+                    if len(seen) == 2:break
+    finally:
+        selector.close()
+        if process.poll() is None:os.killpg(process.pid, signal.SIGTERM)
+        try:process.wait(timeout=2)
+        except subprocess.TimeoutExpired:os.killpg(process.pid, signal.SIGKILL);process.wait(timeout=2)
+    finished = time.time()
+    after = fresh(config["scan_after_directory"])
+    catalog.require(files() == before_files, "Native scan changed target file bytes")
+    catalog.require_scan_delta(before, after, config["native_explicit_values"], started, finished)
+    output = Path(config["post_scan_rows_output"])
+    with catalog.metadata.safe_directory(str(output.parent)) as fd:
+        catalog.metadata._write_file(fd, output.name, catalog.canonical(after))
+    return {"schema": 1, "library_id": 1, "series_id": 1650, "queued": True, "started_epoch": seen[0],
+            "committed_epoch": seen[1], "scan_started_epoch": started, "scan_finished_epoch": finished,
+            "before_sha256": catalog.digest(before), "after_sha256": catalog.digest(after),
+            "protected_native_rows_preserved": True, "target_file_bytes_preserved": True,
+            "post_scan_rows_path": str(output), "inverse_runtime_authority": False}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("watch", "create", "inspect", "execute", "scan"))
+    parser.add_argument("config");parser.add_argument("config_sha256")
+    args = parser.parse_args(argv)
+    config = json.loads(private(args.config, args.config_sha256))
+    sources = load_sources(config)
+    watch = make_watch(config, sources, arm=args.command == "watch")
+    if args.command == "watch":watch.loop();return
+    if args.command == "scan":
+        credential = json.loads(sys.stdin.readline(65536))
+        catalog.require(set(credential) == {"token"}, "private admin credential input differs")
+        print(json.dumps(scan_after_normal(config, watch, native_reader(config["native_reader"]), credential["token"])))
+        return
+    try:
+        host = HostAdmission(config, watch, sources["checkpoint"], sources["pod_guard"], sources["supervisor"], sources["publisher_guard"])
+        if args.command == "create":result = host.create()
+        elif args.command == "inspect":result = host.inspect()
+        else:
+            # Existing Hnet Secret may be read by the authorized host pod-exec route;
+            # caller sends only this private stdin object, never a credential in argv.
+            credentials = json.loads(sys.stdin.readline(65536))
+            catalog.require(set(credentials) == {"dsn"}, "private host credential input differs")
+            for ref in config["deliveries"]:
+                host.deliver(ref["name"], private(ref["path"], ref["sha256"]))
+            result = host.execute(credentials["dsn"])
+    except BaseException:
+        Path(config["watcher_stop"]).touch(mode=0o600, exist_ok=True)
+        raise
+    print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    main()
