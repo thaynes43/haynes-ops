@@ -35,7 +35,7 @@ The preceding V17 stale Lidarr bridge image guard was corrected by ops #3759 as
 approved-inverse read race was corrected by ops #3756 as `76f22cce`. The unavailable
 Claude advisory results were read and recorded. Neither fix is a COPY success.
 
-The preceding attempt, v15, completed LIVE in 101.763380s with delivery ACK and full
+The earlier V15 attempt, completed LIVE in 101.763380s with delivery ACK and full
 foreground Job/Pod cleanup, then actuated Stop and refused a reviewed publisher
 command before the NativeDB exporters or MAIN writer started. Cold restoration
 completed **64.873779s** after its request, within the prospective 130s allowance.
@@ -122,7 +122,11 @@ There is no post-LIVE model handoff or additional API census. After conservative
 activation the sole watcher applies each guarded app Stop once, reholds/drains
 all four, and publishes completion before the supervisor admits producers.
 
-## Bounded future staging only
+## Historical #3715 staging checkpoint
+
+The following bounds describe that historical checkpoint. The prospective clock
+matrix adopted by #3740 below superseded these numeric bounds; this section is
+not authority to execute a later phase.
 
 Coordinator ratification permits a **fresh cached-source** reviewed staging attempt to select
 `--arm-deadline` up to 1800s; default remains 600s. Actual CI timing made repeated
