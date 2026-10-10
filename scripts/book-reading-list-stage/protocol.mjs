@@ -66,6 +66,12 @@ export function validateApproval(a, now = Date.now()) {
       assert.equal(scope.beforeCollection?.id, `readinglist:${scope.ownedListId}`, 'full original owned list payload required');
     }
     assertNoRemoval(scope.beforeItems, scope.desiredChapters);
+    if (scope.canonicalPolicy !== undefined) {
+      assert.equal(scope.canonicalPolicy, 'missing-works-only', 'unknown canonical policy');
+      assert(Array.isArray(scope.physicalChapterProofs), 'complete physical chapter proofs required');
+      assert(a.artifacts.some((artifact) => artifact.sha256 === scope.physicalProofArtifactSha256),
+        'physical canonical proof artifact is unbound');
+    }
     validateRecipeSave(scope, a.recipeStore, a.libraryId);
   }
   return a;
@@ -96,6 +102,49 @@ export function assertNoRemoval(before, desired) {
   assert.equal(new Set(before.map(chapterKey)).size, before.length, 'duplicate existing chapter would be deleted by native sync');
   const wanted = new Set(desired.map(chapterKey));
   assert(before.every((r) => wanted.has(chapterKey(r))), 'plan would remove an existing item');
+}
+// The same filtered plan feeds preview admission and the native adapter's write.
+// Owners come from the deployed selector; strengths come from reviewed physical evidence.
+export function missingCanonicalWorkPlan(plan, before, assignments, physicalProofs) {
+  assert.equal(plan.selective, true, 'canonical policy requires a Books chapter plan');
+  assertNoRemoval(before, plan.order);
+  const existing = new Set(before.map(chapterKey));
+  const owners = new Map();
+  for (const row of plan.order) {
+    const key = chapterKey(row), candidates = new Set(assignments.get(key) ?? []);
+    assert.equal(candidates.size, 1, 'chapter canonical owner is missing or ambiguous');
+    owners.set(key, [...candidates][0]);
+  }
+  const represented = new Set([...existing].map((key) => owners.get(key)));
+  const proofs = new Map();
+  for (const proof of physicalProofs) {
+    const key = chapterKey(proof);
+    assert(!proofs.has(key), 'duplicate physical chapter proof');
+    proofs.set(key, proof);
+  }
+  const chosen = new Map();
+  for (const row of plan.order) {
+    const key = chapterKey(row), owner = owners.get(key);
+    if (existing.has(key) || represented.has(owner)) continue;
+    const proof = proofs.get(key);
+    assert(proof && proof.canonicalWorkSha256 === owner, 'physical proof canonical owner differs');
+    assert(['isbn', 'full-title-and-full-author'].includes(proof.proofRoute), 'unknown physical identity strength');
+    assert(Number.isSafeInteger(row.chapterId) && row.chapterId > 0, 'unsafe chapter identity');
+    const candidate = { row, rank: proof.proofRoute === 'isbn' ? 1 : 0 };
+    const prior = chosen.get(owner);
+    if (!prior || candidate.rank > prior.rank || candidate.rank === prior.rank && row.chapterId < prior.row.chapterId)
+      chosen.set(owner, candidate);
+  }
+  const additions = new Set([...chosen.values()].map(({ row }) => chapterKey(row)));
+  const order = plan.order.filter((row) => existing.has(chapterKey(row)) || additions.has(chapterKey(row)));
+  const expected = new Map();
+  for (const row of order) {
+    const id = String(row.seriesId);
+    if (!expected.has(id)) expected.set(id, []);
+    expected.get(id).push(row.chapterId);
+  }
+  assertNoRemoval(before, order);
+  return { ...plan, order, expected };
 }
 export function assertPreserved(before, after, desired) {
   assert.equal(new Set(after.map((r) => r.id)).size, after.length, 'duplicate readback item ID');
