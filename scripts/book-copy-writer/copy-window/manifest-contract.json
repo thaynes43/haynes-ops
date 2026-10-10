@@ -12,7 +12,7 @@
     "service_ceiling": 300,
     "source_abort": 170
   },
-  "image": "ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c",
+  "image": "ghcr.io/thaynes43/book-copy-writer@sha256:628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601",
   "manifests": {
     "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert-cronjob.yaml": {
       "normal_sha256": "f16d2322a993618971e0ad85ad906fe2c5ab5dbdd65f75f4a79f029c3f253bee",

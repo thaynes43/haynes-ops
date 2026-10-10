@@ -5,11 +5,11 @@ HERE = Path(__file__).resolve().parent
 # A shallow read-only CI mount need not expose the repository's ancestors.
 # Parent traversal saturates at root; importing identities performs no reads.
 REPO = HERE.parent.parent.parent
-IMAGE = 'ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c'
+IMAGE = 'ghcr.io/thaynes43/book-copy-writer@sha256:628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601'
 APP_IMAGE = 'ghcr.io/thaynes43/haynesnetwork:v0.110.5@sha256:e264e8a63b7a6b8865bfb51ecb38c398534d492ba64c6956960dedd8e6e64c6a'
-IMAGE_SOURCE = '7c99b2afbeed3ec04af55493509169e0778d6418'
+IMAGE_SOURCE = 'daa542a395eb508de6bbeb2a7430e63aa3454b6e'
 APP_SOURCE = '8374aeca2456ec7aba035530be4755fd89216cf1'
-IMAGE_RECEIPT_SHA256 = '9bc68e6f5c21ac436838786f10ccc93db776108b9e897a7558730e4b9bd99ddc'
+IMAGE_RECEIPT_SHA256 = 'ee882db8feb49ff1510700a415d6635b33850ab0e1f6c76c0825775652818183'
 LABEL = 'issue825.haynesnetwork/phase'
 JOBS = {
     'live': ('frontend', 'issue831-live-byte-baseline-1009-03'),

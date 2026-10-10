@@ -13,14 +13,25 @@ The finite blocked-first-reader fixture verifies continued work, both bounds,
 and exact ordered completion. This corrects idle-reader scheduling observed in
 the expired October 10 attempt; it gives no live completion-time guarantee.
 Both bootstrap payloads and their caller/supervisor pins close this source
-change. The six installed runtime modules, historical archives, native
-verification/ACK, selection and all safety clocks remain unchanged.
+change. That reader correction preserves the six installed runtime modules,
+native verification/ACK and selection; the separate byte policy below changes
+only the bound-census runtime module.
 
 LIVE, SOURCE, trusted assembly, MAIN and the identity/outcome checkers must use
 the same exact copies/metadata module versions. Preserve original byte start,
 completion and age; never repair an incompatible baseline by changing hashes or
-timestamps. Root approved the health runtime image for package preparation only:
-`ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c`.
+timestamps. The current preparation pins the independently verified signed image:
+`ghcr.io/thaynes43/book-copy-writer@sha256:628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601`.
+Main publication `38038830436` passed on source
+`daa542a395eb508de6bbeb2a7430e63aa3454b6e`; normal cosign verification checked
+the exact workflow/main source, issuer, certificate chain, SCT and Rekor. All six
+installed registry files equal that source, including bound-census
+`d3df953dc7105d9d2535b0d370bb53c266ab46f018beac72652f681d91d52c38`;
+the other five runtime files are unchanged. The signature receipt is
+`ee882db8feb49ff1510700a415d6635b33850ab0e1f6c76c0825775652818183` and
+the registry/publication closure is
+`23f773d42f5e16de57905f9070b3a5475ed96d55025313190c8d3df7952607b8`.
+Historical packets retain the earlier `fdc358fc` image and its receipts.
 
 The SOURCE controller owns its original PostgreSQL 16 connection and transaction.
 It calls the published local scan guard at every entry. Actual uncached health
@@ -105,8 +116,9 @@ reset its original earliest timestamp. The supervisor rechecks the 300s
 activation admission after arm. The 300s service ceiling and 170s restoration
 trigger are unchanged; the prospective 130s cold restoration reserve has no
 actual timing proof. Historical attempts retain their original bounds/results.
-The changed bound-census module requires a new actual signed publication and
-registry module receipt before packet preparation can qualify that runtime.
+The changed bound-census module is qualified by the exact signed publication
+and six-file registry closure above. Literal pin adoption grants no runtime
+authority and no cold-restoration timing guarantee.
 Frozen `live-baseline-host` archives keep their historical 180s/200s contract.
 
 `run-live-and-copy.py` is the previously independently reviewed automatic

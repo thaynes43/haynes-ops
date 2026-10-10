@@ -155,7 +155,8 @@ class ContractTests(unittest.TestCase):
     def test_exact_normal_stop_pair(self):
         wc.validate_pair(NORMAL, STOP, CONTRACT)
         self.assertEqual(CONTRACT['clocks'], dict(live=240, live_host_total=260, original_byte_age=600, activation_admission_age=300, restore_trigger=170, source_abort=170, restore_reserve=130, service_ceiling=300, publisher_start_age=65, publisher_finish_age=35))
-        self.assertIn('fdc358fc', supervisor.INPUT_IMAGE)
+        self.assertEqual(supervisor.INPUT_IMAGE, CONTRACT['image'])
+        self.assertEqual(CONTRACT['image'], 'ghcr.io/thaynes43/book-copy-writer@sha256:628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601')
         self.assertEqual(supervisor.MODULES['epub_copies.py'], CONTRACT['modules']['epub_copies.py'])
 
     def test_unrelated_byte_image_strip_or_schedule_drift_refuses(self):
