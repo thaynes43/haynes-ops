@@ -125,5 +125,9 @@ Frozen `live-baseline-host` archives keep their historical 180s/200s contract.
 handoff, now tracked with the prospective reserve/admission values. One exact
 conditional root GO owns LIVE and its exit-zero/ACK/full-cleanup gate, the single
 baseline-hash config binding and direct existing supervisor exec. It performs
-no post-LIVE object census or model handoff. Its pre-exec original-byte age
+the supervisor's five static root scope artifact checks before starting LIVE;
+only the not-yet-produced LIVE baseline is deferred. A hash-pinned config whose
+manifest, hold, selection, census or cached Source bytes differ refuses before
+capture. Materialization derives the manifest pin from its frozen host bytes.
+It performs no post-LIVE object census or model handoff. Its pre-exec original-byte age
 check cannot replace the supervisor's final post-arm activation age check.
