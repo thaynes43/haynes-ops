@@ -16,6 +16,17 @@ spec:
   matchConditions:
     - name: retained-budget-namespace
       expression: "request.namespace == 'dev-env-budgets'"
+    # Normal namespace ConfigMaps, including kube-root-ca.crt, remain outside
+    # this guard. Old labels are checked so an update cannot strip protection.
+    - name: retained-ledger-object
+      expression: >-
+        request.name.startsWith('task-budget-') ||
+        (request.operation != 'DELETE' &&
+         (object.metadata.name.startsWith('task-budget-') ||
+          object.metadata.?labels.orValue({}).exists(k, k == 'dev-env.haynesops.com/task-budget'))) ||
+        (request.operation != 'CREATE' && oldObject != null &&
+         (oldObject.metadata.name.startsWith('task-budget-') ||
+          oldObject.metadata.?labels.orValue({}).exists(k, k == 'dev-env.haynesops.com/task-budget')))
   validations:
     - expression: "request.operation != 'DELETE'"
       reason: Forbidden

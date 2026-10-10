@@ -1,6 +1,6 @@
 ---
 # Dynamic ledger names cannot be bounded by RBAC resourceNames. The namespace's
-# admission policy restricts every ConfigMap write to the operator and ledger shape.
+# admission policy restricts ledger ConfigMap writes to the operator and ledger shape.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
