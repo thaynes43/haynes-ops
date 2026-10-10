@@ -552,25 +552,27 @@ class Fixture(Native):
 
     def binding(self, after_ack=False):
         job = self.get("job", self.name)
-        pod = node = None
+        observations = {"job": job}
         try:
             require(job["metadata"]["uid"] == self.uid, "job_uid_changed")
             pods = owned_pods(self.list("Pod"), self.name, self.phase, self.uid)
             require(len(pods) == 1 and pods[0]["metadata"]["uid"] == self.pod_uid, "fixture_pod_changed")
-            pod = self.named_pod(pods[0])
+            pod = self.named_pod(pods[0], observations=observations)
             node = self.fixture_node(pod)
+            observations["node"] = node
             pod_binding(job, pod, self.ready, self.phase, node, after_ack)
         except Refused:
             # Save observed responses, not a reconstructed terminal premise.
             # Publication stays within the original collection/cleanup clocks.
-            for name, observed in (("job", job), ("pod", pod), ("node", node)):
-                if observed is not None:
-                    atomic_private_marker(self.out / ("refused-binding-" + name + ".json"), observed)
+            for name, observed in observations.items():
+                atomic_private_marker(self.out / ("refused-binding-" + name + ".json"), observed)
             raise
         return job, pod
 
-    def named_pod(self, listed, retain=False):
+    def named_pod(self, listed, retain=False, observations=None):
         pod = self.get("pod", listed["metadata"]["name"])
+        if observations is not None:
+            observations["pod"] = pod
         if retain:
             save_private(self.out / "admission-observed-pod.json", pod)
         require(pod.get("apiVersion") == "v1" and pod.get("kind") == "Pod" and pod.get("metadata", {}).get("namespace") == NS and isinstance(pod["metadata"].get("uid"), str) and bool(pod["metadata"]["uid"]) and all(pod["metadata"].get(key) == listed["metadata"].get(key) for key in ("namespace", "name", "uid")), "named_pod_identity_changed")

@@ -188,6 +188,25 @@ class HostTests(unittest.TestCase):
             self.assertFalse((Path(out) / "actual-native-pass.json").exists())
             self.assertFalse((Path(out) / "cleanup-receipt.json").exists())
 
+    def test_replaced_named_pod_failure_retains_response_before_identity_validation(self):
+        manifest, job, listed = objects()
+        for change in (lambda p: p["metadata"].update(uid=str(uuid.uuid4())), lambda p: p.update(kind="Node")):
+            actual = copy.deepcopy(listed)
+            change(actual)
+            with tempfile.TemporaryDirectory() as out:
+                fixture = h.Fixture.__new__(h.Fixture)
+                fixture.out = Path(out)
+                fixture.ready, fixture.phase, fixture.name, fixture.uid, fixture.pod_uid = manifest, PHASE, manifest["metadata"]["name"], JOBUID, PODUID
+                fixture.list = mock.Mock(return_value=inv("Pod", [listed]))
+                fixture.get = mock.Mock(side_effect=[job, actual])
+                with self.assertRaisesRegex(h.Refused, "named_pod_identity_changed"):
+                    fixture.binding()
+                self.assertEqual(json.loads(h.read_private(Path(out) / "refused-binding-job.json")), job)
+                self.assertEqual(json.loads(h.read_private(Path(out) / "refused-binding-pod.json")), actual)
+                self.assertEqual(fixture.get.call_count, 2)
+                self.assertFalse((Path(out) / "refused-binding-node.json").exists())
+                self.assertFalse((Path(out) / "evidence-ack.json").exists())
+
     def test_owned_job_second_truncation_shortens_alarm_and_packet(self):
         original_end = h.epoch("2026-10-09T20:01:36.072208Z") + 180
         job_start = h.epoch("2026-10-09T20:01:36Z")

@@ -434,3 +434,11 @@ cost) and posted no findings; this is not a clean review. One report-only push
 retriggers it without changing executable bytes. Root's concurrent Normal-only
 rehearsal temporarily freezes merges and new runtime Jobs; the consumed v9 GO
 cannot authorize another run.
+
+Independent source review found the new catch could lose a replaced or malformed
+named Pod response: the helper raised before its caller's assignment. The successor
+records the returned native response in the local observation set before validation,
+then atomically retains it on the same refusal. A finite replaced-UID/wrong-kind
+control proves the exact Job and rejected Pod remain private, with no Node fetch,
+ACK or admission. Every identity guard remains unchanged. The review finding is
+fixed; neither this source control nor terminal metadata advances v9 UNKNOWN.
