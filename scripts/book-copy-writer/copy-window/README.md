@@ -93,6 +93,19 @@ phase annotation from the seven resumed resources, with same UID/spec/RV tests.
 Other controller annotations and fresh reconcile requests remain. A foreign phase
 annotation refuses retirement. This lets a later fresh phase establish ownership.
 
+Generic COPY recovery keeps a fresh complete typed Job/Pod phase union and both
+primary PG lease checks before every controller release and at final proof. STOP
+does not prove a submitted CREATE cannot complete late. When that complete union
+is empty, recovery skips the fifteen duplicate per-intent inventory reads; any
+observed resource still takes the existing exact UID/phase cleanup and final
+absence proof. Malformed inventory and PG errors refuse release. The Source is
+explicitly reconciled once per recovery attempt, then freshly checked for its
+owned UID/spec/phase, unsuspended state and exact Ready Normal artifact before
+each resume/reconcile. All six needed Kustomization reconciles remain. The
+original 50s restoration reserve, 60s safety attempt and 300s service ceiling do
+not change. The 28.363524s Normal-only rehearsal proves its separate cancellation
+path; it does not prove an actual COPY Stop can restore services within 50s.
+
 `normal-rehearsal.py` prepares and executes a separate Normal-only cancellation
 rehearsal. Preparation copies the generic source closure and a reviewed exact
 host Python/PyYAML dependency receipt into a fresh private directory; it performs
