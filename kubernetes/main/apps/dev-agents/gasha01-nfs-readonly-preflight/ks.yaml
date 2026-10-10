@@ -2,8 +2,8 @@
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
 # Disposable metadata-only NFS discovery; never a workspace acceptance result.
 # Metadata receipt and actual init/main termination are captured privately.
-# This cleanup keeps the same inventory owner while removing only its three objects.
-# Prove Job/Pods/PVC/PV absence before removing the empty child registration.
+# Re-adopt the existing completed Job/PVC/PV after an empty-source ordering race.
+# Confirm the restored inventory and original terminated Job before retirement.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -15,10 +15,11 @@ spec:
       namespace: dev-env-system
   path: ./kubernetes/main/apps/dev-agents/gasha01-nfs-readonly-preflight/app
   prune: true
+  deletionPolicy: WaitForTermination
   sourceRef:
     kind: GitRepository
     name: haynes-ops
     namespace: flux-system
-  wait: true
+  wait: false
   interval: 30m
   timeout: 4m
