@@ -37,6 +37,9 @@
       },
       {
         "name": "dev-env-scheduling"
+      },
+      {
+        "name": "dev-env-rbac"
       }
     ]
   }
