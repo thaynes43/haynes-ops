@@ -18,6 +18,7 @@ import zipfile
 MAX_FILES = 10000
 MAX_PROOF = 32 * 1024 * 1024
 READ_STREAMS = 2
+REORDER_WINDOW = 8
 PROGRESS_FILES = 128
 DECIMAL = re.compile(r"(?:0|[1-9][0-9]{0,19})")
 SHA = re.compile(r"[0-9a-f]{64}")
@@ -246,7 +247,7 @@ def read_epub(root, path, expected, deadline, metadata, health):
 
 
 def read_epubs(root, paths, fingerprints, deadline, metadata, health, observer=None):
-    """Two submitted-but-not-emitted tasks; errors never wait for path order.
+    """Two active reads, with at most eight submitted-but-not-emitted paths.
 
     Only the owning entrypoint may hard-exit on refusal. No thread is joined,
     including on a deadline while a read is blocked. Every successful result is
@@ -291,13 +292,14 @@ def read_epubs(root, paths, fingerprints, deadline, metadata, health, observer=N
                     first_error.append(error)
             cancelled.set()
 
-    rows, reordered, next_submit, next_emit, proof_bytes, completed_bytes = [], {}, 0, 0, 0, 0
+    rows, reordered, next_submit, received, next_emit, proof_bytes, completed_bytes = [], {}, 0, 0, 0, 0, 0
     try:
         for _ in range(READ_STREAMS):
             threading.Thread(target=reader, daemon=True, name="live-epub-reader").start()
         while next_emit < len(paths):
             control_health()
-            while next_submit < len(paths) and next_submit - next_emit < READ_STREAMS:
+            while (next_submit < len(paths) and next_submit - received < READ_STREAMS
+                   and next_submit - next_emit < REORDER_WINDOW):
                 tasks.put_nowait(next_submit)
                 next_submit += 1
             try:
@@ -307,13 +309,14 @@ def read_epubs(root, paths, fingerprints, deadline, metadata, health, observer=N
             control_health()
             if not next_emit <= index < next_submit or index in reordered:
                 raise metadata.Refused("LIVE reader result index differs")
+            proof_bytes += len(canonical(row))
+            if proof_bytes > MAX_PROOF // 2:
+                raise metadata.Refused("complete LIVE identity proof byte cap exceeded")
+            received += 1
             reordered[index] = row
             while next_emit in reordered:
                 control_health()
                 row = reordered.pop(next_emit)
-                proof_bytes += len(canonical(row))
-                if proof_bytes > MAX_PROOF // 2:
-                    raise metadata.Refused("complete LIVE identity proof byte cap exceeded")
                 rows.append(row)
                 if observer is not None:
                     completed_bytes += require_decimal(fingerprints[paths[next_emit]][0][2])

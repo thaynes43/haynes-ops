@@ -23,12 +23,20 @@ logic: complete SHA bytes and every raw OPF plus parsed role-aware identity,
 before/after descriptor and current path fingerprints, safe absolute directory
 resolution, and final directory identity check. A two-slot task queue and
 two-slot result queue bound scheduling; only two daemon reader threads perform
-IO. At most two tasks are submitted but not yet emitted, including queued,
-running, and completed-but-reordered tasks. The two-index sliding window and
-two-row reorder buffer cannot grow behind a slow earlier path. Results are
-assembled by sorted input path index, independently of completion order, with
-the original full identity proof cap. No row, failure, or protected
-entry is silently skipped.
+IO. The controller replenishes a completed read without waiting for earlier
+paths to emit. The previous two-index window left a reader idle behind a slow
+earlier path; the actual October 10 LIVE attempt expired during the byte/OPF
+stage, with incomplete proof and no COPY. This correction addresses that
+scheduling defect without claiming that it explains all measured variation or
+will meet the deadline.
+
+At most two reads are submitted but not yet received, and at most eight paths
+are submitted but not yet emitted. The latter includes queued, running, and
+completed-but-reordered tasks, so even a blocked earliest path cannot grow the
+reorder buffer beyond eight rows. Every received row counts against the original
+16 MiB identity half-proof cap before buffering. Results still assemble by
+sorted input path index, independently of completion order. No row, failure,
+or protected entry is silently skipped.
 
 The controlling thread waits for bounded result events against the same absolute
 deadline. The first error cancels pending tasks and reaches the controlling
@@ -91,7 +99,8 @@ candidate: the image/Dockerfile and frozen production launcher remain unchanged.
 Never run CPU busy loops,
 stress, load generation, wide parallel suites, or repeated timing tests.
 Fixtures must check exact original/candidate stat schema and byte/OPF identity
-equivalence; two-stream bounds and out-of-order determinism; first-error refusal;
+equivalence; continued work behind a blocked first read, two-stream/eight-path
+bounds and out-of-order determinism; first-error refusal;
 blocked fake IO in a subprocess that exits by its deadline; and real temporary
 file/path/directory replacement and protection cases. They touch no live corpus.
 

@@ -948,7 +948,7 @@ def validate(c):
  if not activation.is_absolute() or activation.parent!=Path(c['watchdog_state']).parent or activation.exists():raise Refused('fresh private activation path alongside watchdog required')
  inputs=c['source_private_input']
  if not isinstance(inputs,dict) or set(inputs)!={'sender','receiver','native_verifier','collector'}:raise Refused('complete exact private-input source closure required')
- pins={'sender':'675d47a66657445846f6f5cdc6646e640daf17d97914eb2b0abda02d756cce82','receiver':'fbf7998738652db4023721731526b343faff4b2d880d24e811a63a95eaab2d3e','native_verifier':'67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f','collector':'6e758e34db12fb82d4d6050c460d17a815d5b608c511a1d7bc9f94886342a61a'}
+ pins={'sender':'8d3cb8b3242a14ba5a07a25dca14d16220bf86be85d95cb18a1b3eeae7fd8c81','receiver':'fbf7998738652db4023721731526b343faff4b2d880d24e811a63a95eaab2d3e','native_verifier':'67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f','collector':'03f6163873b75f2bf0dc6896851b9da568d5e370ef39b56983eed64def2eb5f0'}
  for key,digest in pins.items():
   if inputs[key].get('sha256')!=digest:raise Refused('private-input reviewed source pin differs')
   pinned_artifact(inputs[key],1024*1024)

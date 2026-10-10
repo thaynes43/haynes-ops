@@ -32,7 +32,7 @@ INTENTS = {SOURCE:'COPY_SOURCE_PHASE_READY',MAIN:'COPY_PROOF_HASHES_JSON',('down
 LEASE_KEYS = {'job_namespace','job_name','job_uid','pod_uid','backend_pid','application_name'}
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
 FROZEN_TEMPLATES = {
- 'COPY_SOURCE_PHASE_READY': ('pg-nfs-readonly-source-template.prepared.json','e893ddc8b30aa5d8414d67e5e625ed0f23b7645c38f0bc414242dd4a1c4e4854'),
+ 'COPY_SOURCE_PHASE_READY': ('pg-nfs-readonly-source-template.prepared.json','7411f80826e2d01bd5a741e795d5fb0483ae97d74c839f31934c056f3f962e4c'),
  'LIDARR_CAPTURE_PHASE_READY': ('lidarr-copy-source-template.prepared.json','8ce4ecfa3efbf8db2456f469d6b3645a444d8c8637da6bc94e2a0b1e668e9ee6'),
 }
 ROW_KEYS = {'namespace','name','uid','phase_token','writer','source_manifest_sha256','initial_manifest_sha256','initial_manifest','gate_env','mutable_env','ready_manifest_sha256','ready_manifest','registered_at','bound_at','observed_at'}

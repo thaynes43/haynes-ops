@@ -218,9 +218,12 @@ class FilesystemTests(unittest.TestCase):
 
 
 class SchedulingTests(unittest.TestCase):
-    def test_two_index_window_bound_and_out_of_order_determinism(self):
-        release, first_started, second_done, lock = threading.Event(), threading.Event(), threading.Event(), threading.Lock()
-        state = {'submitted': 0, 'emitted': 0, 'max_outstanding': 0, 'active': 0, 'max_active': 0}
+    def test_slow_first_read_replenishes_two_readers_with_bounded_ordered_output(self):
+        release, first_started, at_bound, lock = threading.Event(), threading.Event(), threading.Event(), threading.Lock()
+        state = {'submitted': 0, 'received': 0, 'emitted': 0, 'max_outstanding': 0,
+                 'max_buffered': 0, 'active': 0, 'max_active': 0, 'started': []}
+        paths = [str(index) for index in range(12)]
+        fingerprints = {path: [['1', '2', '1', '4', '5', '1'], '0', '0', '0'] for path in paths}
         answer, errors = [], []
         queue_class, made = queue.Queue, []
         class Tasks(queue_class):
@@ -237,42 +240,58 @@ class SchedulingTests(unittest.TestCase):
             with lock:
                 state['active'] += 1
                 state['max_active'] = max(state['max_active'], state['active'])
+                state['started'].append(path)
             try:
                 if path == '0':
                     first_started.set()
-                    release.wait(2)
+                    if not release.wait(5):
+                        raise AssertionError('finite fixture release timed out')
                 elif path == '1':
-                    first_started.wait(1)
-                    second_done.set()
+                    if not first_started.wait(1):
+                        raise AssertionError('first reader did not start')
                 return {'index': path}
             finally:
                 with lock:
                     state['active'] -= 1
         real_canonical = candidate.canonical
-        def emitted(row):
+        def received(row):
+            with lock:
+                state['received'] += 1
+                state['max_buffered'] = max(state['max_buffered'], state['received'] - state['emitted'])
+            return real_canonical(row)
+        def emitted(_event):
             with lock:
                 state['emitted'] += 1
-            return real_canonical(row)
+        def health():
+            with lock:
+                if state['submitted'] == 8 and state['received'] == 7 and state['emitted'] == 0:
+                    at_bound.set()
         def execute():
             try:
-                answer.extend(candidate.read_epubs('fixture', ['0', '1', '2', '3'], dict.fromkeys(['0', '1', '2', '3']), time.monotonic() + 2, metadata, lambda: None))
+                answer.extend(candidate.read_epubs('fixture', paths, fingerprints, time.monotonic() + 5,
+                                                  metadata, health, observer=emitted))
             except BaseException as error:
                 errors.append(error)
-        with mock.patch.object(candidate, 'read_epub', side_effect=read), mock.patch.object(candidate, 'canonical', side_effect=emitted), mock.patch.object(candidate.queue, 'Queue', side_effect=make_queue):
+        with mock.patch.object(candidate, 'read_epub', side_effect=read), mock.patch.object(candidate, 'canonical', side_effect=received), mock.patch.object(candidate.queue, 'Queue', side_effect=make_queue), mock.patch.object(candidate, 'PROGRESS_FILES', 1):
             control = threading.Thread(target=execute, daemon=True)
             control.start()
             try:
-                self.assertTrue(second_done.wait(1))
+                self.assertTrue(at_bound.wait(1), 'later reads must finish before the blocked first read')
                 with lock:
-                    self.assertEqual(state['submitted'], 2)
+                    self.assertEqual(state['submitted'], 8)
+                    self.assertEqual(state['received'], 7)
+                    self.assertEqual(state['emitted'], 0)
+                    self.assertEqual(set(state['started']), set(paths[:8]))
+                    self.assertEqual(state['active'], 1)
             finally:
                 release.set()
                 control.join(2)
         self.assertFalse(control.is_alive())
         self.assertEqual(errors, [])
-        self.assertEqual(answer, [{'index': p} for p in ['0', '1', '2', '3']])
+        self.assertEqual(answer, [{'index': path} for path in paths])
         self.assertEqual(state['max_active'], 2)
-        self.assertEqual(state['max_outstanding'], 2)
+        self.assertEqual(state['max_outstanding'], 8)
+        self.assertLessEqual(state['max_buffered'], 8)
         self.assertEqual([q.maxsize for q in made], [2, 2])
 
     def test_identity_row_proof_cap_refuses_instead_of_truncating(self):
@@ -358,6 +377,7 @@ class ClosureTests(unittest.TestCase):
         self.assertEqual(copies.SNAPSHOT_MAX_AGE, 300)
         self.assertEqual(candidate.MAX_PROOF, 32 * 1024 * 1024)
         self.assertEqual(candidate.READ_STREAMS, 2)
+        self.assertEqual(candidate.REORDER_WINDOW, 8)
         self.assertEqual(candidate.PROGRESS_FILES, 128)
 
     def test_telemetry_does_not_swallow_owning_deadline_signal(self):
