@@ -130,39 +130,62 @@ class PipelineCases(unittest.TestCase):
             self.assertFalse((root/'supervisor-config.actual.json').exists())
             self.assertFalse((root/'live-output').exists())
 
-    def test_stale_static_scope_pin_refuses_before_live_and_current_pin_admits(self):
-        handoff=load('finite_static_scope_handoff','run-live-and-copy.py')
+    def test_complete_supervisor_validation_refuses_before_live_and_current_closure_admits(self):
+        handoff=load('finite_complete_handoff','run-live-and-copy.py')
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);phase='a'*32
+            def raw_artifact(path,raw):
+                path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw);path.chmod(0o600)
+                return dict(path=str(path),sha256=digest(path))
             def artifact(name,value):
-                path=root/name;raw=(json.dumps(value,sort_keys=True,indent=2)+'\n').encode()
-                path.write_bytes(raw);path.chmod(0o600)
-                return dict(path=str(path),sha256=hashlib.sha256(raw).hexdigest())
+                return raw_artifact(root/name,(json.dumps(value,sort_keys=True,indent=2)+'\n').encode())
             refs={key:artifact(key,dict(version='current',scope=key)) for key in
                   ('manifest_contract','hold_receipt','selection_approval','census_holds','cached_source_receipt')}
             state=artifact('phase',dict(phase_token=phase,complete=False,owned_jobs=[dict(uid=None)]))
             live=artifact('live',dict(phase_token='b'*32,output_dir=str(root/'live-output')))
-            value=dict(refs,copy_phase_state=state['path'],max_service_absence_seconds=300,
-                restore_reserve_seconds=130,arm_deadline_seconds=1800,watchdog_state=str(root/'watch'),
+            value=dict(refs,repo_dir=str(root),restore_pr='1',restore_head='c'*40,
+                watchdog_state=str(root/'watch'),watchdog_stop=str(root/'watch.stop'),evidence_dir=str(root/'evidence'),
+                copy_phase_state=state['path'],readonly_capture_jobs=[],copy_job={},arm_deadline_seconds=1800,
+                max_service_absence_seconds=300,restore_reserve_seconds=130,publisher_scope_sha256='d'*64,
+                publisher_scope_hook={},cached_source_activation=str(root/'activation'),ll_sql_sha256='e'*64,
                 live_byte_baseline=dict(path=str(root/'live-output/live-byte-baseline.json'),sha256=None))
-            value['manifest_contract']=dict(refs['manifest_contract'],sha256=hashlib.sha256(b'old manifest').hexdigest())
-            config=artifact('config',value)
-            supervisor=artifact('supervisor.py',dict(inert_fixture=True))
-            contract_value=dict(schema=1,phase_token=phase,phase_state=state,live_contract=live,
-                                prelive_config=config,supervisor=supervisor)
-            contract=artifact('handoff',contract_value)
+            for key in ('copy_checkpoint_helper','publisher_guard','publisher_config','assembly_script','delivery_script','outcome_script'):
+                entry=raw_artifact(root/(key+'.fixture'),('finite '+key+'\n').encode())
+                value[key]=entry['path'];value[key+'_sha256']=entry['sha256']
+            value['kavita_exporters_dir']=str(root/'exporters')
+            value['kavita_exporter_sha256']={name:raw_artifact(root/'exporters'/name,b'finite exporter\n')['sha256']
+                for name in ('reading-state-readonly.py','kavita-dependencies-readonly.py','kavita-locks-readonly.py')}
+            value['source_private_input']={key:raw_artifact(root/'inputs'/name,(HERE/name).read_bytes()) for key,name in
+                {'sender':'deliver-private-inputs.py','receiver':'receive-private-inputs.py',
+                 'native_verifier':'prepare-native-source-contract.py','collector':'bound_census_collectors.py'}.items()}
+            supervisor=raw_artifact(root/'supervisor.py',(HERE.parent/'copy-window/copy-phase-supervisor.py').read_bytes())
+            for name in ('window_contract.py','cached_source.py'):
+                raw_artifact(root/name,(HERE.parent/'copy-window'/name).read_bytes())
+            contract_value=dict(schema=1,phase_token=phase,phase_state=state,live_contract=live,supervisor=supervisor)
             argv=['handoff','--live-launcher',str(HERE/'run-live-byte-baseline.py'),
-                '--live-launcher-sha256',digest(HERE/'run-live-byte-baseline.py'),'--contract',contract['path'],
-                '--contract-sha256',contract['sha256'],'--root-authorization',handoff.GO]
+                '--live-launcher-sha256',digest(HERE/'run-live-byte-baseline.py'),
+                '--contract',str(root/'handoff'),'--contract-sha256','0'*64,'--root-authorization',handoff.GO]
+            cases={
+                'static':('exact root scope artifact changed',lambda c:c['manifest_contract'].update(sha256='0'*64)),
+                'sender':('private-input reviewed source pin differs',lambda c:c['source_private_input']['sender'].update(sha256='8d3cb8b3242a14ba5a07a25dca14d16220bf86be85d95cb18a1b3eeae7fd8c81')),
+            }
             with mock.patch.object(handoff,'SELECTION',refs['selection_approval']['sha256']), \
                  mock.patch.object(handoff.sys,'argv',argv), \
                  mock.patch.object(handoff.subprocess,'run',side_effect=RuntimeError('finite_live_boundary')) as capture, \
                  mock.patch.object(handoff.os,'execv') as writer:
-                with self.assertRaisesRegex(RuntimeError,'artifact_changed'):handoff.main()
-                capture.assert_not_called();writer.assert_not_called()
-                value['manifest_contract']=refs['manifest_contract']
-                config=artifact('config',value);contract_value['prelive_config']=config
+                for name,(message,mutate) in cases.items():
+                    with self.subTest(name=name):
+                        current=copy.deepcopy(value);mutate(current)
+                        contract_value['prelive_config']=artifact('config',current)
+                        contract=artifact('handoff',contract_value);argv[argv.index('--contract-sha256')+1]=contract['sha256']
+                        with self.assertRaisesRegex(RuntimeError,message):handoff.main()
+                        capture.assert_not_called();writer.assert_not_called()
+                contract_value['prelive_config']=artifact('config',value)
                 contract=artifact('handoff',contract_value);argv[argv.index('--contract-sha256')+1]=contract['sha256']
+                # An already-created baseline cannot use the sole future-artifact exception.
+                baseline=Path(value['live_byte_baseline']['path']);baseline.parent.mkdir();baseline.write_bytes(b'early')
+                with self.assertRaisesRegex(RuntimeError,'only the absent unbound future LIVE baseline'):handoff.main()
+                capture.assert_not_called();writer.assert_not_called();baseline.unlink();baseline.parent.rmdir()
                 with self.assertRaisesRegex(RuntimeError,'finite_live_boundary'):handoff.main()
                 capture.assert_called_once();writer.assert_not_called()
             self.assertFalse((root/'supervisor-config.actual.json').exists())
