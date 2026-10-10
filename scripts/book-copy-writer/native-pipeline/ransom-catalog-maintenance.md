@@ -187,6 +187,11 @@ Any failure requests the existing owned recovery; no CREATE or mutation retry.
 After the accepted full Normal/retirement audit, `scan` uses the existing
 `reading-progress-readonly.py` capture functions (SHA-bound as `native_reader`),
 current original app Pod UID/spec/image and a private `{"token": "..."}` stdin.
+KoReader hashes admit 32 hexadecimal characters in either letter case. The
+qualified Native scan produced `B78F996A630E8AB6BEF038351232C1AE`; the proposal
+and typed comparison retain those exact bytes. A differently cased or otherwise
+changed expected value still refuses; the guard does not normalize hashes.
+
 The caller keeps umask 077 through the existing Native reader and local read-only
 SQLite consumption, then rechecks every raw
 DB/sidecar/proof file is owner-only 0600 and singly linked in a fresh 0700 directory.
