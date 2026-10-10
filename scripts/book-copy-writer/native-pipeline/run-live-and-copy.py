@@ -61,6 +61,8 @@ def main():
             'preapproved_two_extra_cached_config_required')
     final = Path(config['watchdog_state']).parent/'supervisor-config.actual.json'
     require(not final.exists(), 'final_config_already_exists')
+    require(pinned(handoff['prelive_config']) == (json.dumps(config, sort_keys=True, indent=2)+'\n').encode(),
+            'preapproved_config_changed')
     subprocess.run([sys.executable, '-I', '-B', args.live_launcher, '--contract', handoff['live_contract']['path'],
                     '--root-authorization', scope['GO']], stdin=subprocess.DEVNULL, check=True)
     # No API calls or object census here: the pinned LIVE already proves ACK/GC.

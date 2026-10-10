@@ -104,6 +104,32 @@ class PipelineCases(unittest.TestCase):
                         helper.main(argv);self.assertTrue(output.exists());native.assert_called_once()
                         actual,_=helper.read_json(ledger);self.assertEqual(actual['window_started_at'],state['window_started_at'])
 
+    def test_noncanonical_prelive_config_refuses_before_capture_or_exec(self):
+        handoff=load('finite_handoff','run-live-and-copy.py')
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);phase='a'*32
+            def artifact(name,value):
+                path=root/name;raw=json.dumps(value,separators=(',',':')).encode();path.write_bytes(raw);path.chmod(0o600)
+                return dict(path=str(path),sha256=hashlib.sha256(raw).hexdigest())
+            state=artifact('phase',dict(phase_token=phase,complete=False,owned_jobs=[dict(uid=None)]))
+            live=artifact('live',dict(phase_token='b'*32,output_dir=str(root/'live-output')))
+            config=artifact('config',dict(copy_phase_state=state['path'],cached_source_receipt=dict(path='/private',sha256='c'*64),
+                max_service_absence_seconds=300,restore_reserve_seconds=130,arm_deadline_seconds=1800,
+                selection_approval=dict(sha256=handoff.SELECTION),watchdog_state=str(root/'watch'),
+                live_byte_baseline=dict(path=str(root/'live-output/live-byte-baseline.json'),sha256=None)))
+            supervisor=root/'supervisor.py';supervisor.write_bytes(b'# inert pinned fixture\n');supervisor.chmod(0o600)
+            contract=artifact('handoff',dict(schema=1,phase_token=phase,phase_state=state,live_contract=live,prelive_config=config,
+                supervisor=dict(path=str(supervisor),sha256=digest(supervisor))))
+            argv=['handoff','--live-launcher',str(HERE/'run-live-byte-baseline.py'),
+                '--live-launcher-sha256',digest(HERE/'run-live-byte-baseline.py'),'--contract',contract['path'],
+                '--contract-sha256',contract['sha256'],'--root-authorization',handoff.GO]
+            with mock.patch.object(handoff.sys,'argv',argv),mock.patch.object(handoff.subprocess,'run') as capture, \
+                 mock.patch.object(handoff.os,'execv') as writer:
+                with self.assertRaisesRegex(RuntimeError,'preapproved_config_changed'):handoff.main()
+                capture.assert_not_called();writer.assert_not_called()
+            self.assertFalse((root/'supervisor-config.actual.json').exists())
+            self.assertFalse((root/'live-output').exists())
+
     def test_identity_import_supports_shallow_ci_mount_and_private_module_bundle(self):
         source = (HERE / 'pipeline_pins.py').read_bytes()
         scope = {'__file__': '/writer-tests/native-pipeline/pipeline_pins.py'}
