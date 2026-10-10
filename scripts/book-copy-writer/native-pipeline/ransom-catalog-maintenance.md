@@ -62,8 +62,14 @@ typed CAS to restore the union of 32 cells in five rows. It refuses concurrent
 reading, curation, schema or unrelated catalog drift. The clone-only fixture
 entrypoint is never used as production authority.
 
-The distinct maintenance admission adapter validates one exact generic
-checkpoint Job instead of modifying the five-COPY-row gate. Its independent
+The distinct maintenance admission adapter validates exactly two generic
+checkpoint rows: one read-only Lidarr helper and one Ransom writer, instead of
+modifying the five-COPY-row gate. The automatic `run` prelude binds the existing
+helper's READY and original absolute deadline, collects the complete publisher
+proof through the reviewed Native bridge, and retires that exact helper with
+foreground UID-preconditioned deletion and full phase/PG absence before writer
+CREATE. The helper UID and immutable manifest history remain in the ledger.
+There is no API-only Lidarr fallback or second writer. Its independent
 watcher uses the existing writer-first Job/Pod cleanup, live primary-backend
 absence check and guarded Normal restoration. The worker owns the original PG
 SHARE fence and converter lock. Each mutation requests a fresh synchronous host
@@ -89,11 +95,19 @@ watcher, supervisor, window contract, cached-source and publisher guard. The
 watcher arguments bind the distinct phase, exact reviewed Stop/inverse pair,
 cached receipt/activation, state/stop paths and unchanged 170/1800 limits.
 
-Use the existing generic `checkpoint-owned-job.py init` then `register --writer`
-before `watch`. The exact existing source is
+Use the separately pinned `ransom_lidarr_checkpoint.py` shim for generic `init`,
+read-only helper registration, and `register --writer` before `watch`. It loads
+the exact original `checkpoint-owned-job.core.py` beside it and adds only the
+existing `LIDARR_CAPTURE_PHASE_READY`/`LIDARR_CAPTURE_DEADLINE_EPOCH` profile,
+with a blocked initial READY value of `0` and `writer=false`. The Native bridge
+imports this same shim independently. Original bind/observe/immutable-row
+validation is reused unchanged. Both bind and observe explicitly carry the
+same configured inverse PR. `checkpoint_core` pins the fixed adjacent original
+source separately from the shim; no arbitrary profile registration is exposed.
+The exact original core source is
 `/home/dev/work/hn-825c-fence-prepared/copy-publisher-adapter-prepared/checkpoint-owned-job.py`,
 SHA `1ceacf5d487c32b3107ac7db6c166e2384739474505d68640ea7b4921402b622`.
-This is the generic core, not the fixed-five-intent native checkpoint. The one
+This is the generic core, not the fixed-five-intent native checkpoint. The writer
 ready manifest comes from `job_manifest`: one media Job,
 qualified628e, exact current Kavita claim/node, exact existing NFS export, no
 service-account token and only a 64MiB memory delivery volume. A separate private
@@ -120,7 +134,8 @@ that stopped Job to capture complete current rows/schema and DB device/inode,
 checks the approved current application's schema digest and copies the full
 snapshot privately to the host. It does not reuse the historical v13 database.
 Root approves the exact conditional operation template and source before Stop.
-The `run` command composes these existing methods in one finite process: create,
+The `run` command composes these existing methods in one finite process: the
+finite helper/capture/retirement prelude, then create,
 inspect, bind only the declared full snapshot/hash, DB device/inode and original
 activation-origin+170 abort clock, deliver, then execute immediately. No model
 turn occurs between stopped inspection and publication. The retention path
@@ -133,6 +148,16 @@ rows to equal the exact pre-scan after-state or qualified full post-scan state;
 legitimate new progress refuses before delivery or execution. The derived private
 operation is exclusive 0600 at `bound_operation_output`. Separate commands are
 available for read-only review; production uses the automatic composition.
+`publisher_config` and all twelve adjacent publisher files are privately pinned,
+including the merged current storage policy. `publisher_proof_output` and
+`publisher_proof_binding_output` are fixed, initially absent private paths. The
+prelude publishes the actual complete proof's path/hash, phase and stable scope
+at that exclusive binding path before helper retirement. The independent
+watcher reads the same binding for any owned-lock cleanup; no model turn or
+cached success boolean supplies publisher authority. Fresh full Pod/PVC/PV
+verification still runs before writer admission and lock release. Actual
+helper PVC/source-Pod/config identities, collector routes, stopped typed rows,
+watcher/cache/clock and phase lock admission remain required production bindings.
 Credential input is exactly `{"dsn": "..."}` on private stdin, never argv.
 The canonical admitted operation SHA binds the worker launch, every guard/ACK
 and final outcome; a different delivered operation refuses before any API call.

@@ -1,4 +1,4 @@
-"""Distinct Ransom one-Job admission; frozen COPY predicates are never changed."""
+"""Distinct Ransom writer with a retired read-only prelude; COPY is unchanged."""
 import contextlib
 import argparse
 import ast
@@ -74,12 +74,59 @@ def validate_bootstrap(config):
         catalog.require(raw == (HERE / ref["name"]).read_bytes(), "host/Job bootstrap source differs")
 
 
+def writer_row(phase, config):
+    rows = [row for row in phase["owned_jobs"] if row.get("writer") is True]
+    catalog.require(len(rows) == 1 and (rows[0]["namespace"], rows[0]["name"]) == ("media", config["job_name"]),
+                    "exact singular Ransom writer required")
+    return rows[0]
+
+
+def helper_row(phase, config):
+    rows = [row for row in phase["owned_jobs"] if (row["namespace"], row["name"]) == ("media", config["lidarr_helper"]["name"])]
+    catalog.require(len(rows) == 1 and rows[0]["writer"] is False, "exact read-only Lidarr helper required")
+    return rows[0]
+
+
+def current_publisher_ref(config):
+    ref = config["publisher_proof"]
+    if ref is None:
+        binding = json.loads(private(config["publisher_proof_binding_output"]))
+        catalog.require(set(binding) == {"schema", "phase_token", "scope_sha256", "proof"}
+                        and binding["schema"] == 1 and binding["phase_token"] == config["phase_token"]
+                        and binding["scope_sha256"] == config["publisher_scope_sha256"]
+                        and binding["proof"]["path"] == config["publisher_proof_output"]
+                        and re.fullmatch(r"[0-9a-f]{64}", binding["proof"]["sha256"]),
+                        "automatic publisher proof binding differs")
+        ref = binding["proof"]
+    private(ref["path"], ref["sha256"])
+    return ref
+
+
 def one_job_phase(config, core):
     phase = json.loads(private(config["phase_state"]))
     core.validate_state(phase, config["restore_pr"])
-    catalog.require(phase["phase_token"] == config["phase_token"] and len(phase["owned_jobs"]) == 1,
-                    "maintenance requires exactly one registered Job")
-    job = phase["owned_jobs"][0]
+    catalog.require(phase["phase_token"] == config["phase_token"] and len(phase["owned_jobs"]) == 2,
+                    "maintenance requires exactly one writer and one read-only helper")
+    job = writer_row(phase, config)
+    helper = helper_row(phase, config)
+    ref = config["lidarr_helper"]["source_template"]
+    initial = json.loads(private(ref["path"], ref["sha256"]))
+    for metadata in (initial["metadata"], initial["spec"]["template"]["metadata"]):
+        metadata.setdefault("labels", {})[LABEL] = config["phase_token"]
+    catalog.require(helper["initial_manifest"] == initial
+                    and (initial["metadata"]["namespace"], initial["metadata"]["name"]) == ("media", config["lidarr_helper"]["name"])
+                    and helper["gate_env"] == "LIDARR_CAPTURE_PHASE_READY"
+                    and set(helper["mutable_env"]) == {"LIDARR_CAPTURE_PHASE_READY", "LIDARR_CAPTURE_DEADLINE_EPOCH"},
+                    "Lidarr immutable template or read-only profile differs")
+    source = initial["spec"]["template"]["spec"]
+    catalog.require(initial["spec"]["activeDeadlineSeconds"] == 120 and initial["spec"]["backoffLimit"] == 0
+                    and source["automountServiceAccountToken"] is False and len(source["containers"]) == 1
+                    and source["containers"][0]["image"] == IMAGE
+                    and source["volumes"] == [{"name": "config", "persistentVolumeClaim": {"claimName": "lidarr", "readOnly": True}},
+                                              {"name": "tmp", "emptyDir": {"sizeLimit": "32Mi"}}]
+                    and source["containers"][0]["volumeMounts"] == [{"name": "config", "mountPath": "/source", "readOnly": True},
+                                                                    {"name": "tmp", "mountPath": "/tmp"}],
+                    "Lidarr helper must retain its exact read-only storage/image/lifetime")
     template = config["job_manifest"]["spec"]["template"]["spec"]
     volumes = {volume["name"]: volume for volume in template["volumes"]}
     expected = job_manifest(config["phase_token"], config["job_name"],
@@ -275,16 +322,41 @@ def record_lock_custody(config, event, lease):
 def maintenance_watchdog(base, core, config, supervisor, publishers):
     """Only the distinct ledger admission differs; cleanup/restore stay inherited."""
     class MaintenanceWatchdog(base.Watchdog):
+        phase_resources_present = base.PhaseResourcesPresent
         def phase_checkpoint(self):
             return one_job_phase(config, core)
+        def verify_only_helper(self, phase, pod_uid):
+            row = helper_row(phase, config)
+            catalog.require(row["uid"] is not None and writer_row(phase, config)["uid"] is None,
+                            "read-only prelude requires its exact UID and absent writer")
+            names = {r["name"] for r in phase["owned_jobs"]}
+            uids = {r["uid"] for r in phase["owned_jobs"] if r["uid"] is not None}
+            for namespace in ("frontend", "downloads", "media"):
+                for kind in ("Job", "Pod"):
+                    for item in self.inventory(kind, namespace):
+                        meta = item["metadata"]
+                        relevant = (meta.get("labels", {}).get(LABEL) == phase["phase_token"]
+                                    or meta["uid"] in uids or kind == "Job" and meta["name"] in names
+                                    or any(o.get("kind") == "Job" and (o.get("name") in names or o.get("uid") in uids)
+                                           for o in meta.get("ownerReferences", [])))
+                        if not relevant:continue
+                        catalog.require(namespace == "media" and meta.get("labels", {}).get(LABEL) == phase["phase_token"]
+                                        and (kind == "Job" and meta["name"] == row["name"] and meta["uid"] == row["uid"]
+                                             or kind == "Pod" and meta["uid"] == pod_uid
+                                             and meta.get("ownerReferences") == [{"apiVersion": "batch/v1", "kind": "Job", "name": row["name"],
+                                                                                 "uid": row["uid"], "controller": True, "blockOwnerDeletion": True}]),
+                                        "unknown or writable resource in read-only prelude union")
+            # The full typed union above admits only the separately verified RO
+            # Job/Pod; reuse the original primary PG-absence check unchanged.
+            super().verify_phase_absent(dict(phase, owned_jobs=[]))
         def verify_phase_absent(self, phase):
-            uid = phase["owned_jobs"][0]["uid"]
+            uids = {row["uid"] for row in phase["owned_jobs"] if row["uid"] is not None}
             for namespace in ("frontend", "downloads"):
                 for kind in ("Job", "Pod"):
                     for item in self.inventory(kind, namespace):
                         meta = item["metadata"]
                         if (meta.get("labels", {}).get(LABEL) == phase["phase_token"]
-                                or uid is not None and any(o.get("kind") == "Job" and o.get("uid") == uid
+                                or any(o.get("kind") == "Job" and o.get("uid") in uids
                                                           for o in meta.get("ownerReferences", []))):
                             raise base.PhaseResourcesPresent("Unexpected maintenance phase resource; retain holds")
             super().verify_phase_absent(phase)  # Original writer/Pod/primary PG absence FIRST.
@@ -298,7 +370,7 @@ def maintenance_watchdog(base, core, config, supervisor, publishers):
             proof = json.loads(private(config["converter_lock_custody_output"]))
             operation = json.loads(private(config["bound_operation_output"]))
             lease = json.loads(private(config["pg_owner"]))
-            row = phase["owned_jobs"][0]
+            row = writer_row(phase, config)
             catalog.require(proof["phase_token"] == phase["phase_token"] and proof["operation_sha256"] == catalog.digest(operation)
                             and proof["backend_pid"] == lease["backend_pid"] and proof["job_uid"] == row["uid"]
                             and proof["pod_uid"] == lease["pod_uid"] and proof["created_after_absent"] is True
@@ -309,9 +381,9 @@ def maintenance_watchdog(base, core, config, supervisor, publishers):
             observer = HostAdmission.__new__(HostAdmission)
             observer.c, observer.watch, observer.publishers, observer.supervisor = config, self, publishers, supervisor
             observer.operation = {"original_abort_epoch": supervisor.epoch(self.state["actuation_budget_started_at"]) + 300}
-            private(config["publisher_proof"]["path"], config["publisher_proof"]["sha256"])
-            observer.status = {"writer_may_mutate": True, "publisher_scope_proof": config["publisher_proof"]["path"]}
-            observer.lock_ready, observer.jobs = True, [row]
+            ref = current_publisher_ref(config)
+            observer.status = {"writer_may_mutate": True, "publisher_scope_proof": ref["path"]}
+            observer.lock_ready, observer.jobs = True, phase["owned_jobs"]
             def guard(_=True):
                 observer.remaining()
                 base.Watchdog.verify_phase_absent(self, phase)
@@ -520,13 +592,15 @@ def worker_main():
 
 class HostAdmission:
     """Exact one-Job bridge to existing service, publisher and recovery guards."""
-    def __init__(self, config, watch, core, pod_guard, supervisor, publisher_guard):
+    def __init__(self, config, watch, core, pod_guard, supervisor, publisher_guard, *, publisher_pending=False):
         validate_bootstrap(config)
         self.c, self.watch, self.core, self.pod_guard = config, watch, core, pod_guard
         self.publishers, self.supervisor = publisher_guard, supervisor
-        self.status = {"phase_token": config["phase_token"], "writer_may_mutate": True,
-                       "publisher_scope_proof": config["publisher_proof"]["path"]}
-        private(config["publisher_proof"]["path"], config["publisher_proof"]["sha256"])
+        self.publisher_pending = publisher_pending and config["publisher_proof"] is None
+        catalog.require(self.publisher_pending or config["publisher_proof"] is not None, "full publisher proof required")
+        self.status = {"phase_token": config["phase_token"], "writer_may_mutate": not self.publisher_pending}
+        if not self.publisher_pending:
+            self.status["publisher_scope_proof"] = current_publisher_ref(config)["path"]
         self.lock_ready = True
         self.execution = None
         self.jobs = []
@@ -568,7 +642,10 @@ class HostAdmission:
         catalog.require(not Path(self.c["watcher_stop"]).exists() and not self.stop
                         and (self.execution is None or self.execution.poll() is None), "maintenance owner revoked")
 
-    def guard(self, require_pod=True):
+    def guard(self, require_pod=True, *, read_only_prelude=False):
+        catalog.require(not read_only_prelude or self.publisher_pending and not require_pod,
+                        "read-only prelude cannot admit a writer")
+        catalog.require(read_only_prelude or not self.publisher_pending, "publisher proof missing before writer admission")
         self.guard_lease()
         state = json.loads(private(self.c["watcher_state"]))
         catalog.require(state.get("cached_stop_actuation_complete_at") and not state.get("complete")
@@ -591,7 +668,7 @@ class HostAdmission:
         receipt = json.loads(private(self.c["cached_source_receipt"]["path"], self.c["cached_source_receipt"]["sha256"]))
         contract = json.loads(private(self.c["manifest_contract"]["path"], self.c["manifest_contract"]["sha256"]))
         self.supervisor.cache.check_live(receipt, self.get, contract, phase["phase_token"], deadline=self.operation["original_abort_epoch"])
-        row = phase["owned_jobs"][0]
+        row = writer_row(phase, self.c)
         if require_pod:
             actual = self.get("job", row["name"], row["namespace"])
             pods = self.watch.owned_job_pods(self.list("pods", "media"), row, row["uid"])
@@ -599,7 +676,14 @@ class HostAdmission:
             self.pod_guard.verify_owned_pod(row, actual, pods[0], self.c["pod_uid"])
         else:
             catalog.require(row["uid"] is None, "maintenance Job already created; never retry CREATE")
-            self.watch.verify_phase_absent(phase)
+            helper = helper_row(phase, self.c)
+            if read_only_prelude and helper["uid"] is not None:
+                actual = self.get("job", helper["name"], "media")
+                pods = self.watch.owned_job_pods(self.list("pods", "media"), helper, helper["uid"])
+                catalog.require(len(pods) == 1, "read-only helper Pod custody differs")
+                self.pod_guard.verify_owned_pod(helper, actual, pods[0], pods[0]["metadata"]["uid"])
+                self.watch.verify_only_helper(phase, pods[0]["metadata"]["uid"])
+            else:self.watch.verify_phase_absent(phase)
         claim = self.get("pvc", self.c["claim_name"], "media")
         pv = self.get("pv", self.c["pv_name"], "")
         catalog.require(claim["metadata"]["uid"] == self.c["claim_uid"] and claim["spec"] == self.c["claim_spec"]
@@ -607,11 +691,101 @@ class HostAdmission:
                         and pv["spec"] == self.c["pv_spec"]
                         and claim["spec"].get("volumeName") == self.c["pv_name"]
                         and pv["spec"]["claimRef"]["uid"] == self.c["claim_uid"], "maintenance PVC/PV identity or placement changed")
-        self.jobs = [row]
+        self.jobs = phase["owned_jobs"]
         hook = self.c["publisher_scope_hook"]
         private(hook["script"], hook["sha256"])
         self.supervisor.Supervisor.service_fence(self)  # Full existing stopped services + live publisher/storage predicate.
         self.guard_lease()
+
+    def publisher_prelude(self):
+        """Existing RO helper → complete capture → exact GC, before any writer."""
+        catalog.require(self.publisher_pending, "publisher prelude cannot be replayed")
+        self.guard(require_pod=False, read_only_prelude=True)
+        phase = one_job_phase(self.c, self.core)
+        row = helper_row(phase, self.c)
+        catalog.require(row["uid"] is None and row["ready_manifest"] is None, "Lidarr helper already bound; no retry")
+        helper = self.c["lidarr_helper"]
+        deadline = min(self.operation["original_abort_epoch"], time.time() + 115)
+        values = {"LIDARR_CAPTURE_PHASE_READY": "1", "LIDARR_CAPTURE_DEADLINE_EPOCH": f"{deadline:.6f}"}
+        with catalog.metadata.safe_directory(str(Path(helper["env_output"]).parent)) as fd:
+            catalog.metadata._write_file(fd, Path(helper["env_output"]).name, catalog.canonical(values))
+        self.core.process(SimpleNamespace(command="bind", restore_pr=self.c["restore_pr"], namespace="media", name=row["name"],
+            initial_manifest_sha256=row["initial_manifest_sha256"], env_file=helper["env_output"], output=helper["ready_output"]), Path(self.c["phase_state"]))
+        self.guard(require_pod=False, read_only_prelude=True)
+        row = helper_row(one_job_phase(self.c, self.core), self.c)
+        result = subprocess.run(["kubectl", "create", "-f", "-", "-o", "json"], input=self.core.encoded(row["ready_manifest"]),
+                                capture_output=True, timeout=min(10, self.remaining()))
+        catalog.require(result.returncode == 0 and self.core.declared_matches(row["ready_manifest"], json.loads(result.stdout)),
+                        "read-only helper CREATE failed; no retry")
+        self.core.process(SimpleNamespace(command="observe", restore_pr=self.c["restore_pr"], namespace="media", name=row["name"]), Path(self.c["phase_state"]))
+        until = time.monotonic() + min(15, self.remaining())
+        while True:
+            self.guard_lease()
+            row = helper_row(one_job_phase(self.c, self.core), self.c)
+            pods = self.watch.owned_job_pods(self.list("pods", "media"), row, row["uid"])
+            catalog.require(len(pods) <= 1, "multiple read-only helper Pods")
+            if pods and pods[0].get("status", {}).get("phase") == "Running":break
+            catalog.require(time.monotonic() < until, "read-only helper original readiness expired")
+            time.sleep(.2)
+        self.guard(require_pod=False, read_only_prelude=True)
+        hook = self.c["publisher_scope_hook"]
+        ref = self.c["publisher_config"]
+        configured = json.loads(private(ref["path"], ref["sha256"]))
+        profile = configured["lidarr_native_helper"]
+        catalog.require(profile["checkpoint_helper"] == self.c["sources"]["checkpoint"]["path"]
+                        and profile["checkpoint_sha256"] == self.c["sources"]["checkpoint"]["sha256"]
+                        and profile["phase_state"] == self.c["phase_state"] and profile["restore_pr"] == self.c["restore_pr"]
+                        and profile["job_name"] == row["name"] and profile["namespace"] == "media"
+                        and profile["source_template"] == helper["source_template"]["path"]
+                        and profile["source_template_sha256"] == helper["source_template"]["sha256"]
+                        and profile["capture_program"] == self.c["publisher_sources"]["lidarr-native-paths-capture.py"]["path"]
+                        and profile["capture_sha256"] == self.c["publisher_sources"]["lidarr-native-paths-capture.py"]["sha256"],
+                        "complete Lidarr collector route differs from exact helper")
+        required = {"kapowarr-native-files-capture.py", "lidarr-native-paths-capture.py", "lidarr-native-source-bridge.py",
+                    "publisher-config-capture.js", "publisher-local-backing.py", "publisher-path-capture.js", "publisher-path-capture.py",
+                    "publisher-path-capture.sh", "publisher-scope-capture.py", "publisher-scope-guard.py", "sab-local-config-capture.py",
+                    "approved-normal-write-profiles.json"}
+        catalog.require(set(self.c["publisher_sources"]) == required, "complete private publisher closure required")
+        for name, item in self.c["publisher_sources"].items():
+            catalog.require(Path(item["path"]) == Path(hook["script"]).with_name(name), "publisher sibling path differs")
+            private(item["path"], item["sha256"])
+        catalog.require(self.c["publisher_sources"]["publisher-scope-guard.py"] == self.c["sources"]["publisher_guard"],
+                        "host/collector publisher guards differ")
+        collector = module("maintenance_publisher_collector", {"path": hook["script"], "sha256": hook["sha256"]})
+        capture = collector.Capture(configured, self.c["publisher_proof_output"], 60)
+        original_run = capture.run
+        def checked_run(*args, **kwargs):
+            self.guard_lease()
+            current = json.loads(private(self.c["phase_state"]))
+            self.core.validate_state(current, self.c["restore_pr"])
+            current["heartbeat"] = self.core.stamp()
+            self.core.save(Path(self.c["phase_state"]), current)
+            return original_run(*args, **kwargs)
+        capture.run = checked_run
+        capture.execute()
+        self.guard(require_pod=False, read_only_prelude=True)
+        raw = private(self.c["publisher_proof_output"])
+        ref = {"path": self.c["publisher_proof_output"], "sha256": hashlib.sha256(raw).hexdigest()}
+        self.status.update(writer_may_mutate=True, publisher_scope_proof=self.c["publisher_proof_output"])
+        self.supervisor.Supervisor.service_fence(self)  # Full proof gate before helper retirement and writer CREATE.
+        binding = {"schema": 1, "phase_token": self.c["phase_token"], "scope_sha256": self.c["publisher_scope_sha256"], "proof": ref}
+        target = Path(self.c["publisher_proof_binding_output"])
+        with catalog.metadata.safe_directory(str(target.parent)) as fd:
+            catalog.metadata._write_file(fd, target.name, catalog.canonical(binding))
+        current_publisher_ref(self.c)  # Independent watcher consumes this same exclusive binding, never a model hop.
+        self.guard_lease()
+        self.watch.run(["kubectl", "delete", "--raw", f"/apis/batch/v1/namespaces/media/jobs/{row['name']}", "-f", "-"],
+                       timeout=min(10, self.remaining()), input_text=json.dumps({"apiVersion": "v1", "kind": "DeleteOptions",
+                       "propagationPolicy": "Foreground", "preconditions": {"uid": row["uid"]}}))
+        until = time.monotonic() + min(15, self.remaining())
+        while True:
+            self.guard_lease()
+            try:self.watch.verify_phase_absent(one_job_phase(self.c, self.core));break
+            except self.watch.phase_resources_present:
+                catalog.require(time.monotonic() < until, "read-only helper foreground GC incomplete")
+                time.sleep(.2)
+        self.publisher_pending = False
+        self.guard(require_pod=False)
 
     def deliver(self, name, raw):
         """Exact private delivery after complete Job/Pod/custody admission."""
@@ -640,7 +814,7 @@ class HostAdmission:
         until = min(time.monotonic() + 15, time.monotonic() + self.remaining())
         while time.monotonic() < until:
             phase = one_job_phase(self.c, self.core)
-            row = phase["owned_jobs"][0]
+            row = writer_row(phase, self.c)
             pods = self.watch.owned_job_pods(self.list("pods", "media"), row, row["uid"])
             catalog.require(len(pods) <= 1, "multiple maintenance Pods")
             if pods and pods[0].get("status", {}).get("phase") == "Running":
@@ -686,6 +860,7 @@ class HostAdmission:
         state = json.loads(private(self.c["watcher_state"]))
         # Derive once from the existing original activation origin, never now().
         self.operation["original_abort_epoch"] = self.supervisor.epoch(state["actuation_budget_started_at"]) + 170
+        self.publisher_prelude()
         self.create()
         proof = self.inspect()
         current_raw = private(proof["retained_before_path"], proof["before_sha256"])
@@ -762,7 +937,7 @@ class HostAdmission:
                                             and type(event["backend_pid"]) is int and event["backend_pid"] > 0,
                                             "maintenance guard event differs")
                             lease = {"phase_token": event["phase_token"], "application_name": PG_NAME,
-                                     "backend_pid": event["backend_pid"], "job_uid": one_job_phase(self.c, self.core)["owned_jobs"][0]["uid"], "pod_uid": self.c["pod_uid"]}
+                                     "backend_pid": event["backend_pid"], "job_uid": writer_row(one_job_phase(self.c, self.core), self.c)["uid"], "pod_uid": self.c["pod_uid"]}
                             current = json.loads(private(self.c["pg_owner"]))
                             catalog.require(current["backend_pid"] is None or current == lease, "PG backend changed or reconnected")
                             self.core.save(Path(self.c["pg_owner"]), lease)
@@ -816,6 +991,11 @@ def load_sources(config):
     needed = {"window_contract", "cached_source", "watcher", "checkpoint", "pod_guard", "supervisor", "publisher_guard"}
     catalog.require(set(refs) == needed, "maintenance dependency closure differs")
     for ref in refs.values():private(ref["path"], ref["sha256"])
+    original = config["checkpoint_core"]
+    catalog.require(original["path"] == str(Path(refs["checkpoint"]["path"]).with_name("checkpoint-owned-job.core.py"))
+                    and original["sha256"] == "1ceacf5d487c32b3107ac7db6c166e2384739474505d68640ea7b4921402b622",
+                    "explicit original checkpoint dependency differs")
+    private(original["path"], original["sha256"])
     sys.path.insert(0, str(Path(refs["watcher"]["path"]).parent))
     module("window_contract", refs["window_contract"])
     module("cached_source", refs["cached_source"])
@@ -1015,7 +1195,7 @@ def main(argv=None):
         print(json.dumps(scan_after_normal(config, watch, native_reader(config["native_reader"]), credential["token"])))
         return
     try:
-        host = HostAdmission(config, watch, sources["checkpoint"], sources["pod_guard"], sources["supervisor"], sources["publisher_guard"])
+        host = HostAdmission(config, watch, sources["checkpoint"], sources["pod_guard"], sources["supervisor"], sources["publisher_guard"], publisher_pending=args.command == "run")
         if args.command == "create":result = host.create()
         elif args.command == "inspect":result = host.inspect()
         else:
