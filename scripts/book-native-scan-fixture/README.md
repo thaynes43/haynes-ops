@@ -64,9 +64,14 @@ derive eleven deterministic scalar values. A separate private cover directory us
 native GetCoverImage and cloned EncodeMediaAs/CoverImageSize. The actual volume cover
 used after scan must have identical encoded bytes. Native CalculateColorScape uses
 Random-initialized k-means; the former deterministic color premise is withdrawn.
-Only Volume1800 PrimaryColor/SecondaryColor admit native-generated null or exact
+Only Series1650 PrimaryColor/SecondaryColor admit native-generated null or exact
 uppercase #RRGGBB, with pinned CalculateColorScape/UpdateColorScape method provenance;
-every other cell retains its strict predicate. There is no reseeding, repeated draw
+the pinned MetadataService.UpdateSeriesCoverImage passes that Series to the setter.
+Volume1800 colors stay protected. The historical v12 scan changed exactly the 25
+reviewed cells after correcting these two entity bindings; its previous Volume
+binding refused the two actual Series color changes before cover-byte validation
+or inverse. This is diagnostic evidence, not a preservation PASS. Every other cell
+retains its strict predicate. There is no reseeding, repeated draw
 or rescan, and different encoded bytes refuse. A valid native color may equal its
 original value; requiring a random output to differ would introduce another chance
 of refusal. The fixture process inherits the sealed launch gate's umask 077, checked

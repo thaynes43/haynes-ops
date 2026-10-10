@@ -48,7 +48,7 @@ try
         NativeProof.GenericSelfTest();
         stage = "public-self-test-native-bindings";
         NativeBindings.Inspect();
-        output.WriteLine($"PASS native local/UTC clock controls, 13 packet refusals, durable-ACK/live-native refusals, typed saved-state barriers, actual five-row inverse, color/cover guards, EF10.0.6 virtual hooks, pending/deferred, exact parser constructors and private owned-diagnostic controls; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
+        output.WriteLine($"PASS native local/UTC clock controls, 14 packet refusals, durable-ACK/live-native refusals, typed saved-state barriers, actual five-row inverse, color/cover guards, EF10.0.6 virtual hooks, pending/deferred, exact parser constructors and private owned-diagnostic controls; runtime={RuntimeInformation.FrameworkDescription}; timezone={TimeZoneInfo.Local.Id}; offset={TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow)}; no native host/scan started");
         return 0;
     }
     FixtureProtocol.Require(args.SequenceEqual(new[] { "--prepared-private-fixture" }), "unknown entrypoint");
@@ -598,6 +598,8 @@ static class NativeProof
                     row.Add("Id", FixtureProtocol.Cell(group.Key.Id));
                     row.Add("UnchangedNullable", "null:"); row.Add("UnchangedBlob", "blob:AQI=");
                     row.Add("UnchangedReal", "real:1.5"); row.Add("UnchangedText", "text:CaseSensitive");
+                    if (group.Key.Table == "Volume")
+                    { row.Add("PrimaryColor", "text:#AABBCC"); row.Add("SecondaryColor", "null:"); }
                     using (var create = Command(db, $"CREATE TABLE \"{group.Key.Table}\" (" + string.Join(",", row.Select(p => $"\"{p.Key}\" " + (p.Value.StartsWith("int:", StringComparison.Ordinal) ? "INTEGER" : p.Value.StartsWith("real:", StringComparison.Ordinal) ? "REAL" : p.Value.StartsWith("text:", StringComparison.Ordinal) ? "TEXT" : "BLOB"))) + ")")) create.ExecuteNonQuery();
                     using var insert = Command(db, $"INSERT INTO \"{group.Key.Table}\" (" + string.Join(",", row.Keys.Select(k => $"\"{k}\"")) + ") VALUES (" + string.Join(",", row.Select((_, i) => "@p" + i)) + ")");
                     var index = 0;
@@ -628,7 +630,7 @@ static class NativeProof
             var after = ReadDatabase(path);
             RequireScanDelta(before, after, packet, now, now);
             var unchangedColor = Copy(after);
-            Row(unchangedColor, "Volume", packet.Target.Volume)["PrimaryColor"] = Row(before, "Volume", packet.Target.Volume)["PrimaryColor"];
+            Row(unchangedColor, "Series", packet.Target.Series)["PrimaryColor"] = Row(before, "Series", packet.Target.Series)["PrimaryColor"];
             Sort(unchangedColor);
             RequireScanDelta(before, unchangedColor, packet, now, now);
             void Refuses(Action action)
@@ -639,7 +641,9 @@ static class NativeProof
             }
             foreach (var (table, id, field, wrong) in new[] {
                 ("Chapter", packet.Target.Chapter, "Count", "int:7"),
-                ("Volume", packet.Target.Volume, "PrimaryColor", "text:#aabbcc"),
+                ("Series", packet.Target.Series, "PrimaryColor", "text:#aabbcc"),
+                ("Volume", packet.Target.Volume, "PrimaryColor", "text:#112233"),
+                ("Volume", packet.Target.Volume, "SecondaryColor", "text:#112233"),
                 ("MangaFile", packet.Target.File, "LastFileAnalysisUtc", "text:2026-10-09 19:00:02"),
                 ("Series", 999, "UnchangedText", "text:drift"),
                 ("AppUserProgresses", 1, "Progress", "text:drift") })

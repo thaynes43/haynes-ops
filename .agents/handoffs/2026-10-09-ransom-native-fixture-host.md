@@ -317,3 +317,42 @@ Fresh CLOSED preparation and one independent review still precede a separate exa
 root one-Job GO. Historical fixture success would prove the scanner path, not current
 production catalog, file, reading state or idle eligibility. The Ransom whole-folder
 hold and disabled strip flag remain; seven production catalog fields remain unapproved.
+
+## v12 historical scan readback and exact Series color binding
+
+The independently reviewed CLOSED v12 packet `638ac212`, manifest `c57b7d62` and
+Pathfinder peer `ddbb8fbc` preceded the separately authorized one-run copy
+`b154ca07`. Actual source/module/deny admission and the same five sealed historical
+uploads passed with the reviewed 1Gi memory request and 2Gi limit. The actual native
+scan returned, the retained-name cleanup removed zero works, and hosted workers
+remained stopped. The durable result is **UNKNOWN** at state-readback. No inverse,
+postscan encoded-cover equality or native preservation PASS was produced.
+
+The signed harness `e7622bfd` maps the retained diagnostic to
+FixtureProtocol.Require → NativeProof.RequireDelta → NativeProof.RequireScanDelta.
+All 82 schema tables and 34,433 rows remain present; all 25 changed cells occur in
+the five exact target rows. Exactly two differ from the previous allowance:
+Series1650 PrimaryColor/SecondaryColor changed, while the mistakenly allowed
+Volume1800 color cells did not. The pinned native MetadataService.UpdateSeriesCoverImage
+passes the Series entity to ImageService.UpdateColorScape, whose two setters assign
+its primary and secondary colors. The exact source correction moves only those two
+bindings from Volume1800 to Series1650. There remain 25 scan keys, seven catalog keys,
+zero overlap and 32 distinct inverse cells across five rows. All corrected keys exist
+in the immutable original. Volume colors and every other protected cell retain their
+strict equality predicate.
+
+The existing snapshots prove that Series/Volume/Chapter cover bindings are identical
+and unchanged and that the Series color output satisfies the existing nullable
+uppercase RGB grammar. RequireScanDelta refused before RequireAfterCover, so encoded
+postscan cover-byte equality and the complete inverse remain requirements for a
+separate successor; they cannot be inferred from v12.
+
+Exact owned cleanup completed at 02:26:59 UTC on 2026-10-10 before the original
+02:29:24/02:29:44 caps. The watchdog agreed, and a fresh complete typed media Job/Pod
+union at resourceVersion 819922293 was empty. Root ended the declaration. Aggregate
+receipt SHA `319a134a2de0ad42a1760d3118c1669b4b2f4fbc8b7b8597326c94a1dcf57af8`,
+private comparison `5e3495dd`, signed callsite map `85d81f08` and corrected-key count
+receipt `9d1a5c66` are retained under
+`/home/dev/work/hn-ransom-native-fixture-actual-53df-v12-1010/`.
+No automatic retry or production catalog/strip/write authority follows. Historical
+inputs, 180/200 clocks, isolation, 1931 retained keys and 1Gi/2Gi resources stay fixed.

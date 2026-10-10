@@ -37,14 +37,14 @@ public static class FixtureProtocol
     public static readonly TargetIds ReviewedTarget = new(1, 1650, 1800, 3358, 3570);
     public static readonly Dictionary<string, string[]> ScanFields = new(StringComparer.Ordinal)
     {
-        ["Series"] = ["SortName", "LastFolderScanned", "LastFolderScannedUtc", "LastModified", "LastModifiedUtc"],
+        ["Series"] = ["SortName", "LastFolderScanned", "LastFolderScannedUtc", "LastModified", "LastModifiedUtc", "PrimaryColor", "SecondaryColor"],
         ["Chapter"] = ["Count", "IsSpecial", "Range", "Title", "TotalCount", "LastModified", "LastModifiedUtc"],
         ["MangaFile"] = ["Bytes", "KoreaderHash", "LastModified", "LastModifiedUtc", "LastFileAnalysis", "LastFileAnalysisUtc"],
         ["SeriesMetadata"] = ["TotalCount", "PublicationStatus", "RowVersion"],
-        ["Volume"] = ["PrimaryColor", "SecondaryColor", "LastModified", "LastModifiedUtc"]
+        ["Volume"] = ["LastModified", "LastModifiedUtc"]
     };
     public static bool IsScanClock(string field) => field is "LastModified" or "LastModifiedUtc" or "LastFolderScanned" or "LastFolderScannedUtc" or "LastFileAnalysis" or "LastFileAnalysisUtc";
-    public static bool IsNativeColor(string table, string field) => table == "Volume" && field is "PrimaryColor" or "SecondaryColor";
+    public static bool IsNativeColor(string table, string field) => table == "Series" && field is "PrimaryColor" or "SecondaryColor";
     public static void RequireNativeColor(string cell) => Require(cell == "null:" || (cell.StartsWith("text:#", StringComparison.Ordinal)
         && cell.Length == 12 && cell[6..].All(c => c is >= '0' and <= '9' or >= 'A' and <= 'F')), "native color grammar differs");
     public static readonly Dictionary<string, string> FixedScanValues = new(StringComparer.Ordinal)
@@ -185,7 +185,8 @@ public static class FixtureProtocol
             good with { ScanAllowances = [good.ScanAllowances[0], new("Series", 99, "Name", "text:before", "text:after", false)] },
             good with { Inputs = good.Inputs[..5] }, good with { RetainedParsedKeys = [good.RetainedParsedKeys[0], good.RetainedParsedKeys[0]] },
             good with { ScanAllowances = good.ScanAllowances.Append(new("Volume", target.Volume, "CoverImage", "text:old", "text:new", false)).ToArray() },
-            good with { ScanAllowances = good.ScanAllowances.Select(r => r.NativeColor ? r with { After = "text:#112233" } : r).ToArray() }
+            good with { ScanAllowances = good.ScanAllowances.Select(r => r.NativeColor ? r with { After = "text:#112233" } : r).ToArray() },
+            good with { ScanAllowances = good.ScanAllowances.Select(r => r.NativeColor ? r with { Table = "Volume", Id = target.Volume } : r).ToArray() }
         };
         foreach (var candidate in invalid)
         {
