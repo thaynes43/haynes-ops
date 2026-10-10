@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Materialize a private coherent source package. No API, PG or process launch."""
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -57,6 +58,27 @@ def save(path, raw):
         output.flush()
         os.fsync(output.fileno())
     return {'path': str(path), 'sha256': digest(raw)}
+
+
+def materialize_publisher_policy(directory, normal_profiles_source):
+    """Include the existing guard's private policy input in its sibling closure."""
+    if not directory.is_absolute() or not directory.is_dir() or directory.is_symlink():
+        raise ValueError('publisher directory must be an existing absolute directory')
+    guard = read(directory / 'publisher-scope-guard.py')
+    declarations = [node for node in ast.parse(guard).body
+                    if isinstance(node, ast.Assign) and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)
+                    and node.targets[0].id == 'NORMAL_PROFILE_SHA256']
+    if len(declarations) != 1:
+        raise ValueError('publisher normal policy pin is missing or duplicated')
+    expected = ast.literal_eval(declarations[0].value)
+    if (not isinstance(expected, str) or len(expected) != 64
+            or any(character not in '0123456789abcdef' for character in expected)):
+        raise ValueError('publisher normal policy pin is invalid')
+    raw = read(normal_profiles_source, 8 * 1024 * 1024)
+    if digest(raw) != expected:
+        raise ValueError('publisher normal policy bytes differ from the guard pin')
+    return save(directory / 'approved-normal-write-profiles.json', raw)
 
 
 def materialize(directory, signature_receipt, registry_proof):

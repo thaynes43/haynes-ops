@@ -49,6 +49,28 @@ def assignments(path):
 
 
 class PipelineCases(unittest.TestCase):
+    def test_fresh_publisher_assembly_includes_exact_policy_and_refuses_missing_or_changed_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); bundle = root / 'publisher'; bundle.mkdir()
+            policy = root / 'private-approved-policy.json'
+            raw = prepare.canonical({'schema': 1, 'profiles': [{'pod_uid': 'finite-pod'}]})
+            expected = hashlib.sha256(raw).hexdigest()
+            (bundle / 'publisher-scope-guard.py').write_text('NORMAL_PROFILE_SHA256=' + repr(expected) + '\n')
+            destination = bundle / 'approved-normal-write-profiles.json'
+            with self.assertRaises(FileNotFoundError):
+                prepare.materialize_publisher_policy(bundle, policy)
+            self.assertFalse(destination.exists())
+            policy.write_bytes(raw + b' ')
+            with self.assertRaisesRegex(ValueError, 'policy bytes differ'):
+                prepare.materialize_publisher_policy(bundle, policy)
+            self.assertFalse(destination.exists())
+            policy.write_bytes(raw)
+            reference = prepare.materialize_publisher_policy(bundle, policy)
+            self.assertEqual(reference, {'path': str(destination), 'sha256': expected})
+            self.assertEqual(prepare.read(destination), raw)
+            self.assertEqual(destination.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(destination.stat().st_nlink, 1)
+
     def test_lidarr_bridge_accepts_qualified_ready_images_and_refuses_drift(self):
         bridge=load('finite_lidarr_bridge','lidarr-native-source-bridge.py')
         template=json.loads((HERE/'lidarr-copy-source-template.prepared.json').read_bytes())
