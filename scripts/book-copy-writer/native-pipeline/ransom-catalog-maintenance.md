@@ -224,9 +224,14 @@ the directory is empty, all original writers are absent, all seven controllers
 remain owned and held/drained, and the existing service/publisher guard passes
 immediately before `rmdir`. The watcher proves lock absence before any Normal
 release. Unknown, pre-existing, changed, nonempty or unprovable locks refuse;
+the cleanup cache path is the sole watcher's configured receipt path, and its
+SHA is the exact receipt already accepted into that watcher's phase custody.
+The prearm configuration cannot know that later SHA. Cleanup requires the
+accepted 64-hex SHA, privately verifies the bytes and phase, then applies the
+unchanged live-cache and owned Stop guards; an absent or stale acceptance refuses.
 there is no age-based takeover. A kill before custody publication can therefore
-retain holds for manual review. The current unclassified writable-storage
-publisher refusal also blocks runtime admission until its guard path is resolved.
+retain holds for manual review. The complete fresh publisher/storage guard must
+pass before writer admission; merged profile source alone is insufficient.
 
 Meaningful local controls use small synthetic SQLite databases, fake maintenance
 guards/clocks and temporary private backups. Run only the focused test under
