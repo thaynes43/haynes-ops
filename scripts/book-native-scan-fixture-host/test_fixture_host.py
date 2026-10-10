@@ -45,6 +45,26 @@ def inv(kind, items=()):
 
 
 class HostTests(unittest.TestCase):
+    def test_native_refusal_retains_already_read_raw_output_before_raise(self):
+        raw = b'{"result":"REFUSED","stage":"native-scan","code":"synthetic-control"}\n'
+        with tempfile.TemporaryDirectory() as out:
+            fixture = h.Fixture.__new__(h.Fixture)
+            fixture.out, fixture.end = Path(out), time.time() + 5
+            original_end = fixture.end
+            fixture.call = mock.Mock(side_effect=AssertionError("no extra native request"))
+            fixture.native_events(b'{"result":"WAITING"}\n')
+            with self.assertRaisesRegex(h.Refused, "native_fixture_refused"):
+                fixture.native_events(raw, reject_refusal=True)
+            path = Path(out) / "native-output.jsonl"
+            self.assertEqual(h.read_private(path), raw)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(path.stat().st_nlink, 1)
+            self.assertEqual(fixture.end, original_end)
+            fixture.call.assert_not_called()
+            self.assertFalse(list(Path(out).glob("*.pending-*")))
+            for name in ("evidence-ack.json", "actual-native-pass.json", "cleanup-receipt.json"):
+                self.assertFalse((Path(out) / name).exists())
+
     def test_actual_typed_inventory_may_omit_child_type(self):
         _, job, _ = objects()
         job.pop("kind")

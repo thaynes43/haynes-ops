@@ -613,6 +613,25 @@ class Fixture(Native):
         save_private(self.out / "actual-fixture-module-pins.json", actual)
         return actual
 
+    def native_events(self, raw, reject_refusal=False):
+        # Retain the already-bounded response before parsing can lose diagnostics.
+        # One latest snapshot replaces the prior observation; no log request is added.
+        require(isinstance(raw, bytes) and len(raw) <= 1024 * 1024 and time.time() < self.end, "native_output_retention_bound")
+        path = self.out / "native-output.jsonl"
+        pending = path.with_name(path.name + ".pending-" + str(uuid.uuid4()))
+        save_private(pending, raw)
+        os.replace(pending, path)
+        directory = os.open(self.out, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        require(time.time() < self.end, "native_output_retention_bound")
+        events = [json.loads(line) for line in raw.splitlines() if line.strip()]
+        if reject_refusal:
+            require(not any(e.get("result") == "REFUSED" for e in events), "native_fixture_refused")
+        return events
+
     def collect(self):
         jobs, pods = self.list("Job"), self.list("Pod")
         require(not any(j["metadata"]["name"] == self.name or j["metadata"].get("labels", {}).get(LABEL) == self.phase for j in jobs["items"]) and not owned_pods(pods, self.name, self.phase, None), "initial_owned_absence")
@@ -676,8 +695,7 @@ class Fixture(Native):
         event = None
         while event is None:
             raw = self.call(["kubectl", "logs", "-n", NS, pod["metadata"]["name"], "-c", "native-scanner"], seconds=5)
-            events = [json.loads(line) for line in raw.splitlines() if line.strip()]
-            require(not any(e.get("result") == "REFUSED" for e in events), "native_fixture_refused")
+            events = self.native_events(raw, reject_refusal=True)
             ready = [e for e in events if e.get("result") == "PRIVATE_PROOF_READY"]
             require(len(ready) <= 1, "proof_ready_repeated")
             if ready:
@@ -707,7 +725,7 @@ class Fixture(Native):
                 break
             time.sleep(.2)
         final_raw = self.call(["kubectl", "logs", "-n", NS, pod["metadata"]["name"], "-c", "native-scanner"])
-        final = [json.loads(line) for line in final_raw.splitlines() if line.strip()]
+        final = self.native_events(final_raw)
         passes = [e for e in final if e.get("result") == "PASS_ACTUAL_NATIVE_SCANNER_PRIVATE_FIXTURE"]
         require(len(passes) == 1 and passes[0].get("Phase") == self.phase and passes[0].get("JobUid") == self.uid and passes[0].get("PodUid") == self.pod_uid and passes[0].get("hostApplicationStarted") is False and passes[0].get("savedAndCurationRowsExact") is True and passes[0].get("cleanupRemoved") == 0 and passes[0].get("productionAuthorization") is False, "actual_native_pass_missing")
         save_private(self.out / "actual-native-pass.json", passes[0])
