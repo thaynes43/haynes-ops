@@ -241,3 +241,22 @@ spec:
           for: 30m
           labels:
             severity: warning
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: external-ceph-workspace-rules
+spec:
+  groups:
+  - name: external-ceph-workspace
+    rules:
+    - alert: ExternalCephRequiredMetricsUnavailable
+      expr: ((max(up{job="external-ceph-mgr",storage_cluster="external-pve-ceph"}) or vector(0)) != 1) or ((count(count by (__name__) ({job="external-ceph-mgr",storage_cluster="external-pve-ceph",__name__=~"ceph_health_status|ceph_osd_(up|in|apply_latency_ms|commit_latency_ms)|ceph_mds_(slow_reply|reply_latency_(sum|count))"})) or vector(0)) < 8)
+      for: 2m
+      labels:
+        severity: warning
+        storage_cluster: external-pve-ceph
+        service: external-ceph-mgr
+      annotations:
+        summary: External Ceph workspace metrics are unavailable
+        description: The approved external Ceph scrape is unhealthy or one of the eight required health/MDS/OSD metric families is missing. Shared-workspace validation must stay paused until coverage returns. A successful HTTP scrape alone does not establish coverage.
