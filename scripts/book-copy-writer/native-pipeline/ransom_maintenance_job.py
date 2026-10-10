@@ -7,6 +7,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import posixpath
 from pathlib import Path
 import re
 import selectors
@@ -42,6 +43,7 @@ STATE = "/data/cephfs-hdd/data/media/books/.epub-convert"
 DB = "/kavita/config/kavita.db"
 LABEL = "issue825.haynesnetwork/phase"
 PG_NAME = "issue831-manual-copy-writer"
+BOOK_NFS = {"server": "gasha01.haynesnetwork", "path": "/hdd-nfs-repl/data/media/books"}
 
 
 def private(path, sha=None, cap=32 * 1024 * 1024):
@@ -101,7 +103,108 @@ def one_job_phase(config, core):
     return projected
 
 
-def maintenance_watchdog(base, core, config):
+def lock_io(state, expected=None, release=False):
+    """Exact empty-directory CAS, also executed unchanged in the admitted Sonarr Pod."""
+    directory = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in state.strip("/").split("/"):
+            if part in ("", ".", ".."):raise ValueError("unsafe converter state path")
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+            os.close(directory);directory = child
+        parent = os.fstat(directory)
+        if expected is not None and parent.st_ino != expected["state_inode"]:
+            raise ValueError("original converter state directory changed")
+        try:child = os.open("lock", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+        except FileNotFoundError:return {"absent": True, "state_inode": parent.st_ino}
+        try:
+            info = os.fstat(child)
+            identity = {"state_inode": parent.st_ino, "lock_inode": info.st_ino,
+                        "lock_uid": info.st_uid, "lock_mode": stat.S_IMODE(info.st_mode)}
+            result = dict(identity, absent=False, empty=not os.listdir(child))
+            if release:
+                if expected != identity or not result["empty"]:raise ValueError("unknown, changed or nonempty converter lock")
+                current = os.stat("lock", dir_fd=directory, follow_symlinks=False)
+                if (current.st_ino, current.st_uid, stat.S_IMODE(current.st_mode)) != (info.st_ino, info.st_uid, stat.S_IMODE(info.st_mode)):
+                    raise ValueError("converter lock changed before release")
+                os.rmdir("lock", dir_fd=directory)
+                if os.path.lexists("/proc/self/fd/" + str(directory) + "/lock"):raise ValueError("converter lock still present")
+                result["absent"] = True
+            return result
+        finally:os.close(child)
+    finally:os.close(directory)
+
+
+def sonarr_lock(config, get, run, expected=None, release=False):
+    access = config["converter_lock_access"]
+    catalog.require(access["namespace"] == "media" and access["container"] == "app"
+                    and access["nfs"] == {"server": BOOK_NFS["server"], "path": "/hdd-nfs-repl"}
+                    and access["mount_path"] == "/data/cephfs-hdd", "exact Sonarr NAS route differs")
+    pod = get("pod", access["pod_name"], "media")
+    states = pod.get("status", {}).get("containerStatuses", [])
+    catalog.require(pod["metadata"]["uid"] == access["pod_uid"] and pod["spec"] == access["pod_spec"]
+                    and not pod["metadata"].get("deletionTimestamp") and pod["spec"]["nodeName"] == access["node_name"]
+                    and pod["metadata"].get("labels", {}).get("app.kubernetes.io/name") == "sonarr"
+                    and pod.get("status", {}).get("phase") == "Running"
+                    and len(states) == 1 and states[0]["name"] == "app" and states[0].get("ready") is True
+                    and states[0]["imageID"] == access["image_id"] and states[0]["restartCount"] == access["restart_count"],
+                    "admitted Sonarr execution owner differs")
+    volumes = [v for v in pod["spec"]["volumes"] if v["name"] == access["volume_name"]]
+    containers = [c for c in pod["spec"]["containers"] if c["name"] == "app"]
+    mounts = [m for c in containers for m in c["volumeMounts"] if m["name"] == access["volume_name"]]
+    catalog.require(len(volumes) == len(mounts) == 1 and volumes[0].get("nfs") == access["nfs"]
+                    and mounts[0] in ({"name": access["volume_name"], "mountPath": access["mount_path"]},
+                                      {"name": access["volume_name"], "mountPath": access["mount_path"], "readOnly": False}),
+                    "Sonarr exact RW NFS mount differs")
+    tree = ast.parse((HERE / "ransom_maintenance_job.py").read_text())
+    source = ast.get_source_segment((HERE / "ransom_maintenance_job.py").read_text(),
+                                   next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "lock_io"))
+    program = "import os,sys,json,stat,hashlib\n" + source + "\n" + (
+        "a=json.loads(sys.argv[1]);assert os.getuid()==a['uid']\n"
+        "with open('/proc/self/exe','rb') as f: actual_sha=hashlib.sha256(f.read()).hexdigest()\n"
+        "assert actual_sha==a['exe_sha'];"
+        "assert os.access(a['state'],os.W_OK|os.X_OK);"
+        "print(json.dumps(lock_io(a['state'],a['expected'],a['release'])))")
+    payload = {"state": STATE, "expected": expected, "release": release,
+               "uid": access["runtime_uid"], "exe_sha": access["python_sha256"]}
+    catalog.require(posixpath.join(access["nfs"]["path"], STATE.removeprefix(access["mount_path"] + "/"))
+                    == BOOK_NFS["path"] + "/.epub-convert", "NAS logical converter state path differs")
+    return json.loads(run(["kubectl", "exec", "-n", "media", access["pod_name"], "-c", "app", "--",
+                           access["python_executable"], "-I", "-c", program, json.dumps(payload)], timeout=10))
+
+
+def lock_admission(config, get, run):
+    catalog.require(config["owner_approved"] is True and config["root_lock_admission_go"] is True,
+                    "pre-Stop lock access admission missing")
+    result = sonarr_lock(config, get, run)
+    catalog.require(result["absent"] is True, "pre-Stop converter lock exists")
+    return {"phase_token": config["phase_token"], "access_sha256": catalog.digest(config["converter_lock_access"]),
+            "admitted_epoch": time.time(), "state_inode": result["state_inode"], "lock_absent": True}
+
+
+def record_lock_custody(config, event, lease):
+    custody = event["lock_custody"]
+    fields = {"state_inode", "lock_inode", "lock_uid", "lock_mode", "created_after_absent", "nas", "logical_path"}
+    admission = json.loads(private(config["converter_lock_admission"]["path"], config["converter_lock_admission"]["sha256"]))
+    catalog.require(set(custody) == fields and custody["created_after_absent"] is True
+                    and custody["nas"] == BOOK_NFS and custody["logical_path"] == BOOK_NFS["path"] + "/.epub-convert/lock"
+                    and custody["state_inode"] == admission["state_inode"] and custody["lock_uid"] == 1000
+                    and all(type(custody[k]) is int and custody[k] > 0 for k in ("state_inode", "lock_inode", "lock_mode"))
+                    and custody["lock_mode"] <= 0o7777 and custody["lock_mode"] & 0o4000 == 0
+                    and event["phase_token"] == config["phase_token"]
+                    and lease["backend_pid"] == event["backend_pid"] and lease["phase_token"] == config["phase_token"]
+                    and lease["job_uid"] and lease["pod_uid"] == config["pod_uid"], "exact new converter lock custody differs")
+    proof = dict(custody, schema=1, phase_token=config["phase_token"], operation_sha256=event["operation_sha256"],
+                 backend_pid=lease["backend_pid"], job_uid=lease["job_uid"], pod_uid=lease["pod_uid"])
+    output = Path(config["converter_lock_custody_output"])
+    catalog.require(output.is_absolute() and os.path.commonpath((str(output), LIBRARY)) != LIBRARY,
+                    "lock custody must be retained outside EBooks")
+    if os.path.lexists(output):catalog.require(json.loads(private(output)) == proof, "original converter lock custody changed")
+    else:
+        with catalog.metadata.safe_directory(str(output.parent)) as fd:
+            catalog.metadata._write_file(fd, output.name, catalog.canonical(proof))
+
+
+def maintenance_watchdog(base, core, config, supervisor, publishers):
     """Only the distinct ledger admission differs; cleanup/restore stay inherited."""
     class MaintenanceWatchdog(base.Watchdog):
         def phase_checkpoint(self):
@@ -116,7 +219,47 @@ def maintenance_watchdog(base, core, config):
                                 or uid is not None and any(o.get("kind") == "Job" and o.get("uid") == uid
                                                           for o in meta.get("ownerReferences", []))):
                             raise base.PhaseResourcesPresent("Unexpected maintenance phase resource; retain holds")
-            return super().verify_phase_absent(phase)
+            super().verify_phase_absent(phase)  # Original writer/Pod/primary PG absence FIRST.
+            def route(expected=None, release=False):return sonarr_lock(config, self.kube, self.run, expected, release)
+            observed = route()
+            admission = json.loads(private(config["converter_lock_admission"]["path"], config["converter_lock_admission"]["sha256"]))
+            catalog.require(admission["phase_token"] == phase["phase_token"]
+                            and admission["access_sha256"] == catalog.digest(config["converter_lock_access"])
+                            and observed["state_inode"] == admission["state_inode"], "original converter state directory changed")
+            if observed["absent"]:return
+            proof = json.loads(private(config["converter_lock_custody_output"]))
+            operation = json.loads(private(config["bound_operation_output"]))
+            lease = json.loads(private(config["pg_owner"]))
+            row = phase["owned_jobs"][0]
+            catalog.require(proof["phase_token"] == phase["phase_token"] and proof["operation_sha256"] == catalog.digest(operation)
+                            and proof["backend_pid"] == lease["backend_pid"] and proof["job_uid"] == row["uid"]
+                            and proof["pod_uid"] == lease["pod_uid"] and proof["created_after_absent"] is True
+                            and proof["nas"] == BOOK_NFS and proof["logical_path"] == BOOK_NFS["path"] + "/.epub-convert/lock",
+                            "converter lock has no exact original owner custody")
+            expected = {key: proof[key] for key in ("state_inode", "lock_inode", "lock_uid", "lock_mode")}
+            catalog.require(observed == dict(expected, absent=False, empty=True), "converter lock custody or emptiness differs")
+            observer = HostAdmission.__new__(HostAdmission)
+            observer.c, observer.watch, observer.publishers, observer.supervisor = config, self, publishers, supervisor
+            observer.operation = {"original_abort_epoch": supervisor.epoch(self.state["actuation_budget_started_at"]) + 300}
+            private(config["publisher_proof"]["path"], config["publisher_proof"]["sha256"])
+            observer.status = {"writer_may_mutate": True, "publisher_scope_proof": config["publisher_proof"]["path"]}
+            observer.lock_ready, observer.jobs = True, [row]
+            def guard(_=True):
+                observer.remaining()
+                base.Watchdog.verify_phase_absent(self, phase)
+                self.verify_cached_stop_holds(self.state["cached_stop_actuation_binding"])
+                supervisor.cache.check_live(json.loads(private(config["cached_source_receipt"]["path"], config["cached_source_receipt"]["sha256"])),
+                    observer.get, json.loads(private(config["manifest_contract"]["path"], config["manifest_contract"]["sha256"])),
+                    phase["phase_token"], deadline=observer.operation["original_abort_epoch"])
+            observer.guard_lease = guard
+            guard()
+            private(config["publisher_scope_hook"]["script"], config["publisher_scope_hook"]["sha256"])
+            supervisor.Supervisor.service_fence(observer)
+            guard()  # Immediately before the only exact empty-lock release.
+            released, absent = route(expected, True), route()
+            catalog.require(released["absent"] is True and absent["absent"] is True
+                            and released["state_inode"] == absent["state_inode"] == admission["state_inode"],
+                            "owned converter lock absence unproved before Normal release")
     return MaintenanceWatchdog
 
 
@@ -126,6 +269,7 @@ def job_manifest(phase, name, node, claim, nfs):
                     and isinstance(node, str) and node and isinstance(claim, str) and claim
                     and set(nfs) == {"server", "path"} and all(isinstance(v, str) and v for v in nfs.values()),
                     "maintenance manifest bindings missing")
+    catalog.require(nfs == BOOK_NFS, "exact original books NAS export required")
     labels = {LABEL: phase}
     return {"apiVersion": "batch/v1", "kind": "Job", "metadata": {"name": name, "namespace": "media", "labels": labels},
             "spec": {"backoffLimit": 0, "activeDeadlineSeconds": 250, "template": {
@@ -200,8 +344,11 @@ def preflight_epub(operation, guard):
     expected = operation["original_epub_sha256"] if forward else operation["candidate_epub_sha256"]
     catalog.require(catalog.metadata.sha256(raw) == expected, "EPUB admission source differs")
     if forward:
-        candidate, _ = catalog.metadata.sanitized_epub(raw, None)
-        catalog.require(catalog.metadata.sha256(candidate) == operation["candidate_epub_sha256"], "EPUB admitted candidate differs")
+        checked = catalog.metadata.strip_existing(catalog.FILE, LIBRARY, STATE, 900, dry_run=True,
+            expected_sha256=expected, expected_source_identity=catalog.metadata._identity(info), grouping=None)
+        catalog.require(checked["result"] == "would_strip" and checked["original_sha256"] == expected
+                        and checked["sanitized_sha256"] == operation["candidate_epub_sha256"],
+                        "EPUB not settled or admitted strip candidate differs")
     else:
         relative = os.path.relpath(catalog.FILE, LIBRARY)
         manifest = STATE + "/backup/" + catalog.metadata.sha256(relative.encode()) + "-" + operation["original_epub_sha256"] + ".json"
@@ -226,14 +373,23 @@ def worker(operation, dsn, ask_host, writer):
                     and operation["process_holds"] == [h for h in operation["original_holds"] if h != "Daniel Silva/Ransom"],
                     "one-process hold exclusion differs")
     with writer.PrimaryShareFence(dsn, operation["original_abort_epoch"], phase_token=operation["phase_token"]) as fence:
+        lock_custody = None
         def guard():
             fence.health()
             catalog.require(time.time() < operation["original_abort_epoch"], "original worker clock expired")
-            ask_host(fence.pid)
+            ask_host(fence.pid, lock_custody)
             fence.health()
         guard()
         with catalog.metadata.safe_directory(operation["retention_directory"], create=True):pass
+        catalog.require(lock_io(STATE)["absent"] is True, "existing converter lock refuses maintenance")
         with writer.converter_lock(STATE), contextlib.closing(sqlite3.connect(DB, isolation_level=None)) as db:
+            observed = lock_io(STATE)
+            catalog.require(observed["absent"] is False and observed["empty"] is True and observed["lock_uid"] == os.getuid(),
+                            "new converter lock identity differs")
+            lock_custody = {key: observed[key] for key in ("state_inode", "lock_inode", "lock_uid", "lock_mode")}
+            lock_custody.update(created_after_absent=True, nas=BOOK_NFS,
+                                logical_path=BOOK_NFS["path"] + "/.epub-convert/lock")
+            guard()  # Host retains exact custody before any catalog/EPUB publication.
             db.execute("PRAGMA foreign_keys=ON")
             with publication_guard(guard, operation["retention_directory"], operation["original_epub_sha256"], operation["candidate_epub_sha256"]):
                 epub_info = preflight_epub(operation, guard)
@@ -269,11 +425,12 @@ def worker_main():
     secret = json.loads(sys.stdin.readline(65536))
     catalog.require(set(secret) == {"dsn"} and isinstance(secret["dsn"], str), "private PG input differs")
     count = 0
-    def ask_host(pid):
+    def ask_host(pid, lock_custody=None):
         nonlocal count
         count += 1
         catalog.require(count <= 32, "finite maintenance guard count exceeded")
-        request = {"event": "guard", "phase_token": operation["phase_token"], "operation_sha256": operation_sha, "sequence": count, "backend_pid": pid}
+        request = {"event": "guard", "phase_token": operation["phase_token"], "operation_sha256": operation_sha,
+                   "sequence": count, "backend_pid": pid, "lock_custody": lock_custody}
         print(json.dumps(request), flush=True)
         # Host process has original timeout; independent Job cleanup revokes on its death.
         ack = json.loads(sys.stdin.readline(4096))
@@ -307,6 +464,10 @@ class HostAdmission:
         self.jobs = []
         self.stop = False
         self.operation = json.loads(private(config["operation"]["path"], config["operation"]["sha256"]))
+        admission = json.loads(private(config["converter_lock_admission"]["path"], config["converter_lock_admission"]["sha256"]))
+        catalog.require(admission["phase_token"] == config["phase_token"] and admission["lock_absent"] is True
+                        and admission["access_sha256"] == catalog.digest(config["converter_lock_access"]),
+                        "pre-Stop converter access admission differs")
         catalog.require(self.operation["phase_token"] == config["phase_token"]
                         and self.operation["root_runtime_go"] is True and self.operation["owner_approved"] is True
                         and self.operation["prepared_only"] is False
@@ -346,6 +507,10 @@ class HostAdmission:
                         and not state.get("copy_authority_revoked_at") and state.get("armed_ready") is True,
                         "independent maintenance watcher not active after complete Stop")
         origin = self.supervisor.epoch(state["actuation_budget_started_at"])
+        admission = json.loads(private(self.c["converter_lock_admission"]["path"], self.c["converter_lock_admission"]["sha256"]))
+        catalog.require(admission["admitted_epoch"] <= origin and origin - admission["admitted_epoch"] <= 300
+                        and sonarr_lock(self.c, self.get, self.run)["state_inode"] == admission["state_inode"],
+                        "pre-Stop converter route freshness or state identity differs")
         catalog.require(self.operation["original_abort_epoch"] == origin + 170
                         and self.supervisor.epoch(state["armed_at"]) + self.watch.args.arm_deadline > time.time(),
                         "original maintenance clock binding differs")
@@ -524,7 +689,7 @@ class HostAdmission:
                                         and event.get("operation_sha256") == operation_sha, "worker event phase/operation differs")
                         if event.get("event") == "guard":
                             sequence += 1
-                            catalog.require(set(event) == {"event", "phase_token", "operation_sha256", "sequence", "backend_pid"}
+                            catalog.require(set(event) == {"event", "phase_token", "operation_sha256", "sequence", "backend_pid", "lock_custody"}
                                             and event["sequence"] == sequence and sequence <= 32
                                             and type(event["backend_pid"]) is int and event["backend_pid"] > 0,
                                             "maintenance guard event differs")
@@ -533,6 +698,8 @@ class HostAdmission:
                             current = json.loads(private(self.c["pg_owner"]))
                             catalog.require(current["backend_pid"] is None or current == lease, "PG backend changed or reconnected")
                             self.core.save(Path(self.c["pg_owner"]), lease)
+                            if event["lock_custody"] is not None:
+                                record_lock_custody(self.c, event, lease)
                             self.guard()
                             process.stdin.write((json.dumps({"event": "guard-ok", "phase_token": event["phase_token"], "operation_sha256": operation_sha, "sequence": sequence}) + "\n").encode());process.stdin.flush()
                         else:
@@ -594,7 +761,7 @@ def make_watch(config, sources, *, arm=False):
                     and args.include_kavita is True and args.deadline == 170 and 0 < args.arm_deadline <= 1800
                     and args.cached_source_receipt and args.cached_source_activation,
                     "maintenance watcher literal/original clock binding differs")
-    klass = maintenance_watchdog(sources["watcher"], sources["checkpoint"], config)
+    klass = maintenance_watchdog(sources["watcher"], sources["checkpoint"], config, sources["supervisor"], sources["publisher_guard"])
     if arm:return klass(args)
     # Reuse existing observer methods without constructor writes/re-arm.
     watch = klass.__new__(klass)
@@ -621,16 +788,7 @@ def native_reader(ref):
     return scope["capture"]
 
 
-def private_native_capture(capture, pod, directory):
-    """The existing reader relies on its caller's umask for private raw copies."""
-    directory = Path(directory)
-    with catalog.metadata.safe_directory(str(directory.parent)):
-        catalog.require(not os.path.lexists(directory), "fresh Native output directory required")
-    previous = os.umask(0o077)
-    try:
-        path, receipt = capture(pod, Path(directory))
-    finally:
-        os.umask(previous)
+def verify_native_privacy(directory):
     with catalog.metadata.safe_directory(str(directory)) as fd:
         info = os.fstat(fd)
         catalog.require(info.st_uid == os.getuid() and info.st_mode & 0o777 == 0o700, "Native output directory privacy differs")
@@ -640,8 +798,34 @@ def private_native_capture(capture, pod, directory):
             catalog.require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
                             and info.st_nlink == 1 and info.st_mode & 0o777 == 0o600,
                             "Native raw capture privacy differs")
+
+
+def private_native_capture(capture, pod, directory):
+    """The existing reader relies on its caller's umask for private raw copies."""
+    directory = Path(directory)
+    with catalog.metadata.safe_directory(str(directory.parent)):
+        catalog.require(not os.path.lexists(directory), "fresh Native output directory required")
+    previous = os.umask(0o077)
+    try:
+        path, receipt = capture(pod, directory)
+        verify_native_privacy(directory)
+    finally:
+        os.umask(previous)
     catalog.require(Path(path) == Path(directory) / "kavita.db", "Native capture path differs")
     return path, receipt
+
+
+def private_native_snapshot(capture, pod, directory):
+    previous = os.umask(0o077)
+    try:
+        path, receipt = private_native_capture(capture, pod, directory)
+        with contextlib.closing(sqlite3.connect("file:" + str(path.resolve()) + "?mode=ro", uri=True)) as db:
+            db.execute("PRAGMA query_only=ON");db.execute("BEGIN")
+            state = catalog.snapshot(db);db.rollback()
+        verify_native_privacy(directory)  # Read-only WAL access may create a SHM sidecar.
+        return state, receipt
+    finally:
+        os.umask(previous)
 
 
 def scan_after_normal(config, watch, capture, token):
@@ -680,11 +864,8 @@ def scan_after_normal(config, watch, capture, token):
         return rows
     def fresh(directory):
         normal()
-        path, receipt = private_native_capture(capture, config["native_pod_name"], directory)
+        state, receipt = private_native_snapshot(capture, config["native_pod_name"], directory)
         catalog.require(receipt["before"] == receipt["after"] and receipt["readOnlySource"] is True, "Native DB copy unstable")
-        with contextlib.closing(sqlite3.connect("file:" + str(path.resolve()) + "?mode=ro", uri=True)) as db:
-            db.execute("PRAGMA query_only=ON");db.execute("BEGIN")
-            state = catalog.snapshot(db);db.rollback()
         normal()
         return state
     original = json.loads(private(config["original_rows"]["path"], config["original_rows"]["sha256"]))
@@ -741,11 +922,23 @@ def scan_after_normal(config, watch, capture, token):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("watch", "create", "inspect", "execute", "run", "scan"))
+    parser.add_argument("command", choices=("lock-admission", "watch", "create", "inspect", "execute", "run", "scan"))
     parser.add_argument("config");parser.add_argument("config_sha256")
     args = parser.parse_args(argv)
     config = json.loads(private(args.config, args.config_sha256))
     sources = load_sources(config)
+    if args.command == "lock-admission":
+        def run(argv, timeout=10):
+            result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+            catalog.require(result.returncode == 0, "read-only Sonarr lock admission command refused")
+            return result.stdout
+        def get(kind, name, namespace):return json.loads(run(["kubectl", "get", kind, name, "-n", namespace, "-o", "json"]))
+        result = lock_admission(config, get, run)
+        output = Path(config["converter_lock_admission_output"])
+        with catalog.metadata.safe_directory(str(output.parent)) as fd:
+            catalog.metadata._write_file(fd, output.name, catalog.canonical(result))
+        print(json.dumps({"path": str(output), "sha256": catalog.digest(result)}))
+        return
     watch = make_watch(config, sources, arm=args.command == "watch")
     if args.command == "watch":watch.loop();return
     if args.command == "scan":

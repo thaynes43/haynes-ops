@@ -82,7 +82,7 @@ CAS. Concurrent legitimate reading makes it refuse; it is never overwritten.
 
 The concrete host entrypoint is `ransom_maintenance_job.py` with the exact command
 `<frozen-python> -I -B <pinned-script> <command> <private-config> <config-sha256>`.
-Commands are `watch`, `create`, `inspect`, `execute`, `run` and `scan`. Every consumed
+Commands are `lock-admission`, `watch`, `create`, `inspect`, `execute`, `run` and `scan`. Every consumed
 source/config/payload is owner-readable 0600, single-link and SHA-pinned. The
 `sources` map binds the existing generic checkpoint, exact-Pod predicate,
 watcher, supervisor, window contract, cached-source and publisher guard. The
@@ -102,6 +102,15 @@ The watchdog projects this one owner into the existing primary-absence check;
 it does not alter the generic ledger or create synthetic COPY rows. It additionally
 checks unexpected phase resources in frontend/downloads before inherited media
 union cleanup. The original backend identity can bind once and cannot reconnect.
+
+Before Stop, `lock-admission` performs only reads through the Root-bound Sonarr
+Pod and writes an exclusive 0600 host receipt at `converter_lock_admission_output`.
+Root binds that receipt's exact path/SHA as `converter_lock_admission`; its phase,
+access digest, state inode and pre-Stop time must still match at every worker guard.
+`converter_lock_custody_output` is a different, initially absent, outside-library
+private path for the one immutable worker receipt. Cleanup uses the original
+activation+300 service ceiling (the existing 170+130 budget), not a reset clock.
+Any absence or custody refusal prevents inherited Normal release and acceptance.
 
 `create` verifies actual completed Stop, all owned holds, original kernel birth,
 cached Source/artifact, current publisher/storage inventory and claim/PV identity
@@ -130,13 +139,17 @@ and final outcome; a different delivered operation refuses before any API call.
 Both bootstrap filenames must be present exactly once and equal the actual host
 source bytes. The reviewed catalog SHA is checked before its host import.
 EPUB source/candidate and inverse backup/current-file conditions are checked
-before any catalog mutation, with the existing publication CAS still afterward.
+before any catalog mutation. The forward preflight calls the existing stripper
+with `dry_run=True`, the same 900-second settling rule, exact source SHA/identity
+and `grouping=None`; only `would_strip` with both admitted hashes can proceed.
+The existing publication CAS still runs afterward.
 Any failure requests the existing owned recovery; no CREATE or mutation retry.
 
 After the accepted full Normal/retirement audit, `scan` uses the existing
 `reading-progress-readonly.py` capture functions (SHA-bound as `native_reader`),
 current original app Pod UID/spec/image and a private `{"token": "..."}` stdin.
-The caller sets umask 077 around the existing Native reader and checks every raw
+The caller keeps umask 077 through the existing Native reader and local read-only
+SQLite consumption, then rechecks every raw
 DB/sidecar/proof file is owner-only 0600 and singly linked in a fresh 0700 directory.
 The reused reader is `/home/dev/work/hn-825b-reading-progress-readonly.py`, SHA
 `1687ae429c6edfb11270ad2d0c337059b135ca47d36dbac92eb3b8637f7dc415`.
@@ -152,11 +165,23 @@ original deadline is bound by Root, never reset here. This source contains no
 scan-to-inverse automatic retry or production approval shortcut.
 
 Forced Pod termination can prevent the worker's `finally` from removing the
-existing bare converter lock directory. Job/Pod and PG absence alone do not prove
-that filesystem lock absent. Ransom/hourly holds remain until exact lock-absence
-evidence; a remaining lock needs separately reviewed handling, never stale-lock
-takeover. The current unclassified writable-storage publisher refusal also blocks
-runtime admission until its existing guard path is resolved.
+existing bare converter lock directory. The separate maintenance watcher first
+proves original Job/Pod and PG absence, then checks that lock through the existing
+Sonarr app Pod's RW `gasha01.haynesnetwork:/hdd-nfs-repl` mount. Root binds that
+Pod UID/full spec/image/node, exact mount and Python executable SHA/runtime UID
+before Stop. The worker sends a phase/operation/backend-bound receipt immediately
+after the existing exclusive lock creation; the host retains it once in a private
+file outside the lock. It records the state and lock inode, UID and mode, and exact
+server-side logical path. Device numbers are not compared across Pods.
+
+A remaining lock can be removed only if the exact phase-created receipt matches,
+the directory is empty, all original writers are absent, all seven controllers
+remain owned and held/drained, and the existing service/publisher guard passes
+immediately before `rmdir`. The watcher proves lock absence before any Normal
+release. Unknown, pre-existing, changed, nonempty or unprovable locks refuse;
+there is no age-based takeover. A kill before custody publication can therefore
+retain holds for manual review. The current unclassified writable-storage
+publisher refusal also blocks runtime admission until its guard path is resolved.
 
 Meaningful local controls use small synthetic SQLite databases, fake maintenance
 guards/clocks and temporary private backups. Run only the focused test under

@@ -245,7 +245,7 @@ class CatalogMaintenanceTests(unittest.TestCase):
 
     def test_distinct_one_job_admission_refuses_extra_intent_or_changed_manifest(self):
         manifest = maintenance.job_manifest('a' * 32, 'ransom-maintenance-a', 'worker-fixture', 'kavita-fixture',
-                                            {'server': 'fixture-nas', 'path': '/fixture-books'})
+                                            maintenance.BOOK_NFS)
         phase = {'phase_token': 'a' * 32, 'owned_jobs': [{'writer': True, 'gate_env': None, 'mutable_env': [],
                  'ready_manifest': manifest, 'namespace': 'media', 'name': 'ransom-maintenance-a', 'uid': None}]}
         lease = {'phase_token': 'a' * 32, 'application_name': maintenance.PG_NAME, 'backend_pid': None, 'job_uid': None, 'pod_uid': None}
@@ -316,6 +316,10 @@ class CatalogMaintenanceTests(unittest.TestCase):
                   'pv_name': 'bound-pv', 'pv_uid': 'pv-uid', 'pv_spec': copy.deepcopy(pv['spec']),
                   'publisher_scope_hook': {'script': str(collector), 'sha256': catalog.metadata.sha256(collector_bytes)},
                   'publisher_scope_sha256': catalog.digest({})}
+        config['converter_lock_access'] = {'fixture': 'exact pre-admitted access'}
+        admission = {'phase_token': phase, 'lock_absent': True, 'admitted_epoch': self.now - 1, 'state_inode': 10,
+                     'access_sha256': catalog.digest(config['converter_lock_access'])}
+        config['converter_lock_admission'] = {'path': put('lock-admission.json', admission), 'sha256': catalog.digest(admission)}
         config['bootstrap_sources'] = []
         for name in ('ransom_catalog_maintenance.py', 'ransom_maintenance_job.py'):
             path = self.base / name;raw = (HERE / name).read_bytes();path.write_bytes(raw);path.chmod(0o600)
@@ -337,6 +341,7 @@ class CatalogMaintenanceTests(unittest.TestCase):
         def read_text(path, *args, **kwargs):
             return kernel if str(path) == '/proc/123/stat' else real_read_text(path, *args, **kwargs)
         with mock.patch.object(maintenance.time, 'time', return_value=self.now + 1), mock.patch.object(Path, 'read_text', read_text), \
+             mock.patch.object(maintenance, 'sonarr_lock', return_value={'state_inode': 10, 'absent': True}), \
              mock.patch.object(maintenance, 'one_job_phase', return_value={'phase_token': phase, 'owned_jobs': [row]}):
             host.guard()
             pod_guard.verify_owned_pod.assert_called_once_with(row, objects[('job', row['name'], 'media')], pod, pod_uid)
@@ -425,6 +430,22 @@ class CatalogMaintenanceTests(unittest.TestCase):
         self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
         self.assertTrue(all(path.stat().st_mode & 0o777 == 0o600 for path in directory.iterdir()))
         with self.assertRaises(catalog.Refused):maintenance.private_native_capture(capture, 'fixture-pod', directory)
+        directory = self.base / 'native-consumed'
+        db = mock.Mock()
+        def connect(*args, **kwargs):
+            self.assertEqual(maintenance.os.umask(0o077), 0o077)
+            (directory / 'kavita.db-shm').write_bytes(b'local-wal-index')
+            return db
+        previous = maintenance.os.umask(0o022)
+        try:
+            with mock.patch.object(maintenance.sqlite3, 'connect', side_effect=connect), \
+                 mock.patch.object(catalog, 'snapshot', return_value=self.before):
+                state, _ = maintenance.private_native_snapshot(capture, 'fixture-pod', directory)
+            self.assertEqual(state, self.before)
+            self.assertEqual(maintenance.os.umask(0o022), 0o022)
+        finally:maintenance.os.umask(previous)
+        self.assertEqual((directory / 'kavita.db-shm').stat().st_mode & 0o777, 0o600)
+        db.close.assert_called_once()
 
     def test_exact_operation_and_bootstrap_are_bound_before_worker_guard_or_api(self):
         refs = []
@@ -477,10 +498,16 @@ class CatalogMaintenanceTests(unittest.TestCase):
         guard = mock.Mock()
         with mock.patch.object(catalog, 'FILE', str(path)), mock.patch.object(maintenance, 'LIBRARY', str(self.root)), \
              mock.patch.object(maintenance, 'STATE', str(self.base / '.epub-convert')), \
+             mock.patch.object(catalog.metadata.time, 'time', return_value=time.time() + 901) as clock, \
              mock.patch.object(catalog.metadata, 'sanitized_epub', return_value=(b'candidate', {})):
             maintenance.preflight_epub(operation, guard)
             self.assertEqual(guard.call_count, 2)
             with self.assertRaises(catalog.Refused):maintenance.preflight_epub(dict(operation, candidate_epub_sha256='0' * 64), guard)
+            clock.return_value = path.stat().st_ctime + 899
+            with self.assertRaises(catalog.Refused):maintenance.preflight_epub(operation, guard)
+            clock.return_value += 2
+            with mock.patch.object(catalog.metadata, 'sanitized_epub', return_value=(b'original', {})):
+                with self.assertRaises(catalog.Refused):maintenance.preflight_epub(dict(operation, candidate_epub_sha256=source), guard)
             path.write_bytes(b'candidate')
             inverse = dict(operation, action='inverse-before-scan', epub_backup_manifest='/wrong/backup.json')
             with self.assertRaises(catalog.Refused):maintenance.preflight_epub(inverse, guard)
@@ -490,6 +517,125 @@ class CatalogMaintenanceTests(unittest.TestCase):
                 maintenance.preflight_epub(inverse, guard)
                 restore.assert_called_once_with(inverse['epub_backup_manifest'], str(self.root), str(self.base / '.epub-convert'), dry_run=True)
         self.assertEqual(catalog.snapshot(self.db), self.before)
+
+    def test_interrupted_worker_lock_release_requires_original_absence_and_exact_empty_custody(self):
+        state = self.base / 'converter-state';state.mkdir()
+        lock = state / 'lock';lock.mkdir()
+        phase = {'phase_token': 'a' * 32, 'owned_jobs': [{'uid': 'job-uid'}]}
+        observed = maintenance.lock_io(str(state))
+        custody = {k: observed[k] for k in ('state_inode', 'lock_inode', 'lock_uid', 'lock_mode')}
+        custody['lock_uid'] = 1000  # Production Job always runs as UID1000.
+        def put(name, value):
+            path = self.base / name;path.write_bytes(catalog.canonical(value));path.chmod(0o600)
+            return str(path)
+        access = {'fixture': 'exact pre-admitted access'}
+        admission = {'state_inode': observed['state_inode'], 'phase_token': phase['phase_token'], 'access_sha256': catalog.digest(access)}
+        config = {'phase_token': phase['phase_token'], 'converter_lock_custody_output': str(self.base / 'lock-custody.json'),
+                  'converter_lock_access': access,
+                  'converter_lock_admission': {'path': put('lock-admit.json', admission), 'sha256': catalog.digest(admission)},
+                  'pod_uid': 'pod-uid', 'pg_owner': put('lock-lease.json', {'backend_pid': 41, 'pod_uid': 'pod-uid'}),
+                  'bound_operation_output': put('lock-operation.json', {'phase_token': phase['phase_token']}),
+                  'publisher_proof': {'path': put('lock-publishers.json', {}), 'sha256': catalog.digest({})},
+                  'publisher_scope_hook': {'script': put('lock-hook.json', {}), 'sha256': catalog.digest({})},
+                  'cached_source_receipt': {'path': put('lock-cache.json', {}), 'sha256': catalog.digest({})},
+                  'manifest_contract': {'path': put('lock-contract.json', {}), 'sha256': catalog.digest({})}}
+        event = {'lock_custody': dict(custody, created_after_absent=True, nas=maintenance.BOOK_NFS,
+                                    logical_path=maintenance.BOOK_NFS['path'] + '/.epub-convert/lock'),
+                 'phase_token': phase['phase_token'], 'operation_sha256': catalog.digest({'phase_token': phase['phase_token']}), 'backend_pid': 41}
+        lease = {'phase_token': phase['phase_token'], 'backend_pid': 41, 'job_uid': 'job-uid', 'pod_uid': 'pod-uid'}
+        maintenance.record_lock_custody(config, event, lease)
+        self.assertEqual(Path(config['converter_lock_custody_output']).stat().st_mode & 0o777, 0o600)
+        with self.assertRaises(catalog.Refused):maintenance.record_lock_custody(config, dict(event, lock_custody=dict(event['lock_custody'], lock_inode=999)), lease)
+        trace = []
+        class Base:
+            def inventory(self, *_):return []
+            def verify_phase_absent(self, _):
+                trace.append('original-union-and-pg-absence')
+                if self.present:raise catalog.Refused('original writer still present')
+            def verify_cached_stop_holds(self, _):
+                trace.append('owned-held-drained')
+                if self.hold_lost:raise catalog.Refused('converter hold lost')
+        def service(observer):trace.append('current-full-service-publisher-fence');observer.guard_lease()
+        supervisor = SimpleNamespace(epoch=lambda value: value, cache=SimpleNamespace(check_live=lambda *a, **kw: trace.append('all-seven-held')),
+                                     Supervisor=SimpleNamespace(service_fence=service))
+        cls = maintenance.maintenance_watchdog(SimpleNamespace(Watchdog=Base), mock.Mock(), config, supervisor, mock.Mock())
+        watch = cls();watch.state = {'actuation_budget_started_at': self.now, 'cached_stop_actuation_binding': {}}
+        watch.present = watch.hold_lost = False;watch.kube = mock.Mock();watch.run = mock.Mock()
+        def route(c, get, run, expected=None, release=False):
+            trace.append('rmdir' if release else 'lock-observation')
+            # Same NAS inode; fixture process UID differs from production UID1000.
+            if expected:expected = dict(expected, lock_uid=lock.stat().st_uid)
+            actual = maintenance.lock_io(str(state), expected, release)
+            if not actual['absent']:actual['lock_uid'] = 1000
+            return actual
+        with mock.patch.object(maintenance.time, 'time', return_value=self.now + 200), mock.patch.object(maintenance, 'sonarr_lock', side_effect=route):
+            for failure in ('writer', 'hold', 'foreign', 'nonempty'):
+                with self.subTest(failure=failure):
+                    watch.present = failure == 'writer';watch.hold_lost = failure == 'hold'
+                    proof = json.loads(Path(config['converter_lock_custody_output']).read_bytes())
+                    if failure == 'foreign':
+                        changed = dict(proof, lock_inode=proof['lock_inode'] + 1)
+                        Path(config['converter_lock_custody_output']).write_bytes(catalog.canonical(changed))
+                    if failure == 'nonempty':(lock / 'foreign-member').write_bytes(b'preserve')
+                    trace.clear()
+                    with self.assertRaises((catalog.Refused, ValueError)):watch.verify_phase_absent(phase)
+                    self.assertTrue(lock.exists());self.assertNotIn('rmdir', trace)
+                    Path(config['converter_lock_custody_output']).write_bytes(catalog.canonical(proof))
+                    if failure == 'nonempty':(lock / 'foreign-member').unlink()
+            watch.present = watch.hold_lost = False;trace.clear()
+            watch.verify_phase_absent(phase)
+            self.assertFalse(lock.exists())
+            self.assertLess(trace.index('original-union-and-pg-absence'), trace.index('rmdir'))
+            self.assertLess(trace.index('current-full-service-publisher-fence'), trace.index('rmdir'))
+            self.assertEqual(trace[-1], 'lock-observation')
+            # An empty replacement state directory cannot conceal the original inode/lock.
+            original = state.rename(self.base / 'original-converter-state');state.mkdir()
+            with self.assertRaises(catalog.Refused):watch.verify_phase_absent(phase)
+            state.rmdir();original.rename(state)
+        # Low-level CAS rejects a foreign inode and nonempty directory without deleting it.
+        lock.mkdir();identity = maintenance.lock_io(str(state));identity = {k: identity[k] for k in custody}
+        with self.assertRaises(ValueError):maintenance.lock_io(str(state), dict(identity, lock_inode=identity['lock_inode'] + 1), True)
+        (lock / 'foreign').write_bytes(b'keep')
+        with self.assertRaises(ValueError):maintenance.lock_io(str(state), identity, True)
+        self.assertTrue(lock.exists())
+
+    def test_existing_sonarr_lock_route_admits_exact_mount_tool_uid_and_refuses_drift(self):
+        state = self.base / 'mapped-nas-state';state.mkdir()
+        access = {'namespace': 'media', 'container': 'app', 'pod_name': 'sonarr-fixture', 'pod_uid': 'original-sonarr-uid',
+                  'node_name': 'worker-fixture', 'image_id': 'immutable-sonarr-image', 'restart_count': 0,
+                  'nfs': {'server': maintenance.BOOK_NFS['server'], 'path': '/hdd-nfs-repl'},
+                  'volume_name': 'data-proxmox', 'mount_path': '/data/cephfs-hdd',
+                  'python_executable': sys.executable, 'runtime_uid': maintenance.os.getuid(),
+                  'python_sha256': catalog.metadata.sha256(Path('/proc/self/exe').read_bytes())}
+        pod = {'metadata': {'uid': access['pod_uid'], 'labels': {'app.kubernetes.io/name': 'sonarr'}},
+               'spec': {'nodeName': access['node_name'], 'volumes': [{'name': access['volume_name'], 'nfs': access['nfs']}],
+                        'containers': [{'name': 'app', 'volumeMounts': [{'name': access['volume_name'], 'mountPath': access['mount_path']}]}]},
+               'status': {'phase': 'Running', 'containerStatuses': [{'name': 'app', 'imageID': access['image_id'], 'ready': True, 'restartCount': 0}]}}
+        access['pod_spec'] = copy.deepcopy(pod['spec'])
+        config = {'converter_lock_access': access, 'phase_token': 'a' * 32, 'owner_approved': True, 'root_lock_admission_go': True}
+        get = mock.Mock(return_value=pod)
+        calls = []
+        def run(argv, timeout):
+            self.assertEqual(argv[:9], ['kubectl', 'exec', '-n', 'media', access['pod_name'], '-c', 'app', '--', sys.executable])
+            payload = json.loads(argv[-1]);self.assertEqual(payload['state'], maintenance.STATE)
+            # Model only the already-proved NFS mount mapping; execute the real admitted program.
+            payload['state'] = str(state);calls.append(True)
+            with mock.patch.object(sys, 'argv', ['-c', json.dumps(payload)]), mock.patch('sys.stdout', new_callable=io.StringIO) as out:
+                exec(compile(argv[-2], '<exact-Sonarr-lock-program>', 'exec'), {})
+                return out.getvalue()
+        receipt = maintenance.lock_admission(config, get, run)
+        self.assertEqual(receipt['state_inode'], state.stat().st_ino);self.assertTrue(receipt['lock_absent'])
+        for failure in ('pod', 'mount', 'uid', 'tool', 'existing-lock'):
+            with self.subTest(failure=failure):
+                old = copy.deepcopy(pod);old_access = copy.deepcopy(access)
+                if failure == 'pod':pod['metadata']['uid'] = 'replacement'
+                if failure == 'mount':pod['spec']['volumes'][0]['nfs']['path'] = '/different-export'
+                if failure == 'uid':access['runtime_uid'] += 1
+                if failure == 'tool':access['python_sha256'] = '0' * 64
+                if failure == 'existing-lock':(state / 'lock').mkdir()
+                with self.assertRaises((catalog.Refused, AssertionError)):maintenance.lock_admission(config, get, run)
+                pod.clear();pod.update(old);access.clear();access.update(old_access)
+                if failure == 'existing-lock':(state / 'lock').rmdir()
 
 
 if __name__ == "__main__":
