@@ -200,12 +200,14 @@ class CachedSourceCases(unittest.TestCase):
             for method in ('source','cleanup_phase_jobs','release_ks','reconcile_ks','verify_recovery_absence'):
                 setattr(w,method,types.MethodType(getattr(legacy.watch.Watchdog,method),w))
             w.retire_hold_annotations=lambda:None
+            w.wait_ks=lambda *_:None  # This fixture measures release/absence barriers.
             w.recover_cluster(NORMAL_SHA)
             self.assertTrue(w.state['complete'])
             self.assertEqual(sum(c[:3]==('kubectl','get','--raw') for c in w.calls),48)
             self.assertEqual(sum(c[:2]==('kubectl','exec') for c in w.calls),8)
             self.assertEqual(sum(c[:3]==('flux','reconcile','source') for c in w.calls),1)
-            self.assertEqual(sum(c[:3]==('flux','reconcile','kustomization') for c in w.calls),6)
+            self.assertEqual(sum(c[:3]==('flux','reconcile','kustomization') for c in w.calls),2)
+            self.assertEqual(sum(c[:3]==('kubectl','patch','kustomization') for c in w.calls),4)
             # Fresh current-generation convergence skips forced requests while
             # retaining every union/PG barrier and the new attempt's Source call.
             for kind,name,ns in rows:
@@ -369,6 +371,8 @@ class CachedSourceCases(unittest.TestCase):
         w.recover_cluster=lambda sha:w.events.append('restore-latest-normal')
         w.release_ks=lambda ns,name:w.events.append('release-owned-ks')
         w.reconcile_ks=lambda ns,name,sha:w.run(['flux','reconcile','kustomization',name,'-n',ns,'--timeout=30s'])
+        w.request_ks=lambda ns,name,sha:w.reconcile_ks(ns,name,sha)
+        w.wait_ks=lambda *_:None
         w.verify_recovery_absence=lambda:w.events.append('final-writers-pg-absent')
         w.retire_hold_annotations=lambda:w.events.append('retire-owned-annotations')
         return w
@@ -1004,6 +1008,99 @@ class CachedStopActuationTests(unittest.TestCase):
             self.assertEqual(events,['first-stop-recorded','producer-may-follow']);self.assertEqual(clock[0],13)
             self.assertEqual(check.call_count,1);self.assertTrue(check.call_args.kwargs['holds']);self.assertEqual(check.call_args.kwargs['deadline'],180)
             self.assertEqual(s.status['first_service_stop_observed_at'],'1970-01-01T00:00:11+00:00');self.assertEqual(s.deadline,310)
+
+
+class ColdRecoveryRequestTests(unittest.TestCase):
+    def fixture(self):
+        receipt,_,_,parents,holds,_=fixture()
+        w=object.__new__(legacy.watch.Watchdog);w.cached=True
+        w.scopes=list(legacy.watch.CORE_SCOPES)+[('media','kavita')]
+        w.state=dict(armed_at='original-arm',window_started_at='original-stop',
+                     actuation_budget_started_at='original-activation',complete=False,cached_ks_owners={})
+        rows={}
+        for ns,name in w.recovery_scopes():
+            row=copy.deepcopy(parents[name] if ns=='flux-system' else holds[(ns,name)])
+            row['spec']['suspend']=False;rows[(ns,name)]=row
+            before=receipt['parents'][name]['before'] if ns=='flux-system' else receipt['holds'][ns+'/'+name]['before']
+            w.state['cached_ks_owners'][ns+'/'+name]=dict(uid=before['metadata']['uid'],spec=before['spec'],phase_token=PHASE)
+        w.kube=lambda kind,name,ns:copy.deepcopy(rows[(ns,name)])
+        w.save=lambda:None;w.note=lambda _:None;w.events=[]
+        w.phase_checkpoint=lambda:dict(window_started_at='original-stop')
+        w.stop_actuated=lambda:True;w.desired_restored=lambda _:None
+        w.source=lambda _:w.events.append(('source-normal',))
+        w.cleanup_phase_jobs=lambda:w.events.append(('full-union-primary-pg-absent',))
+        w.release_ks=lambda ns,name:w.events.append(('release',ns,name))
+        w.runtime_restored=lambda _:True;w.verify_recovery_absence=lambda:None
+        w.retire_hold_annotations=lambda:w.events.append(('retire',))
+        def run(argv,**kw):
+            self.assertEqual(argv[:3],['kubectl','patch','kustomization'])
+            patch=json.loads(argv[-1]);ns=argv[5];name=argv[3];row=rows[(ns,name)]
+            self.assertEqual(patch[:3],[dict(op='test',path='/metadata/uid',value=row['metadata']['uid']),
+                dict(op='test',path='/metadata/resourceVersion',value=row['metadata']['resourceVersion']),
+                dict(op='test',path='/spec',value=row['spec'])])
+            self.assertEqual(patch[-1]['value'][cache.OWNER],PHASE)
+            self.assertEqual(kw['timeout'],10);w.events.append(('request',ns,name));return ''
+        w.run=run
+        return w,rows
+
+    def test_delayed_ll_wait_already_requested_kavita_and_keeps_parents_held(self):
+        w,_=self.fixture();origins={k:w.state[k] for k in ('armed_at','window_started_at','actuation_budget_started_at')}
+        def wait(ns,name,sha):
+            w.events.append(('wait',ns,name))
+            self.assertEqual([e[1:] for e in w.events if e[0]=='request'],w.scopes)
+            if name=='lazylibrarian':raise TimeoutError('delayed actual LL Ready')
+        w.wait_ks=wait
+        with self.assertRaisesRegex(TimeoutError,'delayed actual LL'):w.recover_cluster(NORMAL_SHA)
+        self.assertIn(('request','media','kavita'),w.events)
+        self.assertFalse(any(e[0]=='release' and e[1]=='flux-system' for e in w.events))
+        for i,e in enumerate(w.events):
+            if e[0]=='release':self.assertEqual(w.events[i-2:i],[('source-normal',),('full-union-primary-pg-absent',)])
+            if e[0]=='request':self.assertEqual(w.events[i-1],('source-normal',))
+        self.assertEqual({k:w.state[k] for k in origins},origins);self.assertFalse(w.state['complete'])
+
+    def test_late_union_or_unknown_primary_pg_blocks_next_app_release_and_request(self):
+        for reason in ('late phase Pod','primary PG unknown'):
+            with self.subTest(reason=reason):
+                w,_=self.fixture();checks=[0]
+                def absence():
+                    checks[0]+=1
+                    if checks[0]==4:raise RuntimeError(reason)
+                    w.events.append(('full-union-primary-pg-absent',))
+                w.cleanup_phase_jobs=absence;w.wait_ks=lambda *_:self.fail('wait before all app requests')
+                with self.assertRaisesRegex(RuntimeError,reason):w.recover_cluster(NORMAL_SHA)
+                self.assertEqual([e[1:] for e in w.events if e[0]=='request'],w.scopes[:2])
+                self.assertNotIn(('release','downloads','lazylibrarian'),w.events)
+
+    def test_atomic_request_refuses_uid_spec_phase_or_hold_drift_without_clock_change(self):
+        for field in ('uid','spec','phase','held'):
+            with self.subTest(field=field):
+                w,rows=self.fixture();ns,name=w.scopes[0];row=rows[(ns,name)]
+                if field=='uid':row['metadata']['uid']='replacement'
+                elif field=='spec':row['spec']['path']='foreign'
+                elif field=='phase':row['metadata']['annotations'][cache.OWNER]='foreign'
+                else:row['spec']['suspend']=True
+                prior=copy.deepcopy(w.state);w.run=mock.Mock()
+                with self.assertRaises((RuntimeError,ValueError)):w.request_ks(ns,name,NORMAL_SHA)
+                w.run.assert_not_called();self.assertEqual(w.state,prior)
+
+    def test_wait_rejects_stale_generation_and_is_bounded_without_clock_reset(self):
+        w,rows=self.fixture();ns,name=w.scopes[0];row=rows[(ns,name)];g=row['metadata']['generation']
+        row['status']=dict(observedGeneration=g,lastAppliedRevision='main@sha1:'+NORMAL_SHA,
+            conditions=[dict(type='Ready',status='True',observedGeneration=g)])
+        prior=copy.deepcopy(w.state);w.run=mock.Mock(return_value=json.dumps(row));w.wait_ks(ns,name,NORMAL_SHA)
+        self.assertEqual(w.state,prior)
+        for field in ('generation','status-generation','Ready-generation','revision'):
+            with self.subTest(field=field):
+                bad=copy.deepcopy(row)
+                if field=='generation':bad['metadata']['generation']=True
+                elif field=='status-generation':bad['status']['observedGeneration']=g-1
+                elif field=='Ready-generation':bad['status']['conditions'][0]['observedGeneration']=g-1
+                else:bad['status']['lastAppliedRevision']='main@sha1:'+STOP_SHA
+                w.run=mock.Mock(return_value=json.dumps(bad))
+                with mock.patch.object(legacy.watch.time,'monotonic',side_effect=[100,100,100,131]),mock.patch.object(legacy.watch.time,'sleep'),self.assertRaisesRegex(RuntimeError,'exact current-generation Normal'):
+                    w.wait_ks(ns,name,NORMAL_SHA)
+                self.assertEqual(w.run.call_count,1);self.assertEqual(w.run.call_args.kwargs['timeout'],10)
+                self.assertEqual(w.state,prior)
 
 
 if __name__=='__main__':unittest.main()
