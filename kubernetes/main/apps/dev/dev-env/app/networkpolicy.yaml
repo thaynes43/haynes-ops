@@ -457,6 +457,7 @@ spec:
         - matchName: "pve-filet02.haynesnetwork"
         - matchName: "haynestower.haynesnetwork"
         - matchName: "pikvm.haynesnetwork"
+        - matchName: gasha01.haynesnetwork
       toPorts:
         - ports:
             - port: "22"
