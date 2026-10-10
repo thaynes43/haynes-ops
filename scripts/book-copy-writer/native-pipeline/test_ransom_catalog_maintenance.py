@@ -245,26 +245,256 @@ class CatalogMaintenanceTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), b'legitimate-new-source')
         self.assertEqual(list(folder.glob('*.partial')), [])
 
-    def test_distinct_one_job_admission_refuses_extra_intent_or_changed_manifest(self):
-        manifest = maintenance.job_manifest('a' * 32, 'ransom-maintenance-a', 'worker-fixture', 'kavita-fixture',
-                                            maintenance.BOOK_NFS)
-        phase = {'phase_token': 'a' * 32, 'owned_jobs': [{'writer': True, 'gate_env': None, 'mutable_env': [],
-                 'ready_manifest': manifest, 'namespace': 'media', 'name': 'ransom-maintenance-a', 'uid': None}]}
-        lease = {'phase_token': 'a' * 32, 'application_name': maintenance.PG_NAME, 'backend_pid': None, 'job_uid': None, 'pod_uid': None}
-        config = {'phase_state': str(self.base / 'phase.json'), 'pg_owner': str(self.base / 'owner.json'),
-                  'restore_pr': '1', 'phase_token': 'a' * 32, 'job_manifest': manifest, 'job_name': 'ransom-maintenance-a', 'claim_name': 'kavita-fixture'}
-        core = mock.Mock()
+    def lidarr_checkpoint_fixture(self):
+        directory = self.base / 'checkpoint';directory.mkdir()
+        for name in ('checkpoint-owned-job.core.py', 'ransom_lidarr_checkpoint.py'):
+            path = directory / name;path.write_bytes((HERE / name).read_bytes());path.chmod(0o600)
+        shim = directory / 'ransom_lidarr_checkpoint.py'
+        core = maintenance.module('fixture_checkpoint', {'path': str(shim), 'sha256': catalog.metadata.sha256(shim.read_bytes())})
+        path = self.base / 'phase.json'
+        core.process(SimpleNamespace(command='init', restore_pr='1'), path)
+        phase, _ = core.read_json(path)
+        token = phase['phase_token']
+        helper = {'apiVersion': 'batch/v1', 'kind': 'Job', 'metadata': {'namespace': 'media', 'name': 'ransom-lidarr-a'},
+                  'spec': {'activeDeadlineSeconds': 120, 'backoffLimit': 0, 'template': {'metadata': {'annotations': {'k8tz.io/inject': 'false'}},
+                           'spec': {'automountServiceAccountToken': False, 'nodeSelector': {'kubernetes.io/hostname': 'worker-fixture'},
+                                    'restartPolicy': 'Never', 'containers': [{'name': 'reader', 'image': maintenance.IMAGE,
+                                      'command': ['python', '-c', 'standby'], 'env': [
+                                      {'name': 'LIDARR_CAPTURE_PHASE_READY', 'value': '0'}, {'name': 'LIDARR_CAPTURE_DEADLINE_EPOCH', 'value': '0'},
+                                      {'name': 'LIDARR_SOURCE_POD_UID', 'value': '3ab85d05-efdb-4299-88af-b7ec8fb407ec'},
+                                      {'name': 'LIDARR_CONFIG_SHA256', 'value': '1' * 64}],
+                                      'volumeMounts': [{'name': 'config', 'mountPath': '/source', 'readOnly': True}, {'name': 'tmp', 'mountPath': '/tmp'}]}],
+                                    'volumes': [{'name': 'config', 'persistentVolumeClaim': {'claimName': 'lidarr', 'readOnly': True}},
+                                                {'name': 'tmp', 'emptyDir': {'sizeLimit': '32Mi'}}]}}}}
         def put(path, value):
-            Path(path).write_text(json.dumps(value));Path(path).chmod(0o600)
-        put(config['phase_state'], phase);put(config['pg_owner'], lease)
+            raw = core.encoded(value);Path(path).write_bytes(raw);Path(path).chmod(0o600)
+            return {'path': str(path), 'sha256': core.digest(raw)}
+        helper_ref = put(self.base / 'lidarr.json', helper)
+        manifest = maintenance.job_manifest(token, 'ransom-maintenance-a', 'worker-fixture', 'kavita-fixture', maintenance.BOOK_NFS)
+        for name, ref, writer in (('helper', helper_ref, False), ('writer', put(self.base / 'writer.json', manifest), True)):
+            core.process(SimpleNamespace(command='register', restore_pr='1', manifest=ref['path'], source_sha256=ref['sha256'],
+                                         output=str(self.base / (name + '-registered.json')), writer=writer), path)
+        lease = {'phase_token': token, 'application_name': maintenance.PG_NAME, 'backend_pid': None, 'job_uid': None, 'pod_uid': None}
+        put(self.base / 'owner.json', lease)
+        config = {'phase_state': str(path), 'pg_owner': str(self.base / 'owner.json'), 'restore_pr': '1', 'phase_token': token,
+                  'job_manifest': manifest, 'job_name': 'ransom-maintenance-a', 'claim_name': 'kavita-fixture',
+                  'lidarr_helper': {'name': helper['metadata']['name'], 'source_template': helper_ref}}
+        return core, config
+
+    def test_distinct_two_row_admission_refuses_extra_writer_or_changed_manifest(self):
+        core, config = self.lidarr_checkpoint_fixture()
+        phase, _ = core.read_json(Path(config['phase_state']))
         self.assertEqual(len(maintenance.one_job_phase(config, core)['pg_leases']), 1)
-        core.validate_state.assert_called_once_with(phase, '1')
-        for failure in ('extra', 'manifest'):
+        self.assertEqual(maintenance.writer_row(phase, config)['name'], config['job_name'])
+        self.assertFalse(hasattr(core, 'INTENTS'))
+        for failure in ('extra', 'writer', 'manifest'):
             modified = copy.deepcopy(phase)
             if failure == 'extra':modified['owned_jobs'].append(copy.deepcopy(modified['owned_jobs'][0]))
-            else:modified['owned_jobs'][0]['ready_manifest'] = {'exact': 'different'}
-            put(config['phase_state'], modified)
-            with self.assertRaises(catalog.Refused):maintenance.one_job_phase(config, core)
+            elif failure == 'writer':modified['owned_jobs'][0]['writer'] = True
+            else:modified['owned_jobs'][1]['ready_manifest'] = {'exact': 'different'}
+            core.save(Path(config['phase_state']), modified)
+            with self.assertRaises((catalog.Refused, core.Refused)):maintenance.one_job_phase(config, core)
+
+    def test_actual_independent_lidarr_bridge_imports_exact_readonly_checkpoint_profile(self):
+        core, config = self.lidarr_checkpoint_fixture()
+        path = Path(config['phase_state'])
+        phase, _ = core.read_json(path);row = maintenance.helper_row(phase, config)
+        values = {'LIDARR_CAPTURE_PHASE_READY': '1', 'LIDARR_CAPTURE_DEADLINE_EPOCH': str(time.time() + 115)}
+        env = self.base / 'helper-env.json';env.write_bytes(catalog.canonical(values));env.chmod(0o600)
+        args = SimpleNamespace(command='bind', restore_pr='1', namespace='media', name=row['name'],
+                               initial_manifest_sha256=row['initial_manifest_sha256'], env_file=str(env), output=str(self.base / 'helper-ready.json'))
+        with mock.patch.dict(core.process.__globals__, lookup_job=lambda *args: None):
+            env.write_bytes(catalog.canonical(dict(values, UNREVIEWED='1')))
+            with self.assertRaises(core.Refused):core.process(args, path)
+            env.write_bytes(catalog.canonical(values));core.process(args, path)
+        phase, _ = core.read_json(path);row = maintenance.helper_row(phase, config)
+        core.ensure_env_only(row['initial_manifest'], row['ready_manifest'], set(values))
+        modified = copy.deepcopy(row['ready_manifest']);modified['spec']['template']['spec']['containers'][0]['command'].append('foreign')
+        with self.assertRaises(core.Refused):core.ensure_env_only(row['initial_manifest'], modified, set(values))
+        helper_uid, pod_uid = '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222'
+        actual = copy.deepcopy(row['ready_manifest']);actual['metadata']['uid'] = helper_uid
+        actual['spec']['template']['metadata']['labels'].update({
+            'batch.kubernetes.io/controller-uid': helper_uid, 'controller-uid': helper_uid,
+            'batch.kubernetes.io/job-name': row['name'], 'job-name': row['name']})
+        actual['spec']['selector'] = {'matchLabels': {'batch.kubernetes.io/controller-uid': helper_uid}}
+        with mock.patch.dict(core.process.__globals__, lookup_job=lambda *args: actual):
+            core.process(SimpleNamespace(command='observe', restore_pr='1', namespace='media', name=row['name']), path)
+        source = actual['spec']['template']['spec']
+        pod = {'metadata': {'name': 'helper-pod', 'uid': pod_uid, 'annotations': {'k8tz.io/inject': 'false'},
+                           'labels': {maintenance.LABEL: config['phase_token'], 'batch.kubernetes.io/controller-uid': helper_uid},
+                           'ownerReferences': [{'apiVersion': 'batch/v1', 'kind': 'Job', 'name': row['name'], 'uid': helper_uid,
+                                                'controller': True, 'blockOwnerDeletion': True}]},
+               'spec': dict(copy.deepcopy(source), nodeName='worker-fixture'),
+               'status': {'phase': 'Running', 'containerStatuses': [{'imageID': maintenance.IMAGE, 'restartCount': 0, 'ready': True, 'state': {'running': {}}}]}}
+        program = self.base / 'native.py';program.write_text('# retained SELECT-only fixture\n');program.chmod(0o600)
+        shim = self.base / 'checkpoint/ransom_lidarr_checkpoint.py'
+        profile = {'checkpoint_helper': str(shim), 'checkpoint_sha256': catalog.metadata.sha256(shim.read_bytes()),
+                   'phase_state': str(path), 'restore_pr': '1', 'namespace': 'media', 'job_name': row['name'], 'claim_uid': 'claim-uid',
+                   'source_template': config['lidarr_helper']['source_template']['path'],
+                   'source_template_sha256': config['lidarr_helper']['source_template']['sha256'], 'node': 'worker-fixture',
+                   'config_sha256': '1' * 64, 'capture_program': str(program), 'capture_sha256': catalog.metadata.sha256(program.read_bytes())}
+        inventory = {'counts_before': {'Artists': 0, 'RootFolders': 0, 'Notifications': 0},
+                     'counts_after': {'Artists': 0, 'RootFolders': 0, 'Notifications': 0},
+                     'tables': {'Artists': [], 'RootFolders': [], 'Notifications': []}}
+        native = {'complete': True, 'read_only': True, 'source_writes': 0, 'kind': 'lidarr', 'inventory': inventory,
+                  'inventory_before_sha256': catalog.digest(inventory), 'inventory_after_sha256': catalog.digest(inventory),
+                  'source_files_before': {}, 'source_files_after': {}, 'source': {'items': [], 'root_folders': [], 'custom_hooks': [], 'custom_hooks_disabled': True},
+                  'helper_identity': {'COPY_PHASE_TOKEN': config['phase_token'], 'COPY_JOB_UID': helper_uid, 'COPY_POD_UID': pod_uid},
+                  'source_pod_uid': '3ab85d05-efdb-4299-88af-b7ec8fb407ec'}
+        small = {'native_artist_projection_required': True, 'complete': False, 'vendor_status':
+                 {'version': '3.1.6.5078', 'appData': '/config', 'startupPath': '/app/bin', 'databaseType': 'sqLite'},
+                 'root_folders': [], 'custom_hooks': [], 'notification_count': 0, 'custom_hooks_disabled': True}
+        calls = []
+        def run(argv):
+            calls.append(argv)
+            if argv[1] == 'exec':return native
+            return {'pvc': {'metadata': {'uid': 'claim-uid'}}, 'job': actual, 'pods': {'items': [pod]}}[argv[2]]
+        spec = importlib.util.spec_from_file_location('actual_lidarr_bridge', HERE / 'lidarr-native-source-bridge.py')
+        bridge = importlib.util.module_from_spec(spec);spec.loader.exec_module(bridge)
+        value, _ = bridge._capture_bounded(run, profile, {'pod_uid': native['source_pod_uid']}, small, 10)
+        self.assertEqual(value['items'], [])
+        self.assertEqual(len([argv for argv in calls if argv[1] == 'exec']), 1)
+        self.assertFalse(hasattr(core, 'INTENTS'))  # No fabricated COPY SOURCE or PG owner.
+
+    def test_readonly_prelude_union_and_two_row_writer_first_cleanup(self):
+        core, config = self.lidarr_checkpoint_fixture()
+        phase, _ = core.read_json(Path(config['phase_state']))
+        helper = maintenance.helper_row(phase, config);helper['uid'] = 'helper-uid'
+        writer = maintenance.writer_row(phase, config)
+        # Generic validation/binding is exercised separately above; this uses
+        # the actual inherited cleanup method with only external API fakes.
+        helper['ready_manifest'] = copy.deepcopy(helper['initial_manifest'])
+        for row in helper['ready_manifest']['spec']['template']['spec']['containers'][0]['env']:
+            if row['name'] == 'LIDARR_CAPTURE_PHASE_READY':row['value'] = '1'
+            if row['name'] == 'LIDARR_CAPTURE_DEADLINE_EPOCH':row['value'] = str(time.time() + 115)
+        helper['ready_manifest_sha256'] = core.digest(core.encoded(helper['ready_manifest']))
+        core.save(Path(config['phase_state']), phase)
+        jobs = {helper['name']: {'metadata': {'name': helper['name'], 'uid': helper['uid'], 'labels': {maintenance.LABEL: config['phase_token']}}}}
+        pod = {'metadata': {'name': 'helper-pod', 'uid': 'helper-pod-uid', 'labels': {maintenance.LABEL: config['phase_token']},
+                           'ownerReferences': [{'apiVersion': 'batch/v1', 'kind': 'Job', 'name': helper['name'], 'uid': helper['uid'],
+                                                'controller': True, 'blockOwnerDeletion': True}]}}
+        events = []
+        class Present(RuntimeError):pass
+        class Base:
+            def inventory(self, kind, namespace):
+                return list(jobs.values()) if kind == 'Job' and namespace == 'media' else [pod] if kind == 'Pod' and namespace == 'media' and pod else []
+            def verify_phase_absent(self, received):
+                if received['owned_jobs'] and jobs:raise Present('owned union not empty')
+                events.append('original-pg-absence')
+            @staticmethod
+            def owned_job_pods(pods, row, uid):return []
+            def run(self, argv, input_text):
+                body = json.loads(input_text);name = argv[3].rsplit('/', 1)[-1]
+                self.assert_uid = body['preconditions']['uid'] == jobs[name]['metadata']['uid']
+                if not self.assert_uid:raise AssertionError('UID deletion differs')
+                events.append('delete-' + name);del jobs[name]
+        tree = ast.parse((HERE.parent / 'copy-window/copy-recovery-watch.py').read_bytes())
+        cleanup = next(method for cls in tree.body if isinstance(cls, ast.ClassDef) for method in cls.body
+                       if isinstance(method, ast.FunctionDef) and method.name == 'cleanup_phase_jobs')
+        scope = {'PhaseResourcesPresent': Present, 'json': json};exec(compile(ast.Module(body=[cleanup], type_ignores=[]), 'existing-cleanup', 'exec'), scope)
+        Base.cleanup_phase_jobs = scope['cleanup_phase_jobs']
+        fake = SimpleNamespace(Watchdog=Base, PhaseResourcesPresent=Present)
+        klass = maintenance.maintenance_watchdog(fake, core, config, mock.Mock(), mock.Mock())
+        watch = klass();watch.stop = self.base / 'stop';watch.kube = mock.Mock()
+        watch.verify_only_helper(maintenance.one_job_phase(config, core), pod['metadata']['uid'])
+        self.assertEqual(events, ['original-pg-absence'])
+        pod['metadata']['uid'] = 'foreign'
+        with self.assertRaises(catalog.Refused):watch.verify_only_helper(maintenance.one_job_phase(config, core), 'helper-pod-uid')
+        pod.clear();writer['uid'] = 'writer-uid';core.save(Path(config['phase_state']), phase)
+        jobs[writer['name']] = {'metadata': {'name': writer['name'], 'uid': writer['uid'], 'labels': {maintenance.LABEL: config['phase_token']}}}
+        access = {'fixture': 'exact original'};config['converter_lock_access'] = access
+        admission = {'phase_token': config['phase_token'], 'access_sha256': catalog.digest(access), 'state_inode': 10}
+        target = self.base / 'lock-admission.json';target.write_bytes(catalog.canonical(admission));target.chmod(0o600)
+        config['converter_lock_admission'] = {'path': str(target), 'sha256': catalog.digest(admission)}
+        with mock.patch.object(maintenance, 'sonarr_lock', return_value={'state_inode': 10, 'absent': True}):watch.cleanup_phase_jobs()
+        deletes = [event for event in events if event.startswith('delete-')]
+        self.assertEqual(deletes, ['delete-' + writer['name'], 'delete-' + helper['name']])
+        retained, _ = core.read_json(Path(config['phase_state']))
+        self.assertEqual([row['uid'] for row in retained['owned_jobs']], ['helper-uid', 'writer-uid'])
+
+    def test_complete_prelude_binds_real_checkpoint_and_requires_gc_before_writer(self):
+        original_base = self.base
+        for foreign_after_gc in (False, True):
+            with self.subTest(foreign_after_gc=foreign_after_gc):
+                self.base = original_base / str(foreign_after_gc);self.base.mkdir()
+                core, config = self.lidarr_checkpoint_fixture()
+                helper = config['lidarr_helper']
+                helper.update(env_output=str(self.base / 'env.json'), ready_output=str(self.base / 'ready.json'))
+                publisher = self.base / 'publisher';publisher.mkdir()
+                names = {'kapowarr-native-files-capture.py', 'lidarr-native-paths-capture.py', 'lidarr-native-source-bridge.py',
+                         'publisher-config-capture.js', 'publisher-local-backing.py', 'publisher-path-capture.js',
+                         'publisher-path-capture.py', 'publisher-path-capture.sh', 'publisher-scope-capture.py',
+                         'publisher-scope-guard.py', 'sab-local-config-capture.py', 'approved-normal-write-profiles.json'}
+                refs = {}
+                for name in names:
+                    path = publisher / name;path.write_bytes(b'# external capture fixture\n');path.chmod(0o600)
+                    refs[name] = {'path': str(path), 'sha256': catalog.metadata.sha256(path.read_bytes())}
+                shim = self.base / 'checkpoint/ransom_lidarr_checkpoint.py'
+                config.update(sources={'checkpoint': {'path': str(shim), 'sha256': catalog.metadata.sha256(shim.read_bytes())},
+                                       'publisher_guard': refs['publisher-scope-guard.py']}, publisher_sources=refs,
+                              publisher_scope_hook={'script': refs['publisher-scope-capture.py']['path'],
+                                                    'sha256': refs['publisher-scope-capture.py']['sha256']},
+                              publisher_scope_sha256='a' * 64, publisher_proof=None,
+                              publisher_proof_output=str(self.base / 'proof.json'),
+                              publisher_proof_binding_output=str(self.base / 'proof-binding.json'))
+                profile = dict(checkpoint_helper=str(shim), checkpoint_sha256=config['sources']['checkpoint']['sha256'],
+                               phase_state=config['phase_state'], restore_pr=config['restore_pr'], namespace='media',
+                               job_name=helper['name'], source_template=helper['source_template']['path'],
+                               source_template_sha256=helper['source_template']['sha256'],
+                               capture_program=refs['lidarr-native-paths-capture.py']['path'],
+                               capture_sha256=refs['lidarr-native-paths-capture.py']['sha256'])
+                path = self.base / 'routes.json';path.write_bytes(catalog.canonical({'lidarr_native_helper': profile}));path.chmod(0o600)
+                config['publisher_config'] = {'path': str(path), 'sha256': catalog.metadata.sha256(path.read_bytes())}
+                trace, jobs = [], {}
+                pod = {'metadata': {'uid': 'helper-pod'}, 'status': {'phase': 'Running'}}
+                def create(argv, **kw):
+                    self.assertEqual(argv, ['kubectl', 'create', '-f', '-', '-o', 'json'])
+                    actual = json.loads(kw['input']);uid = 'helper-job';actual['metadata']['uid'] = uid
+                    actual['spec']['template']['metadata']['labels'].update({
+                        'batch.kubernetes.io/controller-uid': uid, 'controller-uid': uid,
+                        'batch.kubernetes.io/job-name': helper['name'], 'job-name': helper['name']})
+                    actual['spec']['selector'] = {'matchLabels': {'batch.kubernetes.io/controller-uid': uid}}
+                    jobs[helper['name']] = actual;trace.append('helper-create')
+                    return SimpleNamespace(returncode=0, stdout=catalog.canonical(actual))
+                def delete(argv, **kw):
+                    self.assertEqual(json.loads(kw['input_text'])['preconditions']['uid'], 'helper-job')
+                    self.assertEqual(json.loads(kw['input_text'])['propagationPolicy'], 'Foreground')
+                    trace.append('helper-foreground-delete');jobs.clear()
+                def absent(phase):
+                    self.assertIsNone(maintenance.writer_row(phase, config)['uid'])
+                    if jobs or foreign_after_gc:raise catalog.Refused('full phase union still present')
+                    trace.append('full-union-pg-absent')
+                class Capture:
+                    def __init__(self, received, output, budget):
+                        self.asserted = received == {'lidarr_native_helper': profile} and budget == 60
+                        self.output = Path(output)
+                    def run(self, *_):trace.append('complete-native-route')
+                    def execute(self):
+                        if not self.asserted:raise AssertionError('collector config differs')
+                        self.run(['external-read']);self.output.write_bytes(b'{}');self.output.chmod(0o600)
+                host = maintenance.HostAdmission.__new__(maintenance.HostAdmission)
+                host.c, host.core, host.publisher_pending = config, core, True
+                host.operation, host.status = {'original_abort_epoch': time.time() + 170}, {}
+                host.guard_lease = lambda *a: None;host.guard = lambda **kw: trace.append('writer-admission' if not kw.get('read_only_prelude') else 'readonly-admission')
+                host.list = lambda *a: [pod] if jobs else []
+                host.watch = SimpleNamespace(run=delete, owned_job_pods=lambda *a: [pod], verify_phase_absent=absent,
+                                             phase_resources_present=RuntimeError)
+                host.supervisor = SimpleNamespace(Supervisor=SimpleNamespace(service_fence=lambda *_: trace.append('full-proof-gate')))
+                with mock.patch.dict(core.process.__globals__, lookup_job=lambda *a: jobs.get(helper['name'])), \
+                     mock.patch.object(maintenance.subprocess, 'run', side_effect=create), \
+                     mock.patch.object(maintenance, 'module', return_value=SimpleNamespace(Capture=Capture)):
+                    if foreign_after_gc:
+                        with self.assertRaises(catalog.Refused):host.publisher_prelude()
+                        self.assertTrue(host.publisher_pending);self.assertNotIn('writer-admission', trace)
+                    else:
+                        host.publisher_prelude();self.assertFalse(host.publisher_pending)
+                        self.assertLess(trace.index('full-proof-gate'), trace.index('helper-foreground-delete'))
+                        self.assertLess(trace.index('full-union-pg-absent'), trace.index('writer-admission'))
+                self.assertEqual(maintenance.current_publisher_ref(config)['path'], config['publisher_proof_output'])
+                phase, _ = core.read_json(Path(config['phase_state']))
+                self.assertEqual(maintenance.helper_row(phase, config)['uid'], 'helper-job')
+                self.assertIsNone(maintenance.writer_row(phase, config)['uid'])
+        self.base = original_base
 
     def test_actual_host_admission_checks_original_clock_custody_storage_and_stopped_services(self):
         # Reuse the unchanged real methods; mock external API/storage calls only.
@@ -292,7 +522,7 @@ class CatalogMaintenanceTests(unittest.TestCase):
         operation = {'phase_token': phase, 'action': 'forward', 'owner_approved': True, 'root_runtime_go': True,
                      'prepared_only': False, 'original_abort_epoch': self.now + 170}
         operation_path = put('operation.json', operation)
-        row = {'namespace': 'media', 'name': 'ransom-maintenance-a', 'phase_token': phase, 'uid': uid}
+        row = {'namespace': 'media', 'name': 'ransom-maintenance-a', 'phase_token': phase, 'uid': uid, 'writer': True}
         pod = {'metadata': {'uid': pod_uid, 'name': 'owned-pod', 'labels': {maintenance.LABEL: phase},
                            'ownerReferences': [{'kind': 'Job', 'name': row['name'], 'uid': uid}]}}
         containers = [{'name': 'app', 'image': 'fixture-image', 'env': [{'name': 'LAZYLIBRARIAN_URL', 'value': ''}]}]
@@ -308,7 +538,7 @@ class CatalogMaintenanceTests(unittest.TestCase):
         pv = {'metadata': {'uid': 'pv-uid'}, 'spec': {'claimRef': {'uid': 'claim-uid'}}}
         collector = self.base / 'collector.py';collector.write_text('def storage_inventory(pods,claims,volumes):return {"current":True}\n');collector.chmod(0o600)
         collector_bytes = collector.read_bytes()
-        config = {'phase_token': phase, 'operation': {'path': operation_path, 'sha256': catalog.digest(operation)},
+        config = {'phase_token': phase, 'job_name': row['name'], 'operation': {'path': operation_path, 'sha256': catalog.digest(operation)},
                   'publisher_proof': {'path': put('publisher.json', {}), 'sha256': catalog.digest({})},
                   'watcher_state': state_path, 'watcher_stop': str(self.base / 'stop'), 'watcher_pid': 123,
                   'watcher_pgid': 123, 'watcher_birth': 456, 'pod_uid': pod_uid,
@@ -365,6 +595,104 @@ class CatalogMaintenanceTests(unittest.TestCase):
                     watch.verify_cached_stop_holds.side_effect = None
                     collector.write_bytes(collector_bytes)
 
+    def test_pre_stop_activation_reuses_original_clock_and_complete_stop_gate(self):
+        # Execute the existing publication/schema/Stop gate with external APIs
+        # faked; neither a clock reset nor a partial Stop admits the helper.
+        directory = HERE.parent / 'copy-window'
+        def methods(file, names, scope):
+            tree = ast.parse((directory / file).read_bytes())
+            found = [copy.deepcopy(node) for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name in names]
+            self.assertEqual({node.name for node in found}, set(names))
+            exec(compile(ast.Module(body=found, type_ignores=[]), file, 'exec'), scope)
+            return SimpleNamespace(**{name: scope[name] for name in names})
+        cache = methods('cached_source.py', {'write_private', 'activation', 'wall_guard'},
+                        {'wc': SimpleNamespace(require=catalog.require), 'os': maintenance.os, 'uuid': __import__('uuid'),
+                         'ctypes': __import__('ctypes'), 'dt': dt, 'read_private': maintenance.private,
+                         'contextmanager': maintenance.contextlib.contextmanager, 'signal': maintenance.signal, 'time': time})
+        epoch = lambda text: dt.datetime.fromisoformat(text).timestamp()
+        original = methods('copy-phase-supervisor.py', {'cached_guard', 'cached_stop_gate'},
+                           {'cache': cache, 'time': time, 'epoch': epoch, 'json': json, 'hashlib': maintenance.hashlib,
+                            'Refused': catalog.Refused, 'window': SimpleNamespace(sha=catalog.metadata.sha256),
+                            'pinned_artifact': lambda ref, cap: maintenance.private(ref['path'], ref['sha256'])})
+        phase = {'phase_token': 'a' * 32, 'owned_jobs': [{'uid': None}, {'uid': None}],
+                 'pg_leases': [{'backend_pid': None, 'job_uid': None, 'pod_uid': None}]}
+        scopes = [('downloads', 'lazylibrarian'), ('media', 'kavita'), ('media', 'libretto'), ('frontend', 'haynesnetwork')]
+        for failure in (None, 'watcher', 'kernel', 'late-kernel', 'review', 'union', 'lock', 'service', 'stop-binding'):
+            with self.subTest(failure=failure):
+                folder = self.base / ('activation-' + str(failure));folder.mkdir(mode=0o700)
+                def put(name, value):
+                    path = folder / name;path.write_bytes(catalog.canonical(value));path.chmod(0o600)
+                    return {'path': str(path), 'sha256': catalog.metadata.sha256(path.read_bytes())}
+                holds = {ns + '/' + name: {'before': {'metadata': {'uid': ns + '-' + name}, 'spec': {'suspend': False}}} for ns, name in scopes}
+                parents = {name: {'before': {'metadata': {'uid': name}, 'spec': {'suspend': False}}} for name in ('cluster', 'cluster-apps')}
+                receipt = dict(holds=holds, parents=parents, stop_main_sha='b' * 40)
+                cache_ref = put('cache.json', receipt);contract = put('contract.json', {})
+                state = {'armed_at': dt.datetime.fromtimestamp(self.now - 20, dt.timezone.utc).isoformat(),
+                         'armed_ready': True, 'recover_ks': True, 'complete': failure == 'watcher', 'restore_pr': '1',
+                         'normal_inverse_merge_sha': 'c' * 40, 'cached_source_ready_at': 'reviewed',
+                         'cached_source_receipt_sha256': cache_ref['sha256'], 'cached_ks_owners': {
+                          ns + '/' + name: {'uid': proof['before']['metadata']['uid'], 'spec': proof['before']['spec'], 'phase_token': phase['phase_token']}
+                          for ns, name, proof in [(ns, name, holds[ns + '/' + name]) for ns, name in scopes]
+                            + [('flux-system', name, proof) for name, proof in parents.items()]}}
+                state_ref = put('watch.json', state);trace = []
+                config = {'phase_token': phase['phase_token'], 'watcher_state': state_ref['path'], 'restore_pr': '1',
+                          'watcher_stop': str(folder / 'stop'), 'watcher_pid': 123, 'watcher_pgid': 123,
+                          'watcher_birth': 999 if failure == 'kernel' else 456, 'normal_merge_sha': 'c' * 40,
+                          'cached_source_receipt': cache_ref, 'manifest_contract': contract, 'restore_reserve_seconds': 130,
+                          'cached_source_activation': str(folder / 'activation.json'),
+                          'watcher_arguments': {'cached_source_activation': str(folder / 'activation.json')},
+                          'converter_lock_admission': put('lock.json', {'admitted_epoch': self.now - (301 if failure == 'lock' else 1), 'state_inode': 10})}
+                def review(host):
+                    trace.append('exact-reviewed-inverse')
+                    if failure == 'review':raise catalog.Refused('current inverse review differs')
+                    host.status['normal_inverse_merge_sha'] = 'c' * 40
+                def absent(_):
+                    trace.append('full-union-pg-absent')
+                    if failure == 'union':raise catalog.Refused('original writer union present')
+                cache.check_live = lambda *args, **kw: trace.append('cache-holds' if kw.get('holds') else 'cache-source-parents')
+                cache.read_private = maintenance.private;cache.PARENTS = tuple(parents)
+                host = maintenance.HostAdmission.__new__(maintenance.HostAdmission)
+                host.c, host.core, host.operation = config, mock.Mock(), {'original_abort_epoch': None}
+                host.status, host.deadline, host.stop, host.execution = {'phase_token': phase['phase_token']}, None, False, None
+                host.watch = SimpleNamespace(args=SimpleNamespace(arm_deadline=1800), verify_phase_absent=absent)
+                host.supervisor = SimpleNamespace(epoch=epoch, cache=cache,
+                    window=SimpleNamespace(SCOPES=tuple(scopes)), Supervisor=SimpleNamespace(
+                        cached_guard=original.cached_guard, cached_stop_gate=original.cached_stop_gate, merged_inverse_ready=review))
+                host.get = lambda *a: {'spec': {'replicas': 0 if failure == 'service' else 1, 'selector': {'matchLabels': {}}},
+                                      'status': {'readyReplicas': 1}}
+                host.list = lambda *a: [{'metadata': {}}]
+                host.guard = lambda **kw: trace.append('complete-stopped-fence')
+                def finish_stop(_):
+                    trace.append('watcher-stop')
+                    active = json.loads(maintenance.private(config['watcher_arguments']['cached_source_activation']))
+                    state.update(actuation_budget_started_at=active['actuation_budget_started_at'], cached_stop_actuation_complete_at='complete',
+                                 cached_stop_holds=holds, cached_stop_actuation_binding={
+                                 'phase_token': phase['phase_token'], 'cached_source_receipt_sha256': cache_ref['sha256'],
+                                 'activation_sha256': catalog.digest(active), 'stop_main_sha': 'd' * 40 if failure == 'stop-binding' else 'b' * 40})
+                    Path(state_ref['path']).write_bytes(catalog.canonical(state))
+                class Clock(dt.datetime):
+                    @classmethod
+                    def now(cls, tz=None):return dt.datetime.fromtimestamp(self.now, dt.timezone.utc)
+                kernel = '123 (fixture) S 1 123 ' + '0 ' * 16 + '456 0'
+                with mock.patch.object(maintenance, 'dt', SimpleNamespace(datetime=Clock, timezone=dt.timezone)), \
+                     mock.patch.object(maintenance.time, 'time', return_value=self.now), \
+                     mock.patch.object(maintenance.time, 'sleep', side_effect=finish_stop), \
+                     mock.patch.object(Path, 'read_text', side_effect=[kernel, kernel.replace('456 0', '457 0')] if failure == 'late-kernel' else lambda *a, **kw: kernel), \
+                     mock.patch.object(maintenance, 'one_job_phase', return_value=phase), \
+                     mock.patch.object(maintenance, 'sonarr_lock', return_value={'state_inode': 10, 'absent': True}):
+                    if failure:
+                        with self.assertRaises(catalog.Refused):host.activate_and_wait()
+                        self.assertNotIn('complete-stopped-fence', trace)
+                    else:
+                        host.activate_and_wait()
+                        self.assertEqual(host.operation['original_abort_epoch'], self.now + 170)
+                        self.assertEqual(host.deadline, self.now + 300)
+                        self.assertLess(trace.index('exact-reviewed-inverse'), trace.index('watcher-stop'))
+                        self.assertLess(trace.index('watcher-stop'), trace.index('complete-stopped-fence'))
+                target = Path(config['watcher_arguments']['cached_source_activation'])
+                self.assertEqual(target.exists(), failure in (None, 'stop-binding'))
+                if target.exists():self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+
     def test_automatic_handoff_binds_fresh_rows_once_without_replacing_inverse_baseline(self):
         host = maintenance.HostAdmission.__new__(maintenance.HostAdmission)
         state = self.base / 'automatic-watch.json'
@@ -381,13 +709,17 @@ class CatalogMaintenanceTests(unittest.TestCase):
         template = copy.deepcopy(host.operation)
         host.supervisor = SimpleNamespace(epoch=lambda text: dt.datetime.fromisoformat(text).timestamp())
         calls = []
+        def activate():
+            calls.append('activation-stop');host.operation['original_abort_epoch'] = self.now + 170
+        host.activate_and_wait = activate
         host.create = lambda: calls.append('create')
+        host.publisher_prelude = lambda: calls.append('publisher-prelude')
         proof = current_rows(self.before)
         host.inspect = lambda: (calls.append('inspect') or proof)
         host.deliver = lambda name, raw: calls.append(name)
         host.execute = lambda dsn: (calls.append('execute') or {'admitted': True})
         self.assertEqual(host.run_automatic('private-fixture'), {'admitted': True})
-        self.assertEqual(calls, ['create', 'inspect', 'before.json', 'operation.json', 'execute'])
+        self.assertEqual(calls, ['activation-stop', 'publisher-prelude', 'create', 'inspect', 'before.json', 'operation.json', 'execute'])
         self.assertEqual(host.operation['original_abort_epoch'], self.now + 170)
         self.assertEqual(host.operation['before_sha256'], catalog.digest(self.before))
         neutral = copy.deepcopy(host.operation)
@@ -409,11 +741,11 @@ class CatalogMaintenanceTests(unittest.TestCase):
         drift = copy.deepcopy(after);drift['tables']['AppUserProgresses'][0]['BookScrollId'] = catalog.cell('text', 'new-reading')
         proof = current_rows(drift);host.operation = copy.deepcopy(inverse_template);calls.clear()
         with self.assertRaisesRegex(catalog.Refused, 'after-state drifted'):host.run_automatic('private-fixture')
-        self.assertEqual(calls, ['create', 'inspect'])
+        self.assertEqual(calls, ['activation-stop', 'publisher-prelude', 'create', 'inspect'])
         self.assertFalse((self.base / 'inverse-operation.json').exists())
         proof = current_rows(after);host.operation = copy.deepcopy(inverse_template);calls.clear()
         host.run_automatic('private-fixture')
-        self.assertEqual(calls, ['create', 'inspect', 'post-scan.json', 'before.json', 'operation.json', 'execute'])
+        self.assertEqual(calls, ['activation-stop', 'publisher-prelude', 'create', 'inspect', 'post-scan.json', 'before.json', 'operation.json', 'execute'])
         self.assertEqual(host.operation['before'], inverse_template['before'])
         self.assertEqual(host.operation['before_sha256'], catalog.digest(self.before))
 
@@ -523,7 +855,7 @@ class CatalogMaintenanceTests(unittest.TestCase):
     def test_interrupted_worker_lock_release_requires_original_absence_and_exact_empty_custody(self):
         state = self.base / 'converter-state';state.mkdir()
         lock = state / 'lock';lock.mkdir()
-        phase = {'phase_token': 'a' * 32, 'owned_jobs': [{'uid': 'job-uid'}]}
+        phase = {'phase_token': 'a' * 32, 'owned_jobs': [{'uid': 'job-uid', 'writer': True, 'namespace': 'media', 'name': 'ransom-a'}]}
         observed = maintenance.lock_io(str(state))
         custody = {k: observed[k] for k in ('state_inode', 'lock_inode', 'lock_uid', 'lock_mode')}
         custody['lock_uid'] = 1000  # Production Job always runs as UID1000.
@@ -532,7 +864,7 @@ class CatalogMaintenanceTests(unittest.TestCase):
             return str(path)
         access = {'fixture': 'exact pre-admitted access'}
         admission = {'state_inode': observed['state_inode'], 'phase_token': phase['phase_token'], 'access_sha256': catalog.digest(access)}
-        config = {'phase_token': phase['phase_token'], 'converter_lock_custody_output': str(self.base / 'lock-custody.json'),
+        config = {'phase_token': phase['phase_token'], 'job_name': 'ransom-a', 'converter_lock_custody_output': str(self.base / 'lock-custody.json'),
                   'converter_lock_access': access,
                   'converter_lock_admission': {'path': put('lock-admit.json', admission), 'sha256': catalog.digest(admission)},
                   'pod_uid': 'pod-uid', 'pg_owner': put('lock-lease.json', {'backend_pid': 41, 'pod_uid': 'pod-uid'}),
@@ -560,7 +892,7 @@ class CatalogMaintenanceTests(unittest.TestCase):
         def service(observer):trace.append('current-full-service-publisher-fence');observer.guard_lease()
         supervisor = SimpleNamespace(epoch=lambda value: value, cache=SimpleNamespace(check_live=lambda *a, **kw: trace.append('all-seven-held')),
                                      Supervisor=SimpleNamespace(service_fence=service))
-        cls = maintenance.maintenance_watchdog(SimpleNamespace(Watchdog=Base), mock.Mock(), config, supervisor, mock.Mock())
+        cls = maintenance.maintenance_watchdog(SimpleNamespace(Watchdog=Base, PhaseResourcesPresent=RuntimeError), mock.Mock(), config, supervisor, mock.Mock())
         watch = cls();watch.state = {'actuation_budget_started_at': self.now, 'cached_stop_actuation_binding': {}}
         watch.present = watch.hold_lost = False;watch.kube = mock.Mock();watch.run = mock.Mock()
         def route(c, get, run, expected=None, release=False):
