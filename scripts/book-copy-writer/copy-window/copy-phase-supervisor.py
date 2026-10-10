@@ -964,7 +964,7 @@ class Supervisor:
    self.save();time.sleep(1)
   raise Refused('watcher restoration verification pending; never report complete')
 
-def validate(c):
+def validate(c, *, live_baseline_pending=False):
  required={'repo_dir','manifest_contract','hold_receipt','restore_pr','restore_head','watchdog_state','watchdog_stop','evidence_dir','copy_phase_state','copy_checkpoint_helper','copy_checkpoint_helper_sha256','cached_source_receipt','cached_source_activation',
  'readonly_capture_jobs','copy_job','arm_deadline_seconds','max_service_absence_seconds','restore_reserve_seconds','publisher_guard','publisher_guard_sha256','publisher_scope_sha256','publisher_scope_hook','publisher_config','publisher_config_sha256',
  'assembly_script','assembly_script_sha256','delivery_script','delivery_script_sha256','outcome_script','outcome_script_sha256','kavita_exporters_dir','kavita_exporter_sha256','live_byte_baseline','source_private_input','selection_approval','census_holds','ll_sql_sha256'}
@@ -980,12 +980,15 @@ def validate(c):
  for name,digest in c['kavita_exporter_sha256'].items():
   if hashlib.sha256((Path(c['kavita_exporters_dir'])/name).read_bytes()).hexdigest()!=digest:raise Refused('raw vendor exporter pin changed')
  for key in ('manifest_contract','hold_receipt','live_byte_baseline','selection_approval','census_holds','cached_source_receipt'):
+  if key=='live_byte_baseline' and live_baseline_pending:
+   if not isinstance(c[key],dict) or set(c[key])!={'path','sha256'} or c[key]['sha256'] is not None or not Path(c[key]['path']).is_absolute() or os.path.lexists(c[key]['path']):raise Refused('only the absent unbound future LIVE baseline may be deferred')
+   continue
   if set(c[key])!={'path','sha256'} or hashlib.sha256(Path(c[key]['path']).read_bytes()).hexdigest()!=c[key]['sha256']:raise Refused('exact root scope artifact changed')
  activation=Path(c['cached_source_activation'])
  if not activation.is_absolute() or activation.parent!=Path(c['watchdog_state']).parent or activation.exists():raise Refused('fresh private activation path alongside watchdog required')
  inputs=c['source_private_input']
  if not isinstance(inputs,dict) or set(inputs)!={'sender','receiver','native_verifier','collector'}:raise Refused('complete exact private-input source closure required')
- pins={'sender':'8d3cb8b3242a14ba5a07a25dca14d16220bf86be85d95cb18a1b3eeae7fd8c81','receiver':'fbf7998738652db4023721731526b343faff4b2d880d24e811a63a95eaab2d3e','native_verifier':'67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f','collector':'03f6163873b75f2bf0dc6896851b9da568d5e370ef39b56983eed64def2eb5f0'}
+ pins={'sender':'571376814feebcae7986f10f2bd17f7296ab84c8402fb884dacca4537da9c2d1','receiver':'fbf7998738652db4023721731526b343faff4b2d880d24e811a63a95eaab2d3e','native_verifier':'67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f','collector':'03f6163873b75f2bf0dc6896851b9da568d5e370ef39b56983eed64def2eb5f0'}
  for key,digest in pins.items():
   if inputs[key].get('sha256')!=digest:raise Refused('private-input reviewed source pin differs')
   pinned_artifact(inputs[key],1024*1024)

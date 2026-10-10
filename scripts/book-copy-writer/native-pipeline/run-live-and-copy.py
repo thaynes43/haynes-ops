@@ -67,6 +67,15 @@ def main():
         require(isinstance(config.get(key), dict) and set(config[key]) == {'path', 'sha256'},
                 'exact_static_root_scope_ref_required')
         pinned(config[key])
+    supervisor_path = handoff['supervisor']['path']
+    supervisor_scope = dict(__name__='pinned_copy_supervisor', __file__=supervisor_path)
+    original_path = sys.path[:]
+    try:
+        sys.path.insert(0, str(Path(supervisor_path).parent))
+        exec(compile(pinned(handoff['supervisor']), supervisor_path, 'exec'), supervisor_scope)
+        supervisor_scope['validate'](config, live_baseline_pending=True)
+    finally:
+        sys.path[:] = original_path
     subprocess.run([sys.executable, '-I', '-B', args.live_launcher, '--contract', handoff['live_contract']['path'],
                     '--root-authorization', scope['GO']], stdin=subprocess.DEVNULL, check=True)
     # No API calls or object census here: the pinned LIVE already proves ACK/GC.
