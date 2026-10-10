@@ -189,6 +189,18 @@ apply only to the dedicated exercise processes, never a service or native Job.
 Rehearsal operational caps are exercise 90s, staging arm 120s and recovery 50s
 from the first recovery attempt. The watcher uses its existing 10s poll interval;
 actual cancellation detection and total restoration timing must also be recorded.
+Forced Kustomization reconciliation is unnecessary only after a fresh owned
+UID/spec/phase check proves it unsuspended, with positive integer generation,
+matching integer status and Ready-condition observed generations, Ready=True,
+and the exact current Normal `lastAppliedRevision`. Missing or stale evidence
+keeps the actual reconcile. Fresh Source verification, each release's complete
+phase union/PG proof and final runtime proof remain required. Rehearsal Flux
+timings retain only the fixed owned scope, never command arguments or output.
+The first generic services-running rehearsal on 2026-10-10 missed its original
+50s budget and completed bounded safety cleanup; its final `cluster` forced
+reconcile waited 26.981s despite two retained controller successes at 02:01:56Z.
+The CLI request-wait cause is unproved. This strict Ready guard needs a fresh
+actual rehearsal; services-running timing does not prove cold Stop restoration.
 An in-budget historical proof survives cold re-verification. A miss
 is retained truthfully while recovery continues in bounded 60s safety attempts
 with the original 10s retry wait. These are Normal-only operational measurements,
