@@ -19,3 +19,4 @@ resources:
   - ./agent-guard.yaml
   - ./identity-guard.yaml
   - ./v1-token-guard.yaml
+  - ./native-lifecycle-serviceaccount.yaml
