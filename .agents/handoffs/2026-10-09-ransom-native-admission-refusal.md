@@ -425,3 +425,12 @@ proves the scanner nor permits exec into a terminated container. Retain the firs
 failing binding Job/Pod/Node responses privately before cleanup, under the unchanged
 original deadlines. New finite controls run serially under nice 19; no CPU burners,
 stress or broad repeated test loops. The whole-folder hold and production gates stay closed.
+
+PR #3692 head `0c8b4902540ef3af931de780432c33ac3f07aeba` passed the native host CI
+and both required aggregate checks. All 43 finite local host controls passed under
+nice 19; the expanded terminal negative controls passed separately. Advisory run
+38013227256 finished with a startup error (`is_error=true`, one turn, zero model
+cost) and posted no findings; this is not a clean review. One report-only push
+retriggers it without changing executable bytes. Root's concurrent Normal-only
+rehearsal temporarily freezes merges and new runtime Jobs; the consumed v9 GO
+cannot authorize another run.
