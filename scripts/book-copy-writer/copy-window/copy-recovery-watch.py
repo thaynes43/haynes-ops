@@ -340,24 +340,50 @@ class Watchdog:
         patch=cache.release_patch(row,owned['uid'],owned['phase_token'],kind='Kustomization',name=name,namespace=namespace,spec=owned['spec'])
         if patch:self.run(['kubectl','patch','kustomization',name,'-n',namespace,'--type=json','-p',json.dumps(patch,separators=(',',':'))],timeout=10)
 
+    def released_ks(self,namespace,name,row=None):
+        owned=self.state['cached_ks_owners'][namespace+'/'+name]
+        if row is None:row=self.kube('kustomization',name,namespace)
+        contract.require(row['metadata'].get('annotations',{}).get(cache.OWNER) in (None,owned['phase_token']),
+                         'Owned Kustomization has a foreign phase.')
+        if cache.release_patch(row,owned['uid'],owned['phase_token'],kind='Kustomization',name=name,namespace=namespace,spec=owned['spec']):
+            raise RuntimeError('Owned Kustomization unexpectedly held again; refuse reconcile.')
+        return row
+
+    @staticmethod
+    def ks_ready(row,sha):
+        generation=row['metadata'].get('generation');status=row.get('status',{})
+        return (type(generation) is int and generation>0
+                and type(status.get('observedGeneration')) is int and status['observedGeneration']==generation
+                and status.get('lastAppliedRevision')=='main@sha1:'+sha
+                and any(c.get('type')=='Ready' and c.get('status')=='True'
+                        and type(c.get('observedGeneration')) is int and c['observedGeneration']==generation
+                        for c in status.get('conditions',[])))
+
     def reconcile_ks(self,namespace,name,sha):
-        if self.cached:
-            owned=self.state['cached_ks_owners'][namespace+'/'+name]
-            row=self.kube('kustomization',name,namespace)
-            contract.require(row['metadata'].get('annotations',{}).get(cache.OWNER) in (None,owned['phase_token']),
-                             'Owned Kustomization has a foreign phase.')
-            if cache.release_patch(row,owned['uid'],owned['phase_token'],kind='Kustomization',name=name,namespace=namespace,spec=owned['spec']):
-                raise RuntimeError('Owned Kustomization unexpectedly held again; refuse reconcile.')
-            generation=row['metadata'].get('generation');status=row.get('status',{})
-            # Fresh Source proof precedes this call. Only actual convergence on
-            # the released generation makes a further forced request redundant.
-            if (type(generation) is int and generation>0
-                    and type(status.get('observedGeneration')) is int and status['observedGeneration']==generation
-                    and status.get('lastAppliedRevision')=='main@sha1:'+sha
-                    and any(c.get('type')=='Ready' and c.get('status')=='True'
-                            and type(c.get('observedGeneration')) is int and c['observedGeneration']==generation
-                            for c in status.get('conditions',[]))):return
+        if self.cached and self.ks_ready(self.released_ks(namespace,name),sha):return
         self.run(['flux','reconcile','kustomization',name,'-n',namespace,'--timeout=30s'])
+
+    def request_ks(self,namespace,name,sha):
+        row=self.released_ks(namespace,name)
+        if self.ks_ready(row,sha):return
+        meta=row['metadata'];annotations=dict(meta.get('annotations',{}))
+        annotations['reconcile.fluxcd.io/requestedAt']=stamp()
+        patch=[dict(op='test',path='/metadata/uid',value=meta['uid']),
+               dict(op='test',path='/metadata/resourceVersion',value=meta['resourceVersion']),
+               dict(op='test',path='/spec',value=row['spec']),
+               dict(op='add',path='/metadata/annotations',value=annotations)]
+        self.run(['kubectl','patch','kustomization',name,'-n',namespace,'--type=json',
+                  '-p',json.dumps(patch,separators=(',',':'))],timeout=10)
+
+    def wait_ks(self,namespace,name,sha):
+        deadline=time.monotonic()+30
+        while True:
+            remaining=deadline-time.monotonic()
+            if remaining<=0:raise RuntimeError('Owned Kustomization waiting for exact current-generation Normal.')
+            row=json.loads(self.run(['kubectl','get','kustomization',name,'-n',namespace,'-o','json'],
+                                    timeout=min(10,remaining)))
+            if self.ks_ready(self.released_ks(namespace,name,row),sha):return
+            time.sleep(min(1,max(0,deadline-time.monotonic())))
 
     def verify_recovery_absence(self):
         phase=self.phase_checkpoint()
@@ -384,12 +410,23 @@ class Watchdog:
         still_normal=self.runtime_still_normal if self.cached else self.runtime_workloads_normal
         if not stopped and not still_normal():raise RuntimeError('Prestage cancellation lacks actual still-normal workload proof; retain holds.')
         self.state.update(expected_restored_sha=sha,recover_ks=True);self.save()
-        for namespace,name in self.recovery_scopes():
+        for namespace,name in self.scopes:
             self.source(sha)
             self.cleanup_phase_jobs()
             self.release_ks(namespace,name)
             self.source(sha)
-            self.reconcile_ks(namespace,name,sha)
+            if self.cached:self.request_ks(namespace,name,sha)
+            else:self.reconcile_ks(namespace,name,sha)
+        if self.cached:
+            for namespace,name in self.scopes:
+                self.source(sha)
+                self.wait_ks(namespace,name,sha)
+            for name in reversed(cache.PARENTS):
+                self.source(sha)
+                self.cleanup_phase_jobs()
+                self.release_ks('flux-system',name)
+                self.source(sha)
+                self.reconcile_ks('flux-system',name,sha)
         self.verify_recovery_absence()
         if not self.runtime_restored(sha):raise RuntimeError('Restored source fetched; waiting for app/KS convergence.')
         if self.cached:self.source(sha)

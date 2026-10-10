@@ -169,10 +169,28 @@ not change. The current generic services-running Normal rehearsal completed in
 Normal-only callbacks. Neither proves an actual COPY Stop can restore cold
 services within 50s; exact results and withdrawn stage receipts are recorded in
 `.agents/reports/book-copy-recovery-and-staging-2026-10-10.md`.
+Cached recovery requests Normal for all four owned app Kustomizations before
+waiting for any app to become Ready. Every release/request still requires the
+complete phase Job/Pod union and both primary PG owners absent, a fresh exact
+Normal Source, and the owned UID/resourceVersion/full spec/phase guard. The
+request is an atomic reconcile annotation patch, not a blocking Flux CLI wait.
+Fresh waits require current integer generation, matching status and Ready
+condition observed generations, exact Normal revision and unchanged ownership.
+Both parents remain held until all four app checks pass; their existing restore
+order, final complete absence/runtime proof and all original clocks remain.
+
+The actual v11 cold restoration took 127.249103s against the original 50s
+reserve. Its serial path did not request Kavita until about 94s after recovery
+began; LazyLibrarian's successful controller health check took 30.122032081s,
+beyond the forced CLI's 30s timeout. This change removes that serial delay; it
+does not claim a new cold timing PASS. The historical 28.306327s services-running
+Normal result remains historical because this recovery control flow changed.
+
 The current Normal harness inherits these generic recovery callbacks without
-the earlier Normal-only inventory/source/reconcile shortcuts. A fresh immutable
-current-source rehearsal must prove the services-running generic recovery budget
-before COPY; actual stopped-service convergence remains a separate runtime proof.
+the earlier Normal-only inventory/source/reconcile shortcuts. Finite source
+controls do not replace timing proof: the next separately authorized actual
+stopped-service operation must prove the original recovery reserve on this changed
+path. No prior Normal result is a current cold-restoration certificate.
 
 `normal-rehearsal.py` prepares and executes a separate Normal-only cancellation
 rehearsal. Preparation copies the generic source closure and a reviewed exact

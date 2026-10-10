@@ -136,7 +136,7 @@ class NormalCases(unittest.TestCase):
             w.cleanup_phase_jobs=lambda:None;w.desired_restored=lambda _:None
             w.phase_checkpoint=lambda:{'phase_token':fixtures.PHASE};w.stop_actuated=lambda:False
             w.runtime_still_normal=lambda:True;w.source=lambda _:None;w.release_ks=lambda *_:None
-            w.run=lambda *_:None;w.runtime_restored=lambda _:True;w.verify_recovery_absence=lambda:None;w.reconcile_ks=lambda *_:None;w.retire_hold_annotations=lambda:None;w.note=lambda _:None
+            w.run=lambda *_:None;w.runtime_restored=lambda _:True;w.verify_recovery_absence=lambda:None;w.reconcile_ks=lambda *_:None;w.request_ks=lambda *_:None;w.wait_ks=lambda *_:None;w.retire_hold_annotations=lambda:None;w.note=lambda _:None
             first='1970-01-01T00:03:20+00:00';later='1970-01-01T00:04:20+00:00'
             with mock.patch.object(watch,'stamp',return_value=first):w.recover_cluster(fixtures.NORMAL_SHA)
             self.assertTrue(w.state['safety_recovery_complete']);self.assertFalse(w.state['complete'])
@@ -465,12 +465,14 @@ class NormalCases(unittest.TestCase):
             w.inventory=lambda kind,ns:calls.append(('inventory',kind,ns)) or []
             w.desired_restored=lambda _:None;w.stop_actuated=lambda:False;w.runtime_still_normal=lambda:True
             w.runtime_restored=lambda _:True;w.retire_hold_annotations=lambda:calls.append(('retire',));w.note=lambda _:None
+            w.wait_ks=lambda *_:None  # Dedicated finite controls cover the actual wait predicate.
             w.recover_cluster(fixtures.NORMAL_SHA)
             self.assertTrue(w.state['complete'])
             self.assertEqual(sum(c[0]=='inventory' for c in calls),48)
             self.assertEqual(sum(c[:2]==('kubectl','exec') for c in calls),8)
             self.assertEqual(sum(c[:3]==('flux','reconcile','source') for c in calls),1)
-            self.assertEqual(sum(c[:3]==('flux','reconcile','kustomization') for c in calls),6)
+            self.assertEqual(sum(c[:3]==('flux','reconcile','kustomization') for c in calls),2)
+            self.assertEqual(sum(c[:3]==('kubectl','patch','kustomization') for c in calls),4)
             self.assertEqual(calls[-1],('retire',))
             # Unknown final union never publishes completion or retires owners.
             w.state['complete']=False;counter=0
