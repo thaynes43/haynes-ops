@@ -666,12 +666,35 @@ class Watchdog:
         self.desired_restored(current)
         return current
 
-    def guard_phase_git(self):
+    def guard_phase_git(self,pause=None,restore=None):
         current=self.current_main()
         observed=contract.blobs(self.args.repo_dir,current)
         drift={p:contract.sha(observed[p]) for p in contract.PATHS
                if contract.sha(observed[p])!=self.contract['manifests'][p]['stop_sha256']}
         if not drift:return
+        # The inverse view can precede its squash while fresh main follows it.
+        # Refresh only an exact Normal candidate; every failed proof still revokes.
+        if self.cached and pause and restore and all(contract.sha(observed[p])==self.contract['manifests'][p]['normal_sha256'] for p in contract.PATHS):
+            try:
+                fresh=json.loads(self.run(['gh','pr','view',self.args.restore,'--repo',REPO,
+                    '--json','number,state,baseRefName,headRefOid,mergeCommit'],timeout=5))
+                merge=fresh.get('mergeCommit',{}).get('oid')
+                stop=pause.get('mergeCommit',{}).get('oid')
+                contract.require(type(fresh.get('number')) is int and str(fresh['number'])==self.args.restore
+                    and fresh.get('state')=='MERGED' and fresh.get('baseRefName')=='main'
+                    and fresh.get('headRefOid')==restore.get('headRefOid')
+                    and pause.get('state')=='MERGED' and pause.get('headRefOid')==self.args.pause_head
+                    and all(isinstance(x,str) and re.fullmatch(r'[0-9a-f]{40}',x) for x in (merge,stop,fresh.get('headRefOid'))),
+                    'Raced inverse identity differs.')
+                self.run(['git','-C',self.args.repo_dir,'fetch','origin',f"pull/{self.args.restore}/head"],timeout=10)
+                self.run(['git','-C',self.args.repo_dir,'merge-base','--is-ancestor',stop,fresh['headRefOid']],timeout=10)
+                contract.verify_git_pair(self.args.repo_dir,stop,fresh['headRefOid'],self.contract,'inverse')
+                self.run(['git','-C',self.args.repo_dir,'merge-base','--is-ancestor',stop,merge],timeout=10)
+                self.run(['git','-C',self.args.repo_dir,'merge-base','--is-ancestor',merge,current],timeout=10)
+                contract.validate_pair(contract.blobs(self.args.repo_dir,merge),contract.blobs(self.args.repo_dir,stop),self.contract)
+                return fresh
+            except Exception:
+                pass
         # Never rewrite upgraded settings back to the frozen normal snapshot.
         # Preserve the original refusal/clock across restart. This immediately
         # revokes COPY and requests writer-first cleanup; all holds stay armed.
@@ -973,7 +996,8 @@ class Watchdog:
                 phase=self.phase_checkpoint()
                 if phase.get('first_service_stop_observed_at') or phase.get('window_started_at'):
                     self.revoke_cached('actual_stop_before_normal_inverse_merged')
-            self.guard_phase_git()
+            merged=self.guard_phase_git(pause,restore)
+            if merged:return self.tick_cached(pause,merged)
             if restore['baseRefName']!='main' or not self.state.get('inverse_retargeted'):
                 self.run(self.retarget_argv(),timeout=120)
                 self.state['inverse_retargeted']=True;self.save()
