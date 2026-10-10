@@ -32,18 +32,35 @@ class CatalogMaintenanceTests(unittest.TestCase):
             spec.loader.exec_module(window)
         host = maintenance.HostAdmission.__new__(maintenance.HostAdmission)
         host.supervisor = SimpleNamespace(window=window)
+        routes = [('pods', 'downloads', 'Pod', '/api/v1/namespaces/downloads/pods'),
+                  ('pods', None, 'Pod', '/api/v1/pods'),
+                  ('pvc', 'media', 'PersistentVolumeClaim', '/api/v1/namespaces/media/persistentvolumeclaims'),
+                  ('pvc', None, 'PersistentVolumeClaim', '/api/v1/persistentvolumeclaims'),
+                  ('pv', None, 'PersistentVolume', '/api/v1/persistentvolumes')]
+        for kind, namespace, typed, endpoint in routes:
+            with self.subTest(endpoint=endpoint):
+                item = {'metadata': {'name': 'native', 'uid': 'native-uid'}}
+                if kind != 'pv':item['metadata']['namespace'] = namespace or 'downloads'
+                envelope = {'kind': typed + 'List', 'apiVersion': 'v1',
+                            'metadata': {'resourceVersion': '7'}, 'items': [item]}
+                host.run = mock.Mock(return_value=json.dumps(envelope))
+                self.assertEqual(host.list(kind, namespace), [dict(item, kind=typed, apiVersion='v1')])
+                host.run.assert_called_once_with(['kubectl', 'get', '--raw', endpoint])
         envelope = {'kind': 'PodList', 'apiVersion': 'v1', 'metadata': {'resourceVersion': '7'},
                     'items': [{'metadata': {'name': 'native', 'uid': 'native-uid', 'namespace': 'downloads'}}]}
-        host.run = mock.Mock(return_value=json.dumps(envelope))
-        self.assertEqual(host.list('pods', 'downloads'),
-                         [dict(envelope['items'][0], kind='Pod', apiVersion='v1')])
-        host.run.assert_called_once_with(['kubectl', 'get', 'pods', '-n', 'downloads', '-o', 'json'])
         wrong_api = dict(envelope, apiVersion='batch/v1')
         wrong_namespace = copy.deepcopy(envelope)
         wrong_namespace['items'][0]['metadata']['namespace'] = 'media'
-        for value in (wrong_api, wrong_namespace):
-            host.run.return_value = json.dumps(value)
-            with self.assertRaises(ValueError):host.list('pods', 'downloads')
+        generic_list = dict(envelope, kind='List')  # Actual kubectl get -o json boundary.
+        for value in (wrong_api, wrong_namespace, generic_list, dict(envelope, kind='JobList')):
+            with self.subTest(envelope=value['kind'], api=value['apiVersion']):
+                host.run = mock.Mock(return_value=json.dumps(value))
+                with self.assertRaises(ValueError):host.list('pods', 'downloads')
+                host.run.assert_called_once_with(['kubectl', 'get', '--raw', '/api/v1/namespaces/downloads/pods'])
+        for kind, namespace in [('pv', 'media'), ('jobs', None), ('pods', ''), ('pods', '../media')]:
+            host.run = mock.Mock()
+            with self.assertRaises(catalog.Refused):host.list(kind, namespace)
+            host.run.assert_not_called()
 
     def test_cleanup_uses_only_original_watchers_accepted_private_cache(self):
         with tempfile.TemporaryDirectory() as directory:

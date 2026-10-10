@@ -143,9 +143,13 @@ activation-origin+170 abort clock, deliver, then execute immediately. The origin
 is captured before the first activation publication; helper, writer and binder
 never reset it. Actual original arm, live watcher kernel, same accepted cache,
 six held controller identities, still-Normal services and fresh absent-lock
-admission must pass before activation. Pod, PVC and PV inventories call the
-existing typed validator with the explicit core `v1` API and requested namespace;
-wrong envelope types or namespaces refuse before activation or writer admission.
+admission must pass before activation. Pod, PVC and PV inventories request their
+native core `v1` list endpoints with `kubectl get --raw`: Pods and PVCs use the
+requested namespace or the all-namespace endpoint, and PVs use the cluster
+endpoint. The unchanged typed validator requires `PodList`,
+`PersistentVolumeClaimList` or `PersistentVolumeList`, respectively. The generic
+`List` returned by `kubectl get ... -o json`, wrong APIs and foreign namespaces
+refuse before activation or writer admission; no generic envelope is normalized.
 Full current inverse review uses the
 existing optional exact unavailable-review disposition, with its private
 loader, when Root has explicitly ratified it. No model turn occurs between
