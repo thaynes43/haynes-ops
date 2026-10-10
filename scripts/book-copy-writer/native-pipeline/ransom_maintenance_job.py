@@ -12,6 +12,7 @@ import re
 import selectors
 import signal
 import sqlite3
+import stat
 import subprocess
 import sys
 import time
@@ -22,6 +23,9 @@ import urllib.request
 # source and installed image metadata helper must be the already qualified bytes.
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+CATALOG_SHA = "02e393a54c941fefef46f349c536b3cb916a48e2d79f88cda00cbd069c8e11b8"
+if hashlib.sha256((HERE / "ransom_catalog_maintenance.py").read_bytes()).hexdigest() != CATALOG_SHA:
+    raise ValueError("reviewed catalog source bytes differ")
 metadata_candidates = [HERE / "epub_metadata.py", Path("/copy-writer/epub_metadata.py")]
 if len(HERE.parents) > 2:
     metadata_candidates.append(HERE.parents[2] / "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert/epub_metadata.py")
@@ -56,6 +60,15 @@ def module(name, ref):
     sys.modules[name] = loaded
     exec(compile(raw, ref["path"], "exec"), loaded.__dict__)
     return loaded
+
+
+def validate_bootstrap(config):
+    refs = config["bootstrap_sources"]
+    names = {"ransom_catalog_maintenance.py", "ransom_maintenance_job.py"}
+    catalog.require(len(refs) == 2 and {ref["name"] for ref in refs} == names, "exact two bootstrap sources required")
+    for ref in refs:
+        raw = private(ref["path"], ref["sha256"])
+        catalog.require(raw == (HERE / ref["name"]).read_bytes(), "host/Job bootstrap source differs")
 
 
 def one_job_phase(config, core):
@@ -178,6 +191,27 @@ def publication_guard(guard, retention, source_hash, candidate_hash):
         metadata._replace = existing_replace
 
 
+def preflight_epub(operation, guard):
+    """Refuse already-detectable file/backup mismatches before SQLite mutation."""
+    guard()
+    with catalog.metadata.safe_directory(str(Path(catalog.FILE).parent)) as fd:
+        raw, info = catalog.metadata.read_regular(fd, Path(catalog.FILE).name)
+    forward = operation["action"] == "forward"
+    expected = operation["original_epub_sha256"] if forward else operation["candidate_epub_sha256"]
+    catalog.require(catalog.metadata.sha256(raw) == expected, "EPUB admission source differs")
+    if forward:
+        candidate, _ = catalog.metadata.sanitized_epub(raw, None)
+        catalog.require(catalog.metadata.sha256(candidate) == operation["candidate_epub_sha256"], "EPUB admitted candidate differs")
+    else:
+        relative = os.path.relpath(catalog.FILE, LIBRARY)
+        manifest = STATE + "/backup/" + catalog.metadata.sha256(relative.encode()) + "-" + operation["original_epub_sha256"] + ".json"
+        catalog.require(operation["epub_backup_manifest"] == manifest, "exact Ransom backup manifest differs")
+        checked = catalog.metadata.restore_backup(manifest, LIBRARY, STATE, dry_run=True)
+        catalog.require(checked["path"] == relative and checked["original_sha256"] == operation["original_epub_sha256"], "Ransom inverse backup differs")
+    guard()
+    return info
+
+
 def worker(operation, dsn, ask_host, writer):
     """One original process/connection; no reconnect, cached guard or COPY manifest."""
     catalog.require(operation["library_root"] == LIBRARY and operation["database_path"] == DB
@@ -202,6 +236,7 @@ def worker(operation, dsn, ask_host, writer):
         with writer.converter_lock(STATE), contextlib.closing(sqlite3.connect(DB, isolation_level=None)) as db:
             db.execute("PRAGMA foreign_keys=ON")
             with publication_guard(guard, operation["retention_directory"], operation["original_epub_sha256"], operation["candidate_epub_sha256"]):
+                epub_info = preflight_epub(operation, guard)
                 if operation["action"] == "inverse-after-scan":
                     after = json.loads(private(operation["post_scan"]["path"], operation["post_scan"]["sha256"]))
                     result = catalog.invert_after_scan(db, before, after, operation, guard, operation["retention_directory"])
@@ -215,13 +250,8 @@ def worker(operation, dsn, ask_host, writer):
                     catalog.require(operation["action"] == "forward", "unknown maintenance action")
                     result = catalog.apply(db, before, operation, guard, operation["retention_directory"])
                     guard()
-                    with catalog.metadata.safe_directory(str(Path(catalog.FILE).parent)) as fd:
-                        raw, info = catalog.metadata.read_regular(fd, Path(catalog.FILE).name)
-                    catalog.require(catalog.metadata.sha256(raw) == operation["original_epub_sha256"], "EPUB admission source differs")
-                    candidate, _ = catalog.metadata.sanitized_epub(raw, None)
-                    catalog.require(catalog.metadata.sha256(candidate) == operation["candidate_epub_sha256"], "EPUB admitted candidate differs")
                     result["epub"] = catalog.metadata.strip_existing(catalog.FILE, LIBRARY, STATE, 900,
-                        expected_sha256=operation["original_epub_sha256"], expected_source_identity=catalog.metadata._identity(info), grouping=None)
+                        expected_sha256=operation["original_epub_sha256"], expected_source_identity=catalog.metadata._identity(epub_info), grouping=None)
                     catalog.require(result["epub"]["result"] == "stripped", "EPUB did not publish exact strip")
                 guard()
                 expected = before if operation["action"].startswith("inverse-") else catalog.expected_after(before)
@@ -232,7 +262,9 @@ def worker(operation, dsn, ask_host, writer):
 def worker_main():
     sys.path.insert(0, "/copy-writer")
     import book_copy_writer as writer
-    operation = json.loads(private("/maintenance/operation.json"))
+    catalog.require(len(sys.argv) == 2 and re.fullmatch(r"[0-9a-f]{64}", sys.argv[1]), "admitted worker operation SHA missing")
+    operation_sha = sys.argv[1]
+    operation = json.loads(private("/maintenance/operation.json", operation_sha))
     # Credential crosses only the existing private stdin stream, never argv/log/files.
     secret = json.loads(sys.stdin.readline(65536))
     catalog.require(set(secret) == {"dsn"} and isinstance(secret["dsn"], str), "private PG input differs")
@@ -241,11 +273,11 @@ def worker_main():
         nonlocal count
         count += 1
         catalog.require(count <= 32, "finite maintenance guard count exceeded")
-        request = {"event": "guard", "phase_token": operation["phase_token"], "sequence": count, "backend_pid": pid}
+        request = {"event": "guard", "phase_token": operation["phase_token"], "operation_sha256": operation_sha, "sequence": count, "backend_pid": pid}
         print(json.dumps(request), flush=True)
         # Host process has original timeout; independent Job cleanup revokes on its death.
         ack = json.loads(sys.stdin.readline(4096))
-        catalog.require(ack == {"event": "guard-ok", "phase_token": request["phase_token"], "sequence": count},
+        catalog.require(ack == {"event": "guard-ok", "phase_token": request["phase_token"], "operation_sha256": operation_sha, "sequence": count},
                         "fresh host service acknowledgement differs")
     def expired(*_):
         raise writer.DeadlineExpired("original maintenance abort clock")
@@ -256,7 +288,7 @@ def worker_main():
     signal.setitimer(signal.ITIMER_REAL, remaining)
     try:
         result = worker(operation, secret["dsn"], ask_host, writer)
-        print(json.dumps({"event": "complete", "phase_token": operation["phase_token"], "result": result}), flush=True)
+        print(json.dumps({"event": "complete", "phase_token": operation["phase_token"], "operation_sha256": operation_sha, "result": result}), flush=True)
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
 
@@ -264,6 +296,7 @@ def worker_main():
 class HostAdmission:
     """Exact one-Job bridge to existing service, publisher and recovery guards."""
     def __init__(self, config, watch, core, pod_guard, supervisor, publisher_guard):
+        validate_bootstrap(config)
         self.c, self.watch, self.core, self.pod_guard = config, watch, core, pod_guard
         self.publishers, self.supervisor = publisher_guard, supervisor
         self.status = {"phase_token": config["phase_token"], "writer_may_mutate": True,
@@ -276,7 +309,9 @@ class HostAdmission:
         self.operation = json.loads(private(config["operation"]["path"], config["operation"]["sha256"]))
         catalog.require(self.operation["phase_token"] == config["phase_token"]
                         and self.operation["root_runtime_go"] is True and self.operation["owner_approved"] is True
-                        and self.operation["prepared_only"] is False, "Root/owner runtime binding differs")
+                        and self.operation["prepared_only"] is False
+                        and self.operation["action"] in {"forward", "inverse-before-scan", "inverse-after-scan"},
+                        "Root/owner runtime binding differs")
 
     def run(self, argv, timeout=10):
         return self.watch.run(argv, timeout=min(timeout, max(.001, self.remaining())))
@@ -340,6 +375,8 @@ class HostAdmission:
                         and claim["spec"].get("volumeName") == self.c["pv_name"]
                         and pv["spec"]["claimRef"]["uid"] == self.c["claim_uid"], "maintenance PVC/PV identity or placement changed")
         self.jobs = [row]
+        hook = self.c["publisher_scope_hook"]
+        private(hook["script"], hook["sha256"])
         self.supervisor.Supervisor.service_fence(self)  # Full existing stopped services + live publisher/storage predicate.
         self.guard_lease()
 
@@ -347,6 +384,8 @@ class HostAdmission:
         """Exact private delivery after complete Job/Pod/custody admission."""
         catalog.require(name in {"ransom_catalog_maintenance.py", "ransom_maintenance_job.py", "before.json", "post-scan.json", "operation.json"}
                         and isinstance(raw, bytes) and 0 < len(raw) <= 32 * 1024 * 1024, "maintenance delivery scope/cap differs")
+        if name == "operation.json":
+            catalog.require(raw == catalog.canonical(self.operation), "delivered operation differs from exact admitted operation")
         self.guard()
         sha = hashlib.sha256(raw).hexdigest()
         receiver = "import os,sys,hashlib; p=sys.argv[1]; b=sys.stdin.buffer.read(33554433); assert len(b)<=33554432 and hashlib.sha256(b).hexdigest()==sys.argv[2]; f=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600); h=os.fdopen(f,'wb'); h.write(b); h.flush(); os.fsync(h.fileno()); h.close()"
@@ -384,13 +423,13 @@ class HostAdmission:
     def inspect(self):
         self.guard()
         # Same pinned component reads a fresh full typed snapshot at stopped-service admission.
-        code = "import sys;sys.path[:0]=['/maintenance','/copy-writer'];import ransom_maintenance_job as m;m.inspection_main()"
+        code = "import sys;sys.path[:0]=['/maintenance','/copy-writer'];import ransom_maintenance_job as m;m.inspection_main(" + repr(self.operation["action"]) + ")"
         result = subprocess.run(["kubectl", "exec", "-n", "media", self.c["pod_name"], "-c", "maintenance", "--", "python", "-I", "-B", "-c", code],
                                 capture_output=True, timeout=min(60, self.remaining()))
         catalog.require(result.returncode == 0 and len(result.stdout) <= 65536, "stopped current inspection failed")
         self.guard()
         proof = json.loads(result.stdout)
-        catalog.require(proof["before_path"] == "/maintenance/before.json", "inspection private path differs")
+        catalog.require(proof["before_path"] == "/maintenance/current.json", "inspection private path differs")
         catalog.require(proof["schema_sha256"] == self.c["approved_schema_sha256"], "current Native schema differs from reviewed application")
         raw = subprocess.run(["kubectl", "exec", "-n", "media", self.c["pod_name"], "-c", "maintenance", "--", "cat", proof["before_path"]],
                              capture_output=True, timeout=min(60, self.remaining()))
@@ -402,12 +441,65 @@ class HostAdmission:
             catalog.metadata._write_file(fd, target.name, raw.stdout)
         return dict(proof, retained_before_path=str(target))
 
+    def run_automatic(self, dsn):
+        """One conditional GO: existing CREATE→inspect→four allowed binds→execute."""
+        template = copy.deepcopy(self.operation)
+        catalog.require(template["original_abort_epoch"] is None and template["database_device_inode"] is None
+                        and template["schema_sha256"] == self.c["approved_schema_sha256"],
+                        "automatic operation template/clock/schema differs")
+        if template["action"] == "forward":
+            catalog.require(template["before"] is None and template["before_sha256"] is None,
+                            "forward template already bound; never reuse")
+        state = json.loads(private(self.c["watcher_state"]))
+        # Derive once from the existing original activation origin, never now().
+        self.operation["original_abort_epoch"] = self.supervisor.epoch(state["actuation_budget_started_at"]) + 170
+        self.create()
+        proof = self.inspect()
+        current_raw = private(proof["retained_before_path"], proof["before_sha256"])
+        current = json.loads(current_raw)
+        if template["action"] == "forward":
+            before_raw = current_raw
+            self.operation.update(before_sha256=catalog.digest(current),
+                                  before={"path": "/maintenance/before.json", "sha256": hashlib.sha256(current_raw).hexdigest()})
+        else:
+            original_ref = self.c["original_rows"]
+            before_raw = private(original_ref["path"], original_ref["sha256"])
+            original = json.loads(before_raw)
+            catalog.require(template["before"] == {"path": "/maintenance/before.json", "sha256": hashlib.sha256(before_raw).hexdigest()}
+                            and template["before_sha256"] == catalog.digest(original), "inverse original baseline binding differs")
+            if template["action"] == "inverse-before-scan":
+                catalog.require(current == catalog.expected_after(original), "fresh pre-scan after-state drifted")
+            else:
+                ref = self.c["post_scan_rows"]
+                raw = private(ref["path"], ref["sha256"])
+                after = json.loads(raw)
+                catalog.require(template["post_scan"] == {"path": "/maintenance/post-scan.json", "sha256": hashlib.sha256(raw).hexdigest()}
+                                and template["post_scan_after_sha256"] == catalog.digest(after) and current == after,
+                                "fresh post-scan after-state drifted")
+                catalog.require_scan_delta(catalog.expected_after(original), after, template["native_explicit_values"],
+                                           template["scan_started_epoch"], template["scan_finished_epoch"])
+                self.deliver("post-scan.json", raw)
+        self.operation["database_device_inode"] = proof["database_device_inode"]
+        # Exact declared dynamic leaves only; every authority/path/EPUB cell stays pinned.
+        neutral = copy.deepcopy(self.operation)
+        for key in ("original_abort_epoch", "database_device_inode", "before", "before_sha256"):
+            neutral[key] = template[key]
+        catalog.require(neutral == template, "automatic bind exceeded declared leaves")
+        self.deliver("before.json", before_raw)
+        raw = catalog.canonical(self.operation)
+        output = Path(self.c["bound_operation_output"])
+        with catalog.metadata.safe_directory(str(output.parent)) as fd:
+            catalog.metadata._write_file(fd, output.name, raw)
+        self.deliver("operation.json", raw)
+        return self.execute(dsn)
+
     def execute(self, dsn):
         """Finite synchronous guard channel; existing watcher owns independent cleanup."""
         catalog.require(self.operation["schema_sha256"] == self.c["approved_schema_sha256"], "worker Native schema admission differs")
         self.guard()
+        operation_sha = catalog.digest(self.operation)
         argv = ["kubectl", "exec", "-i", "-n", "media", self.c["pod_name"], "-c", "maintenance", "--", "python", "-I", "-B", "-c",
-                "import sys;sys.path[:0]=['/maintenance','/copy-writer'];import ransom_maintenance_job as m;m.worker_main()"]
+                "import sys;sys.path[:0]=['/maintenance','/copy-writer'];import ransom_maintenance_job as m;m.worker_main()", operation_sha]
         diagnostic = Path(self.c["execution_stderr"])
         fd = os.open(diagnostic, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         complete, sequence = None, 0
@@ -428,10 +520,11 @@ class HostAdmission:
                     while b"\n" in pending:
                         line, _, pending = pending.partition(b"\n")
                         event = json.loads(line)
-                        catalog.require(event.get("phase_token") == self.c["phase_token"], "worker event phase differs")
+                        catalog.require(event.get("phase_token") == self.c["phase_token"]
+                                        and event.get("operation_sha256") == operation_sha, "worker event phase/operation differs")
                         if event.get("event") == "guard":
                             sequence += 1
-                            catalog.require(set(event) == {"event", "phase_token", "sequence", "backend_pid"}
+                            catalog.require(set(event) == {"event", "phase_token", "operation_sha256", "sequence", "backend_pid"}
                                             and event["sequence"] == sequence and sequence <= 32
                                             and type(event["backend_pid"]) is int and event["backend_pid"] > 0,
                                             "maintenance guard event differs")
@@ -441,9 +534,9 @@ class HostAdmission:
                             catalog.require(current["backend_pid"] is None or current == lease, "PG backend changed or reconnected")
                             self.core.save(Path(self.c["pg_owner"]), lease)
                             self.guard()
-                            process.stdin.write((json.dumps({"event": "guard-ok", "phase_token": event["phase_token"], "sequence": sequence}) + "\n").encode());process.stdin.flush()
+                            process.stdin.write((json.dumps({"event": "guard-ok", "phase_token": event["phase_token"], "operation_sha256": operation_sha, "sequence": sequence}) + "\n").encode());process.stdin.flush()
                         else:
-                            catalog.require(set(event) == {"event", "phase_token", "result"} and event["event"] == "complete"
+                            catalog.require(set(event) == {"event", "phase_token", "operation_sha256", "result"} and event["event"] == "complete"
                                             and complete is None, "unknown or repeated maintenance outcome")
                             complete = event["result"]
                 process.stdin.close()
@@ -462,19 +555,20 @@ class HostAdmission:
                 self.execution = None
 
 
-def inspection_main():
+def inspection_main(action="forward"):
     """Read-only production DB handle; no catalog/EPUB operation or PG credential."""
     with contextlib.closing(sqlite3.connect("file:" + DB + "?mode=ro", uri=True, isolation_level=None)) as db:
         db.execute("PRAGMA query_only=ON");db.execute("BEGIN")
         before = catalog.snapshot(db)
         catalog.preconditions(before, time.time())
-        catalog.expected_after(before)
+        catalog.require(action in {"forward", "inverse-before-scan", "inverse-after-scan"}, "inspection action differs")
+        if action == "forward":catalog.expected_after(before)
         db.rollback()
     raw = catalog.canonical(before)
     catalog.require(len(raw) <= 32 * 1024 * 1024, "full stopped Native snapshot exceeds private cap")
-    path = "/maintenance/before.json"
+    path = "/maintenance/current.json"
     with catalog.metadata.safe_directory("/maintenance") as fd:
-        catalog.metadata._write_file(fd, "before.json", raw)
+        catalog.metadata._write_file(fd, "current.json", raw)
     info = os.stat(DB, follow_symlinks=False)
     return print(json.dumps({"schema": 1, "before_path": path, "before_sha256": hashlib.sha256(raw).hexdigest(),
                             "logical_before_sha256": catalog.digest(before), "schema_sha256": catalog.digest(before["schema"]),
@@ -482,6 +576,7 @@ def inspection_main():
 
 
 def load_sources(config):
+    validate_bootstrap(config)
     refs = config["sources"]
     needed = {"window_contract", "cached_source", "watcher", "checkpoint", "pod_guard", "supervisor", "publisher_guard"}
     catalog.require(set(refs) == needed, "maintenance dependency closure differs")
@@ -526,6 +621,29 @@ def native_reader(ref):
     return scope["capture"]
 
 
+def private_native_capture(capture, pod, directory):
+    """The existing reader relies on its caller's umask for private raw copies."""
+    directory = Path(directory)
+    with catalog.metadata.safe_directory(str(directory.parent)):
+        catalog.require(not os.path.lexists(directory), "fresh Native output directory required")
+    previous = os.umask(0o077)
+    try:
+        path, receipt = capture(pod, Path(directory))
+    finally:
+        os.umask(previous)
+    with catalog.metadata.safe_directory(str(directory)) as fd:
+        info = os.fstat(fd)
+        catalog.require(info.st_uid == os.getuid() and info.st_mode & 0o777 == 0o700, "Native output directory privacy differs")
+        for name in os.listdir(fd):
+            catalog.require(name in {"kavita.db", "kavita.db-wal", "kavita.db-shm", "copy-proof.json"}, "unexpected Native capture file")
+            info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            catalog.require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
+                            and info.st_nlink == 1 and info.st_mode & 0o777 == 0o600,
+                            "Native raw capture privacy differs")
+    catalog.require(Path(path) == Path(directory) / "kavita.db", "Native capture path differs")
+    return path, receipt
+
+
 def scan_after_normal(config, watch, capture, token):
     """Existing target admin route, real commit evidence, full fresh preservation."""
     catalog.require(config["owner_approved"] is True and config["root_scan_go"] is True
@@ -562,7 +680,7 @@ def scan_after_normal(config, watch, capture, token):
         return rows
     def fresh(directory):
         normal()
-        path, receipt = capture(config["native_pod_name"], Path(directory))
+        path, receipt = private_native_capture(capture, config["native_pod_name"], directory)
         catalog.require(receipt["before"] == receipt["after"] and receipt["readOnlySource"] is True, "Native DB copy unstable")
         with contextlib.closing(sqlite3.connect("file:" + str(path.resolve()) + "?mode=ro", uri=True)) as db:
             db.execute("PRAGMA query_only=ON");db.execute("BEGIN")
@@ -623,7 +741,7 @@ def scan_after_normal(config, watch, capture, token):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("watch", "create", "inspect", "execute", "scan"))
+    parser.add_argument("command", choices=("watch", "create", "inspect", "execute", "run", "scan"))
     parser.add_argument("config");parser.add_argument("config_sha256")
     args = parser.parse_args(argv)
     config = json.loads(private(args.config, args.config_sha256))
@@ -644,9 +762,11 @@ def main(argv=None):
             # caller sends only this private stdin object, never a credential in argv.
             credentials = json.loads(sys.stdin.readline(65536))
             catalog.require(set(credentials) == {"dsn"}, "private host credential input differs")
-            for ref in config["deliveries"]:
-                host.deliver(ref["name"], private(ref["path"], ref["sha256"]))
-            result = host.execute(credentials["dsn"])
+            if args.command == "run":result = host.run_automatic(credentials["dsn"])
+            else:
+                for ref in config["deliveries"]:
+                    host.deliver(ref["name"], private(ref["path"], ref["sha256"]))
+                result = host.execute(credentials["dsn"])
     except BaseException:
         Path(config["watcher_stop"]).touch(mode=0o600, exist_ok=True)
         raise

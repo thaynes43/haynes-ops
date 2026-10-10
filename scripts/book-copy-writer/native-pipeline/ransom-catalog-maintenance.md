@@ -82,7 +82,7 @@ CAS. Concurrent legitimate reading makes it refuse; it is never overwritten.
 
 The concrete host entrypoint is `ransom_maintenance_job.py` with the exact command
 `<frozen-python> -I -B <pinned-script> <command> <private-config> <config-sha256>`.
-Commands are `watch`, `create`, `inspect`, `execute` and `scan`. Every consumed
+Commands are `watch`, `create`, `inspect`, `execute`, `run` and `scan`. Every consumed
 source/config/payload is owner-readable 0600, single-link and SHA-pinned. The
 `sources` map binds the existing generic checkpoint, exact-Pod predicate,
 watcher, supervisor, window contract, cached-source and publisher guard. The
@@ -90,7 +90,11 @@ watcher arguments bind the distinct phase, exact reviewed Stop/inverse pair,
 cached receipt/activation, state/stop paths and unchanged 170/1800 limits.
 
 Use the existing generic `checkpoint-owned-job.py init` then `register --writer`
-before `watch`. The one ready manifest comes from `job_manifest`: one media Job,
+before `watch`. The exact existing source is
+`/home/dev/work/hn-825c-fence-prepared/copy-publisher-adapter-prepared/checkpoint-owned-job.py`,
+SHA `1ceacf5d487c32b3107ac7db6c166e2384739474505d68640ea7b4921402b622`.
+This is the generic core, not the fixed-five-intent native checkpoint. The one
+ready manifest comes from `job_manifest`: one media Job,
 qualified628e, exact current Kavita claim/node, exact existing NFS export, no
 service-account token and only a 64MiB memory delivery volume. A separate private
 `pg_owner` begins with this phase/application name and three null owner fields.
@@ -106,17 +110,38 @@ the two SHA-pinned bootstrap files. `inspect` uses a read-only SQLite handle in
 that stopped Job to capture complete current rows/schema and DB device/inode,
 checks the approved current application's schema digest and copies the full
 snapshot privately to the host. It does not reuse the historical v13 database.
-Root then freezes the exact operation with that current full snapshot, actual
-DB identity, retention path `.epub-convert/ransom-maintenance/<phase>`, same
-activation-origin+170 abort clock, original/candidate EPUB hashes and only the
-Ransom process hold removed. Deliveries for `execute` include the operation;
-the inspected `before.json` already exists in the Job and is never overwritten.
+Root approves the exact conditional operation template and source before Stop.
+The `run` command composes these existing methods in one finite process: create,
+inspect, bind only the declared full snapshot/hash, DB device/inode and original
+activation-origin+170 abort clock, deliver, then execute immediately. No model
+turn occurs between stopped inspection and publication. The retention path
+`.epub-convert/ransom-maintenance/<phase>`, original/candidate EPUB hashes,
+approved schema and one-process Ransom hold exclusion remain template-pinned.
+`run` requires initially null clock/inode; forward also requires null before
+rows/hash. Inspection writes `current.json`; the bound `before.json` is delivered
+once. Inverse templates retain SHA-bound original rows and require fresh current
+rows to equal the exact pre-scan after-state or qualified full post-scan state;
+legitimate new progress refuses before delivery or execution. The derived private
+operation is exclusive 0600 at `bound_operation_output`. Separate commands are
+available for read-only review; production uses the automatic composition.
 Credential input is exactly `{"dsn": "..."}` on private stdin, never argv.
+The canonical admitted operation SHA binds the worker launch, every guard/ACK
+and final outcome; a different delivered operation refuses before any API call.
+Both bootstrap filenames must be present exactly once and equal the actual host
+source bytes. The reviewed catalog SHA is checked before its host import.
+EPUB source/candidate and inverse backup/current-file conditions are checked
+before any catalog mutation, with the existing publication CAS still afterward.
 Any failure requests the existing owned recovery; no CREATE or mutation retry.
 
 After the accepted full Normal/retirement audit, `scan` uses the existing
 `reading-progress-readonly.py` capture functions (SHA-bound as `native_reader`),
 current original app Pod UID/spec/image and a private `{"token": "..."}` stdin.
+The caller sets umask 077 around the existing Native reader and checks every raw
+DB/sidecar/proof file is owner-only 0600 and singly linked in a fresh 0700 directory.
+The reused reader is `/home/dev/work/hn-825b-reading-progress-readonly.py`, SHA
+`1687ae429c6edfb11270ad2d0c337059b135ca47d36dbac92eb3b8637f7dc415`.
+Publisher-hook source
+bytes also pass the private SHA reader immediately before every service fence.
 It calls only the exact target route above. Actual logs must show the target
 start and the post-commit `Finished series update on Ransom` marker; the source
 emits that marker only after successful commit. Fresh DB/WAL copies before and
@@ -125,6 +150,13 @@ after must be stable, and full typed state must equal only the exact qualified
 explicit values are retained privately for any later inverse. The scan's
 original deadline is bound by Root, never reset here. This source contains no
 scan-to-inverse automatic retry or production approval shortcut.
+
+Forced Pod termination can prevent the worker's `finally` from removing the
+existing bare converter lock directory. Job/Pod and PG absence alone do not prove
+that filesystem lock absent. Ransom/hourly holds remain until exact lock-absence
+evidence; a remaining lock needs separately reviewed handling, never stale-lock
+takeover. The current unclassified writable-storage publisher refusal also blocks
+runtime admission until its existing guard path is resolved.
 
 Meaningful local controls use small synthetic SQLite databases, fake maintenance
 guards/clocks and temporary private backups. Run only the focused test under

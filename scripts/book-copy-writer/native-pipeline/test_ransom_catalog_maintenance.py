@@ -3,6 +3,7 @@ import ast
 import copy
 import datetime as dt
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sqlite3
@@ -286,7 +287,7 @@ class CatalogMaintenanceTests(unittest.TestCase):
                  'armed_at': dt.datetime.fromtimestamp(self.now - 10, dt.timezone.utc).isoformat(),
                  'cached_stop_actuation_binding': {'phase': phase}}
         state_path = put('watch.json', state)
-        operation = {'phase_token': phase, 'owner_approved': True, 'root_runtime_go': True,
+        operation = {'phase_token': phase, 'action': 'forward', 'owner_approved': True, 'root_runtime_go': True,
                      'prepared_only': False, 'original_abort_epoch': self.now + 170}
         operation_path = put('operation.json', operation)
         row = {'namespace': 'media', 'name': 'ransom-maintenance-a', 'phase_token': phase, 'uid': uid}
@@ -303,7 +304,8 @@ class CatalogMaintenanceTests(unittest.TestCase):
         stopped = {'spec': {'replicas': 0, 'selector': {'matchLabels': {'app': 'stopped'}}}, 'status': {'replicas': 0}}
         claim = {'metadata': {'uid': 'claim-uid'}, 'spec': {'volumeName': 'bound-pv'}, 'status': {'phase': 'Bound'}}
         pv = {'metadata': {'uid': 'pv-uid'}, 'spec': {'claimRef': {'uid': 'claim-uid'}}}
-        collector = self.base / 'collector.py';collector.write_text('def storage_inventory(pods,claims,volumes):return {"current":True}\n')
+        collector = self.base / 'collector.py';collector.write_text('def storage_inventory(pods,claims,volumes):return {"current":True}\n');collector.chmod(0o600)
+        collector_bytes = collector.read_bytes()
         config = {'phase_token': phase, 'operation': {'path': operation_path, 'sha256': catalog.digest(operation)},
                   'publisher_proof': {'path': put('publisher.json', {}), 'sha256': catalog.digest({})},
                   'watcher_state': state_path, 'watcher_stop': str(self.base / 'stop'), 'watcher_pid': 123,
@@ -312,7 +314,12 @@ class CatalogMaintenanceTests(unittest.TestCase):
                   'manifest_contract': {'path': put('contract.json', {}), 'sha256': catalog.digest({})},
                   'claim_name': 'kavita', 'claim_uid': 'claim-uid', 'claim_spec': copy.deepcopy(claim['spec']),
                   'pv_name': 'bound-pv', 'pv_uid': 'pv-uid', 'pv_spec': copy.deepcopy(pv['spec']),
-                  'publisher_scope_hook': {'script': str(collector)}, 'publisher_scope_sha256': catalog.digest({})}
+                  'publisher_scope_hook': {'script': str(collector), 'sha256': catalog.metadata.sha256(collector_bytes)},
+                  'publisher_scope_sha256': catalog.digest({})}
+        config['bootstrap_sources'] = []
+        for name in ('ransom_catalog_maintenance.py', 'ransom_maintenance_job.py'):
+            path = self.base / name;raw = (HERE / name).read_bytes();path.write_bytes(raw);path.chmod(0o600)
+            config['bootstrap_sources'].append({'name': name, 'path': str(path), 'sha256': catalog.metadata.sha256(raw)})
         watch = mock.Mock();watch.args.arm_deadline = 1800;watch.owned_job_pods = owned
         publisher, cache, pod_guard = mock.Mock(), mock.Mock(), mock.Mock()
         supervisor = SimpleNamespace(epoch=lambda text: dt.datetime.fromisoformat(text).timestamp(),
@@ -335,7 +342,7 @@ class CatalogMaintenanceTests(unittest.TestCase):
             pod_guard.verify_owned_pod.assert_called_once_with(row, objects[('job', row['name'], 'media')], pod, pod_uid)
             self.assertEqual(cache.check_live.call_args.kwargs['deadline'], self.now + 170)
             publisher.verify.assert_called_once()
-            for failure in ('clock', 'kernel', 'owner', 'claim', 'service', 'holds'):
+            for failure in ('clock', 'kernel', 'owner', 'claim', 'service', 'holds', 'hook'):
                 with self.subTest(failure=failure):
                     original_objects = copy.deepcopy(objects);original_pod = copy.deepcopy(pod)
                     if failure == 'clock':host.operation['original_abort_epoch'] += 1
@@ -344,10 +351,145 @@ class CatalogMaintenanceTests(unittest.TestCase):
                     if failure == 'claim':objects[('pv', 'bound-pv', '')]['spec']['claimRef']['uid'] = 'foreign'
                     if failure == 'service':objects[('deployment', 'kavita', 'media')]['status']['replicas'] = 1
                     if failure == 'holds':watch.verify_cached_stop_holds.side_effect = catalog.Refused('owned hold lost')
+                    if failure == 'hook':collector.write_bytes(b'raise AssertionError("unbound hook must never execute")\n')
                     with self.assertRaises((catalog.Refused, RuntimeError)):host.guard()
                     objects.clear();objects.update(original_objects);pod.clear();pod.update(original_pod)
                     host.operation['original_abort_epoch'] = self.now + 170;host.c['watcher_birth'] = 456
                     watch.verify_cached_stop_holds.side_effect = None
+                    collector.write_bytes(collector_bytes)
+
+    def test_automatic_handoff_binds_fresh_rows_once_without_replacing_inverse_baseline(self):
+        host = maintenance.HostAdmission.__new__(maintenance.HostAdmission)
+        state = self.base / 'automatic-watch.json'
+        state.write_bytes(catalog.canonical({'actuation_budget_started_at': dt.datetime.fromtimestamp(self.now, dt.timezone.utc).isoformat()}));state.chmod(0o600)
+        current_path = self.base / 'fresh.json'
+        def current_rows(value):
+            raw = catalog.canonical(value);current_path.write_bytes(raw);current_path.chmod(0o600)
+            return {'retained_before_path': str(current_path), 'before_sha256': catalog.metadata.sha256(raw),
+                    'database_device_inode': self.contract['database_device_inode']}
+        host.c = {'approved_schema_sha256': self.contract['schema_sha256'], 'watcher_state': str(state),
+                  'bound_operation_output': str(self.base / 'bound-operation.json')}
+        host.operation = dict(self.contract, action='forward', original_abort_epoch=None, database_device_inode=None,
+                              before=None, before_sha256=None)
+        template = copy.deepcopy(host.operation)
+        host.supervisor = SimpleNamespace(epoch=lambda text: dt.datetime.fromisoformat(text).timestamp())
+        calls = []
+        host.create = lambda: calls.append('create')
+        proof = current_rows(self.before)
+        host.inspect = lambda: (calls.append('inspect') or proof)
+        host.deliver = lambda name, raw: calls.append(name)
+        host.execute = lambda dsn: (calls.append('execute') or {'admitted': True})
+        self.assertEqual(host.run_automatic('private-fixture'), {'admitted': True})
+        self.assertEqual(calls, ['create', 'inspect', 'before.json', 'operation.json', 'execute'])
+        self.assertEqual(host.operation['original_abort_epoch'], self.now + 170)
+        self.assertEqual(host.operation['before_sha256'], catalog.digest(self.before))
+        neutral = copy.deepcopy(host.operation)
+        for key in ('original_abort_epoch', 'database_device_inode', 'before', 'before_sha256'):neutral[key] = template[key]
+        self.assertEqual(neutral, template)
+        self.assertEqual((self.base / 'bound-operation.json').stat().st_mode & 0o777, 0o600)
+
+        after = self.scan_fixture()
+        original_raw, after_raw = catalog.canonical(self.before), catalog.canonical(after)
+        original_path, after_path = self.base / 'original.json', self.base / 'after.json'
+        for path, raw in ((original_path, original_raw), (after_path, after_raw)):
+            path.write_bytes(raw);path.chmod(0o600)
+        host.c.update(approved_schema_sha256=self.contract['schema_sha256'], bound_operation_output=str(self.base / 'inverse-operation.json'),
+                      original_rows={'path': str(original_path), 'sha256': catalog.metadata.sha256(original_raw)},
+                      post_scan_rows={'path': str(after_path), 'sha256': catalog.metadata.sha256(after_raw)})
+        inverse_template = dict(self.contract, action='inverse-after-scan', original_abort_epoch=None, database_device_inode=None,
+                                before={'path': '/maintenance/before.json', 'sha256': catalog.metadata.sha256(original_raw)},
+                                post_scan={'path': '/maintenance/post-scan.json', 'sha256': catalog.metadata.sha256(after_raw)})
+        drift = copy.deepcopy(after);drift['tables']['AppUserProgresses'][0]['BookScrollId'] = catalog.cell('text', 'new-reading')
+        proof = current_rows(drift);host.operation = copy.deepcopy(inverse_template);calls.clear()
+        with self.assertRaisesRegex(catalog.Refused, 'after-state drifted'):host.run_automatic('private-fixture')
+        self.assertEqual(calls, ['create', 'inspect'])
+        self.assertFalse((self.base / 'inverse-operation.json').exists())
+        proof = current_rows(after);host.operation = copy.deepcopy(inverse_template);calls.clear()
+        host.run_automatic('private-fixture')
+        self.assertEqual(calls, ['create', 'inspect', 'post-scan.json', 'before.json', 'operation.json', 'execute'])
+        self.assertEqual(host.operation['before'], inverse_template['before'])
+        self.assertEqual(host.operation['before_sha256'], catalog.digest(self.before))
+
+    def test_reused_native_reader_raw_files_are_private_and_umask_restored(self):
+        directory = self.base / 'native-private'
+        def capture(pod, output):
+            output.mkdir()
+            (output / 'kavita.db').write_bytes(b'private-fixture')
+            (output / 'copy-proof.json').write_text('{}')
+            return output / 'kavita.db', {'readOnlySource': True}
+        previous = maintenance.os.umask(0o022)
+        try:
+            maintenance.private_native_capture(capture, 'fixture-pod', directory)
+            self.assertEqual(maintenance.os.umask(0o022), 0o022)
+        finally:maintenance.os.umask(previous)
+        self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
+        self.assertTrue(all(path.stat().st_mode & 0o777 == 0o600 for path in directory.iterdir()))
+        with self.assertRaises(catalog.Refused):maintenance.private_native_capture(capture, 'fixture-pod', directory)
+
+    def test_exact_operation_and_bootstrap_are_bound_before_worker_guard_or_api(self):
+        refs = []
+        for name in ('ransom_catalog_maintenance.py', 'ransom_maintenance_job.py'):
+            path = self.base / name;raw = (HERE / name).read_bytes();path.write_bytes(raw);path.chmod(0o600)
+            refs.append({'name': name, 'path': str(path), 'sha256': catalog.metadata.sha256(raw)})
+        maintenance.validate_bootstrap({'bootstrap_sources': refs})
+        with self.assertRaises(catalog.Refused):maintenance.validate_bootstrap({'bootstrap_sources': [refs[0], refs[0]]})
+        changed = copy.deepcopy(refs);Path(changed[0]['path']).write_bytes(b'unbound catalog')
+        changed[0]['sha256'] = catalog.metadata.sha256(b'unbound catalog')
+        with self.assertRaises(catalog.Refused):maintenance.validate_bootstrap({'bootstrap_sources': changed})
+        host = maintenance.HostAdmission.__new__(maintenance.HostAdmission)
+        host.operation = dict(self.contract, phase_token='a' * 32)
+        host.guard = mock.Mock()
+        with self.assertRaisesRegex(catalog.Refused, 'delivered operation differs'):
+            host.deliver('operation.json', catalog.canonical(dict(host.operation, root_runtime_go=False)))
+        host.guard.assert_not_called()
+        path = self.base / 'worker-operation.json';raw = catalog.canonical(host.operation)
+        path.write_bytes(raw);path.chmod(0o600);sha = catalog.metadata.sha256(raw)
+        real_private = maintenance.private
+        def redirected(source, expected=None, cap=32 * 1024 * 1024):
+            return real_private(path if source == '/maintenance/operation.json' else source, expected, cap)
+        def fake_worker(operation, dsn, ask, writer):
+            self.assertEqual(operation, host.operation);ask(41);return {'changed_cells': 7}
+        for failure in (None, 'file', 'ack'):
+            with self.subTest(failure=failure):
+                path.write_bytes(raw if failure != 'file' else b'{}')
+                ack = {'event': 'guard-ok', 'phase_token': 'a' * 32, 'operation_sha256': sha if failure != 'ack' else '0' * 64, 'sequence': 1}
+                stream = io.StringIO(json.dumps({'dsn': 'private-fixture'}) + '\n' + json.dumps(ack) + '\n')
+                output = io.StringIO()
+                with mock.patch.dict(sys.modules, {'book_copy_writer': SimpleNamespace(DeadlineExpired=catalog.Refused)}), \
+                     mock.patch.object(maintenance, 'private', side_effect=redirected), mock.patch.object(maintenance, 'worker', side_effect=fake_worker) as worker, \
+                     mock.patch.object(maintenance.time, 'time', return_value=self.now), mock.patch.object(maintenance.signal, 'signal'), \
+                     mock.patch.object(maintenance.signal, 'setitimer'), mock.patch.object(sys, 'argv', ['-c', sha]), \
+                     mock.patch.object(sys, 'stdin', stream), mock.patch.object(sys, 'stdout', output):
+                    if failure:
+                        with self.assertRaises(catalog.Refused):maintenance.worker_main()
+                        if failure == 'file':worker.assert_not_called()
+                    else:
+                        maintenance.worker_main()
+                        events = [json.loads(line) for line in output.getvalue().splitlines()]
+                        self.assertEqual([event['event'] for event in events], ['guard', 'complete'])
+                        self.assertTrue(all(event['operation_sha256'] == sha for event in events))
+
+    def test_epub_and_inverse_backup_preflight_refuses_before_catalog_mutation(self):
+        folder = self.root / 'Daniel Silva' / 'Ransom';folder.mkdir(parents=True)
+        path = folder / 'Ransom.epub';path.write_bytes(b'original')
+        source, candidate = catalog.metadata.sha256(b'original'), catalog.metadata.sha256(b'candidate')
+        operation = {'action': 'forward', 'original_epub_sha256': source, 'candidate_epub_sha256': candidate}
+        guard = mock.Mock()
+        with mock.patch.object(catalog, 'FILE', str(path)), mock.patch.object(maintenance, 'LIBRARY', str(self.root)), \
+             mock.patch.object(maintenance, 'STATE', str(self.base / '.epub-convert')), \
+             mock.patch.object(catalog.metadata, 'sanitized_epub', return_value=(b'candidate', {})):
+            maintenance.preflight_epub(operation, guard)
+            self.assertEqual(guard.call_count, 2)
+            with self.assertRaises(catalog.Refused):maintenance.preflight_epub(dict(operation, candidate_epub_sha256='0' * 64), guard)
+            path.write_bytes(b'candidate')
+            inverse = dict(operation, action='inverse-before-scan', epub_backup_manifest='/wrong/backup.json')
+            with self.assertRaises(catalog.Refused):maintenance.preflight_epub(inverse, guard)
+            relative = str(path.relative_to(self.root))
+            inverse['epub_backup_manifest'] = str(self.base / '.epub-convert' / 'backup' / (catalog.metadata.sha256(relative.encode()) + '-' + source + '.json'))
+            with mock.patch.object(catalog.metadata, 'restore_backup', return_value={'path': relative, 'original_sha256': source}) as restore:
+                maintenance.preflight_epub(inverse, guard)
+                restore.assert_called_once_with(inverse['epub_backup_manifest'], str(self.root), str(self.base / '.epub-convert'), dry_run=True)
+        self.assertEqual(catalog.snapshot(self.db), self.before)
 
 
 if __name__ == "__main__":
