@@ -145,3 +145,9 @@ A failed run that says the action could not exchange the OIDC token means the Cl
 App lacks access to the repo. The review has run only when a summary comment (or
 "No findings.") from the Claude app is on the PR. Also check that `@claude` is quiet
 on that PR (it only fires on a mention).
+
+GitHub Actions job logs and artifacts redirect to numbered
+`productionresultssa*.blob.core.windows.net` accounts. The dev-env Cilium policy
+allows that prefix in both its DNS rules and HTTPS `toFQDNs` list; a newly selected
+account must not be fetched through a proxy or another pod. This policy is outside
+`app/resources/` and does not alter the workload or its generated ConfigMaps.
