@@ -356,3 +356,26 @@ receipt `9d1a5c66` are retained under
 `/home/dev/work/hn-ransom-native-fixture-actual-53df-v12-1010/`.
 No automatic retry or production catalog/strip/write authority follows. Historical
 inputs, 180/200 clocks, isolation, 1931 retained keys and 1Gi/2Gi resources stay fixed.
+
+Ops #3708 merged `0d51f28845585e021ebb716dd77e5d3b334b6e86` after exact-head
+Pathfinder peer `efdf5be8`, required checks and actual Claude advisory No findings.
+PR run38017853753 and main run38018580077 both passed the compiled network-none,
+0.5-CPU finite native controls, including 14 packet refusals and protected Volume
+color drift. Main published and signed
+`ghcr.io/thaynes43/book-native-scan-fixture@sha256:c5e8aa8f2b059ef95e1c5f43502f9ca3baaa37d961e69fc8c269a5956209d861`.
+The signature's trusted certificate, offline inclusion proof, workflow identity,
+main ref and exact source SHA were verified. Actual five generic registry modules
+equal the retained passed-PR artifact; the eight native base layers and the other
+12 module pins stay unchanged. The corrected harness DLL SHA is
+`9aad4170ded1499b1b88503ebfc2c79164f449736339fcb02cb27090173ec3e2`.
+
+Private module closure:
+`/tmp/hn-ransom-series-color-publication-proof-1010/module-closure.json`, SHA
+`5d29eb44dcb72244094e7df593c653d9bbafecedc2ec29dfc70f43367774d1bb`.
+Registry receipt `dfb94972`, signature receipt `d44bb4d3`. The small main artifact
+download was refused at productionresultssa6.blob.core.windows.net, outside the
+current CNP allowlist. No retry, bypass or egress change occurred; no main artifact
+byte equality is claimed. Physical signed-registry equality with the passed PR is
+the accepted closure route. The exact host/skeleton literal pin adopts this image;
+fresh CLOSED preparation, current native observations, independent peer and separate
+root one-run GO still precede any historical v13 Job. No production authority follows.

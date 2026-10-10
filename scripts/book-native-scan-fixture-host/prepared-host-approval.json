@@ -7,7 +7,7 @@
   "phase": null,
   "approvedAt": null,
   "startBefore": null,
-  "image": "ghcr.io/thaynes43/book-native-scan-fixture@sha256:53dfa0670e616e9b6845ccb2dc8f8dbf40cc3e28a7367d0b0ce105d2a6a196b4",
+  "image": "ghcr.io/thaynes43/book-native-scan-fixture@sha256:c5e8aa8f2b059ef95e1c5f43502f9ca3baaa37d961e69fc8c269a5956209d861",
   "sourcePins": [],
   "manifestSha256": null,
   "templatePath": null,
