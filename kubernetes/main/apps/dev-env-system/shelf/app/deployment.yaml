@@ -50,7 +50,7 @@ spec:
           # v2.9.1 source b6c0f3c (release dev-env#123; fresh-start fix #124).
           # publish-agent.yml run 37944933337 signed/verified keyless on refs/tags/v2.9.1,
           # matching dev-env-templates.
-          image: ghcr.io/thaynes43/dev-env:2.9.1@sha256:a975de7dbc40c6f33048a38a327a2db2b9698a7615f5b2b9897abbb1d04df0cf
+          image: ghcr.io/thaynes43/dev-env:2.12.0@sha256:a46dcd5d70efb807b33a043fd24c9b1e4f0a235e40f5dab872e599fc40c4dc93
           args: ["shelf"]
           env:
             - name: HOME
