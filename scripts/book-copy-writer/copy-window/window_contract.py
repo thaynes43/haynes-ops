@@ -49,6 +49,77 @@ def sha(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
+REVIEW_SOURCES = ('copy-phase-supervisor.py', 'copy-recovery-watch.py',
+                  'window_contract.py', 'cached_source.py', 'manifest-contract.json')
+ADVISORY_FIELDS = ('name', 'status', 'conclusion', 'detailsUrl', 'startedAt', 'completedAt')
+FINDING = re.compile(r'\b(?:CRITICAL|HIGH|MEDIUM|LOW|Needs changes)\b|\[P[0-3]\]', re.I)
+
+
+def load_review_disposition(entry, bindings, repo, read_private):
+    """Read a root-ratified independent review; no review or runtime action."""
+    def artifact(item):
+        require(isinstance(item, dict) and set(item) == {'path', 'sha256'}
+                and Path(item['path']).is_absolute()
+                and re.fullmatch(r'[0-9a-f]{64}', item['sha256']), 'review descriptor invalid')
+        raw = read_private(item['path'])
+        require(sha(raw) == item['sha256'], 'review artifact changed')
+        return json.loads(raw)
+
+    value = artifact(entry)
+    require(value.get('schema') == 1 and value.get('prepared_only') is False
+            and value.get('explicitRootApproval') is True
+            and value.get('bindings') == bindings, 'review is not ratified for this exact operation')
+    require(set(bindings) == {'source_commit', 'stop_pr', 'stop_head', 'inverse_pr', 'inverse_head', 'phase_token'}
+            and all(re.fullmatch(r'[0-9a-f]{40}', bindings[k]) for k in ('source_commit', 'stop_head', 'inverse_head'))
+            and re.fullmatch(r'[0-9a-f]{32}', bindings['phase_token'])
+            and all(isinstance(bindings[k], str) and bindings[k].isdigit() for k in ('stop_pr', 'inverse_pr')),
+            'review operation binding invalid')
+    review = artifact(value['independent_review'])
+    require(review.get('schema') == 1 and review.get('bindings') == bindings
+            and review.get('provider') == 'codex' and review.get('decision') == 'PASS'
+            and review.get('unresolved_findings') == []
+            and isinstance(review.get('prepared_by'), str) and bool(review['prepared_by'])
+            and isinstance(review.get('reviewed_by'), str) and bool(review['reviewed_by'])
+            and review['prepared_by'] != review['reviewed_by'], 'independent review missing or unresolved')
+    require(value.get('failure_class') == review.get('failure_class') == 'startup_before_review'
+            and value.get('advisory') == review.get('advisory'), 'startup disposition differs from actual review')
+    require(set(review.get('source_files', {})) == set(REVIEW_SOURCES), 'review source closure incomplete')
+    for name, expected in review['source_files'].items():
+        require(re.fullmatch(r'[0-9a-f]{64}', expected)
+                and sha(Path(__file__).with_name(name).read_bytes()) == expected
+                and sha(git(repo, 'show', bindings['source_commit']+':scripts/book-copy-writer/copy-window/'+name)) == expected,
+                'review source commit or running file changed')
+    return value
+
+
+def independent_advisory(value, pr, bindings):
+    """Accept only the exact completed startup failure already reviewed by root."""
+    if not value or value.get('bindings') != bindings or value.get('explicitRootApproval') is not True:
+        return False
+    if value.get('prepared_only') is not False or value.get('failure_class') != 'startup_before_review':
+        return False
+    if pr.get('headRefOid') != bindings.get('inverse_head'):
+        return False
+    rows = [r for r in pr.get('statusCheckRollup', []) if r.get('name') == 'Claude Review (advisory)']
+    if len(rows) != 1:
+        return False
+    advisory = rows[0]
+    actual = {k: advisory.get(k) for k in ADVISORY_FIELDS}
+    if (actual != value.get('advisory') or actual['status'] != 'COMPLETED'
+            or actual['conclusion'] != 'FAILURE' or not all(actual[k] for k in ADVISORY_FIELDS)):
+        return False
+    try:
+        epoch = lambda s: dt.datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()
+        head = epoch(pr['commits'][-1]['committedDate'])
+        if not head <= epoch(actual['startedAt']) <= epoch(actual['completedAt']):
+            return False
+        return not any(FINDING.search(c.get('body', '')) for c in pr.get('comments', [])
+                       if c.get('author', {}).get('login', '').lower() in ('claude', 'claude[bot]')
+                       and epoch(c.get('updatedAt') or c['createdAt']) >= head)
+    except (KeyError, IndexError, TypeError, ValueError):
+        return False
+
+
 def expected_stop(normal):
     """The entire parsed tree must differ only at these exact nine fields."""
     docs = {p: yaml.safe_load(raw) for p, raw in normal.items()}

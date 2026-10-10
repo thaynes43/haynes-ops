@@ -101,11 +101,14 @@ def fresh(value,age=300):
 def prospective_moves(report):
  return sum(not row['keeper'] and not row['protected_reasons']
             for group in report['groups'] for row in group['copies'])
-def clean_gates(pr):
+def clean_gates(pr,review=None,bindings=None):
  checks=pr.get('statusCheckRollup',[]);names={r.get('name'):r for r in checks}
- for name in ['Flux Local - Success','Diff Scope - Success','Claude Review (advisory)']:
+ independent=window.independent_advisory(review,pr,bindings or {})
+ for name in ['Flux Local - Success','Diff Scope - Success']:
   if not terminal_success(names.get(name,{})) or names[name].get('conclusion')!='SUCCESS':return False
- if not checks or any(not terminal_success(r) for r in checks):return False
+ if not checks or any(not terminal_success(r) and not (independent and r.get('name')=='Claude Review (advisory)') for r in checks):return False
+ if independent:return True
+ if not terminal_success(names.get('Claude Review (advisory)',{})) or names['Claude Review (advisory)'].get('conclusion')!='SUCCESS':return False
  at=epoch(pr['commits'][-1]['committedDate'])
  if not names['Claude Review (advisory)'].get('startedAt') or epoch(names['Claude Review (advisory)']['startedAt'])<at:return False
  comments=[r for r in pr['comments'] if r.get('author',{}).get('login','').lower() in ('claude','claude[bot]') and epoch(r.get('updatedAt') or r['createdAt'])>=at]
@@ -210,6 +213,15 @@ class Supervisor:
   if kind not in types:raise Refused('unsupported authoritative inventory kind')
   typed,resource=types[kind];endpoint='/api/v1/'+(f'namespaces/{ns}/' if ns else '')+resource
   return window.typed_inventory(json.loads(self.run(['kubectl','get','--raw',endpoint])),typed,'v1',ns)
+ def review_gate(self,pr):
+  if not self.c.get('review_disposition'):return clean_gates(pr)
+  operation=self.c['review_operation']
+  bindings=dict(operation,inverse_pr=str(self.c['restore_pr']),inverse_head=self.c['restore_head'],phase_token=self.status['phase_token'])
+  pause=json.loads(self.run(['gh','pr','view',operation['stop_pr'],'--repo',REPO,'--json','headRefOid']))
+  if pause['headRefOid']!=operation['stop_head']:raise Refused('reviewed Stop head changed')
+  value=window.load_review_disposition(self.c['review_disposition'],bindings,self.c['repo_dir'],cache.read_private)
+  self.status['independent_review_disposition_sha256']=self.c['review_disposition']['sha256'];self.save()
+  return clean_gates(pr,value,bindings)
  def inverse_green(self):
   if self.c.get('cached_source_receipt'):
    return self.merged_inverse_ready()
@@ -217,7 +229,7 @@ class Supervisor:
    'state,baseRefName,headRefOid,statusCheckRollup,comments,commits,files']))
   pages=json.loads(self.run(['gh','api','--paginate','--slurp',f"repos/{REPO}/issues/{self.c['restore_pr']}/comments?per_page=100"]))
   pr['comments']=[{'author':{'login':r['user']['login']},'body':r['body'],'createdAt':r['created_at'],'updatedAt':r['updated_at']} for page in pages for r in page]
-  if pr['state']!='OPEN' or pr['baseRefName']!='main' or pr['headRefOid']!=self.c['restore_head'] or not clean_gates(pr):
+  if pr['state']!='OPEN' or pr['baseRefName']!='main' or pr['headRefOid']!=self.c['restore_head'] or not self.review_gate(pr):
    raise Refused('exact main inverse/current checks/normal advisory are not green')
   expected={
    'kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert-cronjob.yaml':(1,1),
@@ -254,7 +266,7 @@ class Supervisor:
   merge=receipt.get('normal_inverse_merge_sha')
   if (pr['state']!='MERGED' or pr['baseRefName']!='main' or pr['headRefOid']!=self.c['restore_head']
       or pr.get('mergeCommit',{}).get('oid')!=merge or str(receipt.get('restore_pr'))!=str(self.c['restore_pr'])
-      or not clean_gates(pr)):raise Refused('reviewed Normal inverse must already be merged before Stop')
+      or not self.review_gate(pr)):raise Refused('reviewed Normal inverse must already be merged before Stop')
   self.run(['git','-C',self.c['repo_dir'],'fetch','origin','main:refs/remotes/origin/main'])
   current=self.run(['git','-C',self.c['repo_dir'],'rev-parse','origin/main']).strip()
   self.run(['git','-C',self.c['repo_dir'],'merge-base','--is-ancestor',merge,current])
@@ -919,7 +931,9 @@ def validate(c):
  required={'repo_dir','manifest_contract','hold_receipt','restore_pr','restore_head','watchdog_state','watchdog_stop','evidence_dir','copy_phase_state','copy_checkpoint_helper','copy_checkpoint_helper_sha256','cached_source_receipt','cached_source_activation',
  'readonly_capture_jobs','copy_job','arm_deadline_seconds','max_service_absence_seconds','restore_reserve_seconds','publisher_guard','publisher_guard_sha256','publisher_scope_sha256','publisher_scope_hook','publisher_config','publisher_config_sha256',
  'assembly_script','assembly_script_sha256','delivery_script','delivery_script_sha256','outcome_script','outcome_script_sha256','kavita_exporters_dir','kavita_exporter_sha256','live_byte_baseline','source_private_input','selection_approval','census_holds','ll_sql_sha256'}
- if set(c)!=required or 'REPLACE' in json.dumps(c):raise Refused('exact reviewed callback configuration is required')
+ optional={'review_disposition','review_operation'}
+ if set(c) not in (required,required|optional) or 'REPLACE' in json.dumps(c):raise Refused('exact reviewed callback configuration is required')
+ if optional.issubset(c) and set(c['review_operation'])!={'source_commit','stop_pr','stop_head'}:raise Refused('review operation incomplete')
  if c['max_service_absence_seconds']!=300 or c['restore_reserve_seconds']!=50 or not 1<=c['arm_deadline_seconds']<=600:raise Refused('phase300/abort250/reserve50 are fixed')
  if not re.fullmatch('[0-9a-f]{40}',c['restore_head']) or not re.fullmatch('[0-9a-f]{64}',c['publisher_scope_sha256']):raise Refused('exact inverse and scope hashes required')
  for key in ('copy_checkpoint_helper','publisher_guard','publisher_config','assembly_script','delivery_script','outcome_script'):

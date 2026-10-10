@@ -39,10 +39,39 @@ token, its actual Stop artifact is byte-verified, and both parent Kustomizations
 are actually held and fresh-handler-drained. Their pre-hold proof must be Normal
 and Ready; their held proof binds same UID/spec/phase/token, without claiming
 observedGeneration advanced or Stop was applied by a held parent. The inverse then receives current
-required checks and an advisory explicitly reporting no findings and is **merged
+required checks and a disposed advisory and is **merged
 to Normal main while actual services remain Normal**. A favorable verdict with
 an unresolved severity finding refuses. Pending checks cannot start Stop clocks.
 Staging fits the original 600s arm ceiling; a separate runtime GO is required.
+
+The standing owner policy makes Claude advisory, never a required check. The
+normal path still reads a successful current-head Claude review explicitly
+reporting no findings. A completed current-head Claude startup failure can instead
+use an immutable private `review_disposition` descriptor, explicitly ratified by
+root after an independent Codex review. This records the failed review truthfully;
+it does not invent a successful Claude result or accept pending/unknown reviews.
+All other check, exact main/inverse, source, phase, UID, lease and clock guards
+remain unchanged. This optional disposition supplies no runtime GO itself.
+
+The schema-1 disposition has `prepared_only: false`, `explicitRootApproval: true`,
+`bindings` (exact `source_commit`, `stop_pr`, `stop_head`, `inverse_pr`,
+`inverse_head`, `phase_token`), the exact failed `advisory` check fields, and
+`independent_review: {path, sha256}`. Its separate immutable review receipt has
+the same bindings, `provider: codex`, distinct nonempty `prepared_by` and
+`reviewed_by`, `decision: PASS`, `unresolved_findings: []`, and all five
+`source_files` hashes (supervisor, watcher, contract, cache and manifest contract).
+Root reviews the actual startup evidence and independent findings before setting
+approval. Those hashes must match both the running files and the exact source
+commit. Failed non-advisory checks, stale heads, findings, source drift, missing
+approval or receipt drift refuse. Prepared examples retain approval false.
+
+The supervisor's optional `review_operation` binds `source_commit`, `stop_pr`
+and `stop_head`; phase and inverse identities come from its existing state/config.
+The watcher receives the same descriptor SHA with `--review-disposition` and
+`--review-disposition-sha256`, plus `--review-source-commit`; its existing Stop
+arguments and live inverse head complete the bindings. A reviewer must freeze a
+new exact-head receipt after inverse retargeting. Active cached recovery never
+queries or reopens advisory review, preserving the original restoration budget.
 
 `seal-cached-source.py` performs read-only Git/native verification of the private
 draft receipt and publishes one immutable 0600 seal. Its JSON binds phase, Stop
@@ -92,6 +121,23 @@ Only after all actual Normal convergence is proved does recovery remove its own
 phase annotation from the seven resumed resources, with same UID/spec/RV tests.
 Other controller annotations and fresh reconcile requests remain. A foreign phase
 annotation refuses retirement. This lets a later fresh phase establish ownership.
+
+Generic COPY recovery keeps a fresh complete typed Job/Pod phase union and both
+primary PG lease checks before every controller release and at final proof. STOP
+does not prove a submitted CREATE cannot complete late. When that complete union
+is empty, recovery skips the fifteen duplicate per-intent inventory reads; any
+observed resource still takes the existing exact UID/phase cleanup and final
+absence proof. Malformed inventory and PG errors refuse release. The Source is
+explicitly reconciled once per recovery attempt, then freshly checked for its
+owned UID/spec/phase, unsuspended state and exact Ready Normal artifact before
+each resume/reconcile. All six needed Kustomization reconciles remain. The
+original 50s restoration reserve, 60s safety attempt and 300s service ceiling do
+not change. The 28.363524s Normal-only rehearsal proves its separate cancellation
+path; it does not prove an actual COPY Stop can restore services within 50s.
+The current Normal harness inherits these generic recovery callbacks without
+the earlier Normal-only inventory/source/reconcile shortcuts. A fresh immutable
+current-source rehearsal must prove the services-running generic recovery budget
+before COPY; actual stopped-service convergence remains a separate runtime proof.
 
 `normal-rehearsal.py` prepares and executes a separate Normal-only cancellation
 rehearsal. Preparation copies the generic source closure and a reviewed exact

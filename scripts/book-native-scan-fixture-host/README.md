@@ -90,7 +90,12 @@ An unacknowledged creation requires a complete native lookup of the exact review
 name/phase before UID adoption; a conflicting object refuses deletion.
 
 All raw database/EPUB/history/XPath/authentication/recipe bytes and resulting native
-logs remain private. Public notes contain aggregate counts, byte hashes, IDs and
+logs remain private. Before parsing each already-read bounded native log response,
+the host atomically retains its exact bytes as the latest private `native-output.jsonl`
+snapshot (0600, at most 1 MiB). A REFUSED event or parse failure therefore preserves
+the observed output before cleanup. This adds no log request, retry or deadline;
+the original collection clock and every proof/ACK/cleanup gate still apply.
+Public notes contain aggregate counts, byte hashes, IDs and
 source receipts only. A successful isolated diagnostic still does not authorize a
 new production catalog writer. The coordinator ratifies that later decision using
 actual native proof and the verified owner/normative boundary, without inventing a

@@ -442,3 +442,21 @@ then atomically retains it on the same refusal. A finite replaced-UID/wrong-kind
 control proves the exact Job and rejected Pod remain private, with no Node fetch,
 ACK or admission. Every identity guard remains unchanged. The review finding is
 fixed; neither this source control nor terminal metadata advances v9 UNKNOWN.
+
+PR #3692 merged exact successor `d465b71b` as `ef22a182` after required/native CI
+and independent current-head peer PASS (receipt SHA `6ae8005a`). The current
+advisory run 38013702060 failed at startup (320 ms, one turn, zero cost), with no
+findings; this was recorded as a missing review, not a clean review.
+
+Fresh CLOSED v10 packet SHA `a92830d7`, phase
+`eda53028-27a9-47ee-a17c-623616fb1c37`, was independently reviewed (receipt
+`35cc8de8`) but withdrawn before any runtime authorization or Job. Source inspection
+proved another diagnostics loss: the host could read a native REFUSED event and
+raise before retaining its output. Root authorized retaining exactly the existing
+bounded raw response privately before parsing/refusal, under the original clock.
+One latest atomic 0600 snapshot avoids accumulating repeated logs; no extra API
+request, event replay, parser retry, proof authority or runtime cap is added.
+One finite refusal control proves the exact output persists with no ACK or PASS.
+The isolated successor is combined with the COPY readiness source change for one
+CI/review cycle. Rebind the merged host into a fresh CLOSED successor using the
+unchanged historical bytes; independent review and a new exact GO precede runtime.
