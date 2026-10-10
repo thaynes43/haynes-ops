@@ -538,13 +538,17 @@ class Watchdog:
         self.state['expected_inverse_head']=restore['headRefOid'];self.save()
 
     @staticmethod
-    def clean_gates(restore):
+    def clean_gates(restore,review=None,bindings=None):
         checks=restore.get('statusCheckRollup',[])
         names={row.get('name'):row for row in checks}
-        for name in ['Flux Local - Success','Diff Scope - Success','Claude Review (advisory)']:
+        independent=contract.independent_advisory(review,restore,bindings or {})
+        for name in ['Flux Local - Success','Diff Scope - Success']:
             row=names.get(name,{})
             if not terminal_success(row) or row.get('conclusion')!='SUCCESS':return False
-        if not checks or not all(terminal_success(row) or row.get('state')=='SUCCESS' for row in checks):return False
+        if not checks or not all(terminal_success(row) or row.get('state')=='SUCCESS'
+                                or (independent and row.get('name')=='Claude Review (advisory)') for row in checks):return False
+        if independent:return True
+        if not terminal_success(names.get('Claude Review (advisory)',{})) or names['Claude Review (advisory)'].get('conclusion')!='SUCCESS':return False
         commits=restore.get('commits',[])
         if not commits:return False
         head_at=epoch(commits[-1]['committedDate'])
@@ -556,6 +560,17 @@ class Watchdog:
         comment=max(comments,key=lambda row:epoch(row.get('updatedAt') or row['createdAt']))
         body=comment['body']
         return contract.clean_advisory(body)
+
+    def review_gate(self,pause,restore):
+        entry=getattr(self.args,'review_disposition',None)
+        if not entry:return self.clean_gates(restore)
+        if pause['headRefOid']!=self.args.pause_head:raise RuntimeError('Reviewed Stop head changed.')
+        bindings=dict(source_commit=self.args.review_source_commit,stop_pr=self.args.pause,stop_head=self.args.pause_head,
+                      inverse_pr=self.args.restore,inverse_head=restore['headRefOid'],phase_token=self.phase_checkpoint()['phase_token'])
+        descriptor=dict(path=entry,sha256=self.args.review_disposition_sha256)
+        value=contract.load_review_disposition(descriptor,bindings,self.args.repo_dir,cache.read_private)
+        self.state['independent_review_disposition_sha256']=descriptor['sha256'];self.save()
+        return self.clean_gates(restore,value,bindings)
 
     def retarget_argv(self):
         argv=['bash',self.args.retarget_script,self.args.restore_worktree,self.args.pause,self.args.restore,self.args.pause_head,self.args.restore_branch]
@@ -813,11 +828,11 @@ class Watchdog:
                              and (not phase.get('heartbeat') or instant().timestamp()-epoch(phase['heartbeat'])>15))
             due=self.stop.exists() or stale_phase or instant().timestamp()-epoch(origin)>=limit
             if due:
-                if self.clean_gates(restore):
+                if self.review_gate(pause,restore):
                     self.verify_inverse(restore)
                     self.cleanup_phase_jobs()
                     self.run(['gh','pr','merge',self.args.restore,'--repo',REPO,'--squash','--match-head-commit',self.state['expected_inverse_head'],'--body-file',self.args.merge_footer])
-                    self.note('Recovery inverse merged after current main gates and clean normal Claude review; convergence pending.')
+                    self.note('Recovery inverse merged after current main gates and disposed advisory; convergence pending.')
                 else:self.note('Recovery due; current main gates/normal review not clean. Remain armed and keep KS held safely.')
         elif self.stop.exists() or pause['state']=='CLOSED' or instant().timestamp()-epoch(self.state['armed_at'])>=self.args.arm_deadline:
             # Nothing landed: validate current main before releasing partial KS holds.
@@ -851,6 +866,9 @@ def main():
     parser.add_argument('--phase-state',required=True)
     parser.add_argument('--cached-source-receipt',help='Immutable private receipt, sealed while all services remain Normal.')
     parser.add_argument('--cached-source-activation',help='Immutable supervisor activation-ready record path, initially absent.')
+    parser.add_argument('--review-disposition',help='Optional private root-ratified independent review of a finished Claude startup failure.')
+    parser.add_argument('--review-disposition-sha256')
+    parser.add_argument('--review-source-commit')
     parser.add_argument('--deadline',type=int,default=170)
     parser.add_argument('--arm-deadline',type=int,default=600,help='Maximum live-workload staging time before recovery is requested.')
     parser.add_argument('--state',required=True)
@@ -862,6 +880,8 @@ def main():
     if not args.include_kavita or args.deadline!=170:parser.error('Fresh COPY requires four apps and unchanged 170s restore trigger.')
     if args.arm_deadline<=0 or args.arm_deadline>600:parser.error('Arm deadline must be <=600s.')
     if bool(args.cached_source_receipt)!=bool(args.cached_source_activation):parser.error('Both cached source receipt and activation paths are required together.')
+    review_args=(args.review_disposition,args.review_disposition_sha256,args.review_source_commit)
+    if any(review_args) and not all(review_args):parser.error('Independent review descriptor SHA and exact source commit are required together.')
     Watchdog(args).loop()
 
 if __name__=='__main__':main()

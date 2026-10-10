@@ -1,6 +1,7 @@
 """Finite public fixtures, fake clocks/APIs and local Git only; no live actions."""
 import copy
 import datetime as dt
+import hashlib
 import importlib.util
 import json
 import os
@@ -45,6 +46,68 @@ class ContractTests(unittest.TestCase):
         self.assertFalse(watch.Watchdog.clean_gates(pr));self.assertFalse(supervisor.clean_gates(pr))
         pr['comments'][0]['body']='No findings.'
         self.assertTrue(watch.Watchdog.clean_gates(pr));self.assertTrue(supervisor.clean_gates(pr))
+
+    def test_independent_disposition_binds_actual_failure_and_keeps_other_gates(self):
+        stamp='1970-01-01T00:00:02+00:00'
+        bindings=dict(source_commit='a'*40,stop_pr='3689',stop_head='b'*40,
+                      inverse_pr='3690',inverse_head='c'*40,phase_token='d'*32)
+        failed=dict(name='Claude Review (advisory)',status='COMPLETED',conclusion='FAILURE',
+                    detailsUrl='https://github.com/example/actions/runs/1',startedAt=stamp,completedAt=stamp)
+        pr=dict(headRefOid=bindings['inverse_head'],commits=[dict(committedDate='1970-01-01T00:00:01+00:00')],comments=[],
+                statusCheckRollup=[dict(name=name,status='COMPLETED',conclusion='SUCCESS') for name in ('Flux Local - Success','Diff Scope - Success')]+[failed])
+        disposition=dict(schema=1,prepared_only=False,explicitRootApproval=True,bindings=bindings,
+                         failure_class='startup_before_review',advisory=failed)
+        for gate in (supervisor.clean_gates,watch.Watchdog.clean_gates):
+            self.assertFalse(gate(pr))
+            self.assertTrue(gate(pr,disposition,bindings))
+            for case in ('pending','unknown','stale','head','phase','other_failure','finding','duplicate'):
+                current,approved,expected=copy.deepcopy(pr),copy.deepcopy(disposition),copy.deepcopy(bindings)
+                if case=='pending':current['statusCheckRollup'][-1]['status']='IN_PROGRESS'
+                if case=='unknown':approved['failure_class']='unknown'
+                if case=='stale':current['commits'][-1]['committedDate']='1970-01-01T00:00:03+00:00'
+                if case=='head':current['headRefOid']='e'*40
+                if case=='phase':expected['phase_token']='e'*32
+                if case=='other_failure':current['statusCheckRollup'].append(dict(name='another check',status='COMPLETED',conclusion='FAILURE'))
+                if case=='finding':current['comments']=[dict(author={'login':'claude'},createdAt=stamp,body='MEDIUM: unresolved finding')]
+                if case=='duplicate':current['statusCheckRollup'].append(copy.deepcopy(failed))
+                self.assertFalse(gate(current,approved,expected),case)
+
+    def test_private_review_requires_root_independence_and_exact_source(self):
+        bindings=dict(source_commit='a'*40,stop_pr='3689',stop_head='b'*40,
+                      inverse_pr='3690',inverse_head='c'*40,phase_token='d'*32)
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary)
+            def save(name,value):
+                raw=json.dumps(value,sort_keys=True).encode();p=directory/name;p.write_bytes(raw);p.chmod(0o600)
+                return dict(path=str(p),sha256=hashlib.sha256(raw).hexdigest())
+            review=dict(schema=1,bindings=bindings,provider='codex',decision='PASS',unresolved_findings=[],
+                        prepared_by='preparer',reviewed_by='independent reviewer',failure_class='startup_before_review',
+                        advisory={},source_files={name:wc.sha((ROOT/name).read_bytes()) for name in wc.REVIEW_SOURCES})
+            disposition=dict(schema=1,prepared_only=False,explicitRootApproval=True,bindings=bindings,
+                             failure_class='startup_before_review',advisory={},independent_review=save('review.json',review))
+            def git_source(repo,*argv):
+                self.assertEqual(argv[0],'show')
+                self.assertTrue(argv[1].startswith(bindings['source_commit']+':'))
+                return (ROOT/argv[1].split('/')[-1]).read_bytes()
+            with patch.object(wc,'git',side_effect=git_source):
+                entry=save('disposition.json',disposition)
+                self.assertEqual(wc.load_review_disposition(entry,bindings,REPO,watch.cache.read_private),disposition)
+                for case in ('closed','unapproved','same_reviewer','finding','source','operation','review_drift','commit_drift'):
+                    changed,peer=copy.deepcopy(disposition),copy.deepcopy(review)
+                    if case=='closed':changed['prepared_only']=True
+                    if case=='unapproved':changed['explicitRootApproval']=False
+                    if case=='same_reviewer':peer['reviewed_by']=peer['prepared_by']
+                    if case=='finding':peer['unresolved_findings']=['unresolved']
+                    if case=='source':peer['source_files']['cached_source.py']='0'*64
+                    if case=='operation':peer['bindings']['inverse_head']='e'*40
+                    changed['independent_review']=save('review.json',peer)
+                    candidate=save('disposition.json',changed)
+                    if case=='review_drift':(directory/'review.json').write_text('{}')
+                    with self.assertRaises(ValueError,msg=case):
+                        if case=='commit_drift':
+                            with patch.object(wc,'git',return_value=b'changed'):
+                                wc.load_review_disposition(candidate,bindings,REPO,watch.cache.read_private)
+                        else:wc.load_review_disposition(candidate,bindings,REPO,watch.cache.read_private)
 
     def test_exact_normal_stop_pair(self):
         wc.validate_pair(NORMAL, STOP, CONTRACT)
