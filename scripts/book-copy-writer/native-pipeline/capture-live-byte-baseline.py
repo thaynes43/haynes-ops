@@ -86,7 +86,7 @@ def run(environ=os.environ):
     if os.getuid() != 1000 or os.getgid() != 1000:
         raise metadata.Refused('LIVE process UID/GID differs')
     epoch = float(environ['COPY_BASELINE_DEADLINE_EPOCH'])
-    if not time.time() < epoch <= time.time() + 180:
+    if not time.time() < epoch <= time.time() + 240:
         raise metadata.Refused('LIVE absolute capture deadline differs')
     deadline = time.monotonic() + max(0, epoch - time.time())
     def stopped(*_):

@@ -9,8 +9,8 @@ STATE='/data/cephfs-hdd/data/media/books/.epub-convert'
 OUTPUT='/tmp'
 COLLECTOR_SHA256 = '03f6163873b75f2bf0dc6896851b9da568d5e370ef39b56983eed64def2eb5f0'
 SOURCE_HEALTH_SHA256='2d3adc2b8a529c3055e3fb1ff00684de99649965e78487358f737c9a3addc030'
-OUTCOME_MAILBOX_SHA256 = '230e0487b81059d8e49c712256244e91d1ebfe7066cc3e25a34791dd6ef4e094'
-OUTCOME_VERIFIER_SHA256 = '6d684075dc9240a353ddc63999944e6c1e1daea6dda44c100f604ad6ca2bb992'
+OUTCOME_MAILBOX_SHA256 = '629fe485a49394a381d913e75ed2000b45e4223dae65b4f35dc0412be275372f'
+OUTCOME_VERIFIER_SHA256 = '75316d9ca65c092fbaacf2252d46123599b78673d37f4d1b7a6a914e0dc93567'
 class Stop(BaseException):pass
 
 def utc():return dt.datetime.now(dt.timezone.utc).isoformat()
@@ -57,7 +57,7 @@ def run(environ=os.environ):
  deadline=float(environ['COPY_SOURCE_DEADLINE_EPOCH']);fence=json.loads(environ['COPY_SOURCE_FENCE_JSON'],object_pairs_hook=copies.unique_object)
  if set(fence)!={'schema','phase_token','first_service_stop_observed_at','service_fence_checked_at','publisher_scope_sha256'} or fence['schema']!=1 or fence['phase_token']!=phase:raise metadata.Refused('source service fence schema differs')
  first=copies.timestamp_epoch(fence['first_service_stop_observed_at']);checked=copies.timestamp_epoch(fence['service_fence_checked_at'])
- if not first<=checked<=time.time() or time.time()-checked>65 or not time.time()<deadline<=first+250:raise metadata.Refused('source service fence/deadline expired')
+ if not first<=checked<=time.time() or time.time()-checked>65 or not time.time()<deadline<=first+170:raise metadata.Refused('source service fence/deadline expired')
  if not isinstance(fence['publisher_scope_sha256'],str) or len(fence['publisher_scope_sha256'])!=64 or any(c not in '0123456789abcdef' for c in fence['publisher_scope_sha256']):raise metadata.Refused('complete root-reviewed publisher scope binding is missing')
  # Ensure this private adapter uses the exact published stdlib/driver fence.
  expected={'book_copy_writer.py': 'fbfec65f4af933da6ec9aca90536501e4514cebfb8e378584e3085a993493880', 'epub_copies.py': 'b79389c89bd5a57b4737ad693d2c209bc513e818343064ec04c8f0fcfb24a7da', 'epub_metadata.py': 'ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773'}

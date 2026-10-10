@@ -175,7 +175,7 @@ class ClosureTests(unittest.TestCase):
         self.assertNotIn('threading', source)
         self.assertNotIn('read_epubs', source)
         self.assertNotIn('live_baseline', source)
-        self.assertIn('deadline<=first+250', source)
+        self.assertIn('deadline<=first+170', source)
         self.assertIn('time.time()-checked>65', source)
         self.assertEqual(copies.SNAPSHOT_MAX_AGE, 300)
         ast.parse(source)

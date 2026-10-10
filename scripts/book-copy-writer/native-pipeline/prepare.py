@@ -19,7 +19,7 @@ SOURCES = (
     'run-live-byte-baseline.py', 'assemble-copy-proofs.py',
     'check-main-source-identity.py', 'deliver-main-copy-proofs.py',
     'verify-copy-outcome-readonly.py', 'outcome_mailbox.py', 'exchange-source-outcome.py',
-    'proof_sender.py', 'prepare.py',
+    'proof_sender.py', 'run-live-and-copy.py', 'prepare.py',
 )
 TEMPLATES = (
     'live-baseline-closed-manifest.json', 'pg-nfs-readonly-source-template.prepared.json',
@@ -115,10 +115,11 @@ def materialize(directory, signature_receipt, registry_proof):
               'live_phase_token': live_phase, 'job_roles': pins.JOBS,
               'selected_scope_sha256': pins.SELECTED_SCOPE_SHA256,
               'scope_profile_sha256': pins.SCOPE_PROFILE_SHA256,
-              'unchanged_bounds': {'live_seconds': 180, 'host_total_seconds': 200,
+              'unchanged_bounds': {'live_seconds': 240, 'host_total_seconds': 260,
                                    'artifact_bytes': 33554432, 'log_bytes': 1048576,
-                                   'original_byte_start_age_seconds': 300,
-                                   'restoration_trigger_seconds': 170, 'source_abort_seconds': 250},
+                                   'original_byte_start_age_seconds': 600,
+                                   'activation_admission_age_seconds': 300, 'restore_reserve_seconds': 130,
+                                   'restoration_trigger_seconds': 170, 'source_abort_seconds': 170},
               'unbound': ['current Stop/inverse/watch/supervisor exact heads and paused-window math',
                           'final independent source closure review and actual MAIN receipt/outcome request',
                           'server admission and current full name/phase/UID native absence',

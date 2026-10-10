@@ -23,6 +23,7 @@ SET_FIELDS = ("authors", "projected_aliases", "current_aliases", "comparison_ali
               "title_keys", "creator_keys", "author_keys")
 IDENTITY_FIELDS = ("path", *SET_FIELDS, "metadata", "has_series_metadata", "author",
                    "author_refusal", "title", "creator", "strip_refusal")
+BYTE_MAX_AGE = 600
 MAX_FILES = 10000
 SOURCE_KEYS = {"namespace", "pod_name", "pod_uid", "job_uid", "node", "image", "image_id",
                "pod_spec_sha256", "restarts", "mount_root", "nfs_server", "nfs_export", "root_identity6"}
@@ -89,9 +90,10 @@ def baseline_expiry(bound):
     finish = copies.timestamp_epoch(bound.get("byte_completed_at"))
     if start > finish:
         raise metadata.Refused("live byte clocks are inverted")
-    copies.fresh(bound["byte_capture_started_at"])
-    copies.fresh(bound["byte_completed_at"])
-    return time.monotonic() + max(0, start + copies.SNAPSHOT_MAX_AGE - time.time())
+    at = time.time()
+    if not 0 <= at - finish <= at - start <= BYTE_MAX_AGE:
+        raise metadata.Refused("live byte evidence is stale or future-dated")
+    return time.monotonic() + max(0, start + BYTE_MAX_AGE - at)
 
 
 def validate_bound(bound, root, hashes):

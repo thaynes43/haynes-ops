@@ -109,9 +109,52 @@ class ContractTests(unittest.TestCase):
                                 wc.load_review_disposition(candidate,bindings,REPO,watch.cache.read_private)
                         else:wc.load_review_disposition(candidate,bindings,REPO,watch.cache.read_private)
 
+    def test_byte_activation_age_boundary_and_delayed_arm_refusal(self):
+        def stamp(at):
+            return supervisor.dt.datetime.fromtimestamp(at, supervisor.dt.timezone.utc).isoformat()
+        baseline=dict(schema=1,kind='live_byte_baseline',complete=True,capture_started_at=stamp(0),completed_at=stamp(240))
+        supervisor.byte_activation_admission(baseline,300)
+        for at,value in ((300.001,baseline),(239,baseline),(300,dict(baseline,complete=False)),(300,dict(baseline,completed_at=stamp(-1)))):
+            with self.assertRaises(supervisor.Refused):supervisor.byte_activation_admission(value,at)
+        for elapsed in (300,300.001):
+            with self.subTest(elapsed=elapsed), tempfile.TemporaryDirectory() as directory:
+                clock={'at':260};activation=Path(directory)/'activation'
+                def artifact(name,value):
+                    path=Path(directory)/name;raw=json.dumps(value).encode();path.write_bytes(raw);path.chmod(0o600)
+                    return dict(path=str(path),sha256=hashlib.sha256(raw).hexdigest())
+                phase='a'*32;merge='b'*40;held={'before':{'metadata':{'uid':'owned'},'spec':{'owned':'normal'}}}
+                proof=dict(normal_main_sha=merge,holds={ns+'/'+name:held for ns,name in supervisor.SCOPES},parents={name:held for name in supervisor.cache.PARENTS})
+                cached=artifact('cache',proof);contract=artifact('contract',{'manifests':{}})
+                owners={ns+'/'+name:dict(uid='owned',spec={'owned':'normal'},phase_token=phase)
+                        for ns,name in supervisor.SCOPES+[('flux-system',name) for name in supervisor.cache.PARENTS]}
+                watch=dict(armed_ready=True,complete=False,recover_ks=True,restore_pr='1',scopes=supervisor.SCOPES,
+                           cached_source_receipt_sha256=cached['sha256'],cached_source_ready_at=stamp(0),
+                           normal_inverse_merge_sha=merge,armed_at=stamp(0),cached_ks_owners=owners)
+                watchfile=artifact('watch',watch)['path']
+                x=supervisor.Supervisor.__new__(supervisor.Supervisor)
+                x.c=dict(watchdog_state=watchfile,watchdog_stop=str(Path(directory)/'stop'),restore_pr='1',
+                         cached_source_receipt=cached,cached_source_activation=str(activation),manifest_contract=contract,
+                         live_byte_baseline=artifact('baseline',baseline),arm_deadline_seconds=1800,repo_dir='fake')
+                x.status=dict(phase_token=phase,normal_inverse_merge_sha=merge);x.save=lambda:None;x.inverse_green=lambda:None
+                x.get=lambda kind,name,ns: ({'spec':{'replicas':1,'selector':{'matchLabels':{'app':'live'}}},'status':{'readyReplicas':1}}
+                    if kind=='deployment' else {'metadata':{'uid':'pvc'}} if kind=='pvc' else {'spec':{'suspend':True}})
+                x.list=lambda *_:[{'metadata':{'labels':{'app':'live'}},'spec':{'nodeName':'fake'}}]
+                def delayed_check(*_,**__):clock['at']=elapsed
+                with patch.object(supervisor.time,'time',side_effect=lambda:clock['at']), \
+                     patch.object(supervisor,'now',side_effect=lambda:stamp(clock['at'])), \
+                     patch.object(supervisor.cache,'check_live',side_effect=delayed_check), \
+                     patch.object(supervisor.window,'blobs',return_value={}),patch.object(supervisor.window,'PATHS',[]):
+                    if elapsed>300:
+                        with self.assertRaisesRegex(supervisor.Refused,'original byte activation admission'):x.arm()
+                        self.assertFalse(activation.exists());self.assertNotIn('actuation_budget_started_at',x.status)
+                    else:
+                        x.arm();actual=json.loads(activation.read_bytes())
+                        self.assertEqual(actual['actuation_budget_started_at'],stamp(300))
+                        self.assertEqual(baseline['capture_started_at'],stamp(0))
+
     def test_exact_normal_stop_pair(self):
         wc.validate_pair(NORMAL, STOP, CONTRACT)
-        self.assertEqual(CONTRACT['clocks'], dict(live=180, live_host_total=200, original_byte_age=300, restore_trigger=170, source_abort=250, restore_reserve=50, service_ceiling=300, publisher_start_age=65, publisher_finish_age=35))
+        self.assertEqual(CONTRACT['clocks'], dict(live=240, live_host_total=260, original_byte_age=600, activation_admission_age=300, restore_trigger=170, source_abort=170, restore_reserve=130, service_ceiling=300, publisher_start_age=65, publisher_finish_age=35))
         self.assertIn('fdc358fc', supervisor.INPUT_IMAGE)
         self.assertEqual(supervisor.MODULES['epub_copies.py'], CONTRACT['modules']['epub_copies.py'])
 
@@ -228,7 +271,7 @@ class WatchRecoveryTests(unittest.TestCase):
         fields='repo_dir manifest_contract hold_receipt restore_pr restore_head watchdog_state watchdog_stop evidence_dir copy_phase_state copy_checkpoint_helper copy_checkpoint_helper_sha256 cached_source_receipt cached_source_activation readonly_capture_jobs copy_job arm_deadline_seconds max_service_absence_seconds restore_reserve_seconds publisher_guard publisher_guard_sha256 publisher_scope_sha256 publisher_scope_hook publisher_config publisher_config_sha256 assembly_script assembly_script_sha256 delivery_script delivery_script_sha256 outcome_script outcome_script_sha256 kavita_exporters_dir kavita_exporter_sha256 live_byte_baseline source_private_input selection_approval census_holds ll_sql_sha256'.split()
         config=dict.fromkeys(fields,None)
         config.update(arm_deadline_seconds=600,max_service_absence_seconds=300,
-                      restore_reserve_seconds=50,restore_head='invalid-exact-head')
+                      restore_reserve_seconds=130,restore_head='invalid-exact-head')
         for limit,cached in ((600,None),(1800,dict(path='fixture-cache',sha256='a'*64))):
             config.update(arm_deadline_seconds=limit,cached_source_receipt=cached)
             with self.assertRaisesRegex(supervisor.Refused,'exact inverse and scope hashes required'):
@@ -237,8 +280,8 @@ class WatchRecoveryTests(unittest.TestCase):
                         dict(arm_deadline_seconds=601,cached_source_receipt=None),
                         dict(arm_deadline_seconds=1800,cached_source_receipt=None),
                         dict(arm_deadline_seconds=1800,max_service_absence_seconds=301),
-                        dict(arm_deadline_seconds=1800,restore_reserve_seconds=51)):
-            with self.assertRaisesRegex(supervisor.Refused,'phase300/abort250/reserve50 are fixed'):
+                        dict(arm_deadline_seconds=1800,restore_reserve_seconds=131)):
+            with self.assertRaisesRegex(supervisor.Refused,'phase300/abort170/reserve130 are fixed'):
                 supervisor.validate(dict(config,**changed))
 
     def test_cli_staging_default_600_and_explicit_1800_keep_restore_170(self):

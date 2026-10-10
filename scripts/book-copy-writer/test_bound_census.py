@@ -176,8 +176,23 @@ class BoundTests(unittest.TestCase):
                 with mock.patch.object(bound, "stat_census", side_effect=AssertionError("invalid proof must not traverse")):
                     self.assert_refuses_before_any_move()
 
+    def test_manual_byte_600_lifetime_preserves_original_start_and_metadata_300(self):
+        def stamp(at):
+            return datetime.datetime.fromtimestamp(at, datetime.timezone.utc).isoformat()
+        proof = {"byte_capture_started_at": stamp(0), "byte_completed_at": stamp(240)}
+        with mock.patch.object(bound.time, "time", return_value=400), mock.patch.object(bound.time, "monotonic", return_value=20):
+            self.assertEqual(bound.baseline_expiry(proof), 220)
+            with self.assertRaises(metadata.Refused): copies.fresh(stamp(0))
+        with mock.patch.object(bound.time, "time", return_value=600), mock.patch.object(bound.time, "monotonic", return_value=20):
+            self.assertEqual(bound.baseline_expiry(proof), 20)
+        for at,finish in ((600.001,240),(200,240),(400,-1)):
+            with mock.patch.object(bound.time, "time", return_value=at):
+                with self.assertRaises(metadata.Refused):
+                    bound.baseline_expiry(dict(proof, byte_completed_at=stamp(finish)))
+        self.assertEqual(copies.SNAPSHOT_MAX_AGE, 300)
+
     def test_byte_clocks_are_not_restamped_by_current_validation(self):
-        self.proof["byte_capture_started_at"] = clock(-301)
+        self.proof["byte_capture_started_at"] = clock(-601)
         self.assert_refuses_before_any_move()
         self.proof["byte_capture_started_at"] = clock(-4)
         self.proof["byte_completed_at"] = clock(10)
