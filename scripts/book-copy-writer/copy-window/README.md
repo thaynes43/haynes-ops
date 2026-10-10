@@ -22,13 +22,17 @@ reused as a green inverse or new runtime approval.
 
 The supported order requires an independent watcher armed against exact normal
 Git **and actual normal workloads before holds**. A separately authorized stage
-then holds exactly frontend/haynesnetwork, media/libretto, downloads/lazylibrarian
-and media/kavita. A fresh private `hold_receipt` records before/after full native
-Kustomization metadata/spec/status, actual UID/resourceVersion and a completed
-`flux-system/cluster-apps` parent reconcile against verified normal main. All four
-same-UID holds must remain true afterward. A manual CronJob flag is insufficient.
+first holds and fresh-handler-drains `flux-system/cluster`, then
+`flux-system/cluster-apps`, each against fresh Ready Normal proof. The higher
+parent must be drained before holding its child. Only then hold exactly
+frontend/haynesnetwork, media/libretto, downloads/lazylibrarian and media/kavita.
+A fresh private `hold_receipt` records before/after full native Kustomization
+metadata/spec/status, actual UID/resourceVersion and same-phase parent containment.
+Do not reconcile a live parent over held children: its Git Normal apply removes
+runtime suspend and ownership fields. All six same-UID holds must remain true
+through fresh final checks. A manual CronJob flag is insufficient.
 [Flux suspension documentation](https://fluxcd.io/flux/components/kustomize/kustomizations/#suspending-and-resuming)
-describes the API; it does not replace this actual parent-persistence proof.
+describes the API; it does not replace this actual parent containment proof.
 
 Desired Stop can be staged on Git main only while those verified holds preserve
 normal actual workloads. The copy-aware `retarget-restore.sh` replays the stacked
@@ -42,7 +46,16 @@ observedGeneration advanced or Stop was applied by a held parent. The inverse th
 required checks and a disposed advisory and is **merged
 to Normal main while actual services remain Normal**. A favorable verdict with
 an unresolved severity finding refuses. Pending checks cannot start Stop clocks.
-Staging fits the original 600s arm ceiling; a separate runtime GO is required.
+The default live-workload staging ceiling remains 600s. A fresh, explicitly
+reviewed attempt may select `--arm-deadline` up to 1800s for this still-Normal
+staging only: inverse retarget, required checks/advisory, sealing and fresh LIVE.
+Allow the complete 200s LIVE host bound plus 30s bind reserve before its original
+arm expiry. This does not reset or extend an already armed attempt, authorize
+Stop/COPY, or guarantee CI will finish within the selected ceiling. A separate
+runtime GO is required. After the conservative pre-release origin or actual Stop,
+the original 170s restore trigger, 300s service ceiling and 50s restoration reserve
+apply; the staging ceiling cannot replace them. Byte capture remains bounded by
+its original 300s clock and Normal rehearsal retains its separate 120s arm.
 
 The standing owner policy makes Claude advisory, never a required check. The
 normal path still reads a successful current-head Claude review explicitly
@@ -103,7 +116,7 @@ If a staging hold unexpectedly drops before the inverse is merged, native Stop
 detection revokes and retires writers before retarget/CI/advisory. The watcher
 reads only bounded merge metadata afterward. An open inverse retains remaining
 holds and truthfully reports Normal restoration unproved; that unclocked failure
-cannot promise automatic recovery within 300s. It never waits 600s to revoke.
+cannot promise automatic recovery within 300s. It never waits for staging expiry to revoke.
 The five-second cache wall cap does not shorten the existing still-Normal inverse
 retarget or Flux restoration commands.
 
@@ -132,8 +145,11 @@ explicitly reconciled once per recovery attempt, then freshly checked for its
 owned UID/spec/phase, unsuspended state and exact Ready Normal artifact before
 each resume/reconcile. All six needed Kustomization reconciles remain. The
 original 50s restoration reserve, 60s safety attempt and 300s service ceiling do
-not change. The 28.363524s Normal-only rehearsal proves its separate cancellation
-path; it does not prove an actual COPY Stop can restore services within 50s.
+not change. The current generic services-running Normal rehearsal completed in
+28.306327s against its original 50s reserve. The earlier 28.363524s result used
+Normal-only callbacks. Neither proves an actual COPY Stop can restore cold
+services within 50s; exact results and withdrawn stage receipts are recorded in
+`.agents/reports/book-copy-recovery-and-staging-2026-10-10.md`.
 The current Normal harness inherits these generic recovery callbacks without
 the earlier Normal-only inventory/source/reconcile shortcuts. A fresh immutable
 current-source rehearsal must prove the services-running generic recovery budget
@@ -230,7 +246,7 @@ acquisition off) refuses terminal Normal. Native proof includes actual current
 converter template flags and current desired controller images/replicas. Source/
 API outage, lost artifact or unproved writer/PG cleanup remains truthfully
 incomplete recovery. It never extends the 300s ceiling. Actual still-Normal
-hold/drain/parent persistence and restoration-budget rehearsal remains required;
+hold/drain/parent containment and restoration-budget rehearsal remains required;
 this package is **not actual Stop-ready** from finite fixtures alone.
 
 The entire cached active/restoration tick has one owning original

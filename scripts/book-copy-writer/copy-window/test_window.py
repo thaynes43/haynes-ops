@@ -224,6 +224,52 @@ class FakeWatch(watch.Watchdog):
 
 
 class WatchRecoveryTests(unittest.TestCase):
+    def test_supervisor_staging_1800_preserves_fixed_service_and_artifact_gates(self):
+        fields='repo_dir manifest_contract hold_receipt restore_pr restore_head watchdog_state watchdog_stop evidence_dir copy_phase_state copy_checkpoint_helper copy_checkpoint_helper_sha256 cached_source_receipt cached_source_activation readonly_capture_jobs copy_job arm_deadline_seconds max_service_absence_seconds restore_reserve_seconds publisher_guard publisher_guard_sha256 publisher_scope_sha256 publisher_scope_hook publisher_config publisher_config_sha256 assembly_script assembly_script_sha256 delivery_script delivery_script_sha256 outcome_script outcome_script_sha256 kavita_exporters_dir kavita_exporter_sha256 live_byte_baseline source_private_input selection_approval census_holds ll_sql_sha256'.split()
+        config=dict.fromkeys(fields,None)
+        config.update(arm_deadline_seconds=600,max_service_absence_seconds=300,
+                      restore_reserve_seconds=50,restore_head='invalid-exact-head')
+        for limit in (600,1800):
+            config['arm_deadline_seconds']=limit
+            with self.assertRaisesRegex(supervisor.Refused,'exact inverse and scope hashes required'):
+                supervisor.validate(config)
+        for changed in (dict(arm_deadline_seconds=1801),dict(arm_deadline_seconds=0),
+                        dict(arm_deadline_seconds=1800,max_service_absence_seconds=301),
+                        dict(arm_deadline_seconds=1800,restore_reserve_seconds=51)):
+            with self.assertRaisesRegex(supervisor.Refused,'phase300/abort250/reserve50 are fixed'):
+                supervisor.validate(dict(config,**changed))
+
+    def test_cli_staging_default_600_and_explicit_1800_keep_restore_170(self):
+        argv=['watch','--arm','--pause','1','--restore','2','--pause-head','a'*40,
+              '--restore-worktree','fixture','--restore-branch','agent/fixture',
+              '--include-kavita','--phase-state','fixture-phase','--state','fixture-state',
+              '--stop','fixture-stop','--log','fixture-log','--merge-footer','fixture-footer']
+        for extra,expected in (([],600),(['--arm-deadline','600'],600),(['--arm-deadline','1800'],1800)):
+            with patch.object(sys,'argv',argv+extra),patch.object(watch,'Watchdog') as watchdog:
+                watch.main()
+                args=watchdog.call_args.args[0]
+                self.assertEqual(args.arm_deadline,expected);self.assertEqual(args.deadline,170)
+                watchdog.return_value.loop.assert_called_once_with()
+        for extra in (['--arm-deadline','1801'],['--arm-deadline','0'],['--arm-deadline','-1'],
+                      ['--arm-deadline','1800','--deadline','171']):
+            with patch.object(sys,'argv',argv+extra),patch.object(sys,'stderr'),patch.object(watch,'Watchdog') as watchdog:
+                with self.assertRaises(SystemExit) as error:watch.main()
+                self.assertEqual(error.exception.code,2);watchdog.assert_not_called()
+
+    def test_explicit_1800_staging_keeps_actual_stop_170_trigger(self):
+        with tempfile.TemporaryDirectory() as d:
+            w=FakeWatch(Path(d),pause='MERGED',window=False);w.args.arm_deadline=1800
+            with patch.object(watch,'instant',return_value=dt.datetime.fromtimestamp(1799,dt.timezone.utc)):self.assertFalse(w.tick())
+            self.assertFalse(any(c[:3]==('gh','pr','merge') for c in w.calls))
+            with patch.object(watch,'instant',return_value=dt.datetime.fromtimestamp(1800,dt.timezone.utc)):self.assertFalse(w.tick())
+            self.assertTrue(any(c[:3]==('gh','pr','merge') for c in w.calls))
+        with tempfile.TemporaryDirectory() as d:
+            w=FakeWatch(Path(d),pause='MERGED',window=True);w.args.arm_deadline=1800
+            with patch.object(watch,'instant',return_value=dt.datetime.fromtimestamp(269,dt.timezone.utc)):self.assertFalse(w.tick())
+            self.assertFalse(any(c[:3]==('gh','pr','merge') for c in w.calls))
+            with patch.object(watch,'instant',return_value=dt.datetime.fromtimestamp(270,dt.timezone.utc)):self.assertFalse(w.tick())
+            self.assertTrue(any(c[:3]==('gh','pr','merge') for c in w.calls))
+
     def test_prestage_cancellation_checks_normal_before_any_release(self):
         with tempfile.TemporaryDirectory() as d:
             w=FakeWatch(Path(d)); w.stop.touch(); self.assertTrue(w.tick())

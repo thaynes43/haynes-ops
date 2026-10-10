@@ -934,7 +934,7 @@ def validate(c):
  optional={'review_disposition','review_operation'}
  if set(c) not in (required,required|optional) or 'REPLACE' in json.dumps(c):raise Refused('exact reviewed callback configuration is required')
  if optional.issubset(c) and set(c['review_operation'])!={'source_commit','stop_pr','stop_head'}:raise Refused('review operation incomplete')
- if c['max_service_absence_seconds']!=300 or c['restore_reserve_seconds']!=50 or not 1<=c['arm_deadline_seconds']<=600:raise Refused('phase300/abort250/reserve50 are fixed')
+ if c['max_service_absence_seconds']!=300 or c['restore_reserve_seconds']!=50 or not 1<=c['arm_deadline_seconds']<=1800:raise Refused('staging1–1800/phase300/abort250/reserve50 are fixed')
  if not re.fullmatch('[0-9a-f]{40}',c['restore_head']) or not re.fullmatch('[0-9a-f]{64}',c['publisher_scope_sha256']):raise Refused('exact inverse and scope hashes required')
  for key in ('copy_checkpoint_helper','publisher_guard','publisher_config','assembly_script','delivery_script','outcome_script'):
   if hashlib.sha256(Path(c[key]).read_bytes()).hexdigest()!=c[key+'_sha256']:raise Refused('reviewed callback component changed: '+key)
