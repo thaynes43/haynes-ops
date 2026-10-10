@@ -33,6 +33,12 @@ the registry/publication closure is
 `23f773d42f5e16de57905f9070b3a5475ed96d55025313190c8d3df7952607b8`.
 Historical packets retain the earlier `fdc358fc` image and its receipts.
 
+The tracked Lidarr publisher bridge checks both the actual Pod image and its
+declared ready-template image against that same qualified image before native
+exec. Successor publisher bundles copy this bridge from the reviewed source
+commit and derive all nine program checksums from their actual bytes. The frozen
+private bundles and their historical checksums remain intact.
+
 The SOURCE controller owns its original PostgreSQL 16 connection and transaction.
 It calls the published local scan guard at every entry. Actual uncached health
 queries and bounded lease events run only on that same process/thread. Each
