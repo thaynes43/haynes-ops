@@ -641,7 +641,7 @@ class HostAdmission:
     def list(self, kind, namespace=None):
         kinds = {"pods": "Pod", "pvc": "PersistentVolumeClaim", "pv": "PersistentVolume"}
         argv = ["kubectl", "get", kind] + (["-n", namespace] if namespace else ["-A"] if kind != "pv" else []) + ["-o", "json"]
-        return self.supervisor.window.typed_inventory(json.loads(self.run(argv)), kinds[kind], namespace)
+        return self.supervisor.window.typed_inventory(json.loads(self.run(argv)), kinds[kind], "v1", namespace)
 
     def save(self):
         pass  # Existing service predicate's timestamp is diagnostic, not authority.

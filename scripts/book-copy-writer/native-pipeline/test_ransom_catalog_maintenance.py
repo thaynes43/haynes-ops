@@ -23,6 +23,28 @@ import ransom_maintenance_job as maintenance
 
 
 class CatalogMaintenanceTests(unittest.TestCase):
+    def test_host_inventory_uses_real_core_api_and_namespace_validation(self):
+        spec = importlib.util.spec_from_file_location('ransom_inventory_window', HERE.parent / 'copy-window/window_contract.py')
+        window = importlib.util.module_from_spec(spec)
+        # This pure inventory route never uses the YAML parser; the writer test
+        # image lacks that optional import, so any accidental parser call fails.
+        with mock.patch.dict(sys.modules, {'yaml': __import__('types').ModuleType('yaml')}):
+            spec.loader.exec_module(window)
+        host = maintenance.HostAdmission.__new__(maintenance.HostAdmission)
+        host.supervisor = SimpleNamespace(window=window)
+        envelope = {'kind': 'PodList', 'apiVersion': 'v1', 'metadata': {'resourceVersion': '7'},
+                    'items': [{'metadata': {'name': 'native', 'uid': 'native-uid', 'namespace': 'downloads'}}]}
+        host.run = mock.Mock(return_value=json.dumps(envelope))
+        self.assertEqual(host.list('pods', 'downloads'),
+                         [dict(envelope['items'][0], kind='Pod', apiVersion='v1')])
+        host.run.assert_called_once_with(['kubectl', 'get', 'pods', '-n', 'downloads', '-o', 'json'])
+        wrong_api = dict(envelope, apiVersion='batch/v1')
+        wrong_namespace = copy.deepcopy(envelope)
+        wrong_namespace['items'][0]['metadata']['namespace'] = 'media'
+        for value in (wrong_api, wrong_namespace):
+            host.run.return_value = json.dumps(value)
+            with self.assertRaises(ValueError):host.list('pods', 'downloads')
+
     def test_cleanup_uses_only_original_watchers_accepted_private_cache(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "cache.json"
