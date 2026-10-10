@@ -432,6 +432,15 @@ spec:
         - ports:
             - port: "8006"
               protocol: TCP
+    # 5a. External Ceph manager Prometheus (read-only storage preflight).
+    # Pin the current advertised manager address from the external Ceph config.
+    # On manager failover, review this target again before reading metrics.
+    - toCIDR:
+        - 192.168.40.18/32
+      toPorts:
+        - ports:
+            - port: "9283"
+              protocol: TCP
     # 5b. SSH tier (backlog 14, 2026-09-17 — the GPU swap on HaynesIntelligence
     #    needed dmidecode/lspci/journalctl on the HOST, which no PVE API call can
     #    run, and PVE 8 lets only root@pam set a raw hostpci id). Port 22 to the five
