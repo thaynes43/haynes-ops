@@ -335,6 +335,9 @@ class BoundTests(unittest.TestCase):
             bound.bind_live_baseline(baseline, "c" * 64, current, self.root)
         del current["files"]
         baseline["capture_started_at"] = clock(-301)
+        _, assembled = bound.bind_live_baseline(baseline, "c" * 64, current, self.root)
+        self.assertEqual(assembled["byte_capture_started_at"], baseline["capture_started_at"])
+        baseline["capture_started_at"] = clock(-601)
         with self.assertRaises(metadata.Refused):
             bound.bind_live_baseline(baseline, "c" * 64, current, self.root)
 
