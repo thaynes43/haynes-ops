@@ -120,7 +120,7 @@ class PipelineCases(unittest.TestCase):
                 live_byte_baseline=dict(path=str(root/'live-output/live-byte-baseline.json'),sha256=None)))
             supervisor=root/'supervisor.py';supervisor.write_bytes(b'# inert pinned fixture\n');supervisor.chmod(0o600)
             contract=artifact('handoff',dict(schema=1,phase_token=phase,phase_state=state,live_contract=live,prelive_config=config,
-                supervisor=dict(path=str(supervisor),sha256=digest(supervisor))))
+                supervisor=dict(path=str(supervisor),sha256=digest(supervisor)),host_tools=artifact('tools',{})))
             argv=['handoff','--live-launcher',str(HERE/'run-live-byte-baseline.py'),
                 '--live-launcher-sha256',digest(HERE/'run-live-byte-baseline.py'),'--contract',contract['path'],
                 '--contract-sha256',contract['sha256'],'--root-authorization',handoff.GO]
@@ -162,7 +162,14 @@ class PipelineCases(unittest.TestCase):
             supervisor=raw_artifact(root/'supervisor.py',(HERE.parent/'copy-window/copy-phase-supervisor.py').read_bytes())
             for name in ('window_contract.py','cached_source.py'):
                 raw_artifact(root/name,(HERE.parent/'copy-window'/name).read_bytes())
-            contract_value=dict(schema=1,phase_token=phase,phase_state=state,live_contract=live,supervisor=supervisor)
+            tool_dir=root/'tools';tool_dir.mkdir()
+            tools={}
+            for name in handoff.HOST_TOOLS:
+                path=tool_dir/name;path.write_bytes(b'finite executable\n');path.chmod(0o700)
+                tools[name]=dict(path=str(path),resolved_path=str(path),sha256=digest(path))
+            tool_value=dict(schema=1,PATH=str(tool_dir),executables=tools)
+            contract_value=dict(schema=1,phase_token=phase,phase_state=state,live_contract=live,supervisor=supervisor,
+                host_tools=artifact('tools-contract',tool_value))
             argv=['handoff','--live-launcher',str(HERE/'run-live-byte-baseline.py'),
                 '--live-launcher-sha256',digest(HERE/'run-live-byte-baseline.py'),
                 '--contract',str(root/'handoff'),'--contract-sha256','0'*64,'--root-authorization',handoff.GO]
@@ -171,6 +178,9 @@ class PipelineCases(unittest.TestCase):
                 'sender':('private-input reviewed source pin differs',lambda c:c['source_private_input']['sender'].update(sha256='8d3cb8b3242a14ba5a07a25dca14d16220bf86be85d95cb18a1b3eeae7fd8c81')),
             }
             with mock.patch.object(handoff,'SELECTION',refs['selection_approval']['sha256']), \
+                 mock.patch.object(handoff,'HOST_PATH',str(tool_dir)), \
+                 mock.patch.object(handoff.shutil,'which',side_effect=lambda name,path:
+                     str(tool_dir/name) if path==str(tool_dir) and (tool_dir/name).is_file() else None), \
                  mock.patch.dict(sys.modules,{'yaml':types.ModuleType('yaml')}), \
                  mock.patch.object(handoff.sys,'argv',argv), \
                  mock.patch.object(handoff.subprocess,'run',side_effect=RuntimeError('finite_live_boundary')) as capture, \
@@ -184,12 +194,21 @@ class PipelineCases(unittest.TestCase):
                         capture.assert_not_called();writer.assert_not_called()
                 contract_value['prelive_config']=artifact('config',value)
                 contract=artifact('handoff',contract_value);argv[argv.index('--contract-sha256')+1]=contract['sha256']
+                # A missing required command and a stale digest both stop before LIVE.
+                hw=tool_dir/'hw-ssh';hw.unlink()
+                with self.assertRaisesRegex(RuntimeError,'required_host_tool_resolution_differs'):handoff.main()
+                capture.assert_not_called();writer.assert_not_called()
+                hw.write_bytes(b'changed executable\n');hw.chmod(0o700)
+                with self.assertRaisesRegex(RuntimeError,'artifact_changed'):handoff.main()
+                capture.assert_not_called();writer.assert_not_called()
+                hw.write_bytes(b'finite executable\n')
                 # An already-created baseline cannot use the sole future-artifact exception.
                 baseline=Path(value['live_byte_baseline']['path']);baseline.parent.mkdir();baseline.write_bytes(b'early')
                 with self.assertRaisesRegex(RuntimeError,'only the absent unbound future LIVE baseline'):handoff.main()
                 capture.assert_not_called();writer.assert_not_called();baseline.unlink();baseline.parent.rmdir()
                 with self.assertRaisesRegex(RuntimeError,'finite_live_boundary'):handoff.main()
                 capture.assert_called_once();writer.assert_not_called()
+                self.assertEqual(capture.call_args.kwargs['env']['PATH'],str(tool_dir))
             self.assertFalse((root/'supervisor-config.actual.json').exists())
             self.assertFalse((root/'live-output').exists())
 

@@ -129,5 +129,10 @@ The combined launcher validates the full supervisor configuration before startin
 LIVE, deferring only the not-yet-created byte baseline. It validates the completed
 baseline again before activation. Materialization derives the manifest pin from
 its frozen host bytes, and the sender policy pin matches the reviewed current helper.
+Before LIVE, the combined launcher checks the reviewed local executables and their
+SHA-256 digests using the same PATH it passes to the child process. This includes
+hw-ssh and its bash/ssh dependencies. A missing executable, a different resolved
+path, or changed bytes stops the launch before the EPUB scan. The PATH keeps the
+existing directories first and appends /home/dev/.local/bin.
 It performs no post-LIVE object census or model handoff. Its pre-exec original-byte age
 check cannot replace the supervisor's final post-arm activation age check.

@@ -1,10 +1,32 @@
 #!/usr/bin/env python3
 """Pinned LIVE receipt -> single config leaf -> existing COPY supervisor."""
-import argparse, hashlib, json, os, subprocess, sys, time
+import argparse, hashlib, json, os, shutil, subprocess, sys, time
 from pathlib import Path
 
 GO = 'ACTUAL_PARENT_BOUND_LIVE_AND_TWO_EXTRA_COPY_GO'
 SELECTION = '45f1e892aaf7cf666e1f0ffaf89d67c1b12c9aa078d684432482e56d26a32bd9'
+HOST_PATH = '/home/dev/work/hn-825-native-host-venv-1009/bin:/usr/local/bin:/usr/bin:/bin:/home/dev/.local/bin'
+HOST_TOOLS = ('bash', 'curl', 'env', 'flux', 'gh', 'git', 'hw-ssh', 'kubectl', 'nice', 'python3', 'ssh')
+TOOL_BYTE_CAP = 128 * 1024 * 1024
+
+def host_tool_contract(read):
+    tools = {}
+    for name in HOST_TOOLS:
+        path = shutil.which(name, path=HOST_PATH)
+        if path is None:
+            raise ValueError('required_host_tool_missing: ' + name)
+        resolved = str(Path(path).resolve(strict=True))
+        tools[name] = dict(path=path, resolved_path=resolved, sha256=hashlib.sha256(read(Path(resolved), TOOL_BYTE_CAP)).hexdigest())
+    return dict(schema=1, PATH=HOST_PATH, executables=tools)
+
+def validate_host_tools(tools, pinned, require):
+    require(set(tools) == {'schema', 'PATH', 'executables'} and tools['schema'] == 1
+            and tools['PATH'] == HOST_PATH and set(tools['executables']) == set(HOST_TOOLS), 'exact_host_tool_contract_required')
+    for name, entry in tools['executables'].items():
+        require(set(entry) == {'path', 'resolved_path', 'sha256'}
+                and shutil.which(name, path=HOST_PATH) == entry['path'], 'required_host_tool_resolution_differs')
+        require(str(Path(entry['path']).resolve(strict=True)) == entry['resolved_path'], 'required_host_tool_resolved_path_differs')
+        pinned(dict(path=entry['resolved_path'], sha256=entry['sha256']), TOOL_BYTE_CAP)
 
 def bind_completed_live(config, live, receipt, ack, answer, baseline, require):
     require(receipt.get('baseline_complete') is True and receipt.get('cleanup_complete') is True
@@ -45,7 +67,7 @@ def main():
     exec(compile(source, args.live_launcher, 'exec'), scope)
     pinned, decode, require, private = [scope[key] for key in ('pinned', 'decode', 'require', 'private')]
     handoff = decode(pinned(dict(path=args.contract, sha256=args.contract_sha256)))
-    require(set(handoff) == {'schema', 'phase_token', 'phase_state', 'live_contract', 'prelive_config', 'supervisor'}
+    require(set(handoff) == {'schema', 'phase_token', 'phase_state', 'live_contract', 'prelive_config', 'supervisor', 'host_tools'}
             and handoff['schema'] == 1, 'exact_handoff_contract_required')
     live = decode(pinned(handoff['live_contract']))
     config = decode(pinned(handoff['prelive_config']))
@@ -76,8 +98,10 @@ def main():
         supervisor_scope['validate'](config, live_baseline_pending=True)
     finally:
         sys.path[:] = original_path
+    validate_host_tools(decode(pinned(handoff['host_tools'])), pinned, require)
     subprocess.run([sys.executable, '-I', '-B', args.live_launcher, '--contract', handoff['live_contract']['path'],
-                    '--root-authorization', scope['GO']], stdin=subprocess.DEVNULL, check=True)
+                    '--root-authorization', scope['GO']], stdin=subprocess.DEVNULL, check=True,
+                   env=dict(os.environ, PATH=HOST_PATH))
     # No API calls or object census here: the pinned LIVE already proves ACK/GC.
     require(pinned(handoff['prelive_config']) == (json.dumps(config, sort_keys=True, indent=2)+'\n').encode(),
             'preapproved_config_changed')
@@ -91,6 +115,7 @@ def main():
             'original_byte_admission_reserve_expired')
     private(final, raw)
     pinned(handoff['supervisor'])
+    os.environ['PATH'] = HOST_PATH
     bootstrap = 'import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_path(sys.argv.pop(1),run_name="__main__")'
     os.execv(sys.executable, [sys.executable, '-I', '-B', '-c', bootstrap,
                             str(Path(handoff['supervisor']['path']).parent), handoff['supervisor']['path'],
