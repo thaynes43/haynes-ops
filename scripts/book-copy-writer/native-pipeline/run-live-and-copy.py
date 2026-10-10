@@ -63,6 +63,10 @@ def main():
     require(not final.exists(), 'final_config_already_exists')
     require(pinned(handoff['prelive_config']) == (json.dumps(config, sort_keys=True, indent=2)+'\n').encode(),
             'preapproved_config_changed')
+    for key in ('manifest_contract', 'hold_receipt', 'selection_approval', 'census_holds', 'cached_source_receipt'):
+        require(isinstance(config.get(key), dict) and set(config[key]) == {'path', 'sha256'},
+                'exact_static_root_scope_ref_required')
+        pinned(config[key])
     supervisor_path = handoff['supervisor']['path']
     supervisor_scope = dict(__name__='pinned_copy_supervisor', __file__=supervisor_path)
     original_path = sys.path[:]

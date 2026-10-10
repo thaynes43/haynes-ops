@@ -166,7 +166,7 @@ class PipelineCases(unittest.TestCase):
                 '--live-launcher-sha256',digest(HERE/'run-live-byte-baseline.py'),
                 '--contract',str(root/'handoff'),'--contract-sha256','0'*64,'--root-authorization',handoff.GO]
             cases={
-                'static':('exact root scope artifact changed',lambda c:c['manifest_contract'].update(sha256='0'*64)),
+                'static':('artifact_changed',lambda c:c['manifest_contract'].update(sha256='0'*64)),
                 'sender':('private-input reviewed source pin differs',lambda c:c['source_private_input']['sender'].update(sha256='8d3cb8b3242a14ba5a07a25dca14d16220bf86be85d95cb18a1b3eeae7fd8c81')),
             }
             with mock.patch.object(handoff,'SELECTION',refs['selection_approval']['sha256']), \
