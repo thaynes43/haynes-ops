@@ -117,7 +117,17 @@ approved by this source package.
 Only after complete independent arming does the supervisor atomically publish
 activation-ready with the accepted cache/inverse hashes and a durable conservative
 `actuation_budget_started_at` before first app release. This is an earlier budget
-origin, not an invented actual Stop observation. Missing origin with actual or
+origin, not an invented actual Stop observation. The sole cached watcher then
+applies Stop once: for each of the four app Kustomizations it proves the complete
+phase Job/Pod union and both primary PG owners absent, verifies the held Source
+artifact and both parents, resumes the exact owned app, reconciles Stop, and
+reholds/drains that app. Source and both parents remain held. The first observed
+service Stop is recorded while later scopes are still applying; producers wait
+for all four exact Stop revisions and rehold receipts bound to the same activation.
+A partial actuation, changed custody, or original deadline triggers existing
+writer-first Normal recovery. This fixes activation previously waiting for Stop
+while every app controller remained held; it changes no byte or service budget.
+Missing origin with actual or
 partial Stop revokes immediately; restoration requires the accepted Normal
 inverse described below. Cold recovery retains the original
 origin, even if the supervisor dies between release and its first Stop checkpoint.
