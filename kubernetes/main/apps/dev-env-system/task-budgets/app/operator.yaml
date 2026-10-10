@@ -1,0 +1,26 @@
+---
+# Dynamic ledger names cannot be bounded by RBAC resourceNames. The namespace's
+# admission policy restricts ledger ConfigMap writes to the operator and ledger shape.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-task-budgets
+  namespace: dev-env-budgets
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, create, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-task-budgets
+  namespace: dev-env-budgets
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-task-budgets
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system

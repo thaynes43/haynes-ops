@@ -1,0 +1,54 @@
+---
+# No client, agent, Flux inventory or garbage collector may write/delete history.
+# Only the trusted operator creates/updates the dedicated namespace's ledger maps.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-task-budget-ledgers
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [configmaps]
+  matchConditions:
+    - name: retained-budget-namespace
+      expression: "request.namespace == 'dev-env-budgets'"
+    # Normal namespace ConfigMaps, including kube-root-ca.crt, remain outside
+    # this guard. Old labels are checked so an update cannot strip protection.
+    - name: retained-ledger-object
+      expression: >-
+        request.name.startsWith('task-budget-') ||
+        (request.operation != 'DELETE' &&
+         (object.metadata.name.startsWith('task-budget-') ||
+          object.metadata.?labels.orValue({}).exists(k, k == 'dev-env.haynesops.com/task-budget'))) ||
+        (request.operation != 'CREATE' && oldObject != null &&
+         (oldObject.metadata.name.startsWith('task-budget-') ||
+          oldObject.metadata.?labels.orValue({}).exists(k, k == 'dev-env.haynesops.com/task-budget')))
+  validations:
+    - expression: "request.operation != 'DELETE'"
+      reason: Forbidden
+      message: task budget ledgers are retained independently of fixture cleanup
+    - expression: "request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator'"
+      reason: Forbidden
+      message: only the dev-env operator writes retained task budget history
+    - expression: >-
+        request.operation == 'DELETE' ||
+        (object.metadata.name.matches('^task-budget-[0-9a-f]{40}$') &&
+         object.metadata.?labels.orValue({}) == {'dev-env.haynesops.com/task-budget': 'retained-v1'} &&
+         object.metadata.?ownerReferences.orValue([]).size() == 0 &&
+         !object.?immutable.orValue(false) && object.?binaryData.orValue({}).size() == 0 &&
+         object.?data.orValue({}).size() == 1 && 'ledger.json' in object.data &&
+         object.data['ledger.json'].size() > 0 && object.data['ledger.json'].size() <= 786432)
+      reason: Forbidden
+      message: operator budget writes must use the retained ledger format without owners
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-task-budget-ledgers
+spec:
+  policyName: dev-env-task-budget-ledgers
+  validationActions: [Deny]

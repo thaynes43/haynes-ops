@@ -20,6 +20,8 @@ resources:
   - ./session-config/ks.yaml
   - ./secrets/ks.yaml
   - ./rbac/ks.yaml
+  - ./task-budgets/ks.yaml
+  - ./projects/ks.yaml
   - ./pki/ks.yaml
   - ./operator/ks.yaml
   - ./broker/ks.yaml

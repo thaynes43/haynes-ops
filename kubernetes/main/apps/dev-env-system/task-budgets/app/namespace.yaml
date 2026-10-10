@@ -1,0 +1,13 @@
+---
+# This retained foundation is separate from the disposable native fixture.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev-env-budgets
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    dev-env.haynesops.com/role: budgets
