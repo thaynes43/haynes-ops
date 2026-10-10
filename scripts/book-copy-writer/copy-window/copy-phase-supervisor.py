@@ -36,7 +36,7 @@ import cached_source as cache
 SCOPES=[('frontend','haynesnetwork'),('media','libretto'),('downloads','lazylibrarian'),('media','kavita')]
 CRONS=[('downloads','lazylibrarian-epub-convert'),('downloads','lazylibrarian-library-scan')]+[
  ('frontend','haynesnetwork-'+n) for n in ['sync-books','sync-books-collections','sync-format-pairing','sync-goodreads']]
-INPUT_IMAGE='ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c'
+INPUT_IMAGE='ghcr.io/thaynes43/book-copy-writer@sha256:628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601'
 MODULES={'epub_copies.py':'b79389c89bd5a57b4737ad693d2c209bc513e818343064ec04c8f0fcfb24a7da','epub_metadata.py':'ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773'}
 ROOT='/data/cephfs-hdd/data/media/books/EBooks'
 STATE='/data/cephfs-hdd/data/media/books/.epub-convert'

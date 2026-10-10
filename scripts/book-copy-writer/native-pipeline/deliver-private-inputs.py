@@ -17,8 +17,8 @@ import time
 sys.path.insert(0, str(Path(__file__).parent))
 import importlib
 r = importlib.import_module('receive-private-inputs')
-IMAGE = 'ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c'
-HELPER_SHA = '8b5f9f156c30af99c0abd52ee6639428dc212c90b09279c783e47d86d44f12ad'
+IMAGE = 'ghcr.io/thaynes43/book-copy-writer@sha256:628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601'
+HELPER_SHA = '34dd3dc3a4c18ee2818ee7fd45563c638053494f3c2cb95129bbced06cb66b07'
 NATIVE_SHA = '67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f'
 COLLECTOR_SHA = '03f6163873b75f2bf0dc6896851b9da568d5e370ef39b56983eed64def2eb5f0'
 KEYS = {'schema','mode','manifest','helper','native_verifier','receiver','native_binding','selected_scope',

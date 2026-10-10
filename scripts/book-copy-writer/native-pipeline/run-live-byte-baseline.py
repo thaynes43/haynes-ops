@@ -2,10 +2,10 @@
 """One explicitly approved LIVE baseline Job. No PG, scan, settings or library write."""
 import argparse,copy,datetime as dt,hashlib,importlib.util,json,os,selectors,signal,stat,subprocess,sys,threading,time,uuid,re
 from pathlib import Path
-IMAGE='ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c'
+IMAGE='ghcr.io/thaynes43/book-copy-writer@sha256:628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601'
 MODULES={'epub_copies.py':'b79389c89bd5a57b4737ad693d2c209bc513e818343064ec04c8f0fcfb24a7da','epub_metadata.py':'ce3c5a271cb4c94d91f3154240b4cfbc5e0cc57981969fc5c975a0c0f50eb773'}
 LABEL='issue825.haynesnetwork/phase';NAME='issue831-live-byte-baseline-1009-03';NS='frontend';GO='ACTUAL_PARENT_BOUND_LIVE_BASELINE_RO_GO'
-PINS={'helper':'8b5f9f156c30af99c0abd52ee6639428dc212c90b09279c783e47d86d44f12ad','sender':'b3143e2ab297f9bb3c758a142dd1b88c50f5ef0dd20a2a18496bac9e4922c1fe','receiver':'fbf7998738652db4023721731526b343faff4b2d880d24e811a63a95eaab2d3e','native_verifier':'67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f','collector':'03f6163873b75f2bf0dc6896851b9da568d5e370ef39b56983eed64def2eb5f0','selected_scope':'1754edf94c3735c5c7cf6a78d30e3bea3b110e7b48a77ef1fea6e16e91c82663','ack_receiver':'de30ca5463b6564146f4fe71c79a6502487941ccfc09d7967054abeceff421f3','closed_manifest':'a49f6a329779fd9323a881f6eeb0588050d18cff2f91c020ede97daf018fa9ba'}
+PINS={'helper':'34dd3dc3a4c18ee2818ee7fd45563c638053494f3c2cb95129bbced06cb66b07','sender':'571376814feebcae7986f10f2bd17f7296ab84c8402fb884dacca4537da9c2d1','receiver':'fbf7998738652db4023721731526b343faff4b2d880d24e811a63a95eaab2d3e','native_verifier':'67f40c064babee41cc7faba1b7b9541a0ffe65d4d0f137507248fdf5c9e8108f','collector':'03f6163873b75f2bf0dc6896851b9da568d5e370ef39b56983eed64def2eb5f0','selected_scope':'1754edf94c3735c5c7cf6a78d30e3bea3b110e7b48a77ef1fea6e16e91c82663','ack_receiver':'de30ca5463b6564146f4fe71c79a6502487941ccfc09d7967054abeceff421f3','closed_manifest':'132765650f5b962d63c83faf149a2449c31c1dddce8987bd872ef298fcffecad'}
 class Refused(RuntimeError):pass
 
 def require(ok,code):

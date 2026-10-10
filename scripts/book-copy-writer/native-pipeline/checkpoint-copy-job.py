@@ -22,7 +22,7 @@ PROFILES = {
 CAPTURE_IMAGE='ghcr.io/thaynes43/haynesnetwork:v0.110.5@sha256:e264e8a63b7a6b8865bfb51ecb38c398534d492ba64c6956960dedd8e6e64c6a'
 CAPTURE_PROGRAM_SHA256='de31b97670ba392c0f66fa3c22cd3d73855b4621cc657e2d4d873656f5885cde'
 CAPTURE_FENCE_KEYS={'schema','phase_token','claim_uid','node','first_service_stop_observed_at','pg_backend_pid','pg_fence_established_at','pg_health_at','service_fence_checked_at','share_tables','read_only'}
-COPY_IMAGE='ghcr.io/thaynes43/book-copy-writer@sha256:fdc358fcce883a198a710f9415a95e5200b39499a26ab540a9863043a8b2f86c'
+COPY_IMAGE='ghcr.io/thaynes43/book-copy-writer@sha256:628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601'
 COPY_COMMAND=['nice','-n','19','python','/copy-writer/book_copy_writer.py']
 COPY_FILES={'snapshot.json','selection.json','app-capture.json'}
 STATE_KEYS = {'schema','restore_pr','phase_token','created_at','heartbeat','heartbeat_required','complete','owned_jobs','window_started_at','pg_leases'}
@@ -32,8 +32,8 @@ INTENTS = {SOURCE:'COPY_SOURCE_PHASE_READY',MAIN:'COPY_PROOF_HASHES_JSON',('down
 LEASE_KEYS = {'job_namespace','job_name','job_uid','pod_uid','backend_pid','application_name'}
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
 FROZEN_TEMPLATES = {
- 'COPY_SOURCE_PHASE_READY': ('pg-nfs-readonly-source-template.prepared.json','96e60d564e0c068e8a825369bcd29aefde424697da76831f74a43ac9e572c2a4'),
- 'LIDARR_CAPTURE_PHASE_READY': ('lidarr-copy-source-template.prepared.json','8ce4ecfa3efbf8db2456f469d6b3645a444d8c8637da6bc94e2a0b1e668e9ee6'),
+ 'COPY_SOURCE_PHASE_READY': ('pg-nfs-readonly-source-template.prepared.json','1390250f4100b35f0126d12ecf071f7e93498a11e036d5c2417ca7ec11a9dfbe'),
+ 'LIDARR_CAPTURE_PHASE_READY': ('lidarr-copy-source-template.prepared.json','fa635e2dda93fb7887c98e5cd0f89769e606a49f22a2a713eaa7104d23435fc6'),
 }
 ROW_KEYS = {'namespace','name','uid','phase_token','writer','source_manifest_sha256','initial_manifest_sha256','initial_manifest','gate_env','mutable_env','ready_manifest_sha256','ready_manifest','registered_at','bound_at','observed_at'}
 class Refused(RuntimeError): pass
