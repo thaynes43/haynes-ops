@@ -15,6 +15,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -170,6 +171,7 @@ class PipelineCases(unittest.TestCase):
                 'sender':('private-input reviewed source pin differs',lambda c:c['source_private_input']['sender'].update(sha256='8d3cb8b3242a14ba5a07a25dca14d16220bf86be85d95cb18a1b3eeae7fd8c81')),
             }
             with mock.patch.object(handoff,'SELECTION',refs['selection_approval']['sha256']), \
+                 mock.patch.dict(sys.modules,{'yaml':types.ModuleType('yaml')}), \
                  mock.patch.object(handoff.sys,'argv',argv), \
                  mock.patch.object(handoff.subprocess,'run',side_effect=RuntimeError('finite_live_boundary')) as capture, \
                  mock.patch.object(handoff.os,'execv') as writer:
