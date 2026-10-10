@@ -19,6 +19,8 @@ spec:
       labels: *id001
     spec:
       restartPolicy: Never
+      # Below household priority and never preempts; dev-env-scheduling supplies it.
+      priorityClassName: dev-env-agent
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -29,7 +31,7 @@ spec:
       terminationGracePeriodSeconds: 15
       containers:
       - name: inspect
-        image: ghcr.io/thaynes43/dev-env@sha256:f4f344e09258d0355cb1ed67ce08cacafd45905f459341516c298dad386d9b03
+        image: ghcr.io/thaynes43/dev-env:2.10.0@sha256:a9b1fb9beea5ab38f606b3198843828727dfb21de345f8fd10e67dc1f59407cb
         command:
         - /bin/sh
         - -ec
