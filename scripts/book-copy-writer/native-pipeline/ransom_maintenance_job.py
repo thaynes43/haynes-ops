@@ -140,7 +140,7 @@ def sonarr_lock(config, get, run, expected=None, release=False):
                     and access["nfs"] == {"server": BOOK_NFS["server"], "path": "/hdd-nfs-repl"}
                     and access["mount_path"] == "/data/cephfs-hdd", "exact Sonarr NAS route differs")
     pod = get("pod", access["pod_name"], "media")
-    states = pod.get("status", {}).get("containerStatuses", [])
+    states = [s for s in pod.get("status", {}).get("containerStatuses", []) if s.get("name") == "app"]
     catalog.require(pod["metadata"]["uid"] == access["pod_uid"] and pod["spec"] == access["pod_spec"]
                     and not pod["metadata"].get("deletionTimestamp") and pod["spec"]["nodeName"] == access["node_name"]
                     and pod["metadata"].get("labels", {}).get("app.kubernetes.io/name") == "sonarr"

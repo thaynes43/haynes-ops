@@ -609,8 +609,10 @@ class CatalogMaintenanceTests(unittest.TestCase):
                   'python_sha256': catalog.metadata.sha256(Path('/proc/self/exe').read_bytes())}
         pod = {'metadata': {'uid': access['pod_uid'], 'labels': {'app.kubernetes.io/name': 'sonarr'}},
                'spec': {'nodeName': access['node_name'], 'volumes': [{'name': access['volume_name'], 'nfs': access['nfs']}],
-                        'containers': [{'name': 'app', 'volumeMounts': [{'name': access['volume_name'], 'mountPath': access['mount_path']}]}]},
-               'status': {'phase': 'Running', 'containerStatuses': [{'name': 'app', 'imageID': access['image_id'], 'ready': True, 'restartCount': 0}]}}
+                        'containers': [{'name': 'app', 'volumeMounts': [{'name': access['volume_name'], 'mountPath': access['mount_path']}]},
+                                       {'name': 'exportarr', 'volumeMounts': []}]},
+               'status': {'phase': 'Running', 'containerStatuses': [{'name': 'exportarr', 'imageID': 'sidecar', 'ready': True, 'restartCount': 0},
+                                                                  {'name': 'app', 'imageID': access['image_id'], 'ready': True, 'restartCount': 0}]}}
         access['pod_spec'] = copy.deepcopy(pod['spec'])
         config = {'converter_lock_access': access, 'phase_token': 'a' * 32, 'owner_approved': True, 'root_lock_admission_go': True}
         get = mock.Mock(return_value=pod)
@@ -625,7 +627,7 @@ class CatalogMaintenanceTests(unittest.TestCase):
                 return out.getvalue()
         receipt = maintenance.lock_admission(config, get, run)
         self.assertEqual(receipt['state_inode'], state.stat().st_ino);self.assertTrue(receipt['lock_absent'])
-        for failure in ('pod', 'mount', 'uid', 'tool', 'existing-lock'):
+        for failure in ('pod', 'mount', 'uid', 'tool', 'existing-lock', 'duplicate-app', 'missing-app'):
             with self.subTest(failure=failure):
                 old = copy.deepcopy(pod);old_access = copy.deepcopy(access)
                 if failure == 'pod':pod['metadata']['uid'] = 'replacement'
@@ -633,6 +635,8 @@ class CatalogMaintenanceTests(unittest.TestCase):
                 if failure == 'uid':access['runtime_uid'] += 1
                 if failure == 'tool':access['python_sha256'] = '0' * 64
                 if failure == 'existing-lock':(state / 'lock').mkdir()
+                if failure == 'duplicate-app':pod['status']['containerStatuses'].append(copy.deepcopy(pod['status']['containerStatuses'][1]))
+                if failure == 'missing-app':pod['status']['containerStatuses'].pop()
                 with self.assertRaises((catalog.Refused, AssertionError)):maintenance.lock_admission(config, get, run)
                 pod.clear();pod.update(old);access.clear();access.update(old_access)
                 if failure == 'existing-lock':(state / 'lock').rmdir()

@@ -169,7 +169,9 @@ existing bare converter lock directory. The separate maintenance watcher first
 proves original Job/Pod and PG absence, then checks that lock through the existing
 Sonarr app Pod's RW `gasha01.haynesnetwork:/hdd-nfs-repl` mount. Root binds that
 Pod UID/full spec/image/node, exact mount and Python executable SHA/runtime UID
-before Stop. The worker sends a phase/operation/backend-bound receipt immediately
+before Stop. The exact `app` container status is selected within that pinned Pod;
+its existing `exportarr` sidecar does not change the execution owner. The worker
+sends a phase/operation/backend-bound receipt immediately
 after the existing exclusive lock creation; the host retains it once in a private
 file outside the lock. It records the state and lock inode, UID and mode, and exact
 server-side logical path. Device numbers are not compared across Pods.
