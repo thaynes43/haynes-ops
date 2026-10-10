@@ -33,7 +33,7 @@ jobs:
       - name: Use Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.13'
+          python-version: '3.14'
       - name: Finite serial protocol and real-child fixtures
         run: nice -n 19 node --test --test-concurrency=1 scripts/book-reading-list-stage/protocol.test.mjs scripts/book-reading-list-stage/worker.test.mjs
       - name: Finite host transport and native fixtures
