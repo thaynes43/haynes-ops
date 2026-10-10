@@ -64,9 +64,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # thaynes43/dev-env main eeb15e3 (publish.yml run 37798469467), signed
-              # keyless from main (Kyverno verify-dev-env-v2).
-              tag: sha-eeb15e3@sha256:491bfd05e101843d1bb31250841095a23901cf1eeb51566398ddc416ccbcef3c
+              # Main cc8ba3c; publish.yml run 38034372223, exact-main keyless verify.
+              # Source includes owned lifecycle integration, retained budget authority and fixture inspector.
+              tag: sha-cc8ba3c@sha256:64e174deffdbf06ec28aac505b5bf3dfc0a20d9dfa06f5320ea8b786731d85e8
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -77,6 +77,18 @@ spec:
               # ServiceAccount (dev-env-rbac's dev-env-v2-api-token Role in `dev`,
               # held to this audience by dev-env-v1-token-guard).
               - --client-service-accounts=dev-agents/dev-env-workbench,dev/dev-env
+              # Explicit sole zero-task fixture; ordinary native hosts remain closed.
+              - '--enable-coordinator-callers'
+              - '--enable-managed-codex-tasks'
+              - '--project-catalog=dev-env-system/dev-env-project-catalog'
+              - '--project-clone-owner=thaynes43'
+              - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-native-lifecycle","hostID":"owned-native-fixture"}]'
+              - '--enable-task-budgets'
+              - '--task-budget-namespace=dev-env-budgets'
+              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.11.0@sha256:98761577d27feded51427a8097a9cf9492c2e7ee62b6e9a99df27bf52017532d'
+              - '--assigned-task-budgets={"owned-native-fixture":"owned-native-fixture-1010"}'
+              - '--enable-native-lifecycle-fixture'
+              - '--native-fixture-image=ghcr.io/thaynes43/dev-env:2.11.0@sha256:98761577d27feded51427a8097a9cf9492c2e7ee62b6e9a99df27bf52017532d'
               # The other flags keep their defaults: --session-namespace dev-agents,
               # --templates-name dev-env-templates in this namespace (the Lease lives
               # here too), --api-bind-address :8443, --api-tls-dir
@@ -123,6 +135,9 @@ spec:
               capabilities:
                 drop: [ALL]
     defaultPodOptions:
+      annotations:
+        # Keep the actual operator rollout free of an unbounded injected init.
+        k8tz.io/inject: "false"
       automountServiceAccountToken: true
       enableServiceLinks: false
       securityContext:

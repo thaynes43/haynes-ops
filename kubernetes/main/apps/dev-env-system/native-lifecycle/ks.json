@@ -1,0 +1,43 @@
+{
+  "apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+  "kind": "Kustomization",
+  "metadata": {
+    "name": "dev-env-native-lifecycle",
+    "namespace": "dev-env-system",
+    "labels": {
+      "dev-env.haynesops.com/native-fixture-version": "native-fixture-cc8ba3c"
+    }
+  },
+  "spec": {
+    "suspend": true,
+    "path": "./kubernetes/main/apps/dev-env-system/native-lifecycle/app",
+    "prune": true,
+    "sourceRef": {
+      "kind": "GitRepository",
+      "name": "haynes-ops",
+      "namespace": "flux-system"
+    },
+    "wait": true,
+    "interval": "30m",
+    "timeout": "2m",
+    "dependsOn": [
+      {
+        "name": "dev-env-network",
+        "readyExpr": "dep.metadata.labels[\"dev-env.haynesops.com/native-fixture-version\"] == self.metadata.labels[\"dev-env.haynesops.com/native-fixture-version\"] && dep.status.conditions.exists(e, e.type == \"Ready\" && e.status == \"True\") && dep.metadata.generation == dep.status.observedGeneration"
+      },
+      {
+        "name": "dev-env-operator",
+        "readyExpr": "dep.metadata.labels[\"dev-env.haynesops.com/native-fixture-version\"] == self.metadata.labels[\"dev-env.haynesops.com/native-fixture-version\"] && dep.status.conditions.exists(e, e.type == \"Ready\" && e.status == \"True\") && dep.metadata.generation == dep.status.observedGeneration"
+      },
+      {
+        "name": "dev-env-secrets"
+      },
+      {
+        "name": "dev-env-pki"
+      },
+      {
+        "name": "dev-env-scheduling"
+      }
+    ]
+  }
+}

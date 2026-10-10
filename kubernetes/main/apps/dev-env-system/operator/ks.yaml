@@ -12,16 +12,25 @@ kind: Kustomization
 metadata:
   name: &app dev-env-operator
   namespace: &namespace dev-env-system
+  labels:
+    dev-env.haynesops.com/native-fixture-version: native-fixture-cc8ba3c
 spec:
   targetNamespace: *namespace
   commonMetadata:
     labels:
       app.kubernetes.io/name: *app
+      dev-env.haynesops.com/native-fixture-version: native-fixture-cc8ba3c
   dependsOn:
     - name: dev-env-crds
     - name: dev-env-rbac
     - name: dev-env-templates
     - name: dev-env-network
+      readyExpr: >-
+        dep.metadata.labels["dev-env.haynesops.com/native-fixture-version"] == self.metadata.labels["dev-env.haynesops.com/native-fixture-version"] &&
+        dep.status.conditions.exists(e, e.type == "Ready" && e.status == "True") &&
+        dep.metadata.generation == dep.status.observedGeneration
+    - name: dev-env-task-budgets
+    - name: dev-env-projects
     - name: dev-env-pki
   path: ./kubernetes/main/apps/dev-env-system/operator/app
   prune: true

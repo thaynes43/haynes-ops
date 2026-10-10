@@ -1,0 +1,8 @@
+# Exact NativeFixturePod from dev-env cc8ba3c; rendered with signed release2.11.0.
+# Release source8c5131a, publish-agent.yml run38034679186; exact-tag cosign verify.
+# The parent Flux Kustomization stays suspended until finite acceptance is ready.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./serviceaccount.yaml
+  - ./pod.json

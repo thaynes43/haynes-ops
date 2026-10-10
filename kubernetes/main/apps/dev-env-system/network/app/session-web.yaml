@@ -26,6 +26,11 @@ spec:
     matchLabels:
       io.kubernetes.pod.namespace: dev-agents
     matchExpressions:
+      # The fixture cannot reach providers or other world endpoints.
+      - key: app.kubernetes.io/name
+        operator: NotIn
+        values:
+          - dev-env-owned-native-lifecycle
       - key: dev-env.haynesops.com/egress
         operator: NotIn
         values:

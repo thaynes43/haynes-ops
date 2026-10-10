@@ -1,0 +1,77 @@
+{
+  "apiVersion": "cilium.io/v2",
+  "kind": "CiliumNetworkPolicy",
+  "metadata": {
+    "name": "dev-env-owned-native-lifecycle-offline",
+    "namespace": "dev-agents"
+  },
+  "spec": {
+    "egress": [
+      {
+        "toEndpoints": [
+          {
+            "matchLabels": {
+              "app.kubernetes.io/name": "dev-env-operator",
+              "io.kubernetes.pod.namespace": "dev-env-system"
+            }
+          }
+        ],
+        "toPorts": [
+          {
+            "ports": [
+              {
+                "port": "8443",
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "toEndpoints": [
+          {
+            "matchLabels": {
+              "io.kubernetes.pod.namespace": "kube-system",
+              "k8s-app": "kube-dns"
+            }
+          }
+        ],
+        "toPorts": [
+          {
+            "ports": [
+              {
+                "port": "53",
+                "protocol": "UDP"
+              },
+              {
+                "port": "53",
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "egressDeny": [
+      {
+        "toEntities": [
+          "world",
+          "host",
+          "remote-node"
+        ]
+      }
+    ],
+    "endpointSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/name": "dev-env-owned-native-lifecycle"
+      }
+    },
+    "ingressDeny": [
+      {
+        "fromEntities": [
+          "all"
+        ]
+      }
+    ]
+  }
+}
