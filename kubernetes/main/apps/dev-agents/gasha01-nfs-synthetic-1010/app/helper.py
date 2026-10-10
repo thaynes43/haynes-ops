@@ -135,7 +135,22 @@ def checked_tree(root, root_fd):
                 parts = parent_parts + (entry.name,)
                 if parts[0] not in TOP_LEVEL:
                     raise CapsuleUnknown('unexpected pilot parent')
-                st = entry.stat(follow_symlinks=False)
+                try:
+                    st = entry.stat(follow_symlinks=False)
+                except FileNotFoundError:
+                    # The peer atomically publishes these fixed regular temps.
+                    # Their listed names may disappear before this stat; no other
+                    # vanished entry is legitimate in this once-only capsule.
+                    marker_temps = {
+                        'seed.new-marker-A', 'latest.new-marker-A',
+                        'locks-held.new-marker-A', 'locks-released.new-marker-A',
+                        'A-done.new-marker-A', 'peer-ready.new-marker-B',
+                        'peer-fetched.new-marker-B', 'locks-denied.new-marker-B',
+                        'locks-acquired.new-marker-B', 'B-done.new-marker-B',
+                    }
+                    if parent_parts == ('control',) and entry.name in marker_temps:
+                        continue
+                    raise CapsuleUnknown('unexpected fixture entry disappeared') from None
                 if st.st_uid != 1000 or st.st_gid != 1000:
                     raise CapsuleUnknown('fixture entry ownership changed')
                 if stat.S_ISDIR(st.st_mode):
