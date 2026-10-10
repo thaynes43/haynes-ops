@@ -302,6 +302,7 @@ spec:
               - matchName: "umassathletics.com"
     # 2a. Cluster-local MCP servers (saga plan 03): HA + Grafana — the agents'
     #     introspection tools, reached via svc FQDNs, never the public ingress.
+              - matchName: "gasha01.haynesnetwork"
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: home-automation
@@ -449,6 +450,8 @@ spec:
     #    (dev-env-hw-ssh ES → HW_SSH_PRIVATE_KEY_B64); `hw-ssh` is the entry point.
     #    PiKVM added 2026-10-03 (Tom): root over SSH = console on every master, so
     #    root-equivalent; rules in .agents/runbooks/proxmox-access.md (SSH tier).
+    # External NFS gateway gasha01: read-only gateway inspection.
+    # Access prerequisites and limits: .agents/runbooks/proxmox-access.md.
     - toFQDNs:
         - matchName: "haynesintelligence.haynesnetwork"
         - matchName: "twin-top.haynesnetwork"
@@ -457,7 +460,7 @@ spec:
         - matchName: "pve-filet02.haynesnetwork"
         - matchName: "haynestower.haynesnetwork"
         - matchName: "pikvm.haynesnetwork"
-        - matchName: gasha01.haynesnetwork
+        - matchName: "gasha01.haynesnetwork"
       toPorts:
         - ports:
             - port: "22"
