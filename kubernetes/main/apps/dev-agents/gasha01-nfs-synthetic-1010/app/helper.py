@@ -371,7 +371,11 @@ def fixed_replace(root, root_fd, relative, payload, reservation, suffix):
         os.fsync(parent)
     finally:
         os.close(parent)
-    checked_tree(root, root_fd)
+    # Publishing a marker authorizes the peer's next lock mutation. The temp
+    # write was scanned before publication; a trailing scan would race that
+    # authorized unlink/rmdir. Nonmarker copy replacements still get both scans.
+    if suffix not in {'marker-A', 'marker-B'}:
+        checked_tree(root, root_fd)
 
 
 class FiniteCandidateRunner:
