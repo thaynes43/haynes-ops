@@ -151,6 +151,37 @@ class CachedSourceCases(unittest.TestCase):
             with self.assertRaises((RuntimeError,ValueError)):w.reconcile_ks(ns,name,NORMAL_SHA)
         w.run.assert_not_called()
 
+    def test_generic_reconcile_skips_only_fresh_ready_current_integer_generation(self):
+        receipt,_,_,_,holds,_=fixture();ns,name=wc.SCOPES[0];row=holds[(ns,name)];row['spec']['suspend']=False
+        row['status']=dict(observedGeneration=2,lastAppliedRevision='main@sha1:'+NORMAL_SHA,
+                           conditions=[dict(type='Ready',status='True',observedGeneration=2)])
+        w=object.__new__(legacy.watch.Watchdog);w.cached=True;w.run=mock.Mock();w.kube=lambda *_:copy.deepcopy(row)
+        before=receipt['holds'][ns+'/'+name]['before'];w.state={'cached_ks_owners':{ns+'/'+name:dict(uid=before['metadata']['uid'],spec=before['spec'],phase_token=PHASE)}}
+        w.reconcile_ks(ns,name,NORMAL_SHA);w.run.assert_not_called()
+        # Missing, stale or non-integer evidence must retain the actual command.
+        variants=[]
+        for path,bad in ((('metadata','generation'),None),(('metadata','generation'),True),
+                         (('metadata','generation'),2.0),(('metadata','generation'),0),
+                         (('status','observedGeneration'),None),(('status','observedGeneration'),1),
+                         (('status','observedGeneration'),2.0),(('status','observedGeneration'),True),
+                         (('status','conditions',0,'observedGeneration'),None),
+                         (('status','conditions',0,'observedGeneration'),1),
+                         (('status','conditions',0,'observedGeneration'),2.0),
+                         (('status','conditions',0,'observedGeneration'),True),
+                         (('status','conditions',0,'status'),'False'),
+                         (('status','lastAppliedRevision'),'main@sha1:'+STOP_SHA),
+                         (('status','lastAppliedRevision'),'other@sha1:'+NORMAL_SHA)):
+            changed=copy.deepcopy(row);target=changed
+            for key in path[:-1]:target=target[key]
+            if bad is None:target.pop(path[-1])
+            else:target[path[-1]]=bad
+            variants.append(changed)
+        changed=copy.deepcopy(row);changed['status']['conditions']=[];variants.append(changed)
+        for changed in variants:
+            with self.subTest(changed=changed):
+                w.kube=lambda *_:copy.deepcopy(changed);w.run.reset_mock();w.reconcile_ks(ns,name,NORMAL_SHA)
+                self.assertEqual(w.run.call_args.args[0],['flux','reconcile','kustomization',name,'-n',ns,'--timeout=30s'])
+
     def test_six_controller_recovery_keeps_all_absence_barriers_and_one_source_reconcile(self):
         with tempfile.TemporaryDirectory() as directory:
             w,resources=legacy.NativeCleanupTests().fixture(Path(directory));resources.update(Job=[],Pod=[])
@@ -175,9 +206,18 @@ class CachedSourceCases(unittest.TestCase):
             self.assertEqual(sum(c[:2]==('kubectl','exec') for c in w.calls),8)
             self.assertEqual(sum(c[:3]==('flux','reconcile','source') for c in w.calls),1)
             self.assertEqual(sum(c[:3]==('flux','reconcile','kustomization') for c in w.calls),6)
-            # A later safety/reverification attempt cannot inherit the prior skip.
+            # Fresh current-generation convergence skips forced requests while
+            # retaining every union/PG barrier and the new attempt's Source call.
+            for kind,name,ns in rows:
+                if kind=='kustomization':
+                    generation=rows[(kind,name,ns)]['metadata']['generation']
+                    rows[(kind,name,ns)]['status']=dict(observedGeneration=generation,lastAppliedRevision='main@sha1:'+NORMAL_SHA,
+                        conditions=[dict(type='Ready',status='True',observedGeneration=generation)])
             w.calls.clear();w.recover_cluster(NORMAL_SHA)
+            self.assertEqual(sum(c[:3]==('kubectl','get','--raw') for c in w.calls),48)
+            self.assertEqual(sum(c[:2]==('kubectl','exec') for c in w.calls),8)
             self.assertEqual(sum(c[:3]==('flux','reconcile','source') for c in w.calls),1)
+            self.assertEqual(sum(c[:3]==('flux','reconcile','kustomization') for c in w.calls),0)
 
     def configure_converter_fixture(self,w,main=NORMAL_SHA):
         w.args=types.SimpleNamespace(repo_dir='public-fixture');w.current_main=lambda:main
