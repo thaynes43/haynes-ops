@@ -1,5 +1,15 @@
 # Fresh COPY2 window preparation
 
+The supervisor binds and records both read-only SQLite helper UIDs before
+starting the first publisher capture. It collects their complete payloads while
+that managed publisher child runs. The publisher bridge only reads the phase
+ledger; during this overlap the owning supervisor may update its heartbeat,
+but every other ledger field must stay unchanged. A failed or expired publisher
+child stops the attempt and is terminated and reaped before SOURCE release.
+The first complete publisher proof must pass before helper cleanup. A second
+complete capture still follows verified helper cleanup and precedes assembly
+and MAIN. The original capture, source and restoration clocks remain unchanged.
+
 This tracked successor prepares a Stop/inverse/watch pair for the current
 haynesnetwork v0.110.5. The retained image/source `7c99b2af` is historical;
 the prospective byte lifetime requires a newly published signed runtime and

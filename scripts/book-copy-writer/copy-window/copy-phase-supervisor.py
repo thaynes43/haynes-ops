@@ -173,6 +173,7 @@ class Supervisor:
   self.publishers=importlib.util.module_from_spec(module);module.loader.exec_module(self.publishers)
   self.stop=False;self.last_guard=0;self.last_cluster_guard=0;self.hook=None
   self.main_stream=None;self.main_log_error=None;self.main_log_thread=None;self.main_prefix_lock=threading.Lock();self.main_prefix_bytes=0
+  self.publisher_capture=None
   signal.signal(signal.SIGTERM,self.stop_signal);signal.signal(signal.SIGINT,self.stop_signal)
   self.save()
  def stop_signal(self,*unused):self.stop=True
@@ -467,13 +468,50 @@ class Supervisor:
    self.publishers.verify(self.status['publisher_scope_proof'],self.c['publisher_scope_sha256'],pods,{r['uid'] for r in self.jobs if r['uid']},time.time(),storage)
    self.guard_lease(self.lock_ready)
   self.status['service_fence_checked_at']=now();self.save()
- def capture_publishers(self):
+ def begin_publisher_capture(self):
+  if getattr(self,'publisher_capture',None) is not None:raise Refused('publisher capture already running')
   if self.status.get('writer_created'):raise Refused('publisher refresh forbidden after MAIN creation')
   self.service_fence();destination=self.out/('publisher-scope-'+uuid.uuid4().hex+'.json')
   hook=self.c['publisher_scope_hook'];script=Path(hook['script'])
   if hashlib.sha256(script.read_bytes()).hexdigest()!=hook['sha256']:raise Refused('publisher collector source changed')
   argv=['nice','-n','19','python3',str(script),'--config',self.c['publisher_config'],'--output',str(destination),'--budget','60','--execute']
-  self.run_monitored(argv,60,require_lock=self.lock_ready)
+  state,_=self.ledger();identity=copy.deepcopy(state);del identity['heartbeat']
+  self.guard_lease(self.lock_ready)
+  log=self.out/('command-'+uuid.uuid4().hex+'.log')
+  descriptor=os.open(log,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+  stream=os.fdopen(descriptor,'wb');expires=time.monotonic()+60
+  try:process=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=stream,stderr=stream,start_new_session=True)
+  except BaseException:stream.close();raise
+  self.publisher_capture={'process':process,'stream':stream,'destination':destination,
+                          'expires':expires,'phase_identity':identity}
+ def check_publisher_capture(self):
+  pending=getattr(self,'publisher_capture',None)
+  if pending is None:return
+  state,_=self.ledger();identity=copy.deepcopy(state);del identity['heartbeat']
+  if identity!=pending['phase_identity']:raise Refused('phase identity changed during publisher capture')
+  process=pending['process'];code=process.poll()
+  if code not in (None,0):raise Refused('bounded reviewed command failed; private output retained')
+  if code is None and time.monotonic()>=pending['expires']:raise Refused('publisher complete capture deadline expired')
+ def stop_publisher_capture(self):
+  pending=getattr(self,'publisher_capture',None)
+  if pending is None:return
+  process=pending['process']
+  if process.poll() is None:
+   try:os.killpg(process.pid,signal.SIGTERM)
+   except ProcessLookupError:pass
+   try:process.wait(timeout=2)
+   except subprocess.TimeoutExpired:
+    try:os.killpg(process.pid,signal.SIGKILL)
+    except ProcessLookupError:pass
+    process.wait(timeout=2)
+  else:process.wait(timeout=2)
+  pending['stream'].close();self.publisher_capture=None
+ def finish_publisher_capture(self):
+  pending=self.publisher_capture
+  if pending is None:raise Refused('publisher capture was not started')
+  while pending['process'].poll() is None:self.guard_lease(self.lock_ready);self.save();time.sleep(.1)
+  self.guard_lease(self.lock_ready);destination=pending['destination'];self.stop_publisher_capture()
+  hook=self.c['publisher_scope_hook'];script=Path(hook['script'])
   collector_spec=importlib.util.spec_from_file_location('copy_publisher_collector',script);collector=importlib.util.module_from_spec(collector_spec);collector_spec.loader.exec_module(collector)
   pods=self.list('pods');claims=self.list('pvc');volumes=self.list('pv');storage=collector.storage_inventory(pods,claims,volumes)
   scope=self.publishers.verify(destination,self.c['publisher_scope_sha256'],pods,{r['uid'] for r in self.jobs if r['uid']},time.time(),storage)
@@ -486,6 +524,10 @@ class Supervisor:
   receipt=self.out/('service-fence-'+uuid.uuid4().hex+'.json');private_json(receipt,service)
   self.status.update(publisher_scope=scope,publisher_scope_proof=str(destination),service_fence_receipt=str(receipt));self.save()
   return receipt
+ def capture_publishers(self):
+  self.begin_publisher_capture()
+  try:return self.finish_publisher_capture()
+  finally:self.stop_publisher_capture()
  def guard_lease(self,require_lock=True):
   if self.stop or Path(self.c['watchdog_stop']).exists():raise Refused('stop requested')
   if getattr(self,'main_log_error',None):raise Refused('MAIN durable log drain failed; actual movement total unknown')
@@ -496,6 +538,7 @@ class Supervisor:
    self.drain_lock_events()
    if not self.lock_ready:raise Refused('owned SOURCE fence not ready')
    if self.health_at is None or time.time()-self.health_at>12:raise Refused('PG lock health expired')
+  self.check_publisher_capture()
  def run_monitored(self,argv,timeout,require_lock=True,output_path=None,input_bytes=None):
   if type(timeout) not in (int,float) or not 0<timeout<=60:raise Refused('monitored publisher cap must be <=60 seconds')
   self.guard_lease(require_lock)
@@ -680,8 +723,11 @@ class Supervisor:
  def wait_source_census(self):
   while not self.source_ready:self.guard();time.sleep(.1)
   self.status['source_stat_census']=self.fetch(self.checkpoint.SOURCE,'library.json',32*1024*1024);self.status['source_permissions']=self.fetch(self.checkpoint.SOURCE,'permissions.json',1024*1024);self.save()
- def capture_vendor(self,key,ready):
-  self.create_job(ready);pod=self.wait_pod(key);row=self.row(key);container=row['ready_manifest']['spec']['template']['spec']['containers'][0]['name']
+ def capture_vendor(self,key,ready=None):
+  if ready is not None:self.create_job(ready)
+  row=self.row(key)
+  if row['writer'] or row['uid'] is None or row['ready_manifest'] is None:raise Refused('vendor reader must be created and durably UID-bound')
+  pod=self.wait_pod(key);container=row['ready_manifest']['spec']['template']['spec']['containers'][0]['name']
   before=native_reader_identity(key,row,pod);before_path=self.out/(key[1]+'-native-before-fetch.json');private_json(before_path,pod)
   until=time.monotonic()+25
   while True:
@@ -739,6 +785,19 @@ class Supervisor:
   if [r['uid'] for r in rows]!=retired.get('exact_job_uids') or any(r['uid'] is None for r in rows):raise Refused('retired reader ledger history differs')
   for row in rows:
    if self.checkpoint.lookup_job(row['namespace'],row['name']) is not None or self.owned_job_pods(self.list('pods',row['namespace']),row):raise Refused('retired reader Job or owned Pod exists before MAIN')
+ def collect_readonly_sources(self):
+  paths={self.checkpoint.validate_job(json.loads(Path(p).read_bytes()),self.status['phase_token']):p for p in self.c['readonly_capture_jobs']}
+  llkey=('downloads','issue831-ll-source-1009-03');kvkey=('media','issue831-kavita-source-1009-03')
+  # Bind/create/observe both UIDs on this owning thread before the bridge reads
+  # the shared ledger. Its before/after identity permits heartbeat changes only.
+  for key in (llkey,kvkey):self.create_job(self.bind_reader(paths[key]))
+  self.begin_publisher_capture()
+  try:
+   ll=self.capture_vendor(llkey);kavi=self.capture_vendor(kvkey);self.wait_source_census()
+   self.finish_publisher_capture()
+  finally:self.stop_publisher_capture()
+  self.retire_vendor_readers(ll,kavi)
+  return ll,kavi
  def assembly(self,service,ll,kavi):
   self.guard();fence={'schema':1,'phase_token':self.status['phase_token'],'pg_backend_pid':self.lock_pid,'pg_fence_established_at':self.status['pg_fence_established_at'],
    'pg_health_at':self.status['pg_health_at'],'first_service_stop_observed_at':self.status['first_service_stop_observed_at']}
@@ -926,10 +985,8 @@ class Supervisor:
    while True:
     try:self.service_fence(wait_for_rollout=True);break
     except NotStopped:self.guard_lease(False);self.save();time.sleep(.2)
-   self.native_start();self.lock_start();self.deliver_source_private_inputs();self.capture_publishers()
-   paths={self.checkpoint.validate_job(json.loads(Path(p).read_bytes()),self.status['phase_token']):p for p in self.c['readonly_capture_jobs']}
-   llkey=('downloads','issue831-ll-source-1009-03');kvkey=('media','issue831-kavita-source-1009-03')
-   ll=self.capture_vendor(llkey,self.bind_reader(paths[llkey]));kavi=self.capture_vendor(kvkey,self.bind_reader(paths[kvkey]));self.wait_source_census();self.retire_vendor_readers(ll,kavi)
+   self.native_start();self.lock_start();self.deliver_source_private_inputs()
+   ll,kavi=self.collect_readonly_sources()
    # The final actual scope precedes service receipt, assembly, binding and MAIN.
    service=self.capture_publishers();receipt=self.assembly(service,ll,kavi)
    if not receipt['selected_count']:raise Refused('zero selected eligible copies; restore without MAIN')
@@ -940,7 +997,7 @@ class Supervisor:
    self.status.update(phase='aborting',error_class=type(error).__name__,refusal=str(error) if isinstance(error,Refused) else None);self.save()
   finally:
    self.status['phase']='restoring';self.save()
-   try:self.stop_jobs();self.release_lock()
+   try:self.stop_publisher_capture();self.stop_jobs();self.release_lock()
    except BaseException as error:self.status.update(cleanup_failed=True,cleanup_error_class=type(error).__name__);self.save()
    self.request_restore()
   # Optional private fsync starts only after the independent recovery request.

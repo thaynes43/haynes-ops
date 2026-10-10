@@ -586,6 +586,99 @@ class OwnerOutcomeTests(unittest.TestCase):
             self.assertEqual(Path(path).read_bytes(),raw)
 
 
+class PublisherOverlapTests(unittest.TestCase):
+    def fixture(self, root):
+        w=object.__new__(supervisor.Supervisor);w.out=root;w.publisher_capture=None;w.lock_ready=True
+        w.status={'phase_token':'a'*32,'first_service_stop_observed_at':'1970-01-01T00:01:40+00:00'};w.jobs=[];events=[];children=[]
+        keys=[('downloads','issue831-ll-source-1009-03'),('media','issue831-kavita-source-1009-03')]
+        state={'heartbeat':'initial','owned_jobs':[dict(key=list(k),uid=None) for k in keys],
+               'pg_leases':[dict(backend_pid=42)]}
+        script=root/'collector.py';script.write_text('def storage_inventory(*args):return {}\n')
+        paths=[]
+        for ns,name in keys:
+            p=root/(name+'.json');p.write_text(json.dumps({'metadata':{'namespace':ns,'name':name}}));paths.append(str(p))
+        w.c={'readonly_capture_jobs':paths,'publisher_scope_hook':{'script':str(script),'sha256':wc.sha(script.read_bytes())},
+             'publisher_config':'public-fixture.json','publisher_scope_sha256':'b'*64}
+        w.checkpoint=types.SimpleNamespace(validate_job=lambda job,phase:(job['metadata']['namespace'],job['metadata']['name']))
+        w.ledger=lambda:(copy.deepcopy(state),'unused')
+        w.service_fence=lambda:None;w.guard_lease=lambda *_:w.check_publisher_capture()
+        w.save=lambda:state.update(heartbeat='current')
+        w.bind_reader=lambda path:json.loads(Path(path).read_bytes())
+        def create(job):
+            key=[job['metadata']['namespace'],job['metadata']['name']]
+            uid=key[1]+'-uid';next(r for r in state['owned_jobs'] if r['key']==key)['uid']=uid
+            w.jobs.append(dict(namespace=key[0],name=key[1],uid=uid));events.append(('uid',tuple(key)))
+        w.create_job=create;w.list=lambda _:[]
+        def verify(*args):
+            self.assertEqual(args[3],{r['uid'] for r in state['owned_jobs']})
+            events.append(('proof',len(children)));return {}
+        w.publishers=types.SimpleNamespace(verify=verify,scope_digest=lambda _:'b'*64)
+        def collect(key):
+            self.assertIsNotNone(w.publisher_capture);w.check_publisher_capture();events.append(('payload',key))
+            if key==keys[-1]:children[-1].code=0
+            return key
+        w.capture_vendor=collect;w.wait_source_census=lambda:None
+        w.retire_vendor_readers=lambda *args:events.append(('native_gc',))
+        class Child:
+            pid=4321
+            def __init__(self,code):self.code=code;self.term_timeout=False
+            def poll(self):return self.code
+            def wait(self,timeout):
+                if self.term_timeout:self.term_timeout=False;raise subprocess.TimeoutExpired('public-fixture',timeout)
+                events.append(('reaped',));self.code=0 if self.code is None else self.code;return self.code
+        def spawn(argv,**kwargs):
+            self.assertTrue(all(r['uid'] for r in state['owned_jobs']))
+            self.assertTrue(kwargs['start_new_session']);self.assertEqual(kwargs['stdin'],subprocess.DEVNULL)
+            destination=Path(argv[argv.index('--output')+1]);destination.write_text('{"publishers":[]}')
+            child=Child(None if not children else 0);children.append(child);events.append(('started',len(children)));return child
+        return w,state,events,children,spawn
+
+    def test_uid_barrier_both_full_proofs_and_native_gc_order(self):
+        with tempfile.TemporaryDirectory() as d:
+            w,state,events,children,spawn=self.fixture(Path(d))
+            with patch.object(supervisor.subprocess,'Popen',side_effect=spawn):
+                ll,kv=w.collect_readonly_sources();w.capture_publishers()
+            kinds=[r[0] for r in events]
+            self.assertEqual(kinds,['uid','uid','started','payload','payload','reaped','proof','native_gc','started','reaped','proof'])
+            self.assertEqual(len(children),2);self.assertIsNone(w.publisher_capture)
+            self.assertTrue(all(r['uid'] for r in state['owned_jobs']))
+            self.assertEqual(state['pg_leases'],[dict(backend_pid=42)])
+
+    def test_nonheartbeat_uid_or_pg_ledger_change_refuses_and_reaps(self):
+        for field in ('uid','backend_pid'):
+            with self.subTest(field=field),tempfile.TemporaryDirectory() as d:
+                w,state,events,children,spawn=self.fixture(Path(d));killed=[]
+                def collect(key):
+                    if field=='uid':state['owned_jobs'][0]['uid']='foreign-uid'
+                    else:state['pg_leases'][0]['backend_pid']=99
+                    w.check_publisher_capture()
+                w.capture_vendor=collect
+                with patch.object(supervisor.subprocess,'Popen',side_effect=spawn),patch.object(supervisor.os,'killpg',side_effect=lambda pid,sig:killed.append((pid,sig))):
+                    with self.assertRaisesRegex(supervisor.Refused,'phase identity changed'):w.collect_readonly_sources()
+                self.assertEqual(killed,[(4321,supervisor.signal.SIGTERM)]);self.assertEqual(events[-1],('reaped',))
+                self.assertFalse(any(r[0] in ('proof','native_gc') for r in events));self.assertIsNone(w.publisher_capture)
+
+    def test_failed_expired_or_native_refused_child_is_reaped(self):
+        for case in ('child_failed','expired','native_failed','term_timeout'):
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as d:
+                w,state,events,children,spawn=self.fixture(Path(d));killed=[]
+                def collect(key):
+                    if case=='native_failed':raise supervisor.Refused('stopped vendor source refused')
+                    if case=='child_failed':children[-1].code=7
+                    else:
+                        w.publisher_capture['expires']=0
+                        if case=='term_timeout':children[-1].term_timeout=True
+                    w.check_publisher_capture()
+                w.capture_vendor=collect
+                with patch.object(supervisor.subprocess,'Popen',side_effect=spawn),patch.object(supervisor.os,'killpg',side_effect=lambda pid,sig:killed.append((pid,sig))):
+                    with self.assertRaises(supervisor.Refused):w.collect_readonly_sources()
+                self.assertEqual(events[-1],('reaped',));self.assertIsNone(w.publisher_capture)
+                self.assertFalse(any(r[0] in ('proof','native_gc') for r in events))
+                expected=[] if case=='child_failed' else [(4321,supervisor.signal.SIGTERM)]
+                if case=='term_timeout':expected.append((4321,supervisor.signal.SIGKILL))
+                self.assertEqual(killed,expected)
+
+
 class NativeCleanupTests(unittest.TestCase):
     def fixture(self, root):
         w=FakeWatch(root)
