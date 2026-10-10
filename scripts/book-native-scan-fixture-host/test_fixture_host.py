@@ -128,7 +128,7 @@ class HostTests(unittest.TestCase):
             with self.assertRaises(h.Refused):
                 h.pod_binding(job, bad, manifest, PHASE, node())
 
-    def test_post_ack_finalizer_removal_waits_for_native_job_complete(self):
+    def test_terminal_finalizer_removal_before_ack_waits_for_native_job_complete(self):
         manifest, pending, pod = objects()
         pod["metadata"].pop("finalizers")
         pod["status"]["phase"] = "Succeeded"
@@ -140,8 +140,8 @@ class HostTests(unittest.TestCase):
         fixture.ready, fixture.phase, fixture.name, fixture.uid, fixture.pod_uid = manifest, PHASE, manifest["metadata"]["name"], JOBUID, PODUID
         fixture.list = mock.Mock(return_value=inv("Pod", [pod]))
         fixture.get = mock.Mock(side_effect=[pending, pod, node(), pending, pod, node(), complete, pod, node()])
-        with self.assertRaisesRegex(h.Refused, "native_pod_finalizers"):
-            fixture.binding()
+        job, current = fixture.binding()
+        self.assertFalse(h.completed(job, current))
         job, current = fixture.binding(after_ack=True)
         self.assertFalse(h.completed(job, current))
         job, current = fixture.binding(after_ack=True)
@@ -149,6 +149,8 @@ class HostTests(unittest.TestCase):
         changes = (
             lambda p: p["status"].update(phase="Running"),
             lambda p: p["status"]["containerStatuses"][0]["state"]["terminated"].update(exitCode=1),
+            lambda p: p["status"]["containerStatuses"][0]["state"]["terminated"].update(exitCode=False),
+            lambda p: p["status"]["containerStatuses"][0]["state"]["terminated"].update(reason="Error"),
             lambda p: p["status"]["containerStatuses"][0].update(restartCount=1),
             lambda p: p["metadata"].update(finalizers=["injected/finalizer"]),
             lambda p: p["spec"].update(hostNetwork=True),
@@ -156,8 +158,54 @@ class HostTests(unittest.TestCase):
         for change in changes:
             bad = copy.deepcopy(pod)
             change(bad)
-            with self.assertRaises(h.Refused):
-                h.pod_binding(pending, bad, manifest, PHASE, node(), after_ack=True)
+            for acknowledged in (False, True):
+                with self.assertRaises(h.Refused):
+                    h.pod_binding(pending, bad, manifest, PHASE, node(), after_ack=acknowledged)
+        failed = copy.deepcopy(pending)
+        failed["status"].update(failed=1)
+        with self.assertRaisesRegex(h.Refused, "actual_job_failed"):
+            h.pod_binding(failed, pod, manifest, PHASE, node())
+
+    def test_failed_binding_retains_exact_native_job_pod_node_before_cleanup(self):
+        manifest, job, pod = objects()
+        pod["metadata"].pop("finalizers")
+        pod["status"]["phase"] = "Failed"
+        pod["status"]["containerStatuses"][0]["state"] = {"terminated": {"exitCode": 2, "reason": "Error"}}
+        job["status"] = {"conditions": [{"type": "Failed", "status": "True"}], "failed": 1, "active": 0}
+        with tempfile.TemporaryDirectory() as out:
+            fixture = h.Fixture.__new__(h.Fixture)
+            fixture.out = Path(out)
+            fixture.ready, fixture.phase, fixture.name, fixture.uid, fixture.pod_uid = manifest, PHASE, manifest["metadata"]["name"], JOBUID, PODUID
+            fixture.list = mock.Mock(return_value=inv("Pod", [pod]))
+            fixture.get = mock.Mock(side_effect=[job, pod, node()])
+            with self.assertRaisesRegex(h.Refused, "native_terminal_finalizer_removed"):
+                fixture.binding()
+            for name, observed in (("job", job), ("pod", pod), ("node", node())):
+                path = Path(out) / ("refused-binding-" + name + ".json")
+                self.assertEqual(json.loads(h.read_private(path)), observed)
+                self.assertEqual(path.stat().st_nlink, 1)
+            self.assertFalse((Path(out) / "evidence-ack.json").exists())
+            self.assertFalse((Path(out) / "actual-native-pass.json").exists())
+            self.assertFalse((Path(out) / "cleanup-receipt.json").exists())
+
+    def test_replaced_named_pod_failure_retains_response_before_identity_validation(self):
+        manifest, job, listed = objects()
+        for change in (lambda p: p["metadata"].update(uid=str(uuid.uuid4())), lambda p: p.update(kind="Node")):
+            actual = copy.deepcopy(listed)
+            change(actual)
+            with tempfile.TemporaryDirectory() as out:
+                fixture = h.Fixture.__new__(h.Fixture)
+                fixture.out = Path(out)
+                fixture.ready, fixture.phase, fixture.name, fixture.uid, fixture.pod_uid = manifest, PHASE, manifest["metadata"]["name"], JOBUID, PODUID
+                fixture.list = mock.Mock(return_value=inv("Pod", [listed]))
+                fixture.get = mock.Mock(side_effect=[job, actual])
+                with self.assertRaisesRegex(h.Refused, "named_pod_identity_changed"):
+                    fixture.binding()
+                self.assertEqual(json.loads(h.read_private(Path(out) / "refused-binding-job.json")), job)
+                self.assertEqual(json.loads(h.read_private(Path(out) / "refused-binding-pod.json")), actual)
+                self.assertEqual(fixture.get.call_count, 2)
+                self.assertFalse((Path(out) / "refused-binding-node.json").exists())
+                self.assertFalse((Path(out) / "evidence-ack.json").exists())
 
     def test_owned_job_second_truncation_shortens_alarm_and_packet(self):
         original_end = h.epoch("2026-10-09T20:01:36.072208Z") + 180

@@ -385,3 +385,60 @@ bounded catch/atomic publication and finite failed/missing diagnostic controls f
 that finding without replacing the original stage/type or database proof gates.
 These source corrections grant no runtime approval: new image/source/host closure,
 fresh CLOSED packet, peer audit and a separately named root GO precede another Job.
+
+## v9 actual UNKNOWN and narrow terminal admission correction (2026-10-10)
+
+The corrected-parser historical fixture ran once under root's exact GO for phase
+`d3dbff27-ca06-4fbb-827a-4a9c1898b464`. CLOSED packet SHA
+`13b87b4873ffb649d762ca65152b87f3fc8818d14028673f8185a54d5945f057`, manifest SHA
+`2c1e23fb612d4494eeac79debca0a0bde0456db8e11831ad848b24c50ab6af9b` and independent
+preparation receipt SHA `01e844740fa945514b281fb18a9112dbaa1be37952895937f8920a65830bf2f0`
+bound the signed parser image `53dfa067`. The separate authorization SHA was
+`3f18003e2fbe6bfcf6e2b1a4368de1e8465829bef87370925c4e89806216e05d`; it changed only
+three outer approval flags and two fresh timestamps. Production approval stayed false.
+
+Actual Job UID `6de0fe2f-5013-48aa-b830-c9169a57cd29` and Pod UID
+`5c6f529d-0ab6-4e5f-afbb-7c03bb210bc0` passed admission, module and realized CEP/BPF
+deny checks before private inputs. The packet was delivered. The host then returned
+UNKNOWN / `native_pod_finalizers` before retaining a ready event, proof receipt,
+full-state proof or ACK. The retained running Pod has the standard singleton
+`batch.kubernetes.io/job-tracking`; the later failing binding response was not retained.
+The actual terminal phase/finalizer set, native scan and inverse remain unproved.
+No later scanner result is inferred from source or empty logs.
+
+Exact UID cleanup and complete native union absence passed at 01:19:48.738857Z,
+before original execution expiry 01:22:01Z and cleanup cap 01:22:21.604185Z.
+Host receipt SHA `181dd8343e0ed93bf267ac51ae6f3b22b9ee9bcb31e7a919264e53b39fa0f24d`,
+cleanup SHA `447c24f640772ee20b1b74c73a155620f46e386665dee4bda8ab1893b37dd152` and
+independent watchdog SHA `c9a970c3324a0f1acbdd8afae2aebb96a6c98e9c998541447f48c2b62323e17b`
+are private under `/home/dev/work/hn-ransom-native-fixture-actual-53df-v9-1010`.
+Root independently verified fresh union absence and ended the declared activity.
+The historical clone proves no current production state. No second Job is authorized.
+
+Root ratified one bounded host correction: Kubernetes may remove its standard
+tracking finalizer independently of the private ACK. Admit its absence only for
+the exact owned Pod Succeeded with one Completed/exit0/restarts0 container and no
+failed Job state; running disappearance and unknown finalizers still refuse.
+Keep the full spec/image/phase/UID checks, durable proof/ACK, final Job Complete
+and exact UID cleanup/union absence requirements. Terminal admission alone neither
+proves the scanner nor permits exec into a terminated container. Retain the first
+failing binding Job/Pod/Node responses privately before cleanup, under the unchanged
+original deadlines. New finite controls run serially under nice 19; no CPU burners,
+stress or broad repeated test loops. The whole-folder hold and production gates stay closed.
+
+PR #3692 head `0c8b4902540ef3af931de780432c33ac3f07aeba` passed the native host CI
+and both required aggregate checks. All 43 finite local host controls passed under
+nice 19; the expanded terminal negative controls passed separately. Advisory run
+38013227256 finished with a startup error (`is_error=true`, one turn, zero model
+cost) and posted no findings; this is not a clean review. One report-only push
+retriggers it without changing executable bytes. Root's concurrent Normal-only
+rehearsal temporarily freezes merges and new runtime Jobs; the consumed v9 GO
+cannot authorize another run.
+
+Independent source review found the new catch could lose a replaced or malformed
+named Pod response: the helper raised before its caller's assignment. The successor
+records the returned native response in the local observation set before validation,
+then atomically retains it on the same refusal. A finite replaced-UID/wrong-kind
+control proves the exact Job and rejected Pod remain private, with no Node fetch,
+ACK or admission. Every identity guard remains unchanged. The review finding is
+fixed; neither this source control nor terminal metadata advances v9 UNKNOWN.
