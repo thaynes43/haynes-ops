@@ -603,6 +603,7 @@ class HostAdmission:
             self.status["publisher_scope_proof"] = current_publisher_ref(config)["path"]
         self.lock_ready = True
         self.execution = None
+        self.deadline = None
         self.jobs = []
         self.stop = False
         self.operation = json.loads(private(config["operation"]["path"], config["operation"]["sha256"]))
@@ -633,9 +634,85 @@ class HostAdmission:
         pass  # Existing service predicate's timestamp is diagnostic, not authority.
 
     def remaining(self):
-        left = self.operation["original_abort_epoch"] - time.time()
+        until = self.operation["original_abort_epoch"]
+        if until is None:
+            state = json.loads(private(self.c["watcher_state"]))
+            until = self.supervisor.epoch(state["armed_at"]) + self.watch.args.arm_deadline
+        left = until - time.time()
         catalog.require(left > 0, "original maintenance abort reached")
         return left
+
+    def cached_guard(self, holds):
+        return self.supervisor.Supervisor.cached_guard(self, holds)
+
+    def review_gate(self, pr):
+        return self.supervisor.Supervisor.review_gate(self, pr)
+
+    def activate_and_wait(self):
+        """Reuse the frozen activation/review/Stop gates in this finite run."""
+        self.guard_lease()
+        activation = self.c["watcher_arguments"]["cached_source_activation"]
+        catalog.require(self.c["cached_source_activation"] == activation
+                        and not Path(activation).exists() and not Path(activation).is_symlink()
+                        and self.operation["original_abort_epoch"] is None
+                        and self.c["restore_reserve_seconds"] == 130,
+                        "maintenance activation already consumed or budget differs")
+        state = json.loads(private(self.c["watcher_state"]))
+        catalog.require(state.get("armed_ready") is True and state.get("recover_ks") is True
+                        and not state.get("complete") and not state.get("copy_authority_revoked_at")
+                        and not state.get("actuation_budget_started_at") and not state.get("cached_stop_actuation_started_at")
+                        and str(state.get("restore_pr")) == self.c["restore_pr"]
+                        and state.get("normal_inverse_merge_sha") == self.c["normal_merge_sha"]
+                        and state.get("cached_source_ready_at")
+                        and state.get("cached_source_receipt_sha256") == self.c["cached_source_receipt"]["sha256"],
+                        "pre-Stop original watcher/cache/Normal custody differs")
+        def original_kernel():
+            kernel = Path("/proc/" + str(self.c["watcher_pid"]) + "/stat").read_text().rsplit(")", 1)[1].split()
+            catalog.require(kernel[0] not in ("Z", "X") and int(kernel[2]) == self.c["watcher_pgid"]
+                            and int(kernel[19]) == self.c["watcher_birth"], "pre-Stop original watcher group changed")
+        original_kernel()
+        phase = one_job_phase(self.c, self.core)
+        catalog.require(all(row["uid"] is None for row in phase["owned_jobs"])
+                        and all(row["backend_pid"] is None and row["job_uid"] is None and row["pod_uid"] is None
+                                for row in phase["pg_leases"]), "activation must precede every helper/writer")
+        self.watch.verify_phase_absent(phase)
+        self.supervisor.Supervisor.merged_inverse_ready(self)  # Existing exact current review/Git/Normal contract.
+        catalog.require(self.status["normal_inverse_merge_sha"] == self.c["normal_merge_sha"], "approved Normal changed")
+        receipt, _ = self.cached_guard(True)
+        for ns, name in list(self.supervisor.window.SCOPES) + [("flux-system", name) for name in self.supervisor.cache.PARENTS]:
+            proof = receipt["parents"][name] if ns == "flux-system" else receipt["holds"][ns + "/" + name]
+            catalog.require(state["cached_ks_owners"].get(ns + "/" + name) == {
+                "uid": proof["before"]["metadata"]["uid"], "spec": proof["before"]["spec"], "phase_token": self.c["phase_token"]},
+                "pre-Stop original hold owner differs")
+        for ns, name in (("downloads", "lazylibrarian"), ("media", "kavita")):
+            deployment = self.get("deployment", name, ns)
+            pods = [p for p in self.list("pods", ns) if all(p["metadata"].get("labels", {}).get(k) == v
+                    for k, v in deployment["spec"]["selector"]["matchLabels"].items())]
+            catalog.require(deployment["spec"].get("replicas", 1) == 1 and deployment.get("status", {}).get("readyReplicas", 0) == 1
+                            and len(pods) == 1 and not pods[0]["metadata"].get("deletionTimestamp"), "services not Normal before activation")
+        admission = json.loads(private(self.c["converter_lock_admission"]["path"], self.c["converter_lock_admission"]["sha256"]))
+        lock = sonarr_lock(self.c, self.get, self.run)
+        catalog.require(0 <= time.time() - admission["admitted_epoch"] <= 300 and lock["absent"] is True
+                        and lock["state_inode"] == admission["state_inode"], "pre-Stop converter admission stale or changed")
+        self.guard_lease()
+        original_kernel()  # Fresh immediately before the one activation publication.
+        origin = dt.datetime.now(dt.timezone.utc).isoformat()
+        self.operation["original_abort_epoch"] = self.supervisor.epoch(origin) + 170
+        self.deadline = self.supervisor.epoch(origin) + 300
+        self.status.update(watchdog_armed_at=state["armed_at"], actuation_budget_started_at=origin)
+        value = {"schema": 1, "phase_token": self.c["phase_token"],
+                 "cached_source_receipt_sha256": self.c["cached_source_receipt"]["sha256"],
+                 "normal_inverse_merge_sha": self.c["normal_merge_sha"], "armed_ready": True,
+                 "actuation_budget_started_at": origin}
+        self.supervisor.cache.activation(value, self.c["phase_token"], self.c["cached_source_receipt"]["sha256"], self.c["normal_merge_sha"])
+        self.supervisor.cache.write_private(activation, catalog.canonical(value))
+        while True:
+            self.guard_lease()
+            state = json.loads(private(self.c["watcher_state"]))
+            if self.supervisor.Supervisor.cached_stop_gate(self, state):
+                self.guard(require_pod=False, read_only_prelude=True)
+                return
+            time.sleep(.1)
 
     def guard_lease(self, require_lock=True):
         self.remaining()
@@ -857,9 +934,7 @@ class HostAdmission:
         if template["action"] == "forward":
             catalog.require(template["before"] is None and template["before_sha256"] is None,
                             "forward template already bound; never reuse")
-        state = json.loads(private(self.c["watcher_state"]))
-        # Derive once from the existing original activation origin, never now().
-        self.operation["original_abort_epoch"] = self.supervisor.epoch(state["actuation_budget_started_at"]) + 170
+        self.activate_and_wait()  # Original origin is frozen before the first Stop release.
         self.publisher_prelude()
         self.create()
         proof = self.inspect()

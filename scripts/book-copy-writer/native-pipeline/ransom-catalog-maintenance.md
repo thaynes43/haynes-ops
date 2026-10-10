@@ -135,10 +135,18 @@ checks the approved current application's schema digest and copies the full
 snapshot privately to the host. It does not reuse the historical v13 database.
 Root approves the exact conditional operation template and source before Stop.
 The `run` command composes these existing methods in one finite process: the
-finite helper/capture/retirement prelude, then create,
+exact current merged-inverse review and held-cache preflight, one exclusive
+publication of the existing `cache.activation` record, the frozen complete
+owned-Stop wait, the finite helper/capture/retirement prelude, then create,
 inspect, bind only the declared full snapshot/hash, DB device/inode and original
-activation-origin+170 abort clock, deliver, then execute immediately. No model
-turn occurs between stopped inspection and publication. The retention path
+activation-origin+170 abort clock, deliver, then execute immediately. The origin
+is captured before the first activation publication; helper, writer and binder
+never reset it. Actual original arm, live watcher kernel, same accepted cache,
+six held controller identities, still-Normal services and fresh absent-lock
+admission must pass before activation. Full current inverse review uses the
+existing optional exact unavailable-review disposition, with its private
+loader, when Root has explicitly ratified it. No model turn occurs between
+Stop, complete capture, stopped inspection and publication. The retention path
 `.epub-convert/ransom-maintenance/<phase>`, original/candidate EPUB hashes,
 approved schema and one-process Ransom hold exclusion remain template-pinned.
 `run` requires initially null clock/inode; forward also requires null before
@@ -158,6 +166,12 @@ cached success boolean supplies publisher authority. Fresh full Pod/PVC/PV
 verification still runs before writer admission and lock release. Actual
 helper PVC/source-Pod/config identities, collector routes, stopped typed rows,
 watcher/cache/clock and phase lock admission remain required production bindings.
+The immutable config binds `cached_source_activation` to the same absolute path
+in `watcher_arguments`, `restore_reserve_seconds=130`, and the actual current
+`repo_dir`, `restore_head` and `normal_merge_sha`. A repeated activation, stale
+watcher, failed review, unknown resource, partial Stop or changed rehold binding
+refuses under the original owned recovery protocol. These commands have not
+performed production maintenance; source admission is separate from runtime GO.
 Credential input is exactly `{"dsn": "..."}` on private stdin, never argv.
 The canonical admitted operation SHA binds the worker launch, every guard/ACK
 and final outcome; a different delivered operation refuses before any API call.

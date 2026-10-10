@@ -595,6 +595,104 @@ class CatalogMaintenanceTests(unittest.TestCase):
                     watch.verify_cached_stop_holds.side_effect = None
                     collector.write_bytes(collector_bytes)
 
+    def test_pre_stop_activation_reuses_original_clock_and_complete_stop_gate(self):
+        # Execute the existing publication/schema/Stop gate with external APIs
+        # faked; neither a clock reset nor a partial Stop admits the helper.
+        directory = HERE.parent / 'copy-window'
+        def methods(file, names, scope):
+            tree = ast.parse((directory / file).read_bytes())
+            found = [copy.deepcopy(node) for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name in names]
+            self.assertEqual({node.name for node in found}, set(names))
+            exec(compile(ast.Module(body=found, type_ignores=[]), file, 'exec'), scope)
+            return SimpleNamespace(**{name: scope[name] for name in names})
+        cache = methods('cached_source.py', {'write_private', 'activation', 'wall_guard'},
+                        {'wc': SimpleNamespace(require=catalog.require), 'os': maintenance.os, 'uuid': __import__('uuid'),
+                         'ctypes': __import__('ctypes'), 'dt': dt, 'read_private': maintenance.private,
+                         'contextmanager': maintenance.contextlib.contextmanager, 'signal': maintenance.signal, 'time': time})
+        epoch = lambda text: dt.datetime.fromisoformat(text).timestamp()
+        original = methods('copy-phase-supervisor.py', {'cached_guard', 'cached_stop_gate'},
+                           {'cache': cache, 'time': time, 'epoch': epoch, 'json': json, 'hashlib': maintenance.hashlib,
+                            'Refused': catalog.Refused, 'window': SimpleNamespace(sha=catalog.metadata.sha256),
+                            'pinned_artifact': lambda ref, cap: maintenance.private(ref['path'], ref['sha256'])})
+        phase = {'phase_token': 'a' * 32, 'owned_jobs': [{'uid': None}, {'uid': None}],
+                 'pg_leases': [{'backend_pid': None, 'job_uid': None, 'pod_uid': None}]}
+        scopes = [('downloads', 'lazylibrarian'), ('media', 'kavita'), ('media', 'libretto'), ('frontend', 'haynesnetwork')]
+        for failure in (None, 'watcher', 'kernel', 'late-kernel', 'review', 'union', 'lock', 'service', 'stop-binding'):
+            with self.subTest(failure=failure):
+                folder = self.base / ('activation-' + str(failure));folder.mkdir(mode=0o700)
+                def put(name, value):
+                    path = folder / name;path.write_bytes(catalog.canonical(value));path.chmod(0o600)
+                    return {'path': str(path), 'sha256': catalog.metadata.sha256(path.read_bytes())}
+                holds = {ns + '/' + name: {'before': {'metadata': {'uid': ns + '-' + name}, 'spec': {'suspend': False}}} for ns, name in scopes}
+                parents = {name: {'before': {'metadata': {'uid': name}, 'spec': {'suspend': False}}} for name in ('cluster', 'cluster-apps')}
+                receipt = dict(holds=holds, parents=parents, stop_main_sha='b' * 40)
+                cache_ref = put('cache.json', receipt);contract = put('contract.json', {})
+                state = {'armed_at': dt.datetime.fromtimestamp(self.now - 20, dt.timezone.utc).isoformat(),
+                         'armed_ready': True, 'recover_ks': True, 'complete': failure == 'watcher', 'restore_pr': '1',
+                         'normal_inverse_merge_sha': 'c' * 40, 'cached_source_ready_at': 'reviewed',
+                         'cached_source_receipt_sha256': cache_ref['sha256'], 'cached_ks_owners': {
+                          ns + '/' + name: {'uid': proof['before']['metadata']['uid'], 'spec': proof['before']['spec'], 'phase_token': phase['phase_token']}
+                          for ns, name, proof in [(ns, name, holds[ns + '/' + name]) for ns, name in scopes]
+                            + [('flux-system', name, proof) for name, proof in parents.items()]}}
+                state_ref = put('watch.json', state);trace = []
+                config = {'phase_token': phase['phase_token'], 'watcher_state': state_ref['path'], 'restore_pr': '1',
+                          'watcher_stop': str(folder / 'stop'), 'watcher_pid': 123, 'watcher_pgid': 123,
+                          'watcher_birth': 999 if failure == 'kernel' else 456, 'normal_merge_sha': 'c' * 40,
+                          'cached_source_receipt': cache_ref, 'manifest_contract': contract, 'restore_reserve_seconds': 130,
+                          'cached_source_activation': str(folder / 'activation.json'),
+                          'watcher_arguments': {'cached_source_activation': str(folder / 'activation.json')},
+                          'converter_lock_admission': put('lock.json', {'admitted_epoch': self.now - (301 if failure == 'lock' else 1), 'state_inode': 10})}
+                def review(host):
+                    trace.append('exact-reviewed-inverse')
+                    if failure == 'review':raise catalog.Refused('current inverse review differs')
+                    host.status['normal_inverse_merge_sha'] = 'c' * 40
+                def absent(_):
+                    trace.append('full-union-pg-absent')
+                    if failure == 'union':raise catalog.Refused('original writer union present')
+                cache.check_live = lambda *args, **kw: trace.append('cache-holds' if kw.get('holds') else 'cache-source-parents')
+                cache.read_private = maintenance.private;cache.PARENTS = tuple(parents)
+                host = maintenance.HostAdmission.__new__(maintenance.HostAdmission)
+                host.c, host.core, host.operation = config, mock.Mock(), {'original_abort_epoch': None}
+                host.status, host.deadline, host.stop, host.execution = {'phase_token': phase['phase_token']}, None, False, None
+                host.watch = SimpleNamespace(args=SimpleNamespace(arm_deadline=1800), verify_phase_absent=absent)
+                host.supervisor = SimpleNamespace(epoch=epoch, cache=cache,
+                    window=SimpleNamespace(SCOPES=tuple(scopes)), Supervisor=SimpleNamespace(
+                        cached_guard=original.cached_guard, cached_stop_gate=original.cached_stop_gate, merged_inverse_ready=review))
+                host.get = lambda *a: {'spec': {'replicas': 0 if failure == 'service' else 1, 'selector': {'matchLabels': {}}},
+                                      'status': {'readyReplicas': 1}}
+                host.list = lambda *a: [{'metadata': {}}]
+                host.guard = lambda **kw: trace.append('complete-stopped-fence')
+                def finish_stop(_):
+                    trace.append('watcher-stop')
+                    active = json.loads(maintenance.private(config['watcher_arguments']['cached_source_activation']))
+                    state.update(actuation_budget_started_at=active['actuation_budget_started_at'], cached_stop_actuation_complete_at='complete',
+                                 cached_stop_holds=holds, cached_stop_actuation_binding={
+                                 'phase_token': phase['phase_token'], 'cached_source_receipt_sha256': cache_ref['sha256'],
+                                 'activation_sha256': catalog.digest(active), 'stop_main_sha': 'd' * 40 if failure == 'stop-binding' else 'b' * 40})
+                    Path(state_ref['path']).write_bytes(catalog.canonical(state))
+                class Clock(dt.datetime):
+                    @classmethod
+                    def now(cls, tz=None):return dt.datetime.fromtimestamp(self.now, dt.timezone.utc)
+                kernel = '123 (fixture) S 1 123 ' + '0 ' * 16 + '456 0'
+                with mock.patch.object(maintenance, 'dt', SimpleNamespace(datetime=Clock, timezone=dt.timezone)), \
+                     mock.patch.object(maintenance.time, 'time', return_value=self.now), \
+                     mock.patch.object(maintenance.time, 'sleep', side_effect=finish_stop), \
+                     mock.patch.object(Path, 'read_text', side_effect=[kernel, kernel.replace('456 0', '457 0')] if failure == 'late-kernel' else lambda *a, **kw: kernel), \
+                     mock.patch.object(maintenance, 'one_job_phase', return_value=phase), \
+                     mock.patch.object(maintenance, 'sonarr_lock', return_value={'state_inode': 10, 'absent': True}):
+                    if failure:
+                        with self.assertRaises(catalog.Refused):host.activate_and_wait()
+                        self.assertNotIn('complete-stopped-fence', trace)
+                    else:
+                        host.activate_and_wait()
+                        self.assertEqual(host.operation['original_abort_epoch'], self.now + 170)
+                        self.assertEqual(host.deadline, self.now + 300)
+                        self.assertLess(trace.index('exact-reviewed-inverse'), trace.index('watcher-stop'))
+                        self.assertLess(trace.index('watcher-stop'), trace.index('complete-stopped-fence'))
+                target = Path(config['watcher_arguments']['cached_source_activation'])
+                self.assertEqual(target.exists(), failure in (None, 'stop-binding'))
+                if target.exists():self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+
     def test_automatic_handoff_binds_fresh_rows_once_without_replacing_inverse_baseline(self):
         host = maintenance.HostAdmission.__new__(maintenance.HostAdmission)
         state = self.base / 'automatic-watch.json'
@@ -611,6 +709,9 @@ class CatalogMaintenanceTests(unittest.TestCase):
         template = copy.deepcopy(host.operation)
         host.supervisor = SimpleNamespace(epoch=lambda text: dt.datetime.fromisoformat(text).timestamp())
         calls = []
+        def activate():
+            calls.append('activation-stop');host.operation['original_abort_epoch'] = self.now + 170
+        host.activate_and_wait = activate
         host.create = lambda: calls.append('create')
         host.publisher_prelude = lambda: calls.append('publisher-prelude')
         proof = current_rows(self.before)
@@ -618,7 +719,7 @@ class CatalogMaintenanceTests(unittest.TestCase):
         host.deliver = lambda name, raw: calls.append(name)
         host.execute = lambda dsn: (calls.append('execute') or {'admitted': True})
         self.assertEqual(host.run_automatic('private-fixture'), {'admitted': True})
-        self.assertEqual(calls, ['publisher-prelude', 'create', 'inspect', 'before.json', 'operation.json', 'execute'])
+        self.assertEqual(calls, ['activation-stop', 'publisher-prelude', 'create', 'inspect', 'before.json', 'operation.json', 'execute'])
         self.assertEqual(host.operation['original_abort_epoch'], self.now + 170)
         self.assertEqual(host.operation['before_sha256'], catalog.digest(self.before))
         neutral = copy.deepcopy(host.operation)
@@ -640,11 +741,11 @@ class CatalogMaintenanceTests(unittest.TestCase):
         drift = copy.deepcopy(after);drift['tables']['AppUserProgresses'][0]['BookScrollId'] = catalog.cell('text', 'new-reading')
         proof = current_rows(drift);host.operation = copy.deepcopy(inverse_template);calls.clear()
         with self.assertRaisesRegex(catalog.Refused, 'after-state drifted'):host.run_automatic('private-fixture')
-        self.assertEqual(calls, ['publisher-prelude', 'create', 'inspect'])
+        self.assertEqual(calls, ['activation-stop', 'publisher-prelude', 'create', 'inspect'])
         self.assertFalse((self.base / 'inverse-operation.json').exists())
         proof = current_rows(after);host.operation = copy.deepcopy(inverse_template);calls.clear()
         host.run_automatic('private-fixture')
-        self.assertEqual(calls, ['publisher-prelude', 'create', 'inspect', 'post-scan.json', 'before.json', 'operation.json', 'execute'])
+        self.assertEqual(calls, ['activation-stop', 'publisher-prelude', 'create', 'inspect', 'post-scan.json', 'before.json', 'operation.json', 'execute'])
         self.assertEqual(host.operation['before'], inverse_template['before'])
         self.assertEqual(host.operation['before_sha256'], catalog.digest(self.before))
 
