@@ -324,6 +324,12 @@ class Watchdog:
         patch=cache.release_patch(row,owned['uid'],owned['phase_token'],kind='Kustomization',name=name,namespace=namespace,spec=owned['spec'])
         if patch:self.run(['kubectl','patch','kustomization',name,'-n',namespace,'--type=json','-p',json.dumps(patch,separators=(',',':'))],timeout=10)
 
+    def reconcile_ks(self,namespace,name,sha):
+        self.run(['flux','reconcile','kustomization',name,'-n',namespace,'--timeout=30s'])
+
+    def verify_recovery_absence(self):
+        pass  # Generic COPY has fresh cleanup before every scoped release.
+
     def retire_hold_annotations(self):
         if not self.cached:return
         resources=[('gitrepository','GitRepository','flux-system','haynes-ops',self.state['cached_source_owner'])]+[
@@ -349,7 +355,8 @@ class Watchdog:
             self.cleanup_phase_jobs()
             self.release_ks(namespace,name)
             self.source(sha)
-            self.run(['flux','reconcile','kustomization',name,'-n',namespace,'--timeout=30s'])
+            self.reconcile_ks(namespace,name,sha)
+        self.verify_recovery_absence()
         if not self.runtime_restored(sha):raise RuntimeError('Restored source fetched; waiting for app/KS convergence.')
         self.retire_hold_annotations()
         if (self.state.get('service_ceiling_missed_at') or self.state.get('original_clock_unproved_at')
@@ -470,6 +477,10 @@ class Watchdog:
                         or pending['metadata'].get('labels',{}).get('issue825.haynesnetwork/phase')!=row.get('phase_token')):
                     raise RuntimeError('Owned copy Job name was reused; refuse another workload.')
                 raise RuntimeError('Owned copy/capture Job still exists; wait before releasing app fence.')
+        self.verify_phase_absent(phase)
+
+    def verify_phase_absent(self,phase):
+        jobs=phase['owned_jobs']
         # Authoritative phase/name/UID/owner union catches unregistered or orphan
         # phase resources; absence of each expected Job alone is insufficient.
         for namespace in sorted({r['namespace'] for r in jobs}):

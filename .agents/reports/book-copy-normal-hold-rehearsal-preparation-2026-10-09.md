@@ -363,3 +363,45 @@ or application after this failed timing gate. Their branches remain preserved at
 `27156481c649fe20acc008cfd1a4c4f1cba575fe` respectively; no branch was deleted.
 Any future pair requires a fresh full packet and separate authorization.
 The hourly-strip draft #3571 remains held.
+
+
+## Recovery timing successor (2026-10-10)
+
+Issue #3684 remains an actual failed 50-second gate. The narrow successor adds
+bounded command aggregates (count, elapsed, maximum and failures; no command
+arguments or returned data). No original bottleneck is inferred from these new
+measurements. Normal-only restoration now proves the full owned Job/Pod union
+and both PostgreSQL leases absent once before releasing any controller and
+once again before terminal proof. This mode creates no producer and retires
+its exact exercise process group and all seven submitted-request RV barriers
+before the first proof. Therefore per-Job deletion reads and repeated
+per-controller cleanup scans in the generic COPY recovery path are redundant
+for this closed mode. They remain unchanged for COPY.
+
+Normal-only Source restoration reconciles once, then freshly checks the owned
+UID/spec/phase and exact Ready current-Git artifact before every resume and
+reconcile. Each released controller is freshly checked against its owned UID,
+unchanged non-suspend spec and phase; an already Ready exact revision needs no
+extra reconcile request. A stale/not-Ready controller still reconciles. Final
+service and all-six-controller Normal proof and all-seven annotation retirement
+remain required. Cached Stop, COPY and service budgets retain their original
+behavior. The original 50-second recovery and 60-second safety bounds remain;
+unknown writer/PG/source/controller identity retains holds and cannot complete.
+
+Finite serial fixtures under nice -n 19 will verify the reduced command path,
+unknown/replaced-resource refusal, fresh final absence, timeout aggregates and
+unchanged timing/result semantics. No CPU stress, busy loops, wide or repeated
+test runs are permitted in the shared pod. Source checks and an independent
+packet review precede a separately coordinated new unused Normal-only runtime
+attempt. No live hold, Job, Stop, COPY or library mutation is authorized by this
+source change alone.
+
+The new finite controls prove twelve total full-union inventories and two PG
+checks across a successful closed Normal restoration, exactly one Source
+reconcile, zero reconciles of all six already exact Ready controllers, fresh
+Source reuse refusal on UID/spec/phase/revision/Ready drift, required reconcile
+for a stale controller, refusal of unknown final absence before annotation
+retirement or completion, and failed-call timing retention even for the owning
+service-ceiling control. The full suites passed serially under nice -n 19:
+32 Normal cases, 49 cached cases and 25 legacy cases. These fixture counts are
+source evidence; actual in-budget restoration is still required for #3684.

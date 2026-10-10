@@ -136,7 +136,7 @@ class NormalCases(unittest.TestCase):
             w.cleanup_phase_jobs=lambda:None;w.desired_restored=lambda _:None
             w.phase_checkpoint=lambda:{'phase_token':fixtures.PHASE};w.stop_actuated=lambda:False
             w.runtime_still_normal=lambda:True;w.source=lambda _:None;w.release_ks=lambda *_:None
-            w.run=lambda *_:None;w.runtime_restored=lambda _:True;w.retire_hold_annotations=lambda:None;w.note=lambda _:None
+            w.run=lambda *_:None;w.runtime_restored=lambda _:True;w.verify_recovery_absence=lambda:None;w.reconcile_ks=lambda *_:None;w.retire_hold_annotations=lambda:None;w.note=lambda _:None
             first='1970-01-01T00:03:20+00:00';later='1970-01-01T00:04:20+00:00'
             with mock.patch.object(watch,'stamp',return_value=first):w.recover_cluster(fixtures.NORMAL_SHA)
             self.assertTrue(w.state['safety_recovery_complete']);self.assertFalse(w.state['complete'])
@@ -157,6 +157,7 @@ class NormalCases(unittest.TestCase):
             w.cleanup_phase_jobs=lambda:(_ for _ in ()).throw(RuntimeError('cleanup unknown'))
             with self.assertRaisesRegex(RuntimeError,'cleanup unknown'):w.recover_cluster(fixtures.NORMAL_SHA)
             self.assertFalse(saved[-1]['complete'])
+            w.current_main=lambda:fixtures.NORMAL_SHA
             w.state.update(complete=True,normal_only_rehearsal_complete=True)
             with self.assertRaisesRegex(RuntimeError,'cleanup unknown'):w.tick()
             self.assertFalse(saved[-1]['complete'])
@@ -201,7 +202,8 @@ class NormalCases(unittest.TestCase):
             w,_,_,_=normal.watcher(packet,initialize=False);w.state={'armed_at':'1970-01-01T00:00:01+00:00'};w.save=lambda:None
             calls=[];w.fence_hold_requests=lambda:calls.append('RV barriers')
             w.cleanup_phase_jobs=lambda:calls.append('writer/PG absence');w.current_main=lambda:fixtures.NORMAL_SHA
-            w.recover_cluster=lambda _:calls.append('restore/release')
+            def restore(_):w.cleanup_phase_jobs();calls.append('restore/release')
+            w.recover_cluster=restore
             with mock.patch.object(normal,'retire_exercise',side_effect=lambda _:calls.append('request group retired')):
                 self.assertTrue(w.tick())
             self.assertEqual(calls,['request group retired','RV barriers','writer/PG absence','restore/release'])
@@ -443,6 +445,103 @@ class NormalCases(unittest.TestCase):
             w.run.reset_mock()
             with self.assertRaisesRegex(ValueError,'foreign phase'):w.fence_hold_requests()
             w.run.assert_not_called()
+
+    def test_normal_recovery_scans_union_pg_twice_and_skips_only_exact_ready_reconciles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            packet,_,state,observer,_,_=self.fake(directory)
+            w,_,_,_=normal.watcher(packet,initialize=False);w.state=state;w.save=lambda:None
+            rows={(kind,name,ns):observer.kube(kind,name,ns) for kind,name,ns in
+                  [('gitrepository','haynes-ops','flux-system')]+[('kustomization',n,ns) for ns,n in normal.PARENTS+normal.APPS]}
+            for row in rows.values():
+                row['spec']['suspend']=False
+                row['status']['conditions']=[dict(type='Ready',status='True')]
+                row['status']['lastAppliedRevision']='main@sha1:'+fixtures.NORMAL_SHA
+            w.kube=lambda kind,name,ns:copy.deepcopy(rows[(kind,name,ns)])
+            calls=[];w.run=lambda argv,**kw:calls.append(tuple(argv[:3]))
+            w.phase_checkpoint=lambda:dict(owned_jobs=[dict(namespace=ns,name=n,uid=None,phase_token=fixtures.PHASE) for ns,n in normal.JOBS],
+                phase_token=fixtures.PHASE,pg_leases=[dict(application_name=n,backend_pid=None) for _,n in normal.JOBS[:2]])
+            w.inventory=lambda kind,ns:calls.append(('inventory',kind,ns)) or []
+            w.desired_restored=lambda _:None;w.stop_actuated=lambda:False;w.runtime_still_normal=lambda:True
+            w.runtime_restored=lambda _:True;w.retire_hold_annotations=lambda:calls.append(('retire',));w.note=lambda _:None
+            w.recover_cluster(fixtures.NORMAL_SHA)
+            self.assertTrue(w.state['complete'])
+            self.assertEqual(sum(c[0]=='inventory' for c in calls),12)
+            self.assertEqual(sum(c[:2]==('kubectl','exec') for c in calls),2)
+            self.assertEqual(sum(c[:3]==('flux','reconcile','source') for c in calls),1)
+            self.assertFalse(any(c[:3]==('flux','reconcile','kustomization') for c in calls))
+            self.assertEqual(calls[-1],('retire',))
+            # Unknown final union never publishes completion or retires owners.
+            w.state['complete']=False;counter=0
+            def unknown(kind,ns):
+                nonlocal counter
+                counter+=1
+                if counter==7:raise RuntimeError('final union unknown')
+                return []
+            w.inventory=unknown;calls.clear()
+            with self.assertRaisesRegex(RuntimeError,'final union unknown'):w.recover_cluster(fixtures.NORMAL_SHA)
+            self.assertFalse(w.state['complete']);self.assertNotIn(('retire',),calls)
+
+    def test_normal_absence_refuses_phase_pod_or_pg_without_deleting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            packet,_,state,_,_,_=self.fake(directory)
+            w,_,_,_=normal.watcher(packet,initialize=False);w.state=state;w.save=lambda:None
+            w.phase_checkpoint=lambda:dict(owned_jobs=[dict(namespace=ns,name=n,uid=None,phase_token=fixtures.PHASE) for ns,n in normal.JOBS],
+                phase_token=fixtures.PHASE,pg_leases=[dict(application_name=n,backend_pid=None) for _,n in normal.JOBS[:2]])
+            w.run=mock.Mock()
+            w.inventory=lambda kind,ns:[dict(metadata=dict(name='unregistered',uid='unknown',labels={'issue825.haynesnetwork/phase':fixtures.PHASE}))] if kind=='Pod' else []
+            with self.assertRaisesRegex(RuntimeError,'Pod union'):w.cleanup_phase_jobs()
+            w.run.assert_not_called()
+            w.inventory=lambda *_:[];w.run.side_effect=RuntimeError('PG absence unknown')
+            with self.assertRaisesRegex(RuntimeError,'PG absence unknown'):w.cleanup_phase_jobs()
+            self.assertEqual(w.run.call_args.args[0][:2],['kubectl','exec'])
+
+    def test_normal_source_reuse_still_refuses_uid_spec_phase_revision_or_ready_drift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            packet,_,state,observer,_,_=self.fake(directory)
+            w,_,_,_=normal.watcher(packet,initialize=False);w.state=state;w.normal_attempt_source_done=True
+            original=observer.kube('gitrepository','haynes-ops','flux-system');original['spec']['suspend']=False
+            original['status']['conditions']=[dict(type='Ready',status='True')]
+            w.run=mock.Mock();w.kube=lambda *_:copy.deepcopy(original)
+            w.source(fixtures.NORMAL_SHA);w.run.assert_not_called()
+            variants=[]
+            row=copy.deepcopy(original);row['metadata']['uid']='replacement';variants.append(row)
+            row=copy.deepcopy(original);row['spec']['interval']='1s';variants.append(row)
+            row=copy.deepcopy(original);row['metadata']['annotations'][cache.OWNER]='foreign';variants.append(row)
+            row=copy.deepcopy(original);row['status']['artifact']['revision']='main@sha1:'+'0'*40;variants.append(row)
+            row=copy.deepcopy(original);row['status']['conditions']=[];variants.append(row)
+            for row in variants:
+                w.kube=lambda *_:copy.deepcopy(row)
+                with self.assertRaises(ValueError):w.source(fixtures.NORMAL_SHA)
+            w.run.assert_not_called()
+
+    def test_normal_controller_reconciles_stale_but_refuses_foreign_or_replaced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            packet,_,state,observer,_,_=self.fake(directory)
+            w,_,_,_=normal.watcher(packet,initialize=False);w.state=state
+            row=observer.kube('kustomization','cluster','flux-system');row['spec']['suspend']=False
+            row['status']['lastAppliedRevision']='main@sha1:'+'0'*40
+            w.kube=lambda *_:copy.deepcopy(row);w.run=mock.Mock()
+            w.reconcile_ks('flux-system','cluster',fixtures.NORMAL_SHA)
+            self.assertEqual(w.run.call_args.args[0][:4],['flux','reconcile','kustomization','cluster'])
+            w.run.reset_mock();row['metadata']['annotations'][cache.OWNER]='foreign'
+            with self.assertRaisesRegex(ValueError,'foreign phase'):w.reconcile_ks('flux-system','cluster',fixtures.NORMAL_SHA)
+            row['metadata']['annotations'][cache.OWNER]=fixtures.PHASE;row['metadata']['uid']='replacement'
+            with self.assertRaises(ValueError):w.reconcile_ks('flux-system','cluster',fixtures.NORMAL_SHA)
+            w.run.assert_not_called()
+
+    def test_command_timings_are_bounded_aggregate_only_and_persist_failed_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            packet={'directory':directory,'repo_dir':'unused','binaries':{'kubectl':{'path':'/test/kubectl'}}}
+            (Path(directory)/'runtime').mkdir(mode=0o700)
+            w,_,_,watch=normal.watcher(packet,initialize=False);w.state={'normal_rehearsal_restore_started_at':'original'}
+            w.save=mock.Mock()
+            with mock.patch.object(watch.Watchdog,'run',return_value='private output'),mock.patch.object(normal.time,'monotonic',side_effect=[10,10.25]):
+                self.assertEqual(w.run(['kubectl','exec','private SQL']),'private output')
+            with mock.patch.object(watch.Watchdog,'run',side_effect=watch.ServiceCeiling()),mock.patch.object(normal.time,'monotonic',side_effect=[20,20.5]):
+                with self.assertRaises(watch.ServiceCeiling):w.run(['kubectl','exec','private secret'])
+            self.assertEqual(w.state['normal_rehearsal_call_timings'],{'recovery/kubectl/exec':dict(count=2,seconds=.75,maximum_seconds=.5,failures=1)})
+            self.assertEqual(w.state['normal_rehearsal_restore_started_at'],'original');self.assertEqual(w.save.call_count,2)
+            self.assertNotIn('private',json.dumps(w.state))
 
     def test_historically_in_budget_normal_cold_recheck_does_not_invent_miss(self):
         with tempfile.TemporaryDirectory() as directory:
