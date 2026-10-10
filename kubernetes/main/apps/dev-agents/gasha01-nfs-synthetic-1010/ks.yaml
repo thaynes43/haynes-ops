@@ -1,0 +1,19 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: gasha01-nfs-synthetic-9c9e68c4
+  namespace: dev-agents
+spec:
+  dependsOn:
+  - name: dev-env-scheduling
+    namespace: dev-env-system
+  path: ./kubernetes/main/apps/dev-agents/gasha01-nfs-synthetic-1010/app
+  prune: false
+  deletionPolicy: Orphan
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: false
+  interval: 30m
+  timeout: 4m

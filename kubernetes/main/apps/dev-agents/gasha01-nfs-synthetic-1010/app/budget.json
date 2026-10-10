@@ -1,0 +1,277 @@
+{
+  "state": "reviewed-source proposal; Jobs suspended; no NFS execution authorized here",
+  "image": "ghcr.io/thaynes43/dev-env:2.10.0@sha256:a9b1fb9beea5ab38f606b3198843828727dfb21de345f8fd10e67dc1f59407cb",
+  "dataset": {
+    "flat_file_count": 8,
+    "file_bytes": 512,
+    "commits": 3,
+    "changed_files_per_later_commit": 1,
+    "linked_worktrees": 2,
+    "local_clones": 1,
+    "local_fetches": 1,
+    "real_remotes": 0
+  },
+  "limits": {
+    "hard_inherited_RLIMIT_FSIZE": 16384,
+    "reserved_file_write_generations_total": 768,
+    "cumulative_regular_byte_candidate_bound": 12582912,
+    "entry_candidate_limit": 1024,
+    "frozen_contract_bytes": 16777216,
+    "frozen_contract_entries": 2048,
+    "role_A_generations": 384,
+    "role_B_generations": 384
+  },
+  "git_environment": {
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_DEFAULT_HASH": "sha1",
+    "GIT_OPTIONAL_LOCKS": "0",
+    "GIT_TERMINAL_PROMPT": "0",
+    "GIT_ALLOW_PROTOCOL": "file",
+    "GIT_AUTHOR_NAME": "storage-fixture",
+    "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
+    "GIT_COMMITTER_NAME": "storage-fixture",
+    "GIT_COMMITTER_EMAIL": "fixture@example.invalid",
+    "GIT_AUTHOR_DATE": "2026-10-10T00:00:00Z",
+    "GIT_COMMITTER_DATE": "2026-10-10T00:00:00Z",
+    "GIT_ATTR_NOSYSTEM": "1"
+  },
+  "all_git_prefix_config": [
+    "core.logAllRefUpdates=false",
+    "core.hooksPath=/scratch/empty-hooks",
+    "init.templateDir=/scratch/empty-template",
+    "core.fsmonitor=false",
+    "gc.auto=0",
+    "maintenance.auto=false",
+    "fetch.writeCommitGraph=false",
+    "fetch.fsckObjects=false",
+    "transfer.fsckObjects=false",
+    "commit.gpgSign=false",
+    "tag.gpgSign=false",
+    "pack.threads=1",
+    "protocol.allow=never",
+    "protocol.file.allow=always",
+    "core.attributesFile=/dev/null",
+    "core.splitIndex=false",
+    "core.sparseCheckout=false",
+    "fetch.unpackLimit=100",
+    "transfer.unpackLimit=100",
+    "pack.window=0",
+    "pack.compression=1"
+  ],
+  "fixed_git_writer_plan_A": [
+    {
+      "operation": "init",
+      "args": [
+        "init",
+        "--initial-branch=pilot",
+        "--template=/scratch/empty-template",
+        "repo"
+      ],
+      "reserved_generations": 16
+    },
+    {
+      "operation": "seed_add",
+      "args": [
+        "-C",
+        "repo",
+        "add",
+        "--",
+        "f0",
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7"
+      ],
+      "reserved_generations": 32
+    },
+    {
+      "operation": "seed_commit",
+      "args": [
+        "-C",
+        "repo",
+        "commit",
+        "--no-gpg-sign",
+        "-m",
+        "seed"
+      ],
+      "reserved_generations": 32
+    },
+    {
+      "operation": "revision_1_add",
+      "args": [
+        "-C",
+        "repo",
+        "add",
+        "--",
+        "f0"
+      ],
+      "reserved_generations": 16
+    },
+    {
+      "operation": "revision_1_commit",
+      "args": [
+        "-C",
+        "repo",
+        "commit",
+        "--no-gpg-sign",
+        "-m",
+        "revision-one"
+      ],
+      "reserved_generations": 32
+    },
+    {
+      "operation": "revision_2_add",
+      "args": [
+        "-C",
+        "repo",
+        "add",
+        "--",
+        "f0"
+      ],
+      "reserved_generations": 16
+    },
+    {
+      "operation": "revision_2_commit",
+      "args": [
+        "-C",
+        "repo",
+        "commit",
+        "--no-gpg-sign",
+        "-m",
+        "revision-two"
+      ],
+      "reserved_generations": 32
+    },
+    {
+      "operation": "worktree_A",
+      "args": [
+        "-C",
+        "repo",
+        "worktree",
+        "add",
+        "--detach",
+        "../wt-a",
+        "HEAD"
+      ],
+      "reserved_generations": 48
+    },
+    {
+      "operation": "worktree_B",
+      "args": [
+        "-C",
+        "repo",
+        "worktree",
+        "add",
+        "--detach",
+        "../wt-b",
+        "HEAD"
+      ],
+      "reserved_generations": 48
+    },
+    {
+      "operation": "staged_WIP",
+      "args": [
+        "-C",
+        "wt-a",
+        "add",
+        "--",
+        "f1"
+      ],
+      "reserved_generations": 16
+    }
+  ],
+  "fixed_git_writer_plan_B": [
+    {
+      "operation": "clone",
+      "args": [
+        "clone",
+        "--local",
+        "--no-hardlinks",
+        "--no-checkout",
+        "--no-tags",
+        "repo",
+        "peer"
+      ],
+      "reserved_generations": 64
+    },
+    {
+      "operation": "checkout",
+      "args": [
+        "-C",
+        "peer",
+        "checkout",
+        "--detach",
+        "HEAD"
+      ],
+      "reserved_generations": 32
+    },
+    {
+      "operation": "fetch",
+      "args": [
+        "-C",
+        "peer",
+        "fetch",
+        "--no-tags",
+        "--no-auto-maintenance",
+        "--no-write-fetch-head",
+        "origin",
+        "refs/heads/pilot:refs/remotes/origin/pilot"
+      ],
+      "reserved_generations": 48
+    },
+    {
+      "operation": "ref_lock_probe",
+      "args": [
+        "-C",
+        "repo",
+        "update-ref",
+        "refs/heads/pilot",
+        "HEAD~1"
+      ],
+      "reserved_generations": 16,
+      "expected_failure": true
+    }
+  ],
+  "python_writer_reservations": {
+    "A": 64,
+    "B": 64,
+    "total": 128,
+    "scope": "only eight known dataset slots, bounded marker/ref-lock/mkdir/flock probes, fixed copy/fsync/rename and one small archive with WIP/index/HEAD receipts"
+  },
+  "accounting": {
+    "fixed_reserved_generations": 576,
+    "variant_margin_generations": 192,
+    "directory_symlink_lock_entry_margin": 256,
+    "no_automatic_retry": true,
+    "each_operation_once": true,
+    "disjoint_per_role_budget": true,
+    "per_command_checked_tree": "only unique pilot root; lstat/no-follow; reject unknown paths, oversize, >1024entries or >12MiB; check before and after every writer",
+    "qualification": "reservations are conservative source-review inputs for trusted fixed Git builtins, not an OS aggregate quota; exact helper and pinned image tools must be reviewed before publication; RLIMIT_FSIZE alone and post-hoc scan alone do not prove aggregate bound",
+    "variant_margin_by_role": {
+      "A": 32,
+      "B": 160
+    },
+    "source_proof": "source-bounds.json; reservations cover temporary and destination generations, not an OS aggregate quota"
+  },
+  "preflight_remaining": [
+    "effective Ceph manager cache freshness Unknown",
+    "parent must ratify equivalent gateway observer from independent VM RRD/live health and finite client RPC",
+    "actual 30-minute >=95% coverage baseline and original stricter thresholds",
+    "source helper with exact once-only plans and reservation/checker reviewed before RW",
+    "export backing/squash/normal-workspace quota still Unknown"
+  ],
+  "no_storage_execution": true,
+  "gateway_architecture": "parent ratified VM independently timestamped RRD + finite client RPC as conservative resource/client service observer for tiny trusted fixture; not NFS daemon queue/service proof; original Ceph/cache/protected baseline gates unchanged",
+  "toolchain": {
+    "git_version": "git version 2.39.5",
+    "debian_package": "1:2.39.5-0+deb12u3",
+    "git_binary_sha256": "2540879925a6881e3877ff7e3330746ba3027b04edf16a3a12dccd1644c4f32d",
+    "signed_image_publish_run": 38019539606,
+    "image_source": "bbed3b735dbca784cfeb77fb6062dbd83fd46891",
+    "actual_build_and_smoke_evidence": "https://github.com/thaynes43/dev-env/actions/runs/38019539606"
+  }
+}

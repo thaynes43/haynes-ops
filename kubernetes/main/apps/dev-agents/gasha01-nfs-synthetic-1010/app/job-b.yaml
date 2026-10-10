@@ -1,0 +1,111 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gasha01-nfs-synthetic-9c9e68c4-b
+  namespace: dev-agents
+  labels:
+    app.kubernetes.io/name: gasha01-nfs-synthetic-9c9e68c4
+    dev-env.haynesops.com/nfs-synthetic: nfs-synth-89179a1b4841452cb1ec30f29c9e68c4
+spec:
+  suspend: true
+  backoffLimit: 0
+  activeDeadlineSeconds: 180
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gasha01-nfs-synthetic-9c9e68c4
+        dev-env.haynesops.com/nfs-synthetic: nfs-synth-89179a1b4841452cb1ec30f29c9e68c4
+        dev-env.haynesops.com/nfs-role: B
+      annotations:
+        k8tz.io/inject: 'false'
+    spec:
+      restartPolicy: Never
+      priorityClassName: dev-env-agent
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 15
+      containers:
+      - name: fixture
+        image: ghcr.io/thaynes43/dev-env:2.10.0@sha256:a9b1fb9beea5ab38f606b3198843828727dfb21de345f8fd10e67dc1f59407cb
+        command:
+        - /bin/sh
+        - -ec
+        args:
+        - umask 077; exec nice -n 19 timeout --signal=TERM --kill-after=2s 145s python3
+          -B -u /capsule/helper.py --execute-candidate --pilot nfs-synth-89179a1b4841452cb1ec30f29c9e68c4
+          --role B
+        env:
+        - name: HOME
+          value: /scratch
+        - name: TMPDIR
+          value: /scratch
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+        volumeMounts:
+        - name: nfs
+          mountPath: /discovery
+        - name: source
+          mountPath: /capsule
+          readOnly: true
+        - name: scratch
+          mountPath: /scratch
+      volumes:
+      - name: nfs
+        persistentVolumeClaim:
+          claimName: gasha01-nfs-synthetic-9c9e68c4
+      - name: source
+        configMap:
+          name: gasha01-nfs-synthetic-9c9e68c4-source
+          defaultMode: 292
+      - name: scratch
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Mi
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: In
+                values:
+                - w
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - amd64
+              - key: node-role.kubernetes.io/control-plane
+                operator: DoesNotExist
+              - key: node-role.kubernetes.io/master
+                operator: DoesNotExist
+              - key: haynesops.com/gpu-test
+                operator: DoesNotExist
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                dev-env.haynesops.com/nfs-synthetic: nfs-synth-89179a1b4841452cb1ec30f29c9e68c4
+            topologyKey: kubernetes.io/hostname

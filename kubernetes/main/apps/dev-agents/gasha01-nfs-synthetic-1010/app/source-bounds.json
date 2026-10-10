@@ -1,0 +1,183 @@
+{
+  "state": "trusted fixed-program source bound for source review; no NFS execution or production quota proof",
+  "pilot": "nfs-synth-89179a1b4841452cb1ec30f29c9e68c4",
+  "kubernetes_identity": "gasha01-nfs-synthetic-9c9e68c4",
+  "dataset": {
+    "flat_file_count": 8,
+    "file_bytes": 512,
+    "commits": 3,
+    "changed_files_per_later_commit": 1,
+    "linked_worktrees": 2,
+    "local_clones": 1,
+    "local_fetches": 1,
+    "real_remotes": 0
+  },
+  "image": "ghcr.io/thaynes43/dev-env:2.10.0@sha256:a9b1fb9beea5ab38f606b3198843828727dfb21de345f8fd10e67dc1f59407cb",
+  "toolchain": {
+    "git_version": "git version 2.39.5",
+    "debian_package": "1:2.39.5-0+deb12u3",
+    "git_binary_sha256": "2540879925a6881e3877ff7e3330746ba3027b04edf16a3a12dccd1644c4f32d",
+    "signed_image_publish_run": 38019539606,
+    "image_source": "bbed3b735dbca784cfeb77fb6062dbd83fd46891",
+    "actual_build_and_smoke_evidence": "https://github.com/thaynes43/dev-env/actions/runs/38019539606"
+  },
+  "git_object_bound": {
+    "seed_reachable": 10,
+    "final_reachable": 16,
+    "physical_including_staged_wip": 17,
+    "description": "8 initial blobs + 2 changed blobs + 3 flat trees + 3 commits; one extra staged WIP blob"
+  },
+  "generation_rule": "Each new/temp regular output and replacement is conservatively a whole 16KiB generation, including object finalization, lock/ref/index/config rename and bounded pack/header rewrites. Fixed native input sizes/object/path counts, disabled optional producers and once-only trusted source provide the aggregate bound; RLIMIT or a later scan alone do not.",
+  "git_operations": [
+    {
+      "role": "A",
+      "operation": "init",
+      "source_upper_generations": 16,
+      "reserved_generations": 16
+    },
+    {
+      "role": "A",
+      "operation": "seed_add",
+      "source_upper_generations": 18,
+      "reserved_generations": 32
+    },
+    {
+      "role": "A",
+      "operation": "seed_commit",
+      "source_upper_generations": 24,
+      "reserved_generations": 32
+    },
+    {
+      "role": "A",
+      "operation": "revision_1_add",
+      "source_upper_generations": 4,
+      "reserved_generations": 16
+    },
+    {
+      "role": "A",
+      "operation": "revision_1_commit",
+      "source_upper_generations": 24,
+      "reserved_generations": 32
+    },
+    {
+      "role": "A",
+      "operation": "revision_2_add",
+      "source_upper_generations": 4,
+      "reserved_generations": 16
+    },
+    {
+      "role": "A",
+      "operation": "revision_2_commit",
+      "source_upper_generations": 24,
+      "reserved_generations": 32
+    },
+    {
+      "role": "A",
+      "operation": "worktree_A",
+      "source_upper_generations": 32,
+      "reserved_generations": 48
+    },
+    {
+      "role": "A",
+      "operation": "worktree_B",
+      "source_upper_generations": 32,
+      "reserved_generations": 48
+    },
+    {
+      "role": "A",
+      "operation": "staged_WIP",
+      "source_upper_generations": 4,
+      "reserved_generations": 16
+    },
+    {
+      "role": "B",
+      "operation": "clone",
+      "source_upper_generations": 60,
+      "reserved_generations": 64
+    },
+    {
+      "role": "B",
+      "operation": "checkout",
+      "source_upper_generations": 24,
+      "reserved_generations": 32
+    },
+    {
+      "role": "B",
+      "operation": "fetch",
+      "source_upper_generations": 40,
+      "reserved_generations": 48
+    },
+    {
+      "role": "B",
+      "operation": "ref_lock_probe",
+      "source_upper_generations": 2,
+      "reserved_generations": 16
+    }
+  ],
+  "python_sources": {
+    "A_upper_generations": 56,
+    "B_upper_generations": 16,
+    "each_role_reserved": 64,
+    "producers": "fixed dataset/markers/lockfiles, 3 directories, 8 copies with fsync+rename, 10 exact archive members; no extracted paths or uncontrolled writer"
+  },
+  "fixed_reserved_generations": 576,
+  "disjoint_variant_generations": {
+    "A": 32,
+    "B": 160
+  },
+  "total_generations": 768,
+  "hard_file_limit": 16384,
+  "cumulative_regular_bytes_upper": 12582912,
+  "directory_and_nonregular_entry_margin": 256,
+  "entry_upper": 1024,
+  "frozen_ceiling_bytes": 16777216,
+  "frozen_ceiling_entries": 2048,
+  "primary_sources": [
+    {
+      "url": "https://raw.githubusercontent.com/git/git/v2.39.5/object-file.c",
+      "scope": "write_loose_object/finalize_object_file: one bounded object tempfile/final path"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/git/git/v2.39.5/builtin/init-db.c",
+      "scope": "fixed empty-template init; bounded config/ref/platform probes"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/git/git/v2.39.5/builtin/add.c",
+      "scope": "eight or one explicit flat file; one index transaction"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/git/git/v2.39.5/builtin/commit.c",
+      "scope": "one flat tree/commit and bounded message/index/ref updates; hooks/signing/maintenance disabled"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/git/git/v2.39.5/builtin/worktree.c",
+      "scope": "fixed admin files plus eight-file checkout and index/ref updates; no sparse/worktree config"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/git/git/v2.39.5/builtin/clone.c",
+      "scope": "local no-hardlinks copies ten seed objects; no checkout and bounded init/config/ref updates"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/git/git/v2.39.5/builtin/unpack-objects.c",
+      "scope": "fetch at most sixteen reachable objects, below frozen unpackLimit100"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/git/git/v2.39.5/read-cache.c",
+      "scope": "index lockfile/commit, split index disabled"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/git/git/v2.39.5/refs/files-backend.c",
+      "scope": "one selected pilot ref; blocked creation and no ref retry"
+    }
+  ],
+  "capsule_root": "Both roles mount the known export through a new static Retain binding. Only role A performs one mkdir of the immutable unique child, mode0700, refusing EEXIST; no-follow descriptor/UID/mode identity guards confine all subsequent producers. No root enumeration, household reads, export-parent chmod/chown, or symlink/hardlink acceptance.",
+  "cleanup_contract": {
+    "initial_jobs_suspended": true,
+    "initial_child_prune": false,
+    "initial_deletion_policy": "Orphan",
+    "pv_pvc_prune_disabled": true,
+    "execution": "separate reviewed mutable suspend-only source change after baseline/protected/root approval",
+    "retirement": "actual init/main termination and worker health first; reviewed unchanged-resource adoption of prune true plus explicit removal of retention annotations, prove inventory, then separate child retirement; never empty child source while prune false"
+  },
+  "acceptance": "Cross-pod NFS lock/cache behavior, server quota, original baseline/cache telemetry and ordinary workspace acceptance remain unproved. No NFS execution in source unit."
+}

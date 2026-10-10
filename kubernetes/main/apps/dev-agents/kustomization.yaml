@@ -6,3 +6,4 @@ resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
   # Flux-Kustomizations
+  - ./gasha01-nfs-synthetic-1010/ks.yaml

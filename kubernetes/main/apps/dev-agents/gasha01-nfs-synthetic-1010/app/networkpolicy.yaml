@@ -1,0 +1,13 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: gasha01-nfs-synthetic-9c9e68c4-offline
+  namespace: dev-agents
+spec:
+  endpointSelector:
+    matchLabels:
+      dev-env.haynesops.com/nfs-synthetic: nfs-synth-89179a1b4841452cb1ec30f29c9e68c4
+  ingressDeny:
+  - {}
+  egressDeny:
+  - {}
