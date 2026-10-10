@@ -47,11 +47,15 @@ with the actual Pod IP, empty DNS and native local gateway, and region/zone labe
 equal to a fresh named target Node. Every other label/annotation and executable
 spec, container, mount, environment and security field remains exact. Retain the
 first list-selected Pod, named Pod and Node privately before these checks.
-After durable evidence ACK, the controller may remove the tracking finalizer before
-Job Complete is reported. Permit its absence only for the same owned/configured
+The controller may remove the tracking finalizer independently of private evidence
+ACK and before Job Complete is reported. Permit its absence only for the same owned/configured
 Pod Succeeded with one native container Completed/exit0/restarts0 and no failed Job
-state. Job Complete remains required for overall success. Running and pre-input
+state. Job Complete remains required for overall success. Initial and later Running
 admission still require the singleton; unexpected finalizers always refuse.
+Terminal admission neither proves the scanner nor makes exec into a terminated
+Pod possible. Retain the first failing binding Job/Pod/Node responses privately
+before owned cleanup; missing responses remain unproved. The durable full-proof
+copy/ACK requirements and original deadlines remain unchanged.
 Native Job startTime may be second-truncated. Collection expiry is the earlier of
 the original host execution end and that exact owned Job start plus180; the alarm
 is shortened before inputs and the packet uses that expiry. Original host/watchdog
