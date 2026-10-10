@@ -63,6 +63,10 @@ def main():
     require(not final.exists(), 'final_config_already_exists')
     require(pinned(handoff['prelive_config']) == (json.dumps(config, sort_keys=True, indent=2)+'\n').encode(),
             'preapproved_config_changed')
+    for key in ('manifest_contract', 'hold_receipt', 'selection_approval', 'census_holds', 'cached_source_receipt'):
+        require(isinstance(config.get(key), dict) and set(config[key]) == {'path', 'sha256'},
+                'exact_static_root_scope_ref_required')
+        pinned(config[key])
     subprocess.run([sys.executable, '-I', '-B', args.live_launcher, '--contract', handoff['live_contract']['path'],
                     '--root-authorization', scope['GO']], stdin=subprocess.DEVNULL, check=True)
     # No API calls or object census here: the pinned LIVE already proves ACK/GC.
