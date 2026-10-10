@@ -102,6 +102,7 @@ code-server intercepts Ctrl+B (sidebar toggle) in its integrated terminal, so de
 
 - `~/repos/<name>` — canonical clone, fetch-only. Never work here.
 - `~/work/<id>` — per-task worktree on branch `agent/<id>`.
+- `~/codex/<repo>` — Codex app project root: a detached worktree of `origin/main` that anchors the project and is never edited. It sits outside `~/work`, so the sweeper leaves it alone. Remove it by hand with `git -C ~/repos/<repo> worktree remove ~/codex/<repo>`.
 
 One worktree per task, so concurrent agents in a repo never collide. Agents are instructed (`~/.claude/CLAUDE.md`) to stay in their worktree, never push `main`, open a PR, and **merge it themselves once checks are green**.
 

@@ -9,6 +9,16 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 - **Worktree per task.** Never work directly in `~/repos/<name>` (canonical clones).
   Create `git worktree add ~/work/<task-slug> -b agent/<task-slug>` and work there.
   Multiple agents share this pod; the canonical clones are fetch-only.
+- **Codex project roots live in `~/codex/<repo>`, never `~/work`.** The Codex app
+  needs a folder per project before it can start threads. Make it a detached
+  worktree of the canonical clone:
+  `git -C ~/repos/<repo> worktree add --detach ~/codex/<repo> origin/main`, then add
+  that path as the project. Threads still branch their own `~/work/<task-slug>`
+  worktree per task, and the root only anchors the project. Keep it out of
+  `~/work`: the sweeper reaps every idle worktree there after 3 days, project roots
+  included. A project that spans several repos gets a plain folder
+  `~/codex/<project>/` holding one such worktree per repo, plus an `AGENTS.md` that
+  maps the folders to repos (example: `~/codex/sigo-alumni/`).
 - **GitOps strictly** for the haynes-ops repo: cluster changes go through git + Flux.
   The kubectl ServiceAccount is OPERATOR tier (saga plan 05): broad read minus
   secrets, plus targeted runtime writes only (pod delete / rollout restart, flux
