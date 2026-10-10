@@ -405,3 +405,11 @@ retirement or completion, and failed-call timing retention even for the owning
 service-ceiling control. The full suites passed serially under nice -n 19:
 32 Normal cases, 49 cached cases and 25 legacy cases. These fixture counts are
 source evidence; actual in-budget restoration is still required for #3684.
+
+PR #3691 source head 9b70b5f0 passed both required aggregate checks and the
+writer/window CI. The actual advisory job ended before review (535ms, one turn,
+no model usage, is_error=true) and posted no findings. Its integration cannot
+rerun Actions; this report update triggers one bounded advisory retry. This
+absence is not recorded as a clean review. The new private packet 5fceb8f1
+contains the same executable closure, no runtime authorization, and unchanged
+bounds. Independent source/packet review and live restoration remain pending.
