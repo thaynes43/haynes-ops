@@ -39,6 +39,14 @@ exec. Successor publisher bundles copy this bridge from the reviewed source
 commit and derive all nine program checksums from their actual bytes. The frozen
 private bundles and their historical checksums remain intact.
 
+Publisher preparation also places the unchanged private
+`approved-normal-write-profiles.json` beside the publisher guard. The existing
+`prepare.materialize_publisher_policy` reads the guard's exact policy checksum,
+verifies the supplied private bytes, and publishes a mode-0600 sibling with a
+path/checksum reference for the publisher closure. A missing or changed policy
+refuses preparation. The policy table stays outside git; this closes a missing
+data dependency without changing its Pod, mount, alias or ownership checks.
+
 The SOURCE controller owns its original PostgreSQL 16 connection and transaction.
 It calls the published local scan guard at every entry. Actual uncached health
 queries and bounded lease events run only on that same process/thread. Each
