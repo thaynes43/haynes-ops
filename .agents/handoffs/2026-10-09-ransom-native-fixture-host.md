@@ -3,7 +3,8 @@
 Historical preparation record; the [actual diagnostic results](2026-10-09-ransom-native-admission-refusal.md)
 supersede its earlier no-Job statements and nine-cell metadata projection. The third
 isolated native scan preserved IDs/protected rows but returned UNKNOWN on 25 target
-metadata changes; no inverse/PASS or production writer approval exists.
+metadata changes. The historical v13 successor below passed the actual native scan,
+encoded cover and full inverse; production writer approval remains absent.
 
 At this preparation checkpoint there had been no Job, native scan, production SQL/EPUB/library/list mutation,
 service pause or hourly gate enable is authorized or executed by this record.
@@ -379,3 +380,50 @@ byte equality is claimed. Physical signed-registry equality with the passed PR i
 the accepted closure route. The exact host/skeleton literal pin adopts this image;
 fresh CLOSED preparation, current native observations, independent peer and separate
 root one-run GO still precede any historical v13 Job. No production authority follows.
+
+## Actual historical v13 preservation PASS, 2026-10-10 03:24Z
+
+Ops #3709 merged `7f522742f5417881ee1c93a255fa1d2d8c366a3a` after literal-image
+peer `ac805117`, green required checks and completed Claude No findings. The CLOSED
+v13 packet `10a8339d` and manifest `df6e656a` reused the five historical private
+inputs without a new projection. Independent Pathfinder peer `c391dbe3` verified
+the two Series color bindings, unchanged other 23 scan fields, module/image closure,
+closed flags and original bounds. Fresh identity/typed union `01e3155d` proved the
+same production native UID and no existing fixture. Root separately authorized one
+isolated run; authorized copy `ac62117f` changed only the three outer flags and the
+120-second approval/start timestamps. Production writer approval stayed false.
+
+Actual Job UID `ac7a5aa9-2853-45da-8b0d-4819ae87b3ac` and Pod UID
+`fe132f9e-7c48-489d-8711-8f83b3189b71` bound phase
+`fc26bdcc-619a-41d8-95f7-f81df3d5d7dc`. The native Scan ran at
+`03:24:22.898578Z–03:24:25.9549517Z`; actual receipt
+`2c5a990c1e8b9b4c6998421e46fd8d4ccdd025c0d8b326756c761dc6a9fdffad`
+is `PASS_ACTUAL_NATIVE_SCANNER_PRIVATE_FIXTURE`. Existing target IDs and all
+saved-state/curation/lock rows stayed exact across 82 tables and 34,433 rows.
+Seven catalog cells plus 25 bounded native effects have zero overlap; the complete
+32-cell typed compare-and-swap inverse restored every original table. The cleanup
+predicate removed zero retained works using all 1,931 parsed keys. Native hosted
+workers never started, and production writes were zero.
+
+The encoded-cover proof passed before the inverse/PASS. The admitted
+`Program.cs:162` invokes the unchanged `NativeProjection.RequireAfterCover`:
+lines 164–166 bind retained Volume/Chapter covers, and line 175 hashes the actual
+native cover against the independently encoded candidate. This requirement was
+not weakened by the Series color correction. Earlier UNKNOWN results remain
+historical; the successor now proves the missing cover and complete inverse.
+
+Durable proof/ACK, exact owned cleanup at `03:24:46.559607Z` and independent watchdog
+confirmation at `03:24:46.721154Z` completed before the original execution cap
+`03:26:56.208163Z` and cleanup cap `03:27:16.208163Z`. Fresh complete typed media
+Job/Pod inventories proved the full fixture phase/name/UID union empty; production
+native UID `565e49a9-405c-4d0f-acb7-3c18daa3dd2b` stayed unchanged. Final aggregate:
+`/home/dev/work/hn-ransom-native-fixture-actual-c5e8-v13-1010/aggregate-actual-v13-proof-final.json`,
+SHA `44df8c85d981c00486f86a2ac4b76bed8d7ef17ad41ad21183bda03eab16b18c`.
+Root verified the full union/cover/inverse proof and ended activity `act-032218-1212296`.
+
+This PASS concerns unchanged historical fixture bytes. Fresh current Ransom
+reading activity/file/catalog identity and the exact seven-field owner ruling
+remain pending. PLAN-074/OC-046 keep the whole-folder hold and hourly strip disabled;
+the original July 27/August 26 idle clock must not restart. No production catalog
+edit, EPUB strip, reading-state write, scan or hold release occurred. No further
+native Job or automatic retry is authorized by this report.
