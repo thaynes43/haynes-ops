@@ -413,3 +413,69 @@ rerun Actions; this report update triggers one bounded advisory retry. This
 absence is not recorded as a clean review. The new private packet 5fceb8f1
 contains the same executable closure, no runtime authorization, and unchanged
 bounds. Independent source/packet review and live restoration remain pending.
+
+
+## Actual Normal-only recovery timing PASS (2026-10-10)
+
+PR #3691 merged at 85a29d3a after all required and writer/window checks passed.
+The actual Claude advisory jobs finished with startup errors before review;
+there were no findings to dispose. This is missing advisory review, not a clean
+Claude review. Its concrete disposition is comment 6092147098. Independent
+review of exact 64f8ccdd plus the unused closed packet passed with no findings,
+receipt SHA 36e0ff26d39f32c887b0a86c0bed65765f94248277819248284d30bb02ac0ba4.
+
+Root authorized one watcher-only launch of packet
+5fceb8f10930b8659740f70e1db1ade48298c35d7b937e0fa7cf8c54838df4f1, phase
+b25c5ef244e24ae989f42db0a9c43a53, after Source and all six controllers had
+converged to exact main 85a29d3a with all seven phase-owner annotations absent.
+Its private preflight receipt is
+755399830f4f5dd83e55476847dd46537da82f272efa511c0de0e4da28f2bd32.
+The preliminary preflight 24fd0966 is superseded: it checked an incorrect
+annotation key; all raw observations were retained and the corrected receipt
+uses issue825.haynesnetwork/cached-source-phase.
+
+Readiness 19622425a26d6fb371b9cbdc516c84a60974b211764011386316234b32ea3308
+bound live PID/PGID 1140487 and start ticks 234688039, armed at
+01:27:46.266106Z. At 01:28:18.365844Z root freshly checked that exact readiness
+and birth/group, then authorized one exercise under activity act-012550-1138454.
+The exercise exited zero, proved all seven owned holds/handler drains against
+the actual Normal archive and requested cancellation. No Stop, producer, Job,
+COPY, library/list mutation or strip enable occurred.
+
+The original restoration origin was **01:28:49.234798Z** and actual completion
+was **01:29:17.598322Z**, **28.363524 seconds** within the unchanged **50-second**
+budget. The result is **PASS_WITHIN_ORIGINAL_BUDGET**: complete=true,
+normal_only_rehearsal_complete=true, normal_rehearsal_recovered_within_budget=true,
+no missed-budget marker and copy_runtime_authorized=false. The raw state SHA is
+f3bb64af131dba12b8d151f51f37e22298583a055b17d0871714bba116321b6b.
+All 90/120/50/60/10 exercise/arm/recovery/safety/retry bounds stayed unchanged.
+
+Bounded recovery aggregates retained 131 kubectl GETs (6.562775s), 14 patches
+(0.889791s), two read-only PG checks (0.509021s), seven necessary Flux reconciles
+(18.499843s), four Git fetches (0.992036s) and three Git reads (0.011270s). In
+this actual run each controller required reconciliation; the exact-Ready skip
+fixture was not the realized path. Flux reconciliation is the largest measured
+aggregate in this run. The prior failed attempt retained no per-call timings,
+so no historical bottleneck or attribution of its 118.345250s is inferred.
+
+Fresh read-only final audit c43be9ca2694bd541677aa898a32c512a071315b22f225327f42cf914d448e39
+proves Source and all six controllers unsuspended/Ready on exact current main,
+all seven owner annotations absent, the complete owned Job/Pod union and both
+PG leases absent, and all actual service/Cron/image/converter Normal checks.
+The watcher exited (kernel zombie Z, with no live request authority) and stderr
+was empty. The audit made no mutation and preserved the original state bytes.
+Root independently verified the receipt and fresh Source/parent fields, then
+ended the activity and released the merge/reconcile freeze.
+
+The three native PodLists observed before the watcher, at 01:19:17Z, independently
+prove all **six service Pod UIDs and full specs unchanged**, still Running/Ready;
+comparison receipt SHA
+6f393744e736d2f015e7532964ecbaef26f732341bde2688ae8a00181f11d8e9.
+A complete four-Deployment UID/generation/full-spec baseline was not preserved,
+so that historical equality is **unproved**. Final actual deployment/workload
+Normal checks passed; they do not manufacture the missing historical comparison.
+
+This closes the actual Normal-only timing prerequisite in issue #3684. It does
+not authorize a Stop/COPY window or advance a production writer gate. Each later
+exact packet and its owning runtime authorization remain separate. The original
+2026-10-09 RECOVERED_AFTER_MISSED_BUDGET result remains historical fact.
