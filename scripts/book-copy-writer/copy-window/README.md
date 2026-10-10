@@ -6,6 +6,8 @@ that managed publisher child runs. The publisher bridge only reads the phase
 ledger; during this overlap the owning supervisor may update its heartbeat,
 but every other ledger field must stay unchanged. A failed or expired publisher
 child stops the attempt and is terminated and reaped before SOURCE release.
+That child inherits the supervisor's existing host process group; it never
+creates another detached group. Cleanup signals the exact child, then reaps it.
 The first complete publisher proof must pass before helper cleanup. A second
 complete capture still follows verified helper cleanup and precedes assembly
 and MAIN. The original capture, source and restoration clocks remain unchanged.

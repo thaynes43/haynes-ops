@@ -480,7 +480,7 @@ class Supervisor:
   log=self.out/('command-'+uuid.uuid4().hex+'.log')
   descriptor=os.open(log,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
   stream=os.fdopen(descriptor,'wb');expires=time.monotonic()+60
-  try:process=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=stream,stderr=stream,start_new_session=True)
+  try:process=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=stream,stderr=stream,start_new_session=False)
   except BaseException:stream.close();raise
   self.publisher_capture={'process':process,'stream':stream,'destination':destination,
                           'expires':expires,'phase_identity':identity}
@@ -497,11 +497,11 @@ class Supervisor:
   if pending is None:return
   process=pending['process']
   if process.poll() is None:
-   try:os.killpg(process.pid,signal.SIGTERM)
+   try:process.terminate()
    except ProcessLookupError:pass
    try:process.wait(timeout=2)
    except subprocess.TimeoutExpired:
-    try:os.killpg(process.pid,signal.SIGKILL)
+    try:process.kill()
     except ProcessLookupError:pass
     process.wait(timeout=2)
   else:process.wait(timeout=2)

@@ -621,14 +621,16 @@ class PublisherOverlapTests(unittest.TestCase):
         w.retire_vendor_readers=lambda *args:events.append(('native_gc',))
         class Child:
             pid=4321
-            def __init__(self,code):self.code=code;self.term_timeout=False
+            def __init__(self,code):self.code=code;self.term_timeout=False;self.signals=[]
             def poll(self):return self.code
+            def terminate(self):self.signals.append(supervisor.signal.SIGTERM)
+            def kill(self):self.signals.append(supervisor.signal.SIGKILL)
             def wait(self,timeout):
                 if self.term_timeout:self.term_timeout=False;raise subprocess.TimeoutExpired('public-fixture',timeout)
                 events.append(('reaped',));self.code=0 if self.code is None else self.code;return self.code
         def spawn(argv,**kwargs):
             self.assertTrue(all(r['uid'] for r in state['owned_jobs']))
-            self.assertTrue(kwargs['start_new_session']);self.assertEqual(kwargs['stdin'],subprocess.DEVNULL)
+            self.assertFalse(kwargs['start_new_session']);self.assertEqual(kwargs['stdin'],subprocess.DEVNULL)
             destination=Path(argv[argv.index('--output')+1]);destination.write_text('{"publishers":[]}')
             child=Child(None if not children else 0);children.append(child);events.append(('started',len(children)));return child
         return w,state,events,children,spawn
@@ -647,21 +649,21 @@ class PublisherOverlapTests(unittest.TestCase):
     def test_nonheartbeat_uid_or_pg_ledger_change_refuses_and_reaps(self):
         for field in ('uid','backend_pid'):
             with self.subTest(field=field),tempfile.TemporaryDirectory() as d:
-                w,state,events,children,spawn=self.fixture(Path(d));killed=[]
+                w,state,events,children,spawn=self.fixture(Path(d))
                 def collect(key):
                     if field=='uid':state['owned_jobs'][0]['uid']='foreign-uid'
                     else:state['pg_leases'][0]['backend_pid']=99
                     w.check_publisher_capture()
                 w.capture_vendor=collect
-                with patch.object(supervisor.subprocess,'Popen',side_effect=spawn),patch.object(supervisor.os,'killpg',side_effect=lambda pid,sig:killed.append((pid,sig))):
+                with patch.object(supervisor.subprocess,'Popen',side_effect=spawn),patch.object(supervisor.os,'killpg',side_effect=AssertionError('publisher must not signal an unowned group')):
                     with self.assertRaisesRegex(supervisor.Refused,'phase identity changed'):w.collect_readonly_sources()
-                self.assertEqual(killed,[(4321,supervisor.signal.SIGTERM)]);self.assertEqual(events[-1],('reaped',))
+                self.assertEqual(children[0].signals,[supervisor.signal.SIGTERM]);self.assertEqual(events[-1],('reaped',))
                 self.assertFalse(any(r[0] in ('proof','native_gc') for r in events));self.assertIsNone(w.publisher_capture)
 
     def test_failed_expired_or_native_refused_child_is_reaped(self):
         for case in ('child_failed','expired','native_failed','term_timeout'):
             with self.subTest(case=case),tempfile.TemporaryDirectory() as d:
-                w,state,events,children,spawn=self.fixture(Path(d));killed=[]
+                w,state,events,children,spawn=self.fixture(Path(d))
                 def collect(key):
                     if case=='native_failed':raise supervisor.Refused('stopped vendor source refused')
                     if case=='child_failed':children[-1].code=7
@@ -670,13 +672,13 @@ class PublisherOverlapTests(unittest.TestCase):
                         if case=='term_timeout':children[-1].term_timeout=True
                     w.check_publisher_capture()
                 w.capture_vendor=collect
-                with patch.object(supervisor.subprocess,'Popen',side_effect=spawn),patch.object(supervisor.os,'killpg',side_effect=lambda pid,sig:killed.append((pid,sig))):
+                with patch.object(supervisor.subprocess,'Popen',side_effect=spawn),patch.object(supervisor.os,'killpg',side_effect=AssertionError('publisher must not signal an unowned group')):
                     with self.assertRaises(supervisor.Refused):w.collect_readonly_sources()
                 self.assertEqual(events[-1],('reaped',));self.assertIsNone(w.publisher_capture)
                 self.assertFalse(any(r[0] in ('proof','native_gc') for r in events))
-                expected=[] if case=='child_failed' else [(4321,supervisor.signal.SIGTERM)]
-                if case=='term_timeout':expected.append((4321,supervisor.signal.SIGKILL))
-                self.assertEqual(killed,expected)
+                expected=[] if case=='child_failed' else [supervisor.signal.SIGTERM]
+                if case=='term_timeout':expected.append(supervisor.signal.SIGKILL)
+                self.assertEqual(children[0].signals,expected)
 
 
 class NativeCleanupTests(unittest.TestCase):
