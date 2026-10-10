@@ -674,6 +674,102 @@ class CatalogMaintenanceTests(unittest.TestCase):
                     watch.verify_cached_stop_holds.side_effect = None
                     collector.write_bytes(collector_bytes)
 
+    def test_post_stop_callers_use_fresh_app_holds_and_keep_source_and_parent_guards(self):
+        # Reuse the existing cached-source fixture and real checks. Only artifact
+        # transport, kernel observation and the next writer boundary are faked.
+        directory = HERE.parent / 'copy-window'
+        import types
+        with mock.patch.dict(sys.modules, {'yaml': types.ModuleType('yaml')}):
+            spec = importlib.util.spec_from_file_location('post_stop_window', directory / 'window_contract.py')
+            window = importlib.util.module_from_spec(spec);spec.loader.exec_module(window)
+        with mock.patch.dict(sys.modules, {'window_contract': window}):
+            spec = importlib.util.spec_from_file_location('post_stop_cache', directory / 'cached_source.py')
+            cache = importlib.util.module_from_spec(spec);spec.loader.exec_module(cache)
+        def functions(file, names, scope):
+            tree = ast.parse((directory / file).read_bytes())
+            nodes = [copy.deepcopy(next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name)) for name in names]
+            for n in nodes:n.decorator_list = []
+            exec(compile(ast.Module(body=nodes, type_ignores=[]), file, 'exec'), scope)
+            return scope
+        blobs = {p: ('finite Stop bytes ' + p).encode() for p in window.PATHS}
+        fixture = functions('test_cached_source.py', ('native', 'archive', 'fixture'),
+            dict(cache=cache, wc=window, copy=copy, io=io, tarfile=__import__('tarfile'), gzip=__import__('gzip'),
+                 legacy=SimpleNamespace(STOP=blobs), PHASE='a' * 32, STOP_SHA='b' * 40, NORMAL_SHA='c' * 40))
+        receipt, source, controller, parents, apps, raw = fixture['fixture']()
+        contract = {'manifests': {p: {'stop_sha256': window.sha(b)} for p, b in blobs.items()}}
+        phase = {'phase_token': receipt['phase_token']}
+        binding = {'phase_token': phase['phase_token'], 'stop_main_sha': receipt['stop_main_sha']}
+        new_holds = {}
+        for (ns, name), old in apps.items():
+            before = copy.deepcopy(old);before['spec']['suspend'] = False
+            before['metadata'].update(resourceVersion='3', generation=3)
+            before['status'].update(observedGeneration=3, lastAppliedRevision='main@sha1:' + receipt['stop_main_sha'],
+                conditions=[{'type': 'Ready', 'status': 'True', 'observedGeneration': 3}])
+            after = copy.deepcopy(before);after['spec']['suspend'] = True
+            after['metadata'].update(resourceVersion='4', generation=4)
+            token = 'post-stop-' + name
+            after['metadata']['annotations'][cache.REQUEST] = token;after['status']['lastHandledReconcileAt'] = token
+            new_holds[ns + '/' + name] = {'before': before, 'after': after, 'token': token}
+            apps[(ns, name)] = copy.deepcopy(after)
+        state = dict(cached_stop_actuation_complete_at='fixture', complete=False, armed_ready=True,
+            actuation_budget_started_at=dt.datetime.fromtimestamp(self.now, dt.timezone.utc).isoformat(),
+            armed_at=dt.datetime.fromtimestamp(self.now - 10, dt.timezone.utc).isoformat(),
+            cached_stop_actuation_binding=binding, cached_stop_holds=new_holds)
+        def put(name, value):
+            path = self.base / name;path.write_bytes(catalog.canonical(value));path.chmod(0o600)
+            return {'path': str(path), 'sha256': catalog.digest(value)}
+        config = dict(watcher_state=put('post-stop-watch.json', state)['path'], watcher_pid=123, watcher_pgid=123,
+            watcher_birth=456, cached_source_receipt=put('post-stop-cache.json', receipt),
+            manifest_contract=put('post-stop-contract.json', contract),
+            converter_lock_admission=put('post-stop-lock.json', {'admitted_epoch': self.now, 'state_inode': 10}))
+        def get(kind, name, namespace):
+            if kind == 'gitrepository':return source
+            if kind == 'pod':return controller
+            return parents[name] if namespace == 'flux-system' else apps[(namespace, name)]
+        methods = functions('copy-recovery-watch.py', ('cached_stop_ready', 'verify_cached_stop_holds'), dict(contract=window, cache=cache))
+        watch = SimpleNamespace(state=state, scopes=window.SCOPES, kube=get, args=SimpleNamespace(arm_deadline=1800))
+        for name in ('cached_stop_ready', 'verify_cached_stop_holds'):setattr(watch, name, methods[name].__get__(watch))
+        host = maintenance.HostAdmission.__new__(maintenance.HostAdmission)
+        host.c, host.watch, host.core, host.get = config, watch, None, get
+        host.supervisor = SimpleNamespace(cache=cache, epoch=lambda t: dt.datetime.fromisoformat(t).timestamp())
+        host.operation = {'original_abort_epoch': self.now + 170};host.publisher_pending = False
+        host.guard_lease = lambda: None
+        host.remaining = lambda: None
+        # The lock-cleanup closure is the actual nested production guard.
+        tree = ast.parse((HERE / 'ransom_maintenance_job.py').read_bytes())
+        lock_guard = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == 'guard'
+                          and any(isinstance(x, ast.Name) and x.id == 'observer' for x in ast.walk(n)))
+        scope = dict(observer=host, self=watch, phase=phase, config=config, supervisor=host.supervisor, json=json,
+            private=maintenance.private, accepted_watcher_cache=lambda *_: receipt,
+            base=SimpleNamespace(Watchdog=SimpleNamespace(verify_phase_absent=lambda *_: None)))
+        exec(compile(ast.Module(body=[copy.deepcopy(lock_guard)], type_ignores=[]), 'lock-guard', 'exec'), scope)
+        class WriterBoundary(Exception):pass
+        kernel = '123 (fixture) S 1 123 ' + '0 ' * 16 + '456 0'
+        real_read_text = Path.read_text
+        with mock.patch.object(cache, 'fetch', return_value=raw), mock.patch.object(time, 'time', return_value=self.now + 1), \
+             mock.patch.object(Path, 'read_text', lambda p, *a, **kw: kernel if str(p) == '/proc/123/stat' else real_read_text(p, *a, **kw)), \
+             mock.patch.object(maintenance, 'sonarr_lock', return_value={'state_inode': 10}), \
+             mock.patch.object(maintenance, 'one_job_phase', return_value=phase), \
+             mock.patch.object(maintenance, 'writer_row', side_effect=WriterBoundary):
+            # Demonstrate the original mismatch without changing either proof.
+            with self.assertRaisesRegex(ValueError, 'hold owner/drain changed'):
+                cache.check_live(receipt, get, contract, phase['phase_token'], deadline=self.now + 170)
+            with self.assertRaises(WriterBoundary):host.guard(False)
+            scope['guard']()
+            for failure in ('foreign-app', 'old-app-token', 'undrained-app', 'parent', 'source'):
+                with self.subTest(failure=failure):
+                    app = apps[window.SCOPES[0]];old = copy.deepcopy(app)
+                    parent = parents[cache.PARENTS[0]];old_parent = copy.deepcopy(parent)
+                    old_source = copy.deepcopy(source)
+                    if failure == 'foreign-app':app['metadata']['annotations'][cache.OWNER] = 'foreign'
+                    if failure == 'old-app-token':app['metadata']['annotations'][cache.REQUEST] = receipt['holds']['/'.join(window.SCOPES[0])]['token']
+                    if failure == 'undrained-app':app['status']['lastHandledReconcileAt'] = 'not-acknowledged'
+                    if failure == 'parent':parent['metadata']['annotations'][cache.OWNER] = 'foreign'
+                    if failure == 'source':source['metadata']['annotations'][cache.OWNER] = 'foreign'
+                    with self.assertRaises(ValueError):host.guard(False)
+                    with self.assertRaises(ValueError):scope['guard']()
+                    app.clear();app.update(old);parent.clear();parent.update(old_parent);source.clear();source.update(old_source)
+
     def test_pre_stop_activation_reuses_original_clock_and_complete_stop_gate(self):
         # Execute the existing publication/schema/Stop gate with external APIs
         # faked; neither a clock reset nor a partial Stop admits the helper.
