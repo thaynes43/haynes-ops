@@ -94,6 +94,9 @@ def materialize(directory, signature_receipt, registry_proof):
     files['image-signature-receipt.json'] = save(directory / 'image-signature-receipt.json', receipt_raw)
     files['registry-module-proof.json'] = save(directory / 'registry-module-proof.json', proof_raw)
     files['selected-stage-scope.json'] = save(directory / 'selected-stage-scope.json', canonical(pins.SELECTED_SCOPE))
+    handoff_scope = dict(__name__='prepared_host_handoff', __file__=str(pins.HERE / 'run-live-and-copy.py'))
+    exec(compile(sources['run-live-and-copy.py'], handoff_scope['__file__'], 'exec'), handoff_scope)
+    files['host-tools-contract.json'] = save(directory / 'host-tools-contract.json', canonical(handoff_scope['host_tool_contract'](read)))
     live_phase = uuid.uuid4().hex
     live = json.loads(sources['live-baseline-closed-manifest.json'])
     for meta in (live['metadata'], live['spec']['template']['metadata']):
