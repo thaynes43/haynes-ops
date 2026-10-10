@@ -135,6 +135,31 @@ that is not installed is simply absent): `dmidecode lspci journalctl dmesg senso
 nvme zpool zfs qm pct pvesh pvecm pvesm ha-manager ipmitool`. Extending it is a PR here plus
 Tom re-running the node script.
 
+### Guest VM reads: gasha01
+
+The PVE host login is `dev-env`, using the existing hardware key and the sudo
+allowlist above. `sudo qm` provides root-equivalent VM administration. This SSH
+authority is separate from the API token: an API `VM.Monitor` denial does not
+establish that the authorized host SSH path is unavailable.
+
+For gasha01 (VM104), resolve its current PVE host, then check the guest agent:
+
+```bash
+hw-ssh <current-pve-host> sudo -n qm guest cmd 104 ping
+```
+
+Guest-agent commands require a responding agent inside the VM. On 2026-10-10,
+host SSH worked and VM104's config had `agent: 1`, but this ping reported
+`QEMU guest agent is not running`. No guest SSH username, key acceptance or
+privilege tier was verified. Confirm those facts before using
+`hw-ssh --raw <verified-user>@gasha01.haynesnetwork <read-only-command>`; the PVE
+host account does not establish the guest account or its privileges.
+
+Guest SSH also requires the exact gateway name in both the pod's DNS allowlist
+and its TCP22 `toFQDNs` rule. Change those through GitOps. The purpose is to
+inspect the NFS export, permissions and directory quotas for the external
+storage comparison. This does not provision a guest login or start its agent.
+
 ### PiKVM
 
 The PiKVM drives the TESmart KVM wired to every bare-metal master: video and keyboard on
