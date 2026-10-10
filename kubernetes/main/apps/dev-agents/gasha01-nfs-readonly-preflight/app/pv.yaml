@@ -1,0 +1,27 @@
+---
+# Read-only discovery only. The 5Mi binding capacity is not an NFS directory quota.
+# Retain the export; this PV never provisions or deletes server-side storage.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gasha01-nfs-readonly-discovery
+  labels:
+    app.kubernetes.io/name: gasha01-nfs-readonly-discovery
+spec:
+  capacity:
+    storage: 5Mi
+  accessModes:
+  - ReadOnlyMany
+  volumeMode: Filesystem
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ''
+  claimRef:
+    namespace: dev-agents
+    name: gasha01-nfs-readonly-discovery
+  mountOptions:
+  - nfsvers=4.2
+  - hard
+  nfs:
+    server: gasha01.haynesnetwork
+    path: /hdd-nfs-repl
+    readOnly: true

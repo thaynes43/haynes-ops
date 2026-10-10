@@ -1,0 +1,18 @@
+---
+# Dedicated read-only claim. PVC capacity does not bound the export or prove a quota.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gasha01-nfs-readonly-discovery
+  namespace: dev-agents
+  labels:
+    app.kubernetes.io/name: gasha01-nfs-readonly-discovery
+spec:
+  accessModes:
+  - ReadOnlyMany
+  volumeMode: Filesystem
+  storageClassName: ''
+  volumeName: gasha01-nfs-readonly-discovery
+  resources:
+    requests:
+      storage: 5Mi
