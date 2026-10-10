@@ -382,12 +382,12 @@ class FiniteCandidateRunner:
         if role == 'A':
             self.root, self.fd = validate_root(export, pilot, create=True)
         else:
-            for attempt in range(30):
+            for attempt in range(120):
                 try:
                     self.root, self.fd = validate_root(export, pilot, create=False)
                     break
                 except FileNotFoundError:
-                    if attempt == 29:
+                    if attempt == 119 or time.monotonic() >= self.deadline:
                         raise CapsuleUnknown('new pilot rendezvous timed out') from None
                     time.sleep(0.5)
         self.git = FixedGitWriter(self.root, self.fd, role, self.budget)
@@ -404,12 +404,17 @@ class FiniteCandidateRunner:
         reserved_python_write(self.root, self.fd, relative, payload, self.budget)
 
     def marker(self, name):
-        self.write('control/' + name, name.encode('ascii') + b'\n')
+        self.once('marker:' + name)
+        fixed_replace(self.root, self.fd, 'control/' + name,
+                      name.encode('ascii') + b'\n', self.budget,
+                      'marker-' + self.role)
 
     def wait(self, name):
         self.once('wait:' + name)
-        # Exactly30 sleeping observations; no automatic retry of any producer.
-        for _ in range(30):
+        # Initial start skew gets at most60s inside the unchanged145s deadline.
+        # Other handoffs get15s; observations never retry any producer.
+        observations = 120 if name in {'seed', 'peer-ready'} else 30
+        for _ in range(observations):
             if time.monotonic() >= self.deadline:
                 raise CapsuleUnknown('helper deadline')
             try:

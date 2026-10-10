@@ -115,10 +115,10 @@
     }
   ],
   "python_sources": {
-    "A_upper_generations": 56,
+    "A_upper_generations": 64,
     "B_upper_generations": 16,
     "each_role_reserved": 64,
-    "producers": "fixed dataset/markers/lockfiles, 3 directories, 8 copies with fsync+rename, 10 exact archive members; no extracted paths or uncontrolled writer"
+    "producers": "fixed dataset/markers/lockfiles, 3 directories, 8 copies with fsync+rename, 10 exact archive members; no extracted paths or uncontrolled writer; each of ten marker handoffs reserves a tempfile and atomic rename, fsync before publication"
   },
   "fixed_reserved_generations": 576,
   "disjoint_variant_generations": {
@@ -179,5 +179,18 @@
     "execution": "separate reviewed mutable suspend-only source change after baseline/protected/root approval",
     "retirement": "actual init/main termination and worker health first; reviewed unchanged-resource adoption of prune true plus explicit removal of retention annotations, prove inventory, then separate child retirement; never empty child source while prune false"
   },
-  "acceptance": "Cross-pod NFS lock/cache behavior, server quota, original baseline/cache telemetry and ordinary workspace acceptance remain unproved. No NFS execution in source unit."
+  "acceptance": "Cross-pod NFS lock/cache behavior, server quota, original baseline/cache telemetry and ordinary workspace acceptance remain unproved. No NFS execution in source unit.",
+  "rendezvous": {
+    "initial_pilot_or_seed_seconds": 60,
+    "later_handoff_seconds": 15,
+    "whole_helper_seconds": 145,
+    "job_active_seconds": 180,
+    "producers_retry": false
+  },
+  "root_export_rw_risk": {
+    "kernel_mount_scope": "entire existing export is writable as UID1000; helper descriptors provide child confinement",
+    "staging_disposition": "accepted only with both Jobs suspended and zero running Pods; no root launch sign-off",
+    "launch_gate": "separate launch review must explicitly assess and accept mounted-root exposure and audited helper confinement, or choose a dedicated child-only mount design",
+    "server_precreation": "not performed or authorized in source unit"
+  }
 }
