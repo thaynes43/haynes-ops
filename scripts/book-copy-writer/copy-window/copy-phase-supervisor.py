@@ -313,18 +313,47 @@ class Supervisor:
   contract=json.loads(pinned_artifact(self.c['manifest_contract'],1024*1024))
   for path in window.PATHS:
    if window.sha(normal[path])!=contract['manifests'][path]['normal_sha256']:raise Refused('held preflight normal main differs')
-  self.status.update(phase='armed_while_live',armed_ready=True);self.save()
+  self.status.update(phase='armed_while_live',armed_ready=True,watchdog_armed_at=watch['armed_at']);self.save()
   if self.c.get('cached_source_receipt'):
    self.status['actuation_budget_started_at']=now();self.save()
    cache.write_private(self.c['cached_source_activation'],(json.dumps({'schema':1,
     'phase_token':self.status['phase_token'],'cached_source_receipt_sha256':self.c['cached_source_receipt']['sha256'],
     'normal_inverse_merge_sha':self.status['normal_inverse_merge_sha'],'armed_ready':True,
     'actuation_budget_started_at':self.status['actuation_budget_started_at']},sort_keys=True)+'\n').encode())
+ def cached_stop_gate(self,watch):
+  if (watch.get('complete') or not watch.get('recover_ks') or not watch.get('armed_ready')
+      or watch.get('armed_at')!=self.status['watchdog_armed_at']
+      or str(watch.get('restore_pr'))!=str(self.c['restore_pr'])
+      or watch.get('normal_inverse_merge_sha')!=self.status['normal_inverse_merge_sha']
+      or watch.get('copy_authority_revoked_at')):raise Refused('pending Stop watcher custody lost')
+  remaining=epoch(self.status['actuation_budget_started_at'])+170-time.time()
+  if remaining<=0:raise Refused('pre-release conservative restoration trigger reached')
+  with cache.wall_guard(remaining):
+   receipt,_sha=self.cached_guard(False)  # Source and both parents, while apps may be released.
+   if not watch.get('cached_stop_actuation_complete_at'):return False
+   binding=watch.get('cached_stop_actuation_binding',{})
+   if binding!={'phase_token':self.status['phase_token'],'cached_source_receipt_sha256':self.c['cached_source_receipt']['sha256'],
+       'activation_sha256':window.sha(cache.read_private(self.c['cached_source_activation'])),'stop_main_sha':receipt['stop_main_sha']}:raise Refused('completed Stop actuation binding changed')
+   holds=watch.get('cached_stop_holds',{})
+   if set(holds)!=set(receipt['holds']):raise Refused('completed Stop rehold scope changed')
+   for key,proof in holds.items():
+    old=receipt['holds'][key]['before'];before=proof['before']
+    if before['metadata']['uid']!=old['metadata']['uid'] or dict(before['spec'],suspend=False)!=dict(old['spec'],suspend=False):raise Refused('completed Stop rehold original identity/spec changed')
+   # Preserve the sealed receipt; bind fresh reholds to original identities in memory.
+   checked=dict(receipt,holds=holds);contract=json.loads(pinned_artifact(self.c['manifest_contract'],1024*1024))
+   cache.check_live(checked,self.get,contract,self.status['phase_token'],holds=True,deadline=epoch(self.status['actuation_budget_started_at'])+170)
+   return True
  def wait_for_stop(self):
   expires=time.monotonic()+int(self.c['arm_deadline_seconds'])
   while time.monotonic()<expires:
    if self.stop or Path(self.c['watchdog_stop']).exists():raise Refused('stop before outage')
    if self.c.get('cached_source_receipt') and time.time()>=epoch(self.status['actuation_budget_started_at'])+170:raise Refused('pre-release conservative restoration trigger reached')
+   completed=False
+   if self.c.get('cached_source_receipt'):
+    completed=self.cached_stop_gate(json.loads(Path(self.c['watchdog_state']).read_bytes()))
+   if self.status.get('first_service_stop_observed_at'):
+    if completed:return
+    self.save();time.sleep(.1);continue
    for ns,name in [('downloads','lazylibrarian'),('media','kavita')]:
     d=self.get('deployment',name,ns)
     pods=self.list('pods',ns);selector=d['spec']['selector']['matchLabels']
@@ -341,7 +370,8 @@ class Supervisor:
      with contextlib.redirect_stdout(io.StringIO()):self.checkpoint.main(['--phase-state',str(ledger_path),'--restore-pr',str(self.c['restore_pr']),'start-window','--started-at',started])
      self.status.update(first_service_stop_observed_at=started,window_started_at=started,deadline_epoch=self.deadline,phase='waiting_for_real_fence');self.save()
      # Parent may also record this in recovery state; our own deadline is independent.
-     return
+     if not self.c.get('cached_source_receipt'):return
+     break
    self.save();time.sleep(1)
   raise Refused('live-stage arm deadline expired')
  def drain_lock_events(self):

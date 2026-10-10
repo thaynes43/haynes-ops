@@ -659,6 +659,87 @@ class Watchdog:
         self.state.setdefault('cached_source_receipt_sha256',digest);self.save()
         return value,digest
 
+    def cached_stop_ready(self,row,sha):
+        generation=row['metadata'].get('generation');status=row.get('status',{})
+        contract.require(type(generation) is int and generation>0
+            and type(status.get('observedGeneration')) is int and status['observedGeneration']==generation
+            and status.get('lastAppliedRevision')=='main@sha1:'+sha
+            and any(c.get('type')=='Ready' and c.get('status')=='True'
+                and type(c.get('observedGeneration')) is int and c['observedGeneration']==generation
+                for c in status.get('conditions',[])), 'Stop Kustomization is not current-generation Ready.')
+
+    def verify_cached_stop_holds(self,binding):
+        contract.require(self.state.get('cached_stop_actuation_binding')==binding
+            and set(self.state.get('cached_stop_holds',{}))=={ns+'/'+name for ns,name in self.scopes},
+            'Complete Stop actuation binding/scope changed.')
+        for ns,name in self.scopes:
+            proof=self.state['cached_stop_holds'][ns+'/'+name]
+            self.cached_stop_ready(proof['before'],binding['stop_main_sha'])
+            row=self.kube('kustomization',name,ns)
+            cache.held(proof,row,name,ns,binding['phase_token'])
+            contract.require(row.get('status',{}).get('lastAppliedRevision')=='main@sha1:'+binding['stop_main_sha']
+                and any(c.get('type')=='Ready' and c.get('status')=='True' for c in row.get('status',{}).get('conditions',[]))
+                and not any(c.get('type')=='Reconciling' and c.get('status')=='True'
+                    for c in row.get('status',{}).get('conditions',[])), 'Stop rehold is not drained.')
+
+    def actuate_cached_stop(self,receipt,digest,budget):
+        phase=self.phase_checkpoint()
+        contract.require(len(self.scopes)==4 and set(self.scopes)==set(contract.SCOPES), 'Stop actuation requires exactly four approved app scopes.')
+        binding=dict(phase_token=phase['phase_token'],cached_source_receipt_sha256=digest,
+            activation_sha256=contract.sha(cache.read_private(self.args.cached_source_activation)),
+            stop_main_sha=receipt['stop_main_sha'])
+        if self.state.get('cached_stop_actuation_complete_at'):
+            self.verify_cached_stop_holds(binding);return
+        # A crash/partial attempt can only recover; never repeat a released scope.
+        contract.require(not self.state.get('cached_stop_actuation_started_at'), 'Partial Stop actuation cannot replay.')
+        contract.require(all(row['uid'] is None for row in phase['owned_jobs'])
+            and all(row['backend_pid'] is None and row['job_uid'] is None and row['pod_uid'] is None
+                for row in phase['pg_leases']), 'Stop actuation must precede every producer.')
+        until=min(budget+self.args.deadline,epoch(self.state['armed_at'])+self.args.arm_deadline)
+        contract.require(until>instant().timestamp() and not self.stop.exists(), 'Original Stop actuation deadline/stop reached.')
+        self.state.update(cached_stop_actuation_started_at=stamp(),cached_stop_actuation_binding=binding,cached_stop_holds={});self.save()
+        with cache.wall_guard(until-instant().timestamp()):
+            for ns,name in self.scopes:
+                contract.require(not self.stop.exists() and not self.state.get('copy_authority_revoked_at')
+                    and instant().timestamp()<until, 'Stop actuation revoked or original deadline reached.')
+                # Parents and Source remain held on the exact sealed Stop artifact.
+                cache.check_live(receipt,self.kube,self.contract,phase['phase_token'],holds=False,deadline=until)
+                current=self.phase_checkpoint()
+                contract.require(current['phase_token']==binding['phase_token']
+                    and all(row['uid'] is None for row in current['owned_jobs'])
+                    and all(row['backend_pid'] is None and row['job_uid'] is None and row['pod_uid'] is None
+                        for row in current['pg_leases']), 'Stop phase/producer identity changed before release.')
+                self.verify_phase_absent(current)
+                cache.held(receipt['holds'][ns+'/'+name],self.kube('kustomization',name,ns),name,ns,phase['phase_token'])
+                self.release_ks(ns,name)
+                self.reconcile_ks(ns,name,binding['stop_main_sha'])
+                before=self.kube('kustomization',name,ns);self.cached_stop_ready(before,binding['stop_main_sha'])
+                owned=self.state['cached_ks_owners'][ns+'/'+name]
+                expected=dict(owned['spec']);actual=dict(before['spec']);expected.pop('suspend',None);actual.pop('suspend',None)
+                contract.require(before['metadata']['uid']==owned['uid'] and actual==expected
+                    and before['spec'].get('suspend',False) is False
+                    and before['metadata'].get('annotations',{}).get(cache.OWNER)==phase['phase_token'], 'Stop rehold custody changed.')
+                token=stamp();annotations=dict(before['metadata'].get('annotations',{}),**{cache.REQUEST:token})
+                patch=[dict(op='test',path='/metadata/uid',value=owned['uid']),
+                    dict(op='test',path='/metadata/resourceVersion',value=before['metadata']['resourceVersion']),
+                    dict(op='test',path='/spec',value=before['spec']),
+                    dict(op='test',path='/metadata/annotations/'+cache.OWNER.replace('/','~1'),value=phase['phase_token']),
+                    dict(op='add',path='/metadata/annotations',value=annotations),dict(op='add',path='/spec/suspend',value=True)]
+                self.run(['kubectl','patch','kustomization',name,'-n',ns,'--type=json','-p',json.dumps(patch,separators=(',',':'))],timeout=5)
+                drain=min(until,instant().timestamp()+15)
+                while True:
+                    after=self.kube('kustomization',name,ns)
+                    if after.get('status',{}).get('lastHandledReconcileAt')==token:
+                        proof=dict(before=before,after=after,token=token)
+                        cache.held(proof,after,name,ns,phase['phase_token'])
+                        contract.require(not any(c.get('type')=='Reconciling' and c.get('status')=='True'
+                            for c in after.get('status',{}).get('conditions',[])), 'Stop rehold is still reconciling.')
+                        self.state['cached_stop_holds'][ns+'/'+name]=proof;self.save();break
+                    contract.require(instant().timestamp()<drain and not self.stop.exists(), 'Stop rehold drain deadline/stop reached.')
+                    time.sleep(.1)
+            self.verify_cached_stop_holds(binding)
+            self.state['cached_stop_actuation_complete_at']=stamp();self.save()
+
     def revoke_cached(self,reason):
         self.state.setdefault('copy_authority_revoked_at',stamp())
         self.state.update(recovery_reason=reason,complete=False,recover_ks=True);self.save()
@@ -717,6 +798,7 @@ class Watchdog:
             cap=epoch(self.state['actuation_budget_started_at'])+self.args.deadline if self.state.get('actuation_budget_started_at') else None
             cache.check_live(receipt,self.kube,self.contract,phase['phase_token'],holds=not active,deadline=cap)
             self.state.setdefault('cached_source_ready_at',stamp());self.save()
+            if active:self.actuate_cached_stop(receipt,digest,budget)
         except Exception:
             if not started and not self.state.get('actuation_budget_started_at') and Path(self.args.cached_source_activation).exists():
                 self.state.setdefault('actual_stop_origin_unknown',True);self.save()

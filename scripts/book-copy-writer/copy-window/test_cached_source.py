@@ -893,4 +893,117 @@ class CachedSourceCases(unittest.TestCase):
             self.assertNotIn('window_started_at',w.state);self.assertNotIn('actuation_budget_started_at',w.state)
 
 
+class CachedStopActuationTests(unittest.TestCase):
+    def test_active_cached_tick_dispatches_the_single_stop_actuator(self):
+        with tempfile.TemporaryDirectory() as d:
+            w=CachedSourceCases().watcher(d);receipt=fixture()[0];raw=json.dumps(receipt).encode();digest=wc.sha(raw)
+            cache.write_private(w.args.cached_source_receipt,raw)
+            cache.write_private(w.args.cached_source_activation,json.dumps(dict(schema=1,phase_token=PHASE,cached_source_receipt_sha256=digest,normal_inverse_merge_sha=NORMAL_SHA,armed_ready=True,actuation_budget_started_at='1970-01-01T00:00:10+00:00')).encode())
+            w.actuate_cached_stop=mock.Mock()
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(100,dt.timezone.utc)),mock.patch.object(cache,'check_live'):
+                self.assertFalse(w.tick_cached({},dict(mergeCommit={'oid':NORMAL_SHA})))
+            w.actuate_cached_stop.assert_called_once_with(receipt,digest,10)
+
+    def fixture(self,directory):
+        w=object.__new__(legacy.watch.Watchdog);w.cached=True;w.scopes=list(wc.SCOPES)
+        w.args=types.SimpleNamespace(cached_source_activation=str(Path(directory)/'active'),deadline=170,arm_deadline=1800)
+        w.stop=Path(directory)/'stop';w.contract=legacy.CONTRACT;w.save=lambda:None
+        w.state=dict(armed_at='1970-01-01T00:00:00+00:00',actuation_budget_started_at='1970-01-01T00:00:10+00:00',cached_ks_owners={})
+        rows={};calls=[];w.receipt=dict(stop_main_sha=STOP_SHA,holds={});phase=dict(phase_token='c'*32,owned_jobs=[dict(uid=None)]*5,pg_leases=[dict(backend_pid=None,job_uid=None,pod_uid=None)]*2)
+        w.phase_checkpoint=lambda:phase
+        for ns,name in w.scopes:
+            row=native('Kustomization',name,ns);row['spec']=dict(path=name,suspend=True)
+            row['metadata']['annotations']={cache.OWNER:phase['phase_token'],cache.REQUEST:'initial'}
+            row['status']=dict(observedGeneration=1,lastAppliedRevision='main@sha1:'+NORMAL_SHA,lastHandledReconcileAt='initial',conditions=[dict(type='Ready',status='True',observedGeneration=1)])
+            rows[(ns,name)]=row;w.state['cached_ks_owners'][ns+'/'+name]=dict(uid=row['metadata']['uid'],spec=dict(path=name,suspend=False),phase_token=phase['phase_token'])
+            before=copy.deepcopy(row);before['spec']['suspend']=False;before['metadata']['resourceVersion']='0'
+            before['metadata']['annotations'][cache.REQUEST]='prior';before['status']['lastHandledReconcileAt']='prior'
+            w.receipt['holds'][ns+'/'+name]=dict(before=before,after=copy.deepcopy(row),token='initial')
+        w.kube=lambda kind,name,ns:copy.deepcopy(rows[(ns,name)])
+        w.verify_phase_absent=lambda _:calls.append('full-union-both-primary-PG-absent')
+        def run(argv,**_):
+            ns=argv[argv.index('-n')+1];name=argv[3];row=rows[(ns,name)]
+            if argv[0]=='flux':
+                calls.append(('reconcile',ns,name));g=row['metadata']['generation']
+                row['status'].update(lastAppliedRevision='main@sha1:'+STOP_SHA,observedGeneration=g,conditions=[dict(type='Ready',status='True',observedGeneration=g)])
+                return ''
+            ops=json.loads(argv[-1]);calls.append(('rehold' if ops[-1]['value'] is True else 'release',ns,name))
+            for op in ops:
+                parts=op['path'].strip('/').split('/');target=row
+                for part in parts[:-1]:target=target[part.replace('~1','/')]
+                key=parts[-1].replace('~1','/')
+                if op['op']=='test':self.assertEqual(target[key],op['value'])
+                else:target[key]=op['value']
+            row['metadata']['resourceVersion']=str(int(row['metadata']['resourceVersion'])+1);row['metadata']['generation']+=1
+            row['status']['lastHandledReconcileAt']=row['metadata']['annotations'][cache.REQUEST]
+            return ''
+        w.run=run;cache.write_private(w.args.cached_source_activation,b'public immutable fixture')
+        return w,rows,calls
+
+    def test_activation_applies_four_stops_reholds_once_and_preserves_origin(self):
+        with tempfile.TemporaryDirectory() as d:
+            w,rows,calls=self.fixture(d)
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(100,dt.timezone.utc)),mock.patch.object(cache,'check_live') as check:
+                w.actuate_cached_stop(w.receipt,'d'*64,10)
+                first=list(calls);w.actuate_cached_stop(w.receipt,'d'*64,10)
+            self.assertEqual(calls,first);self.assertEqual(check.call_count,4)
+            self.assertTrue(all(not c.kwargs['holds'] and c.kwargs['deadline']==180 for c in check.call_args_list))
+            expected=[]
+            for ns,name in w.scopes:expected.extend(['full-union-both-primary-PG-absent',('release',ns,name),('reconcile',ns,name),('rehold',ns,name)])
+            self.assertEqual(calls,expected);self.assertTrue(w.state['cached_stop_actuation_complete_at'])
+            self.assertTrue(all(r['spec']['suspend'] for r in rows.values()));self.assertEqual(w.state['actuation_budget_started_at'],'1970-01-01T00:00:10+00:00')
+
+    def test_bad_custody_union_producer_or_deadline_refuses_before_release(self):
+        for case in ('source','owner','spec','uid','union','producer','deadline','lost-hold','lost-hold-missing-owner'):
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as d:
+                w,rows,calls=self.fixture(d);row=rows[w.scopes[0]]
+                if case=='owner':row['metadata']['annotations'][cache.OWNER]='foreign'
+                if case=='spec':row['spec']['path']='foreign'
+                if case=='uid':row['metadata']['uid']='replacement'
+                if case in ('lost-hold','lost-hold-missing-owner'):row['spec']['suspend']=False
+                if case=='lost-hold-missing-owner':row['metadata']['annotations'].pop(cache.OWNER)
+                if case=='union':w.verify_phase_absent=lambda _:(_ for _ in ()).throw(legacy.watch.PhaseResourcesPresent('late writer'))
+                if case=='producer':w.phase_checkpoint()['owned_jobs'][0]['uid']='created'
+                with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(181 if case=='deadline' else 100,dt.timezone.utc)),mock.patch.object(cache,'check_live',side_effect=ValueError('changed source/parent') if case=='source' else None):
+                    with self.assertRaises((ValueError,RuntimeError)):w.actuate_cached_stop(w.receipt,'d'*64,10)
+                self.assertFalse(any(isinstance(c,tuple) and c[0]=='release' for c in calls));self.assertNotIn('cached_stop_actuation_complete_at',w.state)
+
+    def test_partial_fourth_timeout_cannot_replay_or_claim_complete(self):
+        with tempfile.TemporaryDirectory() as d:
+            w,rows,calls=self.fixture(d);clock=[100];real=w.reconcile_ks
+            def reconcile(ns,name,sha):
+                real(ns,name,sha)
+                if (ns,name)==w.scopes[2]:clock[0]=181
+            w.reconcile_ks=reconcile
+            with mock.patch.object(legacy.watch,'instant',side_effect=lambda:dt.datetime.fromtimestamp(clock[0],dt.timezone.utc)),mock.patch.object(cache,'check_live'):
+                with self.assertRaises(ValueError):w.actuate_cached_stop(w.receipt,'d'*64,10)
+                self.assertNotIn('cached_stop_actuation_complete_at',w.state);before=list(calls);clock[0]=100
+                with self.assertRaises(ValueError):w.actuate_cached_stop(w.receipt,'d'*64,10)
+                self.assertEqual(calls,before)
+            self.assertEqual(len(w.state['cached_stop_holds']),3)
+
+    def test_supervisor_records_first_stop_before_delayed_fourth_completion(self):
+        with tempfile.TemporaryDirectory() as d:
+            s=object.__new__(legacy.supervisor.Supervisor);path=Path(d)/'watch';activation=Path(d)/'active';cache.write_private(activation,b'public fixture')
+            s.c=dict(arm_deadline_seconds=1800,cached_source_receipt={'sha256':'d'*64},cached_source_activation=str(activation),watchdog_state=str(path),watchdog_stop=str(Path(d)/'stop'),copy_phase_state=str(Path(d)/'phase'),restore_pr='1',max_service_absence_seconds=300)
+            s.status=dict(phase_token='c'*32,actuation_budget_started_at='1970-01-01T00:00:10+00:00',watchdog_armed_at='original',normal_inverse_merge_sha=NORMAL_SHA);s.stop=False;s.save=lambda:None
+            ledger={};events=[];clock=[11]
+            s.checkpoint=types.SimpleNamespace(read_json=lambda _:(ledger,'unused'),validate_state=lambda *_:None,main=lambda argv:(ledger.update(window_started_at=argv[-1]),events.append('first-stop-recorded')))
+            s.get=lambda *_:dict(spec={'replicas':0,'selector':{'matchLabels':{'app':'public'}}},status={},metadata={});s.list=lambda *_:[]
+            fixture_dir=Path(d)/'actuator';fixture_dir.mkdir(mode=0o700);w,_,_=self.fixture(fixture_dir)
+            receipt=w.receipt;watch=dict(armed_at='original',armed_ready=True,recover_ks=True,restore_pr='1',normal_inverse_merge_sha=NORMAL_SHA,
+                cached_stop_holds=receipt['holds'],cached_stop_actuation_binding=dict(phase_token='c'*32,cached_source_receipt_sha256='d'*64,activation_sha256=wc.sha(activation.read_bytes()),stop_main_sha=STOP_SHA))
+            s.cached_guard=lambda holds:(self.assertIs(holds,False) or receipt,'d'*64)
+            s.c['manifest_contract']={'path':'unused','sha256':'unused'}
+            path.write_text(json.dumps(watch))
+            def sleep(_):
+                self.assertIn('first_service_stop_observed_at',s.status);self.assertEqual(events,['first-stop-recorded']);clock[0]+=1
+                if clock[0]==13:watch['cached_stop_actuation_complete_at']='fourth-reheld';path.write_text(json.dumps(watch))
+            with mock.patch.object(legacy.supervisor,'pinned_artifact',return_value=json.dumps(legacy.CONTRACT).encode()),mock.patch.object(cache,'check_live') as check,mock.patch.object(legacy.supervisor.time,'time',side_effect=lambda:clock[0]),mock.patch.object(legacy.supervisor,'now',side_effect=lambda:dt.datetime.fromtimestamp(clock[0],dt.timezone.utc).isoformat()),mock.patch.object(legacy.supervisor.time,'sleep',side_effect=sleep):
+                s.wait_for_stop();events.append('producer-may-follow')
+            self.assertEqual(events,['first-stop-recorded','producer-may-follow']);self.assertEqual(clock[0],13)
+            self.assertEqual(check.call_count,1);self.assertTrue(check.call_args.kwargs['holds']);self.assertEqual(check.call_args.kwargs['deadline'],180)
+            self.assertEqual(s.status['first_service_stop_observed_at'],'1970-01-01T00:00:11+00:00');self.assertEqual(s.deadline,310)
+
+
 if __name__=='__main__':unittest.main()
