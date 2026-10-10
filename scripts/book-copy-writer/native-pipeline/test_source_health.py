@@ -96,19 +96,25 @@ class SourceTests(OutcomeCases, unittest.TestCase):
 
     def test_scan_guard_query_and_lease_events_are_same_owner_at_one_second(self):
         with self.fence() as fence, self.controller(fence) as controller:
-            now = time.monotonic()
-            with mock.patch.object(writer.time, 'monotonic', return_value=now): controller.health()
-            self.events.clear()
-            with mock.patch.object(fence.db, 'execute', wraps=fence.db.execute) as execute:
-                with mock.patch.object(writer.time, 'monotonic', return_value=now + .999):
+            # Keep one fake clock for the whole boundary control. Integer base
+            # and binary-exact offsets avoid borrowing a fractional live clock.
+            now = float(int(time.monotonic()))
+            with mock.patch.object(writer.time, 'monotonic', return_value=now) as clock:
+                controller.health()
+                self.assertEqual(fence._last_health, now)
+                self.events.clear()
+                with mock.patch.object(fence.db, 'execute', wraps=fence.db.execute) as execute:
+                    clock.return_value = now + 1 - 2 ** -10
                     controller.scan_guard(); controller.scan_guard()
-                self.assertEqual((execute.call_count, len(self.events)), (0, 0))
-                with mock.patch.object(writer.time, 'monotonic', return_value=now + 1): controller.scan_guard()
-                self.assertEqual((execute.call_count, len(self.events)), (1, 1))
-                controller.health(); controller.health()
-                self.assertEqual((execute.call_count, len(self.events)), (3, 3))
-                self.assertTrue(all(e['backend_pid'] == fence.pid and e['share_tables'] == list(writer.TABLES)
-                                    for e in self.events))
+                    self.assertEqual((execute.call_count, len(self.events)), (0, 0))
+                    clock.return_value = now + 1
+                    controller.scan_guard(); controller.scan_guard()
+                    self.assertEqual((execute.call_count, len(self.events)), (1, 1))
+                    self.assertEqual(fence._last_health, now + 1)
+                    controller.health(); controller.health()
+                    self.assertEqual((execute.call_count, len(self.events)), (3, 3))
+                    self.assertTrue(all(e['backend_pid'] == fence.pid and e['share_tables'] == list(writer.TABLES)
+                                        for e in self.events))
 
     def test_foreign_thread_cannot_query_or_emit_a_healthy_lease(self):
         with self.fence() as fence, self.controller(fence) as controller:
