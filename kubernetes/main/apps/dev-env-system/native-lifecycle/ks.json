@@ -9,7 +9,7 @@
     }
   },
   "spec": {
-    "suspend": true,
+    "suspend": false,
     "path": "./kubernetes/main/apps/dev-env-system/native-lifecycle/app",
     "prune": true,
     "sourceRef": {
