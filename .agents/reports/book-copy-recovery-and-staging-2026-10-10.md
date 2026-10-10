@@ -65,7 +65,7 @@ Stop #3711 merged intent `37f3ea40`; actual Normal inverse #3712 merged
 `81184d3f`. All four Deployment identities/specs and six service Pod
 identities/specs remained unchanged. No cache activation or service origin exists.
 
-The corrected operational order is fresh Normal custody → hold/drain `cluster`
+The corrected cached-source operational order is fresh Normal custody → hold/drain `cluster`
 first → hold/drain `cluster-apps` → four app holds → merge Stop → Source alone
 fetches exact Stop → Source hold/drain → required-green reviewed inverse merge →
 cache seal → fresh LIVE → bind → separate runtime GO. A parent apply over held
@@ -74,12 +74,15 @@ The inverse must have the reviewed Stop head as its direct parent before arming.
 
 ## Bounded future staging only
 
-Coordinator ratification permits a **fresh** reviewed staging attempt to select
+Coordinator ratification permits a **fresh cached-source** reviewed staging attempt to select
 `--arm-deadline` up to 1800s; default remains 600s. Actual CI timing made repeated
 600s attempts unable to fit the full LIVE bound. This changes only the still-Normal
 staging cap, never the clocks of v3–v7. Full LIVE200s plus bind30s must fit before
 the new attempt's original expiry; missed readiness, ownership or cache proofs
-still refuse. There is no new runtime authority, helper framework or guarantee.
+still refuse. The legacy non-cached path keeps its 600s cap, unsuspended parent
+reconcile and under-600s hold receipt predicates; it is not approved for new COPY
+staging after the actual v4 refusal. There is no new runtime authority, helper
+framework or guarantee.
 
 The conservative pre-release/actual Stop origin still switches restoration to
 the unchanged 170s trigger, 300s service ceiling and 50s recovery reserve.

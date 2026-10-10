@@ -458,6 +458,25 @@ class CachedSourceCases(unittest.TestCase):
             self.assertEqual(w.state['window_started_at'],started)
             self.assertEqual(w.events,['writers-pg-absent','restore-latest-normal'])
 
+    def test_cached_1800_staging_retains_original_origin_and_actual_stop_170(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);w.args.arm_deadline=1800;armed=w.state['armed_at']
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(1799,dt.timezone.utc)):
+                self.assertFalse(w.tick_cached({},dict(mergeCommit={'oid':NORMAL_SHA})))
+            self.assertEqual(w.events,[])
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(1800,dt.timezone.utc)):
+                self.assertTrue(w.tick_cached({},dict(mergeCommit={'oid':NORMAL_SHA})))
+            self.assertEqual(w.events,['writers-pg-absent','restore-latest-normal'])
+            self.assertEqual(w.state['armed_at'],armed);self.assertNotIn('window_started_at',w.state)
+        with tempfile.TemporaryDirectory() as directory:
+            w=self.watcher(directory);w.args.arm_deadline=1800
+            started='1970-01-01T00:00:10+00:00'
+            w.phase_checkpoint=lambda:dict(phase_token=PHASE,first_service_stop_observed_at=started)
+            with mock.patch.object(legacy.watch,'instant',return_value=dt.datetime.fromtimestamp(180,dt.timezone.utc)):
+                self.assertTrue(w.tick_cached({},dict(mergeCommit={'oid':NORMAL_SHA})))
+            self.assertEqual(w.state['window_started_at'],started)
+            self.assertEqual(w.events,['writers-pg-absent','restore-latest-normal'])
+
     def test_writer_pg_absence_and_normal_proof_precede_source_and_app_release(self):
         with tempfile.TemporaryDirectory() as directory:
             w=self.watcher(directory);w.scopes=list(wc.SCOPES)

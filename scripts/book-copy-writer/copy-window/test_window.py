@@ -229,11 +229,13 @@ class WatchRecoveryTests(unittest.TestCase):
         config=dict.fromkeys(fields,None)
         config.update(arm_deadline_seconds=600,max_service_absence_seconds=300,
                       restore_reserve_seconds=50,restore_head='invalid-exact-head')
-        for limit in (600,1800):
-            config['arm_deadline_seconds']=limit
+        for limit,cached in ((600,None),(1800,dict(path='fixture-cache',sha256='a'*64))):
+            config.update(arm_deadline_seconds=limit,cached_source_receipt=cached)
             with self.assertRaisesRegex(supervisor.Refused,'exact inverse and scope hashes required'):
                 supervisor.validate(config)
         for changed in (dict(arm_deadline_seconds=1801),dict(arm_deadline_seconds=0),
+                        dict(arm_deadline_seconds=601,cached_source_receipt=None),
+                        dict(arm_deadline_seconds=1800,cached_source_receipt=None),
                         dict(arm_deadline_seconds=1800,max_service_absence_seconds=301),
                         dict(arm_deadline_seconds=1800,restore_reserve_seconds=51)):
             with self.assertRaisesRegex(supervisor.Refused,'phase300/abort250/reserve50 are fixed'):
@@ -244,31 +246,20 @@ class WatchRecoveryTests(unittest.TestCase):
               '--restore-worktree','fixture','--restore-branch','agent/fixture',
               '--include-kavita','--phase-state','fixture-phase','--state','fixture-state',
               '--stop','fixture-stop','--log','fixture-log','--merge-footer','fixture-footer']
-        for extra,expected in (([],600),(['--arm-deadline','600'],600),(['--arm-deadline','1800'],1800)):
+        cached=['--cached-source-receipt','fixture-cache','--cached-source-activation','fixture-activation']
+        for extra,expected in (([],600),(['--arm-deadline','600'],600),(['--arm-deadline','1800']+cached,1800)):
             with patch.object(sys,'argv',argv+extra),patch.object(watch,'Watchdog') as watchdog:
                 watch.main()
                 args=watchdog.call_args.args[0]
                 self.assertEqual(args.arm_deadline,expected);self.assertEqual(args.deadline,170)
                 watchdog.return_value.loop.assert_called_once_with()
-        for extra in (['--arm-deadline','1801'],['--arm-deadline','0'],['--arm-deadline','-1'],
-                      ['--arm-deadline','1800','--deadline','171']):
+        for extra in (['--arm-deadline','1801']+cached,['--arm-deadline','0'],['--arm-deadline','-1'],
+                      ['--arm-deadline','601'],['--arm-deadline','1800'],
+                      ['--arm-deadline','1800','--cached-source-receipt','fixture-cache'],
+                      ['--arm-deadline','1800','--deadline','171']+cached):
             with patch.object(sys,'argv',argv+extra),patch.object(sys,'stderr'),patch.object(watch,'Watchdog') as watchdog:
                 with self.assertRaises(SystemExit) as error:watch.main()
                 self.assertEqual(error.exception.code,2);watchdog.assert_not_called()
-
-    def test_explicit_1800_staging_keeps_actual_stop_170_trigger(self):
-        with tempfile.TemporaryDirectory() as d:
-            w=FakeWatch(Path(d),pause='MERGED',window=False);w.args.arm_deadline=1800
-            with patch.object(watch,'instant',return_value=dt.datetime.fromtimestamp(1799,dt.timezone.utc)):self.assertFalse(w.tick())
-            self.assertFalse(any(c[:3]==('gh','pr','merge') for c in w.calls))
-            with patch.object(watch,'instant',return_value=dt.datetime.fromtimestamp(1800,dt.timezone.utc)):self.assertFalse(w.tick())
-            self.assertTrue(any(c[:3]==('gh','pr','merge') for c in w.calls))
-        with tempfile.TemporaryDirectory() as d:
-            w=FakeWatch(Path(d),pause='MERGED',window=True);w.args.arm_deadline=1800
-            with patch.object(watch,'instant',return_value=dt.datetime.fromtimestamp(269,dt.timezone.utc)):self.assertFalse(w.tick())
-            self.assertFalse(any(c[:3]==('gh','pr','merge') for c in w.calls))
-            with patch.object(watch,'instant',return_value=dt.datetime.fromtimestamp(270,dt.timezone.utc)):self.assertFalse(w.tick())
-            self.assertTrue(any(c[:3]==('gh','pr','merge') for c in w.calls))
 
     def test_prestage_cancellation_checks_normal_before_any_release(self):
         with tempfile.TemporaryDirectory() as d:

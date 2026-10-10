@@ -20,7 +20,7 @@ and copy-aware replay SHA `6095e34a94895b329d2d698ee1e3559c3aab16e360afde36c6517
 The old default core helper is different. Closed unused PRs #3622/#3623 cannot be
 reused as a green inverse or new runtime approval.
 
-The supported order requires an independent watcher armed against exact normal
+For **cached-source COPY**, the supported order requires an independent watcher armed against exact normal
 Git **and actual normal workloads before holds**. A separately authorized stage
 first holds and fresh-handler-drains `flux-system/cluster`, then
 `flux-system/cluster-apps`, each against fresh Ready Normal proof. The higher
@@ -33,6 +33,13 @@ runtime suspend and ownership fields. All six same-UID holds must remain true
 through fresh final checks. A manual CronJob flag is insufficient.
 [Flux suspension documentation](https://fluxcd.io/flux/components/kustomize/kustomizations/#suspending-and-resuming)
 describes the API; it does not replace this actual parent containment proof.
+
+The retained legacy non-cached verifier is separate: it requires an unsuspended
+`cluster-apps` parent to finish a fresh reconcile while four app holds persist,
+with a `hold_receipt` younger than 600s. Its staging cap remains 600s. That action
+failed actual GitOps persistence in v4, so this legacy route is not approved for
+new COPY staging; use the cached-source sequence above. Its predicates remain
+unchanged, and cached parent containment cannot substitute for its receipt.
 
 Desired Stop can be staged on Git main only while those verified holds preserve
 normal actual workloads. The copy-aware `retarget-restore.sh` replays the stacked
@@ -47,7 +54,7 @@ required checks and a disposed advisory and is **merged
 to Normal main while actual services remain Normal**. A favorable verdict with
 an unresolved severity finding refuses. Pending checks cannot start Stop clocks.
 The default live-workload staging ceiling remains 600s. A fresh, explicitly
-reviewed attempt may select `--arm-deadline` up to 1800s for this still-Normal
+reviewed **cached-source** attempt may select `--arm-deadline` up to 1800s for this still-Normal
 staging only: inverse retarget, required checks/advisory, sealing and fresh LIVE.
 Allow the complete 200s LIVE host bound plus 30s bind reserve before its original
 arm expiry. This does not reset or extend an already armed attempt, authorize
@@ -56,6 +63,8 @@ runtime GO is required. After the conservative pre-release origin or actual Stop
 the original 170s restore trigger, 300s service ceiling and 50s restoration reserve
 apply; the staging ceiling cannot replace them. Byte capture remains bounded by
 its original 300s clock and Normal rehearsal retains its separate 120s arm.
+Above 600s, both cached receipt and activation paths must be configured; a
+non-cached watcher or supervisor cannot adopt the larger staging allowance.
 
 The standing owner policy makes Claude advisory, never a required check. The
 normal path still reads a successful current-head Claude review explicitly
