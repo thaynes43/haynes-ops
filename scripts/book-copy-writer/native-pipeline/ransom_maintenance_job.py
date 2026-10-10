@@ -403,7 +403,7 @@ def maintenance_watchdog(base, core, config, supervisor, publishers):
                 self.verify_cached_stop_holds(self.state["cached_stop_actuation_binding"])
                 supervisor.cache.check_live(accepted_watcher_cache(config, self, phase),
                     observer.get, json.loads(private(config["manifest_contract"]["path"], config["manifest_contract"]["sha256"])),
-                    phase["phase_token"], deadline=observer.operation["original_abort_epoch"])
+                    phase["phase_token"], holds=False, deadline=observer.operation["original_abort_epoch"])
             observer.guard_lease = guard
             guard()
             private(config["publisher_scope_hook"]["script"], config["publisher_scope_hook"]["sha256"])
@@ -765,7 +765,7 @@ class HostAdmission:
         self.watch.verify_cached_stop_holds(state["cached_stop_actuation_binding"])
         receipt = json.loads(private(self.c["cached_source_receipt"]["path"], self.c["cached_source_receipt"]["sha256"]))
         contract = json.loads(private(self.c["manifest_contract"]["path"], self.c["manifest_contract"]["sha256"]))
-        self.supervisor.cache.check_live(receipt, self.get, contract, phase["phase_token"], deadline=self.operation["original_abort_epoch"])
+        self.supervisor.cache.check_live(receipt, self.get, contract, phase["phase_token"], holds=False, deadline=self.operation["original_abort_epoch"])
         row = writer_row(phase, self.c)
         if require_pod:
             actual = self.get("job", row["name"], row["namespace"])

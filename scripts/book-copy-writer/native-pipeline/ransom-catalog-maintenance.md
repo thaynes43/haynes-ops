@@ -78,6 +78,15 @@ The worker checks its own original connection immediately before publication.
 Private delivery binds exact source bytes and payload hashes to the actual owned
 Pod. This admission is separate from the process publication guard.
 
+The 2026-10-10 V4 attempt stopped services but refused before creating either
+maintenance Job: its host guard compared the legitimate post-Stop app rehold
+tokens with the sealed pre-Stop tokens. Post-Stop admission and exact empty-lock
+cleanup now check the watcher's fresh four-app Stop rehold proofs, followed by
+the live cached Source and both parent hold proofs. They do not repeat the old
+four-app token check. Original app UID/spec continuity, current phase ownership,
+reconcile acknowledgement, Stop readiness and all deadlines remain required.
+The empty-lock path is the same prospective correction; V4 did not reach it.
+
 After actual writer-first cleanup and verified Normal restoration, the existing
 admin POST `/api/Series/scan` targets Library1/Series1650. HTTP 200 means queued;
 completion requires retained actual target start and commit evidence and fresh
