@@ -25,7 +25,7 @@ import urllib.request
 # source and installed image metadata helper must be the already qualified bytes.
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-CATALOG_SHA = "02e393a54c941fefef46f349c536b3cb916a48e2d79f88cda00cbd069c8e11b8"
+CATALOG_SHA = "5d837ae88cb03a292ce97846aae511b6daf54dc2225ff80308d5a68d8a6223c5"
 if hashlib.sha256((HERE / "ransom_catalog_maintenance.py").read_bytes()).hexdigest() != CATALOG_SHA:
     raise ValueError("reviewed catalog source bytes differ")
 metadata_candidates = [HERE / "epub_metadata.py", Path("/copy-writer/epub_metadata.py")]

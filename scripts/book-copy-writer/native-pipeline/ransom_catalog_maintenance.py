@@ -280,7 +280,7 @@ def require_scan_delta(before, after, explicit, started, finished):
             and explicit["SeriesMetadata:RowVersion"] == cell("integer", decode(version) + 2),
             "native uint RowVersion increment differs")
     koreader = explicit["MangaFile:KoreaderHash"]
-    require(koreader["type"] == "text" and re.fullmatch(r"[0-9a-f]{32}", decode(koreader)),
+    require(koreader["type"] == "text" and re.fullmatch(r"[0-9A-Fa-f]{32}", decode(koreader)),
             "pinned candidate native hash shape differs")
     expected = copy.deepcopy(before)
     for table, (identity, fields) in SCAN_FIELDS.items():

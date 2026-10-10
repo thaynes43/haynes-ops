@@ -207,6 +207,24 @@ class CatalogMaintenanceTests(unittest.TestCase):
                              scan_started_epoch=self.now, scan_finished_epoch=self.now + 2)
         return after
 
+    def test_qualified_native_koreader_hash_preserves_exact_case(self):
+        self.scan_fixture()
+        actual = "B78F996A630E8AB6BEF038351232C1AE"
+        self.db.execute("UPDATE MangaFile SET KoreaderHash=? WHERE Id=3570", (actual,))
+        after = catalog.snapshot(self.db)
+        explicit = self.contract["native_explicit_values"]
+        explicit["MangaFile:KoreaderHash"] = catalog.cell("text", actual)
+        before = catalog.expected_after(self.before)
+        catalog.require_scan_delta(before, after, explicit, self.now, self.now + 2)
+        self.assertEqual(catalog.row(after, "MangaFile", 3570)["KoreaderHash"],
+                         catalog.cell("text", actual))
+        for invalid in (actual.lower(), "G" + actual[1:], actual[:-1], actual + "0"):
+            with self.subTest(invalid=invalid):
+                explicit["MangaFile:KoreaderHash"] = catalog.cell("text", invalid)
+                with self.assertRaises(catalog.Refused):
+                    catalog.require_scan_delta(before, after, explicit, self.now, self.now + 2)
+        self.assertEqual(catalog.snapshot(self.db), after)
+
     def test_fresh_scan_inverse_exact32_and_current_reading_drift_refusal(self):
         after = self.scan_fixture()
         self.db.execute("UPDATE AppUserProgresses SET BookScrollId='new-legitimate-location'")
