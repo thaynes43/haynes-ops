@@ -215,6 +215,7 @@ class FakeWatch(watch.Watchdog):
     def runtime_restored(self, sha): self.calls.append(('terminal-normal', sha)); return self.normal
     def source(self, sha): self.calls.append(('source-exact', sha))
     def cleanup_phase_jobs(self): self.calls.append(('owned-uid-pg-absent',))
+    def verify_recovery_absence(self): self.calls.append(('final-owned-uid-pg-absent',))
     def verify_inverse(self, restore): self.calls.append(('inverse-exact',)); self.state['expected_inverse_head']='b'*40
     def guard_phase_git(self): self.calls.append(('git-phase-exact',))
     def clean_gates(self, restore): return self.gates
@@ -483,6 +484,51 @@ class NativeCleanupTests(unittest.TestCase):
             self.assertEqual(resources,{'Job':[],'Pod':[]})
             self.assertIn('copy_phase_cleanup_verified_at',w.state)
             self.assertTrue(any(c[:3]==('kubectl','delete','--raw') for c in w.calls))
+
+    def test_empty_union_skips_duplicate_intent_reads_but_repeats_complete_pg_proof(self):
+        with tempfile.TemporaryDirectory() as d:
+            w,resources=self.fixture(Path(d));resources.update(Job=[],Pod=[])
+            watch.Watchdog.cleanup_phase_jobs(w)
+            self.assertEqual(sum(c[:3]==('kubectl','get','--raw') for c in w.calls),6)
+            self.assertEqual(sum(c[:2]==('kubectl','exec') for c in w.calls),1)
+            self.assertFalse(any(c[:2]==('kubectl','delete') for c in w.calls))
+            w.calls.clear();watch.Watchdog.cleanup_phase_jobs(w)
+            self.assertEqual(sum(c[:3]==('kubectl','get','--raw') for c in w.calls),6)
+            self.assertEqual(sum(c[:2]==('kubectl','exec') for c in w.calls),1)
+
+    def test_unknown_inventory_or_pg_never_enters_cleanup_fallback(self):
+        for case in ('malformed','pg'):
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as d:
+                w,resources=self.fixture(Path(d));resources.update(Job=[],Pod=[]);original=w.run
+                def run(argv,**kw):
+                    if case=='malformed' and argv[:3]==['kubectl','get','--raw']:return '{}'
+                    if case=='pg' and argv[:2]==['kubectl','exec']:raise RuntimeError('PG proof unknown')
+                    return original(argv,**kw)
+                w.run=run
+                with self.assertRaises((RuntimeError,ValueError)):watch.Watchdog.cleanup_phase_jobs(w)
+                self.assertNotIn('copy_phase_cleanup_verified_at',w.state)
+                self.assertFalse(any(c[:2]==('kubectl','delete') for c in w.calls))
+
+    def test_late_phase_pod_blocks_next_release_or_final_completion(self):
+        for stage in ('next-release','final'):
+            with self.subTest(stage=stage),tempfile.TemporaryDirectory() as d:
+                w,resources=self.fixture(Path(d));resources.update(Job=[],Pod=[])
+                w.cleanup_phase_jobs=types.MethodType(watch.Watchdog.cleanup_phase_jobs,w)
+                w.verify_recovery_absence=types.MethodType(watch.Watchdog.verify_recovery_absence,w)
+                def late():
+                    resources['Pod']=[{'metadata':dict(namespace='media',name='late-orphan',uid='late',labels={'issue825.haynesnetwork/phase':'a'*32})}]
+                released=[];reconciled=[]
+                def release(ns,name):
+                    released.append((ns,name))
+                    if stage=='next-release':late()
+                def reconcile(ns,name,sha):
+                    reconciled.append((ns,name))
+                    if stage=='final' and len(reconciled)==len(w.scopes):late()
+                w.release_ks=release;w.reconcile_ks=reconcile
+                with self.assertRaisesRegex(watch.PhaseResourcesPresent,'Pod union'):w.recover_cluster('a'*40)
+                self.assertEqual(len(released),1 if stage=='next-release' else len(w.scopes))
+                self.assertFalse(w.state['complete'])
+                self.assertFalse(any(c[0]=='terminal-normal' for c in w.calls))
 
     def test_reused_uid_or_orphan_unregistered_phase_refuses_before_release(self):
         for case in ('uid','unregistered-phase'):

@@ -97,6 +97,88 @@ def fixture():
 
 
 class CachedSourceCases(unittest.TestCase):
+    def source_recovery(self):
+        receipt,row,_,_,_,_=fixture();row['spec']['suspend']=False
+        row['status']['conditions']=[dict(type='Ready',status='True')]
+        row['status']['artifact']['revision']='main@sha1:'+NORMAL_SHA
+        w=object.__new__(legacy.watch.Watchdog);w.cached=True;w.state={}
+        w.state['cached_source_owner']=dict(uid=row['metadata']['uid'],spec=receipt['source_before']['spec'],phase_token=PHASE)
+        w.kube=lambda *_:copy.deepcopy(row);w.run=mock.Mock();w.save=lambda:None
+        return w,row
+
+    def test_recovery_source_reconciles_once_and_fresh_reuse_refuses_drift(self):
+        w,row=self.source_recovery();w.source(NORMAL_SHA);w.source(NORMAL_SHA)
+        self.assertEqual(w.run.call_count,1)
+        self.assertEqual(w.run.call_args.args[0][:3],['flux','reconcile','source'])
+        variants=[]
+        bad=copy.deepcopy(row);bad['metadata']['uid']='replaced';variants.append(bad)
+        bad=copy.deepcopy(row);bad['spec']['interval']='1s';variants.append(bad)
+        bad=copy.deepcopy(row);bad['metadata']['annotations'][cache.OWNER]='foreign';variants.append(bad)
+        bad=copy.deepcopy(row);bad['spec']['suspend']=True;variants.append(bad)
+        bad=copy.deepcopy(row);bad['status']['artifact']['revision']='main@sha1:'+STOP_SHA;variants.append(bad)
+        bad=copy.deepcopy(row);bad['status']['conditions']=[];variants.append(bad)
+        w.run.reset_mock()
+        for bad in variants:
+            w.kube=lambda *_:copy.deepcopy(bad)
+            with self.assertRaises((RuntimeError,ValueError)):w.source(NORMAL_SHA)
+        w.run.assert_not_called()
+
+    def test_initial_source_reconcile_cannot_adopt_replaced_uid_or_spec(self):
+        for field in ('uid','spec','phase','revision'):
+            w,row=self.source_recovery();bad=copy.deepcopy(row)
+            if field=='uid':bad['metadata']['uid']='replacement'
+            elif field=='spec':bad['spec']['url']='foreign'
+            elif field=='phase':bad['metadata']['annotations'][cache.OWNER]='foreign'
+            else:bad['status']['artifact']['revision']='foreign@sha1:'+NORMAL_SHA
+            w.kube=mock.Mock(side_effect=[copy.deepcopy(row),bad])
+            with self.assertRaises((RuntimeError,ValueError)):w.source(NORMAL_SHA)
+            self.assertFalse(getattr(w,'recovery_source_reconciled',False))
+
+    def test_generic_reconcile_keeps_needed_command_and_refuses_owned_drift(self):
+        receipt,_,_,_,holds,_=fixture();ns,name=wc.SCOPES[0];row=holds[(ns,name)];row['spec']['suspend']=False
+        w=object.__new__(legacy.watch.Watchdog);w.cached=True;w.run=mock.Mock();w.kube=lambda *_:copy.deepcopy(row)
+        before=receipt['holds'][ns+'/'+name]['before'];w.state={'cached_ks_owners':{ns+'/'+name:dict(uid=before['metadata']['uid'],spec=before['spec'],phase_token=PHASE)}}
+        w.reconcile_ks(ns,name,NORMAL_SHA)
+        self.assertEqual(w.run.call_args.args[0][:4],['flux','reconcile','kustomization',name])
+        w.run.reset_mock()
+        for field in ('uid','spec','phase','held'):
+            bad=copy.deepcopy(row)
+            if field=='uid':bad['metadata']['uid']='replacement'
+            elif field=='spec':bad['spec']['path']='foreign'
+            elif field=='phase':bad['metadata']['annotations'][cache.OWNER]='foreign'
+            else:bad['spec']['suspend']=True
+            w.kube=lambda *_:copy.deepcopy(bad)
+            with self.assertRaises((RuntimeError,ValueError)):w.reconcile_ks(ns,name,NORMAL_SHA)
+        w.run.assert_not_called()
+
+    def test_six_controller_recovery_keeps_all_absence_barriers_and_one_source_reconcile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            w,resources=legacy.NativeCleanupTests().fixture(Path(directory));resources.update(Job=[],Pod=[])
+            receipt,source,_,parents,holds,_=fixture();source['spec']['suspend']=False
+            source['status']['conditions']=[dict(type='Ready',status='True')]
+            source['status']['artifact']['revision']='main@sha1:'+NORMAL_SHA
+            w.cached=True;w.stop_actuated=lambda:True;w.runtime_still_normal=lambda:True
+            w.state['cached_source_owner']=dict(uid=source['metadata']['uid'],spec=receipt['source_before']['spec'],phase_token=PHASE)
+            rows={('gitrepository','haynes-ops','flux-system'):source};owners={}
+            for ns,name in w.recovery_scopes():
+                row=parents[name] if ns=='flux-system' else holds[(ns,name)];row['spec']['suspend']=False
+                before=receipt['parents'][name]['before'] if ns=='flux-system' else receipt['holds'][ns+'/'+name]['before']
+                owners[ns+'/'+name]=dict(uid=before['metadata']['uid'],spec=before['spec'],phase_token=PHASE)
+                rows[('kustomization',name,ns)]=row
+            w.state['cached_ks_owners']=owners;w.kube=lambda kind,name,ns:copy.deepcopy(rows[(kind,name,ns)])
+            for method in ('source','cleanup_phase_jobs','release_ks','reconcile_ks','verify_recovery_absence'):
+                setattr(w,method,types.MethodType(getattr(legacy.watch.Watchdog,method),w))
+            w.retire_hold_annotations=lambda:None
+            w.recover_cluster(NORMAL_SHA)
+            self.assertTrue(w.state['complete'])
+            self.assertEqual(sum(c[:3]==('kubectl','get','--raw') for c in w.calls),48)
+            self.assertEqual(sum(c[:2]==('kubectl','exec') for c in w.calls),8)
+            self.assertEqual(sum(c[:3]==('flux','reconcile','source') for c in w.calls),1)
+            self.assertEqual(sum(c[:3]==('flux','reconcile','kustomization') for c in w.calls),6)
+            # A later safety/reverification attempt cannot inherit the prior skip.
+            w.calls.clear();w.recover_cluster(NORMAL_SHA)
+            self.assertEqual(sum(c[:3]==('flux','reconcile','source') for c in w.calls),1)
+
     def configure_converter_fixture(self,w,main=NORMAL_SHA):
         w.args=types.SimpleNamespace(repo_dir='public-fixture');w.current_main=lambda:main
         def git(repo,*argv):
@@ -246,6 +328,8 @@ class CachedSourceCases(unittest.TestCase):
         w.cleanup_phase_jobs=lambda:w.events.append('writers-pg-absent')
         w.recover_cluster=lambda sha:w.events.append('restore-latest-normal')
         w.release_ks=lambda ns,name:w.events.append('release-owned-ks')
+        w.reconcile_ks=lambda ns,name,sha:w.run(['flux','reconcile','kustomization',name,'-n',ns,'--timeout=30s'])
+        w.verify_recovery_absence=lambda:w.events.append('final-writers-pg-absent')
         w.retire_hold_annotations=lambda:w.events.append('retire-owned-annotations')
         return w
 

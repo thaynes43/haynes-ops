@@ -30,6 +30,9 @@ def terminal_success(row):
 class ServiceCeiling(BaseException):
     """Owning original clock control; proof-failure fallbacks cannot swallow it."""
 
+class PhaseResourcesPresent(RuntimeError):
+    """Typed phase union observed resources; exact owned cleanup is required."""
+
 class Watchdog:
     cached=False
     def __init__(self,args):
@@ -105,23 +108,34 @@ class Watchdog:
 
     def source(self,sha):
         # Do this before EVERY KS resume/reconcile; do not apply a stale pause artifact.
-        if self.cached:
+        def checked(source):
             owned=self.state['cached_source_owner']
+            contract.require(source['metadata'].get('annotations',{}).get(cache.OWNER) in (None,owned['phase_token']),
+                             'Owned Git source has a foreign phase.')
+            return cache.release_patch(source,owned['uid'],owned['phase_token'],spec=owned['spec'])
+        if self.cached:
             source=self.kube('gitrepository','haynes-ops','flux-system')
-            spec=dict(source['spec']);spec.pop('suspend',None)
-            original=dict(owned['spec']);original.pop('suspend',None)
-            if spec!=original:raise RuntimeError('Owned Git source spec changed; cannot adopt another source.')
-            patch=cache.release_patch(source,owned['uid'],owned['phase_token'])
+            patch=checked(source)
+            if getattr(self,'recovery_source_reconciled',False):
+                if patch:raise RuntimeError('Owned Git source unexpectedly held again; retain app holds.')
+                status=source.get('status',{})
+                if (status.get('artifact',{}).get('revision')!='main@sha1:'+sha
+                        or not any(c.get('type')=='Ready' and c.get('status')=='True' for c in status.get('conditions',[]))):
+                    raise RuntimeError('GitRepository exact Ready Normal artifact changed; retain app holds.')
+                return
             if patch:
                 self.state.setdefault('source_resume_requested_at',stamp());self.save()
                 self.run(['kubectl','patch','gitrepository','haynes-ops','-n','flux-system',
                           '--type=json','-p',json.dumps(patch,separators=(',',':'))],timeout=10)
         self.run(['flux','reconcile','source','git','haynes-ops','-n','flux-system','--timeout=30s'])
         source=self.kube('gitrepository','haynes-ops','flux-system')
+        if self.cached and checked(source):raise RuntimeError('Owned Git source remains held after reconciliation.')
         revision=source.get('status',{}).get('artifact',{}).get('revision','')
         ready=any(c.get('type')=='Ready' and c.get('status')=='True' for c in source.get('status',{}).get('conditions',[]))
         if not ready or source['spec'].get('suspend',False) is not False or revision.rsplit(':',1)[-1]!=sha:
             raise RuntimeError('GitRepository has not fetched the exact restored main SHA; KS remain held.')
+        if self.cached and revision!='main@sha1:'+sha:raise RuntimeError('Owned Git source is not the exact Normal main artifact.')
+        self.recovery_source_reconciled=True
 
     def current_main(self):
         self.run(['git','-C',self.args.repo_dir,'fetch','origin','main:refs/remotes/origin/main'],timeout=10 if self.cached else 45)
@@ -321,14 +335,24 @@ class Watchdog:
             self.run(['flux','resume','kustomization',name,'-n',namespace]);return
         owned=self.state['cached_ks_owners'][namespace+'/'+name]
         row=self.kube('kustomization',name,namespace)
+        contract.require(row['metadata'].get('annotations',{}).get(cache.OWNER) in (None,owned['phase_token']),
+                         'Owned Kustomization has a foreign phase.')
         patch=cache.release_patch(row,owned['uid'],owned['phase_token'],kind='Kustomization',name=name,namespace=namespace,spec=owned['spec'])
         if patch:self.run(['kubectl','patch','kustomization',name,'-n',namespace,'--type=json','-p',json.dumps(patch,separators=(',',':'))],timeout=10)
 
     def reconcile_ks(self,namespace,name,sha):
+        if self.cached:
+            owned=self.state['cached_ks_owners'][namespace+'/'+name]
+            row=self.kube('kustomization',name,namespace)
+            contract.require(row['metadata'].get('annotations',{}).get(cache.OWNER) in (None,owned['phase_token']),
+                             'Owned Kustomization has a foreign phase.')
+            if cache.release_patch(row,owned['uid'],owned['phase_token'],kind='Kustomization',name=name,namespace=namespace,spec=owned['spec']):
+                raise RuntimeError('Owned Kustomization unexpectedly held again; refuse reconcile.')
         self.run(['flux','reconcile','kustomization',name,'-n',namespace,'--timeout=30s'])
 
     def verify_recovery_absence(self):
-        pass  # Generic COPY has fresh cleanup before every scoped release.
+        phase=self.phase_checkpoint()
+        if phase is not None:self.verify_phase_absent(phase)
 
     def retire_hold_annotations(self):
         if not self.cached:return
@@ -340,6 +364,7 @@ class Watchdog:
             if patch:self.run(['kubectl','patch',resource,name,'-n',ns,'--type=json','-p',json.dumps(patch,separators=(',',':'))],timeout=10)
 
     def recover_cluster(self,sha):
+        self.recovery_source_reconciled=False
         if self.state.get('normal_rehearsal_recovery_budget_missed_at'):
             self.state.update(complete=False,normal_rehearsal_recovered_within_budget=False,copy_runtime_authorized=False);self.save()
         self.cleanup_phase_jobs()
@@ -358,6 +383,7 @@ class Watchdog:
             self.reconcile_ks(namespace,name,sha)
         self.verify_recovery_absence()
         if not self.runtime_restored(sha):raise RuntimeError('Restored source fetched; waiting for app/KS convergence.')
+        if self.cached:self.source(sha)
         self.retire_hold_annotations()
         if (self.state.get('service_ceiling_missed_at') or self.state.get('original_clock_unproved_at')
                 or self.state.get('normal_rehearsal_recovery_budget_missed_at')):
@@ -446,6 +472,13 @@ class Watchdog:
         # A dead supervisor cannot leave a filesystem writer racing restoration.
         # STOP tells a live supervisor to stop workers and release its PG socket.
         self.stop.touch(mode=0o600)
+        # A submitted CREATE may still arrive late. Repeat the full typed union
+        # and primary PG check each time; only duplicate per-intent reads skip.
+        try:
+            self.verify_phase_absent(phase)
+            return
+        except PhaseResourcesPresent:
+            pass
         jobs=sorted(phase.get('owned_jobs',[]),key=lambda row:not row.get('writer'))
         for row in jobs:
             namespace,name,uid=row['namespace'],row['name'],row['uid']
@@ -481,6 +514,7 @@ class Watchdog:
 
     def verify_phase_absent(self,phase):
         jobs=phase['owned_jobs']
+        present=None
         # Authoritative phase/name/UID/owner union catches unregistered or orphan
         # phase resources; absence of each expected Job alone is insufficient.
         for namespace in sorted({r['namespace'] for r in jobs}):
@@ -490,12 +524,13 @@ class Watchdog:
                 meta=item['metadata']
                 if (meta['name'] in known or meta['uid'] in uids
                         or meta.get('labels',{}).get('issue825.haynesnetwork/phase')==phase['phase_token']):
-                    raise RuntimeError('Copy phase Job union is not empty; retain holds.')
+                    present='Copy phase Job union is not empty; retain holds.'
             for item in self.inventory('Pod',namespace):
                 meta=item['metadata'];owners=meta.get('ownerReferences',[])
                 if (meta.get('labels',{}).get('issue825.haynesnetwork/phase')==phase['phase_token']
                         or any(o.get('kind')=='Job' and (o.get('name') in known or o.get('uid') in uids) for o in owners)):
-                    raise RuntimeError('Copy phase Pod union is not empty; retain holds.')
+                    present='Copy phase Pod union is not empty; retain holds.'
+        if present:raise PhaseResourcesPresent(present)
         if self.args.include_kavita:
             # Always inspect both names, even after death before record-pg.
             leases=phase['pg_leases']
