@@ -1,0 +1,25 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-project-catalog
+  namespace: dev-env-system
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-project-catalog]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-project-catalog
+  namespace: dev-env-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-project-catalog
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system

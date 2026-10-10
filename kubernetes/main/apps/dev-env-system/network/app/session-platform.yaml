@@ -24,6 +24,12 @@ spec:
   endpointSelector:
     matchLabels:
       io.kubernetes.pod.namespace: dev-agents
+    matchExpressions:
+      # The isolated local fixture has its own DNS/operator-only policy.
+      - key: app.kubernetes.io/name
+        operator: NotIn
+        values:
+          - dev-env-owned-native-lifecycle
   ingress:
     - {}
   egress:

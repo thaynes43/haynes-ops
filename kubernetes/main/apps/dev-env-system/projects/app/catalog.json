@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "repositories": {
+    "dev-env": { "github": "thaynes43/dev-env", "defaultBranch": "main" }
+  },
+  "projects": {
+    "dev-env": {
+      "repositories": [{ "name": "dev-env" }],
+      "rules": ""
+    }
+  }
+}
