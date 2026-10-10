@@ -11,6 +11,7 @@ import posixpath
 from pathlib import Path
 import re
 import selectors
+import shlex
 import signal
 import sqlite3
 import stat
@@ -134,6 +135,71 @@ def lock_io(state, expected=None, release=False):
     finally:os.close(directory)
 
 
+def sonarr_lock_program(access, expected, release):
+    tools = access["tools"]
+    catalog.require(set(tools) == {"sh", "stat", "sha256sum", "id", "rmdir", "find"}
+                    and type(access["runtime_uid"]) is int and access["runtime_uid"] >= 0,
+                    "Sonarr native capability contract differs")
+    for ref in tools.values():
+        catalog.require(set(ref) == {"path", "sha256"} and re.fullmatch(r"/[A-Za-z0-9_./-]+", ref["path"])
+                        and posixpath.normpath(ref["path"]) == ref["path"] and re.fullmatch(r"[0-9a-f]{64}", ref["sha256"]),
+                        "Sonarr native executable identity differs")
+    catalog.require(type(release) is bool and (not release or expected is not None), "owned lock release needs exact custody")
+    if expected is not None:
+        catalog.require(set(expected) == {"state_inode", "lock_inode", "lock_uid", "lock_mode"}
+                        and all(type(v) is int and v >= 0 for v in expected.values())
+                        and expected["state_inode"] > 0 and expected["lock_inode"] > 0
+                        and expected["lock_mode"] <= 0o7777, "owned lock identity differs")
+    lines = ["set -efu", "sha=" + shlex.quote(tools["sha256sum"]["path"])]
+    for name, ref in tools.items():
+        lines += ["checksum=$(\"$sha\" " + shlex.quote(ref["path"]) + ")",
+                  '[ "${checksum%% *}" = ' + shlex.quote(ref["sha256"]) + " ] || exit 41"]
+        lines.append(name + "_tool=" + shlex.quote(ref["path"]))
+    lines += ["wanted_uid=" + str(access["runtime_uid"]), "state=" + shlex.quote(STATE),
+              "wanted_state=" + (str(expected["state_inode"]) if expected else "0"),
+              "wanted_lock=" + (str(expected["lock_inode"]) if expected else "0"),
+              "wanted_lock_uid=" + (str(expected["lock_uid"]) if expected else "0"),
+              "wanted_mode=" + (format(expected["lock_mode"], "o") if expected else "0"),
+              "release=" + str(int(release)), r'''
+[ "$("$id_tool" -u)" = "$wanted_uid" ] || exit 42
+[ -w "$state" ] && [ -x "$state" ] || exit 43
+saved_ifs=$IFS; IFS=/; set -- $state; IFS=$saved_ifs
+prefix=/
+for part do
+  [ -n "$part" ] || continue
+  prefix=${prefix%/}/$part
+  [ "$("$stat_tool" -c '%F' "$prefix")" = directory ] || exit 43
+done
+cd -P "$state"
+[ "$(pwd -P)" = "$state" ] || exit 43
+state_inode=$("$stat_tool" -c '%i' .)
+[ "$("$stat_tool" -c '%i' "$state")" = "$state_inode" ] || exit 43
+[ "$wanted_state" = 0 ] || [ "$state_inode" = "$wanted_state" ] || exit 43
+if [ ! -e lock ] && [ ! -L lock ]; then
+  printf 'state|%s\nabsent|1\n' "$state_inode"; exit 0
+fi
+[ "$("$stat_tool" -c '%F' lock)" = directory ] || exit 44
+identity=$("$stat_tool" -c '%i|%u|%a' lock)
+saved_ifs=$IFS; IFS='|'; set -- $identity; IFS=$saved_ifs
+lock_inode=$1; lock_uid=$2; lock_mode=$3
+entry=$("$find_tool" lock -mindepth 1 -maxdepth 1 -print -quit)
+empty=0; [ -n "$entry" ] || empty=1
+absent=0
+if [ "$release" = 1 ]; then
+  [ "$lock_inode" = "$wanted_lock" ] && [ "$lock_uid" = "$wanted_lock_uid" ] && [ "$lock_mode" = "$wanted_mode" ] || exit 44
+  [ "$empty" = 1 ] || exit 45
+  [ "$("$stat_tool" -c '%F' lock)" = directory ] && [ "$("$stat_tool" -c '%i|%u|%a' lock)" = "$identity" ] || exit 44
+  [ "$("$stat_tool" -c '%i' "$state")" = "$state_inode" ] || exit 43
+  "$rmdir_tool" -- lock
+  [ ! -e lock ] && [ ! -L lock ] || exit 46
+  absent=1
+fi
+[ "$("$stat_tool" -c '%i' "$state")" = "$state_inode" ] || exit 43
+printf 'state|%s\nabsent|%s\nlock|%s|%s|%s\nempty|%s\n' "$state_inode" "$absent" "$lock_inode" "$lock_uid" "$lock_mode" "$empty"
+''']
+    return "\n".join(lines)
+
+
 def sonarr_lock(config, get, run, expected=None, release=False):
     access = config["converter_lock_access"]
     catalog.require(access["namespace"] == "media" and access["container"] == "app"
@@ -155,21 +221,23 @@ def sonarr_lock(config, get, run, expected=None, release=False):
                     and mounts[0] in ({"name": access["volume_name"], "mountPath": access["mount_path"]},
                                       {"name": access["volume_name"], "mountPath": access["mount_path"], "readOnly": False}),
                     "Sonarr exact RW NFS mount differs")
-    tree = ast.parse((HERE / "ransom_maintenance_job.py").read_text())
-    source = ast.get_source_segment((HERE / "ransom_maintenance_job.py").read_text(),
-                                   next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "lock_io"))
-    program = "import os,sys,json,stat,hashlib\n" + source + "\n" + (
-        "a=json.loads(sys.argv[1]);assert os.getuid()==a['uid']\n"
-        "with open('/proc/self/exe','rb') as f: actual_sha=hashlib.sha256(f.read()).hexdigest()\n"
-        "assert actual_sha==a['exe_sha'];"
-        "assert os.access(a['state'],os.W_OK|os.X_OK);"
-        "print(json.dumps(lock_io(a['state'],a['expected'],a['release'])))")
-    payload = {"state": STATE, "expected": expected, "release": release,
-               "uid": access["runtime_uid"], "exe_sha": access["python_sha256"]}
     catalog.require(posixpath.join(access["nfs"]["path"], STATE.removeprefix(access["mount_path"] + "/"))
                     == BOOK_NFS["path"] + "/.epub-convert", "NAS logical converter state path differs")
-    return json.loads(run(["kubectl", "exec", "-n", "media", access["pod_name"], "-c", "app", "--",
-                           access["python_executable"], "-I", "-c", program, json.dumps(payload)], timeout=10))
+    program = sonarr_lock_program(access, expected, release)
+    raw = run(["kubectl", "exec", "-n", "media", access["pod_name"], "-c", "app", "--",
+               access["tools"]["sh"]["path"], "-c", program], timeout=10)
+    catalog.require(isinstance(raw, str) and len(raw) <= 256, "Sonarr lock scalar output exceeds bound")
+    rows = [line.split("|") for line in raw.splitlines()]
+    catalog.require(len(rows) in (2, 4) and [r[0] for r in rows] == (["state", "absent"] if len(rows) == 2 else ["state", "absent", "lock", "empty"])
+                    and all(re.fullmatch(r"[0-9]+", value) for row in rows for value in row[1:]), "Sonarr lock scalar schema differs")
+    catalog.require([len(r) for r in rows] == ([2, 2] if len(rows) == 2 else [2, 2, 4, 2])
+                    and rows[1][1] in ("0", "1") and int(rows[0][1]) > 0
+                    and (len(rows) == 4 or rows[1][1] == "1"), "Sonarr lock scalar identity differs")
+    result = {"state_inode": int(rows[0][1]), "absent": rows[1][1] == "1"}
+    if len(rows) == 4:
+        catalog.require(rows[3][1] in ("0", "1") and re.fullmatch(r"[0-7]{1,4}", rows[2][3]), "Sonarr lock mode/empty scalar differs")
+        result.update(lock_inode=int(rows[2][1]), lock_uid=int(rows[2][2]), lock_mode=int(rows[2][3], 8), empty=rows[3][1] == "1")
+    return result
 
 
 def lock_admission(config, get, run):

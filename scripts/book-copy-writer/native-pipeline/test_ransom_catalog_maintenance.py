@@ -7,6 +7,8 @@ import io
 import json
 from pathlib import Path
 import sqlite3
+import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -605,8 +607,9 @@ class CatalogMaintenanceTests(unittest.TestCase):
                   'node_name': 'worker-fixture', 'image_id': 'immutable-sonarr-image', 'restart_count': 0,
                   'nfs': {'server': maintenance.BOOK_NFS['server'], 'path': '/hdd-nfs-repl'},
                   'volume_name': 'data-proxmox', 'mount_path': '/data/cephfs-hdd',
-                  'python_executable': sys.executable, 'runtime_uid': maintenance.os.getuid(),
-                  'python_sha256': catalog.metadata.sha256(Path('/proc/self/exe').read_bytes())}
+                  'runtime_uid': maintenance.os.getuid(),
+                  'tools': {name: {'path': shutil.which(name), 'sha256': catalog.metadata.sha256(Path(shutil.which(name)).read_bytes())}
+                            for name in ('sh', 'stat', 'sha256sum', 'id', 'rmdir', 'find')}}
         pod = {'metadata': {'uid': access['pod_uid'], 'labels': {'app.kubernetes.io/name': 'sonarr'}},
                'spec': {'nodeName': access['node_name'], 'volumes': [{'name': access['volume_name'], 'nfs': access['nfs']}],
                         'containers': [{'name': 'app', 'volumeMounts': [{'name': access['volume_name'], 'mountPath': access['mount_path']}]},
@@ -618,13 +621,13 @@ class CatalogMaintenanceTests(unittest.TestCase):
         get = mock.Mock(return_value=pod)
         calls = []
         def run(argv, timeout):
-            self.assertEqual(argv[:9], ['kubectl', 'exec', '-n', 'media', access['pod_name'], '-c', 'app', '--', sys.executable])
-            payload = json.loads(argv[-1]);self.assertEqual(payload['state'], maintenance.STATE)
-            # Model only the already-proved NFS mount mapping; execute the real admitted program.
-            payload['state'] = str(state);calls.append(True)
-            with mock.patch.object(sys, 'argv', ['-c', json.dumps(payload)]), mock.patch('sys.stdout', new_callable=io.StringIO) as out:
-                exec(compile(argv[-2], '<exact-Sonarr-lock-program>', 'exec'), {})
-                return out.getvalue()
+            self.assertEqual(argv[:9], ['kubectl', 'exec', '-n', 'media', access['pod_name'], '-c', 'app', '--', access['tools']['sh']['path']])
+            # Model only the already-proved NFS mount mapping; execute the actual fixed shell program.
+            self.assertIn('state=' + maintenance.STATE, argv[-1]);calls.append(True)
+            program = argv[-1].replace('state=' + maintenance.STATE, 'state=' + str(state))
+            result = subprocess.run([argv[8], '-c', program], capture_output=True, text=True, timeout=timeout)
+            catalog.require(result.returncode == 0, 'fixture exact Sonarr shell refused')
+            return result.stdout
         receipt = maintenance.lock_admission(config, get, run)
         self.assertEqual(receipt['state_inode'], state.stat().st_ino);self.assertTrue(receipt['lock_absent'])
         for failure in ('pod', 'mount', 'uid', 'tool', 'existing-lock', 'duplicate-app', 'missing-app'):
@@ -633,13 +636,29 @@ class CatalogMaintenanceTests(unittest.TestCase):
                 if failure == 'pod':pod['metadata']['uid'] = 'replacement'
                 if failure == 'mount':pod['spec']['volumes'][0]['nfs']['path'] = '/different-export'
                 if failure == 'uid':access['runtime_uid'] += 1
-                if failure == 'tool':access['python_sha256'] = '0' * 64
+                if failure == 'tool':access['tools']['stat']['sha256'] = '0' * 64
                 if failure == 'existing-lock':(state / 'lock').mkdir()
                 if failure == 'duplicate-app':pod['status']['containerStatuses'].append(copy.deepcopy(pod['status']['containerStatuses'][1]))
                 if failure == 'missing-app':pod['status']['containerStatuses'].pop()
                 with self.assertRaises((catalog.Refused, AssertionError)):maintenance.lock_admission(config, get, run)
                 pod.clear();pod.update(old);access.clear();access.update(old_access)
                 if failure == 'existing-lock':(state / 'lock').rmdir()
+        # The actual shell's CAS must refuse foreign/nonempty/replaced-state locks,
+        # and remove only the exact empty phase-created directory.
+        lock = state / 'lock';lock.mkdir()
+        identity = maintenance.sonarr_lock(config, get, run)
+        expected = {key: identity[key] for key in ('state_inode', 'lock_inode', 'lock_uid', 'lock_mode')}
+        with self.assertRaises(catalog.Refused):
+            maintenance.sonarr_lock(config, get, run, dict(expected, lock_inode=expected['lock_inode'] + 1), True)
+        (lock / 'foreign').write_bytes(b'keep')
+        with self.assertRaises(catalog.Refused):maintenance.sonarr_lock(config, get, run, expected, True)
+        self.assertEqual((lock / 'foreign').read_bytes(), b'keep');(lock / 'foreign').unlink()
+        original = state.rename(self.base / 'original-shell-state');state.mkdir()
+        with self.assertRaises(catalog.Refused):maintenance.sonarr_lock(config, get, run, expected, True)
+        state.rmdir();original.rename(state)
+        released = maintenance.sonarr_lock(config, get, run, expected, True)
+        self.assertTrue(released['absent']);self.assertFalse(lock.exists())
+        self.assertEqual(released['state_inode'], expected['state_inode'])
 
 
 if __name__ == "__main__":

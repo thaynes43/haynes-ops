@@ -168,13 +168,17 @@ Forced Pod termination can prevent the worker's `finally` from removing the
 existing bare converter lock directory. The separate maintenance watcher first
 proves original Job/Pod and PG absence, then checks that lock through the existing
 Sonarr app Pod's RW `gasha01.haynesnetwork:/hdd-nfs-repl` mount. Root binds that
-Pod UID/full spec/image/node, exact mount and Python executable SHA/runtime UID
+Pod UID/full spec/image/node, exact mount and native shell/coreutils SHAs/runtime UID
 before Stop. The exact `app` container status is selected within that pinned Pod;
 its existing `exportarr` sidecar does not change the execution owner. The worker
 sends a phase/operation/backend-bound receipt immediately
 after the existing exclusive lock creation; the host retains it once in a private
 file outside the lock. It records the state and lock inode, UID and mode, and exact
-server-side logical path. Device numbers are not compared across Pods.
+server-side logical path. Device numbers are not compared across Pods. The fixed
+read-only route uses the admitted `sh`, `stat`, `sha256sum`, `id`, `rmdir` and
+bounded `find` executables. It rejects symlink path components, compares the
+rooted and named state-directory inode, and admits only fixed scalar output.
+The current Sonarr image has no Python; no Python capability is assumed.
 
 A remaining lock can be removed only if the exact phase-created receipt matches,
 the directory is empty, all original writers are absent, all seven controllers
