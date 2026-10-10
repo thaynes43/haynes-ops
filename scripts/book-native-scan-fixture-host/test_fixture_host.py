@@ -115,7 +115,9 @@ class HostTests(unittest.TestCase):
 
     def test_actual_image_restart_or_owner_conflict_refuses(self):
         manifest, job, pod = objects()
-        for change in (lambda p: p["status"]["containerStatuses"][0].update(restartCount=1), lambda p: p["status"]["containerStatuses"][0].update(imageID="different"), lambda p: p["metadata"]["ownerReferences"][0].update(uid=str(uuid.uuid4()))):
+        self.assertEqual(json.loads((HERE / "prepared-host-approval.json").read_bytes())["image"], h.IMAGE)
+        h.pod_binding(job, pod, manifest, PHASE, node())
+        for change in (lambda p: p["status"]["containerStatuses"][0].update(restartCount=1), lambda p: p["status"]["containerStatuses"][0].update(imageID="different"), lambda p: p["status"]["containerStatuses"][0].update(imageID="ghcr.io/thaynes43/book-native-scan-fixture@sha256:53dfa0670e616e9b6845ccb2dc8f8dbf40cc3e28a7367d0b0ce105d2a6a196b4"), lambda p: p["metadata"]["ownerReferences"][0].update(uid=str(uuid.uuid4()))):
             bad = copy.deepcopy(pod)
             change(bad)
             with self.assertRaises(h.Refused):

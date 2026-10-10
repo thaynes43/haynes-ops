@@ -6,6 +6,13 @@ EPUB strip, scan or reading-list authority. Running it requires a separately rev
 exact private approval with explicit root fixture GO. Preparation and tests create no
 Job. Keep production services, schedules and acquisition running.
 
+The exact host and CLOSED approval skeleton pin the Series-color-corrected package
+`ghcr.io/thaynes43/book-native-scan-fixture@sha256:c5e8aa8f2b059ef95e1c5f43502f9ca3baaa37d961e69fc8c269a5956209d861`.
+Its signature binds ops #3708 main `0d51f288`; actual registry generic modules match
+the passed PR artifact, and all eight native base layers stay identical. The older
+53df package has the wrong Volume color predicate and is no longer admitted. This
+literal digest pin grants no runtime or production approval.
+
 Bind the reviewed host/template/source hashes, signed immutable generic image, all
 original/candidate private input bytes, exact native schema, seven catalog-key cells,
 complete retained native parsed-name set and precise scan metadata allowance before
