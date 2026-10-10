@@ -1,5 +1,6 @@
 ---
 # One attempt, metadata only: no directory listing, file contents or NFS writes.
+# Its exact image/template are frozen by .renovate/holds.json5; never upgrade or rerun it.
 # Hard NFS kernel calls can outlive deadlines: prove termination before cleanup.
 # Eligible worker labels were checked Ready and pressure-free before this proposal.
 apiVersion: batch/v1

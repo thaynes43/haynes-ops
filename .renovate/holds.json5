@@ -34,6 +34,18 @@
   packageRules: [
     {
       description: [
+        'HELD one-shot read-only NFS discovery Job: keep its reviewed image and template immutable.',
+        'Reason: an image bump changes the existing immutable Job template, breaks Flux apply, and invites an unsafe delete or rerun before the termination gate.',
+        'Resume: MANUAL — remove this rule only with the reviewed capsule cleanup after termination and protected pod/node evidence; a successor trial gets a separate identity and review.',
+        'Recorded: 2026-10-10 by Codex. Related: PR #3725 read-only metadata discovery, not workspace acceptance.',
+      ],
+      matchFileNames: [
+        'kubernetes/main/apps/dev-agents/gasha01-nfs-readonly-preflight/app/job.yaml',
+      ],
+      enabled: false,
+    },
+    {
+      description: [
         'HELD ARC Docker DinD: update the sidecar and its exact-image PolicyException together, by hand.',
         'Reason: the Kubernetes image manager finds the DinD image in the shared runner component but does not find the bare image-list entry in the Kyverno exception. Updating only the component makes all four Docker runner pools fail baseline admission.',
         'Issue: https://github.com/thaynes43/haynes-ops/pull/3503#discussion_r4203251469',
