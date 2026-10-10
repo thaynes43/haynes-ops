@@ -55,6 +55,14 @@ observedGeneration advanced or Stop was applied by a held parent. The inverse th
 required checks and a disposed advisory and is **merged
 to Normal main while actual services remain Normal**. A favorable verdict with
 an unresolved severity finding refuses. Pending checks cannot start Stop clocks.
+If that approved inverse merges between the watcher's inverse-PR read and fresh
+main read, the cached watcher refreshes only a candidate whose six main blobs
+already equal the frozen Normal contract. It binds the exact inverse PR, same
+observed head, actual merge, Stop-to-head contract and Stop-to-merge-to-main
+ancestry before entering the existing cached staging checks. A missing sealed
+cache still permits this Normal stage; missing identity, ancestry or full-blob
+proof retains drift revocation and writer-first recovery. This neither resets
+the original arm nor admits unexpected manifest changes.
 The default live-workload staging ceiling remains 600s. A fresh, explicitly
 reviewed **cached-source** attempt may select `--arm-deadline` up to 1800s for this still-Normal
 staging only: inverse retarget, required checks/advisory, sealing and fresh LIVE.

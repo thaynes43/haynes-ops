@@ -261,7 +261,7 @@ class FakeWatch(watch.Watchdog):
     def cleanup_phase_jobs(self): self.calls.append(('owned-uid-pg-absent',))
     def verify_recovery_absence(self): self.calls.append(('final-owned-uid-pg-absent',))
     def verify_inverse(self, restore): self.calls.append(('inverse-exact',)); self.state['expected_inverse_head']='b'*40
-    def guard_phase_git(self): self.calls.append(('git-phase-exact',))
+    def guard_phase_git(self,pause=None,restore=None): self.calls.append(('git-phase-exact',))
     def clean_gates(self, restore): return self.gates
     def run(self, argv, **kw): self.calls.append(tuple(argv)); return ''
     def view(self, number): return {'state':self.pause_state if number=='1' else self.inverse_state, 'mergedAt':'1970-01-01T00:00:01+00:00', 'baseRefName':'main', 'mergeCommit':{'oid':'a'*40}}
@@ -353,6 +353,60 @@ class WatchRecoveryTests(unittest.TestCase):
 
 
 class GitDriftWatchTests(unittest.TestCase):
+    def raced_inverse(self,root):
+        w=FakeWatch(root,pause='MERGED');w.cached=True;w.args.repo_dir='private-local-fixture'
+        w.contract=CONTRACT;w.args.pause_head='a'*40;w.current_main=lambda:'c'*40
+        pause=dict(state='MERGED',headRefOid='a'*40,mergeCommit={'oid':'a'*40},mergedAt='fixture')
+        old=dict(state='OPEN',baseRefName='main',headRefOid='b'*40)
+        fresh=dict(number=2,state='MERGED',baseRefName='main',headRefOid='b'*40,mergeCommit={'oid':'c'*40})
+        w.view=lambda number:pause if number=='1' else old
+        w.guard_phase_git=types.MethodType(watch.Watchdog.guard_phase_git,w)
+        w.stop_actuated=lambda:False
+        def run(argv,**kwargs):
+            w.calls.append(tuple(argv))
+            return json.dumps(fresh) if argv[:3]==['gh','pr','view'] else ''
+        w.run=run
+        return w,pause,old,fresh
+
+    def test_stale_inverse_view_routes_verified_normal_merge_to_cached_stage(self):
+        with tempfile.TemporaryDirectory() as d:
+            w,pause,old,fresh=self.raced_inverse(Path(d));original=dict(w.state)
+            w.tick_cached=lambda p,r:w.calls.append(('cached-stage',p,r)) or False
+            with patch.object(wc,'blobs',side_effect=lambda repo,sha:STOP if sha=='a'*40 else NORMAL),patch.object(wc,'verify_git_pair') as pair:
+                self.assertFalse(w.tick_body())
+            pair.assert_called_once_with('private-local-fixture','a'*40,'b'*40,CONTRACT,'inverse')
+            self.assertIn(('git','-C','private-local-fixture','merge-base','--is-ancestor','a'*40,'b'*40),w.calls)
+            self.assertIn(('git','-C','private-local-fixture','merge-base','--is-ancestor','a'*40,'c'*40),w.calls)
+            self.assertIn(('git','-C','private-local-fixture','merge-base','--is-ancestor','c'*40,'c'*40),w.calls)
+            self.assertIn(('cached-stage',pause,fresh),w.calls)
+            self.assertEqual({k:w.state[k] for k in original},original);self.assertEqual(w.state['pause_merged_at'],'fixture')
+            self.assertNotIn('copy_authority_revoked_at',w.state);self.assertFalse(w.stop.exists())
+            self.assertNotIn(('owned-uid-pg-absent',),w.calls)
+
+    def test_raced_inverse_missing_identity_ancestry_or_normal_proof_still_revokes(self):
+        for case in ('head','number','base','unmerged','merge','stop_head','ancestry','merged_blob','unexpected_main'):
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as d:
+                w,pause,old,fresh=self.raced_inverse(Path(d));calls=w.run;merged=dict(NORMAL);current=dict(NORMAL)
+                if case=='head':fresh['headRefOid']='d'*40
+                if case=='number':fresh['number']=3
+                if case=='base':fresh['baseRefName']='other'
+                if case=='unmerged':fresh['state']='OPEN'
+                if case=='merge':fresh['mergeCommit']=None
+                if case=='stop_head':pause['headRefOid']='d'*40
+                if case=='merged_blob':fresh['mergeCommit']['oid']='d'*40;merged[wc.PATHS[0]]+=b'\n'
+                if case=='unexpected_main':current[wc.PATHS[0]]+=b'\n'
+                def run(argv,**kwargs):
+                    if case=='ancestry' and '--is-ancestor' in argv:raise RuntimeError('fixture lost ancestry')
+                    return calls(argv,**kwargs)
+                w.run=run
+                w.tick_cached=lambda *args:self.fail('unproved inverse reached cached staging')
+                def blobs(repo,sha):return STOP if sha=='a'*40 else merged if sha=='d'*40 else current
+                with patch.object(wc,'blobs',side_effect=blobs),patch.object(wc,'verify_git_pair'):
+                    with self.assertRaisesRegex(RuntimeError,'COPY revoked'):w.tick_body()
+                self.assertTrue(w.stop.exists());self.assertTrue(w.state['recover_ks']);self.assertFalse(w.state['complete'])
+                self.assertIn(('owned-uid-pg-absent',),w.calls)
+                if case=='unexpected_main':self.assertFalse(any(c[:3]==('gh','pr','view') for c in w.calls))
+
     def test_completed_recovery_uses_current_main_preserving_unrelated_commit(self):
         with tempfile.TemporaryDirectory() as d:
             w=FakeWatch(Path(d),pause='MERGED',inverse='MERGED',window=True)
