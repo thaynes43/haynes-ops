@@ -487,14 +487,14 @@ class OwnerOutcomeTests(unittest.TestCase):
     def outcome_case(self, case):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);phase='a'*32;key=('frontend','source')
-            w=object.__new__(supervisor.Supervisor);w.out=root;w.deadline=time.time()+100
+            w=object.__new__(supervisor.Supervisor);w.out=root;w.deadline=time.time()+300
             script=root/'exchange.py';script.write_text('# public fake child transport only\n');script.chmod(0o600)
             completed=root/'main.json';supervisor.private_json(completed,{'job_uid':'main','pod_uid':'main-pod','zero_exit':True})
             library=root/'library.json';supervisor.private_json(library,{'schema':2})
             selection=root/'selection.json';supervisor.private_json(selection,{'entries':[]})
             assembly=root/'assembly.json';supervisor.private_json(assembly,{'proof_files':{'selection.json':{'path':str(selection)},'snapshot.json':{'sha256':'b'*64}}})
             w.status={'phase_token':phase,'selected_count':2,'main_completion_receipt':{'path':str(completed),'sha256':wc.sha(completed.read_bytes())},'library':{'path':str(library)},'assembly_receipt':str(assembly)}
-            w.c={'outcome_script':str(script),'outcome_script_sha256':wc.sha(script.read_bytes())}
+            w.c={'outcome_script':str(script),'outcome_script_sha256':wc.sha(script.read_bytes()),'restore_reserve_seconds':130}
             w.checkpoint=types.SimpleNamespace(SOURCE=key)
             w.row=lambda _:dict(uid='source-job',ready_manifest={'spec':{'template':{'spec':{'containers':[{'name':'source'}]}}}})
             w.actual_pod=lambda _: {'metadata':{'name':'source-pod','uid':'source-pod-uid'}}
@@ -506,6 +506,7 @@ class OwnerOutcomeTests(unittest.TestCase):
                 self.assertEqual(request['runtime_module_sha256'],{k:CONTRACT['modules'][k] for k in ('epub_copies.py','epub_metadata.py','book_copy_writer.py','bound_census.py')})
                 self.assertEqual(request['selected_scope_sha256'],'1754edf94c3735c5c7cf6a78d30e3bea3b110e7b48a77ef1fea6e16e91c82663')
                 self.assertLessEqual(timeout,12);self.assertEqual(float(argv[-1]),request['deadline_epoch'])
+                self.assertLessEqual(request['deadline_epoch'],w.deadline-130)
                 final={'schema':2,'read_only':True,'production_writes':0,'phase_token':phase,'job_uid':'source-job','pod_uid':'source-pod-uid','actual_moved_count':2,'every_unapproved_file_unchanged':True}
                 response={k:request[k] for k in ('phase_token','job_uid','pod_uid','runtime_module_sha256','selected_scope_sha256','main_receipt_sha256')}
                 response.update(schema=1,type='copy_outcome_response',request_sha256=wc.sha(input_bytes),outcome=final,production_writes=0)
