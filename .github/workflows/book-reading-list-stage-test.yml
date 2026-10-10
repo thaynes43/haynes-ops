@@ -29,7 +29,7 @@ jobs:
       - name: Use deployed Node major
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22.23.3'
+          node-version: '24.21.0'
       - name: Use Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
