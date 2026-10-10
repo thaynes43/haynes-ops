@@ -49,6 +49,26 @@ def assignments(path):
 
 
 class PipelineCases(unittest.TestCase):
+    def test_lidarr_bridge_accepts_qualified_ready_images_and_refuses_drift(self):
+        bridge=load('finite_lidarr_bridge','lidarr-native-source-bridge.py')
+        template=json.loads((HERE/'lidarr-copy-source-template.prepared.json').read_bytes())
+        declared=template['spec']['template']['spec']['containers'][0]['image']
+        self.assertEqual(bridge.IMAGE,pins.IMAGE)
+        self.assertEqual(declared,pins.IMAGE)
+        native_exec=mock.Mock()
+        def guarded_exec(actual,ready):
+            bridge.require_helper_images(helper,actual,ready)
+            native_exec()
+        guarded_exec('docker-pullable://'+declared,declared)
+        native_exec.assert_called_once()
+        native_exec.reset_mock()
+        changed='ghcr.io/thaynes43/book-copy-writer@sha256:'+'0'*64
+        for actual,ready in ((changed,declared),(declared,changed)):
+            with self.subTest(actual=actual,ready=ready):
+                with self.assertRaisesRegex(bridge.Refused,'reviewed image changed'):
+                    guarded_exec(actual,ready)
+                native_exec.assert_not_called()
+
     def test_prospective_live_240_host_260_keep_original_start_and_closed_handoff(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);phase='a'*32
