@@ -143,7 +143,10 @@ activation-origin+170 abort clock, deliver, then execute immediately. The origin
 is captured before the first activation publication; helper, writer and binder
 never reset it. Actual original arm, live watcher kernel, same accepted cache,
 six held controller identities, still-Normal services and fresh absent-lock
-admission must pass before activation. Full current inverse review uses the
+admission must pass before activation. Pod, PVC and PV inventories call the
+existing typed validator with the explicit core `v1` API and requested namespace;
+wrong envelope types or namespaces refuse before activation or writer admission.
+Full current inverse review uses the
 existing optional exact unavailable-review disposition, with its private
 loader, when Root has explicitly ratified it. No model turn occurs between
 Stop, complete capture, stopped inspection and publication. The retention path
