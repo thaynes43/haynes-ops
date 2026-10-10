@@ -100,3 +100,31 @@ spec:
 #    - action: replace
 #      targetLabel: job
 #      replacement: *name
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: external-ceph-mgr
+spec:
+  scrapeInterval: 30s
+  scrapeTimeout: 8s
+  honorTimestamps: false
+  metricsPath: /metrics
+  staticConfigs:
+  - targets:
+    - 192.168.40.18:9283
+    labels:
+      storage_cluster: external-pve-ceph
+      collector: ceph-mgr
+  relabelings:
+  - action: replace
+    targetLabel: job
+    replacement: external-ceph-mgr
+  - action: replace
+    targetLabel: instance
+    replacement: external-ceph-mgr
+  metricRelabelings:
+  - action: keep
+    sourceLabels:
+    - __name__
+    regex: ceph_health_status|ceph_osd_(up|in|apply_latency_ms|commit_latency_ms)|ceph_mds_(slow_reply|reply_latency_(sum|count))
