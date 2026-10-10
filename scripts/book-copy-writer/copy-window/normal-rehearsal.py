@@ -301,48 +301,6 @@ def watcher(packet,initialize=True):
                 row.update(count=row['count']+1,seconds=round(row['seconds']+elapsed,6),
                            maximum_seconds=round(max(row['maximum_seconds'],elapsed),6),failures=row['failures']+int(failed))
                 self.save()
-        def recover_cluster(self,sha):
-            self.normal_attempt_cleanup_done=False;self.normal_attempt_source_done=False
-            self.normal_recovery_attempt=True
-            try:return super().recover_cluster(sha)
-            finally:self.normal_recovery_attempt=False
-        def cleanup_phase_jobs(self):
-            # Closed Normal mode cannot create a producer. Unknown phase union
-            # is refusal, never deletion. Do not repeat its identical scan for
-            # each controller once exercise authority/request barriers retired.
-            if getattr(self,'normal_recovery_attempt',False) and self.normal_attempt_cleanup_done:return
-            phase=self.phase_checkpoint();self.verify_phase_absent(phase)
-            self.normal_attempt_cleanup_done=True
-        def verify_recovery_absence(self):
-            self.verify_phase_absent(self.phase_checkpoint())
-        def retire_hold_annotations(self):
-            self.source(self.state['expected_restored_sha'])
-            super().retire_hold_annotations()
-        def source(self,sha):
-            row=self.kube('gitrepository','haynes-ops','flux-system')
-            owned=self.state['cached_source_owner']
-            require(row['metadata'].get('annotations',{}).get(cache.OWNER) in (None,owned['phase_token']),'Normal Source foreign phase')
-            if not getattr(self,'normal_attempt_source_done',False):
-                # Validate the initial snapshot too; the base method owns the
-                # UID/RV resume patch and one explicit Source reconciliation.
-                cache.release_patch(row,owned['uid'],owned['phase_token'],spec=owned['spec'])
-                super().source(sha);self.normal_attempt_source_done=True;return
-            patch=cache.release_patch(row,owned['uid'],owned['phase_token'],spec=owned['spec'])
-            require(not patch,'Normal Source unexpectedly held again')
-            status=row.get('status',{})
-            require(status.get('artifact',{}).get('revision')=='main@sha1:'+sha
-                    and any(c.get('type')=='Ready' and c.get('status')=='True' for c in status.get('conditions',[])),
-                    'Normal Source not exact and Ready')
-        def reconcile_ks(self,namespace,name,sha):
-            row=self.kube('kustomization',name,namespace)
-            owned=self.state['cached_ks_owners'][namespace+'/'+name]
-            require(row['metadata'].get('annotations',{}).get(cache.OWNER) in (None,owned['phase_token']),'Normal controller foreign phase')
-            patch=cache.release_patch(row,owned['uid'],owned['phase_token'],kind='Kustomization',name=name,namespace=namespace,spec=owned['spec'])
-            require(not patch,'Normal controller unexpectedly held again')
-            status=row.get('status',{})
-            if (status.get('lastAppliedRevision')=='main@sha1:'+sha
-                    and any(c.get('type')=='Ready' and c.get('status')=='True' for c in status.get('conditions',[]))):return
-            super().reconcile_ks(namespace,name,sha)
         def tick(self):
             if self.state.get('normal_rehearsal_recovery_budget_missed_at'):
                 self.state.update(complete=False,normal_rehearsal_recovered_within_budget=False,copy_runtime_authorized=False);self.save()

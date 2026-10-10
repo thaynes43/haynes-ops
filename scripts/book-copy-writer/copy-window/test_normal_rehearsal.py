@@ -446,10 +446,12 @@ class NormalCases(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'foreign phase'):w.fence_hold_requests()
             w.run.assert_not_called()
 
-    def test_normal_recovery_scans_union_pg_twice_and_skips_only_exact_ready_reconciles(self):
+    def test_normal_harness_inherits_actual_generic_recovery_and_all_release_barriers(self):
         with tempfile.TemporaryDirectory() as directory:
             packet,_,state,observer,_,_=self.fake(directory)
-            w,_,_,_=normal.watcher(packet,initialize=False);w.state=state;w.save=lambda:None
+            w,_,_,base=normal.watcher(packet,initialize=False);w.state=state;w.save=lambda:None
+            for method in ('recover_cluster','cleanup_phase_jobs','verify_recovery_absence','source','reconcile_ks','retire_hold_annotations'):
+                self.assertIs(getattr(type(w),method),getattr(base.Watchdog,method))
             rows={(kind,name,ns):observer.kube(kind,name,ns) for kind,name,ns in
                   [('gitrepository','haynes-ops','flux-system')]+[('kustomization',n,ns) for ns,n in normal.PARENTS+normal.APPS]}
             for row in rows.values():
@@ -465,17 +467,17 @@ class NormalCases(unittest.TestCase):
             w.runtime_restored=lambda _:True;w.retire_hold_annotations=lambda:calls.append(('retire',));w.note=lambda _:None
             w.recover_cluster(fixtures.NORMAL_SHA)
             self.assertTrue(w.state['complete'])
-            self.assertEqual(sum(c[0]=='inventory' for c in calls),12)
-            self.assertEqual(sum(c[:2]==('kubectl','exec') for c in calls),2)
+            self.assertEqual(sum(c[0]=='inventory' for c in calls),48)
+            self.assertEqual(sum(c[:2]==('kubectl','exec') for c in calls),8)
             self.assertEqual(sum(c[:3]==('flux','reconcile','source') for c in calls),1)
-            self.assertFalse(any(c[:3]==('flux','reconcile','kustomization') for c in calls))
+            self.assertEqual(sum(c[:3]==('flux','reconcile','kustomization') for c in calls),6)
             self.assertEqual(calls[-1],('retire',))
             # Unknown final union never publishes completion or retires owners.
             w.state['complete']=False;counter=0
             def unknown(kind,ns):
                 nonlocal counter
                 counter+=1
-                if counter==7:raise RuntimeError('final union unknown')
+                if counter==43:raise RuntimeError('final union unknown')
                 return []
             w.inventory=unknown;calls.clear()
             with self.assertRaisesRegex(RuntimeError,'final union unknown'):w.recover_cluster(fixtures.NORMAL_SHA)
@@ -498,7 +500,7 @@ class NormalCases(unittest.TestCase):
     def test_normal_source_reuse_still_refuses_uid_spec_phase_revision_or_ready_drift(self):
         with tempfile.TemporaryDirectory() as directory:
             packet,_,state,observer,_,_=self.fake(directory)
-            w,_,_,_=normal.watcher(packet,initialize=False);w.state=state;w.normal_attempt_source_done=True
+            w,_,_,_=normal.watcher(packet,initialize=False);w.state=state;w.recovery_source_reconciled=True
             original=observer.kube('gitrepository','haynes-ops','flux-system');original['spec']['suspend']=False
             original['status']['conditions']=[dict(type='Ready',status='True')]
             w.run=mock.Mock();w.kube=lambda *_:copy.deepcopy(original)
@@ -511,7 +513,7 @@ class NormalCases(unittest.TestCase):
             row=copy.deepcopy(original);row['status']['conditions']=[];variants.append(row)
             for row in variants:
                 w.kube=lambda *_:copy.deepcopy(row)
-                with self.assertRaises(ValueError):w.source(fixtures.NORMAL_SHA)
+                with self.assertRaises((RuntimeError,ValueError)):w.source(fixtures.NORMAL_SHA)
             w.run.assert_not_called()
 
     def test_normal_controller_reconciles_stale_but_refuses_foreign_or_replaced(self):

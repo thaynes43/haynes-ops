@@ -134,6 +134,10 @@ each resume/reconcile. All six needed Kustomization reconciles remain. The
 original 50s restoration reserve, 60s safety attempt and 300s service ceiling do
 not change. The 28.363524s Normal-only rehearsal proves its separate cancellation
 path; it does not prove an actual COPY Stop can restore services within 50s.
+The current Normal harness inherits these generic recovery callbacks without
+the earlier Normal-only inventory/source/reconcile shortcuts. A fresh immutable
+current-source rehearsal must prove the services-running generic recovery budget
+before COPY; actual stopped-service convergence remains a separate runtime proof.
 
 `normal-rehearsal.py` prepares and executes a separate Normal-only cancellation
 rehearsal. Preparation copies the generic source closure and a reviewed exact
