@@ -37,7 +37,7 @@ metadata:
     # the only way to say so.
     k8tz.io/timezone: Etc/UTC
 spec:
-  suspend: false
+  suspend: true
   schedule: "10 9 * * *"
   timeZone: Etc/UTC
   concurrencyPolicy: Forbid
