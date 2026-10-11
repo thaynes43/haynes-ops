@@ -1,0 +1,27 @@
+---
+# The model-free bootstrap check receives this one named GET only. Session workers
+# retain their existing dev-env-agent ClusterRole; this is not a worker RBAC change.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-project-bootstrap-check
+  namespace: dev-env-system
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-project-catalog]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-project-bootstrap-check
+  namespace: dev-env-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-project-bootstrap-check
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-project-bootstrap-check
+    namespace: dev-agents
