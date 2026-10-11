@@ -8,6 +8,8 @@ resources:
   - ./grantpolicies.yaml
   - ./activities.yaml
   - ./credentialjobs.yaml
+  - ./coordination.dev-env.haynesops.com_taskclaims.yaml
+  - ./taskclaims-operator.yaml
 patches:
   # A CRD is never pruned (DESIGN-001 D-03): deleting it deletes every session.
   - target:

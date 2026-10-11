@@ -1,0 +1,176 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: taskclaims.coordination.dev-env.haynesops.com
+spec:
+  group: coordination.dev-env.haynesops.com
+  names:
+    kind: TaskClaim
+    listKind: TaskClaimList
+    plural: taskclaims
+    singular: taskclaim
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          TaskClaim has no lifecycle controller or Session owner reference. Losing its
+          owner never releases ownership. Operator permissions need only get/create/list.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: TaskClaimSpec contains only bounded attribution, never prompt
+              or rules text.
+            properties:
+              actor:
+                properties:
+                  kind:
+                    enum:
+                    - session
+                    - coordinator
+                    type: string
+                  podName:
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
+                  podUID:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                  serviceAccount:
+                    maxLength: 317
+                    minLength: 3
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?/[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
+                required:
+                - kind
+                - podName
+                - podUID
+                - serviceAccount
+                type: object
+              identity:
+                properties:
+                  project:
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                    type: string
+                  repository:
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                    type: string
+                  taskKey:
+                    description: Issue numbers are canonical positive decimal; task
+                      keys are explicit opaque identifiers.
+                    maxLength: 133
+                    pattern: ^(issue:[1-9][0-9]{0,18}|task:[a-z0-9]([a-z0-9._-]{0,126}[a-z0-9])?)$
+                    type: string
+                required:
+                - project
+                - repository
+                - taskKey
+                type: object
+              owner:
+                properties:
+                  name:
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
+                  namespace:
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                    type: string
+                  uid:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                required:
+                - name
+                - namespace
+                - uid
+                type: object
+              provenance:
+                properties:
+                  catalogRevision:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  defaultBranch:
+                    maxLength: 255
+                    minLength: 1
+                    type: string
+                  github:
+                    maxLength: 140
+                    pattern: ^[a-z0-9]([a-z0-9-]{0,37}[a-z0-9])?/[a-z0-9_.-]{1,100}$
+                    type: string
+                  initialPinState:
+                    description: This first unit has no bound startup pin receipt.
+                      A heartbeat cannot prove it.
+                    enum:
+                    - Unknown
+                    type: string
+                  reportedAt:
+                    format: date-time
+                    type: string
+                  reportedHead:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{40}([a-f0-9]{24})?$
+                    type: string
+                  rulesRevision:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                required:
+                - catalogRevision
+                - defaultBranch
+                - github
+                - initialPinState
+                - rulesRevision
+                type: object
+                x-kubernetes-validations:
+                - message: reported HEAD requires its observation timestamp
+                  rule: has(self.reportedHead) == has(self.reportedAt)
+                - message: GitHub repository is not a path
+                  rule: '!self.github.endsWith(''/.'') && !self.github.endsWith(''/..'')'
+                - message: GitHub identity omits the transport suffix
+                  rule: '!self.github.endsWith(''.git'')'
+            required:
+            - actor
+            - identity
+            - owner
+            - provenance
+            type: object
+            x-kubernetes-validations:
+            - message: task ownership and provenance are immutable
+              rule: self == oldSelf
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
