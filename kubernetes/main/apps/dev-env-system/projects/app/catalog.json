@@ -6,7 +6,7 @@
   "projects": {
     "dev-env": {
       "repositories": [{ "name": "dev-env" }],
-      "rules": ""
+      "rules": "Project rule revision dev-env-project-rules-20261011-v1. Keep task repositories and worktrees private to this session. Fetch and pin the selected repository freshly before a new task; preserve original WIP on resume. Share only authorized session metadata, claims, messages and context through the operator API. Record built, deployed and accepted separately. This catalog rule grants no credential, enrollment, inference or lifecycle authority."
     }
   }
 }

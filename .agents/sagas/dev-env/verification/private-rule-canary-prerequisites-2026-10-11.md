@@ -64,3 +64,16 @@ and installed prerequisites do not accept actual loaded markers, private task
 pins, stopped history, claims/messages, provider quotas/cost or full native chat
 routing. Prospective directory/usage source and required guards must be installed
 before any pilot claims those outcomes. Keep #173/#174/#175/#176/#91 open.
+
+The frozen ten-path implementation packet is
+`fb1e96361382aae858c8109b24ecc8f93da95dbe83091d21d2acc6b7a990f988`.
+Twelve sequential bounded renders, exact signed/schema comparisons and 155
+protected source files passed; saved thirteen-Pod source-reference audit found
+no common ConfigMap/reloader impact on existing Pods. Official source helpers
+derive catalog `9c5cc110d56f9afcd360a76947523d1b73cfa8bc685556c0c47f8e00c80d6d29`,
+rules `1cebe4524e65483d4854960c34a31d3f75f1cfc0acb991f0fd490b10bbc98e2b`,
+template `2.19.0-75f5661147`, and common
+`3b9b829cf224ea4bc5b2b481ff3b7c1b4f0b173e1b4e304d84d4e3ecf4e2ca61`.
+These are offline source bindings, not live accepted snapshots. Source/body
+comparisons allow only declared additive schema changes and preserve old enum
+members and retained status guards. Original validation corrections are saved.

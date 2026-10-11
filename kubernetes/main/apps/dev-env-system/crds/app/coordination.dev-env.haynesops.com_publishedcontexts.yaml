@@ -111,6 +111,9 @@ spec:
               completeness:
                 enum:
                 - ExplicitExcerpt
+                - PartialManagedOutput
+                - Unknown
+                maxLength: 32
                 type: string
               contentSHA256:
                 maxLength: 64
@@ -129,6 +132,7 @@ spec:
                     - result
                     - memory
                     - handoff
+                    maxLength: 32
                     type: string
                   sessionUID:
                     maxLength: 128
@@ -140,9 +144,33 @@ spec:
                 - kind
                 - sessionUID
                 type: object
+              managedOutput:
+                description: ManagedOutputAssertion is publisher-declared output,
+                  not transcript attestation.
+                properties:
+                  conversationID:
+                    maxLength: 36
+                    pattern: ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$
+                    type: string
+                  invocation:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  ordinal:
+                    format: int32
+                    maximum: 3
+                    minimum: 0
+                    type: integer
+                required:
+                - conversationID
+                - invocation
+                - ordinal
+                type: object
               origin:
                 enum:
                 - ExplicitPublished
+                - ManagedOutputAssertion
+                maxLength: 32
                 type: string
               project:
                 maxLength: 63
@@ -259,6 +287,15 @@ spec:
               rule: self == oldSelf
             - message: source UID must equal original publication identity
               rule: self.identity.sessionUID == self.source.uid
+            - message: managed assertions require their bounded fixed identity and
+                truthful partial state
+              rule: 'self.origin == ''ExplicitPublished'' ? (self.completeness ==
+                ''ExplicitExcerpt'' && !has(self.managedOutput)) : (has(self.managedOutput)
+                && self.completeness in [''PartialManagedOutput'', ''Unknown''] &&
+                self.attribution.provider in [''claude'', ''codex''] && self.identity.kind
+                == ''transcript-excerpt'' && self.identity.key == ''capture-'' + self.managedOutput.invocation
+                + ''-'' + (self.managedOutput.ordinal == 0 ? ''0'' : self.managedOutput.ordinal
+                == 1 ? ''1'' : self.managedOutput.ordinal == 2 ? ''2'' : ''3''))'
         required:
         - spec
         type: object

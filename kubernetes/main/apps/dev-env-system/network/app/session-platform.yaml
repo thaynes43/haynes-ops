@@ -26,6 +26,8 @@ spec:
       io.kubernetes.pod.namespace: dev-agents
     # These bounded checks have their own policies; no additive MCP/API tier.
     matchExpressions:
+      - key: dev-env.haynesops.com/project-canary
+        operator: DoesNotExist
       - key: app.kubernetes.io/name
         operator: NotIn
         values:

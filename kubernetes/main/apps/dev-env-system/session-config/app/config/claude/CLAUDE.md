@@ -437,3 +437,5 @@ separate session with `agent-run` only when the task calls for one, or Tom asks.
   there, and under `nohup`, cron or a Job.
 - **Codex updates only with the image.** The image pins `CODEX_VERSION`; never enable
   Codex's self-updater.
+
+For an explicit instruction acceptance probe, report common marker dev-env-common-rules-20261011-4ca29d70; report repository marker only from loaded repository instructions, absent marker Unknown; do not fetch files/run commands to obtain markers; no lifecycle/credential/task authority.
