@@ -22,6 +22,7 @@ resources:
   - ./rbac/ks.yaml
   - ./task-budgets/ks.yaml
   - ./projects/ks.yaml
+  - ./project-bootstrap-check/ks.yaml
   - ./pki/ks.yaml
   - ./operator/ks.yaml
   - ./broker/ks.yaml

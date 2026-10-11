@@ -61,6 +61,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Claude Code Review
+        id: review
         if: steps.gate.outputs.enabled == 'true'
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         with:
@@ -160,3 +161,17 @@ jobs:
             - Only review files changed in this PR. Post GitHub comments only — do not
               return the review as chat text. Never print secret values you find; cite file
               and line only.
+
+      - name: Diagnose Claude review failure safely
+        if: always() && steps.review.outcome == 'failure'
+        env:
+          CLAUDE_EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+          TRUSTED_DIAGNOSTIC_REF: ${{ github.event.pull_request.base.sha }}
+        run: |
+          trusted_helper="$RUNNER_TEMP/claude-failure-diagnose.py"
+          if git show "$TRUSTED_DIAGNOSTIC_REF:scripts/claude-review-diagnostics/diagnose.py" > "$trusted_helper" 2>/dev/null; then
+            nice -n 19 python3 "$trusted_helper"
+          else
+            rm -f "$trusted_helper"
+            echo "::notice::Trusted Claude diagnostic helper is absent; no execution content was printed."
+          fi

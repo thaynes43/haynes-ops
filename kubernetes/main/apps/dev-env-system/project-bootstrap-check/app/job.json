@@ -1,0 +1,213 @@
+{
+  "apiVersion": "batch/v1",
+  "kind": "Job",
+  "metadata": {
+    "labels": {
+      "app.kubernetes.io/name": "dev-env-project-bootstrap-check"
+    },
+    "name": "dev-env-project-bootstrap-check-1011",
+    "namespace": "dev-agents"
+  },
+  "spec": {
+    "activeDeadlineSeconds": 600,
+    "backoffLimit": 0,
+    "completions": 1,
+    "parallelism": 1,
+    "suspend": false,
+    "template": {
+      "metadata": {
+        "annotations": {
+          "k8tz.io/inject": "false"
+        },
+        "labels": {
+          "app.kubernetes.io/name": "dev-env-project-bootstrap-check"
+        }
+      },
+      "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+          {
+            "command": [
+              "/usr/local/bin/tini",
+              "--",
+              "/bin/bash",
+              "-euc",
+              "umask 077\ntest -z \"$(ls -A /home/dev)\"\n/usr/local/bin/agentd version > /tmp/agentd-version.txt\n/usr/local/bin/agentd project-refresh > /tmp/bootstrap-result.json\npython3 - <<'BOOTSTRAP_VERIFY'\nimport hashlib,json,os,pathlib,re,subprocess,sys\ntry:\n root=pathlib.Path('/home/dev')\n report=json.loads(pathlib.Path('/tmp/bootstrap-result.json').read_bytes())\n saved=root/'.agentd/project-bootstrap.json'\n if report != json.loads(saved.read_bytes()): raise ValueError()\n if report.get('version') != 1 or report.get('state') != 'Ready': raise ValueError()\n if report.get('catalogNamespace') != 'dev-env-system' or report.get('catalogName') != 'dev-env-project-catalog': raise ValueError()\n if report.get('catalogRevision') != os.environ['EXPECTED_CATALOG_SHA256']: raise ValueError()\n if not report.get('catalogUID') or not report.get('catalogResourceVersion'): raise ValueError()\n version=pathlib.Path('/tmp/agentd-version.txt').read_text().strip()\n if '(commit '+os.environ['EXPECTED_SOURCE_COMMIT'][:12]+',' not in version: raise ValueError()\n repos=report.get('repositories',[])\n if len(repos) != 1: raise ValueError()\n repo=repos[0]\n if repo.get('repository') != {'name':'dev-env','github':'thaynes43/dev-env','defaultBranch':'main'}: raise ValueError()\n if repo.get('state') != 'Ready' or not re.fullmatch('[0-9a-f]{40}',repo.get('target','')): raise ValueError()\n clone=root/'repos/dev-env'\n def git(*args): return subprocess.check_output(['git','-C',str(clone),'-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false','-c','core.useReplaceRefs=false',*args],stderr=subprocess.DEVNULL,text=True,timeout=5).strip()\n if git('rev-parse','--path-format=absolute','--git-common-dir') != str(clone/'.git'): raise ValueError()\n if git('rev-parse','--show-toplevel') != str(clone): raise ValueError()\n if git('remote','get-url','--all','origin') != 'https://github.com/thaynes43/dev-env': raise ValueError()\n if git('remote','get-url','--push','--all','origin') != 'https://github.com/thaynes43/dev-env': raise ValueError()\n if git('symbolic-ref','--quiet','HEAD') != 'refs/heads/main': raise ValueError()\n if git('rev-parse','HEAD') != repo['target'] or git('rev-parse','refs/remotes/origin/main') != repo['target']: raise ValueError()\n if git('status','--porcelain=v1','--untracked-files=all'): raise ValueError()\n if (root/'.claude').exists() or (root/'.codex').exists() or (root/'.shared').exists(): raise ValueError()\n print(json.dumps({'state':'Ready','modelFree':True,'podName':os.environ['CHECK_POD_NAME'],'podUID':os.environ['CHECK_POD_UID'],'agentdVersion':version,'catalogUID':report['catalogUID'],'catalogResourceVersion':report['catalogResourceVersion'],'catalogSha256':report['catalogRevision'],'repository':'dev-env','sourceCommit':repo['target'],'receiptSha256':hashlib.sha256(saved.read_bytes()).hexdigest()},sort_keys=True))\nexcept Exception:\n print(json.dumps({'state':'Failed','modelFree':True,'reason':'bootstrap-verification-refused'},sort_keys=True))\n sys.exit(1)\nBOOTSTRAP_VERIFY\n"
+            ],
+            "env": [
+              {
+                "name": "HOME",
+                "value": "/home/dev"
+              },
+              {
+                "name": "AGENTD_ENABLE_PRIVATE_PROJECT_BOOTSTRAP",
+                "value": "true"
+              },
+              {
+                "name": "AGENTD_PROJECT_CATALOG",
+                "value": "dev-env-system/dev-env-project-catalog"
+              },
+              {
+                "name": "AGENTD_PROJECT_CLONE_OWNER",
+                "value": "thaynes43"
+              },
+              {
+                "name": "EXPECTED_SOURCE_COMMIT",
+                "value": "68c76e3c725a7478529ba061eb572994956bd966"
+              },
+              {
+                "name": "EXPECTED_CATALOG_SHA256",
+                "value": "bd7492876e858271c2807813b571c506b825c7ac8f8ccde04caa16324cb5b9e2"
+              },
+              {
+                "name": "GOMAXPROCS",
+                "value": "1"
+              },
+              {
+                "name": "GIT_CONFIG_GLOBAL",
+                "value": "/dev/null"
+              },
+              {
+                "name": "GIT_CONFIG_NOSYSTEM",
+                "value": "1"
+              },
+              {
+                "name": "GIT_TERMINAL_PROMPT",
+                "value": "0"
+              },
+              {
+                "name": "GIT_ASKPASS",
+                "value": "/bin/false"
+              },
+              {
+                "name": "SSH_ASKPASS",
+                "value": "/bin/false"
+              },
+              {
+                "name": "DISABLE_AUTOUPDATER",
+                "value": "1"
+              },
+              {
+                "name": "CHECK_POD_NAME",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.name"
+                  }
+                }
+              },
+              {
+                "name": "CHECK_POD_UID",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.uid"
+                  }
+                }
+              }
+            ],
+            "image": "ghcr.io/thaynes43/dev-env:2.13.0@sha256:4ef99b35266064f9af5f1f4b86629001c56e6a47d9948707f09ff0ddee3e743a",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "bootstrap-check",
+            "resources": {
+              "limits": {
+                "cpu": "500m",
+                "memory": "1Gi"
+              },
+              "requests": {
+                "cpu": "50m",
+                "memory": "128Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/home/dev",
+                "name": "home"
+              },
+              {
+                "mountPath": "/tmp",
+                "name": "tmp"
+              },
+              {
+                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                "name": "kube-api-access",
+                "readOnly": true
+              }
+            ]
+          }
+        ],
+        "dnsConfig": {
+          "options": [
+            {
+              "name": "ndots",
+              "value": "1"
+            }
+          ]
+        },
+        "dnsPolicy": "ClusterFirst",
+        "enableServiceLinks": false,
+        "nodeSelector": {
+          "kubernetes.io/hostname": "talosw01"
+        },
+        "restartPolicy": "Never",
+        "securityContext": {
+          "fsGroup": 1000,
+          "runAsGroup": 1000,
+          "runAsNonRoot": true,
+          "runAsUser": 1000,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "serviceAccountName": "dev-env-project-bootstrap-check",
+        "terminationGracePeriodSeconds": 10,
+        "volumes": [
+          {
+            "emptyDir": {
+              "sizeLimit": "1Gi"
+            },
+            "name": "home"
+          },
+          {
+            "emptyDir": {
+              "sizeLimit": "64Mi"
+            },
+            "name": "tmp"
+          },
+          {
+            "name": "kube-api-access",
+            "projected": {
+              "defaultMode": 288,
+              "sources": [
+                {
+                  "serviceAccountToken": {
+                    "expirationSeconds": 600,
+                    "path": "token"
+                  }
+                },
+                {
+                  "configMap": {
+                    "items": [
+                      {
+                        "key": "ca.crt",
+                        "path": "ca.crt"
+                      }
+                    ],
+                    "name": "kube-root-ca.crt"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
