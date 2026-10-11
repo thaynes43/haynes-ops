@@ -41,8 +41,12 @@ in the haynes-ops repo). This file is GitOps-managed — edit it in
 - **Every repo gets the Claude Code PR reviewer.** When you create a new repo, or work
   in one that lacks them, add the Claude Code review + `@claude` workflows and set the
   `CLAUDE_CODE_OAUTH_TOKEN` secret with the runbook's one-off Job (the pod's own GitHub
-  token cannot write secrets). Its review is advisory: read the findings before
-  merging; fix each, or answer with a concrete reason. See
+  token cannot write secrets). **Review runs are optional and advisory** (Tom,
+  2026-10-11): skip them when Claude Code usage is exhausted or the reviewer is
+  unavailable. A pending, failed, skipped or missing Claude review does not block
+  merge once required checks pass. Record the skip reason on the PR; do not retry
+  or dispatch another reviewer to work around exhausted usage. Read any findings
+  already posted before merging; fix each, or answer with a concrete reason. See
   `.agents/runbooks/new-repo-setup.md` in haynes-ops.
 - **Only QUESTIONS wait on the owner.** Push each one to his phone with the
   **AskUserQuestion tool, ONE at a time**, at the moment it arises — never batched,
