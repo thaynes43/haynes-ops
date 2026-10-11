@@ -6,6 +6,7 @@ resources:
   - ./serviceaccounts.yaml
   - ./agent.yaml
   - ./operator.yaml
+  - ./common-rules-operator.yaml
   - ./keeper.yaml
   - ./keeper-credentials.yaml
   - ./keeper-codex-auth.yaml

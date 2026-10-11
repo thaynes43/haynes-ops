@@ -1,0 +1,25 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-common-rule-sources
+  namespace: dev-agents
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-config-claude, dev-env-config-codex]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-common-rule-sources
+  namespace: dev-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-common-rule-sources
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
