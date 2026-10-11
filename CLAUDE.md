@@ -75,7 +75,7 @@ git add <files>
 git commit -m "description"
 git push -u origin HEAD
 gh pr create
-gh pr checks --watch
+gh pr checks --required --watch
 gh pr merge --squash
 ```
 

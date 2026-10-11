@@ -130,11 +130,15 @@ YAML and is outside this migration.
 
 Start with `sigo-alumni`, then prove Docker builds, workspace bind mounts,
 PostgreSQL services, and Chromium jobs in the other repositories. Their PR checks
-must complete on ARC before squash merge. Read every advisory Claude review.
+must complete on ARC before squash merge. Claude Code reviews are optional and
+advisory: skip them when Claude Code usage is exhausted or the reviewer is
+unavailable, and record the reason on the PR. A pending, failed, skipped or missing
+review does not block merge once required checks pass. Read and address any findings
+already posted; do not retry or dispatch another reviewer to work around exhausted usage.
 For a repository missing automated reviews, add the reviewer and `@claude`
 workflows and provision its credential using `new-repo-setup.md`. Reviewers
-must fire on opening, updating, and readying a PR; read their findings before
-merging.
+remain configured for opening, updating, and readying a PR; read any findings already
+posted before merging.
 
 After merging, inspect a real default-branch or scheduled run. In particular,
 `sigmaphiomicron-com` deploys every six hours and `haynes-swarm` audits weekly.
