@@ -5,8 +5,8 @@ metadata:
   name: dev-env-project-bootstrap-check
   namespace: dev-env-system
 spec:
-  # Attempt 1 remains retained unchanged. Only the separately named second
-  # model-free check is a health gate; cleanup requires reviewed GitOps.
+  # Both terminal bootstrap attempts remain retained unchanged. Only the
+  # separately named roots check is a health gate; cleanup requires reviewed GitOps.
   suspend: false
   path: ./kubernetes/main/apps/dev-env-system/project-bootstrap-check/app
   prune: true
@@ -19,7 +19,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: dev-env-project-bootstrap-check-1011b
+      name: dev-env-private-project-roots-check-1011
       namespace: dev-agents
   interval: 30m
   timeout: 11m

@@ -193,3 +193,14 @@ neighbors once prerequisites are met.
 | [09 — LAN control plane / UI](backlog/09-control-plane.md) (folded into dev-env v2, Decision #9) | 07 | last |
 | [10 — Taskfile overhaul](backlog/10-taskfile-overhaul.md) | — | ∥ anytime; ideally before 02 so pod agents inherit trustworthy tasks |
 | [11 — haynesnetwork build/run/test readiness](backlog/11-haynesnetwork-readiness.md) | 02 | done except e2e — Tom's gate before dispatching haynesnetwork backlog work |
+
+## V2 private-project roots promotion — 2026-10-11
+
+[Bounded roots promotion](verification/private-project-roots-2026-10-11.md)
+records signed 2.14.0 source/image, new-session-only settings and a separate
+model-free ownership/anchor check. Both terminal bootstrap fixtures, existing
+sessions and the original failed native fixture/ledger remain retained.
+Built, deployed and accepted are separate receipts; actual provider rules and
+the multi-provider MVP remain unaccepted. Claude reviews are optional by owner
+ruling; required CI and native independent review remain gates. No v1 bounce
+or cutover follows.

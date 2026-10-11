@@ -10,9 +10,9 @@
 # tracks this line with its own regex manager (.renovate/customManagers.json5), and the
 # dev-env manual-merge rule applies. A change here reaches NEW sessions only: running
 # pods keep their image and are reported Outdated (D-44).
-# v2.13.0 source 68c76e3c725a7478529ba061eb572994956bd966 (release dev-env#180).
-# publish-agent.yml run 38150512129 smoke-tested/signed/verified on refs/tags/v2.13.0.
-image: ghcr.io/thaynes43/dev-env:2.13.0@sha256:4ef99b35266064f9af5f1f4b86629001c56e6a47d9948707f09ff0ddee3e743a
+# v2.14.0 source 2b6d59682499456998200535caa2df5af74609b2 (release dev-env#182).
+# publish-agent.yml run 38154456128 smoke-tested/signed/verified on refs/tags/v2.14.0.
+image: ghcr.io/thaynes43/dev-env:2.14.0@sha256:e69e676786db9a0d5c14213730429a73425834a09b95aada4c8c365c70f72177
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
@@ -59,6 +59,7 @@ env:
   # The existing dev-env-agent ClusterRole already grants ConfigMap GET; no new
   # worker permission or private-project task admission follows from these settings.
   - { name: AGENTD_ENABLE_PRIVATE_PROJECT_BOOTSTRAP, value: "true" }
+  - { name: AGENTD_ENABLE_PRIVATE_PROJECT_ROOTS, value: "true" }
   - { name: AGENTD_PROJECT_CATALOG, value: dev-env-system/dev-env-project-catalog }
   - { name: AGENTD_PROJECT_CLONE_OWNER, value: thaynes43 }
   # The pod-wide Claude default (Opus 5.5). Full model ids, never aliases.
