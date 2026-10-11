@@ -1,0 +1,121 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: inboxreadacks.coordination.dev-env.haynesops.com
+spec:
+  group: coordination.dev-env.haynesops.com
+  names:
+    kind: InboxReadAck
+    listKind: InboxReadAckList
+    plural: inboxreadacks
+    singular: inboxreadack
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: InboxReadAck records explicit API acknowledgement only. GET never
+          creates it.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              actor:
+                properties:
+                  kind:
+                    enum:
+                    - session
+                    - coordinator
+                    type: string
+                  podName:
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
+                  podUID:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                  serviceAccount:
+                    maxLength: 317
+                    minLength: 3
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?/[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
+                required:
+                - kind
+                - podName
+                - podUID
+                - serviceAccount
+                type: object
+              messageName:
+                maxLength: 80
+                pattern: ^message\.[a-f0-9]{32}\.[a-f0-9]{32}$
+                type: string
+              messageUID:
+                maxLength: 128
+                minLength: 1
+                pattern: ^[A-Za-z0-9-]+$
+                type: string
+              project:
+                maxLength: 63
+                pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                type: string
+              recipient:
+                properties:
+                  name:
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
+                  namespace:
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                    type: string
+                  uid:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                required:
+                - name
+                - namespace
+                - uid
+                type: object
+            required:
+            - actor
+            - messageName
+            - messageUID
+            - project
+            - recipient
+            type: object
+            x-kubernetes-validations:
+            - message: original message and recipient acknowledgement are immutable
+              rule: self == oldSelf
+            - message: only original Session recipients acknowledge
+              rule: self.actor.kind == 'session'
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
