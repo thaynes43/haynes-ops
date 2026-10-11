@@ -5,3 +5,4 @@ namespace: dev-agents
 resources:
   - serviceaccount.yaml
   - job.json
+  - job-2.json
