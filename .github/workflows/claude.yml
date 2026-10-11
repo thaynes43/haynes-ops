@@ -91,3 +91,17 @@ jobs:
           claude_args: "--model claude-opus-5-5"
           additional_permissions: |
             actions: read
+
+      - name: Diagnose Claude failure safely
+        if: always() && steps.claude.outcome == 'failure'
+        env:
+          CLAUDE_EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          TRUSTED_DIAGNOSTIC_REF: refs/remotes/origin/${{ github.event.repository.default_branch }}
+        run: |
+          trusted_helper="$RUNNER_TEMP/claude-failure-diagnose.py"
+          if git show "$TRUSTED_DIAGNOSTIC_REF:scripts/claude-review-diagnostics/diagnose.py" > "$trusted_helper" 2>/dev/null; then
+            nice -n 19 python3 "$trusted_helper"
+          else
+            rm -f "$trusted_helper"
+            echo "::notice::Trusted Claude diagnostic helper is absent; no execution content was printed."
+          fi
