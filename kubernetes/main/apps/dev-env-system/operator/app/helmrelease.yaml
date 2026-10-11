@@ -64,9 +64,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Main af80cfc8bc2bcb4cb28290ac110eff924308be76; publish.yml run 38155510294, keyless verified.
-              # Source adds the default-off private managed HOME and durable identity retention guard.
-              tag: sha-af80cfc@sha256:def7dac13c94da7a31b943f4b8944c327aa0508e3cbbb9423bfe0c32021dc120
+              # Main d95e8fbe7b3e1c07eed75959819cd35f90a155c4; publish.yml run 38159542551, keyless verified.
+              # Source preserves retention and adds protected immutable task ownership.
+              tag: sha-d95e8fb@sha256:56fe9e27fa4d3ba73a105cf069aa3655559613e463193a643d40fc3bad2bc1e6
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -82,6 +82,8 @@ spec:
               - '--enable-managed-codex-tasks'
               - '--enable-private-project-tasks=false'
               - '--enable-private-history-retention=true'
+              - '--enable-task-claims=true'
+              - '--task-claims-read-projects=dev-env'
               - '--project-catalog=dev-env-system/dev-env-project-catalog'
               - '--project-clone-owner=thaynes43'
               - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-native-lifecycle","hostID":"owned-native-fixture"}]'
