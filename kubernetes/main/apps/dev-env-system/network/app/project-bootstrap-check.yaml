@@ -1,0 +1,42 @@
+---
+# Applied by dev-env-network before the check's dependent Kustomization starts.
+# The check reads its one accepted ConfigMap and anonymously fetches the public
+# GitHub repository. It reaches no operator API, MCP service or provider endpoint.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-project-bootstrap-check
+  namespace: dev-agents
+spec:
+  description: bounded model-free private catalog bootstrap check
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-project-bootstrap-check
+  ingress:
+    - {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: github.com
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    - toFQDNs:
+        - matchName: github.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

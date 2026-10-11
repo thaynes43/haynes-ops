@@ -5,6 +5,7 @@ kind: Kustomization
 resources:
   - ./session-platform.yaml
   - ./session-web.yaml
+  - ./project-bootstrap-check.yaml
   - ./tools-default-deny.yaml
   - ./system-default-deny.yaml
   - ./operator.yaml

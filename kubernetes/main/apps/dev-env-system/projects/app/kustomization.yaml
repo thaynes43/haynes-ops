@@ -10,3 +10,4 @@ generatorOptions:
   disableNameSuffixHash: true
 resources:
   - operator.yaml
+  - bootstrap-check.yaml
