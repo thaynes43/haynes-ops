@@ -261,6 +261,78 @@ spec:
                 - message: immutable after create; only operatingMode and lifecycle
                     may change
                   rule: self == oldSelf
+              projectCanary:
+                description: |-
+                  ProjectCanary is authored by the strict operator-owned canary route.
+                  It permanently binds the original accepted source and reviewed policy.
+                properties:
+                  catalogResourceVersion:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                  catalogRevision:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  catalogUID:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                  client:
+                    maxLength: 127
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?/[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                  cloneOwner:
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                  id:
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                  image:
+                    maxLength: 512
+                    minLength: 1
+                    type: string
+                  policyDigest:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  rulesRevision:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  snapshotDigest:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  templateRevision:
+                    maxLength: 63
+                    minLength: 1
+                    type: string
+                  version:
+                    enum:
+                    - 1
+                    type: integer
+                required:
+                - catalogResourceVersion
+                - catalogRevision
+                - catalogUID
+                - client
+                - cloneOwner
+                - id
+                - image
+                - policyDigest
+                - rulesRevision
+                - snapshotDigest
+                - templateRevision
+                - version
+                type: object
+                x-kubernetes-validations:
+                - message: project canary binding is immutable
+                  rule: self == oldSelf
               prompt:
                 description: Prompt is the task. Task mode only, and required there.
                 maxLength: 262144
@@ -380,7 +452,18 @@ spec:
                 && has(self.lane) == has(oldSelf.lane) && has(self.idempotencyKey)
                 == has(oldSelf.idempotencyKey) && has(self.limits) == has(oldSelf.limits)
                 && has(self.restore) == has(oldSelf.restore) && has(self.workspace)
-                == has(oldSelf.workspace)
+                == has(oldSelf.workspace) && has(self.projectCanary) == has(oldSelf.projectCanary)
+            - message: project canaries require their fixed private bounded subscription
+                task contract
+              rule: '!has(self.projectCanary) || (self.mode == ''task'' && self.agent
+                in [''claude'', ''codex''] && self.size == ''S'' && has(self.parent)
+                && self.parent == self.projectCanary.client && !has(self.workspace)
+                && !has(self.restore) && !has(self.tools) && !has(self.llm) && !has(self.caller)
+                && !has(self.lane) && !has(self.lifecycle) && has(self.limits) &&
+                has(self.limits.timeout) && duration(self.limits.timeout) <= duration(''180s'')
+                && (self.agent == ''codex'' ? (!has(self.limits.maxTurns) || self.limits.maxTurns
+                == 0) : (has(self.limits.maxTurns) && self.limits.maxTurns > 0 &&
+                self.limits.maxTurns <= 3)))'
           status:
             description: |-
               AgentSessionStatus is what the operator and agentd observed. Reconcile is

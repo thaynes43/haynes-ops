@@ -12,6 +12,9 @@ resources:
   - ./taskclaims-operator.yaml
   - ./coordination.dev-env.haynesops.com_publishedcontexts.yaml
   - ./publishedcontexts-operator.yaml
+  - ./coordination.dev-env.haynesops.com_inboxmessages.yaml
+  - ./coordination.dev-env.haynesops.com_inboxreadacks.yaml
+  - ./inbox-operator.yaml
 patches:
   # A CRD is never pruned (DESIGN-001 D-03): deleting it deletes every session.
   - target:

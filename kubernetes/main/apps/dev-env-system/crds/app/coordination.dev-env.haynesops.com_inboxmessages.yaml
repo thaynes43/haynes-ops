@@ -1,0 +1,214 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: inboxmessages.coordination.dev-env.haynesops.com
+spec:
+  group: coordination.dev-env.haynesops.com
+  names:
+    kind: InboxMessage
+    listKind: InboxMessageList
+    plural: inboxmessages
+    singular: inboxmessage
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          InboxMessage is durable API content. It has no Session owner reference,
+          status controller, expiry or provider-delivery side effect.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              actor:
+                properties:
+                  kind:
+                    enum:
+                    - session
+                    - coordinator
+                    type: string
+                  podName:
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
+                  podUID:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                  serviceAccount:
+                    maxLength: 317
+                    minLength: 3
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?/[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
+                required:
+                - kind
+                - podName
+                - podUID
+                - serviceAccount
+                type: object
+              key:
+                maxLength: 128
+                pattern: ^[a-z0-9]([a-z0-9._-]{0,126}[a-z0-9])?$
+                type: string
+              project:
+                maxLength: 63
+                pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                type: string
+              provenance:
+                properties:
+                  catalogRevision:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  defaultBranch:
+                    maxLength: 255
+                    minLength: 1
+                    type: string
+                  github:
+                    maxLength: 140
+                    pattern: ^[a-z0-9]([a-z0-9-]{0,37}[a-z0-9])?/[a-z0-9_.-]{1,100}$
+                    type: string
+                  initialPinState:
+                    description: This first unit has no bound startup pin receipt.
+                      A heartbeat cannot prove it.
+                    enum:
+                    - Unknown
+                    type: string
+                  reportedAt:
+                    format: date-time
+                    type: string
+                  reportedHead:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{40}([a-f0-9]{24})?$
+                    type: string
+                  rulesRevision:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                required:
+                - catalogRevision
+                - defaultBranch
+                - github
+                - initialPinState
+                - rulesRevision
+                type: object
+                x-kubernetes-validations:
+                - message: reported HEAD requires its observation timestamp
+                  rule: has(self.reportedHead) == has(self.reportedAt)
+                - message: GitHub repository is not a path
+                  rule: '!self.github.endsWith(''/.'') && !self.github.endsWith(''/..'')'
+                - message: GitHub identity omits the transport suffix
+                  rule: '!self.github.endsWith(''.git'')'
+              provider:
+                description: Configured provider and requested model, never actual
+                  model execution.
+                enum:
+                - claude
+                - codex
+                - opencode
+                type: string
+              recipient:
+                properties:
+                  name:
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
+                  namespace:
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                    type: string
+                  uid:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                required:
+                - name
+                - namespace
+                - uid
+                type: object
+              repository:
+                maxLength: 63
+                pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                type: string
+              requestedModel:
+                maxLength: 128
+                minLength: 1
+                type: string
+              sender:
+                properties:
+                  name:
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
+                  namespace:
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                    type: string
+                  uid:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                required:
+                - name
+                - namespace
+                - uid
+                type: object
+              text:
+                description: CEL bytes enforces UTF-8 bytes rather than the schema's
+                  character count.
+                maxLength: 16384
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: message exceeds 16 KiB UTF-8
+                  rule: size(bytes(self)) <= 16384
+            required:
+            - actor
+            - key
+            - project
+            - provenance
+            - provider
+            - recipient
+            - repository
+            - requestedModel
+            - sender
+            - text
+            type: object
+            x-kubernetes-validations:
+            - message: message intent and original attribution are immutable
+              rule: self == oldSelf
+            - message: only original Session senders publish
+              rule: self.actor.kind == 'session'
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
