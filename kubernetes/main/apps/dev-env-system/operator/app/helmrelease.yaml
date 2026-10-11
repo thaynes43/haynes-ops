@@ -64,9 +64,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Main d95e8fbe7b3e1c07eed75959819cd35f90a155c4; publish.yml run 38159542551, keyless verified.
-              # Source preserves retention and adds protected immutable task ownership.
-              tag: sha-d95e8fb@sha256:56fe9e27fa4d3ba73a105cf069aa3655559613e463193a643d40fc3bad2bc1e6
+              # Main 5cfcf0e02f9d16d11b3a9d92bd9f56fde748d3d2; publish.yml run 38161917707, keyless verified.
+              # Source preserves retention/claims and adds scoped immutable published context.
+              tag: sha-5cfcf0e@sha256:9f951a59298752ed33fb7d2f9026ceb51a10c3ae5e6f05e937629041afd14969
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -84,6 +84,8 @@ spec:
               - '--enable-private-history-retention=true'
               - '--enable-task-claims=true'
               - '--task-claims-read-projects=dev-env'
+              - '--enable-published-contexts=true'
+              - '--context-payload-read-projects=dev-env'
               - '--project-catalog=dev-env-system/dev-env-project-catalog'
               - '--project-clone-owner=thaynes43'
               - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-native-lifecycle","hostID":"owned-native-fixture"}]'
