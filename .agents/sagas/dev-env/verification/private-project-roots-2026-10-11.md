@@ -65,3 +65,28 @@ internal cause is Unknown. A separate offline Git proof establishes an umask
 The operational count is 1 of 3. All 11 protected Pods, both earlier Jobs and
 the original native ledger matched the baseline; activity ended. Roots and
 provider-rule acceptance remain open.
+
+## Reviewed candidate for attempt 2 — 2026-10-11 UTC
+
+Source #186 corrects generated wrapper permissions after a fresh owned checkout
+or proved-clean rules advance. Existing drift is preserved/refused. Release
+#188 tags v2.15.1 at `2da15bf83ee3ca7fff5e4112732c21aefe3a7f46`.
+Publication [38158809160](https://github.com/thaynes43/dev-env/actions/runs/38158809160)
+passed smoke, push, signing and exact-tag signature verification. The candidate
+pins new-session templates and the separately named
+`dev-env-private-project-roots-check-1011b` to
+`ghcr.io/thaynes43/dev-env:2.15.1@sha256:b44f676305bab133b32e9d53d108a43a8da45379829024d3068e8dafc778c04d`.
+
+The new check keeps umask 077, the established private HOME 1Gi and temporary
+64Mi emptyDirs, mount fields, one container, limits/deadline, named catalog GET
+and egress. It adds bounded regular-file hashes and allowlisted state/count
+diagnostics on failure, excluding raw stderr, report detail, rule text, names,
+credentials and history. Syntax/spec checks, four narrow renders and nine finite
+offline verifier cases passed. No agentd/provider/cluster execution occurred.
+
+All three prior Job manifests and inventory entries remain exact. Only the new
+Job becomes the Flux health target. Native independent review and required CI
+remain gates. Count is still 1 of 3 before this new Job executes; deployment
+would be attempt 2, never a reset of the logical counter. Actual private/native
+startup and provider rule acceptance remain open even if this model-free check
+passes. Preserve failed fixtures, ledgers and existing sessions without restart.

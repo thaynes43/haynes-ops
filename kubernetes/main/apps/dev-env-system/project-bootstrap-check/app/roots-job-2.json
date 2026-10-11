@@ -1,0 +1,221 @@
+{
+  "apiVersion": "batch/v1",
+  "kind": "Job",
+  "metadata": {
+    "labels": {
+      "app.kubernetes.io/name": "dev-env-project-bootstrap-check"
+    },
+    "name": "dev-env-private-project-roots-check-1011b",
+    "namespace": "dev-agents"
+  },
+  "spec": {
+    "activeDeadlineSeconds": 600,
+    "backoffLimit": 0,
+    "completions": 1,
+    "parallelism": 1,
+    "suspend": false,
+    "template": {
+      "metadata": {
+        "annotations": {
+          "k8tz.io/inject": "false"
+        },
+        "labels": {
+          "app.kubernetes.io/name": "dev-env-project-bootstrap-check"
+        }
+      },
+      "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+          {
+            "command": [
+              "/usr/local/bin/tini",
+              "--",
+              "/bin/bash",
+              "-euc",
+              "umask 077\nstage=private-home-empty\ncheck_failure() {\n CHECK_VERIFICATION_STAGE=\"$stage\" python3 - <<'ROOTS_COMMAND_FAILURE'\nimport hashlib,json,os,pathlib,stat\nSAFE_HOME=pathlib.Path('/home/dev')\nSAFE_TMP=pathlib.Path('/tmp')\nSAFE_STATES={'Disabled','Started','Ready','Partial','Failed','Preserved','Unknown'}\nSAFE_STAGES={'private-home-empty','agentd-version-command','first-project-refresh-command','first-verification','second-project-refresh-command','second-verification','build-identity','private-report-equality','catalog-identity','repository-report','private-reference-clone','ownership-receipt','root-ownership-and-wrappers','owned-detached-anchor','no-provider-state','stable-identity-snapshot','second-refresh-preservation'}\ndef safe_stage(value): return value if value in SAFE_STAGES else 'Unknown'\ndef checked_diagnostic_bytes(path,limit=1048576):\n path=pathlib.Path(path)\n if not path.is_absolute() or not (path.is_relative_to(SAFE_HOME) or path.is_relative_to(SAFE_TMP)): raise ValueError()\n for part in [path,*path.parents]:\n  if stat.S_ISLNK(part.lstat().st_mode): raise ValueError()\n fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK|os.O_CLOEXEC)\n with os.fdopen(fd,'rb') as stream:\n  before=os.fstat(stream.fileno())\n  if not stat.S_ISREG(before.st_mode) or before.st_uid!=1000 or before.st_nlink!=1 or before.st_size>limit: raise ValueError()\n  data=stream.read(limit+1)\n  after=os.fstat(stream.fileno())\n  if len(data)>limit or (before.st_dev,before.st_ino,before.st_uid,before.st_nlink,before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_dev,after.st_ino,after.st_uid,after.st_nlink,after.st_size,after.st_mtime_ns,after.st_ctime_ns): raise ValueError()\n  return data\ndef safe_failure_diagnostics():\n result={'sha256':{},'reports':{}}\n paths={'refresh1':SAFE_TMP/'refresh-1.json','refresh2':SAFE_TMP/'refresh-2.json','bootstrap':SAFE_HOME/'.agentd/project-bootstrap.json','ownership':SAFE_HOME/'.agentd/project-roots/dev-env.json','operation':SAFE_HOME/'.agentd/project-roots/dev-env.operation.json','commandError':SAFE_TMP/'command-error.log'}\n for key,path in paths.items():\n  try: data=checked_diagnostic_bytes(path)\n  except Exception: continue\n  result['sha256'][key]=hashlib.sha256(data).hexdigest()\n  if key not in {'refresh1','refresh2','bootstrap','operation'}: continue\n  try: value=json.loads(data)\n  except Exception: continue\n  if not isinstance(value,dict): continue\n  safe={}\n  state=value.get('state')\n  if isinstance(state,str) and state in SAFE_STATES: safe['state']=state\n  for field in ['repositories','projects']:\n   rows=value.get(field)\n   if not isinstance(rows,list) or len(rows)>256: continue\n   safe[field+'Count']=len(rows)\n   counts={}\n   for row in rows:\n    state=row.get('state') if isinstance(row,dict) else None\n    if isinstance(state,str) and state in SAFE_STATES: counts[state]=counts.get(state,0)+1\n   safe[field+'States']=counts\n  if safe: result['reports'][key]=safe\n return result\n\nprint(json.dumps({'state':'Failed','modelFree':True,'reason':'roots-command-failed','stage':safe_stage(os.environ.get('CHECK_VERIFICATION_STAGE','')),'diagnostics':safe_failure_diagnostics()},sort_keys=True))\nROOTS_COMMAND_FAILURE\n}\ntrap 'check_failure' ERR\ntest -z \"$(ls -A /home/dev)\"\ncat > /tmp/verify-roots.py <<'ROOTS_VERIFY'\nimport hashlib,json,os,pathlib,re,stat,subprocess,sys\nphase=int(sys.argv[1])\nstage='build-identity'\nversion='unconfirmed'\nhome=pathlib.Path('/home/dev')\nroot=home/'codex/dev-env'\nclone=home/'repos/dev-env'\nanchor=root/'dev-env'\nstate=home/'.agentd'\nrepo={'name':'dev-env','github':'thaynes43/dev-env','defaultBranch':'main'}\ndef require(ok):\n if not ok: raise ValueError()\ndef digest(data): return hashlib.sha256(data).hexdigest()\ndef regular(path,limit=1048576,mode=None):\n path=pathlib.Path(path)\n require(path.is_absolute() and (path.is_relative_to(home) or path.is_relative_to('/tmp')))\n for part in [path,*path.parents]:\n  require(not stat.S_ISLNK(part.lstat().st_mode))\n info=path.lstat()\n require(stat.S_ISREG(info.st_mode) and info.st_uid==1000 and info.st_size<=limit)\n if mode is not None: require((stat.S_IMODE(info.st_mode)&0o777)==mode)\n return path.read_bytes()\ndef document(path): return json.loads(regular(path))\ndef git(path,*args,expected=0):\n env=dict(os.environ,GIT_OPTIONAL_LOCKS='0')\n result=subprocess.run(['git','-C',str(path),'-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false','-c','core.useReplaceRefs=false',*args],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,env=env,timeout=5)\n require(result.returncode==expected)\n return result.stdout.strip()\ndef source(value):\n require(value.get('repository')==repo and value.get('state')=='Ready')\n require(re.fullmatch('[0-9a-f]{40}',value.get('target','')) is not None)\n require(isinstance(value.get('fetchedAt'),str) and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z',value['fetchedAt']) is not None)\n return value['target']\ndef wrapper(snapshot):\n return ('# Project dev-env\\n\\nRepositories and task worktrees are local to each pod. Keep reference clones for source preparation and implement in a task worktree. New tasks use freshly fetched, pinned source; resume preserves existing work.\\n\\nProject repositories:\\n- dev-env -> thaynes43/dev-env (default branch: main)\\n\\n<!-- dev-env-project catalog-sha256='+snapshot['catalogRevision']+' rules-sha256='+snapshot['rulesRevision']+' -->\\n\\n## Project rules\\n\\n'+snapshot['rules']+'\\n').encode()\nimport hashlib,json,os,pathlib,stat\nSAFE_HOME=pathlib.Path('/home/dev')\nSAFE_TMP=pathlib.Path('/tmp')\nSAFE_STATES={'Disabled','Started','Ready','Partial','Failed','Preserved','Unknown'}\nSAFE_STAGES={'private-home-empty','agentd-version-command','first-project-refresh-command','first-verification','second-project-refresh-command','second-verification','build-identity','private-report-equality','catalog-identity','repository-report','private-reference-clone','ownership-receipt','root-ownership-and-wrappers','owned-detached-anchor','no-provider-state','stable-identity-snapshot','second-refresh-preservation'}\ndef safe_stage(value): return value if value in SAFE_STAGES else 'Unknown'\ndef checked_diagnostic_bytes(path,limit=1048576):\n path=pathlib.Path(path)\n if not path.is_absolute() or not (path.is_relative_to(SAFE_HOME) or path.is_relative_to(SAFE_TMP)): raise ValueError()\n for part in [path,*path.parents]:\n  if stat.S_ISLNK(part.lstat().st_mode): raise ValueError()\n fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK|os.O_CLOEXEC)\n with os.fdopen(fd,'rb') as stream:\n  before=os.fstat(stream.fileno())\n  if not stat.S_ISREG(before.st_mode) or before.st_uid!=1000 or before.st_nlink!=1 or before.st_size>limit: raise ValueError()\n  data=stream.read(limit+1)\n  after=os.fstat(stream.fileno())\n  if len(data)>limit or (before.st_dev,before.st_ino,before.st_uid,before.st_nlink,before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_dev,after.st_ino,after.st_uid,after.st_nlink,after.st_size,after.st_mtime_ns,after.st_ctime_ns): raise ValueError()\n  return data\ndef safe_failure_diagnostics():\n result={'sha256':{},'reports':{}}\n paths={'refresh1':SAFE_TMP/'refresh-1.json','refresh2':SAFE_TMP/'refresh-2.json','bootstrap':SAFE_HOME/'.agentd/project-bootstrap.json','ownership':SAFE_HOME/'.agentd/project-roots/dev-env.json','operation':SAFE_HOME/'.agentd/project-roots/dev-env.operation.json','commandError':SAFE_TMP/'command-error.log'}\n for key,path in paths.items():\n  try: data=checked_diagnostic_bytes(path)\n  except Exception: continue\n  result['sha256'][key]=hashlib.sha256(data).hexdigest()\n  if key not in {'refresh1','refresh2','bootstrap','operation'}: continue\n  try: value=json.loads(data)\n  except Exception: continue\n  if not isinstance(value,dict): continue\n  safe={}\n  state=value.get('state')\n  if isinstance(state,str) and state in SAFE_STATES: safe['state']=state\n  for field in ['repositories','projects']:\n   rows=value.get(field)\n   if not isinstance(rows,list) or len(rows)>256: continue\n   safe[field+'Count']=len(rows)\n   counts={}\n   for row in rows:\n    state=row.get('state') if isinstance(row,dict) else None\n    if isinstance(state,str) and state in SAFE_STATES: counts[state]=counts.get(state,0)+1\n   safe[field+'States']=counts\n  if safe: result['reports'][key]=safe\n return result\n\ntry:\n text=regular('/tmp/agentd-version.txt',4096).decode().strip()\n build=re.fullmatch(r'agentd (v[0-9]+\\.[0-9]+\\.[0-9]+) \\(commit ([0-9a-f]{40}), go[0-9.]+, linux/amd64\\)',text)\n if build: version=text\n require(build is not None and build[1]==os.environ['EXPECTED_AGENTD_VERSION'] and build[2]==os.environ['EXPECTED_SOURCE_COMMIT'])\n stage='private-report-equality'\n report=document('/tmp/refresh-'+str(phase)+'.json')\n saved=state/'project-bootstrap.json'\n require(report==document(saved) and (stat.S_IMODE(state.stat().st_mode)&0o777)==0o700)\n require(report.get('version')==1 and report.get('state')=='Ready')\n stage='catalog-identity'\n require(report.get('catalogNamespace')=='dev-env-system' and report.get('catalogName')=='dev-env-project-catalog')\n require(isinstance(report.get('catalogUID'),str) and bool(report['catalogUID']))\n require(isinstance(report.get('catalogResourceVersion'),str) and bool(report['catalogResourceVersion']))\n require(re.fullmatch('[0-9a-f]{64}',report.get('catalogRevision','')) is not None)\n if phase==1: require(report['catalogRevision']==os.environ['EXPECTED_CATALOG_SHA256'])\n stage='repository-report'\n require(len(report.get('repositories',[]))==1 and len(report.get('projects',[]))==1)\n reference_target=source(report['repositories'][0])\n project=report['projects'][0]\n require(project.get('state')=='Ready' and project.get('project')=='dev-env')\n require(project.get('catalogRevision')==report['catalogRevision'] and len(project.get('repositories',[]))==1)\n anchor_target=source(project['repositories'][0])\n stage='private-reference-clone'\n require(clone.is_dir() and not (clone/'.git').is_symlink() and (clone/'.git').is_dir())\n require(git(clone,'rev-parse','--path-format=absolute','--git-common-dir')==str(clone/'.git'))\n require(git(clone,'rev-parse','--show-toplevel')==str(clone))\n require(git(clone,'remote','get-url','--all','origin')=='https://github.com/thaynes43/dev-env')\n require(git(clone,'remote','get-url','--push','--all','origin')=='https://github.com/thaynes43/dev-env')\n require(git(clone,'symbolic-ref','--quiet','HEAD')=='refs/heads/main')\n require(git(clone,'rev-parse','HEAD')==reference_target)\n # Roots use a second fresh fetch; main may advance after reference preparation.\n require(git(clone,'rev-parse','refs/remotes/origin/main')==anchor_target)\n require(git(clone,'status','--porcelain=v1','--untracked-files=all')=='')\n stage='ownership-receipt'\n receipt_path=state/'project-roots/dev-env.json'\n receipt=document(receipt_path)\n require((stat.S_IMODE(receipt_path.stat().st_mode)&0o777)==0o600)\n require(receipt.get('version')==1 and re.fullmatch('[0-9a-f-]{36}',receipt.get('id','')) is not None)\n require(receipt.get('root')==str(root) and receipt.get('gitDir')==str(root/'.git') and receipt.get('branch')=='dev-env/project')\n require(receipt.get('head')==project.get('head') and receipt.get('repositories')==project['repositories'])\n operation_path=state/'project-roots/dev-env.operation.json'\n require(document(operation_path)==project)\n snapshot=receipt['snapshot']\n require(snapshot.get('version')==1 and snapshot.get('project')=='dev-env' and snapshot.get('repositories')==[repo] and snapshot.get('selected')=='dev-env')\n require(snapshot.get('catalogRevision')==report['catalogRevision'])\n require(isinstance(snapshot.get('rules'),str) and len(snapshot['rules'].encode())<=16384)\n require(snapshot.get('rulesRevision')==digest(snapshot['rules'].encode()) and project.get('rulesRevision')==snapshot['rulesRevision'])\n if phase==1: require(snapshot['rules']=='' and snapshot['rulesRevision']==digest(b''))\n expected_wrapper=wrapper(snapshot)\n require(receipt.get('wrapperDigest')==digest(expected_wrapper) and receipt.get('exclusion')=='/dev-env/\\n')\n stage='root-ownership-and-wrappers'\n require(not root.is_symlink() and not (root/'.git').is_symlink() and (root/'.git').is_dir())\n require(set(p.name for p in root.iterdir())=={'.git','AGENTS.md','CLAUDE.md','dev-env'})\n require(regular(root/'.git/dev-env-project-id',4096,0o600).decode()==receipt['id'])\n require(digest(regular(root/'.git/config',65536))==receipt.get('configDigest'))\n require(regular(root/'.git/info/exclude',4096).decode()==receipt['exclusion'])\n for name in ['AGENTS.md','CLAUDE.md']: require(regular(root/name,32768,0o644)==expected_wrapper)\n for relative in ['info/attributes','objects/info/alternates','objects/info/http-alternates','config.worktree']: require(not (root/'.git'/relative).exists())\n require(git(root,'rev-parse','--show-toplevel')==str(root))\n require(git(root,'rev-parse','--path-format=absolute','--git-common-dir')==str(root/'.git'))\n require(git(root,'symbolic-ref','--quiet','HEAD')=='refs/heads/dev-env/project')\n require(git(root,'rev-parse','HEAD')==receipt['head'] and git(root,'rev-parse','HEAD^{tree}')==receipt['tree'])\n require(git(root,'remote')=='' and git(root,'ls-files','-v')=='H AGENTS.md\\nH CLAUDE.md')\n require(git(root,'ls-tree','--name-only','HEAD')=='AGENTS.md\\nCLAUDE.md')\n require(git(root,'status','--porcelain=v1','--untracked-files=all')=='')\n require(git(root,'worktree','list','--porcelain').count('worktree ')==1)\n stage='owned-detached-anchor'\n require(set(receipt.get('anchors',{}))=={'dev-env'})\n identity=receipt['anchors']['dev-env']\n anchor_gitdir=pathlib.Path(identity['gitDir'])\n require(anchor_gitdir.parent==clone/'.git/worktrees' and not anchor_gitdir.is_symlink())\n require(regular(anchor/'.git',4096).decode()==identity['gitFile']=='gitdir: '+str(anchor_gitdir)+'\\n')\n require(regular(anchor_gitdir/'gitdir',4096).decode()==identity['backpointer']==str(anchor/'.git')+'\\n')\n require(regular(anchor_gitdir/'commondir',4096).decode()==identity['commonFile'])\n require((anchor_gitdir/identity['commonFile'].strip()).resolve()==clone/'.git')\n require(git(anchor,'rev-parse','--absolute-git-dir')==str(anchor_gitdir))\n require(git(anchor,'rev-parse','--path-format=absolute','--git-common-dir')==str(clone/'.git'))\n require(git(anchor,'rev-parse','--show-toplevel')==str(anchor))\n require(git(anchor,'symbolic-ref','--quiet','HEAD',expected=1)=='')\n require(git(anchor,'rev-parse','HEAD')==anchor_target)\n require(git(anchor,'status','--porcelain=v1','--untracked-files=all')=='')\n stage='no-provider-state'\n require(not any((home/p).exists() for p in ['.claude','.codex','.shared']))\n stage='stable-identity-snapshot'\n stable_paths=[root/'.git/config',root/'.git/dev-env-project-id',root/'.git/info/exclude',anchor/'.git',anchor_gitdir/'gitdir',anchor_gitdir/'commondir']\n root_paths=[root/'.git/HEAD',root/'.git/index',root/'AGENTS.md',root/'CLAUDE.md']\n anchor_paths=[anchor_gitdir/'HEAD',anchor_gitdir/'index']\n def hashes(paths): return {str(p):digest(regular(p)) for p in paths}\n current={'id':receipt['id'],'anchors':receipt['anchors'],'stable':hashes(stable_paths),'root':hashes(root_paths),'anchor':hashes(anchor_paths),'head':receipt['head'],'tree':receipt['tree'],'wrapper':receipt['wrapperDigest'],'referenceTarget':reference_target,'anchorTarget':anchor_target,'catalogUID':report['catalogUID'],'catalogResourceVersion':report['catalogResourceVersion'],'catalogRevision':report['catalogRevision']}\n pathlib.Path('/tmp/roots-receipt-'+str(phase)+'.json').write_bytes(regular(receipt_path))\n pathlib.Path('/tmp/roots-operation-'+str(phase)+'.json').write_bytes(regular(operation_path))\n outcome='FirstRefresh'\n if phase==1:\n  pathlib.Path('/tmp/roots-baseline.json').write_text(json.dumps(current,sort_keys=True)+'\\n')\n else:\n  stage='second-refresh-preservation'\n  prior=document('/tmp/roots-baseline.json')\n  require(current['id']==prior['id'] and current['anchors']==prior['anchors'] and current['stable']==prior['stable'])\n  wrapper_changed=current['wrapper']!=prior['wrapper']\n  source_changed=current['anchorTarget']!=prior['anchorTarget']\n  catalog_changed=(current['catalogUID'],current['catalogRevision'])!=(prior['catalogUID'],prior['catalogRevision'])\n  if not wrapper_changed: require(current['head']==prior['head'] and current['tree']==prior['tree'] and current['root']==prior['root'])\n  if not source_changed: require(current['anchor']==prior['anchor'])\n  else: git(clone,'merge-base','--is-ancestor',prior['anchorTarget'],current['anchorTarget'])\n  if wrapper_changed: git(root,'merge-base','--is-ancestor',prior['head'],current['head'])\n  outcome='ControlledRefresh' if (wrapper_changed or source_changed or catalog_changed or current['referenceTarget']!=prior['referenceTarget']) else 'Unchanged'\n print(json.dumps({'state':'Ready','modelFree':True,'phase':phase,'refreshOutcome':outcome,'podName':os.environ['CHECK_POD_NAME'],'podUID':os.environ['CHECK_POD_UID'],'agentdVersion':version,'catalogUID':report['catalogUID'],'catalogResourceVersion':report['catalogResourceVersion'],'catalogSha256':report['catalogRevision'],'rulesSha256':snapshot['rulesRevision'],'wrapperSha256':receipt['wrapperDigest'],'sourceCommit':anchor_target,'sourceFetchedAt':project['repositories'][0]['fetchedAt'],'referenceSourceCommit':reference_target,'referenceFetchedAt':report['repositories'][0]['fetchedAt'],'rootCommit':receipt['head'],'rootTree':receipt['tree'],'ownershipSha256':digest(regular(receipt_path)),'receiptSha256':digest(regular(saved))},sort_keys=True))\nexcept Exception:\n print(json.dumps({'state':'Failed','modelFree':True,'phase':phase,'reason':'roots-verification-refused','stage':safe_stage(stage),'diagnostics':safe_failure_diagnostics()},sort_keys=True))\n sys.exit(1)\nROOTS_VERIFY\nstage=agentd-version-command\n/usr/local/bin/agentd version > /tmp/agentd-version.txt 2> /tmp/command-error.log\nstage=first-project-refresh-command\n/usr/local/bin/agentd project-refresh > /tmp/refresh-1.json 2> /tmp/command-error.log\nstage=first-verification\ntrap - ERR\npython3 /tmp/verify-roots.py 1\ntrap 'check_failure' ERR\nstage=second-project-refresh-command\n/usr/local/bin/agentd project-refresh > /tmp/refresh-2.json 2> /tmp/command-error.log\nstage=second-verification\ntrap - ERR\npython3 /tmp/verify-roots.py 2\n"
+            ],
+            "env": [
+              {
+                "name": "HOME",
+                "value": "/home/dev"
+              },
+              {
+                "name": "AGENTD_ENABLE_PRIVATE_PROJECT_BOOTSTRAP",
+                "value": "true"
+              },
+              {
+                "name": "AGENTD_ENABLE_PRIVATE_PROJECT_ROOTS",
+                "value": "true"
+              },
+              {
+                "name": "AGENTD_PROJECT_CATALOG",
+                "value": "dev-env-system/dev-env-project-catalog"
+              },
+              {
+                "name": "AGENTD_PROJECT_CLONE_OWNER",
+                "value": "thaynes43"
+              },
+              {
+                "name": "EXPECTED_SOURCE_COMMIT",
+                "value": "2da15bf83ee3ca7fff5e4112732c21aefe3a7f46"
+              },
+              {
+                "name": "EXPECTED_AGENTD_VERSION",
+                "value": "v2.15.1"
+              },
+              {
+                "name": "EXPECTED_CATALOG_SHA256",
+                "value": "bd7492876e858271c2807813b571c506b825c7ac8f8ccde04caa16324cb5b9e2"
+              },
+              {
+                "name": "GOMAXPROCS",
+                "value": "1"
+              },
+              {
+                "name": "GIT_CONFIG_GLOBAL",
+                "value": "/dev/null"
+              },
+              {
+                "name": "GIT_CONFIG_NOSYSTEM",
+                "value": "1"
+              },
+              {
+                "name": "GIT_TERMINAL_PROMPT",
+                "value": "0"
+              },
+              {
+                "name": "GIT_ASKPASS",
+                "value": "/bin/false"
+              },
+              {
+                "name": "SSH_ASKPASS",
+                "value": "/bin/false"
+              },
+              {
+                "name": "DISABLE_AUTOUPDATER",
+                "value": "1"
+              },
+              {
+                "name": "CHECK_POD_NAME",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.name"
+                  }
+                }
+              },
+              {
+                "name": "CHECK_POD_UID",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.uid"
+                  }
+                }
+              }
+            ],
+            "image": "ghcr.io/thaynes43/dev-env:2.15.1@sha256:b44f676305bab133b32e9d53d108a43a8da45379829024d3068e8dafc778c04d",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "roots-check",
+            "resources": {
+              "limits": {
+                "cpu": "500m",
+                "memory": "1Gi"
+              },
+              "requests": {
+                "cpu": "50m",
+                "memory": "128Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/home/dev",
+                "name": "home"
+              },
+              {
+                "mountPath": "/tmp",
+                "name": "tmp"
+              },
+              {
+                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                "name": "kube-api-access",
+                "readOnly": true
+              }
+            ]
+          }
+        ],
+        "dnsConfig": {
+          "options": [
+            {
+              "name": "ndots",
+              "value": "1"
+            }
+          ]
+        },
+        "dnsPolicy": "ClusterFirst",
+        "enableServiceLinks": false,
+        "nodeSelector": {
+          "kubernetes.io/hostname": "talosw01"
+        },
+        "restartPolicy": "Never",
+        "securityContext": {
+          "fsGroup": 1000,
+          "runAsGroup": 1000,
+          "runAsNonRoot": true,
+          "runAsUser": 1000,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "serviceAccountName": "dev-env-project-bootstrap-check",
+        "terminationGracePeriodSeconds": 10,
+        "volumes": [
+          {
+            "emptyDir": {
+              "sizeLimit": "1Gi"
+            },
+            "name": "home"
+          },
+          {
+            "emptyDir": {
+              "sizeLimit": "64Mi"
+            },
+            "name": "tmp"
+          },
+          {
+            "name": "kube-api-access",
+            "projected": {
+              "defaultMode": 288,
+              "sources": [
+                {
+                  "serviceAccountToken": {
+                    "expirationSeconds": 600,
+                    "path": "token"
+                  }
+                },
+                {
+                  "configMap": {
+                    "items": [
+                      {
+                        "key": "ca.crt",
+                        "path": "ca.crt"
+                      }
+                    ],
+                    "name": "kube-root-ca.crt"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

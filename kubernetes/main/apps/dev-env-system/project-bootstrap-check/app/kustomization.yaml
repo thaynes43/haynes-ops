@@ -7,3 +7,4 @@ resources:
   - job.json
   - job-2.json
   - roots-job.json
+  - roots-job-2.json
