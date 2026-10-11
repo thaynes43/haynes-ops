@@ -1,0 +1,32 @@
+---
+# Retained directory records are created once and witnessed only by the operator.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-session-directory-writes
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [coordination.dev-env.haynesops.com]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [sessiondirectories, sessiondirectories/status]
+  validations:
+    - expression: "request.namespace == 'dev-env-system'"
+      reason: Forbidden
+      message: session directories exist only in the protected system namespace
+    - expression: "request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator'"
+      reason: Forbidden
+      message: only the operator writes retained session directory metadata
+    - expression: "(request.operation == 'CREATE' && request.?subResource.orValue('') == '') || (request.operation == 'UPDATE' && request.?subResource.orValue('') == 'status')"
+      reason: Forbidden
+      message: session directories permit only initial creation and status observation
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-session-directory-writes
+spec:
+  policyName: dev-env-session-directory-writes
+  validationActions: [Deny]

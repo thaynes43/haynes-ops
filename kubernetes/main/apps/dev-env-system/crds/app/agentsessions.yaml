@@ -410,6 +410,26 @@ spec:
                 - message: immutable after create; only operatingMode and lifecycle
                     may change
                   rule: self == oldSelf
+              sessionDirectory:
+                description: SessionDirectory is selected only by the prospective
+                  operator canary route.
+                properties:
+                  project:
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                    type: string
+                  version:
+                    enum:
+                    - 1
+                    type: integer
+                required:
+                - project
+                - version
+                type: object
+                x-kubernetes-validations:
+                - message: directory enrollment is immutable
+                  rule: self == oldSelf
               size:
                 default: M
                 description: Size picks the requests and limits preset.
@@ -495,7 +515,8 @@ spec:
                 == has(oldSelf.idempotencyKey) && has(self.limits) == has(oldSelf.limits)
                 && has(self.restore) == has(oldSelf.restore) && has(self.workspace)
                 == has(oldSelf.workspace) && has(self.projectCanary) == has(oldSelf.projectCanary)
-                && has(self.commonRules) == has(oldSelf.commonRules)
+                && has(self.commonRules) == has(oldSelf.commonRules) && has(self.sessionDirectory)
+                == has(oldSelf.sessionDirectory)
             - message: project canaries require their fixed private bounded subscription
                 task contract
               rule: '!has(self.projectCanary) || (self.mode == ''task'' && self.agent
@@ -510,6 +531,8 @@ spec:
             - message: common rules require the matching managed canary binding
               rule: '!has(self.commonRules) || (has(self.projectCanary) && has(self.projectCanary.commonRevision)
                 && self.projectCanary.commonRevision == self.commonRules.commonRevision)'
+            - message: directory enrollment requires a managed canary
+              rule: '!has(self.sessionDirectory) || has(self.projectCanary)'
           status:
             description: |-
               AgentSessionStatus is what the operator and agentd observed. Reconcile is
@@ -1077,6 +1100,46 @@ spec:
                 description: Revision is the template revision the pod runs (DESIGN-001
                   5.2).
                 type: string
+              sessionDirectory:
+                description: SessionDirectoryReceipt prevents reconstructing a lost
+                  pre-executor record.
+                properties:
+                  name:
+                    maxLength: 128
+                    type: string
+                    x-kubernetes-validations:
+                    - message: original directory name is immutable
+                      rule: self == oldSelf
+                  specDigest:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                    x-kubernetes-validations:
+                    - message: original directory digest is immutable
+                      rule: self == oldSelf
+                  state:
+                    enum:
+                    - Preparing
+                    - Confirmed
+                    type: string
+                  uid:
+                    maxLength: 128
+                    type: string
+                    x-kubernetes-validations:
+                    - message: original directory UID cannot change
+                      rule: oldSelf == '' || self == oldSelf
+                required:
+                - name
+                - specDigest
+                - state
+                - uid
+                type: object
+                x-kubernetes-validations:
+                - message: directory confirmation is permanent
+                  rule: oldSelf.state != 'Confirmed' || self.state == 'Confirmed'
+                - message: directory confirmation requires original record UID
+                  rule: 'self.state == ''Confirmed'' ? size(self.uid) > 0 : size(self.uid)
+                    == 0'
               sharedAdmission:
                 description: |-
                   SharedAdmission records whether this exact fresh shared lifecycle has
@@ -1142,12 +1205,290 @@ spec:
                     minimum: 0
                     type: integer
                 type: object
+              usageConflict:
+                description: UsageConflict is a bounded unavailable/conflict receipt,
+                  never a new total.
+                properties:
+                  incomingSHA256:
+                    maxLength: 64
+                    pattern: ^[0-9a-f]{64}$
+                    type: string
+                  observedAt:
+                    format: date-time
+                    type: string
+                  reason:
+                    enum:
+                    - InvalidIdentity
+                    - InvalidPayload
+                    - ConflictingSnapshot
+                    maxLength: 64
+                    type: string
+                  state:
+                    enum:
+                    - Unknown
+                    maxLength: 64
+                    type: string
+                required:
+                - incomingSHA256
+                - observedAt
+                - reason
+                - state
+                type: object
+              usageObservation:
+                description: UsageObservation retains one explicitly attributed initial
+                  CLI snapshot.
+                properties:
+                  actualModelState:
+                    enum:
+                    - Unknown
+                    maxLength: 64
+                    type: string
+                  aggregationScope:
+                    enum:
+                    - Unknown
+                    maxLength: 64
+                    type: string
+                  apiBillingState:
+                    enum:
+                    - Unknown
+                    maxLength: 64
+                    type: string
+                  cacheCreationInputTokens:
+                    description: TokenObservationStatus preserves independent metric
+                      presence.
+                    properties:
+                      amount:
+                        format: int64
+                        maximum: 1000000000000000
+                        minimum: 0
+                        type: integer
+                      state:
+                        enum:
+                        - Unknown
+                        - Reported
+                        maxLength: 64
+                        type: string
+                    required:
+                    - state
+                    type: object
+                    x-kubernetes-validations:
+                    - message: reported token count requires an amount; Unknown omits
+                        it
+                      rule: (self.state == 'Reported') == has(self.amount)
+                  cacheReadInputTokens:
+                    description: TokenObservationStatus preserves independent metric
+                      presence.
+                    properties:
+                      amount:
+                        format: int64
+                        maximum: 1000000000000000
+                        minimum: 0
+                        type: integer
+                      state:
+                        enum:
+                        - Unknown
+                        - Reported
+                        maxLength: 64
+                        type: string
+                    required:
+                    - state
+                    type: object
+                    x-kubernetes-validations:
+                    - message: reported token count requires an amount; Unknown omits
+                        it
+                      rule: (self.state == 'Reported') == has(self.amount)
+                  cost:
+                    description: CostObservationStatus is a CLI equivalent estimate,
+                      never billed dollars.
+                    properties:
+                      amount:
+                        maxLength: 64
+                        pattern: ^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$
+                        type: string
+                      kind:
+                        enum:
+                        - Unknown
+                        - ProviderCLIEquivalentEstimate
+                        maxLength: 64
+                        type: string
+                      state:
+                        enum:
+                        - Unknown
+                        - Reported
+                        maxLength: 64
+                        type: string
+                      unit:
+                        enum:
+                        - USD
+                        maxLength: 64
+                        type: string
+                    required:
+                    - kind
+                    - state
+                    type: object
+                    x-kubernetes-validations:
+                    - message: cost requires explicit presence and CLI estimate provenance
+                      rule: 'self.state == ''Reported'' ? (has(self.amount) && has(self.unit)
+                        && self.unit == ''USD'' && self.kind == ''ProviderCLIEquivalentEstimate'')
+                        : (!has(self.amount) && !has(self.unit) && self.kind == ''Unknown'')'
+                  counterSemantics:
+                    enum:
+                    - InvocationFinalTotal
+                    maxLength: 64
+                    type: string
+                  coverage:
+                    enum:
+                    - InitialManagedInvocation
+                    maxLength: 64
+                    type: string
+                  id:
+                    maxLength: 64
+                    pattern: ^[0-9a-f]{64}$
+                    type: string
+                  inputTokens:
+                    description: TokenObservationStatus preserves independent metric
+                      presence.
+                    properties:
+                      amount:
+                        format: int64
+                        maximum: 1000000000000000
+                        minimum: 0
+                        type: integer
+                      state:
+                        enum:
+                        - Unknown
+                        - Reported
+                        maxLength: 64
+                        type: string
+                    required:
+                    - state
+                    type: object
+                    x-kubernetes-validations:
+                    - message: reported token count requires an amount; Unknown omits
+                        it
+                      rule: (self.state == 'Reported') == has(self.amount)
+                  localResourceState:
+                    enum:
+                    - Unknown
+                    maxLength: 64
+                    type: string
+                  logicalTaskEpoch:
+                    maxLength: 20
+                    pattern: ^[1-9][0-9]*$
+                    type: string
+                  logicalTaskUID:
+                    maxLength: 128
+                    type: string
+                  observedAt:
+                    format: date-time
+                    type: string
+                  outputTokens:
+                    description: TokenObservationStatus preserves independent metric
+                      presence.
+                    properties:
+                      amount:
+                        format: int64
+                        maximum: 1000000000000000
+                        minimum: 0
+                        type: integer
+                      state:
+                        enum:
+                        - Unknown
+                        - Reported
+                        maxLength: 64
+                        type: string
+                    required:
+                    - state
+                    type: object
+                    x-kubernetes-validations:
+                    - message: reported token count requires an amount; Unknown omits
+                        it
+                      rule: (self.state == 'Reported') == has(self.amount)
+                  resultState:
+                    enum:
+                    - Final
+                    - Partial
+                    maxLength: 64
+                    type: string
+                  source:
+                    properties:
+                      attemptID:
+                        maxLength: 64
+                        pattern: ^[0-9a-f]{64}$
+                        type: string
+                      podUID:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                      provider:
+                        enum:
+                        - claude
+                        - codex
+                        maxLength: 64
+                        type: string
+                      requestedModel:
+                        maxLength: 256
+                        minLength: 1
+                        type: string
+                      sessionUID:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    required:
+                    - attemptID
+                    - podUID
+                    - provider
+                    - requestedModel
+                    - sessionUID
+                    type: object
+                  subscriptionQuotaState:
+                    enum:
+                    - Unknown
+                    maxLength: 64
+                    type: string
+                  version:
+                    enum:
+                    - 1
+                    format: int32
+                    type: integer
+                  workerID:
+                    maxLength: 128
+                    type: string
+                required:
+                - actualModelState
+                - aggregationScope
+                - apiBillingState
+                - cacheCreationInputTokens
+                - cacheReadInputTokens
+                - cost
+                - counterSemantics
+                - coverage
+                - id
+                - inputTokens
+                - localResourceState
+                - observedAt
+                - outputTokens
+                - resultState
+                - source
+                - subscriptionQuotaState
+                - version
+                type: object
+                x-kubernetes-validations:
+                - message: original usage observation cannot change
+                  rule: self == oldSelf
+                - message: logical task provenance requires one complete server binding
+                  rule: has(self.logicalTaskUID) == has(self.logicalTaskEpoch) &&
+                    has(self.logicalTaskUID) == has(self.workerID)
+                - message: Codex token-only usage cannot assert cost
+                  rule: self.source.provider != 'codex' || self.cost.state == 'Unknown'
             type: object
             x-kubernetes-validations:
             - message: shared admission evidence cannot be removed
               rule: '!has(oldSelf.sharedAdmission) || has(self.sharedAdmission)'
             - message: private history retention cannot be removed
               rule: '!has(oldSelf.privateHistory) || has(self.privateHistory)'
+            - message: directory creation evidence cannot be removed
+              rule: '!has(oldSelf.sessionDirectory) || has(self.sessionDirectory)'
         required:
         - spec
         type: object
@@ -1161,9 +1502,15 @@ spec:
         - message: recorded shared admission cannot be erased with status
           rule: '!has(oldSelf.status) || !has(oldSelf.status.sharedAdmission) || (has(self.status)
             && has(self.status.sharedAdmission))'
+        - message: directory evidence cannot be erased with status
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.sessionDirectory) ||
+            (has(self.status) && has(self.status.sessionDirectory))'
         - message: private history retention cannot be erased with status
           rule: '!has(oldSelf.status) || !has(oldSelf.status.privateHistory) || (has(self.status)
             && has(self.status.privateHistory))'
+        - message: original usage observation cannot be erased
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.usageObservation) ||
+            (has(self.status) && has(self.status.usageObservation))'
     served: true
     storage: true
     subresources:
