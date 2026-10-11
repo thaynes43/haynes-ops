@@ -194,6 +194,14 @@ neighbors once prerequisites are met.
 | [10 — Taskfile overhaul](backlog/10-taskfile-overhaul.md) | — | ∥ anytime; ideally before 02 so pod agents inherit trustworthy tasks |
 | [11 — haynesnetwork build/run/test readiness](backlog/11-haynesnetwork-readiness.md) | 02 | done except e2e — Tom's gate before dispatching haynesnetwork backlog work |
 
+## V2 private-history retention promotion — 2026-10-11
+
+[Guarded retention promotion](verification/private-history-retention-2026-10-11.md)
+installs the signed #174 operator and exact generated schema. Only operator
+replicas may roll; existing sessions, keeper, failed fixtures and ledgers remain
+protected. Private-project admission stays disabled. Installed retention and
+authorized stopped-history reads are separate acceptance gates.
+
 ## V2 private-project roots promotion — 2026-10-11
 
 [Bounded roots promotion](verification/private-project-roots-2026-10-11.md)
