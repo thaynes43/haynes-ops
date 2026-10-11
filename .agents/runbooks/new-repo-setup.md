@@ -47,8 +47,14 @@ grep -n '<<' .github/workflows/claude*.yml    # every marker must be resolved
   check; do not use the workflow actor as a substitute for the text's author.
   `allowed_bots: "haynes-dev-bot"` so agent PRs get reviewed. If the repo triggers on specific branches, add `branches:` to the review
   workflow as haynes-ops does.
-- **Advisory, never required.** Do not add the review job to branch protection or a
-  required-checks list; do not rename it to look like a gate.
+- **Advisory and optional, never required.** Do not add automated AI review or audit
+  jobs to branch protection or a required-checks list; do not rename them to look like
+  gates. Failure, timeout, quota exhaustion or service unavailability cannot block
+  merge or deployment and does not require an owner waiver. Complete required tests,
+  builds and security checks. Review the diff and relevant documentation yourself,
+  and use an independent native agent review when available. Record the review,
+  validation and AI availability in the PR. Repeated retries are not required. Fix
+  or concretely refute every finding they emitted before merging.
 
 ## 2. Write the repo-specific review prompt
 
@@ -73,9 +79,14 @@ exists), modelled on libretto's:
 > ## Automated PR review (agents read this)
 > Every non-draft PR gets an advisory review from Claude Code
 > (`.github/workflows/claude-code-review.yml`); `@claude` mentions are handled by
-> `claude.yml`. The review is **advisory**: it is not a required check. Read its
-> findings before merging. Fix each one, or answer it on the PR with a concrete reason
-> it is wrong; never "merging anyway". Both workflows need the Claude GitHub App on the
+> `claude.yml`. Automated AI reviews and audits are **advisory and optional**, never
+> required checks. Failure, timeout, quota exhaustion or service unavailability cannot
+> block merge or deployment and does not require an owner waiver. Complete required
+> tests, builds and security checks. Review the diff and relevant documentation yourself,
+> and use an independent native agent review when available. Record the review,
+> validation and AI availability in the PR. Repeated retries are not required. Read
+> any findings emitted before merging. Fix each one, or answer it on the PR with a concrete reason it is
+> wrong; never "merging anyway". Both workflows need the Claude GitHub App on the
 > repo and the `CLAUDE_CODE_OAUTH_TOKEN` repo secret, otherwise they skip green and
 > review nothing.
 
@@ -133,6 +144,13 @@ while a token minted with `secrets` still works, so do not go back to that one-l
 Merge the workflow PR first, then open any small PR (the action refuses to run a
 workflow file that differs from the default branch's copy, so the PR that *adds* the
 workflow is not a valid test).
+
+This verifies reviewer setup, not release eligibility. If the automated service is
+unavailable or quota-limited, proceed after all required tests, builds and security
+checks pass. Review the diff and relevant documentation yourself, and use an independent
+native agent review when available. Record the review, validation and AI availability
+in the PR. No owner waiver or repeated retry is required. Resolve any findings already
+emitted.
 
 ```bash
 gh pr checks <n> -R thaynes43/<repo>                 # "Claude advisory review" is pass, not skipped
