@@ -52,3 +52,16 @@ deployed and accepted receipts on
 [#91](https://github.com/thaynes43/dev-env/issues/91); keep parents open. Q-24's
 routing/UX decision stays pending. Local inference waits for GPU readiness and
 household reservations.
+
+## Installed attempt 1 — 2026-10-11 UTC
+
+PR #3815 merged as `0be5071ff035059747a82a3e330f48cb445a1d2e`; new-session
+templates reconciled with the signed image. The check failed at
+`first-project-refresh-command` before verifier acceptance, with one Pod and
+zero restarts. The admitted constraints matched the reviewed manifest. Its
+Job/Pod and private receipt remain retained, and no retry has run. The private
+internal cause is Unknown. A separate offline Git proof establishes an umask
+077/generated-wrapper-mode mismatch; a bounded source correction is in progress.
+The operational count is 1 of 3. All 11 protected Pods, both earlier Jobs and
+the original native ledger matched the baseline; activity ended. Roots and
+provider-rule acceptance remain open.
