@@ -14,8 +14,11 @@ byte-exact generated AgentSession schema. Signed operator digest:
 passed signing and exact-source verification. CRD SHA256:
 `5d70cfe1e57297ce182d070429aa796da1b3d0e88e52a5ae63f42b9fe8ea09e8`.
 Its existing prune-disabled policy and operator dependency remain intact.
-Apply the schema before the operator. After retention latches exist, an image
-rollback must preserve this schema; an older schema could prune their fields.
+Apply the schema before the operator. After retention latches exist, preserve
+both this schema and a retention-aware operator. An older schema could prune
+their fields; an operator predating the guard lacks its HOME/finalizer protection.
+Disabling the new flag preserves existing latches. Downgrading to a pre-guard
+image is not established safe.
 
 All other operator flags, replica count and native/budget/helper/keeper pins
 remain unchanged. Private-project admission stays false. V1, agent templates,
