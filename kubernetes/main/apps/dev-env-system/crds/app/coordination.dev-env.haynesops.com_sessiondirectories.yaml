@@ -1,0 +1,443 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: sessiondirectories.coordination.dev-env.haynesops.com
+spec:
+  group: coordination.dev-env.haynesops.com
+  names:
+    kind: SessionDirectory
+    listKind: SessionDirectoryList
+    plural: sessiondirectories
+    singular: sessiondirectory
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: SessionDirectory retains metadata without a source owner, expiry
+          or content.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              base:
+                maxLength: 256
+                type: string
+              parent:
+                maxLength: 317
+                type: string
+              project:
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                type: string
+              repository:
+                maxLength: 256
+                type: string
+              request:
+                properties:
+                  cli:
+                    maxLength: 256
+                    type: string
+                  effort:
+                    maxLength: 256
+                    type: string
+                  local:
+                    description: Local is explicit metadata; the runtime adapter stays
+                      disabled.
+                    properties:
+                      actualModelState:
+                        enum:
+                        - Unknown
+                        type: string
+                      backend:
+                        description: Backend is an explicit declaration, never inferred
+                          from OpenCode.
+                        enum:
+                        - local-model
+                        type: string
+                      backendReadinessState:
+                        enum:
+                        - Unknown
+                        type: string
+                      gpuReadinessState:
+                        enum:
+                        - Unknown
+                        type: string
+                      householdReservationState:
+                        enum:
+                        - Unknown
+                        type: string
+                      pool:
+                        maxLength: 256
+                        type: string
+                      requestedModel:
+                        maxLength: 256
+                        type: string
+                      runtimeAdapter:
+                        enum:
+                        - Disabled
+                        type: string
+                    required:
+                    - actualModelState
+                    - backend
+                    - backendReadinessState
+                    - gpuReadinessState
+                    - householdReservationState
+                    - pool
+                    - requestedModel
+                    - runtimeAdapter
+                    type: object
+                  model:
+                    maxLength: 256
+                    type: string
+                  provider:
+                    enum:
+                    - claude
+                    - codex
+                    - local
+                    - Unknown
+                    type: string
+                required:
+                - cli
+                - effort
+                - model
+                - provider
+                type: object
+              revisions:
+                properties:
+                  canaryPolicy:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  captureOutput:
+                    type: boolean
+                  catalog:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  catalogResourceVersion:
+                    maxLength: 256
+                    type: string
+                  catalogUID:
+                    maxLength: 256
+                    type: string
+                  common:
+                    properties:
+                      common:
+                        properties:
+                          key:
+                            maxLength: 256
+                            type: string
+                          name:
+                            maxLength: 256
+                            type: string
+                          namespace:
+                            maxLength: 256
+                            type: string
+                          resourceVersion:
+                            maxLength: 256
+                            type: string
+                          sha256:
+                            maxLength: 64
+                            pattern: ^[a-f0-9]{64}$
+                            type: string
+                          uid:
+                            maxLength: 256
+                            type: string
+                        required:
+                        - key
+                        - name
+                        - namespace
+                        - resourceVersion
+                        - sha256
+                        - uid
+                        type: object
+                      header:
+                        properties:
+                          key:
+                            maxLength: 256
+                            type: string
+                          name:
+                            maxLength: 256
+                            type: string
+                          namespace:
+                            maxLength: 256
+                            type: string
+                          resourceVersion:
+                            maxLength: 256
+                            type: string
+                          sha256:
+                            maxLength: 64
+                            pattern: ^[a-f0-9]{64}$
+                            type: string
+                          uid:
+                            maxLength: 256
+                            type: string
+                        required:
+                        - key
+                        - name
+                        - namespace
+                        - resourceVersion
+                        - sha256
+                        - uid
+                        type: object
+                      revision:
+                        maxLength: 64
+                        pattern: ^[a-f0-9]{64}$
+                        type: string
+                      snapshotDigest:
+                        maxLength: 64
+                        pattern: ^[a-f0-9]{64}$
+                        type: string
+                      state:
+                        enum:
+                        - Unknown
+                        - Bound
+                        type: string
+                    required:
+                    - state
+                    type: object
+                    x-kubernetes-validations:
+                    - message: common metadata requires the original complete binding
+                      rule: 'self.state == ''Unknown'' ? !has(self.revision) && !has(self.snapshotDigest)
+                        && !has(self.common) && !has(self.header) : has(self.revision)
+                        && has(self.snapshotDigest) && has(self.common) && has(self.header)'
+                  image:
+                    maxLength: 512
+                    type: string
+                  projectSnapshot:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  rules:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  template:
+                    maxLength: 256
+                    type: string
+                required:
+                - canaryPolicy
+                - captureOutput
+                - catalog
+                - catalogResourceVersion
+                - catalogUID
+                - common
+                - image
+                - projectSnapshot
+                - rules
+                - template
+                type: object
+              source:
+                properties:
+                  name:
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
+                  namespace:
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                    type: string
+                  uid:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                required:
+                - name
+                - namespace
+                - uid
+                type: object
+              sourceCreatedAt:
+                format: date-time
+                type: string
+              taskKey:
+                maxLength: 256
+                type: string
+              version:
+                enum:
+                - 1
+                type: integer
+            required:
+            - base
+            - parent
+            - project
+            - repository
+            - request
+            - revisions
+            - source
+            - sourceCreatedAt
+            - taskKey
+            - version
+            type: object
+            x-kubernetes-validations:
+            - message: original directory identity and accepted request/revisions
+                are immutable
+              rule: self == oldSelf
+            - message: local provider metadata must be explicitly typed
+              rule: (self.request.provider == 'local') == has(self.request.local)
+            - message: local requested model must equal the exact accepted request
+              rule: '!has(self.request.local) || self.request.local.requestedModel
+                == self.request.model'
+          status:
+            properties:
+              actualModelState:
+                enum:
+                - Unknown
+                type: string
+              costState:
+                enum:
+                - Unknown
+                type: string
+              lastWitness:
+                description: |-
+                  DirectoryWitness separates owned lifecycle facts from agent reports. It is
+                  neither a stop receipt nor proof of actual inference or native restoration.
+                properties:
+                  declaredConversationID:
+                    maxLength: 256
+                    type: string
+                  image:
+                    maxLength: 512
+                    type: string
+                  node:
+                    maxLength: 256
+                    type: string
+                  observedAt:
+                    format: date-time
+                    type: string
+                  podName:
+                    maxLength: 256
+                    type: string
+                  podPhase:
+                    enum:
+                    - Pending
+                    - Running
+                    - Succeeded
+                    - Failed
+                    - Unknown
+                    type: string
+                  podUID:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                  ready:
+                    type: boolean
+                  reportedHeartbeatAt:
+                    format: date-time
+                    type: string
+                  reportedState:
+                    maxLength: 256
+                    type: string
+                  reportedTask:
+                    properties:
+                      exitCode:
+                        format: int32
+                        type: integer
+                      finishedAt:
+                        format: date-time
+                        type: string
+                      isError:
+                        type: boolean
+                      subtype:
+                        maxLength: 256
+                        type: string
+                      timedOut:
+                        type: boolean
+                    required:
+                    - exitCode
+                    - finishedAt
+                    - isError
+                    - subtype
+                    - timedOut
+                    type: object
+                  reportedTaskFinishedAt:
+                    format: date-time
+                    type: string
+                  sourceGeneration:
+                    format: int64
+                    minimum: 1
+                    type: integer
+                  sourceResourceVersion:
+                    maxLength: 256
+                    type: string
+                  template:
+                    maxLength: 256
+                    type: string
+                required:
+                - declaredConversationID
+                - image
+                - node
+                - observedAt
+                - podName
+                - podPhase
+                - podUID
+                - ready
+                - reportedState
+                - sourceGeneration
+                - sourceResourceVersion
+                - template
+                type: object
+              observedAt:
+                format: date-time
+                type: string
+              sourceState:
+                enum:
+                - SourceMissing
+                - Unknown
+                - Present
+                type: string
+              stopState:
+                enum:
+                - Unknown
+                type: string
+              usageState:
+                enum:
+                - Unknown
+                type: string
+            required:
+            - actualModelState
+            - costState
+            - observedAt
+            - sourceState
+            - stopState
+            - usageState
+            type: object
+            x-kubernetes-validations:
+            - message: original executor witness cannot be erased, replaced or replayed
+                backwards
+              rule: '!has(oldSelf.lastWitness) || (has(self.lastWitness) && self.lastWitness.podUID
+                == oldSelf.lastWitness.podUID && self.lastWitness.observedAt >= oldSelf.lastWitness.observedAt)'
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: retained executor witness cannot be erased with status
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.lastWitness) || (has(self.status)
+            && has(self.status.lastWitness))'
+    served: true
+    storage: true
+    subresources:
+      status: {}

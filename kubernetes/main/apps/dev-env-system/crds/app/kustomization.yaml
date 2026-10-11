@@ -15,6 +15,8 @@ resources:
   - ./coordination.dev-env.haynesops.com_inboxmessages.yaml
   - ./coordination.dev-env.haynesops.com_inboxreadacks.yaml
   - ./inbox-operator.yaml
+  - ./coordination.dev-env.haynesops.com_sessiondirectories.yaml
+  - ./sessiondirectories-operator.yaml
 patches:
   # A CRD is never pruned (DESIGN-001 D-03): deleting it deletes every session.
   - target:

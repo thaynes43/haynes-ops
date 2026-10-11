@@ -64,9 +64,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Main 24960dc128b219c48f4a32ba9f25e778f20e9a66; publish.yml run 38168334619, keyless verified.
-              # Source adds retained common rules and opt-in stopped-output capture; canary admission stays disabled.
-              tag: sha-24960dc@sha256:13cb133177fa010a1ebdceb5e9f86ee5e46ce0ed713bf8fcb564ad8b9c4217ea
+              # Main a44b5b1e0b92b4c1a146254e03202617a58b7a01; publish.yml run 38176418666, keyless verified.
+              # Source includes D17 directory, D18 typed usage and D19 private-Pod retention; activation flags stay unchanged.
+              tag: sha-a44b5b1@sha256:d0463c21efa3a46f5f6ee94623b587aef9f0d9bc6d6632f567d018172dc43447
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session

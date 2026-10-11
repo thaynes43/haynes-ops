@@ -21,3 +21,4 @@ resources:
   - ./identity-guard.yaml
   - ./v1-token-guard.yaml
   - ./native-lifecycle-serviceaccount.yaml
+  - ./session-directory-guard.yaml
