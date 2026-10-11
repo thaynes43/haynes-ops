@@ -48,8 +48,13 @@ plan of the dev-env saga. If one is not in your pod yet, do not improvise a stan
 - **Every repo gets the Claude Code PR reviewer.** When you create a repo, or work in one
   that lacks them, add the Claude Code review and `@claude` workflows and the
   `CLAUDE_CODE_OAUTH_TOKEN` secret, by haynes-ops `.agents/runbooks/new-repo-setup.md`.
-  The review is advisory: read the findings before merging, and fix each one or answer
-  it with a concrete reason.
+  Automated AI reviews and audits are **advisory and optional**, never required checks.
+  Failure, timeout, quota exhaustion or service unavailability cannot block merge or
+  deployment and does not require an owner waiver. Complete required tests, builds
+  and security checks. Review the diff and relevant documentation yourself, and use
+  an independent native agent review when available. Record the review, validation
+  and AI availability in the PR. Repeated retries are not required. Read any findings
+  emitted before merging, and fix each one or answer it with a concrete reason.
 - **Only questions wait on the owner.** Push each one to Tom's phone with the
   **AskUserQuestion tool, one at a time**, at the moment it arises. Never batch them and
   never leave a prose "open questions" list in your final message: he does not receive
