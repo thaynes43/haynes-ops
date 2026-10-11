@@ -5,8 +5,8 @@ metadata:
   name: dev-env-project-bootstrap-check
   namespace: dev-env-system
 spec:
-  # One model-free check of the signed 2.13.0 binary. Retain the completed Job
-  # until its receipt is captured, then retire this fixture through reviewed GitOps.
+  # Attempt 1 remains retained unchanged. Only the separately named second
+  # model-free check is a health gate; cleanup requires reviewed GitOps.
   suspend: false
   path: ./kubernetes/main/apps/dev-env-system/project-bootstrap-check/app
   prune: true
@@ -15,7 +15,12 @@ spec:
     kind: GitRepository
     name: haynes-ops
     namespace: flux-system
-  wait: true
+  wait: false
+  healthChecks:
+    - apiVersion: batch/v1
+      kind: Job
+      name: dev-env-project-bootstrap-check-1011b
+      namespace: dev-agents
   interval: 30m
   timeout: 11m
   dependsOn:
