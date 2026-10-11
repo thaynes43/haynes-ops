@@ -113,6 +113,42 @@ spec:
                 - message: immutable after create; only operatingMode and lifecycle
                     may change
                   rule: self == oldSelf
+              commonRules:
+                description: |-
+                  CommonRules is authored only by the enabled managed common-input route.
+                  Absence is legacy Unknown provenance, never an inferred current snapshot.
+                properties:
+                  commonRevision:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  projectDigest:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  snapshot:
+                    description: The entire source-authored session document has a
+                      separate 192KiB cap.
+                    maxLength: 499712
+                    type: string
+                  snapshotDigest:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  version:
+                    enum:
+                    - 1
+                    type: integer
+                required:
+                - commonRevision
+                - projectDigest
+                - snapshot
+                - snapshotDigest
+                - version
+                type: object
+                x-kubernetes-validations:
+                - message: common instruction binding is immutable
+                  rule: self == oldSelf
               effort:
                 description: |-
                   Effort is the reasoning effort. The levels differ per model, so the API
@@ -266,6 +302,8 @@ spec:
                   ProjectCanary is authored by the strict operator-owned canary route.
                   It permanently binds the original accepted source and reviewed policy.
                 properties:
+                  captureOutput:
+                    type: boolean
                   catalogResourceVersion:
                     maxLength: 128
                     minLength: 1
@@ -286,6 +324,10 @@ spec:
                     maxLength: 63
                     minLength: 1
                     pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                  commonRevision:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
                     type: string
                   id:
                     maxLength: 63
@@ -453,6 +495,7 @@ spec:
                 == has(oldSelf.idempotencyKey) && has(self.limits) == has(oldSelf.limits)
                 && has(self.restore) == has(oldSelf.restore) && has(self.workspace)
                 == has(oldSelf.workspace) && has(self.projectCanary) == has(oldSelf.projectCanary)
+                && has(self.commonRules) == has(oldSelf.commonRules)
             - message: project canaries require their fixed private bounded subscription
                 task contract
               rule: '!has(self.projectCanary) || (self.mode == ''task'' && self.agent
@@ -464,6 +507,9 @@ spec:
                 && (self.agent == ''codex'' ? (!has(self.limits.maxTurns) || self.limits.maxTurns
                 == 0) : (has(self.limits.maxTurns) && self.limits.maxTurns > 0 &&
                 self.limits.maxTurns <= 3)))'
+            - message: common rules require the matching managed canary binding
+              rule: '!has(self.commonRules) || (has(self.projectCanary) && has(self.projectCanary.commonRevision)
+                && self.projectCanary.commonRevision == self.commonRules.commonRevision)'
           status:
             description: |-
               AgentSessionStatus is what the operator and agentd observed. Reconcile is

@@ -26,6 +26,8 @@ spec:
     matchLabels:
       io.kubernetes.pod.namespace: dev-agents
     matchExpressions:
+      - key: dev-env.haynesops.com/project-canary
+        operator: DoesNotExist
       # These fixtures have dedicated egress; no additive public-web tier.
       - key: app.kubernetes.io/name
         operator: NotIn

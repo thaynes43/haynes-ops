@@ -64,9 +64,9 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Main f02d0ad276d007105795dd8611d0725c5176869b; publish.yml run 38164417101, keyless verified.
-              # Source preserves retention/claims/context and adds scoped immutable inbox messages/read acknowledgements.
-              tag: sha-f02d0ad@sha256:2c41dc9c5efd0cba5e64aba25bdf3c967b076cfaf04eb07cc094a1eeaaf9b499
+              # Main 24960dc128b219c48f4a32ba9f25e778f20e9a66; publish.yml run 38168334619, keyless verified.
+              # Source adds retained common rules and opt-in stopped-output capture; canary admission stays disabled.
+              tag: sha-24960dc@sha256:13cb133177fa010a1ebdceb5e9f86ee5e46ce0ed713bf8fcb564ad8b9c4217ea
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session

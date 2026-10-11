@@ -1,0 +1,102 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-rule-canary-claude
+  namespace: dev-agents
+spec:
+  description: fixed private Claude rule canary
+  endpointSelector:
+    matchLabels:
+      dev-env.haynesops.com/project-canary: rule-canary-claude-1011
+  ingress:
+    - {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: github.com
+              - matchName: api.anthropic.com
+              - matchName: kubernetes.default.svc.cluster.local
+              - matchName: dev-env-operator.dev-env-system.svc.cluster.local
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-operator
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+    - toFQDNs:
+        - matchName: github.com
+        - matchName: api.anthropic.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-rule-canary-codex
+  namespace: dev-agents
+spec:
+  description: fixed private Codex rule canary
+  endpointSelector:
+    matchLabels:
+      dev-env.haynesops.com/project-canary: rule-canary-codex-1011
+  ingress:
+    - {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: github.com
+              - matchName: chatgpt.com
+              - matchName: kubernetes.default.svc.cluster.local
+              - matchName: dev-env-operator.dev-env-system.svc.cluster.local
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-operator
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+    - toFQDNs:
+        - matchName: github.com
+        - matchName: chatgpt.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

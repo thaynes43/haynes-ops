@@ -10,9 +10,9 @@
 # tracks this line with its own regex manager (.renovate/customManagers.json5), and the
 # dev-env manual-merge rule applies. A change here reaches NEW sessions only: running
 # pods keep their image and are reported Outdated (D-44).
-# v2.15.1 source 2da15bf83ee3ca7fff5e4112732c21aefe3a7f46 (release dev-env#188).
-# publish-agent.yml run 38158809160 smoke-tested/signed/verified on refs/tags/v2.15.1.
-image: ghcr.io/thaynes43/dev-env:2.15.1@sha256:b44f676305bab133b32e9d53d108a43a8da45379829024d3068e8dafc778c04d
+# v2.19.0 source fb53eb971da1beec1abc513fb1f251bb0926d0a6 (release dev-env#197).
+# publish-agent.yml run 38168847353 smoke-tested/signed/verified on refs/tags/v2.19.0.
+image: ghcr.io/thaynes43/dev-env:2.19.0@sha256:4cf24d0c0bff7a9174a8a453340e3800d99fd9282b8787b6f7274f3474903210
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
@@ -97,6 +97,15 @@ claude:
 # operator token and the hw-ssh key (Q-07: those come only as grants).
 defaultProfile: full
 profiles:
+  rule-canary-claude:
+    mounts:
+      - { name: gh-token, secret: dev-env-gh-token, path: /creds }
+  rule-canary-codex:
+    env:
+      - { name: AGENTD_CODEX_ACCESS_FILE, value: /opt/dev-env/codex-access/access.json }
+    mounts:
+      - { name: gh-token, secret: dev-env-gh-token, path: /creds }
+      - { name: codex-access, secret: dev-env-codex-live, path: /opt/dev-env/codex-access, defaultMode: 0440 }
   full:
     env:
       - name: CIGAR_JOURNAL_TOKEN
