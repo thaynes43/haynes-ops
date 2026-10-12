@@ -68,6 +68,13 @@ The raw files are under `/sys/kernel/debug/dri/0/`: `i915_wedged`,
   which is why nothing alerts.
 - `check.sh` shows `wedged=1 guc=AVAILABLE huc=AVAILABLE` and a ~3 MB all-zero
   `guc_load_err_log`.
+- **Alert:** `IntelGpuWedged` (warning, so it never pages; look in Alertmanager or Grafana)
+  fires for 24 hours after a boot whose kernel log has one of the signature lines below, on
+  any node. It matches three lines, not one, because on 2026-10-12 the `GuC initialization
+  failed` and `declaring it wedged` lines never reached Loki: the kernel stream had a ~12 s
+  hole while the log sink came up, and only the `ioremap on RAM` warning before it arrived.
+  Rule: `kubernetes/main/apps/observability/loki/app/lokirule.yaml`. When it fires, confirm
+  with `check.sh`.
 
 **Kernel signature at boot** (`talosctl dmesg`, and in Loki as
 `{talos_service="kernel", node="talosw03"}`):

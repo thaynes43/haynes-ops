@@ -5,3 +5,12 @@ kind: Kustomization
 resources:
   - ./helmrepository.yaml
   - ./helmrelease.yaml
+configMapGenerator:
+  - name: loki-kernel-rules
+    files:
+      - kernel.yaml=./lokirule.yaml
+    options:
+      labels:
+        loki_rule: "true"
+generatorOptions:
+  disableNameSuffixHash: true
