@@ -96,7 +96,9 @@ A check is **completed** when it gives `hw` (decode AND encode in hardware) or `
   `event=attempt` lines show each try.
 - State: `kubectl get configmap -n media plex-hw-canary-state -o yaml`, one key per server.
 - Run it now: `kubectl create job -n media plex-hw-canary-manual-$(date +%s) --from=cronjob/plex-hw-canary`.
-  It retries busy servers for up to about 2 hours.
+  It retries busy servers for up to about 2 hours. **Do this right after a fresh deploy** of
+  the canary, and after any loss of Loki data. Until a run logs `event=start`,
+  `PlexHwCanaryNotRunning` is true, and it fires after 1 hour.
 
 **Alerts.** The rules are in the app's `lokirule.yaml`. All three are `severity: warning`,
 which keeps them off the critical route and away from the remediation lane. Alertmanager's

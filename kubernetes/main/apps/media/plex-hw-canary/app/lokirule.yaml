@@ -49,8 +49,11 @@ groups:
             Its event=result lines in Loki ({namespace="media", container="canary"}) give the reason.
             Runbook: .agents/runbooks/plex-igpu-transcode.md (Canary).
       - alert: PlexHwCanaryNotRunning
-        # Every run logs event=start first, so this only needs the CronJob to start a pod. The 1h
-        # `for` covers the gap between a fresh deploy and its first run.
+        # Every run logs event=start first, so this only needs the CronJob to start a pod.
+        # Fresh deploy (or lost Loki data): there is no event=start line until a run happens, so
+        # this is true at once and fires after the 1h `for` unless a run starts first. The next
+        # 10:00 tick can be up to ~23h away, so start one by hand right after the deploy:
+        #   kubectl create job -n media plex-hw-canary-manual-$(date +%s) --from=cronjob/plex-hw-canary
         expr: |
           absent_over_time({namespace="media", container="canary", pod=~"plex-hw-canary-.*"} |= "event=start" [3d])
         for: 1h
