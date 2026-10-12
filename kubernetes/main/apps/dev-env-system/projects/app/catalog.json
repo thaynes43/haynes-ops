@@ -1,12 +1,18 @@
 {
   "version": 1,
   "repositories": {
-    "dev-env": { "github": "thaynes43/dev-env", "defaultBranch": "main" }
+    "dev-env": { "github": "thaynes43/dev-env", "defaultBranch": "main" },
+    "sigo-alumni": { "github": "thaynes43/sigo-alumni", "defaultBranch": "main" },
+    "sigoalumni-org": { "github": "thaynes43/sigoalumni-org", "defaultBranch": "main" }
   },
   "projects": {
     "dev-env": {
       "repositories": [{ "name": "dev-env" }],
       "rules": "Project rule revision dev-env-project-rules-20261011-v1. Keep task repositories and worktrees private to this session. Fetch and pin the selected repository freshly before a new task; preserve original WIP on resume. Share only authorized session metadata, claims, messages and context through the operator API. Record built, deployed and accepted separately. This catalog rule grants no credential, enrollment, inference or lifecycle authority."
+    },
+    "sigo-alumni": {
+      "repositories": [{ "name": "sigo-alumni" }, { "name": "sigoalumni-org" }],
+      "rules": "Project rule revision sigo-alumni-project-rules-20261012-9b122cd5. In an explicit instruction acceptance probe, report this revision as the repository marker, because the repositories' own instructions carry none. Both repositories are private: keep their content, member data and credentials out of public repositories, issues, logs and published context. Keep task repositories and worktrees private to this session. Fetch and pin the selected repository freshly before a new task; preserve original WIP on resume. Share only authorized session metadata, claims, messages and context through the operator API. This catalog rule grants no credential, enrollment, inference or lifecycle authority."
     }
   }
 }
