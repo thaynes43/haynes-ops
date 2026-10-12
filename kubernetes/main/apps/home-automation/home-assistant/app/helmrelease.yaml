@@ -88,14 +88,6 @@ spec:
           code-server:
             port: 12321
     persistence:
-      watch-maintenance:
-        type: configMap
-        name: home-assistant-hnet-watch-maintenance
-        advancedMounts:
-          home-assistant:
-            app:
-              - path: /config/custom_components/hnet_watch_maintenance
-                readOnly: true
       config:
         existingClaim: home-assistant
         globalMounts:
