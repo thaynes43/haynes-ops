@@ -46,6 +46,9 @@ spec:
     labels:
       app.kubernetes.io/name: *app
   dependsOn:
+    # The sabnzbd ks generates the sabnzbd-scripts ConfigMap this instance mounts.
+    - name: sabnzbd
+      namespace: downloads
     - name: multus
       namespace: network
     - name: rook-ceph-cluster
