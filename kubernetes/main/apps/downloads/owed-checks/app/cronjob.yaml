@@ -50,7 +50,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: main
-              image: ghcr.io/thaynes43/haynesnetwork:v0.111.1
+              image: ghcr.io/thaynes43/haynesnetwork:v0.111.2
               command:
                 - tsx
                 - /sync/src/scripts/owed-checks.ts
