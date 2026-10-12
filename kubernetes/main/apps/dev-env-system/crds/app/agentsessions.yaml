@@ -586,6 +586,178 @@ spec:
                       type: string
                     type: array
                     x-kubernetes-list-type: atomic
+                  projectBootstrap:
+                    description: |-
+                      ProjectBootstrap is the boot's private catalog bootstrap, when it ran
+                      (DESIGN-006, reason codes): catalog names, states, steps and closed-set
+                      reason codes, never a path, an object id or detail text.
+                    properties:
+                      catalogRevision:
+                        description: CatalogRevision is the accepted catalog's content
+                          digest.
+                        maxLength: 64
+                        pattern: ^[a-f0-9]{64}$
+                        type: string
+                      projects:
+                        description: Projects are the project roots' refreshes (DESIGN-007).
+                        items:
+                          description: ProjectBootstrapProjectStatus is one project
+                            root's refresh.
+                          properties:
+                            cause:
+                              description: |-
+                                Cause is that repository's reason, when its clean-checkout or reference
+                                proof refused.
+                              enum:
+                              - CloneFailed
+                              - StagingPreserved
+                              - ReferenceUncertain
+                              - IdentityMismatch
+                              - GitOperationPresent
+                              - CatalogUnconfirmed
+                              - FetchFailed
+                              - UntrackedFiles
+                              - UnsupportedTrackedEntry
+                              - IndexBoundExceeded
+                              - WorkingTreeDiffers
+                              - StagedChanges
+                              - NonDefaultBranch
+                              - BranchInOtherWorktree
+                              - LocalOnlyCommits
+                              - ChangedDuringProof
+                              - AdvanceFailed
+                              - TimedOut
+                              - Stopped
+                              - Uncertain
+                              type: string
+                            name:
+                              description: Name is the project's catalog name.
+                              maxLength: 63
+                              minLength: 1
+                              pattern: ^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$
+                              type: string
+                            reason:
+                              description: Reason is why a Failed refresh stopped.
+                              enum:
+                              - StateUncertain
+                              - ReceiptUnconfirmed
+                              - CatalogUnconfirmed
+                              - RootUnproven
+                              - AnchorRemoved
+                              - RepositoryNotReady
+                              - FetchFailed
+                              - AnchorNotFastForward
+                              - RootPrepareFailed
+                              - AnchorAddFailed
+                              - AnchorUnproven
+                              - AnchorAdvanceFailed
+                              - RootAdvanceFailed
+                              - BudgetReserve
+                              - TimedOut
+                              - Stopped
+                              type: string
+                            repository:
+                              description: Repository is the member repository that
+                                caused it, when one did.
+                              maxLength: 63
+                              pattern: ^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$
+                              type: string
+                            state:
+                              description: State is Ready or Failed.
+                              enum:
+                              - Ready
+                              - Failed
+                              type: string
+                          required:
+                          - name
+                          - state
+                          type: object
+                        maxItems: 64
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      reason:
+                        description: Reason is why a Failed bootstrap stopped before
+                          or between its items.
+                        enum:
+                        - ConfigInvalid
+                        - StateUncertain
+                        - LockUnavailable
+                        - ReportUnretained
+                        - CatalogUnconfirmed
+                        - CatalogInvalid
+                        - OwnerMismatch
+                        - TimedOut
+                        - Stopped
+                        type: string
+                      repositories:
+                        description: Repositories are the catalog repositories' reference
+                          refreshes.
+                        items:
+                          description: ProjectBootstrapRepositoryStatus is one repository's
+                            reference refresh.
+                          properties:
+                            name:
+                              description: Name is the repository's catalog name.
+                              maxLength: 63
+                              minLength: 1
+                              pattern: ^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$
+                              type: string
+                            reason:
+                              description: Reason is why a Preserved refresh stopped.
+                              enum:
+                              - CloneFailed
+                              - StagingPreserved
+                              - ReferenceUncertain
+                              - IdentityMismatch
+                              - GitOperationPresent
+                              - CatalogUnconfirmed
+                              - FetchFailed
+                              - UntrackedFiles
+                              - UnsupportedTrackedEntry
+                              - IndexBoundExceeded
+                              - WorkingTreeDiffers
+                              - StagedChanges
+                              - NonDefaultBranch
+                              - BranchInOtherWorktree
+                              - LocalOnlyCommits
+                              - ChangedDuringProof
+                              - AdvanceFailed
+                              - TimedOut
+                              - Stopped
+                              - Uncertain
+                              type: string
+                            state:
+                              description: State is Ready, or Preserved when the refresh
+                                stopped and kept it.
+                              enum:
+                              - Ready
+                              - Preserved
+                              type: string
+                            step:
+                              description: Step is where a Preserved refresh stopped.
+                              enum:
+                              - Clone
+                              - Inspect
+                              - Fetch
+                              - Advance
+                              type: string
+                          required:
+                          - name
+                          - state
+                          type: object
+                        maxItems: 128
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      state:
+                        description: State is the catalog outcome.
+                        enum:
+                        - Ready
+                        - Partial
+                        - Failed
+                        type: string
+                    required:
+                    - state
+                    type: object
                   status:
                     description: |-
                       Status is the agent's state, agentd's: pending, busy, idle, waiting,
@@ -827,6 +999,30 @@ spec:
                     x-kubernetes-validations:
                     - message: executor intent cannot change
                       rule: oldSelf == '' || self == oldSelf
+                  executorMissed:
+                    description: |-
+                      ExecutorMissed records once that an uncached read found the recorded
+                      executor gone before its terminal record was written. It never changes
+                      or goes, and no terminal record is ever written beside it: absence never
+                      proves stop.
+                    properties:
+                      observedAt:
+                        format: date-time
+                        type: string
+                      podUID:
+                        description: PodUID must equal lastExecutor.podUID.
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                      version:
+                        enum:
+                        - 1
+                        type: integer
+                    required:
+                    - observedAt
+                    - podUID
+                    - version
+                    type: object
                   executorNotCreated:
                     description: |-
                       ExecutorNotCreated records a known non-attempt (DESIGN-019): the operator
@@ -835,6 +1031,110 @@ spec:
                       Create that was called, whatever it returned, never sets it, and it is
                       refused once an executor was observed.
                     type: boolean
+                  executorTerminal:
+                    description: |-
+                      ExecutorTerminal is the durable terminal record of the recorded executor
+                      (DESIGN-025 section 3): the operator's own uncached observation that the
+                      Pod named by lastExecutor.podUID reached a terminal phase, every container
+                      terminated, on a Ready node with a fresh lease. It sits beside
+                      lastExecutor, which every observation rebuilds. It is evidence for HOME
+                      expiry only: stopState stays Unknown, and it authorizes no claim
+                      transfer, resume or replacement. Once written it never changes or goes.
+                    properties:
+                      claudeConfigDir:
+                        description: |-
+                          ClaudeConfigDir and CodexHome are the executor's provider directories,
+                          relative to HOME, recorded only when the agent container's env sets each
+                          literally to a path inside the HOME volume; empty otherwise (6.3).
+                        maxLength: 256
+                        type: string
+                      codexHome:
+                        maxLength: 256
+                        type: string
+                      containers:
+                        description: Containers are the regular, init and ephemeral
+                          containers' terminations.
+                        items:
+                          description: PrivateExecutorContainerTermination is one
+                            container's terminated state.
+                          properties:
+                            exitCode:
+                              format: int32
+                              type: integer
+                            finishedAt:
+                              format: date-time
+                              type: string
+                            name:
+                              maxLength: 63
+                              minLength: 1
+                              type: string
+                            reason:
+                              maxLength: 128
+                              type: string
+                          required:
+                          - exitCode
+                          - finishedAt
+                          - name
+                          type: object
+                        maxItems: 16
+                        minItems: 1
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      leaseRenewedAt:
+                        description: LeaseRenewedAt is the node lease's renew time
+                          at the observation.
+                        format: date-time
+                        type: string
+                      nodeName:
+                        description: NodeName and NodeUID are the Ready node that
+                          reported the termination.
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                      nodeUID:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                      observedAt:
+                        description: ObservedAt is the operator's clock at the observation.
+                        format: date-time
+                        type: string
+                      phase:
+                        description: Phase is the Pod's terminal phase.
+                        enum:
+                        - Succeeded
+                        - Failed
+                        type: string
+                      podResourceVersion:
+                        description: PodResourceVersion is the observed Pod revision.
+                        maxLength: 64
+                        minLength: 1
+                        type: string
+                      podUID:
+                        description: PodUID must equal lastExecutor.podUID.
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                      reason:
+                        description: Reason is the Pod's status.reason, such as DeadlineExceeded
+                          or Evicted.
+                        maxLength: 128
+                        type: string
+                      version:
+                        enum:
+                        - 1
+                        type: integer
+                    required:
+                    - containers
+                    - leaseRenewedAt
+                    - nodeName
+                    - nodeUID
+                    - observedAt
+                    - phase
+                    - podResourceVersion
+                    - podUID
+                    - version
+                    type: object
                   homeClaim:
                     maxLength: 253
                     minLength: 1
@@ -901,8 +1201,9 @@ spec:
                     - message: retention Session UID is immutable
                       rule: self == oldSelf
                   stopState:
-                    description: This slice has no independent private executor termination
-                      proof.
+                    description: |-
+                      StopState stays Unknown: executorTerminal is evidence for HOME expiry
+                      only, never DESIGN-010's stop contract (DESIGN-025 3.1).
                     enum:
                     - Unknown
                     type: string
@@ -937,6 +1238,20 @@ spec:
                     be recorded as not created
                   rule: '!has(self.executorNotCreated) || !self.executorNotCreated
                     || (self.executorAttempted && !has(self.lastExecutor))'
+                - message: the executor terminal record must name the recorded executor
+                  rule: '!has(self.executorTerminal) || (has(self.lastExecutor) &&
+                    self.executorTerminal.podUID == self.lastExecutor.podUID)'
+                - message: the missed executor marker must name the recorded executor
+                  rule: '!has(self.executorMissed) || (has(self.lastExecutor) && self.executorMissed.podUID
+                    == self.lastExecutor.podUID)'
+                - message: an executor cannot be both recorded terminal and missed
+                  rule: '!has(self.executorTerminal) || !has(self.executorMissed)'
+                - message: the executor terminal record cannot change or be removed
+                  rule: '!has(oldSelf.executorTerminal) || (has(self.executorTerminal)
+                    && self.executorTerminal == oldSelf.executorTerminal)'
+                - message: the missed executor marker cannot change or be removed
+                  rule: '!has(oldSelf.executorMissed) || (has(self.executorMissed)
+                    && self.executorMissed == oldSelf.executorMissed)'
               remoteControl:
                 description: |-
                   RemoteControl is the session's Remote Control entry, for remote mode
