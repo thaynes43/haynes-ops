@@ -238,8 +238,12 @@ other onboot guest on CephFS storage. VM 113 has no cdrom.
   the session that ran the 2026-10-12 reboot.
 - **twin-bottom also runs gasha01 (`qemu/104`).** It is the NFS server for about 30
   pods (home-assistant, appdaemon, immich, paperless and more), on hard mounts. A
-  twin-bottom reboot takes all of them down, so it needs its own procedure. On
-  2026-10-12 no other PVE node had the 128 GiB free to live-migrate it.
+  twin-bottom reboot takes all of them down unless gasha01 moves first. Its disks are
+  on Ceph RBD (`vm-disks`) and it really uses only a few GiB. Its `memory: 131072` is a
+  ceiling with a 32 GiB balloon floor, so free RAM does not block a move. `cpu: host` does:
+  a live migration is safe only to twin-top, which has the same Core Ultra 7 265K. To
+  move it to another host, first switch it to a portable CPU type (e.g. `x86-64-v3`),
+  which takes one restart, a 2-3 min NFS pause.
 - **twin-top runs `nut2700` (ct:105),** the NUT server for the big UPS. Its secondaries
   (talosm01-05, HaynesTower) log `Communications with UPS ... lost` and then
   `established`, and do not shut down while the UPS is `OL`. Check that first with
