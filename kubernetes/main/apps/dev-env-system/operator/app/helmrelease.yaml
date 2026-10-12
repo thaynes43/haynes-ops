@@ -66,6 +66,7 @@ spec:
               repository: ghcr.io/thaynes43/dev-env-operator
               # Main 538c4f6e771a4fdeeb09586b560a5d2f4efe647c; publish.yml run 38281880032, keyless verified.
               # dev-env 2.24.1 (#228): fixes #219-#223, #225, #229; writes status.taskResult (CRD from #3841 first).
+              # Its binary reports v2.24.0-13-g538c4f6 (git describe before the tag); code identical to v2.24.1.
               tag: sha-538c4f6@sha256:d706ee405c9ca5bd958f9537d3ead9678f7dbda5e229af5d56e2a8953ff492ad
               pullPolicy: IfNotPresent
             args:
