@@ -17,6 +17,8 @@ Each twin's Arrow Lake-S iGPU is the hardware transcoder for one Plex server.
   `machine: q35`, `vga: none` and no `x-vga`.
   - **Never add `x-vga=1`.** It wedged talosw03's GPU on every boot we checked (#3833,
     proved below).
+  - **No cdrom media on CephFS storage.** An ISO on `ISO-Templates` made VM 108's
+    onboot start fail ([below](#vm-108-onboot-failure-2026-09-09-fixed)).
 - **Guest:** Talos `siderolabs/i915` extension, with `xe` blacklisted. The firmware is
   `mtl_guc_70`, `mtl_huc_gsc`, `mtl_gsc_1` and `mtl_dmc`.
   - The Omni template's `i915 enable_guc=3` never takes effect, because udev loads i915
@@ -109,15 +111,74 @@ device.
 
 Cycle 1 shows that the other suspect, the onboot start ~20 s after host power-on, is
 not needed for the wedge: the VM still wedged when it was started by hand on a host that
-had been up for weeks. The fix lives in the VM config, so it survives host reboots. No
-onboot delay is set on either twin.
+had been up for weeks. The fix lives in the VM config, and a host reboot proved that it
+survives an early onboot start ([Host reboots](#host-reboots)). No onboot delay is set
+on either twin, and none is needed.
 
-**Still unproven:**
+**Still unproven:** the exact mechanism inside QEMU. Cycle 2 proves the cause, not the
+mechanism.
 
-- A host power-on with the config of record. The rules forbid host reboots from the
-  dev-env pod, so the onboot path has not been tested since the fix. The next time a
-  twin host powers on, run `scripts/plex-igpu/check.sh` once its VM is up.
-- The exact mechanism inside QEMU. Cycle 2 proves the cause, not the mechanism.
+## Host reboots
+
+### Proof: the fix survives a host power-on (twin-top, 2026-10-12)
+
+twin-bottom was not rebooted, because of gasha01 (see the constraints below). twin-top
+stood in for it: it has the same board, BIOS and iGPU, and VM 108 has the same
+`hostpci0` line as VM 113. The reboot was owner-approved and gated.
+
+| Time (UTC) | Event |
+|---|---|
+| 18:14:06 | `hw-ssh twin-top sudo pvesh create /nodes/twin-top/status --command reboot` |
+| 18:14:12–18:15:52 | stopall: VM 108 shut down cleanly in 100 s (Talos cordoned and drained talosw02), CT 105 in 4 s |
+| 18:18:07 | new host boot (kernel) |
+| 18:18:16.7 | onboot `startall`: CT 105, then the VM 108 start task at 18:18:18.7 |
+| 18:18:36.3 | VM 108 running, 29 s after the host kernel |
+| 18:18:49 | guest i915: `GT0: GUC: submission enabled`, `GT1: HuC: authenticated for all workloads`, no `ioremap on RAM` |
+| 18:19:40 / 18:20:28 | talosw02 Ready / `media/plex` Ready (HaynesKube down about 6.5 min) |
+
+`check.sh plex` at 18:20:37:
+
+```
+plex pod=plex-7c54656d6d-nsgzv node=talosw02 wedged=0 guc=RUNNING huc=RUNNING guc_load_err_log=0B
+plex transcode title=803794 target=1280x720@2000k source=h264 hwRequested=1 hwDecoding=vaapi hwEncoding=vaapi speed=0
+```
+
+With the config of record, an early onboot start does not wedge the iGPU.
+
+### VM 108 onboot failure (2026-09-09, fixed)
+
+In the 2026-09-09 fence, twin-top's onboot start of VM 108 failed. `ide2` still held the
+Talos install ISO on `ISO-Templates` (PVE CephFS). That mount failed at boot
+(`Starting VM 108 failed: mount error`, 07:38:40Z), nothing retried the start, and
+talosw02 stayed down until someone started it by hand at 11:12Z. On 2026-10-12 we
+ejected the ISO live with `qm set 108 --ide2 none,media=cdrom`. In the reboot above,
+VM 108 started 10 s before `ISO-Templates` was mounted. A scan of every guest found no
+other onboot guest on CephFS storage. VM 113 has no cdrom.
+
+### Before rebooting a twin host
+
+- **twin-bottom also runs gasha01 (`qemu/104`).** It is the NFS server for about 30
+  pods (home-assistant, appdaemon, immich, paperless and more), on hard mounts. A
+  twin-bottom reboot takes all of them down, so it needs its own procedure. On
+  2026-10-12 no other PVE node had the 128 GiB free to live-migrate it.
+- **twin-top runs `nut2700` (ct:105),** the NUT server for the big UPS. Its secondaries
+  (talosm01-05, HaynesTower) log `Communications with UPS ... lost` and then
+  `established`, and do not shut down while the UPS is `OL`. Check that first with
+  `hw-ssh twin-top "sudo pct exec 105 -- upsc APC-2700W@localhost"`.
+- **PVE Ceph HDD pool:** each twin holds 10 HDD OSDs and is one of the three HDD
+  hosts. While `osd.12` (a dead disk on twin-top) is out, a reboot of either twin
+  leaves the pool with zero margin. One more HDD OSD failure in the window stalls IO,
+  and `hdd_repl_pool` backs gasha01's NFS export.
+  - Before the reboot, set `noout` with `pvesh set /cluster/ceph/flags/noout --value 1`.
+    Afterwards, set it back to `0` and wait for every PG to be `active+clean`.
+  - On 2026-10-12 every PG stayed active (undersized and degraded) during the reboot,
+    and all were clean again 60 s after the host returned.
+- Each twin runs a PVE Ceph mon and an active MDS. With 5 mons and 2 standby MDS, the
+  cluster covers the loss of one host.
+- talosw02 runs the active Rook MDS (`ceph-filesystem-a`), which fails over to its
+  standby-replay on talosm03. talosw02 and talosw03 run no Rook OSDs.
+- Gates: `pvecm status` quorate 5/5, `ha-manager status` with no resources, Ceph as
+  above, zero Plex streams, and `declare-activity`.
 
 ## Recovery
 
@@ -146,7 +207,8 @@ the owner's go-ahead first.
 6. Close the declaration.
 
 **If it wedges with the config of record** (no `x-vga`), this is a new cause. Record
-whether the boot log has the `ioremap on RAM` warning. If the wedge followed a host
-power-on, suspect the onboot timing next. Delay the onboot guests on that host with
+whether the boot log has the `ioremap on RAM` warning. An early onboot start did not
+wedge it on 2026-10-12, but if the wedge followed a host power-on, testing the timing
+is still the cheapest next step. Delay the onboot guests on that host with
 `hw-ssh <host> sudo pvesh set /nodes/<host>/config --startall-onboot-delay 180`, then
 cold-cycle the VM again.

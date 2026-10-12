@@ -28,7 +28,8 @@ Worker placement (2026-09-09): talosw01 = `qemu/103` on HaynesIntelligence, talo
 twin-bottom (external Ceph for Prometheus/Loki + NFS). The twins pass their Arrow Lake
 iGPUs into talosw02/03 for Plex. Never add `x-vga=1` to their `hostpci0`, because it
 wedges the GPU at boot (#3833). The config of record and the recovery are in
-[plex-igpu-transcode](plex-igpu-transcode.md).
+[plex-igpu-transcode](plex-igpu-transcode.md). Read its *Before rebooting a twin host*
+before you reboot either twin: twin-bottom also runs gasha01.
 
 ## Commands
 
