@@ -25,7 +25,9 @@ is down, hit a node directly on `:8006`; `pve` takes `PVE_API_URL`).
 
 Worker placement (2026-09-09): talosw01 = `qemu/103` on HaynesIntelligence, talosw02 =
 `qemu/108` on twin-top, talosw03 = `qemu/113` on twin-bottom. gasha01 = `qemu/104` on
-twin-bottom (external Ceph for Prometheus/Loki + NFS).
+twin-bottom (external Ceph for Prometheus/Loki + NFS). The twins pass their Arrow Lake
+iGPUs into talosw02/03 for Plex; config of record and the wedged-GPU recovery are in
+[plex-igpu-transcode](plex-igpu-transcode.md).
 
 ## Commands
 
