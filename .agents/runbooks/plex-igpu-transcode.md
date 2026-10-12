@@ -37,8 +37,12 @@ scripts/plex-igpu/check.sh --no-transcode   # node state only
 ```
 
 The script reads the guest's i915 debugfs through an Omni-proxied talosconfig, which is
-read-only. It then runs a ~20 s test transcode and stops it. It skips the test while
-anyone is streaming.
+read-only. It then runs the daily canary's probe
+(`kubernetes/main/apps/media/plex-hw-canary/app/resources/probe.sh`) inside the Plex pod: a
+~20 s test transcode that it stops afterwards. The test is 4K HDR to 1080p SDR where the
+library has one (decode, tone map and encode), otherwise a 1080p episode to 720p. While anyone is
+streaming it runs no test (`--force` overrides). Instead it reports a real h264/hevc video
+transcode that is already running (`mode=observed`), or `result=busy` when there is none.
 
 Run it after anything that cold-starts a twin VM: a host power-on, a PVE fence, or a
 `qm stop`/`start`.
@@ -49,14 +53,84 @@ Healthy output shows all of these:
 - `guc=RUNNING`
 - `huc=RUNNING`
 - `guc_load_err_log=0B`
-- `hwDecoding=vaapi hwEncoding=vaapi`
+- `result=hw`, with `hwDecoding=vaapi hwEncoding=vaapi`
+- on plexops, `tonemap=tonemap_opencl` (HDR tone mapping on the GPU, see below)
 
 `speed` can read `0` on a healthy run, probably because the transcoder throttles once it
-is ahead of the test client. The pass condition is vaapi decode and encode.
+is ahead of the test client. The pass condition is hardware decode and encode.
 
 The raw files are under `/sys/kernel/debug/dri/0/`: `i915_wedged`,
 `gt0/uc/guc_info`, `gt1/uc/huc_info` and `gt0/uc/guc_load_err_log_dump`. Read them with
 `talosctl --talosconfig <tc> -n <node-ip> read <file>`.
+
+## Canary
+
+A CronJob checks hardware transcoding on all three Plex servers every morning, so a silent
+fall-back to software can no longer go unnoticed for long. plexops ran software-only for about
+100 days before #3833. The owner set the spec on 2026-10-12. Manifests:
+`kubernetes/main/apps/media/plex-hw-canary/`.
+
+| Server | How the canary reaches it | Test |
+|---|---|---|
+| plexops (HaynesOps) | `kubectl exec` into the pod; the token stays in the pod | 4K HDR to 1080p SDR |
+| plex (HaynesKube) | `kubectl exec` into the pod | 1080p to 720p (no 4K library) |
+| haynestower (HaynesTower, Unraid) | HTTP to `haynestower.haynesnetwork:32400`, with the owner token from 1Password `homepage` / `HAYNESTOWER_PLEX_API_KEY` | 4K HDR to 1080p SDR |
+
+**What it does.** It runs at 10:00 America/New_York. For each server it runs `probe.sh`:
+
+- With nobody streaming, it runs a ~20 s test transcode and stops it.
+- With a stream, it runs no test. If a real h264/hevc video transcode is already running, its
+  hardware flags are the result (`mode=observed`). This matters most for busy HaynesTower.
+  Otherwise the server is `busy`.
+- A busy or failed server is retried every 20 minutes, six attempts in all, until about 11:40.
+
+A check is **completed** when it gives `hw` (decode AND encode in hardware) or `not-hw`.
+`busy` and `error` are not completed checks, and they never count as a failure.
+
+**Where the results are.**
+
+- Loki, one line per server per run:
+  `{namespace="media", container="canary"} |= "event=result"`. The line carries `result`,
+  `mode`, `streak` (consecutive completed checks that were not hardware), `stale_h` (hours since
+  the last completed check) and the probe's flags, or `reason=` for an error.
+  `event=attempt` lines show each try.
+- State: `kubectl get configmap -n media plex-hw-canary-state -o yaml`, one key per server.
+- Run it now: `kubectl create job -n media plex-hw-canary-manual-$(date +%s) --from=cronjob/plex-hw-canary`.
+  It retries busy servers for up to about 2 hours.
+
+**Alerts.** The rules are in the app's `lokirule.yaml`. All three are `severity: warning`,
+which keeps them off the critical route and away from the remediation lane. Alertmanager's
+`pushover-daytime` route sends them to Pushover at normal priority between 09:00 and 21:00
+America/New_York. An alert that fires at night is delivered at 09:00.
+
+| Alert | Means | First response |
+|---|---|---|
+| `PlexHwTranscodeNotHardware` | The server's last 2 completed checks were not hardware (decode or encode in software). | On plex or plexops, run `scripts/plex-igpu/check.sh <server>`. `wedged=1` is the [wedge below](#failure-the-gpu-is-wedged-at-boot-talosw03-issue-3833). Otherwise read the `Codecs:` and `final decoder` lines in the PMS log, and check the `HardwareDevicePath` pref and `/dev/dri` in the pod. On HaynesTower, check with `hw-ssh haynestower` (read-only): `/dev/dri` in the `Plex-Media-Server` container and the PMS log. Restarts and array actions there are the owner's. |
+| `PlexHwCanaryStale` | No completed check on that server for 60+ hours: every attempt for three mornings was busy or an error. | Read that server's `event=result` lines. `reason=` names an error (`no-running-pod`, `sessions-unreadable`, `no-token`, `start-failed`). If it was busy every time, run the test yourself when the server is idle. |
+| `PlexHwCanaryNotRunning` | The CronJob has not started a run in 3 days. | `kubectl get cronjob,jobs -n media \| grep plex-hw-canary`, then the Job's events and the `plex-hw-canary` Flux Kustomization. |
+
+A resolved notification follows when the condition clears: a passing check sets `streak` back to
+0, and any completed check resets `stale_h`.
+
+## HDR tone mapping on Arrow Lake (proved 2026-10-12)
+
+Plex tone-maps HDR to SDR on the iGPU. On plexops, 4K to 1080p SDR transcodes of an HDR10
+title, a Dolby Vision profile 8.1 title (The Nightmare Before Christmas) and a Dolby Vision
+profile 7 FEL title all ran fully in hardware:
+
+- `transcodeHwDecoding="vaapi" transcodeHwEncoding="vaapi" transcodeHwFullPipeline="1"`
+- `hardware transcoding: final decoder: vaapi, final encoder: vaapi`
+- filter graph:
+  `scale_vaapi=w=1920:h=1080:format=p010 -> hwmap=derive_device=opencl -> tonemap_opencl=tonemap=hable -> hwmap=derive_device=vaapi`
+- the running `Plex Transcoder` had loaded the Intel OpenCL runtime (`libigdrcl.so`,
+  `libigc.so.2.16.0`, `libigdfcl.so.2.16.0`). Plex downloads it into the PMS data dir as
+  `Drivers/icr-*` (Intel Compute Runtime), next to the media driver in `Drivers/imd-*`; it is
+  not in the container image. If HDR titles fall back to software tone mapping, check that
+  directory first.
+
+No setting or image change was needed. `TranscoderToneMapping` is unset on plexops, so it is at
+its default (on). The software tone mapping of The Nightmare Before Christmas earlier in October
+happened during the wedge.
 
 ## Failure: the GPU is wedged at boot (talosw03, issue #3833)
 

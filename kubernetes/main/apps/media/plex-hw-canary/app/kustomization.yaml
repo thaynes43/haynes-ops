@@ -1,0 +1,31 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./rbac.yaml
+  - ./state.yaml
+  - ./externalsecret.yaml
+  - ./cronjob.yaml
+configMapGenerator:
+  # Hash-suffixed (the kustomize default, as in kube-system/node-out-of-service): editing a
+  # script mints a new ConfigMap name and kustomize rewrites the CronJob's volume reference,
+  # so the next Job picks the change up.
+  - name: plex-hw-canary-script
+    files:
+      - canary.sh=./resources/canary.sh
+      - probe.sh=./resources/probe.sh
+  # The Loki ruler sidecar picks this up by label in any namespace (same pattern as
+  # downloads/owed-checks). Stable name: nothing references it.
+  - name: plex-hw-canary-lokirule
+    files:
+      - plex-hw-canary.yaml=./lokirule.yaml
+    options:
+      disableNameSuffixHash: true
+      labels:
+        loki_rule: "true"
+generatorOptions:
+  # Belt and braces: keep Flux post-build substitution away from ${var} and {{ $labels }}
+  # should anyone add postBuild to ks.yaml later.
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled

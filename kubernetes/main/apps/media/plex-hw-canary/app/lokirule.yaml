@@ -1,0 +1,66 @@
+---
+# Loki ruler alerts for the daily Plex hardware-transcode canary (cronjob.yaml, resources/canary.sh).
+# The canary logs one `event=result` logfmt line per server per morning, carrying the server's
+# state: `streak` (consecutive completed checks that were not hardware) and `stale_h` (hours since
+# its last completed check). A skip (someone streaming) or an error is not a completed check and
+# moves neither the streak nor the clock forward. Runbook: .agents/runbooks/plex-igpu-transcode.md,
+# "Canary".
+#
+# Routing: severity=warning keeps these off the critical route (priority-1 Pushover, which bypasses
+# quiet hours, and the remediation lane). The owner wants them on his phone in the daytime only, so
+# Alertmanager has its own route for these three alertnames: the `pushover-daytime` receiver at
+# normal priority, muted outside 09:00-21:00 America/New_York (a night-time alert is delivered at
+# 09:00). See observability/kube-prometheus-stack/app/externalsecret.yaml.
+#
+# `last_over_time(...) by (server)` merges every Job pod's samples per server and takes the newest,
+# so each rule sees the latest run's value even though every run is a different pod.
+groups:
+  - name: plex-hw-canary
+    rules:
+      - alert: PlexHwTranscodeNotHardware
+        # The 7d window keeps the alert firing across skipped mornings until a completed check
+        # passes (streak back to 0).
+        expr: |
+          last_over_time({namespace="media", container="canary", pod=~"plex-hw-canary-.*"} |= "event=result" | logfmt | result=~"hw|not-hw" | unwrap streak | __error__="" [7d]) by (server) >= 2
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Plex {{ $labels.server }} is transcoding in software.
+          description: >-
+            Plex {{ $labels.server }} failed its daily hardware-transcode check
+            {{ $value }} times in a row: decode or encode ran in software. Runbook:
+            .agents/runbooks/plex-igpu-transcode.md (Canary).
+      - alert: PlexHwCanaryStale
+        # stale_h reaches about 72 on the third morning in a row without a completed check. The 4d
+        # window overlaps PlexHwCanaryNotRunning, which takes over if the canary stops running.
+        expr: |
+          last_over_time({namespace="media", container="canary", pod=~"plex-hw-canary-.*"} |= "event=result" | logfmt | unwrap stale_h | __error__="" [4d]) by (server) >= 60
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Plex {{ $labels.server }} has had no hardware-transcode check for {{ $value }} hours.
+          description: >-
+            The daily hardware-transcode canary has not completed a check on Plex {{ $labels.server }}
+            for {{ $value }} hours: it was busy with streams or the check failed every morning.
+            Its event=result lines in Loki ({namespace="media", container="canary"}) give the reason.
+            Runbook: .agents/runbooks/plex-igpu-transcode.md (Canary).
+      - alert: PlexHwCanaryNotRunning
+        # Every run logs event=start first, so this only needs the CronJob to start a pod. The 1h
+        # `for` covers the gap between a fresh deploy and its first run.
+        expr: |
+          absent_over_time({namespace="media", container="canary", pod=~"plex-hw-canary-.*"} |= "event=start" [3d])
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            The Plex hardware-transcode canary has not run for 3 days.
+          description: >-
+            The CronJob media/plex-hw-canary has not started a run in 3 days, so no Plex server's
+            hardware transcoding is being checked. Check `kubectl get cronjob,jobs -n media | grep
+            plex-hw-canary`. Runbook: .agents/runbooks/plex-igpu-transcode.md
+            (Canary).

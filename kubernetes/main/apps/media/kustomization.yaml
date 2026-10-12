@@ -19,6 +19,7 @@ resources:
   - ./maintainerr/ks.yaml
   - ./plexops/ks.yaml
   - ./plex/ks.yaml
+  - ./plex-hw-canary/ks.yaml
   - ./radarr/ks.yaml
   - ./recyclarr/ks.yaml
   - ./seerr/ks.yaml

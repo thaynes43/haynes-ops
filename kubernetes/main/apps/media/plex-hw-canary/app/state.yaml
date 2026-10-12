@@ -1,0 +1,12 @@
+---
+# The canary's memory between runs: one key per server, written by canary.sh
+# ("streak=<n> last_completed=<epoch> last_result=<hw|not-hw>"). `ssa: IfNotPresent` makes Flux
+# create it once and never overwrite what the Job writes, and recreate it if it is deleted.
+# Inspect: kubectl get configmap -n media plex-hw-canary-state -o yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: plex-hw-canary-state
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+data: {}
