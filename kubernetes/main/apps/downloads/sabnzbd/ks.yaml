@@ -11,6 +11,8 @@ spec:
     labels:
       app.kubernetes.io/name: *app
   dependsOn:
+    - name: sabnzbd-scripts
+      namespace: downloads
     - name: multus
       namespace: network
     - name: rook-ceph-cluster
@@ -46,6 +48,8 @@ spec:
     labels:
       app.kubernetes.io/name: *app
   dependsOn:
+    - name: sabnzbd-scripts
+      namespace: downloads
     - name: multus
       namespace: network
     - name: rook-ceph-cluster
@@ -67,3 +71,25 @@ spec:
       GATUS_SUBDOMAIN: sabnzbd-fast
       GATUS_PATH: /api?mode=version
       VOLSYNC_CAPACITY: 2Gi
+---
+# The post-processing scripts both instances mount at /scripts (haynes-ops#3834).
+# Only a ConfigMap, so it is always healthy and neither instance waits on the other.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app sabnzbd-scripts
+  namespace: downloads
+spec:
+  targetNamespace: downloads
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  path: ./kubernetes/main/apps/downloads/sabnzbd/scripts
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m

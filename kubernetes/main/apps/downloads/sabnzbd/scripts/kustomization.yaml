@@ -1,0 +1,18 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+configMapGenerator:
+  # Post-processing script that extracts the 7z archives SABnzbd leaves behind on
+  # obfuscated posts (haynes-ops#3834). Its own ks so that both instances mount
+  # one copy without either depending on the other.
+  - name: sabnzbd-scripts
+    files:
+      - unpack-archives.sh=./unpack-archives.sh
+    options:
+      # Stable name: the HelmReleases mount it by name from inside `values`.
+      disableNameSuffixHash: true
+      annotations:
+        # The script's ${7:-0} and ${archive%.*} must never meet Flux's postBuild
+        # envsubst (this ks has none today; keep it that way if one is added).
+        kustomize.toolkit.fluxcd.io/substitute: disabled

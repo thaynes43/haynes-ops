@@ -213,3 +213,14 @@ spec:
         type: emptyDir
         globalMounts:
           - path: /tmp
+      # Post-processing scripts from the sabnzbd-scripts ks (script_dir=/scripts in
+      # sabnzbd.ini, set through SAB's API): unpack-archives.sh extracts the .7z that SABnzbd's own unpack
+      # misses on obfuscated posts (haynes-ops#3834). Set on the sonarrtv,
+      # radarrmovies and lidarr categories.
+      scripts:
+        type: configMap
+        name: sabnzbd-scripts
+        defaultMode: 0555
+        globalMounts:
+          - path: /scripts
+            readOnly: true
