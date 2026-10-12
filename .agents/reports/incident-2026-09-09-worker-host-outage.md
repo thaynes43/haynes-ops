@@ -34,7 +34,9 @@ not firing. Tom powered `talosw02` back on manually at 11:13Z (07:13 EDT).
 1. **Half the cluster shares one physical failure domain.** talosw01/02/03 are all VMs on one Proxmox host, and that host also holds the only i915 iGPUs and the 3090. A host reboot is a 3-node outage every time.
 2. **Critical singletons happened to live on that host.** EMQX core, Prometheus, Loki, both Alertmanagers, Gatus, AppDaemon, ha-mcp were all on workers. Home Assistant, zwave, zigbee2mqtt were on bare-metal masters and survived (until their dependencies died).
 3. **No non-graceful-shutdown handling.** A hard-off node keeps its VolumeAttachments and Terminating pods forever; StatefulSets never reschedule. Recovery required a human to power the VM on.
-4. **talosw02 does not autostart** in Proxmox (the other two did).
+4. **talosw02 does not autostart** in Proxmox (the other two did). *Corrected 2026-10-12:*
+   it had onboot, but its start failed. See the 2026-10-12 note under "Correction 13:56Z"
+   below.
 5. **Dependency chains amplify one broker outage**: EMQX → Zigbee2MQTT → every Zigbee automation; EMQX → AppDaemon MQTT plugin → *all* AppDaemon apps including the health checks that would have told Tom what was wrong.
 6. **Z-Wave over TCP has no stale-client recovery.** One switch reboot wedged the TubesZB for 4 h 20 min while the radio was fine; zwave-js-ui cannot reclaim the port and nothing restarted the ESP32.
 7. **Monitoring dies with the workload.** Prometheus, Loki and Gatus are in-cluster on the same host; only the external dead-man and Gatus→Pushover (Gatus was on talosw01, back after 4 min) reached the phone. Loki has a 3.5 h hole exactly where the forensics would be.
@@ -89,7 +91,12 @@ Switch Pro Aggregation reboot (07:37Z)** — the corosync-quorum-loss → watchd
 the "Mitigations → Proxmox" item guessed at. The three worker VMs are on three different
 nodes (w01 HaynesIntelligence, w02 twin-top, w03 twin-bottom), which is why w01/w03 came
 back at different times, and every VM with onboot set came back with its node. talosw02
-is the only Talos VM without it. gasha01 (Prometheus + Loki storage, the NFS server behind
+is the only Talos VM without it. **Correction (2026-10-12): wrong.** twin-top's journal
+shows the onboot `startall` trying VM 108 at 07:38:38Z. The start failed at 07:38:40Z
+with `mount error`, because the VM's cdrom held a Talos ISO on `ISO-Templates`, a PVE
+CephFS store that was not mounted yet. Nothing retried it. The ISO is now ejected
+([plex-igpu-transcode](../runbooks/plex-igpu-transcode.md#vm-108-onboot-failure-2026-09-09-fixed)).
+The journal also puts twin-top's kernel start at 07:38:29Z. gasha01 (Prometheus + Loki storage, the NFS server behind
 home-assistant/immich/appdaemon) also fenced and came back; its own onboot state is
 unknown from this data because the exporter's config collector only read the node that
 answered via the LB (HaynesIntelligence) — fixed by the per-node scrapes in the PVE alerting PR.
