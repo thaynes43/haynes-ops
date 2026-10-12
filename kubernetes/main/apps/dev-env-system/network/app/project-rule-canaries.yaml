@@ -8,7 +8,7 @@ spec:
   description: fixed private Claude rule canary
   endpointSelector:
     matchLabels:
-      dev-env.haynesops.com/project-canary: rule-canary-claude-1011
+      dev-env.haynesops.com/project-canary: rule-canary-claude-1012
   ingress:
     - {}
   egress:
