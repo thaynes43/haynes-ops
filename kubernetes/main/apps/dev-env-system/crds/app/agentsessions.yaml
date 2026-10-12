@@ -27,6 +27,9 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.taskResult.state
+      name: Task
+      type: string
     - jsonPath: .status.nodeName
       name: Node
       type: string
@@ -824,6 +827,14 @@ spec:
                     x-kubernetes-validations:
                     - message: executor intent cannot change
                       rule: oldSelf == '' || self == oldSelf
+                  executorNotCreated:
+                    description: |-
+                      ExecutorNotCreated records a known non-attempt (DESIGN-019): the operator
+                      returned before calling Create for ExecutorIntent because an observation
+                      failed. Only then may admission re-arm that same intent, once per mark. A
+                      Create that was called, whatever it returned, never sets it, and it is
+                      refused once an executor was observed.
+                    type: boolean
                   homeClaim:
                     maxLength: 253
                     minLength: 1
@@ -922,6 +933,10 @@ spec:
                 - message: executor attempt requires one durable causal intent
                   rule: '!self.executorAttempted || (self.admission == ''Started''
                     && size(self.executorIntent) > 0)'
+                - message: only an executor attempt with no observed executor can
+                    be recorded as not created
+                  rule: '!has(self.executorNotCreated) || !self.executorNotCreated
+                    || (self.executorAttempted && !has(self.lastExecutor))'
               remoteControl:
                 description: |-
                   RemoteControl is the session's Remote Control entry, for remote mode
@@ -1185,6 +1200,33 @@ spec:
                   clears it.
                 format: date-time
                 type: string
+              taskResult:
+                description: |-
+                  TaskResult is how a task-mode session's task ended, derived by the
+                  operator from agent.task (DESIGN-021). Phase stays the pod's: a session
+                  whose pod ended is Failed whatever its task did (D-44), so a canary that
+                  succeeded and one that failed differ here, not in Phase.
+                properties:
+                  message:
+                    description: Message says how the task ended, for people.
+                    maxLength: 1024
+                    type: string
+                  reason:
+                    description: Reason is a CamelCase word, for example TaskSucceeded
+                      or TaskExitedNonZero.
+                    maxLength: 128
+                    type: string
+                  state:
+                    description: State is the task's result.
+                    enum:
+                    - Succeeded
+                    - Failed
+                    - TimedOut
+                    - Unknown
+                    type: string
+                required:
+                - state
+                type: object
               usage:
                 description: Usage is the session's cost record (DESIGN-001 3.7, V-16).
                 properties:
