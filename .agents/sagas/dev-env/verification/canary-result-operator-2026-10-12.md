@@ -1,0 +1,15 @@
+# Fixed capture admission and result-reader operator delivery
+
+Source [dev-env #208](https://github.com/thaynes43/dev-env/pull/208) was squash-merged as `cd966d17c8d1a2bca82c27cc01be4d9a11ae5256`. It fixes initial capture validation before Kubernetes assigns a Session UID and adds a result read bound to the initiating client, trusted record, original Session UID and named publication. Retained reads work without the source Pod. Runtime UID checks and general context permissions remain enforced.
+
+Focused API/CLI tests and affected lint passed; required CI run `38189968708` passed. Native source review found no issues on the exact 14-path head (`f854b781c615b278cada778756122a162b86ba1b0aa7d0e596701852dd824ee3`). Claude review is optional and unavailable: its error-only output and empty inline findings were read, with no retry or authentication repair.
+
+The signed operator artifact is `ghcr.io/thaynes43/dev-env-operator:sha-cd966d1@sha256:cc03ae820a2c81e65af153c8f97eb6edb129c1158a0b8c51a3222df9e018e345`. Publication run `38190613818`, job `114622385819`, passed keyless signing and verification against the main publishing workflow identity and GitHub OIDC issuer. The exact six-command saved publication receipt hashes to `20e0ac0a50bfa2c63e9d325f98c84dabbd0c9017676ec0ea947e236e7528b268`; Independent saved-result review passed with no findings (`4915754e6cb874b0fe3e643993245286e6968b22f4a24ab98a9c7467fd0c3b74`).
+
+Release [v2.22.0](https://github.com/thaynes43/dev-env/releases/tag/v2.22.0) was published from release #209 (`ca0dc3f1f441e8a3d1625b273445d50392ace48f`). Release publication does not establish deployment. This GitOps slice changes only the operator image and source comments. All 28 arguments, both fixed records, task image/template 2.20.0, disabled global private admission, schema and authorization resources remain unchanged. Current dev-env pod resources are untouched.
+
+Before merging, obtain exact source review, required Flux/Diff Scope CI, and one independently reviewed fresh preservation baseline. After normal Flux settling, perform one bounded observation of the new Ready operator pods, image/spec/ownership and finite admitted metadata. Preserve existing peer pod UIDs, restart counts and specs, authority ConfigMap UIDs/revisions, Jobs, ledgers and failed or uncertain lifecycle fixtures. No forced reconcile, session restart, Directory-kind read, credential access or new provider call is part of this delivery.
+
+The prior #3824 configuration and preservation acceptance remains valid. Its final R4 correction is complete. This image feature delivery uses a new reviewed observation contract; prior failed preparations and counters remain preserved.
+
+Installation and actual Claude/Codex rule acceptance are pending. Both permanent probes remain unstarted. The local client build is a source-bound `dev` binary, not a signed release artifact or a runtime result. Parent issues #173, #174 and #91 stay open; the Codex routing owner choice stays pending. No full history, private authentication, exact served model, billed cost or working multi-provider MVP is claimed.
