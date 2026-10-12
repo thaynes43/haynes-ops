@@ -4,20 +4,21 @@
 #   scripts/plex-igpu/check.sh [plexops|plex|all] [--no-transcode] [--force]
 #
 # For each server it prints the guest i915 state of the node the pod runs on (read-only,
-# Talos debugfs via an Omni-proxied talosconfig), then runs a short test transcode
-# (~20 s, 4K HEVC -> 1080p/10 Mbps when the server has 4K, else its newest 1080p
-# episode -> 720p/2 Mbps), samples /transcode/sessions and stops it. The test is skipped while
-# anyone is streaming unless --force. The Plex token stays inside the pod.
-# Exit 0 only when every checked server ran the test with vaapi decode AND encode.
+# Talos debugfs via an Omni-proxied talosconfig), then runs the daily canary's probe in the
+# Plex pod: a ~20 s test transcode (4K HDR -> 1080p SDR when the server has one, else 4K HEVC
+# -> 1080p, else its newest 1080p episode -> 720p) that samples /transcode/sessions and stops.
+# While anyone is streaming it runs no test (unless --force) and reports a real video transcode
+# instead, if one is running. The Plex token stays inside the pod.
+# Exit 0 only when every checked server reported result=hw (hardware decode AND encode).
 # Runbook: .agents/runbooks/plex-igpu-transcode.md
 set -euo pipefail
 
-target=all transcode=1 force=0
+target=all transcode=1 force=""
 for arg in "$@"; do
   case "$arg" in
     plexops | plex | all) target=$arg ;;
     --no-transcode) transcode=0 ;;
-    --force) force=1 ;;
+    --force) force=force ;;
     *) echo "usage: $0 [plexops|plex|all] [--no-transcode] [--force]" >&2; exit 2 ;;
   esac
 done
@@ -34,50 +35,10 @@ if [[ -z $tc ]]; then
   omnictl talosconfig "$tc" >/dev/null 2>&1 || { echo "plex-igpu: omnictl talosconfig failed" >&2; exit 2; }
 fi
 
-# Runs inside the Plex container (POSIX sh + curl). $1 = mode (probe|test), $2 = session id.
-read -r -d '' in_pod <<'POD' || true
-P="/config/Library/Application Support/Plex Media Server/Preferences.xml"
-T=$(sed -n 's/.*PlexOnlineToken="\([^"]*\)".*/\1/p' "$P")
-B=http://127.0.0.1:32400
-get() { curl -s -H 'Accept: application/xml' "$B$1$(case "$1" in *\?*) echo '&';; *) echo '?';; esac)X-Plex-Token=$T"; }
-attr() { grep -oE "$1=\"[^\"]*\"" | head -1 | cut -d'"' -f2; }
-if [ "$1" = probe ]; then
-  echo "streams=$(get /status/sessions | grep -oE '<MediaContainer size="[0-9]+"' | grep -oE '[0-9]+')"
-  exit 0
-fi
-S=$2 KEY="" RES=1280x720 KBPS=2000
-for sec in $(get /library/sections | grep -oE '<Directory [^>]*type="movie"[^>]*' | grep -oE ' key="[0-9]+"' | cut -d'"' -f2); do
-  KEY=$(get "/library/sections/$sec/all?type=1&resolution=4k&videoCodec=hevc&X-Plex-Container-Start=0&X-Plex-Container-Size=1" | grep -oE '<Video [^>]*' | attr ratingKey)
-  [ -n "$KEY" ] && { RES=1920x1080 KBPS=10000; break; }
-done
-if [ -z "$KEY" ]; then
-  for sec in $(get /library/sections | grep -oE '<Directory [^>]*type="show"[^>]*' | grep -oE ' key="[0-9]+"' | cut -d'"' -f2); do
-    KEY=$(get "/library/sections/$sec/all?type=4&resolution=1080&sort=addedAt:desc&X-Plex-Container-Start=0&X-Plex-Container-Size=1" | grep -oE '<Video [^>]*' | attr ratingKey)
-    [ -n "$KEY" ] && break
-  done
-fi
-[ -z "$KEY" ] && { echo "result=no-test-title"; exit 0; }
-C="X-Plex-Client-Identifier=$S&X-Plex-Product=Plex%20Web&X-Plex-Platform=Chrome&X-Plex-Device=Linux&X-Plex-Token=$T"
-Q="path=%2Flibrary%2Fmetadata%2F$KEY&mediaIndex=0&partIndex=0&protocol=hls&fastSeek=1&directPlay=0&directStream=0&directStreamAudio=1&videoQuality=100&videoResolution=$RES&maxVideoBitrate=$KBPS&session=$S&$C"
-U=$B/video/:/transcode/universal
-curl -s -o /dev/null "$U/decision?$Q"
-# The transcoder starts once a client fetches the variant playlist and a segment.
-V=$(curl -s "$U/start.m3u8?$Q" | grep -v '^#' | head -1 | tr -d '\r')
-case "$V" in session/*) ;; *) echo "result=start-failed"; exit 0 ;; esac
-SEG=$(curl -s "$U/$V" | grep -v '^#' | head -1 | tr -d '\r')
-[ -n "$SEG" ] && curl -s -o /dev/null "$U/session/$S/base/$SEG?X-Plex-Token=$T"
-LAST=""
-for i in 1 2 3 4; do
-  sleep 5
-  LAST=$(get /transcode/sessions | grep -oE "<TranscodeSession [^>]*key=\"$S\"[^>]*|<TranscodeSession key=\"$S\"[^>]*" | head -1)
-done
-curl -s -o /dev/null "$U/stop?session=$S&$C"
-echo "title=$KEY target=$RES@${KBPS}k source=$(echo "$LAST" | attr sourceVideoCodec)" \
-  "hwRequested=$(echo "$LAST" | attr transcodeHwRequested)" \
-  "hwDecoding=$(echo "$LAST" | attr transcodeHwDecoding)" \
-  "hwEncoding=$(echo "$LAST" | attr transcodeHwEncoding)" \
-  "speed=$(echo "$LAST" | attr speed | cut -c1-4)"
-POD
+# The in-pod check is the daily canary's probe (one implementation for both): it runs inside
+# the Plex container (POSIX sh + curl) and the token never leaves the pod.
+probe=$(dirname "$0")/../../kubernetes/main/apps/media/plex-hw-canary/app/resources/probe.sh
+in_pod=$(cat "$probe") || { echo "plex-igpu: cannot read $probe" >&2; exit 2; }
 
 fail=0
 for app in "${servers[@]}"; do
@@ -95,14 +56,11 @@ for app in "${servers[@]}"; do
   echo "$app pod=$pod node=$node wedged=${wedged:-?} guc=${guc:-?} huc=${huc:-?} guc_load_err_log=${errlog}B"
   [[ $wedged == 0 && $guc == RUNNING ]] || fail=1
   ((transcode)) || continue
-  streams=$(kubectl exec -n media "$pod" -c app -- sh -c "$in_pod" _ probe 2>/dev/null | sed -n 's/^streams=//p' || true)
-  if [[ ${streams:-1} != 0 && $force == 0 ]]; then
-    echo "$app transcode test skipped: ${streams:-?} active stream(s); rerun later or pass --force"
-    fail=1
-    continue
-  fi
-  result=$(kubectl exec -n media "$pod" -c app -- sh -c "$in_pod" _ test "igpu-check-$app-$(date +%s)" 2>/dev/null || echo "result=exec-failed")
+  # The probe tests only when nobody is streaming (or --force). With streams it reports a real
+  # h264/hevc video transcode that is already running (mode=observed) or result=busy.
+  result=$(kubectl exec -n media "$pod" -c app -- sh -c "$in_pod" probe "igpu-check-$app-$(date +%s)" \
+    "$force" 2>/dev/null | grep -m1 '^result=' || echo "result=error reason=exec-failed")
   echo "$app transcode $result"
-  [[ $result == *"hwDecoding=vaapi"* && $result == *"hwEncoding=vaapi"* ]] || fail=1
+  [[ $result == "result=hw "* ]] || fail=1
 done
 exit "$fail"

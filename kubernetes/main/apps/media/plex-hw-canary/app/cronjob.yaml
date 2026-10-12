@@ -1,0 +1,93 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/batch/cronjob_v1.json
+# Daily hardware-transcode canary for all three Plex servers (owner decision 2026-10-12, after
+# plexops ran software-only for about 100 days behind a wedged iGPU and nothing alerted, #3833).
+# Each morning it runs a ~20 s test transcode per server and logs whether decode AND encode ran in
+# hardware; a server with a stream is skipped, unless a real video transcode is already running,
+# whose flags then count. Busy servers are retried every 20 minutes until about 11:40.
+# Alerts (lokirule.yaml) go to Pushover at normal priority in the daytime only (the
+# `pushover-daytime` route in observability/kube-prometheus-stack/app/externalsecret.yaml).
+# Runbook: .agents/runbooks/plex-igpu-transcode.md, "Canary".
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: plex-hw-canary
+spec:
+  schedule: "0 10 * * *"
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  # A tick missed by up to an hour (controller restart, node drain) still runs that morning.
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # No retries: a failed run means the canary itself is broken (state ConfigMap unreadable),
+      # and the dead-man alert covers a canary that stops reporting.
+      backoffLimit: 0
+      # 6 attempts 20 minutes apart (100 min of sleeps) plus up to 150 s per probe.
+      activeDeadlineSeconds: 9000
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: plex-hw-canary
+        spec:
+          restartPolicy: Never
+          serviceAccountName: plex-hw-canary
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: canary
+              # alpine/kubectl, as in kube-system/node-out-of-service: BusyBox ash + curl +
+              # kubectl, which is all canary.sh and probe.sh need. The image ENTRYPOINT is kubectl.
+              image: docker.io/alpine/kubectl:1.37.1
+              command: ["/bin/sh", "/opt/plex-hw-canary/canary.sh"]
+              env:
+                - name: K8S_SERVERS
+                  value: "plexops plex"
+                - name: HTTP_SERVERS
+                  value: "haynestower"
+                - name: HAYNESTOWER_URL
+                  value: "http://haynestower.haynesnetwork:32400"
+                - name: HAYNESTOWER_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: plex-hw-canary-secret
+                      key: HAYNESTOWER_TOKEN
+                - name: ATTEMPTS
+                  value: "6"
+                - name: INTERVAL_SECONDS
+                  value: "1200"
+                # kubectl keeps its discovery cache under $HOME/.kube; with a read-only root
+                # filesystem both point at the emptyDir.
+                - name: HOME
+                  value: /tmp
+                - name: KUBECACHEDIR
+                  value: /tmp/kube-cache
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  memory: 128Mi
+              volumeMounts:
+                - name: script
+                  mountPath: /opt/plex-hw-canary
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: script
+              configMap:
+                name: plex-hw-canary-script
+            - name: tmp
+              emptyDir: {}

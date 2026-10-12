@@ -1,0 +1,37 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: plex-hw-canary
+---
+# Namespaced, and only what the canary uses: find the Plex pods, `kubectl exec` the probe into
+# them (the Plex token stays in the pod, as with scripts/plex-igpu/check.sh), and read and patch
+# its own state ConfigMap. pods/exec has both verbs because kubectl's WebSocket exec is authorized
+# as `get` on some API server versions and as `create` on others.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: plex-hw-canary
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["plex-hw-canary-state"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: plex-hw-canary
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: plex-hw-canary
+subjects:
+  - kind: ServiceAccount
+    name: plex-hw-canary
