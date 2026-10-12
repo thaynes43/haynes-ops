@@ -12,8 +12,12 @@
 # For every .7z / .7z.001 / .zip in the job folder: extract it in place, and
 # delete it (with its volumes) only when 7-Zip exits cleanly. Anything that
 # fails (password, missing volume, corrupt) is left exactly as it was.
-# Mounted read-only at /scripts from the `sabnzbd-scripts` ConfigMap; set as the
-# script of the sonarrtv, radarrmovies and lidarr categories on both instances.
+# Always exits 0: the job's own result stands, so a missing 7-Zip binary or one
+# bad extra archive can never fail a good download (should script_can_fail ever
+# be turned on). The last line printed is what SABnzbd's history shows.
+# Mounted read-only at /scripts from the `sabnzbd-scripts` ConfigMap (its own ks,
+# ./ks.yaml); set as the script of the sonarrtv, radarrmovies and lidarr
+# categories on both instances.
 set -u
 
 job_dir="$1"
@@ -33,8 +37,8 @@ if command -v 7zz >/dev/null 2>&1; then
 elif command -v 7z >/dev/null 2>&1; then
   sevenzip=7z
 else
-  echo "No 7-Zip binary found"
-  exit 1
+  echo "No 7-Zip binary found, nothing extracted"
+  exit 0
 fi
 
 extracted=0
@@ -57,7 +61,7 @@ done < <(find "$job_dir" -type f \( -iname '*.7z' -o -iname '*.7z.001' -o -iname
 
 if [ "$failed" -gt 0 ]; then
   echo "Extracted $extracted archive(s), $failed could not be extracted"
-  exit 1
+  exit 0
 fi
 echo "Extracted $extracted archive(s)"
 exit 0
