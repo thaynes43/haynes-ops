@@ -81,10 +81,13 @@ POD
 
 fail=0
 for app in "${servers[@]}"; do
-  pod=$(kubectl get pods -n media -l "app.kubernetes.io/name=$app" -o jsonpath='{.items[0].metadata.name}')
-  node=$(kubectl get pod -n media "$pod" -o jsonpath='{.spec.nodeName}')
-  ip=$(kubectl get node "$node" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
-  dbg() { talosctl --talosconfig "$tc" -n "$ip" read "/sys/kernel/debug/dri/0/$1" 2>/dev/null; }
+  # Every probe below tolerates failure: a dead read prints "?" and fails the check
+  # instead of aborting the run under set -e.
+  pod=$(kubectl get pods -n media -l "app.kubernetes.io/name=$app" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+  if [[ -z $pod ]]; then echo "$app: no pod found"; fail=1; continue; fi
+  node=$(kubectl get pod -n media "$pod" -o jsonpath='{.spec.nodeName}' 2>/dev/null || true)
+  ip=$(kubectl get node "$node" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || true)
+  dbg() { talosctl --talosconfig "$tc" -n "$ip" read "/sys/kernel/debug/dri/0/$1" 2>/dev/null || true; }
   wedged=$(dbg i915_wedged)
   guc=$(dbg gt0/uc/guc_info | sed -n 's/^\s*status: //p' | head -1)
   huc=$(dbg gt1/uc/huc_info | sed -n 's/^\s*status: //p' | head -1)
@@ -92,13 +95,13 @@ for app in "${servers[@]}"; do
   echo "$app pod=$pod node=$node wedged=${wedged:-?} guc=${guc:-?} huc=${huc:-?} guc_load_err_log=${errlog}B"
   [[ $wedged == 0 && $guc == RUNNING ]] || fail=1
   ((transcode)) || continue
-  streams=$(kubectl exec -n media "$pod" -c app -- sh -c "$in_pod" _ probe | sed -n 's/^streams=//p')
+  streams=$(kubectl exec -n media "$pod" -c app -- sh -c "$in_pod" _ probe 2>/dev/null | sed -n 's/^streams=//p' || true)
   if [[ ${streams:-1} != 0 && $force == 0 ]]; then
     echo "$app transcode test skipped: ${streams:-?} active stream(s); rerun later or pass --force"
     fail=1
     continue
   fi
-  result=$(kubectl exec -n media "$pod" -c app -- sh -c "$in_pod" _ test "igpu-check-$app-$(date +%s)")
+  result=$(kubectl exec -n media "$pod" -c app -- sh -c "$in_pod" _ test "igpu-check-$app-$(date +%s)" 2>/dev/null || echo "result=exec-failed")
   echo "$app transcode $result"
   [[ $result == *"hwDecoding=vaapi"* && $result == *"hwEncoding=vaapi"* ]] || fail=1
 done
