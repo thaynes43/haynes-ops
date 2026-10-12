@@ -157,6 +157,9 @@ other onboot guest on CephFS storage. VM 113 has no cdrom.
 
 ### Before rebooting a twin host
 
+- **The owner's explicit go-ahead comes first.** Without it, dev-env never reboots a
+  node ([proxmox-access](proxmox-access.md)). Nothing below replaces it. Tom gave it in
+  the session that ran the 2026-10-12 reboot.
 - **twin-bottom also runs gasha01 (`qemu/104`).** It is the NFS server for about 30
   pods (home-assistant, appdaemon, immich, paperless and more), on hard mounts. A
   twin-bottom reboot takes all of them down, so it needs its own procedure. On
@@ -177,8 +180,8 @@ other onboot guest on CephFS storage. VM 113 has no cdrom.
   cluster covers the loss of one host.
 - talosw02 runs the active Rook MDS (`ceph-filesystem-a`), which fails over to its
   standby-replay on talosm03. talosw02 and talosw03 run no Rook OSDs.
-- Gates: `pvecm status` quorate 5/5, `ha-manager status` with no resources, Ceph as
-  above, zero Plex streams, and `declare-activity`.
+- Gates, after the go-ahead: `pvecm status` quorate 5/5, `ha-manager status` with no
+  resources, Ceph as above, zero Plex streams, and `declare-activity`.
 
 ## Recovery
 
