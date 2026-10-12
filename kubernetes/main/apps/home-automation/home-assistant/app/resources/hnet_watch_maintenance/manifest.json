@@ -1,0 +1,11 @@
+{
+  "domain": "hnet_watch_maintenance",
+  "name": "Watch subentry maintenance",
+  "codeowners": ["@thaynes43"],
+  "config_flow": true,
+  "dependencies": ["websocket_api"],
+  "documentation": "https://github.com/thaynes43/haynes-ops/blob/main/.agents/runbooks/hnet-watch-subentry-maintenance.md",
+  "integration_type": "helper",
+  "iot_class": "local_push",
+  "version": "0.1.0"
+}
