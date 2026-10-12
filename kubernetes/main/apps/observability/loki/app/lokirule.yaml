@@ -1,0 +1,39 @@
+---
+# Loki ruler alerts on Talos kernel logs (loaded via the loki_rule ConfigMap label, see
+# kustomization.yaml). Routing: severity=critical is the only Alertmanager route that reaches
+# a human, and its Pushover priority bypasses quiet hours. An iGPU wedge degrades Plex to
+# software transcoding but does not take anything down, and the only fix (a VM power-cycle)
+# needs the owner's go-ahead anyway, so this is a warning: it shows in Alertmanager and
+# Grafana and never pages. Runbook: .agents/runbooks/plex-igpu-transcode.md
+groups:
+  - name: talos-kernel-gpu
+    rules:
+      - alert: IntelGpuWedged
+        # Why three patterns, not just "declaring it wedged": on 2026-10-12 (#3833) the
+        # wedged boot of talosw03 reached Loki as the `ioremap on RAM at` WARN and the lines
+        # up to the DMC firmware load, then NOTHING from the kernel stream for ~12 s (the
+        # log sink was still coming up), and the `GuC initialization failed` and `declaring
+        # it wedged` lines fell inside that gap. A rule on those two alone would have stayed
+        # silent. `ioremap on RAM at` is the cause's own signature (x-vga=1 maps i915's
+        # stolen memory onto guest RAM) and did arrive, so it is the third pattern. All three
+        # are logged once per boot, hence the 24h window: the alert stays visible for a day
+        # after the boot and clears by itself. Checked against 30 days of Loki on 2026-10-12:
+        # only talosw03 matches, once. Any node, on purpose.
+        expr: |
+          sum by (node) (count_over_time({talos_service="kernel"} |~ "declaring it wedged|GuC initialization failed|ioremap on RAM at" [24h])) > 0
+        for: 0m
+        annotations:
+          summary: >-
+            {{ $labels.node }} logged an Intel iGPU (i915) wedge signature at boot in the last 24 hours.
+          description: >-
+            The i915 driver on {{ $labels.node }} logged a GuC initialization failure, "declaring it
+            wedged", or the `ioremap on RAM` warning that comes before one. A wedged iGPU cannot
+            recover inside the guest, and a Talos reboot does not reset it, so Plex/VAAPI on that
+            node falls back to software transcoding until the VM is power-cycled. Confirm with
+            `scripts/plex-igpu/check.sh` (wedged=1 guc=AVAILABLE means wedged, wedged=0
+            guc=RUNNING means this was an old boot line). First check the VM config has no
+            `x-vga` on hostpci0; the recovery is a VM power-cycle that takes the node offline
+            for about 3.5 minutes, so get the owner's go-ahead first. Runbook:
+            .agents/runbooks/plex-igpu-transcode.md, "Failure: the GPU is wedged at boot".
+        labels:
+          severity: warning
