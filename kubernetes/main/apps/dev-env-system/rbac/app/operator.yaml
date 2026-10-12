@@ -1,6 +1,7 @@
 ---
 # The operator, dev-env-system/dev-env-operator (DESIGN-001 6.11, the operator row; D-44,
-# D-45, D-46). Namespaced Roles only, plus TokenReview: no cluster-wide pod or PVC
+# D-45, D-46). Namespaced Roles only, plus TokenReview and, for DESIGN-025 H2 (at the
+# end), `get` on Nodes and on Leases in kube-node-lease: no cluster-wide pod or PVC
 # rights, no Secrets, no bind. The manager's cache is scoped to dev-agents and the one
 # templates ConfigMap (internal/controller/reconciler.go, CacheOptions), so namespaced
 # Roles cover every list and watch it makes.
@@ -179,6 +180,59 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: dev-env-tokenreview
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
+---
+# DESIGN-025 H2 (thaynes43/dev-env #236, 3.2 and 3.5): before the operator records a
+# private executor's terminal state, it reads that Pod's Node (exists, not deleting,
+# Ready) and the Node's Lease in kube-node-lease (held and owned by that Node, renewed in
+# the last 40 seconds), so a live kubelet wrote the terminal status. Both are uncached
+# `get`s by name (internal/controller/workspace_stop.go, executorNodeLive); the shared
+# workspace stop verifier uses the same reads. No list, no watch, no write. Without these
+# the check fails closed: nothing is recorded, and nothing ever expires.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-operator-node-read
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-operator-node-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-operator-node-read
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-operator-node-lease-read
+  namespace: kube-node-lease
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-operator-node-lease-read
+  namespace: kube-node-lease
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-operator-node-lease-read
 subjects:
   - kind: ServiceAccount
     name: dev-env-operator
