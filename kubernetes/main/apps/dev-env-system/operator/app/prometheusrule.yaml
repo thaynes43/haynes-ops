@@ -1,7 +1,8 @@
 ---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
-# dev-env v2's pages (thaynes43/dev-env DESIGN-001 D-10, D-56). Both are severity
-# critical, the one severity Alertmanager sends to Tom's phone by Pushover.
+# dev-env v2's pages (thaynes43/dev-env DESIGN-001 D-10, D-56; DESIGN-024 section 7).
+# All are severity critical, the one severity Alertmanager sends to Tom's phone by
+# Pushover.
 #
 # DevEnvRescueFailed: a session's newest rescue failed (condition RescueFailed True).
 # D-10 keeps its volume and blocks archive until a human decides. The 20 minutes let
@@ -13,6 +14,12 @@
 # DevEnvOperatorMetricsAbsent: no replica reports dev_env_sessions. The operator is
 # down, or cannot list sessions (a failed list fails the whole scrape): no session
 # starts, no reap finishes, and DevEnvRescueFailed cannot see.
+#
+# DevEnvCoordinationRecordsNearLimit (DESIGN-024 unit R1): a project holds 80% or more
+# of its lifetime bound of one coordination record kind (TaskClaim, PublishedContext,
+# InboxMessage). Every operator replica serves the same counts at scrape time, so each
+# side takes the max over replicas before the division. A full project refuses every
+# new record of that kind, and nothing frees one until DESIGN-024's retention (R6).
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -55,3 +62,27 @@ spec:
               DevEnvRescueFailed is blind. Check `kubectl get pods -n dev-env-system -l
               app.kubernetes.io/name=dev-env-operator` and their logs. Running
               sessions are not affected (D-01).
+        - alert: DevEnvCoordinationRecordsNearLimit
+          expr: |
+            max by (kind, project) (dev_env_coordination_records)
+              / on (kind) group_left
+            max by (kind) (dev_env_coordination_record_limit{scope="project"})
+              >= 0.8
+          for: 1h
+          labels:
+            severity: critical
+          annotations:
+            summary: >-
+              dev-env project {{ $labels.project }} holds {{ $value | humanizePercentage }}
+              of its {{ $labels.kind }} record limit.
+            description: >-
+              Coordination records count toward a lifetime per-project bound; at the bound
+              the operator refuses every new {{ $labels.kind }} in {{ $labels.project }}
+              (limit_exceeded), and an immediate retry does not help. Nothing releases a
+              record yet: DESIGN-024's retention is not on, and once on it frees records
+              only 30 days after their Sessions are gone, never for private Sessions (the
+              known gap). Find the busy Session with
+              `dev_env_coordination_records_session_max{kind="{{ $labels.kind }}",project="{{ $labels.project }}"}`.
+              An automated responder reports this and changes nothing; a manual delete
+              follows DESIGN-010's recovery, with its export, and only by Tom.
+            runbook_url: https://github.com/thaynes43/dev-env/blob/main/.agents/sagas/distributed-dev-env/designs/024-coordination-record-retention.md#7-bounds-and-alerts

@@ -8,7 +8,8 @@
 # dev-env-exec-guard in the kyverno-policies Kustomization.
 #
 # No targetNamespace: these objects live in dev-agents, dev-env-system, dev (v1's
-# own-token Role) and database (the CNPG PVC-delete binding), and cluster-wide.
+# own-token Role), database (the CNPG PVC-delete binding), kube-node-lease (the
+# operator's Lease read, DESIGN-025 H2) and cluster-wide.
 # Nothing here touches a running pod; a Role or a policy change restarts nothing.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
