@@ -37,11 +37,28 @@ jobs:
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version: '1.26.6'
-          cache-dependency-path: scripts/tests/dev-env-archive-guard/go.sum
+          cache: false
+      - name: Restore exact Go module and build caches
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: archive-guard-${{ runner.os }}-${{ runner.arch }}-go1.26.6-${{ hashFiles('scripts/tests/dev-env-archive-guard/go.mod', 'scripts/tests/dev-env-archive-guard/go.sum') }}
       # Compile the actual pinned policy compiler off the shared cluster node.
       - name: Finite serial actual-expression fixtures, with no runtime API calls
+        id: fixtures
         env:
           GOMAXPROCS: '2'
           GOMEMLIMIT: 1GiB
           GOTOOLCHAIN: local
         run: nice -n 19 go test -mod=readonly -p=1 -parallel=1 -count=1 -timeout=5m -v ./...
+      - name: Preserve compiled dependencies after a completed fixture run
+        if: ${{ !cancelled() && (steps.fixtures.outcome == 'success' || steps.fixtures.outcome == 'failure') && steps.go-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}

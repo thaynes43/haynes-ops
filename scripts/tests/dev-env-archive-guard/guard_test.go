@@ -145,7 +145,7 @@ func compile(t *testing.T, p *policies.ValidatingPolicy) *harness {
 	return &harness{policy: pCompiled, mock: m}
 }
 
-func repoPath(p string) string { return filepath.Join("..", "..", "..", "..", p) }
+func repoPath(p string) string { return filepath.Join("..", "..", "..", p) }
 
 func load(t *testing.T, path string) *policies.ValidatingPolicy {
 	t.Helper()
