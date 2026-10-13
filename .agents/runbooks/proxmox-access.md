@@ -292,7 +292,29 @@ pve get /access/permissions --raw | grep -o 'Sys.Console'   # operator token liv
 denied (publickey)` on one PVE node = the fan-out skipped it, re-run the block on that node;
 `sudo: a password is required` = sudoers file missing on that node.
 
-The GPU swap itself, once this is live: `hw-ssh haynesintelligence sudo dmidecode -t slot`
-gives slot ↔ `0000:41:00.0`; after the physical swap, `sudo qm set 103 -hostpci0
-0000:<new>:00,pcie=1` (VM stopped, `declare-activity` first), `sudo qm start 103`, then
-`kubectl get node talosw01` and `nvidia-smi -L` from a GPU pod should show two boards.
+Before a GPU swap, record the live PCI devices, VM configuration and network interface
+names. A motherboard slot label does not establish a PCI address; this host's SMBIOS
+currently supplies no slot records.
+
+1. Read the GPU and audio functions with `hw-ssh haynesintelligence 'sudo -n lspci -nnk'`
+   and the existing mapping with `hw-ssh haynesintelligence 'sudo -n qm config 103'`.
+   Verify that the intended functions form an isolated IOMMU group. After the October
+   2026 A/C swap, both functions remained at `0000:41:00.0` and `0000:41:00.1`, used
+   `vfio-pci`, and were the only members of group 42. The existing VM entry was
+   `hostpci1: 0000:41:00,pcie=1`, so no mapping change was needed.
+2. If the intended address has changed, declare the disruptive work and stop the VM
+   normally before editing its existing `hostpci` entry. Preserve every other PCI and
+   USB mapping; do not assume the GPU uses `hostpci0`. Start the VM normally after
+   checking the resulting configuration and storage health.
+3. Verify `talosw01` is Ready and check `nvidia-smi -L` from its GPU pod. The expected
+   sole rack GPU after this swap is Card A,
+   `GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a`. Check fresh boot logs for GPU and PCIe
+   errors before applying load.
+
+GPU slot changes can also alter PCI-derived NIC names. During the failed boot in this
+maintenance window, the NICs appeared as `enp65s0` and `enp69s0`, while
+`/etc/network/interfaces` still expected `enp66s0` for `vmbr0` and `enp70s0` for `vmbr2`.
+Both bridges failed to start. Moving the GPU restored the expected names. Compare
+actual interfaces, PCI addresses and MACs with the saved network configuration and
+boot journal before changing the configuration. A static KVM startup image alone does
+not establish a kernel hang or a defective GPU slot.
