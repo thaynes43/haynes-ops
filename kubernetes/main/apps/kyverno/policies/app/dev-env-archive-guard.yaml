@@ -1,0 +1,459 @@
+---
+# Explicit controller induction, without provenance stamps: before activation, audit
+# every archive-bearing root/history and the reserved shelf lineage. Thereafter only
+# the fixed trusted actors can introduce protected roots; stock controllers must
+# authenticate and resolve their current parent UID and inherited claim/SA mapping.
+# Historical RS/revisions retain their admitted template and current root UID.
+# This is not isolation from v1, existing administrators, nodes or storage actors.
+# Non-SA system infrastructure is outside this SA guard; it is not called human.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: dev-env-archive-guard
+spec:
+  failurePolicy: Fail
+  validationActions: [Deny]
+  evaluation:
+    background:
+      enabled: false
+  autogen:
+    podControllers:
+      controllers: []
+    validatingAdmissionPolicy:
+      enabled: false
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: dev-agents
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: [CREATE, UPDATE, CONNECT]
+        resources: [pods, "pods/*", replicationcontrollers, "replicationcontrollers/*"]
+      - apiGroups: [apps]
+        apiVersions: ["v1"]
+        operations: [CREATE, UPDATE]
+        resources: [deployments, "deployments/*", replicasets, "replicasets/*", statefulsets, "statefulsets/*", daemonsets, "daemonsets/*", controllerrevisions, "controllerrevisions/*"]
+      - apiGroups: [batch]
+        apiVersions: ["v1"]
+        operations: [CREATE, UPDATE]
+        resources: [jobs, "jobs/*", cronjobs, "cronjobs/*"]
+  # These conditions also run at the API server, before a fail-closed webhook call.
+  # Keep them request-only: trusted v1/admin requests never need a resource lookup.
+  matchConditions:
+    - name: archive-namespace
+      expression: >-
+        request.namespace == 'dev-agents'
+    - name: untrusted-serviceaccount
+      expression: >-
+        request.userInfo.username.startsWith('system:serviceaccount:') &&
+        !(request.userInfo.username in [
+          'system:serviceaccount:dev:dev-env',
+          'system:serviceaccount:upgrade-agent:dev-env-ops',
+          'system:serviceaccount:frontend:headlamp',
+          'system:serviceaccount:flux-system:kustomize-controller',
+          'system:serviceaccount:flux-system:helm-controller',
+          'system:serviceaccount:dev-env-system:dev-env-operator',
+          'system:serviceaccount:database:cloudnative-pg',
+          'system:serviceaccount:network:multus',
+          'system:serviceaccount:rook-ceph:rook-ceph-system',
+          'system:serviceaccount:volsync-system:volsync',
+          'system:serviceaccount:kube-system:reloader'])
+  variables:
+    - name: archives
+      expression: "['dev-env-history-archive', 'dev-env-coordination-archive']"
+    - name: resource
+      expression: >-
+        request.resource.resource
+    - name: subresource
+      expression: >-
+        request.?subResource.orValue('')
+    - name: actor
+      expression: >-
+        request.userInfo.username
+    - name: newMeta
+      expression: >-
+        object == null ? {} : object.?metadata.orValue({})
+    - name: oldMeta
+      expression: >-
+        oldObject == null ? {} : oldObject.?metadata.orValue({})
+    - name: newTemplate
+      expression: >-
+        object == null ? {} : variables.resource == 'pods' ? object :
+        variables.resource == 'cronjobs' ? object.?spec.?jobTemplate.?spec.?template.orValue({}) :
+        variables.resource == 'controllerrevisions' ? object.?data.?spec.?template.orValue({}) :
+        object.?spec.?template.orValue({})
+    - name: oldTemplate
+      expression: >-
+        oldObject == null ? {} : variables.resource == 'pods' ? oldObject :
+        variables.resource == 'cronjobs' ? oldObject.?spec.?jobTemplate.?spec.?template.orValue({}) :
+        variables.resource == 'controllerrevisions' ? oldObject.?data.?spec.?template.orValue({}) :
+        oldObject.?spec.?template.orValue({})
+    - name: newPod
+      expression: >-
+        variables.newTemplate.?spec.orValue({})
+    - name: oldPod
+      expression: >-
+        variables.oldTemplate.?spec.orValue({})
+    - name: newClaims
+      expression: >-
+        variables.newPod.?volumes.orValue([]).filter(v,
+          v.?persistentVolumeClaim.?claimName.orValue('') in variables.archives)
+    - name: oldClaims
+      expression: >-
+        variables.oldPod.?volumes.orValue([]).filter(v,
+          v.?persistentVolumeClaim.?claimName.orValue('') in variables.archives)
+    - name: refs
+      expression: >-
+        variables.newMeta.?ownerReferences.orValue([]).filter(o, o.?controller.orValue(false))
+    - name: owner
+      expression: >-
+        size(variables.refs) == 1 ? variables.refs[0] : {}
+    - name: ownersUnchanged
+      expression: >-
+        variables.newMeta.?ownerReferences.orValue([]) == variables.oldMeta.?ownerReferences.orValue([])
+    - name: sameIdentity
+      expression: >-
+        variables.newMeta.?uid.orValue('') != '' &&
+        variables.newMeta.uid == variables.oldMeta.?uid.orValue('') &&
+        variables.newMeta.?name.orValue('') == variables.oldMeta.?name.orValue('') &&
+        variables.newMeta.?namespace.orValue('') == variables.oldMeta.?namespace.orValue('')
+    # Reserving the immutable names/SA protects the pre-mount shelf even if a caller
+    # tries to remove a label or corrupt owner metadata through a status endpoint.
+    - name: shelf
+      expression: >-
+        (variables.resource == 'deployments' && request.name == 'dev-env-shelf') ||
+        (variables.resource in ['pods', 'replicasets'] && (
+          request.name.startsWith('dev-env-shelf-') ||
+          variables.newMeta.?generateName.orValue('').startsWith('dev-env-shelf-') ||
+          variables.oldMeta.?generateName.orValue('').startsWith('dev-env-shelf-'))) ||
+        [variables.newMeta, variables.oldMeta, variables.newTemplate.?metadata.orValue({}),
+          variables.oldTemplate.?metadata.orValue({})].exists(m,
+            m.?labels.orValue({})[?'app.kubernetes.io/name'].orValue('') == 'dev-env-shelf' ||
+            m.?ownerReferences.orValue([]).exists(o,
+              (o.?kind.orValue('') == 'Deployment' && o.?name.orValue('') == 'dev-env-shelf') ||
+              (o.?kind.orValue('') == 'ReplicaSet' && o.?name.orValue('').startsWith('dev-env-shelf-')))) ||
+        [variables.newPod, variables.oldPod].exists(p, p.?serviceAccountName.orValue('') == 'dev-env-shelf')
+    - name: target
+      expression: >-
+        variables.resource == 'pods' && variables.subresource != '' &&
+        (variables.subresource != 'status' || oldObject == null) &&
+        variables.subresource != 'eviction' ? dyn(resource.Get('v1', 'pods', request.namespace, request.name)) : null
+    - name: targetProtected
+      expression: >-
+        variables.target != null && (
+          variables.target.?spec.?volumes.orValue([]).exists(v,
+            v.?persistentVolumeClaim.?claimName.orValue('') in variables.archives) ||
+          variables.target.?spec.?serviceAccountName.orValue('') == 'dev-env-shelf' ||
+          variables.target.?metadata.?name.orValue('').startsWith('dev-env-shelf-') ||
+          variables.target.?metadata.?labels.orValue({})[?'app.kubernetes.io/name'].orValue('') == 'dev-env-shelf')
+    - name: targetValid
+      expression: >-
+        variables.target != null && variables.target.?apiVersion.orValue('') == 'v1' &&
+        variables.target.?kind.orValue('') == 'Pod' && variables.target.?metadata.?uid.orValue('') != '' &&
+        variables.target.?metadata.?name.orValue('') == request.name &&
+        variables.target.?metadata.?namespace.orValue('') == request.namespace
+    - name: protected
+      expression: >-
+        size(variables.newClaims) != 0 || size(variables.oldClaims) != 0 || variables.shelf || variables.targetProtected
+    - name: newSpec
+      expression: >-
+        object == null ? {} : object.?spec.orValue({})
+    - name: oldSpec
+      expression: >-
+        oldObject == null ? {} : oldObject.?spec.orValue({})
+    - name: newTemplateMeta
+      expression: >-
+        variables.newTemplate.?metadata.orValue({})
+    - name: oldTemplateMeta
+      expression: >-
+        variables.oldTemplate.?metadata.orValue({})
+    - name: newAnnotations
+      expression: >-
+        variables.newTemplateMeta.?annotations.orValue({})
+    - name: oldAnnotations
+      expression: >-
+        variables.oldTemplateMeta.?annotations.orValue({})
+    - name: restart
+      expression: >-
+        request.operation == 'UPDATE' && variables.subresource == '' &&
+        variables.resource in ['deployments', 'statefulsets', 'daemonsets'] &&
+        variables.sameIdentity && variables.ownersUnchanged &&
+        variables.newMeta.?labels.orValue({}) == variables.oldMeta.?labels.orValue({}) &&
+        variables.newMeta.?annotations.orValue({}) == variables.oldMeta.?annotations.orValue({}) &&
+        variables.newMeta.?finalizers.orValue([]) == variables.oldMeta.?finalizers.orValue([]) &&
+        variables.newMeta.all(k, k in ['resourceVersion', 'managedFields', 'generation'] ||
+          (k in variables.oldMeta && variables.newMeta[k] == variables.oldMeta[k])) &&
+        variables.oldMeta.all(k, k in ['resourceVersion', 'managedFields', 'generation'] || k in variables.newMeta) &&
+        variables.newPod == variables.oldPod &&
+        variables.newSpec.all(k, k == 'template' || (k in variables.oldSpec && variables.newSpec[k] == variables.oldSpec[k])) &&
+        variables.oldSpec.all(k, k == 'template' || k in variables.newSpec) &&
+        variables.newTemplate.all(k, k == 'metadata' || (k in variables.oldTemplate && variables.newTemplate[k] == variables.oldTemplate[k])) &&
+        variables.oldTemplate.all(k, k == 'metadata' || k in variables.newTemplate) &&
+        variables.newTemplateMeta.all(k, k == 'annotations' || (k in variables.oldTemplateMeta && variables.newTemplateMeta[k] == variables.oldTemplateMeta[k])) &&
+        variables.oldTemplateMeta.all(k, k == 'annotations' || k in variables.newTemplateMeta) &&
+        variables.newAnnotations.all(k, k == 'kubectl.kubernetes.io/restartedAt' ||
+          (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&
+        variables.oldAnnotations.all(k, k == 'kubectl.kubernetes.io/restartedAt' || k in variables.newAnnotations)
+    # Scale REST copies only replicas/resourceVersion/managedFields to its parent
+    # (Kubernetes v1.35.5). Still reject synthetic metadata/owner tampering here.
+    - name: scale
+      expression: >-
+        request.operation == 'UPDATE' && variables.subresource == 'scale' &&
+        object != null && oldObject != null && object.?kind.orValue('') == 'Scale' &&
+        variables.sameIdentity && variables.ownersUnchanged &&
+        variables.newMeta.?labels.orValue({}) == variables.oldMeta.?labels.orValue({}) &&
+        variables.newMeta.?annotations.orValue({}) == variables.oldMeta.?annotations.orValue({}) &&
+        variables.newMeta.?finalizers.orValue([]) == variables.oldMeta.?finalizers.orValue([]) &&
+        variables.newSpec.all(k, k == 'replicas') && variables.oldSpec.all(k, k == 'replicas')
+    - name: parentResource
+      expression: >-
+        {'Deployment':'deployments', 'ReplicaSet':'replicasets', 'StatefulSet':'statefulsets',
+          'DaemonSet':'daemonsets', 'Job':'jobs', 'CronJob':'cronjobs',
+          'ReplicationController':'replicationcontrollers'}[?variables.owner.?kind.orValue('')].orValue('')
+    - name: materialActor
+      expression: >-
+        (variables.resource == 'replicasets' && variables.owner.?kind.orValue('') == 'Deployment' &&
+          variables.actor == 'system:serviceaccount:kube-system:deployment-controller') ||
+        (variables.resource == 'jobs' && variables.owner.?kind.orValue('') == 'CronJob' &&
+          variables.actor == 'system:serviceaccount:kube-system:cronjob-controller') ||
+        (variables.resource in ['pods', 'controllerrevisions'] &&
+          {'ReplicaSet':'replicaset-controller', 'Job':'job-controller',
+           'ReplicationController':'replication-controller', 'StatefulSet':'statefulset-controller',
+           'DaemonSet':'daemon-set-controller'}[?variables.owner.?kind.orValue('')].orValue('!') ==
+          variables.actor.replace('system:serviceaccount:kube-system:', '') &&
+          variables.actor.startsWith('system:serviceaccount:kube-system:') &&
+          (variables.resource == 'pods' || variables.owner.?kind.orValue('') in ['StatefulSet', 'DaemonSet']))
+    - name: parent
+      expression: >-
+        (variables.materialActor || (variables.resource == 'replicasets' && variables.owner.?kind.orValue('') == 'Deployment' &&
+          variables.actor == 'system:serviceaccount:kube-system:replicaset-controller')) &&
+        variables.parentResource != '' && variables.owner.?name.orValue('') != '' &&
+        variables.owner.?uid.orValue('') != '' ?
+          dyn(resource.Get(variables.owner.apiVersion, variables.parentResource, request.namespace, variables.owner.name)) : null
+    - name: parentValid
+      expression: >-
+        variables.parent != null && variables.parent.?metadata.?namespace.orValue('') == request.namespace &&
+        variables.parent.?metadata.?name.orValue('') == variables.owner.name &&
+        variables.parent.?metadata.?uid.orValue('') != '' && variables.parent.metadata.uid == variables.owner.uid &&
+        variables.parent.?kind.orValue('') == variables.owner.kind &&
+        variables.parent.?apiVersion.orValue('') == variables.owner.apiVersion &&
+        variables.owner.apiVersion == (variables.owner.kind in ['Job', 'CronJob'] ? 'batch/v1' :
+          variables.owner.kind == 'ReplicationController' ? 'v1' : 'apps/v1')
+    - name: parentRefs
+      expression: >-
+        variables.parent == null ? [] : variables.parent.?metadata.?ownerReferences.orValue([]).filter(o, o.?controller.orValue(false))
+    - name: rootOwner
+      expression: >-
+        size(variables.parentRefs) == 1 ? variables.parentRefs[0] : {}
+    - name: chained
+      expression: >-
+        variables.owner.?kind.orValue('') in ['ReplicaSet', 'Job'] && size(variables.parentRefs) != 0
+    - name: root
+      expression: >-
+        variables.parentValid && variables.chained &&
+        variables.rootOwner.?uid.orValue('') != '' && variables.rootOwner.?name.orValue('') != '' &&
+        variables.rootOwner.?kind.orValue('') == (variables.owner.kind == 'ReplicaSet' ? 'Deployment' : 'CronJob') &&
+        variables.rootOwner.?apiVersion.orValue('') == (variables.owner.kind == 'ReplicaSet' ? 'apps/v1' : 'batch/v1') ?
+          dyn(resource.Get(variables.rootOwner.apiVersion, variables.owner.kind == 'ReplicaSet' ? 'deployments' : 'cronjobs',
+            request.namespace, variables.rootOwner.name)) : null
+    - name: chainValid
+      expression: >-
+        variables.parentValid && (!variables.chained || (
+          variables.root != null && variables.root.?metadata.?namespace.orValue('') == request.namespace &&
+          variables.root.?metadata.?name.orValue('') == variables.rootOwner.name &&
+          variables.root.?metadata.?uid.orValue('') != '' && variables.root.metadata.uid == variables.rootOwner.uid &&
+          variables.root.?kind.orValue('') == variables.rootOwner.kind && variables.root.?apiVersion.orValue('') == variables.rootOwner.apiVersion))
+    - name: parentTemplate
+      expression: >-
+        variables.parent == null ? {} : variables.owner.kind == 'CronJob' ?
+          variables.parent.?spec.?jobTemplate.?spec.?template.orValue({}) : variables.parent.?spec.?template.orValue({})
+    - name: revisionHash
+      expression: >-
+        variables.newMeta.?labels.orValue({})[?'controller-revision-hash'].orValue('')
+    - name: revisionName
+      expression: >-
+        variables.revisionHash == '' ? '' : variables.owner.?kind.orValue('') == 'DaemonSet' ?
+          variables.owner.?name.orValue('') + '-' + variables.revisionHash : variables.revisionHash
+    - name: revision
+      expression: >-
+        variables.resource == 'pods' && variables.parentValid && variables.owner.kind in ['StatefulSet', 'DaemonSet'] &&
+        variables.revisionName != '' ? dyn(resource.Get('apps/v1', 'controllerrevisions', request.namespace, variables.revisionName)) : null
+    - name: revisionValid
+      expression: >-
+        variables.revision != null && variables.revision.?metadata.?uid.orValue('') != '' &&
+        variables.revision.?apiVersion.orValue('') == 'apps/v1' && variables.revision.?kind.orValue('') == 'ControllerRevision' &&
+        variables.revision.?metadata.?name.orValue('') == variables.revisionName &&
+        variables.revision.?metadata.?namespace.orValue('') == request.namespace &&
+        variables.revision.?metadata.?ownerReferences.orValue([]).filter(o, o.?controller.orValue(false)).size() == 1 &&
+        variables.revision.metadata.ownerReferences.exists(o, o.?controller.orValue(false) &&
+          o.?kind.orValue('') == variables.owner.kind && o.?apiVersion.orValue('') == variables.owner.apiVersion &&
+          o.?name.orValue('') == variables.owner.name && o.?uid.orValue('') == variables.owner.uid) &&
+        variables.revision.?data.?spec.?template.?spec.orValue({}) != {} &&
+        variables.revision.data.all(k, k == 'spec') && variables.revision.data.spec.all(k, k == 'template') &&
+        variables.revision.data.spec.template[?'$patch'].orValue('') == 'replace' &&
+        variables.revision.data.spec.template.all(k, k in ['spec', 'metadata', '$patch'])
+    - name: inheritedTemplate
+      expression: >-
+        variables.resource == 'pods' && variables.owner.?kind.orValue('') in ['StatefulSet', 'DaemonSet'] &&
+        variables.revisionName != '' ? (variables.revisionValid ? variables.revision.data.spec.template : {}) : variables.parentTemplate
+    - name: inheritedPod
+      expression: >-
+        variables.inheritedTemplate.?spec.orValue({})
+    - name: inheritedClaims
+      expression: >-
+        variables.inheritedPod.?volumes.orValue([]).filter(v,
+          v.?persistentVolumeClaim.?claimName.orValue('') in variables.archives)
+    - name: childSA
+      expression: >-
+        variables.newPod.?serviceAccountName.orValue('') != '' ? variables.newPod.serviceAccountName :
+        variables.newPod.?serviceAccount.orValue('') != '' ? variables.newPod.serviceAccount : 'default'
+    - name: parentSA
+      expression: >-
+        variables.inheritedPod.?serviceAccountName.orValue('') != '' ? variables.inheritedPod.serviceAccountName :
+        variables.inheritedPod.?serviceAccount.orValue('') != '' ? variables.inheritedPod.serviceAccount : 'default'
+    - name: mappingInherited
+      expression: >-
+        variables.inheritedPod != {} && variables.newClaims == variables.inheritedClaims && variables.childSA == variables.parentSA
+    - name: generatedLabels
+      expression: >-
+        variables.resource == 'replicasets' ? ['pod-template-hash'] : variables.resource == 'jobs' ?
+          ['controller-uid', 'job-name', 'batch.kubernetes.io/controller-uid', 'batch.kubernetes.io/job-name'] : []
+    # Stored templates must match their admitted origin, not just claim/SA fields.
+    # Pod mutations/defaulting are deliberately not compared as a whole PodSpec.
+    - name: storedTemplateInherited
+      expression: >-
+        variables.newPod == variables.inheritedPod &&
+        variables.newTemplate.all(k, k in ['metadata', '$patch'] ||
+          (k in variables.inheritedTemplate && variables.newTemplate[k] == variables.inheritedTemplate[k])) &&
+        variables.inheritedTemplate.all(k, k in ['metadata', '$patch'] || k in variables.newTemplate) &&
+        variables.newTemplateMeta.?annotations.orValue({}) == variables.inheritedTemplate.?metadata.?annotations.orValue({}) &&
+        variables.newTemplateMeta.all(k, k == 'labels' ||
+          (k in variables.inheritedTemplate.?metadata.orValue({}) && variables.newTemplateMeta[k] == variables.inheritedTemplate.metadata[k])) &&
+        variables.inheritedTemplate.?metadata.orValue({}).all(k, k == 'labels' || k in variables.newTemplateMeta) &&
+        (variables.resource != 'controllerrevisions' || (object.data.all(k, k == 'spec') &&
+          object.data.spec.all(k, k == 'template') && variables.newTemplate[?'$patch'].orValue('') == 'replace')) &&
+        cel.bind(newLabels, variables.newTemplateMeta.?labels.orValue({}),
+          cel.bind(parentLabels, variables.inheritedTemplate.?metadata.?labels.orValue({}),
+            newLabels.all(k, k in variables.generatedLabels || (k in parentLabels && newLabels[k] == parentLabels[k])) &&
+            parentLabels.all(k, k in variables.generatedLabels || k in newLabels)))
+    # DaemonSet dedupCurHistories relabels existing Pods with a bare hash. Verify
+    # the selected current history and allow only that label to change, not spec.
+    - name: dsDedup
+      expression: >-
+        variables.resource == 'pods' && variables.subresource == '' && variables.owner.?kind.orValue('') == 'DaemonSet' &&
+        variables.revisionValid && variables.sameIdentity && variables.ownersUnchanged &&
+        object.all(k, k == 'metadata' || (k in oldObject && object[k] == oldObject[k])) &&
+        oldObject.all(k, k == 'metadata' || k in object) &&
+        variables.newMeta.all(k, k in ['labels', 'resourceVersion', 'managedFields', 'generation'] ||
+          (k in variables.oldMeta && variables.newMeta[k] == variables.oldMeta[k])) &&
+        variables.oldMeta.all(k, k in ['labels', 'resourceVersion', 'managedFields', 'generation'] || k in variables.newMeta) &&
+        cel.bind(newLabels, variables.newMeta.?labels.orValue({}),
+          cel.bind(oldLabels, variables.oldMeta.?labels.orValue({}),
+            newLabels.all(k, k == 'controller-revision-hash' || (k in oldLabels && newLabels[k] == oldLabels[k])) &&
+            oldLabels.all(k, k == 'controller-revision-hash' || k in newLabels))) &&
+        cel.bind(history, variables.revision.data.spec.template,
+          history.all(k, k == '$patch' || (k in variables.parentTemplate && history[k] == variables.parentTemplate[k])) &&
+          variables.parentTemplate.all(k, k in history))
+    - name: materialize
+      expression: >-
+        variables.subresource in ['', 'status'] && variables.materialActor && variables.chainValid &&
+        (request.operation == 'CREATE' ?
+          (variables.subresource == '' && variables.mappingInherited &&
+            (variables.resource == 'pods' || variables.storedTemplateInherited)) :
+          (variables.sameIdentity && variables.ownersUnchanged &&
+            (variables.resource == 'pods' ? variables.newPod == variables.oldPod : variables.newTemplate == variables.oldTemplate) &&
+            (variables.newMeta.?labels.orValue({})[?'controller-revision-hash'].orValue('') ==
+              variables.oldMeta.?labels.orValue({})[?'controller-revision-hash'].orValue('') || variables.dsDedup) &&
+            (variables.resource != 'controllerrevisions' || object.?data.orValue({}) == oldObject.?data.orValue({}))))
+    - name: maintenanceActor
+      expression: >-
+        {'deployments':['deployment-controller'], 'replicasets':['replicaset-controller', 'deployment-controller'],
+          'replicationcontrollers':['replication-controller'], 'jobs':['job-controller', 'cronjob-controller'],
+          'cronjobs':['cronjob-controller'], 'statefulsets':['statefulset-controller'], 'daemonsets':['daemon-set-controller']}
+          [?variables.resource].orValue([]).exists(a, variables.actor == 'system:serviceaccount:kube-system:' + a)
+    - name: maintenance
+      expression: >-
+        request.operation == 'UPDATE' && variables.subresource in ['', 'status'] &&
+        variables.maintenanceActor && variables.sameIdentity && variables.ownersUnchanged &&
+        variables.newSpec == variables.oldSpec && variables.newTemplate == variables.oldTemplate &&
+        (variables.resource != 'replicasets' || size(variables.refs) == 0 || variables.parentValid)
+    - name: stableMeta
+      expression: >-
+        variables.sameIdentity &&
+        variables.newMeta.all(k, k in ['resourceVersion', 'managedFields', 'generation'] ||
+          (k in variables.oldMeta && variables.newMeta[k] == variables.oldMeta[k])) &&
+        variables.oldMeta.all(k, k in ['resourceVersion', 'managedFields', 'generation'] || k in variables.newMeta)
+    # Generic GC removes references or makes an existing reference nonblocking.
+    # It can remove only its two finalizers; the admitted execution stays intact.
+    - name: garbageCollect
+      expression: >-
+        request.operation == 'UPDATE' && variables.subresource == '' &&
+        variables.actor == 'system:serviceaccount:kube-system:generic-garbage-collector' && variables.sameIdentity &&
+        object.all(k, k == 'metadata' || (k in oldObject && object[k] == oldObject[k])) &&
+        oldObject.all(k, k == 'metadata' || k in object) &&
+        variables.newMeta.all(k, k in ['ownerReferences', 'finalizers', 'resourceVersion', 'managedFields', 'generation'] ||
+          (k in variables.oldMeta && variables.newMeta[k] == variables.oldMeta[k])) &&
+        variables.oldMeta.all(k, k in ['ownerReferences', 'finalizers', 'resourceVersion', 'managedFields', 'generation'] || k in variables.newMeta) &&
+        cel.bind(newRefs, variables.newMeta.?ownerReferences.orValue([]),
+          cel.bind(oldRefs, variables.oldMeta.?ownerReferences.orValue([]),
+            size(newRefs) <= size(oldRefs) && newRefs.all(n, oldRefs.exists(o, n == o ||
+              (!n.?blockOwnerDeletion.orValue(false) &&
+                n.all(k, k == 'blockOwnerDeletion' || (k in o && n[k] == o[k])) &&
+                o.all(k, k == 'blockOwnerDeletion' || k in n)))))) &&
+        cel.bind(newFinals, variables.newMeta.?finalizers.orValue([]),
+          cel.bind(oldFinals, variables.oldMeta.?finalizers.orValue([]),
+            newFinals.all(f, f in oldFinals) && oldFinals.all(f, f in newFinals || f in ['foregroundDeletion', 'orphan'])))
+    # Taint eviction uses the node-controller client/SA in Kubernetes v1.35.5.
+    # These exact controllers can only maintain Pod status before deletion/clear.
+    - name: podCleanup
+      expression: >-
+        request.operation == 'UPDATE' && variables.resource == 'pods' && variables.subresource == 'status' &&
+        variables.actor in ['system:serviceaccount:kube-system:pod-garbage-collector',
+          'system:serviceaccount:kube-system:node-controller', 'system:serviceaccount:kube-system:disruption-controller'] &&
+        variables.stableMeta && variables.newPod == variables.oldPod &&
+        object.all(k, k in ['metadata', 'status'] || (k in oldObject && object[k] == oldObject[k])) &&
+        oldObject.all(k, k in ['metadata', 'status'] || k in object) &&
+        cel.bind(newStatus, object.?status.orValue({}), cel.bind(oldStatus, oldObject.?status.orValue({}),
+          cel.bind(gc, variables.actor == 'system:serviceaccount:kube-system:pod-garbage-collector',
+            newStatus.all(k, k == 'conditions' || (gc && k in ['phase', 'observedGeneration']) ||
+              (k in oldStatus && newStatus[k] == oldStatus[k])) &&
+            oldStatus.all(k, k == 'conditions' || (gc && k in ['phase', 'observedGeneration']) || k in newStatus) &&
+            (!gc || newStatus.?phase.orValue('') == oldStatus.?phase.orValue('') || newStatus.?phase.orValue('') == 'Failed') &&
+            cel.bind(newConditions, newStatus.?conditions.orValue([]), cel.bind(oldConditions, oldStatus.?conditions.orValue([]),
+              newConditions.filter(c, c.?type.orValue('') != 'DisruptionTarget') ==
+                oldConditions.filter(c, c.?type.orValue('') != 'DisruptionTarget') &&
+              size(newConditions.filter(c, c.?type.orValue('') == 'DisruptionTarget')) <= 1 &&
+              (newConditions.filter(c, c.?type.orValue('') == 'DisruptionTarget') ==
+                oldConditions.filter(c, c.?type.orValue('') == 'DisruptionTarget') ||
+                newConditions.exists(c, c.?type.orValue('') == 'DisruptionTarget' &&
+                  (variables.actor == 'system:serviceaccount:kube-system:disruption-controller' ?
+                    c.?status.orValue('') == 'False' && c.?reason.orValue('') == '' :
+                    c.?status.orValue('') == 'True' && c.?reason.orValue('') == (gc ? 'DeletionByPodGC' : 'DeletionByTaintManager')))))))))
+    # MarkPodsNotReady copies an existing Ready condition, changes Status to False
+    # and updates its transition time. Other conditions/status/metadata stay put.
+    - name: nodeNotReady
+      expression: >-
+        request.operation == 'UPDATE' && variables.resource == 'pods' && variables.subresource == 'status' &&
+        variables.actor == 'system:serviceaccount:kube-system:node-controller' &&
+        variables.stableMeta && variables.newPod == variables.oldPod &&
+        object.all(k, k in ['metadata', 'status'] || (k in oldObject && object[k] == oldObject[k])) &&
+        oldObject.all(k, k in ['metadata', 'status'] || k in object) &&
+        cel.bind(newStatus, object.?status.orValue({}), cel.bind(oldStatus, oldObject.?status.orValue({}),
+          newStatus.all(k, k == 'conditions' || (k in oldStatus && newStatus[k] == oldStatus[k])) &&
+          oldStatus.all(k, k == 'conditions' || k in newStatus) &&
+          cel.bind(newConditions, newStatus.?conditions.orValue([]), cel.bind(oldConditions, oldStatus.?conditions.orValue([]),
+            newConditions.filter(c, c.?type.orValue('') != 'Ready') == oldConditions.filter(c, c.?type.orValue('') != 'Ready') &&
+            cel.bind(newReady, newConditions.filter(c, c.?type.orValue('') == 'Ready'),
+              cel.bind(oldReady, oldConditions.filter(c, c.?type.orValue('') == 'Ready'),
+                size(newReady) == 1 && size(oldReady) == 1 && newReady[0].?status.orValue('') == 'False' &&
+                newReady[0].all(k, k in ['status', 'lastTransitionTime'] || (k in oldReady[0] && newReady[0][k] == oldReady[0][k])) &&
+                oldReady[0].all(k, k in ['status', 'lastTransitionTime'] || k in newReady[0])))))))
+  validations:
+    - expression: >-
+        (variables.resource != 'pods' || variables.subresource != 'status' || oldObject != null || variables.targetValid) &&
+        (variables.subresource == 'scale' ? variables.scale : variables.subresource == 'eviction' ||
+        (variables.resource == 'pods' && variables.subresource != '' && variables.subresource != 'status' ?
+          (variables.targetValid && !variables.protected) :
+          (!variables.protected || variables.restart || variables.materialize || variables.maintenance || variables.garbageCollect || variables.podCleanup || variables.nodeNotReady)))
+      message: dev-env archives and the shelf require a trusted administrator or a verified controller parent; only pure rollout restart is allowed to other callers.
