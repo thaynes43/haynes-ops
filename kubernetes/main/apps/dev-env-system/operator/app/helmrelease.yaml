@@ -64,14 +64,16 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Main 20c710fe21350db0ce0fde64accf12e40c5413d5; publish.yml run 38340824747, keyless verified.
-              # dev-env 2.26.0 (#249): #244 private-executor stop request (DESIGN-025 H3; its flag
-              # --enable-private-executor-stop is deliberately absent, so off until H7), #245 usage
-              # observation version 2 (#176), #246 agentd history export/archive (H4, agentd only).
-              # Writes status.usageObservation version 2 (the AgentSession CRD for 2.26.0 lands first).
-              # Code identical to v2.26.0 (the release merge ce4b221 changed only the changelog and manifest).
-              # Its binary reports v2.25.0-14-g20c710f (git describe before the tag), not 2.26.0.
-              tag: sha-20c710f@sha256:23aae8a8df03509d0bf4cd8a7a9b38cd6e327cfc8c2b033bf954de06e9fc0ed9
+              # Main 2221b834dab857abe251e228d24d4d85cec4391e; publish.yml run 38363449181, keyless verified.
+              # dev-env 2.27.0 (#253): #251 HOME expiry up to Archived (DESIGN-025 H5) and #254 the
+              # /v1/history reads and the guarded HOME delete (H6). Their flags
+              # --enable-home-history-archive, --enable-history-archive-reads, --enable-home-expiry-delete
+              # and --home-expiry-grace are deliberately absent, so all off (defaults) until H7, as is
+              # H3's --enable-private-executor-stop. Off, it writes no new status field.
+              # The AgentSession CRD for 2.27.0 (status.privateHistory.expiry, expiryClearedAt) lands first.
+              # Code identical to v2.27.0 (the release merge c20fafd changed only the changelog and manifest).
+              # Its binary reports v2.26.0-2-g2221b83 (git describe before the tag), not 2.27.0.
+              tag: sha-2221b83@sha256:fd8bdecaf2f68341ada2e53f39fa06e11b8b35416b88918fccb0c9eac5a7d779
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
