@@ -71,7 +71,7 @@ spec:
               # registry is not on the Kyverno restrict-image-registries
               # allowlist, docker.io is.
               repository: docker.io/outlinewiki/outline
-              tag: latest@sha256:832051f039b446c87aa23929cf92c00980c66aaa2d744d118c48c016ec816ad8
+              tag: latest@sha256:08ee9ffdb847e1bd35ded30ee832090dd06a7f93f67422687db59e70bc7f5393
               pullPolicy: IfNotPresent
             # Preserve the image ENTRYPOINT (docker-entrypoint.sh) and append
             # --no-migrate so app pods never run migrations (the Job owns them).
