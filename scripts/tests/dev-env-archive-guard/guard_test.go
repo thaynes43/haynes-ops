@@ -804,6 +804,11 @@ func testCleanup(t *testing.T, h *harness) {
 	f.parents = []obj{rs}
 	f.wantCalls = 1
 	run(t, h, "cleanup/GC/orphan-descendant", f)
+	f = request(clone(rs), controller("replicaset-controller"), "UPDATE", true)
+	f.old = clone(rs)
+	f.subresource = "status"
+	f.wantCalls = 0
+	run(t, h, "cleanup/GC/orphan-RS-status", f)
 	for _, actor := range []string{"pod-garbage-collector", "node-controller", "disruption-controller"} {
 		old := workload("Pod", "dev-env-shelf-fixture", claim)
 		old["status"] = obj{"phase": "Running", "conditions": []any{obj{"type": "Ready", "status": "True"}}}

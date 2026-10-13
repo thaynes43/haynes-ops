@@ -33,7 +33,7 @@ spec:
       - apiGroups: [apps]
         apiVersions: ["v1"]
         operations: [CREATE, UPDATE]
-        resources: [deployments, "deployments/*", replicasets, "replicasets/*", statefulsets, "statefulsets/*", daemonsets, "daemonsets/*", controllerrevisions]
+        resources: [deployments, "deployments/*", replicasets, "replicasets/*", statefulsets, "statefulsets/*", daemonsets, "daemonsets/*", controllerrevisions, "controllerrevisions/*"]
       - apiGroups: [batch]
         apiVersions: ["v1"]
         operations: [CREATE, UPDATE]
@@ -375,7 +375,7 @@ spec:
         request.operation == 'UPDATE' && variables.subresource in ['', 'status'] &&
         variables.maintenanceActor && variables.sameIdentity && variables.ownersUnchanged &&
         variables.newSpec == variables.oldSpec && variables.newTemplate == variables.oldTemplate &&
-        (variables.resource != 'replicasets' || variables.parentValid)
+        (variables.resource != 'replicasets' || size(variables.refs) == 0 || variables.parentValid)
     - name: stableMeta
       expression: >-
         variables.sameIdentity &&
