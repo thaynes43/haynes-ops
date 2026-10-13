@@ -86,6 +86,19 @@ func (m *mockContext) GetResource(api, resource, namespace, name string) (*unstr
 		return &unstructured.Unstructured{}, nil
 	case "malformed":
 		return &unstructured.Unstructured{Object: obj{"metadata": "malformed"}}, nil
+	case "wrong-kind", "missing-uid", "wrong-name", "wrong-namespace":
+		o := workload("Pod", name, "")
+		switch m.fault {
+		case "wrong-kind":
+			o["kind"] = "Deployment"
+		case "missing-uid":
+			delete(o["metadata"].(obj), "uid")
+		case "wrong-name":
+			o["metadata"].(obj)["name"] = "wrong"
+		case "wrong-namespace":
+			o["metadata"].(obj)["namespace"] = "wrong"
+		}
+		return &unstructured.Unstructured{Object: o}, nil
 	}
 	if o, ok := m.objects[k]; ok {
 		return &unstructured.Unstructured{Object: clone(o)}, nil
@@ -299,7 +312,7 @@ func TestArchiveGuard(t *testing.T) {
 	if p.Spec.FailurePolicy == nil || *p.Spec.FailurePolicy != registration.Fail {
 		t.Fatal("guard must fail closed")
 	}
-	if fmt.Sprint(p.Spec.ValidationActions) != "[Deny]" {
+	if fmt.Sprint(p.Spec.ValidationAction) != "[Deny]" {
 		t.Fatal("guard must Deny")
 	}
 	h := compile(t, p)
@@ -357,6 +370,8 @@ func TestArchiveGuard(t *testing.T) {
 	testConnect(t, h)
 	testRestart(t, h)
 	testControllers(t, h)
+	testCleanup(t, h)
+	testStatusFallback(t, h)
 	for _, actor := range []string{agent, broker, keeper, sa("dev-agents/dev-env-workbench")} {
 		o := workload("Job", "fixture", "dev-env-history-archive")
 		template(o)["spec"].(obj)["serviceAccountName"] = "dev-env-operator"
@@ -638,6 +653,9 @@ func testControllers(t *testing.T, h *harness) {
 		pod = workload("Pod", "child", claim)
 		own(pod, root)
 		pod["metadata"].(obj)["labels"].(obj)["controller-revision-hash"] = "root-history"
+		if kind == "DaemonSet" {
+			pod["metadata"].(obj)["labels"].(obj)["controller-revision-hash"] = "history"
+		}
 		template(root)["spec"].(obj)["volumes"] = []any{}
 		f = request(pod, controller(actor), "CREATE", true)
 		f.parents = []obj{root, rev}
@@ -669,6 +687,169 @@ func testControllers(t *testing.T, h *harness) {
 		f.wantCalls = 0
 		run(t, h, "history/untrusted-revision-data/"+kind, f)
 	}
+	// Real dedupCurHistories changes only the bare hash label to a current history.
+	ds := workload("DaemonSet", "daemon", claim)
+	rev := workload("ControllerRevision", "daemon-newhash", claim)
+	own(rev, ds)
+	dp := workload("Pod", "daemon-pod", claim)
+	own(dp, ds)
+	dp["metadata"].(obj)["labels"].(obj)["controller-revision-hash"] = "oldhash"
+	dedup := request(clone(dp), controller("daemon-set-controller"), "UPDATE", true)
+	dedup.old = dp
+	dedup.new["metadata"].(obj)["labels"].(obj)["controller-revision-hash"] = "newhash"
+	dedup.parents = []obj{ds, rev}
+	dedup.wantCalls = 2
+	run(t, h, "history/daemon-dedup", dedup)
+	for _, mode := range []string{"wrong-actor", "owner", "execution", "label", "annotation", "missing-revision", "revision-uid", "revision-owner", "revision-data"} {
+		bad := dedup
+		bad.new = clone(dedup.new)
+		bad.parents = []obj{ds, clone(rev)}
+		bad.allow = false
+		bad.wantCalls = -1
+		switch mode {
+		case "wrong-actor":
+			bad.actor = broker
+		case "owner":
+			bad.new["metadata"].(obj)["ownerReferences"] = []any{}
+		case "execution":
+			bad.new["spec"].(obj)["containers"].([]any)[0].(obj)["image"] = "bad"
+		case "label":
+			bad.new["metadata"].(obj)["labels"].(obj)["unrelated"] = "bad"
+		case "annotation":
+			bad.new["metadata"].(obj)["annotations"] = obj{"unrelated": "bad"}
+		case "missing-revision":
+			bad.parents = []obj{ds}
+		case "revision-uid":
+			delete(bad.parents[1]["metadata"].(obj), "uid")
+		case "revision-owner":
+			bad.parents[1]["metadata"].(obj)["ownerReferences"].([]any)[0].(obj)["uid"] = "bad"
+		case "revision-data":
+			template(bad.parents[1])["spec"].(obj)["containers"].([]any)[0].(obj)["image"] = "different"
+		}
+		run(t, h, "history/daemon-dedup/"+mode, bad)
+	}
+}
+
+func testStatusFallback(t *testing.T, h *harness) {
+	for _, actor := range []string{broker, controller("pod-garbage-collector")} {
+		for _, fault := range []string{"notfound", "null", "empty", "malformed", "forbidden", "transport", "wrong-kind", "missing-uid", "wrong-name", "wrong-namespace"} {
+			f := request(workload("Pod", "fixture", ""), actor, "UPDATE", false)
+			f.subresource = "status"
+			f.fault = fault
+			f.wantCalls = 1
+			run(t, h, "status-fallback/"+actor+"/"+fault, f)
+		}
+		f := request(workload("Pod", "fixture", ""), actor, "UPDATE", true)
+		f.subresource = "status"
+		f.parents = []obj{clone(f.new)}
+		f.wantCalls = 1
+		run(t, h, "status-fallback/valid-unprotected/"+actor, f)
+		f.parents = []obj{workload("Pod", "fixture", "dev-env-history-archive")}
+		f.allow = false
+		run(t, h, "status-fallback/protected-without-old/"+actor, f)
+	}
+}
+
+func testCleanup(t *testing.T, h *harness) {
+	claim := "dev-env-history-archive"
+	gc := controller("generic-garbage-collector")
+	for _, kind := range []string{"Pod", "ReplicationController", "Deployment", "ReplicaSet", "StatefulSet", "DaemonSet", "Job", "CronJob", "ControllerRevision"} {
+		old := workload(kind, "protected", claim)
+		own(old, workload("Deployment", "owner", claim))
+		old["metadata"].(obj)["ownerReferences"].([]any)[0].(obj)["blockOwnerDeletion"] = true
+		old["metadata"].(obj)["finalizers"] = []any{"foregroundDeletion", "orphan", "example.invalid/keep"}
+		f := request(clone(old), gc, "UPDATE", true)
+		f.old = old
+		f.wantCalls = 0
+		f.new["metadata"].(obj)["ownerReferences"] = []any{}
+		f.new["metadata"].(obj)["finalizers"] = []any{"example.invalid/keep"}
+		run(t, h, "cleanup/GC/remove/"+kind, f)
+		unblock := f
+		unblock.new = clone(old)
+		unblock.new["metadata"].(obj)["ownerReferences"].([]any)[0].(obj)["blockOwnerDeletion"] = false
+		run(t, h, "cleanup/GC/unblock/"+kind, unblock)
+		for _, mode := range []string{"actor", "identity", "execution", "owner-insert", "reparent", "finalizer-add", "finalizer-remove-foreign", "label", "status"} {
+			bad := f
+			bad.new = clone(f.new)
+			bad.allow = false
+			switch mode {
+			case "actor":
+				bad.actor = broker
+			case "identity":
+				bad.new["metadata"].(obj)["uid"] = "recreated"
+			case "execution":
+				template(bad.new)["spec"].(obj)["containers"].([]any)[0].(obj)["image"] = "bad"
+			case "owner-insert":
+				own(bad.new, workload("Deployment", "forged", claim))
+			case "reparent":
+				bad.new["metadata"].(obj)["ownerReferences"] = clone(old)["metadata"].(obj)["ownerReferences"]
+				bad.new["metadata"].(obj)["ownerReferences"].([]any)[0].(obj)["uid"] = "forged"
+			case "finalizer-add":
+				bad.new["metadata"].(obj)["finalizers"] = []any{"example.invalid/keep", "forged"}
+			case "finalizer-remove-foreign":
+				bad.new["metadata"].(obj)["finalizers"] = []any{}
+			case "label":
+				bad.new["metadata"].(obj)["labels"].(obj)["forged"] = "bad"
+			case "status":
+				bad.new["status"] = obj{"phase": "Failed"}
+			}
+			run(t, h, "cleanup/GC/tamper/"+kind+"/"+mode, bad)
+		}
+	}
+	// A trusted GC orphan keeps its admitted archive template as a standalone RS.
+	rs := workload("ReplicaSet", "orphaned", claim)
+	pod := workload("Pod", "orphaned-child", claim)
+	own(pod, rs)
+	f := request(pod, controller("replicaset-controller"), "CREATE", true)
+	f.parents = []obj{rs}
+	f.wantCalls = 1
+	run(t, h, "cleanup/GC/orphan-descendant", f)
+	for _, actor := range []string{"pod-garbage-collector", "node-controller", "disruption-controller"} {
+		old := workload("Pod", "dev-env-shelf-fixture", claim)
+		old["status"] = obj{"phase": "Running", "conditions": []any{obj{"type": "Ready", "status": "True"}}}
+		f = request(clone(old), controller(actor), "UPDATE", true)
+		f.old = old
+		f.subresource = "status"
+		f.wantCalls = 0
+		condition := obj{"type": "DisruptionTarget", "status": "True", "reason": "DeletionByPodGC", "observedGeneration": float64(1), "lastTransitionTime": "2026-10-13T20:00:00Z"}
+		if actor == "node-controller" {
+			condition["reason"] = "DeletionByTaintManager"
+		}
+		if actor == "disruption-controller" {
+			condition["status"] = "False"
+			delete(condition, "reason")
+		}
+		f.new["status"].(obj)["conditions"] = append(f.new["status"].(obj)["conditions"].([]any), condition)
+		if actor == "pod-garbage-collector" {
+			f.new["status"].(obj)["phase"] = "Failed"
+			f.new["status"].(obj)["observedGeneration"] = float64(1)
+		}
+		run(t, h, "cleanup/status/"+actor, f)
+		for _, mode := range []string{"actor", "execution", "owner", "label", "annotation", "finalizer", "condition", "status-field"} {
+			bad := f
+			bad.new = clone(f.new)
+			bad.allow = false
+			switch mode {
+			case "actor":
+				bad.actor = broker
+			case "execution":
+				bad.new["spec"].(obj)["volumes"] = []any{}
+			case "owner":
+				own(bad.new, workload("ReplicaSet", "forged", claim))
+			case "label":
+				bad.new["metadata"].(obj)["labels"].(obj)["forged"] = "bad"
+			case "annotation":
+				bad.new["metadata"].(obj)["annotations"] = obj{"forged": "bad"}
+			case "finalizer":
+				bad.new["metadata"].(obj)["finalizers"] = []any{"forged"}
+			case "condition":
+				bad.new["status"].(obj)["conditions"].([]any)[0].(obj)["status"] = "False"
+			case "status-field":
+				bad.new["status"].(obj)["podIP"] = "forged"
+			}
+			run(t, h, "cleanup/status/tamper/"+actor+"/"+mode, bad)
+		}
+	}
 }
 
 // Evaluate the actual complementary source expressions for each trusted identity.
@@ -687,7 +868,7 @@ func loadVAP(t *testing.T, path string) *policies.ValidatingPolicy {
 	return &policies.ValidatingPolicy{ObjectMeta: p.ObjectMeta, Spec: policies.ValidatingPolicySpec{
 		MatchConstraints: p.Spec.MatchConstraints, MatchConditions: p.Spec.MatchConditions,
 		Variables: p.Spec.Variables, Validations: p.Spec.Validations, FailurePolicy: p.Spec.FailurePolicy,
-		ValidationActions: []registration.ValidationAction{registration.Deny},
+		ValidationAction: []registration.ValidationAction{registration.Deny},
 	}}
 }
 

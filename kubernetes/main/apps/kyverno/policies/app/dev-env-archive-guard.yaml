@@ -266,9 +266,13 @@ spec:
       expression: >-
         variables.parent == null ? {} : variables.owner.kind == 'CronJob' ?
           variables.parent.?spec.?jobTemplate.?spec.?template.orValue({}) : variables.parent.?spec.?template.orValue({})
-    - name: revisionName
+    - name: revisionHash
       expression: >-
         variables.newMeta.?labels.orValue({})[?'controller-revision-hash'].orValue('')
+    - name: revisionName
+      expression: >-
+        variables.revisionHash == '' ? '' : variables.owner.?kind.orValue('') == 'DaemonSet' ?
+          variables.owner.?name.orValue('') + '-' + variables.revisionHash : variables.revisionHash
     - name: revision
       expression: >-
         variables.resource == 'pods' && variables.parentValid && variables.owner.kind in ['StatefulSet', 'DaemonSet'] &&
@@ -331,6 +335,24 @@ spec:
           cel.bind(parentLabels, variables.inheritedTemplate.?metadata.?labels.orValue({}),
             newLabels.all(k, k in variables.generatedLabels || (k in parentLabels && newLabels[k] == parentLabels[k])) &&
             parentLabels.all(k, k in variables.generatedLabels || k in newLabels)))
+    # DaemonSet dedupCurHistories relabels existing Pods with a bare hash. Verify
+    # the selected current history and allow only that label to change, not spec.
+    - name: dsDedup
+      expression: >-
+        variables.resource == 'pods' && variables.subresource == '' && variables.owner.?kind.orValue('') == 'DaemonSet' &&
+        variables.revisionValid && variables.sameIdentity && variables.ownersUnchanged &&
+        object.all(k, k == 'metadata' || (k in oldObject && object[k] == oldObject[k])) &&
+        oldObject.all(k, k == 'metadata' || k in object) &&
+        variables.newMeta.all(k, k in ['labels', 'resourceVersion', 'managedFields', 'generation'] ||
+          (k in variables.oldMeta && variables.newMeta[k] == variables.oldMeta[k])) &&
+        variables.oldMeta.all(k, k in ['labels', 'resourceVersion', 'managedFields', 'generation'] || k in variables.newMeta) &&
+        cel.bind(newLabels, variables.newMeta.?labels.orValue({}),
+          cel.bind(oldLabels, variables.oldMeta.?labels.orValue({}),
+            newLabels.all(k, k == 'controller-revision-hash' || (k in oldLabels && newLabels[k] == oldLabels[k])) &&
+            oldLabels.all(k, k == 'controller-revision-hash' || k in newLabels))) &&
+        cel.bind(history, variables.revision.data.spec.template,
+          history.all(k, k == '$patch' || (k in variables.parentTemplate && history[k] == variables.parentTemplate[k])) &&
+          variables.parentTemplate.all(k, k in history))
     - name: materialize
       expression: >-
         variables.subresource in ['', 'status'] && variables.materialActor && variables.chainValid &&
@@ -339,8 +361,8 @@ spec:
             (variables.resource == 'pods' || variables.storedTemplateInherited)) :
           (variables.sameIdentity && variables.ownersUnchanged &&
             (variables.resource == 'pods' ? variables.newPod == variables.oldPod : variables.newTemplate == variables.oldTemplate) &&
-            variables.newMeta.?labels.orValue({})[?'controller-revision-hash'].orValue('') ==
-              variables.oldMeta.?labels.orValue({})[?'controller-revision-hash'].orValue('') &&
+            (variables.newMeta.?labels.orValue({})[?'controller-revision-hash'].orValue('') ==
+              variables.oldMeta.?labels.orValue({})[?'controller-revision-hash'].orValue('') || variables.dsDedup) &&
             (variables.resource != 'controllerrevisions' || object.?data.orValue({}) == oldObject.?data.orValue({}))))
     - name: maintenanceActor
       expression: >-
@@ -354,10 +376,63 @@ spec:
         variables.maintenanceActor && variables.sameIdentity && variables.ownersUnchanged &&
         variables.newSpec == variables.oldSpec && variables.newTemplate == variables.oldTemplate &&
         (variables.resource != 'replicasets' || variables.parentValid)
+    - name: stableMeta
+      expression: >-
+        variables.sameIdentity &&
+        variables.newMeta.all(k, k in ['resourceVersion', 'managedFields', 'generation'] ||
+          (k in variables.oldMeta && variables.newMeta[k] == variables.oldMeta[k])) &&
+        variables.oldMeta.all(k, k in ['resourceVersion', 'managedFields', 'generation'] || k in variables.newMeta)
+    # Generic GC removes references or makes an existing reference nonblocking.
+    # It can remove only its two finalizers; the admitted execution stays intact.
+    - name: garbageCollect
+      expression: >-
+        request.operation == 'UPDATE' && variables.subresource == '' &&
+        variables.actor == 'system:serviceaccount:kube-system:generic-garbage-collector' && variables.sameIdentity &&
+        object.all(k, k == 'metadata' || (k in oldObject && object[k] == oldObject[k])) &&
+        oldObject.all(k, k == 'metadata' || k in object) &&
+        variables.newMeta.all(k, k in ['ownerReferences', 'finalizers', 'resourceVersion', 'managedFields', 'generation'] ||
+          (k in variables.oldMeta && variables.newMeta[k] == variables.oldMeta[k])) &&
+        variables.oldMeta.all(k, k in ['ownerReferences', 'finalizers', 'resourceVersion', 'managedFields', 'generation'] || k in variables.newMeta) &&
+        cel.bind(newRefs, variables.newMeta.?ownerReferences.orValue([]),
+          cel.bind(oldRefs, variables.oldMeta.?ownerReferences.orValue([]),
+            size(newRefs) <= size(oldRefs) && newRefs.all(n, oldRefs.exists(o, n == o ||
+              (!n.?blockOwnerDeletion.orValue(false) &&
+                n.all(k, k == 'blockOwnerDeletion' || (k in o && n[k] == o[k])) &&
+                o.all(k, k == 'blockOwnerDeletion' || k in n)))))) &&
+        cel.bind(newFinals, variables.newMeta.?finalizers.orValue([]),
+          cel.bind(oldFinals, variables.oldMeta.?finalizers.orValue([]),
+            newFinals.all(f, f in oldFinals) && oldFinals.all(f, f in newFinals || f in ['foregroundDeletion', 'orphan'])))
+    # Taint eviction uses the node-controller client/SA in Kubernetes v1.35.5.
+    # These exact controllers can only maintain Pod status before deletion/clear.
+    - name: podCleanup
+      expression: >-
+        request.operation == 'UPDATE' && variables.resource == 'pods' && variables.subresource == 'status' &&
+        variables.actor in ['system:serviceaccount:kube-system:pod-garbage-collector',
+          'system:serviceaccount:kube-system:node-controller', 'system:serviceaccount:kube-system:disruption-controller'] &&
+        variables.stableMeta && variables.newPod == variables.oldPod &&
+        object.all(k, k in ['metadata', 'status'] || (k in oldObject && object[k] == oldObject[k])) &&
+        oldObject.all(k, k in ['metadata', 'status'] || k in object) &&
+        cel.bind(newStatus, object.?status.orValue({}), cel.bind(oldStatus, oldObject.?status.orValue({}),
+          cel.bind(gc, variables.actor == 'system:serviceaccount:kube-system:pod-garbage-collector',
+            newStatus.all(k, k == 'conditions' || (gc && k in ['phase', 'observedGeneration']) ||
+              (k in oldStatus && newStatus[k] == oldStatus[k])) &&
+            oldStatus.all(k, k == 'conditions' || (gc && k in ['phase', 'observedGeneration']) || k in newStatus) &&
+            (!gc || newStatus.?phase.orValue('') in [oldStatus.?phase.orValue(''), 'Failed']) &&
+            cel.bind(newConditions, newStatus.?conditions.orValue([]), cel.bind(oldConditions, oldStatus.?conditions.orValue([]),
+              newConditions.filter(c, c.?type.orValue('') != 'DisruptionTarget') ==
+                oldConditions.filter(c, c.?type.orValue('') != 'DisruptionTarget') &&
+              size(newConditions.filter(c, c.?type.orValue('') == 'DisruptionTarget')) <= 1 &&
+              (newConditions.filter(c, c.?type.orValue('') == 'DisruptionTarget') ==
+                oldConditions.filter(c, c.?type.orValue('') == 'DisruptionTarget') ||
+                newConditions.exists(c, c.?type.orValue('') == 'DisruptionTarget' &&
+                  (variables.actor == 'system:serviceaccount:kube-system:disruption-controller' ?
+                    c.?status.orValue('') == 'False' && c.?reason.orValue('') == '' :
+                    c.?status.orValue('') == 'True' && c.?reason.orValue('') == (gc ? 'DeletionByPodGC' : 'DeletionByTaintManager'))))))))
   validations:
     - expression: >-
-        variables.subresource == 'scale' ? variables.scale : variables.subresource == 'eviction' ||
+        (variables.resource != 'pods' || variables.subresource != 'status' || oldObject != null || variables.targetValid) &&
+        (variables.subresource == 'scale' ? variables.scale : variables.subresource == 'eviction' ||
         (variables.resource == 'pods' && variables.subresource != '' && variables.subresource != 'status' ?
           (variables.targetValid && !variables.protected) :
-          (!variables.protected || variables.restart || variables.materialize || variables.maintenance))
+          (!variables.protected || variables.restart || variables.materialize || variables.maintenance || variables.garbageCollect || variables.podCleanup)))
       message: dev-env archives and the shelf require a trusted administrator or a verified controller parent; only pure rollout restart is allowed to other callers.

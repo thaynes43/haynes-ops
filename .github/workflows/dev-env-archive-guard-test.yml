@@ -10,9 +10,11 @@ on:
       - scripts/tests/dev-env-archive-guard/**
       - .github/workflows/dev-env-archive-guard-test.yml
   push:
-    branches: [agent/dev-env-h7-compatible-guard-1013]
+    branches: [main]
     paths:
       - kubernetes/main/apps/kyverno/policies/app/dev-env-archive-guard.yaml
+      - kubernetes/main/apps/dev-env-system/rbac/app/identity-guard.yaml
+      - kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml
       - scripts/tests/dev-env-archive-guard/**
       - .github/workflows/dev-env-archive-guard-test.yml
 permissions:
