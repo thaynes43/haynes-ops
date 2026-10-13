@@ -149,6 +149,9 @@ class CollectorTests(unittest.TestCase):
         self.assertNotIn(SECRET, json.dumps(result))
         self.assertLess(reader.requests, C.MAX_REQUESTS)
         self.assertFalse(result["policies"][0]["readiness"]["generationAttested"])
+        for actual, public in zip(result["hooks"], hooks()):
+            self.assertEqual(actual["namespaceSelector"], public["namespaceSelector"])
+            self.assertEqual(actual["rules"], [json.loads(rule) for rule in C.normalize_rules(public["rules"])])
 
     def test_policy_and_hook_fail_closed(self):
         changes = {
@@ -170,6 +173,35 @@ class CollectorTests(unittest.TestCase):
                     C.audit(fake, EXPECTED, result)
                 self.assertNotIn(SECRET, json.dumps(result))
                 self.assertEqual(result["state"], "Failed")
+
+    def test_hook_rejects_private_selector_and_unknown_rule_fields_without_output(self):
+        changes = {
+            # This NotIn requirement still matches an absent namespace label.
+            "matching-private-exclusion": lambda h: h["namespaceSelector"]["matchExpressions"].append(
+                {"key": "private.example/selector", "operator": "NotIn", "values": [SECRET]}),
+            "unknown-selector-field": lambda h: h["namespaceSelector"].update({"private": SECRET}),
+            "private-object-selector": lambda h: h["objectSelector"].update({"matchExpressions": [
+                {"key": "private.example/selector", "operator": "NotIn", "values": [SECRET]}]}),
+            # Existing rule normalization rejects unknown keys before emission.
+            "unknown-rule-field": lambda h: h["rules"][0].update({"private": SECRET}),
+        }
+        for index in (0, 1):
+            for label, change in changes.items():
+                with self.subTest(hook=index, label=label):
+                    fake, output = Fake(), io.StringIO()
+                    config = next(v for v in fake.named.values() if v["kind"] == "ValidatingWebhookConfiguration")
+                    change(config["webhooks"][index])
+                    if label == "matching-private-exclusion":
+                        self.assertTrue(C.selector_matches(config["webhooks"][index]["namespaceSelector"],
+                                                           {"kubernetes.io/metadata.name": C.NAMESPACE}))
+                    with mock.patch.object(C.pathlib.Path, "read_text", return_value=json.dumps(EXPECTED)), \
+                            mock.patch.object(C, "Reader", return_value=fake), contextlib.redirect_stdout(output):
+                        self.assertEqual(C.main(), 1)
+                    value = json.loads(output.getvalue())
+                    self.assertEqual(value["state"], "Failed")
+                    self.assertEqual(value["failure"]["code"], "MalformedWebhookRule" if label == "unknown-rule-field" else
+                                     "WebhookExcludesTarget" if label == "private-object-selector" else "WrongWebhookNamespaceSelector")
+                    self.assertNotIn(SECRET, output.getvalue())
 
     def test_archive_slots_and_malformed_revision(self):
         for version, resource, kind in C.KINDS:
@@ -234,10 +266,24 @@ class CollectorTests(unittest.TestCase):
             def get(self, path, query):
                 self.calls += 1
                 return next(self.rows)
-        rows, summary = C.complete_list(Pages([page(continuation="opaque", items=[pod], remaining=1), page(items=[pod | {"metadata": meta("other", "other-uid", C.NAMESPACE)}], remaining=0)]), "v1", "pods", "Pod")
-        self.assertEqual(len(rows), 2)
-        self.assertTrue(summary["complete"])
-        self.assertNotIn("opaque", json.dumps(summary))
+        other = pod | {"metadata": meta("other", "other-uid", C.NAMESPACE)}
+        third = pod | {"metadata": meta("third", "third-uid", C.NAMESPACE)}
+        valid = {
+            "all-counts": [page(continuation="opaque", items=[pod], remaining=1), page(items=[other], remaining=0)],
+            "no-counts": [page(continuation="opaque", items=[pod]), page(items=[other])],
+            "first-omitted": [page(continuation="opaque", items=[pod]), page(items=[other], remaining=0)],
+            "terminal-omitted": [page(continuation="opaque", items=[pod], remaining=1), page(items=[other])],
+            "middle-and-terminal-omitted": [page(continuation="opaque", items=[pod], remaining=2),
+                                            page(continuation="b", items=[other]), page(items=[third])],
+            "first-and-terminal-omitted": [page(continuation="opaque", items=[pod]),
+                                            page(continuation="b", items=[other], remaining=1), page(items=[third])],
+        }
+        for name, pages in valid.items():
+            with self.subTest(valid=name):
+                rows, summary = C.complete_list(Pages(pages), "v1", "pods", "Pod")
+                self.assertEqual(len(rows), len(pages))
+                self.assertTrue(summary["complete"])
+                self.assertNotIn("opaque", json.dumps(summary))
         cases = {
             "changed-rv": [page(continuation="a", items=[pod]), page(rv="901")],
             "repeated-token": [page(continuation="a", items=[pod]), page(continuation="a", items=[pod | {"metadata": meta("other", "other", C.NAMESPACE)}])],
@@ -247,6 +293,13 @@ class CollectorTests(unittest.TestCase):
             "null-items": [{"apiVersion": "v1", "kind": "PodList", "metadata": {"resourceVersion": "900"}, "items": None}],
             "empty-continuation-page": [page(continuation="a")],
             "page-bound": [page(continuation=str(i), items=[pod | {"metadata": meta("pod-"+str(i), "uid-"+str(i), C.NAMESPACE)}]) for i in range(C.MAX_PAGES)],
+            "advertised-item-missing": [page(continuation="a", items=[pod], remaining=1), page(remaining=0)],
+            "advertised-item-missing-terminal-omitted": [page(continuation="a", items=[pod], remaining=1), page()],
+            "inconsistent-positive-count": [page(continuation="a", items=[pod], remaining=2),
+                                             page(continuation="b", items=[other], remaining=2)],
+            "advertised-total-overrun-omitted": [page(continuation="a", items=[pod], remaining=1), page(items=[other, third])],
+            "continuation-after-advertised-total": [page(continuation="a", items=[pod], remaining=1),
+                                                    page(continuation="b", items=[other])],
         }
         for name, pages in cases.items():
             with self.subTest(case=name), self.assertRaises(C.Refused):

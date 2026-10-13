@@ -15,6 +15,16 @@ import urllib.request
 
 NAMESPACE = "dev-agents"
 API = "https://10.43.0.1:443"
+# Pinned chart3.9.1: values.yaml config.webhooks excludes kube-system;
+# templates/config/_helpers.tpl appends its release namespace, kyverno.
+# Kyverno1.19.1 pkg/controllers/webhook/validating.go mergeLabelSelectors
+# appends that public selector to the policy's namespace selector.
+KYVERNO_NAMESPACE_SELECTOR = {
+    "matchExpressions": [
+        {"key": "kubernetes.io/metadata.name", "operator": "NotIn", "values": ["kube-system"]},
+        {"key": "kubernetes.io/metadata.name", "operator": "NotIn", "values": ["kyverno"]},
+    ]
+}
 ARCHIVES = {"dev-env-history-archive", "dev-env-coordination-archive"}
 KINDS = (
     ("v1", "pods", "Pod"),
@@ -131,6 +141,7 @@ class Reader:
 
 def complete_list(reader, version, resource, kind):
     items, seen, tokens, rv = [], set(), set(), None
+    expected_total = None
     continuation = None
     started = timestamp()
     for page in range(MAX_PAGES):
@@ -159,11 +170,18 @@ def complete_list(reader, version, resource, kind):
         require(isinstance(continuation, str) and len(continuation) <= 8192, "MalformedContinuation")
         remaining = meta.get("remainingItemCount")
         require(remaining is None or (type(remaining) is int and remaining >= 0), "MalformedRemainingCount")
+        if remaining is not None:
+            total = len(items) + remaining
+            require(expected_total is None or expected_total == total, "IncoherentRemainingCount")
+            expected_total = total
+        require(expected_total is None or len(items) <= expected_total, "IncoherentRemainingCount")
         if not continuation:
             require(remaining in (None, 0), "IncompletePagination")
+            require(expected_total is None or len(items) == expected_total, "IncoherentRemainingCount")
             return items, {"kind": kind, "resourceVersion": rv, "count": len(items), "pages": page + 1,
                            "complete": True, "startedAt": started, "finishedAt": timestamp()}
         require(bool(rows) and continuation not in tokens and remaining != 0, "IncoherentPagination")
+        require(expected_total is None or len(items) < expected_total, "IncoherentRemainingCount")
         tokens.add(continuation)
     raise Refused("PageBudgetExhausted")
 
@@ -284,12 +302,13 @@ def verify_hook(config, expected, labels):
     require(bool(hook.get("clientConfig", {}).get("caBundle")) and "url" not in hook.get("clientConfig", {}), "MissingWebhookCA")
     require(normalize_rules(hook.get("rules")) == normalize_rules(expected["spec"]["matchConstraints"]["resourceRules"]), "WrongWebhookRules")
     require(normalize_conditions(hook.get("matchConditions", [])) == normalize_conditions(expected["spec"].get("matchConditions", [])), "WrongWebhookConditions")
-    selector = hook.get("namespaceSelector", {})
+    selector = copy.deepcopy(expected["spec"]["matchConstraints"].get("namespaceSelector", {}))
+    selector["matchExpressions"] = selector.get("matchExpressions", []) + copy.deepcopy(KYVERNO_NAMESPACE_SELECTOR["matchExpressions"])
+    require(hook.get("namespaceSelector", {}) == selector, "WrongWebhookNamespaceSelector")
     require(selector_matches(selector, labels) and hook.get("objectSelector", {}) == {}, "WebhookExcludesTarget")
-    for key, value in expected["spec"]["matchConstraints"].get("namespaceSelector", {}).get("matchLabels", {}).items():
-        require(selector.get("matchLabels", {}).get(key) == value, "MissingWebhookNamespaceBoundary")
-    # All emitted expressions are the verified committed public source, never arbitrary live strings.
-    return {"policy": name, "name": hook["name"], "service": service, "rules": hook["rules"],
+    # Emit only verified committed public selectors, rules and expressions.
+    rules = [json.loads(rule) for rule in normalize_rules(expected["spec"]["matchConstraints"]["resourceRules"])]
+    return {"policy": name, "name": hook["name"], "service": service, "rules": rules,
             "failurePolicy": "Fail", "timeoutSeconds": 10, "sideEffects": "NoneOnDryRun", "matchPolicy": "Equivalent",
             "admissionReviewVersions": ["v1"], "namespaceSelector": selector, "objectSelector": {},
             "matchConditions": expected["spec"].get("matchConditions", []), "caBundlePresent": True}

@@ -931,6 +931,8 @@
   "sourceFileSha256": {
     "kubernetes/main/apps/dev-env-system/rbac/app/identity-guard.yaml": "e705571cfbb4b5ee787e9d743bf8a1a949a97af36080757cf4fe6b5b9c898adc",
     "kubernetes/main/apps/dev-env-system/shelf/app/deployment.yaml": "952c8a9f0baeb0918ae93268cfe8e440b4a559b6446a796c02adaf12df22d3e6",
+    "kubernetes/main/apps/kyverno/kyverno/app/helmrelease.yaml": "177dd370d725c2311ea5a695558970beec79baecb35ad52754c480b14701cd8e",
+    "kubernetes/main/apps/kyverno/kyverno/app/ocirepository.yaml": "fe92ff3a45843fcd8bbf1c25b70f85ac47df96dc3caceb932f4a9a52b07e4c06",
     "kubernetes/main/apps/kyverno/policies/app/dev-env-archive-guard.yaml": "a7f0c11afae0271d18f612d66189f60b0654502f77f919391480d302ad0f9d46",
     "kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml": "c0fafcb21fbcf7212825c8f35da4968090bed46e2cf7fe7cf768f2b2204ba8b7"
   },
