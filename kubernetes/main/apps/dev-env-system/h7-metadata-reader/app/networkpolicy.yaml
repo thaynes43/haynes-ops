@@ -1,0 +1,35 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-h7-metadata-reader
+  namespace: dev-env-system
+spec:
+  description: finite H7 reader, direct Kubernetes API only
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-h7-metadata-reader
+  enableDefaultDeny:
+    ingress: true
+    egress: true
+  # Deny overrides the existing namespace's additive ingress/DNS allows.
+  ingressDeny:
+    - fromEntities: [all]
+  egressDeny:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+  egress:
+    # 10.43.0.1:443 maps to the observed control-plane API endpoints on6443.
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP

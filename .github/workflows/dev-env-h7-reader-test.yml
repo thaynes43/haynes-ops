@@ -1,0 +1,44 @@
+---
+name: dev-env H7 metadata reader tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/dev-env-system/h7-metadata-reader/**
+      - kubernetes/main/apps/dev-env-system/h7-metadata-audit/**
+      - scripts/tests/dev-env-h7-reader/**
+      - .github/workflows/dev-env-h7-reader-test.yml
+  push:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/dev-env-system/h7-metadata-reader/**
+      - kubernetes/main/apps/dev-env-system/h7-metadata-audit/**
+      - scripts/tests/dev-env-h7-reader/**
+      - .github/workflows/dev-env-h7-reader-test.yml
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  fixtures:
+    name: H7 Metadata Reader Fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Finite sanitizer, pagination, policy and lineage fixtures
+        run: nice -n 19 python3 -I -B scripts/tests/dev-env-h7-reader/test_collector.py
+      - name: Verify exact pinned image interpreter and standard library, offline
+        timeout-minutes: 6
+        run: >-
+          timeout 300s docker run --rm --network none --read-only
+          --user 1000:1000 --cap-drop ALL --security-opt no-new-privileges
+          --cpus 0.25 --memory 96m --memory-swap 96m --pids-limit 64
+          --entrypoint /usr/bin/python3
+          ghcr.io/thaynes43/dev-env:2.15.1@sha256:b44f676305bab133b32e9d53d108a43a8da45379829024d3068e8dafc778c04d
+          -I -B -c
+          'import datetime,hashlib,json,pathlib,re,ssl,sys,time,urllib.error,urllib.parse,urllib.request;
+          print(json.dumps({"pythonVersion":list(sys.version_info[:3]),"standardLibrary":True},sort_keys=True))'
