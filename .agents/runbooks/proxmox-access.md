@@ -107,8 +107,8 @@ rebooting them. Log it in the incident report and `declare-activity end`.
 
 ## SSH tier (`hw-ssh`) — the hardware itself, PVE nodes + HaynesTower + PiKVM (2026-09-17)
 
-Why it exists: the 2026-09-17 GPU swap on HaynesIntelligence needed `dmidecode -t slot`,
-`lspci -vv` and the previous-boot `journalctl -b -1` on the **host** — no PVE API call runs
+Why it exists: the 2026-09-17 GPU swap on HaynesIntelligence needed physical PCI
+inventory from `lspci -vv` and the previous-boot `journalctl -b -1` on the **host** — no PVE API call runs
 host commands — and PVE 8 lets only `root@pam` set a raw `hostpci` id (a non-root token
 needs a resource mapping root creates first). Tom's ruling the same day: *"all my non-talos
 hardware can be managed by dev-env models"*, so the same key covers the Unraid NAS.
@@ -124,7 +124,9 @@ One ed25519 key, `~/.ssh/dev-env-hw`, written by dev-init from `HW_SSH_PRIVATE_K
 
 ```bash
 hw-ssh list
-hw-ssh haynesintelligence sudo dmidecode -t slot        # slot ↔ bus address
+hw-ssh haynesintelligence 'sudo -n lspci -nnk'          # PCI devices and driver bindings
+hw-ssh haynesintelligence 'sudo -n qm config 103'       # existing passthrough entries
+hw-ssh haynesintelligence 'sudo -n dmidecode -t slot'    # SMBIOS slot records; empty on this host
 hw-ssh haynesintelligence 'sudo journalctl -b -1 -p err' # previous boot's errors
 hw-ssh pve-all 'sudo qm list'                            # all five nodes
 hw-ssh haynestower 'tail -50 /var/log/syslog'
@@ -298,8 +300,17 @@ currently supplies no slot records.
 
 1. Read the GPU and audio functions with `hw-ssh haynesintelligence 'sudo -n lspci -nnk'`
    and the existing mapping with `hw-ssh haynesintelligence 'sudo -n qm config 103'`.
-   Verify that the intended functions form an isolated IOMMU group. After the October
-   2026 A/C swap, both functions remained at `0000:41:00.0` and `0000:41:00.1`, used
+   Verify that the intended functions form an isolated IOMMU group. Use the observed
+   GPU address in these paths; for the verified `0000:41:00.0` GPU:
+
+   ```bash
+   hw-ssh haynesintelligence 'readlink /sys/bus/pci/devices/0000:41:00.0/iommu_group'
+   hw-ssh haynesintelligence 'ls /sys/bus/pci/devices/0000:41:00.0/iommu_group/devices'
+   ```
+
+   The group link ends in `42` and its members are only the GPU `.0` and audio `.1`.
+   After the October 2026 A/C swap, both functions remained at `0000:41:00.0` and
+   `0000:41:00.1`, used
    `vfio-pci`, and were the only members of group 42. The existing VM entry was
    `hostpci1: 0000:41:00,pcie=1`, so no mapping change was needed.
 2. If the intended address has changed, declare the disruptive work and stop the VM
