@@ -24,22 +24,22 @@ spec:
   values:
     controllers:
       llama-server:
-        # RESTORED 2026-09-25 (owner request). It was suspended 2026-09-23
-        # (#3136) while ComfyUI borrowed this card. ComfyUI has been on
-        # talosm03's RTX 2000 Ada since #3144, and 3090 #0 was pulled from the
-        # host on 2026-09-25 (#3052), so #1 (GPU-d8a856f1-…) is the only 3090
-        # and this model is its resident tenant again. ollama-prime is pinned to
-        # the same card (#3138) and spills to CPU when this model leaves no room.
-        # The Rumpus Room Voice PE points at the Jarvis pipeline again.
-        replicas: 0
+        # Local Jarvis and Phone Assist need Muse while rack card A is tested.
+        # Card C is temporarily its sole GPU on the talosw04 OCuLink dock.
+        replicas: 1
         annotations:
           reloader.stakater.com/auto: "true"
-        # One resident model on one card: never two copies mid-rollout, both
-        # trying to fit 3090 #0.
+        # One resident model on one card: never two copies during rollout.
         strategy: Recreate
         pod:
           nodeSelector:
-            feature.node.kubernetes.io/nvidia-3090-gpu: "true"
+            kubernetes.io/hostname: talosw04
+          # Keep the test worker isolated; only this deployment is admitted.
+          tolerations:
+            - key: haynesops.com/gpu-test
+              operator: Equal
+              value: "true"
+              effect: NoSchedule
           # GPU access comes from the nvidia RuntimeClass, not from an
           # nvidia.com/gpu request: the device plugin hands out *a* card and
           # cannot pin a named one, and nothing else in `ai` claims one either.
@@ -56,31 +56,8 @@ spec:
               # (identical digest upstream).
               tag: server-cuda-b11096@sha256:0192ab2545efcbe79c240645e34abd8fffbe4813aedcef5a0e3a886ef6d6d82f
             env:
-              # Owner ruling 2026-09-22 (haynes-ops#2960): talosw01's two 3090s
-              # are owned per app. Roles were SWAPPED later the same day for a
-              # thermal reason — read this before "fixing" it back:
-              #
-              #   3090 #1 — VM bus 02:00.0, GPU-d8a856f1-… (the ORIGINAL card)
-              #     -> THIS pod, exclusively. It is the COOL slot. The LLM is
-              #     resident and answers every Assist turn, so it is the workload
-              #     that must hold full clocks.
-              #   3090 #0 — VM bus 01:00.0, GPU-18bf6eab-… (the new card, #3052)
-              #     -> comfyui. It sits in the hot slot (intake air passes the
-              #     CPU radiator first) and drops to 225 MHz at ~87 °C within
-              #     ~10 s of sustained load, fan already at 100 %, SW thermal
-              #     slowdown 0x20. A llama-server bench on it fell from 38 to
-              #     8 tok/s. ComfyUI tolerates that far better than interactive
-              #     chat does: a render that throttles is a slower render, a
-              #     chat turn that throttles is a user waiting.
-              #
-              # This is a WORKLOAD placement decision, not a claim that #0 is
-              # broken — the card is fine, the chassis airflow is the fault, and
-              # that is tracked in haynes-ops#3052. If #3052 is ever fixed, the
-              # split can go back to whatever is convenient; until then, keep the
-              # latency-sensitive tenant on 02:00.0.
-              #
-              # ollama-prime keeps NVIDIA_VISIBLE_DEVICES=all and takes the
-              # leftovers, spilling to CPU when neither card has room.
+              # Card C stays on the dock; card A in the rack has no voice tenant.
+              # Exact UUID selection is paired with the hostname selector above.
               NVIDIA_VISIBLE_DEVICES: GPU-d8a856f1-f955-f683-bc24-654561496774
               TZ: America/New_York
             args:
@@ -185,7 +162,7 @@ spec:
                 memory: 8Gi
               limits:
                 # The GGUF is mmap'd from NFS, so RSS tracks the page cache the
-                # kernel keeps for it; the node has ~135 GiB. Generous on
+                # kernel keeps for it; talosw04 has ~60 GiB. Generous on
                 # purpose — an OOMKill here is a multi-minute reload.
                 memory: 32Gi
     defaultPodOptions:

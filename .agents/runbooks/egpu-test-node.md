@@ -4,38 +4,50 @@
 was `edgew01` in the
 retired edge cluster (Omni machine `77d65c00-5811-11ef-b65b-a8751caa6100`). In `main` it is a
 **GPU test worker**: suspect cards go on the dock, get tested, and either go back into
-service or get binned. Results go on #3052, one comment per stage.
+service or get binned. Results go on #3052, one comment per stage. During the October 2026
+repair program, it also hosts Muse on card C so local voice remains available while card A
+is tested in the rack. This temporary production placement requires the precautions below.
 
 Cards so far (Tom's identification is ground truth; NVML UUIDs are the software identity):
 
 | Card | UUID | What it is | Status |
 |---|---|---|---|
-| A | `GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a` | The **original bus-dropper**, the first card pulled from HaynesIntelligence. Bracket-side fan does not spin, far-end fan has broken blades. | 2026-10-03: passed stage 1 (with 3 min of idle standing in for stage 2's 15), a 10 min sustained 150 W variant, and **stage 3 as written** (3 capped idle↔burst retrains, peaks 69/70/70 °C, no Xid/AER/replays). Stage 4 waits for the replacement fan set and pads. Channel 1 (the bracket-side fan) is never driven. |
-| B (was "#0" in older records) | `GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b` | A **later** card: in HaynesIntelligence slot 01:00.0 from 2026-09-18, dropped 09-23, pulled 09-25. All three fans spin; the bracket-side one clunks. | 2026-10-03: stages 1-3 passed at 150 W (peaks 67 °C sustained, 65/64/64 °C retrains). **Stage 4 at full power: Xid 79 after 54 s at 78 °C** (pciehp Link Down / Card not present, no thermal or power excursion). The link was clean right up to the drop: Gen4 x4 in every 2 s sample, card AER 0/0/0 and replays 0 at the last check about 10 s before, so this points at the card, not the cable. Stage 4 ran on the original pads and the clunking fan; Tom waived the fan/pads gate (that gate was written for card A's dead fan), and nothing was thermally limited at 78 °C. Not fit for full-power service unless a dock power loss is ruled out (#3052). |
+| A | `GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a` | Repaired card; Tom identified two broken original fans. All three replacement fans visibly spun under load. | 2026-10-13: replacement fans, 2 mm front/rear memory pads and PhaseSheet installed. Short stock-power tests showed no Xid/AER; rack performance was thermally limited compared with the dock. Now in talosw01/VM103 on HaynesIntelligence. Sustained rack validation is tracked in #3052; thermal throttling alone is not Tom's rejection criterion. |
+| B (was "#0" in older records) | `GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b` | A **later** card: in HaynesIntelligence slot 01:00.0 from 2026-09-18, dropped 09-23, pulled 09-25. Tom's latest assessment is an intact-looking fan that did not spin; replacement fans are already owned. | 2026-10-03: stages 1-3 passed at 150 W (peaks 67 °C sustained, 65/64/64 °C retrains). **Stage 4 at full power: Xid 79 after 54 s at 78 °C** (pciehp Link Down / Card not present, no thermal or power excursion). The link was clean right up to the drop: Gen4 x4 in every 2 s sample, card AER 0/0/0 and replays 0 at the last check about 10 s before. This failure was not thermal throttling. Tom plans one set of replacement pads for B, then a retest with repaired fans before further purchases. |
+| C | `GPU-d8a856f1-f955-f683-bc24-654561496774` | Previously the Muse card in talosw01; now in the talosw04 dock. | 2026-10-13: stock tests performed substantially better on the dock than in the rack, although thermal slowdown flags remained. Tom accepts C on the dock for now. Muse is temporarily placed here while A receives its rack heat test; no C pads or fans purchase yet. |
 | talosm04 A2000 (#3348) | `GPU-75697ff0-783e-9a2d-6859-3d5ffef0325f` | RTX A2000 12GB (VBIOS 94.06.32.00.18, serial 1712324009904), pulled from talosm04 where it never enumerated. | 2026-10-06: **faulty.** In the dock it linked at 16 GT/s x4, but one boot dropped its link after 11 s and a clean boot hit Xid 119 (GSP RPC timeout) after 9 min at idle, with the link up and AER 0. |
 
 How it is kept apart from the rest of the cluster:
 
 | Mechanism | Where | Effect |
 |---|---|---|
-| Taint `haynesops.com/gpu-test=true:NoSchedule` | kubelet `registerWithTaints` in its Omni machine block | Only pods that tolerate it schedule there. No Deployment, StatefulSet or CronJob in the cluster tolerates every taint (checked 2026-10-02). |
+| Taint `haynesops.com/gpu-test=true:NoSchedule` | kubelet `registerWithTaints` in its Omni machine block | Only pods that tolerate it schedule there. Muse has an exact `Equal` toleration for this key/value/effect and a talosw04 hostname selector during the repair program. Do not remove the taint or add a blanket toleration. |
 | Label `haynesops.com/gpu-test=true` | Talos `nodeLabels` | Selects the node for the GPU exporter and the test Jobs, and opts it out of Cilium L2 VIP announcements (`kube-system/cilium/config/cilium-l2.yaml`). |
-| No NFD labels | NFD worker has no toleration | The `feature.node.kubernetes.io/nvidia-3090-gpu` selectors of ollama-prime and llama-server cannot match it. The taint would stop them anyway. |
+| No NFD labels | NFD worker has no toleration | The NVIDIA feature selector cannot match this node. Muse uses a hostname selector and exact C UUID for its temporary placement; ollama-prime remains paused and has no such exception. |
 | Alerts | `observability/nvidia-gpu-exporter/app/prometheusrule.yaml`, `NodeRebooted` in `kube-prometheus-stack/app/prometheusrule.yaml` | talosw04 is left out of `GpuMissing` and excluded from `GpuExporterDown` and `NodeRebooted`, so a card test never pages. `GpuTestNodeGpuMissing` (warning, "null" receiver) shows a lost card in Alertmanager and Grafana. |
 
 What does run there: cilium, spegel, node-exporter and smartctl-exporter (all tolerate
 everything); promtail, the nvidia device plugin and the GPU exporter (each tolerates the test
-taint explicitly; promtail is what gets the test Jobs' logs into Loki); and the test Jobs.
-Verified on the live node 2026-10-03. Multus, NFD and the Ceph CSI node plugins do not run there, so a test pod there
-cannot mount a Ceph PVC or attach a macvlan NIC. The test pods need neither.
+taint explicitly; promtail is what gets the test Jobs' logs into Loki); and approved test
+Jobs. Muse is the temporary production exception described above. Multus, NFD and the Ceph
+CSI node plugins do not run there, so a pod there cannot mount a Ceph PVC or attach a
+macvlan NIC. Muse uses direct NFS and emptyDir rather than a Ceph PVC.
+
+Before a dock benchmark, GPU replacement, cable change or node shutdown, reroute local
+voice to a healthy backend and scale Muse down through GitOps. Verify that Muse has no
+pod on talosw04 and no CUDA process remains before giving a test Job exclusive access to
+the card. Restore and verify voice after the work. Never benchmark the dock card alongside
+its resident Muse model.
 
 Taint caveat: a registration taint is applied when the Node object is created. If someone
 removes it by hand it stays gone until `kubectl delete node talosw04` makes the kubelet
 re-register. Talos `machine.nodeTaints` would not work here: NodeRestriction stops a worker's
 kubelet from changing taints on an existing Node, and Talos says so in its config docs.
 
-`NodeRebooted` skips talosw04 too: a card that crashes its host is a test result, not a
-page. Its reboots still show in `node_boot_time_seconds`.
+`NodeRebooted` skips talosw04 too, and GPU/node outage paging remains excluded even while
+Muse runs here. Muse service availability must be checked independently; absence of a
+node/GPU page does not prove local voice is healthy. Reboots still show in
+`node_boot_time_seconds`.
 
 ## 1. Boot media and BIOS (Tom, at the box)
 
@@ -96,8 +108,9 @@ stalls at "waiting for the cluster to be ready"** until the box joins or leaves 
 4. Verify:
    - `kubectl get node talosw04 -o wide` shows Ready.
      `kubectl get node talosw04 -o jsonpath='{.spec.taints}'` shows the gpu-test taint.
-   - `kubectl get pods -A -o wide --field-selector spec.nodeName=talosw04` lists only the
-     DaemonSets named above.
+   - `kubectl get pods -A -o wide --field-selector spec.nodeName=talosw04` lists the
+     DaemonSets named above, approved test Jobs, and Muse only while its temporary
+     production placement is configured. Muse and a GPU test must not run together.
    - `kubectl get node talosw04 -o jsonpath='{.status.allocatable.nvidia\.com/gpu}'` is 1.
    - `count by (node) (nvidia_smi_gpu_info)` in Prometheus includes talosw04.
 
