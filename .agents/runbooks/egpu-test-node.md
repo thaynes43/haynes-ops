@@ -23,7 +23,7 @@ How it is kept apart from the rest of the cluster:
 |---|---|---|
 | Taint `haynesops.com/gpu-test=true:NoSchedule` | kubelet `registerWithTaints` in its Omni machine block | Only pods that tolerate it schedule there. Muse has an exact `Equal` toleration for this key/value/effect and a talosw04 hostname selector during the repair program. Do not remove the taint or add a blanket toleration. |
 | Label `haynesops.com/gpu-test=true` | Talos `nodeLabels` | Selects the node for the GPU exporter and the test Jobs, and opts it out of Cilium L2 VIP announcements (`kube-system/cilium/config/cilium-l2.yaml`). |
-| No NFD labels | NFD worker has no toleration | The NVIDIA feature selector cannot match this node. Muse uses a hostname selector and exact C UUID for its temporary placement; ollama-prime remains paused and has no such exception. |
+| No NFD labels | NFD worker has no toleration | The NVIDIA feature selector cannot match this node. Muse uses a talosw04 hostname selector and exact Card C UUID for its temporary placement. Ollama Prime runs on Card A in talosw01, has no dock-taint toleration, and cannot schedule on this node. |
 | Alerts | `observability/nvidia-gpu-exporter/app/prometheusrule.yaml`, `NodeRebooted` in `kube-prometheus-stack/app/prometheusrule.yaml` | talosw04 is left out of `GpuMissing` and excluded from `GpuExporterDown` and `NodeRebooted`, so a card test never pages. `GpuTestNodeGpuMissing` (warning, "null" receiver) shows a lost card in Alertmanager and Grafana. |
 
 What does run there: cilium, spegel, node-exporter and smartctl-exporter (all tolerate
