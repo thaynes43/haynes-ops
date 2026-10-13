@@ -138,7 +138,7 @@ spec:
       expression: >-
         variables.resource == 'pods' && variables.subresource != '' &&
         (variables.subresource != 'status' || oldObject == null) &&
-        variables.subresource != 'eviction' ? resource.Get('v1', 'pods', request.namespace, request.name) : null
+        variables.subresource != 'eviction' ? dyn(resource.Get('v1', 'pods', request.namespace, request.name)) : null
     - name: targetProtected
       expression: >-
         variables.target != null && (
@@ -230,7 +230,7 @@ spec:
           variables.actor == 'system:serviceaccount:kube-system:replicaset-controller')) &&
         variables.parentResource != '' && variables.owner.?name.orValue('') != '' &&
         variables.owner.?uid.orValue('') != '' ?
-          resource.Get(variables.owner.apiVersion, variables.parentResource, request.namespace, variables.owner.name) : null
+          dyn(resource.Get(variables.owner.apiVersion, variables.parentResource, request.namespace, variables.owner.name)) : null
     - name: parentValid
       expression: >-
         variables.parent != null && variables.parent.?metadata.?namespace.orValue('') == request.namespace &&
@@ -254,8 +254,8 @@ spec:
         variables.rootOwner.?uid.orValue('') != '' && variables.rootOwner.?name.orValue('') != '' &&
         variables.rootOwner.?kind.orValue('') == (variables.owner.kind == 'ReplicaSet' ? 'Deployment' : 'CronJob') &&
         variables.rootOwner.?apiVersion.orValue('') == (variables.owner.kind == 'ReplicaSet' ? 'apps/v1' : 'batch/v1') ?
-          resource.Get(variables.rootOwner.apiVersion, variables.owner.kind == 'ReplicaSet' ? 'deployments' : 'cronjobs',
-            request.namespace, variables.rootOwner.name) : null
+          dyn(resource.Get(variables.rootOwner.apiVersion, variables.owner.kind == 'ReplicaSet' ? 'deployments' : 'cronjobs',
+            request.namespace, variables.rootOwner.name)) : null
     - name: chainValid
       expression: >-
         variables.parentValid && (!variables.chained || (
@@ -276,7 +276,7 @@ spec:
     - name: revision
       expression: >-
         variables.resource == 'pods' && variables.parentValid && variables.owner.kind in ['StatefulSet', 'DaemonSet'] &&
-        variables.revisionName != '' ? resource.Get('apps/v1', 'controllerrevisions', request.namespace, variables.revisionName) : null
+        variables.revisionName != '' ? dyn(resource.Get('apps/v1', 'controllerrevisions', request.namespace, variables.revisionName)) : null
     - name: revisionValid
       expression: >-
         variables.revision != null && variables.revision.?metadata.?uid.orValue('') != '' &&
