@@ -417,7 +417,7 @@ spec:
             newStatus.all(k, k == 'conditions' || (gc && k in ['phase', 'observedGeneration']) ||
               (k in oldStatus && newStatus[k] == oldStatus[k])) &&
             oldStatus.all(k, k == 'conditions' || (gc && k in ['phase', 'observedGeneration']) || k in newStatus) &&
-            (!gc || newStatus.?phase.orValue('') in [oldStatus.?phase.orValue(''), 'Failed']) &&
+            (!gc || newStatus.?phase.orValue('') == oldStatus.?phase.orValue('') || newStatus.?phase.orValue('') == 'Failed') &&
             cel.bind(newConditions, newStatus.?conditions.orValue([]), cel.bind(oldConditions, oldStatus.?conditions.orValue([]),
               newConditions.filter(c, c.?type.orValue('') != 'DisruptionTarget') ==
                 oldConditions.filter(c, c.?type.orValue('') != 'DisruptionTarget') &&

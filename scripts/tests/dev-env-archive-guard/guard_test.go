@@ -768,6 +768,16 @@ func testCleanup(t *testing.T, h *harness) {
 		unblock.new = clone(old)
 		unblock.new["metadata"].(obj)["ownerReferences"].([]any)[0].(obj)["blockOwnerDeletion"] = false
 		run(t, h, "cleanup/GC/unblock/"+kind, unblock)
+		reblock := unblock
+		reblock.old = clone(unblock.new)
+		reblock.new = clone(old)
+		reblock.allow = false
+		run(t, h, "cleanup/GC/refuse-reblock/"+kind, reblock)
+		foreign := unblock
+		foreign.new = clone(unblock.new)
+		foreign.new["metadata"].(obj)["ownerReferences"].([]any)[0].(obj)["controller"] = false
+		foreign.allow = false
+		run(t, h, "cleanup/GC/refuse-owner-role-change/"+kind, foreign)
 		for _, mode := range []string{"actor", "identity", "execution", "owner-insert", "reparent", "finalizer-add", "finalizer-remove-foreign", "label", "status"} {
 			bad := f
 			bad.new = clone(f.new)
