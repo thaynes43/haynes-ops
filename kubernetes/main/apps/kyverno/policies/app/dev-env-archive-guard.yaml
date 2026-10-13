@@ -446,7 +446,7 @@ spec:
               cel.bind(oldReady, oldConditions.filter(c, c.?type.orValue('') == 'Ready'),
                 size(newReady) == 1 && size(oldReady) == 1 && newReady[0].?status.orValue('') == 'False' &&
                 newReady[0].all(k, k in ['status', 'lastTransitionTime'] || (k in oldReady[0] && newReady[0][k] == oldReady[0][k])) &&
-                oldReady[0].all(k, k in ['status', 'lastTransitionTime'] || k in newReady[0]))))))
+                oldReady[0].all(k, k in ['status', 'lastTransitionTime'] || k in newReady[0])))))))
   validations:
     - expression: >-
         (variables.resource != 'pods' || variables.subresource != 'status' || oldObject != null || variables.targetValid) &&
