@@ -554,6 +554,8 @@ func testControllers(t *testing.T, h *harness) {
 		run(t, h, "controller/status/"+chain.child+"/"+chain.parent, status)
 		status.new["metadata"].(obj)["ownerReferences"] = []any{}
 		status.allow = false
+		// Removing every owner selects no parent lookup; old-object protection still denies.
+		status.wantCalls = 0
 		run(t, h, "controller/status-reparent/"+chain.child+"/"+chain.parent, status)
 		wrong := f
 		wrong.actor = broker
@@ -666,6 +668,8 @@ func testControllers(t *testing.T, h *harness) {
 	run(t, h, "history/RS-status", f)
 	f.new["metadata"].(obj)["ownerReferences"] = []any{}
 	f.allow = false
+	// Removing every owner selects no parent lookup; old-object protection still denies.
+	f.wantCalls = 0
 	run(t, h, "history/RS-status-reparent", f)
 	for _, kind := range []string{"StatefulSet", "DaemonSet"} {
 		actor := "statefulset-controller"
