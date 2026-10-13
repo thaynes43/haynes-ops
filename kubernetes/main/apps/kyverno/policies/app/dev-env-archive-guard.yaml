@@ -427,7 +427,7 @@ spec:
                 newConditions.exists(c, c.?type.orValue('') == 'DisruptionTarget' &&
                   (variables.actor == 'system:serviceaccount:kube-system:disruption-controller' ?
                     c.?status.orValue('') == 'False' && c.?reason.orValue('') == '' :
-                    c.?status.orValue('') == 'True' && c.?reason.orValue('') == (gc ? 'DeletionByPodGC' : 'DeletionByTaintManager'))))))))
+                    c.?status.orValue('') == 'True' && c.?reason.orValue('') == (gc ? 'DeletionByPodGC' : 'DeletionByTaintManager')))))))))
   validations:
     - expression: >-
         (variables.resource != 'pods' || variables.subresource != 'status' || oldObject != null || variables.targetValid) &&
