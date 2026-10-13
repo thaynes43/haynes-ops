@@ -1,0 +1,72 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dev-env-h7-metadata-reader
+  namespace: dev-env-system
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-h7-metadata-reader
+  namespace: dev-agents
+rules:
+  - apiGroups: [""]
+    resources: [pods, replicationcontrollers]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets, controllerrevisions]
+    verbs: [get, list]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-h7-metadata-reader
+  namespace: dev-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-h7-metadata-reader
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-h7-metadata-reader
+    namespace: dev-env-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-h7-metadata-reader
+rules:
+  - apiGroups: [policies.kyverno.io]
+    resources: [validatingpolicies]
+    resourceNames: [dev-env-archive-guard, dev-env-exec-guard]
+    verbs: [get]
+  - apiGroups: [admissionregistration.k8s.io]
+    resources: [validatingadmissionpolicies, validatingadmissionpolicybindings]
+    resourceNames: [dev-env-identity-guard]
+    verbs: [get]
+  - apiGroups: [admissionregistration.k8s.io]
+    resources: [validatingwebhookconfigurations]
+    resourceNames: [kyverno-resource-validating-webhook-cfg]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [namespaces]
+    resourceNames: [dev-agents]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-h7-metadata-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-h7-metadata-reader
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-h7-metadata-reader
+    namespace: dev-env-system

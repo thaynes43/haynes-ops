@@ -1,0 +1,938 @@
+{
+  "lineage": {
+    "Deployment/dev-env-shelf": {
+      "sourceCommit": "b6e858b5bf2c8f683244dec09505eb6d4ec3aa5e",
+      "uid": "732656d3-57de-4f93-8aa0-b557b47bb957"
+    },
+    "Pod/dev-env-shelf-b5ff85487-7r8vr": {
+      "nodeName": "talosw02",
+      "parent": "ReplicaSet/dev-env-shelf-b5ff85487",
+      "sourceCommit": "b6e858b5bf2c8f683244dec09505eb6d4ec3aa5e",
+      "uid": "a3294932-a2ef-4d67-a2df-35110348b6d1"
+    },
+    "ReplicaSet/dev-env-shelf-66cdfb4755": {
+      "parent": "Deployment/dev-env-shelf",
+      "sourceCommit": "d7b845a6c1a2c5eadcda6d03888f6c41a5031307",
+      "uid": "42241ee3-c33d-4198-b050-b86e11df98cf"
+    },
+    "ReplicaSet/dev-env-shelf-77b4f85d6c": {
+      "parent": "Deployment/dev-env-shelf",
+      "sourceCommit": "6e7c104214bb39b7782f0935f10cbc5ea2620d17",
+      "uid": "e3754127-85f1-44f8-aced-a23e90d1639a"
+    },
+    "ReplicaSet/dev-env-shelf-b5ff85487": {
+      "parent": "Deployment/dev-env-shelf",
+      "sourceCommit": "b6e858b5bf2c8f683244dec09505eb6d4ec3aa5e",
+      "uid": "89c19ca0-538b-494f-b78b-6fb166871c73"
+    }
+  },
+  "policies": [
+    {
+      "apiVersion": "policies.kyverno.io/v1",
+      "kind": "ValidatingPolicy",
+      "metadata": {
+        "name": "dev-env-archive-guard"
+      },
+      "resource": "validatingpolicies",
+      "spec": {
+        "autogen": {
+          "podControllers": {
+            "controllers": []
+          },
+          "validatingAdmissionPolicy": {
+            "enabled": false
+          }
+        },
+        "evaluation": {
+          "background": {
+            "enabled": false
+          }
+        },
+        "failurePolicy": "Fail",
+        "matchConditions": [
+          {
+            "expression": "request.namespace == 'dev-agents'",
+            "name": "archive-namespace"
+          },
+          {
+            "expression": "request.userInfo.username.startsWith('system:serviceaccount:') && !(request.userInfo.username in [\n  'system:serviceaccount:dev:dev-env',\n  'system:serviceaccount:upgrade-agent:dev-env-ops',\n  'system:serviceaccount:frontend:headlamp',\n  'system:serviceaccount:flux-system:kustomize-controller',\n  'system:serviceaccount:flux-system:helm-controller',\n  'system:serviceaccount:dev-env-system:dev-env-operator',\n  'system:serviceaccount:database:cloudnative-pg',\n  'system:serviceaccount:network:multus',\n  'system:serviceaccount:rook-ceph:rook-ceph-system',\n  'system:serviceaccount:volsync-system:volsync',\n  'system:serviceaccount:kube-system:reloader'])",
+            "name": "untrusted-serviceaccount"
+          }
+        ],
+        "matchConstraints": {
+          "namespaceSelector": {
+            "matchLabels": {
+              "kubernetes.io/metadata.name": "dev-agents"
+            }
+          },
+          "resourceRules": [
+            {
+              "apiGroups": [
+                ""
+              ],
+              "apiVersions": [
+                "v1"
+              ],
+              "operations": [
+                "CREATE",
+                "UPDATE",
+                "CONNECT"
+              ],
+              "resources": [
+                "pods",
+                "pods/*",
+                "replicationcontrollers",
+                "replicationcontrollers/*"
+              ]
+            },
+            {
+              "apiGroups": [
+                "apps"
+              ],
+              "apiVersions": [
+                "v1"
+              ],
+              "operations": [
+                "CREATE",
+                "UPDATE"
+              ],
+              "resources": [
+                "deployments",
+                "deployments/*",
+                "replicasets",
+                "replicasets/*",
+                "statefulsets",
+                "statefulsets/*",
+                "daemonsets",
+                "daemonsets/*",
+                "controllerrevisions",
+                "controllerrevisions/*"
+              ]
+            },
+            {
+              "apiGroups": [
+                "batch"
+              ],
+              "apiVersions": [
+                "v1"
+              ],
+              "operations": [
+                "CREATE",
+                "UPDATE"
+              ],
+              "resources": [
+                "jobs",
+                "jobs/*",
+                "cronjobs",
+                "cronjobs/*"
+              ]
+            }
+          ]
+        },
+        "validationActions": [
+          "Deny"
+        ],
+        "validations": [
+          {
+            "expression": "(variables.resource != 'pods' || variables.subresource != 'status' || oldObject != null || variables.targetValid) && (variables.subresource == 'scale' ? variables.scale : variables.subresource == 'eviction' || (variables.resource == 'pods' && variables.subresource != '' && variables.subresource != 'status' ?\n  (variables.targetValid && !variables.protected) :\n  (!variables.protected || variables.restart || variables.materialize || variables.maintenance || variables.garbageCollect || variables.podCleanup || variables.nodeNotReady)))",
+            "message": "dev-env archives and the shelf require a trusted administrator or a verified controller parent; only pure rollout restart is allowed to other callers."
+          }
+        ],
+        "variables": [
+          {
+            "expression": "['dev-env-history-archive', 'dev-env-coordination-archive']",
+            "name": "archives"
+          },
+          {
+            "expression": "request.resource.resource",
+            "name": "resource"
+          },
+          {
+            "expression": "request.?subResource.orValue('')",
+            "name": "subresource"
+          },
+          {
+            "expression": "request.userInfo.username",
+            "name": "actor"
+          },
+          {
+            "expression": "object == null ? {} : object.?metadata.orValue({})",
+            "name": "newMeta"
+          },
+          {
+            "expression": "oldObject == null ? {} : oldObject.?metadata.orValue({})",
+            "name": "oldMeta"
+          },
+          {
+            "expression": "object == null ? {} : variables.resource == 'pods' ? object : variables.resource == 'cronjobs' ? object.?spec.?jobTemplate.?spec.?template.orValue({}) : variables.resource == 'controllerrevisions' ? object.?data.?spec.?template.orValue({}) : object.?spec.?template.orValue({})",
+            "name": "newTemplate"
+          },
+          {
+            "expression": "oldObject == null ? {} : variables.resource == 'pods' ? oldObject : variables.resource == 'cronjobs' ? oldObject.?spec.?jobTemplate.?spec.?template.orValue({}) : variables.resource == 'controllerrevisions' ? oldObject.?data.?spec.?template.orValue({}) : oldObject.?spec.?template.orValue({})",
+            "name": "oldTemplate"
+          },
+          {
+            "expression": "variables.newTemplate.?spec.orValue({})",
+            "name": "newPod"
+          },
+          {
+            "expression": "variables.oldTemplate.?spec.orValue({})",
+            "name": "oldPod"
+          },
+          {
+            "expression": "variables.newPod.?volumes.orValue([]).filter(v,\n  v.?persistentVolumeClaim.?claimName.orValue('') in variables.archives)",
+            "name": "newClaims"
+          },
+          {
+            "expression": "variables.oldPod.?volumes.orValue([]).filter(v,\n  v.?persistentVolumeClaim.?claimName.orValue('') in variables.archives)",
+            "name": "oldClaims"
+          },
+          {
+            "expression": "variables.newMeta.?ownerReferences.orValue([]).filter(o, o.?controller.orValue(false))",
+            "name": "refs"
+          },
+          {
+            "expression": "size(variables.refs) == 1 ? variables.refs[0] : {}",
+            "name": "owner"
+          },
+          {
+            "expression": "variables.newMeta.?ownerReferences.orValue([]) == variables.oldMeta.?ownerReferences.orValue([])",
+            "name": "ownersUnchanged"
+          },
+          {
+            "expression": "variables.newMeta.?uid.orValue('') != '' && variables.newMeta.uid == variables.oldMeta.?uid.orValue('') && variables.newMeta.?name.orValue('') == variables.oldMeta.?name.orValue('') && variables.newMeta.?namespace.orValue('') == variables.oldMeta.?namespace.orValue('')",
+            "name": "sameIdentity"
+          },
+          {
+            "expression": "(variables.resource == 'deployments' && request.name == 'dev-env-shelf') || (variables.resource in ['pods', 'replicasets'] && (\n  request.name.startsWith('dev-env-shelf-') ||\n  variables.newMeta.?generateName.orValue('').startsWith('dev-env-shelf-') ||\n  variables.oldMeta.?generateName.orValue('').startsWith('dev-env-shelf-'))) ||\n[variables.newMeta, variables.oldMeta, variables.newTemplate.?metadata.orValue({}),\n  variables.oldTemplate.?metadata.orValue({})].exists(m,\n    m.?labels.orValue({})[?'app.kubernetes.io/name'].orValue('') == 'dev-env-shelf' ||\n    m.?ownerReferences.orValue([]).exists(o,\n      (o.?kind.orValue('') == 'Deployment' && o.?name.orValue('') == 'dev-env-shelf') ||\n      (o.?kind.orValue('') == 'ReplicaSet' && o.?name.orValue('').startsWith('dev-env-shelf-')))) ||\n[variables.newPod, variables.oldPod].exists(p, p.?serviceAccountName.orValue('') == 'dev-env-shelf')",
+            "name": "shelf"
+          },
+          {
+            "expression": "variables.resource == 'pods' && variables.subresource != '' && (variables.subresource != 'status' || oldObject == null) && variables.subresource != 'eviction' ? dyn(resource.Get('v1', 'pods', request.namespace, request.name)) : null",
+            "name": "target"
+          },
+          {
+            "expression": "variables.target != null && (\n  variables.target.?spec.?volumes.orValue([]).exists(v,\n    v.?persistentVolumeClaim.?claimName.orValue('') in variables.archives) ||\n  variables.target.?spec.?serviceAccountName.orValue('') == 'dev-env-shelf' ||\n  variables.target.?metadata.?name.orValue('').startsWith('dev-env-shelf-') ||\n  variables.target.?metadata.?labels.orValue({})[?'app.kubernetes.io/name'].orValue('') == 'dev-env-shelf')",
+            "name": "targetProtected"
+          },
+          {
+            "expression": "variables.target != null && variables.target.?apiVersion.orValue('') == 'v1' && variables.target.?kind.orValue('') == 'Pod' && variables.target.?metadata.?uid.orValue('') != '' && variables.target.?metadata.?name.orValue('') == request.name && variables.target.?metadata.?namespace.orValue('') == request.namespace",
+            "name": "targetValid"
+          },
+          {
+            "expression": "size(variables.newClaims) != 0 || size(variables.oldClaims) != 0 || variables.shelf || variables.targetProtected",
+            "name": "protected"
+          },
+          {
+            "expression": "object == null ? {} : object.?spec.orValue({})",
+            "name": "newSpec"
+          },
+          {
+            "expression": "oldObject == null ? {} : oldObject.?spec.orValue({})",
+            "name": "oldSpec"
+          },
+          {
+            "expression": "variables.newTemplate.?metadata.orValue({})",
+            "name": "newTemplateMeta"
+          },
+          {
+            "expression": "variables.oldTemplate.?metadata.orValue({})",
+            "name": "oldTemplateMeta"
+          },
+          {
+            "expression": "variables.newTemplateMeta.?annotations.orValue({})",
+            "name": "newAnnotations"
+          },
+          {
+            "expression": "variables.oldTemplateMeta.?annotations.orValue({})",
+            "name": "oldAnnotations"
+          },
+          {
+            "expression": "request.operation == 'UPDATE' && variables.subresource == '' && variables.resource in ['deployments', 'statefulsets', 'daemonsets'] && variables.sameIdentity && variables.ownersUnchanged && variables.newMeta.?labels.orValue({}) == variables.oldMeta.?labels.orValue({}) && variables.newMeta.?annotations.orValue({}) == variables.oldMeta.?annotations.orValue({}) && variables.newMeta.?finalizers.orValue([]) == variables.oldMeta.?finalizers.orValue([]) && variables.newMeta.all(k, k in ['resourceVersion', 'managedFields', 'generation'] ||\n  (k in variables.oldMeta && variables.newMeta[k] == variables.oldMeta[k])) &&\nvariables.oldMeta.all(k, k in ['resourceVersion', 'managedFields', 'generation'] || k in variables.newMeta) && variables.newPod == variables.oldPod && variables.newSpec.all(k, k == 'template' || (k in variables.oldSpec && variables.newSpec[k] == variables.oldSpec[k])) && variables.oldSpec.all(k, k == 'template' || k in variables.newSpec) && variables.newTemplate.all(k, k == 'metadata' || (k in variables.oldTemplate && variables.newTemplate[k] == variables.oldTemplate[k])) && variables.oldTemplate.all(k, k == 'metadata' || k in variables.newTemplate) && variables.newTemplateMeta.all(k, k == 'annotations' || (k in variables.oldTemplateMeta && variables.newTemplateMeta[k] == variables.oldTemplateMeta[k])) && variables.oldTemplateMeta.all(k, k == 'annotations' || k in variables.newTemplateMeta) && variables.newAnnotations.all(k, k == 'kubectl.kubernetes.io/restartedAt' ||\n  (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&\nvariables.oldAnnotations.all(k, k == 'kubectl.kubernetes.io/restartedAt' || k in variables.newAnnotations)",
+            "name": "restart"
+          },
+          {
+            "expression": "request.operation == 'UPDATE' && variables.subresource == 'scale' && object != null && oldObject != null && object.?kind.orValue('') == 'Scale' && variables.sameIdentity && variables.ownersUnchanged && variables.newMeta.?labels.orValue({}) == variables.oldMeta.?labels.orValue({}) && variables.newMeta.?annotations.orValue({}) == variables.oldMeta.?annotations.orValue({}) && variables.newMeta.?finalizers.orValue([]) == variables.oldMeta.?finalizers.orValue([]) && variables.newSpec.all(k, k == 'replicas') && variables.oldSpec.all(k, k == 'replicas')",
+            "name": "scale"
+          },
+          {
+            "expression": "{'Deployment':'deployments', 'ReplicaSet':'replicasets', 'StatefulSet':'statefulsets',\n  'DaemonSet':'daemonsets', 'Job':'jobs', 'CronJob':'cronjobs',\n  'ReplicationController':'replicationcontrollers'}[?variables.owner.?kind.orValue('')].orValue('')",
+            "name": "parentResource"
+          },
+          {
+            "expression": "(variables.resource == 'replicasets' && variables.owner.?kind.orValue('') == 'Deployment' &&\n  variables.actor == 'system:serviceaccount:kube-system:deployment-controller') ||\n(variables.resource == 'jobs' && variables.owner.?kind.orValue('') == 'CronJob' &&\n  variables.actor == 'system:serviceaccount:kube-system:cronjob-controller') ||\n(variables.resource in ['pods', 'controllerrevisions'] &&\n  {'ReplicaSet':'replicaset-controller', 'Job':'job-controller',\n   'ReplicationController':'replication-controller', 'StatefulSet':'statefulset-controller',\n   'DaemonSet':'daemon-set-controller'}[?variables.owner.?kind.orValue('')].orValue('!') ==\n  variables.actor.replace('system:serviceaccount:kube-system:', '') &&\n  variables.actor.startsWith('system:serviceaccount:kube-system:') &&\n  (variables.resource == 'pods' || variables.owner.?kind.orValue('') in ['StatefulSet', 'DaemonSet']))",
+            "name": "materialActor"
+          },
+          {
+            "expression": "(variables.materialActor || (variables.resource == 'replicasets' && variables.owner.?kind.orValue('') == 'Deployment' &&\n  variables.actor == 'system:serviceaccount:kube-system:replicaset-controller')) &&\nvariables.parentResource != '' && variables.owner.?name.orValue('') != '' && variables.owner.?uid.orValue('') != '' ?\n  dyn(resource.Get(variables.owner.apiVersion, variables.parentResource, request.namespace, variables.owner.name)) : null",
+            "name": "parent"
+          },
+          {
+            "expression": "variables.parent != null && variables.parent.?metadata.?namespace.orValue('') == request.namespace && variables.parent.?metadata.?name.orValue('') == variables.owner.name && variables.parent.?metadata.?uid.orValue('') != '' && variables.parent.metadata.uid == variables.owner.uid && variables.parent.?kind.orValue('') == variables.owner.kind && variables.parent.?apiVersion.orValue('') == variables.owner.apiVersion && variables.owner.apiVersion == (variables.owner.kind in ['Job', 'CronJob'] ? 'batch/v1' :\n  variables.owner.kind == 'ReplicationController' ? 'v1' : 'apps/v1')",
+            "name": "parentValid"
+          },
+          {
+            "expression": "variables.parent == null ? [] : variables.parent.?metadata.?ownerReferences.orValue([]).filter(o, o.?controller.orValue(false))",
+            "name": "parentRefs"
+          },
+          {
+            "expression": "size(variables.parentRefs) == 1 ? variables.parentRefs[0] : {}",
+            "name": "rootOwner"
+          },
+          {
+            "expression": "variables.owner.?kind.orValue('') in ['ReplicaSet', 'Job'] && size(variables.parentRefs) != 0",
+            "name": "chained"
+          },
+          {
+            "expression": "variables.parentValid && variables.chained && variables.rootOwner.?uid.orValue('') != '' && variables.rootOwner.?name.orValue('') != '' && variables.rootOwner.?kind.orValue('') == (variables.owner.kind == 'ReplicaSet' ? 'Deployment' : 'CronJob') && variables.rootOwner.?apiVersion.orValue('') == (variables.owner.kind == 'ReplicaSet' ? 'apps/v1' : 'batch/v1') ?\n  dyn(resource.Get(variables.rootOwner.apiVersion, variables.owner.kind == 'ReplicaSet' ? 'deployments' : 'cronjobs',\n    request.namespace, variables.rootOwner.name)) : null",
+            "name": "root"
+          },
+          {
+            "expression": "variables.parentValid && (!variables.chained || (\n  variables.root != null && variables.root.?metadata.?namespace.orValue('') == request.namespace &&\n  variables.root.?metadata.?name.orValue('') == variables.rootOwner.name &&\n  variables.root.?metadata.?uid.orValue('') != '' && variables.root.metadata.uid == variables.rootOwner.uid &&\n  variables.root.?kind.orValue('') == variables.rootOwner.kind && variables.root.?apiVersion.orValue('') == variables.rootOwner.apiVersion))",
+            "name": "chainValid"
+          },
+          {
+            "expression": "variables.parent == null ? {} : variables.owner.kind == 'CronJob' ?\n  variables.parent.?spec.?jobTemplate.?spec.?template.orValue({}) : variables.parent.?spec.?template.orValue({})",
+            "name": "parentTemplate"
+          },
+          {
+            "expression": "variables.newMeta.?labels.orValue({})[?'controller-revision-hash'].orValue('')",
+            "name": "revisionHash"
+          },
+          {
+            "expression": "variables.revisionHash == '' ? '' : variables.owner.?kind.orValue('') == 'DaemonSet' ?\n  variables.owner.?name.orValue('') + '-' + variables.revisionHash : variables.revisionHash",
+            "name": "revisionName"
+          },
+          {
+            "expression": "variables.resource == 'pods' && variables.parentValid && variables.owner.kind in ['StatefulSet', 'DaemonSet'] && variables.revisionName != '' ? dyn(resource.Get('apps/v1', 'controllerrevisions', request.namespace, variables.revisionName)) : null",
+            "name": "revision"
+          },
+          {
+            "expression": "variables.revision != null && variables.revision.?metadata.?uid.orValue('') != '' && variables.revision.?apiVersion.orValue('') == 'apps/v1' && variables.revision.?kind.orValue('') == 'ControllerRevision' && variables.revision.?metadata.?name.orValue('') == variables.revisionName && variables.revision.?metadata.?namespace.orValue('') == request.namespace && variables.revision.?metadata.?ownerReferences.orValue([]).filter(o, o.?controller.orValue(false)).size() == 1 && variables.revision.metadata.ownerReferences.exists(o, o.?controller.orValue(false) &&\n  o.?kind.orValue('') == variables.owner.kind && o.?apiVersion.orValue('') == variables.owner.apiVersion &&\n  o.?name.orValue('') == variables.owner.name && o.?uid.orValue('') == variables.owner.uid) &&\nvariables.revision.?data.?spec.?template.?spec.orValue({}) != {} && variables.revision.data.all(k, k == 'spec') && variables.revision.data.spec.all(k, k == 'template') && variables.revision.data.spec.template[?'$patch'].orValue('') == 'replace' && variables.revision.data.spec.template.all(k, k in ['spec', 'metadata', '$patch'])",
+            "name": "revisionValid"
+          },
+          {
+            "expression": "variables.resource == 'pods' && variables.owner.?kind.orValue('') in ['StatefulSet', 'DaemonSet'] && variables.revisionName != '' ? (variables.revisionValid ? variables.revision.data.spec.template : {}) : variables.parentTemplate",
+            "name": "inheritedTemplate"
+          },
+          {
+            "expression": "variables.inheritedTemplate.?spec.orValue({})",
+            "name": "inheritedPod"
+          },
+          {
+            "expression": "variables.inheritedPod.?volumes.orValue([]).filter(v,\n  v.?persistentVolumeClaim.?claimName.orValue('') in variables.archives)",
+            "name": "inheritedClaims"
+          },
+          {
+            "expression": "variables.newPod.?serviceAccountName.orValue('') != '' ? variables.newPod.serviceAccountName : variables.newPod.?serviceAccount.orValue('') != '' ? variables.newPod.serviceAccount : 'default'",
+            "name": "childSA"
+          },
+          {
+            "expression": "variables.inheritedPod.?serviceAccountName.orValue('') != '' ? variables.inheritedPod.serviceAccountName : variables.inheritedPod.?serviceAccount.orValue('') != '' ? variables.inheritedPod.serviceAccount : 'default'",
+            "name": "parentSA"
+          },
+          {
+            "expression": "variables.inheritedPod != {} && variables.newClaims == variables.inheritedClaims && variables.childSA == variables.parentSA",
+            "name": "mappingInherited"
+          },
+          {
+            "expression": "variables.resource == 'replicasets' ? ['pod-template-hash'] : variables.resource == 'jobs' ?\n  ['controller-uid', 'job-name', 'batch.kubernetes.io/controller-uid', 'batch.kubernetes.io/job-name'] : []",
+            "name": "generatedLabels"
+          },
+          {
+            "expression": "variables.newPod == variables.inheritedPod && variables.newTemplate.all(k, k in ['metadata', '$patch'] ||\n  (k in variables.inheritedTemplate && variables.newTemplate[k] == variables.inheritedTemplate[k])) &&\nvariables.inheritedTemplate.all(k, k in ['metadata', '$patch'] || k in variables.newTemplate) && variables.newTemplateMeta.?annotations.orValue({}) == variables.inheritedTemplate.?metadata.?annotations.orValue({}) && variables.newTemplateMeta.all(k, k == 'labels' ||\n  (k in variables.inheritedTemplate.?metadata.orValue({}) && variables.newTemplateMeta[k] == variables.inheritedTemplate.metadata[k])) &&\nvariables.inheritedTemplate.?metadata.orValue({}).all(k, k == 'labels' || k in variables.newTemplateMeta) && (variables.resource != 'controllerrevisions' || (object.data.all(k, k == 'spec') &&\n  object.data.spec.all(k, k == 'template') && variables.newTemplate[?'$patch'].orValue('') == 'replace')) &&\ncel.bind(newLabels, variables.newTemplateMeta.?labels.orValue({}),\n  cel.bind(parentLabels, variables.inheritedTemplate.?metadata.?labels.orValue({}),\n    newLabels.all(k, k in variables.generatedLabels || (k in parentLabels && newLabels[k] == parentLabels[k])) &&\n    parentLabels.all(k, k in variables.generatedLabels || k in newLabels)))",
+            "name": "storedTemplateInherited"
+          },
+          {
+            "expression": "variables.resource == 'pods' && variables.subresource == '' && variables.owner.?kind.orValue('') == 'DaemonSet' && variables.revisionValid && variables.sameIdentity && variables.ownersUnchanged && object.all(k, k == 'metadata' || (k in oldObject && object[k] == oldObject[k])) && oldObject.all(k, k == 'metadata' || k in object) && variables.newMeta.all(k, k in ['labels', 'resourceVersion', 'managedFields', 'generation'] ||\n  (k in variables.oldMeta && variables.newMeta[k] == variables.oldMeta[k])) &&\nvariables.oldMeta.all(k, k in ['labels', 'resourceVersion', 'managedFields', 'generation'] || k in variables.newMeta) && cel.bind(newLabels, variables.newMeta.?labels.orValue({}),\n  cel.bind(oldLabels, variables.oldMeta.?labels.orValue({}),\n    newLabels.all(k, k == 'controller-revision-hash' || (k in oldLabels && newLabels[k] == oldLabels[k])) &&\n    oldLabels.all(k, k == 'controller-revision-hash' || k in newLabels))) &&\ncel.bind(history, variables.revision.data.spec.template,\n  history.all(k, k == '$patch' || (k in variables.parentTemplate && history[k] == variables.parentTemplate[k])) &&\n  variables.parentTemplate.all(k, k in history))",
+            "name": "dsDedup"
+          },
+          {
+            "expression": "variables.subresource in ['', 'status'] && variables.materialActor && variables.chainValid && (request.operation == 'CREATE' ?\n  (variables.subresource == '' && variables.mappingInherited &&\n    (variables.resource == 'pods' || variables.storedTemplateInherited)) :\n  (variables.sameIdentity && variables.ownersUnchanged &&\n    (variables.resource == 'pods' ? variables.newPod == variables.oldPod : variables.newTemplate == variables.oldTemplate) &&\n    (variables.newMeta.?labels.orValue({})[?'controller-revision-hash'].orValue('') ==\n      variables.oldMeta.?labels.orValue({})[?'controller-revision-hash'].orValue('') || variables.dsDedup) &&\n    (variables.resource != 'controllerrevisions' || object.?data.orValue({}) == oldObject.?data.orValue({}))))",
+            "name": "materialize"
+          },
+          {
+            "expression": "{'deployments':['deployment-controller'], 'replicasets':['replicaset-controller', 'deployment-controller'],\n  'replicationcontrollers':['replication-controller'], 'jobs':['job-controller', 'cronjob-controller'],\n  'cronjobs':['cronjob-controller'], 'statefulsets':['statefulset-controller'], 'daemonsets':['daemon-set-controller']}\n  [?variables.resource].orValue([]).exists(a, variables.actor == 'system:serviceaccount:kube-system:' + a)",
+            "name": "maintenanceActor"
+          },
+          {
+            "expression": "request.operation == 'UPDATE' && variables.subresource in ['', 'status'] && variables.maintenanceActor && variables.sameIdentity && variables.ownersUnchanged && variables.newSpec == variables.oldSpec && variables.newTemplate == variables.oldTemplate && (variables.resource != 'replicasets' || size(variables.refs) == 0 || variables.parentValid)",
+            "name": "maintenance"
+          },
+          {
+            "expression": "variables.sameIdentity && variables.newMeta.all(k, k in ['resourceVersion', 'managedFields', 'generation'] ||\n  (k in variables.oldMeta && variables.newMeta[k] == variables.oldMeta[k])) &&\nvariables.oldMeta.all(k, k in ['resourceVersion', 'managedFields', 'generation'] || k in variables.newMeta)",
+            "name": "stableMeta"
+          },
+          {
+            "expression": "request.operation == 'UPDATE' && variables.subresource == '' && variables.actor == 'system:serviceaccount:kube-system:generic-garbage-collector' && variables.sameIdentity && object.all(k, k == 'metadata' || (k in oldObject && object[k] == oldObject[k])) && oldObject.all(k, k == 'metadata' || k in object) && variables.newMeta.all(k, k in ['ownerReferences', 'finalizers', 'resourceVersion', 'managedFields', 'generation'] ||\n  (k in variables.oldMeta && variables.newMeta[k] == variables.oldMeta[k])) &&\nvariables.oldMeta.all(k, k in ['ownerReferences', 'finalizers', 'resourceVersion', 'managedFields', 'generation'] || k in variables.newMeta) && cel.bind(newRefs, variables.newMeta.?ownerReferences.orValue([]),\n  cel.bind(oldRefs, variables.oldMeta.?ownerReferences.orValue([]),\n    size(newRefs) <= size(oldRefs) && newRefs.all(n, oldRefs.exists(o, n == o ||\n      (!n.?blockOwnerDeletion.orValue(false) &&\n        n.all(k, k == 'blockOwnerDeletion' || (k in o && n[k] == o[k])) &&\n        o.all(k, k == 'blockOwnerDeletion' || k in n)))))) &&\ncel.bind(newFinals, variables.newMeta.?finalizers.orValue([]),\n  cel.bind(oldFinals, variables.oldMeta.?finalizers.orValue([]),\n    newFinals.all(f, f in oldFinals) && oldFinals.all(f, f in newFinals || f in ['foregroundDeletion', 'orphan'])))",
+            "name": "garbageCollect"
+          },
+          {
+            "expression": "request.operation == 'UPDATE' && variables.resource == 'pods' && variables.subresource == 'status' && variables.actor in ['system:serviceaccount:kube-system:pod-garbage-collector',\n  'system:serviceaccount:kube-system:node-controller', 'system:serviceaccount:kube-system:disruption-controller'] &&\nvariables.stableMeta && variables.newPod == variables.oldPod && object.all(k, k in ['metadata', 'status'] || (k in oldObject && object[k] == oldObject[k])) && oldObject.all(k, k in ['metadata', 'status'] || k in object) && cel.bind(newStatus, object.?status.orValue({}), cel.bind(oldStatus, oldObject.?status.orValue({}),\n  cel.bind(gc, variables.actor == 'system:serviceaccount:kube-system:pod-garbage-collector',\n    newStatus.all(k, k == 'conditions' || (gc && k in ['phase', 'observedGeneration']) ||\n      (k in oldStatus && newStatus[k] == oldStatus[k])) &&\n    oldStatus.all(k, k == 'conditions' || (gc && k in ['phase', 'observedGeneration']) || k in newStatus) &&\n    (!gc || newStatus.?phase.orValue('') == oldStatus.?phase.orValue('') || newStatus.?phase.orValue('') == 'Failed') &&\n    cel.bind(newConditions, newStatus.?conditions.orValue([]), cel.bind(oldConditions, oldStatus.?conditions.orValue([]),\n      newConditions.filter(c, c.?type.orValue('') != 'DisruptionTarget') ==\n        oldConditions.filter(c, c.?type.orValue('') != 'DisruptionTarget') &&\n      size(newConditions.filter(c, c.?type.orValue('') == 'DisruptionTarget')) <= 1 &&\n      (newConditions.filter(c, c.?type.orValue('') == 'DisruptionTarget') ==\n        oldConditions.filter(c, c.?type.orValue('') == 'DisruptionTarget') ||\n        newConditions.exists(c, c.?type.orValue('') == 'DisruptionTarget' &&\n          (variables.actor == 'system:serviceaccount:kube-system:disruption-controller' ?\n            c.?status.orValue('') == 'False' && c.?reason.orValue('') == '' :\n            c.?status.orValue('') == 'True' && c.?reason.orValue('') == (gc ? 'DeletionByPodGC' : 'DeletionByTaintManager')))))))))",
+            "name": "podCleanup"
+          },
+          {
+            "expression": "request.operation == 'UPDATE' && variables.resource == 'pods' && variables.subresource == 'status' && variables.actor == 'system:serviceaccount:kube-system:node-controller' && variables.stableMeta && variables.newPod == variables.oldPod && object.all(k, k in ['metadata', 'status'] || (k in oldObject && object[k] == oldObject[k])) && oldObject.all(k, k in ['metadata', 'status'] || k in object) && cel.bind(newStatus, object.?status.orValue({}), cel.bind(oldStatus, oldObject.?status.orValue({}),\n  newStatus.all(k, k == 'conditions' || (k in oldStatus && newStatus[k] == oldStatus[k])) &&\n  oldStatus.all(k, k == 'conditions' || k in newStatus) &&\n  cel.bind(newConditions, newStatus.?conditions.orValue([]), cel.bind(oldConditions, oldStatus.?conditions.orValue([]),\n    newConditions.filter(c, c.?type.orValue('') != 'Ready') == oldConditions.filter(c, c.?type.orValue('') != 'Ready') &&\n    cel.bind(newReady, newConditions.filter(c, c.?type.orValue('') == 'Ready'),\n      cel.bind(oldReady, oldConditions.filter(c, c.?type.orValue('') == 'Ready'),\n        size(newReady) == 1 && size(oldReady) == 1 && newReady[0].?status.orValue('') == 'False' &&\n        newReady[0].all(k, k in ['status', 'lastTransitionTime'] || (k in oldReady[0] && newReady[0][k] == oldReady[0][k])) &&\n        oldReady[0].all(k, k in ['status', 'lastTransitionTime'] || k in newReady[0])))))))",
+            "name": "nodeNotReady"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "policies.kyverno.io/v1",
+      "kind": "ValidatingPolicy",
+      "metadata": {
+        "annotations": {
+          "policies.kyverno.io/category": "dev-env",
+          "policies.kyverno.io/description": "Refuses exec and attach by a dev-env v2 agent into a pod that runs as a privileged ServiceAccount, or is privileged or host-PID.",
+          "policies.kyverno.io/severity": "high",
+          "policies.kyverno.io/subject": "Pod",
+          "policies.kyverno.io/title": "dev-env agents may not exec into privileged pods"
+        },
+        "name": "dev-env-exec-guard"
+      },
+      "resource": "validatingpolicies",
+      "spec": {
+        "evaluation": {
+          "background": {
+            "enabled": false
+          }
+        },
+        "failurePolicy": "Fail",
+        "matchConditions": [
+          {
+            "expression": "request.userInfo.username.startsWith('system:serviceaccount:dev-agents:') && request.userInfo.username != 'system:serviceaccount:dev-agents:dev-env-workbench'",
+            "name": "dev-agents-identity"
+          }
+        ],
+        "matchConstraints": {
+          "resourceRules": [
+            {
+              "apiGroups": [
+                ""
+              ],
+              "apiVersions": [
+                "v1"
+              ],
+              "operations": [
+                "CONNECT"
+              ],
+              "resources": [
+                "pods/exec",
+                "pods/attach"
+              ]
+            }
+          ]
+        },
+        "validationActions": [
+          "Deny"
+        ],
+        "validations": [
+          {
+            "expression": "!(variables.serviceAccount in variables.privilegedServiceAccounts)",
+            "messageExpression": "'dev-env-exec-guard: a dev-env agent may not exec into ' + request.name + ', which runs as the privileged ServiceAccount ' + variables.serviceAccount + ' (haynes-ops #3392, DESIGN-001 D-19)'"
+          },
+          {
+            "expression": "!variables.pod.spec.?hostPID.orValue(false) && !(variables.pod.spec.?containers.orValue([]) + variables.pod.spec.?initContainers.orValue([])).exists(c,\n  c.?securityContext.?privileged.orValue(false))",
+            "messageExpression": "'dev-env-exec-guard: a dev-env agent may not exec into ' + request.name + ', a privileged or host-PID pod, which is root on its node (DESIGN-001 D-19)'"
+          }
+        ],
+        "variables": [
+          {
+            "expression": "['frontend/headlamp',\n 'dev/dev-env', 'upgrade-agent/dev-env-ops',\n 'database/cloudnative-pg', 'database/dragonfly-operator-controller-manager',\n 'network/multus', 'network/traefik-external', 'network/traefik-internal',\n 'observability/grafana', 'observability/kube-prometheus-stack-operator',\n 'observability/kube-state-metrics', 'observability/loki', 'observability/promtail',\n 'rook-ceph/rook-ceph-system', 'rook-ceph/objectstorage-provisioner',\n 'rook-ceph/rook-ceph-cephfs-csi-ceph-com-ctrlplugin-sa',\n 'rook-ceph/rook-ceph-cephfs-csi-ceph-com-nodeplugin-sa',\n 'rook-ceph/rook-ceph-rbd-csi-ceph-com-ctrlplugin-sa',\n 'rook-ceph/rook-ceph-rbd-csi-ceph-com-nodeplugin-sa']",
+            "name": "privilegedServiceAccounts"
+          },
+          {
+            "expression": "resource.Get(\"v1\", \"pods\", request.namespace, request.name)",
+            "name": "pod"
+          },
+          {
+            "expression": "request.namespace + '/' + variables.pod.spec.?serviceAccountName.orValue('default')",
+            "name": "serviceAccount"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "admissionregistration.k8s.io/v1",
+      "kind": "ValidatingAdmissionPolicy",
+      "metadata": {
+        "name": "dev-env-identity-guard"
+      },
+      "resource": "validatingadmissionpolicies",
+      "spec": {
+        "failurePolicy": "Fail",
+        "matchConditions": [
+          {
+            "expression": "request.userInfo.username.startsWith('system:serviceaccount:dev-agents:') && request.userInfo.username != 'system:serviceaccount:dev-agents:dev-env-workbench'",
+            "name": "dev-agents-identity"
+          }
+        ],
+        "matchConstraints": {
+          "resourceRules": [
+            {
+              "apiGroups": [
+                "*"
+              ],
+              "apiVersions": [
+                "*"
+              ],
+              "operations": [
+                "CREATE",
+                "UPDATE",
+                "DELETE",
+                "CONNECT"
+              ],
+              "resources": [
+                "*/*"
+              ]
+            }
+          ]
+        },
+        "validations": [
+          {
+            "expression": "!(variables.targetNamespace in ['dev-env-system', 'dev-agents', 'dev-tools'])",
+            "messageExpression": "'dev-env-identity-guard: ' + request.userInfo.username + ' may not ' + request.operation + ' ' + variables.resource + (variables.subresource == '' ? '' : '/' + variables.subresource) + ' in ' + variables.targetNamespace + ': inside the dev-env namespaces an agent acts only through the operator API, agent-run (DESIGN-001 6.11, D-19)'",
+            "reason": "Forbidden"
+          },
+          {
+            "expression": "!(request.operation == 'CONNECT' && variables.group == '' && variables.resource == 'pods' &&\n  variables.subresource in ['exec', 'attach'] && variables.targetNamespace in variables.controllerNamespaces)",
+            "messageExpression": "'dev-env-identity-guard: a dev-env agent may not exec into pods in ' + variables.targetNamespace + ', where every pod is a privileged controller (DESIGN-001 D-19)'",
+            "reason": "Forbidden"
+          },
+          {
+            "expression": "!variables.grant || !(variables.targetNamespace in ['flux-system', 'kyverno', 'external-secrets', 'kube-system']) || (request.operation == 'CREATE' && variables.group == '' && variables.resource == 'pods' &&\n variables.subresource == 'eviction')",
+            "messageExpression": "'dev-env-identity-guard: a grant may not write or exec in ' + variables.targetNamespace + ', which enforces these rules; only evictions are allowed there (DESIGN-001 D-19)'",
+            "reason": "Forbidden"
+          },
+          {
+            "expression": "!variables.workload || !variables.podChanged || [variables.newPod.?serviceAccountName.orValue(''), variables.newPod.?serviceAccount.orValue('')].all(sa,\n  sa == '' || sa == 'default' ||\n  variables.allowedServiceAccounts.exists(p, (request.?namespace.orValue('') + '/' + sa).matches(p)))",
+            "messageExpression": "'dev-env-identity-guard: a pod a dev-env agent creates or changes runs as the default ServiceAccount of its namespace, not ' + variables.newPod.?serviceAccountName.orValue(variables.newPod.?serviceAccount.orValue('')) + ' (haynes-ops #3392, DESIGN-001 D-19)'",
+            "reason": "Forbidden"
+          },
+          {
+            "expression": "!variables.workload || !variables.podChanged || size(variables.podViolations) == 0",
+            "messageExpression": "'dev-env-identity-guard: a pod a dev-env agent creates or changes meets the Pod Security baseline; refused for ' + variables.podViolations.join(', ') + ' (DESIGN-001 D-19)'",
+            "reason": "Forbidden"
+          },
+          {
+            "expression": "!variables.workload || !variables.podChanged || size(variables.addedSecrets) == 0",
+            "messageExpression": "'dev-env-identity-guard: a dev-env agent may not add a Secret reference to a pod spec; refused: ' + variables.addedSecrets.join(', ') + ' (DESIGN-001 D-19)'",
+            "reason": "Forbidden"
+          },
+          {
+            "expression": "!(variables.group == '' && variables.resource == 'persistentvolumes' && variables.subresource == '' &&\n  request.operation in ['CREATE', 'UPDATE'] && (has(object.spec.hostPath) || has(object.spec.local)))",
+            "message": "dev-env-identity-guard: a dev-env agent may not create a hostPath or local PersistentVolume (DESIGN-001 D-19)",
+            "reason": "Forbidden"
+          },
+          {
+            "expression": "!variables.locked",
+            "messageExpression": "'dev-env-identity-guard: a dev-env agent may not ' + request.operation + ' ' + variables.resource + (variables.subresource == '' ? '' : '/' + variables.subresource) + (variables.group == '' ? '' : '.' + variables.group) + ': it is one of the objects that enforce the guard or mint identity (DESIGN-001 D-19)'",
+            "reason": "Forbidden"
+          },
+          {
+            "expression": "!variables.flux || (request.operation == 'UPDATE' && variables.subresource == '' && variables.sameLabelsFinalizersOwners &&\n variables.newSpec.all(k, k == 'suspend' || (k in variables.oldSpec && variables.newSpec[k] == variables.oldSpec[k])) &&\n variables.oldSpec.all(k, k == 'suspend' || k in variables.newSpec) &&\n variables.newAnnotations.all(k, k.startsWith('reconcile.fluxcd.io/') ||\n   (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&\n variables.oldAnnotations.all(k, k.startsWith('reconcile.fluxcd.io/') || k in variables.newAnnotations))",
+            "messageExpression": "'dev-env-identity-guard: a dev-env agent may only reconcile, suspend or resume a Flux ' + variables.resource + ' (the reconcile.fluxcd.io/ annotations and spec.suspend); Flux applies what git holds (DESIGN-001 D-19)'",
+            "reason": "Forbidden"
+          },
+          {
+            "expression": "!variables.externalSecrets || (request.operation == 'UPDATE' && variables.subresource == '' && variables.resource == 'externalsecrets' &&\n variables.sameLabelsFinalizersOwners && object.?spec == oldObject.?spec &&\n variables.newAnnotations.all(k, k == 'force-sync' ||\n   (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&\n variables.oldAnnotations.all(k, k == 'force-sync' || k in variables.newAnnotations))",
+            "messageExpression": "'dev-env-identity-guard: a dev-env agent may only force-sync an ExternalSecret; ' + variables.resource + ' objects change in git (DESIGN-001 D-19)'",
+            "reason": "Forbidden"
+          }
+        ],
+        "variables": [
+          {
+            "expression": "[]",
+            "name": "allowedServiceAccounts"
+          },
+          {
+            "expression": "['^[a-z0-9-]+/[a-z0-9-]+-volsync-aws-secret$']",
+            "name": "allowedSecrets"
+          },
+          {
+            "expression": "['AUDIT_WRITE', 'CHOWN', 'DAC_OVERRIDE', 'FOWNER', 'FSETID', 'KILL', 'MKNOD', 'NET_BIND_SERVICE',\n 'SETFCAP', 'SETGID', 'SETPCAP', 'SETUID', 'SYS_CHROOT']",
+            "name": "baselineCapabilities"
+          },
+          {
+            "expression": "['kernel.shm_rmid_forced', 'net.ipv4.ip_local_port_range', 'net.ipv4.ip_unprivileged_port_start',\n 'net.ipv4.tcp_syncookies', 'net.ipv4.ping_group_range', 'net.ipv4.ip_local_reserved_ports',\n 'net.ipv4.tcp_keepalive_time', 'net.ipv4.tcp_fin_timeout', 'net.ipv4.tcp_keepalive_intvl',\n 'net.ipv4.tcp_keepalive_probes']",
+            "name": "safeSysctls"
+          },
+          {
+            "expression": "['', 'container_t', 'container_init_t', 'container_kvm_t', 'container_engine_t']",
+            "name": "seLinuxTypes"
+          },
+          {
+            "expression": "request.userInfo.username.startsWith('system:serviceaccount:dev-agents:grant-')",
+            "name": "grant"
+          },
+          {
+            "expression": "request.resource.group",
+            "name": "group"
+          },
+          {
+            "expression": "request.resource.resource",
+            "name": "resource"
+          },
+          {
+            "expression": "request.?subResource.orValue('')",
+            "name": "subresource"
+          },
+          {
+            "expression": "variables.group == '' && variables.resource == 'namespaces' ? request.?name.orValue('') : request.?namespace.orValue('')",
+            "name": "targetNamespace"
+          },
+          {
+            "expression": "['kube-system', 'kyverno', 'flux-system', 'external-secrets', 'cert-manager', 'ceph-csi',\n 'openebs-system', 'volsync-system', 'k8tz']",
+            "name": "controllerNamespaces"
+          },
+          {
+            "expression": "variables.subresource == '' && request.operation in ['CREATE', 'UPDATE'] && (\n  (variables.group == '' && variables.resource in ['pods', 'replicationcontrollers']) ||\n  (variables.group == 'apps' && variables.resource in ['deployments', 'statefulsets', 'daemonsets', 'replicasets']) ||\n  (variables.group == 'batch' && variables.resource in ['jobs', 'cronjobs']))",
+            "name": "workload"
+          },
+          {
+            "expression": "variables.resource == 'pods' ? object.spec : variables.resource == 'cronjobs' ? object.spec.jobTemplate.spec.template.spec : object.spec.?template.?spec.orValue({})",
+            "name": "newPod"
+          },
+          {
+            "expression": "variables.resource == 'pods' ? oldObject.spec : variables.resource == 'cronjobs' ? oldObject.spec.jobTemplate.spec.template.spec : oldObject.spec.?template.?spec.orValue({})",
+            "name": "oldPod"
+          },
+          {
+            "expression": "request.operation == 'CREATE' || variables.newPod != variables.oldPod",
+            "name": "podChanged"
+          },
+          {
+            "expression": "variables.newPod.?containers.orValue([]) + variables.newPod.?initContainers.orValue([]) + variables.newPod.?ephemeralContainers.orValue([])",
+            "name": "newContainers"
+          },
+          {
+            "expression": "variables.oldPod.?containers.orValue([]) + variables.oldPod.?initContainers.orValue([]) + variables.oldPod.?ephemeralContainers.orValue([])",
+            "name": "oldContainers"
+          },
+          {
+            "expression": "variables.resource == 'pods' ? object.metadata : variables.resource == 'cronjobs' ? object.spec.jobTemplate.spec.template.?metadata.orValue({}) : object.spec.?template.?metadata.orValue({})",
+            "name": "newPodMeta"
+          },
+          {
+            "expression": "(variables.newPod.?hostNetwork.orValue(false) ? ['host network'] : []) + (variables.newPod.?hostPID.orValue(false) ? ['host PID'] : []) + (variables.newPod.?hostIPC.orValue(false) ? ['host IPC'] : []) + (variables.newPod.?volumes.orValue([]).exists(v, has(v.hostPath)) ? ['a hostPath volume'] : []) + (variables.newPod.?securityContext.?sysctls.orValue([]).exists(s, !(s.name in variables.safeSysctls)) ? ['an unsafe sysctl'] : []) + ([variables.newPod.?securityContext.orValue({})].exists(sc,\n   sc.?seccompProfile.?type.orValue('') == 'Unconfined' || sc.?appArmorProfile.?type.orValue('') == 'Unconfined' ||\n   sc.?windowsOptions.?hostProcess.orValue(false) ||\n   !(sc.?seLinuxOptions.?type.orValue('') in variables.seLinuxTypes) ||\n   sc.?seLinuxOptions.?user.orValue('') != '' || sc.?seLinuxOptions.?role.orValue('') != '') ? ['an unconfined pod securityContext'] : []) +\n(variables.newContainers.exists(c, c.?securityContext.?privileged.orValue(false)) ? ['a privileged container'] : []) + (variables.newContainers.exists(c, c.?securityContext.?capabilities.?add.orValue([]).exists(a, !(a in variables.baselineCapabilities))) ?\n  ['an added capability outside the baseline set'] : []) +\n(variables.newContainers.exists(c, [c.?securityContext.orValue({})].exists(sc,\n   sc.?seccompProfile.?type.orValue('') == 'Unconfined' || sc.?appArmorProfile.?type.orValue('') == 'Unconfined' ||\n   sc.?procMount.orValue('Default') != 'Default' || sc.?windowsOptions.?hostProcess.orValue(false) ||\n   !(sc.?seLinuxOptions.?type.orValue('') in variables.seLinuxTypes) ||\n   sc.?seLinuxOptions.?user.orValue('') != '' || sc.?seLinuxOptions.?role.orValue('') != '')) ?\n  ['an unconfined container securityContext'] : []) +\n(variables.newContainers.exists(c, c.?ports.orValue([]).exists(p, p.?hostPort.orValue(0) != 0)) ? ['a hostPort'] : []) + (variables.newPodMeta.?annotations.orValue({}).exists(k, k.startsWith('container.apparmor.security.beta.kubernetes.io/') &&\n   variables.newPodMeta.annotations[k] == 'unconfined') ? ['an unconfined AppArmor annotation'] : [])",
+            "name": "podViolations"
+          },
+          {
+            "expression": "(variables.newPod.?volumes.orValue([]).map(v,\n    [v.?secret.?secretName.orValue(''), v.?azureFile.?secretName.orValue(''),\n     v.?csi.?nodePublishSecretRef.?name.orValue('')] +\n    ['cephfs', 'rbd', 'flexVolume', 'iscsi', 'scaleIO', 'storageos'].map(t,\n      v[?t].?secretRef.?name.orValue('')) +\n    v.?projected.?sources.orValue([]).map(s, s.?secret.?name.orValue(''))).flatten() +\n variables.newContainers.map(c,\n    c.?envFrom.orValue([]).map(e, e.?secretRef.?name.orValue('')) +\n    c.?env.orValue([]).map(e, e.?valueFrom.?secretKeyRef.?name.orValue(''))).flatten()\n).filter(n, n != '')",
+            "name": "newSecrets"
+          },
+          {
+            "expression": "(variables.oldPod.?volumes.orValue([]).map(v,\n    [v.?secret.?secretName.orValue(''), v.?azureFile.?secretName.orValue(''),\n     v.?csi.?nodePublishSecretRef.?name.orValue('')] +\n    ['cephfs', 'rbd', 'flexVolume', 'iscsi', 'scaleIO', 'storageos'].map(t,\n      v[?t].?secretRef.?name.orValue('')) +\n    v.?projected.?sources.orValue([]).map(s, s.?secret.?name.orValue(''))).flatten() +\n variables.oldContainers.map(c,\n    c.?envFrom.orValue([]).map(e, e.?secretRef.?name.orValue('')) +\n    c.?env.orValue([]).map(e, e.?valueFrom.?secretKeyRef.?name.orValue(''))).flatten()\n).filter(n, n != '')",
+            "name": "oldSecrets"
+          },
+          {
+            "expression": "variables.newSecrets.filter(n,\n  !(request.operation == 'UPDATE' && n in variables.oldSecrets) &&\n  !variables.allowedSecrets.exists(p, (request.?namespace.orValue('') + '/' + n).matches(p)))",
+            "name": "addedSecrets"
+          },
+          {
+            "expression": "variables.group in ['rbac.authorization.k8s.io', 'admissionregistration.k8s.io', 'kyverno.io',\n  'policies.kyverno.io', 'apiextensions.k8s.io', 'apiregistration.k8s.io', 'dev-env.haynesops.com'] ||\n(variables.group == 'cilium.io' && variables.resource == 'ciliumclusterwidenetworkpolicies') || (variables.group == 'certificates.k8s.io' && variables.subresource == 'approval') || (variables.group == '' && (\n  (variables.resource == 'serviceaccounts' && variables.subresource == 'token') ||\n  (variables.resource == 'pods' && variables.subresource == 'ephemeralcontainers') ||\n  (variables.resource == 'nodes' && variables.subresource == 'proxy')))",
+            "name": "locked"
+          },
+          {
+            "expression": "variables.group.endsWith('.fluxcd.io')",
+            "name": "flux"
+          },
+          {
+            "expression": "variables.group == 'external-secrets.io' || variables.group.endsWith('.external-secrets.io')",
+            "name": "externalSecrets"
+          },
+          {
+            "expression": "object.metadata.?annotations.orValue({})",
+            "name": "newAnnotations"
+          },
+          {
+            "expression": "oldObject.metadata.?annotations.orValue({})",
+            "name": "oldAnnotations"
+          },
+          {
+            "expression": "object.metadata.?labels.orValue({}) == oldObject.metadata.?labels.orValue({}) && object.metadata.?finalizers.orValue([]) == oldObject.metadata.?finalizers.orValue([]) && object.metadata.?ownerReferences.orValue([]) == oldObject.metadata.?ownerReferences.orValue([])",
+            "name": "sameLabelsFinalizersOwners"
+          },
+          {
+            "expression": "object.?spec.orValue({})",
+            "name": "newSpec"
+          },
+          {
+            "expression": "oldObject.?spec.orValue({})",
+            "name": "oldSpec"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "admissionregistration.k8s.io/v1",
+      "kind": "ValidatingAdmissionPolicyBinding",
+      "metadata": {
+        "name": "dev-env-identity-guard"
+      },
+      "resource": "validatingadmissionpolicybindings",
+      "spec": {
+        "policyName": "dev-env-identity-guard",
+        "validationActions": [
+          "Deny"
+        ]
+      }
+    }
+  ],
+  "schemaVersion": 1,
+  "shelfHistoricalSourceSha256": {
+    "6e7c104214bb39b7782f0935f10cbc5ea2620d17": "79786f0352fec6a266b0af946cfedac816240c9adf841533b39419d4cccfb38d",
+    "b6e858b5bf2c8f683244dec09505eb6d4ec3aa5e": "952c8a9f0baeb0918ae93268cfe8e440b4a559b6446a796c02adaf12df22d3e6",
+    "d7b845a6c1a2c5eadcda6d03888f6c41a5031307": "fb778a0a1b1f6c7e447d50f0b6c56a5d02dcfd4a2ccca23f328fa696be282829"
+  },
+  "shelfTemplates": {
+    "6e7c104214bb39b7782f0935f10cbc5ea2620d17": {
+      "metadata": {
+        "labels": {
+          "app.kubernetes.io/name": "dev-env-shelf"
+        }
+      },
+      "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+          {
+            "args": [
+              "shelf"
+            ],
+            "env": [
+              {
+                "name": "HOME",
+                "value": "/home/dev"
+              }
+            ],
+            "image": "ghcr.io/thaynes43/dev-env:2.7.0@sha256:db6cb82379fc8795f49b87b16232758513d6b5de08c0b4f6f1a69e49773165f0",
+            "name": "shelf",
+            "resources": {
+              "limits": {
+                "cpu": "250m",
+                "memory": "256Mi"
+              },
+              "requests": {
+                "cpu": "5m",
+                "memory": "32Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/home/dev/.shared",
+                "name": "shared"
+              },
+              {
+                "mountPath": "/tmp",
+                "name": "tmp"
+              }
+            ]
+          }
+        ],
+        "enableServiceLinks": false,
+        "securityContext": {
+          "fsGroup": 1000,
+          "fsGroupChangePolicy": "OnRootMismatch",
+          "runAsGroup": 1000,
+          "runAsNonRoot": true,
+          "runAsUser": 1000,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "serviceAccountName": "dev-env-shelf",
+        "volumes": [
+          {
+            "name": "shared",
+            "persistentVolumeClaim": {
+              "claimName": "dev-env-shared"
+            }
+          },
+          {
+            "emptyDir": {
+              "sizeLimit": "64Mi"
+            },
+            "name": "tmp"
+          }
+        ]
+      }
+    },
+    "b6e858b5bf2c8f683244dec09505eb6d4ec3aa5e": {
+      "metadata": {
+        "labels": {
+          "app.kubernetes.io/name": "dev-env-shelf"
+        }
+      },
+      "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+          {
+            "args": [
+              "shelf"
+            ],
+            "env": [
+              {
+                "name": "HOME",
+                "value": "/home/dev"
+              }
+            ],
+            "image": "ghcr.io/thaynes43/dev-env:2.9.1@sha256:a975de7dbc40c6f33048a38a327a2db2b9698a7615f5b2b9897abbb1d04df0cf",
+            "name": "shelf",
+            "resources": {
+              "limits": {
+                "cpu": "250m",
+                "memory": "256Mi"
+              },
+              "requests": {
+                "cpu": "5m",
+                "memory": "32Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/home/dev/.shared",
+                "name": "shared"
+              },
+              {
+                "mountPath": "/tmp",
+                "name": "tmp"
+              }
+            ]
+          }
+        ],
+        "enableServiceLinks": false,
+        "securityContext": {
+          "fsGroup": 1000,
+          "fsGroupChangePolicy": "OnRootMismatch",
+          "runAsGroup": 1000,
+          "runAsNonRoot": true,
+          "runAsUser": 1000,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "serviceAccountName": "dev-env-shelf",
+        "volumes": [
+          {
+            "name": "shared",
+            "persistentVolumeClaim": {
+              "claimName": "dev-env-shared"
+            }
+          },
+          {
+            "emptyDir": {
+              "sizeLimit": "64Mi"
+            },
+            "name": "tmp"
+          }
+        ]
+      }
+    },
+    "d7b845a6c1a2c5eadcda6d03888f6c41a5031307": {
+      "metadata": {
+        "labels": {
+          "app.kubernetes.io/name": "dev-env-shelf"
+        }
+      },
+      "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+          {
+            "args": [
+              "shelf"
+            ],
+            "env": [
+              {
+                "name": "HOME",
+                "value": "/home/dev"
+              }
+            ],
+            "image": "ghcr.io/thaynes43/dev-env:2.9.0@sha256:423201bec73fc4dae1bc92d22d444587c3ed89d641674e6a92d3f15208b68c72",
+            "name": "shelf",
+            "resources": {
+              "limits": {
+                "cpu": "250m",
+                "memory": "256Mi"
+              },
+              "requests": {
+                "cpu": "5m",
+                "memory": "32Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/home/dev/.shared",
+                "name": "shared"
+              },
+              {
+                "mountPath": "/tmp",
+                "name": "tmp"
+              }
+            ]
+          }
+        ],
+        "enableServiceLinks": false,
+        "securityContext": {
+          "fsGroup": 1000,
+          "fsGroupChangePolicy": "OnRootMismatch",
+          "runAsGroup": 1000,
+          "runAsNonRoot": true,
+          "runAsUser": 1000,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "serviceAccountName": "dev-env-shelf",
+        "volumes": [
+          {
+            "name": "shared",
+            "persistentVolumeClaim": {
+              "claimName": "dev-env-shared"
+            }
+          },
+          {
+            "emptyDir": {
+              "sizeLimit": "64Mi"
+            },
+            "name": "tmp"
+          }
+        ]
+      }
+    }
+  },
+  "sourceFileSha256": {
+    "kubernetes/main/apps/dev-env-system/rbac/app/identity-guard.yaml": "e705571cfbb4b5ee787e9d743bf8a1a949a97af36080757cf4fe6b5b9c898adc",
+    "kubernetes/main/apps/dev-env-system/shelf/app/deployment.yaml": "952c8a9f0baeb0918ae93268cfe8e440b4a559b6446a796c02adaf12df22d3e6",
+    "kubernetes/main/apps/kyverno/policies/app/dev-env-archive-guard.yaml": "a7f0c11afae0271d18f612d66189f60b0654502f77f919391480d302ad0f9d46",
+    "kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml": "c0fafcb21fbcf7212825c8f35da4968090bed46e2cf7fe7cf768f2b2204ba8b7"
+  },
+  "sourceRevision": "650f3a04113d78b85f0d345a1944bc9fb8508d10"
+}

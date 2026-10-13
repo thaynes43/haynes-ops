@@ -17,6 +17,8 @@ resources:
   - ./templates/ks.yaml
   - ./storage/ks.yaml
   - ./shelf/ks.yaml
+  - ./h7-metadata-reader/ks.yaml
+  - ./h7-metadata-audit/ks.yaml
   - ./session-config/ks.yaml
   - ./secrets/ks.yaml
   - ./rbac/ks.yaml
