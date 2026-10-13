@@ -1135,6 +1135,178 @@ spec:
                     - podUID
                     - version
                     type: object
+                  expiry:
+                    description: |-
+                      Expiry is the HOME expiry record (DESIGN-025 5.1). It exists only while
+                      the Session is eligible and triggered: Reaping, or Suspended past its
+                      archive deadline, with a terminal record. It rests on executorTerminal
+                      and names the bound HOME. Its phase moves only forward, its archive
+                      never changes once set, and it can be removed (a cancel) only before
+                      Deleting.
+                    properties:
+                      archive:
+                        description: Archive is the verified history archive entry.
+                        properties:
+                          archivedAt:
+                            format: date-time
+                            type: string
+                          bytes:
+                            format: int64
+                            minimum: 0
+                            type: integer
+                          contentSHA256:
+                            description: ContentSHA256 is the SHA-256 of the entry's
+                              content.json.
+                            pattern: ^[0-9a-f]{64}$
+                            type: string
+                          entry:
+                            description: Entry is the entry's directory relative to
+                              the archive's root.
+                            maxLength: 512
+                            minLength: 1
+                            type: string
+                          files:
+                            format: int32
+                            minimum: 0
+                            type: integer
+                          gitFiles:
+                            description: |-
+                              GitFiles counts the Git rescue's files copied beside the history: its
+                              manifest and bundles.
+                            format: int32
+                            minimum: 0
+                            type: integer
+                        required:
+                        - archivedAt
+                        - bytes
+                        - contentSHA256
+                        - entry
+                        - files
+                        - gitFiles
+                        type: object
+                      deletingAt:
+                        format: date-time
+                        type: string
+                      dueAt:
+                        description: DueAt is graceStart plus the grace in force when
+                          the record was made.
+                        format: date-time
+                        type: string
+                      executorUID:
+                        description: |-
+                          ExecutorUID is the terminal record the expiry rests on; it equals
+                          lastExecutor.podUID and executorTerminal.podUID.
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                      graceStart:
+                        description: |-
+                          GraceStart is executorTerminal.observedAt for the Session's first
+                          record, and the record's creation for one made after a cancel.
+                        format: date-time
+                        type: string
+                      holdIntent:
+                        description: |-
+                          HoldIntent is written by a confirmed write before the hold pod is
+                          created, and set on the pod as an annotation, so a pod created before an
+                          operator restart is adopted, never mistaken for a new Pod (6.1).
+                        maxLength: 64
+                        type: string
+                      holdPodUID:
+                        description: HoldPodUID is the hold pod the expiry made, recorded
+                          once observed.
+                        maxLength: 128
+                        type: string
+                      homeDeletedAt:
+                        format: date-time
+                        type: string
+                      homeUID:
+                        description: HomeUID equals privateHistory.homeUID.
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                      phase:
+                        enum:
+                        - Waiting
+                        - Rescuing
+                        - Exporting
+                        - Archived
+                        - Deleting
+                        - Expired
+                        type: string
+                      refusal:
+                        description: |-
+                          Refusal is the current refusal reason (DESIGN-025 section 10), cleared
+                          by the confirmed write of the next step that passes.
+                        maxLength: 64
+                        type: string
+                      refusalAt:
+                        format: date-time
+                        type: string
+                      releaseNowAt:
+                        description: |-
+                          ReleaseNowAt is when the owner's release-now was first seen for this
+                          record. It skips the grace and nothing else.
+                        format: date-time
+                        type: string
+                      rescueStamp:
+                        description: RescueStamp is the rescue the export relies on
+                          (status.rescue.stamp).
+                        maxLength: 64
+                        type: string
+                      version:
+                        enum:
+                        - 1
+                        type: integer
+                    required:
+                    - dueAt
+                    - executorUID
+                    - graceStart
+                    - homeUID
+                    - phase
+                    - version
+                    type: object
+                    x-kubernetes-validations:
+                    - message: a HOME expiry record's executor, HOME and grace never
+                        change
+                      rule: self.executorUID == oldSelf.executorUID && self.homeUID
+                        == oldSelf.homeUID && self.graceStart == oldSelf.graceStart
+                        && self.dueAt == oldSelf.dueAt
+                    - message: a HOME expiry record's phase moves only forward
+                      rule: '{''Waiting'': 0, ''Rescuing'': 1, ''Exporting'': 2, ''Archived'':
+                        3, ''Deleting'': 4, ''Expired'': 5}[self.phase] >= {''Waiting'':
+                        0, ''Rescuing'': 1, ''Exporting'': 2, ''Archived'': 3, ''Deleting'':
+                        4, ''Expired'': 5}[oldSelf.phase]'
+                    - message: an Expired HOME expiry record never changes
+                      rule: oldSelf.phase != 'Expired' || self == oldSelf
+                    - message: a HOME expiry record's archive never changes once set
+                      rule: '!has(oldSelf.archive) || (has(self.archive) && self.archive
+                        == oldSelf.archive)'
+                    - message: a HOME expiry record's releaseNowAt never changes once
+                        set
+                      rule: '!has(oldSelf.releaseNowAt) || (has(self.releaseNowAt)
+                        && self.releaseNowAt == oldSelf.releaseNowAt)'
+                    - message: a HOME expiry record past Rescuing names its rescue
+                      rule: '!(self.phase in [''Exporting'', ''Archived'', ''Deleting'',
+                        ''Expired'']) || size(self.rescueStamp) > 0'
+                    - message: an Archived HOME expiry record holds its archive
+                      rule: '!(self.phase in [''Archived'', ''Deleting'', ''Expired''])
+                        || has(self.archive)'
+                    - message: a Deleting HOME expiry record has deletingAt
+                      rule: '!(self.phase in [''Deleting'', ''Expired'']) || has(self.deletingAt)'
+                    - message: an Expired HOME expiry record has homeDeletedAt
+                      rule: self.phase != 'Expired' || has(self.homeDeletedAt)
+                    - message: a HOME expiry record's refusal and refusalAt go together
+                      rule: has(self.refusal) == has(self.refusalAt)
+                  expiryClearedAt:
+                    description: |-
+                      ExpiryClearedAt is when the last expiry record was cancelled (DESIGN-025
+                      5.3). A record made after it starts its own grace. It is never removed
+                      and never moves back, and a cancel must set a newer one in the write
+                      that removes the record, so an operator that does not know these
+                      fields cannot drop them, and with them the cancel (section 14).
+                    format: date-time
+                    type: string
                   homeClaim:
                     maxLength: 253
                     minLength: 1
@@ -1286,6 +1458,23 @@ spec:
                 - message: the executor stop request cannot change or be removed
                   rule: '!has(oldSelf.stopRequest) || (has(self.stopRequest) && self.stopRequest
                     == oldSelf.stopRequest)'
+                - message: the HOME expiry record must rest on the recorded executor's
+                    terminal record
+                  rule: '!has(self.expiry) || (has(self.executorTerminal) && has(self.lastExecutor)
+                    && self.expiry.executorUID == self.executorTerminal.podUID &&
+                    self.expiry.executorUID == self.lastExecutor.podUID)'
+                - message: the HOME expiry record must name the bound HOME
+                  rule: '!has(self.expiry) || self.expiry.homeUID == self.homeUID'
+                - message: the HOME expiry record cannot be removed once Deleting
+                  rule: '!has(oldSelf.expiry) || has(self.expiry) || !(oldSelf.expiry.phase
+                    in [''Deleting'', ''Expired''])'
+                - message: expiryClearedAt cannot be removed or move back
+                  rule: '!has(oldSelf.expiryClearedAt) || (has(self.expiryClearedAt)
+                    && self.expiryClearedAt >= oldSelf.expiryClearedAt)'
+                - message: removing the HOME expiry record (a cancel) records a newer
+                    expiryClearedAt in the same write
+                  rule: '!has(oldSelf.expiry) || has(self.expiry) || (has(self.expiryClearedAt)
+                    && (!has(oldSelf.expiryClearedAt) || self.expiryClearedAt > oldSelf.expiryClearedAt))'
               remoteControl:
                 description: |-
                   RemoteControl is the session's Remote Control entry, for remote mode
