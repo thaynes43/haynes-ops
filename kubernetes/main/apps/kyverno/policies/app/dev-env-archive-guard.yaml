@@ -428,11 +428,30 @@ spec:
                   (variables.actor == 'system:serviceaccount:kube-system:disruption-controller' ?
                     c.?status.orValue('') == 'False' && c.?reason.orValue('') == '' :
                     c.?status.orValue('') == 'True' && c.?reason.orValue('') == (gc ? 'DeletionByPodGC' : 'DeletionByTaintManager')))))))))
+    # MarkPodsNotReady copies an existing Ready condition, changes Status to False
+    # and updates its transition time. Other conditions/status/metadata stay put.
+    - name: nodeNotReady
+      expression: >-
+        request.operation == 'UPDATE' && variables.resource == 'pods' && variables.subresource == 'status' &&
+        variables.actor == 'system:serviceaccount:kube-system:node-controller' &&
+        variables.stableMeta && variables.newPod == variables.oldPod &&
+        object.all(k, k in ['metadata', 'status'] || (k in oldObject && object[k] == oldObject[k])) &&
+        oldObject.all(k, k in ['metadata', 'status'] || k in object) &&
+        cel.bind(newStatus, object.?status.orValue({}), cel.bind(oldStatus, oldObject.?status.orValue({}),
+          newStatus.all(k, k == 'conditions' || (k in oldStatus && newStatus[k] == oldStatus[k])) &&
+          oldStatus.all(k, k == 'conditions' || k in newStatus) &&
+          cel.bind(newConditions, newStatus.?conditions.orValue([]), cel.bind(oldConditions, oldStatus.?conditions.orValue([]),
+            newConditions.filter(c, c.?type.orValue('') != 'Ready') == oldConditions.filter(c, c.?type.orValue('') != 'Ready') &&
+            cel.bind(newReady, newConditions.filter(c, c.?type.orValue('') == 'Ready'),
+              cel.bind(oldReady, oldConditions.filter(c, c.?type.orValue('') == 'Ready'),
+                size(newReady) == 1 && size(oldReady) == 1 && newReady[0].?status.orValue('') == 'False' &&
+                newReady[0].all(k, k in ['status', 'lastTransitionTime'] || (k in oldReady[0] && newReady[0][k] == oldReady[0][k])) &&
+                oldReady[0].all(k, k in ['status', 'lastTransitionTime'] || k in newReady[0]))))))
   validations:
     - expression: >-
         (variables.resource != 'pods' || variables.subresource != 'status' || oldObject != null || variables.targetValid) &&
         (variables.subresource == 'scale' ? variables.scale : variables.subresource == 'eviction' ||
         (variables.resource == 'pods' && variables.subresource != '' && variables.subresource != 'status' ?
           (variables.targetValid && !variables.protected) :
-          (!variables.protected || variables.restart || variables.materialize || variables.maintenance || variables.garbageCollect || variables.podCleanup)))
+          (!variables.protected || variables.restart || variables.materialize || variables.maintenance || variables.garbageCollect || variables.podCleanup || variables.nodeNotReady)))
       message: dev-env archives and the shelf require a trusted administrator or a verified controller parent; only pure rollout restart is allowed to other callers.

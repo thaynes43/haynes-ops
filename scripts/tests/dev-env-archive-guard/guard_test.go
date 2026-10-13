@@ -812,6 +812,9 @@ func testCleanup(t *testing.T, h *harness) {
 	for _, actor := range []string{"pod-garbage-collector", "node-controller", "disruption-controller"} {
 		old := workload("Pod", "dev-env-shelf-fixture", claim)
 		old["status"] = obj{"phase": "Running", "conditions": []any{obj{"type": "Ready", "status": "True"}}}
+		if actor == "disruption-controller" {
+			old["status"].(obj)["conditions"] = append(old["status"].(obj)["conditions"].([]any), obj{"type": "DisruptionTarget", "status": "True", "reason": "DeletionByPodGC"})
+		}
 		f = request(clone(old), controller(actor), "UPDATE", true)
 		f.old = old
 		f.subresource = "status"
@@ -824,7 +827,11 @@ func testCleanup(t *testing.T, h *harness) {
 			condition["status"] = "False"
 			delete(condition, "reason")
 		}
-		f.new["status"].(obj)["conditions"] = append(f.new["status"].(obj)["conditions"].([]any), condition)
+		if actor == "disruption-controller" {
+			f.new["status"].(obj)["conditions"].([]any)[1] = condition
+		} else {
+			f.new["status"].(obj)["conditions"] = append(f.new["status"].(obj)["conditions"].([]any), condition)
+		}
 		if actor == "pod-garbage-collector" {
 			f.new["status"].(obj)["phase"] = "Failed"
 			f.new["status"].(obj)["observedGeneration"] = float64(1)
@@ -854,6 +861,48 @@ func testCleanup(t *testing.T, h *harness) {
 			}
 			run(t, h, "cleanup/status/tamper/"+actor+"/"+mode, bad)
 		}
+	}
+	old := workload("Pod", "dev-env-shelf-node", claim)
+	old["spec"].(obj)["nodeName"] = "fixture-node"
+	old["status"] = obj{"phase": "Running", "conditions": []any{
+		obj{"type": "Ready", "status": "True", "reason": "ContainersReady", "message": "ready", "observedGeneration": float64(1), "lastProbeTime": "2026-10-13T19:00:00Z", "lastTransitionTime": "2026-10-13T19:00:00Z"},
+		obj{"type": "Initialized", "status": "True"}}}
+	f = request(clone(old), controller("node-controller"), "UPDATE", true)
+	f.old = old
+	f.subresource = "status"
+	f.wantCalls = 0
+	f.new["status"].(obj)["conditions"].([]any)[0].(obj)["status"] = "False"
+	f.new["status"].(obj)["conditions"].([]any)[0].(obj)["lastTransitionTime"] = "2026-10-13T20:00:00Z"
+	run(t, h, "cleanup/node-MarkPodsNotReady", f)
+	for _, mode := range []string{"actor", "ready-true", "reason", "ready-new-field", "ready-remove-field", "other-condition", "owner", "execution", "label", "status-field"} {
+		bad := f
+		bad.old = clone(old)
+		bad.new = clone(f.new)
+		bad.allow = false
+		switch mode {
+		case "actor":
+			bad.actor = broker
+		case "ready-true":
+			bad.old["status"].(obj)["conditions"].([]any)[0].(obj)["status"] = "False"
+			bad.new["status"].(obj)["conditions"].([]any)[0].(obj)["status"] = "True"
+		case "reason":
+			bad.new["status"].(obj)["conditions"].([]any)[0].(obj)["reason"] = "forged"
+		case "ready-new-field":
+			bad.new["status"].(obj)["conditions"].([]any)[0].(obj)["forged"] = "bad"
+		case "ready-remove-field":
+			delete(bad.new["status"].(obj)["conditions"].([]any)[0].(obj), "message")
+		case "other-condition":
+			bad.new["status"].(obj)["conditions"].([]any)[1].(obj)["status"] = "False"
+		case "owner":
+			own(bad.new, workload("ReplicaSet", "forged", claim))
+		case "execution":
+			bad.new["spec"].(obj)["volumes"] = []any{}
+		case "label":
+			bad.new["metadata"].(obj)["labels"].(obj)["forged"] = "bad"
+		case "status-field":
+			bad.new["status"].(obj)["podIP"] = "forged"
+		}
+		run(t, h, "cleanup/node-MarkPodsNotReady/tamper/"+mode, bad)
 	}
 }
 
