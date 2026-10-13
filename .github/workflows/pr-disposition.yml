@@ -91,6 +91,12 @@ jobs:
               // dev-env — automerge:false, NEVER (pod Recreate kills in-flight agent
               // sessions); not shepherd-owned → a mindless human merge at a chosen moment.
               { re: /^kubernetes\/[^/]+\/apps\/dev\/dev-env\//, dispo: 'disposition:manual-only' },
+              // dev-env v2 — the same automerge:false rule matches its image by package name
+              // wherever it is pinned: dev-env-system templates.yaml (new agent Sessions) and
+              // the shelf. Without this, an ownImage bump there was labelled auto-merge although
+              // Renovate never enables it (haynes-ops #3710, 2026-10-13). A bump there must also
+              // follow the dev-env deploy order (AgentSession CRD, operator, then templates).
+              { re: /^kubernetes\/[^/]+\/apps\/dev-env-system\//, dispo: 'disposition:manual-only' },
               // comfyui — automerge:false (our own image; a restart is a cold model load and a
               // new ComfyUI version needs a render check) → supervised merge.
               { re: /^kubernetes\/[^/]+\/apps\/ai\/stable-diffusion\/comfyui\//, dispo: 'disposition:manual-only' },
