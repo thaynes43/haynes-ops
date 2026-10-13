@@ -142,6 +142,9 @@ spec:
               # empty "Bearer " and the server 401s (see externalsecret.yaml).
               - secretRef:
                   name: dev-env-cigar-secret
+              # Bearer authentication for MCP-Unifi 0.6.0; separate from UNIFI_API_KEY.
+              - secretRef:
+                  name: dev-env-unifi-secret
               # PVE_TOKEN_ID / PVE_TOKEN_SECRET — READ tier (the exporter's PVEAuditor
               # token, 1Password `proxmox`). optional: a missing Secret must never
               # keep the workhorse from starting.

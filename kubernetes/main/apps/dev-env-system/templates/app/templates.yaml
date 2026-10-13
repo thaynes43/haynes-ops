@@ -92,6 +92,8 @@ claude:
 # D-18. `full` and `dev` carry the cigar-journal MCP token as `ops` does (mcp.json's
 # ${CIGAR_JOURNAL_TOKEN}, from its own Secret dev-env-cigar-secret, not dev-env-mcp-secret),
 # so no profile that gets mcp.json renders a broken Authorization header.
+# MCP-Unifi uses its own Secret in these three profiles too; bounded rule canaries
+# retain their credential-minimal profiles. Platform egress already permits /mcp.
 # Every Secret named below is created by 8.8 (ExternalSecrets and the empty keeper-owned
 # ones). dev-env-mcp-secret must hold v1's MCP tokens WITHOUT the Proxmox
 # operator token and the hw-ssh key (Q-07: those come only as grants).
@@ -110,6 +112,8 @@ profiles:
     env:
       - name: CIGAR_JOURNAL_TOKEN
         valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
+      - name: UNIFI_MCP_AUTH_TOKEN
+        valueFrom: { secretKeyRef: { name: dev-env-unifi-secret, key: UNIFI_MCP_AUTH_TOKEN } }
       - name: OMNI_ENDPOINT
         value: https://haynes.na-west-1.omni.siderolabs.io:443
       - name: OMNI_SERVICE_ACCOUNT_KEY
@@ -127,6 +131,8 @@ profiles:
     env:
       - name: CIGAR_JOURNAL_TOKEN
         valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
+      - name: UNIFI_MCP_AUTH_TOKEN
+        valueFrom: { secretKeyRef: { name: dev-env-unifi-secret, key: UNIFI_MCP_AUTH_TOKEN } }
     envFrom:
       - secretRef: { name: dev-env-mcp-secret }
     mounts:
@@ -137,6 +143,8 @@ profiles:
     env:
       - name: CIGAR_JOURNAL_TOKEN
         valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
+      - name: UNIFI_MCP_AUTH_TOKEN
+        valueFrom: { secretKeyRef: { name: dev-env-unifi-secret, key: UNIFI_MCP_AUTH_TOKEN } }
     envFrom:
       - secretRef: { name: dev-env-proxmox-secret, optional: true }
     mounts:
