@@ -64,13 +64,14 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Main 388444db0b00a5bed43fe513613e2ec2f5f7dfa3; publish.yml run 38318185452, keyless verified.
-              # dev-env 2.25.0 (#238): #236 executor terminal record (DESIGN-025 H1), #237, #239 bootstrap
-              # reason codes; writes status.privateHistory.executorTerminal/executorMissed and
-              # status.agent.projectBootstrap (the AgentSession CRD for 2.25.0 lands first).
-              # Code identical to v2.25.0 (the release merge 86df550 changed only the changelog and manifest).
-              # Its binary reports v2.24.1-9-g388444d (git describe before the tag), not 2.25.0.
-              tag: sha-388444d@sha256:75c41e0466c6a49b14dad8fc728869855fcbe4019e2321be1a7831f2f0528590
+              # Main 20c710fe21350db0ce0fde64accf12e40c5413d5; publish.yml run 38340824747, keyless verified.
+              # dev-env 2.26.0 (#249): #244 private-executor stop request (DESIGN-025 H3; its flag
+              # --enable-private-executor-stop is deliberately absent, so off until H7), #245 usage
+              # observation version 2 (#176), #246 agentd history export/archive (H4, agentd only).
+              # Writes status.usageObservation version 2 (the AgentSession CRD for 2.26.0 lands first).
+              # Code identical to v2.26.0 (the release merge ce4b221 changed only the changelog and manifest).
+              # Its binary reports v2.25.0-14-g20c710f (git describe before the tag), not 2.26.0.
+              tag: sha-20c710f@sha256:23aae8a8df03509d0bf4cd8a7a9b38cd6e327cfc8c2b033bf954de06e9fc0ed9
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
