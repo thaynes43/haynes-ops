@@ -76,6 +76,7 @@ spec:
               - matchName: "mcp-grafana.observability.svc.cluster.local"
               - matchName: "mcp-unifi.observability.svc.cluster.local"
               - matchName: "vexa-vexa-gateway.ai.svc.cluster.local"
+              - matchName: "llama-server.ai.svc.cluster.local"
               - matchName: "blender-authoring.dev.svc.cluster.local"
               - matchName: "blender-authoring-2.dev.svc.cluster.local"
               - matchName: "audio-authoring.dev.svc.cluster.local"
@@ -350,6 +351,17 @@ spec:
       toPorts:
         - ports:
             - port: "8000"
+              protocol: TCP
+    # Existing Muse endpoint for owner-authorized benchmarks.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: ai
+            app.kubernetes.io/name: llama-server
+            app.kubernetes.io/instance: llama-server
+            app.kubernetes.io/controller: llama-server
+      toPorts:
+        - ports:
+            - port: "8080"
               protocol: TCP
     # dev-env v2's /v1 API (KICKOFF 8.9, D-46, D-50). Until cutover this pod is a
     # trusted client of the v2 operator (--client-service-accounts dev/dev-env): the v2
