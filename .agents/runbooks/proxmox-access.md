@@ -285,7 +285,7 @@ before anything restarts it:
 
 ```bash
 hw-ssh list
-hw-ssh pve-all 'hostname; sudo -n dmidecode -t slot | grep -c Designation'
+hw-ssh pve-all 'sudo -n qm list'                       # allowed sudo read on every PVE node
 hw-ssh haynestower 'uname -a; uptime'
 hw-ssh pikvm 'hostname; pacman -Q kvmd; ls -l /etc/kvmd/override.yaml'
 pve get /access/permissions --raw | grep -o 'Sys.Console'   # operator token live
@@ -293,6 +293,8 @@ pve get /access/permissions --raw | grep -o 'Sys.Console'   # operator token liv
 `hw-ssh: no key at ~/.ssh/dev-env-hw` = field missing or pod not bounced; `Permission
 denied (publickey)` on one PVE node = the fan-out skipped it, re-run the block on that node;
 `sudo: a password is required` = sudoers file missing on that node.
+The guest-list probe checks an allowed command without depending on optional SMBIOS
+records. An empty slot inventory is not evidence that SSH or sudo failed.
 
 Before a GPU swap, record the live PCI devices, VM configuration and network interface
 names. A motherboard slot label does not establish a PCI address; this host's SMBIOS
