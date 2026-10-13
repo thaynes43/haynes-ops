@@ -234,6 +234,7 @@ spec:
     - name: parentValid
       expression: >-
         variables.parent != null && variables.parent.?metadata.?namespace.orValue('') == request.namespace &&
+        variables.parent.?metadata.?name.orValue('') == variables.owner.name &&
         variables.parent.?metadata.?uid.orValue('') != '' && variables.parent.metadata.uid == variables.owner.uid &&
         variables.parent.?kind.orValue('') == variables.owner.kind &&
         variables.parent.?apiVersion.orValue('') == variables.owner.apiVersion &&
@@ -260,6 +261,7 @@ spec:
       expression: >-
         variables.parentValid && (!variables.chained || (
           variables.root != null && variables.root.?metadata.?namespace.orValue('') == request.namespace &&
+          variables.root.?metadata.?name.orValue('') == variables.rootOwner.name &&
           variables.root.?metadata.?uid.orValue('') != '' && variables.root.metadata.uid == variables.rootOwner.uid &&
           variables.root.?kind.orValue('') == variables.rootOwner.kind && variables.root.?apiVersion.orValue('') == variables.rootOwner.apiVersion))
     - name: parentTemplate

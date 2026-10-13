@@ -101,7 +101,14 @@ func (m *mockContext) GetResource(api, resource, namespace, name string) (*unstr
 		return &unstructured.Unstructured{Object: o}, nil
 	}
 	if o, ok := m.objects[k]; ok {
-		return &unstructured.Unstructured{Object: clone(o)}, nil
+		response := clone(o)
+		if m.fault == "response-missing-name" || ((resource == "deployments" || resource == "cronjobs") && m.fault == "root-missing-name") {
+			delete(response["metadata"].(obj), "name")
+		}
+		if m.fault == "response-wrong-name" || ((resource == "deployments" || resource == "cronjobs") && m.fault == "root-wrong-name") {
+			response["metadata"].(obj)["name"] = "wrong-response-name"
+		}
+		return &unstructured.Unstructured{Object: response}, nil
 	}
 	return nil, apierrors.NewNotFound(schema.GroupResource{Resource: resource}, name)
 }
@@ -560,6 +567,12 @@ func testControllers(t *testing.T, h *harness) {
 			wrong.allow = false
 			run(t, h, "controller/lookup/"+chain.child+"/"+chain.parent+"/"+fault, wrong)
 		}
+		for _, fault := range []string{"response-missing-name", "response-wrong-name"} {
+			wrong = f
+			wrong.fault = fault
+			wrong.allow = false
+			run(t, h, "controller/malformed-name/"+chain.child+"/"+chain.parent+"/"+fault, wrong)
+		}
 		for _, mode := range []string{"uid", "missing-uid", "namespace", "kind", "apiVersion", "claims", "sa"} {
 			wrong = f
 			wrong.allow = false
@@ -597,6 +610,12 @@ func testControllers(t *testing.T, h *harness) {
 	jobFixture.parents = []obj{job, cj}
 	jobFixture.wantCalls = 2
 	run(t, h, "history/job-current-cronjob", jobFixture)
+	for _, fault := range []string{"root-missing-name", "root-wrong-name"} {
+		bad := jobFixture
+		bad.fault = fault
+		bad.allow = false
+		run(t, h, "history/job-current-cronjob/"+fault, bad)
+	}
 	jobFixture.parents = []obj{job}
 	jobFixture.allow = false
 	run(t, h, "history/job-missing-cronjob", jobFixture)
@@ -611,6 +630,12 @@ func testControllers(t *testing.T, h *harness) {
 	f.parents = []obj{rs, root}
 	f.wantCalls = 2
 	run(t, h, "history/old-RS-current-root", f)
+	for _, fault := range []string{"root-missing-name", "root-wrong-name"} {
+		bad := f
+		bad.fault = fault
+		bad.allow = false
+		run(t, h, "history/old-RS-current-root/"+fault, bad)
+	}
 	for _, mode := range []string{"missing-root", "recreated-root", "missing-root-uid"} {
 		wrong := f
 		wrong.allow = false
