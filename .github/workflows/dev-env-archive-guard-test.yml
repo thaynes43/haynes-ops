@@ -1,0 +1,45 @@
+---
+name: dev-env archive guard source tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/kyverno/policies/app/dev-env-archive-guard.yaml
+      - kubernetes/main/apps/dev-env-system/rbac/app/identity-guard.yaml
+      - kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml
+      - scripts/tests/dev-env-archive-guard/**
+      - .github/workflows/dev-env-archive-guard-test.yml
+  push:
+    branches: [agent/dev-env-h7-compatible-guard-1013]
+    paths:
+      - kubernetes/main/apps/kyverno/policies/app/dev-env-archive-guard.yaml
+      - scripts/tests/dev-env-archive-guard/**
+      - .github/workflows/dev-env-archive-guard-test.yml
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  synthetic:
+    name: Archive Guard Source - Success
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: scripts/tests/dev-env-archive-guard
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version: '1.26.6'
+          cache-dependency-path: scripts/tests/dev-env-archive-guard/go.sum
+      # Compile the actual pinned policy compiler off the shared cluster node.
+      - name: Finite serial actual-expression fixtures, with no runtime API calls
+        env:
+          GOMAXPROCS: '2'
+          GOMEMLIMIT: 1GiB
+          GOTOOLCHAIN: local
+        run: nice -n 19 go test -mod=readonly -p=1 -parallel=1 -count=1 -timeout=5m -v ./...
