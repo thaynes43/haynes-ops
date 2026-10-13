@@ -1200,6 +1200,34 @@ spec:
                     x-kubernetes-validations:
                     - message: retention Session UID is immutable
                       rule: self == oldSelf
+                  stopRequest:
+                    description: |-
+                      StopRequest is the operator's recorded intent to stop the recorded
+                      executor of a Reaping Session (DESIGN-025 section 4). It is written and
+                      confirmed before the one Pod patch that sets activeDeadlineSeconds, so an
+                      owner hold written first makes it conflict. It names lastExecutor.podUID,
+                      never changes and is never removed. It is not stop proof: only
+                      executorTerminal is.
+                    properties:
+                      podUID:
+                        description: PodUID must equal lastExecutor.podUID.
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                      requestedAt:
+                        description: RequestedAt is the operator's clock when it first
+                          recorded the intent.
+                        format: date-time
+                        type: string
+                      version:
+                        enum:
+                        - 1
+                        type: integer
+                    required:
+                    - podUID
+                    - requestedAt
+                    - version
+                    type: object
                   stopState:
                     description: |-
                       StopState stays Unknown: executorTerminal is evidence for HOME expiry
@@ -1252,6 +1280,12 @@ spec:
                 - message: the missed executor marker cannot change or be removed
                   rule: '!has(oldSelf.executorMissed) || (has(self.executorMissed)
                     && self.executorMissed == oldSelf.executorMissed)'
+                - message: the executor stop request must name the recorded executor
+                  rule: '!has(self.stopRequest) || (has(self.lastExecutor) && self.stopRequest.podUID
+                    == self.lastExecutor.podUID)'
+                - message: the executor stop request cannot change or be removed
+                  rule: '!has(oldSelf.stopRequest) || (has(self.stopRequest) && self.stopRequest
+                    == oldSelf.stopRequest)'
               remoteControl:
                 description: |-
                   RemoteControl is the session's Remote Control entry, for remote mode
@@ -1598,6 +1632,7 @@ spec:
                   actualModelState:
                     enum:
                     - Unknown
+                    - ProviderReported
                     maxLength: 64
                     type: string
                   aggregationScope:
@@ -1607,6 +1642,15 @@ spec:
                     type: string
                   apiBillingState:
                     enum:
+                    - Unknown
+                    maxLength: 64
+                    type: string
+                  billingBasis:
+                    description: |-
+                      BillingBasis is Subscription for a plan-served launch; the cost is then a
+                      CLI list-price equivalent, never a charge.
+                    enum:
+                    - Subscription
                     - Unknown
                     maxLength: 64
                     type: string
@@ -1761,12 +1805,169 @@ spec:
                     - message: reported token count requires an amount; Unknown omits
                         it
                       rule: (self.state == 'Reported') == has(self.amount)
+                  provenance:
+                    description: 'Provenance labels every Reported value: the serving
+                      CLI''s final result.'
+                    enum:
+                    - ProviderReported
+                    maxLength: 64
+                    type: string
                   resultState:
                     enum:
                     - Final
                     - Partial
                     maxLength: 64
                     type: string
+                  servedModels:
+                    description: ServedModels are the provider-reported models, sorted
+                      by id.
+                    items:
+                      description: |-
+                        ModelUsageStatus is one provider-reported served model's share of the
+                        initial invocation, with independent counter and cost presence.
+                      properties:
+                        cacheCreationInputTokens:
+                          description: TokenObservationStatus preserves independent
+                            metric presence.
+                          properties:
+                            amount:
+                              format: int64
+                              maximum: 1000000000000000
+                              minimum: 0
+                              type: integer
+                            state:
+                              enum:
+                              - Unknown
+                              - Reported
+                              maxLength: 64
+                              type: string
+                          required:
+                          - state
+                          type: object
+                          x-kubernetes-validations:
+                          - message: reported token count requires an amount; Unknown
+                              omits it
+                            rule: (self.state == 'Reported') == has(self.amount)
+                        cacheReadInputTokens:
+                          description: TokenObservationStatus preserves independent
+                            metric presence.
+                          properties:
+                            amount:
+                              format: int64
+                              maximum: 1000000000000000
+                              minimum: 0
+                              type: integer
+                            state:
+                              enum:
+                              - Unknown
+                              - Reported
+                              maxLength: 64
+                              type: string
+                          required:
+                          - state
+                          type: object
+                          x-kubernetes-validations:
+                          - message: reported token count requires an amount; Unknown
+                              omits it
+                            rule: (self.state == 'Reported') == has(self.amount)
+                        cost:
+                          description: CostObservationStatus is a CLI equivalent estimate,
+                            never billed dollars.
+                          properties:
+                            amount:
+                              maxLength: 64
+                              pattern: ^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$
+                              type: string
+                            kind:
+                              enum:
+                              - Unknown
+                              - ProviderCLIEquivalentEstimate
+                              maxLength: 64
+                              type: string
+                            state:
+                              enum:
+                              - Unknown
+                              - Reported
+                              maxLength: 64
+                              type: string
+                            unit:
+                              enum:
+                              - USD
+                              maxLength: 64
+                              type: string
+                          required:
+                          - kind
+                          - state
+                          type: object
+                          x-kubernetes-validations:
+                          - message: cost requires explicit presence and CLI estimate
+                              provenance
+                            rule: 'self.state == ''Reported'' ? (has(self.amount)
+                              && has(self.unit) && self.unit == ''USD'' && self.kind
+                              == ''ProviderCLIEquivalentEstimate'') : (!has(self.amount)
+                              && !has(self.unit) && self.kind == ''Unknown'')'
+                        inputTokens:
+                          description: TokenObservationStatus preserves independent
+                            metric presence.
+                          properties:
+                            amount:
+                              format: int64
+                              maximum: 1000000000000000
+                              minimum: 0
+                              type: integer
+                            state:
+                              enum:
+                              - Unknown
+                              - Reported
+                              maxLength: 64
+                              type: string
+                          required:
+                          - state
+                          type: object
+                          x-kubernetes-validations:
+                          - message: reported token count requires an amount; Unknown
+                              omits it
+                            rule: (self.state == 'Reported') == has(self.amount)
+                        model:
+                          maxLength: 256
+                          minLength: 1
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]*$
+                          type: string
+                        outputTokens:
+                          description: TokenObservationStatus preserves independent
+                            metric presence.
+                          properties:
+                            amount:
+                              format: int64
+                              maximum: 1000000000000000
+                              minimum: 0
+                              type: integer
+                            state:
+                              enum:
+                              - Unknown
+                              - Reported
+                              maxLength: 64
+                              type: string
+                          required:
+                          - state
+                          type: object
+                          x-kubernetes-validations:
+                          - message: reported token count requires an amount; Unknown
+                              omits it
+                            rule: (self.state == 'Reported') == has(self.amount)
+                      required:
+                      - cacheCreationInputTokens
+                      - cacheReadInputTokens
+                      - cost
+                      - inputTokens
+                      - model
+                      - outputTokens
+                      type: object
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - model
+                    x-kubernetes-list-type: map
                   source:
                     properties:
                       attemptID:
@@ -1806,6 +2007,7 @@ spec:
                   version:
                     enum:
                     - 1
+                    - 2
                     format: int32
                     type: integer
                   workerID:
@@ -1837,7 +2039,18 @@ spec:
                   rule: has(self.logicalTaskUID) == has(self.logicalTaskEpoch) &&
                     has(self.logicalTaskUID) == has(self.workerID)
                 - message: Codex token-only usage cannot assert cost
-                  rule: self.source.provider != 'codex' || self.cost.state == 'Unknown'
+                  rule: self.source.provider != 'codex' || (self.cost.state == 'Unknown'
+                    && (!has(self.servedModels) || self.servedModels.all(m, m.cost.state
+                    == 'Unknown')))
+                - message: version 2 requires provenance and billing basis; version
+                    1 carries neither
+                  rule: 'self.version == 1 ? (!has(self.provenance) && !has(self.billingBasis)
+                    && !has(self.servedModels) && self.actualModelState == ''Unknown'')
+                    : (has(self.provenance) && has(self.billingBasis))'
+                - message: actual model is ProviderReported exactly when served models
+                    are listed
+                  rule: (self.actualModelState == 'ProviderReported') == (has(self.servedModels)
+                    && size(self.servedModels) > 0)
             type: object
             x-kubernetes-validations:
             - message: shared admission evidence cannot be removed
