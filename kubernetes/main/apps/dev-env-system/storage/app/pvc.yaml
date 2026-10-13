@@ -22,3 +22,19 @@ spec:
     requests:
       storage: 20Gi
   storageClassName: ceph-filesystem
+---
+# DESIGN-025 section 7: provision the history archive before wiring the shelf mount.
+# Tom sets the bound PV's reclaim policy to Retain before archive activation.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dev-env-history-archive
+  namespace: dev-agents
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: ceph-block
