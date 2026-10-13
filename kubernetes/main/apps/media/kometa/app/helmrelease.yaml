@@ -72,7 +72,7 @@ spec:
           app: &app
             image:
               repository: docker.io/kometateam/kometa
-              tag: v2.5.2
+              tag: v2.5.3
             command: ["/tini", "-g", "-s", "--", "/.venv/bin/python3", "/config/git/serial-run.py"]
             args: ["--run", "--collections-only"]
             env:
