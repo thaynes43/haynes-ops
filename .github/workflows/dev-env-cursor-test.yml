@@ -1,0 +1,35 @@
+---
+name: dev-env Cursor offline tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/dev/dev-env/app/resources/cursor-*
+      - kubernetes/main/apps/dev/dev-env/app/resources/post-ready.sh
+      - kubernetes/main/apps/dev/dev-env/app/resources/config/claude/mcp.json
+      - scripts/tests/dev-env-cursor/**
+      - .github/workflows/dev-env-cursor-test.yml
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  offline:
+    name: Cursor Offline Fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned fixture dependencies
+        run: |
+          python3 -m venv /tmp/cursor-fixtures
+          /tmp/cursor-fixtures/bin/pip install -r kubernetes/main/apps/dev/dev-env/app/resources/cursor-mcp-requirements.txt
+      - name: Offline source and fake-server fixtures
+        run: |
+          bash -n kubernetes/main/apps/dev/dev-env/app/resources/cursor-worker.sh
+          bash -n kubernetes/main/apps/dev/dev-env/app/resources/cursor-mcp.sh
+          bash -n kubernetes/main/apps/dev/dev-env/app/resources/post-ready.sh
+          /tmp/cursor-fixtures/bin/python scripts/tests/dev-env-cursor/test_cursor.py -v

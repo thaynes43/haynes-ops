@@ -46,8 +46,9 @@ log() { printf 'post-ready: %s %s\n' "$(date -u '+%H:%M:%SZ')" "$*"; }
 codex_state="not reached"
 standby_state="not reached"
 sweep_state="not reached"
+cursor_state="not reached"
 finish() {
-  log "SUMMARY  codex-remote: ${codex_state}  |  claude standby: ${standby_state}  |  worktree sweep: ${sweep_state}"
+  log "SUMMARY  codex-remote: ${codex_state}  |  claude standby: ${standby_state}  |  worktree sweep: ${sweep_state}  |  cursor: ${cursor_state}"
   exit 0   # ALWAYS: a non-zero exit here must never colour the pod's health
 }
 
@@ -144,6 +145,14 @@ if [ "$recent" -ge "$LOOP_MAX" ]; then
   finish
 fi
 log "circuit breaker clear ($recent launch(es) in the last 30m, limit $LOOP_MAX) — $LAUNCH_LOG"
+
+# Cursor's optional installer and supervisor run detached AFTER readiness, sharing
+# the existing boot-loop gate. No login, model run or MCP discovery is automatic.
+if bash /opt/dev-env/scripts/cursor-worker.sh up; then
+  cursor_state="supervisor requested (tmux cursor-worker-v1; inspect PVC log)"
+else
+  cursor_state="launch failed; existing harnesses continue"
+fi
 
 if [ ! -x "$AGENT_RUN" ]; then
   codex_state="skipped (no $AGENT_RUN — did dev-init run?)"
