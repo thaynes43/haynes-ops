@@ -113,7 +113,7 @@ profiles:
       - name: CIGAR_JOURNAL_TOKEN
         valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
       - name: UNIFI_MCP_AUTH_TOKEN
-        valueFrom: { secretKeyRef: { name: dev-env-unifi-secret, key: UNIFI_MCP_AUTH_TOKEN } }
+        valueFrom: { secretKeyRef: { name: dev-env-unifi-secret, key: UNIFI_MCP_AUTH_TOKEN, optional: true } }
       - name: OMNI_ENDPOINT
         value: https://haynes.na-west-1.omni.siderolabs.io:443
       - name: OMNI_SERVICE_ACCOUNT_KEY
@@ -132,7 +132,7 @@ profiles:
       - name: CIGAR_JOURNAL_TOKEN
         valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
       - name: UNIFI_MCP_AUTH_TOKEN
-        valueFrom: { secretKeyRef: { name: dev-env-unifi-secret, key: UNIFI_MCP_AUTH_TOKEN } }
+        valueFrom: { secretKeyRef: { name: dev-env-unifi-secret, key: UNIFI_MCP_AUTH_TOKEN, optional: true } }
     envFrom:
       - secretRef: { name: dev-env-mcp-secret }
     mounts:
@@ -144,7 +144,7 @@ profiles:
       - name: CIGAR_JOURNAL_TOKEN
         valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
       - name: UNIFI_MCP_AUTH_TOKEN
-        valueFrom: { secretKeyRef: { name: dev-env-unifi-secret, key: UNIFI_MCP_AUTH_TOKEN } }
+        valueFrom: { secretKeyRef: { name: dev-env-unifi-secret, key: UNIFI_MCP_AUTH_TOKEN, optional: true } }
     envFrom:
       - secretRef: { name: dev-env-proxmox-secret, optional: true }
     mounts:
