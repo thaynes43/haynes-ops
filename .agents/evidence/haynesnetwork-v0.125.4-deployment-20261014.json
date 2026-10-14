@@ -4711,7 +4711,22 @@
           },
           "durationMs": 44804
         }
-      ]
+      ],
+      "actualBounds": {
+        "activeDeadlineSeconds": 300,
+        "backoffLimit": 0,
+        "ttlSecondsAfterFinished": 86400,
+        "cpuLimit": "500m",
+        "restartPolicy": "Never",
+        "automountServiceAccountToken": false,
+        "command": [
+          "nice",
+          "-n",
+          "19",
+          "tsx",
+          "/sync/src/scripts/books-census.ts"
+        ]
+      }
     },
     {
       "sourceCronJob": "owed-checks",
@@ -5994,7 +6009,22 @@
             "not_yet": 4
           }
         }
-      ]
+      ],
+      "actualBounds": {
+        "activeDeadlineSeconds": 300,
+        "backoffLimit": 0,
+        "ttlSecondsAfterFinished": 86400,
+        "cpuLimit": "500m",
+        "restartPolicy": "Never",
+        "automountServiceAccountToken": false,
+        "command": [
+          "nice",
+          "-n",
+          "19",
+          "tsx",
+          "/sync/src/scripts/owed-checks.ts"
+        ]
+      }
     }
   ],
   "finalPostMediaInventory": {
