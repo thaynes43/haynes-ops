@@ -8,6 +8,7 @@ resources:
   - ./rbac.yaml
   - ./externalsecret.yaml
   - ./externalsecret-unifi.yaml
+  - ./externalsecret-cursor.yaml
   - ./networkpolicy.yaml
   - ./ingressroute.yaml
   - ./helmrelease.yaml
