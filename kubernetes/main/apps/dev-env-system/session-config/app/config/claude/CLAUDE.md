@@ -133,7 +133,7 @@ scope is unclear, keep the dependent work paused and state that uncertainty.
   not the ask: do both, then fold the answer back in as a dated ruling. Check a
   question's premise before you spend one. In a headless task (`-p`) nobody answers
   AskUserQuestion: put the question, with its options and your recommendation, in the
-  PR body, and finish everything it does not block.
+  PR body, and finish the rest of the authorized story that it does not block.
   - **Runtime hold: PRs that restart the v1 pod.** Everything under haynes-ops
     `kubernetes/main/apps/dev/dev-env/app/resources/**` is mounted into the v1 dev-env
     pod, which restarts when it changes and kills the sessions running there. Open
