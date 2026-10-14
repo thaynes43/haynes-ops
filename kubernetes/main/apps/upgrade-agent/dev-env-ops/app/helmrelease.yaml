@@ -63,25 +63,12 @@ spec:
               # Needs claude-code >=2.1.280 = dev-env image 0.6.3+; an older CLI
               # rejects the id outright and every session would probe-fall-back.
               OPS_SESSION_MODEL: claude-opus-5-5
-              # esc-* failure escalations get the top model (Tom's call, backlog
-              # 12): rare + human-attended is exactly where Fable belongs — the
-              # shared-pool caution above is about FREQUENT consumers.
-              #
-              # 2026-08-23: was `fable`, parked on claude-opus-5 because Fable
-              # was OUT OF PLAN CREDITS and refused every turn ("You're out of
-              # usage credits… /model to switch models" — probed live from this
-              # pod). An escalation spawned on a model that cannot answer is the
-              # worst failure this system has: Tom gets paged with a session
-              # name, joins, and finds a mute agent. session-launch.sh therefore
-              # probes the model before spawning and falls back to
-              # OPS_FALLBACK_MODEL — which is what makes restoring Fable safe.
-              # 2026-09-01: restored as the PINNED id claude-fable-5-1 (Fable 5.1;
-              # credits are back — dev-env ran Fable all week). Pinned, not the
-              # `fable` alias: aliases resolve client-side in the image's CLI and
-              # lag launches. Needs claude-code >=2.1.255 in the image (0.5.2+):
-              # an older CLI rejects the id outright and the probe would fall back
-              # to Opus 5 every time. See memory `fable-quota-exhaustion-model-drift`.
-              OPS_ESC_MODEL: claude-fable-5-1
+              # 2026-10-14: Tom selected Sonnet 5.5 for automatic esc-* responders
+              # after the held H7 audit re-paged. This shared default covers gate,
+              # shepherd and failed-remediation escalations; explicit per-order
+              # overrides still win. Confirmed by the installed CLI 2.1.299 model
+              # selector. Keep the launch probe and OPS_FALLBACK_MODEL policy.
+              OPS_ESC_MODEL: claude-sonnet-5-5
               # rem-* autonomous remediation: it CHANGES THINGS unattended, so it
               # gets the strongest model rather than the cheapest. Pinned to the
               # explicit id, never the `opus` alias (aliases resolve client-side in

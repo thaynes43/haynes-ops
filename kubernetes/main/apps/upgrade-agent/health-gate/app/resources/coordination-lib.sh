@@ -173,6 +173,17 @@ pod_failure_is_the_alert() {  # $1=ns $2=pod ; rc0 = drop from the set (stdout: 
   printf '%s' "$alert"
 }
 
+# Owner-approved H7 maintenance hold (2026-10-14, haynes-ops#3934/dev-env#290).
+# Only the retained audit Job's terminal Failed pods qualify. Pending, crashlooping,
+# unreadable and replacement Jobs stay actionable. Remove with the matching Flux,
+# Alertmanager and responder holds when Tom resumes H7 (agentic-remediation.md).
+pod_is_held_audit() {
+  [ "$1" = "dev-env-system" ] || return 1
+  kubectl -n "$1" get pod "$2" -o json 2>/dev/null | jq -e '
+    .status.phase == "Failed" and any(.metadata.ownerReferences[]?;
+      .kind == "Job" and .name == "dev-env-h7-metadata-audit-1013a")' >/dev/null 2>&1
+}
+
 # collect_regressions — populate the globals REG_IDS (sorted-unique regression identifiers,
 # one per line) and SIG_PODS_STATUS (ok|blind). Identifier forms (stable + sortable):
 #   flux/<Kind>/<ns>/<name>   pod/<ns>/<pod>
@@ -193,7 +204,7 @@ pod_failure_is_the_alert() {  # $1=ns $2=pod ; rc0 = drop from the set (stdout: 
 # every anchor is unparseable is skipped.
 collect_regressions() {
   SIG_PODS_STATUS=ok
-  local flux_ids pods_json pods_ids
+  local flux_ids pods_json pods_ids flux_kept="" flux_id
   # TZ=UTC for jq: jq 1.6 (Debian bookworm) parses fromdateiso8601 in local time, and under the pod's TZ=America/New_York it lands an hour late during DST.
   flux_ids="$(kubectl get kustomizations.kustomize.toolkit.fluxcd.io,helmreleases.helm.toolkit.fluxcd.io -A -o json 2>/dev/null \
     | TZ=UTC jq -r --argjson now "$NOW" '.items[] | . as $i
@@ -207,6 +218,19 @@ collect_regressions() {
           | min) as $t
         | select($t != null and ($now - $t) > 600)
         | "flux/\(.kind)/\($i.metadata.namespace)/\($i.metadata.name)"' 2>/dev/null)"
+  # Explicit resource hold, not a healthy verdict: Flux conditions/metrics and the
+  # gate's NotReady diagnostic snapshot remain visible. No new triage/gate order.
+  while IFS= read -r flux_id; do
+    [ -n "$flux_id" ] || continue
+    if [ "$flux_id" = "flux/Kustomization/dev-env-system/dev-env-h7-metadata-audit" ]; then
+      type log >/dev/null 2>&1 && log "maintenance hold: $flux_id retained failed evidence; Tom paused H7 (dev-env#290, haynes-ops#3934); remove hold on owner-authorized resumption"
+    else
+      flux_kept="${flux_kept}${flux_id}"$'\n'
+    fi
+  done <<EOF
+$flux_ids
+EOF
+  flux_ids="$flux_kept"
   pods_json="$(curl -sf --max-time 15 "$PROM/api/v1/query" --data-urlencode "query=$SIG_POD_QUERY" 2>/dev/null)"
   if [ -z "$pods_json" ]; then
     SIG_PODS_STATUS=blind
@@ -222,7 +246,9 @@ collect_regressions() {
     while IFS= read -r _id; do
       [ -z "$_id" ] && continue
       _ns="${_id#pod/}"; _pod="${_ns#*/}"; _ns="${_ns%%/*}"
-      if _alert="$(pod_failure_is_the_alert "$_ns" "$_pod")"; then
+      if pod_is_held_audit "$_ns" "$_pod"; then
+        type log >/dev/null 2>&1 && log "maintenance hold: terminal Failed audit pod ${_ns}/${_pod} retained as H7 evidence (haynes-ops#3934); remove on owner-authorized resumption"
+      elif _alert="$(pod_failure_is_the_alert "$_ns" "$_pod")"; then
         type log >/dev/null 2>&1 && log "coordination: dropped failure-is-the-alert pod ${_ns}/${_pod} (terminal exit is the transport of critical alert '${_alert}'; Alertmanager pages it — not a deploy-health signal)"
       elif pod_is_stale_corpse "$_ns" "$_pod"; then
         type log >/dev/null 2>&1 && log "coordination: dropped stale corpse pod ${_ns}/${_pod} (superseded/ancient/ad-hoc/gone)"

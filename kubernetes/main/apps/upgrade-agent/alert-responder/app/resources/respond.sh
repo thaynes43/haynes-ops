@@ -306,6 +306,13 @@ candidates="$(printf '%s' "$alerts" | TZ=UTC jq -c --arg sev "$SEVERITY" --arg a
     | select(.labels.severity == $sev)
     | select(.labels.alertname | test($allow))
     | select(.labels.alertname | test($deny) | not)
+    # Owner-approved H7 maintenance hold, 2026-10-14 (haynes-ops#3934/dev-env#290).
+    # A null Alertmanager receiver does not remove an alert from this API, so the
+    # responder must honor the same exact hold. Remove when Tom resumes H7.
+    | select((.labels.alertname == "FluxReconciliationFailure"
+              and .labels.customresource_kind == "Kustomization"
+              and .labels.exported_namespace == "dev-env-system"
+              and .labels.name == "dev-env-h7-metadata-audit") | not)
     # namespace-scoped ignore (2026-07-12): drop known-benign recurrers by
     # alertname@namespace (e.g. OOMKilled@rook-ceph = the ceph-mgr self-heal cycle),
     # WITHOUT a blanket alertname denylist. Uses the same ns resolution as the loop below.

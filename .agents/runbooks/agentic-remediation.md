@@ -65,8 +65,28 @@ directory the responder's shallow clone actually searches:
   `upgrade-coordination-lib` ConfigMap from `health-gate/`, its Secrets) and ends
   every session in it. Merge those when no order is `claimed`
   ([haynes-ops#3415](https://github.com/thaynes43/haynes-ops/issues/3415)).
-- The esc-* model is the HelmRelease's `OPS_ESC_MODEL`. Writers must not put a
-  `model` in an order unless they mean to override it.
+- The esc-* model is the HelmRelease's `OPS_ESC_MODEL`: pinned
+  `claude-sonnet-5-5` since Tom's 2026-10-14 direction, verified in the installed
+  Claude Code 2.1.299 model selector. The watcher uses the same default when the
+  environment setting is absent. This covers gate, shepherd and failed-remediation
+  escalations; it does not change the separate `wo-*` or `rem-*` defaults, initial
+  alert-responder diagnosis model, or the existing launch-probe/fallback policy.
+  Writers must not put a `model` in an order unless they mean to override it.
+- **Held H7 audit (Tom, 2026-10-14; [#3934](https://github.com/thaynes43/haynes-ops/issues/3934))**:
+  `Kustomization/dev-env-system/dev-env-h7-metadata-audit` and the terminal Failed
+  pods owned by `Job/dev-env-h7-metadata-audit-1013a` are retained failure evidence
+  during the Chapter 5 pause ([dev-env#290](https://github.com/thaynes43/dev-env/issues/290)).
+  The coordination collector logs and excludes only these from gate/triage work;
+  Alertmanager routes that exact Flux alert to `null`, and the responder excludes
+  the same alert (a null receiver alone does not stop responder API polling).
+  Flux NotReady, the failed Job, metrics and firing alerts remain visible. No
+  namespace-wide silence, health override, Job retry or audit resumption is implied.
+  **Removal condition:** before Tom-authorized H7 resumption, remove the marked
+  holds together from `coordination-lib.sh`, `respond.sh` and the Prometheus stack
+  `externalsecret.yaml` through GitOps; rerun the held-audit self-test/route checks
+  with the restored policy. Do not automatically expire the hold into another page
+  while the owner pause remains in effect. Previously delivered priority 0/1
+  Pushover messages cannot be cancelled via the emergency receipt API.
 - **One setup token carries every automated path**: the shepherd, triage, the
   responder, all three dev-env-ops lanes and vexa scribe-notes use 1Password
   `claude-code` / `CLAUDE_CODE_OAUTH_TOKEN` (a `claude setup-token`, first
