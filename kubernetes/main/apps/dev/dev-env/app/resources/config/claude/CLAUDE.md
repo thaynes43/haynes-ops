@@ -307,9 +307,9 @@ convenience, not a dependency. An unused standby worktree is reaped by `agent-ru
 **Model ids and effort.** Use full ids, never aliases (`fable`, `opus`): an alias
 resolves CLIENT-side against the pinned CLI and can silently serve an older tier
 (freshness contract below). Claude: `claude-fable-5-1`, `claude-opus-5-5`,
-`claude-sonnet-5-5`, `claude-opus-5`, `claude-haiku-4-5`; effort
-`low|medium|high|xhigh|max` (or `ultracode`) on the 5-family, none at all on
-Haiku 4.5. Codex: `gpt-6-astra` (top), `gpt-6.1-sol`, `gpt-6-sol`, `gpt-6-luna`,
+`claude-sonnet-5-5`, `claude-opus-5`, `claude-haiku-5-5` (needs claude-code
+>=2.1.293), `claude-haiku-4-5`; effort `low|medium|high|xhigh|max` (or
+`ultracode`) on the 5-family including Haiku 5.5, none at all on Haiku 4.5. Codex: `gpt-6-astra` (top), `gpt-6.1-sol`, `gpt-6-sol`, `gpt-6-luna`,
 `gpt-5.6-sol|terra|luna`, `gpt-5.5`; effort `low|medium|high|xhigh`, plus `max`
 on the GPT-6 + 5.6 tiers and `ultra` on astra/sol/terra (both generations).
 agent-run refuses a level the model can't honour instead of
@@ -534,7 +534,7 @@ a reason for a Codex driver to switch providers.
 codex model + effort rows come live from `~/.codex/models_cache.json`; claude's
 effort *union* comes from `claude --help`, narrowed by a small per-model table
 in `agent-run.sh` (`claude_effort_levels`: Haiku 4.5 has no effort control, the
-4.6 tier lacks `xhigh`, everything newer gets the full union). The claude model
+4.6 tier lacks `xhigh`, everything newer — Haiku 5.5 included — gets the full union). The claude model
 rows are **pinned full ids**, not aliases (since 2026-08-29): aliases resolve
 CLIENT-side against the version-pinned CLI and silently serve an older tier
 when the image lags a launch, whereas a full id is resolved server-side. Two

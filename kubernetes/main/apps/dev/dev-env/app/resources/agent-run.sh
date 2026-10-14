@@ -20,7 +20,7 @@
 # Bare `agent-run` fills every omitted choice interactively, TOOL-FIRST: repo picker
 # (owner's GitHub repos newest-pushed first; offline → local clones), agent (claude|
 # codex), then a MODE picker, a MODEL picker, and an EFFORT picker filtered to the
-# chosen model for BOTH tools (claude: haiku has no effort control, the 4.6 tier lacks
+# chosen model for BOTH tools (claude: Haiku 4.5 has no effort control, the 4.6 tier lacks
 # xhigh; codex: max on the GPT-6 + GPT-5.6 tiers, ultra only on astra/sol/terra).
 # Flags win — scripted callers pass them and see no prompts (defaults: effort xhigh
 # where the model takes it, model = each tool's own default).
@@ -104,7 +104,7 @@ agent-run — worktree-per-task agent dispatcher
                                               # bare aliases (fable/opus/…) still work but resolve
                                               # client-side against the PINNED CLI and can silently serve an
                                               # older tier — prefer the id. See the model picker comment.
-      --effort <level>                        # claude low|medium|high|xhigh|max (per model: haiku takes none,
+      --effort <level>                        # claude low|medium|high|xhigh|max (per model: Haiku 4.5 takes none,
                                               # the 4.6 tier has no xhigh) or ultracode; codex adds ultra;
                                               # default xhigh where the model supports it
   agent-run list
@@ -434,8 +434,12 @@ pretrust() {  # $1 = worktree path
 # "Effort levels"), even though `claude --help` prints ONE union list:
 #   Fable 5.1 / 5 / Opus 5.5 / Sonnet 5.5 / Opus 5 / Sonnet 5 / Opus 4.8 / 4.7
 #                                                               low medium high xhigh max
+#   Haiku 5.5 (claude-haiku-5-5, CLI >=2.1.293)                 low medium high xhigh max
 #   Opus 4.6 / Sonnet 4.6                                       low medium high max
 #   Haiku 4.5 / Sonnet 4.5 (and older)                          none — no effort control
+# The bare `haiku` alias stays in the no-effort row: it resolves client-side
+# against the pinned CLI, so the tier behind it is not knowable from here. Pick
+# the full id to get effort control on Haiku 5.5 (its stock default: medium).
 # The CLI never rejects a mismatch: an unsupported level silently CLAMPS DOWN to
 # the highest supported one below it (xhigh → high on 4.6) and on Haiku is
 # ignored outright (probed 2026-09-01: `--model claude-haiku-4-5 --effort xhigh`
@@ -459,11 +463,20 @@ claude_effort_union() {
 }
 claude_effort_levels() {   # $1 = model id or alias ('' → the CLI's default model → union)
   case "${1:-}" in
+    claude-haiku-5*)                       claude_effort_union ;;
     haiku*|claude-haiku-*|claude-sonnet-4-[05]*|claude-opus-4-[015]*|claude-*-4-20*|claude-3*)
                                            printf '' ;;
     claude-opus-4-6*|claude-sonnet-4-6*)   printf 'low,medium,high,max' ;;
     *)                                     claude_effort_union ;;
   esac
+}
+# A full model id newer than the pinned CLI is REJECTED outright ("Claude Code does
+# not support this model"), so a picker row for one is shown only when the
+# installed CLI is new enough. sort -V is GNU coreutils (the pod's userland).
+claude_cli_at_least() {    # $1 = x.y.z → rc0 if the installed claude is >= it
+  local have
+  have="$(claude --version 2>/dev/null | awk 'NR==1 {print $1}')"
+  [ -n "$have" ] && [ "$(printf '%s\n%s\n' "$1" "$have" | sort -V | head -n1)" = "$1" ]
 }
 # `ultracode` is a Claude Code SETTING layered on xhigh (xhigh per message +
 # dynamic multi-agent workflows), accepted by --effort at launch since 2.1.203
@@ -758,12 +771,19 @@ case "$cmd" in
         # runs the 1M window by default on the API, so no [1m] suffix (2026-09-01:
         # claude-fable-5[1m] → claude-fable-5-1). Opus 5.5's own stock effort is
         # medium (every other tier: high) — moot here, agent-run always passes one.
+        # Haiku 5.5 (claude-haiku-5-5) needs >=2.1.293 and, unlike Haiku 4.5, takes
+        # all five effort levels (stock default medium). Until the pinned image
+        # carries that CLI the row falls back to Haiku 4.5 — never a dead id.
+        haiku_row='claude-haiku-4-5    Haiku 4.5 · fastest, simple tasks — no effort control'
+        if claude_cli_at_least 2.1.293; then
+          haiku_row='claude-haiku-5-5    Haiku 5.5 · fastest, simple tasks — all effort levels'
+        fi
         model="$(pick 'model:' \
           'claude-opus-5-5     Opus 5.5 · Fable-class agentic coding at Opus price (agent-run default; hard + user-visible subagents)' \
           'claude-fable-5-1    Fable 5.1 · 1M ctx, most capable — Tom asks for it by name; scarce quota' \
           'claude-opus-5       Opus 5 · prior Opus; the automated lanes fall back to it' \
           'claude-sonnet-5-5   Sonnet 5.5 · near-Opus quality, cheaper (routine coding + tests subagents)' \
-          'claude-haiku-4-5    Haiku 4.5 · fastest, simple tasks — no effort control')" || model=""
+          "$haiku_row")" || model=""
         # No "leave it unset" row: ~/.claude/settings.json lives on the PVC, not in
         # the ConfigMap, so ANY in-session `/model` (Enter, not `s`) rewrites the
         # pod-wide default for every future session (that is how the documented
@@ -790,7 +810,7 @@ case "$cmd" in
     # tools), a flagged call takes the xhigh default. For claude the level is
     # resolved HERE, after the model is known: an explicit --effort the model can't
     # honour dies (claude would otherwise clamp it silently and the banner would
-    # contradict the flag), and a model with no effort control (haiku) gets none —
+    # contradict the flag), and a model with no effort control (Haiku 4.5) gets none —
     # a flagged level is dropped with a WARN rather than logged as if it applied.
     if [ "$agent" = claude ]; then
       if [ -z "$(claude_effort_levels "$model")" ]; then
