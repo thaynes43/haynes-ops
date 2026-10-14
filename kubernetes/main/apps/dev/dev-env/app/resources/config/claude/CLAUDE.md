@@ -551,7 +551,7 @@ surfaces still rot, and **agents are the tripwire for both**:
   repoints lag a launch by days (`opus` served 4.8 while `claude-opus-5` was
   already live), and a full id can be newer than the pinned CLI supports
   (Fable 5.1 needs claude-code >=2.1.255, Opus 5.5 needs >=2.1.280, Sonnet 5.5
-  needs >=2.1.284; older CLIs reject the id outright rather than fall back), so a
+  needs >=2.1.284, Haiku 5.5 needs >=2.1.293; older CLIs reject the id outright rather than fall back), so a
   new row may need an image bump first. The per-model
   effort table only lists the reduced tiers; re-check it against the effort
   table in code.claude.com/docs/en/model-config when a model launches with a

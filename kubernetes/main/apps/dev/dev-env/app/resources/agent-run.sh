@@ -766,7 +766,8 @@ case "$cmd" in
         # outright ("Claude Code does not support this model") — no fallback, the
         # session never starts; Opus 5.5 (claude-opus-5-5, launched 2026-09-22)
         # likewise needs >=2.1.280 (2.1.270 answers "unrecognized_model"), and Sonnet
-        # 5.5 (claude-sonnet-5-5, launched 2026-09-28) needs >=2.1.284. Bump the
+        # 5.5 (claude-sonnet-5-5, launched 2026-09-28) needs >=2.1.284, and Haiku 5.5
+        # (claude-haiku-5-5) >=2.1.293. Bump the
         # image (Dockerfile CLAUDE_CODE_VERSION) before adding such a row. Fable 5.1
         # runs the 1M window by default on the API, so no [1m] suffix (2026-09-01:
         # claude-fable-5[1m] → claude-fable-5-1). Opus 5.5's own stock effort is
