@@ -109,8 +109,14 @@ scope is unclear, keep the dependent work paused and state that uncertainty.
 - **Every repo gets the Claude Code PR reviewer.** When you create a new repo, or work
   in one that lacks them, add the Claude Code review + `@claude` workflows and set the
   `CLAUDE_CODE_OAUTH_TOKEN` secret with the runbook's one-off Job (the pod's own GitHub
-  token cannot write secrets). Its review is advisory: read the findings before
-  merging; fix each, or answer with a concrete reason. See
+  token cannot write secrets). Automated AI reviews and audits are **advisory and
+  optional**, never required checks. Failure, timeout, quota exhaustion or service
+  unavailability cannot block merge or deployment and does not require an owner waiver.
+  Complete required tests, builds and security checks. Review the diff and relevant
+  documentation yourself, and use an independent native agent review when available.
+  Record the review, validation and AI availability in the PR. Repeated retries are
+  not required. Read any findings emitted before merging; fix each, or answer with a
+  concrete reason. See
   `.agents/runbooks/new-repo-setup.md` in haynes-ops.
 - **Deliver owner questions; honor holds and stop criteria.** Push each one to his
   phone with the
