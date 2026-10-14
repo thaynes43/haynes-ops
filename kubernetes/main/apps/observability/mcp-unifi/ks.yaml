@@ -25,3 +25,7 @@ spec:
   postBuild:
     substitute:
       APP: *app
+      # 0.6.0 serves unauthenticated liveness on /healthz (process only, not UniFi
+      # API access); require a 2xx there instead of the default non-5xx on /.
+      GATUS_PATH: /healthz
+      GATUS_STATUS_MAX: "300"
