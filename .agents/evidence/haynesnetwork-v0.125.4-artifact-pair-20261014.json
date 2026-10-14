@@ -1,0 +1,20 @@
+{
+  "checkedAt": "2026-10-14T11:26:10.253469+00:00",
+  "version": "v0.125.4",
+  "publisherRun": 38555912857,
+  "publisherCommit": "ab8181c36b00d389dbdb05db534b0a10845b6178",
+  "image": {
+    "ref": "v0.125.4",
+    "status": 200,
+    "digest": "sha256:5522d758426a317b42fec609fbe02f8f27cdc042f03b133833002f8ccb2f881f",
+    "bodyDigest": "sha256:5522d758426a317b42fec609fbe02f8f27cdc042f03b133833002f8ccb2f881f",
+    "contentType": "application/vnd.oci.image.index.v1+json"
+  },
+  "signature": {
+    "ref": "sha256-5522d758426a317b42fec609fbe02f8f27cdc042f03b133833002f8ccb2f881f.sig",
+    "status": 200,
+    "digest": "sha256:f4faf47c28acaecc3a19be71e0a847678c46a2e19c7faf62e1b8ad953d91cba2",
+    "bodyDigest": "sha256:f4faf47c28acaecc3a19be71e0a847678c46a2e19c7faf62e1b8ad953d91cba2",
+    "contentType": "application/vnd.oci.image.manifest.v1+json"
+  }
+}
