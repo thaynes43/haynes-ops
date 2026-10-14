@@ -64,16 +64,12 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Main 2221b834dab857abe251e228d24d4d85cec4391e; publish.yml run 38363449181, keyless verified.
-              # dev-env 2.27.0 (#253): #251 HOME expiry up to Archived (DESIGN-025 H5) and #254 the
-              # /v1/history reads and the guarded HOME delete (H6). Their flags
-              # --enable-home-history-archive, --enable-history-archive-reads, --enable-home-expiry-delete
-              # and --home-expiry-grace are deliberately absent, so all off (defaults) until H7, as is
-              # H3's --enable-private-executor-stop. Off, it writes no new status field.
-              # The AgentSession CRD for 2.27.0 (status.privateHistory.expiry, expiryClearedAt) lands first.
-              # Code identical to v2.27.0 (the release merge c20fafd changed only the changelog and manifest).
-              # Its binary reports v2.26.0-2-g2221b83 (git describe before the tag), not 2.27.0.
-              tag: sha-2221b83@sha256:fd8bdecaf2f68341ada2e53f39fa06e11b8b35416b88918fccb0c9eac5a7d779
+              # Main cbf0700d07aa0de54dde89a16f733d3a412b8d00; Publish run 38495128673, keyless verified.
+              # 2.28.0 source plus the publication fix; built VERSION v2.28.0-1-gcbf0700.
+              # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
+              # Executor stop, HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates.
+              # Uses the installed 2.27.0 AgentSession schema; no CRD change is needed.
+              tag: sha-cbf0700@sha256:e86be8a5876a159aff3fe9950ac98830b94d0f80f623466393247cddc037dced
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
