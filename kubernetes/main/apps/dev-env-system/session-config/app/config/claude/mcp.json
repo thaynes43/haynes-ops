@@ -10,7 +10,10 @@
     },
     "mcp-unifi": {
       "type": "http",
-      "url": "http://mcp-unifi.observability.svc.cluster.local:3000/mcp"
+      "url": "http://mcp-unifi.observability.svc.cluster.local:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer ${UNIFI_MCP_AUTH_TOKEN}"
+      }
     },
     "playwright": {
       "command": "playwright-mcp",
