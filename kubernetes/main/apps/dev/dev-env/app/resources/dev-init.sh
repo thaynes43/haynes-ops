@@ -237,6 +237,7 @@ fi
 # ── shell defaults + scripts on PATH ────────────────────────────────────────────
 mkdir -p "$HOME/.local/bin"
 ln -sf /opt/dev-env/scripts/agent-run.sh "$HOME/.local/bin/agent-run"
+ln -sf /opt/dev-env/scripts/cursor-worker.sh "$HOME/.local/bin/cursor-worker"
 # declare-activity (2026-08-23): mounting it in the scripts ConfigMap does NOT make
 # it a command. Without this link the CLAUDE.md instructions telling agents to
 # declare disruptive work hit "command not found", the false-escalation guard is
