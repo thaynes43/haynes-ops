@@ -128,6 +128,12 @@ spec:
               # session; the claude.ai relay only covers already-established
               # connections).
               - matchName: "bridge.claudeusercontent.com"
+              # Cursor My Machines: official install/login and worker connection.
+              # Exact hosts only; optional artifact uploads are not enabled.
+              - matchName: "cursor.com"
+              - matchName: "downloads.cursor.com"
+              - matchName: "api2.cursor.sh"
+              - matchName: "api2direct.cursor.sh"
               # OpenAI: Codex API + ChatGPT-plan auth/backend
               - matchName: "openai.com"
               - matchPattern: "*.openai.com"
@@ -503,6 +509,11 @@ spec:
         - matchName: "claude.com"
         - matchPattern: "*.claude.com"
         - matchName: "bridge.claudeusercontent.com"
+        # Cursor My Machines: same exact hosts as the DNS allowlist.
+        - matchName: "cursor.com"
+        - matchName: "downloads.cursor.com"
+        - matchName: "api2.cursor.sh"
+        - matchName: "api2direct.cursor.sh"
         - matchName: "openai.com"
         - matchPattern: "*.openai.com"
         - matchName: "chatgpt.com"
