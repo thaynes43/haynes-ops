@@ -112,11 +112,13 @@ or unverified; do not claim identical capabilities from matching server names.
 ## Bounded restart acceptance
 
 Before any ConfigMap merge, remember Reloader will restart the Recreate pod.
-Coordinate from the Mac. Verify every session is idle and preserve worktree
-changes, meaningful untracked/ignored assets, session IDs and resume commands on
-the PVC. Keep a restricted recovery manifest. The boot sweeper can reap aged
-`~/work` trees, so protect or checkpoint them before the restart. Declare the
-maintenance activity with a bounded TTL. Record the old Git revision and image
+Coordinate from the Mac, not from an agent inside the pod. Confirm the sessions
+are idle and let them shut down cleanly; work that continues afterwards gets a
+short cold-start handoff prompt (goal, branch/PR, next step) rather than a
+resumed session. The supported `claude --resume` / `codex resume` stay available
+as a fallback. Do not build custom preservation or resume tooling: committed and
+pushed work is the durable state, and the existing boot sweeper's `rescue/`
+branches cover stray uncommitted edits. Record the old Git revision and image
 digest and keep the home PVC.
 
 Acceptance after the GitOps rollout:
