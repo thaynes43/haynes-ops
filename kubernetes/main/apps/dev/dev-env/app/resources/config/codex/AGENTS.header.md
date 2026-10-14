@@ -25,6 +25,9 @@ Codex-specific traps:
   For anything touching a repo, follow the worktree rule first: `git worktree add
   ~/work/<task-slug> -b agent/<task-slug>` from `~/repos/<name>`, then work there —
   never in the scratch dir, never in `~/repos/<name>` itself.
+- **Project roots go in `~/codex/<repo>`** (a detached worktree of `origin/main`;
+  see Ground rules). A thread opened in a project root still makes its own
+  `~/work/<task-slug>` worktree before editing anything.
 - **Your MCP servers are the same as Claude's**, rendered at boot from one GitOps
   `mcp.json`. If one is missing or fails, the fix is in that file (haynes-ops,
   `kubernetes/main/apps/dev/dev-env/app/resources/config/claude/mcp.json`) —
