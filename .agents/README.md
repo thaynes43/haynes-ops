@@ -1,6 +1,6 @@
 # .agents
 
-Agent-facing operational docs for this repo — runbooks, safety rules, and reference context for AI coding agents (Claude Code) and humans. Migrated from the old `.cursor/rules/` (Cursor is no longer used; environment-specific bits were updated for Claude Code, which reaches the cluster directly).
+Agent-facing operational docs for this repo — runbooks, safety rules, and reference context for AI coding agents (Claude Code) and humans. Migrated from the old `.cursor/rules/`, which were retired (environment-specific bits were updated for Claude Code, which reaches the cluster directly). Cursor now runs only as the dev-env v1 My Machines worker — see [cursor-v1-worker.md](runbooks/cursor-v1-worker.md).
 
 Top-level agent instructions live in [`CLAUDE.md`](../CLAUDE.md); this folder holds the longer-form material it references.
 
@@ -10,6 +10,7 @@ guards whose degraded state is fail-open. Append findings there as you hit them;
 is worth more attention than a red.
 
 ## runbooks/ — step-by-step procedures
+- [cursor-v1-worker.md](runbooks/cursor-v1-worker.md) — **Cursor My Machines worker on dev-env v1**: the pinned CLI install and post-ready tmux supervisor (bounded retries, breaker, disabled marker), the rendered shared Cursor rule, the staged MCP adapters whose activation is still parked, nonportable capabilities, restart acceptance and rollback.
 - [lazylibrarian-epub-metadata.md](runbooks/lazylibrarian-epub-metadata.md) — gated metadata removal, inventories, collision Holds, staged Jobs and verified backup restore.
 - [self-hosted-runners.md](runbooks/self-hosted-runners.md) — private-only repository-scoped ARC runners: App credentials, isolated worker pools, workflow cutover, rotation and scaling.
 - [plex-tonight.md](runbooks/plex-tonight.md) — refresh private Plex watch history and library evidence for movies, new shows, and series to resume.

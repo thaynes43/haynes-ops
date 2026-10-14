@@ -38,8 +38,10 @@ The supervisor retries failures with 15/30/45/60 second delays, stops after five
 short failures, and resets that count only after a ten-minute run. A failed
 `agent status` check only consumes that retry budget (it may be a network blip);
 a missing login file stops recovery and requires the human browser login flow.
-SIGTERM stops the worker child at once, including during a backoff delay. The
-log rotates once at 10 MiB to `worker.log.1` on the next `up`. No automation,
+A failed status check at boot is treated the same way. SIGTERM stops the worker
+child at once, including during a backoff delay. Past 10 MiB the log is
+copy-truncated to `worker.log.1`, checked at `up`, before each worker start and
+every five minutes while the worker runs. No automation,
 model task, MCP discovery, fleet, desktop share, or new credential is started.
 
 ```sh

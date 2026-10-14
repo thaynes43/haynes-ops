@@ -143,6 +143,27 @@ class SupervisorTests(unittest.TestCase):
             self.assertEqual(self.run_supervisor(env).returncode, 0)
             self.assertEqual(self.starts(home), 1)
 
+    def test_log_is_copy_truncated_before_each_start(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home, env = self.prepare(Path(directory),
+                                     'touch "$HOME/.local/state/dev-env-cursor/disabled"; exit 0')
+            env['CURSOR_WORKER_LOG_MAX_BYTES'] = '50'
+            state = home / '.local/state/dev-env-cursor'; state.mkdir(parents=True)
+            (state / 'worker.log').write_text('x' * 100)
+            self.assertEqual(self.run_supervisor(env).returncode, 0)
+            self.assertEqual((state / 'worker.log.1').read_text(), 'x' * 100)
+            self.assertEqual((state / 'worker.log').read_text(), '')
+
+    def test_failed_status_at_boot_still_starts_worker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home, env = self.prepare(Path(directory),
+                                     'touch "$HOME/.local/state/dev-env-cursor/disabled"; exit 0')
+            (home / 'auth-ok').unlink()
+            result = self.run_supervisor(env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(self.starts(home), 1)
+            self.assertIn('authentication check failed; starting', result.stdout)
+
     def test_logged_out_never_starts_worker(self):
         with tempfile.TemporaryDirectory() as directory:
             home, env = self.prepare(Path(directory), 'exit 0', logged_in=False)

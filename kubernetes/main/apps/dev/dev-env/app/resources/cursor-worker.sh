@@ -12,7 +12,9 @@ WORKSPACE="$HOME/cursor/haynes-ops"
 STATE="$HOME/.local/state/dev-env-cursor"
 VERSIONS="$HOME/.local/share/cursor-agent/versions"
 BIN="$VERSIONS/$VERSION/cursor-agent"
-BACKOFF="${CURSOR_WORKER_BACKOFF_SECONDS:-15}"  # override only in offline fixtures
+# Overrides exist only for offline fixtures.
+BACKOFF="${CURSOR_WORKER_BACKOFF_SECONDS:-15}"
+LOG_MAX="${CURSOR_WORKER_LOG_MAX_BYTES:-10485760}"
 mkdir -p "$STATE" "$HOME/.local/bin"
 log() { printf 'cursor-worker: %s %s\n' "$(date -u +%FT%TZ)" "$*"; }
 
@@ -58,6 +60,14 @@ prepare_workspace() {
   python3 "$HERE/cursor-config.py" --workspace "$WORKSPACE"
 }
 
+# Copy-truncate: the tmux launch holds worker.log open with O_APPEND, so a rename
+# would keep the live writer on the old inode. A few lines may be lost per rotation.
+rotate_log() {
+  local log="$STATE/worker.log"
+  [ -f "$log" ] && [ "$(wc -c <"$log")" -gt "$LOG_MAX" ] || return 0
+  cp -f "$log" "$log.1" && : >"$log"
+}
+
 authenticated() {
   # Read status through the vendor CLI; never parse or copy auth.json ourselves.
   "$BIN" status --format json 2>/dev/null | python3 -c \
@@ -70,10 +80,7 @@ case "${1:-status}" in
       log "session already exists: $SESSION (inspect status; never replace a live pilot)"
       exit 0
     fi
-    # Keep one previous log; the worker's own output shares this file.
-    if [ -f "$STATE/worker.log" ] && [ "$(wc -c <"$STATE/worker.log")" -gt 10485760 ]; then
-      mv -f "$STATE/worker.log" "$STATE/worker.log.1"
-    fi
+    rotate_log
     printf -v launch 'exec bash %q run >>%q 2>&1' "$HERE/cursor-worker.sh" "$STATE/worker.log"
     tmux new-session -d -s "$SESSION" "$launch"
     log "launched $SESSION; log: $STATE/worker.log"
@@ -84,18 +91,27 @@ case "${1:-status}" in
     [ ! -f "$STATE/disabled" ] || { log 'disabled by persistent operator marker'; exit 0; }
     install_cli
     prepare_workspace
-    [ -s "$HOME/.config/cursor/auth.json" ] && authenticated || {
+    [ -s "$HOME/.config/cursor/auth.json" ] || {
       log 'browser login required: NO_OPEN_BROWSER=1 agent login (no automatic pairing)'; exit 0;
     }
+    # A failed status call right after boot may be a DNS/network blip: let the
+    # bounded retry budget below cover it instead of leaving the worker down.
+    authenticated || log 'authentication check failed; starting within the circuit breaker'
     # Worker identity/data and browser login remain on the existing home PVC.
     # One process is not a concurrency limit: My Machines supports shared claims.
     child=''
+    # Bounds the log during a long worker run; closes the lock fd so an orphaned
+    # watcher can never block a later supervisor.
+    ( exec 9>&-; while sleep 300; do rotate_log; done ) >/dev/null 2>&1 &
+    watcher=$!
     stop() {
       [ -z "$child" ] || { kill -TERM "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; }
     }
+    trap 'kill "$watcher" 2>/dev/null || true' EXIT
     trap 'stop; exit 0' TERM INT
     failures=0
     while [ ! -f "$STATE/disabled" ]; do
+      rotate_log
       started="$(date +%s)"
       "$BIN" worker --name "$NAME" --worker-dir "$WORKSPACE" \
         --data-dir "$HOME/.local/share/cursor-agent" --idle-release-timeout 0 start &
