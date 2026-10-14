@@ -134,6 +134,7 @@ spec:
               - matchName: "downloads.cursor.com"
               - matchName: "api2.cursor.sh"
               - matchName: "api2direct.cursor.sh"
+              - matchName: "agentn.global.api5.cursor.sh"
               # OpenAI: Codex API + ChatGPT-plan auth/backend
               - matchName: "openai.com"
               - matchPattern: "*.openai.com"
@@ -514,6 +515,7 @@ spec:
         - matchName: "downloads.cursor.com"
         - matchName: "api2.cursor.sh"
         - matchName: "api2direct.cursor.sh"
+        - matchName: "agentn.global.api5.cursor.sh"
         - matchName: "openai.com"
         - matchPattern: "*.openai.com"
         - matchName: "chatgpt.com"
