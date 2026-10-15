@@ -257,10 +257,23 @@ spec:
             - bash
             - -ec
             - >-
-              until test "$(psql "$DATABASE_URL" -qtAX -v ON_ERROR_STOP=1
-              -c 'SELECT EXISTS (SELECT 1 FROM public.schema_migrations)'
-              2>/dev/null)" = t; do sleep 3; done;
-              exec /app/docker/prod/wait-for-db
+              for attempt in $(seq 1 200); do
+              if schema_state="$(psql "$DATABASE_URL" -qtAX -v ON_ERROR_STOP=1
+              -c 'SELECT EXISTS (SELECT 1 FROM public.schema_migrations)' 2>&1)";
+              then
+                if test "$schema_state" = t; then exec /app/docker/prod/wait-for-db; fi;
+                echo "Waiting for initial schema import ($attempt/200)" >&2;
+              else
+                case "$schema_state" in
+                  *"password authentication failed"*) echo 'Database authentication failed' >&2; exit 1;;
+                  *"database"*"does not exist"*) echo 'Configured database does not exist' >&2; exit 1;;
+                  *) echo "Waiting for database/schema availability ($attempt/200)" >&2;;
+                esac;
+              fi;
+              sleep 3;
+              done;
+              echo 'Database schema did not become ready within 10 minutes' >&2;
+              exit 1
         containers:
           app:
             image:
