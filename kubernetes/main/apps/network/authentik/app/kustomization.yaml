@@ -10,6 +10,7 @@ resources:
   - ./configmap.yaml
   - ./helmrelease.yaml
   - ./middleware.yaml
+  - ./openproject-networkpolicy.yaml
   - ./ingressroute.yaml
 # PLAN-011 Phase 1 — Authentik config-as-code baseline blueprints, delivered as a
 # ConfigMap the Helm chart mounts onto the worker at /blueprints/mounted/cm-authentik-
@@ -56,6 +57,7 @@ configMapGenerator:
       - blueprints/80-infra-admin-gate.yaml
       - blueprints/90-cigar-journal-oidc.yaml
       - blueprints/95-haynes-quest-oidc.yaml
+      - blueprints/96-openproject-private.yaml
   # PLAN-042 Option A — CSS-nesting lowering of the served web assets (old-WebKit
   # login crash, upstream goauthentik#19814 / WebKit #290102). The server pod's
   # web-dist-lower initContainer (helmrelease.yaml) runs this script over a copy

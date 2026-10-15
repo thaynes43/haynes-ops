@@ -1,0 +1,147 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: openproject
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/instance: openproject
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: network
+        app.kubernetes.io/instance: traefik-internal-network
+    toPorts:
+    - ports:
+      - port: '8081'
+        protocol: TCP
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: dev
+        app.kubernetes.io/name: dev-env
+    toPorts:
+    - ports:
+      - port: '8082'
+        protocol: TCP
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: frontend
+        app.kubernetes.io/instance: openproject
+    toPorts:
+    - ports:
+      - port: '11211'
+        protocol: TCP
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: '53'
+        protocol: ANY
+      rules:
+        dns:
+        - matchName: openproject-db-rw.frontend.svc.cluster.local
+        - matchName: openproject-cache.frontend.svc.cluster.local
+        - matchName: ak-outpost-openproject-proxy.network.svc.cluster.local
+        - matchName: ak-outpost-openproject-ldap.network.svc.cluster.local
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: frontend
+        cnpg.io/cluster: openproject-db
+    toPorts:
+    - ports:
+      - port: '5432'
+        protocol: TCP
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: frontend
+        app.kubernetes.io/instance: openproject
+        app.kubernetes.io/controller: cache
+    toPorts:
+    - ports:
+      - port: '11211'
+        protocol: TCP
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: network
+        goauthentik.io/outpost-name: openproject-proxy
+    toPorts:
+    - ports:
+      - port: '9000'
+        protocol: TCP
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: network
+        goauthentik.io/outpost-name: openproject-ldap
+    toPorts:
+    - ports:
+      - port: '6636'
+        protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: openproject-database
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: openproject-db
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: frontend
+        app.kubernetes.io/instance: openproject
+    toPorts:
+    - ports:
+      - port: '5432'
+        protocol: TCP
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: database
+        app.kubernetes.io/name: cloudnative-pg
+    toPorts:
+    - ports:
+      - port: '8000'
+        protocol: TCP
+      - port: '5432'
+        protocol: TCP
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: observability
+        app.kubernetes.io/name: prometheus
+    toPorts:
+    - ports:
+      - port: '9187'
+        protocol: TCP
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: '53'
+        protocol: ANY
+      rules:
+        dns:
+        - matchName: s3.us-east-2.amazonaws.com
+        - matchName: cnpg-haynesops.s3.us-east-2.amazonaws.com
+        - matchName: kubernetes.default.svc.cluster.local
+  - toEntities:
+    - kube-apiserver
+    toPorts:
+    - ports:
+      - port: '443'
+        protocol: TCP
+      - port: '6443'
+        protocol: TCP
+  - toFQDNs:
+    - matchName: s3.us-east-2.amazonaws.com
+    - matchName: cnpg-haynesops.s3.us-east-2.amazonaws.com
+    toPorts:
+    - ports:
+      - port: '443'
+        protocol: TCP

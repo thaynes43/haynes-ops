@@ -1,0 +1,80 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: openproject-proxy-outpost
+  namespace: network
+spec:
+  endpointSelector:
+    matchLabels:
+      goauthentik.io/outpost-name: openproject-proxy
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: frontend
+        app.kubernetes.io/instance: openproject
+    toPorts:
+    - ports:
+      - port: '9000'
+        protocol: TCP
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: '53'
+        protocol: ANY
+      rules:
+        dns:
+        - matchName: authentik-server.network.svc.cluster.local
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: network
+        app.kubernetes.io/name: authentik
+        app.kubernetes.io/component: server
+    toPorts:
+    - ports:
+      - port: '9000'
+        protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: openproject-ldap-outpost
+  namespace: network
+spec:
+  endpointSelector:
+    matchLabels:
+      goauthentik.io/outpost-name: openproject-ldap
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: frontend
+        app.kubernetes.io/instance: openproject
+    toPorts:
+    - ports:
+      - port: '6636'
+        protocol: TCP
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: '53'
+        protocol: ANY
+      rules:
+        dns:
+        - matchName: authentik-server.network.svc.cluster.local
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: network
+        app.kubernetes.io/name: authentik
+        app.kubernetes.io/component: server
+    toPorts:
+    - ports:
+      - port: '9000'
+        protocol: TCP
