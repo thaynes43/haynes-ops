@@ -62,7 +62,7 @@ spec:
             - name: scan
               # Docker Hub mirror; lscr.io/quay are not on the allowlisted-registry
               # Kyverno policy. Same image the SAB scratch janitors use.
-              image: docker.io/curlimages/curl:8.22.0
+              image: docker.io/curlimages/curl:8.23.0
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
