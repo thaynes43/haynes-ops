@@ -33,7 +33,7 @@ Cloudflare route, external ingress or forwarded port is part of this change.
 
 Humans authenticate through the existing Authentik/MFA path. The new single-app
 proxy provider initially admits only the existing `authentik Admins` group;
-owner approval is required for that exact initial group. No memberships change.
+Tom approved that exact initial group on 2026-10-15. No memberships change.
 NGINX captures identity only from the successful outpost response, validates the
 login shape, overwrites inbound assertions and appends its protected shared
 secret. The app's optional-header mode is disabled, login is required and user
@@ -77,13 +77,19 @@ requires a shorter revocation bound, set and verify that bound before use.
 ## Required action-time approvals and provisioning
 
 The deployment authorization covers ordinary GitOps authoring, PRs and validation.
-The following concrete security/credential actions remain gated:
+Tom approved the following exact scope on 2026-10-15. The 1Password Connect
+token is read-only (item creation returned HTTP 403); populate the dedicated
+item securely in 1Password before merge. No other credential flow is authorized:
 
 1. Create only `HaynesKube/openproject` using the approved 1Password Connect flow,
    with generated `DB_PASSWORD` (hex/URI-safe), `SECRET_KEY_BASE`, `HEADER_SECRET` (exactly 64 random hexadecimal characters),
    `BOOTSTRAP_ADMIN_PASSWORD`, and `LDAP_BIND_PASSWORD`; store the public
-   `LDAP_CA_CERT` after certificate creation. No raw value is printed or committed.
-   ExternalSecrets deliver dedicated app and CNPG basic-auth Secrets. No unrelated
+   `LDAP_CA_CERT` after certificate creation. Add `API_TOKEN` as `opapi-` followed
+   by 64 random hex characters for the restricted bot. No raw value is printed or committed.
+   ExternalSecrets deliver dedicated app, CNPG basic-auth and bot Secrets. The
+   bot token is mounted only in the web app for stock token provisioning and
+   delivered separately to `dev/openproject-agent` for in-pod API use. No dev-env
+   deployment/env/mount change or restart is required. No unrelated
    application credential is reused.
 2. Apply only `96-openproject-private.yaml`: new app/proxy/LDAP providers, dedicated
    service bind flow/account, provider-scoped search permission, app policies and
@@ -100,8 +106,20 @@ The following concrete security/credential actions remain gated:
    restic suffix `/openproject-assets`. No bucket/credential/retention change for
    other applications. Provision one named non-admin app writer and one reviewer
    role after startup, with API material stored through 1Password; workers cannot
-   approve their own work. Get the concrete identity/role/token scope approval
-   before creating those persistent identities/tokens.
+   approve their own work. Tom approved `openproject-agent`, limited to the managed project, without
+   deletion, approval or acceptance rights. Store its API token as `API_TOKEN`
+   in the same dedicated item; never reuse a human credential.
+
+After blueprint and ExternalSecret reconciliation, execute the stock Authentik
+shell with `scripts/openproject/provision-ldap-bind.py` on stdin. It reads only
+`network/openproject-ldap-bind` in the container and creates the dedicated
+app-password. It prints metadata only and refuses mismatched existing tokens.
+The script does not modify existing users, flows or passwords. Verify the bind
+before accepting any human login. LDAP fails closed while the token is absent.
+
+The LDAP public certificate was verified with OpenSSL against the dedicated
+service hostname; its private key remains only in Authentik. Temporary credential
+provisioning Jobs/policies were removed after the read-only Connect result.
 
 These actions are prerequisites, not permission to mark the service ready. The PR
 must remain unmerged until the requisite approvals and 1Password fields/certificate
@@ -149,3 +167,11 @@ exit status alone.
   commits, preserves original Markdown/IDs/dependencies/pauses/provenance and runs
   idempotent upserts. Imported work never authorizes execution. Preserve #991/#992
   pauses and the Chapter7 boundary.
+
+The reviewable work-model contract is `scripts/openproject/work-model.json`.
+It is not a bootstrap completion receipt. In particular, native status workflow
+validation needs live HTTP negative tests for creation in Approved/Accepted and
+simultaneous type/status changes, as well as ordinary transitions. Do not claim
+that worker restrictions are enforced from workflow rows or a hidden UI control
+alone. If a native API bypass exists, stop readiness and report the exact result;
+do not silently weaken the requirement or patch application source.

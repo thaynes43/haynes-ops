@@ -11,6 +11,7 @@ resources:
   - ./externalsecret-cursor.yaml
   - ./networkpolicy.yaml
   - ./openproject-api-networkpolicy.yaml
+  - ./openproject-agent-externalsecret.yaml
   - ./ingressroute.yaml
   - ./helmrelease.yaml
 configMapGenerator:

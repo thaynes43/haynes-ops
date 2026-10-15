@@ -20,6 +20,10 @@ spec:
       retries: 2
   values:
     defaultPodOptions:
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       automountServiceAccountToken: false
       securityContext:
         fsGroup: 1000
@@ -340,6 +344,14 @@ spec:
           memcache:
             port: 11211
     persistence:
+      agent-credentials:
+        type: secret
+        name: openproject-agent-secret
+        advancedMounts:
+          web:
+            app:
+            - path: /run/openproject-agent
+              readOnly: true
       assets:
         existingClaim: openproject-assets
         advancedMounts:

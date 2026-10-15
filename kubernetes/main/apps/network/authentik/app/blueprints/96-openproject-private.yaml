@@ -1,7 +1,8 @@
 # OpenProject Community header SSO. Additive, private app only.
 # SECURITY GATE: do not merge until the owner approves this exact identity scope,
-# the OpenProject LDAP certificate and service app-password are provisioned,
-# and 1Password/openproject contains the required fields. Never embed secrets.
+# the OpenProject LDAP certificate exists and 1Password/openproject contains
+# the required fields. Provision the app-password immediately after ESO and
+# blueprint sync; LDAP remains fail-closed until then. Never embed secrets.
 version: 1
 metadata:
   name: openproject-private
@@ -133,6 +134,10 @@ entries:
         kubernetes_json_patches:
           deployment:
             - op: add
+              path: /spec/template/spec/dnsConfig
+              value:
+                options: [{name: ndots, value: "1"}]
+            - op: add
               path: /spec/template/spec/automountServiceAccountToken
               value: false
             - op: add
@@ -157,6 +162,10 @@ entries:
         kubernetes_disabled_components: [ingress]
         kubernetes_json_patches:
           deployment:
+            - op: add
+              path: /spec/template/spec/dnsConfig
+              value:
+                options: [{name: ndots, value: "1"}]
             - op: add
               path: /spec/template/spec/automountServiceAccountToken
               value: false
