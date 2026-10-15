@@ -44,7 +44,7 @@ spec:
               RAILS_ENV: production
               BIND: 127.0.0.1
               PORT: '8080'
-              OPENPROJECT_HOST__NAME: work.haynesops.com
+              OPENPROJECT_HOST__NAME: work.haynesnetwork.com
               OPENPROJECT_HTTPS: 'true'
               OPENPROJECT_HSTS: 'true'
               OPENPROJECT_LOG__LEVEL: warn
@@ -57,7 +57,7 @@ spec:
               OPENPROJECT_WEB__MAX__THREADS: '4'
               OPENPROJECT_AUTH__SOURCE__SSO_HEADER: X-Authenticated-User
               OPENPROJECT_AUTH__SOURCE__SSO_OPTIONAL: 'false'
-              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesops.com/outpost.goauthentik.io/sign_out
+              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesnetwork.com/outpost.goauthentik.io/sign_out
               OPENPROJECT_SEED__ADMIN__USER__LOCKED: 'true'
               OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET: 'false'
               OPENPROJECT_SEED__LOCALE: en
@@ -93,7 +93,7 @@ spec:
               RAILS_ENV: production
               BIND: 127.0.0.1
               PORT: '8080'
-              OPENPROJECT_HOST__NAME: work.haynesops.com
+              OPENPROJECT_HOST__NAME: work.haynesnetwork.com
               OPENPROJECT_HTTPS: 'true'
               OPENPROJECT_HSTS: 'true'
               OPENPROJECT_LOG__LEVEL: warn
@@ -106,7 +106,7 @@ spec:
               OPENPROJECT_WEB__MAX__THREADS: '4'
               OPENPROJECT_AUTH__SOURCE__SSO_HEADER: X-Authenticated-User
               OPENPROJECT_AUTH__SOURCE__SSO_OPTIONAL: 'false'
-              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesops.com/outpost.goauthentik.io/sign_out
+              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesnetwork.com/outpost.goauthentik.io/sign_out
               OPENPROJECT_SEED__ADMIN__USER__LOCKED: 'true'
               OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET: 'false'
               OPENPROJECT_SEED__LOCALE: en
@@ -141,7 +141,7 @@ spec:
                     - sh
                     - -ec
                     - 'test "$(curl --silent --max-time 4 --output /dev/null --write-out
-                      ''%{http_code}'' -H ''Host: work.haynesops.com'' -H ''X-Forwarded-Proto:
+                      ''%{http_code}'' -H ''Host: work.haynesnetwork.com'' -H ''X-Forwarded-Proto:
                       https'' http://127.0.0.1:8080/health_checks/web)" = 200'
                   periodSeconds: 10
                   timeoutSeconds: 5
@@ -155,7 +155,7 @@ spec:
                     - sh
                     - -ec
                     - 'test "$(curl --silent --max-time 4 --output /dev/null --write-out
-                      ''%{http_code}'' -H ''Host: work.haynesops.com'' -H ''X-Forwarded-Proto:
+                      ''%{http_code}'' -H ''Host: work.haynesnetwork.com'' -H ''X-Forwarded-Proto:
                       https'' http://127.0.0.1:8080/health_checks/web)" = 200'
                   periodSeconds: 10
                   timeoutSeconds: 5
@@ -169,7 +169,7 @@ spec:
                     - sh
                     - -ec
                     - 'test "$(curl --silent --max-time 4 --output /dev/null --write-out
-                      ''%{http_code}'' -H ''Host: work.haynesops.com'' -H ''X-Forwarded-Proto:
+                      ''%{http_code}'' -H ''Host: work.haynesnetwork.com'' -H ''X-Forwarded-Proto:
                       https'' http://127.0.0.1:8080/health_checks/web)" = 200'
                   periodSeconds: 15
                   timeoutSeconds: 5
@@ -222,7 +222,7 @@ spec:
               RAILS_ENV: production
               BIND: 127.0.0.1
               PORT: '8080'
-              OPENPROJECT_HOST__NAME: work.haynesops.com
+              OPENPROJECT_HOST__NAME: work.haynesnetwork.com
               OPENPROJECT_HTTPS: 'true'
               OPENPROJECT_HSTS: 'true'
               OPENPROJECT_LOG__LEVEL: warn
@@ -235,7 +235,7 @@ spec:
               OPENPROJECT_WEB__MAX__THREADS: '4'
               OPENPROJECT_AUTH__SOURCE__SSO_HEADER: X-Authenticated-User
               OPENPROJECT_AUTH__SOURCE__SSO_OPTIONAL: 'false'
-              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesops.com/outpost.goauthentik.io/sign_out
+              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesnetwork.com/outpost.goauthentik.io/sign_out
               OPENPROJECT_SEED__ADMIN__USER__LOCKED: 'true'
               OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET: 'false'
               OPENPROJECT_SEED__LOCALE: en
@@ -264,7 +264,7 @@ spec:
               RAILS_ENV: production
               BIND: 127.0.0.1
               PORT: '8080'
-              OPENPROJECT_HOST__NAME: work.haynesops.com
+              OPENPROJECT_HOST__NAME: work.haynesnetwork.com
               OPENPROJECT_HTTPS: 'true'
               OPENPROJECT_HSTS: 'true'
               OPENPROJECT_LOG__LEVEL: warn
@@ -277,7 +277,7 @@ spec:
               OPENPROJECT_WEB__MAX__THREADS: '4'
               OPENPROJECT_AUTH__SOURCE__SSO_HEADER: X-Authenticated-User
               OPENPROJECT_AUTH__SOURCE__SSO_OPTIONAL: 'false'
-              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesops.com/outpost.goauthentik.io/sign_out
+              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesnetwork.com/outpost.goauthentik.io/sign_out
               OPENPROJECT_SEED__ADMIN__USER__LOCKED: 'true'
               OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET: 'false'
               OPENPROJECT_SEED__LOCALE: en

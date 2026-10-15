@@ -11,7 +11,7 @@ spec:
   - fromEndpoints:
     - matchLabels:
         io.kubernetes.pod.namespace: network
-        app.kubernetes.io/instance: traefik-internal-network
+        app.kubernetes.io/instance: traefik-external-network
     toPorts:
     - ports:
       - port: '8081'

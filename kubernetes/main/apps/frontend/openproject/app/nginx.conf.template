@@ -21,7 +21,7 @@ http {
     }
     server {
         listen 0.0.0.0:8081;
-        server_name work.haynesops.com;
+        server_name work.haynesnetwork.com;
         location / {
             auth_request /outpost.goauthentik.io/auth/nginx;
             error_page 401 = @signin;
@@ -29,8 +29,10 @@ http {
             auth_request_set $op_login $upstream_http_x_authentik_username;
             add_header Set-Cookie $auth_cookie;
             proxy_pass $op_upstream;
-            proxy_set_header Host work.haynesops.com;
+            proxy_set_header Host work.haynesnetwork.com;
             proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Forwarded-Host work.haynesnetwork.com;
+            proxy_set_header X-Forwarded-Port 443;
             proxy_set_header X-Authenticated-User "$op_login:@@HEADER_SECRET@@";
             proxy_set_header X-Remote-User "";
             proxy_set_header Remote-User "";
@@ -40,8 +42,8 @@ http {
         }
         location /outpost.goauthentik.io {
             proxy_pass http://ak-outpost-openproject-proxy.network.svc.cluster.local:9000;
-            proxy_set_header Host work.haynesops.com;
-            proxy_set_header X-Original-URL https://work.haynesops.com$request_uri;
+            proxy_set_header Host work.haynesnetwork.com;
+            proxy_set_header X-Original-URL https://work.haynesnetwork.com$request_uri;
             proxy_set_header X-Authenticated-User "";
             proxy_set_header X-Remote-User "";
             proxy_set_header X-authentik-username "";
@@ -51,7 +53,7 @@ http {
         location @signin {
             internal;
             add_header Set-Cookie $auth_cookie;
-            return 302 /outpost.goauthentik.io/start?rd=https://work.haynesops.com$request_uri;
+            return 302 /outpost.goauthentik.io/start?rd=https://work.haynesnetwork.com$request_uri;
         }
     }
     server {
@@ -60,8 +62,10 @@ http {
         location /api/v3/ {
             if ($http_authorization !~ "^Bearer ") { return 401; }
             proxy_pass http://127.0.0.1:8080;
-            proxy_set_header Host work.haynesops.com;
+            proxy_set_header Host work.haynesnetwork.com;
             proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header X-Forwarded-Host work.haynesnetwork.com;
+            proxy_set_header X-Forwarded-Port 443;
             proxy_set_header Authorization $http_authorization;
             proxy_set_header Cookie "";
             proxy_set_header X-Authenticated-User "";

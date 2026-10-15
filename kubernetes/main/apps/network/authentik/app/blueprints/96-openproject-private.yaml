@@ -1,4 +1,5 @@
-# OpenProject Community header SSO. Additive, private app only.
+# OpenProject Community header SSO. Publicly reachable, Authentik/MFA required.
+# Tom approved work.haynesnetwork.com on 2026-10-15; backend/API stay private.
 # SECURITY GATE: do not merge until the owner approves this exact identity scope,
 # the OpenProject LDAP certificate exists and 1Password/openproject contains
 # the required fields. Provision the app-password immediately after ESO and
@@ -7,7 +8,7 @@ version: 1
 metadata:
   name: openproject-private
   labels:
-    blueprints.goauthentik.io/description: 'Private OpenProject header SSO + LDAP lookup; no second human password.'
+    blueprints.goauthentik.io/description: 'OpenProject header SSO + LDAP lookup; Authentik Admins only, no second human password.'
 entries:
   - model: authentik_core.user
     id: openproject-ldap-user
@@ -94,7 +95,7 @@ entries:
     identifiers:
       name: openproject
     attrs:
-      external_host: https://work.haynesops.com
+      external_host: https://work.haynesnetwork.com
       mode: forward_single
       access_token_validity: minutes=5
       authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
@@ -109,7 +110,7 @@ entries:
       name: OpenProject
       provider: !KeyOf openproject-proxy-provider
       policy_engine_mode: any
-      meta_launch_url: https://work.haynesops.com
+      meta_launch_url: https://work.haynesnetwork.com
   - model: authentik_policies.policybinding
     identifiers:
       target: !KeyOf openproject-application

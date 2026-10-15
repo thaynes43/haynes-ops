@@ -25,11 +25,17 @@ identity/credential prerequisites below exist, required CI passes and relevant
 review findings are resolved. Never deploy reachable `admin/admin`; the seeded
 administrator has a generated password and is locked from creation.
 
-## Private authentication and API
+## Authenticated browser access and private API
 
-`https://work.haynesops.com` uses internal Traefik, the existing
-`certificate-haynesops`, and UniFi internal DNS → 192.168.40.203. No public DNS,
-Cloudflare route, external ingress or forwarded port is part of this change.
+`https://work.haynesnetwork.com` follows the established external ingress pattern:
+external-dns creates the proxied hostname toward `ingress-ext.haynesnetwork.com`,
+the existing tunnel's domain rule delivers to external Traefik, and the existing
+`certificate-haynesnetwork` covers TLS. Tom explicitly approved this Internet
+reachability on 2026-10-15 at 21:03 UTC so lab users can work without VPN. It
+supersedes the earlier LAN/VPN-only `haynesops.com` direction for this app.
+No tunnel, wildcard-route or shared gateway configuration is changed. Only this
+exact Host rule reaches the browser gateway, which checks Authentik before any
+application content. The Rails backend, database, LDAP and bot API stay private.
 
 Humans authenticate through the existing Authentik/MFA path. The new single-app
 proxy provider initially admits only the existing `authentik Admins` group;
@@ -101,9 +107,11 @@ item securely in 1Password before merge. No other credential flow is authorized:
    dedicated 1Password field and its provider certificate through stock Authentik
    interfaces. Add only the required name attributes if absent. Do not modify
    existing human identities' passwords, identifiers, groups or MFA flows.
-3. Apply the exact new private ingress/internal DNS and Cilium policies in this
-   PR. The only admitted browser source is internal Traefik; the only bot source
-   is dev-env. No public path or general unauthenticated API bypass is authorized.
+3. Apply the exact new external browser ingress/DNS and Cilium policies in this
+   PR, approved by Tom at 21:03 UTC. The only admitted browser source is external
+   Traefik; the only bot source remains dev-env. The Internet path must pass
+   Authentik/MFA and the unchanged `authentik Admins` policy. No anonymous app
+   content, public bot route or general API authentication exemption is allowed.
 4. Deliver existing approved `aws`/`volsync-hayesops` backup credentials to this
    application's backup controllers only, writing a dedicated Barman server prefix
    `openproject-postgres17-v1` in the existing `cnpg-haynesops` bucket and a distinct
@@ -165,7 +173,8 @@ exit status alone.
 - Fresh Authentik login → named user via real LDAP provisioning; second access
   reuses the record, no local password prompt, no anonymous project visibility.
 - Forged/missing/duplicate identity, Alice-to-Bob spoof, direct Pod listener,
-  unapproved Pod, external ingress and wildcard tunnel paths fail. Verify logout
+  unapproved Pod and alternate/wildcard Host paths fail. Unauthenticated Internet
+  requests get only the Authentik sign-in path, never work content. Verify logout
   and the documented revocation/cache boundary.
 - Named restricted bot: real HTTP create/read/update/comment/status/parent/link/
   attachment/activity and stale `lockVersion` conflict tests. Create only a

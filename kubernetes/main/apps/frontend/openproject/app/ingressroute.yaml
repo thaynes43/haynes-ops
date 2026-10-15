@@ -4,17 +4,17 @@ kind: IngressRoute
 metadata:
   name: openproject
   annotations:
-    kubernetes.io/ingress.class: traefik-internal
-    external-dns.kubernetes.io/target: 192.168.40.203
+    kubernetes.io/ingress.class: traefik-external
+    external-dns.kubernetes.io/target: ingress-ext.haynesnetwork.com
 spec:
   entryPoints:
   - websecure
   routes:
   - kind: Rule
-    match: Host(`work.haynesops.com`) && PathPrefix(`/`)
+    match: Host(`work.haynesnetwork.com`) && PathPrefix(`/`)
     services:
     - kind: Service
       name: openproject-web
       port: 8081
   tls:
-    secretName: certificate-haynesops
+    secretName: certificate-haynesnetwork
