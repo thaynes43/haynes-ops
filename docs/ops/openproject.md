@@ -80,7 +80,7 @@ The deployment authorization covers ordinary GitOps authoring, PRs and validatio
 The following concrete security/credential actions remain gated:
 
 1. Create only `HaynesKube/openproject` using the approved 1Password Connect flow,
-   with generated `DB_PASSWORD` (hex/URI-safe), `SECRET_KEY_BASE`, `HEADER_SECRET`,
+   with generated `DB_PASSWORD` (hex/URI-safe), `SECRET_KEY_BASE`, `HEADER_SECRET` (exactly 64 random hexadecimal characters),
    `BOOTSTRAP_ADMIN_PASSWORD`, and `LDAP_BIND_PASSWORD`; store the public
    `LDAP_CA_CERT` after certificate creation. No raw value is printed or committed.
    ExternalSecrets deliver dedicated app and CNPG basic-auth Secrets. No unrelated

@@ -3,6 +3,8 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: openproject
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled
 spec:
   interval: 30m
   chartRef:
@@ -175,9 +177,13 @@ spec:
             command:
             - sh
             - -ec
-            - mkdir -p /tmp/client_body /tmp/proxy; sed "s/@@HEADER_SECRET@@/$HEADER_SECRET/g"
-              /config/nginx.conf.template > /tmp/nginx.conf; nginx -t -c /tmp/nginx.conf;
-              exec nginx -c /tmp/nginx.conf -g "daemon off;"
+            - 'case "$HEADER_SECRET" in ''''|*[!0-9a-fA-F]*) echo ''HEADER_SECRET
+              must be hexadecimal'' >&2; exit 1;; esac; test "${#HEADER_SECRET}" -eq
+              64 || { echo ''HEADER_SECRET must contain 64 hex characters'' >&2; exit
+              1; }; umask 077; mkdir -p /tmp/client_body /tmp/proxy /tmp/fastcgi /tmp/uwsgi
+              /tmp/scgi; sed "s/@@HEADER_SECRET@@/$HEADER_SECRET/g" /config/nginx.conf.template
+              > /tmp/nginx.conf; nginx -t -c /tmp/nginx.conf; exec nginx -c /tmp/nginx.conf
+              -g ''daemon off;'' '
             env:
               HEADER_SECRET:
                 valueFrom:
