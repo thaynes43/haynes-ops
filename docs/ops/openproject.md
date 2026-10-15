@@ -136,7 +136,19 @@ dedicated app-password, prints metadata only, and refuses mismatched tokens.
 Neither existing Authentik nor dev-env may read Secrets directly; no new RBAC or
 server restart is needed. Verify the bind before accepting human login. LDAP
 fails closed while the token is absent. Remove the one-time Job and its scoped
-API-only policy after completion.
+API-only policy after completion:
+
+```sh
+kubectl -n dev delete job,ciliumnetworkpolicy openproject-ldap-bind-init
+```
+
+The Job uses the existing dev-env operator authority within the approved dedicated
+OpenProject provisioning scope; it creates no service account, Role or binding.
+Before readiness, remove `openproject-ldap-externalsecret.yaml` from its GitOps
+resources and delete the file through a reviewed follow-up PR. Reconcile dev-env
+and verify the ExternalSecret and its owned Secret are absent. The authoritative
+bind credential remains in 1Password and Authentik; do not delete either. A future
+explicit rotation can temporarily reintroduce the same dedicated delivery flow.
 
 Verify the public LDAP certificate before storing it in 1Password:
 
