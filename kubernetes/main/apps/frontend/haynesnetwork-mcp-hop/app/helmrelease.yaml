@@ -54,7 +54,7 @@ spec:
               # nginx-unprivileged: same entrypoint/template mechanism as the stock image, built
               # for uid 101 with a :8080 listener (conf.d is not root-owned).
               repository: docker.io/nginxinc/nginx-unprivileged
-              tag: 1.31.6-alpine
+              tag: 1.31.7-alpine
             env:
               NGINX_ENVSUBST_FILTER: "^HNET_MCP_HOP_TOKEN$"
               HNET_MCP_HOP_TOKEN:
