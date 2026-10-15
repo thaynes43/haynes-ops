@@ -96,11 +96,15 @@ item securely in 1Password before merge. No other credential flow is authorized:
    committed. ExternalSecrets deliver app, CNPG basic-auth and the one-time
    LDAP provisioning Job's dedicated bind Secret. No unrelated application
    credential is reused.
-   Reserve `API_TOKEN` (`opapi-` followed by 64 random hex characters) in the same
-   item for the later restricted bot setup. Its delivery is held: no bot token
-   mount or dev-env Secret-read grant is deployed by this PR. Choose an approved
-   token-only consumer before enabling the bot; do not use exec into the web
-   container as the bot's credential path. No dev-env restart is authorized.
+   Add `API_TOKEN` (`opapi-` followed by 64 random hex characters) in the same
+   item. It is delivered only to the dedicated `dev/openproject-agent-credentials`
+   helper, which has no service, network access, Kubernetes token or other secret.
+   `scripts/openproject/agent-api.py` runs inside existing dev-env and captures
+   only that token file through its existing approved `pods/exec` capability,
+   in process memory, then authenticates to the fixed private API origin. It
+   follows no redirects and never prints or stores the token. No dev-env
+   Secret-read grant, mount/env change or restart is required. Do not exec into
+   the application web container to obtain the bot credential.
 2. Apply only `96-openproject-private.yaml`: new app/proxy/LDAP providers, dedicated
    service bind flow/account, provider-scoped search permission, app policies and
    two dedicated outposts. Generate the LDAP service app-password to match the
@@ -123,7 +127,8 @@ item securely in 1Password before merge. No other credential flow is authorized:
    in the same dedicated item; never reuse a human credential.
 
 After blueprint and ExternalSecret reconciliation, run the one-time in-cluster
-provisioning Job with `scripts/openproject/provision-ldap-bind.py`. It consumes
+provisioning Job via `KUBECONFIG=… python3 scripts/openproject/launch-ldap-bind-job.py`.
+The Job runs `scripts/openproject/provision-ldap-bind.py`. It consumes
 only `dev/openproject-ldap-bind` by Secret reference, uses the existing dev-env
 service account's approved `pods/exec` capability, and supplies the password on
 stdin over the verified Kubernetes API to stock `ak shell`. It creates only the

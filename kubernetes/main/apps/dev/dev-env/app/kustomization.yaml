@@ -12,6 +12,7 @@ resources:
   - ./networkpolicy.yaml
   - ./openproject-api-networkpolicy.yaml
   - ./openproject-ldap-externalsecret.yaml
+  - ./openproject-agent-credentials.yaml
   - ./ingressroute.yaml
   - ./helmrelease.yaml
 configMapGenerator:
