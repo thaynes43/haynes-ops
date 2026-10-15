@@ -6,6 +6,7 @@ Credential discovery and exec stay inside the cluster, using existing authority.
 No redirects are followed. Only this API origin can receive the Bearer token.
 """
 import json
+import os
 import subprocess
 import sys
 import urllib.error
@@ -21,7 +22,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def request(method, path, payload=None):
     assert method in ("GET", "POST", "PATCH"), "No deletion or arbitrary method"
     assert path.startswith(ALLOWED) and not any(x in path for x in ("\r", "\n", "\\", "..")), "Unsupported API path"
-    result = subprocess.run(["kubectl", "exec", "-n", "dev", "deploy/openproject-agent-credentials", "-c", "credentials", "--", "cat", "/run/openproject-agent/token"], capture_output=True, check=False)
+    result = subprocess.run(["kubectl", "exec", "-n", "dev", "deploy/openproject-agent-credentials", "-c", "credentials", "--", "cat", "/run/openproject-agent/token"], capture_output=True, check=False, timeout=30, env=dict(os.environ, KUBECTL_REMOTE_COMMAND_WEBSOCKETS="false"))
     assert result.returncode == 0, "Dedicated token-only helper unavailable"
     token = result.stdout.decode().strip()
     assert len(token) == 70 and token.startswith("opapi-") and all(c in "0123456789abcdefABCDEF" for c in token[6:]), "Invalid dedicated API token format"

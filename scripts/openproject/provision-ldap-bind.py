@@ -7,8 +7,7 @@ Run after blueprint/ESO sync. Existing mismatched tokens fail closed.
 """
 import json
 import os
-from kubernetes import client, config
-from kubernetes.stream import stream
+import subprocess
 
 password = os.environ["LDAP_BIND_PASSWORD"]
 assert len(password) == 64 and all(c in "0123456789abcdefABCDEF" for c in password), "Unexpected dedicated password format"
@@ -28,28 +27,15 @@ with transaction.atomic():
 print("OPENPROJECT_RESULT=" + json.dumps({"status": "created" if created else "already_matches", "user": user.username,
                   "intent": "app_password", "secret_values_printed": False}))
 '''
-config.load_incluster_config()
-api = client.CoreV1Api()
-deployment = client.AppsV1Api().read_namespaced_deployment("authentik-server", "network")
-selector = ",".join(k + "=" + v for k, v in deployment.spec.selector.match_labels.items())
-pods = api.list_namespaced_pod("network", label_selector=selector).items
-ready = [p for p in pods if p.status.phase == "Running" and any(c.type == "Ready" and c.status == "True" for c in p.status.conditions or [])]
-assert ready, "No ready Authentik server"
-ready.sort(key=lambda p: p.metadata.name)
-command = ["ak", "shell", "-c", 'import json,sys; data=json.loads(sys.stdin.readline()); exec(data["program"])']
-ws = stream(api.connect_get_namespaced_pod_exec, ready[0].metadata.name, "network", container="server",
-            command=command, stderr=True, stdin=True, stdout=True, tty=False, _preload_content=False)
-ws.write_stdin(json.dumps({"program": program, "password": password}) + "\n")
-output = ""
-for _ in range(45):
-    if not ws.is_open():
-        break
-    ws.update(timeout=1)
-    if ws.peek_stdout():
-        output += ws.read_stdout()
-    if ws.peek_stderr():
-        ws.read_stderr()  # Never echo arbitrary remote logs or exception data.
-ws.close()
+command = ["kubectl", "exec", "-n", "network", "deploy/authentik-server", "-c", "server", "-i", "--",
+           "ak", "shell", "-c", 'import json,sys; data=json.loads(sys.stdin.readline()); exec(data["program"])']
+# pods/exec grants CREATE. Force the supported POST/SPDY transport rather than
+# the Python client's GET/WebSocket path, which would require additional RBAC.
+env = dict(os.environ, KUBECTL_REMOTE_COMMAND_WEBSOCKETS="false")
+response = subprocess.run(command, input=json.dumps({"program": program, "password": password}) + "\n",
+                          capture_output=True, text=True, env=env, timeout=90)
+assert response.returncode == 0, "Stock Authentik provisioning command failed; no raw remote output returned"
+output = response.stdout
 results = [line[len("OPENPROJECT_RESULT="):] for line in output.splitlines() if line.startswith("OPENPROJECT_RESULT=")]
 assert len(results) == 1, "Stock Authentik provisioning did not confirm success; inspect only redacted diagnostics"
 result = json.loads(results[0])
