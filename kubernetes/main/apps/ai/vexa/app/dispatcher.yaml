@@ -299,6 +299,9 @@ spec:
                 # reconciled with the transcript and hand notes in place.
                 # Bot dispatch and the stall watchdog remain active. Restore
                 # only after meeting-scribe/06 verifies publication and dedupe.
+                # Before re-enabling, check other held events and advance
+                # NOTES_SINCE to exclude reviewed captures by actual end time;
+                # otherwise the 7-day lookback will dispatch and notify them.
                 - name: NOTES_DISPATCH_ENABLED
                   value: "false"
                 - name: NOTES_DEBOUNCE_MIN
