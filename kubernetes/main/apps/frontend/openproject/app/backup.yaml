@@ -37,6 +37,8 @@ spec:
     copyMethod: Snapshot
     volumeSnapshotClassName: csi-ceph-filesystem
     cacheStorageClassName: openebs-hostpath
+    cacheAccessModes:
+    - ReadWriteOnce
     cacheCapacity: 2Gi
     storageClassName: ceph-filesystem
     accessModes:

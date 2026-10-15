@@ -7,6 +7,7 @@ metadata:
     kustomize.toolkit.fluxcd.io/substitute: disabled
 spec:
   interval: 30m
+  timeout: 15m
   chartRef:
     kind: OCIRepository
     name: app-template
@@ -254,7 +255,12 @@ spec:
             resources: *id001
             command:
             - bash
-            - /app/docker/prod/wait-for-db
+            - -ec
+            - >-
+              until test "$(psql "$DATABASE_URL" -qtAX -v ON_ERROR_STOP=1
+              -c 'SELECT EXISTS (SELECT 1 FROM public.schema_migrations)'
+              2>/dev/null)" = t; do sleep 3; done;
+              exec /app/docker/prod/wait-for-db
         containers:
           app:
             image:

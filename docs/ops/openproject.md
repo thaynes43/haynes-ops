@@ -217,3 +217,25 @@ simultaneous type/status changes, as well as ordinary transitions. Do not claim
 that worker restrictions are enforced from workflow rows or a hidden UI control
 alone. If a native API bypass exists, stop readiness and report the exact result;
 do not silently weaken the requirement or patch application source.
+
+## Initial rollout recovery
+
+The first cold start left five empty application tables and an empty migration
+ledger. A separate empty database loaded the pinned vendor `db/structure.sql`
+successfully (217 tables, 257 migration versions, zero users/work packages). The
+failed original database was preserved as `openproject_partial_20261015`, with
+connections disabled; the successful vendor-loaded database was renamed to the
+configured `openproject`. No database or data was deleted. Remove that retained
+partial database only with explicit cleanup approval.
+
+The worker now waits for a nonempty migration ledger using a read-only `psql`
+query before booting Rails' vendor wait script. This prevents the Rails migration
+checker from creating its metadata tables during initial SQL schema import.
+Helm gets a 15-minute initial startup window. VolSync's local cache explicitly
+uses ReadWriteOnce, independently of the attachment mover's CephFS RWX mode.
+
+The LDAP provisioning Job uses the digest-pinned existing dev-env tooling image
+and kubectl's POST/SPDY exec transport to run stock `ak shell`. The Python
+WebSocket exec path required GET permission that the existing SA does not have;
+no new RBAC was granted. Verify `create pods --subresource=exec`, rather than the
+ambiguous `create pods/exec` command spelling, when checking this authority.
