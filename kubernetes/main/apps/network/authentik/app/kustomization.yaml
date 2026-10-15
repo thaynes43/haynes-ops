@@ -11,7 +11,6 @@ resources:
   - ./helmrelease.yaml
   - ./middleware.yaml
   - ./openproject-networkpolicy.yaml
-  - ./openproject-externalsecret.yaml
   - ./ingressroute.yaml
 # PLAN-011 Phase 1 — Authentik config-as-code baseline blueprints, delivered as a
 # ConfigMap the Helm chart mounts onto the worker at /blueprints/mounted/cm-authentik-

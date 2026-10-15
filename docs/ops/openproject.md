@@ -81,16 +81,20 @@ Tom approved the following exact scope on 2026-10-15. The 1Password Connect
 token is read-only (item creation returned HTTP 403); populate the dedicated
 item securely in 1Password before merge. No other credential flow is authorized:
 
-1. Create only `HaynesKube/openproject` using the approved 1Password Connect flow,
-   with generated `DB_PASSWORD` (hex/URI-safe), `SECRET_KEY_BASE`, `HEADER_SECRET` (exactly 64 random hexadecimal characters),
-   `BOOTSTRAP_ADMIN_PASSWORD`, and `LDAP_BIND_PASSWORD`; store the public
-   `LDAP_CA_CERT` after certificate creation. Add `API_TOKEN` as `opapi-` followed
-   by 64 random hex characters for the restricted bot. No raw value is printed or committed.
-   ExternalSecrets deliver dedicated app, CNPG basic-auth and bot Secrets. The
-   bot token is mounted only in the web app for stock token provisioning and
-   delivered separately to `dev/openproject-agent` for in-pod API use. No dev-env
-   deployment/env/mount change or restart is required. No unrelated
-   application credential is reused.
+1. Manually create only `HaynesKube/openproject` securely in 1Password. The
+   existing Connect token cannot create items. Required fields:
+   `DB_PASSWORD`, `HEADER_SECRET`, `BOOTSTRAP_ADMIN_PASSWORD`, and
+   `LDAP_BIND_PASSWORD` must each contain 64 random hex characters;
+   `SECRET_KEY_BASE` must contain 128 random hex characters; `LDAP_CA_CERT`
+   contains the public PEM certificate below. No raw value is printed or
+   committed. ExternalSecrets deliver app, CNPG basic-auth and the one-time
+   LDAP provisioning Job's dedicated bind Secret. No unrelated application
+   credential is reused.
+   Reserve `API_TOKEN` (`opapi-` followed by 64 random hex characters) in the same
+   item for the later restricted bot setup. Its delivery is held: no bot token
+   mount or dev-env Secret-read grant is deployed by this PR. Choose an approved
+   token-only consumer before enabling the bot; do not use exec into the web
+   container as the bot's credential path. No dev-env restart is authorized.
 2. Apply only `96-openproject-private.yaml`: new app/proxy/LDAP providers, dedicated
    service bind flow/account, provider-scoped search permission, app policies and
    two dedicated outposts. Generate the LDAP service app-password to match the
@@ -110,16 +114,28 @@ item securely in 1Password before merge. No other credential flow is authorized:
    deletion, approval or acceptance rights. Store its API token as `API_TOKEN`
    in the same dedicated item; never reuse a human credential.
 
-After blueprint and ExternalSecret reconciliation, execute the stock Authentik
-shell with `scripts/openproject/provision-ldap-bind.py` on stdin. It reads only
-`network/openproject-ldap-bind` in the container and creates the dedicated
-app-password. It prints metadata only and refuses mismatched existing tokens.
-The script does not modify existing users, flows or passwords. Verify the bind
-before accepting any human login. LDAP fails closed while the token is absent.
+After blueprint and ExternalSecret reconciliation, run the one-time in-cluster
+provisioning Job with `scripts/openproject/provision-ldap-bind.py`. It consumes
+only `dev/openproject-ldap-bind` by Secret reference, uses the existing dev-env
+service account's approved `pods/exec` capability, and supplies the password on
+stdin over the verified Kubernetes API to stock `ak shell`. It creates only the
+dedicated app-password, prints metadata only, and refuses mismatched tokens.
+Neither existing Authentik nor dev-env may read Secrets directly; no new RBAC or
+server restart is needed. Verify the bind before accepting human login. LDAP
+fails closed while the token is absent. Remove the one-time Job and its scoped
+API-only policy after completion.
 
-The LDAP public certificate was verified with OpenSSL against the dedicated
-service hostname; its private key remains only in Authentik. Temporary credential
-provisioning Jobs/policies were removed after the read-only Connect result.
+Verify the public LDAP certificate before storing it in 1Password:
+
+```sh
+openssl verify -CAfile ldap-ca-public.pem \
+  -verify_hostname ak-outpost-openproject-ldap.network.svc.cluster.local \
+  ldap-ca-public.pem
+```
+
+The private key stays in Authentik's protected certificate store. Track the
+certificate expiry and renew both the Authentik certificate and 1Password public
+trust field together before expiry; never disable verification as a workaround.
 
 These actions are prerequisites, not permission to mark the service ready. The PR
 must remain unmerged until the requisite approvals and 1Password fields/certificate
