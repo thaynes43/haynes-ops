@@ -134,8 +134,9 @@ spec:
                     command:
                     - sh
                     - -ec
-                    - curl --fail --silent --max-time 4 http://127.0.0.1:8080/health_checks/web
-                      >/dev/null
+                    - 'test "$(curl --silent --max-time 4 --output /dev/null --write-out
+                      ''%{http_code}'' -H ''Host: work.haynesops.com'' -H ''X-Forwarded-Proto:
+                      https'' http://127.0.0.1:8080/health_checks/web)" = 200'
                   periodSeconds: 10
                   timeoutSeconds: 5
                   failureThreshold: 40
@@ -147,8 +148,9 @@ spec:
                     command:
                     - sh
                     - -ec
-                    - curl --fail --silent --max-time 4 http://127.0.0.1:8080/health_checks/web
-                      >/dev/null
+                    - 'test "$(curl --silent --max-time 4 --output /dev/null --write-out
+                      ''%{http_code}'' -H ''Host: work.haynesops.com'' -H ''X-Forwarded-Proto:
+                      https'' http://127.0.0.1:8080/health_checks/web)" = 200'
                   periodSeconds: 10
                   timeoutSeconds: 5
                   failureThreshold: 3
@@ -160,8 +162,9 @@ spec:
                     command:
                     - sh
                     - -ec
-                    - curl --fail --silent --max-time 4 http://127.0.0.1:8080/health_checks/web
-                      >/dev/null
+                    - 'test "$(curl --silent --max-time 4 --output /dev/null --write-out
+                      ''%{http_code}'' -H ''Host: work.haynesops.com'' -H ''X-Forwarded-Proto:
+                      https'' http://127.0.0.1:8080/health_checks/web)" = 200'
                   periodSeconds: 15
                   timeoutSeconds: 5
                   failureThreshold: 3
