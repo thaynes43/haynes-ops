@@ -10,6 +10,9 @@ resources:
   - ./externalsecret-unifi.yaml
   - ./externalsecret-cursor.yaml
   - ./networkpolicy.yaml
+  - ./openproject-api-networkpolicy.yaml
+  - ./openproject-ldap-externalsecret.yaml
+  - ./openproject-agent-credentials.yaml
   - ./ingressroute.yaml
   - ./helmrelease.yaml
 configMapGenerator:

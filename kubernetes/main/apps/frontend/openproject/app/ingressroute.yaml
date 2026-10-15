@@ -1,0 +1,20 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: openproject
+  annotations:
+    kubernetes.io/ingress.class: traefik-external
+    external-dns.kubernetes.io/target: ingress-ext.haynesnetwork.com
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - kind: Rule
+    match: Host(`work.haynesnetwork.com`) && PathPrefix(`/`)
+    services:
+    - kind: Service
+      name: openproject-web
+      port: 8081
+  tls:
+    secretName: certificate-haynesnetwork

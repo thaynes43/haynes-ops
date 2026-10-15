@@ -1,0 +1,177 @@
+# OpenProject Community header SSO. Publicly reachable, Authentik/MFA required.
+# Tom approved work.haynesnetwork.com on 2026-10-15; backend/API stay private.
+# SECURITY GATE: do not merge until the owner approves this exact identity scope,
+# the OpenProject LDAP certificate exists and 1Password/openproject contains
+# the required fields. Provision the app-password immediately after ESO and
+# blueprint sync; LDAP remains fail-closed until then. Never embed secrets.
+version: 1
+metadata:
+  name: openproject-private
+  labels:
+    blueprints.goauthentik.io/description: 'OpenProject header SSO + LDAP lookup; Authentik Admins only, no second human password.'
+entries:
+  - model: authentik_core.user
+    id: openproject-ldap-user
+    identifiers:
+      username: openproject-ldap
+    attrs:
+      name: OpenProject LDAP reader
+      type: service_account
+      is_active: true
+  - model: authentik_flows.flow
+    id: openproject-ldap-bind-flow
+    identifiers:
+      slug: openproject-ldap-bind
+    attrs:
+      name: OpenProject LDAP service bind
+      title: OpenProject LDAP service bind
+      designation: authentication
+  - model: authentik_stages_identification.identificationstage
+    id: openproject-ldap-identification
+    identifiers:
+      name: openproject-ldap-identification
+    attrs:
+      user_fields: [username]
+  - model: authentik_stages_password.passwordstage
+    id: openproject-ldap-password
+    identifiers:
+      name: openproject-ldap-app-password
+    attrs:
+      backends: [authentik.core.auth.TokenBackend]
+  - model: authentik_stages_user_login.userloginstage
+    id: openproject-ldap-login
+    identifiers:
+      name: openproject-ldap-login
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf openproject-ldap-bind-flow
+      order: 10
+    attrs:
+      stage: !KeyOf openproject-ldap-identification
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf openproject-ldap-bind-flow
+      order: 20
+    attrs:
+      stage: !KeyOf openproject-ldap-password
+  - model: authentik_flows.flowstagebinding
+    identifiers:
+      target: !KeyOf openproject-ldap-bind-flow
+      order: 30
+    attrs:
+      stage: !KeyOf openproject-ldap-login
+  - model: authentik_providers_ldap.ldapprovider
+    id: openproject-ldap-provider
+    identifiers:
+      name: openproject-ldap
+    attrs:
+      base_dn: ou=openproject,dc=ldap,dc=haynesops,dc=com
+      authorization_flow: !KeyOf openproject-ldap-bind-flow
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      bind_mode: direct
+      search_mode: direct
+      mfa_support: false
+      certificate: !Find [authentik_crypto.certificatekeypair, [name, OpenProject LDAP]]
+      tls_server_name: ak-outpost-openproject-ldap.network.svc.cluster.local
+    permissions:
+      - user: !KeyOf openproject-ldap-user
+        permission: authentik_providers_ldap.search_full_directory
+  - model: authentik_core.application
+    id: openproject-ldap-application
+    identifiers:
+      slug: openproject-ldap
+    attrs:
+      name: OpenProject LDAP lookup
+      provider: !KeyOf openproject-ldap-provider
+      policy_engine_mode: any
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf openproject-ldap-application
+      order: 0
+    attrs:
+      user: !KeyOf openproject-ldap-user
+  - model: authentik_providers_proxy.proxyprovider
+    id: openproject-proxy-provider
+    identifiers:
+      name: openproject
+    attrs:
+      external_host: https://work.haynesnetwork.com
+      mode: forward_single
+      access_token_validity: minutes=5
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      intercept_header_auth: false
+      skip_path_regex: ''
+  - model: authentik_core.application
+    id: openproject-application
+    identifiers:
+      slug: openproject
+    attrs:
+      name: OpenProject
+      provider: !KeyOf openproject-proxy-provider
+      policy_engine_mode: any
+      meta_launch_url: https://work.haynesnetwork.com
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf openproject-application
+      order: 0
+    attrs:
+      group: !Find [authentik_core.group, [name, authentik Admins]]
+  - model: authentik_outposts.outpost
+    identifiers:
+      name: openproject-proxy
+    attrs:
+      type: proxy
+      service_connection: !Find [authentik_outposts.kubernetesserviceconnection, [name, Local Kubernetes Cluster]]
+      providers: [!KeyOf openproject-proxy-provider]
+      config:
+        authentik_host: http://authentik-server.network.svc.cluster.local/
+        authentik_host_browser: https://authentik.haynesnetwork.com/
+        log_level: info
+        kubernetes_replicas: 1
+        kubernetes_namespace: network
+        kubernetes_service_type: ClusterIP
+        kubernetes_disabled_components: [ingress]
+        kubernetes_json_patches:
+          deployment:
+            - op: add
+              path: /spec/template/spec/dnsConfig
+              value:
+                options: [{name: ndots, value: "1"}]
+            - op: add
+              path: /spec/template/spec/automountServiceAccountToken
+              value: false
+            - op: add
+              path: /spec/template/spec/containers/0/resources
+              value:
+                requests: {cpu: 25m, memory: 64Mi}
+                limits: {memory: 256Mi}
+  - model: authentik_outposts.outpost
+    identifiers:
+      name: openproject-ldap
+    attrs:
+      type: ldap
+      service_connection: !Find [authentik_outposts.kubernetesserviceconnection, [name, Local Kubernetes Cluster]]
+      providers: [!KeyOf openproject-ldap-provider]
+      config:
+        authentik_host: http://authentik-server.network.svc.cluster.local/
+        authentik_host_browser: https://authentik.haynesnetwork.com/
+        log_level: info
+        kubernetes_replicas: 1
+        kubernetes_namespace: network
+        kubernetes_service_type: ClusterIP
+        kubernetes_disabled_components: [ingress]
+        kubernetes_json_patches:
+          deployment:
+            - op: add
+              path: /spec/template/spec/dnsConfig
+              value:
+                options: [{name: ndots, value: "1"}]
+            - op: add
+              path: /spec/template/spec/automountServiceAccountToken
+              value: false
+            - op: add
+              path: /spec/template/spec/containers/0/resources
+              value:
+                requests: {cpu: 25m, memory: 64Mi}
+                limits: {memory: 256Mi}

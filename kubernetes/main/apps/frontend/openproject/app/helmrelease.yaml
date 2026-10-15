@@ -1,0 +1,367 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: openproject
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  maxHistory: 2
+  install:
+    remediation:
+      retries: 2
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      retries: 2
+  values:
+    defaultPodOptions:
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+    controllers:
+      web:
+        replicas: 1
+        strategy: Recreate
+        annotations:
+          reloader.stakater.com/auto: 'true'
+        initContainers:
+          migrate-seed:
+            image:
+              repository: docker.io/openproject/openproject
+              tag: 17.9.2-slim@sha256:7b50be7ff67dd0c7e264b09e15591d5f192bbd5802c0233469ab77eaeabf03ba
+            env:
+              RAILS_ENV: production
+              BIND: 127.0.0.1
+              PORT: '8080'
+              OPENPROJECT_HOST__NAME: work.haynesnetwork.com
+              OPENPROJECT_HTTPS: 'true'
+              OPENPROJECT_HSTS: 'true'
+              OPENPROJECT_LOG__LEVEL: warn
+              OPENPROJECT_LOGIN__REQUIRED: 'true'
+              OPENPROJECT_SELF__REGISTRATION: '0'
+              OPENPROJECT_RAILS__CACHE__STORE: memcache
+              OPENPROJECT_CACHE__MEMCACHE__SERVER: openproject-cache.frontend.svc.cluster.local:11211
+              OPENPROJECT_WEB__WORKERS: '2'
+              OPENPROJECT_WEB__MIN__THREADS: '2'
+              OPENPROJECT_WEB__MAX__THREADS: '4'
+              OPENPROJECT_AUTH__SOURCE__SSO_HEADER: X-Authenticated-User
+              OPENPROJECT_AUTH__SOURCE__SSO_OPTIONAL: 'false'
+              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesnetwork.com/outpost.goauthentik.io/sign_out
+              OPENPROJECT_SEED__ADMIN__USER__LOCKED: 'true'
+              OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET: 'false'
+              OPENPROJECT_SEED__LOCALE: en
+              OPENPROJECT_EMAIL__DELIVERY__METHOD: test
+            envFrom:
+            - secretRef:
+                name: openproject-secret
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+            resources: &id001
+              requests:
+                cpu: 250m
+                memory: 512Mi
+              limits:
+                memory: 2Gi
+            command:
+            - bash
+            - -ec
+            - until pg_isready -h openproject-db-rw.frontend.svc.cluster.local -U
+              openproject >/dev/null 2>&1; do sleep 2; done; exec /app/docker/prod/seeder
+        containers:
+          app:
+            image:
+              repository: docker.io/openproject/openproject
+              tag: 17.9.2-slim@sha256:7b50be7ff67dd0c7e264b09e15591d5f192bbd5802c0233469ab77eaeabf03ba
+            env:
+              RAILS_ENV: production
+              BIND: 127.0.0.1
+              PORT: '8080'
+              OPENPROJECT_HOST__NAME: work.haynesnetwork.com
+              OPENPROJECT_HTTPS: 'true'
+              OPENPROJECT_HSTS: 'true'
+              OPENPROJECT_LOG__LEVEL: warn
+              OPENPROJECT_LOGIN__REQUIRED: 'true'
+              OPENPROJECT_SELF__REGISTRATION: '0'
+              OPENPROJECT_RAILS__CACHE__STORE: memcache
+              OPENPROJECT_CACHE__MEMCACHE__SERVER: openproject-cache.frontend.svc.cluster.local:11211
+              OPENPROJECT_WEB__WORKERS: '2'
+              OPENPROJECT_WEB__MIN__THREADS: '2'
+              OPENPROJECT_WEB__MAX__THREADS: '4'
+              OPENPROJECT_AUTH__SOURCE__SSO_HEADER: X-Authenticated-User
+              OPENPROJECT_AUTH__SOURCE__SSO_OPTIONAL: 'false'
+              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesnetwork.com/outpost.goauthentik.io/sign_out
+              OPENPROJECT_SEED__ADMIN__USER__LOCKED: 'true'
+              OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET: 'false'
+              OPENPROJECT_SEED__LOCALE: en
+              OPENPROJECT_EMAIL__DELIVERY__METHOD: test
+            envFrom:
+            - secretRef:
+                name: openproject-secret
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+            resources:
+              requests:
+                cpu: 500m
+                memory: 1Gi
+              limits:
+                memory: 4Gi
+            command:
+            - bash
+            - /app/docker/prod/web
+            probes:
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  exec:
+                    command:
+                    - sh
+                    - -ec
+                    - 'test "$(curl --silent --max-time 4 --output /dev/null --write-out
+                      ''%{http_code}'' -H ''Host: work.haynesnetwork.com'' -H ''X-Forwarded-Proto:
+                      https'' http://127.0.0.1:8080/health_checks/web)" = 200'
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 40
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  exec:
+                    command:
+                    - sh
+                    - -ec
+                    - 'test "$(curl --silent --max-time 4 --output /dev/null --write-out
+                      ''%{http_code}'' -H ''Host: work.haynesnetwork.com'' -H ''X-Forwarded-Proto:
+                      https'' http://127.0.0.1:8080/health_checks/web)" = 200'
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  exec:
+                    command:
+                    - sh
+                    - -ec
+                    - 'test "$(curl --silent --max-time 4 --output /dev/null --write-out
+                      ''%{http_code}'' -H ''Host: work.haynesnetwork.com'' -H ''X-Forwarded-Proto:
+                      https'' http://127.0.0.1:8080/health_checks/web)" = 200'
+                  periodSeconds: 15
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+          nginx:
+            image:
+              repository: docker.io/library/nginx
+              tag: stable-alpine@sha256:970364228b1e4f932abc22d321932816782cca8a20b85a77552a7cfe9acfb3b5
+            command:
+            - sh
+            - -ec
+            - 'case "$HEADER_SECRET" in ''''|*[!0-9a-fA-F]*) echo ''HEADER_SECRET
+              must be hexadecimal'' >&2; exit 1;; esac; test "${#HEADER_SECRET}" -eq
+              64 || { echo ''HEADER_SECRET must contain 64 hex characters'' >&2; exit
+              1; }; umask 077; mkdir -p /tmp/client_body /tmp/proxy /tmp/fastcgi /tmp/uwsgi
+              /tmp/scgi; sed "s/@@HEADER_SECRET@@/$HEADER_SECRET/g" /config/nginx.conf.template
+              > /tmp/nginx.conf; nginx -t -c /tmp/nginx.conf; exec nginx -c /tmp/nginx.conf
+              -g ''daemon off;'' '
+            env:
+              HEADER_SECRET:
+                valueFrom:
+                  secretKeyRef:
+                    name: openproject-secret
+                    key: HEADER_SECRET
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+            resources:
+              requests:
+                cpu: 25m
+                memory: 32Mi
+              limits:
+                memory: 128Mi
+      worker:
+        replicas: 1
+        strategy: Recreate
+        annotations:
+          reloader.stakater.com/auto: 'true'
+        initContainers:
+          wait-for-database:
+            image:
+              repository: docker.io/openproject/openproject
+              tag: 17.9.2-slim@sha256:7b50be7ff67dd0c7e264b09e15591d5f192bbd5802c0233469ab77eaeabf03ba
+            env:
+              RAILS_ENV: production
+              BIND: 127.0.0.1
+              PORT: '8080'
+              OPENPROJECT_HOST__NAME: work.haynesnetwork.com
+              OPENPROJECT_HTTPS: 'true'
+              OPENPROJECT_HSTS: 'true'
+              OPENPROJECT_LOG__LEVEL: warn
+              OPENPROJECT_LOGIN__REQUIRED: 'true'
+              OPENPROJECT_SELF__REGISTRATION: '0'
+              OPENPROJECT_RAILS__CACHE__STORE: memcache
+              OPENPROJECT_CACHE__MEMCACHE__SERVER: openproject-cache.frontend.svc.cluster.local:11211
+              OPENPROJECT_WEB__WORKERS: '2'
+              OPENPROJECT_WEB__MIN__THREADS: '2'
+              OPENPROJECT_WEB__MAX__THREADS: '4'
+              OPENPROJECT_AUTH__SOURCE__SSO_HEADER: X-Authenticated-User
+              OPENPROJECT_AUTH__SOURCE__SSO_OPTIONAL: 'false'
+              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesnetwork.com/outpost.goauthentik.io/sign_out
+              OPENPROJECT_SEED__ADMIN__USER__LOCKED: 'true'
+              OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET: 'false'
+              OPENPROJECT_SEED__LOCALE: en
+              OPENPROJECT_EMAIL__DELIVERY__METHOD: test
+            envFrom:
+            - secretRef:
+                name: openproject-secret
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+            resources: *id001
+            command:
+            - bash
+            - /app/docker/prod/wait-for-db
+        containers:
+          app:
+            image:
+              repository: docker.io/openproject/openproject
+              tag: 17.9.2-slim@sha256:7b50be7ff67dd0c7e264b09e15591d5f192bbd5802c0233469ab77eaeabf03ba
+            env:
+              RAILS_ENV: production
+              BIND: 127.0.0.1
+              PORT: '8080'
+              OPENPROJECT_HOST__NAME: work.haynesnetwork.com
+              OPENPROJECT_HTTPS: 'true'
+              OPENPROJECT_HSTS: 'true'
+              OPENPROJECT_LOG__LEVEL: warn
+              OPENPROJECT_LOGIN__REQUIRED: 'true'
+              OPENPROJECT_SELF__REGISTRATION: '0'
+              OPENPROJECT_RAILS__CACHE__STORE: memcache
+              OPENPROJECT_CACHE__MEMCACHE__SERVER: openproject-cache.frontend.svc.cluster.local:11211
+              OPENPROJECT_WEB__WORKERS: '2'
+              OPENPROJECT_WEB__MIN__THREADS: '2'
+              OPENPROJECT_WEB__MAX__THREADS: '4'
+              OPENPROJECT_AUTH__SOURCE__SSO_HEADER: X-Authenticated-User
+              OPENPROJECT_AUTH__SOURCE__SSO_OPTIONAL: 'false'
+              OPENPROJECT_AUTH__SOURCE__SSO_LOGOUT__URL: https://work.haynesnetwork.com/outpost.goauthentik.io/sign_out
+              OPENPROJECT_SEED__ADMIN__USER__LOCKED: 'true'
+              OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET: 'false'
+              OPENPROJECT_SEED__LOCALE: en
+              OPENPROJECT_EMAIL__DELIVERY__METHOD: test
+            envFrom:
+            - secretRef:
+                name: openproject-secret
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+            resources:
+              requests:
+                cpu: 250m
+                memory: 512Mi
+              limits:
+                memory: 3Gi
+            command:
+            - bash
+            - /app/docker/prod/worker
+      cache:
+        replicas: 1
+        containers:
+          app:
+            image:
+              repository: docker.io/library/memcached
+              tag: 1.6-alpine@sha256:9e4de012dc607573052061c0bcb38abc775e1dd59b24e7ac38d1892842094aaf
+            args:
+            - -m
+            - '64'
+            - -I
+            - 16m
+            - -U
+            - '0'
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 11211
+              runAsGroup: 11211
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+            resources:
+              requests:
+                cpu: 25m
+                memory: 96Mi
+              limits:
+                memory: 128Mi
+    service:
+      web:
+        controller: web
+        ports:
+          http:
+            port: 8081
+          api:
+            port: 8082
+      cache:
+        controller: cache
+        ports:
+          memcache:
+            port: 11211
+    persistence:
+      assets:
+        existingClaim: openproject-assets
+        advancedMounts:
+          web:
+            app:
+            - path: /var/openproject/assets
+            migrate-seed:
+            - path: /var/openproject/assets
+          worker:
+            app:
+            - path: /var/openproject/assets
+            wait-for-database:
+            - path: /var/openproject/assets
+      nginx-config:
+        type: configMap
+        name: openproject-nginx
+        advancedMounts:
+          web:
+            nginx:
+            - path: /config
+              readOnly: true

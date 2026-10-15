@@ -1,0 +1,67 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: openproject-db
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  instances: 1
+  enablePDB: false
+  imageName: ghcr.io/cloudnative-pg/postgresql:17@sha256:70664ebcfa1100361b5bdc28bbf06fdbe08db2dc4ad7bd14de33c5e05fe8ea8e
+  enableSuperuserAccess: false
+  storage:
+    size: 20Gi
+    storageClass: ceph-block
+  inheritedMetadata:
+    annotations:
+      kustomize.toolkit.fluxcd.io/prune: disabled
+  bootstrap:
+    initdb:
+      database: openproject
+      owner: openproject
+      secret:
+        name: openproject-database-auth
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+  postgresql:
+    parameters:
+      max_connections: '100'
+      shared_buffers: 256MB
+  monitoring:
+    enablePodMonitor: true
+  backup:
+    retentionPolicy: 30d
+    barmanObjectStore:
+      destinationPath: s3://cnpg-haynesops/
+      endpointURL: https://s3.us-east-2.amazonaws.com
+      serverName: openproject-postgres17-v1
+      data:
+        compression: gzip
+      wal:
+        compression: gzip
+      s3Credentials:
+        accessKeyId:
+          name: openproject-backup-secret
+          key: aws-access-key-id
+        secretAccessKey:
+          name: openproject-backup-secret
+          key: aws-secret-access-key
+        region:
+          name: openproject-backup-secret
+          key: aws-region
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: openproject-db
+spec:
+  schedule: 0 0 2 * * *
+  immediate: true
+  backupOwnerReference: self
+  cluster:
+    name: openproject-db

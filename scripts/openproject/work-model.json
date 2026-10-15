@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "project": {"identifier": "haynes-engineering", "name": "Haynes Engineering", "public": false},
+  "types": ["Saga", "Epic", "Story"],
+  "parent_grammar": {"Saga": null, "Epic": "Saga", "Story": "Epic"},
+  "dependencies": "Separate precedes/follows relations; never inferred from parent containment or document ordering",
+  "statuses": ["Draft", "Ungroomed", "Needs answer", "Needs approval", "Approved", "In progress", "In review", "Accepted", "Paused"],
+  "worker": {
+    "login": "openproject-agent",
+    "admin": false,
+    "project_only": "haynes-engineering",
+    "delete": false,
+    "protected_status_targets": ["Approved", "Accepted"],
+    "permissions": ["view_project", "view_members", "view_work_packages", "add_work_packages", "edit_work_packages", "add_work_package_comments", "add_work_package_attachments", "manage_work_package_relations", "manage_subtasks", "save_queries", "work_package_assigned"],
+    "safe_status_targets": ["Draft", "Ungroomed", "Needs answer", "Needs approval", "In progress", "In review", "Paused"]
+  },
+  "metadata_fields": ["Accountable owner", "Execution owner", "Repositories", "Acceptance criteria", "Constraints", "Source key", "Source commit", "Source URI", "Source section", "Source SHA-256", "Decision provenance", "Approval revision", "Conversation reference"],
+  "operator_views": {
+    "Questions": ["Needs answer"],
+    "Approvals": ["Needs approval"],
+    "Active": ["In progress"],
+    "Demonstrations": ["In review"],
+    "Paused": ["Paused"],
+    "Ungroomed": ["Draft", "Ungroomed"]
+  },
+  "approval_contract": {
+    "authoritative_evidence": "Named authorized reviewer status journal plus actual decision scope, revision, person, timestamp and conversation reference",
+    "voice_actor": "Real bot identity records Tom's actual words and provenance; it never impersonates Tom",
+    "worker_comments_are_execution_approval": false,
+    "import_is_execution_approval": false,
+    "material_scope_change_invalidates_approval": true
+  },
+  "fixtures": {
+    "prefix": "OP-ACCEPTANCE-20261015",
+    "source_key_prefix": "acceptance:openproject:2026-10-15:",
+    "create": ["Saga", "Epic", "Story", "Story"],
+    "must_prove": ["parent grammar", "dependency", "metadata", "comment", "original markdown attachment and SHA-256", "actor/timestamp history", "fresh update", "stale lockVersion conflict", "private visibility", "unauthenticated API denial", "approval and acceptance transition denial", "protected status creation denial", "combined type/status change denial", "cross-project access denial", "delete affordance absent"],
+    "delete": "No irreversible DELETE request without separate exact fixture deletion authorization",
+    "voice_approval": "Wait for an actual user decision; no fabricated approval fixture"
+  },
+  "notes": [
+    "This file is a configuration and acceptance contract, not evidence of a configured or verified running app.",
+    "Generic OpenProject parent links do not enforce Saga/Epic/Story grammar; validate every writer/migration operation.",
+    "Native workflow validation must be HTTP-tested for creation and simultaneous type/status changes before claiming protected-state enforcement.",
+    "Basic board dragging does not change status; use explicit status actions."
+  ]
+}

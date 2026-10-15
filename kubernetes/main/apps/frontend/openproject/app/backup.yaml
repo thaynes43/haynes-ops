@@ -1,0 +1,51 @@
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: openproject-assets-volsync
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: onepassword-connect
+  refreshInterval: 1h
+  target:
+    name: openproject-assets-volsync-secret
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      data:
+        RESTIC_REPOSITORY: '{{ .REPOSITORY_TEMPLATE }}/openproject-assets'
+        RESTIC_PASSWORD: '{{ .RESTIC_PASSWORD }}'
+        AWS_ACCESS_KEY_ID: '{{ .AWS_ACCESS_KEY_ID }}'
+        AWS_SECRET_ACCESS_KEY: '{{ .AWS_SECRET_ACCESS_KEY }}'
+  dataFrom:
+  - extract:
+      key: aws
+  - extract:
+      key: volsync-hayesops
+---
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: openproject-assets
+spec:
+  sourcePVC: openproject-assets
+  trigger:
+    schedule: 30 2 * * *
+  restic:
+    repository: openproject-assets-volsync-secret
+    copyMethod: Snapshot
+    volumeSnapshotClassName: csi-ceph-filesystem
+    cacheStorageClassName: openebs-hostpath
+    cacheCapacity: 2Gi
+    storageClassName: ceph-filesystem
+    accessModes:
+    - ReadWriteMany
+    moverSecurityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+    retain:
+      daily: 10
+      within: 3d
+    pruneIntervalDays: 7

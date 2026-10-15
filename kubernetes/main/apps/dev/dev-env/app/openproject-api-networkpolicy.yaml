@@ -1,0 +1,30 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: openproject-agent-api
+  namespace: dev
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: '53'
+        protocol: ANY
+      rules:
+        dns:
+        - matchName: openproject-web.frontend.svc.cluster.local
+  - toEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: frontend
+        app.kubernetes.io/instance: openproject
+    toPorts:
+    - ports:
+      - port: '8082'
+        protocol: TCP
