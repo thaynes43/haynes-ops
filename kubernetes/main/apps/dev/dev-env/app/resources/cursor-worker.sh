@@ -113,7 +113,7 @@ case "${1:-status}" in
     while [ ! -f "$STATE/disabled" ]; do
       rotate_log
       started="$(date +%s)"
-      "$BIN" worker --name "$NAME" --worker-dir "$WORKSPACE" \
+      "$BIN" worker --name "$NAME" --worker-dir "$WORKSPACE" --worker-dir "$HOME/repos/dev-env" \
         --data-dir "$HOME/.local/share/cursor-agent" --idle-release-timeout 0 start &
       child=$!
       rc=0; wait "$child" || rc=$?
