@@ -5,3 +5,4 @@ resources:
   - namespace.yaml
   - operator.yaml
   - ledger-guard.yaml
+  - pilot-seal.yaml
