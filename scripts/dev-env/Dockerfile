@@ -40,7 +40,7 @@ ARG FLUX_VERSION=2.9.6
 # renovate: datasource=github-releases depName=cli/cli
 ARG GH_VERSION=2.102.0
 # renovate: datasource=github-releases depName=helm/helm
-ARG HELM_VERSION=4.3.0
+ARG HELM_VERSION=4.3.1
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.+)$
 ARG KUSTOMIZE_VERSION=5.8.3
 # renovate: datasource=github-releases depName=getsops/sops
@@ -58,7 +58,7 @@ ARG RESTIC_VERSION=0.19.1
 # talosctl — read-only node triage (dmesg/logs/get) via apid; MUST track the cluster's
 # Talos version (nodes run v1.13.3). Same style as kubectl: the `v` lives in the ARG.
 # renovate: datasource=github-releases depName=siderolabs/talos
-ARG TALOSCTL_VERSION=v1.14.2
+ARG TALOSCTL_VERSION=v1.14.4
 # omnictl — read-only Omni machine/cluster status against SaaS Omni (the self-hosted
 # instance was decommissioned 2026-09-22); tracks upstream siderolabs/omni releases,
 # which stay API-compatible with nearby omnictl versions. renovate: datasource=github-releases depName=siderolabs/omni
@@ -97,7 +97,7 @@ ARG UV_VERSION=0.13.1
 # load-bearing: Sonnet 5.5 is the subagent tier for routine coding and tests in
 # config/claude/CLAUDE.md, and it has an agent-run picker row.
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.299
+ARG CLAUDE_CODE_VERSION=2.1.302
 # Codex is installed at BOOT as the managed STANDALONE (dev-init.sh), not via npm —
 # only the standalone can run `codex remote-control`. This pins that standalone
 # version; @openai/codex npm releases track the same numbers as the rust-v* GitHub
@@ -129,7 +129,7 @@ ARG CLAUDE_CODE_VERSION=2.1.299
 # CLAUDE.md since 2026-10-03 and does not exist to an older client: 0.158.0's cache
 # never lists it.
 # renovate: datasource=npm depName=@openai/codex
-ARG CODEX_VERSION=0.162.1
+ARG CODEX_VERSION=0.163.0
 # renovate: datasource=npm depName=tsx
 ARG TSX_VERSION=4.23.15
 # ── pnpm ── prose ABOVE the annotation on purpose (see the warning above).
@@ -147,7 +147,7 @@ ARG TSX_VERSION=4.23.15
 # whatever this ARG happened to be. It never did — Renovate had been rewriting the
 # number inside the comment on every bump, manufacturing a fact that was never true.)
 # renovate: datasource=npm depName=pnpm
-ARG PNPM_VERSION=12.11.2
+ARG PNPM_VERSION=12.14.0
 # renovate: datasource=npm depName=@playwright/mcp
 ARG PLAYWRIGHT_MCP_VERSION=0.0.83
 
