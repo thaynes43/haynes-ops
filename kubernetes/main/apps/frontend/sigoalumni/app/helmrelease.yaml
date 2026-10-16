@@ -137,6 +137,13 @@ spec:
         containers:
           app:
             image:
+              # Pinned to sigoalumni-org main commit 683f97b (2026-10-15):
+              # four approved meeting-document PDF downloads behind the
+              # existing vetted-member gate (sigoalumni-org #163). Private
+              # Drive reads; the proposal uses its October 15 meeting copy.
+              # No migration, environment or secret change.
+              # On top of 9661f51:
+              # (previous pin note follows)
               # Pinned to sigoalumni-org main commit 9661f51 (2026-10-06):
               # announcement email preview on a draft event's manage page
               # (sigoalumni-org #159, issue #158) — a collapsed "Preview"
@@ -263,7 +270,7 @@ spec:
               # "Invite brothers"). No new env. CI does not deploy here; bump
               # deliberately.
               repository: us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site
-              tag: 9661f51f6f83dbcd55795e3718db533672066e0a
+              tag: 683f97b02b85494c6e38f9a8be145a0fdbab5828
               pullPolicy: IfNotPresent
             env:
               # ── Plain env copied 1:1 from the Cloud Run service ──────────
