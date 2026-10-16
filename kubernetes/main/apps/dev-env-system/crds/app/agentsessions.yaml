@@ -287,6 +287,36 @@ spec:
                 - message: immutable after create; only operatingMode and lifecycle
                     may change
                   rule: self == oldSelf
+              privatePilot:
+                description: PrivatePilot is authored only by the sealed operator
+                  route, never a caller override.
+                properties:
+                  commonRevision:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  policyDigest:
+                    maxLength: 64
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                  sealUID:
+                    maxLength: 36
+                    pattern: ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$
+                    type: string
+                  slot:
+                    enum:
+                    - 0
+                    - 1
+                    type: integer
+                required:
+                - commonRevision
+                - policyDigest
+                - sealUID
+                - slot
+                type: object
+                x-kubernetes-validations:
+                - message: private pilot binding is immutable
+                  rule: self == oldSelf
               profile:
                 description: |-
                   Profile names the Secrets, egress tier and standing grants the pod gets
@@ -519,7 +549,7 @@ spec:
                 && has(self.restore) == has(oldSelf.restore) && has(self.workspace)
                 == has(oldSelf.workspace) && has(self.projectCanary) == has(oldSelf.projectCanary)
                 && has(self.commonRules) == has(oldSelf.commonRules) && has(self.sessionDirectory)
-                == has(oldSelf.sessionDirectory)
+                == has(oldSelf.sessionDirectory) && has(self.privatePilot) == has(oldSelf.privatePilot)
             - message: project canaries require their fixed private bounded subscription
                 task contract
               rule: '!has(self.projectCanary) || (self.mode == ''task'' && self.agent
@@ -533,9 +563,25 @@ spec:
                 self.limits.maxTurns <= 3)))'
             - message: common rules require the matching managed canary binding
               rule: '!has(self.commonRules) || (has(self.projectCanary) && has(self.projectCanary.commonRevision)
-                && self.projectCanary.commonRevision == self.commonRules.commonRevision)'
+                && self.projectCanary.commonRevision == self.commonRules.commonRevision)
+                || (has(self.privatePilot) && self.privatePilot.commonRevision ==
+                self.commonRules.commonRevision)'
             - message: directory enrollment requires a managed canary
-              rule: '!has(self.sessionDirectory) || has(self.projectCanary)'
+              rule: '!has(self.sessionDirectory) || has(self.projectCanary) || has(self.privatePilot)'
+            - message: sealed pilots require the fixed private bounded Codex contract
+                and matching retained inputs
+              rule: '!has(self.privatePilot) || (!has(self.projectCanary) && self.repo
+                == ''dev-env'' && self.base == ''main'' && self.mode == ''task'' &&
+                self.agent == ''codex'' && self.model == ''gpt-6.1-sol'' && self.effort
+                == ''high'' && self.size == ''S'' && self.profile == ''rule-canary-codex''
+                && self.parent == ''dev/dev-env'' && !has(self.workspace) && !has(self.restore)
+                && !has(self.tools) && !has(self.llm) && !has(self.caller) && !has(self.lane)
+                && !has(self.lifecycle) && !has(self.idempotencyKey) && has(self.limits)
+                && has(self.limits.timeout) && duration(self.limits.timeout) == duration(''15m'')
+                && (!has(self.limits.maxTurns) || self.limits.maxTurns == 0) && has(self.commonRules)
+                && self.commonRules.commonRevision == self.privatePilot.commonRevision
+                && has(self.sessionDirectory) && self.sessionDirectory.version ==
+                1 && self.sessionDirectory.project == ''dev-env'')'
           status:
             description: |-
               AgentSessionStatus is what the operator and agentd observed. Reconcile is
