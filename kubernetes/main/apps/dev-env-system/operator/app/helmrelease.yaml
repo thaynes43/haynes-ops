@@ -68,7 +68,7 @@ spec:
               # 2.29.2 permits distinct retained pilot cohorts; general private admission remains disabled.
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # Executor stop, HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates.
-              # Uses the accepted v2.29.1 schema (unchanged in 2.29.2); pilot admission stays closed.
+              # Uses the accepted v2.29.1 schema (unchanged in 2.29.2); a sealed pilot is limited by its explicit policy window.
               tag: sha-c72d2e4@sha256:ff39536e83910fa903ea139fefdbfa2cae5de7a104063a94701f673e0988cf26
               pullPolicy: IfNotPresent
             args:
