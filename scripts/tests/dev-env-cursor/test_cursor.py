@@ -172,6 +172,34 @@ class SupervisorTests(unittest.TestCase):
             self.assertEqual(self.starts(home), 0)
             self.assertIn('browser login required', result.stdout)
 
+    def test_dev_env_profile_preserves_separate_identity_and_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home, env = self.prepare(Path(directory),
+                                     'printf "%s\\n" "$@" > "$HOME/worker-args"; '
+                                     'touch "$HOME/.local/state/cursor-worker-dev-env/disabled"; exit 0')
+            workspace = home / 'repos/dev-env'
+            workspace.mkdir(parents=True)
+            subprocess.run(['git', 'init', '-q', str(workspace)], check=True)
+            result = subprocess.run(['bash', str(SCRIPTS / 'cursor-worker.sh'), 'run', 'dev-env'],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual((home / 'worker-args').read_text().splitlines(),
+                             ['worker', '--name', 'dev-env', '--worker-dir', str(workspace),
+                              '--data-dir', str(home / '.local/share/cursor-agent-dev-env'),
+                              '--idle-release-timeout', '0', 'start'])
+            self.assertFalse((home / '.local/state/dev-env-cursor/disabled').exists())
+            self.assertTrue((workspace / '.cursor/dev-env-parity.json').exists())
+
+    def test_missing_dev_env_checkout_never_starts_or_clones(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home, env = self.prepare(Path(directory), 'exit 0')
+            result = subprocess.run(['bash', str(SCRIPTS / 'cursor-worker.sh'), 'run', 'dev-env'],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(self.starts(home), 0)
+            self.assertIn('dev-env checkout missing; no automatic clone', result.stdout)
+            self.assertFalse((home / 'repos/dev-env').exists())
+
     def test_logout_during_recovery_stops_without_breaker(self):
         with tempfile.TemporaryDirectory() as directory:
             home, env = self.prepare(Path(directory), 'rm -f "$HOME/.config/cursor/auth.json"; exit 1')

@@ -8,7 +8,7 @@ for the existing browser login.
 
 ## Startup and persistence
 
-`post-ready.sh` requests `cursor-worker up` only after code-server readiness,
+`post-ready.sh` requests both worker profiles only after code-server readiness,
 settle and the existing boot-loop circuit breaker. Installation and recovery run
 in detached tmux session `cursor-worker-v1`, never in the synchronous boot path.
 The installer pins the official Linux x64 archive to `2026.10.14-0f9edde` and
@@ -26,6 +26,20 @@ Persistent paths on the existing home PVC:
 | `~/cursor/haynes-ops` | Isolated anchor checkout outside the `~/work` sweeper |
 | `~/.local/state/dev-env-cursor/worker.log` | Restricted supervisor log |
 | `~/.local/state/dev-env-cursor/disabled` | Persistent operator stop-on-next-boot marker |
+| `~/.local/share/cursor-agent-dev-env/` | Existing separate `dev-env` machine identity; do not replace |
+| `~/repos/dev-env` | Tom's explicitly selected existing dev-env checkout; never reset or fetch at worker boot |
+| `~/.local/state/cursor-worker-dev-env/` | Independent dev-env supervisor lock, log and disabled marker |
+
+The default profile remains `dev-env-v1-haynes-ops` in tmux `cursor-worker-v1`.
+The `dev-env` profile runs the separate machine named `dev-env` in tmux
+`cursor-worker-dev-env`, retaining the data directory used for its initial
+registration. It reuses the existing browser login without copying credentials.
+Each profile exposes exactly one repository. The dev-env checkout must already
+exist; a missing checkout fails before launching a worker. Both roots receive
+the existing staged rules/MCP preparation without activating pending MCPs.
+The dev-env profile intentionally uses the requested canonical checkout rather
+than moving the already registered machine to a new anchor. Tom drives this
+workspace; implementation work must still follow the repo's task-worktree rules.
 
 An existing anchor is never reset, fetched, or replaced. A missing anchor is
 created as a detached worktree from the canonical clone's existing `origin/main`;
@@ -45,10 +59,12 @@ every five minutes while the worker runs. No automation,
 model task, MCP discovery, fleet, desktop share, or new credential is started.
 
 ```sh
-cursor-worker status
+bash /opt/dev-env/scripts/cursor-worker.sh status
+bash /opt/dev-env/scripts/cursor-worker.sh status dev-env
 tail -n 50 ~/.local/state/dev-env-cursor/worker.log
 # After diagnosing a stopped supervisor:
-cursor-worker up
+bash /opt/dev-env/scripts/cursor-worker.sh up
+bash /opt/dev-env/scripts/cursor-worker.sh up dev-env
 ```
 
 An existing tmux session is left alone; inspect and stop it deliberately before
@@ -129,8 +145,13 @@ Acceptance after the GitOps rollout:
    authenticated when parsed to a boolean only. Never print auth file contents.
 3. `agent worker --name dev-env-v1-haynes-ops --worker-dir ~/cursor/haynes-ops
    --idle-release-timeout 0 debug --json` reports the retained worker ID and
-   exactly one visible registration. Check only nonsecret fields.
-4. Same account on phone/web selects My Machines → dev-env-v1-haynes-ops.
+   the haynes-ops registration. Also run diagnostics with `--name dev-env
+   --worker-dir ~/repos/dev-env --data-dir ~/.local/share/cursor-agent-dev-env`:
+   retain machine ID `e215ce95-8cd3-408b-939c-064554a22c39`, repo `thaynes43/dev-env`,
+   and confirm both machine names in the server's visibility response. Check
+   only nonsecret fields; local argument parsing alone is not visibility proof.
+4. In native Cursor select repository dev-env → environment dev-env. For
+   haynes-ops, retain My Machines → dev-env-v1-haynes-ops.
    Select a model actually listed by that account (observed `grok-4.7-low`). Run
    one read-only prompt: report `id -u`, `pwd`, and paths for git, gh, kubectl,
    claude, codex and agent; print no environment or credentials, edit nothing,

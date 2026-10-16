@@ -10,6 +10,19 @@ NAME=dev-env-v1-haynes-ops
 SESSION=cursor-worker-v1
 WORKSPACE="$HOME/cursor/haynes-ops"
 STATE="$HOME/.local/state/dev-env-cursor"
+DATA_DIR="$HOME/.local/share/cursor-agent"
+PROFILE="${2:-haynes-ops}"
+case "$PROFILE" in
+  haynes-ops) ;;
+  dev-env)
+    NAME=dev-env
+    SESSION=cursor-worker-dev-env
+    WORKSPACE="$HOME/repos/dev-env"
+    STATE="$HOME/.local/state/cursor-worker-dev-env"
+    DATA_DIR="$HOME/.local/share/cursor-agent-dev-env"
+    ;;
+  *) echo 'usage: cursor-worker {up|run|status|install} [haynes-ops|dev-env]' >&2; exit 2 ;;
+esac
 VERSIONS="$HOME/.local/share/cursor-agent/versions"
 BIN="$VERSIONS/$VERSION/cursor-agent"
 # Overrides exist only for offline fixtures.
@@ -51,6 +64,7 @@ install_cli() {
 
 prepare_workspace() {
   if [ ! -e "$WORKSPACE" ]; then
+    [ "$PROFILE" = haynes-ops ] || { log 'dev-env checkout missing; no automatic clone'; return 1; }
     [ -d "$HOME/repos/haynes-ops/.git" ] || { log 'canonical clone missing; no automatic clone'; return 1; }
     mkdir -p "$HOME/cursor"
     # Never reset an existing checkout or fetch behind another session's back.
@@ -81,7 +95,7 @@ case "${1:-status}" in
       exit 0
     fi
     rotate_log
-    printf -v launch 'exec bash %q run >>%q 2>&1' "$HERE/cursor-worker.sh" "$STATE/worker.log"
+    printf -v launch 'exec bash %q run %q >>%q 2>&1' "$HERE/cursor-worker.sh" "$PROFILE" "$STATE/worker.log"
     tmux new-session -d -s "$SESSION" "$launch"
     log "launched $SESSION; log: $STATE/worker.log"
     ;;
@@ -113,8 +127,8 @@ case "${1:-status}" in
     while [ ! -f "$STATE/disabled" ]; do
       rotate_log
       started="$(date +%s)"
-      "$BIN" worker --name "$NAME" --worker-dir "$WORKSPACE" --worker-dir "$HOME/repos/dev-env" \
-        --data-dir "$HOME/.local/share/cursor-agent" --idle-release-timeout 0 start &
+      "$BIN" worker --name "$NAME" --worker-dir "$WORKSPACE" \
+        --data-dir "$DATA_DIR" --idle-release-timeout 0 start &
       child=$!
       rc=0; wait "$child" || rc=$?
       child=''
@@ -144,5 +158,5 @@ case "${1:-status}" in
     flock -n 9 || { log 'worker is running; installation refused'; exit 1; }
     install_cli
     ;;
-  *) echo 'usage: cursor-worker {up|run|status|install}' >&2; exit 2 ;;
+  *) echo 'usage: cursor-worker {up|run|status|install} [haynes-ops|dev-env]' >&2; exit 2 ;;
 esac
