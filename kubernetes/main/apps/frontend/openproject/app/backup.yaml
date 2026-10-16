@@ -27,7 +27,7 @@ spec:
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationSource
 metadata:
-  name: openproject-assets
+  name: openproject-assets-aws
 spec:
   sourcePVC: openproject-assets
   trigger:
