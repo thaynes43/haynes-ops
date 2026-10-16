@@ -67,7 +67,7 @@ install_cli() {
   (
     flock -x 8
     install_cli_locked
-  ) 8>"$VERSIONS/.install.lock"
+  ) 8>"$VERSIONS/.installer.lock"
 }
 
 prepare_workspace() {

@@ -108,7 +108,7 @@ class LifecycleTests(unittest.TestCase):
             home, commands, env = self.prepare(Path(directory))
             (commands / 'flock').unlink()
             versions = home / '.local/share/cursor-agent/versions'; versions.mkdir(parents=True)
-            with (versions / '.install.lock').open('w') as lock:
+            with (versions / '.installer.lock').open('w') as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
                 process = subprocess.Popen(['bash', str(SCRIPTS / 'cursor-worker.sh'), 'install'],
                                            env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
