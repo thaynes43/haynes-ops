@@ -86,6 +86,43 @@ class LifecycleTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse((home / 'calls').exists())
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'real Linux flock fixture runs in CI')
+    def test_install_refuses_other_profile_supervisor_lock(self):
+        import fcntl
+        with tempfile.TemporaryDirectory() as directory:
+            home, commands, env = self.prepare(Path(directory))
+            (commands / 'flock').unlink()
+            state = home / '.local/state/cursor-worker-dev-env'; state.mkdir(parents=True)
+            with (state / 'worker.lock').open('w') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                result = subprocess.run(['bash', str(SCRIPTS / 'cursor-worker.sh'), 'install'],
+                                        env=env, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(b'dev-env worker is running', result.stdout)
+                self.assertFalse((home / 'calls').exists())
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'real Linux flock fixture runs in CI')
+    def test_install_waits_for_shared_installer_lock(self):
+        import fcntl
+        with tempfile.TemporaryDirectory() as directory:
+            home, commands, env = self.prepare(Path(directory))
+            (commands / 'flock').unlink()
+            versions = home / '.local/share/cursor-agent/versions'; versions.mkdir(parents=True)
+            with (versions / '.installer.lock').open('w') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                process = subprocess.Popen(['bash', str(SCRIPTS / 'cursor-worker.sh'), 'install'],
+                                           env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                try:
+                    threading.Event().wait(0.2)
+                    self.assertIsNone(process.poll())
+                    self.assertFalse((home / 'calls').exists())
+                    fcntl.flock(lock, fcntl.LOCK_UN)
+                    process.communicate(timeout=5)
+                    self.assertNotEqual(process.returncode, 0)  # Fixture download fails after unlock.
+                    self.assertEqual((home / 'calls').read_text(), 'curl\n')
+                finally:
+                    if process.poll() is None: process.kill(); process.communicate()
+
 
 class SupervisorTests(unittest.TestCase):
     """`run` with a fake pinned CLI: no download, login, network or real worker."""
@@ -171,6 +208,34 @@ class SupervisorTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(self.starts(home), 0)
             self.assertIn('browser login required', result.stdout)
+
+    def test_dev_env_profile_preserves_separate_identity_and_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home, env = self.prepare(Path(directory),
+                                     'printf "%s\\n" "$@" > "$HOME/worker-args"; '
+                                     'touch "$HOME/.local/state/cursor-worker-dev-env/disabled"; exit 0')
+            workspace = home / 'repos/dev-env'
+            workspace.mkdir(parents=True)
+            subprocess.run(['git', 'init', '-q', str(workspace)], check=True)
+            result = subprocess.run(['bash', str(SCRIPTS / 'cursor-worker.sh'), 'run', 'dev-env'],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual((home / 'worker-args').read_text().splitlines(),
+                             ['worker', '--name', 'dev-env', '--worker-dir', str(workspace),
+                              '--data-dir', str(home / '.local/share/cursor-agent-dev-env'),
+                              '--idle-release-timeout', '0', 'start'])
+            self.assertFalse((home / '.local/state/dev-env-cursor/disabled').exists())
+            self.assertTrue((workspace / '.cursor/dev-env-parity.json').exists())
+
+    def test_missing_dev_env_checkout_never_starts_or_clones(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home, env = self.prepare(Path(directory), 'exit 0')
+            result = subprocess.run(['bash', str(SCRIPTS / 'cursor-worker.sh'), 'run', 'dev-env'],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(self.starts(home), 0)
+            self.assertIn('dev-env checkout missing; no automatic clone', result.stdout)
+            self.assertFalse((home / 'repos/dev-env').exists())
 
     def test_logout_during_recovery_stops_without_breaker(self):
         with tempfile.TemporaryDirectory() as directory:

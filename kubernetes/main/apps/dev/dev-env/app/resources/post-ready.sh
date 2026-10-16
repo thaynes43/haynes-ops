@@ -153,6 +153,11 @@ if bash /opt/dev-env/scripts/cursor-worker.sh up; then
 else
   cursor_state="launch failed; existing harnesses continue"
 fi
+if bash /opt/dev-env/scripts/cursor-worker.sh up dev-env; then
+  cursor_state="$cursor_state; dev-env supervisor requested (tmux cursor-worker-dev-env)"
+else
+  cursor_state="$cursor_state; dev-env launch failed; existing harnesses continue"
+fi
 
 if [ ! -x "$AGENT_RUN" ]; then
   codex_state="skipped (no $AGENT_RUN — did dev-init run?)"

@@ -10,6 +10,19 @@ NAME=dev-env-v1-haynes-ops
 SESSION=cursor-worker-v1
 WORKSPACE="$HOME/cursor/haynes-ops"
 STATE="$HOME/.local/state/dev-env-cursor"
+DATA_DIR="$HOME/.local/share/cursor-agent"
+PROFILE="${2:-haynes-ops}"
+case "$PROFILE" in
+  haynes-ops) ;;
+  dev-env)
+    NAME=dev-env
+    SESSION=cursor-worker-dev-env
+    WORKSPACE="$HOME/repos/dev-env"
+    STATE="$HOME/.local/state/cursor-worker-dev-env"
+    DATA_DIR="$HOME/.local/share/cursor-agent-dev-env"
+    ;;
+  *) echo 'usage: cursor-worker {up|run|status|install} [haynes-ops|dev-env]' >&2; exit 2 ;;
+esac
 VERSIONS="$HOME/.local/share/cursor-agent/versions"
 BIN="$VERSIONS/$VERSION/cursor-agent"
 # Overrides exist only for offline fixtures.
@@ -18,7 +31,7 @@ LOG_MAX="${CURSOR_WORKER_LOG_MAX_BYTES:-10485760}"
 mkdir -p "$STATE" "$HOME/.local/bin"
 log() { printf 'cursor-worker: %s %s\n' "$(date -u +%FT%TZ)" "$*"; }
 
-install_cli() {
+install_cli_locked() {
   [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ] || { log 'unsupported platform (v1 is Linux x86_64)'; return 1; }
   mkdir -p "$VERSIONS"
   if [ ! -x "$BIN" ] || [ "$("$BIN" --version 2>/dev/null)" != "$VERSION" ]; then
@@ -49,8 +62,17 @@ install_cli() {
   done
 }
 
+install_cli() {
+  mkdir -p "$VERSIONS"
+  (
+    flock -x 8
+    install_cli_locked
+  ) 8>"$VERSIONS/.installer.lock"
+}
+
 prepare_workspace() {
   if [ ! -e "$WORKSPACE" ]; then
+    [ "$PROFILE" = haynes-ops ] || { log 'dev-env checkout missing; no automatic clone'; return 1; }
     [ -d "$HOME/repos/haynes-ops/.git" ] || { log 'canonical clone missing; no automatic clone'; return 1; }
     mkdir -p "$HOME/cursor"
     # Never reset an existing checkout or fetch behind another session's back.
@@ -81,7 +103,7 @@ case "${1:-status}" in
       exit 0
     fi
     rotate_log
-    printf -v launch 'exec bash %q run >>%q 2>&1' "$HERE/cursor-worker.sh" "$STATE/worker.log"
+    printf -v launch 'exec bash %q run %q >>%q 2>&1' "$HERE/cursor-worker.sh" "$PROFILE" "$STATE/worker.log"
     tmux new-session -d -s "$SESSION" "$launch"
     log "launched $SESSION; log: $STATE/worker.log"
     ;;
@@ -114,7 +136,7 @@ case "${1:-status}" in
       rotate_log
       started="$(date +%s)"
       "$BIN" worker --name "$NAME" --worker-dir "$WORKSPACE" \
-        --data-dir "$HOME/.local/share/cursor-agent" --idle-release-timeout 0 start &
+        --data-dir "$DATA_DIR" --idle-release-timeout 0 start &
       child=$!
       rc=0; wait "$child" || rc=$?
       child=''
@@ -140,9 +162,12 @@ case "${1:-status}" in
     [ ! -x "$BIN" ] || "$BIN" --version
     ;;
   install)
-    exec 9>"$STATE/worker.lock"
+    mkdir -p "$HOME/.local/state/dev-env-cursor" "$HOME/.local/state/cursor-worker-dev-env"
+    exec 9>"$HOME/.local/state/dev-env-cursor/worker.lock"
     flock -n 9 || { log 'worker is running; installation refused'; exit 1; }
+    exec 7>"$HOME/.local/state/cursor-worker-dev-env/worker.lock"
+    flock -n 7 || { log 'dev-env worker is running; installation refused'; exit 1; }
     install_cli
     ;;
-  *) echo 'usage: cursor-worker {up|run|status|install}' >&2; exit 2 ;;
+  *) echo 'usage: cursor-worker {up|run|status|install} [haynes-ops|dev-env]' >&2; exit 2 ;;
 esac
