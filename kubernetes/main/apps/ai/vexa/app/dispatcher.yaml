@@ -295,25 +295,21 @@ spec:
               env:
                 - name: SITE_ORIGIN
                   value: "http://sigoalumni.frontend.svc.cluster.local:8080"
-                # 2026-10-15: hold automatic notes while the board agenda is
-                # reconciled with the transcript and hand notes in place.
-                # Bot dispatch and the stall watchdog remain active. Restore
-                # only after meeting-scribe/06 verifies publication and dedupe.
-                # Before re-enabling, check other held events and advance
-                # NOTES_SINCE to exclude reviewed captures by actual end time;
-                # otherwise the 7-day lookback will dispatch and notify them.
+                # 2026-10-15 meeting-scribe/06: the canonical draft was reconciled
+                # manually. All held captures were checked; the floor below
+                # excludes capture 10 so re-enabling cannot send duplicate mail.
                 - name: NOTES_DISPATCH_ENABLED
-                  value: "false"
+                  value: "true"
                 - name: NOTES_DEBOUNCE_MIN
                   value: "5"
                 - name: NOTES_LOOKBACK_DAYS
                   value: "7"
                 - name: NOTES_MIN_DURATION_MIN
                   value: "10"
-                # Floor: pre-pipeline meetings (the 08-18/08-19 tests) never
-                # get notes jobs even inside the lookback window.
+                # Capture 10 ended at 2026-10-16T00:45:01.669059Z; exclude its
+                # actual end, not the scheduled end, and all earlier history.
                 - name: NOTES_SINCE
-                  value: "2026-08-19T19:00:00Z"
+                  value: "2026-10-16T00:45:02Z"
               envFrom:
                 - secretRef:
                     name: vexa-dispatcher-secret
