@@ -1,0 +1,11 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-private-pilot-c7-20261016-1800
+  namespace: dev-env-budgets
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+immutable: true
+data:
+  policySHA256: "6701a13173ef16a637bd4184e231fc6603551ec3201cca6c0f75cf73de7b63f5"
