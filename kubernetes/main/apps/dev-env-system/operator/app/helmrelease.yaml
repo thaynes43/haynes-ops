@@ -64,12 +64,12 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Main cbf0700d07aa0de54dde89a16f733d3a412b8d00; Publish run 38495128673, keyless verified.
-              # 2.28.0 source plus the publication fix; built VERSION v2.28.0-1-gcbf0700.
+              # Release main b9fd858d74995542545dce95e8d698e9fafbdf17; Publish 38856507597 keyless verified.
+              # 2.29.0 accepted claim client and sealed pilot source; pilot admission remains disabled.
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # Executor stop, HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates.
               # Uses the installed 2.27.0 AgentSession schema; no CRD change is needed.
-              tag: sha-cbf0700@sha256:e86be8a5876a159aff3fe9950ac98830b94d0f80f623466393247cddc037dced
+              tag: sha-b9fd858@sha256:61dc99f7021fb30cffde2a3ba36f17649cc21490af1084640c8c469ca1a874e0
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
