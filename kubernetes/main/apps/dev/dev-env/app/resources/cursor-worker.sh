@@ -31,7 +31,7 @@ LOG_MAX="${CURSOR_WORKER_LOG_MAX_BYTES:-10485760}"
 mkdir -p "$STATE" "$HOME/.local/bin"
 log() { printf 'cursor-worker: %s %s\n' "$(date -u +%FT%TZ)" "$*"; }
 
-install_cli() {
+install_cli_locked() {
   [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ] || { log 'unsupported platform (v1 is Linux x86_64)'; return 1; }
   mkdir -p "$VERSIONS"
   if [ ! -x "$BIN" ] || [ "$("$BIN" --version 2>/dev/null)" != "$VERSION" ]; then
@@ -60,6 +60,14 @@ install_cli() {
     fi
     ln -sfn "$BIN" "$target"
   done
+}
+
+install_cli() {
+  mkdir -p "$VERSIONS"
+  (
+    flock -x 8
+    install_cli_locked
+  ) 8>"$VERSIONS/.install.lock"
 }
 
 prepare_workspace() {
@@ -154,8 +162,11 @@ case "${1:-status}" in
     [ ! -x "$BIN" ] || "$BIN" --version
     ;;
   install)
-    exec 9>"$STATE/worker.lock"
+    mkdir -p "$HOME/.local/state/dev-env-cursor" "$HOME/.local/state/cursor-worker-dev-env"
+    exec 9>"$HOME/.local/state/dev-env-cursor/worker.lock"
     flock -n 9 || { log 'worker is running; installation refused'; exit 1; }
+    exec 7>"$HOME/.local/state/cursor-worker-dev-env/worker.lock"
+    flock -n 7 || { log 'dev-env worker is running; installation refused'; exit 1; }
     install_cli
     ;;
   *) echo 'usage: cursor-worker {up|run|status|install} [haynes-ops|dev-env]' >&2; exit 2 ;;

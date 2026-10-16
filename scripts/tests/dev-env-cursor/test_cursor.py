@@ -86,6 +86,43 @@ class LifecycleTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse((home / 'calls').exists())
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'real Linux flock fixture runs in CI')
+    def test_install_refuses_other_profile_supervisor_lock(self):
+        import fcntl
+        with tempfile.TemporaryDirectory() as directory:
+            home, commands, env = self.prepare(Path(directory))
+            (commands / 'flock').unlink()
+            state = home / '.local/state/cursor-worker-dev-env'; state.mkdir(parents=True)
+            with (state / 'worker.lock').open('w') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                result = subprocess.run(['bash', str(SCRIPTS / 'cursor-worker.sh'), 'install'],
+                                        env=env, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(b'dev-env worker is running', result.stdout)
+                self.assertFalse((home / 'calls').exists())
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'real Linux flock fixture runs in CI')
+    def test_install_waits_for_shared_installer_lock(self):
+        import fcntl
+        with tempfile.TemporaryDirectory() as directory:
+            home, commands, env = self.prepare(Path(directory))
+            (commands / 'flock').unlink()
+            versions = home / '.local/share/cursor-agent/versions'; versions.mkdir(parents=True)
+            with (versions / '.install.lock').open('w') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                process = subprocess.Popen(['bash', str(SCRIPTS / 'cursor-worker.sh'), 'install'],
+                                           env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                try:
+                    threading.Event().wait(0.2)
+                    self.assertIsNone(process.poll())
+                    self.assertFalse((home / 'calls').exists())
+                    fcntl.flock(lock, fcntl.LOCK_UN)
+                    process.communicate(timeout=5)
+                    self.assertNotEqual(process.returncode, 0)  # Fixture download fails after unlock.
+                    self.assertEqual((home / 'calls').read_text(), 'curl\n')
+                finally:
+                    if process.poll() is None: process.kill(); process.communicate()
+
 
 class SupervisorTests(unittest.TestCase):
     """`run` with a fake pinned CLI: no download, login, network or real worker."""

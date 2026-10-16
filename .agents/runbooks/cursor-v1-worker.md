@@ -48,6 +48,8 @@ worktrees. One supervisor lock prevents duplicate managed workers; the tmux name
 also protects the original live pilot from replacement. My Machines itself can
 accept concurrent assignments: this implementation does not serialize tasks.
 
+Both profiles serialize pinned CLI installation with one shared install lock;
+explicit `install` refuses while either managed supervisor holds its lock.
 The supervisor retries failures with 15/30/45/60 second delays, stops after five
 short failures, and resets that count only after a ten-minute run. A failed
 `agent status` check only consumes that retry budget (it may be a network blip);
