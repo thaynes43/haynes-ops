@@ -25,7 +25,7 @@ spec:
   values:
     controllers:
       ollama:
-        replicas: 1
+        replicas: 0  # paused for the Assist model A/B on card A (#4038); restore to 1 after
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
