@@ -3,7 +3,7 @@ module haynes-ops.local/tests/dev-env-archive-guard
 go 1.26.6
 
 // Match the upstream v1.19.1 build's pod-security replacement exactly.
-replace k8s.io/pod-security-admission => github.com/kyverno/pod-security-admission v0.0.0-20251031094455-46f20778634f
+replace k8s.io/pod-security-admission => github.com/kyverno/pod-security-admission v0.0.0-20261015135348-40bb0fb141a9
 
 require (
 	github.com/google/go-containerregistry v0.21.8
