@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-private-pilot-c7-rendezvous-1016-r5
+  namespace: dev-env-budgets
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+immutable: true
+data:
+  policySHA256: "aba0f33d6b866fc28d220e2907cc7ef59480ffe86da05b79f4438b26aa2ffbbe"
