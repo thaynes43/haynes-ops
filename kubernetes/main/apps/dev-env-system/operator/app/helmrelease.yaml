@@ -64,12 +64,12 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Release v2.29.2 main c72d2e48f70f0131845dc53f55a7b177e0ac32e1; Publish 38932364045 keyless verified.
-              # 2.29.2 permits distinct retained pilot cohorts; general private admission remains disabled.
+              # Release v2.29.4 main f315635ad6fc30129da4e0310295634e57b78422; Publish 38990213487 keyless verified.
+              # 2.29.4 accepts gpt-6-luna on the sealed pilot contract; general private admission remains disabled.
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # Executor stop, HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates.
-              # Uses the accepted v2.29.1 schema (unchanged in 2.29.2); a sealed pilot is limited by its explicit policy window.
-              tag: sha-c72d2e4@sha256:ff39536e83910fa903ea139fefdbfa2cae5de7a104063a94701f673e0988cf26
+              # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
+              tag: sha-f315635@sha256:60f66558bd178543c64ff4b5554fbd204fd9c023f7f9d8c57b1b9016b7a4099a
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session

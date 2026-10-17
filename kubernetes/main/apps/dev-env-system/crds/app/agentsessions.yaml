@@ -572,7 +572,7 @@ spec:
                 and matching retained inputs
               rule: '!has(self.privatePilot) || (!has(self.projectCanary) && self.repo
                 == ''dev-env'' && self.base == ''main'' && self.mode == ''task'' &&
-                self.agent == ''codex'' && self.model == ''gpt-6.1-sol'' && self.effort
+                self.agent == ''codex'' && self.model == ''gpt-6-luna'' && self.effort
                 == ''high'' && self.size == ''S'' && self.profile == ''rule-canary-codex''
                 && self.parent == ''dev/dev-env'' && !has(self.workspace) && !has(self.restore)
                 && !has(self.tools) && !has(self.llm) && !has(self.caller) && !has(self.lane)
