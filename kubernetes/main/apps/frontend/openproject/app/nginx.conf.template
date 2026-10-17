@@ -53,7 +53,7 @@ http {
         location @signin {
             internal;
             add_header Set-Cookie $auth_cookie;
-            return 302 /outpost.goauthentik.io/start?rd=https://work.haynesnetwork.com$request_uri;
+            return 302 https://work.haynesnetwork.com/outpost.goauthentik.io/start?rd=https://work.haynesnetwork.com$request_uri;
         }
     }
     server {
