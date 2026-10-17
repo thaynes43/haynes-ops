@@ -1,0 +1,15 @@
+---
+# Temporary (#4038, 2026-10-17): fronts the hand-applied `assist-eval-*` llama-server
+# Jobs on card A while ollama-prime is paused, so the Home Assistant test agent has one
+# stable URL. Remove together with restoring ollama-prime's replicas.
+apiVersion: v1
+kind: Service
+metadata:
+  name: assist-eval
+spec:
+  selector:
+    app.kubernetes.io/name: assist-eval
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
