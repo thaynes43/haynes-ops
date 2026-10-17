@@ -7,4 +7,4 @@ metadata:
     kustomize.toolkit.fluxcd.io/prune: disabled
 immutable: true
 data:
-  policySHA256: "54f2346a6b7ca734ad04e15f479270bd3a78cc337dfc8f4fe19f0ea563e7659d"
+  policySHA256: "fa33afb9970abcb244b13a01fd8d2f7246ad165cf350f79360713e8634e24986"
