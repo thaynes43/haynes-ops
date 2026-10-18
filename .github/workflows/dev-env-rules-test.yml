@@ -1,0 +1,26 @@
+---
+name: dev-env instruction contract tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/dev-env-system/session-config/**
+      - kubernetes/main/apps/dev/dev-env/app/resources/config/claude/CLAUDE.md
+      - scripts/tests/dev-env-rules/**
+      - .github/workflows/dev-env-rules-test.yml
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  offline:
+    name: Instruction Contract Fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check common source and v2 coordination contract
+        run: nice -n 19 python3 -I -B scripts/tests/dev-env-rules/test_rules.py -v
