@@ -43,6 +43,13 @@ spec:
               MCP_SERVER_TRANSPORT: http
               MCP_SERVER_HOST: 0.0.0.0
               MCP_SERVER_PORT: "3000"
+              # 0.6.x writes a hash-chained audit record before every mutating
+              # tool call and refuses the call when it cannot (fail-closed).
+              # Its default path is ./audit.log under /app, which the read-only
+              # root filesystem rejects, so every write tool (dry runs included)
+              # failed with "Audit log unavailable" from 2026-10-14. /tmp is the
+              # writable emptyDir below; the log is lost on restart, which is fine.
+              UNIFI_AUDIT_LOG_PATH: /tmp/audit.log
             # Upstream UniFi key and inbound MCP bearer token come from ExternalSecret.
             envFrom:
               - secretRef:
