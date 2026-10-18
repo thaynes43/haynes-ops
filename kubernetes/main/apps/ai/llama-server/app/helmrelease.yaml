@@ -24,9 +24,10 @@ spec:
   values:
     controllers:
       llama-server:
-        # Local Jarvis and Phone Assist need Muse while rack card A is tested.
-        # Card C is temporarily its sole GPU on the talosw04 OCuLink dock.
-        replicas: 0  # paused: card C out of the talosw04 dock for the B test (#3052 S3); restore to 1 after
+        # Local Jarvis and Phone Assist run on Muse. Card B is on the talosw04
+        # OCuLink dock while card C is repadded (#3052). B drops off the bus
+        # above ~300 W, so it serves Muse only behind the 250 W power gate below.
+        replicas: 1
         annotations:
           reloader.stakater.com/auto: "true"
         # One resident model on one card: never two copies during rollout.
@@ -44,6 +45,32 @@ spec:
           # nvidia.com/gpu request: the device plugin hands out *a* card and
           # cannot pin a named one, and nothing else in `ai` claims one either.
           runtimeClassName: nvidia
+        initContainers:
+          # Card B fails at 300-350 W (Xid 79, #3052) and holds at 250 W. A power
+          # limit resets on every boot, so Muse refuses to start until the
+          # hand-applied `egpu-test-*` cap Job (the only pod allowed CAP_SYS_ADMIN)
+          # has set it. Read-only: this container cannot change the limit itself.
+          power-gate:
+            image:
+              repository: ghcr.io/ggml-org/llama.cpp
+              tag: server-cuda-b11096@sha256:0192ab2545efcbe79c240645e34abd8fffbe4813aedcef5a0e3a886ef6d6d82f
+            env:
+              NVIDIA_VISIBLE_DEVICES: GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                while true; do
+                  pl=$(nvidia-smi --query-gpu=enforced.power.limit --format=csv,noheader,nounits | cut -d. -f1)
+                  if [ -n "$pl" ] && [ "$pl" -le 250 ]; then echo "enforced ${pl} W: ok"; exit 0; fi
+                  echo "enforced ${pl:-unknown} W is above 250 W: waiting for the cap Job"; sleep 30
+                done
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities: { drop: ["ALL"] }
+            resources:
+              requests: { cpu: 10m, memory: 32Mi }
+              limits: { memory: 128Mi }
         containers:
           app:
             image:
@@ -56,9 +83,9 @@ spec:
               # (identical digest upstream).
               tag: server-cuda-b11096@sha256:0192ab2545efcbe79c240645e34abd8fffbe4813aedcef5a0e3a886ef6d6d82f
             env:
-              # Card C stays on the dock; card A in the rack has no voice tenant.
+              # Card B on the dock; card A in the rack has no voice tenant.
               # Exact UUID selection is paired with the hostname selector above.
-              NVIDIA_VISIBLE_DEVICES: GPU-d8a856f1-f955-f683-bc24-654561496774
+              NVIDIA_VISIBLE_DEVICES: GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b
               TZ: America/New_York
             args:
               - --host
