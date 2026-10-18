@@ -561,11 +561,17 @@ spec:
                 && (self.agent == ''codex'' ? (!has(self.limits.maxTurns) || self.limits.maxTurns
                 == 0) : (has(self.limits.maxTurns) && self.limits.maxTurns > 0 &&
                 self.limits.maxTurns <= 3)))'
-            - message: common rules require the matching managed canary binding
+            - message: common rules require a matching managed canary or finite private
+                task binding
               rule: '!has(self.commonRules) || (has(self.projectCanary) && has(self.projectCanary.commonRevision)
                 && self.projectCanary.commonRevision == self.commonRules.commonRevision)
                 || (has(self.privatePilot) && self.privatePilot.commonRevision ==
-                self.commonRules.commonRevision)'
+                self.commonRules.commonRevision) || (!has(self.projectCanary) && !has(self.privatePilot)
+                && !has(self.workspace) && self.mode == ''task'' && self.agent in
+                [''claude'', ''codex''] && has(self.profile) && self.profile == ''dev''
+                && has(self.parent) && has(self.limits) && has(self.limits.timeout)
+                && duration(self.limits.timeout) > duration(''0s'') && duration(self.limits.timeout)
+                <= duration(''45m''))'
             - message: directory enrollment requires a managed canary
               rule: '!has(self.sessionDirectory) || has(self.projectCanary) || has(self.privatePilot)'
             - message: sealed pilots require the fixed private bounded Codex contract
