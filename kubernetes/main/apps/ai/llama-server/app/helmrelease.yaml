@@ -61,8 +61,9 @@ spec:
               - |
                 while true; do
                   pl=$(nvidia-smi --query-gpu=enforced.power.limit --format=csv,noheader,nounits | cut -d. -f1)
-                  if [ -n "$pl" ] && [ "$pl" -le 250 ]; then echo "enforced ${pl} W: ok"; exit 0; fi
-                  echo "enforced ${pl:-unknown} W is above 250 W: waiting for the cap Job"; sleep 30
+                  # Bare $pl only: Flux postBuild envsubst would eat a braced form.
+                  if [ -n "$pl" ] && [ "$pl" -le 250 ]; then echo "enforced $pl W: ok"; exit 0; fi
+                  echo "enforced limit '$pl' W is above 250 W or unreadable: waiting for the cap Job"; sleep 30
                 done
             securityContext:
               allowPrivilegeEscalation: false
