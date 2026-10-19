@@ -13,3 +13,4 @@ resources:
   - ./inputs-4.json
   - ./home-4.json
   - ./network-4.json
+  - ./root-4.json
