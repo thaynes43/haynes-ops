@@ -49,6 +49,10 @@ spec:
         podDisruptionBudget:
           minAvailable: 1
         pod:
+          # Keep serving fresh authority while terminating service endpoints
+          # withdraw, then drain the existing 16s native request envelope.
+          # This is the existing default grace, not additional task budget.
+          terminationGracePeriodSeconds: 30
           # DESIGN-001 7.1: the operator is tiny and may run anywhere; its two replicas
           # spread across zones m and w, so one node class going away leaves the API up.
           topologySpreadConstraints:
@@ -62,6 +66,10 @@ spec:
                   app.kubernetes.io/name: *app
         containers:
           app:
+            lifecycle:
+              preStop:
+                sleep:
+                  seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
               # Source dd49ed4a6c38fa832634c57cbe13ab2946b92189; Publish39216574917 signed/verified.
