@@ -16,3 +16,4 @@ resources:
   - ./inputs-5.json
   - ./home-5.json
   - ./network-5.json
+  - ./root-5.json
