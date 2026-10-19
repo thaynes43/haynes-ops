@@ -152,7 +152,8 @@ profiles:
   # `agent-run login`, `pair` and `attach` work from a session without the v1 pod. Needs an
   # operator that knows `serviceAccount` (an older one rejects the whole templates document).
   # Mounts: the keeper's login projections and the GitHub token only (not `full`'s GCP key);
-  # env is only the two file pointers, not the MCP/cloud secrets `full` adds. A workbench
+  # env is the two file pointers plus the PVE-read and hw-ssh Secrets (envFrom below), not the
+  # MCP/cloud secrets `full` adds. A workbench
   # session can still exec into any session pod and so reach that pod's credentials.
   # Create it with --size M explicitly: a profile cannot set a default size.
   workbench:
@@ -160,6 +161,16 @@ profiles:
     env:
       - { name: AGENTD_CLAUDE_LIVE_FILE, value: /opt/dev-env/claude-access/access.json }
       - { name: AGENTD_CODEX_ACCESS_FILE, value: /opt/dev-env/codex-access/access.json }
+    # v1-parity hardware access (Story110 T29, Tom Q-110-08, 2026-10-19; reverses Q-07 for
+    # this profile only). dev-env-proxmox-secret is the PVEAuditor read token (`pve`);
+    # dev-env-hw-ssh-secret is v1's HW_SSH_PRIVATE_KEY_B64, which agentd's hw-ssh-key boot
+    # step decodes to ~/.ssh/dev-env-hw. No other profile mounts the key. Both are optional
+    # so a missing Secret never blocks a ceremony session. Reaching the hosts still needs
+    # the lan-pve-api-* / lan-ssh-tier egress grants (dev-env-grant-policies); the Proxmox
+    # write token is the credential-proxmox grant.
+    envFrom:
+      - secretRef: { name: dev-env-proxmox-secret, optional: true }
+      - secretRef: { name: dev-env-hw-ssh-secret, optional: true }
     mounts:
       - { name: gh-token, secret: dev-env-gh-token, path: /creds }
       - { name: claude-access, secret: dev-env-claude-live, path: /opt/dev-env/claude-access, defaultMode: 0440 }

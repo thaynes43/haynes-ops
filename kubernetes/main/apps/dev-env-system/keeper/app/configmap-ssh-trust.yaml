@@ -1,0 +1,25 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kubernetes/v1/configmap-v1.json
+# The keeper's Proxmox minter trust (dev-env D-69/D-72, docs/keeper-node-trust.md): the
+# explicit SSH targets it dials (host:22, at most 8, tried in order) and the strict
+# known-hosts file it checks them against. Public data only. The host keys are the
+# ssh-ed25519 keys the five PVE nodes present; each equals the key v1's hw-ssh pinned
+# earlier (compared 2026-10-19 by fingerprint). If a node is reinstalled, its key changes
+# and the keeper refuses that target until this file is updated by PR.
+# Mounted read-only at /etc/dev-env-keeper/ssh (the keeper's default paths).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-keeper-ssh-trust
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/name: dev-env-keeper
+data:
+  targets.json: |
+    ["haynesintelligence.haynesnetwork:22", "twin-top.haynesnetwork:22", "twin-bottom.haynesnetwork:22", "pve04.haynesnetwork:22", "pve-filet02.haynesnetwork:22"]
+  known-hosts: |
+    haynesintelligence.haynesnetwork ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKvadV6YgEAyP3K1hZOhN83R2de+TlOMWHo9cmS+21LV
+    twin-top.haynesnetwork ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAps26cnuezDp8RJUfRle2OSsGiIiFVg8HSNUtiKf8Is
+    twin-bottom.haynesnetwork ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPbTf7T04B8nQlZiOLyOCyH3THwtwon0PxV6J5YEg3FN
+    pve04.haynesnetwork ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPT3Sn1YmXxwBp34B+kBKxSJvP0oBIGzpxWiyTYfi6d9
+    pve-filet02.haynesnetwork ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDSIryF89nzYw+ipV4UiVLNYoh2aL8qBh9egX1LaAx1A

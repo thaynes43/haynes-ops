@@ -60,6 +60,11 @@ spec:
               - --session-namespace=dev-agents
               - --policy-namespace=dev-env-system
               - --leader-elect=true
+              # Credential grants for `proxmox` (the keeper mints it; D-69/D-72). Enabled for the
+              # workbench profile by Tom's ruling Q-110-08 (2026-10-19) via the standing
+              # policy credential-proxmox; no policy matches any other profile. The keeper
+              # flag is set in the same change.
+              - --enable-proxmox-grants=true
               # No metrics Service until the console/monitoring deployment follows.
               - --metrics-bind-address=0
               - --health-probe-bind-address=:8081

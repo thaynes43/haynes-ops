@@ -65,6 +65,14 @@ spec:
               # projection dev-agents/dev-env-claude-live, staging /run/dev-env-claude-login/private
               # are the defaults.
               - --enable-claude-auth=true
+              # Proxmox credential grants (D-69/D-72), enabled for profile workbench by Tom's
+              # ruling Q-110-08 (2026-10-19). Prerequisites, all in git: node trust installed
+              # and CA pair validated (2026-10-09), pinned targets and host keys mounted at the
+              # default /etc/dev-env-keeper/ssh (ConfigMap dev-env-keeper-ssh-trust), keeper
+              # :22 egress to the five nodes (network/app/keeper.yaml). The broker flag is set
+              # in the same change. readyz reports proxmox-trust, so a bad trust file shows as
+              # NotReady rather than a failed mint.
+              - --enable-proxmox-grants=true
             # Other flags retain the defaults: plan 01's names (--secret-namespace dev-agents,
             # --gh-token-secret dev-env-gh-token, --github-app-dir
             # /etc/dev-env-keeper/github-dev-bot, the Lease in POD_NAMESPACE, v1's
@@ -212,10 +220,9 @@ spec:
             app:
               - path: /etc/dev-env-keeper/github-dev-bot
                 readOnly: true
-      # Keeper-only D-69/D-72 input. The default --ssh-ca-dir reads these two keys;
-      # --enable-proxmox-grants stays absent/default false in keeper and broker.
-      # Key-pair validation, node trust, SSH targets/host pins, egress and provider
-      # acceptance remain prerequisites; this mount does not activate minting.
+      # Keeper-only D-69/D-72 input. The default --ssh-ca-dir reads these two keys.
+      # Minting is switched on by --enable-proxmox-grants above (Q-110-08); the pair
+      # was validated in the keeper on 2026-10-09 (docs/keeper-node-trust.md).
       ssh-ca:
         type: secret
         name: dev-env-keeper-ssh-ca
@@ -224,6 +231,17 @@ spec:
           dev-env-keeper:
             app:
               - path: /etc/dev-env-keeper/ssh-ca
+                readOnly: true
+      # Pinned SSH targets and node host keys for the Proxmox minter (public data). The
+      # keeper rereads them per operation, so a ConfigMap change needs no restart.
+      ssh-trust:
+        type: configMap
+        name: dev-env-keeper-ssh-trust
+        defaultMode: 0444
+        advancedMounts:
+          dev-env-keeper:
+            app:
+              - path: /etc/dev-env-keeper/ssh
                 readOnly: true
       # Only the main keeper can use the Kubernetes API. Project the normal
       # in-cluster token/CA/namespace path explicitly with pod automount disabled.
