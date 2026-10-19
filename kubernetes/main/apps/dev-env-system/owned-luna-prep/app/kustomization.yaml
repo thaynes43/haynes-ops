@@ -4,3 +4,6 @@ resources:
   - ./inputs.json
   - ./home.json
   - ./network.json
+  - ./inputs-2.json
+  - ./home-2.json
+  - ./network-2.json
