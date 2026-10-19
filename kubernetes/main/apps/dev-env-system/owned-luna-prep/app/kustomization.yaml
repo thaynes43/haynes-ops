@@ -25,3 +25,4 @@ resources:
   - ./inputs-8.json
   - ./home-8.json
   - ./network-8.json
+  - ./root-8.json
