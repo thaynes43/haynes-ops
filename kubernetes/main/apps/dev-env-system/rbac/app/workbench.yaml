@@ -8,7 +8,8 @@
 # `agent-run login`, `pair` and `attach`, which are a `kubectl exec` into another
 # session's pod, without the v1 pod. The rights are the least that does that, in
 # dev-agents only:
-#   - pods get, list: agent-run resolves the pod, kubectl exec reads it;
+#   - pods get: kubectl exec reads the pod (agent-run gets the pod name from the operator's
+#     API, so it needs no list);
 #   - pods/exec create: agent-run forces kubectl's SPDY exec, which is a POST. The default
 #     WebSocket exec begins as a GET and would also need `get` on pods/exec; it is not granted.
 # No Secrets, nothing cluster-wide, no write on any other resource, no rights in
@@ -29,7 +30,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: [pods]
-    verbs: [get, list]
+    verbs: [get]
   - apiGroups: [""]
     resources: [pods/exec]
     verbs: [create]
