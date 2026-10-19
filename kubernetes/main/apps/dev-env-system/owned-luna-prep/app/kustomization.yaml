@@ -28,3 +28,4 @@ resources:
   - ./inputs-9.json
   - ./home-9.json
   - ./network-9.json
+  - ./root-9.json
