@@ -125,6 +125,18 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
+    # The OpenProject private agent API (Story97 / opwork), the same fixed destination v1
+    # reaches. DNS above already resolves openproject-web.frontend.svc.cluster.local. The
+    # matching ingress is in apps/frontend/openproject/app/networkpolicy.yaml. The
+    # exclusions in this policy's endpointSelector still keep the bounded fixtures closed.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: frontend
+            app.kubernetes.io/instance: openproject
+      toPorts:
+        - ports:
+            - port: "8082"
+              protocol: TCP
     # Authoring services in dev (Blender x2, audio runtime; the audio provisioner is not
     # a caller target). Each also admits dev-agents on its own side.
     - toEndpoints:
