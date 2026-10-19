@@ -1,0 +1,110 @@
+{
+  "apiVersion": "cilium.io/v2",
+  "kind": "CiliumNetworkPolicy",
+  "metadata": {
+    "name": "dev-env-owned-luna-1019-8",
+    "namespace": "dev-agents"
+  },
+  "spec": {
+    "description": "Explicitly approved single bounded Luna root; no public web, MCP, LAN or Kubernetes API tier",
+    "endpointSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/name": "dev-env-owned-luna-1019-8"
+      }
+    },
+    "ingressDeny": [
+      {
+        "fromEntities": [
+          "all"
+        ]
+      }
+    ],
+    "egress": [
+      {
+        "toEndpoints": [
+          {
+            "matchLabels": {
+              "io.kubernetes.pod.namespace": "kube-system",
+              "k8s-app": "kube-dns"
+            }
+          }
+        ],
+        "toPorts": [
+          {
+            "ports": [
+              {
+                "port": "53",
+                "protocol": "ANY"
+              }
+            ],
+            "rules": {
+              "dns": [
+                {
+                  "matchName": "chatgpt.com"
+                },
+                {
+                  "matchName": "chatgpt.com.dev-agents.svc.cluster.local"
+                },
+                {
+                  "matchName": "chatgpt.com.svc.cluster.local"
+                },
+                {
+                  "matchName": "chatgpt.com.cluster.local"
+                },
+                {
+                  "matchName": "dev-env-operator.dev-env-system.svc.cluster.local"
+                },
+                {
+                  "matchName": "dev-env-operator.dev-env-system.svc.cluster.local.dev-agents.svc.cluster.local"
+                },
+                {
+                  "matchName": "dev-env-operator.dev-env-system.svc.cluster.local.svc.cluster.local"
+                },
+                {
+                  "matchName": "dev-env-operator.dev-env-system.svc.cluster.local.cluster.local"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "toEndpoints": [
+          {
+            "matchLabels": {
+              "io.kubernetes.pod.namespace": "dev-env-system",
+              "app.kubernetes.io/name": "dev-env-operator"
+            }
+          }
+        ],
+        "toPorts": [
+          {
+            "ports": [
+              {
+                "port": "8443",
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "toFQDNs": [
+          {
+            "matchName": "chatgpt.com"
+          }
+        ],
+        "toPorts": [
+          {
+            "ports": [
+              {
+                "port": "443",
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
