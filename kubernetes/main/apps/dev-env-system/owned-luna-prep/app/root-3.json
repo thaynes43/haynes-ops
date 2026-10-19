@@ -1,0 +1,267 @@
+{
+  "kind": "Pod",
+  "apiVersion": "v1",
+  "metadata": {
+    "name": "dev-env-owned-luna-1019-3",
+    "namespace": "dev-agents",
+    "labels": {
+      "app.kubernetes.io/name": "dev-env-owned-luna-1019-3"
+    },
+    "annotations": {
+      "dev-env.haynesops.com/coordinator-host": "owned-luna-1019-3",
+      "k8tz.io/inject": "false",
+      "kustomize.toolkit.fluxcd.io/prune": "disabled"
+    }
+  },
+  "spec": {
+    "volumes": [
+      {
+        "name": "home",
+        "persistentVolumeClaim": {
+          "claimName": "home-dev-env-owned-luna-1019-3"
+        }
+      },
+      {
+        "name": "tmp",
+        "emptyDir": {
+          "sizeLimit": "16Mi"
+        }
+      },
+      {
+        "name": "api-token",
+        "projected": {
+          "sources": [
+            {
+              "serviceAccountToken": {
+                "audience": "dev-env-operator",
+                "expirationSeconds": 600,
+                "path": "token"
+              }
+            }
+          ],
+          "defaultMode": 288
+        }
+      },
+      {
+        "name": "api-ca",
+        "configMap": {
+          "name": "dev-env-api-ca",
+          "items": [
+            {
+              "key": "ca.crt",
+              "path": "ca.crt"
+            }
+          ],
+          "defaultMode": 292
+        }
+      },
+      {
+        "name": "codex-access",
+        "secret": {
+          "secretName": "dev-env-codex-live",
+          "items": [
+            {
+              "key": "access.json",
+              "path": "access.json"
+            }
+          ],
+          "defaultMode": 288
+        }
+      },
+      {
+        "name": "owned-home-inputs",
+        "configMap": {
+          "name": "dev-env-owned-luna-1019-3-inputs",
+          "items": [
+            {
+              "key": "input.json",
+              "path": "input.json"
+            },
+            {
+              "key": "requirements.toml",
+              "path": "requirements.toml"
+            }
+          ],
+          "defaultMode": 292
+        }
+      }
+    ],
+    "containers": [
+      {
+        "name": "owned-root",
+        "image": "ghcr.io/thaynes43/dev-env:2.30.2@sha256:de15acd3c937eac74a23990a2c334433e1098d48e1871a46ed7f95cb0def050b",
+        "command": [
+          "/usr/local/bin/agentd",
+          "owned-codex-host"
+        ],
+        "env": [
+          {
+            "name": "HOME",
+            "value": "/workspace/home"
+          },
+          {
+            "name": "CODEX_HOME",
+            "value": "/workspace/home/.codex"
+          },
+          {
+            "name": "AGENTD_OWNED_CODEX_HOST_ENABLED",
+            "value": "true"
+          },
+          {
+            "name": "AGENTD_API_URL",
+            "value": "https://dev-env-operator.dev-env-system.svc.cluster.local:8443"
+          },
+          {
+            "name": "AGENTD_API_TOKEN_FILE",
+            "value": "/var/run/secrets/dev-env/token"
+          },
+          {
+            "name": "AGENTD_API_CA_FILE",
+            "value": "/opt/dev-env/api-ca/ca.crt"
+          },
+          {
+            "name": "AGENTD_CODEX_ACCESS_FILE",
+            "value": "/opt/dev-env/codex-access/access.json"
+          },
+          {
+            "name": "DEV_ENV_POD_UID",
+            "valueFrom": {
+              "fieldRef": {
+                "apiVersion": "v1",
+                "fieldPath": "metadata.uid"
+              }
+            }
+          },
+          {
+            "name": "AGENTD_OWNED_ROOT_BOOTSTRAP",
+            "value": "true"
+          },
+          {
+            "name": "AGENTD_OWNED_TASK_UID",
+            "value": "owned-luna-1019-0003"
+          },
+          {
+            "name": "AGENTD_OWNED_HOST_ID",
+            "value": "owned-luna-1019-3"
+          },
+          {
+            "name": "AGENTD_OWNED_HOME_UID",
+            "value": "c5dc5082-2a87-42f9-b837-7f5b0f08b57c"
+          },
+          {
+            "name": "AGENTD_OWNED_HOME_BASELINE",
+            "value": "49057e0d4692411c6dde6b4578289de2e296be933a8af77722207ae794e1c02c"
+          },
+          {
+            "name": "AGENTD_OWNED_BUDGET_SPEC",
+            "value": "{\"successCondition\":\"One bounded Luna response, trusted owner stop/oncecontinue and same-thread retained history; no child, tools or pairing\",\"overallSeconds\":600,\"effortSeconds\":600,\"checkpointSeconds\":120}"
+          },
+          {
+            "name": "AGENTD_OWNED_ALLOW_CONTINUATION",
+            "value": "true"
+          },
+          {
+            "name": "AGENTD_OWNED_HOME_INPUTS_SHA",
+            "value": "30b8d59c4533d941bdc8812bbb99914ae3aed3d70c566c4833f6627b91182a05"
+          }
+        ],
+        "resources": {
+          "limits": {
+            "cpu": "250m",
+            "memory": "256Mi"
+          },
+          "requests": {
+            "cpu": "50m",
+            "memory": "128Mi"
+          }
+        },
+        "volumeMounts": [
+          {
+            "name": "home",
+            "mountPath": "/workspace"
+          },
+          {
+            "name": "tmp",
+            "mountPath": "/tmp"
+          },
+          {
+            "name": "api-token",
+            "readOnly": true,
+            "mountPath": "/var/run/secrets/dev-env"
+          },
+          {
+            "name": "api-ca",
+            "readOnly": true,
+            "mountPath": "/opt/dev-env/api-ca"
+          },
+          {
+            "name": "codex-access",
+            "readOnly": true,
+            "mountPath": "/opt/dev-env/codex-access"
+          },
+          {
+            "name": "owned-home-inputs",
+            "readOnly": true,
+            "mountPath": "/opt/dev-env/owned-home"
+          },
+          {
+            "name": "owned-home-inputs",
+            "readOnly": true,
+            "mountPath": "/etc/codex/requirements.toml",
+            "subPath": "requirements.toml"
+          }
+        ],
+        "terminationMessagePath": "/dev/termination-log",
+        "terminationMessagePolicy": "File",
+        "imagePullPolicy": "IfNotPresent",
+        "securityContext": {
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ]
+          },
+          "readOnlyRootFilesystem": true,
+          "allowPrivilegeEscalation": false
+        }
+      }
+    ],
+    "restartPolicy": "Never",
+    "terminationGracePeriodSeconds": 5,
+    "activeDeadlineSeconds": 2760,
+    "dnsPolicy": "ClusterFirst",
+    "nodeSelector": {
+      "topology.kubernetes.io/zone": "w"
+    },
+    "serviceAccountName": "dev-env-owned-native-fixture",
+    "automountServiceAccountToken": false,
+    "securityContext": {
+      "runAsUser": 1000,
+      "runAsGroup": 1000,
+      "runAsNonRoot": true,
+      "fsGroup": 1000,
+      "seccompProfile": {
+        "type": "RuntimeDefault"
+      }
+    },
+    "schedulerName": "default-scheduler",
+    "tolerations": [
+      {
+        "key": "node.kubernetes.io/not-ready",
+        "operator": "Exists",
+        "effect": "NoExecute",
+        "tolerationSeconds": 300
+      },
+      {
+        "key": "node.kubernetes.io/unreachable",
+        "operator": "Exists",
+        "effect": "NoExecute",
+        "tolerationSeconds": 300
+      }
+    ],
+    "priorityClassName": "dev-env-agent",
+    "priority": -10,
+    "enableServiceLinks": false,
+    "preemptionPolicy": "Never"
+  },
+  "status": {}
+}
