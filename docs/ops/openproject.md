@@ -196,7 +196,8 @@ exit status alone.
 - Named restricted bot: real HTTP create/read/update/comment/status/parent/link/
   attachment/activity and stale `lockVersion` conflict tests. Create only a
   disposable fixture project; delete only those fixture items with authorized
-  disposable scope. Prove a worker cannot approve itself.
+  disposable scope. Worker comments and imports never count as an owner's approval
+  decision (the old "prove a worker cannot approve itself" test is superseded, see below).
 - Configure Saga → Epic → Story, separate dependency graph, repository/source
   provenance, actor/conversation/revision fields and states Draft, Ungroomed,
   Needs answer, Needs approval, Approved, In progress, In review, Accepted, Paused.
@@ -211,12 +212,20 @@ exit status alone.
   pauses and the Chapter7 boundary.
 
 The reviewable work-model contract is `scripts/openproject/work-model.json`.
-It is not a bootstrap completion receipt. In particular, native status workflow
-validation needs live HTTP negative tests for creation in Approved/Accepted and
-simultaneous type/status changes, as well as ordinary transitions. Do not claim
-that worker restrictions are enforced from workflow rows or a hidden UI control
-alone. If a native API bypass exists, stop readiness and report the exact result;
-do not silently weaken the requirement or patch application source.
+It is not a bootstrap completion receipt.
+
+**Superseded 2026-10-19 (Tom, work model of 2026-10-16/19): no status firewall.** The
+earlier requirement for live negative tests of worker creation/transition into
+Approved/Accepted, and to stop readiness if a native API bypass exists, is withdrawn.
+It is not a preferred permanent human-only lifecycle. Grooming and authorizing *new*
+scope stays with Tom/Meatball; an agent marking its own already-authorized story complete
+once its actual acceptance criteria are met is the intended path (see the `opwork`
+section). Still required: reading the real read-back state, never claiming enforcement
+from workflow rows or a hidden UI control, and honest reporting of what the API allows.
+Observed 2026-10-19: the existing native workflow denies `Approved` and `Accepted` to the
+agent role (HTTP 422). That is an **access gap and a held decision for Tom** (whether and
+how agents may self-accept), not something agents work around; no role or workflow change
+is made here.
 
 ## Initial rollout recovery
 
