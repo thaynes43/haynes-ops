@@ -7,6 +7,7 @@ resources:
   - ./agent.yaml
   - ./workbench.yaml
   - ./operator.yaml
+  - ./operator-standby.yaml
   - ./common-rules-operator.yaml
   - ./keeper.yaml
   - ./keeper-credentials.yaml

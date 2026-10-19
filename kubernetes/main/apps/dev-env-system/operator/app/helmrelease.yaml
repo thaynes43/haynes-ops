@@ -145,6 +145,13 @@ spec:
               - '--assigned-task-budgets={"owned-luna-1019-9":"owned-luna-1019-0009"}'
               # Explicitly approved one finite Luna root; old fixture Pod/ledger retained.
               - '--owned-root-policy=dev-env-owned-luna-1019-9'
+              # Story110 T25 (thaynes43/dev-env #466): keep one standby `remote` Claude session on
+              # haynes-ops ready, on the workbench profile, so Tom can start a phone session without
+              # a coordinator. HOLD: the pinned operator does not know these flags and would refuse
+              # to start; merge only after the release containing #466 is pinned. The breaker's
+              # ConfigMap and its Role are in dev-env-rbac (operator-standby.yaml).
+              - '--enable-standby-session=true'
+              - '--standby-profile=workbench'
               # The other flags keep their defaults: --session-namespace dev-agents,
               # --templates-name dev-env-templates in this namespace (the Lease lives
               # here too), --api-bind-address :8443, --api-tls-dir

@@ -1,0 +1,42 @@
+---
+# The standby remote session's circuit breaker (thaynes43/dev-env #466, Story110 T25).
+# The operator's leader records each standby creation time here, so three creations in
+# 30 minutes open the breaker and survive an operator restart. GitOps only creates it
+# empty: IfNotPresent keeps Flux from re-applying the operator-owned data, and prune
+# disabled keeps the record if this file is ever removed. It lives in dev-env-rbac, which
+# dev-env-operator already depends on, so it exists before the flag starts reading it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-standby
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
+---
+# get and update on that one ConfigMap, by name: no create (it is pre-created above),
+# no list, no watch, no delete.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-operator-standby
+  namespace: dev-env-system
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-standby]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-operator-standby
+  namespace: dev-env-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-operator-standby
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
