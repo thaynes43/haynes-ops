@@ -35,6 +35,7 @@ spec:
           - dev-env-owned-native-lifecycle
           - dev-env-owned-luna-1019
           - dev-env-owned-luna-1019-2
+          - dev-env-owned-luna-1019-3
           - dev-env-project-bootstrap-check
       - key: dev-env.haynesops.com/egress
         operator: NotIn
