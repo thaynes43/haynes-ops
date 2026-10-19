@@ -5,6 +5,7 @@ pagination, uncertain create, outage handling), NOT a live cross-harness accepta
 No network, kubectl or credentials. Run: python3 -I -B scripts/tests/openproject/test_opwork.py -v
 """
 import contextlib
+import copy
 import importlib.util
 import io
 import json
@@ -89,7 +90,7 @@ class Fake:
                 return 404, {"message": "not found"}
             wp = self.wps[i]
             if sub is None and method == "GET":
-                return 200, wp
+                return 200, copy.deepcopy(wp)  # independent snapshot, like the real API
             if sub == "/available_assignees":
                 return 200, {"_embedded": {"elements": [{"id": 5}, {"id": 6}]}}
             if sub == "/form" and method == "POST":
@@ -308,6 +309,42 @@ class LifecycleTests(Base):
         self.assertEqual(self.fake.acts[10], [])  # no misleading "Status -> Paused" comment
         self.assertEqual(self.run_cli("status", "10", "In review", "--note", "PR 1")[0], 0)
         self.assertEqual(self.fake.wps[10]["_links"]["status"]["title"], "In review")
+
+    def concurrent_change_during_note(self, **change):
+        original = self.fake.handle
+        def racing(method, url, payload):
+            result = original(method, url, payload)
+            if method == "POST" and url.path.endswith("/activities"):  # someone else saves right after our note
+                wp = self.fake.wps[10]
+                wp["lockVersion"] += 1
+                wp[op.OWNER] = change.get("owner", wp[op.OWNER])
+                if "status" in change:
+                    wp["_links"]["status"] = {"href": "/api/v3/statuses/%d" % STATUSES[change["status"]], "title": change["status"]}
+            return result
+        self.fake.handle = racing
+
+    def test_complete_refuses_when_owner_or_hold_changes_during_the_command(self):
+        for change in ({"owner": "other session", "status": "Paused"}, {"status": "Needs approval"}):
+            self.setUp()
+            self.story(10, status="In progress", **{op.OWNER: os.environ["OPWORK_SESSION"]})
+            self.concurrent_change_during_note(**change)
+            code, out, err = self.run_cli("complete", "10", "--evidence", "ev")
+            self.assertEqual(code, 3, (change, out, err))
+            self.assertIn("changed while this command ran", err)
+            self.assertNotEqual(self.fake.wps[10]["_links"]["status"]["title"], "Accepted")
+
+    def test_complete_adopts_a_bumped_lock_when_only_the_lock_moved(self):
+        self.story(10, status="In progress", **{op.OWNER: os.environ["OPWORK_SESSION"]})
+        self.concurrent_change_during_note()
+        self.assertEqual(self.run_cli("complete", "10", "--evidence", "ev")[0], 0)
+        self.assertEqual(self.fake.wps[10]["_links"]["status"]["title"], "Accepted")
+
+    def test_denied_branch_also_refuses_a_concurrent_pause(self):
+        self.story(10, status="In progress", **{op.OWNER: os.environ["OPWORK_SESSION"]})
+        self.fake.deny.add("Accepted")
+        self.concurrent_change_during_note(status="Paused")
+        self.assertEqual(self.run_cli("complete", "10", "--evidence", "ev")[0], 3)
+        self.assertEqual(self.fake.wps[10]["_links"]["status"]["title"], "Paused")
 
     def test_evidence_survives_a_status_failure_and_rerun_does_not_hide_it(self):
         self.story(10, status="In progress", **{op.OWNER: os.environ["OPWORK_SESSION"]})

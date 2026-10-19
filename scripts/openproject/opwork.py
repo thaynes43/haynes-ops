@@ -303,6 +303,14 @@ def cmd_status(t, a, session):
     return "status set (read back): " + line(now)
 
 
+def refresh(t, w, expect_lock):
+    """Re-read after our own note. Adopt a newer lock only if owner and status are unchanged; else refuse."""
+    now = t.wp(w["id"])
+    if (text_of(now.get(OWNER)), now["_links"]["status"]["title"]) != (text_of(w.get(OWNER)), w["_links"]["status"]["title"]):
+        raise Fail("CONFLICT: #%d changed while this command ran (owner/status). Evidence note already posted; no status change made. Now: %s" % (w["id"], line(now)), 3)
+    return w if expect_lock is not None else now
+
+
 def cmd_complete(t, a, session):
     w = t.wp(a.id)
     if w["_links"]["status"]["title"] == "Accepted":
@@ -311,12 +319,12 @@ def cmd_complete(t, a, session):
     allowed = t.allowed_statuses(w)
     if allowed is not None and "Accepted" not in allowed:  # native workflow: this role cannot accept
         t.comment(a.id, "Ready for acceptance; evidence: " + a.evidence, session)
-        now = t.wp(a.id)
+        now = refresh(t, w, None)
         if now["_links"]["status"]["title"] != "In review" and "In review" in allowed:
             now = t.patch(now, status="In review")
         raise Fail("EVIDENCE RECORDED, NOT ACCEPTED: the OpenProject workflow does not let this role set Accepted. Actual state after read back: %s. An authorized accepter (Tom/Meatball) decides." % line(now), 7)
     t.comment(a.id, "Completion evidence: " + a.evidence, session)  # first: a lost evidence note is never hidden by "already Accepted"
-    now = t.patch(w if a.expect_lock is not None else t.wp(a.id), status="Accepted", lock=a.expect_lock)  # the lock moves if the note bumped it
+    now = t.patch(refresh(t, w, a.expect_lock), status="Accepted", lock=a.expect_lock)  # the lock may move if the note bumped it
     return "completed (read back): " + line(now)
 
 
