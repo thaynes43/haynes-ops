@@ -26,6 +26,13 @@ spec:
         protocol: TCP
   - fromEndpoints:
     - matchLabels:
+        io.kubernetes.pod.namespace: dev-agents
+    toPorts:
+    - ports:
+      - port: '8082'
+        protocol: TCP
+  - fromEndpoints:
+    - matchLabels:
         io.kubernetes.pod.namespace: frontend
         app.kubernetes.io/instance: openproject
     toPorts:
