@@ -64,12 +64,12 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Source 6f4293cd244a73d9b897fee92b3460fac301476e; Publish39209810410 signed/verified.
+              # Source dd49ed4a6c38fa832634c57cbe13ab2946b92189; Publish39216574917 signed/verified.
               # 2.29.4 accepts gpt-6-luna on the sealed pilot contract; general private admission remains disabled.
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # Executor stop, HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates.
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-6f4293c@sha256:2fa4607e48bae2c2a49ff7693a2d8a7eb49897393c6d32527f7ff9897771dd3c
+              tag: sha-dd49ed4@sha256:bd9eab474ce7c2d1b45d105b3208cc6d0938b4ab5e26b862eddc23ac514e6212
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -112,13 +112,13 @@ spec:
               - '--inbox-coordinator-read-projects=dev-env'
               - '--project-catalog=dev-env-system/dev-env-project-catalog'
               - '--project-clone-owner=thaynes43'
-              - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-luna-1019-6","hostID":"owned-luna-1019-6"}]'
+              - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-luna-1019-7","hostID":"owned-luna-1019-7"}]'
               - '--enable-task-budgets'
               - '--task-budget-namespace=dev-env-budgets'
-              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.30.5@sha256:978d10585cbba8582da143832962b3ff70167e3512231e5651949b9904f9dfc2'
-              - '--assigned-task-budgets={"owned-luna-1019-6":"owned-luna-1019-0006"}'
+              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.30.6@sha256:6e2691b617de6a9f43f67b29fe156bf4d4bb7bb61b1b96bf747765c7cef39dd7'
+              - '--assigned-task-budgets={"owned-luna-1019-7":"owned-luna-1019-0007"}'
               # Explicitly approved one finite Luna root; old fixture Pod/ledger retained.
-              - '--owned-root-policy=dev-env-owned-luna-1019-6'
+              - '--owned-root-policy=dev-env-owned-luna-1019-7'
               # The other flags keep their defaults: --session-namespace dev-agents,
               # --templates-name dev-env-templates in this namespace (the Lease lives
               # here too), --api-bind-address :8443, --api-tls-dir
