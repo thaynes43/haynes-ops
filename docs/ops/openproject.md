@@ -251,7 +251,7 @@ approval layer. Tom and Meatball groom scope; the routine lifecycle writes are t
 ```bash
 opwork.py search "text" [--status S] [--type T] [--parent ID] [--source-key K] [--all] [--page N]
 opwork.py show 97 --history --relations          # read-only, includes comment history
-opwork.py claim 97 --note "starting"             # Execution owner = this session, In progress
+opwork.py claim 97 --note "starting" [--assignee me]  # Execution owner = this session, In progress
 opwork.py comment 97 "progress"                  # attributed; `-` reads stdin
 opwork.py status 97 "In review" --note "PR #1"
 opwork.py complete 97 --evidence "tests ..."     # evidence + Accepted when the workflow allows
@@ -273,9 +273,12 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   explicit hold or pause (`Needs answer`, `Needs approval`, `Paused`) is re-read and refused (exit 3), never
   overwritten. `--force` is a takeover/override for an explicitly authorized case only.
 - **Read back**: success is printed only after a read back. An unconfirmed write is exit 6.
+  `show --history` marks any truncated text; `--full` returns it whole. `claim --assignee me` also sets the
+  native assignee (opt-in; never Tom automatically; the session owner field is kept).
 - **Workflow limit (observed 2026-10-19)**: the existing native workflow lets this role reach
   every status except `Approved` and `Accepted` (HTTP 422). `complete` preflights the form,
-  records the evidence, leaves the item `In review` and exits 7. Letting agents self-accept
+  records the evidence, moves the item to `In review` where the workflow allows, reports the
+  actual read-back state and exits 7. Letting agents self-accept
   is a workflow decision for Tom, not something this tool works around.
 - **Tracker unavailable**: a clear `TRACKER UNAVAILABLE` error (exit 5). Bounded authorized work
   continues. Notes are saved under `~/.local/state/opwork/pending/` (`OPWORK_STATE_DIR`) and

@@ -145,13 +145,18 @@ class Tracker:
     def by_source_key(self, key):
         return [w for w in self.scan([{"status": {"operator": "*", "values": []}}]) if text_of(w.get(SOURCE_KEY)) == key]
 
-    def patch(self, wp, fields=None, status=None, lock=None):
+    def patch(self, wp, fields=None, status=None, lock=None, assignee=None):
         """PATCH with lockVersion, then read back. Conflict re-reads and refuses; never overwrites."""
         fields = dict(fields or {})
         payload = {"lockVersion": wp["lockVersion"] if lock is None else lock}
         payload.update({k: ({"raw": v} if k in MARKDOWN else v) for k, v in fields.items()})
+        links = {}
         if status:
-            payload["_links"] = {"status": {"href": "/api/v3/statuses/%d" % self.resolve("statuses", status)}}
+            links["status"] = {"href": "/api/v3/statuses/%d" % self.resolve("statuses", status)}
+        if assignee:
+            links["assignee"] = {"href": "/api/v3/users/%d" % assignee}
+        if links:
+            payload["_links"] = links
         try:
             code, data = self.call("PATCH", "/api/v3/work_packages/%d" % wp["id"], payload)
         except self.unavailable:
@@ -162,7 +167,8 @@ class Tracker:
         if code is not None and code >= 400:
             raise Fail("PATCH #%d rejected HTTP %s: %s" % (wp["id"], code, data.get("message", data.get("raw", ""))))
         now = self.wp(wp["id"])  # tracker still down: the caller reports unavailable
-        ok = all(text_of(now.get(k)) == v for k, v in fields.items()) and (not status or now["_links"]["status"]["title"].lower() == status.lower())
+        ok = all(text_of(now.get(k)) == v for k, v in fields.items()) and (not status or now["_links"]["status"]["title"].lower() == status.lower()) \
+            and (not assignee or (now["_links"].get("assignee") or {}).get("href") == "/api/v3/users/%d" % assignee)
         if not ok and code is None:
             raise Fail("NOT APPLIED: tracker error on the update of #%d; read back shows no change, safe to retry: %s" % (wp["id"], line(now)), 5)
         if not ok:
@@ -189,16 +195,23 @@ class Tracker:
             raise Fail("UNCERTAIN: comment on #%d not visible on read back; `show %d --history` before repeating" % (wp_id, wp_id), 6)
         return found
 
-    def relate(self, from_id, to_id, kind):
+    def find_relation(self, from_id, to_id, kind):
+        """`from kind to`, as stored either way round: (from,to,kind) or (to,from,reverse kind)."""
         for rel in self.relations(from_id):
-            if {href_id(rel["_links"]["from"]), href_id(rel["_links"]["to"])} == {from_id, to_id} and rel["type"] in (kind, REVERSE[kind]):
-                return rel, False
+            ends = (href_id(rel["_links"]["from"]), href_id(rel["_links"]["to"]))
+            if (ends, rel["type"]) in (((from_id, to_id), kind), ((to_id, from_id), REVERSE[kind])):
+                return rel
+
+    def relate(self, from_id, to_id, kind):
+        rel = self.find_relation(from_id, to_id, kind)
+        if rel:
+            return rel, False
         code, data = self.call("POST", "/api/v3/work_packages/%d/relations" % from_id, {"type": kind, "_links": {"to": {"href": "/api/v3/work_packages/%d" % to_id}}})
         if code >= 400:
             raise Fail("Relation #%d %s #%d rejected HTTP %s: %s" % (from_id, kind, to_id, code, data.get("message", "")))
-        for rel in self.relations(from_id):
-            if {href_id(rel["_links"]["from"]), href_id(rel["_links"]["to"])} == {from_id, to_id} and rel["type"] in (kind, REVERSE[kind]):
-                return rel, True  # OpenProject may store follows/blocked in the canonical orientation
+        rel = self.find_relation(from_id, to_id, kind)  # OpenProject may store follows/blocked in the canonical orientation
+        if rel:
+            return rel, True
         raise Fail("UNCERTAIN: relation #%d %s #%d not visible on read back" % (from_id, kind, to_id), 6)
 
 
@@ -232,6 +245,10 @@ def cmd_search(t, a, session):
     return "\n".join(out)
 
 
+def clip(text, limit, full):
+    return text if full or len(text) <= limit else "%s [truncated %d chars; use --full]" % (text[:limit], len(text) - limit)
+
+
 def cmd_show(t, a, session):
     w = t.wp(a.id)
     out = [line(w), "  source-key: %s" % text_of(w.get(SOURCE_KEY)), "  repos: %s" % text_of(w.get(REPOS)),
@@ -243,8 +260,8 @@ def cmd_show(t, a, session):
     if a.history:
         for act in t.activities(a.id):
             who, when = act["_links"]["user"].get("title") or "user#%s" % href_id(act["_links"]["user"]), act["createdAt"]
-            out.append("  [%s %s] %s %s" % (act.get("id"), when, who, text_of(act.get("comment")).replace("\n", " ")[:600]))
-            out += ["      change: " + text_of(d).replace("\n", " ")[:200] for d in act.get("details", [])]
+            out.append("  [%s %s] %s %s" % (act.get("id"), when, who, clip(text_of(act.get("comment")).replace("\n", " "), 600, a.full)))
+            out += ["      change: " + clip(text_of(d).replace("\n", " "), 200, a.full) for d in act.get("details", [])]
     return "\n".join(out)
 
 
@@ -261,7 +278,12 @@ def cmd_claim(t, a, session):
     if w["_links"]["status"].get("title") == "Accepted":
         raise Fail("REFUSED: #%d is already Accepted (closed)" % w["id"], 3)
     guard(w, session, a.force)
-    now = t.patch(w, {OWNER: session}, "In progress", a.expect_lock)
+    assignee = None
+    if a.assignee:  # optional native assignee; never Tom automatically
+        assignee = t.get("/api/v3/users/me")["id"] if a.assignee == "me" else int(a.assignee)
+        if a.assignee != "me" and assignee not in [u["id"] for u in t.get("/api/v3/work_packages/%d/available_assignees" % w["id"])["_embedded"]["elements"]]:
+            raise Fail("User %d is not an available assignee for #%d" % (assignee, w["id"]))
+    now = t.patch(w, {OWNER: session}, "In progress", a.expect_lock, assignee)
     if a.note:
         t.comment(a.id, "Claimed. " + a.note, session)
     return "claimed (read back): " + line(now)
@@ -289,11 +311,12 @@ def cmd_complete(t, a, session):
     allowed = t.allowed_statuses(w)
     if allowed is not None and "Accepted" not in allowed:  # native workflow: this role cannot accept
         t.comment(a.id, "Ready for acceptance; evidence: " + a.evidence, session)
-        if w["_links"]["status"]["title"] != "In review" and "In review" in allowed:
-            t.patch(t.wp(a.id), status="In review")
-        raise Fail("EVIDENCE RECORDED, NOT ACCEPTED: the OpenProject workflow does not let this role set Accepted. #%d is left [In review] for an authorized accepter (Tom/Meatball)." % a.id, 7)
+        now = t.wp(a.id)
+        if now["_links"]["status"]["title"] != "In review" and "In review" in allowed:
+            now = t.patch(now, status="In review")
+        raise Fail("EVIDENCE RECORDED, NOT ACCEPTED: the OpenProject workflow does not let this role set Accepted. Actual state after read back: %s. An authorized accepter (Tom/Meatball) decides." % line(now), 7)
     t.comment(a.id, "Completion evidence: " + a.evidence, session)  # first: a lost evidence note is never hidden by "already Accepted"
-    now = t.patch(w, status="Accepted", lock=a.expect_lock)
+    now = t.patch(w if a.expect_lock is not None else t.wp(a.id), status="Accepted", lock=a.expect_lock)  # the lock moves if the note bumped it
     return "completed (read back): " + line(now)
 
 
@@ -405,8 +428,8 @@ def build_parser():
     add("ping", cmd_ping, help="check the tracker, show the session identity")
     add("search", cmd_search, (("text",), {"nargs": "?"}), (("--status",), {}), (("--type",), {}), (("--parent",), {"type": int}), (("--source-key",), {}), (("--owner",), {}),
         (("--all",), {"action": "store_true", "help": "include closed"}), (("--page",), {"type": int, "default": 1}), (("--limit",), {"type": int, "default": 20}), help="search work items")
-    add("show", cmd_show, wp, (("--history",), {"action": "store_true"}), (("--relations",), {"action": "store_true"}), help="read one item (read-only)")
-    add("claim", cmd_claim, wp, (("--note",), {}), lock, force, help="set Execution owner to this session, In progress")
+    add("show", cmd_show, wp, (("--history",), {"action": "store_true"}), (("--relations",), {"action": "store_true"}), (("--full",), {"action": "store_true", "help": "no truncation of history text"}), help="read one item (read-only)")
+    add("claim", cmd_claim, wp, (("--note",), {}), (("--assignee",), {"help": "also set the native assignee: me, or a user id available on the item"}), lock, force, help="set Execution owner to this session, In progress")
     add("comment", cmd_comment, wp, (("text",), {"help": "or - to read stdin"}), help="attributed progress note")
     add("status", cmd_status, wp, (("state",), {}), (("--note",), {}), lock, force, help="explicit status change")
     add("complete", cmd_complete, wp, (("--evidence",), {"required": True}), lock, force, help="evidence comment, then Accepted")
@@ -444,8 +467,11 @@ def main(argv=None, tracker=None, unavailable=None):
             path, rec = save_pending("intent", wp=getattr(args, "id", None), session=session, argv=sys.argv[1:])
         else:
             path = None
-        print("TRACKER UNAVAILABLE: %s.%s\nAuthorized bounded work can continue; nothing was recorded in OpenProject%s." % (
-            down, " Saved locally: %s (`flush` replays notes; re-run intents by hand)" % path if path else "", ". A write may have been applied; check `show` before repeating" if mutating else ""), file=sys.stderr)
+        if not mutating:
+            print("TRACKER UNAVAILABLE: %s. The read failed; authorized bounded work can continue." % down, file=sys.stderr)
+        else:
+            print("TRACKER UNAVAILABLE: %s.\nWhether the write reached OpenProject is UNCONFIRMED. Saved locally: %s\n%s\nAuthorized bounded work can continue." % (
+                down, path, "`flush` posts it unless it already landed (deduped by token)." if args.fn is cmd_comment else "When the tracker is back, `search`/`show` the item, then re-run the command only if the change is missing."), file=sys.stderr)
         return 5
 
 

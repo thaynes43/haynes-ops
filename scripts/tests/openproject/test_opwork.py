@@ -82,7 +82,7 @@ class Fake:
                 return self.create(payload)
             filters = json.loads(query.get("filters", ["[]"])[0])
             return self.collection(self.filter(filters), query)
-        m = re.fullmatch(r"/api/v3/work_packages/(\d+)(/activities|/relations|/form)?", path)
+        m = re.fullmatch(r"/api/v3/work_packages/(\d+)(/activities|/relations|/form|/available_assignees)?", path)
         if m:
             i, sub = int(m.group(1)), m.group(2)
             if i not in self.wps:
@@ -90,6 +90,8 @@ class Fake:
             wp = self.wps[i]
             if sub is None and method == "GET":
                 return 200, wp
+            if sub == "/available_assignees":
+                return 200, {"_embedded": {"elements": [{"id": 5}, {"id": 6}]}}
             if sub == "/form" and method == "POST":
                 names = [n for n in STATUSES if n not in self.deny]
                 return 200, {"_embedded": {"schema": {"status": {"_embedded": {"allowedValues": [{"name": n} for n in names]}}}}}
@@ -103,6 +105,9 @@ class Fake:
                     if k.startswith("customField"):
                         wp[k] = v
                 for k, v in payload.get("_links", {}).items():
+                    if k == "assignee":
+                        wp["_links"][k] = {"href": v["href"]}
+                        continue
                     name = next(n for n, s in STATUSES.items() if s == self.hrefid(v["href"]))
                     wp["_links"][k] = {"href": v["href"], "title": name}
                 wp["lockVersion"] += 1
@@ -240,6 +245,23 @@ class ClaimTests(Base):
         self.assertIn("claimed (read back)", out)
         self.assertEqual(self.fake.wps[10]["lockVersion"], 2)  # applied once
 
+    def test_claim_assignee_me_is_set_and_read_back_never_tom_by_default(self):
+        self.story()
+        self.assertEqual(self.run_cli("claim", "10")[0], 0)
+        self.assertIsNone(self.fake.wps[10]["_links"].get("assignee", {}).get("href"))  # opt-in only
+        self.story(11)
+        code, out, _ = self.run_cli("claim", "11", "--assignee", "me")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.fake.wps[11]["_links"]["assignee"]["href"], "/api/v3/users/5")
+        self.assertEqual(self.fake.wps[11][op.OWNER], os.environ["OPWORK_SESSION"])  # session owner kept
+
+    def test_claim_assignee_must_be_an_available_principal(self):
+        self.story()
+        code, _, err = self.run_cli("claim", "10", "--assignee", "99")
+        self.assertEqual(code, 1)
+        self.assertIn("not an available assignee", err)
+        self.assertIsNone(self.fake.wps[10][op.OWNER])
+
     def test_paused_is_a_hold_too(self):
         self.story(12, status="Paused")
         self.assertEqual(self.run_cli("claim", "12")[0], 3)
@@ -321,6 +343,23 @@ class LifecycleTests(Base):
             sys.stdin = old
         self.assertIn("progress from stdin", self.fake.acts[10][0]["comment"]["raw"])
 
+    def test_long_notes_are_marked_truncated_by_default_and_complete_with_full(self):
+        self.story()
+        long = "x" * 700 + "END"
+        self.run_cli("comment", "10", long)
+        short = self.run_cli("show", "10", "--history")[1]
+        self.assertIn("truncated", short)
+        self.assertNotIn("END", short)
+        self.assertIn(long, self.run_cli("show", "10", "--history", "--full")[1])
+
+    def test_complete_denied_reports_the_actual_state_even_when_in_review_is_not_allowed(self):
+        self.story(10, status="In progress", **{op.OWNER: os.environ["OPWORK_SESSION"]})
+        self.fake.deny.update({"Accepted", "In review"})
+        code, _, err = self.run_cli("complete", "10", "--evidence", "ev")
+        self.assertEqual(code, 7)
+        self.assertIn("[In progress]", err)
+        self.assertNotIn("left [In review]", err)
+
     def test_show_history_includes_comments_and_session(self):
         self.story()
         self.run_cli("comment", "10", "hello")
@@ -374,6 +413,14 @@ class CreateTests(Base):
         self.assertIn("related to #10", out)
         self.assertEqual(len(self.fake.rels), 1)
 
+    def test_genuinely_opposite_relation_is_not_mistaken_for_present(self):
+        self.story(11)
+        self.story()
+        self.fake.rels.append({"type": "precedes", "_links": {"from": {"href": "/api/v3/work_packages/10"}, "to": {"href": "/api/v3/work_packages/11"}}})
+        # 10 precedes 11 means 11 follows 10; "10 follows 11" is the opposite and must be created
+        code, out, _ = self.run_cli("relate", "10", "11", "--type", "follows")
+        self.assertEqual((code, "created relation" in out, len(self.fake.rels)), (0, True, 2))
+
     def test_relation_stored_in_canonical_orientation_is_still_confirmed(self):
         self.story(11)
         self.story()
@@ -394,7 +441,8 @@ class CreateTests(Base):
         self.fake.fail["POST /api/v3/projects"] = "before"
         code, _, err = self.run_cli(*self.args)
         self.assertEqual(code, 5)
-        self.assertIn("A write may have been applied", err)
+        self.assertIn("UNCONFIRMED", err)
+        self.assertNotIn("nothing was recorded", err)
         self.assertEqual(len(self.posts("/projects/")), 1)
         self.assertIn("intent", self.run_cli("pending")[1])
 
@@ -412,6 +460,7 @@ class OutageTests(Base):
         code, _, err = self.run_cli("search")
         self.assertEqual(code, 5)
         self.assertIn("TRACKER UNAVAILABLE", err)
+        self.assertNotIn("write", err)  # a failed read says nothing about writes
         self.assertFalse(os.path.exists(os.path.join(self.state.name, "pending")))
 
     def test_comment_during_outage_is_saved_then_flushed_exactly_once(self):
