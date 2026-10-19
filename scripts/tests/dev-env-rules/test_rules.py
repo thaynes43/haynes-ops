@@ -47,6 +47,12 @@ class CoordinationRulesTests(unittest.TestCase):
         self.assertIn('the tracker is not a dependency for it', self.source)
         self.assertNotIn('keep identical in the v1 and v2', self.source)
 
+    def test_v1_central_tracker_rule_matches_v2_when_v1_restart_window_lands(self):
+        v1 = V1.read_text()
+        self.assertIn('OpenProject, project `haynes-engineering`, is\nthe one work queue', v1)
+        self.assertNotIn('existing Markdown and GitHub issues are\nsufficient', v1)
+        self.assertIn('An explicit hold (Needs answer, Needs approval, a review hold)\nremains a hold.', v1)
+
     def test_same_v2_input_reaches_both_provider_paths(self):
         config = (V2 / 'kustomization.yaml').read_text()
         header = (V2 / 'config/codex/AGENTS.header.md').read_text()
