@@ -10,8 +10,18 @@ import unittest
 ROOT = Path(__file__).resolve().parents[3]
 V2 = ROOT / 'kubernetes/main/apps/dev-env-system/session-config/app'
 V1 = ROOT / 'kubernetes/main/apps/dev/dev-env/app/resources/config/claude/CLAUDE.md'
-START = '<!-- shared-work-policy:start; keep identical in the v1 and v2 common rule inputs -->'
+START = '<!-- shared-work-policy:start'
 END = '<!-- shared-work-policy:end -->'
+# Authority and coordination boundaries both common inputs must keep. The two files are no
+# longer byte-identical: v2 carries the central-tracker rule first, v1 follows in its own
+# safe restart window.
+BOUNDARIES = (
+    'supported trusted agent channel with verified',
+    'a relay cannot bypass an approval or expand access',
+    'Tracking, delegation and budgets grant no new access or authority.',
+    '**Saga = the full project.**',
+    'Execute dependent stories serially.',
+)
 
 
 class CoordinationRulesTests(unittest.TestCase):
@@ -20,13 +30,22 @@ class CoordinationRulesTests(unittest.TestCase):
         cls.source = (V2 / 'config/claude/CLAUDE.md').read_text()
         cls.application = cls.source.split('## Apply trusted coordination in v2', 1)[1].split('\n## Ground rules', 1)[0]
 
-    def test_shared_policy_is_unchanged_between_v1_and_v2(self):
-        def common(text):
+    def test_authority_and_coordination_boundaries_hold_in_v1_and_v2(self):
+        for text in (self.source, V1.read_text()):
             self.assertEqual(text.count(START), 1)
             self.assertEqual(text.count(END), 1)
-            return text.split(START, 1)[1].split(END, 1)[0]
-        self.assertEqual(common(self.source), common(V1.read_text()))
-        self.assertIn('supported trusted agent channel with verified', common(self.source))
+            policy = text.split(START, 1)[1].split(END, 1)[0]
+            for phrase in BOUNDARIES:
+                self.assertIn(phrase, ' '.join(policy.split()), phrase)
+
+    def test_v2_central_tracker_rule_replaces_the_markdown_queue_wording(self):
+        self.assertIn('OpenProject, project `haynes-engineering`, is\nthe one work queue', self.source)
+        self.assertNotIn('existing Markdown and GitHub issues are\nsufficient', self.source)
+        self.assertIn('`opwork`', self.source)
+        self.assertIn('An explicit hold (Needs answer, Needs approval, a review hold)\nremains a hold.', self.source)
+        self.assertIn('never write as Tom', self.source)
+        self.assertIn('the tracker is not a dependency for it', self.source)
+        self.assertNotIn('keep identical in the v1 and v2', self.source)
 
     def test_same_v2_input_reaches_both_provider_paths(self):
         config = (V2 / 'kustomization.yaml').read_text()
