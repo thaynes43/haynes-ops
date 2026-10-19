@@ -196,7 +196,8 @@ exit status alone.
 - Named restricted bot: real HTTP create/read/update/comment/status/parent/link/
   attachment/activity and stale `lockVersion` conflict tests. Create only a
   disposable fixture project; delete only those fixture items with authorized
-  disposable scope. Prove a worker cannot approve itself.
+  disposable scope. Worker comments and imports never count as an owner's approval
+  decision (the old "prove a worker cannot approve itself" test is superseded, see below).
 - Configure Saga → Epic → Story, separate dependency graph, repository/source
   provenance, actor/conversation/revision fields and states Draft, Ungroomed,
   Needs answer, Needs approval, Approved, In progress, In review, Accepted, Paused.
@@ -211,12 +212,20 @@ exit status alone.
   pauses and the Chapter7 boundary.
 
 The reviewable work-model contract is `scripts/openproject/work-model.json`.
-It is not a bootstrap completion receipt. In particular, native status workflow
-validation needs live HTTP negative tests for creation in Approved/Accepted and
-simultaneous type/status changes, as well as ordinary transitions. Do not claim
-that worker restrictions are enforced from workflow rows or a hidden UI control
-alone. If a native API bypass exists, stop readiness and report the exact result;
-do not silently weaken the requirement or patch application source.
+It is not a bootstrap completion receipt.
+
+**Superseded 2026-10-19 (Tom, work model of 2026-10-16/19): no status firewall.** The
+earlier requirement for live negative tests of worker creation/transition into
+Approved/Accepted, and to stop readiness if a native API bypass exists, is withdrawn.
+It is not a preferred permanent human-only lifecycle. Grooming and authorizing *new*
+scope stays with Tom/Meatball; an agent marking its own already-authorized story complete
+once its actual acceptance criteria are met is the intended path (see the `opwork`
+section). Still required: reading the real read-back state, never claiming enforcement
+from workflow rows or a hidden UI control, and honest reporting of what the API allows.
+Observed 2026-10-19: the existing native workflow denies `Approved` and `Accepted` to the
+agent role (HTTP 422). That is an **access gap and a held decision for Tom** (whether and
+how agents may self-accept), not something agents work around; no role or workflow change
+is made here.
 
 ## Initial rollout recovery
 
@@ -239,3 +248,53 @@ and kubectl's POST/SPDY exec transport to run stock `ak shell`. The Python
 WebSocket exec path required GET permission that the existing SA does not have;
 no new RBAC was granted. Verify `create pods --subresource=exec`, rather than the
 ambiguous `create pods/exec` command spelling, when checking this authority.
+
+## Agent backlog CLI (`opwork`) — Story97 slice, 2026-10-19
+
+`scripts/openproject/opwork.py` is the one shared tool Claude Code and Codex sessions use
+for the central backlog (project `haynes-engineering`, Saga=whole project, Epic=usable
+deliverable, Story=session-sized outcome). It wraps `agent-api.py` (same private API, same
+in-memory token, no delete, no new credential/role/RBAC) and adds no server, daemon or
+approval layer. Tom and Meatball groom scope; the routine lifecycle writes are the agent's.
+
+```bash
+opwork.py search "text" [--status S] [--type T] [--parent ID] [--source-key K] [--all] [--page N]
+opwork.py show 97 --history --relations          # read-only, includes comment history
+opwork.py claim 97 --note "starting" [--assignee me]  # Execution owner = this session, In progress
+opwork.py comment 97 "progress"                  # attributed; `-` reads stdin
+opwork.py status 97 "In review" --note "PR #1"
+opwork.py complete 97 --evidence "tests ..."     # evidence + Accepted when the workflow allows
+opwork.py create --epic 95 --origin 97 --source-key followup:97:topic --subject "..."
+opwork.py relate 130 97 --type relates
+opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local record, replay
+```
+
+- **Session identity** (Execution owner + the `**[session]**` comment prefix): `OPWORK_SESSION`,
+  else `<OPWORK_AGENT or agent> | worktree <name> | branch <branch>`. All agents share the
+  `openproject-agent` login, so the prefix, not the OpenProject author, says who acted.
+  Never write as Tom. `OPWORK_PROJECT` overrides the project.
+- **Search first**: `create` reuses any item with the same `--source-key` (matched client-side,
+  because the API offers no custom-field filter) and stops with exit 4 on a similar subject
+  under the Epic unless `--confirm-new`. New items are filed Ungroomed under the Epic, with a
+  `relates` link to the originating Story and the creator in Decision provenance. A create is
+  never retried: if the answer is lost, the source key is searched and the result reported.
+- **Conflicts**: every write sends `lockVersion`; a stale one (409), another owner, or an
+  explicit hold or pause (`Needs answer`, `Needs approval`, `Paused`) is re-read and refused (exit 3), never
+  overwritten. `--force` is a takeover/override for an explicitly authorized case only.
+- **Read back**: success is printed only after a read back. An unconfirmed write is exit 6.
+  `show --history` marks any truncated text; `--full` returns it whole. `claim --assignee me` also sets the
+  native assignee (opt-in; never Tom automatically; the session owner field is kept).
+- **Workflow limit (observed 2026-10-19)**: the existing native workflow lets this role reach
+  every status except `Approved` and `Accepted` (HTTP 422). `complete` preflights the form,
+  records the evidence, moves the item to `In review` where the workflow allows, reports the
+  actual read-back state and exits 7. Letting agents self-accept
+  is a workflow decision for Tom, not something this tool works around.
+- **Tracker unavailable**: a clear `TRACKER UNAVAILABLE` error (exit 5). Bounded authorized work
+  continues. Notes are saved under `~/.local/state/opwork/pending/` (`OPWORK_STATE_DIR`) and
+  `flush` posts them with the same dedupe token, so a note that did land is not duplicated.
+  Failed status/create/claim commands are saved as intents to re-run by hand. No sync daemon.
+- **Networking**: v1 (dev/dev-env) reaches the API today. v2 session pods need the separate,
+  held Cilium policy (egress + frontend ingress, TCP 8082); until applied v2 gets exit 5.
+- **Tests**: `python3 -I -B scripts/tests/openproject/test_opwork.py -v` (offline fake API:
+  pagination, claims, conflicts, attribution, uncertain create, outage). These are mocked
+  tests; the live fixture acceptance is recorded in the story result, not by CI.

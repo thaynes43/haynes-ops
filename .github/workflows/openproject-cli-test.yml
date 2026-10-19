@@ -1,0 +1,25 @@
+---
+name: openproject CLI tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/openproject/**
+      - scripts/tests/openproject/**
+      - .github/workflows/openproject-cli-test.yml
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  offline:
+    name: OpenProject CLI Fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Offline opwork tests (fake API, no network or credentials)
+        run: nice -n 19 python3 -I -B scripts/tests/openproject/test_opwork.py -v

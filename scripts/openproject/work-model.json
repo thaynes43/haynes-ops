@@ -1,47 +1,142 @@
 {
-  "schema_version": 1,
-  "project": {"identifier": "haynes-engineering", "name": "Haynes Engineering", "public": false},
-  "types": ["Saga", "Epic", "Story"],
-  "parent_grammar": {"Saga": null, "Epic": "Saga", "Story": "Epic"},
+  "schema_version": 2,
+  "project": {
+    "identifier": "haynes-engineering",
+    "name": "Haynes Engineering",
+    "public": false
+  },
+  "types": [
+    "Saga",
+    "Epic",
+    "Story"
+  ],
+  "parent_grammar": {
+    "Saga": null,
+    "Epic": "Saga",
+    "Story": "Epic"
+  },
   "dependencies": "Separate precedes/follows relations; never inferred from parent containment or document ordering",
-  "statuses": ["Draft", "Ungroomed", "Needs answer", "Needs approval", "Approved", "In progress", "In review", "Accepted", "Paused"],
+  "statuses": [
+    "Draft",
+    "Ungroomed",
+    "Needs answer",
+    "Needs approval",
+    "Approved",
+    "In progress",
+    "In review",
+    "Accepted",
+    "Paused"
+  ],
   "worker": {
     "login": "openproject-agent",
     "admin": false,
     "project_only": "haynes-engineering",
     "delete": false,
-    "protected_status_targets": ["Approved", "Accepted"],
-    "permissions": ["view_project", "view_members", "view_work_packages", "add_work_packages", "edit_work_packages", "add_work_package_comments", "add_work_package_attachments", "manage_work_package_relations", "manage_subtasks", "save_queries", "work_package_assigned"],
-    "safe_status_targets": ["Draft", "Ungroomed", "Needs answer", "Needs approval", "In progress", "In review", "Paused"]
+    "permissions": [
+      "view_project",
+      "view_members",
+      "view_work_packages",
+      "add_work_packages",
+      "edit_work_packages",
+      "add_work_package_comments",
+      "add_work_package_attachments",
+      "manage_work_package_relations",
+      "manage_subtasks",
+      "save_queries",
+      "work_package_assigned"
+    ],
+    "workflow_observed_2026_10_19": "Native workflow lets this role reach Draft, Ungroomed, Needs answer, Needs approval, In progress, In review and Paused. It denies Approved and Accepted (HTTP 422). This is existing role configuration, not a rule added here; opwork complete records evidence and leaves the item In review. Letting agents self-accept needs a workflow decision by Tom, not a CLI change."
   },
-  "metadata_fields": ["Accountable owner", "Execution owner", "Repositories", "Acceptance criteria", "Constraints", "Source key", "Source commit", "Source URI", "Source section", "Source SHA-256", "Decision provenance", "Approval revision", "Conversation reference"],
+  "metadata_fields": [
+    "Accountable owner",
+    "Execution owner",
+    "Repositories",
+    "Acceptance criteria",
+    "Constraints",
+    "Source key",
+    "Source commit",
+    "Source URI",
+    "Source section",
+    "Source SHA-256",
+    "Decision provenance",
+    "Approval revision",
+    "Conversation reference"
+  ],
   "operator_views": {
-    "Questions": ["Needs answer"],
-    "Approvals": ["Needs approval"],
-    "Active": ["In progress"],
-    "Demonstrations": ["In review"],
-    "Paused": ["Paused"],
-    "Ungroomed": ["Draft", "Ungroomed"]
-  },
-  "approval_contract": {
-    "authoritative_evidence": "Named authorized reviewer status journal plus actual decision scope, revision, person, timestamp and conversation reference",
-    "voice_actor": "Real bot identity records Tom's actual words and provenance; it never impersonates Tom",
-    "worker_comments_are_execution_approval": false,
-    "import_is_execution_approval": false,
-    "material_scope_change_invalidates_approval": true
+    "Questions": [
+      "Needs answer"
+    ],
+    "Approvals": [
+      "Needs approval"
+    ],
+    "Active": [
+      "In progress"
+    ],
+    "Demonstrations": [
+      "In review"
+    ],
+    "Paused": [
+      "Paused"
+    ],
+    "Ungroomed": [
+      "Draft",
+      "Ungroomed"
+    ]
   },
   "fixtures": {
-    "prefix": "OP-ACCEPTANCE-20261015",
-    "source_key_prefix": "acceptance:openproject:2026-10-15:",
-    "create": ["Saga", "Epic", "Story", "Story"],
-    "must_prove": ["parent grammar", "dependency", "metadata", "comment", "original markdown attachment and SHA-256", "actor/timestamp history", "fresh update", "stale lockVersion conflict", "private visibility", "unauthenticated API denial", "approval and acceptance transition denial", "protected status creation denial", "combined type/status change denial", "cross-project access denial", "delete affordance absent"],
-    "delete": "No irreversible DELETE request without separate exact fixture deletion authorization",
-    "voice_approval": "Wait for an actual user decision; no fabricated approval fixture"
+    "live_acceptance": {
+      "source_key": "acceptance:openproject:story97:20261019:v1",
+      "work_package": 129,
+      "parent": "Epic 95",
+      "related_to": "Story 97",
+      "state": "In review (workflow denies Accepted to the agent role); never delete"
+    },
+    "earlier_2026_10_15": {
+      "prefix": "OP-ACCEPTANCE-20261015",
+      "source_key_prefix": "acceptance:openproject:2026-10-15:",
+      "create": [
+        "Saga",
+        "Epic",
+        "Story",
+        "Story"
+      ],
+      "must_prove": [
+        "parent grammar",
+        "dependency",
+        "metadata",
+        "comment",
+        "original markdown attachment and SHA-256",
+        "actor/timestamp history",
+        "fresh update",
+        "stale lockVersion conflict",
+        "private visibility",
+        "unauthenticated API denial",
+        "approval and acceptance transition denial",
+        "protected status creation denial",
+        "combined type/status change denial",
+        "cross-project access denial",
+        "delete affordance absent"
+      ],
+      "delete": "No irreversible DELETE request without separate exact fixture deletion authorization",
+      "voice_approval": "Wait for an actual user decision; no fabricated approval fixture"
+    }
   },
   "notes": [
-    "This file is a configuration and acceptance contract, not evidence of a configured or verified running app.",
-    "Generic OpenProject parent links do not enforce Saga/Epic/Story grammar; validate every writer/migration operation.",
-    "Native workflow validation must be HTTP-tested for creation and simultaneous type/status changes before claiming protected-state enforcement.",
-    "Basic board dragging does not change status; use explicit status actions."
-  ]
+    "This file is a configuration contract, not evidence of a running app.",
+    "Generic OpenProject parent links do not enforce Saga/Epic/Story grammar; opwork create validates the Epic parent.",
+    "Custom-field filters are not available on the API: source keys are matched client-side by opwork.",
+    "The old status-firewall acceptance list (protected-status denial tests) is superseded by Tom's 2026-10-19 direction; it stays under fixtures.earlier_2026_10_15 as history."
+  ],
+  "hierarchy": {
+    "Saga": "the whole project: goal, boundaries, roadmap, epics",
+    "Epic": "a major deliverable with usable value, users, usable end state and acceptance evidence",
+    "Story": "independent, bounded work one agent can finish in one session; has scope, acceptance, dependencies, owner, budget, handoff"
+  },
+  "agent_lifecycle": {
+    "tool": "scripts/openproject/opwork.py (opwork in v2 images)",
+    "rule": "Search first, reference the canonical item, claim it (Execution owner = session), report progress, move status explicitly, create follow-ups search-first under the right Epic related to the originating Story. Tom/Meatball groom scope; routine authorized lifecycle writes are the agent's. No status firewall, approval framework or ledger.",
+    "completion": "Agents complete when the actual acceptance criteria and existing authorization permit it and the workflow allows it. An explicit hold (Needs answer, Needs approval, a review hold) stays a hold.",
+    "tracker_down": "Return a clear error, keep bounded authorized work going, save notes with opwork checkpoint, replay with opwork flush. No daemon or enforcement layer.",
+    "uncertain_writes": "Never repeat an uncertain create; success is reported only after a read back."
+  }
 }
