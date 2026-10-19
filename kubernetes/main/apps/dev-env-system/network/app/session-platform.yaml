@@ -38,6 +38,7 @@ spec:
           - dev-env-owned-luna-1019-4
           - dev-env-owned-luna-1019-5
           - dev-env-owned-luna-1019-6
+          - dev-env-owned-luna-1019-7
           - dev-env-project-bootstrap-check
   ingress:
     - {}
