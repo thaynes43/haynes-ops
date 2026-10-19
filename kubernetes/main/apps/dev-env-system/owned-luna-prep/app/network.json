@@ -40,7 +40,28 @@
             "rules": {
               "dns": [
                 {
-                  "matchPattern": "*"
+                  "matchName": "chatgpt.com"
+                },
+                {
+                  "matchName": "chatgpt.com.dev-agents.svc.cluster.local"
+                },
+                {
+                  "matchName": "chatgpt.com.svc.cluster.local"
+                },
+                {
+                  "matchName": "chatgpt.com.cluster.local"
+                },
+                {
+                  "matchName": "dev-env-operator.dev-env-system.svc.cluster.local"
+                },
+                {
+                  "matchName": "dev-env-operator.dev-env-system.svc.cluster.local.dev-agents.svc.cluster.local"
+                },
+                {
+                  "matchName": "dev-env-operator.dev-env-system.svc.cluster.local.svc.cluster.local"
+                },
+                {
+                  "matchName": "dev-env-operator.dev-env-system.svc.cluster.local.cluster.local"
                 }
               ]
             }
