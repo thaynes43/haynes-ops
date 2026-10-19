@@ -72,8 +72,8 @@ the one work queue; this supersedes the earlier "Markdown and GitHub issues suff
 wording. Search before creating, reference the canonical item, claim it, and record
 progress, decisions and handoff there. Do not start competing Markdown or GitHub task
 backlogs. Keep repo design, plan, evidence and handoff documents and link them from the
-canonical item. Use the shared CLI `opwork` (in this image; the same script is at
-`~/repos/haynes-ops/scripts/openproject/opwork.py`): `search`, `show ID --history`, `claim`,
+canonical item. Use the shared CLI `opwork` (in the agent image from 2.33.0; on an older image run
+`python3 ~/repos/haynes-ops/scripts/openproject/opwork.py` from a haynes-ops checkout): `search`, `show ID --history`, `claim`,
 `comment`, `status`, `complete --evidence`, `create --epic --origin --source-key`
 (search-first follow-up under the right Epic), `checkpoint`/`flush`. Your session identity is the Execution owner and
 comment prefix; never write as Tom. Tom and Meatball groom scope; routine lifecycle writes
