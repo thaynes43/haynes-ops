@@ -15,7 +15,7 @@ Per Tom's relay correction: do NOT merge/deploy PR #4102 and do NOT apply any si
 - 11:19:34 investigator final findings (issue comment): false alarm, monitoring change.
 - 11:20:07 coordinator verification (issue comment): rule file + live Prometheus confirm: nvme0-3 current = 35/35/37/35 C; op_limit_max=85 / critical_limit_max=95 series trip the unfiltered `> 65` rule.
 - 11:20:58 AskUserQuestion answer recorded ("Fix rule PR") — UNVERIFIED, see HOLD.
-- 11:2x PR #4102 opened on that unverified answer; later converted to draft.
+- 11:21:19 PR #4102 opened (createdAt 2026-10-19T15:21:19Z) on that unverified answer; converted to draft at ~11:24 EDT.
 - 11:23:29 issue comment that said "Tom selected Fix rule PR" — RETRACTED by the correction below.
 - Correction pass (see `date` in the final comment on #4101): report and this file corrected; PR set to draft.
 
