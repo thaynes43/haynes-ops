@@ -20,7 +20,7 @@ else "<OPWORK_AGENT or agent> | worktree <name> | branch <branch>". Project defa
 OPWORK_PROJECT or haynes-engineering. A mutation is reported done only after a read back.
 Exit codes: 0 ok, 1 error, 3 conflict/refused (nothing overwritten), 4 needs a decision
 (possible duplicate), 5 tracker unavailable (saved locally), 6 uncertain (verify first),
-7 evidence recorded but the workflow denies Accepted to this role (left In review).
+7 evidence recorded but the workflow denies Accepted to this role (read-back state reported).
 """
 import argparse
 import importlib.util
