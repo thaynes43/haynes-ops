@@ -132,7 +132,6 @@ profiles:
       - secretRef: { name: dev-env-cloudflare-secret }
     mounts:
       - { name: gh-token, secret: dev-env-gh-token, path: /creds }
-      - { name: gcp-sa, secret: dev-env-gcp-secret, path: /etc/gcp, defaultMode: 0440 }
       - { name: claude-access, secret: dev-env-claude-live, path: /opt/dev-env/claude-access, defaultMode: 0440 }
       - { name: codex-access, secret: dev-env-codex-live, path: /opt/dev-env/codex-access, defaultMode: 0440 }
   dev:
@@ -151,8 +150,9 @@ profiles:
   # which holds pods get/list and pods/exec create in dev-agents and nothing else, so
   # `agent-run login`, `pair` and `attach` work from a session without the v1 pod. Needs an
   # operator that knows `serviceAccount` (an older one rejects the whole templates document).
-  # Same mounts as `full`, so the keeper's login projections and the GitHub token are
-  # there; env is only the two file pointers, not the MCP/cloud secrets `full` adds.
+  # Mounts: the keeper's login projections and the GitHub token only (not `full`'s GCP key);
+  # env is only the two file pointers, not the MCP/cloud secrets `full` adds. A workbench
+  # session can still exec into any session pod and so reach that pod's credentials.
   # Create it with --size M explicitly: a profile cannot set a default size.
   workbench:
     serviceAccount: dev-env-workbench
@@ -161,7 +161,6 @@ profiles:
       - { name: AGENTD_CODEX_ACCESS_FILE, value: /opt/dev-env/codex-access/access.json }
     mounts:
       - { name: gh-token, secret: dev-env-gh-token, path: /creds }
-      - { name: gcp-sa, secret: dev-env-gcp-secret, path: /etc/gcp, defaultMode: 0440 }
       - { name: claude-access, secret: dev-env-claude-live, path: /opt/dev-env/claude-access, defaultMode: 0440 }
       - { name: codex-access, secret: dev-env-codex-live, path: /opt/dev-env/codex-access, defaultMode: 0440 }
   # Summoned sessions (3.7): no open web. The label selects the ops egress tier, which is
