@@ -161,7 +161,7 @@ profiles:
     env:
       - { name: AGENTD_CLAUDE_LIVE_FILE, value: /opt/dev-env/claude-access/access.json }
       - { name: AGENTD_CODEX_ACCESS_FILE, value: /opt/dev-env/codex-access/access.json }
-    # v1-parity hardware access (Story110 T29, Tom Q-110-08, 2026-10-19; reverses Q-07 for
+    # v1-parity hardware access (Story110 T29, Tom Q-110-08; reverses Q-07 for
     # this profile only). dev-env-proxmox-secret is the PVEAuditor read token (`pve`);
     # dev-env-hw-ssh-secret is v1's HW_SSH_PRIVATE_KEY_B64, which agentd's hw-ssh-key boot
     # step decodes to ~/.ssh/dev-env-hw. No other profile mounts the key. Both are optional

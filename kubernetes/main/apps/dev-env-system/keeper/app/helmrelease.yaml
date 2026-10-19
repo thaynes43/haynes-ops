@@ -66,7 +66,7 @@ spec:
               # are the defaults.
               - --enable-claude-auth=true
               # Proxmox credential grants (D-69/D-72), enabled for profile workbench by Tom's
-              # ruling Q-110-08 (2026-10-19). Prerequisites, all in git: node trust installed
+              # ruling Q-110-08. Prerequisites, all in git: node trust installed
               # and CA pair validated (2026-10-09), pinned targets and host keys mounted at the
               # default /etc/dev-env-keeper/ssh (ConfigMap dev-env-keeper-ssh-trust), keeper
               # :22 egress to the five nodes (network/app/keeper.yaml). The broker flag is set

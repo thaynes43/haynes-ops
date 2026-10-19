@@ -1,5 +1,5 @@
 ---
-# Standing approvals for v1-parity access (Story110 T29; Tom Q-110-08, 2026-10-19, which
+# Standing approvals for v1-parity access (Story110 T29; Tom Q-110-08, which
 # reverses Q-07 for the workbench profile). Every destination below is one v1 already
 # reaches from the dev/dev-env pod (apps/dev/dev-env/app/networkpolicy.yaml); FQDN and
 # endpoint values are copied from that file. Profile `full` is the default coordinator
