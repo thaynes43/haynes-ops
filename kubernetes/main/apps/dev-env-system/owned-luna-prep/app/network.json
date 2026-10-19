@@ -1,0 +1,89 @@
+{
+  "apiVersion": "cilium.io/v2",
+  "kind": "CiliumNetworkPolicy",
+  "metadata": {
+    "name": "dev-env-owned-luna-1019",
+    "namespace": "dev-agents"
+  },
+  "spec": {
+    "description": "Explicitly approved single bounded Luna root; no public web, MCP, LAN or Kubernetes API tier",
+    "endpointSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/name": "dev-env-owned-luna-1019"
+      }
+    },
+    "ingressDeny": [
+      {
+        "fromEntities": [
+          "all"
+        ]
+      }
+    ],
+    "egress": [
+      {
+        "toEndpoints": [
+          {
+            "matchLabels": {
+              "io.kubernetes.pod.namespace": "kube-system",
+              "k8s-app": "kube-dns"
+            }
+          }
+        ],
+        "toPorts": [
+          {
+            "ports": [
+              {
+                "port": "53",
+                "protocol": "ANY"
+              }
+            ],
+            "rules": {
+              "dns": [
+                {
+                  "matchPattern": "*"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "toEndpoints": [
+          {
+            "matchLabels": {
+              "io.kubernetes.pod.namespace": "dev-env-system",
+              "app.kubernetes.io/name": "dev-env-operator"
+            }
+          }
+        ],
+        "toPorts": [
+          {
+            "ports": [
+              {
+                "port": "8443",
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "toFQDNs": [
+          {
+            "matchName": "chatgpt.com"
+          }
+        ],
+        "toPorts": [
+          {
+            "ports": [
+              {
+                "port": "443",
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
