@@ -1,0 +1,14 @@
+{
+  "apiVersion": "v1",
+  "data": {
+    "owned-root.json": "{\"allowContinuation\":true,\"homeInputsName\":\"dev-env-owned-luna-1019-3-inputs\",\"homeInputsUID\":\"3b65e67e-370b-48ff-bf9d-8b2fb96b22e2\",\"homeInputsSHA\":\"30b8d59c4533d941bdc8812bbb99914ae3aed3d70c566c4833f6627b91182a05\",\"version\":1,\"namespace\":\"dev-agents\",\"name\":\"dev-env-owned-luna-1019-3\",\"serviceAccount\":\"dev-env-owned-native-fixture\",\"taskUID\":\"owned-luna-1019-0003\",\"hostID\":\"owned-luna-1019-3\",\"image\":\"ghcr.io/thaynes43/dev-env:2.30.2@sha256:de15acd3c937eac74a23990a2c334433e1098d48e1871a46ed7f95cb0def050b\",\"homeClaim\":\"home-dev-env-owned-luna-1019-3\",\"homeUID\":\"c5dc5082-2a87-42f9-b837-7f5b0f08b57c\",\"baseline\":\"49057e0d4692411c6dde6b4578289de2e296be933a8af77722207ae794e1c02c\",\"networkPolicyName\":\"dev-env-owned-luna-1019-3\",\"networkPolicyUID\":\"a1ac3bfc-91d4-4ba6-9c6b-d30152d3cc6a\",\"networkPolicySHA\":\"0898bdbe036434a22be7a1e4a64d1d6e4a4afac2616c5c0126fdede32e75eb63\",\"spec\":{\"successCondition\":\"One bounded Luna response, trusted owner stop/oncecontinue and same-thread retained history; no child, tools or pairing\",\"overallSeconds\":600,\"effortSeconds\":600,\"checkpointSeconds\":120}}"
+  },
+  "kind": "ConfigMap",
+  "metadata": {
+    "annotations": {
+      "kustomize.toolkit.fluxcd.io/prune": "disabled"
+    },
+    "name": "dev-env-owned-luna-1019-3",
+    "namespace": "dev-env-system"
+  }
+}
