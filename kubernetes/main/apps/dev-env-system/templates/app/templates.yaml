@@ -111,6 +111,9 @@ profiles:
       - { name: codex-access, secret: dev-env-codex-live, path: /opt/dev-env/codex-access, defaultMode: 0440 }
   full:
     env:
+      # Follow the keeper's single Claude login (plan 03, Q-11). Read-only mount below; the
+      # task pods' static token is unchanged (the operator sets it for task and local only).
+      - { name: AGENTD_CLAUDE_LIVE_FILE, value: /opt/dev-env/claude-access/access.json }
       - name: CIGAR_JOURNAL_TOKEN
         valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
       - name: UNIFI_MCP_AUTH_TOKEN
@@ -128,6 +131,7 @@ profiles:
     mounts:
       - { name: gh-token, secret: dev-env-gh-token, path: /creds }
       - { name: gcp-sa, secret: dev-env-gcp-secret, path: /etc/gcp, defaultMode: 0440 }
+      - { name: claude-access, secret: dev-env-claude-live, path: /opt/dev-env/claude-access, defaultMode: 0440 }
   dev:
     env:
       - name: CIGAR_JOURNAL_TOKEN

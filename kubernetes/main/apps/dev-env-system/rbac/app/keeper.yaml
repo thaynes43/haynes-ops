@@ -4,6 +4,8 @@
 #   - dev-agents: `patch` on three credential Secrets by name. It merges each token
 #     with one JSON merge patch and never creates, lists or reads them; GitOps creates
 #     them empty (KICKOFF 8.8).
+#     The Claude live projection also gets `get` (shared-auth increment 6): the publisher
+#     reads it before its compare-and-swap, as the Codex one does (keeper-codex-auth.yaml).
 #   - dev-env-system: its leader-election Lease and the Event leader election records.
 # Codex's named journal/projection GET/CAS is scoped in keeper-codex-auth.yaml.
 # D-69's credential-job, journal and session-pod rights are separately scoped
@@ -22,6 +24,10 @@ rules:
       - dev-env-ops-gh-token
       - dev-env-claude-live
     verbs: [patch]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [dev-env-claude-live]
+    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
