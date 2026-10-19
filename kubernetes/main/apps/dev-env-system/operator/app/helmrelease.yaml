@@ -64,7 +64,7 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Source 6f4293cd244a73d9b897fee92b3460fac301476e; Publish39209810410 signed/verified.
+              # Source dd49ed4a6c38fa832634c57cbe13ab2946b92189; Publish39216574917 signed/verified.
               # 2.29.4 accepts gpt-6-luna on the sealed pilot contract; general private admission remains disabled.
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # Executor stop, HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates.
