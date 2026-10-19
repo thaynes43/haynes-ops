@@ -72,12 +72,13 @@ spec:
                   seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Source 597306ade2185692b1bc0f38f0b422f2e1d7c4af; Publish39228988690 signed/verified.
+              # Source 7ef91c7dbd9a11e4d11c573bbe3f5449f8cd7735 (release dev-env#445, v2.31.0); Publish39264309447 signed/verified.
+              # 2.31.0 adds v2 remote mode on a pod-owned Claude login (dev-env#443); no API type or CRD change.
               # 2.29.4 accepts gpt-6-luna on the sealed pilot contract; general private admission remains disabled.
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # Executor stop, HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates.
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-597306a@sha256:0526414f5aa56ea14c26874d9635ee24ff21d5f4e6fcd21b855db30fb09d20f6
+              tag: sha-7ef91c7@sha256:b75d6b3997f96a6a1de842ceea7dc6cb17881fc385cd7cc15a4567148ed28dee
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -123,7 +124,7 @@ spec:
               - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-luna-1019-9","hostID":"owned-luna-1019-9"}]'
               - '--enable-task-budgets'
               - '--task-budget-namespace=dev-env-budgets'
-              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.30.7@sha256:cd9845500f154a4a9690d739bb089d696e0fd6e60f44393d5a55d7f861e98d9d'
+              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.31.0@sha256:47e2c5c8031a58f786a82de30a4b744cf7024317b8353c7af535a4082f0d97b7'
               - '--assigned-task-budgets={"owned-luna-1019-9":"owned-luna-1019-0009"}'
               # Explicitly approved one finite Luna root; old fixture Pod/ledger retained.
               - '--owned-root-policy=dev-env-owned-luna-1019-9'
