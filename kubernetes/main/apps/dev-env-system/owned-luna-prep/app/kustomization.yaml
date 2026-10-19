@@ -19,3 +19,4 @@ resources:
   - ./inputs-6.json
   - ./home-6.json
   - ./network-6.json
+  - ./root-6.json
