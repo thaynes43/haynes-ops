@@ -119,7 +119,6 @@ spec:
               - '--assigned-task-budgets={"owned-luna-1019":"owned-luna-1019-0001"}'
               # Explicitly approved one finite Luna root; old fixture Pod/ledger retained.
               - '--owned-root-policy=dev-env-owned-luna-1019'
-              - '--native-fixture-image=ghcr.io/thaynes43/dev-env:2.11.0@sha256:98761577d27feded51427a8097a9cf9492c2e7ee62b6e9a99df27bf52017532d'
               # The other flags keep their defaults: --session-namespace dev-agents,
               # --templates-name dev-env-templates in this namespace (the Lease lives
               # here too), --api-bind-address :8443, --api-tls-dir
