@@ -5,6 +5,7 @@ kind: Kustomization
 resources:
   - ./serviceaccounts.yaml
   - ./agent.yaml
+  - ./workbench.yaml
   - ./operator.yaml
   - ./common-rules-operator.yaml
   - ./keeper.yaml

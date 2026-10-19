@@ -1,0 +1,49 @@
+---
+# The workbench identity, dev-agents/dev-env-workbench (DESIGN-001 6.11; thaynes43/dev-env
+# Story110 T24). The operator already trusts it as a client (--client-service-accounts in
+# ../../operator/app/helmrelease.yaml) and the identity guard, the broker guard and the
+# Kyverno exec guard already exempt it; until now nothing created it.
+#
+# It exists so a `workbench`-profile session (../../templates/app/templates.yaml) can run
+# `agent-run login`, `pair` and `attach`, which are a `kubectl exec` into another
+# session's pod, without the v1 pod. The rights are the least that does that, in
+# dev-agents only:
+#   - pods get, list: agent-run resolves the pod, kubectl exec reads it;
+#   - pods/exec create: agent-run forces kubectl's SPDY exec, which is a POST. The default
+#     WebSocket exec begins as a GET and would also need `get` on pods/exec; it is not granted.
+# No Secrets, nothing cluster-wide, no write on any other resource, no rights in
+# dev-env-system or dev-tools. Exec into a session pod reaches that pod's mounted
+# credentials (its own HOME, /creds, the keeper's login projections); that is the point of
+# login and pair, and why only the workbench profile may run as this account.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dev-env-workbench
+  namespace: dev-agents
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-workbench
+  namespace: dev-agents
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-workbench
+  namespace: dev-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-workbench
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-workbench
+    namespace: dev-agents
