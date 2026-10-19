@@ -49,6 +49,10 @@ spec:
         podDisruptionBudget:
           minAvailable: 1
         pod:
+          # Keep serving fresh authority while terminating service endpoints
+          # withdraw, then drain the existing 16s native request envelope.
+          # This is the existing default grace, not additional task budget.
+          terminationGracePeriodSeconds: 30
           # DESIGN-001 7.1: the operator is tiny and may run anywhere; its two replicas
           # spread across zones m and w, so one node class going away leaves the API up.
           topologySpreadConstraints:
@@ -62,14 +66,18 @@ spec:
                   app.kubernetes.io/name: *app
         containers:
           app:
+            lifecycle:
+              preStop:
+                sleep:
+                  seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Source dd49ed4a6c38fa832634c57cbe13ab2946b92189; Publish39216574917 signed/verified.
+              # Source 597306ade2185692b1bc0f38f0b422f2e1d7c4af; Publish39228988690 signed/verified.
               # 2.29.4 accepts gpt-6-luna on the sealed pilot contract; general private admission remains disabled.
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # Executor stop, HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates.
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-dd49ed4@sha256:bd9eab474ce7c2d1b45d105b3208cc6d0938b4ab5e26b862eddc23ac514e6212
+              tag: sha-597306a@sha256:0526414f5aa56ea14c26874d9635ee24ff21d5f4e6fcd21b855db30fb09d20f6
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
