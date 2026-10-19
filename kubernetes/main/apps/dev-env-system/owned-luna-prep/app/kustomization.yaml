@@ -10,3 +10,4 @@ resources:
   - ./inputs-3.json
   - ./home-3.json
   - ./network-3.json
+  - ./root-3.json
