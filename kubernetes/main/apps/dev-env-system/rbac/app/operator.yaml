@@ -14,6 +14,11 @@ metadata:
   name: dev-env-operator
   namespace: dev-agents
 rules:
+  # Exact public inputs for the single approved owned root; no list/watch/write.
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-owned-luna-1019-inputs]
+    verbs: [get]
   # Session pods: built once, never written after create (5.1); deleted only on the
   # guarded paths (D-45); patch for the finalizer the rescue lifts.
   - apiGroups: [""]
@@ -103,6 +108,11 @@ metadata:
   name: dev-env-operator
   namespace: dev-env-system
 rules:
+  # Exact public inputs for the single approved owned root; no list/watch/write.
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-owned-luna-1019]
+    verbs: [get]
   - apiGroups: [coordination.k8s.io]
     resources: [leases]
     verbs: [get, create, update]
