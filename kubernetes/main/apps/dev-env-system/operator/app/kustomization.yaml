@@ -6,3 +6,4 @@ resources:
   - ./helmrelease.yaml
   - ./prometheusrule.yaml
   - ./owned-luna-policy.json
+  - ./owned-luna-policy-2.json
