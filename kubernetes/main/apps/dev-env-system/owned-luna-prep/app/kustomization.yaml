@@ -22,3 +22,6 @@ resources:
   - ./inputs-7.json
   - ./home-7.json
   - ./network-7.json
+  - ./inputs-8.json
+  - ./home-8.json
+  - ./network-8.json
