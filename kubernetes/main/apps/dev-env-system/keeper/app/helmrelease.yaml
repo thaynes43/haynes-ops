@@ -49,9 +49,10 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Keeper-only fresh-login acceptance; operator/broker retain their pins.
-              # Signed/verified from main 257287a by publish.yml (run 38002220440).
-              tag: sha-257287a@sha256:b5a068e3edd8ec45009c80a21ee16f221b67cbb20c95cd922ee5b10cb49397ec
+              # Keeper binary with the Claude login worker and adoption socket (dev-env#452, #455).
+              # Source 585692bbe730b0c7d435496d304cffb2276a0d6f (release dev-env#456, v2.34.0);
+              # publish.yml run 39302323514 signed/verified. Operator/broker pins are separate.
+              tag: sha-585692b@sha256:31a5f1465c84bb01ac171bc2200fed5a8fe1928a66659b3cc47402f0d97e714b
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:
@@ -59,6 +60,11 @@ spec:
             # Bounded keeper-only fresh-login and immediate-renewal acceptance.
             args:
               - --enable-codex-auth=true
+              # The shared Claude login (plan 03, Q-11): the keeper keeps it fresh and publishes
+              # the access-only projection. Journal dev-env-system/dev-env-keeper-claude-auth,
+              # projection dev-agents/dev-env-claude-live, staging /run/dev-env-claude-login/private
+              # are the defaults.
+              - --enable-claude-auth=true
             # Other flags retain the defaults: plan 01's names (--secret-namespace dev-agents,
             # --gh-token-secret dev-env-gh-token, --github-app-dir
             # /etc/dev-env-keeper/github-dev-bot, the Lease in POD_NAMESPACE, v1's
@@ -130,6 +136,41 @@ spec:
               limits:
                 cpu: 200m
                 memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+          # Idle until a separately authorized authenticated exec starts the fresh Claude
+          # login ceremony (`agentd claude-login`). The signed agent image is the helper
+          # because it carries the pinned claude CLI; no Secret or ServiceAccount volume is
+          # mounted, and the pod's user (65532) matches the 0600 control socket.
+          claude-login:
+            image:
+              repository: ghcr.io/thaynes43/dev-env
+              tag: 2.34.0@sha256:58cfbfb34ac4084968693e91d6a865de1c8bb215ab9bfdfef1ebc28f9e079255
+              pullPolicy: IfNotPresent
+            args:
+              - claude-login-idle
+            env:
+              KUBERNETES_SERVICE_HOST: ""
+              KUBERNETES_SERVICE_PORT: ""
+              KUBERNETES_SERVICE_PORT_HTTPS: ""
+              KUBERNETES_PORT: ""
+              KUBERNETES_PORT_443_TCP: ""
+              KUBERNETES_PORT_443_TCP_ADDR: ""
+              KUBERNETES_PORT_443_TCP_PORT: ""
+              KUBERNETES_PORT_443_TCP_PROTO: ""
+            # The claude CLI is a Node program; it runs only during the ceremony. The memory
+            # limit is above the other sidecars' 256Mi and is the one value to measure at the
+            # checkpoint (OOM during `claude auth login` would show as a fixed failure code).
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
             securityContext:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
@@ -223,6 +264,18 @@ spec:
               - path: /run/dev-env-codex-login
             codex-login:
               - path: /run/dev-env-codex-login
+      # Claude login staging and control socket: memory-backed, shared by app and claude-login
+      # only. 32Mi counts against the writer's memory; going over evicts the whole keeper pod.
+      claude-login:
+        type: emptyDir
+        medium: Memory
+        sizeLimit: 32Mi
+        advancedMounts:
+          dev-env-keeper:
+            app:
+              - path: /run/dev-env-claude-login
+            claude-login:
+              - path: /run/dev-env-claude-login
       tmp:
         type: emptyDir
         medium: Memory
