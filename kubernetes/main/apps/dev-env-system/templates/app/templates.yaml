@@ -132,6 +132,7 @@ profiles:
       - secretRef: { name: dev-env-cloudflare-secret }
     mounts:
       - { name: gh-token, secret: dev-env-gh-token, path: /creds }
+      - { name: gcp-sa, secret: dev-env-gcp-secret, path: /etc/gcp, defaultMode: 0440 }
       - { name: claude-access, secret: dev-env-claude-live, path: /opt/dev-env/claude-access, defaultMode: 0440 }
       - { name: codex-access, secret: dev-env-codex-live, path: /opt/dev-env/codex-access, defaultMode: 0440 }
   dev:
