@@ -115,7 +115,7 @@ spec:
               - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-native-lifecycle","hostID":"owned-native-fixture"}]'
               - '--enable-task-budgets'
               - '--task-budget-namespace=dev-env-budgets'
-              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.11.0@sha256:98761577d27feded51427a8097a9cf9492c2e7ee62b6e9a99df27bf52017532d'
+              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.30.0@sha256:fd3bc85e163d1d126ca3453d3031aae225e084e8b138744fe3bd8005a893c8ab'
               - '--assigned-task-budgets={"owned-native-fixture":"owned-native-fixture-1010"}'
               - '--enable-native-lifecycle-fixture'
               - '--native-fixture-image=ghcr.io/thaynes43/dev-env:2.11.0@sha256:98761577d27feded51427a8097a9cf9492c2e7ee62b6e9a99df27bf52017532d'
