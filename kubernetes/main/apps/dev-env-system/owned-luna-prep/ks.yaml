@@ -1,5 +1,5 @@
 # One approved bounded owned root; retain Pod/HOME/evidence after the attempt.
-# After first admission, remove root.json from resources; prune-disabled keeps the Pod.
+# After first admission, remove each one-shot root resource entry; prune-disabled keeps its Pod.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

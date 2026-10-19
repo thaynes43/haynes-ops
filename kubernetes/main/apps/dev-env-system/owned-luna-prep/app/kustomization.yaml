@@ -7,3 +7,4 @@ resources:
   - ./inputs-2.json
   - ./home-2.json
   - ./network-2.json
+  - ./root-2.json
