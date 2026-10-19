@@ -115,11 +115,10 @@ spec:
               - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-luna-1019","hostID":"owned-luna-1019"}]'
               - '--enable-task-budgets'
               - '--task-budget-namespace=dev-env-budgets'
-              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.30.0@sha256:fd3bc85e163d1d126ca3453d3031aae225e084e8b138744fe3bd8005a893c8ab'
+              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.30.1@sha256:5e53e12cb9f3d57e900cd416856c2871370cd6abd4b2e18fd80a35c21762545c'
               - '--assigned-task-budgets={"owned-luna-1019":"owned-luna-1019-0001"}'
               # Explicitly approved one finite Luna root; old fixture Pod/ledger retained.
               - '--owned-root-policy=dev-env-owned-luna-1019'
-              - '--native-fixture-image=ghcr.io/thaynes43/dev-env:2.11.0@sha256:98761577d27feded51427a8097a9cf9492c2e7ee62b6e9a99df27bf52017532d'
               # The other flags keep their defaults: --session-namespace dev-agents,
               # --templates-name dev-env-templates in this namespace (the Lease lives
               # here too), --api-bind-address :8443, --api-tls-dir
