@@ -13,3 +13,6 @@ resources:
   - ./inputs-4.json
   - ./home-4.json
   - ./network-4.json
+  - ./inputs-5.json
+  - ./home-5.json
+  - ./network-5.json
