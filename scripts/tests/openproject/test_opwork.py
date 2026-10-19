@@ -232,6 +232,18 @@ class ClaimTests(Base):
         self.assertEqual(code, 3)
         self.assertIn("Not overwritten", err)
 
+    def test_patch_that_landed_before_the_connection_dropped_is_confirmed_by_readback(self):
+        self.story()
+        self.fake.fail["PATCH /api/v3/work_packages"] = "after"
+        code, out, _ = self.run_cli("claim", "10")
+        self.assertEqual(code, 0)
+        self.assertIn("claimed (read back)", out)
+        self.assertEqual(self.fake.wps[10]["lockVersion"], 2)  # applied once
+
+    def test_paused_is_a_hold_too(self):
+        self.story(12, status="Paused")
+        self.assertEqual(self.run_cli("claim", "12")[0], 3)
+
     def test_holds_and_closed_items_are_refused(self):
         self.story(10, status="Needs approval")
         self.story(11, status="Accepted")
@@ -254,7 +266,7 @@ class LifecycleTests(Base):
         code, out, _ = self.run_cli("complete", "10", "--evidence", "tests green")
         self.assertEqual(code, 0, out)
         self.assertEqual(self.fake.wps[10]["_links"]["status"]["title"], "Accepted")
-        self.assertIn("Completed with evidence: tests green", self.fake.acts[10][0]["comment"]["raw"])
+        self.assertIn("Completion evidence: tests green", self.fake.acts[10][0]["comment"]["raw"])
         self.assertIn("already Accepted", self.run_cli("complete", "10", "--evidence", "x")[1])
         self.assertEqual(len(self.fake.acts[10]), 1)
 
@@ -274,6 +286,13 @@ class LifecycleTests(Base):
         self.assertEqual(self.fake.acts[10], [])  # no misleading "Status -> Paused" comment
         self.assertEqual(self.run_cli("status", "10", "In review", "--note", "PR 1")[0], 0)
         self.assertEqual(self.fake.wps[10]["_links"]["status"]["title"], "In review")
+
+    def test_evidence_survives_a_status_failure_and_rerun_does_not_hide_it(self):
+        self.story(10, status="In progress", **{op.OWNER: os.environ["OPWORK_SESSION"]})
+        self.fake.fail["PATCH /api/v3/work_packages"] = "before"
+        self.assertEqual(self.run_cli("complete", "10", "--evidence", "ev")[0], 5)
+        self.assertEqual(len(self.fake.acts[10]), 1)  # evidence first, so an outage cannot lose it
+        self.assertEqual(self.fake.wps[10]["_links"]["status"]["title"], "In progress")
 
     def test_complete_when_workflow_denies_accepted_records_evidence_and_says_so(self):
         self.story(10, status="In progress", **{op.OWNER: os.environ["OPWORK_SESSION"]})
@@ -346,6 +365,22 @@ class CreateTests(Base):
         code, _, err = self.run_cli("create", "--epic", "6", "--source-key", "k", "--subject", "x")
         self.assertEqual((code, "goes under a Epic" in err), (1, True))
 
+    def test_rerun_after_reuse_completes_a_lost_origin_relation(self):
+        self.story()
+        self.run_cli(*self.args)
+        self.fake.rels.clear()  # the relation step was lost on the first run
+        out = self.run_cli(*self.args)[1]
+        self.assertIn("REUSED", out)
+        self.assertIn("related to #10", out)
+        self.assertEqual(len(self.fake.rels), 1)
+
+    def test_relation_stored_in_canonical_orientation_is_still_confirmed(self):
+        self.story(11)
+        self.story()
+        self.fake.rels.append({"type": "precedes", "_links": {"from": {"href": "/api/v3/work_packages/10"}, "to": {"href": "/api/v3/work_packages/11"}}})
+        code, out, _ = self.run_cli("relate", "11", "10", "--type", "follows")
+        self.assertEqual((code, "already present" in out, len(self.fake.rels)), (0, True, 1))
+
     def test_create_lost_after_applying_is_found_by_readback_and_never_retried(self):
         self.story()
         self.fake.fail["POST /api/v3/projects"] = "after"
@@ -413,7 +448,8 @@ class OutageTests(Base):
         self.story()
         self.fake.fail["PATCH /api/v3/work_packages"] = "before"
         code, out, err = self.run_cli("claim", "10")
-        self.assertNotEqual(code, 0)
+        self.assertEqual(code, 5)
+        self.assertIn("NOT APPLIED", err)
         self.assertNotIn("claimed", out)
         self.assertIsNone(self.fake.wps[10][op.OWNER])
 
@@ -424,6 +460,7 @@ class HelperSafetyTests(unittest.TestCase):
             api.request("DELETE", "/api/v3/work_packages/1")
         with self.assertRaises(AssertionError):
             api.request("GET", "/api/v3/users")  # not the allowlisted /users/me
+        with self.assertRaises(AssertionError):
             api.request("GET", "/api/v3/work_packages/../x")
 
     def test_opwork_has_no_delete_command_and_no_token_output(self):

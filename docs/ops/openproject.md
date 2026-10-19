@@ -270,7 +270,7 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   `relates` link to the originating Story and the creator in Decision provenance. A create is
   never retried: if the answer is lost, the source key is searched and the result reported.
 - **Conflicts**: every write sends `lockVersion`; a stale one (409), another owner, or an
-  explicit hold (`Needs answer`, `Needs approval`) is re-read and refused (exit 3), never
+  explicit hold or pause (`Needs answer`, `Needs approval`, `Paused`) is re-read and refused (exit 3), never
   overwritten. `--force` is a takeover/override for an explicitly authorized case only.
 - **Read back**: success is printed only after a read back. An unconfirmed write is exit 6.
 - **Workflow limit (observed 2026-10-19)**: the existing native workflow lets this role reach

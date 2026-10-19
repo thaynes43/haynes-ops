@@ -35,7 +35,7 @@ import uuid
 PROJECT = "haynes-engineering"
 OWNER, REPOS, ACCEPT, CONSTRAINTS, SOURCE_KEY, PROVENANCE = "customField2", "customField3", "customField4", "customField5", "customField6", "customField11"
 MARKDOWN = (ACCEPT, CONSTRAINTS, PROVENANCE)
-HOLDS = ("Needs answer", "Needs approval")  # an explicit hold stays a hold without --force
+HOLDS = ("Needs answer", "Needs approval", "Paused")  # an explicit hold or pause stays one without --force
 RELATIONS = ("relates", "follows", "precedes", "blocks", "blocked")
 REVERSE = {"follows": "precedes", "precedes": "follows", "blocks": "blocked", "blocked": "blocks", "relates": "relates"}
 PARENT_OF = {"Epic": "Saga", "Story": "Epic"}
@@ -197,8 +197,8 @@ class Tracker:
         if code >= 400:
             raise Fail("Relation #%d %s #%d rejected HTTP %s: %s" % (from_id, kind, to_id, code, data.get("message", "")))
         for rel in self.relations(from_id):
-            if href_id(rel["_links"]["to"]) == to_id and rel["type"] == kind:
-                return rel, True
+            if {href_id(rel["_links"]["from"]), href_id(rel["_links"]["to"])} == {from_id, to_id} and rel["type"] in (kind, REVERSE[kind]):
+                return rel, True  # OpenProject may store follows/blocked in the canonical orientation
         raise Fail("UNCERTAIN: relation #%d %s #%d not visible on read back" % (from_id, kind, to_id), 6)
 
 
@@ -292,8 +292,8 @@ def cmd_complete(t, a, session):
         if w["_links"]["status"]["title"] != "In review" and "In review" in allowed:
             t.patch(t.wp(a.id), status="In review")
         raise Fail("EVIDENCE RECORDED, NOT ACCEPTED: the OpenProject workflow does not let this role set Accepted. #%d is left [In review] for an authorized accepter (Tom/Meatball)." % a.id, 7)
+    t.comment(a.id, "Completion evidence: " + a.evidence, session)  # first: a lost evidence note is never hidden by "already Accepted"
     now = t.patch(w, status="Accepted", lock=a.expect_lock)
-    t.comment(a.id, "Completed with evidence: " + a.evidence, session)
     return "completed (read back): " + line(now)
 
 
@@ -305,7 +305,11 @@ def cmd_relate(t, a, session):
 def cmd_create(t, a, session):
     existing = t.by_source_key(a.source_key)  # search first: the stable key is the identity
     if existing:
-        return "REUSED, not created: " + "; ".join(line(w) for w in existing)
+        out = ["REUSED, not created: " + "; ".join(line(w) for w in existing)]
+        if a.origin and len(existing) == 1:  # a re-run completes a relation that was lost
+            t.relate(existing[0]["id"], a.origin, "relates")
+            out.append("related to #%d (read back)" % a.origin)
+        return "\n".join(out)
     epic = t.wp(a.epic)
     kind = a.type
     if epic["_links"]["type"]["title"] != PARENT_OF[kind]:
