@@ -92,7 +92,15 @@ spec:
               # Explicit sole zero-task fixture; ordinary native hosts remain closed.
               - '--enable-coordinator-callers'
               - '--enable-managed-codex-tasks'
-              - '--enable-private-project-tasks=false'
+              # Story110 T16 (Tom: ordinary repeatable Codex project tasks first): admit ordinary
+              # `agent-run --project <p> --agent codex -p` tasks (apiserver sessions.go:116). The operator
+              # refuses to start with this on AND the canary route (main.go:259), the retained-common-rules
+              # route (main.go:252) or a sealed pilot (main.go:273, not configured here) on, so the first two
+              # are off below. Existing Sessions, Pods, PVCs, ledgers and receipts are neither deleted nor
+              # mutated. Known cost: Sessions that carry a session-directory spec now fail reconcile early
+              # with ErrUnavailable (controller/reconciler.go:423, session_directory.go:12) and retry with
+              # backoff until a dev-env fix lands; see the T16 PR.
+              - '--enable-private-project-tasks=true'
               - '--enable-private-history-retention=true'
               # DESIGN-025 H2: record a private executor's verified terminal state (or the
               # missed marker) in its Session's status. Records only; stops and deletes nothing.
@@ -100,16 +108,20 @@ spec:
               # them the check fails closed and nothing is recorded. Once a record exists, turn
               # this off rather than pin the operator below 2.25.0 (ADR-005 C-38).
               - '--enable-private-terminal-record=true'
-              - '--enable-retained-common-rules=true'
-              - '--enable-private-project-canaries=true'
+              # Off with the canary route (main.go:252). Ordinary project tasks get no retained common rules.
+              - '--enable-retained-common-rules=false'
+              # Off: main.go:259 refuses canaries together with general private admission. The
+              # --private-project-canaries record below is kept for history; with the route off it is
+              # parsed and then ignored (main.go:267).
+              - '--enable-private-project-canaries=false'
               # Q-32 (2026-10-12): rule-canary-claude-sigo-1012b replaces the consumed sigo-1012 record
               # (Q-30). It reruns the private Sigo alumni canary on the 2.25.0 template to prove catalog
               # bootstrap reaches Ready. Only id, key, templateRevision and image changed. codex-1011
               # is byte-identical (consumed).
               - '--private-project-canaries=[{"commonRevision":"3b9b829cf224ea4bc5b2b481ff3b7c1b4f0b173e1b4e304d84d4e3ecf4e2ca61","captureOutput":true,"id":"rule-canary-claude-sigo-1012b","client":"dev/dev-env","project":"sigo-alumni","repository":"sigo-alumni","provider":"claude","profile":"rule-canary-claude","model":"claude-opus-5-5","effort":"xhigh","size":"S","catalogRevision":"5fe34bd347f85c4b41773fbe48f815f8655945af9d73503a1ef0e89ee89aad90","rulesRevision":"d070e7a6d7e10359ed9fa4de897d6e24be7c49ba7df2f8af39ef4317b83ceae0","templateRevision":"2.25.0-b7972dd7b5","image":"ghcr.io/thaynes43/dev-env:2.25.0@sha256:25b20148706fe0b735cc879891c12851977c72a32b5b83cc68ef511246a3cd29","idempotencyKey":"rule-canary-claude-sigo-1012b-once","prompt":"Perform the instruction acceptance probe described in your loaded instructions. Reply only with the common and repository rule markers you actually received, and Unknown for absent instructions. Do not use tools or fetch files.","timeout":"180s","maxTurns":1},{"commonRevision":"3b9b829cf224ea4bc5b2b481ff3b7c1b4f0b173e1b4e304d84d4e3ecf4e2ca61","captureOutput":true,"id":"rule-canary-codex-1011","client":"dev/dev-env","project":"dev-env","repository":"dev-env","provider":"codex","profile":"rule-canary-codex","model":"gpt-6-astra","effort":"max","size":"S","catalogRevision":"9c5cc110d56f9afcd360a76947523d1b73cfa8bc685556c0c47f8e00c80d6d29","rulesRevision":"1cebe4524e65483d4854960c34a31d3f75f1cfc0acb991f0fd490b10bbc98e2b","templateRevision":"2.20.0-ec26880d2a","image":"ghcr.io/thaynes43/dev-env:2.20.0@sha256:823e015567fdb34951c4e6ce7e39891e3cc8a1e2d1d219bee127fe537cb31303","idempotencyKey":"rule-canary-codex-1011-once","prompt":"Perform the instruction acceptance probe described in your loaded instructions. Reply only with the common and repository rule markers you actually received, and Unknown for absent instructions. Do not use tools or fetch files.","timeout":"180s","maxTurns":0}]'
-              - '--enable-session-directory=true'
-              - '--session-directory-projects=dev-env'
-              - '--metadata-discovery-projects=dev-env'
+              # Off: the directory requires the canary policy (main.go:312), which is nil with the
+              # canary route off; its project scopes must go with it (main.go:321).
+              - '--enable-session-directory=false'
               - '--enable-task-claims=true'
               - '--task-claims-read-projects=dev-env'
               - '--enable-published-contexts=true'
