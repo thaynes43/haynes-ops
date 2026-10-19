@@ -9,7 +9,8 @@
     },
     "annotations": {
       "dev-env.haynesops.com/coordinator-host": "owned-luna-1019-8",
-      "k8tz.io/inject": "false"
+      "k8tz.io/inject": "false",
+      "kustomize.toolkit.fluxcd.io/prune": "disabled"
     }
   },
   "spec": {
