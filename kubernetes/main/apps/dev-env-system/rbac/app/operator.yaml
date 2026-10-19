@@ -17,7 +17,7 @@ rules:
   # Exact public inputs for the single approved owned root; no list/watch/write.
   - apiGroups: [""]
     resources: [configmaps]
-    resourceNames: [dev-env-owned-luna-1019-inputs, dev-env-owned-luna-1019-2-inputs, dev-env-owned-luna-1019-3-inputs, dev-env-owned-luna-1019-4-inputs, dev-env-owned-luna-1019-5-inputs]
+    resourceNames: [dev-env-owned-luna-1019-inputs, dev-env-owned-luna-1019-2-inputs, dev-env-owned-luna-1019-3-inputs, dev-env-owned-luna-1019-4-inputs, dev-env-owned-luna-1019-5-inputs, dev-env-owned-luna-1019-6-inputs]
     verbs: [get]
   # Session pods: built once, never written after create (5.1); deleted only on the
   # guarded paths (D-45); patch for the finalizer the rescue lifts.
@@ -111,7 +111,7 @@ rules:
   # Exact public inputs for the single approved owned root; no list/watch/write.
   - apiGroups: [""]
     resources: [configmaps]
-    resourceNames: [dev-env-owned-luna-1019, dev-env-owned-luna-1019-2, dev-env-owned-luna-1019-3, dev-env-owned-luna-1019-4, dev-env-owned-luna-1019-5]
+    resourceNames: [dev-env-owned-luna-1019, dev-env-owned-luna-1019-2, dev-env-owned-luna-1019-3, dev-env-owned-luna-1019-4, dev-env-owned-luna-1019-5, dev-env-owned-luna-1019-6]
     verbs: [get]
   - apiGroups: [coordination.k8s.io]
     resources: [leases]
