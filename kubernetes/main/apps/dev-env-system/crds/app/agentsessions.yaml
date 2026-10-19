@@ -600,6 +600,12 @@ spec:
                   agentd:
                     description: Agentd is agentd's version line.
                     type: string
+                  attached:
+                    description: |-
+                      Attached is how many clients are attached to the agent's tmux session
+                      (DESIGN-001 4.2, D-59). Drain treats any attached client as not idle.
+                    minimum: 0
+                    type: integer
                   boot:
                     description: 'Boot is agentd''s boot phase: booting, ready or
                       failed.'
@@ -1700,6 +1706,40 @@ spec:
                       type: object
                     maxItems: 256
                     type: array
+                type: object
+              restart:
+                description: |-
+                  Restart is the prepare-restart proof for an idle drain (DESIGN-001 5.2).
+                  The operator writes it before deletePod may remove that pod. It names
+                  the conversation the same volume resumes and the pod the proof was taken in.
+                properties:
+                  conversationId:
+                    description: ConversationID is the conversation the next boot
+                      on this volume resumes.
+                    maxLength: 256
+                    minLength: 1
+                    type: string
+                  generation:
+                    description: |-
+                      Generation is the session generation when the proof was recorded.
+                      A spec change since then needs a new prepare-restart.
+                    format: int64
+                    minimum: 1
+                    type: integer
+                  podUID:
+                    description: PodUID is the pod prepare-restart ran in.
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                  stopped:
+                    description: |-
+                      Stopped is set immediately before prepare-restart stops the agent.
+                      A delete retry requires it. A proof without it has not stopped the agent.
+                    type: boolean
+                required:
+                - conversationId
+                - generation
+                - podUID
                 type: object
               revision:
                 description: Revision is the template revision the pod runs (DESIGN-001
