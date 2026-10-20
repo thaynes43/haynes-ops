@@ -8,6 +8,7 @@ resources:
   - ./workbench.yaml
   - ./operator.yaml
   - ./operator-standby.yaml
+  - ./operator-keeper-login.yaml
   - ./common-rules-operator.yaml
   - ./keeper.yaml
   - ./keeper-credentials.yaml

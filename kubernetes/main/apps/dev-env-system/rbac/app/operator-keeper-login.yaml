@@ -1,0 +1,45 @@
+---
+# The keeper login routes (thaynes43/dev-env NB-01, DESIGN-028): a workbench session
+# renews the keeper's Claude or ChatGPT login through the operator's
+# /v1/keeper-login/{claude,codex} API, and the operator runs the keeper's own login
+# helper by exec. The operator needs, in dev-env-system and nowhere else:
+#   - pods get, list: it finds the keeper pod by the keeper's labels and checks it is
+#     Running, Ready, on the dev-env-keeper ServiceAccount and has the login container
+#     running (an uncached list; it never reads a pod's spec for anything else);
+#   - pods/exec create: POST (SPDY) exec into that pod. RBAC cannot scope exec to a
+#     container or a pod name that Kubernetes generates, so the limit is in the operator's
+#     code: the container is fixed there (claude-login or codex-login), never the
+#     keeper's `app` container, and never a value from a request. The route answers the
+#     workbench caller class only (403 for Tom's account, the v1 pod, coordinators and
+#     every other session).
+# Nothing else: no Secrets (the journal and projection stay the keeper's alone), no
+# delete, no patch, no pods/log, nothing cluster-wide. Namespace dev-env-system holds the
+# operator, broker, keeper and shelf pods only. No admission policy applies: the Kyverno
+# dev-env-exec-guard and the VAP dev-env-identity-guard match dev-agents identities only,
+# and the operator's ServiceAccount is not one. Nothing here touches a running pod.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-operator-keeper-login
+  namespace: dev-env-system
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-operator-keeper-login
+  namespace: dev-env-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-operator-keeper-login
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
