@@ -1,0 +1,99 @@
+---
+# Restart the v2 operator, keeper, broker and shelf from a workbench session, without v1
+# (thaynes43/dev-env NB-02, Saga85/Epic107; docs/v2-quickstart.md "Restart the operator,
+# keeper or shelf from v2"). Until now only the v1 pod's identity could do it
+# (kubectl rollout restart), so every upgrade or stuck pod needed v1 or a laptop.
+#
+# Subject: dev-agents/dev-env-workbench (./workbench.yaml), the identity a
+# `workbench`-profile session runs as. Nothing else gains anything.
+#
+# What it gets, per namespace:
+#   dev-env-system (the operator, keeper and broker Deployments):
+#     - deployments, statefulsets: get, list, watch (kubectl rollout status watches the
+#       Deployment; reads are not named because list and watch cannot be);
+#     - deployments: patch, restricted by resourceNames to dev-env-operator,
+#       dev-env-keeper and dev-env-broker. A StatefulSet is read-only: none of the
+#       three is one, so patch is not granted on it;
+#     - pods: get, list; pods/log: get, to see the roll and read a pod's own log.
+#   dev-agents (the shelf, which lives beside the session pods, not in dev-env-system):
+#     - deployments: get, list, watch; patch only on dev-env-shelf;
+#     - pods: list (get is already in ./workbench.yaml's Role dev-env-workbench), to see
+#       the shelf pod roll and any hold pod. No pods/log here: the namespace is full of
+#       other sessions' pods, and a name list cannot narrow it.
+#
+# What it does NOT get: no secrets, no pods/exec in dev-env-system, no delete, create or
+# update of anything, no replicasets (`rollout status` and `rollout restart` do not read
+# them; `rollout history` and `undo` are not wanted), no scale, no other workload, no
+# other namespace, nothing cluster-wide.
+#
+# `patch` is not field-scoped by RBAC: with this Role alone the workbench could rewrite
+# a named Deployment's image or ServiceAccount. The workbench is exempt from
+# dev-env-identity-guard and dev-env-agent-guard matches only dev-env-agent, so
+# ./workbench-admin-guard.yaml holds this identity to the restartedAt template annotation
+# (kubectl rollout restart), the same rule the baseline agent has. Keep the two together.
+#
+# Nothing here touches a running pod; adding the Role restarts nothing.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-workbench-admin
+  namespace: dev-env-system
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    resourceNames: [dev-env-operator, dev-env-keeper, dev-env-broker]
+    verbs: [patch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-workbench-admin
+  namespace: dev-env-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-workbench-admin
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-workbench
+    namespace: dev-agents
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-workbench-admin
+  namespace: dev-agents
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    resourceNames: [dev-env-shelf]
+    verbs: [patch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-workbench-admin
+  namespace: dev-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-workbench-admin
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-workbench
+    namespace: dev-agents
