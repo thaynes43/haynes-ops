@@ -10,6 +10,14 @@
 # rule dev-env-agent-guard applies to the baseline agent (./agent-guard.yaml), matched
 # to the workbench's username instead.
 #
+# Kyverno's image-verification bookkeeping is the one exception: the verify-thaynes43-images
+# policy rewrites the object annotations kyverno.io/verify-images and
+# kyverno.io/verify-images-scoped on an UPDATE, flipping an image's recorded result from
+# "skip" to "pass" (seen on dev-env-operator, 2026-10-20: a plain `kubectl rollout restart`
+# was denied until this exception). The webhook mutates before this policy validates, so
+# the caller cannot be told from Kyverno. It is harmless here: the image itself cannot
+# change under this policy, and Kyverno re-verifies the image on every admission.
+#
 # failurePolicy Fail with no paramRef, as the other guards: the match condition is a
 # string compare that cannot fail, so an error refuses only the workbench's request.
 apiVersion: admissionregistration.k8s.io/v1
@@ -51,12 +59,13 @@ spec:
       expression: variables.oldTemplateMeta.?annotations.orValue({})
   validations:
     # The API server itself bumps a DaemonSet's deprecated.daemonset.template.generation
-    # annotation on any template change, before admission, so that key may differ.
+    # annotation on any template change, before admission, so that key may differ; so may
+    # Kyverno's kyverno.io/verify-images* record (see the header).
     - expression: >-
         variables.sameLabelsFinalizersOwners &&
-        variables.newAnnotations.all(k, k == 'deprecated.daemonset.template.generation' ||
+        variables.newAnnotations.all(k, k == 'deprecated.daemonset.template.generation' || k.startsWith('kyverno.io/verify-images') ||
           (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&
-        variables.oldAnnotations.all(k, k == 'deprecated.daemonset.template.generation' || k in variables.newAnnotations) &&
+        variables.oldAnnotations.all(k, k == 'deprecated.daemonset.template.generation' || k.startsWith('kyverno.io/verify-images') || k in variables.newAnnotations) &&
         variables.newSpec.all(k, k == 'template' || (k in variables.oldSpec && variables.newSpec[k] == variables.oldSpec[k])) &&
         variables.oldSpec.all(k, k == 'template' || k in variables.newSpec) &&
         object.spec.?template.?spec == oldObject.spec.?template.?spec &&
