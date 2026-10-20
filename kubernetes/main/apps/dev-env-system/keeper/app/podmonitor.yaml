@@ -1,0 +1,32 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/podmonitor_v1.json
+# The keeper's metrics (controller-runtime, :8080, plain HTTP): the login gauges
+# dev_env_keeper_login_state{provider,state} and
+# dev_env_keeper_login_lapse_timestamp_seconds{provider} (dev-env plan 13, story 13.1).
+# The keeper has no Service and declares no container port, so this is a PodMonitor that
+# names the port in a relabeling and keeps only the `app` container (the two login helpers
+# listen on nothing). Prometheus reaches it through the ingress rule in
+# network/app/keeper.yaml. No alert is added: the dev-env Pushover app carries the notices.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: dev-env-keeper
+  namespace: dev-env-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-keeper
+  podMetricsEndpoints:
+    - path: /metrics
+      scheme: http
+      interval: 1m
+      scrapeTimeout: 10s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_container_name]
+          action: keep
+          regex: app
+        - sourceLabels: [__meta_kubernetes_pod_ip]
+          action: replace
+          regex: (.+)
+          replacement: $1:8080
+          targetLabel: __address__

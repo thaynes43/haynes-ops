@@ -3,8 +3,9 @@
 # GitHub App keys. Pods carry app.kubernetes.io/name: dev-env-keeper (the keeper
 # HelmRelease, 8.9, must keep that label). Nothing outside this list is reachable.
 #
-# Ingress: 8443 from the operator only (the login ceremony, status, archive). The
-# broker joins when it exists.
+# Ingress: 8443 from the operator only (the login ceremony, status, archive), and 8080 (the
+# metrics) from Prometheus, which scrapes the login gauges (dev-env plan 13, story 13.1).
+# The broker joins when it exists.
 # Egress, by exact name:
 #   api.github.com        mint installation tokens for the dev bot
 #   api.anthropic.com     the plan-usage read (spike S-16) and the profile fetch
@@ -33,6 +34,14 @@ spec:
       toPorts:
         - ports:
             - port: "8443"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports:
+            - port: "8080"
               protocol: TCP
   egress:
     - toEntities:

@@ -18,6 +18,7 @@ resources:
   - ./keeper-credentials.yaml
   - ./keeper-codex-auth.yaml
   - ./keeper-claude-auth.yaml
+  - ./keeper-notices.yaml
   - ./broker.yaml
   - ./broker-credentials.yaml
   - ./broker-guard.yaml
