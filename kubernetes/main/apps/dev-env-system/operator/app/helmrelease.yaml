@@ -72,9 +72,10 @@ spec:
                   seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Source fdf2542395895adf8bfecb00e5b9b4df947a44e6 (release dev-env#484, v2.38.1); Publish 39382009894 signed/verified.
+              # Source 2875abe48a7accefa3ba87148abd9ba145bec408 (release dev-env#488, v2.38.2); Publish 39387698019 signed/verified.
+              # 2.38.2 adds agentd's per-pod login lock (dev-env#485); no API type or CRD change. This pin also moves --task-budget-worker-image and the templates image to 2.38.2 (they were held at 2.38.0 through v2.38.1), so idle sessions drain onto the new template revision.
+              # 2.38.1 source fdf2542395895adf8bfecb00e5b9b4df947a44e6 (release dev-env#484); Publish 39382009894 signed/verified.
               # 2.38.1 fixes the standby drain (dev-env#480), the keeper's Proxmox create-response shape (#481) and adds claude-login-abandon plus a quieter keeper Codex log level (#483); no API type or CRD change.
-              # --task-budget-worker-image stays at 2.38.0 on purpose (the templates image too): moving them would drain every idle session again; the next release catches up.
               # 2.38.0 source 702a57fe0cfd651661e7db30cadbada58a40947c (release dev-env#476); Publish 39374328506 signed/verified.
               # 2.38.0 adds the keeper-login routes for workbench sessions (dev-env#475, agent-run keeper-login; needs the operator exec Role and guard, haynes-ops #4130) and the stalled-clone abandon fix (dev-env#478); no API type or CRD change (CRDs in dev-env-crds already match v2.38.0).
               # 2.37.0 source 9539413 (release dev-env#468); Publish 39345991115 signed/verified.
@@ -88,7 +89,7 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-fdf2542@sha256:c1680f80d7c64197496bdf3f64cde72548810d54382251e489f14925c1bd108a
+              tag: sha-2875abe@sha256:0dab9f99f7d23de2ad9a8828a3b94471e61fd2fc5fb8c87d57b854abbad82556
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -155,7 +156,7 @@ spec:
               - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-luna-1019-9","hostID":"owned-luna-1019-9"}]'
               - '--enable-task-budgets'
               - '--task-budget-namespace=dev-env-budgets'
-              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.38.0@sha256:bb67ea9cfbc6239f45f5099403d7d32ebbc691d2dfbf660dd0fcf707a1eb546a'
+              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.38.2@sha256:e0cb9c182d75a9c3eaeac46ab858de6b2360630858c22ba886c9fb5116da8f4d'
               - '--assigned-task-budgets={"owned-luna-1019-9":"owned-luna-1019-0009"}'
               # Explicitly approved one finite Luna root; old fixture Pod/ledger retained.
               - '--owned-root-policy=dev-env-owned-luna-1019-9'
