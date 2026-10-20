@@ -7,6 +7,7 @@ resources:
   - ./agent.yaml
   - ./workbench.yaml
   - ./workbench-read.yaml
+  - ./workbench-operator.yaml
   - ./workbench-admin.yaml
   - ./workbench-admin-guard.yaml
   - ./operator.yaml
