@@ -19,8 +19,9 @@ rules:
     resources: [configmaps]
     resourceNames: [dev-env-owned-luna-1019-inputs, dev-env-owned-luna-1019-2-inputs, dev-env-owned-luna-1019-3-inputs, dev-env-owned-luna-1019-4-inputs, dev-env-owned-luna-1019-5-inputs, dev-env-owned-luna-1019-6-inputs, dev-env-owned-luna-1019-7-inputs, dev-env-owned-luna-1019-8-inputs, dev-env-owned-luna-1019-9-inputs]
     verbs: [get]
-  # Session pods: built once, never written after create (5.1); deleted only on the
-  # guarded paths (D-45); patch for the finalizer the rescue lifts.
+  # Session pods: built once, never rewritten after create (5.1) except the H3 stop request,
+  # one activeDeadlineSeconds patch on a Reaping private Session's executor (DESIGN-025 4); deleted
+  # only on the guarded paths (D-45); patch for the finalizer the rescue lifts.
   - apiGroups: [""]
     resources: [pods]
     verbs: [create, delete, get, list, watch, patch]
