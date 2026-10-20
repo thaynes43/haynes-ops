@@ -17,6 +17,11 @@
 #   - 3 replicas, RollingUpdate maxUnavailable 0 / maxSurge 1: a 4th pod comes
 #     up and turns Ready before any old pod is told to stop.
 #   - readiness on /api/healthz: a new pod gets traffic only once it can serve.
+#     failureThreshold 9 (was 3): a CONTINUOUS failure drains a pod after
+#     roughly 80-92s (the 9th consecutive failed 10s probe; it depends on probe
+#     phase and response duration, NOT an exact 90s). A failure shorter than
+#     about 80s, e.g. a 30s shared-DB blip, no longer drains any pod. See PROBES
+#     below for the trade-offs and the rollout order.
 #   - preStop sleep 10s: Traefik fences a terminating endpoint as soon as the
 #     EndpointSlice says so; the sleep covers that watch latency before the app
 #     sees SIGTERM.
@@ -351,6 +356,37 @@ spec:
             # so a DB outage makes new pods unready instead of startup-probe
             # restart-looping them; liveness stays tcpSocket (Cloud Run parity
             # — never restart-loop pods on upstream slowness).
+            #
+            # READINESS failureThreshold 9 (period 10s, timeout 5s, success 1):
+            #   - Short failures tolerated: a 30s shared-DB loss fails at most
+            #     3-4 consecutive probes per pod, so nothing drains. At the old
+            #     threshold 3 every pod drained on such a blip and Traefik had
+            #     no backend.
+            #   - Sustained failures still drain: a continuous failure removes
+            #     the pod after roughly 80-92s (first failing probe lands 0-10s
+            #     after onset, then 8 more at 10s spacing, plus the 9th probe's
+            #     own response time of up to ~2s). Not an exact 90s wall clock.
+            #     The Service backend list therefore empties inside the same
+            #     window on a shared outage, which keeps the existing GCP
+            #     uptime -> watchdog sustained-outage signal intact (readiness
+            #     stays DB-sensitive on purpose; process-only readiness would
+            #     let a fast fallback `/` mask a DB outage).
+            #   - Cost: a single bad pod keeps receiving traffic for up to
+            #     ~90s instead of ~30s.
+            #   - PREREQUISITE: sigoalumni-org PR #164 (the /api/healthz 2s
+            #     total budget with bounded pool acquisition). The readiness
+            #     timeout is 5s against that 2s app budget; without it a hung
+            #     DB would hold each probe for the full 5s. At pool max=2 (the
+            #     H2 PR, stacked on sigoalumni-org #164) pool saturation can
+            #     also answer 503, which counts as a failure here.
+            #   - ROLLOUT ORDER: install the app image carrying #164 and the H2
+            #     change first, WITH threshold 3 (this file's previous value),
+            #     and merge the 3 -> 9 change only after that app is verified
+            #     healthy. ROLLBACK: if longer unhealthy-pod exposure is the
+            #     problem, revert threshold to 3 FIRST (this reintroduces
+            #     short-outage drain risk); revert the image separately.
+            #   Liveness, startup, preStop, terminationGracePeriodSeconds and
+            #   rollingUpdate are deliberately unchanged by this tuning.
             probes:
               liveness:
                 enabled: true
@@ -372,7 +408,7 @@ spec:
                   initialDelaySeconds: 5
                   periodSeconds: 10
                   timeoutSeconds: 5
-                  failureThreshold: 3
+                  failureThreshold: 9
               startup:
                 enabled: true
                 custom: true
