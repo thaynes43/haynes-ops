@@ -1,0 +1,80 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/admissionregistration.k8s.io/validatingadmissionpolicy_v1.json
+# dev-env-workbench-admin-guard (thaynes43/dev-env NB-02; ./workbench-admin.yaml).
+# RBAC `patch` on a Deployment is not field-scoped, and the workbench identity is exempt
+# from dev-env-identity-guard (it must exec into session pods), so without this the
+# role that lets a workbench session restart the operator, keeper, broker and shelf
+# would also let it change their image, arguments or ServiceAccount. This policy holds
+# dev-agents/dev-env-workbench to what `kubectl rollout restart` writes: the pod
+# template's kubectl.kubernetes.io/restartedAt annotation and nothing else. It is the
+# rule dev-env-agent-guard applies to the baseline agent (./agent-guard.yaml), matched
+# to the workbench's username instead.
+#
+# failurePolicy Fail with no paramRef, as the other guards: the match condition is a
+# string compare that cannot fail, so an error refuses only the workbench's request.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-workbench-admin-guard
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [apps]
+        apiVersions: ["*"]
+        operations: [UPDATE]
+        resources: [deployments, statefulsets, daemonsets]
+  matchConditions:
+    - name: dev-env-workbench
+      expression: request.userInfo.username == 'system:serviceaccount:dev-agents:dev-env-workbench'
+  variables:
+    - name: newAnnotations
+      expression: object.metadata.?annotations.orValue({})
+    - name: oldAnnotations
+      expression: oldObject.metadata.?annotations.orValue({})
+    - name: sameLabelsFinalizersOwners
+      expression: >-
+        object.metadata.?labels.orValue({}) == oldObject.metadata.?labels.orValue({}) &&
+        object.metadata.?finalizers.orValue([]) == oldObject.metadata.?finalizers.orValue([]) &&
+        object.metadata.?ownerReferences.orValue([]) == oldObject.metadata.?ownerReferences.orValue([])
+    - name: newSpec
+      expression: object.?spec.orValue({})
+    - name: oldSpec
+      expression: oldObject.?spec.orValue({})
+    - name: newTemplateMeta
+      expression: object.spec.?template.?metadata.orValue({})
+    - name: oldTemplateMeta
+      expression: oldObject.spec.?template.?metadata.orValue({})
+    - name: newTemplateAnnotations
+      expression: variables.newTemplateMeta.?annotations.orValue({})
+    - name: oldTemplateAnnotations
+      expression: variables.oldTemplateMeta.?annotations.orValue({})
+  validations:
+    # The API server itself bumps a DaemonSet's deprecated.daemonset.template.generation
+    # annotation on any template change, before admission, so that key may differ.
+    - expression: >-
+        variables.sameLabelsFinalizersOwners &&
+        variables.newAnnotations.all(k, k == 'deprecated.daemonset.template.generation' ||
+          (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&
+        variables.oldAnnotations.all(k, k == 'deprecated.daemonset.template.generation' || k in variables.newAnnotations) &&
+        variables.newSpec.all(k, k == 'template' || (k in variables.oldSpec && variables.newSpec[k] == variables.oldSpec[k])) &&
+        variables.oldSpec.all(k, k == 'template' || k in variables.newSpec) &&
+        object.spec.?template.?spec == oldObject.spec.?template.?spec &&
+        variables.newTemplateMeta.all(k, k == 'annotations' ||
+          (k in variables.oldTemplateMeta && variables.newTemplateMeta[k] == variables.oldTemplateMeta[k])) &&
+        variables.oldTemplateMeta.all(k, k == 'annotations' || k in variables.newTemplateMeta) &&
+        variables.newTemplateAnnotations.all(k, k == 'kubectl.kubernetes.io/restartedAt' ||
+          (k in variables.oldTemplateAnnotations && variables.newTemplateAnnotations[k] == variables.oldTemplateAnnotations[k])) &&
+        variables.oldTemplateAnnotations.all(k, k == 'kubectl.kubernetes.io/restartedAt' || k in variables.newTemplateAnnotations)
+      messageExpression: >-
+        'dev-env-workbench-admin-guard: a workbench session may only restart a ' + request.resource.resource +
+        ' (the kubectl.kubernetes.io/restartedAt template annotation, kubectl rollout restart); any other change goes through git (NB-02, DESIGN-001 D-19)'
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-workbench-admin-guard
+spec:
+  policyName: dev-env-workbench-admin-guard
+  validationActions: [Deny]
