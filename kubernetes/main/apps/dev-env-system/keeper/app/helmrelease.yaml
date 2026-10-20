@@ -50,13 +50,13 @@ spec:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
               # Keeper binary with the Claude login worker and adoption socket (dev-env#452, #455).
-              # Source fdf2542395895adf8bfecb00e5b9b4df947a44e6 (release dev-env#484, v2.38.1);
-              # publish.yml run 39382009894 signed/verified. Was v2.38.0 (702a57f, run 39374328506). 2.38.0 adds the keeper control status
+              # Source 2875abe48a7accefa3ba87148abd9ba145bec408 (release dev-env#488, v2.38.2);
+              # publish.yml run 39387698019 signed/verified. Was v2.38.1 (fdf2542, run 39382009894), v2.38.0 (702a57f, run 39374328506). 2.38.0 adds the keeper control status
               # expiry times and SIGHUP cancel that the keeper-login routes need (dev-env#475):
               # this container, claude-login and codex-login move together with the operator.
               # Previously source 585692bbe730b0c7d435496d304cffb2276a0d6f (v2.34.0), run 39302323514.
               # The broker pin is separate and unchanged.
-              tag: sha-fdf2542@sha256:c1680f80d7c64197496bdf3f64cde72548810d54382251e489f14925c1bd108a
+              tag: sha-2875abe@sha256:0dab9f99f7d23de2ad9a8828a3b94471e61fd2fc5fb8c87d57b854abbad82556
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:
@@ -128,8 +128,8 @@ spec:
           codex-login:
             image:
               repository: ghcr.io/thaynes43/dev-env-codex-login
-              # v2.38.1 (dev-env#481, #483: Proxmox response shape, Codex log level); publish.yml run 39382009894 signed/verified. Was v2.38.0 (dev-env#475).
-              tag: sha-fdf2542@sha256:eea8b0ab50941070e2fb2a31f948f4d159e078c482f1a0bd60b28ed31d0e0038
+              # v2.38.2 (dev-env#485); publish.yml run 39387698019 signed/verified. Was v2.38.1 (dev-env#481, #483: Proxmox response shape, Codex log level), run 39382009894 signed/verified. Was v2.38.0 (dev-env#475).
+              tag: sha-2875abe@sha256:d9f807210fca3db6b069dd68eba913d1458172e9ff87209a1c735768eb5d59f6
               pullPolicy: IfNotPresent
             # Clear the API service environment Kubernetes injects even when
             # enableServiceLinks is false; the native helper also uses a minimal env.
@@ -161,8 +161,8 @@ spec:
           claude-login:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              # v2.38.1 (dev-env#483): agentd claude-login-abandon (the exec guard admits it, haynes-ops #4132); publish-agent.yml run 39382031869 signed/verified. Was v2.38.0 (dev-env#475).
-              tag: 2.38.1@sha256:8db9ce94942f5785d24b120a3a3f43199aec82d8a48887e334292a035827ceca
+              # v2.38.2 (dev-env#485: per-pod login lock); publish-agent.yml run 39387720469 signed/verified. Was v2.38.1 (dev-env#483): agentd claude-login-abandon (the exec guard admits it, haynes-ops #4132); publish-agent.yml run 39382031869 signed/verified. Was v2.38.0 (dev-env#475).
+              tag: 2.38.2@sha256:e0cb9c182d75a9c3eaeac46ab858de6b2360630858c22ba886c9fb5116da8f4d
               pullPolicy: IfNotPresent
             args:
               - claude-login-idle
