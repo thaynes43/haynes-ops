@@ -28,6 +28,7 @@ resources:
   - ./pki/ks.yaml
   - ./operator/ks.yaml
   - ./broker/ks.yaml
+  - ./grant-policies/ks.yaml
   - ./keeper/ks.yaml
   - ./native-lifecycle/ks.json
   - ./owned-luna-prep/ks.yaml

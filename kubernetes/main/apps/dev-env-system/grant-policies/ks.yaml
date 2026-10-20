@@ -1,0 +1,30 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# dev-env v2 standing access approvals (Story110 T29, Tom's ruling Q-110-08): the
+# GrantPolicies the broker matches a session's `agent-run grant request` against. A policy
+# only approves a request at once; it opens nothing by itself. Objects are applied in
+# dev-env-system (the broker's --policy-namespace). No pod restarts and no resources/**
+# touch: Flux applies the objects and the broker reads them live.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-grant-policies
+  namespace: dev-env-system
+spec:
+  targetNamespace: dev-env-system
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: dev-env-crds
+    - name: dev-env-broker
+  path: ./kubernetes/main/apps/dev-env-system/grant-policies/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m

@@ -12,6 +12,8 @@
 #   console.anthropic.com the Claude token endpoint's older host, still used by some CLI releases
 #   auth.openai.com       the Codex token endpoint (refresh)
 #   api.pushover.net      credential-expiry pages
+#   the five PVE nodes    TCP 22 only, for the Proxmox credential minter (Q-110-08): it
+#                         signs a per-operation certificate and runs one forced pvesh command
 # If the keeper needs a host this list lacks, Hubble shows the drop; add it here by PR.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -51,4 +53,17 @@ spec:
       toPorts:
         - ports:
             - port: "443"
+              protocol: TCP
+    # Proxmox minter (D-69/D-72): SSH to the same five names the keeper's pinned targets file
+    # lists (ConfigMap dev-env-keeper-ssh-trust) and v1 uses. Port 22 only, kept apart from
+    # the 443 rule so no endpoint gets both.
+    - toFQDNs:
+        - matchName: haynesintelligence.haynesnetwork
+        - matchName: twin-top.haynesnetwork
+        - matchName: twin-bottom.haynesnetwork
+        - matchName: pve04.haynesnetwork
+        - matchName: pve-filet02.haynesnetwork
+      toPorts:
+        - ports:
+            - port: "22"
               protocol: TCP

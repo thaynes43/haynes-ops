@@ -1,0 +1,156 @@
+---
+# Standing approvals for v1-parity access (Story110 T29; Tom Q-110-08, which
+# reverses Q-07 for the workbench profile). Every destination below is one v1 already
+# reaches from the dev/dev-env pod (apps/dev/dev-env/app/networkpolicy.yaml); FQDN and
+# endpoint values are copied from that file. Profile `full` is the default coordinator
+# profile; `workbench` is the ceremony/ops profile (templates.yaml). Profile `ops` never
+# matches (schema + broker).
+#
+# A grant must lie wholly inside ONE policy (destinations x ports), so ports that must not
+# mix (22 against 443/8006) are separate policies. A session asks once per policy:
+#   agent-run grant request --type egress --reason ... --ttl 8h <flags in each description>
+# Grants end at their TTL (8h at most); v1's allowlist was permanent, so a long session
+# asks again every 8h.
+# ---- internal ingress: full + workbench ----
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: lan-internal-ingress
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Internal ingress (https://<app>.haynesops.com) for curl and playwright: the
+    traefik-internal pods on 8443, exactly as v1 reaches them. Request with
+    --endpoint network:app.kubernetes.io/instance=traefik-internal-network --port 8443.
+  profiles: [full, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: network
+        matchLabels:
+          app.kubernetes.io/instance: traefik-internal-network
+    ports:
+      - port: 8443
+  maxTTL: 8h
+---
+# ---- Proxmox VE API: workbench only ----
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: lan-pve-api-lb
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Proxmox VE API through the pvedash load balancer, port 443 (the `pve` tool's default
+    route). Read with the PVEAuditor token in the workbench profile; writes need the
+    separate Proxmox credential grant. Request with --fqdn pvedash.haynesnetwork --port 443.
+  profiles: [workbench]
+  type: egress
+  egress:
+    fqdns: [pvedash.haynesnetwork]
+    ports:
+      - port: 443
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: lan-pve-api-nodes
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Proxmox VE API directly on each of the five nodes, port 8006 (pveproxy), for
+    `pve --node` and when the load balancer is down. The same five names v1 allows.
+    Request with the five --fqdn <node>.haynesnetwork values and --port 8006.
+  profiles: [workbench]
+  type: egress
+  egress:
+    fqdns:
+      - haynesintelligence.haynesnetwork
+      - twin-top.haynesnetwork
+      - twin-bottom.haynesnetwork
+      - pve04.haynesnetwork
+      - pve-filet02.haynesnetwork
+    ports:
+      - port: 8006
+  maxTTL: 8h
+---
+# ---- SSH tier: workbench only ----
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: lan-ssh-tier
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    SSH (22) to the five PVE nodes, HaynesTower (Unraid), the PiKVM and gasha01: the
+    hw-ssh tier v1 has (backlog 14, runbook proxmox-access.md). Root-equivalent on the
+    PiKVM and HaynesTower, sudo-allowlisted `dev-env` on the nodes; the key is mounted
+    only in the workbench profile (Q-110-08). Request with the eight --fqdn values and
+    --port 22.
+  profiles: [workbench]
+  type: egress
+  egress:
+    fqdns:
+      - haynesintelligence.haynesnetwork
+      - twin-top.haynesnetwork
+      - twin-bottom.haynesnetwork
+      - pve04.haynesnetwork
+      - pve-filet02.haynesnetwork
+      - haynestower.haynesnetwork
+      - pikvm.haynesnetwork
+      - gasha01.haynesnetwork
+    ports:
+      - port: 22
+  maxTTL: 8h
+---
+# ---- Ceph manager metrics: workbench only ----
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: lan-ceph-mgr-metrics
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    The external Ceph manager's Prometheus port (9283), read-only storage preflight, as in
+    v1 rule 5a. The address is the one v1 pins today; on a manager failover review it here
+    and in v1. Request with --cidr 192.168.40.18/32 --port 9283.
+  profiles: [workbench]
+  type: egress
+  egress:
+    cidrs: [192.168.40.18/32]
+    ports:
+      - port: 9283
+  maxTTL: 8h
+---
+# ---- Proxmox write credential: workbench only ----
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: credential-proxmox
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    A short-lived Proxmox operator token for the workbench session (the keeper mints
+    dev-env@pve!grant-<uid>, privsep 0, and the broker installs it by exec). Root-equivalent
+    on the PVE cluster, same tier as v1's long-lived dev-env@pve!operator token (Tom,
+    2026-09-09). Enabled for workbench by Tom's ruling Q-110-08. Request with
+    --type credential --credential proxmox --ttl 4h. hw-ssh is not a credential name here:
+    its key is a mounted Secret in the workbench profile, not a grant.
+  profiles: [workbench]
+  type: credential
+  credential:
+    names: [proxmox]
+  maxTTL: 4h
