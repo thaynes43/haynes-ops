@@ -10,10 +10,10 @@
 # tracks this line with its own regex manager (.renovate/customManagers.json5), and the
 # dev-env manual-merge rule applies. A change here reaches NEW sessions only: running
 # pods keep their image and are reported Outdated (D-44).
-# v2.37.0 source 9539413 (release dev-env#468); includes v2.36.0, v2.35.1, v2.35.0, v2.34.0 and v2.33.0.
-# publish-agent.yml run39346008429 smoke-tested/signed/verified on refs/tags/v2.37.0.
-# New sessions only: running pods keep their image and show Outdated; no drain or roll.
-image: ghcr.io/thaynes43/dev-env:2.37.0@sha256:8efe590b0c930a8c0c98191b9a2d73d9eca35ede6b6fa07707c80a180eca3431
+# v2.38.0 source 702a57fe0cfd651661e7db30cadbada58a40947c (release dev-env#476); includes v2.37.0, v2.36.0, v2.35.1, v2.35.0, v2.34.0 and v2.33.0.
+# publish-agent.yml run39374348374 smoke-tested/signed/verified on refs/tags/v2.38.0.
+# New sessions use it at once; running pods keep their image and show Outdated, and the operator drains idle, unattached sessions onto the new revision (designed preserving path).
+image: ghcr.io/thaynes43/dev-env:2.38.0@sha256:bb67ea9cfbc6239f45f5099403d7d32ebbc691d2dfbf660dd0fcf707a1eb546a
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
@@ -151,9 +151,12 @@ profiles:
   # which holds pods get/list and pods/exec create in dev-agents and nothing else, so
   # `agent-run login`, `pair` and `attach` work from a session without the v1 pod. Needs an
   # operator that knows `serviceAccount` (an older one rejects the whole templates document).
-  # Mounts: the keeper's login projections and the GitHub token only (not `full`'s GCP key);
-  # env is the two file pointers plus the PVE-read and hw-ssh Secrets (envFrom below), not the
-  # MCP/cloud secrets `full` adds. A workbench
+  # Mounts: the keeper's login projections, the GitHub token and (NB-04b, G-4) the GCP
+  # key `full` mounts; env is the two file pointers, the PVE-read and hw-ssh Secrets
+  # (envFrom below), and, copied from `full` (NB-04b, G-3 and G-5), the Omni reader
+  # endpoint and key and the MCP credentials (cigar-journal, UniFi, and
+  # dev-env-mcp-secret for Home Assistant, Outline, Vexa). dev-env-cloudflare-secret is
+  # still `full` only. A workbench
   # session can still exec into any session pod and so reach that pod's credentials.
   # Create it with --size M explicitly: a profile cannot set a default size.
   workbench:
@@ -161,6 +164,18 @@ profiles:
     env:
       - { name: AGENTD_CLAUDE_LIVE_FILE, value: /opt/dev-env/claude-access/access.json }
       - { name: AGENTD_CODEX_ACCESS_FILE, value: /opt/dev-env/codex-access/access.json }
+      # NB-04b G-5: the same MCP credentials as `full`.
+      - name: CIGAR_JOURNAL_TOKEN
+        valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
+      - name: UNIFI_MCP_AUTH_TOKEN
+        valueFrom: { secretKeyRef: { name: dev-env-unifi-secret, key: UNIFI_MCP_AUTH_TOKEN, optional: true } }
+      # NB-04b G-3: omnictl and talosctl (Omni Reader service account, read-only), as `full`.
+      - name: OMNI_ENDPOINT
+        value: https://haynes.na-west-1.omni.siderolabs.io:443
+      - name: OMNI_SERVICE_ACCOUNT_KEY
+        valueFrom: { secretKeyRef: { name: dev-env-node-triage-secret, key: OMNI_SERVICE_ACCOUNT_KEY } }
+      # NB-04b G-4: GCP application default credentials for tofu, as `full` (mount below).
+      - { name: GOOGLE_APPLICATION_CREDENTIALS, value: /etc/gcp/sa_key.json }
     # v1-parity hardware access (Story110 T29, Tom Q-110-08; reverses Q-07 for
     # this profile only). dev-env-proxmox-secret is the PVEAuditor read token (`pve`);
     # dev-env-hw-ssh-secret is v1's HW_SSH_PRIVATE_KEY_B64, which agentd's hw-ssh-key boot
@@ -169,10 +184,14 @@ profiles:
     # the lan-pve-api-* / lan-ssh-tier egress grants (dev-env-grant-policies); the Proxmox
     # write token is the credential-proxmox grant.
     envFrom:
+      # NB-04b G-5: HA_MCP_SECRET_PATH, OUTLINE_API_KEY, VEXA_API_KEY (no Proxmox or hw-ssh
+      # material, Q-07), as `full`.
+      - secretRef: { name: dev-env-mcp-secret }
       - secretRef: { name: dev-env-proxmox-secret, optional: true }
       - secretRef: { name: dev-env-hw-ssh-secret, optional: true }
     mounts:
       - { name: gh-token, secret: dev-env-gh-token, path: /creds }
+      - { name: gcp-sa, secret: dev-env-gcp-secret, path: /etc/gcp, defaultMode: 0440 }
       - { name: claude-access, secret: dev-env-claude-live, path: /opt/dev-env/claude-access, defaultMode: 0440 }
       - { name: codex-access, secret: dev-env-codex-live, path: /opt/dev-env/codex-access, defaultMode: 0440 }
   # Summoned sessions (3.7): no open web. The label selects the ops egress tier, which is

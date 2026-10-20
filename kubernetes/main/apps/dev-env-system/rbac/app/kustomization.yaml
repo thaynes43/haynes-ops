@@ -6,6 +6,7 @@ resources:
   - ./serviceaccounts.yaml
   - ./agent.yaml
   - ./workbench.yaml
+  - ./workbench-read.yaml
   - ./workbench-admin.yaml
   - ./workbench-admin-guard.yaml
   - ./operator.yaml
