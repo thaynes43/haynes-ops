@@ -113,6 +113,15 @@ spec:
               # them the check fails closed and nothing is recorded. Once a record exists, turn
               # this off rather than pin the operator below 2.25.0 (ADR-005 C-38).
               - '--enable-private-terminal-record=true'
+              # DESIGN-025 H3 (NB-06b, 2026-10-20): stop the recorded executor of a REAPING private
+              # task Session (activeDeadlineSeconds patch after a confirmed stop intent; the Pod
+              # object, the HOME volume and the Session stay, nothing is deleted). A Suspended or
+              # Running Session is never touched (ADR-006); an owner hold annotation
+              # (dev-env.haynesops.com/home-expiry) blocks the stop. Needs the terminal record flag
+              # above. Archive, archive reads and HOME delete stay off, so a reaped private task keeps
+              # its HOME and Session until those later flags (H7/H9). Fixes: a reap of a task never
+              # stopped its pod ("RetentionPending: private stop evidence is unknown").
+              - '--enable-private-executor-stop=true'
               # Off with the canary route (main.go:252). Ordinary project tasks get no retained common rules.
               - '--enable-retained-common-rules=false'
               # Off: main.go:259 refuses canaries together with general private admission. The
