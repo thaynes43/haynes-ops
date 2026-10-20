@@ -1,0 +1,102 @@
+---
+# The workbench identity's cluster READ tier (thaynes43/dev-env NB-04b, Saga85/Epic107,
+# from the NB-04 parity sweep, gaps G-2 and the read half of G-5/G-6). Tom's parity-first
+# ruling: no v2 profile may leave an agent below v1. A `workbench`-profile session (the
+# phone standby) ran as dev-agents/dev-env-workbench with pods get and pods/exec create in
+# dev-agents only, so `kubectl get` and `flux get` were Forbidden there.
+#
+# This is the READ rules of v1's OPERATOR tier (ClusterRole dev-env-operator in
+# apps/dev/dev-env/app/rbac.yaml) and of the baseline agent's ClusterRole
+# (./agent.yaml), copied rule for rule: get, list, watch, nothing else. Those two roles
+# mix reads with the targeted writes in one object, so a binding by name would hand the
+# writes over too; this is a read-only copy. It includes dev-env.haynesops.com (as the
+# baseline agent does) so `agent-run list` and `fleet` read the v2 objects, and every
+# Flux group, so `flux get kustomizations|helmreleases|sources` works.
+#
+# What it does NOT get: Secrets (the core list names no `secrets`, the same exclusion as
+# v1); no create, update, patch, delete or exec beyond ./workbench.yaml's Role; no
+# services/proxy or pods/proxy (v1's Prometheus-query path: `get` there is a proxied GET
+# through the apiserver, and `create` a write; left for the write-tier follow-up); no
+# group outside the list (an unknown-group denial is the signal to add one, as in v1);
+# coordination.dev-env.haynesops.com (the coordination records; NB-05 owns those readers).
+#
+# Reads need no guard change: dev-env-identity-guard matches CREATE, UPDATE, DELETE and
+# CONNECT, dev-env-agent-guard matches the baseline agent's writes by username and
+# dev-env-workbench-admin-guard matches Deployment patch; none matches get, list or watch,
+# and creating a ClusterRole or its binding is an ordinary Flux apply. Cluster-wide
+# ConfigMap and pod reads reach dev-env-system's non-secret objects, exactly as the
+# baseline agent's already do.
+#
+# Nothing here touches a running pod; adding it restarts nothing. It is named after the
+# role: a binding's roleRef cannot change in place (see ./agent.yaml).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-workbench-read
+rules:
+  # Core group read, everything except Secrets (as v1).
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - pods/status
+      - events
+      - nodes
+      - namespaces
+      - services
+      - endpoints
+      - configmaps
+      - persistentvolumeclaims
+      - persistentvolumes
+      - serviceaccounts
+      - resourcequotas
+      - limitranges
+    verbs: [get, list, watch]
+  # Non-core groups: wildcard read (as v1), plus the v2 sessions (agent-run list, fleet).
+  - apiGroups:
+      - admissionregistration.k8s.io
+      - apiextensions.k8s.io
+      - apps
+      - autoscaling
+      - batch
+      - ceph.rook.io
+      - cert-manager.io
+      - cilium.io
+      - coordination.k8s.io
+      - dev-env.haynesops.com
+      - discovery.k8s.io
+      - dragonflydb.io
+      - external-secrets.io
+      - gateway.networking.k8s.io
+      - helm.toolkit.fluxcd.io
+      - kustomize.toolkit.fluxcd.io
+      - kyverno.io
+      - metrics.k8s.io
+      - monitoring.coreos.com
+      - networking.k8s.io
+      - node.k8s.io
+      - notification.toolkit.fluxcd.io
+      - objectbucket.io
+      - policy
+      - postgresql.cnpg.io
+      - rbac.authorization.k8s.io
+      - snapshot.storage.k8s.io
+      - source.toolkit.fluxcd.io
+      - storage.k8s.io
+      - traefik.io
+      - volsync.backube
+    resources: ["*"]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-workbench-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-workbench-read
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-workbench
+    namespace: dev-agents
