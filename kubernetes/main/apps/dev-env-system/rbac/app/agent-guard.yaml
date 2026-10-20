@@ -187,13 +187,20 @@ spec:
       reason: Forbidden
     # kubectl rollout restart: the template's restartedAt annotation and nothing else. The
     # API server itself bumps a DaemonSet's deprecated.daemonset.template.generation
-    # annotation on any template change, before admission, so that key may differ.
+    # annotation on any template change, before admission, so that key may differ. So may
+    # Kyverno's image-verification record, the object annotations kyverno.io/verify-images
+    # and kyverno.io/verify-images-scoped: the verify-thaynes43-images policy rewrites them
+    # on an UPDATE when an image's result changes (skip to pass seen on dev-env-operator,
+    # 2026-10-20, where it denied a workbench restart; same gap as ./workbench-admin-guard.yaml,
+    # haynes-ops #4129). The webhook mutates before this policy validates, so the caller
+    # cannot be told from Kyverno. Harmless here: the pod template stays locked, so the
+    # image cannot change, and Kyverno re-verifies it on every admission.
     - expression: >-
         !variables.workload ||
         (variables.sameLabelsFinalizersOwners &&
-         variables.newAnnotations.all(k, k == 'deprecated.daemonset.template.generation' ||
+         variables.newAnnotations.all(k, k == 'deprecated.daemonset.template.generation' || k.startsWith('kyverno.io/verify-images') ||
            (k in variables.oldAnnotations && variables.newAnnotations[k] == variables.oldAnnotations[k])) &&
-         variables.oldAnnotations.all(k, k == 'deprecated.daemonset.template.generation' || k in variables.newAnnotations) &&
+         variables.oldAnnotations.all(k, k == 'deprecated.daemonset.template.generation' || k.startsWith('kyverno.io/verify-images') || k in variables.newAnnotations) &&
          variables.newSpec.all(k, k == 'template' || (k in variables.oldSpec && variables.newSpec[k] == variables.oldSpec[k])) &&
          variables.oldSpec.all(k, k == 'template' || k in variables.newSpec) &&
          object.spec.?template.?spec == oldObject.spec.?template.?spec &&
