@@ -1,0 +1,274 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+#
+# sigoalumni readiness / empty-Service / shared-egress alerts (Sigo hardening, story H4,
+# plan O1-O8). Tested by scripts/sigoalumni-alert-tests/ (promtool, 60s KSM scrape,
+# 30s evaluation); read that README before changing an expression.
+#
+# What this can and cannot see (do not read more into an alert than it says):
+#   * kube-state-metrics (KSM) is scraped every 60s and rules run every 30s. A Service
+#     that empties and refills between two scrapes (the 2026-10-16 19s event was one
+#     lucky sample) is invisible to every rule here. The readiness-failure counter
+#     below is the only signal that survives a missed scrape, because kubelet's probe
+#     counters are cumulative.
+#   * Freshness gating: every definitive claim requires its KSM sample to be <= 90s old
+#     at evaluation (one missed scrape is tolerated, two are not). Prometheus would
+#     otherwise hold a dead scrape's last value for 5m and a stale zero or a stale
+#     non-zero would look like an observation.
+#   * "for: 0" is an OBSERVATION: "at this evaluation the Service had no ready
+#     endpoints". It is not a duration claim. SigoalumniServiceEndpointsEmptySustained
+#     is the separate "still empty 2m later" escalation.
+#
+# Routing (kube-prometheus-stack alertmanager): severity=critical pages Pushover and
+# uses the `description` annotation as the message body, so keep critical descriptions
+# short and phone-readable. severity=warning goes to the null receiver (UI only), and
+# a critical inhibits a warning with the same alertname+namespace.
+#
+# Labels are bounded on purpose: service, target_group, reason, outcome. No pod, user,
+# request or address labels on any alert; the descriptions say which query lists pods.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sigoalumni
+spec:
+  groups:
+    - name: sigoalumni.service.rules
+      interval: 30s
+      rules:
+        # CRITICAL, observation (for: 0). All of:
+        #   * KSM scrape up and fresh; Service, Deployment (desired > 0) and the
+        #     EndpointSlice family all present and fresh;
+        #   * zero ready=true endpoints (zero-filled from the Service's existence, because
+        #     a bare sum() over an absent series returns nothing, not 0);
+        #   * corroboration: a ready=false endpoint is listed, or every sigoalumni
+        #     Deployment pod reports Ready=false. Missing collection alone is NOT enough
+        #     (that is SigoalumniTelemetryIncomplete).
+        # Ownership: the Service's single EndpointSlice is named sigoalumni-<5 chars>
+        # (generateName, managed-by endpointslice-controller, verified read-only
+        # 2026-10-20) and its targets are sigoalumni-<hash>-<5 chars> pods. The regexes
+        # are anchored to exclude sigoalumni-legacy-digest-* CronJob pods. max by (address)
+        # de-duplicates a slice that is rotating (old+new slice, same address) and
+        # duplicate scrapes of the same KSM data.
+        - alert: SigoalumniServiceEndpointsEmptyObserved
+          expr: |
+            (
+              (
+                sum(max by (address) (kube_endpointslice_endpoints{namespace="frontend",endpointslice=~"sigoalumni-[a-z0-9]{5}",targetref_kind="Pod",targetref_name=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",ready="true"}))
+                or on() (max(kube_service_info{namespace="frontend",service="sigoalumni"}) * 0)
+              ) == 0
+            )
+            and on() (max(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"}) > 0)
+            and on() (max(up{job="kube-state-metrics"}) == 1)
+            and on() (time() - max(timestamp(up{job="kube-state-metrics"})) <= 90)
+            and on() (time() - max(timestamp(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"})) <= 90)
+            and on() (time() - max(timestamp(kube_service_info{namespace="frontend",service="sigoalumni"})) <= 90)
+            and on() (time() - max(timestamp(kube_endpointslice_info{namespace="frontend",endpointslice=~"sigoalumni-[a-z0-9]{5}"})) <= 90)
+            and on() (
+              (max(kube_endpointslice_endpoints{namespace="frontend",endpointslice=~"sigoalumni-[a-z0-9]{5}",targetref_kind="Pod",targetref_name=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",ready="false"}) >= 1)
+              or (
+                (sum(kube_pod_status_ready{namespace="frontend",pod=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",condition="true"}) == 0)
+                and on() (count(kube_pod_status_ready{namespace="frontend",pod=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",condition="true"}) > 0)
+                and on() (time() - max(timestamp(kube_pod_status_ready{namespace="frontend",pod=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",condition="true"})) <= 90)
+              )
+            )
+          labels:
+            severity: critical
+            service: sigoalumni
+          annotations:
+            summary: >-
+              OBSERVATION: the sigoalumni Service had zero ready endpoints at the last
+              evaluation (desired replicas > 0, corroborated by not-ready pods or
+              endpoints). This is a sampled instant, not a measured outage duration.
+            description: >-
+              sigoalumni (frontend) had no ready endpoints when last sampled, at
+              {{ with query "time()" }}{{ . | first | value | humanizeTimestamp }}{{ end }}.
+              Single observation; the 2m escalation says whether it persists. Pods:
+              kubectl -n frontend get pods,endpointslices -l app.kubernetes.io/name=sigoalumni
+
+        # CRITICAL, sustained: the same observation, true at every evaluation for 2m.
+        # Freshness is part of the expression, so a held stale sample breaks the run
+        # of true evaluations instead of extending it. Never the only short-event
+        # signal: the observed rule above is.
+        - alert: SigoalumniServiceEndpointsEmptySustained
+          expr: |
+            (
+              (
+                sum(max by (address) (kube_endpointslice_endpoints{namespace="frontend",endpointslice=~"sigoalumni-[a-z0-9]{5}",targetref_kind="Pod",targetref_name=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",ready="true"}))
+                or on() (max(kube_service_info{namespace="frontend",service="sigoalumni"}) * 0)
+              ) == 0
+            )
+            and on() (max(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"}) > 0)
+            and on() (max(up{job="kube-state-metrics"}) == 1)
+            and on() (time() - max(timestamp(up{job="kube-state-metrics"})) <= 90)
+            and on() (time() - max(timestamp(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"})) <= 90)
+            and on() (time() - max(timestamp(kube_service_info{namespace="frontend",service="sigoalumni"})) <= 90)
+            and on() (time() - max(timestamp(kube_endpointslice_info{namespace="frontend",endpointslice=~"sigoalumni-[a-z0-9]{5}"})) <= 90)
+            and on() (
+              (max(kube_endpointslice_endpoints{namespace="frontend",endpointslice=~"sigoalumni-[a-z0-9]{5}",targetref_kind="Pod",targetref_name=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",ready="false"}) >= 1)
+              or (
+                (sum(kube_pod_status_ready{namespace="frontend",pod=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",condition="true"}) == 0)
+                and on() (count(kube_pod_status_ready{namespace="frontend",pod=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",condition="true"}) > 0)
+                and on() (time() - max(timestamp(kube_pod_status_ready{namespace="frontend",pod=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",condition="true"})) <= 90)
+              )
+            )
+          for: 2m
+          labels:
+            severity: critical
+            service: sigoalumni
+          annotations:
+            summary: >-
+              The sigoalumni Service has had zero ready endpoints at every fresh
+              evaluation for 2 minutes.
+            description: >-
+              sigoalumni (frontend) is still without ready endpoints after 2m of
+              fresh samples. Pods:
+              kubectl -n frontend get pods,endpointslices -l app.kubernetes.io/name=sigoalumni
+
+        # WARNING: the empty-Service verdict cannot be made, or is uncorroborated. Never
+        # claims an outage. reason is one of five fixed values. for: 5m rides out a KSM
+        # restart or a Flux re-apply (one or two missed 60s scrapes).
+        - alert: SigoalumniTelemetryIncomplete
+          expr: |
+            (
+              (
+                label_replace(vector(1), "reason", "ksm_down_or_stale", "", "")
+                unless on() ((max(up{job="kube-state-metrics"}) == 1) and on() (time() - max(timestamp(up{job="kube-state-metrics"})) <= 90))
+              )
+              or (
+                label_replace(vector(1), "reason", "deployment_metric_missing_or_stale", "", "")
+                and on() ((max(up{job="kube-state-metrics"}) == 1) and on() (time() - max(timestamp(up{job="kube-state-metrics"})) <= 90))
+                and on() (time() - max(timestamp(kube_service_info{namespace="frontend",service="sigoalumni"})) <= 90)
+                unless on() ((max(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"}) >= 0) and on() (time() - max(timestamp(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"})) <= 90))
+              )
+              or (
+                label_replace(vector(1), "reason", "service_absent_desired_replicas", "", "")
+                and on() ((max(up{job="kube-state-metrics"}) == 1) and on() (time() - max(timestamp(up{job="kube-state-metrics"})) <= 90))
+                and on() ((max(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"}) > 0) and on() (time() - max(timestamp(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"})) <= 90))
+                unless on() (time() - max(timestamp(kube_service_info{namespace="frontend",service="sigoalumni"})) <= 90)
+              )
+              or (
+                label_replace(vector(1), "reason", "endpointslice_family_missing", "", "")
+                and on() ((max(up{job="kube-state-metrics"}) == 1) and on() (time() - max(timestamp(up{job="kube-state-metrics"})) <= 90))
+                and on() ((max(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"}) > 0) and on() (time() - max(timestamp(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"})) <= 90))
+                and on() (time() - max(timestamp(kube_service_info{namespace="frontend",service="sigoalumni"})) <= 90)
+                unless on() (time() - max(timestamp(kube_endpointslice_info{namespace="frontend",endpointslice=~"sigoalumni-[a-z0-9]{5}"})) <= 90)
+              )
+              or (
+                label_replace(vector(1), "reason", "empty_uncorroborated", "", "")
+                and on() (
+                  (
+                    sum(max by (address) (kube_endpointslice_endpoints{namespace="frontend",endpointslice=~"sigoalumni-[a-z0-9]{5}",targetref_kind="Pod",targetref_name=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",ready="true"}))
+                    or on() (max(kube_service_info{namespace="frontend",service="sigoalumni"}) * 0)
+                  ) == 0
+                )
+                and on() ((max(up{job="kube-state-metrics"}) == 1) and on() (time() - max(timestamp(up{job="kube-state-metrics"})) <= 90))
+                and on() ((max(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"}) > 0) and on() (time() - max(timestamp(kube_deployment_spec_replicas{namespace="frontend",deployment="sigoalumni"})) <= 90))
+                and on() (time() - max(timestamp(kube_service_info{namespace="frontend",service="sigoalumni"})) <= 90)
+                and on() (time() - max(timestamp(kube_endpointslice_info{namespace="frontend",endpointslice=~"sigoalumni-[a-z0-9]{5}"})) <= 90)
+                unless on() (
+                  (max(kube_endpointslice_endpoints{namespace="frontend",endpointslice=~"sigoalumni-[a-z0-9]{5}",targetref_kind="Pod",targetref_name=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",ready="false"}) >= 1)
+                  or (
+                    (sum(kube_pod_status_ready{namespace="frontend",pod=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",condition="true"}) == 0)
+                    and on() (count(kube_pod_status_ready{namespace="frontend",pod=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",condition="true"}) > 0)
+                    and on() (time() - max(timestamp(kube_pod_status_ready{namespace="frontend",pod=~"sigoalumni-[a-z0-9]+-[a-z0-9]{5}",condition="true"})) <= 90)
+                  )
+                )
+              )
+            )
+          for: 5m
+          labels:
+            severity: warning
+            service: sigoalumni
+          annotations:
+            summary: >-
+              sigoalumni endpoint telemetry is incomplete ({{ $labels.reason }}); an
+              empty-Service verdict cannot be made. This is not an outage claim.
+            description: >-
+              {{ if eq $labels.reason "ksm_down_or_stale" }}kube-state-metrics is down or its samples are older than 90s.
+              {{- else if eq $labels.reason "deployment_metric_missing_or_stale" }}No fresh Deployment series for sigoalumni while the Service exists.
+              {{- else if eq $labels.reason "service_absent_desired_replicas" }}The Deployment wants replicas but the Service object is absent.
+              {{- else if eq $labels.reason "endpointslice_family_missing" }}No fresh EndpointSlice series for the Service.
+              {{- else }}Zero ready endpoints observed but no not-ready endpoint or pod corroborates it.{{ end }}
+              No outage is claimed. Check kube-state-metrics, then
+              kubectl -n frontend get svc,endpointslices,pods -l app.kubernetes.io/name=sigoalumni
+
+        # WARNING: kubelet reports failed Readiness probes for any sigoalumni pod in the
+        # last 5m. Expression verbatim from the plan: no extra persistence, so it fires
+        # on a single failed probe (replay: roughly daily, which is the signal W1 needs).
+        # One alert for the whole Service: sum() across pods, never a page per pod, and
+        # severity=warning is UI-only. increase() handles counter resets (new pod,
+        # restart) and a scrape gap without going negative. LIMITATION: kubelet creates
+        # the result="failed" series at the first failure, and a series whose first
+        # sample is already >= 1 contributes no increase for that first sample, so the
+        # very first failure ever recorded for a brand-new pod is not counted. The
+        # second failed probe is.
+        - alert: SigoalumniReadinessProbeFailing
+          expr: |
+            sum(increase(prober_probe_total{namespace="frontend",pod=~"sigoalumni-.*",probe_type="Readiness",result="failed"}[5m])) > 0
+          labels:
+            severity: warning
+            service: sigoalumni
+          annotations:
+            summary: >-
+              sigoalumni pods reported failed Readiness probes in the last 5 minutes
+              (about {{ $value | humanize }} failures across the Service).
+            description: >-
+              Readiness (/api/healthz) failed at least once. A burst on all pods at
+              once points at the shared dependency (database path), one pod at that
+              pod. By pod: sum by (pod) (increase(prober_probe_total{namespace="frontend",pod=~"sigoalumni-.*",probe_type="Readiness",result="failed"}[5m]))
+
+    - name: sigoalumni.egress.rules
+      interval: 30s
+      rules:
+        # WARNING, diagnostic only: BOTH fixed-hostname TCP:443 targets (Google SQL Admin
+        # and Cloudflare) failed on two consecutive evaluations (for: 30s = two points at
+        # 30s evaluation), with fresh probe samples (<= 20s old: the current or the previous 15s scrape,
+        # so one failed sample cannot satisfy two evaluation points) and the
+        # blackbox scrape of both targets healthy (up == 1). It says the probing node
+        # could not connect to two unrelated destinations at once; it does not say where
+        # the fault is (not WAN, UDM or ISP). outcome:
+        #   connect_failed   both resolved a name (probe_ip_protocol > 0) and the dial failed
+        #   dns_resolution_failed  neither resolved (probe_ip_protocol == 0, verified
+        #                    live against a nonexistent name): shared resolver trouble is
+        #                    possible and says nothing about remote path loss
+        #   mixed            one of each
+        # A single failing target never fires this (existing BlackboxProbeFailed pages at
+        # 15m for any probe_success == 0 series; deliberately no second critical here).
+        # Exporter down: up is 0 or absent for the probes, so nothing fires.
+        - alert: SigoalumniSharedEgressSuspected
+          expr: |
+            (
+              (
+                label_replace(vector(1), "outcome", "connect_failed", "", "")
+                and on() (count(probe_ip_protocol{job=~"probe/observability/sigoalumni-egress-.+"} > 0) == 2)
+              )
+              or (
+                label_replace(vector(1), "outcome", "dns_resolution_failed", "", "")
+                and on() (count(probe_ip_protocol{job=~"probe/observability/sigoalumni-egress-.+"} == 0) == 2)
+              )
+              or (
+                label_replace(vector(1), "outcome", "mixed", "", "")
+                and on() (count(probe_ip_protocol{job=~"probe/observability/sigoalumni-egress-.+"} == 0) == 1)
+                and on() (count(probe_ip_protocol{job=~"probe/observability/sigoalumni-egress-.+"} > 0) == 1)
+              )
+            )
+            and on() (count(probe_success{job=~"probe/observability/sigoalumni-egress-.+"} == 0) == 2)
+            and on() (count(timestamp(probe_success{job=~"probe/observability/sigoalumni-egress-.+"}) > time() - 20) == 2)
+            and on() (count(up{job=~"probe/observability/sigoalumni-egress-.+"} == 1) == 2)
+          for: 30s
+          labels:
+            severity: warning
+            service: sigoalumni
+            target_group: sigoalumni-shared-egress
+          annotations:
+            summary: >-
+              Shared egress suspected ({{ $labels.outcome }}): both sqladmin.googleapis.com:443
+              and www.cloudflare.com:443 failed from the blackbox exporter for two
+              consecutive evaluations. Cause not localised.
+            description: >-
+              Both probe targets failed. outcome=connect_failed: name resolved, TCP dial
+              failed. dns_resolution_failed: name resolution failed for both (resolver
+              possible, remote path not implied). mixed: one of each. Not evidence of
+              WAN, router or ISP fault. Per-target series:
+              probe_success{job=~"probe/observability/sigoalumni-egress-.+"}, and compare
+              Gatus external_sigoalumni and the Cloud Run origin.

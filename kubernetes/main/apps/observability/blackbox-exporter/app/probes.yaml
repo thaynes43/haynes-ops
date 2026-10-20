@@ -75,3 +75,47 @@ spec:
     staticConfig:
       static:
         - gasha01.haynesnetwork:2049
+---
+# sigoalumni shared-egress canaries (Sigo hardening story H4, plan O6). Two fixed,
+# stable hostnames on TCP 443, one Probe each so they stay independent series:
+# sqladmin.googleapis.com is the Google control plane the Cloud SQL proxy refreshes
+# its certificates against, www.cloudflare.com is Cloudflare's web edge. They sample
+# whether THIS node's egress can reach two unrelated destinations; they do not test
+# Cloud SQL's data port (3307), a tunnel's active edge, TLS or authentication, and a
+# second target on the same exporter is the same vantage point, not an independent one.
+# interval 15s / scrapeTimeout 7s is a NEW collection cadence for these two targets
+# only (the other probes stay at the 1m default); it does not improve the resolution
+# of any historical data. The tcp_connect module timeout is 5s, below the 7s scrape.
+# Alert: SigoalumniSharedEgressSuspected in frontend/sigoalumni/app/prometheusrule.yaml
+# matches job=~"probe/observability/sigoalumni-egress-.+", so keep the name prefix. The
+# BlackboxProbeFailed rule (probe_success == 0 for 15m, critical, no target selector)
+# also covers both: a 15m outage of either destination pages by itself.
+kind: Probe
+apiVersion: monitoring.coreos.com/v1
+metadata:
+  name: sigoalumni-egress-sqladmin
+spec:
+  module: tcp_connect
+  interval: 15s
+  scrapeTimeout: 7s
+  prober:
+    url: blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - sqladmin.googleapis.com:443
+---
+kind: Probe
+apiVersion: monitoring.coreos.com/v1
+metadata:
+  name: sigoalumni-egress-cloudflare
+spec:
+  module: tcp_connect
+  interval: 15s
+  scrapeTimeout: 7s
+  prober:
+    url: blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - www.cloudflare.com:443
