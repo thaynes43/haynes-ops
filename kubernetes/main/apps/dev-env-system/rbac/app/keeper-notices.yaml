@@ -1,0 +1,23 @@
+---
+# The keeper's notice deduplication ConfigMap (dev-env plan 13, story 13.1). The keeper
+# reads it, then replaces its data with a compare-and-swap on the resourceVersion. By name
+# only: no create (GitOps pre-creates it, secrets/app/keeper-notices.yaml), no list, no
+# watch, no delete, and no other ConfigMap. No other principal is bound.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper-notices
+  namespace: dev-env-system
+rules:
+  - apiGroups: ['']
+    resources: [configmaps]
+    resourceNames: [dev-env-keeper-notices]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper-notices
+  namespace: dev-env-system
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-notices}
+subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]

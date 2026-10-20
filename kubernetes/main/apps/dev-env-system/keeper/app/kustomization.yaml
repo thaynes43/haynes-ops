@@ -5,4 +5,6 @@ kind: Kustomization
 resources:
   - ./helmrelease.yaml
   - ./externalsecret-ssh-ca.yaml
+  - ./externalsecret-pushover.yaml
   - ./configmap-ssh-trust.yaml
+  - ./podmonitor.yaml
