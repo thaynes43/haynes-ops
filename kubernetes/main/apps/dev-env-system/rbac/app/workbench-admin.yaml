@@ -21,10 +21,12 @@
 #       the shelf pod roll and any hold pod. No pods/log here: the namespace is full of
 #       other sessions' pods, and a name list cannot narrow it.
 #
-# What it does NOT get: no secrets, no pods/exec in dev-env-system, no delete, create or
+# What THIS Role does NOT get (since CR-1020 the account also holds v1's OPERATOR tier
+# cluster-wide in ./workbench-operator.yaml; the guard below still limits every
+# Deployment/StatefulSet/DaemonSet patch to restartedAt): no secrets, no pods/exec in dev-env-system, no delete, create or
 # update of anything, no replicasets (`rollout status` and `rollout restart` do not read
 # them; `rollout history` and `undo` are not wanted), no scale, no other workload, no
-# other namespace, nothing cluster-wide.
+# other namespace in this Role.
 #
 # `patch` is not field-scoped by RBAC: with this Role alone the workbench could rewrite
 # a named Deployment's image or ServiceAccount. The workbench is exempt from
