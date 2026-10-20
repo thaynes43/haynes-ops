@@ -3,14 +3,16 @@
 # in dev-env-system (Role dev-env-operator-keeper-login) exists for the keeper login routes
 # only. RBAC cannot name a container, a command or a generated pod name, so this policy pins
 # all three at admission: the keeper pod (its Deployment's name prefix; only Flux and admins
-# can create pods here, the operator cannot), its two login containers, and the four fixed
-# helper commands the operator runs. Anything else the operator SA connects to in
-# dev-env-system is refused: the keeper's app container (GitHub App key, SSH CA, the login
+# can create pods here, the operator cannot), its two login containers, and the fixed
+# helper commands the operator runs (login, status and, since NB-01b, abandon: it signals
+# the running claude-login helper so a cancel frees the keeper's slot). Anything else the
+# operator SA connects to in dev-env-system is refused: the keeper's app container (GitHub App key, SSH CA, the login
 # journal's ServiceAccount), the broker, a shell in a login container, extra arguments,
 # attach, port-forward, proxy.
 #
-# The four argv arrays below must equal keeperLoginProviders in thaynes43/dev-env
-# internal/apiserver/keeper_login.go (status and login command of each provider).
+# The argv arrays below must equal keeperLoginProviders in thaynes43/dev-env
+# internal/apiserver/keeper_login.go (status, login and, for claude, abandon command; a
+# unit test there pins the table).
 #
 # Not matched: the operator's execs in dev-agents and dev-tools (rescue, log, deliver,
 # history relay, shelf), the v1 route's exec (v1's own ServiceAccount), Tom and Flux.
@@ -38,7 +40,7 @@ spec:
   variables:
     - name: helpers
       expression: >-
-        {'claude-login': [['agentd', 'claude-login'], ['agentd', 'claude-login-status']],
+        {'claude-login': [['agentd', 'claude-login'], ['agentd', 'claude-login-status'], ['agentd', 'claude-login-abandon']],
          'codex-login': [['dev-env-keeper', 'codex-login'], ['dev-env-keeper', 'codex-auth-status']]}
     - name: container
       expression: object.?container.orValue('')
