@@ -10,6 +10,8 @@ resources:
   - ./workbench-admin-guard.yaml
   - ./operator.yaml
   - ./operator-standby.yaml
+  - ./operator-keeper-login.yaml
+  - ./operator-exec-guard.yaml
   - ./common-rules-operator.yaml
   - ./keeper.yaml
   - ./keeper-credentials.yaml

@@ -1,0 +1,50 @@
+---
+# The keeper login routes (thaynes43/dev-env NB-01, DESIGN-028): a workbench session
+# renews the keeper's Claude or ChatGPT login through the operator's
+# /v1/keeper-login/{claude,codex} API, and the operator runs the keeper's own login
+# helper by exec. The operator needs, in dev-env-system and nowhere else:
+#   - pods get, list: it finds the keeper pod by the keeper's labels and checks it is
+#     Running, Ready, on the dev-env-keeper ServiceAccount and has the login container
+#     running (an uncached list; it never reads a pod's spec for anything else);
+#   - pods/exec create: exec into that pod. RBAC cannot scope exec to a container, a
+#     command or a pod name that Kubernetes generates, so on its own this would let the
+#     operator run anything in any pod of dev-env-system (the keeper's app container holds
+#     the GitHub App key, the SSH CA and the login journal's ServiceAccount; the broker
+#     pods hold the broker's). The pin is ./operator-exec-guard.yaml, which lands with this
+#     Role: only keeper pod dev-env-keeper-*, containers claude-login/codex-login, the four
+#     exact helper commands; attach, port-forward and proxy are refused. The operator's own
+#     code also fixes the container and commands, and the route answers the workbench
+#     caller class only (403 for Tom's account, the v1 pod, coordinators and every other
+#     session).
+# Nothing else: no Secrets (the journal and projection stay the keeper's alone), no
+# delete, no patch, no pods/log, nothing cluster-wide. Namespace dev-env-system holds the
+# operator, broker and keeper pods and Job pods such as the h7 metadata audit (the shelf
+# runs in dev-agents). The Kyverno dev-env-exec-guard and the VAP dev-env-identity-guard
+# match dev-agents identities only and do not apply to the operator's ServiceAccount.
+# Nothing here touches a running pod.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-operator-keeper-login
+  namespace: dev-env-system
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-operator-keeper-login
+  namespace: dev-env-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-operator-keeper-login
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
