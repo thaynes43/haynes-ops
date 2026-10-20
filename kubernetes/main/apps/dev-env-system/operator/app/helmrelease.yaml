@@ -72,7 +72,9 @@ spec:
                   seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Source 9539413 (release dev-env#468, v2.37.0); Publish 39345991115 signed/verified.
+              # Source 702a57fe0cfd651661e7db30cadbada58a40947c (release dev-env#476, v2.38.0); Publish 39374328506 signed/verified.
+              # 2.38.0 adds the keeper-login routes for workbench sessions (dev-env#475, agent-run keeper-login; needs the operator exec Role and guard, haynes-ops #4130) and the stalled-clone abandon fix (dev-env#478); no API type or CRD change (CRDs in dev-env-crds already match v2.38.0).
+              # 2.37.0 source 9539413 (release dev-env#468); Publish 39345991115 signed/verified.
               # 2.37.0 adds the standby remote session, default off (dev-env#466), the served model for Codex tasks (dev-env#465) and workbench Codex host creation (dev-env#467); no API type or CRD change (CRDs in dev-env-crds already match v2.37.0).
               # 2.36.0 source 119ca6567fc7df93a1d4528e3de054d7d3d6e719 (release dev-env#463); Publish 39341191567 signed/verified.
               # 2.36.0 adds the workbench profile's service account (dev-env#462, Story110 T24: Profile.serviceAccount, only dev-env-workbench) and agent-run auth status (dev-env#461); no API type or CRD change (CRDs in dev-env-crds already match v2.36.0).
@@ -83,7 +85,7 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-9539413@sha256:2c7341b5cd974133ac16431cc85a2ddd66a42502192b76a962cd51c75eb80a55
+              tag: sha-702a57f@sha256:981075c0a81ebfb07994700b6b731fbb8b8071f4d9bbf6750a6577ad5abdbf53
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -150,7 +152,7 @@ spec:
               - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-luna-1019-9","hostID":"owned-luna-1019-9"}]'
               - '--enable-task-budgets'
               - '--task-budget-namespace=dev-env-budgets'
-              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.37.0@sha256:8efe590b0c930a8c0c98191b9a2d73d9eca35ede6b6fa07707c80a180eca3431'
+              - '--task-budget-worker-image=ghcr.io/thaynes43/dev-env:2.38.0@sha256:bb67ea9cfbc6239f45f5099403d7d32ebbc691d2dfbf660dd0fcf707a1eb546a'
               - '--assigned-task-budgets={"owned-luna-1019-9":"owned-luna-1019-0009"}'
               # Explicitly approved one finite Luna root; old fixture Pod/ledger retained.
               - '--owned-root-policy=dev-env-owned-luna-1019-9'
