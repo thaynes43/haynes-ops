@@ -31,13 +31,16 @@
 # label and the alertnames differ. "Outage" versus "telemetry incomplete" is kept
 # exclusive by the expressions themselves, not by inhibition.
 #
-# KNOWN LIMIT, notification of the for: 0 critical: the root route has group_wait: 1m and
-# the severity=critical child route inherits it. An alert whose episode resolves before the
-# group's first flush may never notify (Alertmanager sends nothing for an all-resolved
-# group that was never notified). The 2026-10-16 episode was true for exactly two
-# evaluations (11:29:01 and 11:29:31), so an Oct-16-shaped event is not guaranteed to page.
-# Fixing it needs a dedicated child route with group_wait: 0s in the alertmanager config,
-# a separate change outside this file (pending a coordinator decision).
+# NOTIFICATION OF THE for: 0 CRITICAL depends on a dedicated Alertmanager route. The root
+# route has group_wait: 1m, and an alert whose episode resolves before the group's first
+# flush may never notify (Alertmanager sends nothing for an all-resolved group that was never
+# notified). The 2026-10-16 episode was true for exactly two evaluations (11:29:01 and
+# 11:29:31), so with only the inherited group_wait an Oct-16-shaped event is not guaranteed
+# to page. kube-prometheus-stack/app/externalsecret.yaml therefore carries a child route
+# matching alertname="SigoalumniServiceEndpointsEmptyObserved" + severity="critical" with
+# group_wait: 0s and the same pushover receiver. The immediate notification holds only while
+# that route is installed; if it is removed or the alertname here changes, the observation
+# alert silently reverts to the 1m group_wait behaviour.
 #
 # Labels are bounded on purpose: service, target_group, reason, outcome. No pod, user,
 # request or address labels on any alert; the descriptions say which query lists pods.

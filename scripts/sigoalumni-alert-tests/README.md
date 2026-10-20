@@ -6,6 +6,9 @@ promtool unit tests for
 
 ## Run
 
+Alertmanager route proof: `AMTOOL=<amtool 0.34.1> scripts/sigoalumni-alert-tests/alertmanager-route-check.sh`
+(official release, sha256-verified, same version as the live Alertmanager).
+
 promtool is not vendored. Fetch the official release matching the live Prometheus (3.15.0),
 verify it, run:
 
@@ -96,11 +99,15 @@ contains one readiness firing and one KSM blip). Summary:
   KSM scrapes (no scrape lands inside it). An outage that overlaps a scrape is observed
   whatever its length, including under 60s; the readiness warning is the only signal that
   also covers the unsampled case. Not every short outage is detectable.
-* Notification of the `for: 0` critical depends on the existing Alertmanager route: the
-  root `group_wait` is 1m and the critical child route inherits it, so an episode that
-  resolves before the first group flush may never notify. The Oct 16 episode was true for
-  two evaluations. The readiness and telemetry warnings route to the null receiver (UI
-  only). The route fix is outside this PR (pending a coordinator decision).
+* Immediate notification of the `for: 0` critical depends on the dedicated Alertmanager
+  route added in this PR (`kube-prometheus-stack/app/externalsecret.yaml`: matchers
+  `alertname="SigoalumniServiceEndpointsEmptyObserved"` + `severity="critical"`,
+  `group_wait: 0s`, same `pushover` receiver, placed just before the generic critical
+  route). The root `group_wait` is 1m, and without the route an episode that resolves before
+  the first group flush may never notify; the Oct 16 episode was true for two evaluations.
+  If the route is removed or the alertname changes, that guarantee silently disappears.
+  `alertmanager-route-check.sh` renders the template and checks it with amtool. The readiness
+  and telemetry warnings route to the null receiver (UI only).
 * The egress freshness bound (20s) is deliberately tight: a scrape that arrives late (older
   than 20s at evaluation) skips that point and resets `for:`, a silent miss and never a
   false alarm.
