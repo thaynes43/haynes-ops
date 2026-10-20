@@ -360,17 +360,26 @@ spec:
             # READINESS failureThreshold 9 (period 10s, timeout 5s, success 1):
             #   - Short failures tolerated: a 30s shared-DB loss fails at most
             #     3-4 consecutive probes per pod, so nothing drains. At the old
-            #     threshold 3 every pod drained on such a blip and Traefik had
-            #     no backend.
+            #     threshold 3 every pod drained on such a blip, and the Service
+            #     was empty in about 90% of probe phases for up to ~8s (model).
             #   - Sustained failures still drain: a continuous failure removes
             #     the pod after roughly 80-92s (first failing probe lands 0-10s
             #     after onset, then 8 more at 10s spacing, plus the 9th probe's
             #     own response time of up to ~2s). Not an exact 90s wall clock.
-            #     The Service backend list therefore empties inside the same
-            #     window on a shared outage, which keeps the existing GCP
-            #     uptime -> watchdog sustained-outage signal intact (readiness
-            #     stays DB-sensitive on purpose; process-only readiness would
-            #     let a fast fallback `/` mask a DB outage).
+            #     Limits of that bound: (1) it is kubelet-side only, so
+            #     EndpointSlice and Traefik propagation (a few seconds) comes on
+            #     top; (2) if answers hit the 5s probe timeout (blocked event
+            #     loop, or #164 absent) it is ~85-95s; (3) intermittent failures
+            #     that never reach 9 in a row now never drain, where at
+            #     threshold 3 they eventually would.
+            #   - Failover chain: the GCP uptime -> watchdog sustained-outage
+            #     signal is PRESERVED but about 60s later (model: first alert
+            #     420-660s from onset, versus 360-600s at threshold 3). Blips
+            #     under about 80s no longer empty the Service, so they surface
+            #     only as the readiness-failure warning (haynes-ops #4137,
+            #     UI-only null receiver), not as the empty-Service observation.
+            #     Readiness stays DB-sensitive on purpose: process-only
+            #     readiness would let a fast fallback `/` mask a DB outage.
             #   - Cost: a single bad pod keeps receiving traffic for up to
             #     ~90s instead of ~30s.
             #   - PREREQUISITE: sigoalumni-org PR #164 (the /api/healthz 2s

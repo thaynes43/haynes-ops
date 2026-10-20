@@ -44,6 +44,10 @@ const arg = (n, d) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] :
 const SIGO_REPO = arg("--sigo-repo", "/home/dev/repos/sigoalumni-org");
 const SIGO_REF = arg("--ref", "origin/main");
 const AS_JSON = argv.includes("--json");
+// The model is tied to the manifest: the readiness block is parsed from the HelmRelease
+// (default: the one in this checkout) and must equal the constants the model assumes.
+const HELMRELEASE = arg("--helmrelease",
+  new URL("../../kubernetes/main/apps/frontend/sigoalumni/app/helmrelease.yaml", import.meta.url).pathname);
 
 // ---------------------------------------------------------------- deterministic PRNG
 function mulberry32(a) {
@@ -54,6 +58,27 @@ function mulberry32(a) {
 // ---------------------------------------------------------------- probe constants
 const PERIOD = 10, TIMEOUT = 5, HEALTH_BUDGET = 2; // s; budget = #164 app health deadline
 const LIVE = { period: 30, timeout: 5, threshold: 3 };
+// What the plan (decisions 4-5) and the model assume. Parsed manifest values must equal these.
+const EXPECTED = {
+  readiness: { path: "/api/healthz", port: 8080, periodSeconds: PERIOD, timeoutSeconds: TIMEOUT, successThreshold: 1, failureThreshold: 9 },
+  liveness: { tcpSocket: { port: 8080 }, periodSeconds: LIVE.period, timeoutSeconds: LIVE.timeout, failureThreshold: LIVE.threshold },
+};
+
+function readManifestProbes(file) {
+  const py = "import sys,yaml,json\n" +
+    "d=[x for x in yaml.safe_load_all(open(sys.argv[1])) if x and x.get('kind')=='HelmRelease'][0]\n" +
+    "pr=d['spec']['values']['controllers']['main']['containers']['app']['probes']\n" +
+    "print(json.dumps({k:pr[k]['spec'] for k in ('readiness','liveness')}))";
+  const raw = JSON.parse(execFileSync("python3", ["-c", py, file]).toString());
+  const r = raw.readiness, l = raw.liveness;
+  return {
+    readiness: { path: r.httpGet?.path, port: r.httpGet?.port, periodSeconds: r.periodSeconds, timeoutSeconds: r.timeoutSeconds,
+      successThreshold: r.successThreshold ?? 1 /* k8s default */, failureThreshold: r.failureThreshold },
+    liveness: { tcpSocket: l.tcpSocket, periodSeconds: l.periodSeconds, timeoutSeconds: l.timeoutSeconds, failureThreshold: l.failureThreshold },
+  };
+}
+const MANIFEST = readManifestProbes(HELMRELEASE);
+const T = MANIFEST.readiness.failureThreshold; // threshold under test, taken from the manifest
 
 // DB state: list of [from, to) down intervals. downAt(t, overlap).
 const mkDb = (intervals) => (t, overlap = 0) => intervals.some(([a, b]) => t < b && t + overlap >= a);
@@ -203,36 +228,37 @@ async function runSteer(wd, { startAt, probeFn, records, lastSteer = null, probe
 
 // ================================================================ main
 const out = {};
+out.manifest = { file: HELMRELEASE, parsed: MANIFEST, expected: EXPECTED, thresholdUnderTest: T };
 const wd = await loadWatchdog();
 out.watchdogSource = wd.error ? { skipped: wd.error } : { repo: "sigoalumni-org", ref: SIGO_REF, rev: wd.rev };
 
 // -- drain bounds
 const envelope = (...b) => ({ min: Math.min(...b.map((x) => x.min)), max: Math.max(...b.map((x) => x.max)) });
-const fast3 = drainBound(3, { failDur: 0.05 }), fast9 = drainBound(9, { failDur: 0.05 });
-const bud3 = drainBound(3), bud9 = drainBound(9);
+const fast3 = drainBound(3, { failDur: 0.05 }), fast9 = drainBound(T, { failDur: 0.05 });
+const bud3 = drainBound(3), bud9 = drainBound(T);
 out.drainBound = {
   note: "seconds from outage onset until the pod leaves the Service; honest 503 answered in 0.05s (fast) or at the full 2s app budget",
   threshold3_fast503: fast3, threshold3_503AtBudget2s: bud3, threshold3_envelope: envelope(fast3, bud3),
-  threshold9_fast503: fast9, threshold9_503AtBudget2s: bud9, threshold9_envelope: envelope(fast9, bud9),
-  threshold3_overlap2s: drainBound(3, { overlap: 2 }), threshold9_overlap2s: drainBound(9, { overlap: 2 }),
-  threshold3_hung5sTimeout: drainBound(3, { mode: "hang" }), threshold9_hung5sTimeout: drainBound(9, { mode: "hang" }),
+  thresholdPR_fast503: fast9, thresholdPR_503AtBudget2s: bud9, thresholdPR_envelope: envelope(fast9, bud9),
+  threshold3_overlap2s: drainBound(3, { overlap: 2 }), thresholdPR_overlap2s: drainBound(T, { overlap: 2 }),
+  threshold3_hung5sTimeout: drainBound(3, { mode: "hang" }), thresholdPR_hung5sTimeout: drainBound(T, { mode: "hang" }),
   phaseGrid: "200 phases at 50ms over one 10s period, exhaustive",
 };
 
 // -- R1: 30s shared DB loss, honest 503
 const R1 = { len: 30, trials: 20000 };
-R1.threshold9 = threePods({ threshold: 9, len: 30, seed: 11, trials: R1.trials });
+R1.thresholdPR = threePods({ threshold: T, len: 30, seed: 11, trials: R1.trials });
 R1.threshold3_baseline = threePods({ threshold: 3, len: 30, seed: 11, trials: R1.trials });
 { // sensitivity: a request fails if DB is down at any instant of its 2s budget
   const rnd = mulberry32(5), T0 = 1000, db = mkDb([[T0, T0 + 30]]); let worst = 0;
-  for (let k = 0; k < 20000; k++) worst = Math.max(worst, simulateReadiness({ phase: rnd() * 10, threshold: 9, respond: healthz(db, "honest", HEALTH_BUDGET), horizon: T0 + 150 }).maxConsec);
-  R1.threshold9_overlap2s_maxConsecFailures = worst;
+  for (let k = 0; k < 20000; k++) worst = Math.max(worst, simulateReadiness({ phase: rnd() * 10, threshold: T, respond: healthz(db, "honest", HEALTH_BUDGET), horizon: T0 + 150 }).maxConsec);
+  R1.thresholdPR_overlap2s_maxConsecFailures = worst;
 }
 out.R1 = R1;
 
 // -- R2: sustained fast errors
 const R2 = {};
-R2.pods120s_threshold9 = threePods({ threshold: 9, len: 120, seed: 21, trials: 20000 });
+R2.pods120s_thresholdPR = threePods({ threshold: T, len: 120, seed: 21, trials: 20000 });
 R2.pods120s_threshold3_baseline = threePods({ threshold: 3, len: 120, seed: 21, trials: 20000 });
 // alert + steer chain for a SUSTAINED outage (long enough for the 300s hold), 500 phase draws
 async function chain(threshold, len, trials, seed) {
@@ -261,11 +287,12 @@ async function chain(threshold, len, trials, seed) {
     watchdogFirstConfirmAfterOnset: steerAt.length ? mm(steerAt) : "skipped",
     steerDecisionAfterOnset: decideAt.length ? mm(decideAt) : "skipped (wake->confirm delay of the Pub/Sub path is NOT modeled, 0s assumed)",
     failingConfirms: conf.length ? mm(conf) : "skipped",
-    mockedSteerCallsPerAlert: steerCalls.length ? mm(steerCalls) : "skipped" };
+    mockedSteerCallsPerAlert: steerCalls.length ? mm(steerCalls) : "skipped",
+    alertsFired: fired, totalMockedSteers: steerCalls.reduce((a, b) => a + b, 0) };
 }
-R2.chain_threshold9_sustained1800s = await chain(9, 1800, 500, 31);
+R2.chain_thresholdPR_sustained1800s = await chain(T, 1800, 500, 31);
 R2.chain_threshold3_baseline_sustained1800s = await chain(3, 1800, 500, 31);
-R2.chain_threshold9_120sOutage = await chain(9, 120, 500, 32);
+R2.chain_thresholdPR_120sOutage = await chain(T, 120, 500, 32);
 out.R2 = R2;
 
 // -- R3: not touched by this PR; characterise the existing code once (authoritative tests: H5)
@@ -297,7 +324,7 @@ const R4 = {};
   for (let k = 0; k < trials; k++) {
     const phases = Array.from({ length: GCP.checkers }, () => rnd() * GCP.period);
     const a = gcpAlert({ phases, pathFn: slowRoot, T0, horizon: T0 + len });
-    const pods = [0, 1, 2].map(() => simulateReadiness({ phase: rnd() * 10, threshold: 9, respond: healthz(mkDb([])), horizon: T0 + len }));
+    const pods = [0, 1, 2].map(() => simulateReadiness({ phase: rnd() * 10, threshold: T, respond: healthz(mkDb([])), horizon: T0 + len }));
     if (pods.every((p) => p.firstDrain === null)) notDrained++;
     if (a.fire != null) {
       fired++; fires.push(a.fire - T0);
@@ -311,13 +338,13 @@ const R4 = {};
   const T0 = 3000, len = 1800, rnd = mulberry32(42), trials = 300; let drained = 0, fired = 0;
   const processOnly = () => ({ ok: true, dur: 0.01 });
   for (let k = 0; k < trials; k++) {
-    const pods = [0, 1, 2].map(() => simulateReadiness({ phase: rnd() * 10, threshold: 9, respond: processOnly, horizon: T0 + len }));
+    const pods = [0, 1, 2].map(() => simulateReadiness({ phase: rnd() * 10, threshold: T, respond: processOnly, horizon: T0 + len }));
     if (pods.some((p) => p.firstDrain !== null)) drained++;
     const phases = Array.from({ length: GCP.checkers }, () => rnd() * GCP.period);
     const a = gcpAlert({ phases, pathFn: rootFromPods(pods.map((p) => p.timeline)), T0, horizon: T0 + len });
     if (a.fire != null) fired++;
   }
-  const dbSensitive = await chain(9, len, 100, 43);
+  const dbSensitive = await chain(T, len, 100, 43);
   R4.negativeControl_processOnlyReadiness_dbDown1800s = { trials, anyPodDrainedFraction: drained / trials, uptimeAlertFiredFraction: fired / trials,
     comparison_dbSensitiveReadiness_alertFiredFraction: dbSensitive.alertFiredFraction,
     conclusion: "with process-only readiness a DB outage never empties the Service, the anonymous fast `/` stays 200, no alert wakes the watchdog, no steer; DB-sensitive readiness is what turns it into an alert" };
@@ -327,17 +354,23 @@ out.R4 = R4;
 // ---------------------------------------------------------------- assertions (exit non-zero on regression)
 const fails = [];
 const need = (c, m) => { if (!c) fails.push(m); };
-need(out.drainBound.threshold9_envelope.min >= 79.9 && out.drainBound.threshold9_envelope.max <= 92.1, "threshold 9 drain bound outside 80-92s");
+for (const probe of ["readiness", "liveness"])
+  for (const [k, v] of Object.entries(EXPECTED[probe]))
+    need(JSON.stringify(MANIFEST[probe][k]) === JSON.stringify(v), `manifest ${probe}.${k}=${JSON.stringify(MANIFEST[probe][k])} but the model assumes ${JSON.stringify(v)}`);
+need(out.drainBound.thresholdPR_envelope.min >= 79.9 && out.drainBound.thresholdPR_envelope.max <= 92.1, "threshold 9 drain bound outside 80-92s");
 need(out.drainBound.threshold3_envelope.min >= 19.9 && out.drainBound.threshold3_envelope.max <= 32.1, "threshold 3 drain bound outside 20-32s");
-need(R1.threshold9.perPodMaxConsecFailures.max < 9 && R1.threshold9.fractionServiceEmptied === 0, "R1: a pod reached 9 consecutive failures at threshold 9");
-need(R1.threshold9.livenessRestartFraction === 0, "R1: liveness affected");
+need(R1.thresholdPR.perPodMaxConsecFailures.max < 9 && R1.thresholdPR.fractionServiceEmptied === 0, "R1: a pod reached 9 consecutive failures at threshold 9");
+need(R1.thresholdPR.livenessRestartFraction === 0, "R1: liveness affected");
 need(R1.threshold3_baseline.fractionServiceEmptied > 0, "R1 baseline: threshold 3 should drain on a 30s blip");
-need(R2.pods120s_threshold9.fractionServiceEmptied === 1, "R2: not every trial emptied the Service within 120s");
-need(R2.pods120s_threshold9.emptyStartAfterOnset.max <= 92.1, "R2: Service-empty bound > 92s");
-need(R2.chain_threshold9_sustained1800s.alertFiredFraction === 1, "R2: sustained outage did not always alert");
+need(R2.pods120s_thresholdPR.fractionServiceEmptied === 1, "R2: not every trial emptied the Service within 120s");
+need(R2.pods120s_thresholdPR.emptyStartAfterOnset.max <= 92.1, "R2: Service-empty bound > 92s");
+need(R2.chain_thresholdPR_sustained1800s.alertFiredFraction === 1, "R2: sustained outage did not always alert");
+need(R1.thresholdPR_overlap2s_maxConsecFailures < T, "R1: overlap-sensitivity run reached the threshold");
 if (!wd.error) {
-  need(R2.chain_threshold9_sustained1800s.failingConfirms.min === 3 && R2.chain_threshold9_sustained1800s.failingConfirms.max === 3, "R2: not exactly three failing confirms");
-  need(R2.chain_threshold9_sustained1800s.mockedSteerCallsPerAlert.min === 1 && R2.chain_threshold9_sustained1800s.mockedSteerCallsPerAlert.max === 1, "R2: not exactly one mocked steer");
+  need(R2.chain_thresholdPR_sustained1800s.failingConfirms.min === 3 && R2.chain_thresholdPR_sustained1800s.failingConfirms.max === 3, "R2: not exactly three failing confirms");
+  need(R2.chain_thresholdPR_sustained1800s.mockedSteerCallsPerAlert.min === 1 && R2.chain_thresholdPR_sustained1800s.mockedSteerCallsPerAlert.max === 1, "R2: not exactly one mocked steer");
+  // A rare alert in the 120s case (stale forward-filled samples, see README) must never lead to a steer.
+  need(R2.chain_thresholdPR_120sOutage.totalMockedSteers === 0, "R2: an alert in the 120s case led to a steer");
   need(out.R3.healthRecoversDuringConfirm.action === "declined-healthy" && out.R3.alreadySteered.action === "already-steered" && out.R3.steeredLessThanHourAgo.action === "rate-limited", "R3 characterization changed");
   need(R4.slowRoot_readinessStaysReady.watchdogDeclinedHealthyFraction === 1 && R4.slowRoot_readinessStaysReady.mockedSteers === 0, "R4: slow `/` should alert but be declined by the watchdog");
 }
