@@ -50,13 +50,13 @@ spec:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
               # Keeper binary with the Claude login worker and adoption socket (dev-env#452, #455).
-              # Source 702a57fe0cfd651661e7db30cadbada58a40947c (release dev-env#476, v2.38.0);
-              # publish.yml run 39374328506 signed/verified. 2.38.0 adds the keeper control status
+              # Source fdf2542395895adf8bfecb00e5b9b4df947a44e6 (release dev-env#484, v2.38.1);
+              # publish.yml run 39382009894 signed/verified. Was v2.38.0 (702a57f, run 39374328506). 2.38.0 adds the keeper control status
               # expiry times and SIGHUP cancel that the keeper-login routes need (dev-env#475):
               # this container, claude-login and codex-login move together with the operator.
               # Previously source 585692bbe730b0c7d435496d304cffb2276a0d6f (v2.34.0), run 39302323514.
               # The broker pin is separate and unchanged.
-              tag: sha-702a57f@sha256:981075c0a81ebfb07994700b6b731fbb8b8071f4d9bbf6750a6577ad5abdbf53
+              tag: sha-fdf2542@sha256:c1680f80d7c64197496bdf3f64cde72548810d54382251e489f14925c1bd108a
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:
@@ -128,8 +128,8 @@ spec:
           codex-login:
             image:
               repository: ghcr.io/thaynes43/dev-env-codex-login
-              # v2.38.0 (dev-env#475): codex status expiry time and SIGHUP cancel; publish.yml run 39374328506 signed/verified.
-              tag: sha-702a57f@sha256:3b622b2486d3f00f5f8808f199293a9ed4d26cf90dd5abda42bafbe5275fd59c
+              # v2.38.1 (dev-env#481, #483: Proxmox response shape, Codex log level); publish.yml run 39382009894 signed/verified. Was v2.38.0 (dev-env#475).
+              tag: sha-fdf2542@sha256:eea8b0ab50941070e2fb2a31f948f4d159e078c482f1a0bd60b28ed31d0e0038
               pullPolicy: IfNotPresent
             # Clear the API service environment Kubernetes injects even when
             # enableServiceLinks is false; the native helper also uses a minimal env.
@@ -161,8 +161,8 @@ spec:
           claude-login:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              # v2.38.0 (dev-env#475): agentd claude-login status expiry times and SIGHUP cancel; publish-agent.yml run 39374348374 signed/verified.
-              tag: 2.38.0@sha256:bb67ea9cfbc6239f45f5099403d7d32ebbc691d2dfbf660dd0fcf707a1eb546a
+              # v2.38.1 (dev-env#483): agentd claude-login-abandon (the exec guard admits it, haynes-ops #4132); publish-agent.yml run 39382031869 signed/verified. Was v2.38.0 (dev-env#475).
+              tag: 2.38.1@sha256:8db9ce94942f5785d24b120a3a3f43199aec82d8a48887e334292a035827ceca
               pullPolicy: IfNotPresent
             args:
               - claude-login-idle
