@@ -7,10 +7,13 @@
 #
 # What this can and cannot see (do not read more into an alert than it says):
 #   * kube-state-metrics (KSM) is scraped every 60s and rules run every 30s. A Service
-#     that empties and refills between two scrapes (the 2026-10-16 19s event was one
-#     lucky sample) is invisible to every rule here. The readiness-failure counter
-#     below is the only signal that survives a missed scrape, because kubelet's probe
-#     counters are cumulative.
+#     that empties and refills entirely between two consecutive KSM scrapes (no scrape
+#     lands inside the gap) leaves no sample, so the empty-Service rules cannot see it;
+#     the readiness-failure warning, being built on cumulative kubelet counters, can
+#     still alert. An empty interval of any length, including under 60s, that overlaps
+#     a scrape IS observed: the 2026-10-16 ~19s event was, because one scrape landed
+#     inside it. The chance of being sampled is roughly duration / 60s. Not every short
+#     outage is detectable.
 #   * Freshness gating: every definitive claim requires its KSM sample to be <= 90s old
 #     at evaluation (one missed scrape is tolerated, two are not). Prometheus would
 #     otherwise hold a dead scrape's last value for 5m and a stale zero or a stale
@@ -19,10 +22,22 @@
 #     endpoints". It is not a duration claim. SigoalumniServiceEndpointsEmptySustained
 #     is the separate "still empty 2m later" escalation.
 #
-# Routing (kube-prometheus-stack alertmanager): severity=critical pages Pushover and
-# uses the `description` annotation as the message body, so keep critical descriptions
-# short and phone-readable. severity=warning goes to the null receiver (UI only), and
-# a critical inhibits a warning with the same alertname+namespace.
+# Routing (kube-prometheus-stack alertmanager, read-only here; not changed by this file):
+# severity=critical pages Pushover and uses the `description` annotation as the message
+# body, so keep critical descriptions short and phone-readable. severity=warning goes to
+# the null receiver (UI only), which includes SigoalumniReadinessProbeFailing and
+# SigoalumniTelemetryIncomplete. The alertmanager inhibit rule (critical inhibits warning
+# with equal alertname+namespace) does NOT apply to these alerts: they carry no namespace
+# label and the alertnames differ. "Outage" versus "telemetry incomplete" is kept
+# exclusive by the expressions themselves, not by inhibition.
+#
+# KNOWN LIMIT, notification of the for: 0 critical: the root route has group_wait: 1m and
+# the severity=critical child route inherits it. An alert whose episode resolves before the
+# group's first flush may never notify (Alertmanager sends nothing for an all-resolved
+# group that was never notified). The 2026-10-16 episode was true for exactly two
+# evaluations (11:29:01 and 11:29:31), so an Oct-16-shaped event is not guaranteed to page.
+# Fixing it needs a dedicated child route with group_wait: 0s in the alertmanager config,
+# a separate change outside this file (pending a coordinator decision).
 #
 # Labels are bounded on purpose: service, target_group, reason, outcome. No pod, user,
 # request or address labels on any alert; the descriptions say which query lists pods.

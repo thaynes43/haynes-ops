@@ -11,7 +11,7 @@
    "2026-10-16T00:00:00Z",
    "2026-10-20T15:00:00Z"
   ],
-  "normal_Oct08-13": [
+  "comparison_Oct08-13": [
    "2026-10-08T00:00:00Z",
    "2026-10-13T00:00:00Z"
   ],
@@ -75,7 +75,7 @@
     }
    ]
   },
-  "normal_Oct08-13": {
+  "comparison_Oct08-13": {
    "SigoalumniServiceEndpointsEmptyObserved": [],
    "SigoalumniTelemetryIncomplete": [
     {
@@ -229,5 +229,6 @@
     }
    ]
   }
- }
+ },
+ "ground_truth": "only 2026-10-16 11:29 and 2026-10-20 01:42/07:59/10:26 were matched to known incidents; every other episode is an observed firing with unverified cause. comparison_Oct08-13 is not known-quiet: it contains one readiness firing and a ksm_down_or_stale blip. No false-positive or detection-rate claim is made."
 }

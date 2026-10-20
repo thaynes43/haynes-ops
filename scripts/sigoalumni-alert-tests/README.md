@@ -56,30 +56,54 @@ can see it.
 
 ## Mutation spot-checks run during development
 
-Widening every `<= 90` freshness gate to `<= 9000` fails O3c and O3d. Dropping the egress
-both-failed clause fails eight O6 groups that assert a quiet result. Setting the
-sustained rule to `for: 0s` fails O1/O2e/O3d/O7. (The de-duplication mutation was not
-detected, see above.)
+Caught: widening every `<= 90` freshness gate to `<= 9000` fails O3c and O3d; removing the
+zero-fill fails O1/O2a; widening the egress freshness from 20s to 60s fails O6e2; dropping
+the egress both-failed clause fails eight O6 groups; setting the sustained rule to
+`for: 0s` fails O1/O2e/O3d/O7.
+
+NOT caught (the fixtures pass with these removed), so they are defence in depth that no
+fixture pins: the `max by (address)` de-duplication (see above), the egress
+`count(up{...} == 1) == 2` clause (a failed exporter scrape also stale-marks
+`probe_success`, so the exporter-down case is already quiet; an `up == 0` with
+`probe_success` still present is not fixtured), the `count(kube_pod_status_ready...) > 0`
+guard, the `targetref_kind="Pod"` matcher and the 90s freshness gate on `kube_service_info`.
+They are redundant in practice rather than wrong, and are untested.
 
 ## Replay (O8)
 
 `replay.py` evaluates the real rule expressions with `query_range` over existing history and
 `replay-receipt.json` is the saved result (windows: Oct 16-20 incident period, Oct 8-13
-normal comparison, Sep 20-Oct 20 thirty days). Summary:
+comparison window, Sep 20-Oct 20 thirty days; the comparison window is not known-quiet, it
+contains one readiness firing and one KSM blip). Summary:
 
-* Empty-Service observation: exactly one episode in 30 days, 2026-10-16T11:29:30-11:30:00Z
-  (two evaluation points). No false positive.
-* Readiness warning: 11 episodes in 30 days; six between Oct 16 and Oct 20 (Oct 16 11:29,
-  Oct 18 21:19, Oct 19 02:47, Oct 20 01:42 / 07:59 / 10:26, matching W1, W2 and W4), one in
-  the Oct 8-13 comparison window (Oct 12 19:41) plus two on Oct 13. About one a day lately,
-  which is the noise level the plan told us not to tune out.
+* Empty-Service observation: one firing in 30 days, 2026-10-16 11:29:01 and 11:29:31Z
+  (two evaluation points; the receipt's :30/:00 stamps are the query-start alignment it
+  discloses), matched to the known 2026-10-16 incident. No other firing in the window.
+  This is an observed firing count, not a measured false-positive or detection rate: no
+  independent ground truth was checked for the other 30 days.
+* Readiness warning: 11 firings in 30 days. Matched to known incident windows: Oct 16 11:29
+  (the incident), Oct 20 01:42 (W1), 07:59 (W2) and 10:26 (W4); W3 correctly does not
+  fire. The other seven (Sep 22 07:13, Sep 24 13:36, Oct 12 19:41, Oct 13 01:18, Oct 13
+  01:57, Oct 18 21:19, Oct 19 02:47) are unverified, no incident ground truth was checked:
+  they may be real failed probes or noise. Roughly one a day lately; not tuned out, per the
+  plan.
 * Telemetry-incomplete: seven short `ksm_down_or_stale` blips in 30 days, longest three
-  minutes, so none would have survived `for: 5m`.
+  minutes, so none would have survived `for: 5m` (a count, not a verdict).
 
 ## Limits
 
-* The empty-Service rules cannot see an outage shorter than the 60s KSM scrape that falls
-  between two scrapes; the readiness warning is the only signal that survives that.
+* The empty-Service rules cannot see an outage that begins and ends between two consecutive
+  KSM scrapes (no scrape lands inside it). An outage that overlaps a scrape is observed
+  whatever its length, including under 60s; the readiness warning is the only signal that
+  also covers the unsampled case. Not every short outage is detectable.
+* Notification of the `for: 0` critical depends on the existing Alertmanager route: the
+  root `group_wait` is 1m and the critical child route inherits it, so an episode that
+  resolves before the first group flush may never notify. The Oct 16 episode was true for
+  two evaluations. The readiness and telemetry warnings route to the null receiver (UI
+  only). The route fix is outside this PR (pending a coordinator decision).
+* The egress freshness bound (20s) is deliberately tight: a scrape that arrives late (older
+  than 20s at evaluation) skips that point and resets `for:`, a silent miss and never a
+  false alarm.
 * A brand-new pod's first-ever failed readiness probe creates the `result="failed"` series
   at value >= 1 and contributes no `increase()`; the second failure is counted.
 * The egress rule never fires on a single target, an exporter outage, or results older than

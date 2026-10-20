@@ -46,7 +46,7 @@ def run(name,start,end):
         ep.append((a,b))
         res.append({'labels':json.loads(key),'eval_points':len(tt),'episodes':[{'first':fmt(a),'last':fmt(b),'eval_points':(b-a)//30+1} for a,b in ep]})
     return res
-windows={'incident_Oct16-20':('2026-10-16T00:00:00Z','2026-10-20T15:00:00Z'),'normal_Oct08-13':('2026-10-08T00:00:00Z','2026-10-13T00:00:00Z'),'thirty_day_Sep20-Oct20':('2026-09-20T00:00:00Z','2026-10-20T15:00:00Z')}
+windows={'incident_Oct16-20':('2026-10-16T00:00:00Z','2026-10-20T15:00:00Z'),'comparison_Oct08-13':('2026-10-08T00:00:00Z','2026-10-13T00:00:00Z'),'thirty_day_Sep20-Oct20':('2026-09-20T00:00:00Z','2026-10-20T15:00:00Z')}
 rec={'generated':fmt(int(time.time())),'note':'rule expressions evaluated by query_range at 30s steps against live Prometheus 3.15.0 history; no alert state, no for: applied','windows':windows,'results':{}}
 names=[n for n in ('SigoalumniServiceEndpointsEmptyObserved','SigoalumniTelemetryIncomplete','SigoalumniReadinessProbeFailing') if n in exprs]
 for w,(a,b) in windows.items():
