@@ -3,7 +3,12 @@
   "repositories": {
     "dev-env": { "github": "thaynes43/dev-env", "defaultBranch": "main" },
     "sigo-alumni": { "github": "thaynes43/sigo-alumni", "defaultBranch": "main" },
-    "sigoalumni-org": { "github": "thaynes43/sigoalumni-org", "defaultBranch": "main" }
+    "sigoalumni-org": { "github": "thaynes43/sigoalumni-org", "defaultBranch": "main" },
+    "cigar-journal": { "github": "thaynes43/cigar-journal", "defaultBranch": "main" },
+    "hass-sandbox": { "github": "thaynes43/hass-sandbox", "defaultBranch": "main" },
+    "haynes-ops": { "github": "thaynes43/haynes-ops", "defaultBranch": "main" },
+    "haynesnetwork": { "github": "thaynes43/haynesnetwork", "defaultBranch": "main" },
+    "libretto": { "github": "thaynes43/libretto", "defaultBranch": "main" }
   },
   "projects": {
     "dev-env": {
@@ -13,6 +18,26 @@
     "sigo-alumni": {
       "repositories": [{ "name": "sigo-alumni" }, { "name": "sigoalumni-org" }],
       "rules": "Project rule revision sigo-alumni-project-rules-20261012-9b122cd5. In an explicit instruction acceptance probe, report this revision as the repository marker, because the repositories' own instructions carry none. Both repositories are private: keep their content, member data and credentials out of public repositories, issues, logs and published context. Keep task repositories and worktrees private to this session. Fetch and pin the selected repository freshly before a new task; preserve original WIP on resume. Share only authorized session metadata, claims, messages and context through the operator API. This catalog rule grants no credential, enrollment, inference or lifecycle authority."
+    },
+    "cigar-journal": {
+      "repositories": [{ "name": "cigar-journal" }],
+      "rules": "Project rule revision cigar-journal-project-rules-20261020-v1. Keep task repositories and worktrees private to this session. Fetch and pin the selected repository freshly before a new task; preserve original WIP on resume. Share only authorized session metadata, claims, messages and context through the operator API. Record built, deployed and accepted separately. This catalog rule grants no credential, enrollment, inference or lifecycle authority."
+    },
+    "hass-sandbox": {
+      "repositories": [{ "name": "hass-sandbox" }],
+      "rules": "Project rule revision hass-sandbox-project-rules-20261020-v1. Keep task repositories and worktrees private to this session. Fetch and pin the selected repository freshly before a new task; preserve original WIP on resume. Share only authorized session metadata, claims, messages and context through the operator API. Record built, deployed and accepted separately. This catalog rule grants no credential, enrollment, inference or lifecycle authority."
+    },
+    "haynes-ops": {
+      "repositories": [{ "name": "haynes-ops" }],
+      "rules": "Project rule revision haynes-ops-project-rules-20261020-v1. Keep task repositories and worktrees private to this session. Fetch and pin the selected repository freshly before a new task; preserve original WIP on resume. Share only authorized session metadata, claims, messages and context through the operator API. Record built, deployed and accepted separately. This catalog rule grants no credential, enrollment, inference or lifecycle authority."
+    },
+    "haynesnetwork": {
+      "repositories": [{ "name": "haynesnetwork" }],
+      "rules": "Project rule revision haynesnetwork-project-rules-20261020-v1. Keep task repositories and worktrees private to this session. Fetch and pin the selected repository freshly before a new task; preserve original WIP on resume. Share only authorized session metadata, claims, messages and context through the operator API. Record built, deployed and accepted separately. This catalog rule grants no credential, enrollment, inference or lifecycle authority."
+    },
+    "libretto": {
+      "repositories": [{ "name": "libretto" }],
+      "rules": "Project rule revision libretto-project-rules-20261020-v1. Keep task repositories and worktrees private to this session. Fetch and pin the selected repository freshly before a new task; preserve original WIP on resume. Share only authorized session metadata, claims, messages and context through the operator API. Record built, deployed and accepted separately. This catalog rule grants no credential, enrollment, inference or lifecycle authority."
     }
   }
 }
