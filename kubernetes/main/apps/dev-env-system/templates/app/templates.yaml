@@ -10,10 +10,10 @@
 # tracks this line with its own regex manager (.renovate/customManagers.json5), and the
 # dev-env manual-merge rule applies. A change here reaches NEW sessions only: running
 # pods keep their image and are reported Outdated (D-44).
-# v2.38.3 source 8f7311c3b6dc41aaf8b4ea3f2fb604e8f4f365b6; includes v2.38.2, v2.38.1, v2.38.0, v2.37.0, v2.36.0, v2.35.1, v2.35.0, v2.34.0 and v2.33.0.
-# publish-agent.yml run39391981933 smoke-tested/signed/verified on refs/tags/v2.38.3.
+# v2.39.0 source 0c22cc0bac4f8e2151f4f27fa99a69b605b14784; includes v2.38.3, v2.38.2, v2.38.1, v2.38.0, v2.37.0, v2.36.0, v2.35.1, v2.35.0, v2.34.0 and v2.33.0.
+# publish-agent.yml run39466623563 smoke-tested/signed/verified on refs/tags/v2.39.0.
 # New sessions use it at once; running pods keep their image and show Outdated, and the operator drains idle, unattached sessions onto the new revision (designed preserving path).
-image: ghcr.io/thaynes43/dev-env:2.38.3@sha256:0039dc13a4e400314799baefcf159ff0a2f3594fc6a8b85fcd22e66c11d476d8
+image: ghcr.io/thaynes43/dev-env:2.39.0@sha256:ca8772401b48071df2bc5eaa01f362972215dea0c6f9d7d953dd8e5716d92618
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
