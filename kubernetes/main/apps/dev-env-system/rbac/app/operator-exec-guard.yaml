@@ -1,0 +1,63 @@
+---
+# dev-env-operator-exec-guard (thaynes43/dev-env NB-01, DESIGN-028). The operator's pods/exec
+# in dev-env-system (Role dev-env-operator-keeper-login) exists for the keeper login routes
+# only. RBAC cannot name a container, a command or a generated pod name, so this policy pins
+# all three at admission: the keeper pod (its Deployment's name prefix; only Flux and admins
+# can create pods here, the operator cannot), its two login containers, and the four fixed
+# helper commands the operator runs. Anything else the operator SA connects to in
+# dev-env-system is refused: the keeper's app container (GitHub App key, SSH CA, the login
+# journal's ServiceAccount), the broker, a shell in a login container, extra arguments,
+# attach, port-forward, proxy.
+#
+# The four argv arrays below must equal keeperLoginProviders in thaynes43/dev-env
+# internal/apiserver/keeper_login.go (status and login command of each provider).
+#
+# Not matched: the operator's execs in dev-agents and dev-tools (rescue, log, deliver,
+# history relay, shelf), the v1 route's exec (v1's own ServiceAccount), Tom and Flux.
+# failurePolicy Fail: the match is a string compare in the API server, so an error refuses
+# only the operator's CONNECT in dev-env-system. Proven on kube-apiserver 1.35.0 (envtest,
+# dev-env NB-01 review). If the keeper's Deployment or containers are renamed, keeper login
+# fails closed until this list follows.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-operator-exec-guard
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: [CONNECT]
+        resources: [pods/exec, pods/attach, pods/portforward, pods/proxy]
+  matchConditions:
+    - name: operator-in-dev-env-system
+      expression: >-
+        request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator' &&
+        request.namespace == 'dev-env-system'
+  variables:
+    - name: helpers
+      expression: >-
+        {'claude-login': [['agentd', 'claude-login'], ['agentd', 'claude-login-status']],
+         'codex-login': [['dev-env-keeper', 'codex-login'], ['dev-env-keeper', 'codex-auth-status']]}
+    - name: container
+      expression: object.?container.orValue('')
+  validations:
+    - expression: >-
+        request.?subResource.orValue('') == 'exec' &&
+        request.name.startsWith('dev-env-keeper-') &&
+        variables.container in variables.helpers &&
+        object.?command.orValue([]) in variables.helpers[variables.container]
+      message: >-
+        dev-env-operator-exec-guard: in dev-env-system the operator may only exec the keeper
+        pod's login helpers (claude-login or codex-login container, fixed commands; NB-01,
+        DESIGN-028)
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-operator-exec-guard
+spec:
+  policyName: dev-env-operator-exec-guard
+  validationActions: [Deny]
