@@ -249,6 +249,24 @@ spec:
             app:
               - path: /etc/dev-env-keeper/ssh
                 readOnly: true
+      # The dev-env Pushover application's token and the user key (dev-env plan 13, story 13.1):
+      # the keeper's notifier reads token and user at /etc/dev-env-keeper/pushover, the paths
+      # its flags default to. A custom volume rather than `type: secret` so the mount can be
+      # optional: if the ExternalSecret has not synced (a missing 1Password field), the keeper
+      # still starts, logs "notifier disabled: no Pushover credentials" and keeps its gauges.
+      # Only the main keeper container mounts it. 0440 so the pod's group (fsGroup 65532) reads.
+      pushover:
+        type: custom
+        volumeSpec:
+          secret:
+            secretName: dev-env-keeper-pushover
+            defaultMode: 0440
+            optional: true
+        advancedMounts:
+          dev-env-keeper:
+            app:
+              - path: /etc/dev-env-keeper/pushover
+                readOnly: true
       # Only the main keeper can use the Kubernetes API. Project the normal
       # in-cluster token/CA/namespace path explicitly with pod automount disabled.
       kube-api-access:
