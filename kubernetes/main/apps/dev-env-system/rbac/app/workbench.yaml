@@ -12,8 +12,9 @@
 #     API, so it needs no list);
 #   - pods/exec create: agent-run forces kubectl's SPDY exec, which is a POST. The default
 #     WebSocket exec begins as a GET and would also need `get` on pods/exec; it is not granted.
-# No Secrets, nothing cluster-wide, no write on any other resource, no rights in
-# dev-env-system or dev-tools. Exec into a session pod reaches that pod's mounted
+# This Role grants no Secrets and no other write. Since CR-1020 (G-6) the same account
+# also holds v1's OPERATOR write tier cluster-wide (./workbench-operator.yaml), including
+# pods/exec and pod delete in every namespace. Exec into a session pod reaches that pod's mounted
 # credentials (its own HOME, /creds, the keeper's login projections); that is the point of
 # login and pair, and why only the workbench profile may run as this account.
 apiVersion: v1

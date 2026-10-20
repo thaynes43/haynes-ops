@@ -1,0 +1,136 @@
+---
+# The workbench identity's cluster WRITE tier (thaynes43/dev-env CR-1020 W1, Saga85/Epic107;
+# Tom's parity-first ruling Q-16: no v2 guardrail may cut agents below today's
+# capabilities). ./workbench-read.yaml gave dev-agents/dev-env-workbench v1's OPERATOR-tier
+# READ rules; this is the WRITE half, copied rule for rule from v1's ClusterRole
+# dev-env-operator (apps/dev/dev-env/app/rbac.yaml, read only here) and from the two
+# namespaced Roles v1's ServiceAccount also holds (below). It is a copy, not a binding of
+# v1's role, so that deleting v1 at cutover moves nothing for v2 (same as ./agent.yaml).
+# It adds nothing beyond v1: every rule below is a rule v1's dev/dev-env has today.
+#
+# The coordinator's loop on a v2 session: restart or delete a wedged pod, exec into a
+# pod, query Prometheus through the apiserver proxy, rollout-restart a workload, force an
+# ExternalSecret refresh, flux reconcile/suspend/resume, run a one-off Job (volsync
+# unlock), suspend a CronJob. No Secrets, no RBAC/node/namespace/CRD write.
+#
+# THE GUARDS (parity checked on 2026-10-20, see the PR):
+#   - dev-env-workbench-admin-guard (./workbench-admin-guard.yaml) matches the workbench's
+#     UPDATE of deployments, statefulsets and daemonsets and holds it to the
+#     kubectl.kubernetes.io/restartedAt template annotation. That is `kubectl rollout
+#     restart`, which is all v1's patch is for, so it denies nothing v1 does by runbook;
+#     the workbench is held tighter than v1's unguarded patch. It stays unchanged.
+#   - dev-env-identity-guard, dev-env-agent-guard and the Kyverno dev-env-exec-guard either
+#     exempt the workbench (identity guard, exec guard) or match only dev-env-agent
+#     (agent guard). So for the workbench, exactly as for v1, nothing refuses a Job, a
+#     CronJob or Flux patch, a pod delete, or an exec into any pod.
+#
+# EXEC IS CLUSTER-WIDE, AS IN V1. pods/exec below is not limited to dev-agents. With the
+# guards above it reaches dev-env-system's pods too: the keeper (which holds the Claude
+# Max and Codex refresh-token families), the broker and the operator, and pods that run
+# as a privileged ServiceAccount (headlamp, cloudnative-pg, ...). v1's dev/dev-env can do
+# the same today (live: `kubectl auth can-i create pods --subresource=exec -n dev-env-system` is yes
+# for it). The rule is kept to exact v1 parity; narrowing it (for example excluding
+# dev-env-system by an exec guard for the workbench) is a separate decision.
+#
+# Likewise the Deployment patch is cluster-wide, so it also covers dev-env-system's other
+# Deployments beyond the three names ./workbench-admin.yaml lists, again as in v1 (the
+# restartedAt-only guard still holds).
+#
+# Nothing here touches a running pod; adding it restarts nothing. Named after the role:
+# a binding's roleRef cannot change in place (see ./agent.yaml).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-workbench-operator
+rules:
+  # Restart a wedged pod (delete and let the controller recreate it).
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]
+  # `kubectl exec` = create on pods/exec. Secrets stay withheld at the API, but exec into
+  # a pod that mounts one reads it (v1's accepted trade-off, 2026-08-06).
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+  # API-server proxy, for runbooks that query Prometheus through
+  # /api/v1/namespaces/<ns>/services/http:<svc>:<port>/proxy/... (v1, 2026-09-12).
+  - apiGroups: [""]
+    resources: [services/proxy, pods/proxy]
+    verbs: [get, create]
+  # `kubectl rollout restart` = patch of the restartedAt annotation (held to that by
+  # dev-env-workbench-admin-guard).
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [patch]
+  # ExternalSecret force-sync (annotate). Values stay unreadable.
+  - apiGroups: [external-secrets.io]
+    resources: [externalsecrets]
+    verbs: [patch]
+  # `flux reconcile` = annotating; suspend and resume = spec.suspend patch; sources too
+  # (--with-source).
+  - apiGroups: [kustomize.toolkit.fluxcd.io]
+    resources: [kustomizations]
+    verbs: [patch]
+  - apiGroups: [helm.toolkit.fluxcd.io]
+    resources: [helmreleases]
+    verbs: [patch]
+  - apiGroups: [source.toolkit.fluxcd.io]
+    resources: [gitrepositories, ocirepositories, helmrepositories, helmcharts, buckets]
+    verbs: [patch]
+  # Manual Jobs (volsync unlock and restore runbooks) and the CronJob suspend kill switch.
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, delete]
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    verbs: [patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-workbench-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-workbench-operator
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-workbench
+    namespace: dev-agents
+---
+# CNPG destroy and re-clone: PVC delete in `database` only, as v1 has it. The Role is the
+# database app's (apps/database/cloudnative-pg/app/dev-env-rbac.yaml); this binds the
+# workbench to it from here, the way ./agent.yaml binds dev-env-agent, so removing v1's
+# binding at cutover does not touch v2's.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-workbench-cnpg-remediation
+  namespace: database
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-cnpg-remediation
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-workbench
+    namespace: dev-agents
+---
+# Observability storage migration: PVC delete and create plus StatefulSet delete, in
+# `observability` only, as v1 has it (Role dev-env-observability-storage in
+# apps/observability/kube-prometheus-stack/app/dev-env-rbac.yaml, 2026-08-21). The
+# live v1 ServiceAccount holds this beside the CNPG grant, though the operator-tier
+# summary does not list it; exact parity includes it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-workbench-observability-storage
+  namespace: observability
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-observability-storage
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-workbench
+    namespace: dev-agents
