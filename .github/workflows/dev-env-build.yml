@@ -60,7 +60,7 @@ jobs:
           # v3 defaults to Sigstore bundles. The sign step explicitly selects
           # legacy .sig tags for Kyverno's Cosign verifier. Keep the patched v3
           # release; downgrading to v2.6.4 would reintroduce GHSA-fx35-mq7g-6g98.
-          cosign-release: v3.1.3
+          cosign-release: v3.1.4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
