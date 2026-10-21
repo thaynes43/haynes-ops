@@ -147,7 +147,7 @@ jobs:
         with:
           # The sign step selects v3's legacy .sig mode for Kyverno.
           # Keep in step with the other OCI image build workflows.
-          cosign-release: v3.1.3
+          cosign-release: v3.1.4
 
       - name: Sign the image (keyless)
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
