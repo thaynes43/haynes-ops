@@ -147,10 +147,19 @@ profiles:
     mounts:
       - { name: gh-token, secret: dev-env-gh-token, path: /creds }
       - { name: codex-access, secret: dev-env-codex-live, path: /opt/dev-env/codex-access, defaultMode: 0440 }
-  # Ceremony sessions (Story110 T24): run as dev-agents/dev-env-workbench (rbac/app/workbench.yaml),
-  # which holds pods get/list and pods/exec create in dev-agents and nothing else, so
-  # `agent-run login`, `pair` and `attach` work from a session without the v1 pod. Needs an
-  # operator that knows `serviceAccount` (an older one rejects the whole templates document).
+  # Ceremony sessions (Story110 T24): run as dev-agents/dev-env-workbench
+  # (rbac/app/workbench.yaml). That Role has pods get and pods/exec create in
+  # dev-agents, so `agent-run login`, `pair` and `attach` work without the v1 pod.
+  # Since haynes-ops #4141 the same account also holds v1's operator write tier
+  # (rbac/app/workbench-operator.yaml): pod delete, cluster-wide pods/exec,
+  # services/proxy and pods/proxy, patch on Deployments, StatefulSets and DaemonSets,
+  # ExternalSecret and Flux source/kustomization/HelmRelease patches, Job create and
+  # delete, CronJob patch, PVC delete in `database`, and PVC create/delete plus
+  # StatefulSet delete in `observability`. dev-env-workbench-admin-guard still allows
+  # only the kubectl.kubernetes.io/restartedAt template annotation, so this account
+  # cannot `rollout undo`, `pause` or `resume`, or `set image`, `set env` or
+  # `set resources`. Needs an operator that knows `serviceAccount` (an older one
+  # rejects the whole templates document).
   # Mounts: the keeper's login projections, the GitHub token and (NB-04b, G-4) the GCP
   # key `full` mounts; env is the two file pointers, the PVE-read and hw-ssh Secrets
   # (envFrom below), and, copied from `full` (NB-04b, G-3 and G-5), the Omni reader

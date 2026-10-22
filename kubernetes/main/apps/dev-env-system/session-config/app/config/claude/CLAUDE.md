@@ -352,7 +352,7 @@ carry it. Do not look for another path.
 
 | Tool | What you have |
 |---|---|
-| claude | Task and local sessions: the static token `CLAUDE_CODE_OAUTH_TOKEN`. It serves inference only and cannot register Remote Control. Remote sessions *(plan 03)* run on access tokens the keeper writes. The keeper alone refreshes the Max login: **never run `/login` or `claude auth login` in a session pod**, because a second refresher revokes the whole token family (2026-08-29). Tom renews the login on the console. |
+| claude | Task and local sessions: the static token `CLAUDE_CODE_OAUTH_TOKEN`. It serves inference only and cannot register Remote Control. Remote sessions *(plan 03)* run on access tokens the keeper writes. The keeper alone refreshes the Max login: **never run `/login` or `claude auth login` in a session pod**, because a second refresher revokes the whole token family (2026-08-29). Renew it from the standby with `agent-run keeper-login claude url` and `agent-run keeper-login claude code`. The keeper's Claude login lapses 2026-11-16 17:51Z; Pushover warns from about 2026-11-08. |
 | codex | *(plan 04)* The keeper writes an access-token-only `~/.codex/auth.json`. Never `codex login` here, for the same reason. |
 | gh, git push | The haynes-dev-bot token at `/creds/gh_token`, re-minted by the keeper every 40 minutes; each lasts 60. `gh` is agentd's wrapper (`~/.local/bin/gh`) and git's credential helper reads the file: both read it at every call. Do not export `GH_TOKEN`. Any other tool reads the file inline: `curl -H "Authorization: Bearer $(cat /creds/gh_token)" …`. Profile `ops` gets the haynes-ops-bot token instead: haynes-ops only, no workflows. |
 | kubectl, flux | *Kubernetes access* above. |
