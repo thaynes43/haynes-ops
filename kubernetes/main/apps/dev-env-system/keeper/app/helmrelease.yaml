@@ -50,13 +50,13 @@ spec:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
               # Keeper binary with the Claude login worker and adoption socket (dev-env#452, #455).
-              # Source 0c22cc0bac4f8e2151f4f27fa99a69b605b14784 (v2.39.0);
-              # publish.yml run 39466593953 signed/verified. Was v2.38.3 (8f7311c, run 39391960144), v2.38.2 (2875abe, run 39387698019), v2.38.1 (fdf2542, run 39382009894), v2.38.0 (702a57f, run 39374328506). 2.38.0 adds the keeper control status
+              # Source 617ed15fa850d8fff49a9d2c45fa11e4411cd077 (v2.39.1);
+              # publish.yml run 39706772225 signed/verified. 2.39.1 makes a bad notice flag disable notices instead of stopping the keeper (dev-env#505). Was v2.39.0 (0c22cc0, run 39466593953), v2.38.3 (8f7311c, run 39391960144), v2.38.2 (2875abe, run 39387698019), v2.38.1 (fdf2542, run 39382009894), v2.38.0 (702a57f, run 39374328506). 2.38.0 adds the keeper control status
               # expiry times and SIGHUP cancel that the keeper-login routes need (dev-env#475):
               # this container, claude-login and codex-login move together with the operator.
               # Previously source 585692bbe730b0c7d435496d304cffb2276a0d6f (v2.34.0), run 39302323514.
               # The broker pin is separate and unchanged.
-              tag: sha-0c22cc0@sha256:570a334d6c29e45b94e92c81e7928c1e5e27ebcfb724d4c63296f92a11679bcb
+              tag: sha-617ed15@sha256:888c2a0cd1057091cd2bbac7ac743933a4819e100c4570b6eb9b7579afddd34b
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:
@@ -128,8 +128,8 @@ spec:
           codex-login:
             image:
               repository: ghcr.io/thaynes43/dev-env-codex-login
-              # v2.39.0 (dev-env#495); publish.yml run 39466593953 signed/verified. Was v2.38.3 (dev-env#489), run 39391960144 signed/verified. Was v2.38.2 (dev-env#485), run 39387698019 signed/verified. Was v2.38.1 (dev-env#481, #483: Proxmox response shape, Codex log level), run 39382009894 signed/verified. Was v2.38.0 (dev-env#475).
-              tag: sha-0c22cc0@sha256:5d3335efa22448757da836b203beff8f4370d4d04d25ff05c6b55d222dfeabfe
+              # v2.39.1 (dev-env#505); publish.yml run 39706772225 signed/verified. Was v2.39.0 (dev-env#495), run 39466593953 signed/verified. Was v2.38.3 (dev-env#489), run 39391960144 signed/verified. Was v2.38.2 (dev-env#485), run 39387698019 signed/verified. Was v2.38.1 (dev-env#481, #483: Proxmox response shape, Codex log level), run 39382009894 signed/verified. Was v2.38.0 (dev-env#475).
+              tag: sha-617ed15@sha256:a19686db146fd79ef557a200028adfb9a35c229a378bacd58af78ec9e7ed802d
               pullPolicy: IfNotPresent
             # Clear the API service environment Kubernetes injects even when
             # enableServiceLinks is false; the native helper also uses a minimal env.
@@ -161,8 +161,8 @@ spec:
           claude-login:
             image:
               repository: ghcr.io/thaynes43/dev-env
-              # v2.39.0 (dev-env#495); publish-agent.yml run 39466623563 signed/verified. Was v2.38.3 (dev-env#489), run 39391981933 signed/verified. Was v2.38.2 (dev-env#485: per-pod login lock), run 39387720469 signed/verified. Was v2.38.1 (dev-env#483): agentd claude-login-abandon (the exec guard admits it, haynes-ops #4132); publish-agent.yml run 39382031869 signed/verified. Was v2.38.0 (dev-env#475).
-              tag: 2.39.0@sha256:ca8772401b48071df2bc5eaa01f362972215dea0c6f9d7d953dd8e5716d92618
+              # v2.39.1 (dev-env#505); publish-agent.yml run 39706793789 signed/verified. Was v2.39.0 (dev-env#495), run 39466623563 signed/verified. Was v2.38.3 (dev-env#489), run 39391981933 signed/verified. Was v2.38.2 (dev-env#485: per-pod login lock), run 39387720469 signed/verified. Was v2.38.1 (dev-env#483): agentd claude-login-abandon (the exec guard admits it, haynes-ops #4132); publish-agent.yml run 39382031869 signed/verified. Was v2.38.0 (dev-env#475).
+              tag: 2.39.1@sha256:0eb02674cd24e64a724f36fd6ff507c1279d295cc44d71effbec22af4d19b8fa
               pullPolicy: IfNotPresent
             args:
               - claude-login-idle
