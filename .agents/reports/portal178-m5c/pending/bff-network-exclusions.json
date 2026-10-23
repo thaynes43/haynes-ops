@@ -2,7 +2,22 @@
   "state": "proposal-unregistered",
   "namespace": "dev-agents",
   "podNameLabel": "dev-env-v2-portal",
-  "excludeFromClusterPolicies": ["dev-env-session-platform", "dev-env-session-web"],
+  "excludeFromClusterPolicies": [
+    "dev-env-session-platform",
+    "dev-env-session-web"
+  ],
   "operation": "append podNameLabel to existing app.kubernetes.io/name NotIn values; preserve every other selector/rule",
-  "gate": "review exact rendered policies and unchanged selection for every existing non-BFF pod before registration"
+  "gate": "review exact rendered policies and unchanged selection for every existing non-BFF pod before registration",
+  "requiredPodDNS": {
+    "dnsPolicy": "ClusterFirst",
+    "dnsConfig": {
+      "options": [
+        {
+          "name": "ndots",
+          "value": "1"
+        }
+      ]
+    }
+  },
+  "dnsGate": "rendered BFF must include requiredPodDNS; prove actual resolver/DNS policy with DB, IdP, API and denied arbitrary query tests before activation"
 }

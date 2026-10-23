@@ -73,7 +73,11 @@ BFF app-name to both existing NotIn sets; [dedicated policy](pending/bff-network
 then permits only named DNS, exact postgres16 pods:5432, API entity443/6443 and
 IdP FQDN443, with ingress only from network/name=traefik AND
 instance=traefik-internal-network to proposed backendTLS8443. Neither proposal
-is registered. No shared-agent behavior change or route activation is included.
+is registered. The pod DNS contract pins ClusterFirst/ndots=1; all allowed names
+are multi-label absolute candidates, avoiding ndots=5 search-suffix REFUSED
+queries. Do not widen DNS to arbitrary names. The eventual rendered BFF must
+include that option and actual resolver/IdP/DB/API tests must pass; a source
+contract is not resolution proof. No shared-agent behavior change or route activation is included.
 Fresh snapshot confirmed no existing pod has the BFF name; all119 non-BFF
 pod selectors remain unchanged across both proposed exclusions (238 comparisons).
 The14 namespaced CNP selectors do not select the proposed BFF. Actual Cilium

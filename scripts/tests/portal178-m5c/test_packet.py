@@ -110,21 +110,24 @@ class Packet(unittest.TestCase):
                 self.assertIs(r[flag], False)
             self.assertEqual(r["inRoles"], [])
         docs = list(yaml.safe_load_all((PACKET / "role-externalsecrets.yaml").read_text()))
+        self.assertEqual(len(docs), 1, "NOLOGIN migrator receives no password/Secret")
+        self.assertTrue(roles[1]["disablePassword"])
+        self.assertNotIn("passwordSecret", roles[1])
         docs.append(load("runtime-externalsecret.yaml"))
         for i, doc in enumerate(docs):
             spec = doc["spec"]
             self.assertEqual(set(spec), {"secretStoreRef", "refreshInterval", "target", "data"})
             self.assertEqual(spec["secretStoreRef"], {"kind": "ClusterSecretStore", "name": "onepassword-connect"})
             fields = ["DB_USERNAME", "DB_PASSWORD"]
-            if i == 2:
+            if i == 1:
                 fields += ["SESSION_AEAD_KEY", "SESSION_GENERATION"]
-            item = "dev-env-v2-portal-migration" if i == 1 else "dev-env-v2-portal-runtime"
+            item = "dev-env-v2-portal-runtime"
             self.assertEqual(spec["data"], [{"secretKey": f, "remoteRef": {"key": item, "property": f}} for f in fields])
             self.assertEqual(spec["target"]["deletionPolicy"], "Delete")
             self.assertEqual(spec["target"]["creationPolicy"], "Owner")
-            if i < 2:
+            if i == 0:
                 self.assertEqual(spec["target"]["template"]["metadata"]["labels"], {"cnpg.io/reload": "true"})
-            expected_keys = {"username", "password"} if i < 2 else set(fields)
+            expected_keys = {"username", "password"} if i == 0 else set(fields)
             self.assertEqual(set(spec["target"]["template"]["data"]), expected_keys)
 
     def test_database_ownership_and_hba_order(self):
@@ -244,6 +247,9 @@ class Packet(unittest.TestCase):
             {"dev-env.haynesops.com/project-canary": "synthetic"},
             {"app.kubernetes.io/name": "dev-env-owned-native-lifecycle"}]]
         self.assertEqual(network_exclusion_proof(policies, pods), 10)
+        proposal = load("bff-network-exclusions.json")
+        self.assertEqual(proposal["requiredPodDNS"], {"dnsPolicy": "ClusterFirst",
+            "dnsConfig": {"options": [{"name": "ndots", "value": "1"}]}})
         policy = load("bff-networkpolicy.yaml")["spec"]
         self.assertEqual(policy["endpointSelector"], {"matchLabels": {"app.kubernetes.io/name": "dev-env-v2-portal"}})
         self.assertEqual(policy["enableDefaultDeny"], {"ingress": True, "egress": True})

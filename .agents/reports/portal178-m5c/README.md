@@ -94,8 +94,9 @@ gates; no database-wide NetworkPolicy affecting consumers is proposed.
    bounded datacl/nspacl/relacl/default-ACL/role-setting evidence plus exact
    effective-rights booleans. Every check must be literallytrue. Verify no
    unexpected object/grantee, memberships, table grant option, CREATE/TEMP or
-   runtime owner; migratorNOLOGIN and both limits are mandatory. No session row,
-   password or auth catalog secret is read. Repeat actual SQL/HBA/TLS/hostname
+   runtime owner; migratorNOLOGIN, null password and both limits are mandatory.
+   Password-null is computed server-side as a boolean; no verifier/password
+   value or session row is returned. Repeat actual SQL/HBA/TLS/hostname
    positives/negatives before mounting runtime, preserving other consumers.
 
 Disclosure: existing agent `get pods/exec` into CNPG already permits broad peer
@@ -108,8 +109,12 @@ An actual denial stops that exact action with no alternate identity/access path.
 
 ## Secret, CA and rotation boundaries
 
-[Role projections](pending/role-externalsecrets.yaml) give CNPG basic-auth
-username/password only; both generated Secrets carry `cnpg.io/reload: "true"`.
+[Runtime DB projection](pending/role-externalsecrets.yaml) gives CNPG basic-auth
+username/password only, labeled `cnpg.io/reload: "true"`. The NOLOGIN migrator has
+`disablePassword: true`, no passwordSecret, ExternalSecret or mounted credential.
+The approved migration item/fields stay reserved for a future independently
+reviewed explicit LOGIN window, if one is ever needed; the peer SET ROLE route
+needs no migration password. Do not populate an unused migration credential.
 [Runtime projection](pending/runtime-externalsecret.yaml) has only the approved
 four runtime fields, no dataFrom, cross-item, migration or admin value. Existing
 unconditioned onepassword-connect ClusterSecretStore breadth predates this PR;
@@ -125,8 +130,8 @@ Owner population instructions are **withheld until reviewed consumers exist**:
 HaynesKube `dev-env-v2-portal-runtime`: top-level DB_USERNAME=
 `dev_env_v2_portal_runtime`, DB_PASSWORD, SESSION_AEAD_KEY (canonical base64 of32
 cryptographically random bytes), SESSION_GENERATION (32–128 characters, aligned
-with the external fence). `dev-env-v2-portal-migration`: DB_USERNAME=
-`dev_env_v2_portal_migrator`, DB_PASSWORD. Generate/save directly in supported
+with the external fence). No migration-item population step now: its approved
+DB_USERNAME/DB_PASSWORD contract is deferred with its unused consumer. Generate/save directly in supported
 secure UI; never chat/commands/logs/Git/errors/tracker. Rotate independent
 generation and AEAD key together; static generation is not a recovery fence.
 

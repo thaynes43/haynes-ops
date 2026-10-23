@@ -313,6 +313,7 @@ class Postgres(unittest.TestCase):
         with self.assertRaises(psycopg.OperationalError) as failure:
             connect(MIGRATOR)
         self.assertIn("is not permitted to log in", str(failure.exception))
+        self.admin.execute("ALTER ROLE dev_env_v2_portal_migrator PASSWORD NULL")
         # Remove only disposable future-object probes, then exercise the SAME
         # production readback query against exactly the two final tables.
         self.admin.execute("DROP TABLE portal.future_table")

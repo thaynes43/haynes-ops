@@ -1,6 +1,9 @@
 # UNREGISTERED proposal. Ineffective as an isolation boundary until the matching
 # exact BFF-only shared-tier exclusions are reviewed/applied. Additive policies
 # cannot subtract inherited public web/MCP/API permissions. No shared edits here.
+# REQUIRED pod DNS: ClusterFirst + dnsConfig.options ndots=1 (contract JSON).
+# Exact names stay narrow; never deploy this with the default ndots=5. Verify
+# actual DNS/resolver behavior in the runtime network tests before activation.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

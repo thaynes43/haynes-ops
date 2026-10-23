@@ -25,6 +25,7 @@ spec:
         ensure: present
         # Peer migration SET ROLE does not require LOGIN or a mounted password.
         login: false
+        disablePassword: true
         connectionLimit: 1
         inherit: false
         superuser: false
@@ -33,8 +34,6 @@ spec:
         replication: false
         bypassrls: false
         inRoles: []
-        passwordSecret:
-          name: dev-env-v2-portal-migration-db
   postgresql:
     pg_hba:
       # Actual current pod CIDRs are 10.42.0.0/24 through 10.42.8.0/24;

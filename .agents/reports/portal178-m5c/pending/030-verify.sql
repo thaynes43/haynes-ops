@@ -26,6 +26,8 @@ SELECT json_build_object('checks',json_build_object(
     OR rolreplication OR rolbypassrls OR rolinherit)) FROM roles)
     AND (SELECT rolcanlogin AND rolconnlimit=8 FROM roles WHERE rolname='dev_env_v2_portal_runtime')
     AND (SELECT NOT rolcanlogin AND rolconnlimit=1 FROM roles WHERE rolname='dev_env_v2_portal_migrator')
+    -- Server-side boolean only: never return/hash/print a password verifier.
+    AND (SELECT rolpassword IS NULL FROM pg_authid WHERE rolname='dev_env_v2_portal_migrator')
     AND NOT EXISTS(SELECT FROM pg_auth_members WHERE member IN (SELECT oid FROM roles)
       OR roleid IN (SELECT oid FROM roles)),
   'database_acl', (SELECT datdba='postgres'::regrole AND NOT EXISTS(
