@@ -20,7 +20,7 @@
 # and Renovate only moves forward, so it cannot land there. If a future pin
 # lacks a cp314/abi3 wheel, pip falls back to an sdist build and the image
 # build fails loudly — drop back to python:3.13-slim rather than add a compiler.
-FROM python:3.14-slim@sha256:0514bc76712d64f8bb48adcb95b1ab0d88c69fee95d62fe4c18ee948bee9b1e1 AS runtime
+FROM python:3.15-slim@sha256:044d5bd747976e21f8bc4d746c3479b19a84bb8ae6261b802acdd26b29036c93 AS runtime
 
 # renovate: datasource=github-releases depName=Comfy-Org/ComfyUI
 ARG COMFYUI_VERSION=v0.42.1
