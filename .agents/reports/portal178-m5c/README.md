@@ -3,18 +3,19 @@
 Canonical [Story178](https://work.haynesnetwork.com/work_packages/178), Epic120 /
 Saga85. One infrastructure implementer `haynes-ops-1023-202021`, no children.
 Root retains outcome custody and assigns independent native review; infrastructure
-corrections remain with this owner. PR528 UI and PR529 Go source are disjoint.
+corrections remain with this owner. PR528 UI and the PR529/PR531 Go source owners are disjoint.
 No V1, active-agent, shared-login, replication or backup changes.
 
 ## States and gates
 
-PR4246 corrected client head is `d4632c1ea145756a99a862dddd998b98649b71e1`.
-Both required aggregates and path-scoped guard PASS. Advisory review read and
-valid CI-scope finding fixed; final advisory reports no findings. Historical
-native `d82f6fbc` PASS-with-minors does not cover this corrected head. The fresh
-independent native recheck of exact `d4632c1e` is PASS-with-minors, zero blockers,
-Story178 journal1152; nonblocking dispositions are [recorded on PR4246](https://github.com/thaynes43/haynes-ops/pull/4246#issuecomment-6374498059).
-Root's selected authenticated preflight/readback coordination remains required.
+PR4246 corrected client head is `a5c129e649b7229c22fa32b69f8a380c92bb7d0a`.
+Both required aggregates and the isolated hash-locked rendered-content guard PASS.
+Advisory review reports no findings. Fresh independent native review of exacta5
+is PASS-with-minors, zero blockers, Story178 journal1184; N1–N5 were fixed together.
+Earlier d82/d463 reviews are historical and are not relabeled. Optional a5 items
+concern documented cross-blueprint semantics, filter breadth and historical
+reproducer labels; actual mounted content passed both CI and native checks.
+Root owns the fresh selected authenticated preflight and post-install readback.
 See [client release packet](../portal178-m5a/RELEASE.md). No installed-client,
 login or Gate A claim. Do not deliver Tom's OIDC-copy step before installation and
 exact selected metadata/binding/signer/JWKS readback succeed.
@@ -25,7 +26,8 @@ The approved boundary is database `dev_env_v2_portal`, schema `portal`, only
 `pending_logins` and `sessions`; runtime CONNECT/USAGE/SELECT/INSERT/DELETE.
 Migrator owns only the portal schema/tables. Its credentials never enter the BFF.
 Actual installation, privilege/TLS/HBA negatives and runtime Gate A are distinct
-acceptance states. The external recovery producer/adapter is unresolved.
+acceptance states. Astra's exact admission record and recovery producer are specified and separately
+approved; static RBAC/bootstrap/actual runtime and safety acceptance remain pending.
 
 ## Actual read-only infrastructure evidence
 
@@ -149,7 +151,7 @@ Tom/group edits. Pinned source analysis is not executed IdP integration.
 Backend native review also identified a revoked-token warning in Authentik
 `utils.py`; root owns tracing/redaction-canary proof before live UserInfo. A
 disposable installed-image harness and minimal three-call token-field removal
-proposal are being tested in this draft, with no shared image/logging rollout. No
+proposal passed the installed-image disposable harness, with no shared image/logging rollout. No
 blanket logging change is proposed here. Existing RS256/signer gates remain.
 
 See [recovery proposal](RECOVERY-PROPOSAL.md) for the unresolved primary-bound
@@ -187,13 +189,13 @@ nonexistent-token canary: denied401 but present in the deployed DEBUG log's
 access_token field. Root/Astra owns the resulting UserInfo release hold and
 narrow remediation review; no actual credential or directory mutation was used.
 
-Latest executable packet [run40022341761](https://github.com/thaynes43/haynes-ops/actions/runs/40022341761)
+Historical executable packet [run40022341761](https://github.com/thaynes43/haynes-ops/actions/runs/40022341761)
 PASS at `843313449389762d586b724b761c4db061425ed8`: **4 packet tests + 4 actual
 PostgreSQL groups, zero skips**. Includes executor isolation assertions and
 default-authority same-transaction incarnation reads with no added function grant.
-Later receipt/recovery documentation changes do not modify the tested SQL,
-manifests or test code. Candidate Jobs were parsed/guarded, not installed or
-executed as Kubernetes Jobs; actual admission/effective network policy remain
+That older receipt does not cover later peer-bootstrap/witness/canary additions.
+The remaining migration Job was parsed/guarded, not installed or
+executed as a Kubernetes Job; actual admission/effective network policy remain
 installation gates. Current database namespace has no NetworkPolicy/CiliumNetworkPolicy;
 cluster-wide/additive policy behavior must also be verified before claiming isolation.
 
@@ -224,3 +226,12 @@ verified absent locally before preparation. No actual RBAC/CM action occurred.
 API readback: Service10.43.0.1:443, current endpoints192.168.40.10/.59/.6/.79/.93:6443.
 Any future BFF policy selects only its own pods and must be checked against actual
 endpoint/Cilium semantics; no shared namespace policy or active agent is changed.
+
+Current executable packet [run40025572973](https://github.com/thaynes43/haynes-ops/actions/runs/40025572973)
+PASS at `c3fbe2ab7d0f69e9e38635e3946ee33d2f2880bf`: **5 packet tests + 5 actual
+PostgreSQL groups + 12 installed-image canary cases**, zero skips. Includes exact
+witness scopes/CLOSED template, migration-only credential/CA guards, SQLSTATE
+precondition refusals, actual SQL/TLS/HBA negatives, default-authority same-SQL-
+connection incarnation reads, and baseline-versus-minimal-patch logging proof.
+The source remains unregistered. Native config acceptance and actual provisioning
+are distinct; no runtime/route or usable portal is claimed.

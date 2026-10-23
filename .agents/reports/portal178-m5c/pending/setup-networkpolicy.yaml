@@ -1,4 +1,4 @@
-# UNREGISTERED. Select only the two isolated setup jobs, never namespace-wide.
+# UNREGISTERED. Select only isolated portal migration pods, never namespace-wide.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
