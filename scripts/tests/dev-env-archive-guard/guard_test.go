@@ -210,7 +210,8 @@ func (h *harness) evaluate(t *testing.T, f fixture) (bool, *compiler.EvaluationR
 	if !matched {
 		return true, nil
 	}
-	result, err := h.policy.Evaluate(context.Background(), nil, attr, &req, namespaceObject, h.mock)
+	// A nil request-map callback uses Kyverno's own builder for this synthetic request.
+	result, err := h.policy.Evaluate(context.Background(), nil, attr, &req, namespaceObject, nil, h.mock)
 	if err != nil {
 		return false, &compiler.EvaluationResult{Error: err}
 	}
