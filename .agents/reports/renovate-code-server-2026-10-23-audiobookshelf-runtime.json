@@ -1,0 +1,35 @@
+{
+  "observedAt": "2026-10-23T20:44:43.859219+00:00",
+  "pods": [
+    {
+      "name": "audiobookshelf-6d7f696845-cf2mv",
+      "uid": "75c6d669-8990-4079-909b-8f75225ab71a",
+      "ready": true,
+      "containers": [
+        {
+          "name": "app",
+          "image": "ghcr.io/advplyr/audiobookshelf:2.37.2",
+          "imageID": "ghcr.io/advplyr/audiobookshelf@sha256:b897c33f05972fb1bf484f7487bc878fa91ec8691335c1db6e2929c3a7658efa",
+          "restartCount": 0
+        }
+      ]
+    }
+  ],
+  "pvcUID": "28bed580-0cbb-46f7-a34e-ad4b6a71fdd8",
+  "pvcPhase": "Bound",
+  "boundedLogLines": 36,
+  "startupMarkerCounts": {
+    "No migrations to run": 1,
+    "SQLITE_ERROR": 0,
+    "SQLITE_CORRUPT": 0,
+    "SQLITE_BUSY": 0,
+    "database is locked": 0,
+    "Migration failed": 0,
+    "EACCES": 0,
+    "EPERM": 0
+  },
+  "rawLibraryLogNotPublished": true,
+  "appVersion": "2.37.2",
+  "nodeVersion": "24.22.1",
+  "localHealthcheckHTTP": 200
+}
