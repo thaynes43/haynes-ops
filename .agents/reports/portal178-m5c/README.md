@@ -162,3 +162,16 @@ default grants on future objects and PUBLIC CONNECT other-DB containment.
 No arbitrary connection error counts as a negative PASS. Hosted execution is
 separate evidence; actual production HBA/CA/controller/privilege tests still need
 reviewed provisioning. No local PostgreSQL server/container runtime is available.
+
+Hosted [run40021185964](https://github.com/thaynes43/haynes-ops/actions/runs/40021185964)
+PASS at exact packet head `e30862a49e6a90b0e08add8240e2d97de6e272b8`: all three
+packet tests and all three actual PostgreSQL test groups, zero skips. The initial
+run40021038841 failed before SQL setup because a fixture client address carried a
+CIDR suffix; `host(inet_client_addr())` corrected the harness. That failure was
+not counted as negative security evidence. This is disposable SQL/HBA proof, not
+actual CNPG provisioning or recovery-fence/IdP/proxy acceptance.
+
+[Logging evidence](LOGGING-EVIDENCE.md) now includes one safe live synthetic
+nonexistent-token canary: denied401 but present in the deployed DEBUG log's
+access_token field. Root/Astra owns the resulting UserInfo release hold and
+narrow remediation review; no actual credential or directory mutation was used.
