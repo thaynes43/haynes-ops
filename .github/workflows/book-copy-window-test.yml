@@ -18,13 +18,17 @@ concurrency:
 jobs:
   finite:
     name: COPY window source - Success
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Use the Python version bound by the fixture dependency hashes
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
       - name: Install exact binary-only YAML fixture dependency
         run: |
           python3 -c 'import sys; assert sys.version_info[:2] == (3, 12)'
