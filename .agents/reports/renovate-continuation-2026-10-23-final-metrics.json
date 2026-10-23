@@ -1,0 +1,68 @@
+{
+  "checkedAt": "2026-10-23T19:42:37Z",
+  "gatusFiveMinute": [
+    {
+      "metric": {},
+      "value": [
+        1792784557.751,
+        "61"
+      ]
+    }
+  ],
+  "gatusEndpointCount": [
+    {
+      "metric": {},
+      "value": [
+        1792784557.804,
+        "61"
+      ]
+    }
+  ],
+  "ceph": [
+    {
+      "metric": {
+        "__name__": "ceph_health_status",
+        "cluster": "rook-ceph",
+        "container": "mgr",
+        "endpoint": "http-metrics",
+        "instance": "192.168.40.93:9283",
+        "job": "rook-ceph-mgr",
+        "namespace": "rook-ceph",
+        "pod": "rook-ceph-mgr-b-658b76bf64-xbsbq",
+        "service": "rook-ceph-mgr"
+      },
+      "value": [
+        1792784557.835,
+        "0"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "ceph_health_status",
+        "collector": "ceph-mgr",
+        "instance": "external-ceph-mgr",
+        "job": "external-ceph-mgr",
+        "storage_cluster": "external-pve-ceph"
+      },
+      "value": [
+        1792784557.835,
+        "0"
+      ]
+    }
+  ],
+  "HA": {
+    "counts": {
+      "mqtt_total": 6590,
+      "mqtt_unavailable": 12,
+      "states": 10610,
+      "unavailable": 811,
+      "unknown": 2416,
+      "zwave_total": 583,
+      "zwave_unavailable": 0
+    },
+    "version": "2026.10.3",
+    "configValid": true,
+    "recorderSQLite": "3.53.4",
+    "haMcpUIDUnchanged": "284e5610-d192-4636-a391-4f733d82a440"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "checkedAt": "2026-10-23T19:26:05.928374+00:00",
+  "imageIndex": "sha256:0c734d13fbd65808066fb4d08414b37e4fa0228e48933a05a70b584e9f56ca5b",
+  "GHInstallLayer": "sha256:7dade7d5418dd62d22bdbdb0637b885ddd3d87716ba2dcd2ed8194f063a83047",
+  "layerBytes": 15008157,
+  "binarySHA256": "fb90b33d21942f354b70577f29d97aca4738c6bf1868c1e4097837493cd64cb0",
+  "offlineVersion": "gh version 2.103.1 (2026-10-23)",
+  "noClusterJobLaunched": true,
+  "noCredentialEnvironmentPassed": true
+}
