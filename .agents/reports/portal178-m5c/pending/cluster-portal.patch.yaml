@@ -1,0 +1,52 @@
+# UNREGISTERED proposal. Append only these role/HBA entries after fresh ownership
+# and actual generated-HBA checks. Do not replace existing roles or user rules.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres16
+  namespace: database
+spec:
+  managed:
+    roles:
+      - name: dev_env_v2_portal_runtime
+        ensure: present
+        login: true
+        connectionLimit: 8
+        inherit: false
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        bypassrls: false
+        inRoles: []
+        passwordSecret:
+          name: dev-env-v2-portal-runtime-db
+      - name: dev_env_v2_portal_migrator
+        ensure: present
+        # Peer migration SET ROLE does not require LOGIN or a mounted password.
+        login: false
+        disablePassword: true
+        connectionLimit: 1
+        inherit: false
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        bypassrls: false
+        inRoles: []
+  postgresql:
+    pg_hba:
+      # Actual current pod CIDRs are 10.42.0.0/24 through 10.42.8.0/24;
+      # the cluster pod range is the candidate bound, not a BFF identity proof.
+      # Narrow workload NetworkPolicy/placement still needs runtime review.
+      - host replication dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
+      - host replication dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
+      - hostnossl all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
+      - hostnossl all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
+      - hostssl dev_env_v2_portal dev_env_v2_portal_runtime 10.42.0.0/16 scram-sha-256
+      - hostssl dev_env_v2_portal dev_env_v2_portal_migrator 10.42.0.0/16 scram-sha-256
+      - host all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
+      - host all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
+# CNPG fixed local peer rules precede user rules. Its live map contains only
+# postgres->postgres; neither portal role maps. A later local reject is shadowed
+# and is deliberately not represented as protection here. Test the actual map.

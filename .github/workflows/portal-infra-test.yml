@@ -1,0 +1,107 @@
+name: Portal infrastructure packet
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .agents/reports/portal178-m5c/pending/**
+      - scripts/tests/portal178-m5c/**
+      - .github/workflows/portal-infra-test.yml
+  push:
+    branches: [main, 'agent/**']
+    paths:
+      - .agents/reports/portal178-m5c/pending/**
+      - scripts/tests/portal178-m5c/**
+      - .github/workflows/portal-infra-test.yml
+permissions:
+  contents: read
+concurrency:
+  group: portal-infra-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  postgres:
+    name: Portal infrastructure SQL and HBA
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+        env:
+          POSTGRES_PASSWORD: synthetic-ci-admin-only
+          POSTGRES_DB: dev_env_v2_portal
+        ports: ['5432:5432']
+        options: >-
+          --cpus 2 --memory 512m
+          --health-cmd "pg_isready -U postgres -d dev_env_v2_portal"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install isolated hash-locked fixture dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/portal-fixture-venv"
+          "$RUNNER_TEMP/portal-fixture-venv/bin/python" -I -m pip install \
+            --only-binary=:all: --require-hashes --disable-pip-version-check \
+            -r scripts/tests/portal178-m5c/requirements.lock
+      - name: Verify immutable CNPG structural schemas
+        run: |
+          mkdir "$RUNNER_TEMP/portal-cnpg-crds"
+          for resource in clusters databases; do
+            curl --fail --silent --show-error --location \
+              "https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/2a35abb4628f209d149825ef3c38011e0701ff2f/config/crd/bases/postgresql.cnpg.io_${resource}.yaml" \
+              -o "$RUNNER_TEMP/portal-cnpg-crds/postgresql.cnpg.io_${resource}.yaml"
+          done
+          (cd "$RUNNER_TEMP/portal-cnpg-crds" && sha256sum --check "$GITHUB_WORKSPACE/scripts/tests/portal178-m5c/cnpg-crd.sha256")
+      - name: Disposable TLS fixture
+        env:
+          PORTAL_TEST_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          umask 077
+          mkdir "$RUNNER_TEMP/portal-infra-tls"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj /CN=postgres16-rw.database.svc.cluster.local \
+            -addext subjectAltName=DNS:postgres16-rw.database.svc.cluster.local \
+            -keyout "$RUNNER_TEMP/portal-infra-tls/server.key" \
+            -out "$RUNNER_TEMP/portal-infra-tls/server.crt" >/dev/null 2>&1
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj /CN=synthetic-wrong-ca \
+            -keyout "$RUNNER_TEMP/portal-infra-tls/wrong-ca.key" \
+            -out "$RUNNER_TEMP/portal-infra-tls/wrong-ca.crt" >/dev/null 2>&1
+          docker cp "$RUNNER_TEMP/portal-infra-tls" "$PORTAL_TEST_CONTAINER:/tmp/portal-tls"
+          docker exec -u root "$PORTAL_TEST_CONTAINER" sh -eu -c '
+            cp /tmp/portal-tls/server.crt "$PGDATA/server.crt"
+            cp /tmp/portal-tls/server.key "$PGDATA/server.key"
+            chown postgres:postgres "$PGDATA/server.crt" "$PGDATA/server.key"
+            chmod 600 "$PGDATA/server.key"
+            printf "\nssl = on\n" >> "$PGDATA/postgresql.conf"
+          '
+          docker exec "$PORTAL_TEST_CONTAINER" psql -U postgres -d dev_env_v2_portal -qAtc 'SELECT pg_reload_conf()' >/dev/null
+      - name: Serial packet and actual PostgreSQL negatives
+        env:
+          PORTAL_TEST_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          export PORTAL_TEST_TLS="$RUNNER_TEMP/portal-infra-tls"
+          nice -n 19 "$RUNNER_TEMP/portal-fixture-venv/bin/python" -I -B scripts/tests/portal178-m5c/test_packet.py -v \
+            --cluster-crd "$RUNNER_TEMP/portal-cnpg-crds/postgresql.cnpg.io_clusters.yaml" \
+            --database-crd "$RUNNER_TEMP/portal-cnpg-crds/postgresql.cnpg.io_databases.yaml"
+          nice -n 19 "$RUNNER_TEMP/portal-fixture-venv/bin/python" -I -B scripts/tests/portal178-m5c/test_postgres.py
+          git diff --exit-code
+      - name: Disposable installed-image UserInfo canary and minimal patch proposal
+        run: |
+          docker pull ghcr.io/goauthentik/server@sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5
+          docker run --rm --network none --cpus 2 --memory 2g \
+            --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /dev/shm:rw,nosuid,nodev,noexec,size=128m \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m \
+            --user 1000:1000 --entrypoint /ak-root/.venv/bin/python \
+            -e DJANGO_SETTINGS_MODULE=authentik.root.settings \
+            -e AUTHENTIK_SECRET_KEY=synthetic-disposable-image-only \
+            -e AUTHENTIK_LOG_LEVEL=debug \
+            -e AUTHENTIK_ERROR_REPORTING__ENABLED=false \
+            -e AUTHENTIK_POSTGRESQL__HOST=127.0.0.1 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/scripts/tests/portal178-m5c/authentik,target=/packet,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/.agents/reports/portal178-m5c/pending,target=/proposal,readonly" \
+            ghcr.io/goauthentik/server@sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5 \
+            -I -B /packet/test_canary.py
+      - name: Remove disposable private fixture material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/portal-infra-tls"
