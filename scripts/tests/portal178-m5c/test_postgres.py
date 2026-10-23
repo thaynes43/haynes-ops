@@ -60,7 +60,7 @@ class Postgres(unittest.TestCase):
                 if "server does not support SSL" not in str(exc) or time.monotonic() >= deadline:
                     raise
                 time.sleep(0.1)
-        cls.source = cls.admin.execute("SELECT inet_client_addr()::text").fetchone()[0]
+        cls.source = cls.admin.execute("SELECT host(inet_client_addr())").fetchone()[0]
         cls.fixture_cidr = str(ipaddress.ip_network(cls.source + "/32"))
         for role in (RUNTIME, MIGRATOR):
             cls.admin.execute(sql.SQL("CREATE ROLE {} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB "
