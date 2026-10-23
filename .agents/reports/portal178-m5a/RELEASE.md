@@ -144,6 +144,15 @@ content. These checks do **not** resolve live directory objects, run an Authenti
 import, or constitute identity integration. Required repo CI and actual native
 security review of the final head remain separate gates.
 
+CI uses an isolated venv, complete hash-locked dependencies, Python `-I -B`, and
+checksum-pinned Kustomize5.8.3 with `--rendered`. The required aggregate includes
+the filter itself, requires that filter to succeed and rejects cancellations.
+The guard's semantic scope is blueprint97 and its pending projection; it compares
+the mounted97 bytes against source. Other blueprints targeting the same portal
+objects remain outside its semantic analysis, so full ConfigMap diff review and
+live exact-object/binding readback are still mandatory. A local or CI PASS is not
+proof of absence of cross-blueprint or Admin-UI drift.
+
 ## Secret delivery: only after the reviewed provider exists
 
 These are instructions for **Tom**, to deliver after provider installation and
@@ -252,6 +261,10 @@ Gate A transition. Do not remove a positive binding as an access shortcut.
 - [ ] Merge ready PR within authorized scope. Observe Flux `network/authentik`
   and successful blueprint status/hash; verify only selected provider/application
   identifiers, exact callback/grants, scope names, empty federation inputs,
+  client_type=confidential, access_code_validity=minutes=1,
+  access_token_validity=minutes=5, include_claims_in_id_token=true,
+  authentication_flow=null, encryption_key=null, logout_uri empty and
+  logout_method=backchannel (the pinned model default),
   subject/issuer, non-null expected RSA signer and matching JWKS RS256,
   hidden application, **exact** order 0/10/20 binding set (enabled=true,
   negate=false, failure_result=false) and false deny expression. Blueprint
@@ -259,6 +272,9 @@ Gate A transition. Do not remove a positive binding as an access shortcut.
   missing/disabled/extra bindings or null/wrong signer block release and require
   an explicit alert/handoff. Verify no shared
   flow/outpost/application changes or session/V1 restarts.
+  Use the exact HTTPS host `authentik.haynesnetwork.com` for discovery, tokens and
+  UserInfo: Authentik derives issuer from the request host. In-cluster HTTP is
+  not an issuer-equivalent shortcut and must fail the BFF's exact issuer pin.
 - [ ] Tom completes direct UI-to-1Password copy only after reviewed provider exists.
   Review actual consumer before projecting/mounting the isolated two-field Secret.
 - [ ] Reviewed runtime entrypoint/image, shared store, dedicated backend projection

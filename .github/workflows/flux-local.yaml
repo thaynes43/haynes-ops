@@ -165,19 +165,37 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install pinned guard dependencies
-        run: python3 -m pip install PyYAML==6.0.3 jsonschema==4.25.1
+      - name: Install isolated hash-locked guard dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/portal-guard-venv"
+          "$RUNNER_TEMP/portal-guard-venv/bin/python" -I -m pip install \
+            --only-binary=:all: --require-hashes --disable-pip-version-check \
+            -r scripts/tests/portal178-m5a/requirements.lock
+      - name: Install checksum-pinned Kustomize
+        run: |
+          mkdir "$RUNNER_TEMP/portal-kustomize"
+          cd "$RUNNER_TEMP/portal-kustomize"
+          curl --fail --silent --show-error --location \
+            https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.3/kustomize_v5.8.3_linux_amd64.tar.gz \
+            --output kustomize_v5.8.3_linux_amd64.tar.gz
+          sha256sum --check "$GITHUB_WORKSPACE/scripts/tests/portal178-m5a/kustomize.sha256"
+          tar -xzf kustomize_v5.8.3_linux_amd64.tar.gz
       - name: Check staged-deny configuration and unsafe mutations
         run: |
           curl --fail --silent --show-error --location \
             https://raw.githubusercontent.com/goauthentik/authentik/4ec0d19b98da3c329781894cd550da95d3033954/blueprints/schema.json \
             --output "$RUNNER_TEMP/authentik-schema.json"
-          nice -n 19 python3 -B scripts/tests/portal178-m5a/validate.py \
-            --schema "$RUNNER_TEMP/authentik-schema.json"
+          nice -n 19 "$RUNNER_TEMP/portal-kustomize/kustomize" build \
+            kubernetes/main/apps/network/authentik/app > "$RUNNER_TEMP/authentik-rendered.yaml"
+          nice -n 19 "$RUNNER_TEMP/portal-guard-venv/bin/python" -I -B \
+            scripts/tests/portal178-m5a/validate.py \
+            --schema "$RUNNER_TEMP/authentik-schema.json" \
+            --rendered "$RUNNER_TEMP/authentik-rendered.yaml"
 
   success:
-    if: ${{ !cancelled() }}
+    if: ${{ always() }}
     needs:
+      - filter
       - test
       - diff
       - annotation-guard
@@ -185,10 +203,10 @@ jobs:
     name: Flux Local - Success
     runs-on: ubuntu-latest
     steps:
-      - name: Any jobs failed?
-        if: ${{ contains(needs.*.result, 'failure') }}
+      - name: Filter not successful, or any jobs failed or cancelled?
+        if: ${{ needs.filter.result != 'success' || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
         run: exit 1
 
       - name: All jobs passed or skipped?
-        if: ${{ !(contains(needs.*.result, 'failure')) }}
+        if: ${{ needs.filter.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
         run: echo "All jobs passed or skipped" && echo "${{ toJSON(needs.*.result) }}"

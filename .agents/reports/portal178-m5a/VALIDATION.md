@@ -26,7 +26,7 @@ Actual live read-only checks:
   helper/selected root readback. Root supplied zero provider/application at
   18:54:53 UTC; no independent live identity integration claim.
 
-## Offline validation performed
+## Historical M5A offline validation (d82f6fbc; 13 mutations)
 
 Python 3.11.2, PyYAML 6.0.3, jsonschema 4.25.1, Kustomize 5.8.3.
 One suite at a time; no stress, parallel load or wide test loop.
@@ -41,7 +41,7 @@ kustomize build kubernetes/main/apps/network/authentik/app \
 git diff --check
 ```
 
-PASS: pinned actual blueprint schema; parsed/tagged configuration constraints;
+Historical PASS at d82f6fbc: pinned actual blueprint schema; parsed/tagged configuration constraints;
 **13 rejected unsafe mutations** (any-policy, public client, refresh grant, email
 scope, regex callback, username subject, source secret, absent user/group,
 disabled binding, permissive deny expression, broad secret item, dataFrom).
@@ -113,3 +113,14 @@ Local serial `nice -n 19` pinned guard and Kustomize mounted-content validation
 PASS with 34 intentional rejections. Required corrected-head CI/native review,
 fresh authenticated reference preflight, actual import/signer/JWKS readback remain
 pending. No client installation/login/runtime acceptance claimed.
+
+### Native recheck follow-up N-1 to N-5
+
+Current guard count remains **34**, distinct from the historical 13 above.
+CI now installs all direct/transitive dependencies with hashes in an isolated
+venv and runs Python `-I -B`. A checksum-pinned Kustomize5.8.3 build is passed
+through `--rendered`. The aggregate requires successful filter execution and
+fails on any dependency failure/cancellation; legitimate no-change skips remain
+allowed. Full selected readback includes provider type/lifetimes/claims and
+safe omitted-attribute defaults. Exact final-head CI and fresh native delta
+review remain required; no installation or runtime claim follows from this edit.
