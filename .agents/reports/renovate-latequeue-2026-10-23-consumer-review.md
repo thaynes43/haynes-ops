@@ -27,7 +27,7 @@ Independently read the public Actions run/job APIs for both automatic main push 
 - [Dev-env run 40024697901](https://github.com/thaynes43/haynes-ops/actions/runs/40024697901): completed success, including image build, own runtime-user smoke, publication, and signing steps.
 - [Shepherd run 40024697879](https://github.com/thaynes43/haynes-ops/actions/runs/40024697879): completed success, including build/publication/signing. Its new PR-only validation job was skipped on main as designed; it has no separate own-image main smoke. This does not establish acceptance of Story 180’s remaining work.
 
-Compared all consumer targets with the driver-provided [publication proof](/tmp/renovate-183-image-publication.json), observed 2026-10-23T21:15:28.318611+00:00. It records anonymous manifest/config byte/header checks and GH_VERSION=2.103.2 in build history; both image manifests are Linux amd64. No independent cryptographic image signature or provenance verification is claimed by this reviewer; successful signing steps are workflow evidence.
+Compared all consumer targets with the driver-provided [publication proof](renovate-latequeue-2026-10-23-image-publication.json), observed 2026-10-23T21:15:28.318611+00:00. It records anonymous manifest/config byte/header checks and GH_VERSION=2.103.2 in build history; both image manifests are Linux amd64. No independent cryptographic image signature or provenance verification is claimed by this reviewer; successful signing steps are workflow evidence.
 
 ## Immutable target and rollback pairs
 
