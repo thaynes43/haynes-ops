@@ -15,7 +15,8 @@ shared flow/outpost/application or shared Traefik edits.
 
 Actual live read-only checks:
 
-- Own AgentSession UID `d3ec8bf6-20d6-4697-adb9-3905896805ef`, profile full.
+- Original owner's session identity privately verified, profile full; raw
+  AgentSession UID omitted from this public receipt.
 - Authentik server/worker 2026.8.5, three ready replicas each.
 - Zero portal ExternalSecrets; onepassword-connect Ready=True, vault HaynesKube.
 - Public schema read from existing worker with
@@ -87,3 +88,28 @@ Runtime component integration, production shared store, metadata projection,
 human/resource authorization, token/MFA/logout/live membership behavior, backend
 trust/isolation, route deployment and **all Gate A runtime evidence** remain
 unfulfilled. Public ASVS5 L2 is separate and unfulfilled.
+
+## M5C successor correction receipt
+
+Public PR4246 frozen `d82f6fbc2c12eb8ca7b4c8e4922982644b88c62e` was open at
+pickup. Successor `haynes-ops-1023-202021` freshly fetched public main/PR source
+and merged it on the managed local branch. No original private home/history read.
+Story178 journal1095 supplies the native PASS-with-minors/zero-blocker review of
+that historical head; a fresh native recheck of the corrected head is required.
+
+F1: exact blueprint metadata, provider/application attrs, projection metadata and
+refresh/target allowlists; **34** unsafe mutations each assert their explicit
+`SecurityViolation` reason. `KeyError` and arbitrary schema/programming failures
+are not counted. Guard is included in required `Flux Local - Success` dependency.
+F2: both JWT federation lists explicitly empty (supported by pinned actual schema).
+F3: nullable-signer/HS256 downgrade documented; selected non-null expected RSA
+signer and matching JWKS RS256 readback plus BFF RS256-only pin are release gates.
+F4/F5: effective-policy-user MIRROR/COPY caveats, exact-sub pin, disabled/deleted
+conjunct widening, zero-binding default access, blueprint error alert/readback,
+exact three enabled bindings and explicit deny `state: absent` activation recorded.
+N-2: public session UID removed; fingerprint preimage specified precisely.
+
+Local serial `nice -n 19` pinned guard and Kustomize mounted-content validation
+PASS with 34 intentional rejections. Required corrected-head CI/native review,
+fresh authenticated reference preflight, actual import/signer/JWKS readback remain
+pending. No client installation/login/runtime acceptance claimed.

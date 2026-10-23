@@ -146,12 +146,30 @@ jobs:
           fi
           echo "no alpha-prefixed external-dns annotations under kubernetes/"
 
+  portal-identity-guard:
+    name: Flux Local - Portal OIDC guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned guard dependencies
+        run: python3 -m pip install PyYAML==6.0.3 jsonschema==4.25.1
+      - name: Check staged-deny configuration and unsafe mutations
+        run: |
+          curl --fail --silent --show-error --location \
+            https://raw.githubusercontent.com/goauthentik/authentik/4ec0d19b98da3c329781894cd550da95d3033954/blueprints/schema.json \
+            --output "$RUNNER_TEMP/authentik-schema.json"
+          nice -n 19 python3 -B scripts/tests/portal178-m5a/validate.py \
+            --schema "$RUNNER_TEMP/authentik-schema.json"
+
   success:
     if: ${{ !cancelled() }}
     needs:
       - test
       - diff
       - annotation-guard
+      - portal-identity-guard
     name: Flux Local - Success
     runs-on: ubuntu-latest
     steps:

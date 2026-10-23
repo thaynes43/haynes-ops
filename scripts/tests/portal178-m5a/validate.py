@@ -34,13 +34,17 @@ class Ref:
     value: object
 
 
+class SecurityViolation(ValueError):
+    """An intentional guard rejection, distinct from parser/programming errors."""
+
+
 class Loader(yaml.SafeLoader):
     pass
 
 
 def require(condition, message):
     if not condition:
-        raise ValueError(message)
+        raise SecurityViolation(message)
 
 
 def mapping(loader, node, deep=False):
@@ -90,16 +94,23 @@ def materialize(value, ids):
 
 
 def validate(blueprint, projection, schema):
+    require(set(blueprint) == {"version", "metadata", "context", "entries"},
+            "blueprint fields changed")
+    require(blueprint["version"] == 1 and blueprint["context"] == {}, "blueprint version/context changed")
+    require(blueprint["metadata"] == {
+        "name": "dev-env-v2-portal-oidc",
+        "labels": {"blueprints.goauthentik.io/description":
+            "Story178 internal portal OIDC foundation: confidential code/openid/profile, Tom AND Admins; staged deny until reviewed runtime activation."}},
+        "blueprint metadata changed")
     entries = blueprint["entries"]
     require(len(entries) == 6, "expected provider/application/deny and three bindings")
     ids = {e["id"]: e["model"] for e in entries if "id" in e}
     require(len(ids) == 3, "duplicate or missing entry ID")
-    normalized = materialize(blueprint, ids)
-    jsonschema.Draft7Validator(schema, format_checker=jsonschema.FormatChecker()).validate(normalized)
-    for e in entries:
+    for index, e in enumerate(entries):
         require(e.get("state") == "present" and not e.get("conditions") and not e.get("permissions"),
                 "entries must reconcile unconditionally without permissions")
-        require(set(e) <= {"model", "id", "state", "identifiers", "attrs"}, "unknown entry field")
+        require(set(e) == ({"model", "id", "state", "identifiers", "attrs"} if index < 3
+                          else {"model", "state", "identifiers", "attrs"}), "entry fields changed")
         allowed = schema["definitions"]["model_" + e["model"]]["properties"]
         require(set(e["attrs"]) <= set(allowed) and set(e["identifiers"]) <= set(allowed),
                 "unknown model attribute")
@@ -114,9 +125,17 @@ def validate(blueprint, projection, schema):
             provider["identifiers"] == {"name": "dev-env-v2-portal-internal"},
             "provider identity changed")
     p = provider["attrs"]
+    require(set(p) == {"client_type", "client_id", "grant_types", "jwt_federation_providers",
+            "jwt_federation_sources", "authorization_flow", "invalidation_flow", "redirect_uris",
+            "property_mappings", "signing_key", "sub_mode", "issuer_mode", "include_claims_in_id_token",
+            "access_code_validity", "access_token_validity"}, "provider attribute allowlist changed")
     require(p["client_type"] == "confidential" and p["client_id"] == "dev-env-v2-portal-internal",
             "confidential approved client required")
     require(p["grant_types"] == ["authorization_code"], "code grant only")
+    require(p["jwt_federation_providers"] == [] and p["jwt_federation_sources"] == [],
+            "JWT federation must remain empty")
+    require(p["include_claims_in_id_token"] is True and p["access_code_validity"] == "minutes=1" and
+            p["access_token_validity"] == "minutes=5", "claims/token lifetimes changed")
     require(p["redirect_uris"] == [{"matching_mode": "strict",
             "url": "https://dev-env-v2.haynesops.com/auth/callback",
             "redirect_uri_type": "authorization"}], "exact callback required")
@@ -133,6 +152,11 @@ def validate(blueprint, projection, schema):
             application["identifiers"] == {"slug": "dev-env-v2-portal"},
             "application identity changed")
     a = application["attrs"]
+    require(set(a) == {"name", "provider", "policy_engine_mode", "meta_hide", "meta_description"},
+            "application attribute allowlist changed")
+    require(a["name"] == "Dev Env V2 Portal (internal)" and
+            a["meta_description"] == "Internal read-only portal; runtime activation pending Gate A.",
+            "application metadata changed")
     require(a["provider"] == Ref("KeyOf", "portal-provider") and
             a["policy_engine_mode"] == "all" and a["meta_hide"] is True and
             "meta_launch_url" not in a and not a.get("backchannel_providers"),
@@ -145,11 +169,15 @@ def validate(blueprint, projection, schema):
                 b["attrs"] == {**subject, "enabled": True, "negate": False, "failure_result": False},
                 "deny AND exact active Tom AND existing Admins bindings required")
 
+    require(set(projection) == {"apiVersion", "kind", "metadata", "spec"}, "projection fields changed")
+    require(projection["metadata"] == {"name": "dev-env-v2-portal-oidc", "namespace": "dev-env-system"},
+            "projection metadata changed")
     require(projection["apiVersion"] == "external-secrets.io/v1" and
             projection["kind"] == "ExternalSecret", "expected pending ExternalSecret")
     spec = projection["spec"]
     require(set(spec) == {"secretStoreRef", "refreshInterval", "target", "data"},
             "only explicit field projection; no dataFrom")
+    require(spec["refreshInterval"] == "1h", "projection refresh changed")
     require(spec["secretStoreRef"] ==
             {"kind": "ClusterSecretStore", "name": "onepassword-connect"}, "dedicated store required")
     fields = ["OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET"]
@@ -157,10 +185,14 @@ def validate(blueprint, projection, schema):
             {"key": "dev-env-v2-portal", "property": f}} for f in fields],
             "only dedicated item/client fields")
     target = spec["target"]
+    require(set(target) == {"name", "creationPolicy", "deletionPolicy", "template"},
+            "projection target fields changed")
     require(target["name"] == "dev-env-v2-portal-oidc" and target["creationPolicy"] == "Owner" and
             target["deletionPolicy"] == "Delete", "isolated owned target required")
     require(target["template"] == {"engineVersion": "v2", "mergePolicy": "Replace", "type": "Opaque",
             "data": {f: "{{ ." + f + " }}" for f in fields}}, "exact server Secret keys")
+    normalized = materialize(blueprint, ids)
+    jsonschema.Draft7Validator(schema, format_checker=jsonschema.FormatChecker()).validate(normalized)
 
 
 def main():
@@ -172,34 +204,90 @@ def main():
     require(hashlib.sha256(raw).hexdigest() == SCHEMA_SHA, "unverified schema bytes")
     schema = json.loads(raw)
     bp = yaml.load(BLUEPRINT.read_text(), Loader=Loader)
-    projection = yaml.safe_load(PROJECTION.read_text())
+    projection = yaml.load(PROJECTION.read_text(), Loader=Loader)
     validate(bp, projection, schema)
 
     # Mutations exercise the guard's rejection, not Authentik or an OIDC flow.
     mutations = [
-        ("any-policy", lambda b, p: b["entries"][2]["attrs"].update(policy_engine_mode="any")),
-        ("public-client", lambda b, p: b["entries"][1]["attrs"].update(client_type="public")),
-        ("extra-grant", lambda b, p: b["entries"][1]["attrs"]["grant_types"].append("refresh_token")),
-        ("extra-scope", lambda b, p: b["entries"][1]["attrs"]["property_mappings"].append(
+        ("any-policy", "all-policy application without launch/backchannel required",
+         lambda b, p: b["entries"][2]["attrs"].update(policy_engine_mode="any")),
+        ("public-client", "confidential approved client required",
+         lambda b, p: b["entries"][1]["attrs"].update(client_type="public")),
+        ("extra-grant", "code grant only",
+         lambda b, p: b["entries"][1]["attrs"]["grant_types"].append("refresh_token")),
+        ("extra-scope", "openid/profile only", lambda b, p: b["entries"][1]["attrs"]["property_mappings"].append(
             find("authentik_providers_oauth2.scopemapping",
                  ("managed", "goauthentik.io/providers/oauth2/scope-email")))),
-        ("callback-wildcard", lambda b, p: b["entries"][1]["attrs"]["redirect_uris"][0].update(
+        ("callback-wildcard", "exact callback required", lambda b, p: b["entries"][1]["attrs"]["redirect_uris"][0].update(
             matching_mode="regex")),
-        ("username-sub", lambda b, p: b["entries"][1]["attrs"].update(sub_mode="user_username")),
-        ("secret-in-source", lambda b, p: b["entries"][1]["attrs"].update(client_secret="SYNTHETIC_CANARY")),
-        ("missing-user", lambda b, p: b["entries"][4]["attrs"].pop("user")),
-        ("missing-group", lambda b, p: b["entries"][5]["attrs"].pop("group")),
-        ("disabled-binding", lambda b, p: b["entries"][5]["attrs"].update(enabled=False)),
-        ("deny-removed", lambda b, p: b["entries"][0]["attrs"].update(expression="return True")),
-        ("broad-item", lambda b, p: p["spec"]["data"][0]["remoteRef"].update(key="dev-env")),
-        ("data-from", lambda b, p: p["spec"].update(dataFrom=[{"extract": {"key": "openproject"}}])),
+        ("username-sub", "immutable subject and per-provider issuer required",
+         lambda b, p: b["entries"][1]["attrs"].update(sub_mode="user_username")),
+        ("secret-in-source", "provider attribute allowlist changed",
+         lambda b, p: b["entries"][1]["attrs"].update(client_secret="SYNTHETIC_CANARY")),
+        ("missing-user", "deny AND exact active Tom AND existing Admins bindings required",
+         lambda b, p: b["entries"][4]["attrs"].pop("user")),
+        ("missing-group", "deny AND exact active Tom AND existing Admins bindings required",
+         lambda b, p: b["entries"][5]["attrs"].pop("group")),
+        ("disabled-binding", "deny AND exact active Tom AND existing Admins bindings required",
+         lambda b, p: b["entries"][5]["attrs"].update(enabled=False)),
+        ("deny-removed", "staged deny must remain closed",
+         lambda b, p: b["entries"][0]["attrs"].update(expression="return True")),
+        ("broad-item", "only dedicated item/client fields",
+         lambda b, p: p["spec"]["data"][0]["remoteRef"].update(key="dev-env")),
+        ("data-from", "only explicit field projection; no dataFrom",
+         lambda b, p: p["spec"].update(dataFrom=[{"extract": {"key": "openproject"}}])),
+        ("federated-provider", "JWT federation must remain empty",
+         lambda b, p: b["entries"][1]["attrs"].update(jwt_federation_providers=[1])),
+        ("federated-source", "JWT federation must remain empty",
+         lambda b, p: b["entries"][1]["attrs"].update(jwt_federation_sources=[1])),
+        ("access-lifetime", "claims/token lifetimes changed",
+         lambda b, p: b["entries"][1]["attrs"].update(access_token_validity="hours=1")),
+        ("code-lifetime", "claims/token lifetimes changed",
+         lambda b, p: b["entries"][1]["attrs"].update(access_code_validity="hours=1")),
+        ("claims-disabled", "claims/token lifetimes changed",
+         lambda b, p: b["entries"][1]["attrs"].update(include_claims_in_id_token=False)),
+        ("refresh-lifetime", "provider attribute allowlist changed",
+         lambda b, p: b["entries"][1]["attrs"].update(refresh_token_validity="hours=1")),
+        ("external-logout", "provider attribute allowlist changed",
+         lambda b, p: b["entries"][1]["attrs"].update(logout_uri="https://example.invalid/logout")),
+        ("encryption-key", "provider attribute allowlist changed",
+         lambda b, p: b["entries"][1]["attrs"].update(encryption_key=SYNTHETIC_UUID)),
+        ("app-group", "application attribute allowlist changed",
+         lambda b, p: b["entries"][2]["attrs"].update(group="Household")),
+        ("instantiate-disabled", "blueprint metadata changed",
+         lambda b, p: b["metadata"]["labels"].update({"blueprints.goauthentik.io/instantiate": "false"})),
+        ("projection-namespace", "projection metadata changed",
+         lambda b, p: p["metadata"].update(namespace="default")),
+        ("projection-refresh", "projection refresh changed",
+         lambda b, p: p["spec"].update(refreshInterval="0s")),
+        ("projection-label", "projection metadata changed",
+         lambda b, p: p["metadata"].update(labels={"unreviewed": "true"})),
+        ("projection-target-extra", "projection target fields changed",
+         lambda b, p: p["spec"]["target"].update(immutable=True)),
+        ("null-signer", "required existing reference changed",
+         lambda b, p: b["entries"][1]["attrs"].update(signing_key=None)),
+        ("launch-url", "application attribute allowlist changed",
+         lambda b, p: b["entries"][2]["attrs"].update(meta_launch_url="https://example.invalid/")),
+        ("negated-user", "deny AND exact active Tom AND existing Admins bindings required",
+         lambda b, p: b["entries"][4]["attrs"].update(negate=True)),
+        ("group-fail-open", "deny AND exact active Tom AND existing Admins bindings required",
+         lambda b, p: b["entries"][5]["attrs"].update(failure_result=True)),
+        ("deleted-conjunct", "expected provider/application/deny and three bindings",
+         lambda b, p: b["entries"].pop()),
+        ("zero-bindings", "expected provider/application/deny and three bindings",
+         lambda b, p: b.update(entries=b["entries"][:3])),
+        ("inactive-user-reference", "deny AND exact active Tom AND existing Admins bindings required",
+         lambda b, p: b["entries"][4]["attrs"].update(user=find(
+             "authentik_core.user", ("username", "thaynes")))),
     ]
-    for name, mutate in mutations:
+    for name, reason, mutate in mutations:
         b, p = deepcopy(bp), deepcopy(projection)
         mutate(b, p)
         try:
             validate(b, p, schema)
-        except (ValueError, KeyError, jsonschema.ValidationError):
+        except SecurityViolation as exc:
+            require(str(exc) == reason, f"mutation {name} rejected for unexpected reason: {exc}")
+            print(f"REJECT {name}: {reason}")
             continue
         raise ValueError("negative mutation unexpectedly accepted: " + name)
     if args.rendered:

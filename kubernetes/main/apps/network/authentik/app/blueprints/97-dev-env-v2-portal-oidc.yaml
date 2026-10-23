@@ -38,6 +38,8 @@ entries:
       client_id: dev-env-v2-portal-internal
       grant_types:
         - authorization_code
+      jwt_federation_providers: []
+      jwt_federation_sources: []
       authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
       invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
       redirect_uris:
