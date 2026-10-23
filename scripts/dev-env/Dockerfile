@@ -64,7 +64,7 @@ ARG TALOSCTL_VERSION=v1.14.4
 # which stay API-compatible with nearby omnictl versions. renovate: datasource=github-releases depName=siderolabs/omni
 ARG OMNICTL_VERSION=v1.12.4
 # renovate: datasource=github-releases depName=coder/code-server extractVersion=^v(?<version>.+)$
-ARG CODE_SERVER_VERSION=4.141.0
+ARG CODE_SERVER_VERSION=4.141.1
 # renovate: datasource=github-releases depName=astral-sh/uv
 ARG UV_VERSION=0.13.5
 # ── claude-code ── NOTE: this prose sits ABOVE the `# renovate:` line ON PURPOSE.
