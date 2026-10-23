@@ -20,11 +20,6 @@ configMapGenerator:
   # ~/.claude and ~/.codex; mutable auth/state stays on the PVC (dev-init.sh
   # enforces the split).
   - name: dev-env-scripts
-    options:
-      annotations:
-        # Temporary: ship scripts with the image's single planned rollout.
-        # Remove after activation; annotation-only cleanup leaves the data hash unchanged.
-        reloader.stakater.com/ignore: "true"
     files:
       - resources/dev-init.sh
       # The after-boot lane (2026-09-10): codex remote-control + the claude standby
