@@ -1,0 +1,42 @@
+{
+  "checkedAt": "2026-10-23T18:37:59.628028+00:00",
+  "profiles": [
+    {
+      "profile": "haynes-ops",
+      "exists": true,
+      "tailByteCap": 65536,
+      "logBytes": 66631,
+      "mtimeUTC": "2026-10-23T16:34:08.767811+00:00",
+      "events": [],
+      "root": "/home/dev/cursor/haynes-ops",
+      "head": "254966b069715f77f8bc69c550fe61f70b24b74a",
+      "branch": "agent/cursor-v1-worker-1014",
+      "trackedChangedCount": 0,
+      "untrackedPathCount": 0,
+      "coldStartCustodian": "existing V2 workbench haynes-ops-1023-041051 / Story181",
+      "remainingAction": "Retain existing root, branch and worker identity on PVC; normal post-ready supervisor resumes existing profile. No new task or successor is launched. Before resuming a claimed task obtain its original owner/context; bounded logs establish no current claim fact.",
+      "constraints": "No account login, auth-state copying, token refresh/revocation, root reset, storage deletion or unsupported worker API. No SIGTERM-drain claim.",
+      "coldStartRecord": "/home/dev/.local/state/renovate-181-cutover/haynes-ops-cursor-COLD-START.json",
+      "coldStartSHA256": "0ca27034d288380f1bc56fdc9e61823071a2aadd8e286d1de6e6f3a086674207"
+    },
+    {
+      "profile": "dev-env",
+      "exists": true,
+      "tailByteCap": 65536,
+      "logBytes": 64098,
+      "mtimeUTC": "2026-10-23T16:15:35.616532+00:00",
+      "events": [],
+      "root": "/home/dev/repos/dev-env",
+      "head": "80681e761d893d7bf4b85712dac0af1ed32aecfa",
+      "branch": "",
+      "trackedChangedCount": 0,
+      "untrackedPathCount": 0,
+      "coldStartCustodian": "existing V2 workbench haynes-ops-1023-041051 / Story181",
+      "remainingAction": "Retain existing root, branch and worker identity on PVC; normal post-ready supervisor resumes existing profile. No new task or successor is launched. Before resuming a claimed task obtain its original owner/context; bounded logs establish no current claim fact.",
+      "constraints": "No account login, auth-state copying, token refresh/revocation, root reset, storage deletion or unsupported worker API. No SIGTERM-drain claim.",
+      "coldStartRecord": "/home/dev/.local/state/renovate-181-cutover/dev-env-cursor-COLD-START.json",
+      "coldStartSHA256": "2310dbc177646dee7ca0f39085d69c4f330426f39079d49f7d12febed71775d1"
+    }
+  ],
+  "limitation": "bounded operational event metadata only; absent/reset-unlogged events do not prove no active claim"
+}

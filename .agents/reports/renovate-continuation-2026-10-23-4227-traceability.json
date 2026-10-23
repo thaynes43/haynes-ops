@@ -1,0 +1,9 @@
+{
+  "PR": 4227,
+  "head": "d0085393fcfb95d73f6ea7d010fca48fd5866a37",
+  "preparedBlob": "112fce642ba4494bde1c1a74d65a02c167a9263a",
+  "exactPRHeadBlob": "112fce642ba4494bde1c1a74d65a02c167a9263a",
+  "mergedBlob": "112fce642ba4494bde1c1a74d65a02c167a9263a",
+  "matches": true,
+  "qualification": "Independent release review preceded merge; this exact-head blob comparison is retrospective, not a claimed premerge receipt."
+}

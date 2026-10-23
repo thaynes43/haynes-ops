@@ -1,0 +1,24 @@
+{
+  "checkedAt": "2026-10-23T19:42:26.288385+00:00",
+  "hr": {
+    "total": 134,
+    "ready": 134,
+    "notReady": []
+  },
+  "ks": {
+    "total": 178,
+    "ready": 177,
+    "notReady": [
+      {
+        "namespace": "dev-env-system",
+        "name": "dev-env-h7-metadata-audit",
+        "reason": "HealthCheckFailed"
+      }
+    ]
+  },
+  "es": {
+    "total": 157,
+    "ready": 157,
+    "notReady": []
+  }
+}

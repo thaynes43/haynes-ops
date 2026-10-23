@@ -1,0 +1,19 @@
+{
+  "checkedAt": "2026-10-23T19:45:19.370780+00:00",
+  "configMap": {
+    "namespace": "dev-env-system",
+    "name": "dev-env-templates",
+    "images": [
+      "ghcr.io/thaynes43/dev-env:2.44.0@sha256:d3224cb97a66e1bb3d72e5171154db7399265ed1c537ca146ef9a01f308cacef"
+    ]
+  },
+  "activeSessionUIDUnchanged": "97f83226-d384-4e5b-a47b-77805878b92c",
+  "activeSessionRetainsPreviousImageByDesign": true,
+  "systemDeploymentsAvailable": {
+    "broker": "2/2",
+    "keeper": "1/1",
+    "operator": "2/2"
+  },
+  "fourEligibleRefreshesReceipt": "renovate-continuation-2026-10-23-v2-244-refresh.json",
+  "noForcedRestart": true
+}

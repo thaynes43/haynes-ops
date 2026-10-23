@@ -1,0 +1,13 @@
+{
+  "checkedAt": "2026-10-23T19:30:12.825317+00:00",
+  "main": "5a5fb146fd2a1ff8db7411d19f28ee0ddfdf6dfb",
+  "filesChecked": 6,
+  "mismatches": [
+    {
+      "path": "kubernetes/main/apps/kyverno/kyverno/app/ocirepository.yaml",
+      "frozenExpected": "fe92ff3a45843fcd8bbf1c25b70f85ac47df96dc3caceb932f4a9a52b07e4c06",
+      "currentMain": "b90be82312449e9549a18841c7e3fc84f0be75a510fb36996ba619df24b82588"
+    }
+  ],
+  "noExpectedHashesRewritten": true
+}

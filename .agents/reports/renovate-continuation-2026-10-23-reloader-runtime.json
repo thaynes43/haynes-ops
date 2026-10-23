@@ -1,0 +1,21 @@
+{
+  "checkedAt": "2026-10-23T19:17:12.240230+00:00",
+  "pods": [
+    {
+      "app": "v1",
+      "pod": "dev-env-54656bcd47-d5jrv",
+      "uid": "d9d562f6-0ee8-4290-bbc2-6d1a88ce024e",
+      "unchangedAcrossCleanup": true,
+      "ready": true,
+      "restarts": 0
+    },
+    {
+      "app": "ops",
+      "pod": "dev-env-ops-65d8d9fc5f-pshgt",
+      "uid": "c7fef3a0-3878-45f6-812a-a66c98877f53",
+      "unchangedAcrossCleanup": true,
+      "ready": true,
+      "restarts": 0
+    }
+  ]
+}

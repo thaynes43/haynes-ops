@@ -1,0 +1,30 @@
+[
+  {
+    "name": "dev-env-1019-190936",
+    "uid": "300d6c56-4d0c-404d-a2df-585b1e6bf285",
+    "phase": "Running",
+    "ready": true,
+    "image": "ghcr.io/thaynes43/dev-env:2.43.0@sha256:1e29f6ae6dbf15e906805a92c96040aa237a04e0c3e5b1d2a144f2d8d748654c"
+  },
+  {
+    "name": "haynes-ops-1020-002115",
+    "uid": "1bdfa880-cc64-41b0-bdb4-40b96584df05",
+    "phase": "Running",
+    "ready": true,
+    "image": "ghcr.io/thaynes43/dev-env:2.43.0@sha256:1e29f6ae6dbf15e906805a92c96040aa237a04e0c3e5b1d2a144f2d8d748654c"
+  },
+  {
+    "name": "haynes-ops-1022-015547",
+    "uid": "93eb4c1b-6cf9-4ee0-9625-a201bc49ddbd",
+    "phase": "Running",
+    "ready": true,
+    "image": "ghcr.io/thaynes43/dev-env:2.43.0@sha256:1e29f6ae6dbf15e906805a92c96040aa237a04e0c3e5b1d2a144f2d8d748654c"
+  },
+  {
+    "name": "haynesnetwork-1021-123343",
+    "uid": "d245516a-6002-4dc8-ad22-edf5bf1a615b",
+    "phase": "Running",
+    "ready": true,
+    "image": "ghcr.io/thaynes43/dev-env:2.43.0@sha256:1e29f6ae6dbf15e906805a92c96040aa237a04e0c3e5b1d2a144f2d8d748654c"
+  }
+]
