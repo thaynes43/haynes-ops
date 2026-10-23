@@ -58,6 +58,7 @@ configMapGenerator:
       - blueprints/90-cigar-journal-oidc.yaml
       - blueprints/95-haynes-quest-oidc.yaml
       - blueprints/96-openproject-private.yaml
+      - blueprints/97-dev-env-v2-portal-oidc.yaml
   # PLAN-042 Option A — CSS-nesting lowering of the served web assets (old-WebKit
   # login crash, upstream goauthentik#19814 / WebKit #290102). The server pod's
   # web-dist-lower initContainer (helmrelease.yaml) runs this script over a copy
