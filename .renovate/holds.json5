@@ -149,6 +149,40 @@
       ],
       allowedVersions: '<2.0.0',
     },
+    {
+      description: [
+        'HELD Python 3.15+ for the audio, ComfyUI and book-copy-writer images until their dependency closures support it.',
+        'Reason: Python 3.15 has no compatible wheel for pinned ai-edge-litert 2.3.0 (audio) or torch 2.12.0 (ComfyUI). The book-copy-writer requires reviewed binary wheel hashes and a frozen image/requirements/receipt closure; changing only its Python base fails those guards. Python 3.14 patch and digest updates remain allowed. The independently validated Peloton image is outside this hold.',
+        'Issue: OpenProject haynes-engineering #174; https://github.com/thaynes43/haynes-ops/pull/3870 (failed image builds and dependency-closure review).',
+        'Resume: MANUAL — lift each consumer only after its pinned dependencies provide compatible Python 3.15 wheels and its real image build/tests pass; for book-copy-writer also publish and review the new frozen image, requirements hashes and receipt closure together. Split this file-scoped rule when consumers become ready at different times.',
+        'Recorded: 2026-10-23 by Codex during the authorized Renovate backlog review. Scope: these three Dockerfiles only; no restriction on Peloton, helper containers or setup-python action versions.',
+      ],
+      matchManagers: ['dockerfile'],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['python', 'docker.io/python', 'docker.io/library/python'],
+      matchFileNames: [
+        'scripts/audio-authoring/Dockerfile',
+        'scripts/comfyui/Dockerfile',
+        'scripts/book-copy-writer/Dockerfile',
+      ],
+      // A regex keeps Docker patch tags such as 3.14.9-slim eligible; npm-semver's fallback treats their suffix as a prerelease.
+      allowedVersions: '/^(?:[12](?:[.-]|$)|3\\.(?:[0-9]|1[0-4])(?:[.-]|$))/',
+    },
+    {
+      description: [
+        'HELD COPY-window fixture Python interpreter to the 3.12 patch line; its dependency hashes bind that interpreter.',
+        'Reason: .github/workflows/book-copy-window-test.yml asserts Python 3.12 before its binary-only, require-hashes dependency install. Renovate PR #3870 changes setup-python input 3.12 to 3.15 without changing that assertion or the reviewed wheel hashes, so the workflow necessarily fails. Match the interpreter dependency package actions/python-versions, not the actions/setup-python action itself.',
+        'Issue: OpenProject haynes-engineering #174; https://github.com/thaynes43/haynes-ops/pull/3870 (COPY-window interpreter change).',
+        'Resume: MANUAL — widen only in a reviewed fixture-interpreter migration that updates the strict version assertion and exact wheel-hash closure together and passes the unchanged finite replay suites. Python 3.12 patch releases and setup-python action tag/SHA updates remain allowed.',
+        'Recorded: 2026-10-23 by Codex. Renovate github-actions extraction: depName python, packageName actions/python-versions, datasource github-releases, depType uses-with. Exact workflow scope only.',
+      ],
+      matchManagers: ['github-actions'],
+      matchDatasources: ['github-releases'],
+      matchPackageNames: ['actions/python-versions'],
+      matchDepTypes: ['uses-with'],
+      matchFileNames: ['.github/workflows/book-copy-window-test.yml'],
+      allowedVersions: '/^3\\.12(?:\\.\\d+)?$/',
+    },
     // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
     //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
     //   protection (Host/Origin validation on every route, 403 for non-loopback Host).
