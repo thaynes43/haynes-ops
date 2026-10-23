@@ -55,6 +55,16 @@ update never touches it afterwards — and is copied once into 1Password, exactl
 UI-created six. That file also records the Subject-mode ruling (`user_uuid`, never
 email/username) for any future OIDC provider whose consumer keys accounts on `sub`.
 
+`97-dev-env-v2-portal-oidc.yaml` adds the approved internal portal confidential
+client (`authorization_code`, `openid profile`, strict callback, `user_uuid`). Its
+application combines the existing active `thaynes` user and `authentik Admins`
+bindings with **all** semantics. An additional explicit deny keeps admission
+closed until reviewed runtime activation; there is no runtime, launch link,
+outpost or ingress in this foundation. The [M5A release packet](../../../../../../../.agents/reports/portal178-m5a/RELEASE.md)
+records secret provisioning, atomic import/reference behavior and outstanding
+runtime acceptance. Removing a blueprint file does **not** delete its objects;
+removing this file alone is not an access revocation.
+
 ## Pending file (NOT discovered)
 
 `pending/40-hnet-mfa.yaml` — the drafted native-account MFA blueprint. It is **not** in
