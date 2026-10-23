@@ -874,10 +874,12 @@
       ],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
       "snapshotVetMarkers": 0,
-      "deliveryState": "OPEN",
+      "deliveryState": "MERGED",
       "deliveryDraft": false,
-      "deliveryMergeCommit": null,
-      "deliveryMergedAt": null,
+      "deliveryMergeCommit": {
+        "oid": "1f946510d02df884e2cbd97cf2293127afd8205c"
+      },
+      "deliveryMergedAt": "2026-10-23T05:56:56Z",
       "deliveryHead": "c2106185dc5fa12fefe46acd765c49399777f33c"
     },
     {
@@ -917,7 +919,7 @@
       "deliveryHead": "eb7cb8ebb7b01723a1f6c6494d27137781fcea04"
     }
   ],
-  "deliveryCheckpoint": "2026-10-23T05:53:51.932624+00:00",
+  "deliveryCheckpoint": "2026-10-23T06:02:22.125054+00:00",
   "additionalPRs": [
     {
       "number": 4207,
@@ -1120,11 +1122,13 @@
     {
       "number": 4225,
       "title": "ops(mosquitto): resume daily backups after successful checkpoint",
-      "state": "OPEN",
+      "state": "MERGED",
       "isDraft": false,
       "headRefOid": "e0c90ff4753f79a85477008deeae9abab8315022",
-      "mergeCommit": null,
-      "mergedAt": null,
+      "mergeCommit": {
+        "oid": "2cce66d4871b576ba7d95026dca422fad9f5d446"
+      },
+      "mergedAt": "2026-10-23T05:55:42Z",
       "url": "https://github.com/thaynes43/haynes-ops/pull/4225"
     }
   ],
@@ -1222,5 +1226,56 @@
     },
     "frozenEvidenceRewritten": false,
     "distinctFromPreExistingFailedRuntimeAudit": true
+  },
+  "finalHealth": {
+    "observedAt": "2026-10-23T06:01:25Z",
+    "gatus": {
+      "green": 61,
+      "external": 13,
+      "internal": 48,
+      "fiveMinuteWindowAll61Green": true,
+      "minimumSamplesPerEndpoint": 5,
+      "scrapeTargetUpForFiveMinutes": true,
+      "maximumSampleAgeSeconds": 42.283
+    },
+    "helmReleasesReady": 134,
+    "helmReleasesTotal": 134,
+    "kustomizationsReady": 177,
+    "kustomizationsTotal": 178,
+    "remainingKustomization": "dev-env-system/dev-env-h7-metadata-audit (pre-existing hold)",
+    "externalSecretsReady": 157,
+    "externalSecretsTotal": 157,
+    "mqttEntities": 6590,
+    "mqttUnavailable": 6,
+    "mqttMatchesBaseline": true,
+    "ceph": "HEALTH_OK with unchanged muted auth-compatibility warnings",
+    "criticalAlertClasses": [
+      "FluxReconciliationFailure",
+      "DevEnvRescueFailed"
+    ],
+    "criticalAlertClassesSameAsPreTask": true,
+    "productionUpgradeRollbackNeeded": false,
+    "allActivityDeclarationsEnded": true,
+    "temporaryBackupManualTriggersRemoved": true
+  },
+  "comfyAccess": {
+    "grant": "grant-1023-050400-25e0",
+    "phase": "Denied",
+    "message": "no answer in 30 minutes",
+    "runtimeChanged": false,
+    "runtimePR": 4217
+  },
+  "preExistingPelotonJobFault": {
+    "namespace": "downloads",
+    "job": "ytdl-sub-peloton-29878905",
+    "failedAt": "2026-10-23T05:46:32Z",
+    "exitCode": 2,
+    "image": "ghcr.io/jmbannon/ytdl-sub:2026.08.26",
+    "sameAuthenticationPreflightFailureBeforeTask": [
+      "2026-10-23T04:00:05Z",
+      "2026-10-23T04:15:03Z"
+    ],
+    "newScraperImageConsumer": false,
+    "credentialsOrSubscriptionsChanged": false
   }
 }
