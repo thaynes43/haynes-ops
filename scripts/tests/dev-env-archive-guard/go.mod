@@ -7,7 +7,7 @@ replace k8s.io/pod-security-admission => github.com/kyverno/pod-security-admissi
 
 require (
 	github.com/google/go-containerregistry v0.21.8
-	github.com/kyverno/api v0.0.1-alpha.3.0.20260723090831-fb2785727f98
+	github.com/kyverno/api v0.0.1-alpha.5
 	github.com/kyverno/kyverno v1.19.2
 	k8s.io/api v0.36.3
 	k8s.io/apimachinery v0.36.3
