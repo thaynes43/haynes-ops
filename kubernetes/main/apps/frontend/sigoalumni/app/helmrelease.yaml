@@ -105,7 +105,7 @@ spec:
           cloud-sql-proxy:
             image:
               repository: gcr.io/cloud-sql-connectors/cloud-sql-proxy
-              tag: 2.26.2
+              tag: 2.26.3
               pullPolicy: IfNotPresent
             restartPolicy: Always
             args:
