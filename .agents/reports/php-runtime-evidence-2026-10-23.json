@@ -84,7 +84,8 @@
         "ruby",
         "sh"
       ],
-      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation",
+      "packageStatusFollowUpAt": "2026-10-23T03:24:00.709154+00:00"
     },
     {
       "observedAt": "2026-10-23T03:21:36.627872+00:00",
@@ -160,7 +161,8 @@
         "sh",
         "sort"
       ],
-      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation",
+      "packageStatusFollowUpAt": "2026-10-23T03:24:00.799331+00:00"
     },
     {
       "observedAt": "2026-10-23T03:21:37.272172+00:00",
@@ -271,7 +273,8 @@
         "sh",
         "sleep"
       ],
-      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation",
+      "packageStatusFollowUpAt": "2026-10-23T03:24:00.883385+00:00"
     },
     {
       "observedAt": "2026-10-23T03:21:38.468560+00:00",
@@ -304,7 +307,8 @@
         "sh",
         "sort"
       ],
-      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation",
+      "packageStatusFollowUpAt": "2026-10-23T03:24:00.996705+00:00"
     },
     {
       "observedAt": "2026-10-23T03:21:38.699864+00:00",
@@ -433,5 +437,6 @@
       "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
       "ready": "True"
     }
-  ]
+  ],
+  "method": "Read-only command lookup for PHP CLI/FPM names, selected php package queries, and /proc process names. Empty-version dpkg wildcard matches received installed-status and conventional binary-location follow-up. No PHP execution, request/config/environment reads, exploitation or load testing."
 }
