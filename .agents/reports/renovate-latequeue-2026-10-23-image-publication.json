@@ -1,0 +1,28 @@
+{
+  "observedAt": "2026-10-23T21:15:28.318611+00:00",
+  "proof": "anonymous manifest/config bytes and digest headers, build argument evidence; not independent image signature/attestation verification",
+  "images": {
+    "dev-env": {
+      "tag": "0.6.8",
+      "manifestDigest": "sha256:6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57",
+      "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+      "amd64ManifestDigest": "sha256:6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57",
+      "configDigest": "sha256:d1976f0dbdc34892897d53c2616f96d2d685fa68a61f4908c8bd916e1397441b",
+      "architecture": "amd64",
+      "os": "linux",
+      "created": "2026-10-23T21:11:13.398752883Z",
+      "GH_VERSION_2_103_2_in_buildHistory": true
+    },
+    "upgrade-shepherd": {
+      "tag": "0.1.0",
+      "manifestDigest": "sha256:6e5ff891dbb83939fc7cb56d790a1e10b10fe53d154af3e851318b0c497d6513",
+      "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+      "amd64ManifestDigest": "sha256:6e5ff891dbb83939fc7cb56d790a1e10b10fe53d154af3e851318b0c497d6513",
+      "configDigest": "sha256:d557722b08a15c83371b66fa9f6a43f62db3ea72ee84909d365fa6061b41a414",
+      "architecture": "amd64",
+      "os": "linux",
+      "created": "2026-10-23T21:10:10.702818071Z",
+      "GH_VERSION_2_103_2_in_buildHistory": true
+    }
+  }
+}

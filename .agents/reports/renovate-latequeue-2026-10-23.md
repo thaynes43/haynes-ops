@@ -50,3 +50,10 @@ CLI publication, coherent consumer activation, post-start custody/runtime and fi
 Grouped source4261 merged21:09:37Z as1057e9b858f3a14485ad7c9e9231b1889354d895 after both real PR image checks passed: dev-env40023585141 and shepherd40023585206. Source/native/advisory reviews had no findings and both required aggregates passed. Shepherd automatic main push run40024697879 succeeded, publishing/signing6e5ff891dbb83939fc7cb56d790a1e10b10fe53d154af3e851318b0c497d6513. Dev-env main40024697901 is still building. Neither runtime consumer batch nor source-only review stands in for its pending publication. Signing-step success is not independent cryptographic verification by this driver; the cert-manager public-key proof above has a different, explicitly stated scope.
 
 Fresh23-tree/361-WIP verification at21:10:30Z passed; all private payload custody remains on original storage. Both new mutable-tag images require exact main run SHA and immutable registry bytes before coherent consumer activation. Original excluded/frozen pins and other owners remain untouched.
+
+
+## 17:18 EDT immutable publication and activation candidate
+
+Dev-env automatic main40024697901 completed successfully, including offline runtime-user GH2.103.2 smoke, publication and signing. Registrybytes/header/config proof identifies6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57; the same digest appears in the main workflow log. Both images are linux/amd64 single manifests, with GH_VERSION2.103.2 in build history. Adjacent image-publication and main-builds receipts preserve both exact main runs at1057e9b8, immutable digests/config identities and the independent-signature-verification limit.
+
+Consumer4263 exact8ee3ad21937559c5280285dc77edc710c38af148 changes only12digestlines/5files, sevenDev andfiveShepherd. Independent source/native and advisory review found no pin-scope issue. Advisory could not reach public GHCR in its sandbox; primary anonymous proof was already collected before that review and matches main publisher logs. Required aggregate Flux and final current-work/custody checks remain gates; no installed-consumer claim yet.
