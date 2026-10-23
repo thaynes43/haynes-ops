@@ -175,7 +175,7 @@
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
       "deliveryMergedAt": null,
-      "deliveryHead": "58db52077dbc4c2ad4920db7d9ca5eae8a418eb8"
+      "deliveryHead": "f116d1a1ad985fca66451adbed57d3e88673e0c5"
     },
     {
       "number": 3800,
@@ -240,10 +240,12 @@
       ],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
       "snapshotVetMarkers": 0,
-      "deliveryState": "OPEN",
+      "deliveryState": "MERGED",
       "deliveryDraft": false,
-      "deliveryMergeCommit": null,
-      "deliveryMergedAt": null,
+      "deliveryMergeCommit": {
+        "oid": "75524e692a0a4a00307c2487c0f3d751403b3d44"
+      },
+      "deliveryMergedAt": "2026-10-23T05:42:35Z",
       "deliveryHead": "11bf17e886586b900821eab8564bc3074e5716cd"
     },
     {
@@ -915,7 +917,7 @@
       "deliveryHead": "eb7cb8ebb7b01723a1f6c6494d27137781fcea04"
     }
   ],
-  "deliveryCheckpoint": "2026-10-23T05:34:10.817188+00:00",
+  "deliveryCheckpoint": "2026-10-23T05:53:51.932624+00:00",
   "additionalPRs": [
     {
       "number": 4207,
@@ -1035,10 +1037,10 @@
     },
     {
       "number": 4218,
-      "title": "chore(container): update image ghcr.io/thaynes43/dev-env to 3b38155",
+      "title": "chore(container): update image ghcr.io/thaynes43/dev-env to 0217183",
       "state": "OPEN",
       "isDraft": true,
-      "headRefOid": "19a099b89ca23f1825dc042aae34d4115e8592a5",
+      "headRefOid": "094a6e12a8ef92d11241b31bf40b74929f92b40d",
       "mergeCommit": null,
       "mergedAt": null,
       "url": "https://github.com/thaynes43/haynes-ops/pull/4218"
@@ -1066,6 +1068,64 @@
       },
       "mergedAt": "2026-10-23T05:16:42Z",
       "url": "https://github.com/thaynes43/haynes-ops/pull/4220"
+    },
+    {
+      "number": 4221,
+      "title": "ops(plex): take fresh backup checkpoint before Kometa upgrade",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "75482954044a8e673ca78cd01cd5bb2339bbff2d",
+      "mergeCommit": {
+        "oid": "360db4aaf72a4985bac549a81c99500f9d7b3180"
+      },
+      "mergedAt": "2026-10-23T05:38:08Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4221"
+    },
+    {
+      "number": 4222,
+      "title": "ops(plex): resume weekly backups after upgrade checkpoint",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "5e525e6183c81f4823346456b7196613784d5412",
+      "mergeCommit": {
+        "oid": "4e056bdfaea2bde4071b833ff4454bdbd6c631ef"
+      },
+      "mergedAt": "2026-10-23T05:44:58Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4222"
+    },
+    {
+      "number": 4223,
+      "title": "feat(mosquitto): back up existing retained-store volume before upgrade",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "c587d53bcda04f0685e2b34482ffd5e6aba40e23",
+      "mergeCommit": {
+        "oid": "8c14369ce55b7d1b77b1e70e740e8ce13768b441"
+      },
+      "mergedAt": "2026-10-23T05:50:06Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4223"
+    },
+    {
+      "number": 4224,
+      "title": "build(dev-env): advance eligible new-session template to 2.42.0",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "5c3bbca714cbba3ed584914e17485e4ea8c562d1",
+      "mergeCommit": {
+        "oid": "692e33d0848baa9aa3194489be89f76c70be745a"
+      },
+      "mergedAt": "2026-10-23T05:48:56Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4224"
+    },
+    {
+      "number": 4225,
+      "title": "ops(mosquitto): resume daily backups after successful checkpoint",
+      "state": "OPEN",
+      "isDraft": false,
+      "headRefOid": "e0c90ff4753f79a85477008deeae9abab8315022",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4225"
     }
   ],
   "compatibilityReviewCorrection": "An exact whole upstream Go dependency graph is not a repository requirement. Delivered replacement4215 advances compatible API/containerregistry libraries while retaining the real Kyverno1.19.2 compiler, exact pod-security replacement and Kubernetes/CEL pins; all1593 unchanged fixtures pass.3915 remains actual compiler-incompatible.",
@@ -1113,5 +1173,54 @@
     "productionPVCOrCredentials": false,
     "productionPlexRun": false,
     "jobDeleted": true
+  },
+  "backupCheckpoints": {
+    "plex-aws": {
+      "namespace": "media",
+      "lastSyncTime": "2026-10-23T05:40:56Z",
+      "lastManualSync": "story174-kometa-preupgrade-20261023-01",
+      "moverResult": "Successful",
+      "restoreTested": false
+    },
+    "plexops-aws": {
+      "namespace": "media",
+      "lastSyncTime": "2026-10-23T05:41:22Z",
+      "lastManualSync": "story174-kometa-preupgrade-20261023-01",
+      "moverResult": "Successful",
+      "restoreTested": false
+    },
+    "mosquitto-aws": {
+      "namespace": "database",
+      "lastSyncTime": "2026-10-23T05:50:49Z",
+      "lastManualSync": "pre-upgrade-4198-20261023-01",
+      "moverResult": "Successful",
+      "restoreTested": false
+    }
+  },
+  "v2Template": {
+    "image": "ghcr.io/thaynes43/dev-env:2.42.0@sha256:cf406416e107220d06ad904e9f1defb7287bc9fd4bc86a7dd819df9320b5ca9d",
+    "publishedSource": "7cb1a19575a4a6ae86f56248c84cf86994c0a2d1",
+    "publicationRun": 39896061901,
+    "installed": true,
+    "previousRunningPods": 36,
+    "unchangedPodIdentities": 32,
+    "normalStoppedSessionRefreshes": 4,
+    "refreshesReadyOnExactImage": 4,
+    "ownActivePodUnchanged": true,
+    "keeperChanged": false,
+    "inferenceOrAuthenticationTest": false
+  },
+  "frozenH7SourceFixture": {
+    "causedByUpgradePR": 4159,
+    "path": "kubernetes/main/apps/kyverno/kyverno/app/ocirepository.yaml",
+    "expected": "fe92ff3a45843fcd8bbf1c25b70f85ac47df96dc3caceb932f4a9a52b07e4c06",
+    "current": "b90be82312449e9549a18841c7e3fc84f0be75a510fb36996ba619df24b82588",
+    "unchangedSuite": {
+      "passed": 10,
+      "failed": 1,
+      "sameOnMainAndTemplatePatch": true
+    },
+    "frozenEvidenceRewritten": false,
+    "distinctFromPreExistingFailedRuntimeAudit": true
   }
 }
