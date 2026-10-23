@@ -83,10 +83,15 @@ def assert_pulled_frozen(image_ref, repo_digests, image_id):
 
 
 def resolve_frozen_paths(environ=None, candidate_present=None):
-    environ = os.environ if environ is None else environ
-    mounted = environ.get('FROZEN_RUNTIME_DIR') or ''
-    if not mounted and Path('/frozen-runtime').is_dir():
-        mounted = '/frozen-runtime'
+    # An explicit environ is the whole mount contract. The default path is
+    # visible only to the live process so a negative fixture cannot see CI's mount.
+    if environ is None:
+        environ = os.environ
+        mounted = environ.get('FROZEN_RUNTIME_DIR') or ''
+        if not mounted and Path('/frozen-runtime').is_dir():
+            mounted = '/frozen-runtime'
+    else:
+        mounted = environ.get('FROZEN_RUNTIME_DIR') or ''
     if mounted:
         ref = environ.get('FROZEN_IMAGE_REF') or ''
         if not ref:

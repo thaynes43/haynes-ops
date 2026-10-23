@@ -658,19 +658,22 @@ class PipelineCases(unittest.TestCase):
         self.assertEqual(parsed['psycopg'], {'version': '9.9.9', 'marker': None})
         self.assertEqual(parsed['psycopg-binary']['version'], '8.8.8')
         self.assertEqual(parsed['typing-extensions']['marker'], 'python_version < "3.13"')
-        self.assertEqual(qualification.pinned_interpreter('FROM python:3.14-slim@sha256:abc\n'), '3.14')
+        self.assertEqual(qualification.pinned_interpreter('FROM python:3.11-slim@sha256:abc\n'), '3.11')
         inside = Path('/copy-writer').is_dir()
         report = qualification.distribution_report(inside)
         self.assertFalse(report['marker_is_binary_proof'])
         if inside:
             self.assertTrue(report['measured_in_image'])
-            self.assertTrue(report['interpreter'].startswith('3.14'))
-            self.assertFalse(report['marker_selects_typing_extensions'])
-            versions = {item['name'].lower(): item['version'] for item in report['installed']}
-            self.assertNotIn('typing-extensions', versions)
-            self.assertNotIn('typing_extensions', versions)
-            self.assertEqual(versions['psycopg'], '3.3.6')
-            self.assertEqual(versions['psycopg-binary'], '3.3.6')
+            pinned = qualification.pinned_interpreter((HERE.parent / 'Dockerfile').read_text())
+            self.assertTrue(report['interpreter'].startswith(pinned))
+            installed = {item['name'].lower().replace('_', '-'): item['version'] for item in report['installed']}
+            for name, spec in qualification.required_distributions(text).items():
+                selected = qualification.evaluate_python_version_marker(spec['marker'], report['interpreter']) if spec['marker'] else True
+                if selected:
+                    self.assertEqual(installed.get(name), spec['version'])
+                else:
+                    self.assertNotIn(name, installed)
+            self.assertEqual(report['marker_selects_typing_extensions'], qualification.evaluate_python_version_marker(table['marker'], report['interpreter']))
         else:
             self.assertFalse(report['measured_in_image'])
             self.assertIsNone(report['interpreter'])
