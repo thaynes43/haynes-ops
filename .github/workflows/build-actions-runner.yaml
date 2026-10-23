@@ -123,7 +123,9 @@ jobs:
               printf "int main(void) { return 0; }\n" > /tmp/compiler-smoke.c
               gcc /tmp/compiler-smoke.c -o /tmp/compiler-smoke
               /tmp/compiler-smoke
-              docker --version | grep "29.8.2"
+              # actions/runner v2.338.1 images/Dockerfile pins DOCKER_VERSION=29.9.2:
+              # https://github.com/actions/runner/blob/e78522a9a7b01c3bcd7ac0da6e3a9bb6cd513a76/images/Dockerfile
+              docker --version | grep -F "Docker version 29.9.2,"
               docker buildx version
               dpkg-query -W libicu74 libssl3t64 libnss3 libgbm1 libasound2t64
             '
