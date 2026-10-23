@@ -1,0 +1,7 @@
+{
+  "image": "ghcr.io/coder/code-server:4.141.1",
+  "index": "sha256:bfe06d7f36273d84a61d6bf2f9656b9f612f9c5c6fbb45ba5e19a29b42ded6f4",
+  "amd64Manifest": "sha256:8f7089d81c3f7deba60d98c9aa5c78fd893d03f8b68055deaaf6bac7d2cc4752",
+  "indexAndChildBytesHeadersVerified": true,
+  "signatureVerificationNotPerformed": true
+}
