@@ -29,7 +29,13 @@
       ],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "MERGED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": {
+        "oid": "2558e52aca24b24bbf6d5aa6f3aaba354572bcaf"
+      },
+      "deliveryMergedAt": "2026-10-23T04:39:43Z"
     },
     {
       "number": 3626,
@@ -54,7 +60,11 @@
       "initialFailedChecks": [],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 3696,
@@ -82,7 +92,13 @@
         "build-and-push-comfyui"
       ],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "MERGED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": {
+        "oid": "524852eced1514cdd8923349d2b64545cd2a0cd1"
+      },
+      "deliveryMergedAt": "2026-10-23T05:04:03Z"
     },
     {
       "number": 3707,
@@ -114,7 +130,11 @@
       ],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled because a matching PR was automerged previously.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "CLOSED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 3710,
@@ -146,7 +166,11 @@
       ],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 3800,
@@ -173,7 +197,13 @@
         "build-and-push"
       ],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "MERGED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": {
+        "oid": "4980b293b315d8224e2e066429a917810bbd9c27"
+      },
+      "deliveryMergedAt": "2026-10-23T04:40:06Z"
     },
     {
       "number": 3864,
@@ -203,7 +233,11 @@
         "Flux Local - external-dns annotation prefix"
       ],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 3870,
@@ -235,7 +269,11 @@
       ],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": true,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 3871,
@@ -261,7 +299,11 @@
       "initialFailedChecks": [],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 3911,
@@ -286,7 +328,11 @@
       "initialFailedChecks": [],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "CLOSED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 3914,
@@ -312,7 +358,11 @@
       "initialFailedChecks": [],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "CLOSED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 3915,
@@ -339,7 +389,11 @@
       ],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 3916,
@@ -364,7 +418,11 @@
       "initialFailedChecks": [],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "CLOSED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 3938,
@@ -389,7 +447,13 @@
         "Flux Local - Success"
       ],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "MERGED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": {
+        "oid": "fc11a73b92fc281b6171e82d4d7bbd638bb9881a"
+      },
+      "deliveryMergedAt": "2026-10-23T04:49:05Z"
     },
     {
       "number": 3942,
@@ -415,7 +479,13 @@
         "build-and-push"
       ],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "MERGED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": {
+        "oid": "c87a0c5e8a0fe153030d4e972416ad3047016ac3"
+      },
+      "deliveryMergedAt": "2026-10-23T04:49:31Z"
     },
     {
       "number": 3955,
@@ -442,7 +512,11 @@
         "Archive Guard Source - Success"
       ],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "CLOSED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 3960,
@@ -468,7 +542,13 @@
       "initialFailedChecks": [],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "MERGED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": {
+        "oid": "bb8cf22e50831a6d7e79d30182fd39a03d21a0e7"
+      },
+      "deliveryMergedAt": "2026-10-23T04:39:54Z"
     },
     {
       "number": 4063,
@@ -494,7 +574,11 @@
       ],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": true,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 4064,
@@ -520,7 +604,11 @@
       ],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": true,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 4065,
@@ -544,7 +632,11 @@
       "initialFailedChecks": [],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": true,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 4146,
@@ -571,7 +663,11 @@
       ],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "CLOSED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 4150,
@@ -596,7 +692,11 @@
       "initialFailedChecks": [],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 4159,
@@ -622,7 +722,13 @@
       "initialFailedChecks": [],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "MERGED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": {
+        "oid": "05eda976ed09663695344cc9474565d74d21d469"
+      },
+      "deliveryMergedAt": "2026-10-23T04:52:04Z"
     },
     {
       "number": 4164,
@@ -649,7 +755,11 @@
         "Flux Local - Test (main)"
       ],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "CLOSED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 4194,
@@ -674,7 +784,13 @@
       "initialFailedChecks": [],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "MERGED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": {
+        "oid": "7772b3432be03270d1b2fe96e1ce010a70754822"
+      },
+      "deliveryMergedAt": "2026-10-23T04:36:23Z"
     },
     {
       "number": 4196,
@@ -697,7 +813,11 @@
       "initialFailedChecks": [],
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": true,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 4198,
@@ -725,7 +845,11 @@
         "Flux Local - Test (main)"
       ],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "OPEN",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": null,
+      "deliveryMergedAt": null
     },
     {
       "number": 4206,
@@ -754,7 +878,158 @@
         "Flux Local - external-dns annotation prefix"
       ],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
-      "snapshotVetMarkers": 0
+      "snapshotVetMarkers": 0,
+      "deliveryState": "MERGED",
+      "deliveryDraft": false,
+      "deliveryMergeCommit": {
+        "oid": "0ddcca933b1b63346d1dbb665c3d817da4f9a2c0"
+      },
+      "deliveryMergedAt": "2026-10-23T04:40:51Z"
     }
-  ]
+  ],
+  "deliveryCheckpoint": "2026-10-23T05:18:00Z",
+  "additionalPRs": [
+    {
+      "number": 4207,
+      "title": "feat(container): update home-assistant group",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "f0158609b3cd6d30afef1d2b86aa683cd8b4ca68",
+      "mergeCommit": {
+        "oid": "9ba3de015b840b845d8a5fd61cf710dad8be7972"
+      },
+      "mergedAt": "2026-10-23T04:47:06Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4207"
+    },
+    {
+      "number": 4208,
+      "title": "fix(ci): preserve COPY Python contract on Ubuntu 26.04",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "b92c4e243498e2b3571812ad2fd876fe28aa82ea",
+      "mergeCommit": {
+        "oid": "bae16fbdc1cae5791536c0aeba72491f48cf3712"
+      },
+      "mergedAt": "2026-10-23T04:47:36Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4208"
+    },
+    {
+      "number": 4209,
+      "title": "fix(dev-env): pair Cursor HTTP dependency upgrades (held V1 restart)",
+      "state": "OPEN",
+      "isDraft": true,
+      "headRefOid": "475b7aab9182770448cdcce925f23801c34db303",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4209"
+    },
+    {
+      "number": 4210,
+      "title": "fix(audio): deploy validated NumPy patch image",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "c323b825057c9e5f7e1d9c88acd9bfa8ad74ca39",
+      "mergeCommit": {
+        "oid": "a04a0fa3ca942600a9aa16e2753ff9a61dd1d73a"
+      },
+      "mergedAt": "2026-10-23T04:54:25Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4210"
+    },
+    {
+      "number": 4212,
+      "title": "feat(comfyui): upgrade to 0.42.1 with a distinct image tag",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "bff10743a42ce8df89608f35f51c1c995933a22d",
+      "mergeCommit": {
+        "oid": "69b26890515a9fb66714c82410496d9fb0dfe625"
+      },
+      "mergedAt": "2026-10-23T04:59:00Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4212"
+    },
+    {
+      "number": 4213,
+      "title": "fix(tests): align archive guard with Kyverno 1.19.2 evaluator",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "024346acfe6672ce6b7606c693a592d3e9f49a03",
+      "mergeCommit": {
+        "oid": "bcc630b703c084edae31dff0ff92e745fe756270"
+      },
+      "mergedAt": "2026-10-23T04:57:48Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4213"
+    },
+    {
+      "number": 4214,
+      "title": "fix(peloton): validate Python 3.15 image and browser before publishing",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "8e1b30d8a4ae14f0070e25832df636775a7918df",
+      "mergeCommit": {
+        "oid": "c0966f27eda23d7dbf1900e9ea354e2a51426922"
+      },
+      "mergedAt": "2026-10-23T05:07:13Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4214"
+    },
+    {
+      "number": 4215,
+      "title": "chore(deps): advance compatible archive guard libraries together",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "8cbbaec087bc350ac47d1a1c525fb76578d02767",
+      "mergeCommit": {
+        "oid": "17fa8fd2c48f5f5296ebf050c671d72a9799f50c"
+      },
+      "mergedAt": "2026-10-23T05:08:56Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4215"
+    },
+    {
+      "number": 4216,
+      "title": "chore(deps): update @openai/codex to 0.164.0",
+      "state": "OPEN",
+      "isDraft": false,
+      "headRefOid": "bb0ba8923d41c67c864e9fc8bafacad5f00b35a2",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4216"
+    },
+    {
+      "number": 4217,
+      "title": "feat(comfyui): activate validated 0.42.1 image (held GPU gate)",
+      "state": "OPEN",
+      "isDraft": true,
+      "headRefOid": "4fa5906ea3f8b397575a386c14714505306429e4",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4217"
+    }
+  ],
+  "compatibilityReviewCorrection": "An exact whole upstream Go dependency graph is not a repository requirement. Delivered replacement4215 advances compatible API/containerregistry libraries while retaining the real Kyverno1.19.2 compiler, exact pod-security replacement and Kubernetes/CEL pins; all1593 unchanged fixtures pass.3915 remains actual compiler-incompatible.",
+  "publishedArtifacts": {
+    "audio": {
+      "image": "thaynes43/audio-authoring:0.2.0",
+      "digest": "sha256:c96248cbb452561612c75bf0ed627d0c0f686c9fe55b1afa9e1a5503d9f7564c",
+      "headerDigest": "sha256:c96248cbb452561612c75bf0ed627d0c0f686c9fe55b1afa9e1a5503d9f7564c",
+      "bytes": 856,
+      "legacySignatureManifestHTTP": 200
+    },
+    "comfy": {
+      "image": "thaynes43/comfyui:0.42.1-1",
+      "digest": "sha256:f5a6ca590d8509af23e7aacf3f2868adbf1c7359b99f2b14f3b935ae14b3c050",
+      "headerDigest": "sha256:f5a6ca590d8509af23e7aacf3f2868adbf1c7359b99f2b14f3b935ae14b3c050",
+      "signatureManifestHTTP": 200
+    },
+    "peloton": {
+      "image": "thaynes43/peloton-scraper:0.3.3",
+      "digest": "sha256:776d2075860eb2795d46e18fd079f489ecbc93a576874b7d4fab5b8bf47a3c8b",
+      "headerDigest": "sha256:776d2075860eb2795d46e18fd079f489ecbc93a576874b7d4fab5b8bf47a3c8b"
+    },
+    "audioSmoke": {
+      "sha256": "1798a1c3d28c742599b4ede263af594d0a6c1a1e280fcd83751e0901ca506249",
+      "size": 882044,
+      "rate": 44100,
+      "channels": 2,
+      "seconds": 5.0
+    }
+  }
 }
