@@ -20,12 +20,22 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       changed-files: ${{ steps.changed-files.outputs.changed_files }}
+      portal-files: ${{ steps.portal-files.outputs.changed_files }}
     steps:
       - name: Get Changed Files
         id: changed-files
         uses: bjw-s-labs/action-changed-files@147be9638332cf68fd60714a610509d7a9360d60 # v0.7.0
         with:
           patterns: kubernetes/**/*
+      - name: Get Portal Identity Guard Files
+        id: portal-files
+        uses: bjw-s-labs/action-changed-files@147be9638332cf68fd60714a610509d7a9360d60 # v0.7.0
+        with:
+          patterns: |
+            kubernetes/main/apps/network/authentik/**
+            scripts/tests/portal178-m5a/**
+            .agents/reports/portal178-m5a/pending/**
+            .github/workflows/flux-local.yaml
 
   # The `cluster` matrix carries a single entry since the edge cluster was retired
   # (2026-09-22): `kubernetes/edge/` is gone, so there is nothing else to render. It
@@ -147,6 +157,8 @@ jobs:
           echo "no alpha-prefixed external-dns annotations under kubernetes/"
 
   portal-identity-guard:
+    if: ${{ needs.filter.outputs.portal-files != '[]' }}
+    needs: filter
     name: Flux Local - Portal OIDC guard
     runs-on: ubuntu-latest
     steps:
