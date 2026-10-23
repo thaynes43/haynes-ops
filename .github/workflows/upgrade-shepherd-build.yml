@@ -4,9 +4,16 @@ name: Build and Push Upgrade Shepherd Image
 # Fatter than the gate image (claude-code + gh + git + flux + kubectl). Build context
 # is the REPO ROOT so the Dockerfile can COPY scripts/github-app-token.sh (single
 # source of truth); a repo-root .dockerignore keeps secrets/.git out of the context.
-# Builds only on main.
+# PRs build and smoke-test without publishing; main builds publish and sign.
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/upgrade-shepherd/**'
+      - 'scripts/github-app-token.sh'
+      - '.github/workflows/upgrade-shepherd-build.yml'
   push:
     branches:
       - main
@@ -30,7 +37,49 @@ permissions:
   id-token: write   # keyless cosign signing (OIDC) — proves the image came from THIS workflow
 
 jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build image for validation
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ./scripts/upgrade-shepherd/Dockerfile
+          push: false
+          load: true
+          tags: upgrade-shepherd:validation
+
+      - name: Smoke-test toolchain as the runtime user
+        timeout-minutes: 3
+        run: |
+          docker run --rm --read-only --network none \
+            --cpus 2 --memory 2g \
+            --tmpfs /tmp:rw,exec,uid=1000,gid=1000,size=256m \
+            --user 1000:1000 \
+            --entrypoint /bin/bash \
+            upgrade-shepherd:validation \
+            -euc '
+              test "$(id -u)" = 1000
+              gh --version
+              kubectl version --client=true
+              flux --version
+              git --version
+              claude --version
+            '
+
   build-and-push:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
