@@ -1,5 +1,7 @@
 # Story181: eligible templates-only dev-env2.43 source review
 
+> Historical2.43 source review only. Current2.44 acceptance is in the main report and distinct v2-244 registry/refresh/runtime receipts; this appendix does not establish2.44.
+
 2026-10-23. Independent bounded read-only helper. No repo edits/fetch, runtime probe, auth/inference/credential operation, push, or tests. Existing `/home/dev/repos/dev-env` stays clean at2.42.0 source7cb1a19575a4a6ae86f56248c84cf86994c0a2d1; exact2.43 source was read through public GitHub endpoints into `/tmp/dev-env-243-review/`.
 
 **Assessment:** no source incompatibility or required local template adaptation identified for the narrowly scoped2.42→2.43 template image line. The entire3710 branch is not the eligible change: it also modifies frozen H7 audit, shelf and keeper helper pins, which must remain excluded. Driver owns the one-file PR, required CI, controlled activation/observation and exact final diff review.

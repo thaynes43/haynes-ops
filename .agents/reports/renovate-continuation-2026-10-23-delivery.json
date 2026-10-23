@@ -1,126 +1,964 @@
 {
-  "observedAt": "2026-10-23T18:57Z",
-  "qualification": "CI and source state, not a blanket runtime-acceptance claim. Auto-merges retain their actual actors/times.",
+  "observedAt": "2026-10-23T19:44:44.363246+00:00",
+  "qualification": "Current GitHub source and recorded head checks; runtime and behavioral acceptance are separate in the report. Automated merge actor attribution is in the adjacent automation inventory.4227 prepared-file traceability is retrospective, not premerge receipt.",
   "pullRequests": [
     {
-      "headRefOid": "ea907dc61d6828c3b162f047d770deb106c71501",
-      "mergeCommit": null,
-      "mergedAt": null,
-      "number": 4245,
-      "state": "OPEN",
-      "title": "fix(dev-env-system): advance eligible session template to 2.43.0",
+      "headRefOid": "107240a3354e7151bc9f8f12942da5e282dbd528",
+      "mergeCommit": {
+        "oid": "b8674eb9ac7bf04cc796480b4688958b22487ef6"
+      },
+      "mergedAt": "2026-10-23T18:37:12Z",
+      "number": 4226,
+      "state": "MERGED",
+      "title": "chore(container): update image docker.io/library/eclipse-mosquitto to 860aeb5",
       "checks": [
         {
           "name": "Claude Review (advisory)",
           "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315468/job/120595008603"
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107808/job/120577106639"
         },
         {
           "name": "Diff Scope - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315534/job/120595009533"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107968/job/120577104303"
         },
         {
           "name": "Flux Local - Filter",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120595008889"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120577104933"
         },
         {
           "name": "Flux Local - external-dns annotation prefix",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120595008607"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120577104692"
         },
         {
           "name": "Flux Local - Test (main)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120595054475"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120577159466"
         },
         {
           "name": "Flux Local - Diff (main/helmrelease)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120595054518"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120577159503"
         },
         {
           "name": "Flux Local - Diff (main/kustomization)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120595054641"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120577159471"
         },
         {
           "name": "Flux Local - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120596124270"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120578217710"
         }
       ]
     },
     {
-      "headRefOid": "858903e081bfb47b7a1bee63196824508d428605",
-      "mergeCommit": null,
-      "mergedAt": null,
-      "number": 4244,
-      "state": "OPEN",
-      "title": "fix(dev-env): deliver coordinated Cursor and workhorse image upgrade",
+      "headRefOid": "d0085393fcfb95d73f6ea7d010fca48fd5866a37",
+      "mergeCommit": {
+        "oid": "b3d537378a03cb6ce796439c702d92bd8fb8c9d6"
+      },
+      "mergedAt": "2026-10-23T18:12:55Z",
+      "number": 4227,
+      "state": "MERGED",
+      "title": "fix(container): update image ghcr.io/zwave-js/zwave-js-ui to v11.25.1",
       "checks": [
         {
           "name": "Claude Review (advisory)",
           "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007365838/job/120598577035"
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123983/job/120577162696"
         },
         {
           "name": "Diff Scope - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366226/job/120598578613"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123901/job/120577160267"
         },
         {
           "name": "Flux Local - Filter",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120598579054"
-        },
-        {
-          "name": "Cursor Offline Fixtures",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366201/job/120598579305"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120577160189"
         },
         {
           "name": "Flux Local - external-dns annotation prefix",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120598579181"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120577159692"
         },
         {
           "name": "Flux Local - Test (main)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120598632376"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120577208353"
         },
         {
           "name": "Flux Local - Diff (main/helmrelease)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120598632404"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120577208429"
         },
         {
           "name": "Flux Local - Diff (main/kustomization)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120598632502"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120577208301"
         },
         {
           "name": "Flux Local - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120599396632"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120578198868"
+        }
+      ]
+    },
+    {
+      "headRefOid": "8f8dcf1fa65797bfb1e39ece745c34a2acc71e4c",
+      "mergeCommit": {
+        "oid": "35b82e361ee2dc65725c987e5490da363010af14"
+      },
+      "mergedAt": "2026-10-23T18:37:48Z",
+      "number": 4228,
+      "state": "MERGED",
+      "title": "fix(helm): update chart node-feature-discovery to 0.20.1",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140271/job/120577224757"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140323/job/120577217322"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120577221133"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120577221620"
+        },
+        {
+          "name": "Flux Local - Test (main)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120577265462"
+        },
+        {
+          "name": "Flux Local - Diff (main/helmrelease)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120577265630"
+        },
+        {
+          "name": "Flux Local - Diff (main/kustomization)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120577265577"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120578272205"
+        }
+      ]
+    },
+    {
+      "headRefOid": "9dd55d1b90a8f13e15f3ea208c99e939bde2ef0f",
+      "mergeCommit": {
+        "oid": "ae1e8541fe79385c2c5f6dfe114951df6957317d"
+      },
+      "mergedAt": "2026-10-23T18:37:53Z",
+      "number": 4229,
+      "state": "MERGED",
+      "title": "feat(container): update image ghcr.io/linuxserver/calibre to v9.17.0-ls429",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159065/job/120577348829"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159038/job/120577283809"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120577282891"
+        },
+        {
+          "name": "LazyLibrarian EPUB Convert - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001158993/job/120577282864"
+        },
+        {
+          "name": "LazyLibrarian Overlays - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159004/job/120577282741"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120577283294"
+        },
+        {
+          "name": "Flux Local - Test (main)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120577347235"
+        },
+        {
+          "name": "Flux Local - Diff (main/helmrelease)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120577347365"
+        },
+        {
+          "name": "Flux Local - Diff (main/kustomization)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120577347598"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120578351926"
+        }
+      ]
+    },
+    {
+      "headRefOid": "288cc44a05f2dacb4cf6e8adb3f3c52ffbf61f8b",
+      "mergeCommit": {
+        "oid": "c9b8272b67b2693d4535bcb6c8e1a288425cd035"
+      },
+      "mergedAt": "2026-10-23T18:40:28Z",
+      "number": 4231,
+      "state": "MERGED",
+      "title": "chore(container): update image docker.io/outlinewiki/outline to 25d6a2c",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892705/job/120590178867"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892706/job/120590176255"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120590180307"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120590179744"
+        },
+        {
+          "name": "Flux Local - Test (main)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120590236332"
+        },
+        {
+          "name": "Flux Local - Diff (main/helmrelease)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120590236318"
+        },
+        {
+          "name": "Flux Local - Diff (main/kustomization)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120590236343"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120591126878"
+        }
+      ]
+    },
+    {
+      "headRefOid": "9830bc13244b0ddb9f5832e2b602430dacf530ff",
+      "mergeCommit": {
+        "oid": "d0b1fb93b7003996f4d1b3c3cee57145e7ac9e97"
+      },
+      "mergedAt": "2026-10-23T18:40:15Z",
+      "number": 4232,
+      "state": "MERGED",
+      "title": "chore(container): update image docker.io/outlinewiki/outline to 25d6a2c",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906378/job/120590227975"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906762/job/120590226359"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590225752"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590225050"
+        },
+        {
+          "name": "Flux Local - Test (main)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590277518"
+        },
+        {
+          "name": "Flux Local - Diff (main/helmrelease)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590277500"
+        },
+        {
+          "name": "Flux Local - Diff (main/kustomization)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590277760"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590972762"
+        }
+      ]
+    },
+    {
+      "headRefOid": "8e8ffe5a8d19b4032ef8b873a0b897269421c25c",
+      "mergeCommit": {
+        "oid": "8c4347c45326b0fabbfc003fbb01d23c462b239c"
+      },
+      "mergedAt": "2026-10-23T18:40:20Z",
+      "number": 4233,
+      "state": "MERGED",
+      "title": "fix(container): update image docker.io/ollama/ollama to v0.40.10",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929882/job/120590305419"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929868/job/120590303023"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120590303493"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120590302855"
+        },
+        {
+          "name": "Flux Local - Test (main)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120590359417"
+        },
+        {
+          "name": "Flux Local - Diff (main/helmrelease)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120590359443"
+        },
+        {
+          "name": "Flux Local - Diff (main/kustomization)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120590359500"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120591174993"
+        }
+      ]
+    },
+    {
+      "headRefOid": "140cc8d68ca656369f85878eba38a971e706872e",
+      "mergeCommit": {
+        "oid": "2fe5f7b2ed75aa92214f655ff5af122f6d38b95b"
+      },
+      "mergedAt": "2026-10-23T19:20:20Z",
+      "number": 4234,
+      "state": "MERGED",
+      "title": "fix(container): update image ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set to v0.15.1",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948204/job/120590369564"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948258/job/120590367315"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120590367083"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120590367713"
+        },
+        {
+          "name": "Flux Local - Test (main)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120590424127"
+        },
+        {
+          "name": "Flux Local - Diff (main/helmrelease)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120590424292"
+        },
+        {
+          "name": "Flux Local - Diff (main/kustomization)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120590424297"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120591260309"
+        }
+      ]
+    },
+    {
+      "headRefOid": "31f791151f92bc1127a901c78690269ab88b45ae",
+      "mergeCommit": {
+        "oid": "2a33125f2e7d7d018886255a7b94029413b2e541"
+      },
+      "mergedAt": "2026-10-23T19:16:27Z",
+      "number": 4235,
+      "state": "MERGED",
+      "title": "fix(container): update image ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller to v0.15.1",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963272/job/120590419404"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963335/job/120590417245"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120590417125"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120590416951"
+        },
+        {
+          "name": "Flux Local - Test (main)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120590457163"
+        },
+        {
+          "name": "Flux Local - Diff (main/helmrelease)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120590457200"
+        },
+        {
+          "name": "Flux Local - Diff (main/kustomization)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120590456921"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120591211318"
+        }
+      ]
+    },
+    {
+      "headRefOid": "b3d3e2f258f4586d60acbc91a24b02965ea58660",
+      "mergeCommit": {
+        "oid": "5e18296390b8f838d8181903bbedfe23082db7e9"
+      },
+      "mergedAt": "2026-10-23T18:40:34Z",
+      "number": 4236,
+      "state": "MERGED",
+      "title": "fix(container): update image ghcr.io/music-assistant/server to v2.10.8",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979515/job/120590475715"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979554/job/120590473443"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120590473930"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120590473404"
+        },
+        {
+          "name": "Flux Local - Test (main)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120590533233"
+        },
+        {
+          "name": "Flux Local - Diff (main/helmrelease)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120590533303"
+        },
+        {
+          "name": "Flux Local - Diff (main/kustomization)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120590533409"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120591270287"
+        }
+      ]
+    },
+    {
+      "headRefOid": "17318cbf8b6c68e2e1be6ac1805cbb8d63576098",
+      "mergeCommit": {
+        "oid": "cde225d0937761c4d6a3dd71728199d44682c34a"
+      },
+      "mergedAt": "2026-10-23T18:55:08Z",
+      "number": 4237,
+      "state": "MERGED",
+      "title": "fix(container): update image quay.io/cilium/charts/cilium to v1.20.4",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994721/job/120590527589"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994456/job/120590522834"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120590524015"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120590523481"
+        },
+        {
+          "name": "Flux Local - Test (main)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120590577753"
+        },
+        {
+          "name": "Flux Local - Diff (main/helmrelease)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120590577789"
+        },
+        {
+          "name": "Flux Local - Diff (main/kustomization)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120590577695"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120591351380"
+        }
+      ]
+    },
+    {
+      "headRefOid": "2e34a70afab350ddc9a8a57e6216148d5b19e243",
+      "mergeCommit": {
+        "oid": "d4f5cf54302af272fa3ae598bdd1833b5302f94a"
+      },
+      "mergedAt": "2026-10-23T18:39:22Z",
+      "number": 4238,
+      "state": "MERGED",
+      "title": "fix(github-action): update anthropics/claude-code-action action to v1.0.260",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013764/job/120590592485"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013746/job/120590589353"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013757/job/120590589731"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013757/job/120590590216"
+        },
+        {
+          "name": "Flux Local - Test (${{ matrix.cluster }})",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013757/job/120590659505"
+        },
+        {
+          "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013757/job/120590659086"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013757/job/120590657546"
+        }
+      ]
+    },
+    {
+      "headRefOid": "24a98b4472c4bba7f77eda787c9cc7f55161981d",
+      "mergeCommit": {
+        "oid": "fa3e3217c29b1db44e5acc0e570f78071670c588"
+      },
+      "mergedAt": "2026-10-23T18:44:13Z",
+      "number": 4239,
+      "state": "MERGED",
+      "title": "fix(github-release): update cli/cli to v2.103.1",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030096/job/120590648913"
+        },
+        {
+          "name": "build-and-push",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030253/job/120590647802"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030316/job/120590648176"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030033/job/120590646870"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030033/job/120590647339"
+        },
+        {
+          "name": "Flux Local - Test (${{ matrix.cluster }})",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030033/job/120590710991"
+        },
+        {
+          "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030033/job/120590712097"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030033/job/120590719258"
+        }
+      ]
+    },
+    {
+      "headRefOid": "b80ebe544f3644bfedee458c559764250488a544",
+      "mergeCommit": {
+        "oid": "db8c1c8ffcf01e8ec29ebeb064439522edfcc920"
+      },
+      "mergedAt": "2026-10-23T18:41:09Z",
+      "number": 4240,
+      "state": "MERGED",
+      "title": "fix(github-release): update cli/cli to v2.103.1",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044594/job/120590701157"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044602/job/120590697921"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044590/job/120590697946"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044590/job/120590698123"
+        },
+        {
+          "name": "Flux Local - Test (${{ matrix.cluster }})",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044590/job/120590768496"
+        },
+        {
+          "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044590/job/120590767412"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044590/job/120590765903"
+        }
+      ]
+    },
+    {
+      "headRefOid": "7f02256680579355c3da40766ccfc3a36ea2d7b0",
+      "mergeCommit": {
+        "oid": "289887721953b1d643c898a6d81011cb09cb69c6"
+      },
+      "mergedAt": "2026-10-23T18:41:54Z",
+      "number": 4241,
+      "state": "MERGED",
+      "title": "feat(container): update image ghcr.io/external-secrets/charts/external-secrets to v2.14.0",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058475/job/120590815359"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058484/job/120590745588"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120590745874"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120590745351"
+        },
+        {
+          "name": "Flux Local - Test (main)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120590789065"
+        },
+        {
+          "name": "Flux Local - Diff (main/helmrelease)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120590789405"
+        },
+        {
+          "name": "Flux Local - Diff (main/kustomization)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120590789052"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120591825642"
+        }
+      ]
+    },
+    {
+      "headRefOid": "50fe75bb786c2deb29d3a770e2c471c05ea8b14d",
+      "mergeCommit": {
+        "oid": "7c1c6e7328d036e58fc4efe8fbd863a85405c1de"
+      },
+      "mergedAt": "2026-10-23T18:41:28Z",
+      "number": 4242,
+      "state": "MERGED",
+      "title": "feat(container): update image ghcr.io/gethomepage/homepage to v2.7.0",
+      "checks": [
+        {
+          "name": "Claude Review (advisory)",
+          "status": "COMPLETED",
+          "conclusion": "SKIPPED",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005075944/job/120590810896"
+        },
+        {
+          "name": "Diff Scope - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005075991/job/120590808609"
+        },
+        {
+          "name": "Flux Local - Filter",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120590809020"
+        },
+        {
+          "name": "Flux Local - external-dns annotation prefix",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120590808505"
+        },
+        {
+          "name": "Flux Local - Test (main)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120590865854"
+        },
+        {
+          "name": "Flux Local - Diff (main/helmrelease)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120590866033"
+        },
+        {
+          "name": "Flux Local - Diff (main/kustomization)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120590866089"
+        },
+        {
+          "name": "Flux Local - Success",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120591680403"
         }
       ]
     },
@@ -251,1010 +1089,368 @@
       ]
     },
     {
-      "headRefOid": "50fe75bb786c2deb29d3a770e2c471c05ea8b14d",
+      "headRefOid": "858903e081bfb47b7a1bee63196824508d428605",
       "mergeCommit": {
-        "oid": "7c1c6e7328d036e58fc4efe8fbd863a85405c1de"
+        "oid": "e09b6713b341f14e21c74af8b5bdb647f6a0bc13"
       },
-      "mergedAt": "2026-10-23T18:41:28Z",
-      "number": 4242,
+      "mergedAt": "2026-10-23T19:03:03Z",
+      "number": 4244,
       "state": "MERGED",
-      "title": "feat(container): update image ghcr.io/gethomepage/homepage to v2.7.0",
+      "title": "fix(dev-env): deliver coordinated Cursor and workhorse image upgrade",
       "checks": [
         {
           "name": "Claude Review (advisory)",
           "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005075944/job/120590810896"
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007365838/job/120598577035"
         },
         {
           "name": "Diff Scope - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005075991/job/120590808609"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366226/job/120598578613"
         },
         {
           "name": "Flux Local - Filter",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120590809020"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120598579054"
+        },
+        {
+          "name": "Cursor Offline Fixtures",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366201/job/120598579305"
         },
         {
           "name": "Flux Local - external-dns annotation prefix",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120590808505"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120598579181"
         },
         {
           "name": "Flux Local - Test (main)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120590865854"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120598632376"
         },
         {
           "name": "Flux Local - Diff (main/helmrelease)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120590866033"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120598632404"
         },
         {
           "name": "Flux Local - Diff (main/kustomization)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120590866089"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120598632502"
         },
         {
           "name": "Flux Local - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005076010/job/120591680403"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40007366139/job/120599396632"
         }
       ]
     },
     {
-      "headRefOid": "7f02256680579355c3da40766ccfc3a36ea2d7b0",
+      "headRefOid": "ea907dc61d6828c3b162f047d770deb106c71501",
       "mergeCommit": {
-        "oid": "289887721953b1d643c898a6d81011cb09cb69c6"
+        "oid": "104f47ed3206cb5988ee77ba8f2aaa35d9f9c4b0"
       },
-      "mergedAt": "2026-10-23T18:41:54Z",
-      "number": 4241,
+      "mergedAt": "2026-10-23T19:06:26Z",
+      "number": 4245,
       "state": "MERGED",
-      "title": "feat(container): update image ghcr.io/external-secrets/charts/external-secrets to v2.14.0",
+      "title": "fix(dev-env-system): advance eligible session template to 2.43.0",
       "checks": [
         {
           "name": "Claude Review (advisory)",
           "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058475/job/120590815359"
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315468/job/120595008603"
         },
         {
           "name": "Diff Scope - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058484/job/120590745588"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315534/job/120595009533"
         },
         {
           "name": "Flux Local - Filter",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120590745874"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120595008889"
         },
         {
           "name": "Flux Local - external-dns annotation prefix",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120590745351"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120595008607"
         },
         {
           "name": "Flux Local - Test (main)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120590789065"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120595054475"
         },
         {
           "name": "Flux Local - Diff (main/helmrelease)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120590789405"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120595054518"
         },
         {
           "name": "Flux Local - Diff (main/kustomization)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120590789052"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120595054641"
         },
         {
           "name": "Flux Local - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005058595/job/120591825642"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40006315457/job/120596124270"
         }
       ]
     },
     {
-      "headRefOid": "b80ebe544f3644bfedee458c559764250488a544",
+      "headRefOid": "15680f9c569db405ee3c4a9c274f42198e01112c",
       "mergeCommit": {
-        "oid": "db8c1c8ffcf01e8ec29ebeb064439522edfcc920"
+        "oid": "ceb60dde36a9d6cfb6e6d9a1d6a0849e13ae460f"
       },
-      "mergedAt": "2026-10-23T18:41:09Z",
-      "number": 4240,
+      "mergedAt": "2026-10-23T19:15:33Z",
+      "number": 4247,
       "state": "MERGED",
-      "title": "fix(github-release): update cli/cli to v2.103.1",
+      "title": "fix(dev-env): restore scripts reload after verified image activation",
       "checks": [
         {
           "name": "Claude Review (advisory)",
           "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044594/job/120590701157"
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40009282511/job/120605161520"
         },
         {
           "name": "Diff Scope - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044602/job/120590697921"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40009282786/job/120605163257"
         },
         {
           "name": "Flux Local - Filter",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044590/job/120590697946"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40009282567/job/120605162842"
         },
         {
           "name": "Flux Local - external-dns annotation prefix",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044590/job/120590698123"
-        },
-        {
-          "name": "Flux Local - Test (${{ matrix.cluster }})",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044590/job/120590768496"
-        },
-        {
-          "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044590/job/120590767412"
-        },
-        {
-          "name": "Flux Local - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005044590/job/120590765903"
-        }
-      ]
-    },
-    {
-      "headRefOid": "24a98b4472c4bba7f77eda787c9cc7f55161981d",
-      "mergeCommit": {
-        "oid": "fa3e3217c29b1db44e5acc0e570f78071670c588"
-      },
-      "mergedAt": "2026-10-23T18:44:13Z",
-      "number": 4239,
-      "state": "MERGED",
-      "title": "fix(github-release): update cli/cli to v2.103.1",
-      "checks": [
-        {
-          "name": "Claude Review (advisory)",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030096/job/120590648913"
-        },
-        {
-          "name": "build-and-push",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030253/job/120590647802"
-        },
-        {
-          "name": "Diff Scope - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030316/job/120590648176"
-        },
-        {
-          "name": "Flux Local - Filter",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030033/job/120590646870"
-        },
-        {
-          "name": "Flux Local - external-dns annotation prefix",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030033/job/120590647339"
-        },
-        {
-          "name": "Flux Local - Test (${{ matrix.cluster }})",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030033/job/120590710991"
-        },
-        {
-          "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030033/job/120590712097"
-        },
-        {
-          "name": "Flux Local - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005030033/job/120590719258"
-        }
-      ]
-    },
-    {
-      "headRefOid": "2e34a70afab350ddc9a8a57e6216148d5b19e243",
-      "mergeCommit": {
-        "oid": "d4f5cf54302af272fa3ae598bdd1833b5302f94a"
-      },
-      "mergedAt": "2026-10-23T18:39:22Z",
-      "number": 4238,
-      "state": "MERGED",
-      "title": "fix(github-action): update anthropics/claude-code-action action to v1.0.260",
-      "checks": [
-        {
-          "name": "Claude Review (advisory)",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013764/job/120590592485"
-        },
-        {
-          "name": "Diff Scope - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013746/job/120590589353"
-        },
-        {
-          "name": "Flux Local - Filter",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013757/job/120590589731"
-        },
-        {
-          "name": "Flux Local - external-dns annotation prefix",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013757/job/120590590216"
-        },
-        {
-          "name": "Flux Local - Test (${{ matrix.cluster }})",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013757/job/120590659505"
-        },
-        {
-          "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013757/job/120590659086"
-        },
-        {
-          "name": "Flux Local - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005013757/job/120590657546"
-        }
-      ]
-    },
-    {
-      "headRefOid": "17318cbf8b6c68e2e1be6ac1805cbb8d63576098",
-      "mergeCommit": {
-        "oid": "cde225d0937761c4d6a3dd71728199d44682c34a"
-      },
-      "mergedAt": "2026-10-23T18:55:08Z",
-      "number": 4237,
-      "state": "MERGED",
-      "title": "fix(container): update image quay.io/cilium/charts/cilium to v1.20.4",
-      "checks": [
-        {
-          "name": "Claude Review (advisory)",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994721/job/120590527589"
-        },
-        {
-          "name": "Diff Scope - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994456/job/120590522834"
-        },
-        {
-          "name": "Flux Local - Filter",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120590524015"
-        },
-        {
-          "name": "Flux Local - external-dns annotation prefix",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120590523481"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40009282567/job/120605163291"
         },
         {
           "name": "Flux Local - Test (main)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120590577753"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40009282567/job/120605204918"
         },
         {
           "name": "Flux Local - Diff (main/helmrelease)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120590577789"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40009282567/job/120605204953"
         },
         {
           "name": "Flux Local - Diff (main/kustomization)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120590577695"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40009282567/job/120605204824"
         },
         {
           "name": "Flux Local - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004994508/job/120591351380"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40009282567/job/120606229643"
         }
       ]
     },
     {
-      "headRefOid": "b3d3e2f258f4586d60acbc91a24b02965ea58660",
+      "headRefOid": "42d1a109da209f90bc767258a3c8cb05f789dfce",
       "mergeCommit": {
-        "oid": "5e18296390b8f838d8181903bbedfe23082db7e9"
+        "oid": "ec7bd149d79a0a436730dd1b767cba5a9d296840"
       },
-      "mergedAt": "2026-10-23T18:40:34Z",
-      "number": 4236,
+      "mergedAt": "2026-10-23T19:22:28Z",
+      "number": 4248,
       "state": "MERGED",
-      "title": "fix(container): update image ghcr.io/music-assistant/server to v2.10.8",
+      "title": "fix(container): update image ghcr.io/home-assistant/home-assistant to v2026.10.3",
       "checks": [
         {
           "name": "Claude Review (advisory)",
           "status": "COMPLETED",
           "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979515/job/120590475715"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010035801/job/120607738689"
         },
         {
           "name": "Diff Scope - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979554/job/120590473443"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010035787/job/120607736612"
         },
         {
           "name": "Flux Local - Filter",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120590473930"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010035781/job/120607736796"
         },
         {
           "name": "Flux Local - external-dns annotation prefix",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120590473404"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010035781/job/120607736361"
         },
         {
           "name": "Flux Local - Test (main)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120590533233"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010035781/job/120607776334"
         },
         {
           "name": "Flux Local - Diff (main/helmrelease)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120590533303"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010035781/job/120607776446"
         },
         {
           "name": "Flux Local - Diff (main/kustomization)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120590533409"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010035781/job/120607776902"
         },
         {
           "name": "Flux Local - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004979556/job/120591270287"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010035781/job/120608520198"
         }
       ]
     },
     {
-      "headRefOid": "31f791151f92bc1127a901c78690269ab88b45ae",
-      "mergeCommit": null,
-      "mergedAt": null,
-      "number": 4235,
-      "state": "OPEN",
-      "title": "fix(container): update image ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller to v0.15.1",
-      "checks": [
-        {
-          "name": "Claude Review (advisory)",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963272/job/120590419404"
-        },
-        {
-          "name": "Diff Scope - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963335/job/120590417245"
-        },
-        {
-          "name": "Flux Local - Filter",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120590417125"
-        },
-        {
-          "name": "Flux Local - external-dns annotation prefix",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120590416951"
-        },
-        {
-          "name": "Flux Local - Test (main)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120590457163"
-        },
-        {
-          "name": "Flux Local - Diff (main/helmrelease)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120590457200"
-        },
-        {
-          "name": "Flux Local - Diff (main/kustomization)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120590456921"
-        },
-        {
-          "name": "Flux Local - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004963270/job/120591211318"
-        }
-      ]
-    },
-    {
-      "headRefOid": "140cc8d68ca656369f85878eba38a971e706872e",
-      "mergeCommit": null,
-      "mergedAt": null,
-      "number": 4234,
-      "state": "OPEN",
-      "title": "fix(container): update image ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set to v0.15.1",
-      "checks": [
-        {
-          "name": "Claude Review (advisory)",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948204/job/120590369564"
-        },
-        {
-          "name": "Diff Scope - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948258/job/120590367315"
-        },
-        {
-          "name": "Flux Local - Filter",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120590367083"
-        },
-        {
-          "name": "Flux Local - external-dns annotation prefix",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120590367713"
-        },
-        {
-          "name": "Flux Local - Test (main)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120590424127"
-        },
-        {
-          "name": "Flux Local - Diff (main/helmrelease)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120590424292"
-        },
-        {
-          "name": "Flux Local - Diff (main/kustomization)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120590424297"
-        },
-        {
-          "name": "Flux Local - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004948238/job/120591260309"
-        }
-      ]
-    },
-    {
-      "headRefOid": "8e8ffe5a8d19b4032ef8b873a0b897269421c25c",
+      "headRefOid": "91cbc5a9f93de0c98076bf5a2cb0ff798d89c43c",
       "mergeCommit": {
-        "oid": "8c4347c45326b0fabbfc003fbb01d23c462b239c"
+        "oid": "5a5fb146fd2a1ff8db7411d19f28ee0ddfdf6dfb"
       },
-      "mergedAt": "2026-10-23T18:40:20Z",
-      "number": 4233,
+      "mergedAt": "2026-10-23T19:26:35Z",
+      "number": 4249,
       "state": "MERGED",
-      "title": "fix(container): update image docker.io/ollama/ollama to v0.40.10",
+      "title": "chore(container): update image ghcr.io/thaynes43/upgrade-shepherd to 0c734d1",
       "checks": [
         {
           "name": "Claude Review (advisory)",
           "status": "COMPLETED",
           "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929882/job/120590305419"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010951140/job/120610930815"
         },
         {
           "name": "Diff Scope - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929868/job/120590303023"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010951081/job/120610878363"
         },
         {
           "name": "Flux Local - Filter",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120590303493"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010951132/job/120610878597"
         },
         {
           "name": "Flux Local - external-dns annotation prefix",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120590302855"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010951132/job/120610879003"
         },
         {
           "name": "Flux Local - Test (main)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120590359417"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010951132/job/120610928148"
         },
         {
           "name": "Flux Local - Diff (main/helmrelease)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120590359443"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010951132/job/120610928118"
         },
         {
           "name": "Flux Local - Diff (main/kustomization)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120590359500"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010951132/job/120610928367"
         },
         {
           "name": "Flux Local - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004929896/job/120591174993"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40010951132/job/120612145697"
         }
       ]
     },
     {
-      "headRefOid": "9830bc13244b0ddb9f5832e2b602430dacf530ff",
+      "headRefOid": "ff31e0976c8a848fe8dd4097e2510547a55d56f7",
       "mergeCommit": {
-        "oid": "d0b1fb93b7003996f4d1b3c3cee57145e7ac9e97"
+        "oid": "c49466ce1424cbfa9271c5036c13d9a29256f76c"
       },
-      "mergedAt": "2026-10-23T18:40:15Z",
-      "number": 4232,
+      "mergedAt": "2026-10-23T19:38:20Z",
+      "number": 4250,
       "state": "MERGED",
-      "title": "chore(container): update image docker.io/outlinewiki/outline to 25d6a2c",
+      "title": "fix(dev-env-system): advance eligible template to reviewed 2.44.0",
       "checks": [
         {
           "name": "Claude Review (advisory)",
           "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906378/job/120590227975"
+          "conclusion": "SUCCESS",
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40011047720/job/120611206474"
         },
         {
           "name": "Diff Scope - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906762/job/120590226359"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40011047809/job/120611207880"
         },
         {
           "name": "Flux Local - Filter",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590225752"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40011047689/job/120611206398"
         },
         {
           "name": "Flux Local - external-dns annotation prefix",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590225050"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40011047689/job/120611206919"
         },
         {
           "name": "Flux Local - Test (main)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590277518"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40011047689/job/120611259642"
         },
         {
           "name": "Flux Local - Diff (main/helmrelease)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590277500"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40011047689/job/120611259599"
         },
         {
           "name": "Flux Local - Diff (main/kustomization)",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590277760"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40011047689/job/120611259579"
         },
         {
           "name": "Flux Local - Success",
           "status": "COMPLETED",
           "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004906454/job/120590972762"
-        }
-      ]
-    },
-    {
-      "headRefOid": "288cc44a05f2dacb4cf6e8adb3f3c52ffbf61f8b",
-      "mergeCommit": {
-        "oid": "c9b8272b67b2693d4535bcb6c8e1a288425cd035"
-      },
-      "mergedAt": "2026-10-23T18:40:28Z",
-      "number": 4231,
-      "state": "MERGED",
-      "title": "chore(container): update image docker.io/outlinewiki/outline to 25d6a2c",
-      "checks": [
-        {
-          "name": "Claude Review (advisory)",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892705/job/120590178867"
-        },
-        {
-          "name": "Diff Scope - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892706/job/120590176255"
-        },
-        {
-          "name": "Flux Local - Filter",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120590180307"
-        },
-        {
-          "name": "Flux Local - external-dns annotation prefix",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120590179744"
-        },
-        {
-          "name": "Flux Local - Test (main)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120590236332"
-        },
-        {
-          "name": "Flux Local - Diff (main/helmrelease)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120590236318"
-        },
-        {
-          "name": "Flux Local - Diff (main/kustomization)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120590236343"
-        },
-        {
-          "name": "Flux Local - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40004892590/job/120591126878"
-        }
-      ]
-    },
-    {
-      "headRefOid": "7bd1307a886b9aae07d6e0d0f2503aca17c818e5",
-      "mergeCommit": null,
-      "mergedAt": null,
-      "number": 4230,
-      "state": "OPEN",
-      "title": "docs: Story181 Renovate continuation and V1 preservation receipts",
-      "checks": [
-        {
-          "name": "Claude Review (advisory)",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005772099/job/120593204417"
-        },
-        {
-          "name": "Diff Scope - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005772053/job/120593156721"
-        },
-        {
-          "name": "Flux Local - Filter",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005772072/job/120593157507"
-        },
-        {
-          "name": "Flux Local - external-dns annotation prefix",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005772072/job/120593157143"
-        },
-        {
-          "name": "Flux Local - Test (${{ matrix.cluster }})",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005772072/job/120593203133"
-        },
-        {
-          "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005772072/job/120593203091"
-        },
-        {
-          "name": "Flux Local - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40005772072/job/120593221001"
-        }
-      ]
-    },
-    {
-      "headRefOid": "9dd55d1b90a8f13e15f3ea208c99e939bde2ef0f",
-      "mergeCommit": {
-        "oid": "ae1e8541fe79385c2c5f6dfe114951df6957317d"
-      },
-      "mergedAt": "2026-10-23T18:37:53Z",
-      "number": 4229,
-      "state": "MERGED",
-      "title": "feat(container): update image ghcr.io/linuxserver/calibre to v9.17.0-ls429",
-      "checks": [
-        {
-          "name": "Claude Review (advisory)",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159065/job/120577348829"
-        },
-        {
-          "name": "Diff Scope - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159038/job/120577283809"
-        },
-        {
-          "name": "Flux Local - Filter",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120577282891"
-        },
-        {
-          "name": "LazyLibrarian EPUB Convert - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001158993/job/120577282864"
-        },
-        {
-          "name": "LazyLibrarian Overlays - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159004/job/120577282741"
-        },
-        {
-          "name": "Flux Local - external-dns annotation prefix",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120577283294"
-        },
-        {
-          "name": "Flux Local - Test (main)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120577347235"
-        },
-        {
-          "name": "Flux Local - Diff (main/helmrelease)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120577347365"
-        },
-        {
-          "name": "Flux Local - Diff (main/kustomization)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120577347598"
-        },
-        {
-          "name": "Flux Local - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001159036/job/120578351926"
-        }
-      ]
-    },
-    {
-      "headRefOid": "8f8dcf1fa65797bfb1e39ece745c34a2acc71e4c",
-      "mergeCommit": {
-        "oid": "35b82e361ee2dc65725c987e5490da363010af14"
-      },
-      "mergedAt": "2026-10-23T18:37:48Z",
-      "number": 4228,
-      "state": "MERGED",
-      "title": "fix(helm): update chart node-feature-discovery to 0.20.1",
-      "checks": [
-        {
-          "name": "Claude Review (advisory)",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140271/job/120577224757"
-        },
-        {
-          "name": "Diff Scope - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140323/job/120577217322"
-        },
-        {
-          "name": "Flux Local - Filter",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120577221133"
-        },
-        {
-          "name": "Flux Local - external-dns annotation prefix",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120577221620"
-        },
-        {
-          "name": "Flux Local - Test (main)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120577265462"
-        },
-        {
-          "name": "Flux Local - Diff (main/helmrelease)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120577265630"
-        },
-        {
-          "name": "Flux Local - Diff (main/kustomization)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120577265577"
-        },
-        {
-          "name": "Flux Local - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001140374/job/120578272205"
-        }
-      ]
-    },
-    {
-      "headRefOid": "d0085393fcfb95d73f6ea7d010fca48fd5866a37",
-      "mergeCommit": {
-        "oid": "b3d537378a03cb6ce796439c702d92bd8fb8c9d6"
-      },
-      "mergedAt": "2026-10-23T18:12:55Z",
-      "number": 4227,
-      "state": "MERGED",
-      "title": "fix(container): update image ghcr.io/zwave-js/zwave-js-ui to v11.25.1",
-      "checks": [
-        {
-          "name": "Claude Review (advisory)",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123983/job/120577162696"
-        },
-        {
-          "name": "Diff Scope - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123901/job/120577160267"
-        },
-        {
-          "name": "Flux Local - Filter",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120577160189"
-        },
-        {
-          "name": "Flux Local - external-dns annotation prefix",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120577159692"
-        },
-        {
-          "name": "Flux Local - Test (main)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120577208353"
-        },
-        {
-          "name": "Flux Local - Diff (main/helmrelease)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120577208429"
-        },
-        {
-          "name": "Flux Local - Diff (main/kustomization)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120577208301"
-        },
-        {
-          "name": "Flux Local - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001123851/job/120578198868"
-        }
-      ]
-    },
-    {
-      "headRefOid": "107240a3354e7151bc9f8f12942da5e282dbd528",
-      "mergeCommit": {
-        "oid": "b8674eb9ac7bf04cc796480b4688958b22487ef6"
-      },
-      "mergedAt": "2026-10-23T18:37:12Z",
-      "number": 4226,
-      "state": "MERGED",
-      "title": "chore(container): update image docker.io/library/eclipse-mosquitto to 860aeb5",
-      "checks": [
-        {
-          "name": "Claude Review (advisory)",
-          "status": "COMPLETED",
-          "conclusion": "SKIPPED",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107808/job/120577106639"
-        },
-        {
-          "name": "Diff Scope - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107968/job/120577104303"
-        },
-        {
-          "name": "Flux Local - Filter",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120577104933"
-        },
-        {
-          "name": "Flux Local - external-dns annotation prefix",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120577104692"
-        },
-        {
-          "name": "Flux Local - Test (main)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120577159466"
-        },
-        {
-          "name": "Flux Local - Diff (main/helmrelease)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120577159503"
-        },
-        {
-          "name": "Flux Local - Diff (main/kustomization)",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120577159471"
-        },
-        {
-          "name": "Flux Local - Success",
-          "status": "COMPLETED",
-          "conclusion": "SUCCESS",
-          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40001107834/job/120578217710"
+          "url": "https://github.com/thaynes43/haynes-ops/actions/runs/40011047689/job/120612035801"
         }
       ]
     }

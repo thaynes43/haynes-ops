@@ -1,0 +1,318 @@
+{
+  "recordedAt": "2026-10-23T19:04:55.824015+00:00",
+  "pullRequests": [
+    {
+      "number": 4226,
+      "state": "closed",
+      "head": "107240a3354e7151bc9f8f12942da5e282dbd528",
+      "mergedAt": "2026-10-23T18:37:12Z",
+      "mergedBy": "haynes-dev-bot[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:37:12Z",
+          "actor": "haynes-dev-bot[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4227,
+      "state": "closed",
+      "head": "d0085393fcfb95d73f6ea7d010fca48fd5866a37",
+      "mergedAt": "2026-10-23T18:12:55Z",
+      "mergedBy": "renovate[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:12:55Z",
+          "actor": "renovate[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Enabled."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4228,
+      "state": "closed",
+      "head": "8f8dcf1fa65797bfb1e39ece745c34a2acc71e4c",
+      "mergedAt": "2026-10-23T18:37:48Z",
+      "mergedBy": "haynes-dev-bot[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:37:48Z",
+          "actor": "haynes-dev-bot[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4229,
+      "state": "closed",
+      "head": "9dd55d1b90a8f13e15f3ea208c99e939bde2ef0f",
+      "mergedAt": "2026-10-23T18:37:53Z",
+      "mergedBy": "haynes-dev-bot[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:37:53Z",
+          "actor": "haynes-dev-bot[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4231,
+      "state": "closed",
+      "head": "288cc44a05f2dacb4cf6e8adb3f3c52ffbf61f8b",
+      "mergedAt": "2026-10-23T18:40:28Z",
+      "mergedBy": "renovate[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:40:28Z",
+          "actor": "renovate[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Enabled."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4232,
+      "state": "closed",
+      "head": "9830bc13244b0ddb9f5832e2b602430dacf530ff",
+      "mergedAt": "2026-10-23T18:40:15Z",
+      "mergedBy": "renovate[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:40:15Z",
+          "actor": "renovate[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Enabled."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4233,
+      "state": "closed",
+      "head": "8e8ffe5a8d19b4032ef8b873a0b897269421c25c",
+      "mergedAt": "2026-10-23T18:40:20Z",
+      "mergedBy": "renovate[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:40:20Z",
+          "actor": "renovate[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Enabled."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4234,
+      "state": "open",
+      "head": "140cc8d68ca656369f85878eba38a971e706872e",
+      "mergedAt": null,
+      "mergedBy": null,
+      "autoMergeEvents": [],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4235,
+      "state": "open",
+      "head": "31f791151f92bc1127a901c78690269ab88b45ae",
+      "mergedAt": null,
+      "mergedBy": null,
+      "autoMergeEvents": [],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4236,
+      "state": "closed",
+      "head": "b3d3e2f258f4586d60acbc91a24b02965ea58660",
+      "mergedAt": "2026-10-23T18:40:34Z",
+      "mergedBy": "renovate[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:40:34Z",
+          "actor": "renovate[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Enabled."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4237,
+      "state": "closed",
+      "head": "17318cbf8b6c68e2e1be6ac1805cbb8d63576098",
+      "mergedAt": "2026-10-23T18:55:08Z",
+      "mergedBy": "haynes-dev-bot[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:55:08Z",
+          "actor": "haynes-dev-bot[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- chore(deps): update auto-merge-trusted-deps (v1.20) ([#&#8203;49319](https://redirect.github.com/cilium/cilium/issues/49319), [@&#8203;cilium-renovate](https://redirect.github.com/cilium-renovate)\\[bot])",
+        "- chore(deps): update auto-merge-trusted-deps (v1.20) ([#&#8203;49445](https://redirect.github.com/cilium/cilium/issues/49445), [@&#8203;cilium-renovate](https://redirect.github.com/cilium-renovate)\\[bot])",
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4238,
+      "state": "closed",
+      "head": "2e34a70afab350ddc9a8a57e6216148d5b19e243",
+      "mergedAt": "2026-10-23T18:39:22Z",
+      "mergedBy": "renovate[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:39:22Z",
+          "actor": "renovate[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Enabled."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4239,
+      "state": "closed",
+      "head": "24a98b4472c4bba7f77eda787c9cc7f55161981d",
+      "mergedAt": "2026-10-23T18:44:13Z",
+      "mergedBy": "haynes-dev-bot[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:44:13Z",
+          "actor": "haynes-dev-bot[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4240,
+      "state": "closed",
+      "head": "b80ebe544f3644bfedee458c559764250488a544",
+      "mergedAt": "2026-10-23T18:41:09Z",
+      "mergedBy": "haynes-dev-bot[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:41:09Z",
+          "actor": "haynes-dev-bot[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4241,
+      "state": "closed",
+      "head": "7f02256680579355c3da40766ccfc3a36ea2d7b0",
+      "mergedAt": "2026-10-23T18:41:54Z",
+      "mergedBy": "renovate[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:41:54Z",
+          "actor": "renovate[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Enabled."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4242,
+      "state": "closed",
+      "head": "50fe75bb786c2deb29d3a770e2c471c05ea8b14d",
+      "mergedAt": "2026-10-23T18:41:28Z",
+      "mergedBy": "renovate[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:41:28Z",
+          "actor": "renovate[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Enabled."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    },
+    {
+      "number": 4243,
+      "state": "closed",
+      "head": "7c7eeb02a27d40214d992104caa2abf2f41648ba",
+      "mergedAt": "2026-10-23T18:40:01Z",
+      "mergedBy": "renovate[bot]",
+      "autoMergeEvents": [
+        {
+          "event": "merged",
+          "at": "2026-10-23T18:40:01Z",
+          "actor": "renovate[bot]"
+        }
+      ],
+      "bodyAutoMergeLines": [
+        "- Automerge",
+        "\ud83d\udea6 **Automerge**: Enabled."
+      ],
+      "classification": "scheduled update requested by owner outside normal schedule; source/runtime acceptance recorded separately"
+    }
+  ]
+}

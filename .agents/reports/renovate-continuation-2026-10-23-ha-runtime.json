@@ -1,0 +1,55 @@
+{
+  "checkedAt": "2026-10-23T19:40:00Z",
+  "pods": [
+    {
+      "name": "home-assistant-789687b47b-nlggm",
+      "uid": "78537f0c-8ec8-4f13-a14a-96657b3ce340",
+      "containers": [
+        {
+          "name": "app",
+          "ready": true,
+          "restartCount": 0,
+          "image": "ghcr.io/home-assistant/home-assistant:2026.10.3",
+          "imageID": "ghcr.io/home-assistant/home-assistant@sha256:407b89cd11a8cb67d388d21739a226c74acbbebe1ac59e3b83b11b43ce76b98f"
+        },
+        {
+          "name": "code-server",
+          "ready": true,
+          "restartCount": 0,
+          "image": "sha256:7e2eb08add779818d4c9042f32e86a991ba8bfebe3566f29ff2050d9f14f98ab",
+          "imageID": "ghcr.io/coder/code-server@sha256:72ab24b5680ee597dd647b30d82625752f40109b5f61bef90ffbf1ea1f02dbb8"
+        }
+      ]
+    }
+  ],
+  "unchangedMcp": {
+    "uid": "284e5610-d192-4636-a391-4f733d82a440",
+    "ready": true,
+    "restarts": 0
+  },
+  "apiVersion": "2026.10.3",
+  "configValid": true,
+  "recorder": {
+    "engine": "sqlite",
+    "version": "3.53.4",
+    "currentRunStart": "2026-10-23T19:23:51.183518+00:00"
+  },
+  "aggregateCounts": {
+    "states": 10610,
+    "unavailable": 811,
+    "unknown": 2416,
+    "MQTTtotal": 6590,
+    "MQTTunavailable": 12,
+    "ZWaveTotal": 583,
+    "ZWaveUnavailable": 0
+  },
+  "exactEntityIdentityEqualityNotEstablished": true,
+  "intellicenter": {
+    "currentState": "setup_retry",
+    "preUpgradeMatchingErrorRecords12h": 72,
+    "preUpgradeMatchingErrorRecords30m": 3,
+    "precisePreUpgradeEntryStateUnknown": true,
+    "lastFiveMinuteMatchingErrorRecords": 1
+  },
+  "newRestoreNotTested": true
+}

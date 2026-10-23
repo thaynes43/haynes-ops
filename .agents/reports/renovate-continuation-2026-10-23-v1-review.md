@@ -1,5 +1,7 @@
 # Story181: V1 combined upgrade source handoff
 
+> Historical pre-final source handoff: candidate0217183 and preparation branch below precede final4244. Final delivery uses2f496fc9; see current main report, v1-image receipt and reloader/custody receipts.
+
 2026-10-23. Source-only helper; execution owner remains parent. No push, PR edit, runtime probe, login, auth/status command, inference, MCP activation or credential read. Two isolated worktrees were created and local commits made. Public workflow logs, upstream source/archive and local offline fixtures were examined.
 
 ## Local commits ready for driver

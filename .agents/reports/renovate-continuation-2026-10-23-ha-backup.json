@@ -1,0 +1,21 @@
+{
+  "checkedAt": "2026-10-23T19:22:23.467493+00:00",
+  "version": "2026.10.3",
+  "indexDigest": "sha256:407b89cd11a8cb67d388d21739a226c74acbbebe1ac59e3b83b11b43ce76b98f",
+  "linuxAmd64Manifests": [
+    "sha256:c32ab33f0b0589182b2f40324826acb02a104d1707c91573b6420fd622b82127"
+  ],
+  "backup": {
+    "id": "ac968f2d",
+    "date": "2026-10-23T15:13:26.369469-04:00",
+    "sizeBytes": 1181583360,
+    "durationSeconds": 44,
+    "completedSuccessfully": true,
+    "defaultPasswordRetainedWithOwner": true,
+    "noArchiveOrKeyExported": true,
+    "restoreTested": false
+  },
+  "recorderEngineBefore": "sqlite",
+  "preConfigurationCheck": "valid",
+  "newRecorderSchemaMigrationFound": false
+}
