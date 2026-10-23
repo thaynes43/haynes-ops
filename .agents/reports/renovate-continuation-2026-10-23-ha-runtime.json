@@ -51,5 +51,24 @@
     "precisePreUpgradeEntryStateUnknown": true,
     "lastFiveMinuteMatchingErrorRecords": 1
   },
-  "newRestoreNotTested": true
+  "newRestoreNotTested": true,
+  "observedPython": {
+    "before": "3.14.6",
+    "after": "3.14.9"
+  },
+  "integrationMetadata": {
+    "loaded": 171,
+    "sourceIgnoreNotLoaded": 65,
+    "userDisabledNotLoaded": 10,
+    "teamtracker": {
+      "state": "not_loaded",
+      "source": "user",
+      "currentEntities": 0,
+      "customComponentDirectoryExists": false,
+      "preUpgradeStateUnknown": true,
+      "noMatchingLogsPre12hOrPost30m": true
+    },
+    "intellicenterCurrentEntities": 0,
+    "noEntryOrCredentialChanges": true
+  }
 }
