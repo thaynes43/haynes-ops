@@ -152,6 +152,22 @@ class Packet(unittest.TestCase):
         self.assertEqual(policy["egress"][1], {"to": [{"podSelector": {"matchLabels": {"cnpg.io/cluster": "postgres16"}}}],
                                                 "ports": [{"port": 5432, "protocol": "TCP"}]})
 
+    def test_exact_witness_grant(self):
+        docs = list(yaml.safe_load_all((PACKET / "witness-rbac.yaml").read_text()))
+        self.assertEqual([d["kind"] for d in docs], ["ServiceAccount", "Role", "RoleBinding", "Role", "RoleBinding"])
+        self.assertEqual(docs[0]["metadata"], {"name": "dev-env-v2-portal", "namespace": "dev-agents"})
+        self.assertIs(docs[0]["automountServiceAccountToken"], False)
+        for role, binding, verbs, subject in [
+            (docs[1], docs[2], ["get"], {"kind": "ServiceAccount", "name": "dev-env-v2-portal", "namespace": "dev-agents"}),
+            (docs[3], docs[4], ["get", "update"], {"kind": "ServiceAccount", "name": "dev-env", "namespace": "dev"}),
+        ]:
+            self.assertEqual(role["metadata"]["namespace"], "dev-agents")
+            self.assertEqual(role["rules"], [{"apiGroups": [""], "resources": ["configmaps"],
+                "resourceNames": ["dev-env-v2-portal-admission"], "verbs": verbs}])
+            self.assertEqual(binding["metadata"]["namespace"], "dev-agents")
+            self.assertEqual(binding["roleRef"], {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": role["metadata"]["name"]})
+            self.assertEqual(binding["subjects"], [subject])
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

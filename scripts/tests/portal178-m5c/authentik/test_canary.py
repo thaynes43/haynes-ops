@@ -96,6 +96,10 @@ def run():
                 with patch.object(AccessToken.objects, "filter", return_value=SimpleNamespace(first=lambda: token)), \
                      patch.object(Event, "new", side_effect=mocked_new) as event_new, \
                      patch.object(Model, "save", autospec=True), \
+                     patch("authentik.events.models.get_current_tenant", return_value=SimpleNamespace(event_retention="days=1")), \
+                     patch("authentik.events.models.DEFAULT_BRAND", SimpleNamespace(
+                         name="synthetic-brand", pk=103,
+                         _meta=SimpleNamespace(app_label="authentik_brands", model_name="brand"))), \
                      patch("authentik.events.models.get_context_processors", return_value=[]), \
                      patch("authentik.events.models.ClientIPMiddleware.get_client_ip", return_value="127.0.0.1"):
                     response = userinfo.UserInfoView.as_view()(request)
@@ -121,8 +125,8 @@ try:
         run()
 except BaseException as error:
     # Do not print captured logs, canaries, exception values or environment.
-    print(json.dumps({"phase": phase, "proof": False, "errorType": type(error).__name__,
+    print(json.dumps({"phase": phase, "proof": False, "errorType": type(error).__name__, "cases": results,
                       "frames": [{"file": Path(f.filename).name, "line": f.lineno}
-                                 for f in traceback.extract_tb(error.__traceback__)[-4:]]}))
+                                 for f in traceback.extract_tb(error.__traceback__)[-12:]]}))
     raise SystemExit(1)
 print(json.dumps({"proof": True, "cases": results, "realTokens": False, "databaseWrites": False}))

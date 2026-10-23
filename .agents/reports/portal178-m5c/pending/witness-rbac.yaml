@@ -1,0 +1,58 @@
+# UNREGISTERED. Exact additional human approval receipt held by root/M5C.
+# Static RBAC only: never place dynamic admission/generation/incarnation in Git.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dev-env-v2-portal
+  namespace: dev-agents
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-v2-portal-admission-reader
+  namespace: dev-agents
+rules:
+  - apiGroups: ['']
+    resources: [configmaps]
+    resourceNames: [dev-env-v2-portal-admission]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-v2-portal-admission-reader
+  namespace: dev-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-v2-portal-admission-reader
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-v2-portal
+    namespace: dev-agents
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-v2-portal-admission-recovery
+  namespace: dev-agents
+rules:
+  - apiGroups: ['']
+    resources: [configmaps]
+    resourceNames: [dev-env-v2-portal-admission]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-v2-portal-admission-recovery
+  namespace: dev-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-v2-portal-admission-recovery
+subjects:
+  - kind: ServiceAccount
+    name: dev-env
+    namespace: dev
