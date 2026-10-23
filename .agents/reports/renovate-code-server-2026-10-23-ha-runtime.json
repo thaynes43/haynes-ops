@@ -1,0 +1,33 @@
+{
+  "homeassistant": {
+    "version": "core-2026.10.3",
+    "python": "3.14.9"
+  },
+  "recorder": {
+    "oldest_recorder_run": {
+      "value": "2026-09-21T12:47:42.051628",
+      "type": "date"
+    },
+    "current_recorder_run": {
+      "value": "2026-10-23T20:16:29.535370+00:00",
+      "type": "date"
+    },
+    "estimated_db_size": "7133.25 MiB",
+    "database_engine": "sqlite",
+    "database_version": "3.53.4"
+  },
+  "configValid": true,
+  "haMcp": {
+    "current": "8.7.0",
+    "latest": "8.7.0",
+    "update_available": false
+  },
+  "counts": {
+    "mqtt_total": 6590,
+    "mqtt_unavailable": 12,
+    "unavailable": 811,
+    "unknown": 2431,
+    "zwave_total": 583,
+    "zwave_unavailable": 0
+  }
+}

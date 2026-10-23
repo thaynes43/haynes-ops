@@ -30,3 +30,18 @@ Fresh metadata qualification: HA archiveac968f2d from15:13 EDT completed/include
 4252 awaits completed backup/final exact-head checks; only sidecar changes, Core remains2026.10.3.4253 PR image build/smoke running; source merge/publish is not installed V1. After immutable publication proof, align seven existing V1/ops/futureVexa consumers, fresh genuine-work checks, one further necessary replacement per parent. No mounted scripts/requirements change, so no repeat Reloader ignore workaround planned.
 
 Five existing Book/MAM/broaddev-env/compiler/Sonarr gates and CUDA/Comfy/frozen/keeper holds remain. No repeated compile/forced MAM access, extra production worker, credential operation, security-policy change, decommission/storage deletion. Natural20:00 responder/shepherd/triage Jobs used0c734d13 and succeeded20:00:21/36/38Z per independent coordinator metadata; no duplicate Jobs launched.
+
+
+## 16:18 EDT installed-sidecar checkpoint
+
+4251 ESPHome is installed: new parentUIDeae9b5ab-bf66-4ebe-8986-f491becb9011, both containers Ready/zero restarts; code-server4.141.1/279b570 with Code1.141.0, bundled Node24.22.1. Local health endpointHTTP200; status expired is its activity heartbeat state, not represented as server failure or a real browser session test. ESPHome app version stays2026.10.0; no firmware flash/compile was launched.
+
+Backup49d64c13 completed20:12:26Z (manageridle/eventcompleted), includes settings and recorder DB,3,395,645,440bytes, currentCore2026.10.3, configured local backup agent. Metadata protected:false is retained truthfully; no archive/key was read/exported, encryption setting changed or restore tested. Driver initially merged4252 upon seeing archive metadata while manager still creating; immediately suspended HA Kustomization+HelmRelease before deployment. Old parentUID78537f0c stayed alive with old sidecar. Only after backup completed were both suspensions resumed. This sequencing error and correction are disclosed; no backup was interrupted.
+
+4252 merged20:12:03Z/90333e7a; actual rollout waited for source recovery. New HA parentUIDd1a0f802-f1ec-438e-b967-e94fd2f7f7c8 has both containers Ready/zero restarts, code-server4.141.1 and bundledNode24.22.1. Core/image remains2026.10.3/index407b89cd; config valid, recorder activeSQLite3.53.4 starting20:16:29Z. MQTT6590/12unavailable, ZWave583/0 and total811unavailable match fresh baseline; unknown2410→2431 is transient/volatile, not claimed identical. Separate MCP remains same8.7.0 API. Both HA suspend fields false; no temporary hold remains.
+
+Source GitRepository repeatedly hit60sGitHub clone deadlines20:13/14/15 while retaining b5af artifact. One declared ordinary source-controller restart recovered Ready/beebb168; activityact-201534-536761 ended. No controller config, identity, permission, egress or credential change. This recurrence after the earlier Story181 incident is an evidence-backed Meatball intake item; root cause remains unproven, not mislabeled policy/auth failure.
+
+4253 exact PR image build/runtime-user offline smoke passed; source merged20:13:35Z/beebb168. Main40017564194 publication is building, not claimed published/installed. Prepared consumer scope is exactly7pins across V1x3/opsx3/futureVexax1. No new production agent Job, notes/inference/publication job or duplicate executor was forced.
+
+Current Gatus five-minute sample at20:18Z is60/61 due the recent HA restart; final green-window acceptance is pending. Historical Story181 acceptance remains valid for its snapshot and does not stand in for this follow-up.
