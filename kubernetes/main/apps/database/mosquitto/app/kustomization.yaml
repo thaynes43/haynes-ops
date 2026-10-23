@@ -5,6 +5,7 @@ kind: Kustomization
 components:
   - ../../../../../shared/components/common/repos/app-template
 resources:
+  - ./backup.yaml
   - ./externalsecret.yaml
   - ./helmrelease.yaml
   - ./prometheusrule.yaml
