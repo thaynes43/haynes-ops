@@ -1,0 +1,112 @@
+{
+  "method": "OpenSSL dgst -sha512 signature verification of legacy Cosign simple-signing payload using official PEM; identity and digest assertions; no transparency-log/attestation verification",
+  "keyUrl": "https://cert-manager.io/public-keys/cert-manager-pubkey-2021-09-20.pem",
+  "publicKeyFileSHA256": "62151ffda7bb5350367480750ff1cb75d53f0f83baca524044e5274aa83b63a6",
+  "images": {
+    "jetstack/cert-manager-controller": {
+      "manifestDigest": "sha256:9f4f96a33c7774cef24466fcd85031997531a03a8d117f151126baa8d1290dcc",
+      "validSignatures": [
+        {
+          "signatureResult": "Verified OK",
+          "payload": {
+            "critical": {
+              "identity": {
+                "docker-reference": "quay.io/jetstack/cert-manager-controller"
+              },
+              "image": {
+                "docker-manifest-digest": "sha256:9f4f96a33c7774cef24466fcd85031997531a03a8d117f151126baa8d1290dcc"
+              },
+              "type": "cosign container image signature"
+            },
+            "optional": null
+          },
+          "payloadSHA256": "sha256:2333283e59e5c3a2e145fe4ee91098adc190cbe9da6c652df28b200f3ed330cb"
+        }
+      ]
+    },
+    "jetstack/cert-manager-cainjector": {
+      "manifestDigest": "sha256:083d0e906f8eb44e255fe4ff817ae54e49f9ed82e22f1011bb4e9e4f4b8a641f",
+      "validSignatures": [
+        {
+          "signatureResult": "Verified OK",
+          "payload": {
+            "critical": {
+              "identity": {
+                "docker-reference": "quay.io/jetstack/cert-manager-cainjector"
+              },
+              "image": {
+                "docker-manifest-digest": "sha256:083d0e906f8eb44e255fe4ff817ae54e49f9ed82e22f1011bb4e9e4f4b8a641f"
+              },
+              "type": "cosign container image signature"
+            },
+            "optional": null
+          },
+          "payloadSHA256": "sha256:85c307a47be85e965d8ba6c5123a3c7f92b205a0155e26ccb3b161ea7fc0b759"
+        }
+      ]
+    },
+    "jetstack/cert-manager-webhook": {
+      "manifestDigest": "sha256:055ac8e9de6a0ba6763794838fe38944acc650f68ebe1b01dd8be079e580f458",
+      "validSignatures": [
+        {
+          "signatureResult": "Verified OK",
+          "payload": {
+            "critical": {
+              "identity": {
+                "docker-reference": "quay.io/jetstack/cert-manager-webhook"
+              },
+              "image": {
+                "docker-manifest-digest": "sha256:055ac8e9de6a0ba6763794838fe38944acc650f68ebe1b01dd8be079e580f458"
+              },
+              "type": "cosign container image signature"
+            },
+            "optional": null
+          },
+          "payloadSHA256": "sha256:f66a3cc34ee81f88b9c34c9dfac79a5db7b94aff17aceb4f7fa7960c8df817ad"
+        }
+      ]
+    },
+    "jetstack/cert-manager-acmesolver": {
+      "manifestDigest": "sha256:c8c1225bb2fe8ab37a330b77f0d8c2ee6a41210fcb54fc07ca606ab9a022b8b7",
+      "validSignatures": [
+        {
+          "signatureResult": "Verified OK",
+          "payload": {
+            "critical": {
+              "identity": {
+                "docker-reference": "quay.io/jetstack/cert-manager-acmesolver"
+              },
+              "image": {
+                "docker-manifest-digest": "sha256:c8c1225bb2fe8ab37a330b77f0d8c2ee6a41210fcb54fc07ca606ab9a022b8b7"
+              },
+              "type": "cosign container image signature"
+            },
+            "optional": null
+          },
+          "payloadSHA256": "sha256:7ae4ed694516a2949274af72123fdcd47eab248a652cd5b742a066a3ade8571e"
+        }
+      ]
+    },
+    "jetstack/cert-manager-startupapicheck": {
+      "manifestDigest": "sha256:1c519d4afca1413d1e4ccd78bdc756184418ab55a34569a3b3de39d32f9974e1",
+      "validSignatures": [
+        {
+          "signatureResult": "Verified OK",
+          "payload": {
+            "critical": {
+              "identity": {
+                "docker-reference": "quay.io/jetstack/cert-manager-startupapicheck"
+              },
+              "image": {
+                "docker-manifest-digest": "sha256:1c519d4afca1413d1e4ccd78bdc756184418ab55a34569a3b3de39d32f9974e1"
+              },
+              "type": "cosign container image signature"
+            },
+            "optional": null
+          },
+          "payloadSHA256": "sha256:6b7de5fc95b400a87d5b19074b02ad73d4d0117dd777f03c0cb1fa4f5f0a01dc"
+        }
+      ]
+    }
+  }
+}

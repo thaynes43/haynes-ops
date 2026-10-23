@@ -1,0 +1,127 @@
+{
+  "observedAt": "2026-10-23T21:24:09.627445+00:00",
+  "parents": [
+    {
+      "parent": "v1",
+      "pod": "dev-env-66f455c8bf-rcbxm",
+      "uid": "55b4a7df-e648-4db4-93bb-88075297c1ca",
+      "created": "2026-10-23T21:20:49Z",
+      "containers": [
+        {
+          "name": "app",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "ghcr.io/thaynes43/dev-env@sha256:6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57"
+        },
+        {
+          "name": "auth-watch",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "ghcr.io/thaynes43/dev-env@sha256:6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57"
+        },
+        {
+          "name": "gh-refresher",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "ghcr.io/thaynes43/dev-env@sha256:6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57"
+        }
+      ]
+    },
+    {
+      "parent": "ops",
+      "pod": "dev-env-ops-79bfd447d7-xfbs8",
+      "uid": "747d626b-7f8a-468d-9c2d-05e59759d2e7",
+      "created": "2026-10-23T21:22:14Z",
+      "containers": [
+        {
+          "name": "app",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "ghcr.io/thaynes43/dev-env@sha256:6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57"
+        },
+        {
+          "name": "gh-refresher",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "ghcr.io/thaynes43/dev-env@sha256:6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57"
+        }
+      ]
+    }
+  ],
+  "futureTemplates": [
+    {
+      "cronjob": "alert-responder",
+      "uid": "a6131847-c275-4e0f-9591-16f7393d61c1",
+      "schedule": "*/10 * * * *",
+      "suspended": false,
+      "images": [
+        {
+          "name": "app",
+          "image": "ghcr.io/thaynes43/upgrade-shepherd:0.1.0@sha256:6e5ff891dbb83939fc7cb56d790a1e10b10fe53d154af3e851318b0c497d6513"
+        }
+      ]
+    },
+    {
+      "cronjob": "upgrade-shepherd",
+      "uid": "752ace9f-dc03-4989-b842-01d93bc64702",
+      "schedule": "0 */4 * * *",
+      "suspended": false,
+      "images": [
+        {
+          "name": "mint-token",
+          "image": "ghcr.io/thaynes43/upgrade-shepherd:0.1.0@sha256:6e5ff891dbb83939fc7cb56d790a1e10b10fe53d154af3e851318b0c497d6513"
+        },
+        {
+          "name": "app",
+          "image": "ghcr.io/thaynes43/upgrade-shepherd:0.1.0@sha256:6e5ff891dbb83939fc7cb56d790a1e10b10fe53d154af3e851318b0c497d6513"
+        }
+      ]
+    },
+    {
+      "cronjob": "upgrade-shepherd-triage",
+      "uid": "975914e3-613a-407d-b910-cb8e64ff70f2",
+      "schedule": "*/30 * * * *",
+      "suspended": false,
+      "images": [
+        {
+          "name": "mint-token",
+          "image": "ghcr.io/thaynes43/upgrade-shepherd:0.1.0@sha256:6e5ff891dbb83939fc7cb56d790a1e10b10fe53d154af3e851318b0c497d6513"
+        },
+        {
+          "name": "triage",
+          "image": "ghcr.io/thaynes43/upgrade-shepherd:0.1.0@sha256:6e5ff891dbb83939fc7cb56d790a1e10b10fe53d154af3e851318b0c497d6513"
+        }
+      ]
+    },
+    {
+      "cronjob": "dev-env-ops-curation-order",
+      "uid": "a373e865-4643-45d8-8b9b-2926f0ebed9c",
+      "schedule": "15 10 * * *",
+      "suspended": false,
+      "images": [
+        {
+          "name": "app",
+          "image": "ghcr.io/thaynes43/dev-env:0.6.8@sha256:6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57"
+        }
+      ]
+    }
+  ],
+  "cliVersions": {
+    "v1": "gh version 2.103.2 (2026-10-23)",
+    "operations": "gh version 2.103.2 (2026-10-23)"
+  },
+  "codeServer": "4.141.1 279b5702aaff359a8344c9fb8ac0a66d934ff1d6 with Code 1.141.0",
+  "codeServerNode": "v24.22.1",
+  "futureVexaImage": "ghcr.io/thaynes43/dev-env:0.6.8@sha256:6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57",
+  "v1LocalHealth": {
+    "HTTP": 200,
+    "status": "expired",
+    "activityHeartbeatNotBrowserSessionProof": true
+  },
+  "cursorSupervisors": {
+    "observedAt": "2026-10-23T21:25:06Z",
+    "bothExpectedPanesAlive": true,
+    "bothMainThreadChildrenAlive": true,
+    "noAuthStatusArgumentsOrInferenceRead": true
+  }
+}

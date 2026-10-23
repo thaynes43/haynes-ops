@@ -1,0 +1,18 @@
+{
+  "observedAt": "2026-10-23T21:19:49.364083+00:00",
+  "statusCounts": {
+    "meta": 1,
+    "done": 20,
+    "failed": 1
+  },
+  "activeCount": 0,
+  "genuineWorkGate": "specific retained task at prompt, no busy/working tool children; current tree clean",
+  "cloudClaimEnumeration": "not established, not claimed",
+  "custody": {
+    "checkedAt": "2026-10-23T21:19:49.110516+00:00",
+    "verifiedWorktrees": 23,
+    "verifiedUntrackedFiles": 361,
+    "allMatch": true,
+    "payloadCustodyUnchanged": true
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "observedAt": "2026-10-23T21:04:03.692228+00:00",
+  "containers": [
+    {
+      "pod": "cert-manager-55f548f7f-8w4pd",
+      "uid": "3c65a1a8-ef26-4944-87ed-e267b0483c05",
+      "container": "cert-manager-controller",
+      "image": "quay.io/jetstack/cert-manager-controller:v1.21.3",
+      "imageID": "quay.io/jetstack/cert-manager-controller@sha256:9f4f96a33c7774cef24466fcd85031997531a03a8d117f151126baa8d1290dcc",
+      "ready": true,
+      "restartCount": 0
+    },
+    {
+      "pod": "cert-manager-55f548f7f-nbgzn",
+      "uid": "ade36264-f061-4fc3-b091-64d97acb97b7",
+      "container": "cert-manager-controller",
+      "image": "quay.io/jetstack/cert-manager-controller:v1.21.3",
+      "imageID": "quay.io/jetstack/cert-manager-controller@sha256:9f4f96a33c7774cef24466fcd85031997531a03a8d117f151126baa8d1290dcc",
+      "ready": true,
+      "restartCount": 0
+    },
+    {
+      "pod": "cert-manager-55f548f7f-wqxll",
+      "uid": "cba2f65a-de08-45e2-acae-216fa0a8d3ab",
+      "container": "cert-manager-controller",
+      "image": "quay.io/jetstack/cert-manager-controller:v1.21.3",
+      "imageID": "quay.io/jetstack/cert-manager-controller@sha256:9f4f96a33c7774cef24466fcd85031997531a03a8d117f151126baa8d1290dcc",
+      "ready": true,
+      "restartCount": 0
+    },
+    {
+      "pod": "cert-manager-cainjector-cf59f477f-56nnq",
+      "uid": "64c40045-bb62-4059-b752-6de135e0a367",
+      "container": "cert-manager-cainjector",
+      "image": "quay.io/jetstack/cert-manager-cainjector:v1.21.3",
+      "imageID": "quay.io/jetstack/cert-manager-cainjector@sha256:083d0e906f8eb44e255fe4ff817ae54e49f9ed82e22f1011bb4e9e4f4b8a641f",
+      "ready": true,
+      "restartCount": 0
+    },
+    {
+      "pod": "cert-manager-webhook-5658474b64-5mpd8",
+      "uid": "d971c4a6-e1da-4b05-a06e-df1292ec2fa7",
+      "container": "cert-manager-webhook",
+      "image": "quay.io/jetstack/cert-manager-webhook:v1.21.3",
+      "imageID": "quay.io/jetstack/cert-manager-webhook@sha256:055ac8e9de6a0ba6763794838fe38944acc650f68ebe1b01dd8be079e580f458",
+      "ready": true,
+      "restartCount": 0
+    }
+  ],
+  "certificateIssuerObjects": 18,
+  "allReady": true,
+  "uidReadyExpiryRenewalRevisionUnchanged": true,
+  "crd": {
+    "established": true,
+    "storedVersions": [
+      "v1"
+    ],
+    "servedStorageVersions": [
+      {
+        "name": "v1",
+        "served": true,
+        "storage": true
+      }
+    ],
+    "optionalCertIDSchemaPresent": true
+  },
+  "webhooks": [
+    {
+      "kind": "validating",
+      "caSHA256": "3c965469f803841e9b0cd404a1d9b01facf9c728f89a7e3e29daadd98d6980bc",
+      "caDates": [
+        "notBefore=Mar  2 12:42:58 2026 GMT",
+        "notAfter=Mar  2 12:42:58 2027 GMT"
+      ],
+      "configurationUnchanged": true,
+      "failurePolicy": "Fail"
+    },
+    {
+      "kind": "mutating",
+      "caSHA256": "3c965469f803841e9b0cd404a1d9b01facf9c728f89a7e3e29daadd98d6980bc",
+      "caDates": [
+        "notBefore=Mar  2 12:42:58 2026 GMT",
+        "notAfter=Mar  2 12:42:58 2027 GMT"
+      ],
+      "configurationUnchanged": true,
+      "failurePolicy": "Fail"
+    }
+  ],
+  "apiDiscoveryVersion": "cert-manager.io/v1",
+  "boundedLogs": {
+    "lineCount": 219,
+    "newErrorMarkers": {
+      "panic": 0,
+      "fatal": 0,
+      "failed to renew": 0,
+      "failed to sign": 0,
+      "failed to verify": 0,
+      "no endpoints available": 0,
+      "failed calling webhook": 0
+    },
+    "rawLogsNotPublished": true
+  },
+  "ordersChallenges": "LIST denied, no retry, not an empty queue claim",
+  "freshIssuanceOrPrivateKeyRecoveryExercised": false,
+  "ARIEnabledInSourceValues": false,
+  "admissionRoundTripDirectlyExercised": false,
+  "startupErrorClassCounts": {
+    "orphanCertificateCAlinks20Across5NamesAbsentBefore": 20,
+    "ACMEClientNotInitializedRequeues": 6
+  },
+  "settledLast60SecondsErrorClassCounts": {},
+  "settledLast60SecondsLogLines": 0
+}

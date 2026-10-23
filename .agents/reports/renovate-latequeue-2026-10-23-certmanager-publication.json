@@ -1,0 +1,46 @@
+{
+  "checkedAt": "2026-10-23T20:58:34.198946+00:00",
+  "chartManifest": "sha256:e482675aec32862d323a9218293ff7de81192337998615e4378c56498473f240",
+  "components": {
+    "jetstack/cert-manager-controller": {
+      "tag": "v1.21.3",
+      "digest": "sha256:9f4f96a33c7774cef24466fcd85031997531a03a8d117f151126baa8d1290dcc",
+      "amd64Manifest": "sha256:9b262e9493ab3e0daebc2c9cfbddc6df68b9ac91afc036a759584f3d49d607e5",
+      "amd64ConfigDigest": "sha256:25f8df3be27654a78b2e9f5e11bb777a700c58c97e8e911bc71f1ca8567caabf",
+      "os": "linux",
+      "architecture": "amd64"
+    },
+    "jetstack/cert-manager-cainjector": {
+      "tag": "v1.21.3",
+      "digest": "sha256:083d0e906f8eb44e255fe4ff817ae54e49f9ed82e22f1011bb4e9e4f4b8a641f",
+      "amd64Manifest": "sha256:165691f631d61931a27e4fbbb82bbed8205431d0446b3c14d170081aeff75f0a",
+      "amd64ConfigDigest": "sha256:b6ed72fd9725ac0724bb1337643d420556f7c58bd1b6b340e453c7a9f0124643",
+      "os": "linux",
+      "architecture": "amd64"
+    },
+    "jetstack/cert-manager-webhook": {
+      "tag": "v1.21.3",
+      "digest": "sha256:055ac8e9de6a0ba6763794838fe38944acc650f68ebe1b01dd8be079e580f458",
+      "amd64Manifest": "sha256:fc2845cc042ab57c8b98c5ff62462d50dcd5d8d3302f9e6875cd05042ce1020b",
+      "amd64ConfigDigest": "sha256:bc48c0f9725728e67b00fc72d2b63aa6db96fcf5c3092dd836f4e85ba6f1b777",
+      "os": "linux",
+      "architecture": "amd64"
+    },
+    "jetstack/cert-manager-acmesolver": {
+      "tag": "v1.21.3",
+      "digest": "sha256:c8c1225bb2fe8ab37a330b77f0d8c2ee6a41210fcb54fc07ca606ab9a022b8b7",
+      "amd64Manifest": "sha256:5d9c98380d108c34fba252ce675857a9b63e00271ecb64ecfa7f58626723dac0",
+      "amd64ConfigDigest": "sha256:c3b99f0ee2b69e17c86089868185304510d27221a9b323f36657a9770e1132ee",
+      "os": "linux",
+      "architecture": "amd64"
+    },
+    "jetstack/cert-manager-startupapicheck": {
+      "tag": "v1.21.3",
+      "digest": "sha256:1c519d4afca1413d1e4ccd78bdc756184418ab55a34569a3b3de39d32f9974e1",
+      "amd64Manifest": "sha256:6b9e17adc075c80c0c5cb1f901654f0efa4c5d4b1a8b369985ac67f5bbb0b8d2",
+      "amd64ConfigDigest": "sha256:ba13a693dab60ff9b652a0a3eccae4ac67daa393958c4c119ec6c90a10c1b399",
+      "os": "linux",
+      "architecture": "amd64"
+    }
+  }
+}
