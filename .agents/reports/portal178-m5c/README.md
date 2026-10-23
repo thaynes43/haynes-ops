@@ -11,8 +11,10 @@ No V1, active-agent, shared-login, replication or backup changes.
 PR4246 corrected client head is `d4632c1ea145756a99a862dddd998b98649b71e1`.
 Both required aggregates and path-scoped guard PASS. Advisory review read and
 valid CI-scope finding fixed; final advisory reports no findings. Historical
-native `d82f6fbc` PASS-with-minors does not cover this corrected head. Fresh native
-recheck and selected authenticated preflight remain required before source merge.
+native `d82f6fbc` PASS-with-minors does not cover this corrected head. The fresh
+independent native recheck of exact `d4632c1e` is PASS-with-minors, zero blockers,
+Story178 journal1152; nonblocking dispositions are [recorded on PR4246](https://github.com/thaynes43/haynes-ops/pull/4246#issuecomment-6374498059).
+Root's selected authenticated preflight/readback coordination remains required.
 See [client release packet](../portal178-m5a/RELEASE.md). No installed-client,
 login or Gate A claim. Do not deliver Tom's OIDC-copy step before installation and
 exact selected metadata/binding/signer/JWKS readback succeed.
@@ -188,3 +190,13 @@ actual CNPG provisioning or recovery-fence/IdP/proxy acceptance.
 nonexistent-token canary: denied401 but present in the deployed DEBUG log's
 access_token field. Root/Astra owns the resulting UserInfo release hold and
 narrow remediation review; no actual credential or directory mutation was used.
+
+Latest executable packet [run40022341761](https://github.com/thaynes43/haynes-ops/actions/runs/40022341761)
+PASS at `843313449389762d586b724b761c4db061425ed8`: **4 packet tests + 4 actual
+PostgreSQL groups, zero skips**. Includes executor isolation assertions and
+default-authority same-transaction incarnation reads with no added function grant.
+Later receipt/recovery documentation changes do not modify the tested SQL,
+manifests or test code. Candidate Jobs were parsed/guarded, not installed or
+executed as Kubernetes Jobs; actual admission/effective network policy remain
+installation gates. Current database namespace has no NetworkPolicy/CiliumNetworkPolicy;
+cluster-wide/additive policy behavior must also be verified before claiming isolation.
