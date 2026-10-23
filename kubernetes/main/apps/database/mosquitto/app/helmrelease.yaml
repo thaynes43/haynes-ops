@@ -32,7 +32,7 @@ spec:
           hash-passwords:
             image: &image
               repository: docker.io/library/eclipse-mosquitto
-              tag: 2.1.2-alpine@sha256:847b8594cd4928734bda3c5daad42fea5c79de50d87a568798552e60eea2e970
+              tag: 2.1.2-alpine@sha256:860aeb5d63ce509508f6dcfb2bc8a1c1dd2bc60555b562b45ce90e52d8dabb0f
             command: ["/bin/sh", "-c"]
             args:
               - umask 077 && cp /mosquitto/secret/passwd /mosquitto/auth/passwd && mosquitto_passwd -U /mosquitto/auth/passwd
