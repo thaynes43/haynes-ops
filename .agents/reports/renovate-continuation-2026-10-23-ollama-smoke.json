@@ -1,0 +1,31 @@
+{
+  "checkedAt": "2026-10-23T18:54:38.228373+00:00",
+  "tests": [
+    {
+      "deployment": "ollama-prime",
+      "model": "llama3.2:latest",
+      "http": 200,
+      "done": true,
+      "evalCount": 2,
+      "promptEvalCount": 28,
+      "durationSeconds": 36.379994288,
+      "cpuThreads": 2,
+      "maxTokens": 2,
+      "noModelPulled": true,
+      "keepAliveAfterOwnTest": 0
+    },
+    {
+      "deployment": "ollama-assist02",
+      "model": "qwen3.5:9b",
+      "http": 200,
+      "done": true,
+      "evalCount": 2,
+      "promptEvalCount": 13,
+      "durationSeconds": 51.665438079,
+      "cpuThreads": 2,
+      "maxTokens": 2,
+      "noModelPulled": true,
+      "keepAliveAfterOwnTest": 0
+    }
+  ]
+}
