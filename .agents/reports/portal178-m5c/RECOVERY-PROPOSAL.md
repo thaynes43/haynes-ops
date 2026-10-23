@@ -34,12 +34,19 @@ Concrete candidate for existing Astra to ratify:
    `-rw` hostname or pg_is_in_recovery=false cannot bind the actual server.
    New connections must remain quarantined until their tuple is admitted; no
    old-primary cached allow or healthy second connection can cover a mismatch.
-3. Investigate exact catalog-function privileges before proposing a grant.
-   `pg_control_system()`/timeline access may require additional authority;
-   no pg_monitor/admin/function grant is presumed in the approved two-table
-   runtime role. A narrowly specified attestation interface would need review
-   and its own authority decision. No SECURITY DEFINER function or additional
-   Kubernetes/service permission is silently introduced here.
+3. Verify actual production function defaults rather than proposing an unnecessary
+   grant. Hosted run40022033678 at `1fb8c489aab06e8c71d16d129a397ebc1cfa96bb`
+   proves the constrained runtime role can read `pg_control_system()` system ID,
+   current WAL filename's timeline, postmaster start time, server address and its
+   own backend PID in the **same transaction/connection**, with no additional
+   function grant, pg_monitor membership or wrapper. This is default PostgreSQL16
+   fixture evidence, not a read using a live provisioned portal role. Verify live
+   defaults during reviewed provisioning; deny on permission/missing values and
+   stop to review any genuine authority delta. PostgreSQL16
+   [control data](https://www.postgresql.org/docs/16/functions-info.html#FUNCTIONS-CONTROLDATA)
+   and [WAL functions](https://www.postgresql.org/docs/16/functions-admin.html#FUNCTIONS-ADMIN-BACKUP)
+   document these fields. No SECURITY DEFINER function or additional
+   Kubernetes/service permission is introduced here.
 4. Prove fail-closed behavior for new timeline before watcher observation,
    same-name pod/process reuse, orphan Lease adoption, restore with old DB rows,
    unavailable/stale witness, lost commit ACK and isolated old-primary reads.
