@@ -35,7 +35,8 @@
       "deliveryMergeCommit": {
         "oid": "2558e52aca24b24bbf6d5aa6f3aaba354572bcaf"
       },
-      "deliveryMergedAt": "2026-10-23T04:39:43Z"
+      "deliveryMergedAt": "2026-10-23T04:39:43Z",
+      "deliveryHead": "0fc4e00337bb909a2954f8f41d14466994731646"
     },
     {
       "number": 3626,
@@ -64,7 +65,8 @@
       "deliveryState": "OPEN",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "b2d98bf30bb77415bf323b46c7edefc06d09c338"
     },
     {
       "number": 3696,
@@ -98,7 +100,8 @@
       "deliveryMergeCommit": {
         "oid": "524852eced1514cdd8923349d2b64545cd2a0cd1"
       },
-      "deliveryMergedAt": "2026-10-23T05:04:03Z"
+      "deliveryMergedAt": "2026-10-23T05:04:03Z",
+      "deliveryHead": "b89d3aa3d3d33bb1ac42ad69e9caca32558d0750"
     },
     {
       "number": 3707,
@@ -134,7 +137,8 @@
       "deliveryState": "CLOSED",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "b76a0921ef6fd7434755c29de98d6f2e08d96ca0"
     },
     {
       "number": 3710,
@@ -170,7 +174,8 @@
       "deliveryState": "OPEN",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "58db52077dbc4c2ad4920db7d9ca5eae8a418eb8"
     },
     {
       "number": 3800,
@@ -203,7 +208,8 @@
       "deliveryMergeCommit": {
         "oid": "4980b293b315d8224e2e066429a917810bbd9c27"
       },
-      "deliveryMergedAt": "2026-10-23T04:40:06Z"
+      "deliveryMergedAt": "2026-10-23T04:40:06Z",
+      "deliveryHead": "217c18cf804b8ee619d29e677869b25cef4e5322"
     },
     {
       "number": 3864,
@@ -237,7 +243,8 @@
       "deliveryState": "OPEN",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "11bf17e886586b900821eab8564bc3074e5716cd"
     },
     {
       "number": 3870,
@@ -270,10 +277,11 @@
       "initialPendingChecks": [],
       "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
       "snapshotVetMarkers": 0,
-      "deliveryState": "OPEN",
+      "deliveryState": "CLOSED",
       "deliveryDraft": true,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "812f89305081b819f3e29a4de148df3d80759be5"
     },
     {
       "number": 3871,
@@ -303,7 +311,8 @@
       "deliveryState": "OPEN",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "1eafd1d08f45e5e6cedf467abeb7fad444819507"
     },
     {
       "number": 3911,
@@ -332,7 +341,8 @@
       "deliveryState": "CLOSED",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "3d913292450f8b72738322b9441515697966ff05"
     },
     {
       "number": 3914,
@@ -362,7 +372,8 @@
       "deliveryState": "CLOSED",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "b7ed795936afe350e426e6fb795ccae5b44015d2"
     },
     {
       "number": 3915,
@@ -393,7 +404,8 @@
       "deliveryState": "OPEN",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "cb11e87017bd81b3bc7c4c2d65f8b28eb6233ee3"
     },
     {
       "number": 3916,
@@ -422,7 +434,8 @@
       "deliveryState": "CLOSED",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "a088d583dfc76f491ea0438d95eafe7ca16e411b"
     },
     {
       "number": 3938,
@@ -453,7 +466,8 @@
       "deliveryMergeCommit": {
         "oid": "fc11a73b92fc281b6171e82d4d7bbd638bb9881a"
       },
-      "deliveryMergedAt": "2026-10-23T04:49:05Z"
+      "deliveryMergedAt": "2026-10-23T04:49:05Z",
+      "deliveryHead": "326c290240bcb95ef1a49da8573c75a463eb7e63"
     },
     {
       "number": 3942,
@@ -485,7 +499,8 @@
       "deliveryMergeCommit": {
         "oid": "c87a0c5e8a0fe153030d4e972416ad3047016ac3"
       },
-      "deliveryMergedAt": "2026-10-23T04:49:31Z"
+      "deliveryMergedAt": "2026-10-23T04:49:31Z",
+      "deliveryHead": "dfe3bcf92f57cba1e1ed9d8190a00e53946ad30d"
     },
     {
       "number": 3955,
@@ -516,7 +531,8 @@
       "deliveryState": "CLOSED",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "395dbc75bdd63cd677a13992343c893a96f2dcff"
     },
     {
       "number": 3960,
@@ -548,7 +564,8 @@
       "deliveryMergeCommit": {
         "oid": "bb8cf22e50831a6d7e79d30182fd39a03d21a0e7"
       },
-      "deliveryMergedAt": "2026-10-23T04:39:54Z"
+      "deliveryMergedAt": "2026-10-23T04:39:54Z",
+      "deliveryHead": "8d1ca68c3566eacfb1e3392dff789068d8e62a79"
     },
     {
       "number": 4063,
@@ -578,7 +595,8 @@
       "deliveryState": "OPEN",
       "deliveryDraft": true,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "cbe20e202f2e675bf7f23167bb0328bd55d9e22e"
     },
     {
       "number": 4064,
@@ -608,7 +626,8 @@
       "deliveryState": "OPEN",
       "deliveryDraft": true,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "c0ad56c0e61a056bbe655d3e39020664940d71d3"
     },
     {
       "number": 4065,
@@ -636,7 +655,8 @@
       "deliveryState": "OPEN",
       "deliveryDraft": true,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "f8e1256ab53993029beb01c09775ff7393a95ece"
     },
     {
       "number": 4146,
@@ -667,7 +687,8 @@
       "deliveryState": "CLOSED",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "cf5c4845ae585edb82532f583d3f1c0439a13c75"
     },
     {
       "number": 4150,
@@ -696,7 +717,8 @@
       "deliveryState": "OPEN",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "6d9a6599e324460eec3aa2401a6cd809e9601b83"
     },
     {
       "number": 4159,
@@ -728,7 +750,8 @@
       "deliveryMergeCommit": {
         "oid": "05eda976ed09663695344cc9474565d74d21d469"
       },
-      "deliveryMergedAt": "2026-10-23T04:52:04Z"
+      "deliveryMergedAt": "2026-10-23T04:52:04Z",
+      "deliveryHead": "05d7db72f18838712f6312fb039504775eb41cc5"
     },
     {
       "number": 4164,
@@ -759,7 +782,8 @@
       "deliveryState": "CLOSED",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "d3cafee5102849d96e139d8952dccef4e0095083"
     },
     {
       "number": 4194,
@@ -790,7 +814,8 @@
       "deliveryMergeCommit": {
         "oid": "7772b3432be03270d1b2fe96e1ce010a70754822"
       },
-      "deliveryMergedAt": "2026-10-23T04:36:23Z"
+      "deliveryMergedAt": "2026-10-23T04:36:23Z",
+      "deliveryHead": "b887d7bb3441c62750216039b0dca50b7274e284"
     },
     {
       "number": 4196,
@@ -817,7 +842,8 @@
       "deliveryState": "OPEN",
       "deliveryDraft": true,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "c0f5a0f30d83f7cdae99391f862edde4385670d3"
     },
     {
       "number": 4198,
@@ -849,7 +875,8 @@
       "deliveryState": "OPEN",
       "deliveryDraft": false,
       "deliveryMergeCommit": null,
-      "deliveryMergedAt": null
+      "deliveryMergedAt": null,
+      "deliveryHead": "c2106185dc5fa12fefe46acd765c49399777f33c"
     },
     {
       "number": 4206,
@@ -884,10 +911,11 @@
       "deliveryMergeCommit": {
         "oid": "0ddcca933b1b63346d1dbb665c3d817da4f9a2c0"
       },
-      "deliveryMergedAt": "2026-10-23T04:40:51Z"
+      "deliveryMergedAt": "2026-10-23T04:40:51Z",
+      "deliveryHead": "eb7cb8ebb7b01723a1f6c6494d27137781fcea04"
     }
   ],
-  "deliveryCheckpoint": "2026-10-23T05:21:42+00:00",
+  "deliveryCheckpoint": "2026-10-23T05:34:10.817188+00:00",
   "additionalPRs": [
     {
       "number": 4207,
@@ -986,11 +1014,13 @@
     {
       "number": 4216,
       "title": "chore(deps): update @openai/codex to 0.164.0",
-      "state": "OPEN",
+      "state": "MERGED",
       "isDraft": false,
       "headRefOid": "bb0ba8923d41c67c864e9fc8bafacad5f00b35a2",
-      "mergeCommit": null,
-      "mergedAt": null,
+      "mergeCommit": {
+        "oid": "0a7a0256c0a967a1d0c333f00cf749154a44e4f5"
+      },
+      "mergedAt": "2026-10-23T05:15:18Z",
       "url": "https://github.com/thaynes43/haynes-ops/pull/4216"
     },
     {
@@ -1002,6 +1032,40 @@
       "mergeCommit": null,
       "mergedAt": null,
       "url": "https://github.com/thaynes43/haynes-ops/pull/4217"
+    },
+    {
+      "number": 4218,
+      "title": "chore(container): update image ghcr.io/thaynes43/dev-env to 3b38155",
+      "state": "OPEN",
+      "isDraft": true,
+      "headRefOid": "19a099b89ca23f1825dc042aae34d4115e8592a5",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4218"
+    },
+    {
+      "number": 4219,
+      "title": "chore(container): update image ghcr.io/thaynes43/upgrade-shepherd to 37fabdc",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "f8a92e1fd216d587bfb1fb7eea4b2b0f5d474941",
+      "mergeCommit": {
+        "oid": "41ca899bf47ae086b8baa33163b53ce4a3b1d67e"
+      },
+      "mergedAt": "2026-10-23T05:15:32Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4219"
+    },
+    {
+      "number": 4220,
+      "title": "fix(renovate): bound Python proposals to supported consumer contracts",
+      "state": "MERGED",
+      "isDraft": false,
+      "headRefOid": "e58024d546592306022a28824425544b6915a88a",
+      "mergeCommit": {
+        "oid": "dc9875170ffd26ed7d6e18075ee72ee92268d8da"
+      },
+      "mergedAt": "2026-10-23T05:16:42Z",
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4220"
     }
   ],
   "compatibilityReviewCorrection": "An exact whole upstream Go dependency graph is not a repository requirement. Delivered replacement4215 advances compatible API/containerregistry libraries while retaining the real Kyverno1.19.2 compiler, exact pod-security replacement and Kubernetes/CEL pins; all1593 unchanged fixtures pass.3915 remains actual compiler-incompatible.",
@@ -1032,5 +1096,22 @@
       "seconds": 5.0
     }
   },
-  "deliveryCheckpointScope": "Metadata collected previously at the named per-PR delivery observations; report remains in progress."
+  "deliveryCheckpointScope": "Live GitHub delivery metadata; runtime acceptance is separately recorded in the report.",
+  "kometaProbe": {
+    "job": "media/kometa-image-probe-174-1023",
+    "image": "docker.io/kometateam/kometa:v2.5.3",
+    "succeeded": true,
+    "checks": [
+      "image_source_guard",
+      "actual_image_cli_flags",
+      "daily_dataset_download_shared_ratings_and_cleanup",
+      "actual_image_runpy_worker_pickling_and_patch",
+      "actual_image_worker_lock_and_tini_group_termination"
+    ],
+    "datasetSeconds": 2.43,
+    "rows": 1723729,
+    "productionPVCOrCredentials": false,
+    "productionPlexRun": false,
+    "jobDeleted": true
+  }
 }
