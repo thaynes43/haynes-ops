@@ -1,0 +1,21 @@
+--- a/authentik/providers/oauth2/utils.py
++++ b/authentik/providers/oauth2/utils.py
+@@ -155,15 +155,15 @@
+ 
+                 token = AccessToken.objects.filter(token=access_token).first()
+                 if not token:
+-                    LOGGER.debug("Token does not exist", access_token=access_token)
++                    LOGGER.debug("Token does not exist")
+                     raise BearerTokenError("invalid_token")
+ 
+                 if token.is_expired:
+-                    LOGGER.debug("Token has expired", access_token=access_token)
++                    LOGGER.debug("Token has expired")
+                     raise BearerTokenError("invalid_token")
+ 
+                 if token.revoked:
+-                    LOGGER.warning("Revoked token was used", access_token=access_token)
++                    LOGGER.warning("Revoked token was used")
+                     Event.new(
+                         action=EventAction.SUSPICIOUS_REQUEST,
+                         message="Revoked access token was used",

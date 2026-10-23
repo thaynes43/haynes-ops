@@ -36,8 +36,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install pinned fixture dependencies
-        run: python3 -m pip install PyYAML==6.0.3 jsonschema==4.25.1 'psycopg[binary]==3.2.12'
+      - name: Install isolated hash-locked fixture dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/portal-fixture-venv"
+          "$RUNNER_TEMP/portal-fixture-venv/bin/python" -I -m pip install \
+            --only-binary=:all: --require-hashes --disable-pip-version-check \
+            -r scripts/tests/portal178-m5c/requirements.lock
       - name: Disposable TLS fixture
         env:
           PORTAL_TEST_CONTAINER: ${{ job.services.postgres.id }}
@@ -67,9 +71,26 @@ jobs:
           PORTAL_TEST_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           export PORTAL_TEST_TLS="$RUNNER_TEMP/portal-infra-tls"
-          nice -n 19 python3 -B scripts/tests/portal178-m5c/test_packet.py -v
-          nice -n 19 python3 -B scripts/tests/portal178-m5c/test_postgres.py
+          nice -n 19 "$RUNNER_TEMP/portal-fixture-venv/bin/python" -I -B scripts/tests/portal178-m5c/test_packet.py -v
+          nice -n 19 "$RUNNER_TEMP/portal-fixture-venv/bin/python" -I -B scripts/tests/portal178-m5c/test_postgres.py
           git diff --exit-code
+      - name: Disposable installed-image UserInfo canary and minimal patch proposal
+        run: |
+          docker pull ghcr.io/goauthentik/server@sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5
+          docker run --rm --network none --cpus 2 --memory 2g \
+            --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /dev/shm:rw,nosuid,nodev,noexec,size=128m \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m \
+            --user 1000:1000 --entrypoint /ak-root/.venv/bin/python \
+            -e DJANGO_SETTINGS_MODULE=authentik.root.settings \
+            -e AUTHENTIK_SECRET_KEY=synthetic-disposable-image-only \
+            -e AUTHENTIK_LOG_LEVEL=debug \
+            -e AUTHENTIK_ERROR_REPORTING__ENABLED=false \
+            -e AUTHENTIK_POSTGRESQL__HOST=127.0.0.1 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/scripts/tests/portal178-m5c/authentik,target=/packet,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/.agents/reports/portal178-m5c/pending,target=/proposal,readonly" \
+            ghcr.io/goauthentik/server@sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5 \
+            -I -B /packet/test_canary.py
       - name: Remove disposable private fixture material
         if: always()
         run: rm -rf "$RUNNER_TEMP/portal-infra-tls"

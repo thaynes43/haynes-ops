@@ -1,62 +1,85 @@
-# Existing CNPG primary authority: proposal for root/Astra, not activation
+# Astra final recovery admission design — source only, extra grant pending
 
-Actual producer found: CNPG 1.30.1's instance-manager primary Lease, currently
-`database/postgres16`, holder `postgres16-1`, transitions 8. Existing controller
-creates/adopts it and instance managers acquire/renew it. No new witness service,
-Kubernetes reader grant or replication/backup change has been created.
+Story178; root delivery `PORTAL178-ASTRA-FINAL-FENCE-20261023-01` supersedes
+this packet's preliminary CNPG pre-admission-hook proposal. No witness, extra
+RBAC, function grant, controller or new platform is installed. Runtime stays503.
 
-Pinned sources:
-[producer](https://github.com/cloudnative-pg/cloudnative-pg/blob/2a35abb4628f209d149825ef3c38011e0701ff2f/internal/cmd/manager/instance/run/lease/runnable.go),
+## Authoritative record and producer
+
+Proposed one nonsecret ConfigMap `dev-agents/dev-env-v2-portal-admission`;
+root verified it absent at20:44UTC. Proposed BFF ServiceAccount
+`dev-agents/dev-env-v2-portal` also absent. The **existing recovery owner**
+`dev/dev-env` closes admission and, after measuring the actual recovered primary
+and obtaining a fresh independent generation through the approved secret path,
+CAS-opens the exact incarnation. No generation reuse or automatic watcher opening.
+A logical restore on the same server or a control-plane restore requires CLOSED
+admission. No destructive shared-cluster test or replication/backup change.
+
+Additional authorization is **not yet approved**: proposed BFF get one named
+ConfigMap; recovery identity update one named ConfigMap (it already has get).
+No list/watch/create/patch/delete in this proposed delta. Root used actual SARs,
+not impersonation, to verify existing `dev/dev-env` get/list/watch breadth through
+its operator ClusterRoleBinding, and no witness write authority. A narrow new Role
+would not reduce those existing broad reads; disclose them in the access proposal.
+Root must forward the additional approval and settle initial record bootstrap
+before any live object/RBAC action. Existing DB/auth approval does not grant it.
+
+Static RBAC belongs in GitOps. Dynamic CLOSED/open/generation/incarnation data
+must stay **outside GitOps rollback** so reverting source cannot reopen an old
+record. Initial creation is a distinct controlled bootstrap, not a runtime/recovery
+create privilege. No arbitrary Kubernetes or service credentials are inferred.
+
+## Same-connection binding and response fence
+
+The record carries schema, CLOSED/open, generation, expected PostgreSQL system ID,
+active WAL timeline, postmaster start time, server address and port. A snapshot
+also carries Kubernetes UID/resourceVersion.
+
+The BFF must directly GET the exact object with resourceVersion **unset** for
+fresh current API semantics: no informer, application cache, mounted ConfigMap or
+rv0. Missing/closed/error/malformed/recreated record or mismatch denies. Before
+any session SQL on the same acquired transaction/connection, measure system ID,
+postmaster start, server address/port, active WAL timeline, writable/non-recovery.
+Compare to the admitted snapshot. Re-read before and after COMMIT and require the
+identical snapshot. Discard uncertain outcomes without retry. A new primary or
+restart mismatches immediately, before any watcher notices; writable is not admitted.
+Old-primary connections and two BFF replicas need explicit tests of fresh-record
+checks. This source contract belongs to the disjoint Go owner, not this worktree.
+
+Hosted run40022033678 at `1fb8c489aab06e8c71d16d129a397ebc1cfa96bb`
+proved the constrained runtime role can read `pg_control_system()` system ID,
+current WAL filename timeline, postmaster start, server address and backend PID
+in one transaction without a new function grant/pg_monitor/SD wrapper. Root's
+read-only live catalog separately confirmed PUBLIC EXECUTE on all seven needed
+identity functions, including inet_server_port and pg_is_in_recovery. The actual
+production portal role is absent; verify its effective behavior after reviewed
+provisioning. Do not add a hypothetical function privilege.
+[PostgreSQL16 control data](https://www.postgresql.org/docs/16/functions-info.html#FUNCTIONS-CONTROLDATA),
+[WAL functions](https://www.postgresql.org/docs/16/functions-admin.html#FUNCTIONS-ADMIN-BACKUP).
+
+## Infrastructure and negative gates
+
+Root reports no current dev-agents NetworkPolicies. Future API egress belongs in
+one dedicated BFF policy, never a change to shared agents. Discover exact API
+Service/endpoints before proposing selectors/CIDRs. The proposed BFF namespace
+also needs a reviewed public-CA-only rotation mechanism; the database Job's
+same-namespace ca.crt volume does not solve cross-namespace BFF CA delivery.
+
+Require real **disposable** async failover losing an acknowledged DELETE with
+unchanged witness; same-connection/pool binding, two replicas, postmaster restart,
+partition, malformed/recreated/missing records, all transaction boundaries,
+uncertain commit, old cookies/callbacks/old-primary connections. Runtime must
+neither mutate the witness nor read other ConfigMaps. Measure API request count
+and latency per protected request and choose bounds from actual evidence.
+Current fixture identity reads are not these recovery tests.
+
+## Historical diagnostic evidence
+
+Live CNPG1.30.1 already maintains `database/postgres16` primary Lease (observed
+holderpostgres16-1/transitions8). Its holder is a reusable pod name; in-place
+manager upgrades retain it, and a leftover Lease can be adopted by a new Cluster
+incarnation. It remains diagnostic evidence, not the portal witness or admission
+producer. The final record-plus-measured-connection design avoids depending on a
+nonexistent CNPG portal hook or a delayed Lease watcher.
+[Producer source](https://github.com/cloudnative-pg/cloudnative-pg/blob/2a35abb4628f209d149825ef3c38011e0701ff2f/internal/cmd/manager/instance/run/lease/runnable.go),
 [controller](https://github.com/cloudnative-pg/cloudnative-pg/blob/2a35abb4628f209d149825ef3c38011e0701ff2f/internal/controller/primary_lease.go).
-The holder identity is a **pod name**, reused after process/pod replacement.
-In-place manager upgrades retain/re-adopt the same holder. The controller may
-adopt a Lease left from an old Cluster incarnation. Consequently holder name or
-leaseTransitions alone cannot identify every database connection incarnation or
-prove acknowledged portal DELETE survival. A polling watcher cannot close the
-interval before it observes a promotion. Merely observing the existing Lease is
-not a sufficient adapter for `RecoveryFence.Check(ctx, generation)`.
-
-Concrete candidate for existing Astra to ratify:
-
-1. Use the existing CNPG instance-manager/primary-election path as the
-   authoritative **primary admission producer**, rather than a delayed BFF
-   watch. Before a primary admits portal authorization, it must publish a
-   compare-and-swap independent tuple containing cluster incarnation, Lease
-   incarnation/transition, admitted primary/pod incarnation, database system ID,
-   WAL timeline and postmaster/connection incarnation, plus external generation.
-   A restore or uncertain commit lineage requires a new generation before
-   admission. Fail closed if the tuple cannot be published or verified. This
-   describes a required producer contract; no verified portal pre-admission hook
-   exists in the reviewed source today, so it cannot be assumed deployable.
-2. Widen the source fence contract to take an incarnation read **inside the same
-   SQL transaction/connection** as the session read/consume/revoke. Compare it to
-   that authoritative tuple before commit and before response release. A fixed
-   `-rw` hostname or pg_is_in_recovery=false cannot bind the actual server.
-   New connections must remain quarantined until their tuple is admitted; no
-   old-primary cached allow or healthy second connection can cover a mismatch.
-3. Verify actual production function defaults rather than proposing an unnecessary
-   grant. Hosted run40022033678 at `1fb8c489aab06e8c71d16d129a397ebc1cfa96bb`
-   proves the constrained runtime role can read `pg_control_system()` system ID,
-   current WAL filename's timeline, postmaster start time, server address and its
-   own backend PID in the **same transaction/connection**, with no additional
-   function grant, pg_monitor membership or wrapper. This is default PostgreSQL16
-   fixture evidence, not a read using a live provisioned portal role. Verify live
-   defaults during reviewed provisioning; deny on permission/missing values and
-   stop to review any genuine authority delta. PostgreSQL16
-   [control data](https://www.postgresql.org/docs/16/functions-info.html#FUNCTIONS-CONTROLDATA)
-   and [WAL functions](https://www.postgresql.org/docs/16/functions-admin.html#FUNCTIONS-ADMIN-BACKUP)
-   document these fields. No SECURITY DEFINER function or additional
-   Kubernetes/service permission is introduced here.
-4. Prove fail-closed behavior for new timeline before watcher observation,
-   same-name pod/process reuse, orphan Lease adoption, restore with old DB rows,
-   unavailable/stale witness, lost commit ACK and isolated old-primary reads.
-   Current async CNPG policy stays unchanged. An admission observation followed
-   by a pool reconnect must never carry the old connection's allow forward.
-
-This proposal identifies a real authoritative election producer and the missing
-connection/admission binding. It does **not** prove the producer can deliver the
-portal contract without source work or authority beyond this task. Existing
-Astra/root must choose a complete realizable producer/interface (or keep runtime
-503). Static generation, process flags and post-event manual rotation remain
-insufficient. Source and approved logical-DB setup can progress independently;
-no internal route or login acceptance follows from them.

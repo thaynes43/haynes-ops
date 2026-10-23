@@ -60,15 +60,14 @@ existing primary. OpenSSL chain + hostname verification PASS for
 `53b084dc3e8fe33fb9e6e1ffd49092cd806a396ef480324a2af0c21720e99f21`.
 CA expiry: 2026-11-05 03:55 UTC. No ca.key/server key/Secret values read.
 
-Preferred CA proposal for root/Astra review: place the isolated runtime and
-migrator in `database` and project only key `ca.crt` from existing
+Database setup Jobs can project only key `ca.crt` from existing
 `postgres16-ca` through a Secret volume with explicit `items: [{key: ca.crt,
 path: ca.crt}]`, read-only, automountServiceAccountToken=false. Never `envFrom`,
 whole-secret volume, ca.key or Secret API permission. Kubelet rotates the public
-file with CNPG; the pool factory must reload it safely. Placement is a proposal,
-not a decision or live mount. If another namespace is selected, review a
-key-only rotation mechanism first; no new projector/RBAC or static CA workaround
-is granted here. TLS requires verify-full and the exact hostname above.
+file with CNPG; the pool factory must reload it safely. Astra now proposes the BFF identity in `dev-agents`; this same-namespace
+volume is a Job-only proposal and cannot deliver its BFF CA. Review a cross-namespace
+key-only rotation mechanism before runtime assembly; no new projector/RBAC or
+static CA workaround is granted here. TLS requires verify-full and the exact hostname above.
 
 ## Provisioning and secret isolation
 
@@ -153,7 +152,9 @@ group/exception and wrong-sub tests before installation/activation. No real
 Tom/group edits. Pinned source analysis is not executed IdP integration.
 
 Backend native review also identified a revoked-token warning in Authentik
-`utils.py`; root owns tracing/redaction-canary proof before live UserInfo. No
+`utils.py`; root owns tracing/redaction-canary proof before live UserInfo. A
+disposable installed-image harness and minimal three-call token-field removal
+proposal are being tested in this draft, with no shared image/logging rollout. No
 blanket logging change is proposed here. Existing RS256/signer gates remain.
 
 See [recovery proposal](RECOVERY-PROPOSAL.md) for the unresolved primary-bound
