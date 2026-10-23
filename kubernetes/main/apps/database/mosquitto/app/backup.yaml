@@ -1,0 +1,56 @@
+---
+# The broker's existing StatefulSet claim is data-mosquitto-0. Do not include the
+# shared VolSync component: it also creates an application PVC and restore target.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: mosquitto-volsync-aws
+spec:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: onepassword-connect
+  target:
+    name: mosquitto-volsync-aws-secret
+    template:
+      engineVersion: v2
+      data:
+        RESTIC_REPOSITORY: "{{ .REPOSITORY_TEMPLATE }}/mosquitto"
+        RESTIC_PASSWORD: "{{ .RESTIC_PASSWORD }}"
+        AWS_ACCESS_KEY_ID: "{{ .AWS_ACCESS_KEY_ID }}"
+        AWS_SECRET_ACCESS_KEY: "{{ .AWS_SECRET_ACCESS_KEY }}"
+  dataFrom:
+    - extract:
+        key: aws
+    - extract:
+        key: volsync-hayesops
+---
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: mosquitto-aws
+spec:
+  sourcePVC: data-mosquitto-0
+  trigger:
+    schedule: "0 0 * * *"
+    # Story 174 / PR 4198: initial backup before the broker upgrade. After
+    # status.lastManualSync matches this ID and backup success is verified, remove
+    # only this manual field in Git so the daily schedule becomes active.
+    manual: pre-upgrade-4198-20261023-01
+  restic:
+    copyMethod: Snapshot
+    pruneIntervalDays: 7
+    repository: mosquitto-volsync-aws-secret
+    volumeSnapshotClassName: csi-ceph-blockpool
+    cacheCapacity: 4Gi
+    cacheStorageClassName: openebs-hostpath
+    cacheAccessModes: [ReadWriteOnce]
+    storageClassName: ceph-block
+    accessModes: [ReadWriteOnce]
+    moverSecurityContext:
+      runAsUser: 1883
+      runAsGroup: 1883
+      fsGroup: 1883
+      fsGroupChangePolicy: OnRootMismatch
+    retain:
+      daily: 10
+      within: 3d
