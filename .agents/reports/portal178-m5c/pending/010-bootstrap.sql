@@ -8,6 +8,13 @@ BEGIN
   IF current_database() <> 'dev_env_v2_portal' OR current_user <> 'postgres' THEN
     RAISE EXCEPTION 'portal bootstrap target/owner mismatch';
   END IF;
+  IF pg_is_in_recovery() OR current_setting('transaction_read_only') <> 'off' THEN
+    RAISE EXCEPTION 'portal bootstrap requires current writable primary';
+  END IF;
+  IF (SELECT datdba FROM pg_database WHERE datname = current_database())
+      IS DISTINCT FROM 'postgres'::regrole::oid THEN
+    RAISE EXCEPTION 'portal database owner mismatch';
+  END IF;
   IF (SELECT nspowner FROM pg_namespace WHERE nspname = 'portal')
       IS DISTINCT FROM 'dev_env_v2_portal_migrator'::regrole::oid THEN
     RAISE EXCEPTION 'portal schema owner mismatch';
@@ -15,7 +22,7 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_roles WHERE rolname IN
       ('dev_env_v2_portal_runtime', 'dev_env_v2_portal_migrator')
-    AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit)
+    AND (NOT rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit)
   ) OR EXISTS (
     SELECT 1 FROM pg_auth_members WHERE member IN
       ('dev_env_v2_portal_runtime'::regrole, 'dev_env_v2_portal_migrator'::regrole)

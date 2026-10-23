@@ -1,4 +1,4 @@
-# Astra final recovery admission design — source only, extra grant pending
+# Astra final recovery admission design — exact grant approved, installation pending
 
 Story178; root delivery `PORTAL178-ASTRA-FINAL-FENCE-20261023-01` supersedes
 this packet's preliminary CNPG pre-admission-hook proposal. No witness, extra
@@ -15,19 +15,21 @@ CAS-opens the exact incarnation. No generation reuse or automatic watcher openin
 A logical restore on the same server or a control-plane restore requires CLOSED
 admission. No destructive shared-cluster test or replication/backup change.
 
-Additional authorization is **not yet approved**: proposed BFF get one named
+Additional exact authorization **is approved** in root's Sentinel_7123e803ae848191a76e3531619e59e2 receipt; source review/CI/install are pending: proposed BFF get one named
 ConfigMap; recovery identity update one named ConfigMap (it already has get).
 No list/watch/create/patch/delete in this proposed delta. Root used actual SARs,
 not impersonation, to verify existing `dev/dev-env` get/list/watch breadth through
 its operator ClusterRoleBinding, and no witness write authority. A narrow new Role
 would not reduce those existing broad reads; disclose them in the access proposal.
-Root must forward the additional approval and settle initial record bootstrap
-before any live object/RBAC action. Existing DB/auth approval does not grant it.
+Root forwarded this distinct additional approval. It does not grant any broader
+object or runtime action; review/CI and initial bootstrap gates remain mandatory.
 
 Static RBAC belongs in GitOps. Dynamic CLOSED/open/generation/incarnation data
 must stay **outside GitOps rollback** so reverting source cannot reopen an old
-record. Initial creation is a distinct controlled bootstrap, not a runtime/recovery
-create privilege. No arbitrary Kubernetes or service credentials are inferred.
+record. Initial creation is a distinct controlled one-time CREATE from an unregistered
+CLOSED-only template, not a runtime/recovery create privilege. Root explicitly
+requires the seed to stay outside registered GitOps, including IfNotPresent seeds;
+check existence and actual outcomes before creation and never overwrite an existing record. No arbitrary Kubernetes or service credentials are inferred.
 
 ## Same-connection binding and response fence
 

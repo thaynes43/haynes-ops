@@ -128,9 +128,8 @@ class Packet(unittest.TestCase):
 
     def test_isolated_executor_candidates(self):
         jobs = list(yaml.safe_load_all((PACKET / "setup-jobs.yaml").read_text()))
-        self.assertEqual(len(jobs), 2)
-        for job, role, secret in zip(jobs, ["postgres", MIGRATOR],
-                                    ["cloudnative-pg-secret", "dev-env-v2-portal-migration-db"], strict=True):
+        self.assertEqual(len(jobs), 1)
+        for job, role, secret in zip(jobs, [MIGRATOR], ["dev-env-v2-portal-migration-db"], strict=True):
             pod = job["spec"]["template"]["spec"]
             self.assertIs(pod["automountServiceAccountToken"], False)
             self.assertEqual(job["spec"]["backoffLimit"], 0)
@@ -153,6 +152,9 @@ class Packet(unittest.TestCase):
                                                 "ports": [{"port": 5432, "protocol": "TCP"}]})
 
     def test_exact_witness_grant(self):
+        seed = load("witness-closed-bootstrap.yaml")
+        self.assertEqual(seed["metadata"], {"name": "dev-env-v2-portal-admission", "namespace": "dev-agents"})
+        self.assertEqual(seed["data"], {"schema": "1", "state": "closed"})
         docs = list(yaml.safe_load_all((PACKET / "witness-rbac.yaml").read_text()))
         self.assertEqual([d["kind"] for d in docs], ["ServiceAccount", "Role", "RoleBinding", "Role", "RoleBinding"])
         self.assertEqual(docs[0]["metadata"], {"name": "dev-env-v2-portal", "namespace": "dev-agents"})

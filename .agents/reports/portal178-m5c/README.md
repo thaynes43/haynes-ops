@@ -77,26 +77,21 @@ static CA workaround is granted here. TLS requires verify-full and the exact hos
    Register role-scoped denies first, then field-scoped role Secrets and managed
    roles, then Database/schema through existing CNPG. Verify actual controller
    reconciliation/status and role memberships; check before duplicate attempts.
-2. Apply [010-bootstrap.sql](pending/010-bootstrap.sql) through an isolated,
-   reviewed **database-owner bootstrap** component. It only changes ACL/defaults
-   and settings inside the new logical database. It does not create credentials.
-   It checks target, schema ownership and role authority; PUBLIC rights in the
-   new DB and public schema are revoked, CONNECT/USAGE added exactly, no future
-   table grant. No runtime or migration pod may receive `POSTGRES_SUPER_PASS`.
-   The current CRD cannot perform these ACLs; the exact isolated bootstrap
-   execution/credential path requires root/Astra ratification before application.
-   [Executor candidates](pending/setup-jobs.yaml) make that review concrete:
-   a one-shot non-root owner Job reads only the existing database-owner Secret's
-   `password` field; the distinct migration Job gets only its own password.
-   Both have no service-account token, verified TLS, ca.crt-only volume,
-   read-only filesystem, fixed SQL/target and modest CPU limits. They are
-   unregistered proposals, not an authorization to mount the owner credential.
-   Register and verify owner completion before separately registering migration;
-   generate each SQL ConfigMap from its reviewed file. Neither retries nor TTL
-   recreation is allowed after an uncertain outcome. The [setup-only policy](pending/setup-networkpolicy.yaml)
-   permits DNS and postgres16:5432 and selects only those Jobs. Review actual
-   admission/secret-reference policy before registration; stop any exact denial.
-   No privileged service account, API permission or new credential is proposed.
+2. Apply [010-bootstrap.sql](pending/010-bootstrap.sql) once through the existing
+   trusted CNPG **peer psql** route, after source/config review and required CI.
+   [The fixed-target helper](../../../../scripts/tests/portal178-m5c/peer_bootstrap.py)
+   defaults to catalog-only preflight. Its apply mode requires the reviewed SQL's
+   exact SHA256 and one execution, without password retrieval/distribution,
+   impersonation, identity flags, retries or credential fallbacks. Root reviews
+   the supported command/readback before use. It checks actual primary ownership;
+   the SQL checks exact DB/current role, writable primary, database/schema owner
+   and non-admin roles/memberships, then changes only new logical-DB ACL/defaults.
+   No Job mounts the shared postgres superuser password. The earlier owner Job
+   candidate was removed following root's explicit direction, never deployed.
+   Actual read-only preflight succeeded via current pod identity: postgres user,
+   postgres catalog DB, non-recovery primary, target roles0 and database0. `get
+   pods/exec` is allowed (the current websocket route); `create pods/exec` is not.
+   Any actual denial stops the action; no identity/token workaround.
 3. Run [020-tables.sql](pending/020-tables.sql) with migrator only. Definitions
    match reviewed dev-env `a28bea4` migration. Atomic first creation fails on
    collisions; no silent adoption, destructive reset or duplicate retry. Runtime
@@ -201,3 +196,31 @@ manifests or test code. Candidate Jobs were parsed/guarded, not installed or
 executed as Kubernetes Jobs; actual admission/effective network policy remain
 installation gates. Current database namespace has no NetworkPolicy/CiliumNetworkPolicy;
 cluster-wide/additive policy behavior must also be verified before claiming isolation.
+
+## Exact additional witness grant and bootstrap boundary
+
+The additional named-object grant is approved in root's exact human receipt,
+Sentinel_7123e803ae848191a76e3531619e59e2. [Static RBAC](pending/witness-rbac.yaml)
+is prepared but unregistered: exact BFF SA get one ConfigMap, existing recovery
+SA get/update one ConfigMap, no other new verb/resource/name. Existing recovery
+cluster-wide get/list/watch remains disclosed; the narrow role does not reduce it.
+The [CLOSED-only seed](pending/witness-closed-bootstrap.yaml) stays **unregistered**.
+Root explicitly rejected a Flux IfNotPresent seed for this portal contract.
+Dynamic state/generation/incarnation must remain out of GitOps rollback. After
+review/CI, the existing authorized operator route may CREATE it once; name
+existence/ownership/outcome check first, no apply/update overwriting or blind
+retry, no permanent create grant. Record actual UID/RV privately and leave CLOSED.
+CLOSED data intentionally cannot parse as an OPEN admission; no placeholder
+generation/incarnation or opening is included. Align with accepted Go source
+before deployment (current public PR531 parseAdmission requires8 keys for OPEN).
+
+This V2 pod has no cross-identity SubjectAccessReview create permission, and
+performs no --as/alternate-identity workaround. Root's authorized real SAR path
+must verify the effective grants after GitOps install: BFF get named object only,
+no other CM/Secret reads or mutations/list/watch; recovery update named object
+only, no create/patch/delete or update another dev-agents object. Existing recovery
+read breadth must remain visible in the evidence. Both witness and BFF SA were
+verified absent locally before preparation. No actual RBAC/CM action occurred.
+API readback: Service10.43.0.1:443, current endpoints192.168.40.10/.59/.6/.79/.93:6443.
+Any future BFF policy selects only its own pods and must be checked against actual
+endpoint/Cilium semantics; no shared namespace policy or active agent is changed.

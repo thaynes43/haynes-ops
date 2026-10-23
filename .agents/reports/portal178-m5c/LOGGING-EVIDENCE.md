@@ -37,3 +37,46 @@ through this path until a reviewed narrowly scoped token-field redaction and
 disposable canary proof cover missing/expired/revoked logs and persisted events.
 Raising the global log level alone would leave the WARNING path. No blanket
 logging change or shared IdP restart is approved or performed by this evidence.
+
+## Exact installed-image disposable proof and minimal proposal
+
+Hosted [run40024521259](https://github.com/thaynes43/haynes-ops/actions/runs/40024521259)
+PASS at `714e6108946fcd3c37ec710d8fbf04130ac56cc6`. Uses the exact deployed
+image digest `602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5`,
+network disabled, read-only filesystem, dropped capabilities, two CPUs and
+synthetic unsaved models. Installed OAuth utility SHA256 must equal pinned
+upstream `131cfcb81374f9beccb7cad6830fbcc9917f030ea5d3e4cfb26b470db6d6ebcb`.
+
+The actual decorated UserInfo view is called for missing/expired/revoked tokens,
+with both opaque and JWT-shaped **noncredentials**. Token lookup and Event.new
+are mocked; the latter still invokes actual model cleansing and HTTP context
+serialization, with synthetic tenant/brand defaults and Model.save mocked.
+Database cursors are blocked. Actual log processors/renderers run and each
+expected branch message must be observed; merely suppressing output cannot pass.
+
+| Phase | Cases | HTTP | Token visible in log | Token in Event context/response |
+|---|---:|---|---|---|
+| Installed baseline | 6 | all401 | all6 true | all false |
+| Minimal proposal in memory | 6 | all401 | all6 false | all false |
+
+All four revoked cases exercise the actual Event HTTP serialization path; no
+database save occurs. Initial run40023963984 was **inconclusive/failed**, because
+the fixture blocked a tenant-retention default query. That failed run was not
+counted as proof. Synthetic tenant/brand defaults fixed the fixture, without
+weakening token-log/Event assertions or enabling database/network access.
+
+The [three-call proposal](pending/authentik-userinfo-log.patch) removes only the
+`access_token=access_token` argument from missing/expired DEBUG and revoked
+WARNING calls. Message, severity, denial response and sanitized suspicious Event
+remain intact. The harness verifies the proposed diff exactly before applying it
+only in process memory and rebuilding the actual view decorators.
+
+**Deployment proposal for root:** review this minimal diff/regression evidence,
+then separately authorize an Authentik image build/rollout retaining2026.8.5 and
+these installed dependencies, with only this Python source delta. Both shared
+server and worker workloads currently have3 replicas; an image rollout affects
+shared IdP service and requires its own authorized operational scope. No image
+tag, HelmRelease, shared log level, flow or pod is changed by this packet. After
+authorized rollout verify exact digest and safe synthetic missing-token pipeline,
+then complete disposable IdP Gate A token/revocation proof. This proposal does
+not extend the portal-only grant to shared Authentik changes.

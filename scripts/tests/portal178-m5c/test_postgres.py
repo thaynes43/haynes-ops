@@ -209,6 +209,29 @@ class Postgres(unittest.TestCase):
                 self.assertTrue(all(value is not None for value in first))
                 self.assertEqual(runtime.execute("SELECT count(*) FROM portal.sessions").fetchone(), (0,))
 
+    def test_05_bootstrap_target_preconditions(self):
+        for role, database, reason in [
+            ("postgres", "postgres", "portal bootstrap target/owner mismatch"),
+            (MIGRATOR, DB, "portal bootstrap target/owner mismatch"),
+        ]:
+            with self.subTest(role=role, database=database):
+                with connect(role, dbname=database) as connection:
+                    with self.assertRaises(psycopg.Error) as failure:
+                        script(connection, "010-bootstrap.sql")
+                    self.assertEqual(failure.exception.sqlstate, "P0001")
+                    self.assertIn(reason, str(failure.exception))
+                    connection.execute("ROLLBACK")
+        # A permission mismatch must not be silently repaired or widen a role.
+        self.admin.execute("ALTER ROLE dev_env_v2_portal_runtime INHERIT")
+        try:
+            with self.assertRaises(psycopg.Error) as failure:
+                script(self.admin, "010-bootstrap.sql")
+            self.assertEqual(failure.exception.sqlstate, "P0001")
+            self.assertIn("portal role authority mismatch", str(failure.exception))
+            self.admin.execute("ROLLBACK")
+        finally:
+            self.admin.execute("ALTER ROLE dev_env_v2_portal_runtime NOINHERIT")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

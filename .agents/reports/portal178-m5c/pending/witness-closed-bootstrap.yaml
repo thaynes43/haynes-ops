@@ -1,0 +1,12 @@
+# UNREGISTERED CLOSED-only review template. NEVER register as a Flux resource.
+# One-time create through the authorized operator route after review/CI and an
+# absence/ownership check; CREATE must fail on an existing object. No apply/update.
+# No live generation/incarnation value belongs in Git or in this template.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-v2-portal-admission
+  namespace: dev-agents
+data:
+  schema: '1'
+  state: closed
