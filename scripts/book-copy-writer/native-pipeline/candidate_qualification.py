@@ -97,7 +97,8 @@ def resolve_frozen_paths(environ=None, candidate_present=None):
     if present:
         raise FrozenRuntimeDependency(
             'frozen signed runtime %s was not mounted; no candidate fallback' % FROZEN_IMAGE)
-    return {name: pins.module_source(name) for name in MODULE_NAMES}, pins.IMAGE
+    raise FrozenRuntimeDependency(
+        'frozen signed runtime %s is not mounted; no candidate fallback' % FROZEN_IMAGE)
 
 
 def qualify_frozen_runtime(paths, image_ref):
@@ -166,6 +167,35 @@ def evaluate_python_version_marker(marker, python_version):
         raise QualificationRefused('unsupported requirement marker %r' % (marker,))
     ceiling = marker[len(prefix):-1]
     return _version_pair(python_version) < _version_pair(ceiling)
+
+
+def required_distributions(requirements_text):
+    found = {}
+    for raw in requirements_text.splitlines():
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        body = line.split('--hash', 1)[0].strip()
+        marker = None
+        if ';' in body:
+            body, marker = body.split(';', 1)
+            marker = marker.strip()
+        if '==' not in body:
+            continue
+        name, version = body.split('==', 1)
+        found[name.strip().lower().replace('_', '-')] = {'version': version.strip(), 'marker': marker}
+    if not found:
+        raise QualificationRefused('reviewed requirements did not name any distributions')
+    return found
+
+
+def pinned_interpreter(dockerfile_text):
+    for line in dockerfile_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('FROM python:'):
+            tag = stripped.split(':', 1)[1].split('@', 1)[0]
+            return tag.split('-', 1)[0]
+    raise QualificationRefused('pinned Python interpreter is absent from the Dockerfile')
 
 
 def marker_table(requirements_text):
@@ -325,7 +355,8 @@ def assert_publication_gate(workflow_text):
         raise QualificationRefused('frozen and candidate qualification do not gate publication')
     closure = validate[positions[2]:positions[3]]
     for token in ('FROZEN_RUNTIME_DIR', 'FROZEN_IMAGE_REF', 'CANDIDATE_SOURCE_SHA',
-                  'CANDIDATE_LOCAL_IMAGE_ID', 'CANDIDATE_ARCHIVE_SHA256', 'BOOK_COPY_WORKFLOW'):
+                  'CANDIDATE_LOCAL_IMAGE_ID', 'CANDIDATE_ARCHIVE_SHA256', 'CANDIDATE_REVIEWED_SHA',
+                  'BOOK_COPY_WORKFLOW'):
         if token not in closure:
             raise QualificationRefused('closure step does not receive %s' % token)
     if 'CANDIDATE_REGISTRY_DIGEST' in workflow_text or 'CANDIDATE_SIGNATURE' in workflow_text:

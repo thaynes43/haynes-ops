@@ -173,6 +173,7 @@ jobs:
             echo "CANDIDATE_LOCAL_IMAGE_ID=$image_id"
             echo "CANDIDATE_ARCHIVE_SHA256=$archive"
             echo "CANDIDATE_SOURCE_SHA=$(git rev-parse HEAD)"
+            echo "CANDIDATE_REVIEWED_SHA=$GITHUB_SHA"
           } >> "$GITHUB_ENV"
 
       - name: Verify coherent closed native pipeline source dependencies without a network
@@ -186,6 +187,7 @@ jobs:
             -e CANDIDATE_SOURCE_SHA="$CANDIDATE_SOURCE_SHA" \
             -e CANDIDATE_LOCAL_IMAGE_ID="$CANDIDATE_LOCAL_IMAGE_ID" \
             -e CANDIDATE_ARCHIVE_SHA256="$CANDIDATE_ARCHIVE_SHA256" \
+            -e CANDIDATE_REVIEWED_SHA="$CANDIDATE_REVIEWED_SHA" \
             -e BOOK_COPY_WORKFLOW=/book-copy-writer-build.yml \
             -v "$GITHUB_WORKSPACE/scripts/book-copy-writer:/writer-tests:ro" \
             -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-tests:ro" \

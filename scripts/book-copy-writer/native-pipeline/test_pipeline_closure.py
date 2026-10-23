@@ -343,8 +343,15 @@ class PipelineCases(unittest.TestCase):
 
     def test_complete_current_runtime_and_scope_source_pins(self):
         qualification.refuse_rewritten_frozen_contract()
-        paths, image_ref = qualification.resolve_frozen_paths()
-        qualification.qualify_frozen_runtime(paths, image_ref)
+        try:
+            paths, image_ref = qualification.resolve_frozen_paths()
+        except qualification.FrozenRuntimeDependency as error:
+            if Path('/copy-writer').is_dir() or os.environ.get('FROZEN_RUNTIME_DIR') or Path('/frozen-runtime').is_dir():
+                raise
+            self.assertIn('no candidate fallback', str(error))
+            self.assertIn(qualification.FROZEN_IMAGE, str(error))
+        else:
+            qualification.qualify_frozen_runtime(paths, image_ref)
         self.assertEqual(digest(HERE / 'bound_census_collectors.py'), pins.COLLECTOR_SHA256)
         self.assertEqual(digest(HERE / 'capture-live-byte-baseline.py'), pins.LIVE_ENTRY_SHA256)
         self.assertEqual(hashlib.sha256(prepare.canonical(pins.SELECTED_SCOPE)).hexdigest(), pins.SELECTED_SCOPE_SHA256)
@@ -541,8 +548,20 @@ class PipelineCases(unittest.TestCase):
                 os.environ['CANDIDATE_LOCAL_IMAGE_ID'], os.environ['CANDIDATE_ARCHIVE_SHA256'],
                 os.environ.get('CANDIDATE_REGISTRY_DIGEST') or None,
                 os.environ.get('CANDIDATE_SIGNATURE_SHA256') or None,
-                reviewed_source_sha=os.environ['CANDIDATE_SOURCE_SHA'], measure_interpreter=True)
+                reviewed_source_sha=os.environ['CANDIDATE_REVIEWED_SHA'], measure_interpreter=True)
             self.assertEqual(manifest['source_sha'], os.environ['CANDIDATE_SOURCE_SHA'])
+            self.assertEqual(manifest['source_sha'], os.environ['CANDIDATE_REVIEWED_SHA'])
+            report = manifest['distribution_measurement']
+            pinned = qualification.pinned_interpreter((HERE.parent / 'Dockerfile').read_text())
+            self.assertTrue(report['interpreter'].startswith(pinned))
+            installed = {item['name'].lower().replace('_', '-'): item['version'] for item in report['installed']}
+            requirements = qualification.reviewed_source_path('requirements.txt').read_text()
+            for name, spec in qualification.required_distributions(requirements).items():
+                selected = qualification.evaluate_python_version_marker(spec['marker'], report['interpreter']) if spec['marker'] else True
+                if selected:
+                    self.assertEqual(installed.get(name), spec['version'])
+                else:
+                    self.assertNotIn(name, installed)
         else:
             with tempfile.TemporaryDirectory() as directory:
                 paths, image = self._candidate_trees(directory)
@@ -622,6 +641,8 @@ class PipelineCases(unittest.TestCase):
                 qualification.qualify_frozen_runtime(paths, qualification.FROZEN_IMAGE)
             with self.assertRaisesRegex(qualification.FrozenRuntimeDependency, 'no candidate fallback'):
                 qualification.resolve_frozen_paths(environ={}, candidate_present=True)
+            with self.assertRaisesRegex(qualification.FrozenRuntimeDependency, 'is not mounted'):
+                qualification.resolve_frozen_paths(environ={}, candidate_present=False)
             with mock.patch.dict(pins.MODULES, {'requirements.txt': '0' * 64}):
                 with self.assertRaisesRegex(qualification.QualificationRefused, 'frozen module pins were rewritten'):
                     qualification.refuse_rewritten_frozen_contract()
@@ -632,6 +653,12 @@ class PipelineCases(unittest.TestCase):
         self.assertEqual(table['marker'], 'python_version < "3.13"')
         self.assertEqual(table['selects'], {'3.12': True, '3.13': False, '3.14': False, '3.14.2': False})
         self.assertFalse(table['marker_is_binary_proof'])
+        sample = 'psycopg==9.9.9\npsycopg-binary==8.8.8 --hash=sha256:aa\ntyping-extensions==1.2.3; python_version < "3.13"\n'
+        parsed = qualification.required_distributions(sample)
+        self.assertEqual(parsed['psycopg'], {'version': '9.9.9', 'marker': None})
+        self.assertEqual(parsed['psycopg-binary']['version'], '8.8.8')
+        self.assertEqual(parsed['typing-extensions']['marker'], 'python_version < "3.13"')
+        self.assertEqual(qualification.pinned_interpreter('FROM python:3.14-slim@sha256:abc\n'), '3.14')
         inside = Path('/copy-writer').is_dir()
         report = qualification.distribution_report(inside)
         self.assertFalse(report['marker_is_binary_proof'])
