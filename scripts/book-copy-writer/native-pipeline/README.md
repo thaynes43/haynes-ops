@@ -173,3 +173,13 @@ path, or changed bytes stops the launch before the EPUB scan. The PATH keeps the
 existing directories first and appends /home/dev/.local/bin.
 It performs no post-LIVE object census or model handoff. Its pre-exec original-byte age
 check cannot replace the supervisor's final post-arm activation age check.
+
+Candidate qualification is separate from that frozen signed runtime. Closure still
+requires image `ghcr.io/thaynes43/book-copy-writer@sha256:628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601`,
+source `daa542a395eb508de6bbeb2a7430e63aa3454b6e`, and signature receipt
+`ee882db8feb49ff1510700a415d6635b33850ab0e1f6c76c0825775652818183`. A built
+candidate must match the reviewed source bytes of the same six modules, including
+requirements.txt. Its local image ID, archive SHA-256, registry digest, and
+signature stay distinct. The candidate is not an admitted runtime and has no
+signature until the existing main-only publisher loads that exact validated
+archive. Pull requests cannot publish or sign. This does not replace the frozen pins.

@@ -24,6 +24,7 @@ sys.path.insert(0, str(HERE))
 import bootstrap_payload
 import pipeline_pins as pins
 import prepare
+import candidate_qualification as qualification
 
 
 def load(name, file):
@@ -341,10 +342,9 @@ class PipelineCases(unittest.TestCase):
                 self.assertEqual(pins.module_source('epub_copies.py'), bundle / 'epub_copies.py')
 
     def test_complete_current_runtime_and_scope_source_pins(self):
-        modules = Path('/copy-writer')
-        for name, expected in pins.MODULES.items():
-            path = modules / name if modules.is_dir() else pins.module_source(name)
-            self.assertEqual(digest(path), expected)
+        qualification.refuse_rewritten_frozen_contract()
+        paths, image_ref = qualification.resolve_frozen_paths()
+        qualification.qualify_frozen_runtime(paths, image_ref)
         self.assertEqual(digest(HERE / 'bound_census_collectors.py'), pins.COLLECTOR_SHA256)
         self.assertEqual(digest(HERE / 'capture-live-byte-baseline.py'), pins.LIVE_ENTRY_SHA256)
         self.assertEqual(hashlib.sha256(prepare.canonical(pins.SELECTED_SCOPE)).hexdigest(), pins.SELECTED_SCOPE_SHA256)
@@ -496,6 +496,168 @@ class PipelineCases(unittest.TestCase):
                                 env={**os.environ, 'PYTHONPATH': os.environ.get('COPY_TEST_MODULES', str(pins.module_source('epub_copies.py').parent)) + os.pathsep + str(HERE.parent)},
                                 capture_output=True, timeout=2)
         self.assertEqual(result.returncode, 2); self.assertEqual(result.stdout, b'')
+
+
+
+    def _candidate_trees(self, directory, image_replacements=None, omit=()):
+        source = Path(directory) / 'source'
+        image = Path(directory) / 'image'
+        paths = {}
+        for name in qualification.MODULE_NAMES:
+            if name == 'requirements.txt':
+                payload = b'typing-extensions==4.15.0; python_version < "3.13" --hash=sha256:' + (b'ab' * 32) + b'\n'
+            else:
+                payload = b'same-candidate:' + name.encode() + b'\n'
+            source.mkdir(parents=True, exist_ok=True)
+            image.mkdir(parents=True, exist_ok=True)
+            source_path = source / name
+            source_path.write_bytes(payload)
+            paths[name] = source_path
+            if name not in omit:
+                (image / name).write_bytes((image_replacements or {}).get(name, payload))
+        return paths, image
+
+    def _qualify(self, paths, image, **overrides):
+        values = {
+            'source_paths': paths,
+            'image_root': image,
+            'source_sha': 'a' * 40,
+            'reviewed_source_sha': 'a' * 40,
+            'local_image_id': 'sha256:' + ('1' * 64),
+            'archive_sha256': '2' * 64,
+            'registry_digest': None,
+            'signature_sha256': None,
+            'measure_interpreter': False,
+        }
+        values.update(overrides)
+        return qualification.qualify_candidate(**values)
+
+    def test_candidate_matches_reviewed_source_and_records_distinct_identity(self):
+        inside = Path('/copy-writer').is_dir()
+        if inside:
+            source_paths = {name: qualification.reviewed_source_path(name) for name in qualification.MODULE_NAMES}
+            manifest = qualification.qualify_candidate(
+                source_paths, Path('/copy-writer'), os.environ['CANDIDATE_SOURCE_SHA'],
+                os.environ['CANDIDATE_LOCAL_IMAGE_ID'], os.environ['CANDIDATE_ARCHIVE_SHA256'],
+                os.environ.get('CANDIDATE_REGISTRY_DIGEST') or None,
+                os.environ.get('CANDIDATE_SIGNATURE_SHA256') or None,
+                reviewed_source_sha=os.environ['CANDIDATE_SOURCE_SHA'], measure_interpreter=True)
+            self.assertEqual(manifest['source_sha'], os.environ['CANDIDATE_SOURCE_SHA'])
+        else:
+            with tempfile.TemporaryDirectory() as directory:
+                paths, image = self._candidate_trees(directory)
+                manifest = self._qualify(paths, image)
+        self.assertEqual(manifest['kind'], 'candidate-qualification')
+        self.assertFalse(manifest['admitted_runtime'])
+        self.assertIsNone(manifest['registry_digest'])
+        self.assertIsNone(manifest['signature_sha256'])
+        self.assertNotEqual(manifest['local_image_id'][7:], manifest['archive_sha256'])
+        self.assertFalse(manifest['marker']['marker_is_binary_proof'])
+        self.assertTrue(manifest['marker']['selects']['3.12'])
+        self.assertFalse(manifest['marker']['selects']['3.13'])
+        self.assertFalse(manifest['marker']['selects']['3.14'])
+        self.assertFalse(manifest['marker']['selects']['3.14.2'])
+
+    def test_candidate_negatives_cover_bytes_identity_and_promotion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths, image = self._candidate_trees(directory, {'book_copy_writer.py': b'changed-module\n'})
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'book_copy_writer.py'):
+                self._qualify(paths, image)
+            paths, image = self._candidate_trees(str(Path(directory) / 'missing'), omit=('proof_transport.py',))
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'missing module proof_transport.py'):
+                self._qualify(paths, image)
+            paths, image = self._candidate_trees(str(Path(directory) / 'req'), {'requirements.txt': b'requirements-differ\n'})
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'requirements.txt'):
+                self._qualify(paths, image)
+            paths, image = self._candidate_trees(str(Path(directory) / 'sha'))
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'source SHA'):
+                self._qualify(paths, image, source_sha='abc', reviewed_source_sha='abc')
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'reviewed checkout'):
+                self._qualify(paths, image, source_sha='a' * 40, reviewed_source_sha='b' * 40)
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'fake promotion proof: signature'):
+                self._qualify(paths, image, signature_sha256=qualification.FROZEN_SIGNATURE)
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'fake promotion proof: registry digest'):
+                self._qualify(paths, image, registry_digest=qualification.FROZEN_IMAGE.split('@', 1)[1])
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'archive SHA256 must stay distinct'):
+                self._qualify(paths, image, local_image_id='sha256:' + ('3' * 64), archive_sha256='3' * 64)
+            manifest = self._qualify(paths, image)
+            reported = json.loads(json.dumps(manifest))
+            reported['modules']['epub_copies.py']['image_sha256'] = 'c' * 64
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'independently measured'):
+                qualification.verify_reported_manifest(reported, paths, image)
+            manifest['admitted_runtime'] = True
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'mixed candidate/frozen manifest'):
+                qualification.refuse_mixed_manifest(manifest)
+            (image / 'requirements.txt').write_bytes(b'tampered-after-report\n')
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'does not match image'):
+                qualification.verify_reported_manifest(manifest, paths, image)
+
+    def test_candidate_does_not_import_frozen_module_hashes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths, image = self._candidate_trees(directory)
+            with mock.patch.dict(pins.MODULES, {name: '0' * 64 for name in qualification.MODULE_NAMES}):
+                manifest = self._qualify(paths, image)
+            self.assertNotEqual(manifest['modules']['requirements.txt']['source_sha256'], '0' * 64)
+            self.assertNotEqual(manifest['modules']['requirements.txt']['source_sha256'], qualification.FROZEN_MODULES['requirements.txt'])
+
+    def test_frozen_runtime_rejects_tag_wrong_digest_and_candidate_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = {}
+            for name in qualification.MODULE_NAMES:
+                # The negative fixtures do not need preimages of the frozen hashes.
+                module_path = root / name
+                module_path.write_bytes(b'not-the-frozen-artifact:' + name.encode())
+                paths[name] = module_path
+            with self.assertRaisesRegex(qualification.FrozenRuntimeDependency, 'mutable tag'):
+                qualification.qualify_frozen_runtime(paths, 'ghcr.io/thaynes43/book-copy-writer:validation')
+            wrong = 'ghcr.io/thaynes43/book-copy-writer@sha256:' + ('ab' * 32)
+            with self.assertRaisesRegex(qualification.FrozenRuntimeDependency, 'wrong immutable frozen image'):
+                qualification.qualify_frozen_runtime(paths, wrong)
+            missing = dict(paths)
+            missing['requirements.txt'] = root / 'no-such-requirements.txt'
+            with self.assertRaisesRegex(qualification.FrozenRuntimeDependency, 'missing requirements.txt'):
+                qualification.qualify_frozen_runtime(missing, qualification.FROZEN_IMAGE)
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'does not match contract'):
+                qualification.qualify_frozen_runtime(paths, qualification.FROZEN_IMAGE)
+            with self.assertRaisesRegex(qualification.FrozenRuntimeDependency, 'no candidate fallback'):
+                qualification.resolve_frozen_paths(environ={}, candidate_present=True)
+            with mock.patch.dict(pins.MODULES, {'requirements.txt': '0' * 64}):
+                with self.assertRaisesRegex(qualification.QualificationRefused, 'frozen module pins were rewritten'):
+                    qualification.refuse_rewritten_frozen_contract()
+
+    def test_marker_behavior_and_host_is_not_image_proof(self):
+        text = qualification.reviewed_source_path('requirements.txt').read_text()
+        table = qualification.marker_table(text)
+        self.assertEqual(table['marker'], 'python_version < "3.13"')
+        self.assertEqual(table['selects'], {'3.12': True, '3.13': False, '3.14': False, '3.14.2': False})
+        self.assertFalse(table['marker_is_binary_proof'])
+        inside = Path('/copy-writer').is_dir()
+        report = qualification.distribution_report(inside)
+        self.assertFalse(report['marker_is_binary_proof'])
+        if inside:
+            self.assertTrue(report['measured_in_image'])
+            self.assertTrue(report['interpreter'].startswith('3.14'))
+            self.assertFalse(report['marker_selects_typing_extensions'])
+            versions = {item['name'].lower(): item['version'] for item in report['installed']}
+            self.assertNotIn('typing-extensions', versions)
+            self.assertNotIn('typing_extensions', versions)
+            self.assertEqual(versions['psycopg'], '3.3.6')
+            self.assertEqual(versions['psycopg-binary'], '3.3.6')
+        else:
+            self.assertFalse(report['measured_in_image'])
+            self.assertIsNone(report['interpreter'])
+            self.assertIsNone(report['installed'])
+
+    def test_both_qualification_paths_gate_main_publication(self):
+        workflow = qualification.workflow_path().read_text()
+        qualification.assert_publication_gate(workflow)
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'does not need validate'):
+            qualification.assert_publication_gate(workflow.replace('needs: validate', 'needs: build', 1))
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'pull_request_target'):
+            qualification.assert_publication_gate(workflow + '\npull_request_target: {}\n')
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'rebuilds'):
+            qualification.assert_publication_gate(workflow.replace('docker load --input', 'docker build .\ndocker load --input', 1))
 
 
 def assignments_from_source(source):

@@ -138,14 +138,59 @@ jobs:
             -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-tests:ro" \
             --entrypoint nice book-copy-writer:validation -n 19 python -B /writer-tests/live-performance/test_collectors.py
 
+      - name: Qualify the frozen signed runtime by immutable digest
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          ref="$(python3 -B -c 'import sys; sys.path.insert(0, "scripts/book-copy-writer/native-pipeline"); import pipeline_pins as pins; print(pins.IMAGE)')"
+          python3 -B scripts/book-copy-writer/native-pipeline/candidate_qualification.py check-ref --ref "$ref"
+          docker pull "$ref"
+          image_id="$(docker image inspect --format '{{.Id}}' "$ref")"
+          repo_digests="$(docker image inspect --format '{{json .RepoDigests}}' "$ref")"
+          python3 -B scripts/book-copy-writer/native-pipeline/candidate_qualification.py check-pulled --ref "$ref" --repo-digests "$repo_digests" --image-id "$image_id"
+          dest="${RUNNER_TEMP}/frozen-runtime"
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          cid="$(docker create "$ref")"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          for name in requirements.txt epub_copies.py epub_metadata.py book_copy_writer.py bound_census.py proof_transport.py; do
+            docker cp "$cid:/copy-writer/$name" "$dest/$name"
+            test -s "$dest/$name"
+          done
+          echo "FROZEN_IMAGE_REF=$ref" >> "$GITHUB_ENV"
+
+      - name: Record the candidate archive SHA without publishing
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          tar="${RUNNER_TEMP}/book-copy-writer-image.tar"
+          docker save book-copy-writer:validation --output "$tar"
+          sha256sum "$tar" > "${tar}.sha256"
+          archive="$(awk '{print $1}' "${tar}.sha256")"
+          image_id="$(docker image inspect --format '{{.Id}}' book-copy-writer:validation)"
+          python3 -B scripts/book-copy-writer/native-pipeline/candidate_qualification.py check-identity --local-image-id "$image_id" --archive-sha256 "$archive"
+          {
+            echo "CANDIDATE_LOCAL_IMAGE_ID=$image_id"
+            echo "CANDIDATE_ARCHIVE_SHA256=$archive"
+            echo "CANDIDATE_SOURCE_SHA=$(git rev-parse HEAD)"
+          } >> "$GITHUB_ENV"
+
       - name: Verify coherent closed native pipeline source dependencies without a network
         timeout-minutes: 1
         run: |
           docker run --rm --read-only --network none --cpus 1 --memory 128m --user 1000:1000 \
             --tmpfs /tmp:rw,uid=1000,gid=1000,size=16m \
             -e COPY_TEST_MODULES=/epub-tests \
+            -e FROZEN_RUNTIME_DIR=/frozen-runtime \
+            -e FROZEN_IMAGE_REF="$FROZEN_IMAGE_REF" \
+            -e CANDIDATE_SOURCE_SHA="$CANDIDATE_SOURCE_SHA" \
+            -e CANDIDATE_LOCAL_IMAGE_ID="$CANDIDATE_LOCAL_IMAGE_ID" \
+            -e CANDIDATE_ARCHIVE_SHA256="$CANDIDATE_ARCHIVE_SHA256" \
+            -e BOOK_COPY_WORKFLOW=/book-copy-writer-build.yml \
             -v "$GITHUB_WORKSPACE/scripts/book-copy-writer:/writer-tests:ro" \
             -v "$GITHUB_WORKSPACE/kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert:/epub-tests:ro" \
+            -v "${RUNNER_TEMP}/frozen-runtime:/frozen-runtime:ro" \
+            -v "$GITHUB_WORKSPACE/.github/workflows/book-copy-writer-build.yml:/book-copy-writer-build.yml:ro" \
             --entrypoint nice book-copy-writer:validation -n 19 python -B /writer-tests/native-pipeline/test_pipeline_closure.py
 
       - name: Verify finite LIVE host terminal deadlines without a network
@@ -158,14 +203,19 @@ jobs:
 
       - name: Preserve the exact validated image for main-only publication
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        run: docker save book-copy-writer:validation --output "${RUNNER_TEMP}/book-copy-writer-image.tar"
+        run: |
+          set -euo pipefail
+          test -s "${RUNNER_TEMP}/book-copy-writer-image.tar"
+          test -s "${RUNNER_TEMP}/book-copy-writer-image.tar.sha256"
 
       - name: Upload the validated image artifact
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: book-copy-writer-${{ github.sha }}
-          path: ${{ runner.temp }}/book-copy-writer-image.tar
+          path: |
+            ${{ runner.temp }}/book-copy-writer-image.tar
+            ${{ runner.temp }}/book-copy-writer-image.tar.sha256
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
@@ -188,7 +238,13 @@ jobs:
           path: ${{ runner.temp }}
 
       - name: Load the validated image without rebuilding
-        run: docker load --input "${RUNNER_TEMP}/book-copy-writer-image.tar"
+        run: |
+          set -euo pipefail
+          tar="${RUNNER_TEMP}/book-copy-writer-image.tar"
+          expected="$(awk '{print $1}' "${tar}.sha256")"
+          actual="$(sha256sum "$tar" | awk '{print $1}')"
+          test "$expected" = "$actual"
+          docker load --input "$tar"
 
       - name: Log in for main-only publication
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
