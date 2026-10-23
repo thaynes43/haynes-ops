@@ -1,0 +1,437 @@
+{
+  "scope": "Selected non-secret live metadata and read-only probes; one ready running replica per listed application. No environment, config, credential or request-content reads. No host access.",
+  "capturedAt": "2026-10-23T03:27:08.069588+00:00",
+  "containers": [
+    {
+      "observedAt": "2026-10-23T03:21:35.203304+00:00",
+      "namespace": "frontend",
+      "pod": "cigar-journal-main-5669f87d75-k2tcb",
+      "container": "app",
+      "image": "ghcr.io/thaynes43/cigar-journal:v0.47.2",
+      "imageID": "ghcr.io/thaynes43/cigar-journal@sha256:b8452e133e41805cecd8bf79dd234976fa7a34c434532ce6bcaf55ffa0c1395d",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "next-server (v1",
+        "sh",
+        "sort",
+        "tini"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:35.580235+00:00",
+      "namespace": "frontend",
+      "pod": "haynesnetwork-main-7dc9896b47-d6brf",
+      "container": "app",
+      "image": "ghcr.io/thaynes43/haynesnetwork:v0.125.4",
+      "imageID": "ghcr.io/thaynes43/haynesnetwork@sha256:5522d758426a317b42fec609fbe02f8f27cdc042f03b133833002f8ccb2f881f",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "next-server (v1",
+        "sh",
+        "tini"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:35.891700+00:00",
+      "namespace": "frontend",
+      "pod": "haynes-quest-5fc48cc7cc-bvknk",
+      "container": "app",
+      "image": "ghcr.io/thaynes43/haynes-quest:sha-32370a927824aa2b1bf53d8242f7c3af8c1bf896@sha256:74f7138d28abed134cc4b31997eb002663efda55a7a8761188f83002827ead01",
+      "imageID": "ghcr.io/thaynes43/haynes-quest@sha256:74f7138d28abed134cc4b31997eb002663efda55a7a8761188f83002827ead01",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "MainThread",
+        "sh",
+        "sort"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:36.228725+00:00",
+      "namespace": "frontend",
+      "pod": "homepage-788596f9df-fvhwm",
+      "container": "app",
+      "image": "ghcr.io/gethomepage/homepage:v2.6.0",
+      "imageID": "ghcr.io/gethomepage/homepage@sha256:3e38fe788223cb46a3ce1f046ef11667b40f7707fdca0dcbfa3f86c5c42bf1e8",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "next-server (v",
+        "sh"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:36.522611+00:00",
+      "namespace": "frontend",
+      "pod": "openproject-web-7fc875f7dd-rhhlj",
+      "container": "app",
+      "image": "docker.io/openproject/openproject:17.9.3-slim@sha256:72ff4c11bacff9113a5400c8f99a9e3a32ef1d1014e289f7bc95a1df4dcd4e89",
+      "imageID": "docker.io/openproject/openproject@sha256:72ff4c11bacff9113a5400c8f99a9e3a32ef1d1014e289f7bc95a1df4dcd4e89",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "INSTALLED_PHP_PACKAGES\nPHP_BINARY_LOCATIONS\n",
+      "processNames": [
+        "ruby",
+        "sh"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:36.627872+00:00",
+      "namespace": "frontend",
+      "pod": "outline-7c476b57f9-8j2jm",
+      "container": "app",
+      "image": "docker.io/outlinewiki/outline:latest@sha256:08ee9ffdb847e1bd35ded30ee832090dd06a7f93f67422687db59e70bc7f5393",
+      "imageID": "docker.io/outlinewiki/outline@sha256:08ee9ffdb847e1bd35ded30ee832090dd06a7f93f67422687db59e70bc7f5393",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "node-MainThread",
+        "sh",
+        "sort"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:36.754696+00:00",
+      "namespace": "frontend",
+      "pod": "sigoalumni-7b469dd9b8-6w8kz",
+      "container": "app",
+      "image": "us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site:683f97b02b85494c6e38f9a8be145a0fdbab5828",
+      "imageID": "us-east1-docker.pkg.dev/sigo-alumni-prod/frontpage/site@sha256:2320c105cfa2e5ffd5ba9b72c629f44c902e8f9b2549e398ff207b177f57d56b",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "next-server (v",
+        "sh"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:37.049070+00:00",
+      "namespace": "frontend",
+      "pod": "todos-for-dues-5946bbf849-l8r7n",
+      "container": "app",
+      "image": "ghcr.io/thaynes43/todos-for-dues:v2.0.0",
+      "imageID": "ghcr.io/thaynes43/todos-for-dues@sha256:af4ffce1c261d56edaac31f54aba984ea561cabf332f503ff1fa53e80148a60d",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "next-server (v1",
+        "sh",
+        "sort",
+        "tini"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:37.163280+00:00",
+      "namespace": "office",
+      "pod": "paperless-ngx-5c857b6577-q6zh9",
+      "container": "app",
+      "image": "ghcr.io/paperless-ngx/paperless-ngx:3.3.4",
+      "imageID": "ghcr.io/paperless-ngx/paperless-ngx@sha256:9bc6e8248891bcfa6f52fffe8b81e4ea8cae75790c3ec1b9906961a7ba55c969",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "INSTALLED_PHP_PACKAGES\nPHP_BINARY_LOCATIONS\n",
+      "processNames": [
+        "[celery beat] -",
+        "[celeryd: celer",
+        "granian asginl ",
+        "python",
+        "python3",
+        "s6-ipcserverd",
+        "s6-linux-init-s",
+        "s6-supervise",
+        "s6-svscan",
+        "sh",
+        "sort"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:37.272172+00:00",
+      "namespace": "media",
+      "pod": "audiobookshelf-79d445894d-kgwkn",
+      "container": "app",
+      "image": "ghcr.io/advplyr/audiobookshelf:2.37.1",
+      "imageID": "ghcr.io/advplyr/audiobookshelf@sha256:581d68b2a6fc7ebf58d81c878a9f387cbbc0d88ac9d37b298b9cee10168af85b",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "MainThread",
+        "sh",
+        "sort",
+        "tini"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:37.548577+00:00",
+      "namespace": "media",
+      "pod": "kavita-67c5695b9b-gdljr",
+      "container": "app",
+      "image": "docker.io/jvmilazz0/kavita:0.9.0.2",
+      "imageID": "docker.io/jvmilazz0/kavita@sha256:ca6af7a18d7124d014702983c2364e485294f808c1552e9555f2595b7cda7982",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "Kavita",
+        "sh"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:37.650488+00:00",
+      "namespace": "media",
+      "pod": "plex-7cc4ff6bf4-sz5v5",
+      "container": "app",
+      "image": "ghcr.io/home-operations/plex:1.43.5.11029@sha256:996656c7b98462bc726e5c63ae7778fc084cff4560677b4a4e45edf0f3fa67dc",
+      "imageID": "ghcr.io/home-operations/plex@sha256:996656c7b98462bc726e5c63ae7778fc084cff4560677b4a4e45edf0f3fa67dc",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "Plex Media Serv",
+        "Plex Relay",
+        "Plex Script Hos",
+        "Plex Tuner Serv",
+        "catatonit",
+        "sh"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:37.781876+00:00",
+      "namespace": "media",
+      "pod": "seerr-8648864865-45mks",
+      "container": "app",
+      "image": "ghcr.io/seerr-team/seerr:v3.5.1",
+      "imageID": "ghcr.io/seerr-team/seerr@sha256:d8fab675b55ad293ded98fd71efcfd46054cbad9746534ae1cc4794a88c0b3be",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "node",
+        "npm start",
+        "sh",
+        "sort"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:38.065843+00:00",
+      "namespace": "media",
+      "pod": "tautulli-67d457599-x5mgb",
+      "container": "app",
+      "image": "ghcr.io/home-operations/tautulli:2.18.2",
+      "imageID": "ghcr.io/home-operations/tautulli@sha256:5d55eb06f2b77eb09001b2f884b0b3a9ed3adf8416c6209c563796e18eaa43a4",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "catatonit",
+        "python",
+        "sh"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:38.366101+00:00",
+      "namespace": "downloads",
+      "pod": "lazylibrarian-565f8b89b9-htmcq",
+      "container": "app",
+      "image": "docker.io/linuxserver/lazylibrarian:version-40a389ea",
+      "imageID": "docker.io/linuxserver/lazylibrarian@sha256:43543b0dd4071215e3473ee91451e4d7b156fa3222f6c410cfa860915868ba07",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "INSTALLED_PHP_PACKAGES\nPHP_BINARY_LOCATIONS\n",
+      "processNames": [
+        "bash",
+        "python3",
+        "s6-ipcserverd",
+        "s6-linux-init-s",
+        "s6-supervise",
+        "s6-svscan",
+        "sh",
+        "sleep"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:38.468560+00:00",
+      "namespace": "downloads",
+      "pod": "kapowarr-5945d6c968-4cx4v",
+      "container": "app",
+      "image": "docker.io/mrcas/kapowarr:v1.3.2",
+      "imageID": "docker.io/mrcas/kapowarr@sha256:cd3f004caff59636dde73b06df5b2f8068b485b47ff5fe82f6129562c0f2ac3b",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "python3",
+        "sh"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:38.567673+00:00",
+      "namespace": "ai",
+      "pod": "open-webui-0",
+      "container": "open-webui",
+      "image": "ghcr.io/open-webui/open-webui:0.7.2",
+      "imageID": "ghcr.io/open-webui/open-webui@sha256:16d9a3615b45f14a0c89f7ad7a3bf151f923ed32c2e68f9204eb17d1ce40774b",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "INSTALLED_PHP_PACKAGES\nPHP_BINARY_LOCATIONS\n",
+      "processNames": [
+        "python3",
+        "sh",
+        "sort"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    },
+    {
+      "observedAt": "2026-10-23T03:21:38.699864+00:00",
+      "namespace": "home-automation",
+      "pod": "esphome-676cc7bd4c-rzhd5",
+      "container": "app",
+      "image": "ghcr.io/esphome/esphome:2026.10.0",
+      "imageID": "ghcr.io/esphome/esphome@sha256:1dff19a59070cdb523b76576cdc74d200f862d43c1407809088855920cf57145",
+      "returncode": 0,
+      "phpExecutableOnPath": null,
+      "packageProbe": "none returned",
+      "processNames": [
+        "esphome-device-",
+        "sh",
+        "sort"
+      ],
+      "classification": "No PHP found in sampled serving container; scope-limited unaffected application runtime, not image-wide attestation"
+    }
+  ],
+  "fluxKustomizations": [
+    {
+      "namespace": "ai",
+      "name": "open-webui",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "downloads",
+      "name": "kapowarr",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "downloads",
+      "name": "lazylibrarian",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "frontend",
+      "name": "cigar-journal",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "frontend",
+      "name": "haynes-quest",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "frontend",
+      "name": "haynesnetwork",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "frontend",
+      "name": "homepage",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "frontend",
+      "name": "openproject",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "frontend",
+      "name": "outline",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "frontend",
+      "name": "sigoalumni",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "frontend",
+      "name": "todos-for-dues",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "home-automation",
+      "name": "esphome",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "media",
+      "name": "audiobookshelf",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "media",
+      "name": "kavita",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "media",
+      "name": "plex",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "media",
+      "name": "seerr",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "media",
+      "name": "tautulli",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    },
+    {
+      "namespace": "office",
+      "name": "paperless-ngx",
+      "revision": "main@sha1:cc4a93e48bd34f504927b0b4f0a22c1bff588eab",
+      "ready": "True"
+    }
+  ]
+}
