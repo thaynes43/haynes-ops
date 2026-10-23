@@ -126,6 +126,32 @@ class Packet(unittest.TestCase):
             else:
                 sys.modules[module.__name__] = previous
 
+    def test_isolated_executor_candidates(self):
+        jobs = list(yaml.safe_load_all((PACKET / "setup-jobs.yaml").read_text()))
+        self.assertEqual(len(jobs), 2)
+        for job, role, secret in zip(jobs, ["postgres", MIGRATOR],
+                                    ["cloudnative-pg-secret", "dev-env-v2-portal-migration-db"], strict=True):
+            pod = job["spec"]["template"]["spec"]
+            self.assertIs(pod["automountServiceAccountToken"], False)
+            self.assertEqual(job["spec"]["backoffLimit"], 0)
+            self.assertEqual(pod["restartPolicy"], "Never")
+            self.assertNotIn("serviceAccountName", pod)
+            container, = pod["containers"]
+            self.assertNotIn("envFrom", container)
+            env = {e["name"]: e for e in container["env"]}
+            self.assertEqual(env["PGUSER"]["value"], role)
+            self.assertEqual(env["PGHOST"]["value"], "postgres16-rw.database.svc.cluster.local")
+            self.assertEqual(env["PGSSLMODE"]["value"], "verify-full")
+            self.assertEqual(env["PGPASSWORD"]["valueFrom"], {"secretKeyRef": {"name": secret, "key": "password"}})
+            public_ca, = [v for v in pod["volumes"] if "secret" in v]
+            self.assertEqual(public_ca["secret"], {"secretName": "postgres16-ca", "items": [{"key": "ca.crt", "path": "ca.crt"}]})
+            self.assertTrue(container["securityContext"]["readOnlyRootFilesystem"])
+        policy = load("setup-networkpolicy.yaml")["spec"]
+        self.assertEqual(policy["podSelector"], {"matchLabels": {"app.kubernetes.io/part-of": "dev-env-v2-portal-db-setup"}})
+        self.assertEqual(policy["ingress"], [])
+        self.assertEqual(policy["egress"][1], {"to": [{"podSelector": {"matchLabels": {"cnpg.io/cluster": "postgres16"}}}],
+                                                "ports": [{"port": 5432, "protocol": "TCP"}]})
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

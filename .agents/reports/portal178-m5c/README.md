@@ -84,7 +84,18 @@ is granted here. TLS requires verify-full and the exact hostname above.
    table grant. No runtime or migration pod may receive `POSTGRES_SUPER_PASS`.
    The current CRD cannot perform these ACLs; the exact isolated bootstrap
    execution/credential path requires root/Astra ratification before application.
-   No privileged Job, service account or extra grant is invented by this packet.
+   [Executor candidates](pending/setup-jobs.yaml) make that review concrete:
+   a one-shot non-root owner Job reads only the existing database-owner Secret's
+   `password` field; the distinct migration Job gets only its own password.
+   Both have no service-account token, verified TLS, ca.crt-only volume,
+   read-only filesystem, fixed SQL/target and modest CPU limits. They are
+   unregistered proposals, not an authorization to mount the owner credential.
+   Register and verify owner completion before separately registering migration;
+   generate each SQL ConfigMap from its reviewed file. Neither retries nor TTL
+   recreation is allowed after an uncertain outcome. The [setup-only policy](pending/setup-networkpolicy.yaml)
+   permits DNS and postgres16:5432 and selects only those Jobs. Review actual
+   admission/secret-reference policy before registration; stop any exact denial.
+   No privileged service account, API permission or new credential is proposed.
 3. Run [020-tables.sql](pending/020-tables.sql) with migrator only. Definitions
    match reviewed dev-env `a28bea4` migration. Atomic first creation fails on
    collisions; no silent adoption, destructive reset or duplicate retry. Runtime

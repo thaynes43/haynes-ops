@@ -1,0 +1,125 @@
+# UNREGISTERED executor candidates for root/Astra/native review.
+# Register/run OWNER first, verify completion/ACLs, THEN register MIGRATION.
+# No automatic retry/TTL: uncertain SQL outcomes require readback before any rerun.
+# ConfigMaps must be generated from the reviewed SQL files at registration.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dev-env-v2-portal-owner-bootstrap-v1
+  namespace: database
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dev-env-v2-portal-owner-bootstrap
+        app.kubernetes.io/part-of: dev-env-v2-portal-db-setup
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: owner-bootstrap
+          image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+          command: [nice, '-n', '19', psql]
+          args: ['-X', '--no-password', '--set=ON_ERROR_STOP=1', '--file=/sql/010-bootstrap.sql']
+          env:
+            - {name: PGHOST, value: postgres16-rw.database.svc.cluster.local}
+            - {name: PGPORT, value: '5432'}
+            - {name: PGDATABASE, value: dev_env_v2_portal}
+            - {name: PGUSER, value: postgres}
+            - {name: PGSSLMODE, value: verify-full}
+            - {name: PGSSLROOTCERT, value: /tls/ca.crt}
+            - {name: PGCONNECT_TIMEOUT, value: '5'}
+            - {name: PGOPTIONS, value: '-c statement_timeout=30s -c lock_timeout=5s -c idle_in_transaction_session_timeout=30s'}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cloudnative-pg-secret
+                  key: password
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: sql, mountPath: /sql, readOnly: true}
+            - {name: public-ca, mountPath: /tls, readOnly: true}
+      volumes:
+        - name: sql
+          configMap:
+            name: dev-env-v2-portal-owner-sql
+            items: [{key: 010-bootstrap.sql, path: 010-bootstrap.sql}]
+        - name: public-ca
+          secret:
+            secretName: postgres16-ca
+            items: [{key: ca.crt, path: ca.crt}]
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dev-env-v2-portal-migration-v1
+  namespace: database
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dev-env-v2-portal-migration
+        app.kubernetes.io/part-of: dev-env-v2-portal-db-setup
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migration
+          image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+          command: [nice, '-n', '19', psql]
+          args: ['-X', '--no-password', '--set=ON_ERROR_STOP=1', '--file=/sql/020-tables.sql']
+          env:
+            - {name: PGHOST, value: postgres16-rw.database.svc.cluster.local}
+            - {name: PGPORT, value: '5432'}
+            - {name: PGDATABASE, value: dev_env_v2_portal}
+            - {name: PGUSER, value: dev_env_v2_portal_migrator}
+            - {name: PGSSLMODE, value: verify-full}
+            - {name: PGSSLROOTCERT, value: /tls/ca.crt}
+            - {name: PGCONNECT_TIMEOUT, value: '5'}
+            - {name: PGOPTIONS, value: '-c statement_timeout=30s -c lock_timeout=5s -c idle_in_transaction_session_timeout=30s'}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dev-env-v2-portal-migration-db
+                  key: password
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: sql, mountPath: /sql, readOnly: true}
+            - {name: public-ca, mountPath: /tls, readOnly: true}
+      volumes:
+        - name: sql
+          configMap:
+            name: dev-env-v2-portal-migration-sql
+            items: [{key: 020-tables.sql, path: 020-tables.sql}]
+        - name: public-ca
+          secret:
+            secretName: postgres16-ca
+            items: [{key: ca.crt, path: ca.crt}]
