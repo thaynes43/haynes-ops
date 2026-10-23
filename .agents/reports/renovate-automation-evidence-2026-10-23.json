@@ -887,7 +887,7 @@
       "deliveryMergedAt": "2026-10-23T04:40:51Z"
     }
   ],
-  "deliveryCheckpoint": "2026-10-23T05:18:00Z",
+  "deliveryCheckpoint": "2026-10-23T05:21:42+00:00",
   "additionalPRs": [
     {
       "number": 4207,
@@ -1031,5 +1031,6 @@
       "channels": 2,
       "seconds": 5.0
     }
-  }
+  },
+  "deliveryCheckpointScope": "Metadata collected previously at the named per-PR delivery observations; report remains in progress."
 }
