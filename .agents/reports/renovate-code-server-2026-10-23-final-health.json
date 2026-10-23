@@ -1,0 +1,31 @@
+{
+  "observedAt": "2026-10-23T20:51:28Z",
+  "gatus": {
+    "endpoints": 61,
+    "greenMinimumOverFiveMinutes": 61,
+    "newestSampleAgeSeconds": 45.283
+  },
+  "helmReleases": {
+    "ready": 134,
+    "total": 134
+  },
+  "kustomizations": {
+    "ready": 177,
+    "total": 178,
+    "existingUnready": [
+      "dev-env-system/dev-env-h7-metadata-audit"
+    ]
+  },
+  "externalSecrets": {
+    "ready": 157,
+    "total": 157
+  },
+  "ceph": "HEALTH_OK",
+  "sourceRevision": "91ee5cc03b0e1de46200f095ed0f8a90c9b1a10d",
+  "activity": "all ended",
+  "lateUnrequestedBranches": [
+    "renovate/quay.io-jetstack-charts-cert-manager-1.x",
+    "renovate/dev-env-image-toolchain",
+    "renovate/upgrade-agent-image-toolchains"
+  ]
+}

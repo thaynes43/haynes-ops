@@ -1,0 +1,40 @@
+{
+  "observedAt": "2026-10-23T20:20:35.151030+00:00",
+  "naturalJobs": [
+    {
+      "name": "alert-responder-29879760",
+      "uid": "5dec87f3-2244-4e45-b837-1815d9ffb9b2",
+      "created": "2026-10-23T20:00:06Z",
+      "started": "2026-10-23T20:00:08Z",
+      "completed": "2026-10-23T20:00:21Z",
+      "succeeded": 1,
+      "images": [
+        "ghcr.io/thaynes43/upgrade-shepherd:0.1.0@sha256:0c734d13fbd65808066fb4d08414b37e4fa0228e48933a05a70b584e9f56ca5b"
+      ]
+    },
+    {
+      "name": "upgrade-shepherd-29879760",
+      "uid": "050d9e57-3f36-4e81-b4f6-461ac3545c77",
+      "created": "2026-10-23T20:00:09Z",
+      "started": "2026-10-23T20:00:12Z",
+      "completed": "2026-10-23T20:00:36Z",
+      "succeeded": 1,
+      "images": [
+        "ghcr.io/thaynes43/upgrade-shepherd:0.1.0@sha256:0c734d13fbd65808066fb4d08414b37e4fa0228e48933a05a70b584e9f56ca5b",
+        "ghcr.io/thaynes43/upgrade-shepherd:0.1.0@sha256:0c734d13fbd65808066fb4d08414b37e4fa0228e48933a05a70b584e9f56ca5b"
+      ]
+    },
+    {
+      "name": "upgrade-shepherd-triage-29879760",
+      "uid": "f718a04a-1dc5-4e7c-9aa8-470d8359d034",
+      "created": "2026-10-23T20:00:08Z",
+      "started": "2026-10-23T20:00:18Z",
+      "completed": "2026-10-23T20:00:38Z",
+      "succeeded": 1,
+      "images": [
+        "ghcr.io/thaynes43/upgrade-shepherd:0.1.0@sha256:0c734d13fbd65808066fb4d08414b37e4fa0228e48933a05a70b584e9f56ca5b",
+        "ghcr.io/thaynes43/upgrade-shepherd:0.1.0@sha256:0c734d13fbd65808066fb4d08414b37e4fa0228e48933a05a70b584e9f56ca5b"
+      ]
+    }
+  ]
+}
