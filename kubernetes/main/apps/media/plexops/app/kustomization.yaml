@@ -8,6 +8,16 @@ components:
 resources:
   - ./pvc.yaml
   - ./helmrelease.yaml
+patches:
+  # Temporary Story 174 backup; remove after Kometa acceptance to resume the weekly schedule.
+  - patch: |-
+      apiVersion: volsync.backube/v1alpha1
+      kind: ReplicationSource
+      metadata:
+        name: "${APP}-aws"
+      spec:
+        trigger:
+          manual: story174-kometa-preupgrade-20261023-01
 configMapGenerator:
   - name: plexops-loki-rules
     files:
