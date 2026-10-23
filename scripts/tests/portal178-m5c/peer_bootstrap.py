@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Fixed portal SQL through the existing CNPG peer route, no password/identity swap.
 
-Default --preflight reads catalog counts only. --apply-reviewed-sha256 is one
-attempt after independent config review/required CI and role/DB provisioning.
+--preflight reads catalog counts only; --verify checks bounded effective ACLs.
+--apply-reviewed-sha256 bootstraps ACLs; --migrate-reviewed-sha256 executes the
+reviewed tables once with SET ROLE migrator. Both require config review/CI and
+actual role/DB provisioning; neither distributes a password or enables LOGIN.
 No retries: inspect actual outcomes before repeating after an error.
 """
 import argparse
@@ -30,6 +32,8 @@ def main():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--preflight", action="store_true")
     mode.add_argument("--apply-reviewed-sha256")
+    mode.add_argument("--migrate-reviewed-sha256")
+    mode.add_argument("--verify", action="store_true")
     args = parser.parse_args()
     cluster = json.loads(invoke(["get", "cluster.postgresql.cnpg.io", CLUSTER,
                                 "-n", NAMESPACE, "-o", "json"], capture_output=True).stdout)
@@ -38,7 +42,14 @@ def main():
         raise RuntimeError("unknown primary; stop")
     pod = json.loads(invoke(["get", "pod", primary, "-n", NAMESPACE, "-o", "json"],
                            capture_output=True).stdout)
-    if pod["metadata"].get("labels", {}).get("cnpg.io/cluster") != CLUSTER:
+    metadata = pod["metadata"]
+    owners = metadata.get("ownerReferences", [])
+    if (metadata.get("labels", {}).get("cnpg.io/cluster") != CLUSTER
+        or metadata.get("deletionTimestamp")
+        or not cluster.get("metadata", {}).get("uid")
+        or not any(owner.get("kind") == "Cluster" and owner.get("name") == CLUSTER
+                   and owner.get("uid") == cluster["metadata"]["uid"]
+                   and owner.get("controller") is True for owner in owners)):
         raise RuntimeError("primary ownership mismatch; stop")
     command = ["exec", "-i", "-n", NAMESPACE, primary, "-c", "postgres", "--",
                "psql", "-X", "--no-password", "--set=ON_ERROR_STOP=1",
@@ -51,15 +62,31 @@ def main():
         'targetDatabaseCount',(SELECT count(*) FROM pg_database WHERE datname='dev_env_v2_portal'));"""
         invoke([*command, "--dbname=postgres", "-A", "-t", "--file=-"], input=source)
         return
-    expected = args.apply_reviewed_sha256
+    if args.verify:
+        result = invoke([*command, "--dbname=dev_env_v2_portal", "-q", "-A", "-t", "--file=-"],
+                        input=SQL_FILE.with_name("030-verify.sql").read_text(), capture_output=True)
+        proof = json.loads(result.stdout)
+        checks = proof.get("checks", {})
+        if set(checks) != {"target", "roles", "database_acl", "schema_acl", "tables_acl", "default_acl", "role_settings"}:
+            raise RuntimeError("verification shape mismatch; stop")
+        print(json.dumps(proof, sort_keys=True))
+        if any(value is not True for value in checks.values()):
+            raise RuntimeError("effective authority differs from reviewed contract; stop")
+        return
+    expected = args.apply_reviewed_sha256 or args.migrate_reviewed_sha256
     if not re.fullmatch(r"[0-9a-f]{64}", expected):
         raise RuntimeError("exact reviewed SHA256 required; stop")
-    source = SQL_FILE.read_bytes()
+    selected = SQL_FILE.with_name("020-tables.sql") if args.migrate_reviewed_sha256 else SQL_FILE
+    source = selected.read_bytes()
     if hashlib.sha256(source).hexdigest() != expected:
         raise RuntimeError("SQL differs from reviewed hash; stop")
     # SQL itself checks exact DB/current role, current writable primary, database
     # and schema ownership and both runtime/migrator non-admin memberships.
-    invoke([*command, "--dbname=dev_env_v2_portal", "--file=-"], input=source.decode())
+    # This is a one-shot peer session. SET ROLE limits the migration's effective
+    # authority to its schema owner; the BFF never receives this route/credential.
+    # No Job is registered; failure/uncertain commit requires outcome inspection.
+    prefix = "SET ROLE dev_env_v2_portal_migrator;\n" if args.migrate_reviewed_sha256 else ""
+    invoke([*command, "--dbname=dev_env_v2_portal", "--file=-"], input=prefix + source.decode())
 
 
 if __name__ == "__main__":

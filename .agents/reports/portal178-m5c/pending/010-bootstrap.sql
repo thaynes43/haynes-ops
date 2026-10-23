@@ -3,6 +3,8 @@
 -- There are no passwords or role creation statements here.
 \set ON_ERROR_STOP on
 BEGIN;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '5s';
 DO $guard$
 BEGIN
   IF current_database() <> 'dev_env_v2_portal' OR current_user <> 'postgres' THEN
@@ -22,10 +24,13 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_roles WHERE rolname IN
       ('dev_env_v2_portal_runtime', 'dev_env_v2_portal_migrator')
-    AND (NOT rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit)
-  ) OR EXISTS (
+    AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit)
+  ) OR NOT (SELECT rolcanlogin FROM pg_roles WHERE rolname = 'dev_env_v2_portal_runtime')
+    OR (SELECT rolcanlogin FROM pg_roles WHERE rolname = 'dev_env_v2_portal_migrator')
+    OR EXISTS (
     SELECT 1 FROM pg_auth_members WHERE member IN
       ('dev_env_v2_portal_runtime'::regrole, 'dev_env_v2_portal_migrator'::regrole)
+      OR roleid IN ('dev_env_v2_portal_runtime'::regrole, 'dev_env_v2_portal_migrator'::regrole)
   ) THEN
     RAISE EXCEPTION 'portal role authority mismatch';
   END IF;

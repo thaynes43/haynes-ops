@@ -1,0 +1,8 @@
+{
+  "state": "proposal-unregistered",
+  "namespace": "dev-agents",
+  "podNameLabel": "dev-env-v2-portal",
+  "excludeFromClusterPolicies": ["dev-env-session-platform", "dev-env-session-web"],
+  "operation": "append podNameLabel to existing app.kubernetes.io/name NotIn values; preserve every other selector/rule",
+  "gate": "review exact rendered policies and unchanged selection for every existing non-BFF pod before registration"
+}

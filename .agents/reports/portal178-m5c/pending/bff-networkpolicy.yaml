@@ -1,0 +1,48 @@
+# UNREGISTERED proposal. Ineffective as an isolation boundary until the matching
+# exact BFF-only shared-tier exclusions are reviewed/applied. Additive policies
+# cannot subtract inherited public web/MCP/API permissions. No shared edits here.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-v2-portal
+  namespace: dev-agents
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-v2-portal
+  enableDefaultDeny:
+    ingress: true
+    egress: true
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: network
+            app.kubernetes.io/name: traefik
+            app.kubernetes.io/instance: traefik-internal-network
+      toPorts:
+        - ports: [{port: '8443', protocol: TCP}]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports: [{port: '53', protocol: ANY}]
+          rules:
+            dns:
+              - matchName: authentik.haynesnetwork.com
+              - matchName: postgres16-rw.database.svc.cluster.local
+              - matchName: kubernetes.default.svc.cluster.local
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: database
+            cnpg.io/cluster: postgres16
+      toPorts:
+        - ports: [{port: '5432', protocol: TCP}]
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports: [{port: '443', protocol: TCP}, {port: '6443', protocol: TCP}]
+    - toFQDNs:
+        - matchName: authentik.haynesnetwork.com
+      toPorts:
+        - ports: [{port: '443', protocol: TCP}]

@@ -61,11 +61,35 @@ provisioning. Do not add a hypothetical function privilege.
 
 ## Infrastructure and negative gates
 
-Root reports no current dev-agents NetworkPolicies. Future API egress belongs in
-one dedicated BFF policy, never a change to shared agents. Discover exact API
-Service/endpoints before proposing selectors/CIDRs. The proposed BFF namespace
-also needs a reviewed public-CA-only rotation mechanism; the database Job's
-same-namespace ca.crt volume does not solve cross-namespace BFF CA delivery.
+Read-only correction: dev-agents has **zero Kubernetes NetworkPolicies but14
+CiliumNetworkPolicies**. Namespace-wide CCNPs `dev-env-session-platform` and
+`dev-env-session-web` select ordinary dev-agents pods, including a prospective
+BFF, and add MCP/operator/API and arbitrary publicTCP80/443 access. A narrow CNP
+alone cannot subtract those inherited permissions. This corrects root's earlier
+unqualified "no NetworkPolicies" statement; existing policies are untouched.
+
+[Proposed exclusions](pending/bff-network-exclusions.json) add only the unique
+BFF app-name to both existing NotIn sets; [dedicated policy](pending/bff-networkpolicy.yaml)
+then permits only named DNS, exact postgres16 pods:5432, API entity443/6443 and
+IdP FQDN443, with ingress only from network/name=traefik AND
+instance=traefik-internal-network to proposed backendTLS8443. Neither proposal
+is registered. No shared-agent behavior change or route activation is included.
+Fresh snapshot confirmed no existing pod has the BFF name; all119 non-BFF
+pod selectors remain unchanged across both proposed exclusions (238 comparisons).
+The14 namespaced CNP selectors do not select the proposed BFF. Actual Cilium
+admission/enforcement, all inherited policies and DNS/FQDN/API SNAT identities
+must be rechecked at runtime assembly, including denied public destinations,
+MCP/operator/other-DB endpoints and unchanged existing-agent behavior. Recheck
+policy and pod-label drift immediately before any separately reviewed registration.
+A policy-model comparison is not live enforcement proof. No cross-namespace or
+namespace-wide rule affecting sessions is changed here.
+
+API readback: Service10.43.0.1:443; endpoints192.168.40.10/.59/.6/.79/.93:6443.
+The BFF also needs a reviewed public-ca.crt-only cross-namespace delivery/rotation
+route (current publicCA expires2026-11-05 03:55UTC); peer migration does not solve
+it. No new projector/RBAC/secret-read grant or staticCA workaround is invented.
+The unconditioned onepassword-connect ClusterSecretStore is existing breadth,
+not new permission or proof of item-level RBAC.
 
 Require real **disposable** async failover losing an acknowledged DELETE with
 unchanged witness; same-connection/pool binding, two replicas, postmaster restart,

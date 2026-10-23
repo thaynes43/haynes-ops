@@ -42,6 +42,15 @@ jobs:
           "$RUNNER_TEMP/portal-fixture-venv/bin/python" -I -m pip install \
             --only-binary=:all: --require-hashes --disable-pip-version-check \
             -r scripts/tests/portal178-m5c/requirements.lock
+      - name: Verify immutable CNPG structural schemas
+        run: |
+          mkdir "$RUNNER_TEMP/portal-cnpg-crds"
+          for resource in clusters databases; do
+            curl --fail --silent --show-error --location \
+              "https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/2a35abb4628f209d149825ef3c38011e0701ff2f/config/crd/bases/postgresql.cnpg.io_${resource}.yaml" \
+              -o "$RUNNER_TEMP/portal-cnpg-crds/postgresql.cnpg.io_${resource}.yaml"
+          done
+          (cd "$RUNNER_TEMP/portal-cnpg-crds" && sha256sum --check "$GITHUB_WORKSPACE/scripts/tests/portal178-m5c/cnpg-crd.sha256")
       - name: Disposable TLS fixture
         env:
           PORTAL_TEST_CONTAINER: ${{ job.services.postgres.id }}
@@ -71,7 +80,9 @@ jobs:
           PORTAL_TEST_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           export PORTAL_TEST_TLS="$RUNNER_TEMP/portal-infra-tls"
-          nice -n 19 "$RUNNER_TEMP/portal-fixture-venv/bin/python" -I -B scripts/tests/portal178-m5c/test_packet.py -v
+          nice -n 19 "$RUNNER_TEMP/portal-fixture-venv/bin/python" -I -B scripts/tests/portal178-m5c/test_packet.py -v \
+            --cluster-crd "$RUNNER_TEMP/portal-cnpg-crds/postgresql.cnpg.io_clusters.yaml" \
+            --database-crd "$RUNNER_TEMP/portal-cnpg-crds/postgresql.cnpg.io_databases.yaml"
           nice -n 19 "$RUNNER_TEMP/portal-fixture-venv/bin/python" -I -B scripts/tests/portal178-m5c/test_postgres.py
           git diff --exit-code
       - name: Disposable installed-image UserInfo canary and minimal patch proposal

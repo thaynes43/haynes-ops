@@ -11,6 +11,7 @@ spec:
       - name: dev_env_v2_portal_runtime
         ensure: present
         login: true
+        connectionLimit: 8
         inherit: false
         superuser: false
         createdb: false
@@ -22,7 +23,9 @@ spec:
           name: dev-env-v2-portal-runtime-db
       - name: dev_env_v2_portal_migrator
         ensure: present
-        login: true
+        # Peer migration SET ROLE does not require LOGIN or a mounted password.
+        login: false
+        connectionLimit: 1
         inherit: false
         superuser: false
         createdb: false
@@ -37,6 +40,8 @@ spec:
       # Actual current pod CIDRs are 10.42.0.0/24 through 10.42.8.0/24;
       # the cluster pod range is the candidate bound, not a BFF identity proof.
       # Narrow workload NetworkPolicy/placement still needs runtime review.
+      - host replication dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
+      - host replication dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
       - hostnossl all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
       - hostnossl all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
       - hostssl dev_env_v2_portal dev_env_v2_portal_runtime 10.42.0.0/16 scram-sha-256

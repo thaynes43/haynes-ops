@@ -80,3 +80,23 @@ tag, HelmRelease, shared log level, flow or pod is changed by this packet. After
 authorized rollout verify exact digest and safe synthetic missing-token pipeline,
 then complete disposable IdP Gate A token/revocation proof. This proposal does
 not extend the portal-only grant to shared Authentik changes.
+
+## F3 binding portal contract and remaining shared risk
+
+Root selected the narrow contract: the BFF **never calls `/revoke` or
+`/introspect`**, including logout, cleanup and error paths. It uses only the
+exact session's current UserInfo and durable local logout, with short-lived
+access-token storage. GoM6 owns the implementation/regression; root coordinates
+its independent evidence. This packet neither edits Go nor expands OAuth scope.
+
+Pinned [introspection.py](https://github.com/goauthentik/authentik/blob/4ec0d19b98da3c329781894cd550da95d3033954/authentik/providers/oauth2/views/introspection.py#L63)
+and [token_revoke.py](https://github.com/goauthentik/authentik/blob/4ec0d19b98da3c329781894cd550da95d3033954/authentik/providers/oauth2/views/token_revoke.py#L59)
+also log unknown raw tokens at DEBUG. They are **outside this three-call patch**;
+shared-system exposure remains, no global fix is claimed. No broader patch,
+shared-image build/rollout or restart is authorized by the portal DB/auth grant.
+Live UserInfo still waits for separately reviewed authorized three-call remediation
+and synthetic full-pipeline proof. The installed-image12-case test bypasses Django
+middleware and Go router logging; Model.save is mocked. It proves no event DB
+persistence, signal/notification behavior or live revoked/expired path. The only
+live safe probe was the synthetic missing-token401 case. Real production tokens
+and audit database writes are excluded from this evidence.
