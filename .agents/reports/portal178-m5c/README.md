@@ -70,7 +70,9 @@ is granted here. TLS requires verify-full and the exact hostname above.
 
 ## Provisioning and secret isolation
 
-1. Review role flags/HBA source and live ordering before any role can log in.
+1. Preflight actual catalog role/database names and ownership; stop on an existing
+   name or ambiguity instead of silently adopting it. Review role flags/HBA source
+   and live ordering before any role can log in.
    Register role-scoped denies first, then field-scoped role Secrets and managed
    roles, then Database/schema through existing CNPG. Verify actual controller
    reconciliation/status and role memberships; check before duplicate attempts.

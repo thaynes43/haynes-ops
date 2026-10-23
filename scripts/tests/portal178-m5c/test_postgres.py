@@ -192,6 +192,23 @@ class Postgres(unittest.TestCase):
         finally:
             self.install_hba(self.fixture_cidr)
 
+    def test_04_default_incarnation_read_authority(self):
+        # Resolve the remaining proposal's function-authority uncertainty on an
+        # actual two-table runtime role. Add no function grant or pg_monitor role.
+        statement = """SELECT system_identifier::text,
+            left(pg_walfile_name(pg_current_wal_lsn()),8),
+            pg_postmaster_start_time(), host(inet_server_addr()), pg_backend_pid()
+            FROM pg_control_system()"""
+        with connect(RUNTIME) as runtime:
+            with runtime.transaction():
+                first = runtime.execute(statement).fetchone()
+                second = runtime.execute(statement).fetchone()
+                self.assertEqual(first, second)
+                self.assertRegex(first[0], r"^[0-9]+$")
+                self.assertRegex(first[1], r"^[0-9A-F]{8}$")
+                self.assertTrue(all(value is not None for value in first))
+                self.assertEqual(runtime.execute("SELECT count(*) FROM portal.sessions").fetchone(), (0,))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
