@@ -1,0 +1,35 @@
+# UNREGISTERED, UNATTACHED, NOT READY: root must supply verified immutable group
+# fingerprint before review/registration. Empty pin makes portal_is_admin false.
+# Do not edit shared managed mappings or real user/group/actor objects.
+version: 1
+metadata:
+  name: dev-env-v2-portal-live-profile-pending
+context: {}
+entries:
+  - model: authentik_providers_oauth2.scopemapping
+    id: portal-live-profile
+    state: present
+    identifiers:
+      name: dev-env-v2-portal-live-profile
+    attrs:
+      scope_name: profile
+      description: Portal-local current account and direct pinned Admins membership.
+      expression: |
+        from hashlib import sha256
+        from authentik.core.models import User
+
+        # SHA256(lowercase hyphenated group.pk UTF-8, no newline).
+        # Root retains exact directory proof; never insert the raw UUID here.
+        PINNED_ADMINS_SHA256 = ""
+        current = User.objects.get(pk=user.pk)
+        active = current.is_active is True
+        direct_admin = bool(
+            active
+            and len(PINNED_ADMINS_SHA256) == 64
+            and any(
+                sha256(str(group.pk).lower().encode("utf-8")).hexdigest()
+                == PINNED_ADMINS_SHA256
+                for group in current.groups.all()
+            )
+        )
+        return {"portal_is_active": active, "portal_is_admin": direct_admin}
