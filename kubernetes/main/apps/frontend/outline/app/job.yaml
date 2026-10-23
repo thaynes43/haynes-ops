@@ -47,7 +47,7 @@ spec:
           # Same 1.9.2 image the VM runs, byte-identical digest, but pulled
           # from docker.io (the getoutline.com registry is not on the Kyverno
           # restrict-image-registries allowlist; docker.io is).
-          image: docker.io/outlinewiki/outline@sha256:08ee9ffdb847e1bd35ded30ee832090dd06a7f93f67422687db59e70bc7f5393
+          image: docker.io/outlinewiki/outline@sha256:25d6a2ced2f1f0cf03c09abd776d87ba31941ed96d3a99992aa84b3bd0afc074
           imagePullPolicy: IfNotPresent
           # The production image ships NO `yarn` on PATH, so invoke sequelize-cli
           # directly (what `yarn db:migrate` == `sequelize db:migrate` runs).
