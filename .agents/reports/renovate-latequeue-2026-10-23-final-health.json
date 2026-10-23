@@ -1,0 +1,42 @@
+{
+  "observedAt": "2026-10-23T21:30:39.902Z",
+  "gatus": {
+    "endpoints": 61,
+    "greenMinimumOverFiveMinutes": 61,
+    "newestSampleAgeSeconds": 56.926
+  },
+  "helmReleases": {
+    "ready": 134,
+    "total": 134
+  },
+  "kustomizations": {
+    "ready": 177,
+    "total": 178,
+    "existingUnready": [
+      "dev-env-system/dev-env-h7-metadata-audit"
+    ]
+  },
+  "externalSecrets": {
+    "ready": 157,
+    "total": 157
+  },
+  "ceph": "HEALTH_OK",
+  "sourceRevision": "ad1c86b8bff46a32a28bfa43c4635dddadc8f769",
+  "sourceContainsConsumerMerge": "bc368cdd44483a25f4b535be75cc644ee4ef4a52",
+  "activities": "both ended, cert-manageract-210245-894224 and CLIact-211949-521123",
+  "dashboardSnapshot": "2026-10-23T21:30:40Z",
+  "awaitingSchedule": [],
+  "openHeldRenovatePRs": [
+    3626,
+    4150,
+    3710,
+    3915,
+    3871
+  ],
+  "newPassNotStarted": [
+    184,
+    185
+  ],
+  "mainShepherdNextNaturalRunUTC": "2026-10-24T00:00:00Z",
+  "noForcedJobs": true
+}

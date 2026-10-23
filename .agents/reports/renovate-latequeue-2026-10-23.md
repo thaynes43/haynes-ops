@@ -1,6 +1,6 @@
 # Late cert-manager and GitHub CLI upgrades — 2026-10-23
 
-**Progress receipt:** cert-manager is installed and bounded invariants accepted; both CLI source/image PR checks passed and source merged. Dev-env main publication, immutable consumer activation and final health are pending. This report will be finalized with their actual outcomes before Story183 closes.
+**This bounded pass delivered all three admitted proposals.** Cert-manager1.21.3 is installed; both CLI2.103.2 source images were published/signed and their immutable consumers installed. Actual V1/operations binaries report2.103.2, normal responder/triage Jobs succeeded on the new Shepherd image, and all61 Gatus endpoints passed the five-minute window ending17:30:39 EDT.134/134 HelmReleases,157/157 ExternalSecrets,177/178 Kustomizations Ready (only the pre-existing frozen H7 audit unready), Ceph HEALTH_OK. No rollback needed; all maintenance activities ended. Five existing held Renovate PRs remain; no awaiting-schedule candidates at the17:30 dashboard snapshot. Dated pending checkpoints below are historical; final acceptance is at the end. Independent source reviews preserve their own original review-time limits.
 
 Canonical [Story183](https://work.haynesnetwork.com/work_packages/183), [Epic173](https://work.haynesnetwork.com/work_packages/173), follows accepted [Story182](https://work.haynesnetwork.com/work_packages/182) and [report4254](https://github.com/thaynes43/haynes-ops/pull/4254). This is a new bounded pass, 16:55–18:25 EDT, by the same sole executor. It does not reopen or extend the preceding pass. Scope is the three proposals remaining at admission: cert-manager1.21.3 and GitHub CLI2.103.2 in the dev-env and upgrade-shepherd source images. Five held Renovate PRs and other owners' work remain excluded.
 
@@ -13,8 +13,8 @@ All three proposals were awaiting the normal 22:00–06:00 America/New_York Reno
 | Proposal | Why automatic delivery stopped | Delivery state |
 | --- | --- | --- |
 |4258 cert-manager1.21.3 | Component/chart outside automatic merge; chart/CRDs/issuance-facing security changes need component review. | Merged21:02:47Z, exact3689667267f76cd30436a300314882533100ab32, squash2b293287367eed31db3e3260162323f43ede415b; installed and bounded runtime invariants accepted. |
-|4259 dev-env CLI2.103.2 | Explicit manual source/toolchain group; source publication is separate from pinned V1 activation and requires genuine-work/custody checks. | Grouped replacement4261; image/publication/activation gates recorded below. |
-|4260 upgrade-agent CLI2.103.2 | Explicit manual source group and previously main-only image build; source publication must advance immutable future-job consumers. | Grouped replacement4261 adds its missing PR image validation; publication/consumer/natural-job gates recorded below. |
+|4259 dev-env CLI2.103.2 | Explicit manual source/toolchain group; source publication is separate from pinned V1 activation and requires genuine-work/custody checks. | Source replaced by merged4261 and installed consumers4263; original4259 closed21:13:35Z. Final natural-job/health gates recorded below. |
+|4260 upgrade-agent CLI2.103.2 | Explicit manual source group and previously main-only image build; source publication must advance immutable future-job consumers. | Source replaced by merged4261 and installed consumers4263; original4260 closed21:13:37Z. PR validation gap closed; natural-job/health gates recorded below. |
 
 ## cert-manager review, rollout and limits
 
@@ -70,3 +70,38 @@ At21:24:09Z new V1 UID55b4a7df-e648-4db4-93bb-88075297c1ca is3/3Ready, new opera
 Actual curation CronJob and Vexa future-template images use6d606d39. All five main/triage/responder future-container pins use6e5ff891; schedules and suspension flags unchanged. Stable-name Vexa template ConfigMap data updates future spawned Jobs, without replacing Vexa components or existing Jobs. No V1/operations mounted script or requirements changed and no Reloader workaround was needed. Old completed curation/agent Jobs remain historical and were not deleted, replaced, or miscounted as current failures.
 
 Rollback target for an actual new regression is the previous immutable a2e5fe04 dev-env and0c734d13 Shepherd pair through a reviewed GitOps pin revert and targeted reconcile, preserving PVCs/original WIP and checking current work before any replacement. No rollback was needed. Final five-minute Gatus and normal21:30 responder/triage acceptance remain pending; no extra Job is launched to manufacture evidence. The main four-hour Shepherd schedule next00:00Z is outside this pass, and curation/Vexa future execution is not forced or claimed as exercised.
+
+
+## 17:26 EDT observation checkpoint
+
+Both original CLI proposals were closed at21:13:35/37Z, after grouped source4261 merged and before runtime activation. That closure was not used as runtime acceptance. Actual installation/version/custody evidence above comes from later4263 rollout. At21:25:06Z both Cursor supervisor panes and their MainThread children were alive; no arguments/auth status/inference were read. Local V1 healthcheckHTTP200 reports expired, an activity-heartbeat state, not a failure or authenticated browser-session test.
+
+At this checkpoint, final whole-cluster/Gatus window and normal21:30 responder/triage results were pending; completed outcomes follow below. Existing four-hour Shepherd next00:00Z, curation tomorrow10:15Z, and event-driven Vexa notes execution are future gates, not manually forced tests.
+
+
+## Existing holds and next owners remain unchanged
+
+These were excluded from183 and not retried, forced, or silently closed. Detailed accepted evidence remains in [report4230](https://github.com/thaynes43/haynes-ops/pull/4230), [report4254](https://github.com/thaynes43/haynes-ops/pull/4254) and Epic173's parent-owned held packets.
+
+| Open held PR | Current blocker / retained working state |
+| --- | --- |
+|3626 typing-extensions4.16 | Book frozen requirements/image/signature/receipt closure; expected hash cannot simply be rewritten. Parent queued source-only qualification184 for a separately admitted pass; no Book implementation or runtime activation in183. |
+|3710 broad dev-env image | Eligible session template already delivered earlier; frozen H7/shelf immutable evidence and keeper ceremony constraints remain. No blanket v2 hold and no rewrite of frozen pins. |
+|3915 Kubernetes Go0.37.1 | Actual Kyverno runtime.Object/admission.LazyObject compiler incompatibility; compatible working compiler/module graph retained. Upstream blocker, no repeated build or local vendor/stub workaround. |
+|3871 Sonarrv5 | Prerelease/client/migration and usable v4 recovery acceptance remain unmet; working v4 retained. Parent owns separate preparation185; no Sonarr production change in183. |
+|4150 qBittorrent5.3 | Official MAM approved-client evidence missing;5.2.4 retained, no access/auth workaround. |
+
+Closed CUDA3127 compatibility and held Comfy4217 GPU-activation access gates remain unchanged. Book/H7/keeper source/evidence authority and protected packets remain with original custodians; no protected payload fetched or successor manufactured. Other owners98/115/177/178/179/180 and media/portal work remain excluded, except the explicitly coordinated narrow PR-validation subset described above. Future184/185 work is not started automatically by this report or by closing183.
+
+
+## Final acceptance and clean handoff — 17:31 EDT
+
+Normal scheduled responder JobUID7a98c019-de8c-4d35-aa0b-8fbc01b9ed2b completed21:30:10Z; triage JobUID2aafcbd1-b7b1-4ee9-b6cd-8fdd0cf6a85a completed21:30:24Z. Both actual new image containers use6e5ff891, exited0 with zero restarts; triage token init also completed normally on6e5ff891. Jobs carry the original CronJob owner UIDs and scheduled timestamp17:30EDT; none was forced. This proves these natural paths, not a fresh main four-hour Shepherd/LLM upgrade, curation run, authenticated IDE/RemoteControl session or event-driven notes generation. Those future templates are correctly pinned; their future execution was not manufactured or claimed.
+
+At21:30:39Z all61 Gatus endpoints had minimumsuccess1 over five minutes; newest sample56.926seconds old.134/134 HelmReleases and157/157 ExternalSecrets Ready,177/178 Kustomizations Ready with only original H7 audit unready; Ceph HEALTH_OK. Git sourceReadyad1c86b8 contains consumer mergebc368cdd, confirmed by Git ancestry and actual installed pins. Other owners' newer main commits were not reset or modified. No new sustained runtime fault or rollback occurred.
+
+Both maintenance declarations ended: cert-manageract-210245-894224, CLIact-211949-521123. No Flux suspension, active deployment, new production worker, or outstanding manual Job remains from this pass. All source/pin changes are merged. Public safe receipts and this report are on owned report4262; final exact-head required checks and independent native/driver review precede its merge. Private23-tree/361-WIP/cold-start custody stays on original storage, unchanged. The new normal standby requires fresh inventory if any later pass activates V1 again; do not reuse the old idle observation as authority.
+
+The final dashboard snapshot has exactly five open held Renovate PRs3626/4150/3710/3915/3871 and no awaiting-schedule proposals. Closed CUDA3127 and separate held Comfy4217 stay documented. Parent owns the overall remaining queue and will arrange any separately bounded same-custodian184 source-only Book qualification after verifying this owner is idle;185 Sonarr preparation is separate and does not authorize production migration. Neither story was started here. Do not reopen183, extend its22:25UTC cap, rewrite frozen assertions, fetch protected packets, retry denied readers, borrow identities, change credentials/network/security policy, or delete storage. Story180 retains its separate publisher-smoke remainder and is not accepted by this partial validation delivery.
+
+Stop at183 acceptance after report merge, with clean/pushed owned branches and canonical183/173 handoff. The full remaining held queue is not declared complete.

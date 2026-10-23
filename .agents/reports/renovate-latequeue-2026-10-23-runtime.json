@@ -112,5 +112,16 @@
   },
   "codeServer": "4.141.1 279b5702aaff359a8344c9fb8ac0a66d934ff1d6 with Code 1.141.0",
   "codeServerNode": "v24.22.1",
-  "futureVexaImage": "ghcr.io/thaynes43/dev-env:0.6.8@sha256:6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57"
+  "futureVexaImage": "ghcr.io/thaynes43/dev-env:0.6.8@sha256:6d606d399c1cda4ca888aa92d17aea2d44bb44016c93aa8a2214d7aa51dfdd57",
+  "v1LocalHealth": {
+    "HTTP": 200,
+    "status": "expired",
+    "activityHeartbeatNotBrowserSessionProof": true
+  },
+  "cursorSupervisors": {
+    "observedAt": "2026-10-23T21:25:06Z",
+    "bothExpectedPanesAlive": true,
+    "bothMainThreadChildrenAlive": true,
+    "noAuthStatusArgumentsOrInferenceRead": true
+  }
 }

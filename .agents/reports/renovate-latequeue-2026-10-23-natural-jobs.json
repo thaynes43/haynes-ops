@@ -1,0 +1,86 @@
+{
+  "observedAt": "2026-10-23T21:30:45.509222+00:00",
+  "forcedJobs": false,
+  "jobs": [
+    {
+      "name": "alert-responder-29879850",
+      "uid": "7a98c019-de8c-4d35-aa0b-8fbc01b9ed2b",
+      "created": "2026-10-23T21:30:00Z",
+      "scheduledAt": "2026-10-23T17:30:00-04:00",
+      "owner": [
+        {
+          "name": "alert-responder",
+          "uid": "a6131847-c275-4e0f-9591-16f7393d61c1",
+          "kind": "CronJob"
+        }
+      ],
+      "succeeded": 1,
+      "failed": 0,
+      "completionTime": "2026-10-23T21:30:10Z",
+      "pods": [
+        {
+          "name": "alert-responder-29879850-glljj",
+          "uid": "1c3480f0-c11d-48e7-b7f6-a01b53696973",
+          "phase": "Succeeded",
+          "containers": [
+            {
+              "name": "k8tz",
+              "imageID": "quay.io/k8tz/k8tz@sha256:58b3616bf2a196e57d81b4ee65f35d332069e7acc3de679c59aee5aae12eed23",
+              "restartCount": 0,
+              "exitCode": 0
+            },
+            {
+              "name": "app",
+              "imageID": "ghcr.io/thaynes43/upgrade-shepherd@sha256:6e5ff891dbb83939fc7cb56d790a1e10b10fe53d154af3e851318b0c497d6513",
+              "restartCount": 0,
+              "exitCode": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "upgrade-shepherd-triage-29879850",
+      "uid": "2aafcbd1-b7b1-4ee9-b6cd-8fdd0cf6a85a",
+      "created": "2026-10-23T21:30:00Z",
+      "scheduledAt": "2026-10-23T17:30:00-04:00",
+      "owner": [
+        {
+          "name": "upgrade-shepherd-triage",
+          "uid": "975914e3-613a-407d-b910-cb8e64ff70f2",
+          "kind": "CronJob"
+        }
+      ],
+      "succeeded": 1,
+      "failed": 0,
+      "completionTime": "2026-10-23T21:30:24Z",
+      "pods": [
+        {
+          "name": "upgrade-shepherd-triage-29879850-w6wcc",
+          "uid": "fdf95687-cb7a-4e82-bf98-88419faddcbd",
+          "phase": "Succeeded",
+          "containers": [
+            {
+              "name": "mint-token",
+              "imageID": "ghcr.io/thaynes43/upgrade-shepherd@sha256:6e5ff891dbb83939fc7cb56d790a1e10b10fe53d154af3e851318b0c497d6513",
+              "restartCount": 0,
+              "exitCode": 0
+            },
+            {
+              "name": "k8tz",
+              "imageID": "quay.io/k8tz/k8tz@sha256:58b3616bf2a196e57d81b4ee65f35d332069e7acc3de679c59aee5aae12eed23",
+              "restartCount": 0,
+              "exitCode": 0
+            },
+            {
+              "name": "triage",
+              "imageID": "ghcr.io/thaynes43/upgrade-shepherd@sha256:6e5ff891dbb83939fc7cb56d790a1e10b10fe53d154af3e851318b0c497d6513",
+              "restartCount": 0,
+              "exitCode": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
