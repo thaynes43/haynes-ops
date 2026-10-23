@@ -15,10 +15,10 @@ on:
   
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  build-and-push:
+  validate:
+    name: Validate Peloton image
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -94,8 +94,40 @@ jobs:
               driver.quit()
           PY
 
-      - name: Log in to GitHub Container Registry
+      - name: Preserve the exact validated image for main-only publication
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: docker save peloton-scraper:validation --output "${RUNNER_TEMP}/peloton-scraper-image.tar"
+
+      - name: Upload the validated image artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: peloton-scraper-${{ github.sha }}
+          path: ${{ runner.temp }}/peloton-scraper-image.tar
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    name: Publish validated Peloton image
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download this run's exact validated image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: peloton-scraper-${{ github.sha }}
+          path: ${{ runner.temp }}
+
+      - name: Load the validated image without rebuilding
+        run: docker load --input "${RUNNER_TEMP}/peloton-scraper-image.tar"
+
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
@@ -103,11 +135,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish the validated runtime image
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/peloton-scraper
         run: |
-          docker tag peloton-scraper:validation "${IMAGE}:0.3.2"
+          docker tag peloton-scraper:validation "${IMAGE}:0.3.3"
           docker tag peloton-scraper:validation "${IMAGE}:latest"
-          docker push "${IMAGE}:0.3.2"
+          docker push "${IMAGE}:0.3.3"
           docker push "${IMAGE}:latest"
