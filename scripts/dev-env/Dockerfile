@@ -38,7 +38,7 @@ ARG KUBECTL_VERSION=v1.37.1
 # renovate: datasource=github-releases depName=fluxcd/flux2
 ARG FLUX_VERSION=2.9.6
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION=2.103.1
+ARG GH_VERSION=2.103.2
 # renovate: datasource=github-releases depName=helm/helm
 ARG HELM_VERSION=4.3.1
 # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.+)$

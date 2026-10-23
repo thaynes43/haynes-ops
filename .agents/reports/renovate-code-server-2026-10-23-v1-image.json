@@ -1,0 +1,17 @@
+{
+  "checkedAt": "2026-10-23T20:21:15.831739+00:00",
+  "image": "ghcr.io/thaynes43/dev-env:0.6.8",
+  "indexDigest": "sha256:a2e5fe04e34adfa073abeb04554b9c706216d0a106d8e2625a8e9f4d0fdf3e5b",
+  "amd64Manifest": "sha256:a2e5fe04e34adfa073abeb04554b9c706216d0a106d8e2625a8e9f4d0fdf3e5b",
+  "configDigest": "sha256:4d9708fb887d790cbebf1c330126e352f4860229a8be5174dae6b28bbcac4a98",
+  "registryBytesHeadersVerified": true,
+  "publicBuildHistoryCODE_SERVER_VERSION": "4.141.1",
+  "source": "beebb168ca24359ac53f83b278d6e55191ff79a4",
+  "publisherRun": 40017564194,
+  "publisherStepSmokePublishSignObservedSuccess": true,
+  "noIndependentCryptographicVerificationClaimed": true,
+  "publisherRunConclusion": "SUCCESS",
+  "exactPublishedDigestObservedInMainLog": true,
+  "offlineSmokeCodeServer": "4.141.1 279b5702aaff359a8344c9fb8ac0a66d934ff1d6 with Code 1.141.0",
+  "rawWorkflowLogNotPublished": true
+}

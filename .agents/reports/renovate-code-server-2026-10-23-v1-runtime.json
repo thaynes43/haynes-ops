@@ -1,0 +1,55 @@
+{
+  "observedAt": "2026-10-23T20:38:11.549913+00:00",
+  "pods": [
+    {
+      "namespace": "dev",
+      "name": "dev-env-6b95d68bdf-p4h7q",
+      "uid": "cf9b8327-125d-4785-a192-985a557672b7",
+      "containers": [
+        {
+          "name": "app",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "ghcr.io/thaynes43/dev-env@sha256:a2e5fe04e34adfa073abeb04554b9c706216d0a106d8e2625a8e9f4d0fdf3e5b"
+        },
+        {
+          "name": "auth-watch",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "ghcr.io/thaynes43/dev-env@sha256:a2e5fe04e34adfa073abeb04554b9c706216d0a106d8e2625a8e9f4d0fdf3e5b"
+        },
+        {
+          "name": "gh-refresher",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "ghcr.io/thaynes43/dev-env@sha256:a2e5fe04e34adfa073abeb04554b9c706216d0a106d8e2625a8e9f4d0fdf3e5b"
+        }
+      ]
+    },
+    {
+      "namespace": "upgrade-agent",
+      "name": "dev-env-ops-f5b864f75-qkfn5",
+      "uid": "4f2174c0-b11b-4b76-8b84-bcddb2513c16",
+      "containers": [
+        {
+          "name": "app",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "ghcr.io/thaynes43/dev-env@sha256:a2e5fe04e34adfa073abeb04554b9c706216d0a106d8e2625a8e9f4d0fdf3e5b"
+        },
+        {
+          "name": "gh-refresher",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "ghcr.io/thaynes43/dev-env@sha256:a2e5fe04e34adfa073abeb04554b9c706216d0a106d8e2625a8e9f4d0fdf3e5b"
+        }
+      ]
+    }
+  ],
+  "futureCurationImages": [
+    "ghcr.io/thaynes43/dev-env:0.6.8@sha256:a2e5fe04e34adfa073abeb04554b9c706216d0a106d8e2625a8e9f4d0fdf3e5b"
+  ],
+  "futureVexaImages": [
+    "ghcr.io/thaynes43/dev-env:0.6.8@sha256:a2e5fe04e34adfa073abeb04554b9c706216d0a106d8e2625a8e9f4d0fdf3e5b"
+  ]
+}
