@@ -3,7 +3,8 @@
   "gatus": {
     "endpoints": 61,
     "greenMinimumOverFiveMinutes": 61,
-    "newestSampleAgeSeconds": 56.926
+    "newestSampleAgeSeconds": 56.926,
+    "minimumSamplesPerEndpointInSameFrozenWindow": 5
   },
   "helmReleases": {
     "ready": 134,
