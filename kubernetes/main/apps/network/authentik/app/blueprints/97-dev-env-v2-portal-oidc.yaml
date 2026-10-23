@@ -1,0 +1,99 @@
+# Story178 M5A: approved internal confidential client; no portal runtime/route.
+# One atomic Authentik 2026.8.5 import creates the provider AND admission gates.
+# !Find is read-only; a missing user/group makes the binding serializer fail,
+# rolling back the import. Never create users/groups or manage memberships here.
+#
+# STAGED DENY: keep until reviewed runtime Gate A activation. Both positive
+# bindings remain mandatory (policy_engine_mode=all) when that deny is removed
+# by a separate reviewed change. This is not an identity integration test or
+# permission for the BFF to skip its immutable issuer+subject/current-authz gate.
+#
+# client_secret is intentionally absent: Authentik generates it on creation and
+# partial updates preserve it. Only Tom copies it directly from Admin UI into
+# HaynesKube/dev-env-v2-portal; see .agents/reports/portal178-m5a/RELEASE.md.
+# Authentik accepts plain and S256 PKCE, and permits no challenge. The BFF MUST
+# initiate S256; this blueprint does not claim server-enforced S256-only PKCE.
+version: 1
+metadata:
+  name: dev-env-v2-portal-oidc
+  labels:
+    blueprints.goauthentik.io/description: 'Story178 internal portal OIDC foundation: confidential code/openid/profile, Tom AND Admins; staged deny until reviewed runtime activation.'
+context: {}
+entries:
+  - model: authentik_policies_expression.expressionpolicy
+    id: portal-staged-deny
+    state: present
+    identifiers:
+      name: dev-env-v2-portal-staged-deny
+    attrs:
+      expression: 'return False'
+      execution_logging: false
+  - model: authentik_providers_oauth2.oauth2provider
+    id: portal-provider
+    state: present
+    identifiers:
+      name: dev-env-v2-portal-internal
+    attrs:
+      client_type: confidential
+      client_id: dev-env-v2-portal-internal
+      grant_types:
+        - authorization_code
+      jwt_federation_providers: []
+      jwt_federation_sources: []
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      redirect_uris:
+        - matching_mode: strict
+          url: https://dev-env-v2.haynesops.com/auth/callback
+          redirect_uri_type: authorization
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, jwt-signing-key-rsa-longterm]]
+      sub_mode: user_uuid
+      issuer_mode: per_provider
+      include_claims_in_id_token: true
+      access_code_validity: minutes=1
+      access_token_validity: minutes=5
+  - model: authentik_core.application
+    id: portal-application
+    state: present
+    identifiers:
+      slug: dev-env-v2-portal
+    attrs:
+      name: Dev Env V2 Portal (internal)
+      provider: !KeyOf portal-provider
+      policy_engine_mode: all
+      # No launch link to a nonexistent runtime or household portal listing.
+      meta_hide: true
+      meta_description: Internal read-only portal; runtime activation pending Gate A.
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf portal-application
+      order: 0
+    attrs:
+      policy: !KeyOf portal-staged-deny
+      enabled: true
+      negate: false
+      failure_result: false
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf portal-application
+      order: 10
+    attrs:
+      user: !Find [authentik_core.user, [username, thaynes], [is_active, true]]
+      enabled: true
+      negate: false
+      failure_result: false
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf portal-application
+      order: 20
+    attrs:
+      group: !Find [authentik_core.group, [name, authentik Admins]]
+      enabled: true
+      negate: false
+      failure_result: false

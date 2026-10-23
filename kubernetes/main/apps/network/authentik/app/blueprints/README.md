@@ -55,6 +55,25 @@ update never touches it afterwards — and is copied once into 1Password, exactl
 UI-created six. That file also records the Subject-mode ruling (`user_uuid`, never
 email/username) for any future OIDC provider whose consumer keys accounts on `sub`.
 
+`97-dev-env-v2-portal-oidc.yaml` adds the approved internal portal confidential
+client (`authorization_code`, `openid profile`, strict callback, `user_uuid`). Its
+application combines the existing active `thaynes` user and `authentik Admins`
+bindings with **all** semantics for Authentik's effective policy user: MIRROR
+actors can inherit their parent's result, so the BFF must pin Tom's exact
+immutable subject independently. COPY actors may lock out a copied conjunction.
+An additional explicit deny keeps admission
+closed until reviewed runtime activation; there is no runtime, launch link,
+outpost or ingress in this foundation. The [M5A release packet](../../../../../../../.agents/reports/portal178-m5a/RELEASE.md)
+records secret provisioning, atomic import/reference behavior and outstanding
+runtime acceptance. Removing a blueprint file does **not** delete its objects;
+removing this file alone is not an access revocation.
+Activation requires explicit `state: absent` for both deny entries, after Gate A;
+never disable/delete a positive binding. Disabling/deleting a conjunct widens
+access, and zero enabled bindings permits authenticated users by default. Read
+back the exact enabled order 0/10/20 set and successful blueprint instance while
+staged, plus non-null expected RSA signer and matching JWKS RS256; a blueprint
+error, binding drift or missing signer blocks release and needs an alert/handoff.
+
 ## Pending file (NOT discovered)
 
 `pending/40-hnet-mfa.yaml` — the drafted native-account MFA blueprint. It is **not** in
