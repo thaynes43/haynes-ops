@@ -45,3 +45,12 @@ Source GitRepository repeatedly hit60sGitHub clone deadlines20:13/14/15 while re
 4253 exact PR image build/runtime-user offline smoke passed; source merged20:13:35Z/beebb168. Main40017564194 publication is building, not claimed published/installed. Prepared consumer scope is exactly7pins across V1x3/opsx3/futureVexax1. No new production agent Job, notes/inference/publication job or duplicate executor was forced.
 
 Current Gatus five-minute sample at20:18Z is60/61 due the recent HA restart; final green-window acceptance is pending. Historical Story181 acceptance remains valid for its snapshot and does not stand in for this follow-up.
+
+
+## 16:22 EDT source publication and preserved activation candidate
+
+Main40017564194/job120633458801 completedSUCCESS: exact-image runtime-user/offline smoke reports code-server4.141.1/279b570 with Code1.141.0; publish and keyless sign passed. Registry manifest/config bytes verify a2e5fe04e34adfa073abeb04554b9c706216d0a106d8e2625a8e9f4d0fdf3e5b, and public build history specifies CODE_SERVER_VERSION4.141.1. Raw workflow log remains local. No independent cryptographic verification claim.
+
+PR4255 exact1c9d5c500efddc3064f69339fe7aa4f73177ad86 changes seven image pins across exactly three files (V1x3/opsx3/futureVexax1). Required exact-head Flux checks running; advisory emitted no findings, native final consumer review pending. No mounted data/Reloader workaround, credentials, egress/policy or storage changes. At20:22:13Z all22tree refs/locks/private cold-start hashes and361WIP hashes still match; targettask remains prompt/no busy indicator, both Cursor roots clean at original refs. Final operations/current-work recheck remains required immediately before merge.
+
+Gatus61/61 min-success1 over five minutes at20:22:44Z, after HA/ESPHome recovery. Own permitted metadata now directly verifies natural20:00 responder/shepherd/triage Job UIDs, exact0c734d13 images and succeeded outcomes; earlier independent-only relay has primary metadata in adjacent receipt. No new agent Job was launched.
