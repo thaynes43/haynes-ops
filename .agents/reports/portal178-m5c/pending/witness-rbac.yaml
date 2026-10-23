@@ -1,5 +1,7 @@
-# UNREGISTERED. Exact additional human approval receipt held by root/M5C.
-# Static RBAC only: never place dynamic admission/generation/incarnation in Git.
+# Static witness contract. Registered copy:
+# kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml
+# The dev-env-rbac kustomization adds its own name label at render time.
+# CLOSED seed stays outside GitOps. Never add create, patch, delete, list, or watch.
 apiVersion: v1
 kind: ServiceAccount
 metadata:

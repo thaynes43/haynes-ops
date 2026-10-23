@@ -32,6 +32,16 @@ spec:
     parameters:
       max_connections: "400"
       shared_buffers: 256MB
+    # Story178 M5D stage 1 only. These rejects precede CNPG's default
+    # "host all all all scram-sha-256". No hostssl allow and no managed roles
+    # until 010/020/030 proof. The migrator has no allow line.
+    pg_hba:
+      - host replication dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
+      - host replication dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
+      - hostnossl all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
+      - hostnossl all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
+      - host all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
+      - host all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
   nodeMaintenanceWindow:
     inProgress: false
     reusePVC: true

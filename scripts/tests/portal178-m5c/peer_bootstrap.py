@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Fixed portal SQL through the existing CNPG peer route, no password/identity swap.
 
---preflight reads catalog counts only; --verify checks bounded effective ACLs.
+An explicit mode is required. There is no default.
+--preflight reads catalog counts only.
+--verify-reviewed-sha256 checks bounded effective ACLs. It refuses a file whose
+SHA256 differs from the reviewed digest, and it sets the session read-only
+before that file is read.
 --apply-reviewed-sha256 bootstraps ACLs; --migrate-reviewed-sha256 executes the
 reviewed tables once with SET ROLE migrator. Both require config review/CI and
 actual role/DB provisioning; neither distributes a password or enables LOGIN.
@@ -33,7 +37,7 @@ def main():
     mode.add_argument("--preflight", action="store_true")
     mode.add_argument("--apply-reviewed-sha256")
     mode.add_argument("--migrate-reviewed-sha256")
-    mode.add_argument("--verify", action="store_true")
+    mode.add_argument("--verify-reviewed-sha256")
     args = parser.parse_args()
     cluster = json.loads(invoke(["get", "cluster.postgresql.cnpg.io", CLUSTER,
                                 "-n", NAMESPACE, "-o", "json"], capture_output=True).stdout)
@@ -62,12 +66,23 @@ def main():
         'targetDatabaseCount',(SELECT count(*) FROM pg_database WHERE datname='dev_env_v2_portal'));"""
         invoke([*command, "--dbname=postgres", "-A", "-t", "--file=-"], input=source)
         return
-    if args.verify:
+    if args.verify_reviewed_sha256:
+        if not re.fullmatch(r"[0-9a-f]{64}", args.verify_reviewed_sha256):
+            raise RuntimeError("exact reviewed SHA256 required; stop")
+        source = SQL_FILE.with_name("030-verify.sql").read_bytes()
+        if hashlib.sha256(source).hexdigest() != args.verify_reviewed_sha256:
+            raise RuntimeError("SQL differs from reviewed hash; stop")
+        # Session read-only is enforced before the file. A swapped file that
+        # opens a read-write transaction fails closed even after a hash match
+        # of some other bytes; a hash mismatch never reaches psql.
         result = invoke([*command, "--dbname=dev_env_v2_portal", "-q", "-A", "-t", "--file=-"],
-                        input=SQL_FILE.with_name("030-verify.sql").read_text(), capture_output=True)
+                        input="SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;\n" + source.decode(),
+                        capture_output=True)
         proof = json.loads(result.stdout)
         checks = proof.get("checks", {})
-        if set(checks) != {"target", "roles", "database_acl", "schema_acl", "tables_acl", "default_acl", "role_settings"}:
+        if set(checks) != {"target", "roles", "database_acl", "schema_acl", "tables_acl",
+                           "default_acl", "role_settings", "portal_objects",
+                           "cluster_role_settings", "portal_backends"}:
             raise RuntimeError("verification shape mismatch; stop")
         print(json.dumps(proof, sort_keys=True))
         if any(value is not True for value in checks.values()):

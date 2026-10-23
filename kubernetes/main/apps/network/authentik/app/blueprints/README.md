@@ -62,8 +62,10 @@ bindings with **all** semantics for Authentik's effective policy user: MIRROR
 actors can inherit their parent's result, so the BFF must pin Tom's exact
 immutable subject independently. COPY actors may lock out a copied conjunction.
 An additional explicit deny keeps admission
-closed until reviewed runtime activation; there is no runtime, launch link,
-outpost or ingress in this foundation. The [M5A release packet](../../../../../../../.agents/reports/portal178-m5a/RELEASE.md)
+closed until reviewed runtime activation. The same blueprint owns the provider
+mapping relation: managed openid, managed profile, and one portal-local mapping.
+There is no second blueprint and no runtime, launch link, outpost or ingress
+in this foundation. The [M5A release packet](../../../../../../../.agents/reports/portal178-m5a/RELEASE.md)
 records secret provisioning, atomic import/reference behavior and outstanding
 runtime acceptance. Removing a blueprint file does **not** delete its objects;
 removing this file alone is not an access revocation.

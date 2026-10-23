@@ -1,10 +1,11 @@
-# Story178 M5C: client installed, DB/auth infrastructure awaiting review
+# Story178 M5D: staged registration source, activation still closed
 
 Canonical [Story178](https://work.haynesnetwork.com/work_packages/178), Epic120 /
-Saga85. Sole infrastructure implementer `haynes-ops-1023-202021`, no children.
-Root retains outcome custody and coordinates independent review; this owner
-retains corrections through acceptance. Grok's PR528 UI and GoM6's PR531 are
-disjoint. No active-agent, V1, shared-login, replication or backup changes.
+Saga85. M5D source is this Grok provisioning worktree. The global UX owner is
+unchanged and disjoint. No child implementers. Prior M5C Sol source remains the
+merged base. Root retains independent review, required CI, merge, and
+provisioning custody. Grok's PR528 UI and GoM6's PR531 are disjoint. No
+active-agent, V1, shared-login, replication or backup changes.
 
 ## States and gates
 
@@ -16,10 +17,11 @@ staged deny for Tom. This is installed-client evidence, not login/Gate A. Root
 owns delivery of the minimal secure Authentik Admin UI → HaynesKube OIDC-copy
 step. See [client release packet](../portal178-m5a/RELEASE.md).
 
-Everything in [pending/](pending/) remains **unregistered and unapplied**. No
-production portal role, Database, ACL, Secret, mapping, witness, BFF or route is
-created by this packet. Runtime remains503. Independent corrected-head review,
-required CI, actual provisioning/readback and runtime Gate A remain separate.
+Registered in this source, and applied only after root review and required CI:
+reject-only portal HBA on `postgres16`, the portal-local mapping inside
+blueprint 97, and the static witness RBAC. Still unregistered: managed roles,
+Database, ExternalSecrets, the runtime hostssl allow, the migrator allow, the
+CLOSED admission ConfigMap, BFF, and any route. Runtime remains 503.
 See [review corrections](REVIEW-CORRECTIONS.md) and
 [recovery proposal](RECOVERY-PROPOSAL.md).
 
@@ -38,8 +40,9 @@ UPDATE/TRUNCATE/CREATE/TEMP, ownership/admin/role/replication/BYPASSRLS or grant
 option. Migrator `dev_env_v2_portal_migrator` owns only this schema/tables; never
 BFF-mounted. No role-membership edge in either direction is allowed.
 
-The [role/HBA proposal](pending/cluster-portal.patch.yaml) sets runtime
-connectionLimit8 and migrator1. Public GoM6 `c03cda77493c37d7bfe55747254ebbcf4dbeac98`
+The unregistered [role proposal](pending/cluster-portal.patch.yaml) sets runtime
+connectionLimit 8 and migrator 1. Its HBA list is the post-proof composition,
+not the first registration. Public GoM6 `c03cda77493c37d7bfe55747254ebbcf4dbeac98`
 [postgres.go](https://github.com/thaynes43/dev-env/blob/c03cda77493c37d7bfe55747254ebbcf4dbeac98/web/portal/session/postgres.go#L92)
 sets MaxConns2/MinConns0. Proposed deployment bound: at most2 replicas plus1
 rollout surge, hence6 pool slots plus2 explicit verification/headroom slots =8.
@@ -54,15 +57,21 @@ Migrator is **NOLOGIN at steady state**, including bootstrap and the peer
 migration route. No unbounded login window or permanently mounted migration
 credential. If a later explicit credential test requires LOGIN, use a reviewed
 GitOps migration window and verify NOLOGIN restoration; CNPG remains its source
-of truth. Disposable CI temporarily enables its synthetic role only for its
-credential/transport negatives and closes it afterward.
+of truth. Disposable CI enables LOGIN only to prove the missing migrator HBA
+allow still rejects the connection, then restores NOLOGIN. Schema-owner SQL
+uses `SET ROLE`.
 
 Live generated HBA matches [pinned CNPG](https://github.com/cloudnative-pg/cloudnative-pg/blob/2a35abb4628f209d149825ef3c38011e0701ff2f/pkg/postgres/configuration.go):
 fixed local peer/certificate rules, user rules, default `host all all all
 scram-sha-256`. Actual local map onlypostgres→postgres; a later user local reject
-would be shadowed and is not a control. Candidate rules explicitly reject
-replication, plaintext, IPv6 and other DBs for both portal roles, allowing only
-TLS/SCRAM to the new DB from10.42.0.0/16. Actual node pod CIDRs10.42.0/24 through
+would be shadowed and is not a control. Stage 1, registered on `cluster16`, explicitly rejects replication, plaintext,
+IPv6 and every other database for both portal roles. It contains no `hostssl`
+allow. The single runtime `hostssl`/`scram-sha-256` rule in
+[hba-stage-allow.yaml](pending/hba-stage-allow.yaml) is inserted immediately
+before the first `host all` catch-all only after `010`, `020`, and `030` are
+all true. Appending it after that catch-all would never match. There is no
+migrator allow, including while the role stays NOLOGIN. The candidate runtime
+allow is TLS/SCRAM to the new DB from 10.42.0.0/16. Actual node pod CIDRs10.42.0/24 through
 10.42.8/24 fit that bound. HBA contains other DBs' PUBLIC CONNECT at connection
 admission; role-local REVOKE cannot subtract PUBLIC. Never revoke PUBLIC on
 shared databases. Workload isolation and actual source/order negatives remain
@@ -71,12 +80,17 @@ gates; no database-wide NetworkPolicy affecting consumers is proposed.
 ## One-shot provisioning and effective readback
 
 1. Fresh ownership/absence/catalog/HBA checks, independent config review and
-   required CI precede registration. Register role-specific denies first, then
-   field-scoped Secrets/managed roles, then retained Database/schema through
-   existing CNPG. Verify actual status, flags, NOLOGIN and both membership
-   directions. Stop on existing names/ambiguous outcomes; no adoption or replay.
+   required CI precede each registration. The first HBA registration is the
+   reject-only list already on `cluster16`. Do not register
+   [cluster-portal.patch.yaml](pending/cluster-portal.patch.yaml) as that first
+   step: it still carries unregistered roles and the later runtime allow.
+   Field-scoped Secrets, managed roles, and the retained Database/schema come
+   next, still unregistered. The positive runtime `hostssl` allow is last,
+   after `010`, `020`, and `030` are all true, inserted before the `host all`
+   catch-all. Stop on existing names/ambiguous outcomes; no adoption or replay.
 2. The [fixed-target helper](../../../scripts/tests/portal178-m5c/peer_bootstrap.py)
-   defaults to **read-only `--preflight`**. Existing CNPG peer psql is root's
+   requires an explicit mode and has no default. `--preflight` and
+   `--verify-reviewed-sha256` are read-only. Existing CNPG peer psql is root's
    accepted route for [010-bootstrap.sql](pending/010-bootstrap.sql); apply requires
    `--apply-reviewed-sha256` with the independently reviewed exact SQL hash.
    No password retrieval/distribution, identity flag, `--as`, fallback or retry.
@@ -90,11 +104,14 @@ gates; no database-wide NetworkPolicy affecting consumers is proposed.
    No rerunnable/Flux Job, SQL ConfigMap or admin password distribution. No image
    is required for this existing psql route. Atomic first creation fails42P07 on
    a collision; inspect the outcome, never reset or blindly retry.
-4. **`--verify`** runs [030-verify.sql](pending/030-verify.sql) read-only and emits
-   bounded datacl/nspacl/relacl/default-ACL/role-setting evidence plus exact
-   effective-rights booleans. Every check must be literallytrue. Verify no
+4. **`--verify-reviewed-sha256`** runs [030-verify.sql](pending/030-verify.sql)
+   only when the digest matches, and sets the session read-only before the file.
+   Bare `--verify` is not a mode. It emits bounded datacl/nspacl/relacl/default-ACL/role-setting
+   evidence plus exact effective-rights booleans, including no portal routines or
+   extra composite types, no cluster-wide portal role settings, and no runtime or
+   migrator backend left on the database. Every check must be literally true. Verify no
    unexpected object/grantee, memberships, table grant option, CREATE/TEMP or
-   runtime owner; migratorNOLOGIN, null password and both limits are mandatory.
+   runtime owner; migrator NOLOGIN, null password and both limits are mandatory.
    Password-null is computed server-side as a boolean; no verifier/password
    value or session row is returned. Repeat actual SQL/HBA/TLS/hostname
    positives/negatives before mounting runtime, preserving other consumers.
@@ -146,20 +163,23 @@ This remains an explicit runtime gate; migration peer psql does not solve it.
 
 ## Provider-local mapping and token endpoint contract
 
-[Pending blueprint](pending/98-portal-live-profile.yaml) uses root's verified
-SHA256 of the existing Admins Group.pk: lowercase hyphenated36-character UUID,
-UTF-8/no newline. No raw directory UUID appears. It freshly re-reads token.user
-and **direct** memberships, returning only two literalbooleans. It neither
-reparents Actors nor borrows a parent's groups/active flag. Empty/missing pin
-or exceptions cannot authorize (BFF denies missing/wrong types).
+Blueprint `97-dev-env-v2-portal-oidc.yaml` is the only owner of the provider
+`property_mappings` relation. It keeps the staged deny and adds the portal-local
+mapping to that list. The old separate `98` provider entry is not registered
+and is not in the tree, so a later edit of 97 cannot be overwritten by it.
+The mapping uses root's verified SHA256 of the existing Admins Group.pk:
+lowercase hyphenated 36-character UUID, UTF-8/no newline. No raw directory UUID
+appears. It freshly re-reads token.user and **direct** memberships, returning
+only two literal booleans. It neither reparents Actors nor borrows a parent's
+groups/active flag. Empty/missing pin or exceptions cannot authorize (BFF denies
+missing/wrong types).
 
-The provider-only relation update pins **exactly3 mappings**: managed openid,
-managed profile and this new portal-local profile. No fourth mapping or ambiguous
-same-scope override is permitted. Shared mapping definitions/flows are untouched.
-Before attaching it, update the installed-client guard/readback's exact set
-through a separately reviewed activation change; the current guard deliberately
-still expects2 and must not silently accept this addition. Callback/issuer remain
-exact; scopes remain openid/profile. No admin API token.
+The relation is **exactly 3 mappings**: managed openid, managed profile, and
+this portal-local profile. No fourth mapping or ambiguous same-scope override
+is permitted. The installed-client guard rejects both a 2-mapping set and a
+4th mapping, and it rejects removal of the staged deny. Shared mapping
+definitions/flows are untouched. Callback/issuer remain exact; scopes remain
+openid/profile. No admin API token.
 
 Actor MIRROR/COPY may satisfy Authentik's effective-policy-user gate. This mapping
 reports the actual Actor/service-account's own current row/direct groups: even

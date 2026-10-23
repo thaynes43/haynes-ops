@@ -77,26 +77,29 @@ class Postgres(unittest.TestCase):
         cls.admin.execute("SET ROLE dev_env_v2_portal_migrator")
         script(cls.admin, "020-tables.sql")
         cls.admin.execute("RESET ROLE")
-        # Explicit disposable credential/transport test window only.
-        cls.admin.execute("ALTER ROLE dev_env_v2_portal_migrator LOGIN")
-        with connect(MIGRATOR) as migration:
-            migration.execute("CREATE TABLE portal.future_table (id integer)")
-            migration.execute("CREATE FUNCTION portal.future_function() RETURNS integer "
-                              "LANGUAGE sql AS 'SELECT 1'")
+        # Future-object probes use SET ROLE. No migrator hostssl allow exists,
+        # so a network login is not the setup path.
+        cls.admin.execute("SET ROLE dev_env_v2_portal_migrator")
+        cls.admin.execute("CREATE TABLE portal.future_table (id integer)")
+        cls.admin.execute("CREATE FUNCTION portal.future_function() RETURNS integer "
+                          "LANGUAGE sql AS 'SELECT 1'")
+        cls.admin.execute("RESET ROLE")
         cls.admin.execute("CREATE SCHEMA private_fixture")
         cls.admin.execute("CREATE TABLE private_fixture.data (id integer)")
         cls.rules = yaml.safe_load((PACKET / "cluster-portal.patch.yaml").read_text())["spec"]["postgresql"]["pg_hba"]
+        cls.reject_rules = yaml.safe_load((PACKET / "hba-stage-reject.yaml").read_text())["pg_hba"]
         cls.install_hba(cls.fixture_cidr)
 
     @classmethod
-    def install_hba(cls, allowed_cidr):
+    def install_hba(cls, allowed_cidr, rules=None):
         # Same ordering as live CNPG; only source CIDR differs for runner bridge.
         fixed = ["local all cnpg_metrics_exporter peer map=cnpg_metrics_exporter",
                  "local all all peer map=local",
                  "hostssl postgres streaming_replica all cert map=cnpg_streaming_replica",
                  "hostssl replication streaming_replica all cert map=cnpg_streaming_replica",
                  "hostssl all cnpg_pooler_pgbouncer all cert map=cnpg_pooler_pgbouncer"]
-        rules = [line.replace("10.42.0.0/16", allowed_cidr) for line in cls.rules]
+        selected = cls.rules if rules is None else rules
+        rules = [line.replace("10.42.0.0/16", allowed_cidr) for line in selected]
         hba = "\n".join(fixed + rules + ["host all all all scram-sha-256", ""])
         subprocess.run(["docker", "exec", "-i", "--user", "postgres", CONTAINER, "sh", "-eu", "-c",
                         'cat > "$PGDATA/pg_hba.conf"'], input=hba, text=True, check=True)
@@ -153,7 +156,13 @@ class Postgres(unittest.TestCase):
                           "CREATE TABLE public.denied (id integer)", "SET ROLE postgres",
                           "SELECT * FROM private_fixture.data"]:
             with self.subTest(migrator=statement):
-                self.denied_sql(statement, role=MIGRATOR)
+                self.admin.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(MIGRATOR)))
+                try:
+                    with self.assertRaises(psycopg.Error) as failure:
+                        self.admin.execute(statement)
+                    self.assertEqual(failure.exception.sqlstate, "42501", statement)
+                finally:
+                    self.admin.execute("RESET ROLE")
         with connect("postgres") as admin:
             self.assertEqual(admin.execute("SELECT has_database_privilege(%s,'postgres','CONNECT')",
                                            (RUNTIME,)).fetchone(), (True,))
@@ -209,6 +218,23 @@ class Postgres(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Peer authentication failed", result.stderr)
 
+    def test_02_reject_stage_blocks_tls_and_migrator_login(self):
+        # Stage 1 has no hostssl allow. A later LOGIN bit still cannot connect.
+        try:
+            self.install_hba(self.fixture_cidr, self.reject_rules)
+            with self.assertRaises(psycopg.OperationalError) as failure:
+                connect(RUNTIME)
+            self.assertIn("pg_hba.conf rejects connection", str(failure.exception))
+            self.admin.execute("ALTER ROLE dev_env_v2_portal_migrator LOGIN")
+            with self.assertRaises(psycopg.OperationalError) as failure:
+                connect(MIGRATOR)
+            self.assertIn("pg_hba.conf rejects connection", str(failure.exception))
+            with connect("postgres") as unrelated:
+                self.assertEqual(unrelated.execute("SELECT 1").fetchone(), (1,))
+        finally:
+            self.admin.execute("ALTER ROLE dev_env_v2_portal_migrator NOLOGIN")
+            self.install_hba(self.fixture_cidr)
+
     def test_03_source_address_and_unrelated_role(self):
         try:
             self.install_hba("203.0.113.254/32")
@@ -238,19 +264,21 @@ class Postgres(unittest.TestCase):
                 self.assertEqual(runtime.execute("SELECT count(*) FROM portal.sessions").fetchone(), (0,))
 
     def test_05_bootstrap_target_preconditions(self):
-        for role, database, reason in [
-            ("postgres", "postgres", "portal bootstrap target/owner mismatch"),
-            (MIGRATOR, DB, "portal bootstrap target/owner mismatch"),
-        ]:
-            with self.subTest(role=role, database=database):
-                with connect(role, dbname=database) as connection:
-                    with self.assertRaises(psycopg.Error) as failure:
-                        script(connection, "010-bootstrap.sql")
-                    self.assertEqual(failure.exception.sqlstate, "P0001")
-                    self.assertIn(reason, str(failure.exception))
-                    connection.execute("ROLLBACK")
-        self.admin.execute("ALTER ROLE dev_env_v2_portal_migrator NOLOGIN")
-        self.addCleanup(self.admin.execute, "ALTER ROLE dev_env_v2_portal_migrator LOGIN")
+        with connect("postgres", dbname="postgres") as connection:
+            with self.assertRaises(psycopg.Error) as failure:
+                script(connection, "010-bootstrap.sql")
+            self.assertEqual(failure.exception.sqlstate, "P0001")
+            self.assertIn("portal bootstrap target/owner mismatch", str(failure.exception))
+            connection.execute("ROLLBACK")
+        self.admin.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(MIGRATOR)))
+        try:
+            with self.assertRaises(psycopg.Error) as failure:
+                script(self.admin, "010-bootstrap.sql")
+            self.assertEqual(failure.exception.sqlstate, "P0001")
+            self.assertIn("portal bootstrap target/owner mismatch", str(failure.exception))
+            self.admin.execute("ROLLBACK")
+        finally:
+            self.admin.execute("RESET ROLE")
         # Test every forbidden edge: role is a member, or another role is a
         # member OF it. Neither direction may silently acquire authority.
         for role in (RUNTIME, MIGRATOR):
@@ -285,11 +313,14 @@ class Postgres(unittest.TestCase):
         def rows():
             return self.admin.execute("SELECT handle,generation,version,expires_at,payload FROM portal.sessions").fetchall()
         before, before_rows = catalog(), rows()
-        with connect(MIGRATOR) as migration:
+        self.admin.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(MIGRATOR)))
+        try:
             with self.assertRaises(psycopg.Error) as failure:
-                script(migration, "020-tables.sql")
+                script(self.admin, "020-tables.sql")
             self.assertEqual(failure.exception.sqlstate, "42P07")
-            migration.execute("ROLLBACK")
+            self.admin.execute("ROLLBACK")
+        finally:
+            self.admin.execute("RESET ROLE")
         self.assertEqual(catalog(), before, "failed repeated migration must preserve OIDs/ACLs/constraints")
         self.assertEqual(rows(), before_rows, "failed repeated migration must preserve session rows")
         with connect(RUNTIME) as runtime:
@@ -310,9 +341,11 @@ class Postgres(unittest.TestCase):
             for connection in connections:
                 connection.close()
         self.admin.execute("ALTER ROLE dev_env_v2_portal_migrator NOLOGIN")
+        self.assertEqual(self.admin.execute("SELECT rolcanlogin FROM pg_roles WHERE rolname=%s",
+                                            (MIGRATOR,)).fetchone(), (False,))
         with self.assertRaises(psycopg.OperationalError) as failure:
             connect(MIGRATOR)
-        self.assertIn("is not permitted to log in", str(failure.exception))
+        self.assertIn("pg_hba.conf rejects connection", str(failure.exception))
         self.admin.execute("ALTER ROLE dev_env_v2_portal_migrator PASSWORD NULL")
         # Remove only disposable future-object probes, then exercise the SAME
         # production readback query against exactly the two final tables.

@@ -5,8 +5,10 @@
 # ///
 """Unregistered packet guard + synthetic mapping tests, not live IdP/DB proof."""
 import argparse
+from contextlib import redirect_stdout
 from copy import deepcopy
 import hashlib
+import io
 import json
 import importlib.util
 import re
@@ -22,8 +24,13 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKET = ROOT / ".agents/reports/portal178-m5c/pending"
+BLUEPRINT = ROOT / "kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml"
+CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
+WITNESS = ROOT / "kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml"
 RUNTIME = "dev_env_v2_portal_runtime"
 MIGRATOR = "dev_env_v2_portal_migrator"
+VERIFY_CHECKS = {"target", "roles", "database_acl", "schema_acl", "tables_acl", "default_acl",
+                 "role_settings", "portal_objects", "cluster_role_settings", "portal_backends"}
 
 
 class BlueprintLoader(yaml.SafeLoader):
@@ -85,6 +92,30 @@ def network_exclusion_proof(policies, pods):
     return checked
 
 
+def compose_hba(registered, allow_rule):
+    if hba_stage_violations(registered, allow_rule):
+        raise AssertionError("refuse to compose a reject stage that already allows")
+    index = next(i for i, line in enumerate(registered) if line.startswith("host all "))
+    return registered[:index] + [allow_rule] + registered[index:]
+
+
+def hba_stage_violations(registered, allow_rule):
+    violations = []
+    for line in registered:
+        if line.startswith("hostssl ") or "scram-sha-256" in line or not line.endswith(" reject"):
+            violations.append("allow in reject stage")
+        if not (line.startswith("host replication ") or line.startswith("hostnossl ") or line.startswith("host all ")):
+            violations.append("non-reject rule")
+    if (MIGRATOR in allow_rule or not allow_rule.startswith("hostssl dev_env_v2_portal " + RUNTIME + " ")
+            or "scram-sha-256" not in allow_rule):
+        violations.append("migrator or non-runtime allow")
+    return violations
+
+
+def load_blueprint():
+    return yaml.load(BLUEPRINT.read_text(), Loader=BlueprintLoader)
+
+
 def check_crds(cluster_crd, database_crd):
     original = yaml.safe_load((ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml").read_text())
     original["metadata"]["namespace"] = "database"
@@ -137,15 +168,23 @@ class Packet(unittest.TestCase):
         self.assertEqual(db["schemas"], [{"name": "portal", "owner": MIGRATOR, "ensure": "present"}])
         rules = load("cluster-portal.patch.yaml")["spec"]["postgresql"]["pg_hba"]
         both = RUNTIME + "," + MIGRATOR
+        reject = load("hba-stage-reject.yaml")["pg_hba"]
+        allow = load("hba-stage-allow.yaml")["rule"]
+        self.assertEqual(hba_stage_violations(reject, allow), [])
+        self.assertEqual(rules, compose_hba(reject, allow))
         self.assertEqual(rules, [
             f"host replication {both} 0.0.0.0/0 reject", f"host replication {both} ::/0 reject",
             f"hostnossl all {both} 0.0.0.0/0 reject", f"hostnossl all {both} ::/0 reject",
             f"hostssl dev_env_v2_portal {RUNTIME} 10.42.0.0/16 scram-sha-256",
-            f"hostssl dev_env_v2_portal {MIGRATOR} 10.42.0.0/16 scram-sha-256",
             f"host all {both} 0.0.0.0/0 reject", f"host all {both} ::/0 reject"])
+        shadowed = reject + [allow]
+        catch = next(i for i, line in enumerate(shadowed) if line.startswith("host all "))
+        self.assertGreater(shadowed.index(allow), catch, "appending the allow after the catch-all never matches")
+        self.assertNotIn(MIGRATOR, allow)
 
     def test_live_mapping_semantics(self):
-        expression = load("98-portal-live-profile.yaml")["entries"][0]["attrs"]["expression"]
+        expression = next(entry["attrs"]["expression"] for entry in load_blueprint()["entries"]
+                          if entry.get("id") == "portal-live-profile")
         group = SimpleNamespace(pk="00000000-0000-4000-8000-000000000001", name="synthetic")
         other = SimpleNamespace(pk="00000000-0000-4000-8000-000000000002", name="synthetic")
         direct = []
@@ -199,16 +238,19 @@ class Packet(unittest.TestCase):
                 sys.modules[module.__name__] = previous
 
     def test_exact_mapping_set_and_one_shot_executor(self):
-        mapping = load("98-portal-live-profile.yaml")
-        self.assertEqual(len(mapping["entries"]), 2)
-        provider = mapping["entries"][1]
-        self.assertEqual(provider, {
-            "model": "authentik_providers_oauth2.oauth2provider", "state": "present",
-            "identifiers": {"client_id": "dev-env-v2-portal-internal"},
-            "attrs": {"property_mappings": [
+        blueprint = load_blueprint()
+        providers = [entry for entry in blueprint["entries"]
+                     if entry["model"] == "authentik_providers_oauth2.oauth2provider"]
+        self.assertEqual(providers, [{
+            "model": "authentik_providers_oauth2.oauth2provider", "id": "portal-provider", "state": "present",
+            "identifiers": {"name": "dev-env-v2-portal-internal"},
+            "attrs": providers[0]["attrs"] | {"property_mappings": [
                 {"!Find": ["authentik_providers_oauth2.scopemapping", ["managed", "goauthentik.io/providers/oauth2/scope-openid"]]},
                 {"!Find": ["authentik_providers_oauth2.scopemapping", ["managed", "goauthentik.io/providers/oauth2/scope-profile"]]},
-                {"!KeyOf": "portal-live-profile"}]}})
+                {"!KeyOf": "portal-live-profile"}]}}])
+        self.assertEqual(len(providers[0]["attrs"]["property_mappings"]), 3)
+        self.assertEqual(blueprint["entries"][0]["attrs"]["expression"], "return False")
+        self.assertFalse((PACKET / "98-portal-live-profile.yaml").exists(), "98 must not compete with blueprint 97")
         self.assertFalse((PACKET / "setup-jobs.yaml").exists(), "no rerunnable migration Job")
         path = ROOT / "scripts/tests/portal178-m5c/peer_bootstrap.py"
         spec = importlib.util.spec_from_file_location("portal_peer", path)
@@ -236,6 +278,61 @@ class Packet(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "differs from reviewed hash"):
                     helper.main()
             self.assertEqual(len(calls), 2, "hash mismatch must execute no SQL")
+        verify = PACKET / "030-verify.sql"
+        digest = hashlib.sha256(verify.read_bytes()).hexdigest()
+        calls = []
+        proof = json.dumps({"checks": {name: True for name in VERIFY_CHECKS}})
+        def fake_verify(args, **kwargs):
+            calls.append((args, kwargs))
+            if args[0] == "exec":
+                return SimpleNamespace(stdout=proof)
+            payload = {"metadata": {"uid": "synthetic-cluster"}, "status": {"currentPrimary": "postgres16-1"}} if args[1] == "cluster.postgresql.cnpg.io" else {
+                "metadata": {"labels": {"cnpg.io/cluster": "postgres16"}, "ownerReferences": [{"kind": "Cluster", "name": "postgres16", "uid": "synthetic-cluster", "controller": True}]}}
+            return SimpleNamespace(stdout=json.dumps(payload))
+        with mock.patch.object(helper, "invoke", fake_verify), mock.patch.object(sys, "argv", [str(path), "--verify-reviewed-sha256", digest]), redirect_stdout(io.StringIO()):
+            helper.main()
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(calls[-1][1]["input"].startswith("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;\n"))
+        self.assertIn("BEGIN READ ONLY;", calls[-1][1]["input"])
+        calls.clear()
+        with mock.patch.object(helper, "invoke", fake_verify), mock.patch.object(sys, "argv", [str(path), "--verify-reviewed-sha256", "0"*64]):
+            with self.assertRaisesRegex(RuntimeError, "differs from reviewed hash"):
+                helper.main()
+        self.assertEqual(len(calls), 2, "verify hash mismatch must execute no SQL")
+        with mock.patch.object(sys, "argv", [str(path)]):
+            with self.assertRaises(SystemExit):
+                helper.main()
+
+    def test_staged_registration_surface(self):
+        cluster = yaml.safe_load(CLUSTER.read_text())
+        reject = load("hba-stage-reject.yaml")["pg_hba"]
+        allow = load("hba-stage-allow.yaml")["rule"]
+        self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], reject)
+        self.assertNotIn("managed", cluster["spec"])
+        self.assertEqual(hba_stage_violations(reject, allow), [])
+        self.assertTrue(hba_stage_violations(reject + [allow], allow))
+        self.assertTrue(hba_stage_violations(reject, allow.replace(RUNTIME, MIGRATOR)))
+        registered = list(yaml.safe_load_all(WITNESS.read_text()))
+        contract = list(yaml.safe_load_all((PACKET / "witness-rbac.yaml").read_text()))
+        self.assertEqual(registered, contract)
+        self.assertIn("./portal-witness.yaml", (WITNESS.parent / "kustomization.yaml").read_text())
+        widened = deepcopy(registered)
+        widened[1]["rules"][0]["verbs"].append("list")
+        self.assertNotEqual(widened, contract)
+        self.assertNotIn("create", widened[3]["rules"][0]["verbs"])
+        for path in (ROOT / "kubernetes").rglob("*.yaml"):
+            text = path.read_text(errors="replace")
+            self.assertNotIn("hostssl dev_env_v2_portal", text, str(path))
+            self.assertNotIn("98-portal-live-profile", text, str(path))
+            self.assertNotIn("cluster-portal.patch.yaml", text, str(path))
+            self.assertNotIn("hba-stage-allow.yaml", text, str(path))
+            if "kind: ConfigMap" in text and "name: dev-env-v2-portal-admission" in text:
+                self.fail("CLOSED admission seed is registered in " + str(path))
+            if "kind: ExternalSecret" in text and "dev-env-v2-portal" in text:
+                self.fail("portal ExternalSecret is registered in " + str(path))
+        authentik = (ROOT / "kubernetes/main/apps/network/authentik/app/kustomization.yaml").read_text()
+        self.assertIn("97-dev-env-v2-portal-oidc.yaml", authentik)
+        self.assertNotIn("98-", authentik)
 
     def test_bff_only_network_proposal(self):
         folder = ROOT / "kubernetes/main/apps/dev-env-system/network/app"
