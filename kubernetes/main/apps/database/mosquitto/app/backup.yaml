@@ -32,10 +32,6 @@ spec:
   sourcePVC: data-mosquitto-0
   trigger:
     schedule: "0 0 * * *"
-    # Story 174 / PR 4198: initial backup before the broker upgrade. After
-    # status.lastManualSync matches this ID and backup success is verified, remove
-    # only this manual field in Git so the daily schedule becomes active.
-    manual: pre-upgrade-4198-20261023-01
   restic:
     copyMethod: Snapshot
     pruneIntervalDays: 7
