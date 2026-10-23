@@ -1,0 +1,760 @@
+{
+  "story": 174,
+  "sourceCommit": "386257b40246a135fd54768f82238c2fe312666c",
+  "recordedAt": "2026-10-23T04:40Z",
+  "note": "Initial check states from inventory; triage files are being refreshed by driver, so separate current independent reviews below. This mapping is automation ownership research, not a blanket merge approval.",
+  "prs": [
+    {
+      "number": 3561,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3561",
+      "title": "feat(container): update image ghcr.io/linuxserver/calibre to v9.16.0-ls428",
+      "initialHead": "b6a7a5d9e7481e0dfc486bc2192f144319054270",
+      "initialLabels": [
+        "renovate/container",
+        "type/patch",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-named-carveout",
+      "automationBlocker": "Calibre is explicitly automerge:false even inside downloads/**; the advisory converter check must be read before a supervised merge.",
+      "remedy": "Fix/read the failed LazyLibrarian EPUB Convert check; supervise the converter upgrade and verify the CronJob. Do not remove the carve-out merely because Flux is green.",
+      "sourceRefs": [
+        ".renovate/autoMerge.json5:261-271",
+        ".github/workflows/pr-disposition.yml:106-108"
+      ],
+      "files": [
+        "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert-cronjob.yaml"
+      ],
+      "initialFailedChecks": [
+        "LazyLibrarian EPUB Convert - Success"
+      ],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3626,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3626",
+      "title": "chore(deps): update typing-extensions to 4.16.0",
+      "initialHead": "ad6cce5afa007fde7d46abe7ab6c8c07ffbf29d1",
+      "initialLabels": [
+        "type/minor",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-tooling-scope",
+      "automationBlocker": "pip requirements in scripts/book-copy-writer are outside all auto-merge allowlists and the scheduled shepherd Kubernetes-only/ramp scope.",
+      "remedy": "Read Book Copy Writer check, merge under the authorized source story if green, then distinguish source merge from image publication/deployment.",
+      "sourceRefs": [
+        ".renovate/autoMerge.json5:32-76",
+        ".agents/runbooks/upgrade-shepherd.md:74-85",
+        ".github/workflows/pr-disposition.yml:194-195"
+      ],
+      "files": [
+        "scripts/book-copy-writer/requirements.txt"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3696,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3696",
+      "title": "chore(container): update image python to 0514bc7",
+      "initialHead": "88c7853337552d6553cfcde9911361b81b611e06",
+      "initialLabels": [
+        "renovate/container",
+        "disposition:manual-only",
+        "type/digest"
+      ],
+      "category": "intentional-tooling-scope",
+      "automationBlocker": "Python base-image digest touches scripts/book-copy-writer and scripts/comfyui. Neither is a Tier-2 app path or our-image package match; shepherd does not own scripts.",
+      "remedy": "Wait for/read both image checks; merge the source digest only if validated. Keep publication tags and deployed consumer digests explicit.",
+      "sourceRefs": [
+        ".renovate/autoMerge.json5:55-76",
+        ".agents/runbooks/upgrade-shepherd.md:74-85"
+      ],
+      "files": [
+        "scripts/book-copy-writer/Dockerfile",
+        "scripts/comfyui/Dockerfile"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [
+        "build-and-push-comfyui"
+      ],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3707,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3707",
+      "title": "feat(github-action)!: Update ubuntu to 26.04",
+      "initialHead": "0399a7cbdee5cc085ecfd58419612ad53eb6f022",
+      "initialLabels": [
+        "type/major",
+        "renovate/github-action",
+        "disposition:auto-merge"
+      ],
+      "category": "automerge-recurrence-suppression",
+      "automationBlocker": "Renovate body explicitly says matching PR was automerged previously. autoMergeRequest is null despite predicted disposition:auto-merge. Same branch was actually auto-merged as #3506.",
+      "remedy": "Fix the COPY window Ubuntu26.04 failure before a supervised merge; repair classifier to expose actual disabled/suppressed auto-merge. Do not treat its predictive label as an enabled request.",
+      "sourceRefs": [
+        ".github/workflows/pr-disposition.yml:142-147,177-189",
+        "https://github.com/thaynes43/haynes-ops/pull/3506"
+      ],
+      "files": [
+        ".github/workflows/book-copy-window-test.yml",
+        ".github/workflows/dev-env-archive-guard-test.yml",
+        ".github/workflows/dev-env-cursor-test.yml",
+        ".github/workflows/dev-env-h7-reader-test.yml",
+        ".github/workflows/dev-env-rules-test.yml",
+        ".github/workflows/openproject-cli-test.yml"
+      ],
+      "initialFailedChecks": [
+        "COPY window source - Success"
+      ],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled because a matching PR was automerged previously.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3710,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3710",
+      "title": "feat(container): update image ghcr.io/thaynes43/dev-env to v2.42.0",
+      "initialHead": "0b7f627549dc293c2d542d514af755ad50676d85",
+      "initialLabels": [
+        "renovate/container",
+        "type/minor",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-named-carveout",
+      "automationBlocker": "ghcr.io/thaynes43/dev-env is explicitly manual; v2 pins are not covered by the v1<2.0 hold, but retain the manual policy. PR comment records an owner/coordinator hold and deployment-order constraint.",
+      "remedy": "Driver must resolve actual current holds and H7 exact-source/immutable-Job findings, then follow v2 deployment order. Do not reinterpret this as generic own-image auto-merge.",
+      "sourceRefs": [
+        ".renovate/autoMerge.json5:217-234",
+        ".renovate/holds.json5:135-150",
+        ".github/workflows/pr-disposition.yml:94-99",
+        "https://github.com/thaynes43/haynes-ops/pull/3710#issuecomment-6128198472"
+      ],
+      "files": [
+        "kubernetes/main/apps/dev-env-system/h7-metadata-audit/app/job.yaml",
+        "kubernetes/main/apps/dev-env-system/keeper/app/helmrelease.yaml",
+        "kubernetes/main/apps/dev-env-system/shelf/app/deployment.yaml",
+        "kubernetes/main/apps/dev-env-system/templates/app/templates.yaml"
+      ],
+      "initialFailedChecks": [
+        "H7 Metadata Reader Fixtures"
+      ],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3800,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3800",
+      "title": "chore(deps): update numpy to 2.5.4",
+      "initialHead": "217c18cf804b8ee619d29e677869b25cef4e5322",
+      "initialLabels": [
+        "type/patch",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-tooling-scope",
+      "automationBlocker": "NumPy requirements under scripts/audio-authoring have no auto-merge allowlist; scheduled shepherd does not own source dependencies.",
+      "remedy": "Source review found no issue. Current exact-head build installs NumPy2.5.4 and passes offline fixture smoke; source merge is supported, with real model generation explicitly unverified.",
+      "sourceRefs": [
+        ".agents/runbooks/upgrade-shepherd.md:74-85",
+        ".github/workflows/audio-authoring-build.yml:34-53",
+        "https://github.com/thaynes43/haynes-ops/actions/runs/39900861347"
+      ],
+      "files": [
+        "scripts/audio-authoring/requirements.txt"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [
+        "build-and-push"
+      ],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3864,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3864",
+      "title": "fix(container): update image docker.io/kometateam/kometa to v2.5.3",
+      "initialHead": "11bf17e886586b900821eab8564bc3074e5716cd",
+      "initialLabels": [
+        "renovate/container",
+        "type/patch",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-named-carveout",
+      "automationBlocker": "Kometa explicitly requires source/CLI/fork/signal/dataset compatibility revalidation; automerge:false overrides media/**. It is outside shepherd ramp.",
+      "remedy": "Follow Kometa upgrade runbook, adapt reviewed hash/anchor only after reviewing actual proposed image, run bounded image probe and preserve idle/lock guards.",
+      "sourceRefs": [
+        ".renovate/autoMerge.json5:273-283",
+        ".agents/runbooks/kometa-upgrades.md:9-59"
+      ],
+      "files": [
+        "kubernetes/main/apps/media/kometa/app/helmrelease.yaml"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [
+        "Flux Local - Filter",
+        "Diff Scope - Success",
+        "Kometa Runtime and Upgrade Policy",
+        "Flux Local - external-dns annotation prefix"
+      ],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3870,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3870",
+      "title": "feat(container): update image python to v3.15",
+      "initialHead": "b419542092c335e480df3ad30718092708867418",
+      "initialLabels": [
+        "renovate/container",
+        "type/minor",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-tooling-scope",
+      "automationBlocker": "Python3.15 base-image group touches four source Dockerfiles; no Tier-2 package/path rule owns it. Original inventory contains three failed builds.",
+      "remedy": "Fix dependency/wheel/fixture failures diagnosed by CI worker; each image must build and pass its own tests. This is not a Flux manifest failure.",
+      "sourceRefs": [
+        ".agents/runbooks/upgrade-shepherd.md:74-85",
+        ".renovate/autoMerge.json5:55-76"
+      ],
+      "files": [
+        "scripts/audio-authoring/Dockerfile",
+        "scripts/book-copy-writer/Dockerfile",
+        "scripts/comfyui/Dockerfile",
+        "scripts/peloton-scrape/Dockerfile"
+      ],
+      "initialFailedChecks": [
+        "Book Copy Writer - Success",
+        "build-and-push",
+        "build-and-push-comfyui"
+      ],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3871,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3871",
+      "title": "feat(container)!: Update image ghcr.io/home-operations/sonarr to v5",
+      "initialHead": "ae6707a809961aed3e1bb5020e893f514bbf282e",
+      "initialLabels": [
+        "renovate/container",
+        "type/major",
+        "disposition:stranded"
+      ],
+      "category": "intentional-major-scope",
+      "automationBlocker": "Sonarr v5 is a major; leaf-app auto-merge only admits minor/patch/digest. Sonarr majors are not in shepherd ramp (only Immich major is explicitly owned).",
+      "remedy": "Read major migration/release requirements, verify recent VolSync backup and runtime compatibility, then perform supervised one-at-a-time upgrade. A generic major label is not evidence automation attempted and failed.",
+      "sourceRefs": [
+        ".renovate/autoMerge.json5:119-125",
+        "kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml:88-100",
+        ".agents/runbooks/upgrade-shepherd.md:101-112"
+      ],
+      "files": [
+        "kubernetes/main/apps/media/sonarr/app/helmrelease.yaml"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3911,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3911",
+      "title": "fix(deps): update module github.com/kyverno/api to v0.0.1-alpha.5",
+      "initialHead": "bd7856679d0dab06bf066d3d0a4e28e01475a1a5",
+      "initialLabels": [
+        "type/patch",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-tooling-scope",
+      "automationBlocker": "Kyverno Go API dependency affects archive-guard fixture source, not production Kyverno chart; no tooling auto-merge or scheduled shepherd source scope.",
+      "remedy": "Read targeted Archive Guard Source check and review coupled Kyverno dependency compatibility before source merge.",
+      "sourceRefs": [
+        ".agents/runbooks/upgrade-shepherd.md:74-85",
+        ".github/workflows/pr-disposition.yml:194-195"
+      ],
+      "files": [
+        "scripts/tests/dev-env-archive-guard/go.mod",
+        "scripts/tests/dev-env-archive-guard/go.sum"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3914,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3914",
+      "title": "feat(github-release): update comfy-org/comfyui to v0.42.1",
+      "initialHead": "8faed218b358ae1ffb47e37abc002b3c92fdaff7",
+      "initialLabels": [
+        "type/minor",
+        "renovate/github-release",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-tooling-scope",
+      "automationBlocker": "ComfyUI source release ARG in scripts/comfyui/Dockerfile has no source auto-merge rule. This is distinct from the explicit supervised deployed-image carve-out.",
+      "remedy": "Supervise source bump and set a new .github/workflows/comfyui-build.yml IMAGE_TAG before publication; then pin consumer digest and perform actual render check. Current source-only PR leaves IMAGE_TAG0.39.0-2 unchanged.",
+      "sourceRefs": [
+        ".github/workflows/comfyui-build.yml:38-42",
+        ".renovate/autoMerge.json5:235-246",
+        ".agents/runbooks/upgrade-shepherd.md:74-85"
+      ],
+      "files": [
+        "scripts/comfyui/Dockerfile"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3915,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3915",
+      "title": "fix(deps): update kubernetes monorepo to v0.37.1",
+      "initialHead": "88b3eb4bf476992c1582585b5d79db56f699de23",
+      "initialLabels": [
+        "type/minor",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-tooling-scope",
+      "automationBlocker": "Kubernetes Go monorepo bump modifies archive-guard tests; generic tooling outside auto scope. Original inventory has Archive Guard Source failure.",
+      "remedy": "Resolve Go module/API/toolchain coupling from targeted failing check, then merge validated source; production cluster Kubernetes version does not change.",
+      "sourceRefs": [
+        ".agents/runbooks/upgrade-shepherd.md:74-85",
+        ".github/workflows/pr-disposition.yml:194-195"
+      ],
+      "files": [
+        "scripts/tests/dev-env-archive-guard/go.mod",
+        "scripts/tests/dev-env-archive-guard/go.sum"
+      ],
+      "initialFailedChecks": [
+        "Archive Guard Source - Success"
+      ],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3916,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3916",
+      "title": "fix(deps): update module github.com/google/go-containerregistry to v0.22.1",
+      "initialHead": "c51c5ac1ecd84fd9c2f56c09172018c33e0a1d9c",
+      "initialLabels": [
+        "type/minor",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-tooling-scope",
+      "automationBlocker": "go-containerregistry bump modifies archive-guard tests and transitive deps; tooling auto-merge absent, shepherd Kubernetes-only.",
+      "remedy": "Use exact-head Archive Guard Source pass plus source review; do not infer cluster runtime update from a Go fixture dependency.",
+      "sourceRefs": [
+        ".agents/runbooks/upgrade-shepherd.md:74-85",
+        ".github/workflows/pr-disposition.yml:194-195"
+      ],
+      "files": [
+        "scripts/tests/dev-env-archive-guard/go.mod",
+        "scripts/tests/dev-env-archive-guard/go.sum"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3938,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3938",
+      "title": "feat(deps): update upgrade-agent image toolchains group",
+      "initialHead": "326c290240bcb95ef1a49da8573c75a463eb7e63",
+      "initialLabels": [
+        "type/patch",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-toolchain-group",
+      "automationBlocker": "upgrade-agent/shepherd Dockerfile ARG group explicitly sets automerge:false. Source merge builds tooling; it does not update consumer deployment pins.",
+      "remedy": "Review compatible toolchain set and image build; source merge and consumer digest deployment are separate delivery steps.",
+      "sourceRefs": [
+        ".renovate/groups.json5:88-91,107-117"
+      ],
+      "files": [
+        "scripts/upgrade-shepherd/Dockerfile"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [
+        "Flux Local - Success"
+      ],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3942,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3942",
+      "title": "feat(deps): update dev-env image toolchain group",
+      "initialHead": "dfe3bcf92f57cba1e1ed9d8190a00e53946ad30d",
+      "initialLabels": [
+        "type/patch",
+        "renovate/github-release",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-toolchain-group",
+      "automationBlocker": "dev-env Dockerfile ARG group explicitly sets automerge:false; deployment re-pin historically restarts v1 workhorse.",
+      "remedy": "Read image build, respect actual runtime hold at deployment step, and do not imply a Dockerfile source merge has deployed the image.",
+      "sourceRefs": [
+        ".renovate/groups.json5:88-105"
+      ],
+      "files": [
+        "scripts/dev-env/Dockerfile"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [
+        "build-and-push"
+      ],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3955,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3955",
+      "title": "chore(deps): update github.com/kyverno/pod-security-admission digest to 40bb0fb",
+      "initialHead": "395dbc75bdd63cd677a13992343c893a96f2dcff",
+      "initialLabels": [
+        "disposition:manual-only",
+        "type/digest"
+      ],
+      "category": "intentional-tooling-scope",
+      "automationBlocker": "Kyverno pod-security-admission digest affects archive-guard source, outside auto scope.",
+      "remedy": "Require targeted archive-guard Go/module fixture success and dependency review; source merge only.",
+      "sourceRefs": [
+        ".agents/runbooks/upgrade-shepherd.md:74-85",
+        ".github/workflows/pr-disposition.yml:194-195"
+      ],
+      "files": [
+        "scripts/tests/dev-env-archive-guard/go.mod",
+        "scripts/tests/dev-env-archive-guard/go.sum"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [
+        "Archive Guard Source - Success"
+      ],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 3960,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/3960",
+      "title": "feat(container): update image docker.io/library/python to v3.15",
+      "initialHead": "e9b79a495a72d7bbcde9205487f43219d4911792",
+      "initialLabels": [
+        "renovate/container",
+        "type/minor",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-nonallowlisted-dev-path",
+      "automationBlocker": "Python image pin lives in a separate helper Deployment under dev/dev-env, an excluded domain; it is not the ghcr.dev-env image carve-out and not resources/**. Classifier maps the whole app to manual.",
+      "remedy": "Independent review found no source issue. Current exact-head Flux/Diff checks green. Merge supersedes4164; verify only helper Deployment image diff, Available, new pod digest/Ready after Flux; no token read needed.",
+      "sourceRefs": [
+        "kubernetes/main/apps/dev/dev-env/app/openproject-agent-credentials.yaml:2-3,20-74",
+        "scripts/openproject/agent-api.py:31",
+        ".github/workflows/pr-disposition.yml:91-93"
+      ],
+      "files": [
+        "kubernetes/main/apps/dev/dev-env/app/openproject-agent-credentials.yaml"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 4063,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4063",
+      "title": "chore(deps): update httpcore2 to 2.16.0",
+      "initialHead": "09f2ea2642044cacc31610a8561a1437a0dec660",
+      "initialLabels": [
+        "type/minor",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-v1-resource-scope",
+      "automationBlocker": "httpcore2 pin is under v1 resources/**. No automatic source dependency rule; app-path classifier labels manual. The runtime hold independently applies to resources writes.",
+      "remedy": "Driver owns Cursor dependency pairing/fixture root cause. Preserve v1 restart draft hold and deliver a concrete checked PR for Tom to merge at the authorized time.",
+      "sourceRefs": [
+        ".github/workflows/pr-disposition.yml:91-93",
+        "AGENTS/CLAUDE runtime hold instruction (loaded session rules)"
+      ],
+      "files": [
+        "kubernetes/main/apps/dev/dev-env/app/resources/cursor-mcp-requirements.txt"
+      ],
+      "initialFailedChecks": [
+        "Cursor Offline Fixtures"
+      ],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 4064,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4064",
+      "title": "chore(deps): update httpx2 to 2.16.0",
+      "initialHead": "2a22bfd044a3373516dadcd9bc6e647676b1daf0",
+      "initialLabels": [
+        "type/minor",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-v1-resource-scope",
+      "automationBlocker": "httpx2 pin is under v1 resources/**; no automatic source dependency rule. Its peer httpcore2 update is a compatibility dependency.",
+      "remedy": "Review with4063, verify Cursor offline fixtures as a compatible pair, and retain v1 resources restart hold.",
+      "sourceRefs": [
+        ".github/workflows/pr-disposition.yml:91-93",
+        "AGENTS/CLAUDE runtime hold instruction (loaded session rules)"
+      ],
+      "files": [
+        "kubernetes/main/apps/dev/dev-env/app/resources/cursor-mcp-requirements.txt"
+      ],
+      "initialFailedChecks": [
+        "Cursor Offline Fixtures"
+      ],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 4065,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4065",
+      "title": "chore(deps): update starlette to 1.9.0",
+      "initialHead": "51d78cae5a36eeb2fdd13e8eb253a4a71c16bbe2",
+      "initialLabels": [
+        "type/minor",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-v1-resource-scope",
+      "automationBlocker": "Starlette pin is under v1 resources/**, excluded from Tier-2 auto scope and shepherd ramp even when targeted fixtures pass.",
+      "remedy": "Read Cursor fixture evidence, preserve resources restart draft hold, and coordinate supervised v1 merge.",
+      "sourceRefs": [
+        ".github/workflows/pr-disposition.yml:91-93",
+        "AGENTS/CLAUDE runtime hold instruction (loaded session rules)"
+      ],
+      "files": [
+        "kubernetes/main/apps/dev/dev-env/app/resources/cursor-mcp-requirements.txt"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 4146,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4146",
+      "title": "fix(deps): update module github.com/kyverno/kyverno to v1.19.2",
+      "initialHead": "071fdd8e68916d7332721358253e694d4ab1c292",
+      "initialLabels": [
+        "type/patch",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-tooling-scope",
+      "automationBlocker": "Kyverno module bump affects Go archive-guard fixture source; no tooling auto rule. Renovate artifact notice reports go directive1.26.6\u21921.26.9 and eight dependencies.",
+      "remedy": "Resolve exact-head Archive Guard Source failure/toolchain and dependency coupling before source merge. Do not treat only the tiny top-level version diff as full scope.",
+      "sourceRefs": [
+        ".agents/runbooks/upgrade-shepherd.md:74-85",
+        "https://github.com/thaynes43/haynes-ops/pull/4146#issuecomment-6306680611"
+      ],
+      "files": [
+        "scripts/tests/dev-env-archive-guard/go.mod",
+        "scripts/tests/dev-env-archive-guard/go.sum"
+      ],
+      "initialFailedChecks": [
+        "Archive Guard Source - Success"
+      ],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 4150,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4150",
+      "title": "feat(container): update image ghcr.io/home-operations/qbittorrent to v5.3.0",
+      "initialHead": "1a01e797ed8da24643fedc019b0ef78d765bbea3",
+      "initialLabels": [
+        "renovate/container",
+        "type/minor",
+        "disposition:manual-only"
+      ],
+      "category": "intentional-named-carveout",
+      "automationBlocker": "qBittorrent5.3 is a new minor line; only patches within an approved minor line auto-merge. Minor/major/digest deliberately manual for MAM compatibility.",
+      "remedy": "Verify MAM approved-client line, then supervise runtime upgrade; green Flux cannot prove tracker acceptance.",
+      "sourceRefs": [
+        ".renovate/autoMerge.json5:179-201",
+        ".github/workflows/pr-disposition.yml:103-105"
+      ],
+      "files": [
+        "kubernetes/main/apps/downloads/qbittorrent/app/helmrelease.yaml"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 4159,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4159",
+      "title": "fix(container): update image ghcr.io/kyverno/charts/kyverno to v3.9.2",
+      "initialHead": "98339d6eb657c334722376b6c162f60e0e9efc5f",
+      "initialLabels": [
+        "renovate/container",
+        "type/patch",
+        "disposition:stranded"
+      ],
+      "category": "off-ramp-coverage-gap",
+      "automationBlocker": "Production Kyverno chart is outside every Tier-2 allowlisted domain/subpath and absent from shepherd ramp; stranded label is the fallback. No current-head vet marker, no attempted shepherd vet in snapshot.",
+      "remedy": "Supervise chart/CRD/admission compatibility and health. If ongoing hands-off ownership is desired, add an explicit Kyverno playbook/ramp with admission validation; broad unrelated allowlisting is not established safe.",
+      "sourceRefs": [
+        ".renovate/autoMerge.json5:99-176",
+        "kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml:88",
+        ".github/workflows/pr-disposition.yml:196-201"
+      ],
+      "files": [
+        "kubernetes/main/apps/kyverno/kyverno/app/ocirepository.yaml"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 4164,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4164",
+      "title": "chore(container): update image docker.io/library/python to bf12ecc",
+      "initialHead": "d3cafee5102849d96e139d8952dccef4e0095083",
+      "initialLabels": [
+        "renovate/container",
+        "disposition:manual-only",
+        "type/digest"
+      ],
+      "category": "intentional-nonallowlisted-dev-path",
+      "automationBlocker": "Digest refresh for helper Python3.13 shares exactly3960 consumer pin and is excluded from auto scope. It changes no v1 resources file.",
+      "remedy": "Subsumed by3960 Python3.15 image pin; do not merge older3.13 digest after the3.15 upgrade. No resources/** restart hold applies.",
+      "sourceRefs": [
+        "kubernetes/main/apps/dev/dev-env/app/openproject-agent-credentials.yaml:2-3,43-46",
+        ".github/workflows/pr-disposition.yml:91-93"
+      ],
+      "files": [
+        "kubernetes/main/apps/dev/dev-env/app/openproject-agent-credentials.yaml"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [
+        "Flux Local - Test (main)"
+      ],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 4194,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4194",
+      "title": "fix(container): update image ghcr.io/traefik/helm/traefik to v42.1.3",
+      "initialHead": "097c5eb1d77629a4d373d6d9a6708b0db81aa2ee",
+      "initialLabels": [
+        "renovate/container",
+        "type/patch"
+      ],
+      "category": "active-shepherd-staged-upgrade",
+      "automationBlocker": "Shepherd owns Traefik and deliberately splits internal/external.04:00 run opened4203 for internal, queued auto-merge, saw it merge, and DEFERRED4194 with NO vet marker.",
+      "remedy": "Internal is now Ready42.1.3 and3/3 pods. External remains42.1.2; later scheduled run can verify then advance4194. This is active intended pacing, not failed automation.",
+      "sourceRefs": [
+        "kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml:202-208",
+        "https://github.com/thaynes43/haynes-ops/pull/4203",
+        "job/upgrade-shepherd-29878800@2026-10-23T04:00Z"
+      ],
+      "files": [
+        "kubernetes/main/apps/network/traefik/traefik-external/app/ocirepository.yaml"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 4196,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4196",
+      "title": "chore(deps): update pycparser to 3.12",
+      "initialHead": "e94b123b9312e0115bd502f61427f17faa73b97b",
+      "initialLabels": [
+        "type/minor"
+      ],
+      "category": "intentional-v1-resource-scope",
+      "automationBlocker": "pycparser requirements pin is under v1 resources/**. New PR had not reached disposition label schedule; it remains outside Tier-2/shepherd regardless of no label.",
+      "remedy": "Read exact-head Cursor fixtures and preserve v1 resources restart draft hold; absence of disposition label on a new PR does not imply automatic ownership.",
+      "sourceRefs": [
+        ".github/workflows/pr-disposition.yml:27-30,91-93",
+        "AGENTS/CLAUDE runtime hold instruction (loaded session rules)"
+      ],
+      "files": [
+        "kubernetes/main/apps/dev/dev-env/app/resources/cursor-mcp-requirements.txt"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 4198,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4198",
+      "title": "chore(container): update image docker.io/library/eclipse-mosquitto to 847b859",
+      "initialHead": "c2106185dc5fa12fefe46acd765c49399777f33c",
+      "initialLabels": [
+        "renovate/container",
+        "type/digest"
+      ],
+      "category": "off-ramp-coverage-gap",
+      "automationBlocker": "Mosquitto image digest under database/** has no Tier-2 allowlist and is absent from shepherd ramp.04:00 run explicitly left it out of scope.",
+      "remedy": "Supervise broker update/reconnect verification using MQTT runbook. Future automation needs explicit broker workload/health pacing ownership; health gate alone does not pick up this PR.",
+      "sourceRefs": [
+        ".renovate/autoMerge.json5:99-176",
+        "kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml:88",
+        ".agents/runbooks/mqtt-broker.md",
+        "job/upgrade-shepherd-29878800@2026-10-23T04:00Z"
+      ],
+      "files": [
+        "kubernetes/main/apps/database/mosquitto/app/helmrelease.yaml"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [
+        "Flux Local - Test (main)"
+      ],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    },
+    {
+      "number": 4206,
+      "url": "https://github.com/thaynes43/haynes-ops/pull/4206",
+      "title": "fix(container): update image ghcr.io/koenkk/zigbee2mqtt to v2.14.2",
+      "initialHead": "eb7cb8ebb7b01723a1f6c6494d27137781fcea04",
+      "initialLabels": [
+        "renovate/container",
+        "type/patch"
+      ],
+      "category": "intentional-tier3-group-carveout",
+      "automationBlocker": "Zigbee2MQTT later-loaded groups.json5 overrides generic home-automation leaf eligibility with dashboardApproval:true and automerge:false. It is outside shepherd ramp.",
+      "remedy": "Supervise Zigbee/HA availability after update per Tier-3 policy. Fix disposition classifier mirror: it currently omits the groups.json5 override and would falsely predict auto-merge.",
+      "sourceRefs": [
+        ".github/renovate.json5:14-15",
+        ".renovate/groups.json5:63-76",
+        ".github/workflows/pr-disposition.yml:52,88-112,188-189"
+      ],
+      "files": [
+        "kubernetes/main/apps/home-automation/zigbee2mqtt/app/helmrelease.yaml"
+      ],
+      "initialFailedChecks": [],
+      "initialPendingChecks": [
+        "Diff Scope - Success",
+        "Flux Local - Filter",
+        "Flux Local - external-dns annotation prefix"
+      ],
+      "bodyAutomergeLine": "\ud83d\udea6 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+      "snapshotVetMarkers": 0
+    }
+  ]
+}
