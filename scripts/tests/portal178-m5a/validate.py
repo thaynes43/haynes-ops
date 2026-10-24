@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
+import re
 
 import jsonschema
 import yaml
@@ -26,6 +27,9 @@ BLUEPRINT = APP / "blueprints/97-dev-env-v2-portal-oidc.yaml"
 PROJECTION = ROOT / ".agents/reports/portal178-m5a/pending/externalsecret.yaml"
 SCHEMA_SHA = "b59476bcbaf92dc1a5bd31d98936d44348bc2b048deae7e891227597c74e97e8"
 SYNTHETIC_UUID = "00000000-0000-4000-8000-000000000001"
+PINNED_ADMINS_SHA256 = "88619af8c7c3e52efd2c0368020478809cc7a673617406cfd1bf584c9b1d75ee"
+DIRECTORY_UUID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
 @dataclass
@@ -103,23 +107,39 @@ def validate(blueprint, projection, schema):
             "Story178 internal portal OIDC foundation: confidential code/openid/profile, Tom AND Admins; staged deny until reviewed runtime activation."}},
         "blueprint metadata changed")
     entries = blueprint["entries"]
-    require(len(entries) == 6, "expected provider/application/deny and three bindings")
+    require(len(entries) == 7, "expected deny, portal mapping, provider, application and three bindings")
     ids = {e["id"]: e["model"] for e in entries if "id" in e}
-    require(len(ids) == 3, "duplicate or missing entry ID")
+    require(len(ids) == 4, "duplicate or missing entry ID")
     for index, e in enumerate(entries):
         require(e.get("state") == "present" and not e.get("conditions") and not e.get("permissions"),
                 "entries must reconcile unconditionally without permissions")
-        require(set(e) == ({"model", "id", "state", "identifiers", "attrs"} if index < 3
+        require(set(e) == ({"model", "id", "state", "identifiers", "attrs"} if index < 4
                           else {"model", "state", "identifiers", "attrs"}), "entry fields changed")
         allowed = schema["definitions"]["model_" + e["model"]]["properties"]
         require(set(e["attrs"]) <= set(allowed) and set(e["identifiers"]) <= set(allowed),
                 "unknown model attribute")
-    policy, provider, application, *bindings = entries
+    policy, mapping_entry, provider, application, *bindings = entries
+    require(len(bindings) == 3, "expected deny, portal mapping, provider, application and three bindings")
     require(policy["model"] == "authentik_policies_expression.expressionpolicy" and
             policy["id"] == "portal-staged-deny" and
             policy["identifiers"] == {"name": "dev-env-v2-portal-staged-deny"} and
             policy["attrs"] == {"expression": "return False", "execution_logging": False},
             "staged deny must remain closed")
+    require(mapping_entry["model"] == "authentik_providers_oauth2.scopemapping" and
+            mapping_entry["id"] == "portal-live-profile" and
+            mapping_entry["identifiers"] == {"name": "dev-env-v2-portal-live-profile"},
+            "portal mapping identity changed")
+    mapped = mapping_entry["attrs"]
+    require(set(mapped) == {"scope_name", "description", "expression"},
+            "portal mapping attributes changed")
+    require(mapped["scope_name"] == "profile", "portal mapping scope changed")
+    require(PINNED_ADMINS_SHA256 in mapped["expression"] and "portal_is_active" in mapped["expression"]
+            and "portal_is_admin" in mapped["expression"], "portal mapping pin changed")
+    require("current.groups.all()" in mapped["expression"]
+            and 'sha256(str(group.pk).lower().encode("utf-8")).hexdigest()' in mapped["expression"]
+            and re.search(r"(?m)^\s*direct_admin\s*=\s*active\b", mapped["expression"]) is None,
+            "portal mapping must read direct membership")
+    require(DIRECTORY_UUID.search(mapped["expression"]) is None, "raw directory UUID in mapping")
     require(provider["model"] == "authentik_providers_oauth2.oauth2provider" and
             provider["id"] == "portal-provider" and
             provider["identifiers"] == {"name": "dev-env-v2-portal-internal"},
@@ -139,7 +159,8 @@ def validate(blueprint, projection, schema):
     require(p["redirect_uris"] == [{"matching_mode": "strict",
             "url": "https://dev-env-v2.haynesops.com/auth/callback",
             "redirect_uri_type": "authorization"}], "exact callback required")
-    require(p["property_mappings"] == EXPECTED_FINDS[2:4], "openid/profile only")
+    require(p["property_mappings"] == [EXPECTED_FINDS[2], EXPECTED_FINDS[3], Ref("KeyOf", "portal-live-profile")],
+            "exact three mappings required")
     require(p["authorization_flow"] == EXPECTED_FINDS[0] and
             p["invalidation_flow"] == EXPECTED_FINDS[1] and
             p["signing_key"] == EXPECTED_FINDS[4], "required existing reference changed")
@@ -210,26 +231,26 @@ def main():
     # Mutations exercise the guard's rejection, not Authentik or an OIDC flow.
     mutations = [
         ("any-policy", "all-policy application without launch/backchannel required",
-         lambda b, p: b["entries"][2]["attrs"].update(policy_engine_mode="any")),
+         lambda b, p: b["entries"][3]["attrs"].update(policy_engine_mode="any")),
         ("public-client", "confidential approved client required",
-         lambda b, p: b["entries"][1]["attrs"].update(client_type="public")),
+         lambda b, p: b["entries"][2]["attrs"].update(client_type="public")),
         ("extra-grant", "code grant only",
-         lambda b, p: b["entries"][1]["attrs"]["grant_types"].append("refresh_token")),
-        ("extra-scope", "openid/profile only", lambda b, p: b["entries"][1]["attrs"]["property_mappings"].append(
+         lambda b, p: b["entries"][2]["attrs"]["grant_types"].append("refresh_token")),
+        ("extra-scope", "exact three mappings required", lambda b, p: b["entries"][2]["attrs"]["property_mappings"].append(
             find("authentik_providers_oauth2.scopemapping",
                  ("managed", "goauthentik.io/providers/oauth2/scope-email")))),
-        ("callback-wildcard", "exact callback required", lambda b, p: b["entries"][1]["attrs"]["redirect_uris"][0].update(
+        ("callback-wildcard", "exact callback required", lambda b, p: b["entries"][2]["attrs"]["redirect_uris"][0].update(
             matching_mode="regex")),
         ("username-sub", "immutable subject and per-provider issuer required",
-         lambda b, p: b["entries"][1]["attrs"].update(sub_mode="user_username")),
+         lambda b, p: b["entries"][2]["attrs"].update(sub_mode="user_username")),
         ("secret-in-source", "provider attribute allowlist changed",
-         lambda b, p: b["entries"][1]["attrs"].update(client_secret="SYNTHETIC_CANARY")),
+         lambda b, p: b["entries"][2]["attrs"].update(client_secret="SYNTHETIC_CANARY")),
         ("missing-user", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][4]["attrs"].pop("user")),
+         lambda b, p: b["entries"][5]["attrs"].pop("user")),
         ("missing-group", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][5]["attrs"].pop("group")),
+         lambda b, p: b["entries"][6]["attrs"].pop("group")),
         ("disabled-binding", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][5]["attrs"].update(enabled=False)),
+         lambda b, p: b["entries"][6]["attrs"].update(enabled=False)),
         ("deny-removed", "staged deny must remain closed",
          lambda b, p: b["entries"][0]["attrs"].update(expression="return True")),
         ("broad-item", "only dedicated item/client fields",
@@ -237,23 +258,23 @@ def main():
         ("data-from", "only explicit field projection; no dataFrom",
          lambda b, p: p["spec"].update(dataFrom=[{"extract": {"key": "openproject"}}])),
         ("federated-provider", "JWT federation must remain empty",
-         lambda b, p: b["entries"][1]["attrs"].update(jwt_federation_providers=[1])),
+         lambda b, p: b["entries"][2]["attrs"].update(jwt_federation_providers=[1])),
         ("federated-source", "JWT federation must remain empty",
-         lambda b, p: b["entries"][1]["attrs"].update(jwt_federation_sources=[1])),
+         lambda b, p: b["entries"][2]["attrs"].update(jwt_federation_sources=[1])),
         ("access-lifetime", "claims/token lifetimes changed",
-         lambda b, p: b["entries"][1]["attrs"].update(access_token_validity="hours=1")),
+         lambda b, p: b["entries"][2]["attrs"].update(access_token_validity="hours=1")),
         ("code-lifetime", "claims/token lifetimes changed",
-         lambda b, p: b["entries"][1]["attrs"].update(access_code_validity="hours=1")),
+         lambda b, p: b["entries"][2]["attrs"].update(access_code_validity="hours=1")),
         ("claims-disabled", "claims/token lifetimes changed",
-         lambda b, p: b["entries"][1]["attrs"].update(include_claims_in_id_token=False)),
+         lambda b, p: b["entries"][2]["attrs"].update(include_claims_in_id_token=False)),
         ("refresh-lifetime", "provider attribute allowlist changed",
-         lambda b, p: b["entries"][1]["attrs"].update(refresh_token_validity="hours=1")),
+         lambda b, p: b["entries"][2]["attrs"].update(refresh_token_validity="hours=1")),
         ("external-logout", "provider attribute allowlist changed",
-         lambda b, p: b["entries"][1]["attrs"].update(logout_uri="https://example.invalid/logout")),
+         lambda b, p: b["entries"][2]["attrs"].update(logout_uri="https://example.invalid/logout")),
         ("encryption-key", "provider attribute allowlist changed",
-         lambda b, p: b["entries"][1]["attrs"].update(encryption_key=SYNTHETIC_UUID)),
+         lambda b, p: b["entries"][2]["attrs"].update(encryption_key=SYNTHETIC_UUID)),
         ("app-group", "application attribute allowlist changed",
-         lambda b, p: b["entries"][2]["attrs"].update(group="Household")),
+         lambda b, p: b["entries"][3]["attrs"].update(group="Household")),
         ("instantiate-disabled", "blueprint metadata changed",
          lambda b, p: b["metadata"]["labels"].update({"blueprints.goauthentik.io/instantiate": "false"})),
         ("projection-namespace", "projection metadata changed",
@@ -265,20 +286,37 @@ def main():
         ("projection-target-extra", "projection target fields changed",
          lambda b, p: p["spec"]["target"].update(immutable=True)),
         ("null-signer", "required existing reference changed",
-         lambda b, p: b["entries"][1]["attrs"].update(signing_key=None)),
+         lambda b, p: b["entries"][2]["attrs"].update(signing_key=None)),
         ("launch-url", "application attribute allowlist changed",
-         lambda b, p: b["entries"][2]["attrs"].update(meta_launch_url="https://example.invalid/")),
+         lambda b, p: b["entries"][3]["attrs"].update(meta_launch_url="https://example.invalid/")),
         ("negated-user", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][4]["attrs"].update(negate=True)),
+         lambda b, p: b["entries"][5]["attrs"].update(negate=True)),
         ("group-fail-open", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][5]["attrs"].update(failure_result=True)),
-        ("deleted-conjunct", "expected provider/application/deny and three bindings",
+         lambda b, p: b["entries"][6]["attrs"].update(failure_result=True)),
+        ("deleted-conjunct", "expected deny, portal mapping, provider, application and three bindings",
          lambda b, p: b["entries"].pop()),
-        ("zero-bindings", "expected provider/application/deny and three bindings",
-         lambda b, p: b.update(entries=b["entries"][:3])),
+        ("zero-bindings", "expected deny, portal mapping, provider, application and three bindings",
+         lambda b, p: b.update(entries=b["entries"][:4])),
         ("inactive-user-reference", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][4]["attrs"].update(user=find(
+         lambda b, p: b["entries"][5]["attrs"].update(user=find(
              "authentik_core.user", ("username", "thaynes")))),
+        ("drop-portal-mapping", "exact three mappings required",
+         lambda b, p: b["entries"][2]["attrs"]["property_mappings"].pop()),
+        ("mapping-pin", "portal mapping pin changed",
+         lambda b, p: b["entries"][1]["attrs"].update(expression=b["entries"][1]["attrs"]["expression"].replace(
+             PINNED_ADMINS_SHA256, "0" * 64))),
+        ("mapping-scope", "portal mapping scope changed",
+         lambda b, p: b["entries"][1]["attrs"].update(scope_name="email")),
+        ("raw-directory-uuid", "raw directory UUID in mapping",
+         lambda b, p: b["entries"][1]["attrs"].update(expression=b["entries"][1]["attrs"]["expression"] +
+             "\n# 00000000-0000-4000-8000-000000000099\n")),
+        ("direct-admin-equals-active", "portal mapping must read direct membership",
+         lambda b, p: b["entries"][1]["attrs"].update(expression=(
+             'PINNED_ADMINS_SHA256 = "%s"\n'
+             "active = True\n"
+             "direct_admin = active\n"
+             'return {"portal_is_active": active, "portal_is_admin": direct_admin}\n'
+         ) % PINNED_ADMINS_SHA256)),
     ]
     for name, reason, mutate in mutations:
         b, p = deepcopy(bp), deepcopy(projection)

@@ -1,5 +1,7 @@
-# UNREGISTERED proposal. Append only these role/HBA entries after fresh ownership
-# and actual generated-HBA checks. Do not replace existing roles or user rules.
+# UNREGISTERED future proposal. Do not register this file as the first change.
+# Stage 1 is pending/hba-stage-reject.yaml, already represented on cluster16.
+# This pg_hba list is the post-proof composition: reject stage plus the single
+# runtime allow inserted before the catch-all. No migrator allow.
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -44,7 +46,6 @@ spec:
       - hostnossl all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
       - hostnossl all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
       - hostssl dev_env_v2_portal dev_env_v2_portal_runtime 10.42.0.0/16 scram-sha-256
-      - hostssl dev_env_v2_portal dev_env_v2_portal_migrator 10.42.0.0/16 scram-sha-256
       - host all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
       - host all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
 # CNPG fixed local peer rules precede user rules. Its live map contains only

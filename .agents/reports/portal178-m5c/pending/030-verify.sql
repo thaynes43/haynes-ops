@@ -63,7 +63,19 @@ SELECT json_build_object('checks',json_build_object(
     AND EXISTS(SELECT FROM defaults WHERE defaclnamespace=0 AND defaclobjtype='f'
       AND NOT EXISTS(SELECT FROM aclexplode(defaclacl) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE')),
   'role_settings', (SELECT count(*)=1 AND bool_and(cardinality(setconfig)=2
-      AND setconfig @> ARRAY['search_path=pg_catalog, portal','statement_timeout=5s']) FROM settings)
+      AND setconfig @> ARRAY['search_path=pg_catalog, portal','statement_timeout=5s']) FROM settings),
+  'portal_objects', (SELECT count(*)=0 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='portal')
+    AND NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+      WHERE n.nspname='portal' AND t.typtype='c'
+        AND t.oid NOT IN (SELECT c.reltype FROM pg_class c
+          WHERE c.relnamespace=n.oid AND c.relkind='r')),
+  'cluster_role_settings', NOT EXISTS (SELECT 1 FROM pg_db_role_setting
+      WHERE setdatabase=0 AND setrole IN (SELECT oid FROM roles)),
+  'portal_backends', (SELECT count(*)=0 FROM pg_stat_activity
+      WHERE datname='dev_env_v2_portal'
+        AND usename IN ('dev_env_v2_portal_runtime','dev_env_v2_portal_migrator')
+        AND pid <> pg_backend_pid())
 ),'catalogs',json_build_object(
   'datacl',(SELECT datacl::text FROM db),
   'nspacl',(SELECT json_object_agg(nspname,nspacl::text) FROM namespaces),

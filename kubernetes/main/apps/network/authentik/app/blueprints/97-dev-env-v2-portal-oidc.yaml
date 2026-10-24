@@ -8,6 +8,10 @@
 # by a separate reviewed change. This is not an identity integration test or
 # permission for the BFF to skip its immutable issuer+subject/current-authz gate.
 #
+# This file is the only owner of the provider property_mappings relation:
+# managed openid, managed profile, and the portal-local mapping below.
+# Do not register a second blueprint that sets that relation.
+#
 # client_secret is intentionally absent: Authentik generates it on creation and
 # partial updates preserve it. Only Tom copies it directly from Admin UI into
 # HaynesKube/dev-env-v2-portal; see .agents/reports/portal178-m5a/RELEASE.md.
@@ -28,6 +32,33 @@ entries:
     attrs:
       expression: 'return False'
       execution_logging: false
+  - model: authentik_providers_oauth2.scopemapping
+    id: portal-live-profile
+    state: present
+    identifiers:
+      name: dev-env-v2-portal-live-profile
+    attrs:
+      scope_name: profile
+      description: Portal-local current account and direct pinned Admins membership.
+      expression: |
+        from hashlib import sha256
+        from authentik.core.models import User
+
+        # SHA256(lowercase hyphenated group.pk UTF-8, no newline).
+        # Root retains exact directory proof; never insert the raw UUID here.
+        PINNED_ADMINS_SHA256 = "88619af8c7c3e52efd2c0368020478809cc7a673617406cfd1bf584c9b1d75ee"
+        current = User.objects.get(pk=user.pk)
+        active = current.is_active is True
+        direct_admin = bool(
+            active
+            and len(PINNED_ADMINS_SHA256) == 64
+            and any(
+                sha256(str(group.pk).lower().encode("utf-8")).hexdigest()
+                == PINNED_ADMINS_SHA256
+                for group in current.groups.all()
+            )
+        )
+        return {"portal_is_active": active, "portal_is_admin": direct_admin}
   - model: authentik_providers_oauth2.oauth2provider
     id: portal-provider
     state: present
@@ -49,6 +80,7 @@ entries:
       property_mappings:
         - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
         - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+        - !KeyOf portal-live-profile
       signing_key: !Find [authentik_crypto.certificatekeypair, [name, jwt-signing-key-rsa-longterm]]
       sub_mode: user_uuid
       issuer_mode: per_provider

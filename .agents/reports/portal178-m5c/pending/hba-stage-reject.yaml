@@ -1,0 +1,9 @@
+# First HBA registration. Must stay equal to cluster16.spec.postgresql.pg_hba.
+# No hostssl/SCRAM allow. No roles, database, or migrator admission.
+pg_hba:
+  - host replication dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
+  - host replication dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
+  - hostnossl all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
+  - hostnossl all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
+  - host all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
+  - host all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject

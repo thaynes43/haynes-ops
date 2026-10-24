@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Fixed portal SQL through the existing CNPG peer route, no password/identity swap.
 
---preflight reads catalog counts only; --verify checks bounded effective ACLs.
+An explicit mode is required. There is no default.
+--preflight reads catalog counts only.
+--verify-reviewed-sha256 checks bounded effective ACLs. The SHA256 pin and
+review of those exact bytes are the control. A best-effort denylist runs
+before psql; it is not an SQL sandbox. The session is then opened read-only.
 --apply-reviewed-sha256 bootstraps ACLs; --migrate-reviewed-sha256 executes the
 reviewed tables once with SET ROLE migrator. Both require config review/CI and
 actual role/DB provisioning; neither distributes a password or enables LOGIN.
@@ -19,6 +23,30 @@ ROOT = Path(__file__).resolve().parents[3]
 SQL_FILE = ROOT / ".agents/reports/portal178-m5c/pending/010-bootstrap.sql"
 NAMESPACE = "database"
 CLUSTER = "postgres16"
+VERIFY_PREFIX = "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;\nBEGIN READ ONLY;\n"
+ALLOWED_META = "\\set ON_ERROR_STOP on"
+# Best-effort denylist. The hash pin and review of the exact file are the control.
+VERIFY_DENY = re.compile(
+    r"(?i)(transaction_read_only|\bread\s+write\b|\breset\b|\bdiscard\b|"
+    r"\bset\s+transaction\b|\bstart\s+transaction\b|"
+    r"\bset\s+session\s+characteristics\b|default_transaction_read_only)")
+STOP_ERRORS = (RuntimeError, subprocess.CalledProcessError, ValueError, KeyError)
+
+
+def assert_verify_readonly(sql_text):
+    """Refuse known read-write and psql escapes before psql. Not an SQL sandbox."""
+    for raw in sql_text.splitlines():
+        line = raw.strip()
+        if line.startswith("\\") and line != ALLOWED_META:
+            raise RuntimeError("verification SQL can leave the read-only transaction; stop")
+    if VERIFY_DENY.search(sql_text):
+        raise RuntimeError("verification SQL can leave the read-only transaction; stop")
+
+
+def stop(error):
+    # Type name only. Do not print the exception text or psql stdout.
+    print(f"STOP: peer bootstrap {type(error).__name__}; no retry or alternate identity", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def invoke(args, **kwargs):
@@ -33,7 +61,7 @@ def main():
     mode.add_argument("--preflight", action="store_true")
     mode.add_argument("--apply-reviewed-sha256")
     mode.add_argument("--migrate-reviewed-sha256")
-    mode.add_argument("--verify", action="store_true")
+    mode.add_argument("--verify-reviewed-sha256")
     args = parser.parse_args()
     cluster = json.loads(invoke(["get", "cluster.postgresql.cnpg.io", CLUSTER,
                                 "-n", NAMESPACE, "-o", "json"], capture_output=True).stdout)
@@ -62,12 +90,23 @@ def main():
         'targetDatabaseCount',(SELECT count(*) FROM pg_database WHERE datname='dev_env_v2_portal'));"""
         invoke([*command, "--dbname=postgres", "-A", "-t", "--file=-"], input=source)
         return
-    if args.verify:
+    if args.verify_reviewed_sha256:
+        if not re.fullmatch(r"[0-9a-f]{64}", args.verify_reviewed_sha256):
+            raise RuntimeError("exact reviewed SHA256 required; stop")
+        source = SQL_FILE.with_name("030-verify.sql").read_bytes()
+        if hashlib.sha256(source).hexdigest() != args.verify_reviewed_sha256:
+            raise RuntimeError("SQL differs from reviewed hash; stop")
+        text = source.decode()
+        # The digest is the control. The denylist is best-effort and runs before psql.
+        assert_verify_readonly(text)
         result = invoke([*command, "--dbname=dev_env_v2_portal", "-q", "-A", "-t", "--file=-"],
-                        input=SQL_FILE.with_name("030-verify.sql").read_text(), capture_output=True)
+                        input=VERIFY_PREFIX + text,
+                        capture_output=True)
         proof = json.loads(result.stdout)
         checks = proof.get("checks", {})
-        if set(checks) != {"target", "roles", "database_acl", "schema_acl", "tables_acl", "default_acl", "role_settings"}:
+        if set(checks) != {"target", "roles", "database_acl", "schema_acl", "tables_acl",
+                           "default_acl", "role_settings", "portal_objects",
+                           "cluster_role_settings", "portal_backends"}:
             raise RuntimeError("verification shape mismatch; stop")
         print(json.dumps(proof, sort_keys=True))
         if any(value is not True for value in checks.values()):
@@ -92,8 +131,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, subprocess.CalledProcessError) as error:
-        # SQL contains no credentials. Do not include environment, command output
-        # or exception arguments in the wrapper's own diagnostics.
-        print(f"STOP: peer bootstrap {type(error).__name__}; no retry or alternate identity", file=sys.stderr)
-        raise SystemExit(1)
+    except STOP_ERRORS as error:
+        stop(error)
