@@ -10,7 +10,14 @@ fail() { echo "card-b-power-cap: $*" >&2; exit 1; }
 smi() { timeout 15 nvidia-smi -i "$gpu" "$@"; }
 
 [ "$POD_NODE_NAME" = talosw04 ] || fail 'refusing another node'
-[ "$NVIDIA_VISIBLE_DEVICES" = "$gpu" ] || fail 'refusing another visible-device selection'
+# The NVIDIA runtime rewrites a pinned UUID to "void" after mounting that
+# device when NVIDIA_DRIVER_CAPABILITIES=utility. void is that rewrite, not a
+# request for every GPU. Any other value is a different selection and must not
+# reach nvidia-smi. The query below still requires Card B's UUID.
+case "$NVIDIA_VISIBLE_DEVICES" in
+  "$gpu"|void) ;;
+  *) fail "refusing visible-device selection '$NVIDIA_VISIBLE_DEVICES'" ;;
+esac
 
 read_state() {
   state=$(smi --query-gpu=uuid,persistence_mode,power.limit,enforced.power.limit --format=csv,noheader,nounits) || fail 'GPU state query failed'
