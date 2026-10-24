@@ -1,0 +1,9 @@
+{
+  "archiveSha256": "fd766ce876e872605eb1b2dcc19fd62697393644c29cd6cebcf77c00493baa00",
+  "baseIndexDigest": "sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5",
+  "buildxManifestDigest": "sha256:d39684927413cf724566352022711c6e8955c98cbe21ddfffeabd5366f18f452",
+  "candidateConfigSha256": "27208b5ce501d57daf558c44730ee02fe0f9a4e1f0bc5bb96fbdf5abf247c870",
+  "candidateImageId": "sha256:27208b5ce501d57daf558c44730ee02fe0f9a4e1f0bc5bb96fbdf5abf247c870",
+  "note": "Historical record of the accepted utils-only image. Its registry signature does not cover the certifi 2026.10.23 draft. reviewed-digests.json remains the enforcement gate.",
+  "registryDigest": "sha256:18fc99f13617a4b83dfc470e4f8cda7ed76cf513c5147c90e1de888838325663"
+}
