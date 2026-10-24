@@ -1,7 +1,7 @@
 #!/bin/sh
 # Card B only. No CUDA context, model, benchmark, other GPU or power-limit increase.
 # Shared by the startup init container and render-job.sh --cap-only.
-# Use bare shell variables: Flux substitutes braced variable syntax in ConfigMaps.
+# Use bare shell variables: Flux substitutes braced variable syntax in rendered resources.
 set -eu
 export LC_ALL=C
 gpu=GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b

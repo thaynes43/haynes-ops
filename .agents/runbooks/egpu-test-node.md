@@ -49,12 +49,14 @@ Muse runs here. Muse service availability must be checked independently; absence
 node/GPU page does not prove local voice is healthy. Reboots still show in
 `node_boot_time_seconds`.
 
-### Card B startup cap — held proposal, 2026-10-24 (OpenProject #199)
+### Card B startup cap — prepared, 2026-10-24 (OpenProject #199)
 
-**Do not merge/deploy this proposal until its new workload capability is approved.**
-Tom authorized 250 W restoration and durable reapplication, but explicitly prohibited
-applying new privilege/access. No new capability, grant, policy change or reboot was
-applied during the investigation. The old `egpu-test-*` Kyverno exception does not
+**Tom approved only the exact startup capability with reviewed script bytes pinned.**
+Independent review, required CI and the supported PR workflow still precede deployment.
+The connected GitHub integration rejected PR creation with HTTP 403; this is a separate
+blocker and is not permission to use another identity or route. No new capability,
+grant, policy change or reboot was applied during preparation.
+The old `egpu-test-*` Kyverno exception does not
 override V2's `dev-env-agent-guard`: it denies `SYS_ADMIN` on agent-created Jobs.
 Do not use a different identity or route around that boundary.
 
@@ -65,22 +67,30 @@ but does not preserve the power limit over a machine reboot.
 
 The proposal adds `power-cap` before `power-gate` in the **existing** llama-server
 Pod. Kubernetes reruns init containers when the Pod restarts; no polling controller
-or additional resident daemon is introduced. The shared script lives at
-`kubernetes/main/apps/ai/llama-server/app/card-b-power-cap.sh`. It:
+or additional resident daemon is introduced. The canonical script lives at
+`kubernetes/main/apps/ai/llama-server/app/card-b-power-cap.sh`. Its exact bytes are
+embedded in the init container's single shell argument, and the capability exception
+pins their SHA-256. There is no runtime script ConfigMap, volume mount or `envFrom`;
+the three environment inputs and shell command are constrained. Editing either script
+copy without the reviewed matching hash blocks the capability exception. Tests compare
+both copies and the hash and exercise altered bytes/commands/mounts/environment against
+the actual Kyverno engine. The script:
 
 - Accepts only `talosw04` and Card B's exact UUID; every NVIDIA command selects it.
 - Refuses active or unreadable compute-process lists before any write.
 - Enables persistence mode and lowers the configured cap to 250 W; preserves any
   already lower maintenance limit. Reads back both configured and enforced limits.
 - Fails closed on identity, command, numeric/read-back or process-query errors.
-- Starts no CUDA workload and has no model/NFS mount or Kubernetes API token.
+- Starts no CUDA workload and has no volume mounts or Kubernetes API token.
 
 The setter needs UID 0 plus **Linux `SYS_ADMIN`**, a capability broader than power
 management. Its proposed Kyverno exception is limited to llama-server Pod/Deployment/
 ReplicaSet resources in `ai`, the pinned llama.cpp image, the `power-cap` init
 container, exact node/UUID, no token mount and no native-sidecar restart policy.
 Only that init capability is waived; the ordinary server and independent read-only
-gate retain their existing privileges. No dev-env guard/RBAC/grant change is proposed.
+gate retain their existing privileges. The byte binding is enforced by the existing
+admission policy machinery; no cluster-wide admission availability policy is changed.
+No dev-env guard/RBAC/grant change is proposed.
 An approved deployment would recreate only llama-server and then load its model;
 HA, AppDaemon and other GPU workloads need no restart.
 
@@ -95,12 +105,17 @@ Rendering is not execution authorization. Inspect ownership/active GPU work agai
 before an approved apply. Do not use an idle-only soak plan as a cap-only substitute:
 `soak.py` still imports Torch and allocates matrices before its plan runs.
 
-Validation before approval: mocked command/error/identity/active-process tests,
+Validation before deployment: mocked command/error/identity/active-process tests,
 rendered init order and mounts, narrowed policy conditions and required PR checks.
-After approval: deploy the exception first, then llama-server; verify setter read-back,
+After required review/CI and PR access are resolved: deploy the exception first, then llama-server; verify setter read-back,
 the independent gate, model readiness, endpoint health and AppDaemon Voice status.
-Actual reboot acceptance is explicitly deferred to Tom's planned repad maintenance;
-offline tests/rendering do not prove reboot recovery or live GPU behavior.
+Tom subsequently authorized an actual talosw04 reboot test via existing Omni/Talos
+authority, only after deployment, initial Voice recovery, active-work/ownership and
+safe-impact checks, rollback readiness and ops coordination. Inspect existing authority;
+do not acquire access or use an alternate route if denied. Verify boot -> exact GPU
+250 W -> gate -> model -> Voice with timestamped evidence. This warm reboot does not
+prove BIOS power-on after AC restoration; that BIOS task remains deferred.
+Offline tests/rendering do not prove reboot recovery or live GPU behavior.
 
 References: [Kubernetes init restart behavior](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/#detailed-behavior)
 and [Kyverno scoped Pod Security exceptions](https://kyverno.io/docs/guides/exceptions/#pod-security-exemptions).

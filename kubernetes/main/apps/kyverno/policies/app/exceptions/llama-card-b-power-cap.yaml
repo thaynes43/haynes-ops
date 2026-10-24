@@ -1,5 +1,6 @@
 ---
-# HELD PROPOSAL (OpenProject #199): new workload capability; approval before merge.
+# OpenProject #199: owner approved this exact scope with the script hash binding.
+# Required review/CI and the separately blocked PR workflow still precede deployment.
 # Never an exception for the dev-env agent or its Jobs. The NVIDIA power-limit
 # ioctl needs SYS_ADMIN, which is broader than power management. Limit this to
 # the startup-only setter for Card B; the server and read-only gate get no waiver.
@@ -40,7 +41,29 @@ spec:
         value: ""
       - key: "{{ (request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0].command }}"
         operator: Equals
-        value: [/bin/sh, /opt/card-b-power-cap/cap.sh]
+        value: [/bin/sh, -c]
+      # No mutable mounted code: bind the one inline program to reviewed bytes.
+      - key: "{{ length(((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).args || `[]`) }}"
+        operator: Equals
+        value: 1
+      - key: "{{ sha256(((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).args[0] || '') }}"
+        operator: Equals
+        value: 2eb172c5bc6b7d3526e0c9f93fde99cf63a36c4dae79c1e8685cbb4f1babf894
+      - key: "{{ length(((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).volumeMounts || `[]`) }}"
+        operator: Equals
+        value: 0
+      - key: "{{ length(((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).envFrom || `[]`) }}"
+        operator: Equals
+        value: 0
+      - key: "{{ sort(((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).env[].name) }}"
+        operator: Equals
+        value: [NVIDIA_DRIVER_CAPABILITIES, NVIDIA_VISIBLE_DEVICES, POD_NODE_NAME]
+      - key: "{{ ((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).env[?name == 'NVIDIA_DRIVER_CAPABILITIES'].value }}"
+        operator: Equals
+        value: [utility]
+      - key: "{{ ((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).env[?name == 'POD_NODE_NAME'].valueFrom.fieldRef.fieldPath }}"
+        operator: Equals
+        value: [spec.nodeName]
   podSecurity:
     - controlName: Capabilities
       images:
