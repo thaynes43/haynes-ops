@@ -1,0 +1,18 @@
+# Render-only Story178 internal reader packet.
+# No Flux Kustomization may reference this directory. Rendering is not registration.
+# ccnp-exclusion.yaml is a review template and is intentionally not a resource.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+commonAnnotations:
+  dev-env.haynesops.com/portal-registration: unregistered
+resources:
+  - oidc-externalsecret.yaml
+  - runtime-externalsecret.yaml
+  - role-externalsecret.yaml
+  - networkpolicy.yaml
+  - config.yaml
+  - postgres-ca.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingressroute.yaml
+  - serverstransport.yaml

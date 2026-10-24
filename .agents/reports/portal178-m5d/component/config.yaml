@@ -1,0 +1,29 @@
+# Non-secret accepted configuration only. No subject, group, or secret values.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-v2-portal-config
+  namespace: dev-agents
+data:
+  origin: https://dev-env-v2.haynesops.com
+  callback: https://dev-env-v2.haynesops.com/auth/callback
+  issuer: https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/
+  public-client-id: dev-env-v2-portal-internal
+  postgres-host: postgres16-rw.database.svc.cluster.local
+  postgres-port: "5432"
+  postgres-database: dev_env_v2_portal
+  postgres-username: dev_env_v2_portal_runtime
+  postgres-ca-file: /etc/portal/postgres/ca.crt
+  oidc-dir: /etc/portal/oidc
+  runtime-dir: /etc/portal/runtime
+  tls-cert-file: /etc/portal/tls/tls.crt
+  tls-key-file: /etc/portal/tls/tls.key
+  listen-address: :8443
+  public-host: dev-env-v2.haynesops.com
+  admission-api-url: https://kubernetes.default.svc.cluster.local
+  admission-token-file: /var/run/portal/api/token
+  admission-ca-file: /var/run/portal/api/ca.crt
+  admission-namespace: dev-agents
+  admission-name: dev-env-v2-portal-admission
+  admission-uid: PENDING-CLOSED-BOOTSTRAP
+  serving-server-name: dev-env-v2-portal.dev-agents.svc.cluster.local
