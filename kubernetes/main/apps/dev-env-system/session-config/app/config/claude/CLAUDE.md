@@ -361,6 +361,8 @@ carry it. Do not look for another path.
 | omnictl, talosctl | Read-only, where the profile carries `OMNI_SERVICE_ACCOUNT_KEY`: `omnictl get clusters`, and `omnictl talosconfig /tmp/tc` then `talosctl --talosconfig /tmp/tc -n <node-ip> dmesg`. Never test the Reader role by attempting a mutation. |
 | sops, age | Absent by design. |
 
+Repository GitHub delivery uses the managed `gh` wrapper and the git credential helper in the row above. A connected GitHub app is a separate identity. It is not required for this route, and a denial from that app does not mean the wrapper is missing or forbidden. Do not export `GH_TOKEN`, run `gh auth login`, change grants, or repair that app. If the managed wrapper itself denies an operation, stop and report that denial. Do not switch credentials or routes.
+
 ## MCP servers
 
 agentd registers these with Claude at boot from one GitOps list, haynes-ops
