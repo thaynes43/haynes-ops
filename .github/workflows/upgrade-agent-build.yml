@@ -4,13 +4,18 @@ name: Build and Push Upgrade Agent Image
 # Minimal by design (kubectl/jq/curl/bash) — see scripts/upgrade-agent/Dockerfile.
 # Build context is scripts/upgrade-agent (Dockerfile only) so nothing from the repo
 # — no secrets, no .git — can enter an image layer. Builds only on main.
+#
+# deliver_reviewed_pr.py is the interactive delivery command. It is not an image
+# input. Pull requests that touch it, its offline test, or this workflow run that
+# suite here. Push builds stay on the Dockerfile so a helper edit does not
+# republish the toolbox tag.
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'scripts/upgrade-agent/**'
+      - 'scripts/upgrade-agent/Dockerfile'
       # NOTE (2026-07-28): this workflow deliberately does NOT list its own file
       # here. When it did, ANY edit to the workflow — including Renovate's Tier-0
       # auto-merged action bumps (e.g. the cosign v2.6.4/v3.1.2 pair, 07-25) —
@@ -20,6 +25,13 @@ on:
       # editing this workflow, run it once by hand (`gh workflow run <file>`); a
       # broken action bump now surfaces at the next dispatch/source build instead
       # of immediately.
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/upgrade-agent/deliver_reviewed_pr.py'
+      - 'scripts/upgrade-agent/test_deliver_reviewed_pr.py'
+      - '.github/workflows/upgrade-agent-build.yml'
   workflow_dispatch:
 
 permissions:
@@ -29,6 +41,7 @@ permissions:
 
 jobs:
   build-and-push:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -70,3 +83,19 @@ jobs:
         run: >-
           cosign sign --yes --new-bundle-format=false --use-signing-config=false
           --registry-referrers-mode=legacy "${IMAGE}@${DIGEST}"
+
+  deliver-reviewed-pr:
+    name: Deliver Reviewed PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Offline deliver-reviewed-pr suite
+        run: nice -n 19 python3 -I -B scripts/upgrade-agent/test_deliver_reviewed_pr.py -v

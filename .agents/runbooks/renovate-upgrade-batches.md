@@ -4,12 +4,43 @@ How to work through a large backlog of Renovate update PRs safely: batch by blas
 
 ## Core loop (every batch)
 
-1. **Merge** the batch (`gh pr merge <n> --merge --delete-branch`).
-2. **Pull + reconcile**: `git pull --ff-only origin main` then `task flux:reconcile` (full) or `flux reconcile kustomization <ks> -n <ns> --with-source` (targeted).
-3. **Verify** the affected workloads come back healthy (see Verification below).
-4. **Roll back on snag** (see Rollback) and research before retrying.
+Deliver **one pull request per command** and stop the batch on the first nonzero exit. Independent review of that exact head, both required GitHub checks green on that head, and a completed preflight are required before a merge. Permission is scoped to merging the named pull request. Pass `--reconcile namespace/name` only for the Flux kustomizations this pull request should roll out. `--source-only` merges the source pull request and does not reconcile.
 
-Branch protection here is lenient (`strict:false`, only the `Flux Local - Success` check), so multiple PRs can merge without rebasing each.
+A native Sol approval is source-review evidence for `--reviewed-head`. This command reads the required check status from GitHub. It does not read GitHub review decisions or agent comments, and those are not a substitute for the required checks.
+
+```bash
+python3 scripts/upgrade-agent/deliver_reviewed_pr.py \
+  --repo thaynes43/haynes-ops \
+  --pr <n> \
+  --head <40-hex> \
+  --reviewed-head <same-40-hex> \
+  --preflight-timeout 120 \
+  --reconcile <namespace>/<kustomization> \
+  -- <preflight-command> <args>
+```
+
+Source-only, when this change must merge without a cluster reconcile:
+
+```bash
+python3 scripts/upgrade-agent/deliver_reviewed_pr.py \
+  --repo thaynes43/haynes-ops \
+  --pr <n> \
+  --head <40-hex> \
+  --reviewed-head <same-40-hex> \
+  --preflight-timeout 120 \
+  --source-only \
+  -- <preflight-command> <args>
+```
+
+The command runs `<preflight-command>` as an argv list with a finite timeout. After that process exits 0 it requires `Flux Local - Success` and `Diff Scope - Success` to be completed and successful on the pull request head, and that head must equal `--head`. It squash-merges with `--match-head-commit`, verifies the pull request is merged, and only then runs `flux reconcile kustomization <name> --namespace <namespace> --with-source` for each named target, one at a time. A preflight that is still running, times out, or exits nonzero, a required check that is pending, failed, missing, or otherwise unknown, or a head mismatch stops the command before `gh pr merge` and before `flux`.
+
+Supply one trusted preflight program with explicit arguments. It must check each internal prerequisite separately and propagate failure, including any required review-comment publication or activity declaration. Do not supply an opaque `bash -c` compound chain whose final success can hide an earlier failure. The delivery command checks the program's exit; it cannot establish whether an arbitrary program correctly checked its own internals. The reviewed-head flag records the caller's exact-source review evidence and grants no runtime permission or release of an existing hold.
+
+If delivery returns nonzero, stop the batch and inspect the failed stage. Do not append another merge or reconcile command to continue after that failure.
+
+Then **verify** the affected workloads (see Verification below). **Roll back on snag** (see Rollback) and research before retrying.
+
+Branch protection requires both aggregate contexts, `Flux Local - Success` and `Diff Scope - Success`. Each pull request is delivered on its own head; another pull request's green checks do not cover it.
 
 ## Survey first
 
@@ -40,7 +71,7 @@ For each major:
 1. **Google the release notes** (chart `UPGRADING`/GitHub release; `gh release view <tag> --repo <org/repo> --json body`).
 2. **Grep our usage** for the affected features; make the required value edits in a commit.
 3. **For a chart used in multiple places**, do one instance first, verify clean, then the rest (e.g. traefik-internal before traefik-external).
-4. Merge / push, reconcile, verify, then move on.
+4. Deliver that pull request with the core-loop command, verify, then move on.
 
 ### Patterns seen
 - **traefik v40**: `service` values moved under `service.spec` (k8s-aligned); strict-ish schema → migrate `service.type`/`loadBalancerSourceRanges`/`externalIPs`. Verify the LoadBalancer keeps its IP and routers load (`kubectl logs` the pods).
