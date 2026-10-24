@@ -1,7 +1,8 @@
-# UNREGISTERED consumer aligned to M6 head 51db852c281a20996f59fd4b7f14eda1f5a52f26.
+# UNREGISTERED consumer. Runtime source is merged dev-env fa8b1e2cf3af91e33bf0558873d70920e569751d.
+# The image pin is the published portal digest. It is not installation.
 # Mount root is /etc/dev-env-portal. Probes are HTTPS GET /healthz and /readyz.
 # Host is set with httpHeaders, not httpGet.host, so the dial target stays the pod IP.
-# Image remains the unpublished sentinel. uid and gid are 65532.
+# uid and gid are 65532. The digest pin is not a running pod.
 # CPU limit 200m is the staged bound for this reader. dev-agents rejects a pod
 # with no CPU limit and any container above 8 CPU.
 # Runtime properties are selected by the inert ExternalSecrets in this render.
@@ -52,7 +53,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          image: unregistered.invalid/dev-env-v2-portal:UNPUBLISHED
+          image: ghcr.io/thaynes43/dev-env-portal:sha-fa8b1e2@sha256:a273ea9941d2956534975fa832fb6318a78ec9b8d926403a0357a1674b9fe622
           imagePullPolicy: IfNotPresent
           ports:
             - name: https

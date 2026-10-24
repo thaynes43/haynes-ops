@@ -17,7 +17,11 @@ CHECKLIST = ROOT / ".agents/reports/portal178-m5d/LAUNCH-CHECKLIST.md"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
 RUNTIME_CONTRACT = Path("/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md")
 STABLE_CONTRACT = Path("/home/dev/work/orders/portal178-runtime-assembly-20261024/integration-fixes-02/RUNTIME-CONTRACT.md")
-M6_HEAD = "51db852c281a20996f59fd4b7f14eda1f5a52f26"
+M6_HEAD = "fa8b1e2cf3af91e33bf0558873d70920e569751d"
+PORTAL_IMAGE = (
+    "ghcr.io/thaynes43/dev-env-portal:sha-fa8b1e2"
+    "@sha256:a273ea9941d2956534975fa832fb6318a78ec9b8d926403a0357a1674b9fe622"
+)
 
 RESOURCES = [
     "oidc-externalsecret.yaml",
@@ -130,6 +134,21 @@ def remote_properties(doc):
     return [item["remoteRef"]["property"] for item in doc["spec"]["data"]]
 
 
+def unqualified_transport_lookup(route):
+    """Traefik v3.7.16 makeServersTransportKey for a name without '@'.
+
+    The parent namespace is the Service namespace when the reference sets one,
+    otherwise the IngressRoute namespace. The returned pair is the object
+    Traefik indexes with nameBuilder.makeID.
+    """
+    service = route["spec"]["routes"][0]["services"][0]
+    name = service["serversTransport"]
+    if "@" in name:
+        raise AssertionError("qualified ServersTransport names are a different resolver path")
+    parent = service.get("namespace") or route["metadata"]["namespace"]
+    return parent, name
+
+
 class ComponentRenderTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -229,9 +248,8 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(pod["securityContext"]["runAsUser"], 65532)
         self.assertEqual(pod["securityContext"]["runAsGroup"], 65532)
         container = pod["containers"][0]
-        self.assertEqual(container["image"], "unregistered.invalid/dev-env-v2-portal:UNPUBLISHED")
-        self.assertNotIn("@sha256:", container["image"])
-        self.assertNotIn("ghcr.io", container["image"])
+        self.assertEqual(container["image"], PORTAL_IMAGE)
+        self.assertNotIn("UNPUBLISHED", container["image"])
         self.assertEqual(container["ports"], [{"name": "https", "containerPort": 8443, "protocol": "TCP"}])
         self.assertEqual(container["resources"]["requests"]["cpu"], "50m")
         self.assertEqual(container["resources"]["limits"]["cpu"], "200m")
@@ -329,8 +347,17 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(route["metadata"]["annotations"]["external-dns.kubernetes.io/target"], "internal.haynesops")
         self.assertNotIn("cloudflare", self.rendered.lower())
         self.assertNotIn("traefik-external", self.rendered)
-        transport = by_kind(self.docs, "ServersTransport")[0]
-        self.assertEqual(transport["metadata"]["namespace"], "dev")
+        lookup_ns, lookup_name = unqualified_transport_lookup(route)
+        matched = [
+            doc for doc in by_kind(self.docs, "ServersTransport")
+            if doc["metadata"]["namespace"] == lookup_ns and doc["metadata"]["name"] == lookup_name
+        ]
+        self.assertEqual(len(matched), 1)
+        transport = matched[0]
+        self.assertEqual(route["metadata"]["namespace"], "dev")
+        self.assertNotEqual(transport["metadata"]["namespace"], route["metadata"]["namespace"])
+        contract = CONTRACT.read_text()
+        self.assertIn(lookup_ns + "/dev-env-v2-portal-serving-ca", contract)
         self.assertIs(transport["spec"]["insecureSkipVerify"], False)
         self.assertEqual(transport["spec"]["serverName"], "dev-env-v2-portal.dev-agents.svc.cluster.local")
         self.assertNotIn("rootCAsSecrets", transport["spec"])
@@ -428,6 +455,9 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn("integration-fixes-02", contract)
         self.assertIn("config/subject", contract)
         self.assertIn(M6_HEAD, contract)
+        self.assertIn(PORTAL_IMAGE, contract)
+        self.assertIn("backend-contract-03/RUNTIME-CONTRACT.md", contract)
+        self.assertIn("unchanged from", contract)
         self.assertNotIn("6a522e843a8768099d8eb8086f9ff8272f94b725", contract)
         self.assertNotIn("Probe API cannot", contract)
         self.assertNotIn("no ExternalSecret selects", contract)

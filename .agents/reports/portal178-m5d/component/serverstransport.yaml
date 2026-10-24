@@ -1,12 +1,14 @@
 # UNREGISTERED. Overrides the shared Traefik insecureSkipVerify default for
 # this backend only. The named CA Secret is not created here.
-# Traefik v3.7.16 reads tls.ca or ca.crt from that Secret. rootCAsSecrets is
-# deprecated in that source; rootCAs.secret is the current field.
+# Traefik v3.7.16 makeServersTransportKey resolves an unqualified name in the
+# Service namespace. This object is therefore in dev-agents, with the Service.
+# loadCASecret reads tls.ca or ca.crt from a Secret in this same namespace.
+# The IngressRoute stays in dev for the reflected certificate.
 apiVersion: traefik.io/v1alpha1
 kind: ServersTransport
 metadata:
   name: dev-env-v2-portal
-  namespace: dev
+  namespace: dev-agents
 spec:
   serverName: dev-env-v2-portal.dev-agents.svc.cluster.local
   insecureSkipVerify: false

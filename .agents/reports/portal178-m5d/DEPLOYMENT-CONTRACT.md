@@ -14,9 +14,9 @@ Foundations reused, unchanged by this packet:
 - Pending manifests under `.agents/reports/portal178-m5c/pending/` for the runtime ExternalSecret, the CNPG basic-auth projection, and the BFF CiliumNetworkPolicy.
 - Merged dev-env session constructors: exact origin host, callback `origin + /auth/callback`, postgres host `postgres16-rw.database.svc.cluster.local`, username `dev_env_v2_portal_runtime`, database `dev_env_v2_portal`, `sslmode=verify-full`, MaxConns 2, and admission API path `/api/v1/namespaces/dev-agents/configmaps/dev-env-v2-portal-admission`.
 
-Runtime alignment, 2026-10-24. The current contract is `/home/dev/work/orders/portal178-runtime-assembly-20261024/integration-fixes-02/RUNTIME-CONTRACT.md`. It supersedes `/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md`. The checked runtime source is M6 head `51db852c281a20996f59fd4b7f14eda1f5a52f26`. The earlier head recorded in the prior order directory is not this head, and that receipt file is left unchanged. Earlier packets recorded no contract. Those checks are superseded. This packet follows the integration-fixes contract. It is not a merge and it does not install the component.
+Runtime source, 2026-10-24. Merged dev-env commit `fa8b1e2cf3af91e33bf0558873d70920e569751d` is the published runtime. `backend-contract-03/RUNTIME-CONTRACT.md` says mounts, probes, files, and consumer selection are unchanged from `integration-fixes-02/RUNTIME-CONTRACT.md`. No new mount or config property is added for the HAL accept header, numeric project-link check, or Unknown Attention facts. `canonical-item-01/RUNTIME-CONTRACT.md` stays historical. Earlier order receipts stay in their own directories.
 
-The published process is executable `dev-env-portal`, HTTPS on `:8443`, probes `GET /healthz` and `GET /readyz`, mount root `/etc/dev-env-portal`, and uid/gid 65532. The image repository named by that contract is `ghcr.io/thaynes43/dev-env-portal`. No digest is published. The Deployment image stays `unregistered.invalid/dev-env-v2-portal:UNPUBLISHED`.
+The process is executable `dev-env-portal`, HTTPS on `:8443`, probes `GET /healthz` and `GET /readyz`, mount root `/etc/dev-env-portal`, and uid/gid 65532. The Deployment image is `ghcr.io/thaynes43/dev-env-portal:sha-fa8b1e2@sha256:a273ea9941d2956534975fa832fb6318a78ec9b8d926403a0357a1674b9fe622`. That pin is the Publish (portal) job on https://github.com/thaynes43/dev-env/actions/runs/40108607838. It is not installation and not live acceptance.
 
 
 ## Canonical 1Password item
@@ -69,7 +69,7 @@ stays unregistered and must not be applied in addition to this packet.
 | ExternalSecret | database | dev-env-v2-portal-runtime-db | Inert staged basic-auth projection of `DB_USERNAME` and `DB_PASSWORD`. Population and install HELD. |
 | CiliumNetworkPolicy | dev-agents | dev-env-v2-portal | Copy of the pending BFF policy. |
 | IngressRoute | dev | dev-env-v2-portal | Internal host only. |
-| ServersTransport | dev | dev-env-v2-portal | Backend TLS verification for this service only. |
+| ServersTransport | dev-agents | dev-env-v2-portal | Backend TLS verification. Namespace is the Service namespace Traefik uses for an unqualified name. |
 
 Store reference for every ExternalSecret: `ClusterSecretStore` `onepassword-connect`. No new SecretStore, no `dataFrom`, no migration item, and no field outside the lists above.
 
@@ -112,7 +112,7 @@ Pinned config files:
 
 The duration, auth-style, and witness values are the published `production_test.go` fixture and sit inside the contract bounds. They are not a launch SLO. The stable contract may replace them before freeze.
 
-Image: `unregistered.invalid/dev-env-v2-portal:UNPUBLISHED`. There is no digest. The contract names `ghcr.io/thaynes43/dev-env-portal` and a `sha-<short>` tag from `main`. This packet does not invent that tag. uid and gid are 65532. The container requests `50m` CPU and limits CPU to `200m`, under the `dev-agents` ceiling of 8 CPU in `dev-env-require-cpu-limit`. Memory request `64Mi` and limit `256Mi` are unchanged. The CPU limit is a staged bound, not a measured capacity.
+Image: `ghcr.io/thaynes43/dev-env-portal:sha-fa8b1e2@sha256:a273ea9941d2956534975fa832fb6318a78ec9b8d926403a0357a1674b9fe622`. The tag and digest come from the completed Build and push and Verify the signature steps for commit `fa8b1e2cf3af91e33bf0558873d70920e569751d`. The signing identity is `https://github.com/thaynes43/dev-env/.github/workflows/publish.yml@refs/heads/main` with issuer `https://token.actions.githubusercontent.com`. uid and gid are 65532. The container requests `50m` CPU and limits CPU to `200m`, under the `dev-agents` ceiling of 8 CPU in `dev-env-require-cpu-limit`. Memory request `64Mi` and limit `256Mi` are unchanged. The CPU limit is a staged bound, not a measured capacity.
 
 Probes:
 
@@ -138,11 +138,11 @@ IngressRoute namespace is `dev` because `certificate-haynesops` is already refle
 - Service `dev-agents/dev-env-v2-portal` port 8443, scheme `https`, `passHostHeader: true`, `serversTransport: dev-env-v2-portal`.
 - No forward-auth middleware and no homepage annotation.
 
-ServersTransport `dev/dev-env-v2-portal` sets `insecureSkipVerify: false`, `serverName: dev-env-v2-portal.dev-agents.svc.cluster.local`, and `rootCAs: [{secret: dev-env-v2-portal-serving-ca}]`. The shared Traefik setting `serversTransport.insecureSkipVerify=true` remains in place for other backends. This object overrides it only for the portal service.
+Traefik v3.7.16 `makeServersTransportKey` resolves an unqualified `serversTransport` with `nameBuilder.makeID` in the Service namespace. The rendered Service reference sets that namespace to `dev-agents`, so the lookup is `dev-agents/dev-env-v2-portal`. The IngressRoute stays in `dev` so it can use the reflected `certificate-haynesops` Secret. The ServersTransport object is in `dev-agents` with that name. It sets `insecureSkipVerify: false`, `serverName: dev-env-v2-portal.dev-agents.svc.cluster.local`, and `rootCAs: [{secret: dev-env-v2-portal-serving-ca}]`. The shared Traefik setting `serversTransport.insecureSkipVerify=true` remains in place for other backends. This object overrides it only for the portal service.
 
 The leaf in Secret `dev-agents/dev-env-v2-portal-tls` is what the process loads from `tls/tls.crt` and `tls/tls.key`. `sanMatch` accepts the leaf only when `DNSNames` contains `dev-env-v2.haynesops.com`. Traefik verifies that same leaf against `serverName`, so the leaf also needs DNS SAN `dev-env-v2-portal.dev-agents.svc.cluster.local`. Those are the two required DNS SANs. No other name is added here.
 
-Secret `dev/dev-env-v2-portal-serving-ca` holds the public CA that signed that leaf. Traefik chart 42.1.3 ships appVersion v3.7.16. In `pkg/provider/kubernetes/crd/traefikio/v1alpha1/serverstransport.go` at that tag, a referenced Secret must contain the certificate under `tls.ca` or `ca.crt`. The v3.7 ServersTransport reference states the same pair of keys. `rootCAsSecrets` is deprecated there; `rootCAs[].secret` is the current field, and this render uses it. Neither Secret is in the render. No Certificate, Issuer, private key, or CA is created. Reusing `dev-env-ca` or the PostgreSQL CA for the BFF listener is not approved here.
+`loadCASecret` reads the serving CA from the ServersTransport namespace. The future Secret is therefore `dev-agents/dev-env-v2-portal-serving-ca`, not a Secret in `dev`. Traefik chart 42.1.3 ships appVersion v3.7.16. A referenced Secret must contain the certificate under `tls.ca` or `ca.crt`. `rootCAsSecrets` is deprecated there; `rootCAs[].secret` is the current field, and this render uses it. Neither Secret is in the render. No Certificate, Issuer, private key, or CA is created. Reusing `dev-env-ca` or the PostgreSQL CA for the BFF listener is not approved here.
 
 ## Network isolation
 
@@ -160,7 +160,7 @@ That policy is additive. `dev-env-session-platform` and `dev-env-session-web` st
 | BFF pod | Secret `dev-agents/dev-env-v2-portal-runtime` | mount four runtime filenames | Existing item `HaynesKube/dev-env` | Unregistered ExternalSecret. Population and install HELD. Not a live grant. |
 | CNPG `postgres16` | Secret `database/dev-env-v2-portal-runtime-db` | username and password | Pending `role-externalsecrets.yaml` | Unregistered inert projection. `DB_PASSWORD` must match that reviewed basic-auth mechanism. Migrator stays NOLOGIN. |
 | Traefik internal | IngressRoute `dev/dev-env-v2-portal` | Host `dev-env-v2.haynesops.com`, websecure, existing reflected certificate | Approved internal host | Staged. No public route and no reflector edit. |
-| Traefik to BFF | ServersTransport `dev/dev-env-v2-portal` | HTTPS, verify CA, exact serverName | Required isolation in the internal-reader sequence | Template. Serving CA Secret is absent. |
+| Traefik to BFF | ServersTransport `dev-agents/dev-env-v2-portal` | HTTPS, verify CA, exact serverName | Required isolation in the internal-reader sequence | Template. Serving CA Secret is absent. |
 | BFF pod | CNP `dev-agents/dev-env-v2-portal` | ingress and egress above | Pending `bff-networkpolicy.yaml` | Staged copy. |
 | BFF pod | CCNPs `dev-env-session-platform` and `dev-env-session-web` | remove this name from the additive allows | Required before the dedicated policy is effective | Review template only. Live policies unchanged. |
 | portal roles | `postgres16` `pg_hba` | six reject lines | PR4265 `cluster16.yaml` | Unchanged. No hostssl allow. |
