@@ -32,7 +32,7 @@ concurrency:
 jobs:
   postgres:
     name: Portal infrastructure SQL and HBA
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     services:
       postgres:
         image: postgres:17@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
@@ -120,7 +120,7 @@ jobs:
 
   component:
     name: Portal unregistered component render
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
