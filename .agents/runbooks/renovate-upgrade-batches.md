@@ -34,6 +34,10 @@ python3 scripts/upgrade-agent/deliver_reviewed_pr.py \
 
 The command runs `<preflight-command>` as an argv list with a finite timeout. After that process exits 0 it requires `Flux Local - Success` and `Diff Scope - Success` to be completed and successful on the pull request head, and that head must equal `--head`. It squash-merges with `--match-head-commit`, verifies the pull request is merged, and only then runs `flux reconcile kustomization <name> --namespace <namespace> --with-source` for each named target, one at a time. A preflight that is still running, times out, or exits nonzero, a required check that is pending, failed, missing, or otherwise unknown, or a head mismatch stops the command before `gh pr merge` and before `flux`.
 
+Supply one trusted preflight program with explicit arguments. It must check each internal prerequisite separately and propagate failure, including any required review-comment publication or activity declaration. Do not supply an opaque `bash -c` compound chain whose final success can hide an earlier failure. The delivery command checks the program's exit; it cannot establish whether an arbitrary program correctly checked its own internals. The reviewed-head flag records the caller's exact-source review evidence and grants no runtime permission or release of an existing hold.
+
+If delivery returns nonzero, stop the batch and inspect the failed stage. Do not append another merge or reconcile command to continue after that failure.
+
 Then **verify** the affected workloads (see Verification below). **Roll back on snag** (see Rollback) and research before retrying.
 
 Branch protection requires both aggregate contexts, `Flux Local - Success` and `Diff Scope - Success`. Each pull request is delivered on its own head; another pull request's green checks do not cover it.
