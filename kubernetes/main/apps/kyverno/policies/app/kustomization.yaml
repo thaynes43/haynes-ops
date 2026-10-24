@@ -17,4 +17,5 @@ resources:
   - ./exceptions/rbac-legit.yaml
   - ./exceptions/pss-baseline.yaml
   - ./exceptions/egpu-test-capabilities.yaml
+  - ./exceptions/llama-card-b-power-cap.yaml
   - ./exceptions/arc-dind.yaml

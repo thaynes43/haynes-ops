@@ -1,0 +1,72 @@
+---
+# OpenProject #199: owner approved this exact scope with the script hash binding.
+# Required review/CI and the separately blocked PR workflow still precede deployment.
+# Never an exception for the dev-env agent or its Jobs. The NVIDIA power-limit
+# ioctl needs SYS_ADMIN, which is broader than power management. Limit this to
+# the startup-only setter for Card B; the server and read-only gate get no waiver.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: pss-baseline-llama-card-b-power-cap
+  namespace: kyverno
+spec:
+  exceptions:
+    - policyName: pod-security-baseline
+      ruleNames: [baseline, autogen-baseline]
+  match:
+    any:
+      - resources:
+          kinds: [Pod, Deployment, ReplicaSet]
+          namespaces: [ai]
+          names: [llama-server, llama-server-*]
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: llama-server
+  conditions:
+    all:
+      - key: '{{ (request.object.spec.template.spec || request.object.spec).nodeSelector."kubernetes.io/hostname" || '''' }}'
+        operator: Equals
+        value: talosw04
+      - key: '{{ (request.object.spec.template.spec || request.object.spec).automountServiceAccountToken }}'
+        operator: Equals
+        value: false
+      - key: "{{ (request.object.spec.template.spec || request.object.spec).initContainers[?contains(securityContext.capabilities.add || `[]`, 'SYS_ADMIN')].name }}"
+        operator: Equals
+        value: [power-cap]
+      - key: "{{ (request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0].env[?name == 'NVIDIA_VISIBLE_DEVICES'].value }}"
+        operator: Equals
+        value: [GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b]
+      - key: "{{ (request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0].restartPolicy || '' }}"
+        operator: Equals
+        value: ""
+      - key: "{{ (request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0].command }}"
+        operator: Equals
+        value: [/bin/sh, -c]
+      # No mutable mounted code: bind the one inline program to reviewed bytes.
+      - key: "{{ length(((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).args || `[]`) }}"
+        operator: Equals
+        value: 1
+      - key: "{{ sha256(((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).args[0] || '') }}"
+        operator: Equals
+        value: 2eb172c5bc6b7d3526e0c9f93fde99cf63a36c4dae79c1e8685cbb4f1babf894
+      - key: "{{ length(((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).volumeMounts || `[]`) }}"
+        operator: Equals
+        value: 0
+      - key: "{{ length(((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).envFrom || `[]`) }}"
+        operator: Equals
+        value: 0
+      - key: "{{ sort(((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).env[].name) }}"
+        operator: Equals
+        value: [NVIDIA_DRIVER_CAPABILITIES, NVIDIA_VISIBLE_DEVICES, POD_NODE_NAME]
+      - key: "{{ ((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).env[?name == 'NVIDIA_DRIVER_CAPABILITIES'].value }}"
+        operator: Equals
+        value: [utility]
+      - key: "{{ ((request.object.spec.template.spec || request.object.spec).initContainers[?name == 'power-cap'] | [0]).env[?name == 'POD_NODE_NAME'].valueFrom.fieldRef.fieldPath }}"
+        operator: Equals
+        value: [spec.nodeName]
+  podSecurity:
+    - controlName: Capabilities
+      images:
+        - ghcr.io/ggml-org/llama.cpp:server-cuda-b11096@sha256:0192ab2545efcbe79c240645e34abd8fffbe4813aedcef5a0e3a886ef6d6d82f
+      restrictedField: spec.initContainers[*].securityContext.capabilities.add
+      values: [SYS_ADMIN]
