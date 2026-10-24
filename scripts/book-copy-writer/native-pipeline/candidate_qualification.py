@@ -1,14 +1,18 @@
-"""Candidate image qualification separate from the frozen signed runtime.
+"""Candidate image qualification separate from the frozen runtime.
 
 Frozen pins stay the historical contract. A candidate proves itself by
-comparing reviewed source bytes with measured image bytes. Local image ID,
-archive SHA-256, registry digest, and signature are different states.
+comparing reviewed source bytes with measured image bytes. The signature
+field on the frozen manifest is the pinned receipt; this module does not
+re-verify it. Local image ID, archive SHA-256, registry digest, and
+signature are different states.
 """
 import argparse
 import hashlib
 import importlib.metadata
 import json
 import os
+import stat
+import subprocess
 from pathlib import Path
 import sys
 
@@ -36,6 +40,16 @@ FROZEN_MODULES = {
     'proof_transport.py': '096ba710805623638b87d8c31f6be2653fe57ae0377bf35a27dabf014755e8a5',
 }
 MAIN_ONLY = "github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"
+PUBLISH_IF = 'if: ' + MAIN_ONLY
+KNOWN_EVENTS = ('pull_request', 'push', 'workflow_dispatch')
+COPY_SOURCE_PATHS = (
+    'scripts/book-copy-writer/requirements.txt',
+    'kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert/epub_copies.py',
+    'kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert/epub_metadata.py',
+    'scripts/book-copy-writer/book_copy_writer.py',
+    'scripts/book-copy-writer/bound_census.py',
+    'scripts/book-copy-writer/proof_transport.py',
+)
 
 
 class QualificationRefused(Exception):
@@ -48,6 +62,55 @@ class FrozenRuntimeDependency(QualificationRefused):
 
 def sha256_file(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _is_within(path, root):
+    try:
+        Path(path).relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_sha(value):
+    return isinstance(value, str) and len(value) == 40 and all(char in '0123456789abcdef' for char in value)
+
+
+def _git(repo, *args, check=True):
+    result = subprocess.run(
+        ['git', '-C', str(repo), *args], check=False, capture_output=True, text=True)
+    if check and result.returncode != 0:
+        raise QualificationRefused('git %s failed: %s' % (' '.join(args), result.stderr.strip()))
+    return result
+
+
+def join_pip_logical_lines(requirements_text):
+    """Join a physical line ending in ``\\`` with the next line and drop that backslash.
+
+    A comment line does not continue. Callers strip ``#`` comments on the
+    logical line afterwards. This is the line join pip uses for requirements,
+    not a new dependency resolver.
+    """
+    logical = []
+    pending = ''
+    open_continuation = False
+    for raw in requirements_text.splitlines():
+        current = pending + raw if open_continuation else raw
+        continues = raw.endswith('\\') and not raw.lstrip().startswith('#')
+        if continues:
+            pending = current[:-1]
+            open_continuation = True
+            continue
+        logical.append(current)
+        pending = ''
+        open_continuation = False
+    if open_continuation:
+        logical.append(pending)
+    return logical
+
+
+def requirement_line(logical):
+    return logical.split('#', 1)[0].strip()
 
 
 def refuse_rewritten_frozen_contract():
@@ -101,9 +164,11 @@ def resolve_frozen_paths(environ=None, candidate_present=None):
     present = Path('/copy-writer').is_dir() if candidate_present is None else candidate_present
     if present:
         raise FrozenRuntimeDependency(
-            'frozen signed runtime %s was not mounted; no candidate fallback' % FROZEN_IMAGE)
+            'frozen runtime %s was not mounted; pinned signature receipt %s is not re-verified here; no candidate fallback'
+            % (FROZEN_IMAGE, FROZEN_SIGNATURE))
     raise FrozenRuntimeDependency(
-        'frozen signed runtime %s is not mounted; no candidate fallback' % FROZEN_IMAGE)
+        'frozen runtime %s is not mounted; pinned signature receipt %s is not re-verified here; no candidate fallback'
+        % (FROZEN_IMAGE, FROZEN_SIGNATURE))
 
 
 def qualify_frozen_runtime(paths, image_ref):
@@ -113,7 +178,7 @@ def qualify_frozen_runtime(paths, image_ref):
         path = Path(paths[name])
         if not path.is_file():
             raise FrozenRuntimeDependency(
-                'frozen signed runtime %s is missing %s; no candidate fallback' % (image_ref, name))
+                'frozen runtime %s is missing %s; no candidate fallback' % (image_ref, name))
         measured[name] = sha256_file(path)
         if measured[name] != pins.MODULES[name]:
             raise QualificationRefused(
@@ -126,10 +191,16 @@ def qualify_frozen_runtime(paths, image_ref):
         'archive_sha256': None,
         'registry_digest': image_ref.split('@', 1)[1],
         'signature_sha256': pins.IMAGE_RECEIPT_SHA256,
+        'signature_receipt_reverified': False,
         'source_sha': pins.IMAGE_SOURCE,
         'admitted_runtime': True,
         'modules': measured,
     }
+
+
+def _refuse_leaf_symlink(path):
+    if Path(path).is_symlink():
+        raise QualificationRefused('reviewed source module is a symlink: %s' % path)
 
 
 def reviewed_source_path(name):
@@ -137,9 +208,11 @@ def reviewed_source_path(name):
         extra = os.environ.get('COPY_TEST_MODULES')
         if extra:
             mounted = Path(extra) / name
+            _refuse_leaf_symlink(mounted)
             if mounted.is_file():
                 return mounted
     path = pins.module_source(name)
+    _refuse_leaf_symlink(path)
     if path.is_file():
         return path
     raise QualificationRefused('reviewed source module is missing: %s' % name)
@@ -147,8 +220,8 @@ def reviewed_source_path(name):
 
 def typing_extensions_marker(requirements_text):
     found = None
-    for raw in requirements_text.splitlines():
-        line = raw.split('#', 1)[0].strip()
+    for logical in join_pip_logical_lines(requirements_text):
+        line = requirement_line(logical)
         if not line.startswith('typing-extensions==') and not line.startswith('typing_extensions=='):
             continue
         if ';' not in line:
@@ -176,8 +249,8 @@ def evaluate_python_version_marker(marker, python_version):
 
 def required_distributions(requirements_text):
     found = {}
-    for raw in requirements_text.splitlines():
-        line = raw.split('#', 1)[0].strip()
+    for logical in join_pip_logical_lines(requirements_text):
+        line = requirement_line(logical)
         if not line:
             continue
         body = line.split('--hash', 1)[0].strip()
@@ -228,7 +301,10 @@ def distribution_report(measured_in_image):
             installed.append({'name': name, 'version': dist.version})
     installed.sort(key=lambda item: item['name'].lower())
     version = sys.version.split()[0]
-    requirements = Path('/copy-writer/requirements.txt').read_text() if Path('/copy-writer/requirements.txt').is_file() else reviewed_source_path('requirements.txt').read_text()
+    requirements_path = Path('/copy-writer/requirements.txt')
+    if requirements_path.is_symlink():
+        raise QualificationRefused('image requirements.txt is a symlink: %s' % requirements_path)
+    requirements = requirements_path.read_text() if requirements_path.is_file() else reviewed_source_path('requirements.txt').read_text()
     marker = typing_extensions_marker(requirements)
     return {
         'measured_in_image': True,
@@ -263,17 +339,75 @@ def assert_distinct_candidate_identity(local_image_id, archive_sha256, registry_
         raise QualificationRefused('mixed candidate/frozen manifest: local image ID is the frozen registry digest')
 
 
+def default_reviewed_roots():
+    roots = []
+    extra = os.environ.get('COPY_TEST_MODULES')
+    if extra:
+        roots.append(Path(extra))
+    roots.append(pins.HERE.parent)
+    epub = pins.REPO / 'kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert'
+    if epub.is_dir():
+        roots.append(epub)
+    packaged = pins.HERE / 'runtime-modules'
+    if packaged.is_dir():
+        roots.append(packaged)
+    return roots
+
+
+def _assert_regular_leaf(path, role):
+    try:
+        mode = os.lstat(path).st_mode
+    except OSError as exc:
+        raise QualificationRefused('candidate is missing module %s' % path) from exc
+    if stat.S_ISLNK(mode):
+        raise QualificationRefused('%s is a symlink: %s' % (role, path))
+    if not stat.S_ISREG(mode):
+        raise QualificationRefused('%s is not a regular file: %s' % (role, path))
+
+
+def assert_independent_module(source, image, image_root, reviewed_roots):
+    source = Path(source)
+    image = Path(image)
+    image_root_real = Path(image_root).resolve()
+    roots = [Path(root).resolve() for root in reviewed_roots]
+    if not roots:
+        raise QualificationRefused('no reviewed roots were declared')
+    for root in roots:
+        if root == image_root_real or _is_within(root, image_root_real) or _is_within(image_root_real, root):
+            raise QualificationRefused('reviewed root %s is not independent of image root %s' % (root, image_root_real))
+    if source.is_symlink() or not source.exists():
+        if source.is_symlink():
+            raise QualificationRefused('reviewed source is a symlink: %s' % source)
+        raise QualificationRefused('candidate is missing module %s' % source.name)
+    if image.is_symlink() or not image.exists():
+        if image.is_symlink():
+            raise QualificationRefused('image file is a symlink: %s' % image)
+        raise QualificationRefused('candidate is missing module %s' % image.name)
+    _assert_regular_leaf(source, 'reviewed source')
+    _assert_regular_leaf(image, 'image file')
+    source_real = source.resolve()
+    image_real = image.resolve()
+    if not any(_is_within(source_real, root) for root in roots):
+        raise QualificationRefused('reviewed source %s is outside the declared reviewed roots' % source_real)
+    if _is_within(source_real, image_root_real) or source_real == image_real:
+        raise QualificationRefused('reviewed source %s resolves inside the image root' % source_real)
+    if any(_is_within(image_real, root) for root in roots):
+        raise QualificationRefused('image file %s resolves inside a reviewed root' % image_real)
+
+
 def qualify_candidate(source_paths, image_root, source_sha, local_image_id, archive_sha256,
-                      registry_digest=None, signature_sha256=None, reviewed_source_sha=None, measure_interpreter=False):
+                      registry_digest=None, signature_sha256=None, reviewed_source_sha=None,
+                      measure_interpreter=False, reviewed_roots=None):
     validate_source_sha(source_sha, reviewed_source_sha)
     assert_distinct_candidate_identity(local_image_id, archive_sha256, registry_digest, signature_sha256)
     image_root = Path(image_root)
+    if reviewed_roots is None:
+        reviewed_roots = default_reviewed_roots()
     modules = {}
     for name in MODULE_NAMES:
         source = Path(source_paths[name])
         image = image_root / name
-        if not source.is_file() or not image.is_file():
-            raise QualificationRefused('candidate is missing module %s' % name)
+        assert_independent_module(source, image, image_root, reviewed_roots)
         source_sha256 = sha256_file(source)
         image_sha256 = sha256_file(image)
         if source_sha256 != image_sha256:
@@ -298,12 +432,13 @@ def qualify_candidate(source_paths, image_root, source_sha, local_image_id, arch
     return manifest
 
 
-def verify_reported_manifest(manifest, source_paths, image_root):
+def verify_reported_manifest(manifest, source_paths, image_root, reviewed_roots=None):
     if manifest.get('kind') != 'candidate-qualification':
         raise QualificationRefused('reported manifest is not a candidate qualification')
     fresh = qualify_candidate(
         source_paths, image_root, manifest['source_sha'], manifest['local_image_id'], manifest['archive_sha256'],
-        manifest.get('registry_digest'), manifest.get('signature_sha256'), measure_interpreter=False)
+        manifest.get('registry_digest'), manifest.get('signature_sha256'), measure_interpreter=False,
+        reviewed_roots=reviewed_roots)
     for name in MODULE_NAMES:
         reported = manifest['modules'][name]
         if reported != fresh['modules'][name]:
@@ -331,21 +466,43 @@ def workflow_path():
     return path
 
 
+def _workflow_triggers(header):
+    if header.count('\non:\n') != 1 and not header.startswith('on:\n'):
+        raise QualificationRefused('workflow trigger block is not singular')
+    on_block = header.split('on:', 1)[1]
+    for stopper in ('\nconcurrency:\n', '\npermissions:\n', '\njobs:\n'):
+        if stopper in on_block:
+            on_block = on_block.split(stopper, 1)[0]
+            break
+    triggers = []
+    for line in on_block.splitlines():
+        if line.startswith('  ') and not line.startswith('   ') and ':' in line:
+            triggers.append(line.strip().split(':', 1)[0])
+    return triggers
+
+
 def assert_publication_gate(workflow_text):
     if 'pull_request_target' in workflow_text:
         raise QualificationRefused('workflow grants pull_request_target')
     if '\n  validate:\n' not in workflow_text or '\n  publish:\n' not in workflow_text:
         raise QualificationRefused('validate and publish jobs are required')
     header, rest = workflow_text.split('\njobs:\n', 1)
-    if 'contents: read\n' not in header:
+    if _workflow_triggers(header) != ['pull_request', 'push', 'workflow_dispatch']:
+        raise QualificationRefused('workflow trigger is not allowed')
+    if header.count('permissions:') != 1:
+        raise QualificationRefused('workflow permissions changed')
+    perm_lines = [line.strip() for line in header.split('permissions:', 1)[1].splitlines() if line.strip()]
+    if perm_lines != ['contents: read']:
         raise QualificationRefused('workflow permissions changed')
     if not rest.startswith('  validate:\n'):
         raise QualificationRefused('validate job is required')
     validate, publish = rest[len('  validate:\n'):].split('\n  publish:\n', 1)
+    if 'continue-on-error' in validate:
+        raise QualificationRefused('validate continue-on-error')
     if 'packages:' in validate or 'id-token:' in validate:
         raise QualificationRefused('validate job permission increase')
     markers = (
-        'Qualify the frozen signed runtime by immutable digest',
+        'Qualify the frozen runtime by immutable digest and pinned signature receipt',
         'Record the candidate archive SHA without publishing',
         'Verify coherent closed native pipeline source dependencies without a network',
         'Upload the validated image artifact',
@@ -359,8 +516,9 @@ def assert_publication_gate(workflow_text):
     if positions != sorted(positions):
         raise QualificationRefused('frozen and candidate qualification do not gate publication')
     closure = validate[positions[2]:positions[3]]
-    for token in ('FROZEN_RUNTIME_DIR', 'FROZEN_IMAGE_REF', 'CANDIDATE_SOURCE_SHA',
-                  'CANDIDATE_LOCAL_IMAGE_ID', 'CANDIDATE_ARCHIVE_SHA256', 'CANDIDATE_REVIEWED_SHA',
+    for token in ('FROZEN_RUNTIME_DIR', 'FROZEN_IMAGE_REF', 'FROZEN_LOCAL_IMAGE_ID',
+                  'CANDIDATE_SOURCE_SHA', 'CANDIDATE_LOCAL_IMAGE_ID', 'CANDIDATE_ARCHIVE_SHA256',
+                  'CANDIDATE_EVENT_SHA', 'CANDIDATE_PR_HEAD_SHA', 'CANDIDATE_PR_BASE_SHA',
                   'BOOK_COPY_WORKFLOW'):
         if token not in closure:
             raise QualificationRefused('closure step does not receive %s' % token)
@@ -372,7 +530,8 @@ def assert_publication_gate(workflow_text):
         raise QualificationRefused('publish rebuilds or re-saves the image')
     if 'needs: validate' not in publish:
         raise QualificationRefused('publish does not need validate')
-    if MAIN_ONLY not in publish or MAIN_ONLY not in validate[positions[3]:]:
+    publish_if = next((line.strip() for line in publish.splitlines() if line.strip().startswith('if:')), '')
+    if publish_if != PUBLISH_IF or MAIN_ONLY not in validate[positions[3]:]:
         raise QualificationRefused('publication or archive transfer is not main-only')
     if 'docker load --input' not in publish or 'sha256sum' not in publish:
         raise QualificationRefused('publish does not load the exact validated archive')
@@ -380,6 +539,62 @@ def assert_publication_gate(workflow_text):
     lines = [line.strip() for line in permissions.splitlines() if line.strip()]
     if lines != ['contents: read', 'packages: write', 'id-token: write']:
         raise QualificationRefused('publish permissions changed: %s' % lines)
+
+
+def assert_clean_copy_sources(repo, paths=COPY_SOURCE_PATHS):
+    """Refuse dirty bytes for the Dockerfile COPY sources labelled by HEAD."""
+    repo = Path(repo)
+    for rel in paths:
+        work = repo / rel
+        if work.is_symlink() or not work.is_file():
+            raise QualificationRefused('COPY source is not a clean regular file: %s' % rel)
+        blob = _git(repo, 'rev-parse', 'HEAD:%s' % rel).stdout.strip()
+        hashed = _git(repo, 'hash-object', '--', rel).stdout.strip()
+        if blob != hashed:
+            raise QualificationRefused('COPY source %s bytes differ from HEAD' % rel)
+    diff = _git(repo, 'diff', '--quiet', 'HEAD', '--', *paths, check=False)
+    if diff.returncode != 0:
+        detail = (diff.stdout or diff.stderr).strip()
+        raise QualificationRefused('COPY sources differ from HEAD%s' % ((': ' + detail) if detail else ''))
+    status = _git(repo, 'status', '--porcelain', '--untracked-files=no', '--', *paths).stdout
+    if status.strip():
+        raise QualificationRefused('COPY sources are dirty: %s' % status.strip())
+
+
+def bind_checkout_identity(repo, event_name, event_sha, pr_head_sha='', pr_base_sha=''):
+    """Bind checkout HEAD to the event SHA, and a PR merge to its real head.
+
+    On pull_request, GITHUB_SHA is the synthetic merge commit. The pull request
+    head is recorded separately and must be HEAD^2; the base must be HEAD^1.
+    """
+    if event_name not in KNOWN_EVENTS:
+        raise QualificationRefused('unsupported checkout event %r' % (event_name,))
+    if not _is_sha(event_sha):
+        raise QualificationRefused('event SHA must be the exact 40-character checkout commit')
+    head = _git(repo, 'rev-parse', 'HEAD').stdout.strip()
+    if head != event_sha:
+        raise QualificationRefused('checkout HEAD does not match the event SHA')
+    pr_head_sha = pr_head_sha or ''
+    pr_base_sha = pr_base_sha or ''
+    if event_name == 'pull_request':
+        if not _is_sha(pr_head_sha) or not _is_sha(pr_base_sha):
+            raise QualificationRefused('pull request head and base SHAs must be recorded separately from the event SHA')
+        parent1 = _git(repo, 'rev-parse', 'HEAD^1').stdout.strip()
+        parent2 = _git(repo, 'rev-parse', 'HEAD^2').stdout.strip()
+        if parent1 != pr_base_sha:
+            raise QualificationRefused('merge parent HEAD^1 does not match the pull request base')
+        if parent2 != pr_head_sha:
+            raise QualificationRefused('merge parent HEAD^2 does not match the pull request head')
+        if pr_head_sha == event_sha:
+            raise QualificationRefused('pull request head SHA collapsed into the synthetic event SHA')
+    elif pr_head_sha or pr_base_sha:
+        raise QualificationRefused('pull request head SHA is only meaningful for pull_request')
+    return {
+        'event_sha': event_sha,
+        'head_sha': head,
+        'pr_head_sha': pr_head_sha or None,
+        'pr_base_sha': pr_base_sha or None,
+    }
 
 
 def main(argv=None):
@@ -394,13 +609,25 @@ def main(argv=None):
     identity = sub.add_parser('check-identity')
     identity.add_argument('--local-image-id', required=True)
     identity.add_argument('--archive-sha256', required=True)
+    sub.add_parser('check-copy-sources')
+    sub.add_parser('check-event-binding')
     args = parser.parse_args(argv)
     if args.cmd == 'check-ref':
         assert_immutable_frozen_ref(args.ref)
     elif args.cmd == 'check-pulled':
         assert_pulled_frozen(args.ref, json.loads(args.repo_digests), args.image_id)
-    else:
+    elif args.cmd == 'check-identity':
         assert_distinct_candidate_identity(args.local_image_id, args.archive_sha256, None, None)
+    elif args.cmd == 'check-copy-sources':
+        assert_clean_copy_sources(Path.cwd())
+    else:
+        bound = bind_checkout_identity(
+            Path.cwd(), os.environ.get('EVENT_NAME', ''), os.environ.get('GITHUB_SHA', ''),
+            os.environ.get('PR_HEAD_SHA', ''), os.environ.get('PR_BASE_SHA', ''))
+        sys.stdout.write('CANDIDATE_EVENT_SHA=%s\n' % bound['event_sha'])
+        if bound['pr_head_sha']:
+            sys.stdout.write('CANDIDATE_PR_HEAD_SHA=%s\n' % bound['pr_head_sha'])
+            sys.stdout.write('CANDIDATE_PR_BASE_SHA=%s\n' % bound['pr_base_sha'])
     return 0
 
 

@@ -537,6 +537,8 @@ class PipelineCases(unittest.TestCase):
             'measure_interpreter': False,
         }
         values.update(overrides)
+        if 'reviewed_roots' not in overrides:
+            values['reviewed_roots'] = [Path(next(iter(paths.values()))).parent]
         return qualification.qualify_candidate(**values)
 
     def test_candidate_matches_reviewed_source_and_records_distinct_identity(self):
@@ -548,9 +550,14 @@ class PipelineCases(unittest.TestCase):
                 os.environ['CANDIDATE_LOCAL_IMAGE_ID'], os.environ['CANDIDATE_ARCHIVE_SHA256'],
                 os.environ.get('CANDIDATE_REGISTRY_DIGEST') or None,
                 os.environ.get('CANDIDATE_SIGNATURE_SHA256') or None,
-                reviewed_source_sha=os.environ['CANDIDATE_REVIEWED_SHA'], measure_interpreter=True)
+                reviewed_source_sha=os.environ['CANDIDATE_EVENT_SHA'], measure_interpreter=True)
             self.assertEqual(manifest['source_sha'], os.environ['CANDIDATE_SOURCE_SHA'])
-            self.assertEqual(manifest['source_sha'], os.environ['CANDIDATE_REVIEWED_SHA'])
+            self.assertEqual(manifest['source_sha'], os.environ['CANDIDATE_EVENT_SHA'])
+            pr_head = os.environ.get('CANDIDATE_PR_HEAD_SHA') or ''
+            if pr_head:
+                self.assertRegex(pr_head, '^[0-9a-f]{40}$')
+                self.assertNotEqual(pr_head, manifest['source_sha'])
+            self.assertRegex(os.environ['FROZEN_LOCAL_IMAGE_ID'], '^sha256:[0-9a-f]{64}$')
             report = manifest['distribution_measurement']
             pinned = qualification.pinned_interpreter((HERE.parent / 'Dockerfile').read_text())
             self.assertTrue(report['interpreter'].startswith(pinned))
@@ -602,14 +609,15 @@ class PipelineCases(unittest.TestCase):
             manifest = self._qualify(paths, image)
             reported = json.loads(json.dumps(manifest))
             reported['modules']['epub_copies.py']['image_sha256'] = 'c' * 64
+            roots = [next(iter(paths.values())).parent]
             with self.assertRaisesRegex(qualification.QualificationRefused, 'independently measured'):
-                qualification.verify_reported_manifest(reported, paths, image)
+                qualification.verify_reported_manifest(reported, paths, image, reviewed_roots=roots)
             manifest['admitted_runtime'] = True
             with self.assertRaisesRegex(qualification.QualificationRefused, 'mixed candidate/frozen manifest'):
                 qualification.refuse_mixed_manifest(manifest)
             (image / 'requirements.txt').write_bytes(b'tampered-after-report\n')
             with self.assertRaisesRegex(qualification.QualificationRefused, 'does not match image'):
-                qualification.verify_reported_manifest(manifest, paths, image)
+                qualification.verify_reported_manifest(manifest, paths, image, reviewed_roots=roots)
 
     def test_candidate_does_not_import_frozen_module_hashes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -688,6 +696,184 @@ class PipelineCases(unittest.TestCase):
             qualification.assert_publication_gate(workflow + '\npull_request_target: {}\n')
         with self.assertRaisesRegex(qualification.QualificationRefused, 'rebuilds'):
             qualification.assert_publication_gate(workflow.replace('docker load --input', 'docker build .\ndocker load --input', 1))
+        self.assertNotIn('CANDIDATE_REVIEWED_SHA', workflow)
+        self.assertIn('check-copy-sources', workflow)
+        self.assertIn('check-event-binding', workflow)
+        self.assertIn('pinned signature receipt is not re-verified in this CI', workflow)
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'workflow permissions changed'):
+            qualification.assert_publication_gate(workflow.replace('  contents: read\n', '  contents: read\n  packages: write\n', 1))
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'validate continue-on-error'):
+            qualification.assert_publication_gate(workflow.replace(
+                '    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    continue-on-error: true\n', 1))
+        widened = workflow.replace(
+            '  publish:\n    name: Publish validated copy writer\n    needs: validate\n    if: ' + qualification.MAIN_ONLY,
+            '  publish:\n    name: Publish validated copy writer\n    needs: validate\n    if: always()  # ' + qualification.MAIN_ONLY,
+            1)
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'not main-only'):
+            qualification.assert_publication_gate(widened)
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'workflow trigger is not allowed'):
+            qualification.assert_publication_gate(workflow.replace(
+                '  workflow_dispatch: {}',
+                '  workflow_run:\n    workflows: [Book Copy Writer]\n  workflow_dispatch: {}', 1))
+
+    def test_pr3626_logical_lines_join_and_base_head_refuses_same_bytes(self):
+        payload = (HERE / 'fixtures' / 'pr3626-requirements-5c1b9888.txt').read_bytes()
+        self.assertEqual(hashlib.sha256(payload).hexdigest(),
+                         '5c1b98883689d0213c1680766569a2e78b5b85550828894256f07047e2652472')
+        self.assertNotEqual(hashlib.sha256(payload).hexdigest(), qualification.FROZEN_MODULES['requirements.txt'])
+        self.assertEqual(qualification.FROZEN_MODULES['requirements.txt'],
+                         '830451570988c97907965090ff7d83b327681336527f6f06dc92d0c74411becc')
+        self.assertTrue(qualification.FROZEN_IMAGE.endswith(
+            '628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601'))
+        self.assertEqual(qualification.FROZEN_SOURCE, 'daa542a395eb508de6bbeb2a7430e63aa3454b6e')
+        self.assertEqual(qualification.FROZEN_SIGNATURE, 'ee882db8feb49ff1510700a415d6635b33850ab0e1f6c76c0825775652818183')
+        text = payload.decode()
+        table = qualification.marker_table(text)
+        self.assertEqual(table['marker'], 'python_version < "3.13"')
+        self.assertNotIn('\\', table['marker'])
+        self.assertEqual(table['selects'], {'3.12': True, '3.13': False, '3.14': False, '3.14.2': False})
+        self.assertFalse(table['marker_is_binary_proof'])
+        parsed = qualification.required_distributions(text)
+        self.assertEqual(parsed['psycopg'], {'version': '3.3.6', 'marker': None})
+        self.assertEqual(parsed['psycopg-binary'], {
+            'version': '3.3.6', 'marker': None})
+        self.assertEqual(parsed['typing-extensions'], {
+            'version': '4.16.0', 'marker': 'python_version < "3.13"'})
+        dangling = 'typing-extensions==4.16.0; python_version < "3.13" \\ --hash=sha256:' + ('ab' * 32) + '\n'
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'unsupported requirement marker'):
+            qualification.marker_table(dangling)
+        commented = '# typing-extensions==4.16.0; python_version < "3.13" \\\npsycopg==3.3.6\n'
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'typing-extensions requirement is absent'):
+            qualification.typing_extensions_marker(commented)
+        preserved = '# note \\\ntyping-extensions==4.16.0; python_version < "3.13"\n'
+        self.assertEqual(qualification.typing_extensions_marker(preserved), 'python_version < "3.13"')
+        repo = HERE.parent.parent.parent
+        if not (repo / '.git').exists():
+            return
+        old = base_parser(repo)
+        with self.assertRaisesRegex(old['QualificationRefused'], 'unsupported requirement marker'):
+            old['marker_table'](text)
+        self.assertIn('\\', old['required_distributions'](text)['typing-extensions']['marker'])
+
+    def test_independent_regular_files_refuse_symlink_and_shared_roots(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('COPY_TEST_MODULES', None)
+            with tempfile.TemporaryDirectory() as directory:
+                image = Path(directory) / 'image'
+                image.mkdir()
+                paths = {}
+                for name in qualification.MODULE_NAMES:
+                    source = qualification.reviewed_source_path(name)
+                    self.assertFalse(Path(source).is_symlink())
+                    paths[name] = source
+                    (image / name).write_bytes(Path(source).read_bytes())
+                manifest = qualification.qualify_candidate(
+                    paths, image, 'a' * 40, 'sha256:' + ('1' * 64), '2' * 64)
+                self.assertEqual(manifest['modules']['requirements.txt']['source_sha256'],
+                                 qualification.sha256_file(paths['requirements.txt']))
+                linked = image / 'requirements.txt'
+                linked.unlink()
+                linked.symlink_to(paths['requirements.txt'])
+                with self.assertRaisesRegex(qualification.QualificationRefused, 'symlink'):
+                    qualification.qualify_candidate(paths, image, 'a' * 40, 'sha256:' + ('1' * 64), '2' * 64)
+                reviewed = Path(directory) / 'reviewed'
+                reviewed.mkdir()
+                for name in qualification.MODULE_NAMES:
+                    (reviewed / name).write_bytes(Path(paths[name]).read_bytes())
+                source_link = reviewed / 'epub_copies.py'
+                source_link.unlink()
+                source_link.symlink_to(image / 'epub_copies.py')
+                linked_paths = {name: reviewed / name for name in qualification.MODULE_NAMES}
+                with self.assertRaisesRegex(qualification.QualificationRefused, 'symlink'):
+                    qualification.qualify_candidate(
+                        linked_paths, image, 'a' * 40, 'sha256:' + ('1' * 64), '2' * 64, reviewed_roots=[reviewed])
+                same = {name: image / name for name in qualification.MODULE_NAMES}
+                with self.assertRaisesRegex(qualification.QualificationRefused, 'not independent of image root'):
+                    qualification.qualify_candidate(
+                        same, image, 'a' * 40, 'sha256:' + ('1' * 64), '2' * 64, reviewed_roots=[image])
+                nested = reviewed / 'nested-image'
+                nested.mkdir()
+                for name in qualification.MODULE_NAMES:
+                    if name == 'epub_copies.py':
+                        (nested / name).write_bytes(Path(paths[name]).read_bytes())
+                    else:
+                        (nested / name).write_bytes((reviewed / name).read_bytes())
+                with self.assertRaisesRegex(qualification.QualificationRefused, 'not independent of image root'):
+                    qualification.qualify_candidate(
+                        {name: reviewed / name for name in qualification.MODULE_NAMES}, nested,
+                        'a' * 40, 'sha256:' + ('1' * 64), '2' * 64, reviewed_roots=[reviewed])
+                outside_paths, outside_image = self._candidate_trees(str(Path(directory) / 'outside'))
+                with self.assertRaisesRegex(qualification.QualificationRefused, 'outside the declared reviewed roots'):
+                    qualification.qualify_candidate(
+                        outside_paths, outside_image, 'a' * 40, 'sha256:' + ('1' * 64), '2' * 64)
+
+    def test_event_sha_binds_pull_request_head_and_dirty_copy_sources_fail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            rel = qualification.COPY_SOURCE_PATHS[0]
+            git = ['git', '-C', str(repo), '-c', 'user.email=isolated@example.invalid',
+                   '-c', 'user.name=isolated', '-c', 'commit.gpgsign=false']
+            subprocess.run(['git', '-C', str(repo), 'init', '-b', 'main'], check=True, capture_output=True)
+            self._git_commit(git, repo, rel, 'base\n', 'base')
+            base = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+            qualification.assert_clean_copy_sources(repo, paths=(rel,))
+            bound = qualification.bind_checkout_identity(repo, 'push', base)
+            self.assertEqual(bound['head_sha'], base)
+            self.assertIsNone(bound['pr_head_sha'])
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'only meaningful for pull_request'):
+                qualification.bind_checkout_identity(repo, 'push', base, pr_head_sha='b' * 40, pr_base_sha='c' * 40)
+            subprocess.run(git + ['checkout', '-b', 'feature'], check=True, capture_output=True)
+            self._git_commit(git, repo, rel, 'feature\n', 'feature')
+            feature = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+            subprocess.run(git + ['checkout', 'main'], check=True, capture_output=True)
+            subprocess.run(git + ['merge', '--no-ff', '-m', 'merge feature', 'feature'], check=True, capture_output=True)
+            merge = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+            self.assertEqual(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD^1'], text=True).strip(), base)
+            self.assertEqual(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD^2'], text=True).strip(), feature)
+            bound = qualification.bind_checkout_identity(repo, 'pull_request', merge, feature, base)
+            self.assertEqual(bound['event_sha'], merge)
+            self.assertEqual(bound['pr_head_sha'], feature)
+            self.assertNotEqual(bound['pr_head_sha'], bound['event_sha'])
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'HEAD\\^2'):
+                qualification.bind_checkout_identity(repo, 'pull_request', merge, 'd' * 40, base)
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'checkout HEAD does not match'):
+                qualification.bind_checkout_identity(repo, 'pull_request', base, feature, base)
+            (repo / rel).write_text('dirty\n')
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'differ from HEAD'):
+                qualification.assert_clean_copy_sources(repo, paths=(rel,))
+            subprocess.run(git + ['checkout', '--', rel], check=True, capture_output=True)
+            qualification.assert_clean_copy_sources(repo, paths=(rel,))
+            stray = repo / 'untracked.txt'
+            stray.write_text('ignored\n')
+            qualification.assert_clean_copy_sources(repo, paths=(rel,))
+
+    def _git_commit(self, git, repo, rel, content, message):
+        path = repo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        subprocess.run(git + ['add', '--', rel], check=True, capture_output=True)
+        subprocess.run(git + ['commit', '-m', message], check=True, capture_output=True)
+
+
+def base_parser(repo):
+    source = subprocess.check_output(
+        ['git', '-C', str(repo), 'show',
+         '9435327c2922ae1560fb6b6bcef6e7c745eb7fa1:scripts/book-copy-writer/native-pipeline/candidate_qualification.py'],
+        text=True)
+    tree = ast.parse(source)
+    chunks = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            names = [target.id for target in node.targets if isinstance(target, ast.Name)]
+            if 'MARKER_VERSIONS' in names:
+                chunks.append(ast.get_source_segment(source, node))
+        elif isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in {
+                'QualificationRefused', 'typing_extensions_marker', 'evaluate_python_version_marker',
+                '_version_pair', 'required_distributions', 'marker_table'}:
+            chunks.append(ast.get_source_segment(source, node))
+    namespace = {}
+    exec(compile('\n\n'.join(chunks), 'base-candidate-qualification.py', 'exec'), namespace)
+    return namespace
 
 
 def assignments_from_source(source):
