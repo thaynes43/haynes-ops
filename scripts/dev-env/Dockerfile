@@ -64,7 +64,7 @@ ARG TALOSCTL_VERSION=v1.14.4
 # which stay API-compatible with nearby omnictl versions. renovate: datasource=github-releases depName=siderolabs/omni
 ARG OMNICTL_VERSION=v1.12.4
 # renovate: datasource=github-releases depName=coder/code-server extractVersion=^v(?<version>.+)$
-ARG CODE_SERVER_VERSION=4.141.1
+ARG CODE_SERVER_VERSION=4.143.1
 # renovate: datasource=github-releases depName=astral-sh/uv
 ARG UV_VERSION=0.13.5
 # ── claude-code ── NOTE: this prose sits ABOVE the `# renovate:` line ON PURPOSE.
@@ -97,7 +97,7 @@ ARG UV_VERSION=0.13.5
 # load-bearing: Sonnet 5.5 is the subagent tier for routine coding and tests in
 # config/claude/CLAUDE.md, and it has an agent-run picker row.
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.309
+ARG CLAUDE_CODE_VERSION=2.1.310
 # Codex is installed at BOOT as the managed STANDALONE (dev-init.sh), not via npm —
 # only the standalone can run `codex remote-control`. This pins that standalone
 # version; @openai/codex npm releases track the same numbers as the rust-v* GitHub
