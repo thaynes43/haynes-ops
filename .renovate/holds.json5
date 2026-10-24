@@ -183,6 +183,27 @@
       matchFileNames: ['.github/workflows/book-copy-window-test.yml'],
       allowedVersions: '/^3\\.12(?:\\.\\d+)?$/',
     },
+    {
+      description: [
+        'HELD authentik 2026.8.5 closure: chart, redaction image, and server base move together, by hand.',
+        'Reason: the HelmRelease pins chart authentik 2026.8.5 and ghcr.io/thaynes43/authentik-userinfo-redaction tag 2026.8.5 digest sha256:18fc99f13617a4b83dfc470e4f8cda7ed76cf513c5147c90e1de888838325663. That image is built from scripts/authentik-userinfo-redaction/Dockerfile, whose FROM stays digest-only at sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5 so the reviewed candidate archive is unchanged. The comment "Authentik server 2026.8.5" is the version key; registry HEAD showed that tag index digest equals the pin. The Dockerfile accepts only the reviewed utils.py hashes. A chart-only bump or a redaction-image bump deploys an unaligned pair. The thaynes43 image rule would otherwise platform-automerge a redaction digest. Replacing this image with the old official server restores the UserInfo access_token logging defect.',
+        'Issue: OpenProject haynes-engineering story 186.',
+        'Resume: MANUAL — dashboard-approve only a change that bumps the chart, rebuilds the redaction image from the matching server tag and index digest, re-checks the three logging-call hashes, and updates Helm digest 18fc99f1 together. Updates stay listed. This rule does not edit the upgrade-shepherd ramp; that ramp can still merge an already-open authentik YYYY.M patch PR, so leave this approval unchecked until that ramp is held or the aligned change is ready.',
+        'Recorded: 2026-10-24 by Grok under story 186.',
+      ],
+      matchDatasources: ['helm', 'docker'],
+      matchPackageNames: [
+        'authentik',
+        'ghcr.io/thaynes43/authentik-userinfo-redaction',
+        'ghcr.io/goauthentik/server',
+      ],
+      matchFileNames: [
+        'kubernetes/main/apps/network/authentik/app/helmrelease.yaml',
+        'scripts/authentik-userinfo-redaction/Dockerfile',
+      ],
+      automerge: false,
+      dependencyDashboardApproval: true,
+    },
     // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
     //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
     //   protection (Host/Origin validation on every route, 403 for non-loopback Host).
