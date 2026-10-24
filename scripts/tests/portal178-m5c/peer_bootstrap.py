@@ -28,7 +28,8 @@ VERIFY_PREFIX = "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;\nBEGIN RE
 # The reviewed file's own BEGIN READ ONLY is allowed; READ WRITE is not.
 WRITABLE_SQL = re.compile(
     r"(?i)(\bread\s+write\b|default_transaction_read_only|\bset\s+transaction\b|"
-    r"\bstart\s+transaction\b|\bset\s+session\s+characteristics\b)")
+    r"\bstart\s+transaction\b|\bset\s+session\s+characteristics\b|\breset\s+all\b|"
+    r"(?:^|\n)\s*\\(?:connect|include|c|i|!))")
 
 
 def assert_verify_readonly(sql_text):

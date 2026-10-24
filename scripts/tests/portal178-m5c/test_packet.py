@@ -297,7 +297,8 @@ class Packet(unittest.TestCase):
         helper.assert_verify_readonly((PACKET / "030-verify.sql").read_text())
         for writable in ("BEGIN READ WRITE;", "SET TRANSACTION READ WRITE;",
                          "SET default_transaction_read_only = off;",
-                         "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE;"):
+                         "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE;",
+                         "RESET ALL;", "\\c postgres", "\\i other.sql", "\\!\n"):
             with self.assertRaisesRegex(RuntimeError, "read-only transaction"):
                 helper.assert_verify_readonly(writable)
         calls.clear()

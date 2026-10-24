@@ -106,8 +106,9 @@ gates; no database-wide NetworkPolicy affecting consumers is proposed.
    a collision; inspect the outcome, never reset or blindly retry.
 4. **`--verify-reviewed-sha256`** runs [030-verify.sql](pending/030-verify.sql)
    only when the digest matches. It opens one read-only transaction before those
-   bytes and refuses explicit read-write transaction control in them. The hash
-   remains the pin; a later `BEGIN READ WRITE` in the file is rejected before psql.
+   bytes and refuses `READ WRITE`, transaction-control statements, `RESET ALL`,
+   and the psql connect/include/shell commands in them. The hash remains the pin
+   for every other byte. A later `BEGIN READ WRITE` is rejected before psql.
    Bare `--verify` is not a mode. It emits bounded datacl/nspacl/relacl/default-ACL/role-setting
    evidence plus exact effective-rights booleans, including no portal routines or
    extra composite types, no cluster-wide portal role settings, and no runtime or
