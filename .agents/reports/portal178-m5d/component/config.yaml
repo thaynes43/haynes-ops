@@ -1,0 +1,29 @@
+# Non-secret files the published parser pins or accepts.
+# Duration, auth-style, and witness values are the published production_test.go
+# fixture, inside the contract bounds. They are not a launch SLO.
+# operator-api-url is the deployed operator HelmRelease origin.
+# config/admission-uid and config/session-bindings.json are absent on purpose.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-v2-portal-config
+  namespace: dev-agents
+data:
+  origin: https://dev-env-v2.haynesops.com
+  issuer: https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/
+  authorization-url: https://authentik.haynesnetwork.com/application/o/authorize/
+  token-url: https://authentik.haynesnetwork.com/application/o/token/
+  userinfo-url: https://authentik.haynesnetwork.com/application/o/userinfo/
+  jwks-url: https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/jwks/
+  openproject-base-url: https://work.haynesnetwork.com
+  operator-api-url: https://dev-env-operator.dev-env-system.svc.cluster.local:8443
+  admission-api-url: https://kubernetes.default.svc.cluster.local
+  admission-token-file: /var/run/portal/api/token
+  auth-style: header
+  login-ttl: 1m
+  idle-ttl: 30m
+  absolute-ttl: 1h
+  fresh-for: 1m
+  clock-skew: 0s
+  witness-gets-per-second: "30"
+  witness-get-burst: "57"

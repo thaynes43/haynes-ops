@@ -1,0 +1,28 @@
+# UNREGISTERED internal host. Namespace dev already receives the reflected
+# certificate-haynesops Secret. This does not add dev-agents to that reflector
+# list, a public entrypoint, a Cloudflare target, or an Authentik forward-auth
+# middleware. The BFF performs its own OIDC.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: dev-env-v2-portal
+  namespace: dev
+  annotations:
+    external-dns.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`dev-env-v2.haynesops.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: dev-env-v2-portal
+          namespace: dev-agents
+          port: 8443
+          scheme: https
+          passHostHeader: true
+          serversTransport: dev-env-v2-portal
+  tls:
+    secretName: certificate-haynesops

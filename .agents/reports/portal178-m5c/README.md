@@ -148,7 +148,9 @@ existing sessions. After reviewed installation, test actual rotation/revocation
 propagation and pool containment through an explicit approved procedure. Source
 reload labels are not rotation proof. Missing fields/ESO errors block release.
 
-Owner population instructions are **withheld until reviewed consumers exist**:
+**Supersession, 2026-10-24.** The canonical 1Password item is the existing `HaynesKube/dev-env`. The item names `dev-env-v2-portal` and `dev-env-v2-portal-runtime` in the historical paragraph below are the prior instruction. They are not created. Current ExternalSecret `remoteRef.key` values are `dev-env`. Kubernetes Secret names are unchanged. Unrelated fields already on `dev-env` stay. Runtime property population is held. The next paragraph is retained as that prior instruction.
+
+Historical instruction, superseded for the item name. Owner population instructions are **withheld until reviewed consumers exist**:
 HaynesKube `dev-env-v2-portal-runtime`: top-level DB_USERNAME=
 `dev_env_v2_portal_runtime`, DB_PASSWORD, SESSION_AEAD_KEY (canonical base64 of32
 cryptographically random bytes), SESSION_GENERATION (32–128 characters, aligned
