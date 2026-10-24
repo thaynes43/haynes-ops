@@ -7,17 +7,31 @@ Flux, or the cluster. Each case runs the shipped CLI.
 
 from __future__ import annotations
 
+import contextlib
+import importlib.util
+import io
 import json
 import os
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 CLI = Path(__file__).resolve().with_name("deliver_reviewed_pr.py")
 REPO = "thaynes43/haynes-ops"
+DEV_REPO = "thaynes43/dev-env"
 PR = "4279"
+
+
+def python_argv() -> list[str]:
+    argv = [sys.executable]
+    if sys.flags.optimize:
+        argv.append("-" + ("O" * sys.flags.optimize))
+    return argv
+
+
 HEAD = "3b9f6af6" + "c0" * 16
 OTHER = "a" * 40
 TOKEN_KEYS = (
@@ -28,7 +42,7 @@ TOKEN_KEYS = (
 )
 
 FAKE_GH = """#!/usr/bin/env python3
-import json, os, sys
+import json, os, sys, time
 
 log_path = os.environ["DELIVER_FAKE_LOG"]
 sentinel = os.environ["DELIVER_FAKE_SENTINEL"]
@@ -44,7 +58,47 @@ def record(*kinds):
         with open(os.path.join(sentinel, kind), "a", encoding="utf-8") as handle:
             handle.write(line + "\\n")
 
+def check(name, status="COMPLETED", conclusion="SUCCESS"):
+    return {
+        "__typename": "CheckRun",
+        "name": name,
+        "status": status,
+        "conclusion": conclusion,
+    }
+
+def dev_checks():
+    advisory = check("Claude Review (advisory)", conclusion="FAILURE")
+    native = check("Sol native review")
+    required = check("CI - Success")
+    if mode in {"dev_green", "dev_verify_fail", "dev_verify_timeout", "dev_verify_head"}:
+        return [required, advisory, native]
+    if mode == "dev_advisory_unknown":
+        return [required, check("Claude Review (advisory)", conclusion="NEUTRAL"), native]
+    if mode == "dev_ci_pending":
+        return [check("CI - Success", status="IN_PROGRESS", conclusion=None), advisory]
+    if mode == "dev_ci_nonzero":
+        return [check("CI - Success", conclusion="FAILURE"), advisory]
+    if mode == "dev_ci_missing":
+        return [
+            check("Flux Local - Success"),
+            check("Diff Scope - Success"),
+            native,
+            advisory,
+        ]
+    if mode == "dev_ci_unknown":
+        return [check("CI - Success", conclusion="SKIPPED"), advisory]
+    if mode == "dev_ci_duplicate_mixed":
+        return [
+            check("CI - Success", conclusion="SUCCESS"),
+            check("CI - Success", conclusion="FAILURE"),
+            advisory,
+        ]
+    return None
+
 def checks():
+    dev = dev_checks()
+    if dev is not None:
+        return dev
     flux = {
         "__typename": "CheckRun",
         "name": "Flux Local - Success",
@@ -80,11 +134,20 @@ if len(argv) >= 2 and argv[0] == "pr" and argv[1] == "view":
     with open(count_path, "w", encoding="utf-8") as handle:
         handle.write(str(count))
     if count >= 2:
-        if mode == "verify_fail":
+        if mode in {"verify_fail", "dev_verify_fail"}:
             emit({
                 "state": "OPEN",
                 "mergedAt": None,
                 "headRefOid": live,
+                "statusCheckRollup": checks(),
+            })
+        if mode == "dev_verify_timeout":
+            time.sleep(360)
+        if mode == "dev_verify_head":
+            emit({
+                "state": "MERGED",
+                "mergedAt": "2026-10-24T17:00:00Z",
+                "headRefOid": "b" * 40,
                 "statusCheckRollup": checks(),
             })
         emit({
@@ -196,13 +259,13 @@ class DeliverReviewedPrTests(unittest.TestCase):
             env.pop("DELIVER_FAKE_LIVE_HEAD", None)
         return env
 
-    def command(self, *middle: str, preflight: Path | None = None, reviewed: str | None = None, timeout: str = "120") -> list[str]:
+    def command(self, *middle: str, preflight: Path | None = None, reviewed: str | None = None, timeout: str = "120", repo: str | None = None) -> list[str]:
         reviewed_head = HEAD if reviewed is None else reviewed
         return [
-            "python3",
+            *python_argv(),
             str(CLI),
             "--repo",
-            REPO,
+            REPO if repo is None else repo,
             "--pr",
             PR,
             "--head",
@@ -243,6 +306,51 @@ class DeliverReviewedPrTests(unittest.TestCase):
     def assert_preflight_started(self) -> None:
         self.assertTrue(self.rows(), "preflight was not started")
         self.assertEqual(self.rows()[0], ["preflight"])
+
+    def clear_effects(self) -> None:
+        if self.log.exists():
+            self.log.unlink()
+        for path in self.sentinel.iterdir():
+            path.unlink()
+
+    def merge_rows(self) -> list:
+        return [row for row in self.rows() if len(row) >= 3 and row[1:3] == ["pr", "merge"]]
+
+    def assert_stopped_before_effects(self) -> None:
+        self.assertEqual(self.rows(), [])
+        self.assertFalse((self.sentinel / "gh-invoked").exists())
+        self.assert_no_merge_or_reconcile()
+
+    def load_cli(self):
+        spec = importlib.util.spec_from_file_location(
+            f"deliver_reviewed_pr_isolated_{id(self)}",
+            CLI,
+        )
+        if spec is None or spec.loader is None:
+            self.fail(f"could not load {CLI}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def run_loaded(self, module, argv: list[str], env_extra: dict[str, str] | None = None) -> tuple[int, str, str]:
+        desired = self.child_env()
+        if env_extra:
+            desired.update(env_extra)
+        saved = dict(os.environ)
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        try:
+            os.environ.clear()
+            os.environ.update(desired)
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = module.main(argv)
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def module_argv(self, args: list[str]) -> list[str]:
+        return args[args.index(str(CLI)) + 1 :]
 
     def test_failed_preflight_preserves_exit_and_skips_merge_and_reconcile(self) -> None:
         preflight = self.make_preflight(code=17)
@@ -381,6 +489,10 @@ class DeliverReviewedPrTests(unittest.TestCase):
                 names.append("flux")
         self.assertEqual(names, ["preflight", "view", "merge", "view"])
         self.assertFalse((self.sentinel / "reconcile-invoked").exists(), self.rows())
+        merge = next(row for row in self.rows() if row[1:3] == ["pr", "merge"])
+        self.assertIn("--delete-branch", merge)
+        self.assertIn("--squash", merge)
+        self.assertIn("--match-head-commit", merge)
 
     def test_timeout_running_preflight_blocks_merge_and_reconcile(self) -> None:
         preflight = self.make_preflight(delay=30)
@@ -399,7 +511,7 @@ class DeliverReviewedPrTests(unittest.TestCase):
         self.assertNotIn("shell=True", text)
         self.assertNotIn("os.system", text)
         base = [
-            "python3",
+            *python_argv(),
             str(CLI),
             "--repo",
             REPO,
@@ -422,6 +534,263 @@ class DeliverReviewedPrTests(unittest.TestCase):
         self.assertEqual(missing.returncode, 2, missing.stderr)
         self.assertIn("preflight command argv is required", missing.stderr)
         self.assertEqual(self.rows(), [])
+        self.assert_no_merge_or_reconcile()
+
+    def test_runtime_guards_are_not_assert_statements(self) -> None:
+        for lineno, line in enumerate(CLI.read_text(encoding="utf-8").splitlines(), start=1):
+            self.assertFalse(line.lstrip().startswith("assert "), f"line {lineno} uses assert")
+
+    def test_dev_env_green_advisory_failure_merges_once_without_delete_or_flux(self) -> None:
+        self.mode = "dev_green"
+        proc = self.run_cli(self.command("--source-only", repo=DEV_REPO))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(f"merged {DEV_REPO}#{PR} at {HEAD}", proc.stdout)
+        self.assertIn("source-only: reconcile skipped", proc.stdout)
+        self.assertEqual(
+            self.merge_rows()[0][1:],
+            [
+                "pr",
+                "merge",
+                PR,
+                "--repo",
+                DEV_REPO,
+                "--squash",
+                "--match-head-commit",
+                HEAD,
+            ],
+        )
+        self.assertNotIn("--delete-branch", self.merge_rows()[0])
+        self.assertEqual(len(self.merge_rows()), 1)
+        self.assertEqual((self.sentinel / "view-count").read_text(encoding="utf-8"), "2")
+        self.assertFalse((self.sentinel / "reconcile-invoked").exists(), self.rows())
+        names = []
+        for row in self.rows():
+            if row == ["preflight"]:
+                names.append("preflight")
+            elif row[1:3] == ["pr", "view"]:
+                names.append("view")
+            elif row[1:3] == ["pr", "merge"]:
+                names.append("merge")
+            elif Path(row[0]).name == "flux":
+                names.append("flux")
+        self.assertEqual(names, ["preflight", "view", "merge", "view"])
+
+    def test_dev_env_failed_and_unknown_preflight_skip_gh(self) -> None:
+        self.mode = "dev_green"
+        failed = self.make_preflight(code=17)
+        proc = self.run_cli(self.command("--source-only", repo=DEV_REPO, preflight=failed))
+        self.assertEqual(proc.returncode, 17, proc.stderr)
+        self.assert_preflight_started()
+        self.assertFalse((self.sentinel / "gh-invoked").exists(), self.rows())
+        self.assert_no_merge_or_reconcile()
+
+        self.clear_effects()
+        missing = self.root / "missing-preflight"
+        proc = self.run_cli(self.command("--source-only", repo=DEV_REPO, preflight=missing))
+        self.assertEqual(proc.returncode, 127, proc.stderr)
+        self.assertIn("could not be started", proc.stderr)
+        self.assertEqual(self.rows(), [])
+        self.assert_no_merge_or_reconcile()
+
+        self.clear_effects()
+        signal_path = self.root / "preflight-signal"
+        signal_path.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, signal\n"
+            f"log = {json.dumps(str(self.log))}\n"
+            "with open(log, 'a', encoding='utf-8') as handle:\n"
+            "    handle.write(json.dumps(['preflight']) + chr(10))\n"
+            "os.kill(os.getpid(), signal.SIGKILL)\n",
+            encoding="utf-8",
+        )
+        signal_path.chmod(signal_path.stat().st_mode | stat.S_IEXEC)
+        proc = self.run_cli(self.command("--source-only", repo=DEV_REPO, preflight=signal_path))
+        self.assertEqual(proc.returncode, 137, proc.stderr)
+        self.assert_preflight_started()
+        self.assertFalse((self.sentinel / "gh-invoked").exists(), self.rows())
+        self.assert_no_merge_or_reconcile()
+
+    def test_dev_env_timeout_preflight_skips_gh(self) -> None:
+        self.mode = "dev_green"
+        preflight = self.make_preflight(delay=30)
+        proc = self.run_cli(
+            self.command("--source-only", repo=DEV_REPO, preflight=preflight, timeout="1"),
+            proc_timeout=15,
+        )
+        self.assertEqual(proc.returncode, 124, proc.stderr)
+        self.assertIn("still running", proc.stderr)
+        self.assert_preflight_started()
+        self.assertFalse((self.sentinel / "gh-invoked").exists(), self.rows())
+        self.assert_no_merge_or_reconcile()
+
+    def test_dev_env_required_ci_states_block_merge(self) -> None:
+        cases = (
+            ("dev_ci_pending", "running required check: CI - Success"),
+            ("dev_ci_nonzero", "nonzero required check: CI - Success"),
+            ("dev_ci_missing", "unknown required check missing: CI - Success"),
+            ("dev_ci_unknown", "unknown required check: CI - Success"),
+            ("dev_ci_duplicate_mixed", "nonzero required check: CI - Success"),
+        )
+        for mode, message in cases:
+            with self.subTest(mode=mode):
+                self.clear_effects()
+                self.mode = mode
+                proc = self.run_cli(self.command("--source-only", repo=DEV_REPO))
+                self.assertEqual(proc.returncode, 2, proc.stderr)
+                self.assertIn(message, proc.stderr)
+                self.assert_preflight_started()
+                self.assertEqual((self.sentinel / "view-count").read_text(encoding="utf-8"), "1")
+                self.assert_no_merge_or_reconcile()
+
+    def test_dev_env_head_mismatches_do_not_merge(self) -> None:
+        self.mode = "dev_green"
+        reviewed = self.run_cli(self.command("--source-only", repo=DEV_REPO, reviewed=OTHER))
+        self.assertEqual(reviewed.returncode, 2, reviewed.stderr)
+        self.assertIn("reviewed head does not match intended head", reviewed.stderr)
+        self.assert_stopped_before_effects()
+
+        self.live_head = OTHER
+        live = self.run_cli(self.command("--source-only", repo=DEV_REPO))
+        self.assertEqual(live.returncode, 2, live.stderr)
+        self.assertIn("reviewed head evidence does not match intended head", live.stderr)
+        self.assert_preflight_started()
+        self.assert_no_merge_or_reconcile()
+
+    def test_unknown_repository_and_dev_env_reconcile_stop_before_effects(self) -> None:
+        self.mode = "green"
+        unknown = self.run_cli(self.command("--source-only", repo="thaynes43/not-a-profile"))
+        self.assertEqual(unknown.returncode, 2, unknown.stderr)
+        self.assertIn("unknown repository", unknown.stderr)
+        self.assert_stopped_before_effects()
+
+        self.clear_effects()
+        self.mode = "dev_green"
+        reconcile = self.run_cli(self.command("--reconcile", "frontend/haynes-network", repo=DEV_REPO))
+        self.assertEqual(reconcile.returncode, 2, reconcile.stderr)
+        self.assertIn("source-only", reconcile.stderr)
+        self.assertIn("reconcil", reconcile.stderr)
+        self.assert_stopped_before_effects()
+
+    def test_dev_env_bypass_and_check_override_flags_stop_before_effects(self) -> None:
+        self.mode = "dev_green"
+        flags = (
+            ("--admin",),
+            ("--force",),
+            ("--auto",),
+            ("--auto-merge",),
+            ("--skip-checks",),
+            ("--required-check", "Flux Local - Success"),
+            ("--checks", "CI - Success"),
+        )
+        for flag in flags:
+            with self.subTest(flag=flag):
+                self.clear_effects()
+                proc = self.run_cli(self.command(*flag, "--source-only", repo=DEV_REPO))
+                self.assertEqual(proc.returncode, 2, proc.stderr)
+                self.assert_stopped_before_effects()
+
+    def test_dev_env_advisory_unknown_does_not_block_or_authorize(self) -> None:
+        self.mode = "dev_advisory_unknown"
+        proc = self.run_cli(self.command("--source-only", repo=DEV_REPO))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(len(self.merge_rows()), 1)
+        self.assertNotIn("--delete-branch", self.merge_rows()[0])
+        self.assertFalse((self.sentinel / "reconcile-invoked").exists(), self.rows())
+
+        self.clear_effects()
+        blocked = self.run_cli(self.command("--source-only", repo=DEV_REPO, reviewed=OTHER))
+        self.assertEqual(blocked.returncode, 2, blocked.stderr)
+        self.assertIn("reviewed head does not match intended head", blocked.stderr)
+        self.assert_stopped_before_effects()
+
+    def test_dev_env_postmerge_failure_does_not_retry(self) -> None:
+        self.mode = "dev_verify_fail"
+        proc = self.run_cli(self.command("--source-only", repo=DEV_REPO))
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertIn("post-merge verification failed", proc.stderr)
+        self.assertEqual(len(self.merge_rows()), 1)
+        self.assertEqual((self.sentinel / "view-count").read_text(encoding="utf-8"), "2")
+        self.assertFalse((self.sentinel / "reconcile-invoked").exists(), self.rows())
+
+        self.clear_effects()
+        self.mode = "dev_verify_head"
+        shifted = self.run_cli(self.command("--source-only", repo=DEV_REPO))
+        self.assertEqual(shifted.returncode, 2, shifted.stderr)
+        self.assertIn("does not match intended head", shifted.stderr)
+        self.assertEqual(len(self.merge_rows()), 1)
+        self.assertFalse((self.sentinel / "reconcile-invoked").exists(), self.rows())
+
+    def test_dev_env_postmerge_timeout_does_not_retry(self) -> None:
+        self.assertIn("GH_TIMEOUT_S = 120\n", CLI.read_text(encoding="utf-8"))
+        self.mode = "dev_verify_timeout"
+        proc = self.run_cli(self.command("--source-only", repo=DEV_REPO), proc_timeout=170)
+        self.assertEqual(proc.returncode, 124, proc.stderr)
+        self.assertIn("still running", proc.stderr)
+        self.assertEqual(len(self.merge_rows()), 1)
+        self.assertNotIn("--delete-branch", self.merge_rows()[0])
+        self.assertEqual((self.sentinel / "view-count").read_text(encoding="utf-8"), "2")
+        self.assertFalse((self.sentinel / "reconcile-invoked").exists(), self.rows())
+
+    def test_env_cannot_replace_haynes_ops_checks(self) -> None:
+        self.mode = "green"
+        env = self.child_env()
+        env["REQUIRED_CHECKS"] = "not-a-real-check"
+        env["DELIVER_REQUIRED_CHECKS"] = "CI - Success"
+        proc = subprocess.run(
+            self.command("--source-only"),
+            env=env,
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(len(self.merge_rows()), 1)
+        self.assertIn("--delete-branch", self.merge_rows()[0])
+
+    def test_env_and_monkeypatch_cannot_weaken_fixed_profiles(self) -> None:
+        self.mode = "green"
+        env = self.child_env()
+        env["REQUIRED_CHECKS"] = "Flux Local - Success,Diff Scope - Success"
+        env["DELIVER_REQUIRED_CHECKS"] = "Flux Local - Success"
+        weakened = subprocess.run(
+            self.command("--source-only", repo=DEV_REPO),
+            env=env,
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(weakened.returncode, 2, weakened.stderr)
+        self.assertIn("unknown required check missing: CI - Success", weakened.stderr)
+        self.assert_preflight_started()
+        self.assert_no_merge_or_reconcile()
+
+        self.clear_effects()
+        self.mode = "green"
+        module = self.load_cli()
+        module.REQUIRED_CHECKS = ("not-a-real-check",)
+        code, _stdout, stderr = self.run_loaded(
+            module,
+            self.module_argv(self.command("--source-only")),
+            {"REQUIRED_CHECKS": "not-a-real-check"},
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(len(self.merge_rows()), 1)
+        self.assertIn("--delete-branch", self.merge_rows()[0])
+
+        self.clear_effects()
+        self.mode = "green"
+        module.REQUIRED_CHECKS = ()
+        code, _stdout, stderr = self.run_loaded(
+            module,
+            self.module_argv(self.command("--source-only", repo=DEV_REPO)),
+            {"REQUIRED_CHECKS": ""},
+        )
+        self.assertEqual(code, 2, stderr)
+        self.assertIn("unknown required check missing: CI - Success", stderr)
         self.assert_no_merge_or_reconcile()
 
 

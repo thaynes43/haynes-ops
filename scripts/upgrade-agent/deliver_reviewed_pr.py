@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
 """Deliver one reviewed pull request, stopping before a mutation when a gate fails.
 
-Interactive source delivery for a single pull request. The caller supplies the
-preflight as an argv list after ``--`` (no shell). That process must exit 0
-before ``gh pr merge`` or ``flux``. Both required GitHub checks must be green
-on the exact head, the squash merge is pinned with ``--match-head-commit``,
-and Flux reconcile runs only after the pull request is verified merged.
+Interactive source delivery for one allowlisted repository. The caller supplies
+the preflight as an argv list after ``--`` (no shell). That process must exit 0
+before ``gh pr merge`` or ``flux``. Required checks come from the fixed
+repository profile, not from flags, the environment, or ``REQUIRED_CHECKS``.
+The squash merge is pinned with ``--match-head-commit``.
+
+``thaynes43/haynes-ops`` requires ``Flux Local - Success`` and
+``Diff Scope - Success``. Its merge deletes the branch. Flux reconcile runs
+only after the pull request is verified merged, and only for named targets.
+
+``thaynes43/dev-env`` requires ``CI - Success``, is source-only, refuses
+``--reconcile`` before preflight or any later command, and does not delete the
+branch. Any other repository is refused. Source-only delivery is not a
+deployment.
 
 ``--reviewed-head`` is the operator's evidence of which commit was reviewed.
-It must equal ``--head`` and the pull request head. A native Sol approval is
-source-review evidence for that flag. This command does not read GitHub
-review decisions or agent comments, and it does not treat them as a required
-check.
-
-``--source-only`` merges the source pull request and does not reconcile.
+It must equal ``--head`` and the pull request head. It grants no authority by
+itself. A native Sol approval is source-review evidence for that flag. This
+command does not read GitHub review decisions or agent comments, and it does
+not treat an advisory check as a required check or as a native verdict.
 """
 
 from __future__ import annotations
@@ -25,6 +32,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Documented haynes-ops names. policy_for uses its own literals and does not
+# read this name, so a caller cannot retarget delivery by replacing it.
 REQUIRED_CHECKS = ("Flux Local - Success", "Diff Scope - Success")
 GH_TIMEOUT_S = 120
 FLUX_TIMEOUT_S = 300
@@ -133,10 +142,10 @@ def check_outcome(item: object) -> str:
     return "unknown"
 
 
-def required_ci_blocker(checks: object) -> str | None:
+def required_ci_blocker(checks: object, required: tuple[str, ...]) -> str | None:
     if not isinstance(checks, list):
         return "unknown required CI payload"
-    for name in REQUIRED_CHECKS:
+    for name in required:
         matched = [item for item in checks if check_label(item) == name]
         if not matched:
             return f"unknown required check missing: {name}"
@@ -159,13 +168,34 @@ def parse_target(value: str) -> tuple[str, str]:
     return namespace, name
 
 
+def policy_for(
+    repo: str,
+    reconcile: list[tuple[str, str]] | None,
+    source_only: bool,
+) -> tuple[tuple[str, ...], bool]:
+    """Return (required check names, delete_branch) for a fixed repository.
+
+    dev-env is source-only. A reconcile request raises before the caller can
+    start preflight. Unknown repositories raise. The check names are literals
+    so flags, the environment, and REQUIRED_CHECKS cannot replace them.
+    """
+    if repo == "thaynes43/haynes-ops":
+        return ("Flux Local - Success", "Diff Scope - Success"), True
+    if repo == "thaynes43/dev-env":
+        if reconcile or not source_only:
+            raise DeliveryError("dev-env delivery is source-only; refusing reconcile", 2)
+        return ("CI - Success",), False
+    raise DeliveryError(f"unknown repository: {repo}", 2)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="deliver_reviewed_pr.py",
         description=(
-            "Merge one reviewed pull request after a preflight and required CI "
-            "pass on the exact head. Reconcile only named Flux targets, and "
-            "only after the merge is verified."
+            "Merge one reviewed pull request after a preflight and that "
+            "repository's fixed required checks pass on the exact head. "
+            "haynes-ops may reconcile named Flux targets only after the merge "
+            "is verified. dev-env is source-only."
         ),
     )
     parser.add_argument("--repo", required=True, help="owner/name")
@@ -193,7 +223,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         type=parse_target,
         dest="reconcile",
-        help="Flux kustomization namespace/name; repeat for more than one",
+        help="Flux kustomization namespace/name; repeat for more than one; refused for dev-env",
     )
     return parser
 
@@ -256,17 +286,17 @@ def require_live_head(payload: dict, head: str) -> None:
         raise DeliveryError("reviewed head evidence does not match intended head", 2)
 
 
-def ensure_ready_to_merge(payload: dict, head: str) -> None:
+def ensure_ready_to_merge(payload: dict, head: str, required: tuple[str, ...]) -> None:
     require_live_head(payload, head)
     if payload.get("state") != "OPEN":
         raise DeliveryError("pull request is not open", 2)
-    blocker = required_ci_blocker(payload.get("statusCheckRollup"))
+    blocker = required_ci_blocker(payload.get("statusCheckRollup"), required)
     if blocker:
         raise DeliveryError(blocker, 2)
 
 
-def merge_argv(repo: str, pr: int, head: str) -> list[str]:
-    return [
+def merge_argv(repo: str, pr: int, head: str, delete_branch: bool) -> list[str]:
+    argv = [
         "gh",
         "pr",
         "merge",
@@ -274,10 +304,11 @@ def merge_argv(repo: str, pr: int, head: str) -> list[str]:
         "--repo",
         repo,
         "--squash",
-        "--delete-branch",
-        "--match-head-commit",
-        head,
     ]
+    if delete_branch:
+        argv.append("--delete-branch")
+    argv.extend(["--match-head-commit", head])
+    return argv
 
 
 def ensure_merged(payload: dict, head: str) -> None:
@@ -301,11 +332,17 @@ def flux_argv(namespace: str, name: str) -> list[str]:
 
 
 def deliver(args: argparse.Namespace) -> None:
-    # Preflight is the required predecessor of every mutation. A running,
-    # unknown, or nonzero result raises and the caller returns that exit.
+    # Profile refusal is the required predecessor of preflight and every
+    # mutation. A running, unknown, or nonzero preflight raises after that
+    # and the caller returns that exit without a later command.
+    required, delete_branch = policy_for(args.repo, args.reconcile, args.source_only)
     run_checked(list(args.preflight), args.preflight_timeout, capture=False)
-    ensure_ready_to_merge(gh_view(args.repo, args.pr), args.head)
-    run_checked(merge_argv(args.repo, args.pr, args.head), GH_TIMEOUT_S, capture=True)
+    ensure_ready_to_merge(gh_view(args.repo, args.pr), args.head, required)
+    run_checked(
+        merge_argv(args.repo, args.pr, args.head, delete_branch),
+        GH_TIMEOUT_S,
+        capture=True,
+    )
     ensure_merged(gh_view(args.repo, args.pr), args.head)
     print(f"merged {args.repo}#{args.pr} at {args.head}")
     if args.source_only:
