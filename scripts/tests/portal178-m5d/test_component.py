@@ -30,7 +30,6 @@ RESOURCES = [
     "runtime-externalsecret.yaml",
     "certificates.yaml",
     "role-externalsecret.yaml",
-    "networkpolicy.yaml",
     "config.yaml",
     "postgres-ca.yaml",
     "admission-ca.yaml",
@@ -123,12 +122,26 @@ def load(path):
 
 
 def render():
-    completed = subprocess.run(
-        ["kustomize", "build", str(COMPONENT)],
-        check=True, capture_output=True, text=True,
-    )
-    docs = [doc for doc in yaml.safe_load_all(completed.stdout) if doc]
-    return completed.stdout, docs
+    chunks = []
+    for path in (COMPONENT, COMPONENT / "policy"):
+        completed = subprocess.run(
+            ["kustomize", "build", str(path)],
+            check=True, capture_output=True, text=True,
+        )
+        chunks.append(completed.stdout)
+    rendered = "\n---\n".join(chunks)
+    docs = [doc for doc in yaml.safe_load_all(rendered) if doc]
+    return rendered, docs
+
+
+def portal_pod_creation_allowed(policy_ready, workload_depends_on_policy):
+    """A portal pod is allowed only after the dedicated policy stage is ready."""
+    return policy_ready is True and workload_depends_on_policy is True
+
+
+def same_apply_proves_isolation():
+    """One kustomize build that contains both objects does not prove isolation."""
+    return False
 
 
 def by_kind(docs, kind):
@@ -225,7 +238,8 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn("runtime-externalsecret.yaml", manifest["resources"])
         self.assertIn("role-externalsecret.yaml", manifest["resources"])
         # certificates.yaml is four objects in one resource file.
-        self.assertEqual(len(self.docs), len(RESOURCES) + 3)
+        # The network policy is a separate kustomize root and adds one object.
+        self.assertEqual(len(self.docs), len(RESOURCES) + 4)
 
     def test_every_object_is_marked_unregistered(self):
         for doc in self.docs:
@@ -513,7 +527,7 @@ class ComponentRenderTest(unittest.TestCase):
             "toPorts": [{"ports": [{"port": "8443", "protocol": "TCP"}]}],
         })
         self.assertEqual(len(spec["egress"]), 6)
-        policy_text = (COMPONENT / "networkpolicy.yaml").read_text()
+        policy_text = (COMPONENT / "policy/networkpolicy.yaml").read_text()
         self.assertNotIn("work.haynesnetwork.com", policy_text)
         self.assertNotIn("matchPattern", policy_text)
         for rule in spec["egress"]:
@@ -547,7 +561,7 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn("All present is the only enabled state", contract)
         self.assertIn("config/session-bindings.json` is absent from this render", contract)
         self.assertIn("not a permanent product inventory", contract)
-        self.assertIn("12ca8fe6003cb0c108baeb0abb923d664deba28d", contract)
+        self.assertIn("0e93e2ec3aa972456cc07d3ad821a6487db8506e", contract)
         self.assertIn("no published digest", contract)
         self.assertIn("--enable-portal-reader", contract)
         self.assertIn("offset=<page>&pageSize=50", contract)
@@ -697,25 +711,56 @@ class ComponentRenderTest(unittest.TestCase):
         )
         preflight = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(preflight)
-        self.assertEqual(preflight.evaluate({"roles": [], "users": []}), "absent-ready")
-        ready = {
-            "roles": [{"name": "Dev-env portal reader", "permissions": ["view_work_packages", "view_project"]}],
-            "users": [{
-                "name": "dev-env-portal-reader",
-                "admin": False,
-                "global_roles": [],
-                "groups": [],
-                "memberships": [{"project_id": 3, "roles": ["Dev-env portal reader"]}],
-            }],
-        }
-        self.assertEqual(preflight.evaluate(ready), "idempotent")
+        with self.assertRaises(preflight.PreflightReject) as empty:
+            preflight.evaluate({})
+        self.assertEqual(empty.exception.reason, "missing-evidence")
+        absent = preflight.absence_snapshot()
+        self.assertEqual(preflight.evaluate(absent)["outcome"], "synthetic-absent-ready")
+        self.assertIs(preflight.evaluate(absent)["live_permission_proof"], False)
+        self.assertEqual(preflight.evaluate(absent)["collector"], "not-implemented")
+        ready = preflight.matching_snapshot()
+        self.assertEqual(preflight.evaluate(ready)["outcome"], "synthetic-idempotent")
+        omitted_admin = deepcopy(ready)
+        del omitted_admin["users"][0]["admin"]
+        omitted_groups = deepcopy(ready)
+        del omitted_groups["users"][0]["groups"]
+        omitted_global = deepcopy(ready)
+        del omitted_global["users"][0]["global_roles"]
+        omitted_inherited = deepcopy(absent)
+        del omitted_inherited["inherited_memberships"]
+        for incomplete in (omitted_admin, omitted_groups, omitted_global, omitted_inherited):
+            with self.assertRaises(preflight.PreflightReject) as missing:
+                preflight.evaluate(incomplete)
+            self.assertEqual(missing.exception.reason, "missing-evidence")
+        inherited_list = deepcopy(absent)
+        inherited_list["inherited_memberships"] = [{"project_id": 3}]
+        with self.assertRaises(preflight.PreflightReject) as inherited_top:
+            preflight.evaluate(inherited_list)
+        self.assertEqual(inherited_top.exception.reason, "inherited-rights")
         mismatched = deepcopy(ready)
-        mismatched["users"][0]["memberships"].append({"project_id": 8, "roles": ["Dev-env portal reader"]})
+        mismatched["users"][0]["memberships"].append({
+            "project_id": 8, "roles": ["Dev-env portal reader"], "inherited": False, "group": None,
+        })
         with self.assertRaises(preflight.PreflightReject) as raised:
             preflight.evaluate(mismatched)
         self.assertEqual(raised.exception.reason, "membership-scope")
+        typed = deepcopy(ready)
+        typed["users"][0]["admin"] = "false"
+        with self.assertRaises(preflight.PreflightReject) as typed_reject:
+            preflight.evaluate(typed)
+        self.assertEqual(typed_reject.exception.reason, "wrong-type")
+        duplicated = deepcopy(ready)
+        duplicated["roles"].append(deepcopy(ready["roles"][0]))
+        with self.assertRaises(preflight.PreflightReject) as duplicate_reject:
+            preflight.evaluate(duplicated)
+        self.assertEqual(duplicate_reject.exception.reason, "duplicate")
+        unknown = deepcopy(absent)
+        unknown["extra"] = []
+        with self.assertRaises(preflight.PreflightReject) as unknown_reject:
+            preflight.evaluate(unknown)
+        self.assertEqual(unknown_reject.exception.reason, "unknown-scope")
         with self.assertRaises(preflight.PreflightReject):
-            preflight.evaluate({"roles": [], "users": [], "token": "nope"})
+            preflight.evaluate({**absent, "token": "nope"})
 
         import json
         fixture = json.loads((ROOT / "scripts/portal178-m5d/openproject_query_contract.json").read_text())
@@ -737,8 +782,13 @@ class ComponentRenderTest(unittest.TestCase):
         inherited["users"][0]["memberships"][0]["inherited"] = True
         with self.assertRaises(preflight.PreflightReject) as inherited_reject:
             preflight.plan(inherited)
-        self.assertEqual(inherited_reject.exception.reason, "inherited-membership")
-        created = preflight.plan({"roles": [], "users": []})
+        self.assertEqual(inherited_reject.exception.reason, "inherited-rights")
+        created = preflight.plan(absent)
+        self.assertIs(created["executes"], False)
+        self.assertIs(created["live_permission_proof"], False)
+        self.assertEqual(created["collector"], "not-implemented")
+        self.assertIn("mint-reader-api-token", [item["action"] for item in created["steps"]])
+        self.assertIn("create-role", [item["action"] for item in created["steps"]])
         keys = set()
         def collect(node):
             if isinstance(node, dict):
@@ -750,8 +800,22 @@ class ComponentRenderTest(unittest.TestCase):
                     collect(value)
         collect(created)
         self.assertTrue({"token", "password", "secret", "value"}.isdisjoint(keys))
-        self.assertEqual(created["steps"][-1]["writer"], "none")
-        self.assertEqual(created["steps"][-1]["property"], "OPENPROJECT_TOKEN")
+        self.assertIs(created["steps"][-1]["executes"], False)
+        self.assertEqual(created["steps"][-1]["record_property"], "OPENPROJECT_TOKEN")
+        self.assertIn("openproject-agent-token", created["steps"][-1]["rejected"])
+        policy_ks = load(COMPONENT / "registration/policy-ks.yaml")
+        workload_ks = load(COMPONENT / "registration/workload-ks.yaml")
+        self.assertEqual(policy_ks["spec"]["path"], ".agents/reports/portal178-m5d/component/policy")
+        self.assertEqual(workload_ks["spec"]["dependsOn"], [{"name": "dev-env-v2-portal-policy", "namespace": "dev-agents"}])
+        self.assertNotEqual(policy_ks["spec"]["path"], workload_ks["spec"]["path"])
+        self.assertEqual(load(COMPONENT / "policy/kustomization.yaml")["resources"], ["networkpolicy.yaml"])
+        self.assertNotIn("networkpolicy.yaml", load(COMPONENT / "kustomization.yaml")["resources"])
+        self.assertFalse(portal_pod_creation_allowed(False, True))
+        self.assertTrue(portal_pod_creation_allowed(True, True))
+        self.assertFalse(same_apply_proves_isolation())
+        for path in (ROOT / "kubernetes").rglob("*.yaml"):
+            text = path.read_text(errors="replace")
+            self.assertNotIn("dev-env-v2-portal-policy", text, str(path))
         self.assertIn("location = /api/v3/projects/3/work_packages", portal_server)
         self.assertIn('proxy_pass http://127.0.0.1:8080;', portal_server)
         self.assertIn('proxy_set_header Cookie "";', portal_server)

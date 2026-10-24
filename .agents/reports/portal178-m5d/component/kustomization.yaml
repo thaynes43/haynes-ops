@@ -13,7 +13,6 @@ resources:
   - runtime-externalsecret.yaml
   - certificates.yaml
   - role-externalsecret.yaml
-  - networkpolicy.yaml
   - config.yaml
   - postgres-ca.yaml
   - admission-ca.yaml
