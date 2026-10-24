@@ -31,7 +31,7 @@ permissions:
 jobs:
   validate:
     name: Authentik UserInfo redaction - Success
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # Pull of the measured 377501332-byte amd64 base plus four sequential
     # disposable UserInfo runs. This is not a test-pass cutoff.
     timeout-minutes: 30
@@ -208,7 +208,7 @@ jobs:
     name: Publish validated Authentik candidate
     needs: validate
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read
