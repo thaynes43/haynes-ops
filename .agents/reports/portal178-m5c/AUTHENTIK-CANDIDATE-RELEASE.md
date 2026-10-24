@@ -22,23 +22,36 @@ every Authentik integration. The overlay affects default Python certifi trust
 only. It leaves the system store, LDAP trust, Go outposts, and Rust roots
 unchanged, and it leaves the unchanged certifi tests bytecode cache in place.
 
-Pull-request CI builds an archive and does not publish or sign it. The four
-keys in `scripts/authentik-userinfo-redaction/reviewed-digests.json` still
-identify the accepted utils-only build below, so the new archive fails that
-gate until those keys are replaced from the hosted report's actual bytes. The
-report is written as `UNACCEPTED` before that failure. The pull-request job
-uploads `authentik-userinfo-redaction-unaccepted-<commit>` and
-`authentik-userinfo-redaction-digests-<commit>` when those files exist. The
-draft archive SHA is the `archiveSha256` field of that report. It is not
-stored in Git yet.
+Pull-request CI builds an archive and does not publish or sign it. Repair run
+40122430827, job 120956687802, from source
+`cb7cd7a36d7f48f6eb07556f9010213fded726e8`, passed structural proof and the
+32-case synthetic container canary. Two independently downloaded archives
+reproduced the same four identities. Native Sol approved those four values for
+held-draft CI expectations only, not for registry publication, deployment, or
+signature. `reviewed-digests.json` now holds them:
+
+| Identity | Value |
+|---|---|
+| Archive SHA-256 | `95466c87de78c7d1387eedd4a1ad9b18991766ebb9fb16f9460ed5b1d9298f09` |
+| Image id / config | `sha256:3429fca1edba0aeedab48a9e2668b166cff59545d574aa6d420ad142cff202e7` |
+| Buildx manifest | `sha256:749b5a2378c8e2bba220958f15de3ba0b3f38e1947d5ebb89cd1f9b68d5eb11a` |
+| Registry digest | not published |
+
+The fresh CI of the commit that records these expectations is still pending.
+That run has to report structural proof, canary comparison, expect match, and
+qualified all true, with acceptance `REVIEWED`, while signed and published
+stay false. Until that run is green, this source is not fully CI-qualified.
+The pull-request job uploads `authentik-userinfo-redaction-unaccepted-<commit>`
+and `authentik-userinfo-redaction-digests-<commit>` when those files exist.
 
 The accepted registry image
 `ghcr.io/thaynes43/authentik-userinfo-redaction@sha256:18fc99f13617a4b83dfc470e4f8cda7ed76cf513c5147c90e1de888838325663`
-does not sign this draft. The main publish job is unchanged and is not
-authorized for this draft. No Actions permission was added.
+does not sign this draft and is not overwritten. The main publish job is
+unchanged and is not authorized for this draft. No Actions permission was
+added.
 
-The sections below describe the accepted utils-only artifact and the future
-pin procedure. They are not approval to publish or roll this draft.
+The sections below keep the historical accepted utils-only artifact and the
+future pin procedure. They are not approval to publish or roll this draft.
 
 ## What the candidate is
 
@@ -47,8 +60,9 @@ installed base `ghcr.io/goauthentik/server@sha256:602227a86455d6772e3d16b7d85271
 The linux/amd64 manifest inside that index is
 `sha256:6b924afb97053a27ca3f42f006c920464fb77763558c72219019365db191827b`
 (config `sha256:32dd380d0e766ff6a8100935f957b27574bd6af349832e1f0780c99f963b0204`,
-compressed layers 377,501,332 bytes). Live server, worker, and `web-dist-copy`
-on 2026-10-24 all resolved to that index digest. Each deployment is 3/3 ready.
+compressed layers 377,501,332 bytes). That stock index is not the live image.
+The installed accepted image is the overlaid
+`sha256:18fc99f13617a4b83dfc470e4f8cda7ed76cf513c5147c90e1de888838325663`.
 
 The accepted utils-only image's only source change is the [three-call patch](pending/authentik-userinfo-log.patch):
 delete `access_token=access_token` from the missing DEBUG, expired DEBUG, and
@@ -73,7 +87,10 @@ registry digest, and writes that digest to the job summary. The registry
 digest is that job's `RepoDigests` value, not a value stored in Git.
 
 The digests below were measured on run 40060699220 and reproduced on run
-40060895887. The Dockerfile and build context did not change between them:
+40060895887. They are the historical accepted utils-only gate, preserved
+unchanged in `accepted-legacy-digests.json`. They are not the current
+enforcement gate. The Dockerfile and build context of that accepted build did
+not change between those two runs:
 
 | Identity | Value |
 |---|---|
@@ -85,16 +102,24 @@ The digests below were measured on run 40060699220 and reproduced on run
 
 Runtime user, entrypoint, command, environment hash, labels, and linux/amd64
 matched the base, and the base rootfs layers were the prefix of the candidate.
-Those four digests remain the enforcement gate in `reviewed-digests.json`.
-The held draft's Dockerfile is not that build, so its hosted archive is
-expected to miss the gate until the four keys are replaced from reviewed
-bytes. Do not invent a registry digest in the Helm pin. The pin uses the main
-publish job's `RepoDigests` value after root accepts an artifact. The accepted
-image's signature does not extend to the held draft.
+Those four historical digests stay in `accepted-legacy-digests.json`. The
+current enforcement gate in `reviewed-digests.json` is the certifi candidate
+archive, config, image id, and buildx manifest in the held-draft section.
+Recording that gate does not overwrite the accepted `18fc` artifact or its
+signature. Do not invent a registry digest in the Helm pin. The pin uses the
+main publish job's `RepoDigests` value after root accepts an artifact. The
+accepted image's signature does not extend to this candidate. Main publication
+is not authorized.
 
-## Current effective refs
+## Historical pre-rollout refs
 
-| Workload | Container | Image today | Replicas | Rollout |
+This table is the snapshot from before the accepted utils-only image was
+pinned. It is not the live image. Live server, worker, and `web-dist-copy`
+resolve to the overlaid
+`sha256:18fc99f13617a4b83dfc470e4f8cda7ed76cf513c5147c90e1de888838325663`,
+not to the stock official index below.
+
+| Workload | Container | Image in that snapshot | Replicas | Rollout |
 |---|---|---|---|---|
 | `authentik-server` | `server` | `ghcr.io/goauthentik/server:2026.8.5` → `sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5` | 3 | RollingUpdate maxSurge 25%, maxUnavailable 25% |
 | `authentik-server` | `web-dist-copy` | same digest | init | same pod |
@@ -141,6 +166,12 @@ pullable the same way other `ghcr.io/thaynes43` images already run. Do not add
 a pull secret or RBAC.
 
 ## Readiness and rollback
+
+The rollback command below is the historical procedure for the accepted
+utils-only image, back to the stock official base. It is not the rollback for
+this certifi candidate. The candidate stays unpublished. Moving from a future
+candidate back to `18fc` would restore emSign C1 and C3 and needs a conscious
+trust decision. The stock base restores the UserInfo logging defect.
 
 After root applies the pin, wait for both deployments to report 3 ready and 3
 updated on the new digest, with the existing probes. Do not scale down to make

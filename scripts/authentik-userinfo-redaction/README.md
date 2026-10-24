@@ -56,18 +56,30 @@ The linux/amd64 manifest is `sha256:6b924afb97053a27ca3f42f006c920464fb77763558c
 and its compressed layers are 377,501,332 bytes. `SOURCE_DATE_EPOCH` stays
 `1792582296`. The disposable canary uses the same 2 CPU and 2 GiB envelope.
 
-`reviewed-digests.json` is still the acceptance gate and still names the
-accepted utils-only build. This draft's archive SHA is not known until the
-hosted build writes `candidate-digests.json`. Structural proof and the canary
-are separate fields. `qualified` stays false, and acceptance stays
-`UNACCEPTED`, until the structural proof, the four reviewed pins, and the
-canary comparison all pass. A pin mismatch remains unaccepted even if the
-structural proof and the canary pass. Do not invent the four digests.
-`accepted-legacy-digests.json` keeps the accepted build and the registry
-digest `sha256:18fc99f13617a4b83dfc470e4f8cda7ed76cf513c5147c90e1de888838325663`.
-That signature does not sign this draft. Returning from this draft to that
-image would put C1 and C3 back into Python certifi. The stock official base
-restores the UserInfo logging defect and is not the rollback for this draft.
+`reviewed-digests.json` is the acceptance gate for this held draft. Its four
+keys are the archive, config, image id, and buildx manifest reviewed from
+repair run 40122430827, job 120956687802, built from source
+`cb7cd7a36d7f48f6eb07556f9010213fded726e8`. Native Sol approved those values
+for held-draft CI expectations only. The archive is
+`95466c87de78c7d1387eedd4a1ad9b18991766ebb9fb16f9460ed5b1d9298f09`. The config
+and image id are
+`sha256:3429fca1edba0aeedab48a9e2668b166cff59545d574aa6d420ad142cff202e7`.
+The buildx manifest is
+`sha256:749b5a2378c8e2bba220958f15de3ba0b3f38e1947d5ebb89cd1f9b68d5eb11a`.
+Two independently downloaded archives reproduced those four values. That run
+passed structural proof and the 32-case synthetic canary. The fresh CI of the
+commit that records these expectations is still pending, so this source is not
+fully green yet. `qualified` becomes true only when that run reports structural
+proof, the canary, and an exact match to these four keys. There is no registry
+digest and no signature for this candidate.
+
+`accepted-legacy-digests.json` keeps the historical accepted utils-only build
+and the registry digest
+`sha256:18fc99f13617a4b83dfc470e4f8cda7ed76cf513c5147c90e1de888838325663`.
+That signature does not sign this draft, and this gate does not overwrite that
+artifact. Returning from this draft to that image would put C1 and C3 back
+into Python certifi. The stock official base restores the UserInfo logging
+defect and is not the rollback for this draft.
 
 Pull requests build an OCI/docker archive and upload
 `authentik-userinfo-redaction-unaccepted-<commit>` plus the digest report.
