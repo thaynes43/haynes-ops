@@ -16,6 +16,8 @@ CONTRACT = ROOT / ".agents/reports/portal178-m5d/DEPLOYMENT-CONTRACT.md"
 CHECKLIST = ROOT / ".agents/reports/portal178-m5d/LAUNCH-CHECKLIST.md"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
 RUNTIME_CONTRACT = Path("/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md")
+STABLE_CONTRACT = Path("/home/dev/work/orders/portal178-runtime-assembly-20261024/integration-fixes-02/RUNTIME-CONTRACT.md")
+M6_HEAD = "6a522e843a8768099d8eb8086f9ff8272f94b725"
 
 RESOURCES = [
     "oidc-externalsecret.yaml",
@@ -24,6 +26,10 @@ RESOURCES = [
     "networkpolicy.yaml",
     "config.yaml",
     "postgres-ca.yaml",
+    "admission-ca.yaml",
+    "issuer-ca.yaml",
+    "openproject-ca.yaml",
+    "operator-ca.yaml",
     "deployment.yaml",
     "service.yaml",
     "ingressroute.yaml",
@@ -133,6 +139,8 @@ class ComponentRenderTest(unittest.TestCase):
         manifest = load(COMPONENT / "kustomization.yaml")
         self.assertEqual(manifest["resources"], RESOURCES)
         self.assertNotIn("ccnp-exclusion.yaml", manifest["resources"])
+        self.assertIn("runtime-externalsecret.yaml", manifest["resources"])
+        self.assertIn("role-externalsecret.yaml", manifest["resources"])
         self.assertEqual(len(self.docs), len(RESOURCES))
 
     def test_every_object_is_marked_unregistered(self):
@@ -155,6 +163,7 @@ class ComponentRenderTest(unittest.TestCase):
             self.assertEqual(doc["spec"]["secretStoreRef"], STORE)
             self.assertNotIn("dataFrom", doc["spec"])
             self.assertEqual(doc["spec"]["target"]["name"], doc["metadata"]["name"])
+            self.assertNotIn("PORTAL_SUBJECT", remote_properties(doc))
         indexed = {(doc["metadata"]["namespace"], doc["metadata"]["name"]): doc for doc in secrets}
         oidc = indexed[("dev-agents", "dev-env-v2-portal-oidc")]
         runtime = indexed[("dev-agents", "dev-env-v2-portal-runtime")]
@@ -162,6 +171,9 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(remote_properties(oidc), OIDC_FIELDS)
         self.assertEqual(sorted(oidc["spec"]["target"]["template"]["data"]), OIDC_FIELDS)
         self.assertEqual([item["remoteRef"]["key"] for item in oidc["spec"]["data"]], [CANONICAL_ITEM, CANONICAL_ITEM])
+        self.assertTrue(set(remote_properties(oidc)).isdisjoint(RUNTIME_FIELDS))
+        self.assertEqual(load(COMPONENT / "runtime-externalsecret.yaml"), load(PENDING / "runtime-externalsecret.yaml"))
+        self.assertEqual(load(COMPONENT / "role-externalsecret.yaml"), load(PENDING / "role-externalsecrets.yaml"))
         self.assertEqual(remote_properties(runtime), RUNTIME_FIELDS)
         self.assertEqual(sorted(runtime["spec"]["target"]["template"]["data"]), sorted(RUNTIME_FIELDS))
         self.assertEqual({item["remoteRef"]["key"] for item in runtime["spec"]["data"]}, {CANONICAL_ITEM})
@@ -177,8 +189,6 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(remote_properties(historical), OIDC_FIELDS)
         self.assertEqual({item["remoteRef"]["key"] for item in historical["spec"]["data"]}, {CANONICAL_ITEM})
         self.assertEqual(historical["spec"]["secretStoreRef"], STORE)
-        self.assertEqual(load(COMPONENT / "runtime-externalsecret.yaml"), load(PENDING / "runtime-externalsecret.yaml"))
-        self.assertEqual(load(COMPONENT / "role-externalsecret.yaml"), load(PENDING / "role-externalsecrets.yaml"))
 
     def test_no_migration_credential_or_secret_material(self):
         self.assertNotIn("dev-env-v2-portal-migration", self.rendered)
@@ -207,26 +217,46 @@ class ComponentRenderTest(unittest.TestCase):
         annotations = spec["template"]["metadata"]["annotations"]
         self.assertEqual(annotations["dev-env.haynesops.com/postgres-ca-sha256"], "UNVERIFIED")
         self.assertEqual(annotations["reloader.stakater.com/auto"], "true")
+        self.assertEqual(annotations["dev-env.haynesops.com/oidc-population"], "user-reported-saved")
         self.assertEqual(
             annotations["configmap.reloader.stakater.com/reload"],
-            "dev-env-v2-portal-config,dev-env-v2-portal-postgres-ca",
+            "dev-env-v2-portal-config,dev-env-v2-portal-postgres-ca,dev-env-v2-portal-admission-ca,dev-env-v2-portal-issuer-ca,dev-env-v2-portal-openproject-ca,dev-env-v2-portal-operator-ca",
         )
         self.assertEqual(
             annotations["secret.reloader.stakater.com/reload"],
             "dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-tls",
         )
+        self.assertEqual(pod["securityContext"]["runAsUser"], 65532)
+        self.assertEqual(pod["securityContext"]["runAsGroup"], 65532)
         container = pod["containers"][0]
         self.assertEqual(container["image"], "unregistered.invalid/dev-env-v2-portal:UNPUBLISHED")
         self.assertNotIn("@sha256:", container["image"])
+        self.assertNotIn("ghcr.io", container["image"])
         self.assertEqual(container["ports"], [{"name": "https", "containerPort": 8443, "protocol": "TCP"}])
-        for probe, path in (("startupProbe", "/portal/livez"), ("livenessProbe", "/portal/livez"), ("readinessProbe", "/portal/readyz")):
+        for probe, path in (("startupProbe", "/healthz"), ("livenessProbe", "/healthz"), ("readinessProbe", "/readyz")):
             http = container[probe]["httpGet"]
             self.assertEqual(http, {"path": path, "port": "https", "scheme": "HTTPS"})
-        mounts = {item["name"]: item for item in container["volumeMounts"]}
-        self.assertEqual(mounts["oidc"]["mountPath"], "/etc/portal/oidc")
-        self.assertEqual(mounts["runtime"]["mountPath"], "/etc/portal/runtime")
-        self.assertEqual(mounts["postgres-ca"]["mountPath"], "/etc/portal/postgres")
-        self.assertEqual(mounts["serving-tls"]["mountPath"], "/etc/portal/tls")
+            self.assertNotIn("httpHeaders", container[probe])
+        mounts = {item["mountPath"]: item for item in container["volumeMounts"]}
+        self.assertEqual(mounts["/etc/dev-env-portal/config"]["name"], "config")
+        for field in OIDC_FIELDS:
+            item = mounts["/etc/dev-env-portal/secrets/" + field]
+            self.assertEqual(item["name"], "oidc")
+            self.assertEqual(item["subPath"], field)
+        for field in RUNTIME_FIELDS:
+            item = mounts["/etc/dev-env-portal/secrets/" + field]
+            self.assertEqual(item["name"], "runtime")
+            self.assertEqual(item["subPath"], field)
+        self.assertNotIn("/etc/dev-env-portal/secrets/PORTAL_SUBJECT", mounts)
+        self.assertEqual(mounts["/etc/dev-env-portal/ca/ca.crt"]["subPath"], "ca.crt")
+        self.assertEqual(mounts["/etc/dev-env-portal/ca/admission-ca.crt"]["subPath"], "admission-ca.crt")
+        self.assertEqual(mounts["/etc/dev-env-portal/ca/issuer-ca.crt"]["subPath"], "issuer-ca.crt")
+        self.assertEqual(mounts["/etc/dev-env-portal/ca/openproject-ca.crt"]["subPath"], "openproject-ca.crt")
+        self.assertEqual(mounts["/etc/dev-env-portal/ca/operator-ca.crt"]["subPath"], "operator-ca.crt")
+        self.assertEqual(mounts["/etc/dev-env-portal/tls/tls.crt"]["subPath"], "tls.crt")
+        self.assertEqual(mounts["/etc/dev-env-portal/tls/tls.key"]["subPath"], "tls.key")
+        self.assertNotIn("/etc/portal", self.rendered)
+        self.assertNotIn("/portal/livez", self.rendered)
         volumes = {item["name"]: item for item in pod["volumes"]}
         self.assertEqual([item["key"] for item in volumes["oidc"]["secret"]["items"]], OIDC_FIELDS)
         self.assertEqual([item["key"] for item in volumes["runtime"]["secret"]["items"]], RUNTIME_FIELDS)
@@ -239,18 +269,42 @@ class ComponentRenderTest(unittest.TestCase):
 
     def test_public_ca_input_has_no_pem(self):
         configmaps = {doc["metadata"]["name"]: doc for doc in by_kind(self.docs, "ConfigMap")}
-        ca = configmaps["dev-env-v2-portal-postgres-ca"]
-        self.assertEqual(ca["data"], {"provenance": "absent"})
-        self.assertNotIn("ca.crt", ca["data"])
-        self.assertEqual(ca["metadata"]["annotations"]["dev-env.haynesops.com/ca-sha256"], "UNVERIFIED")
+        for name in (
+            "dev-env-v2-portal-postgres-ca",
+            "dev-env-v2-portal-admission-ca",
+            "dev-env-v2-portal-issuer-ca",
+            "dev-env-v2-portal-openproject-ca",
+            "dev-env-v2-portal-operator-ca",
+        ):
+            ca = configmaps[name]
+            self.assertEqual(ca["data"], {"provenance": "absent"})
+            self.assertNotIn("ca.crt", ca["data"])
+            self.assertEqual(ca["metadata"]["annotations"]["dev-env.haynesops.com/ca-sha256"], "UNVERIFIED")
         config = configmaps["dev-env-v2-portal-config"]["data"]
-        self.assertEqual(config["origin"], "https://dev-env-v2.haynesops.com")
-        self.assertEqual(config["callback"], "https://dev-env-v2.haynesops.com/auth/callback")
-        self.assertEqual(config["issuer"], "https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/")
-        self.assertEqual(config["public-client-id"], "dev-env-v2-portal-internal")
-        self.assertEqual(config["postgres-host"], "postgres16-rw.database.svc.cluster.local")
-        self.assertEqual(config["postgres-username"], "dev_env_v2_portal_runtime")
-        self.assertEqual(config["admission-uid"], "PENDING-CLOSED-BOOTSTRAP")
+        self.assertEqual(config, {
+            "origin": "https://dev-env-v2.haynesops.com",
+            "issuer": "https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/",
+            "authorization-url": "https://authentik.haynesnetwork.com/application/o/authorize/",
+            "token-url": "https://authentik.haynesnetwork.com/application/o/token/",
+            "userinfo-url": "https://authentik.haynesnetwork.com/application/o/userinfo/",
+            "jwks-url": "https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/jwks/",
+            "openproject-base-url": "https://work.haynesnetwork.com",
+            "operator-api-url": "https://dev-env-operator.dev-env-system.svc.cluster.local:8443",
+            "admission-api-url": "https://kubernetes.default.svc.cluster.local",
+            "admission-token-file": "/var/run/portal/api/token",
+            "auth-style": "header",
+            "login-ttl": "1m",
+            "idle-ttl": "30m",
+            "absolute-ttl": "1h",
+            "fresh-for": "1m",
+            "clock-skew": "0s",
+            "witness-gets-per-second": "30",
+            "witness-get-burst": "57",
+        })
+        self.assertNotIn("admission-uid", config)
+        self.assertNotIn("subject", config)
+        self.assertNotIn("session-bindings.json", config)
+        self.assertNotIn("PENDING-CLOSED-BOOTSTRAP", self.rendered)
         self.assertNotIn("thaynes", "\n".join(config.values()))
 
     def test_internal_route_is_not_public(self):
@@ -320,17 +374,24 @@ class ComponentRenderTest(unittest.TestCase):
 
 
     def test_historical_item_keys_and_unrelated_properties_are_rejected(self):
-        for doc in by_kind(self.docs, "ExternalSecret"):
+        rendered_secrets = by_kind(self.docs, "ExternalSecret")
+        self.assertEqual(len(rendered_secrets), 3)
+        for doc in rendered_secrets:
             self.assertEqual(projection_violations(doc, allowed_properties(doc)), [])
-        mutated = deepcopy(by_kind(self.docs, "ExternalSecret")[1])
+        mutated = deepcopy(rendered_secrets[0])
         mutated["spec"]["data"][0]["remoteRef"]["key"] = "dev-env-v2-portal"
         self.assertIn("dev-env-v2-portal", projection_violations(mutated, allowed_properties(mutated)))
-        mutated = deepcopy(by_kind(self.docs, "ExternalSecret")[2])
+        mutated = deepcopy(next(doc for doc in rendered_secrets if doc["metadata"]["name"] == "dev-env-v2-portal-runtime"))
         mutated["spec"]["data"].append({
             "secretKey": "CLAUDE_CODE_OAUTH_TOKEN",
             "remoteRef": {"key": CANONICAL_ITEM, "property": "CLAUDE_CODE_OAUTH_TOKEN"},
         })
-        self.assertIn("CLAUDE_CODE_OAUTH_TOKEN", projection_violations(mutated, PORTAL_PROPERTIES))
+        self.assertIn("CLAUDE_CODE_OAUTH_TOKEN", projection_violations(mutated, set(RUNTIME_FIELDS)))
+        mutated["spec"]["data"][-1] = {
+            "secretKey": "PORTAL_SUBJECT",
+            "remoteRef": {"key": CANONICAL_ITEM, "property": "PORTAL_SUBJECT"},
+        }
+        self.assertIn("PORTAL_SUBJECT", projection_violations(mutated, set(RUNTIME_FIELDS)))
         self.assertTrue(projection_violations({"spec": {"dataFrom": [{"extract": {"key": CANONICAL_ITEM}}], "data": []}}, PORTAL_PROPERTIES))
         occupied = dev_env_properties(ROOT / "kubernetes")
         self.assertTrue(occupied)
@@ -345,20 +406,37 @@ class ComponentRenderTest(unittest.TestCase):
     def test_contract_records_missing_runtime_and_attestation(self):
         contract = CONTRACT.read_text()
         checklist = CHECKLIST.read_text()
-        self.assertIn("RUNTIME-CONTRACT.md: absent", contract)
-        self.assertIn("RUNTIME-CONTRACT.md: absent", checklist)
+        self.assertNotIn("RUNTIME-CONTRACT.md: absent", contract)
+        self.assertNotIn("RUNTIME-CONTRACT.md: absent", checklist)
+        self.assertNotIn("is UNKNOWN", checklist)
+        self.assertIn("USER-REPORTED SAVED", contract)
+        self.assertIn("USER-REPORTED SAVED", checklist)
+        self.assertIn("not SecretSynced", contract)
+        self.assertIn("not value-verified", checklist)
+        self.assertIn("/etc/dev-env-portal", contract)
+        self.assertIn("/healthz", contract)
+        self.assertIn("/readyz", contract)
+        self.assertIn("Standard base64", contract)
+        self.assertIn("dev_env_v2_portal_runtime", contract)
+        self.assertIn("integration-fixes-02", contract)
+        self.assertIn("config/subject", contract)
+        self.assertIn(M6_HEAD, contract)
         self.assertIn("Historical record only; not loaded", contract)
-        self.assertIn("is UNKNOWN", checklist)
         self.assertIn("HaynesKube/dev-env", contract)
         self.assertIn("canonical-item-01/RUNTIME-CONTRACT.md", contract)
         self.assertIn("Population of these properties is HELD", (PENDING / "role-externalsecrets.yaml").read_text())
         for field in ATTESTATION:
             self.assertIn(field, contract)
-        if RUNTIME_CONTRACT.parent.is_dir():
-            self.assertFalse(
-                RUNTIME_CONTRACT.exists(),
-                "M6 published RUNTIME-CONTRACT.md; reconcile the deployment packet before review",
-            )
+        if STABLE_CONTRACT.parent.is_dir():
+            self.assertTrue(STABLE_CONTRACT.is_file(), "stable runtime contract is missing")
+            stable = STABLE_CONTRACT.read_text()
+            self.assertIn("/etc/dev-env-portal", stable)
+            self.assertIn("/healthz", stable)
+            self.assertIn("/readyz", stable)
+            self.assertIn("https://authentik.haynesnetwork.com/application/o/authorize/", stable)
+            self.assertIn("config/subject", stable)
+            self.assertIn("USER-REPORTED SAVED", stable)
+            self.assertIn("historical source", stable)
 
 
 if __name__ == "__main__":

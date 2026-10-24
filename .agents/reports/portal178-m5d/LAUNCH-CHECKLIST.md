@@ -10,13 +10,13 @@ Status values are source or handoff facts. They are not live acceptance.
 | --- | --- | --- |
 | Keep this component out of every Flux Kustomization and `kubernetes/` resource list. | M5D `94bffabb-3e1f-47d9-8d6c-370ba5da2ffc` | Required now. This source does not register it. |
 | Exact-head independent review of the staged source, then required CI. Do not merge a change that adds a live route, policy, ExternalSecret, or admission object. | Coordinator picks the reviewer. M5D keeps correction custody. | Required before merge. |
-| Publish `RUNTIME-CONTRACT.md` at `/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md` and a tested process that reads this mount layout, serves TLS on 8443 with the exact public host, implements `/portal/livez` and `/portal/readyz`, and stays fail-closed while admission is closed. | M6 `8372053b-36b5-4cf2-b2c8-5a7146a42c45` | Required. RUNTIME-CONTRACT.md: absent. Merged assembly is empty. |
-| Replace `unregistered.invalid/dev-env-v2-portal:UNPUBLISHED` with the M6 immutable image reference. No digest is invented here. | M6, then M5D source bump | Required before any pod is admitted. |
+| Follow `/home/dev/work/orders/portal178-runtime-assembly-20261024/integration-fixes-02/RUNTIME-CONTRACT.md`. That file is the current contract and supersedes `canonical-item-01/RUNTIME-CONTRACT.md`. | M6 `8372053b-36b5-4cf2-b2c8-5a7146a42c45` | Current contract read. Independent review of this head is still required before merge. |
+| Replace `unregistered.invalid/dev-env-v2-portal:UNPUBLISHED` with a verified immutable `ghcr.io/thaynes43/dev-env-portal:sha-<short>` artifact. No digest is invented here. | M6, then M5D source bump | Required before any pod is admitted. Image stays the unpublished sentinel. |
 | Confirm the Traefik 42.1.3 `rootCAsSecrets` PEM key. Supply public serving CA Secret `dev/dev-env-v2-portal-serving-ca` and leaf Secret `dev-agents/dev-env-v2-portal-tls` from an already authorized certificate owner. | Certificate owner and portal owner | Required before route registration. Authority to mint a new issuer is not granted here. |
-| Deliver public `ca.crt` for `database/postgres16-ca` with the attestation fields in `DEPLOYMENT-CONTRACT.md`. Set both CA hash annotations to that file SHA-256 in the same change. | Already-authorized certificate administrator, then portal owner | Required before the database mount can start. No PEM is in source. |
-| Check consumer ExternalSecret existence and `SecretSynced`, and the approved property names only. | M5D after a reviewed consumer exists | Required later. OIDC population on `HaynesKube/dev-env` is UNKNOWN. No duplicate OIDC request. Runtime properties are HELD. |
+| Deliver public `ca.crt` for `postgres16-rw`, plus public peer files for admission, the issuer, OpenProject, and the operator. Set each CA hash annotation to that file SHA-256 in the same change. | Already-authorized certificate administrator, then portal owner | Required before the CA mounts can start. No PEM is in source. |
+| Check the rendered OIDC ExternalSecret for `SecretSynced` and the two approved property names only. | M5D after a reviewed consumer exists | Required later. OIDC on `HaynesKube/dev-env` is USER-REPORTED SAVED, not SecretSynced and not value-verified. No duplicate OIDC request. Runtime properties are HELD. |
 | Append `dev-env-v2-portal` to the two CCNP `NotIn` lists using `ccnp-exclusion.yaml`, after a rendered diff shows every other selector and rule unchanged. | M5D source, separate reviewed registration | Required before the dedicated policy is effective. Not applied. |
-| Create ConfigMap `dev-agents/dev-env-v2-portal-admission` once, `state=closed`, through the existing authorized operator route. Record its UID. Replace sentinel `PENDING-CLOSED-BOOTSTRAP` only with that UID. | Authorized operator, then M5D source for the UID pin | Required before Gate A. BFF cannot create it. Not in this render. |
+| Create ConfigMap `dev-agents/dev-env-v2-portal-admission` once, `state=closed`, through the existing authorized operator route. Record its UID. Add `config/admission-uid` only with that UID. Do not write sentinel `PENDING-CLOSED-BOOTSTRAP` into the file. | Authorized operator, then M5D source for the UID pin | Required before Gate A. BFF cannot create it. The file is absent from this render. |
 | Apply reviewed SQL `010` and `020`, then `030` with every effective-rights boolean true. Keep the six HBA rejects until that proof. Insert the single runtime hostssl allow only after that proof, before the `host all` catch-all. No migrator allow. | Portal owner using the existing fixed-target helper | Required before database connectivity. Not this packet. |
 | Apply the positive database grant, the internal route, and the Tom-only reader admission only after secret sync and the Gate A evidence list in the internal-reader sequence. | Coordinator outcome, M5D infrastructure, M6 process | Required for internal use. Not authorized by merging this packet. |
 | Gate A on the exact artifact: invalid OIDC/state/nonce/issuer/audience, Tom issuer plus subject and live active direct Admins, two-principal denial, revocation, logout, database failure, CSRF, hostile output, secret canaries, TLS and backend-bypass negatives, and no public route. Fixture identities only. | M6 and M5D, coordinator acceptance | Required. Not source-verified. |
@@ -34,29 +34,33 @@ Status values are source or handoff facts. They are not live acceptance.
 
 Canonical item: existing `HaynesKube/dev-env`. No new item. No `dataFrom`. Consumers name individual properties. Unrelated existing fields stay on the item and are not mounted.
 
-OIDC, already handed to Tom, not requested again:
+OIDC, already handed to Tom, not requested again. Tom confirmed both properties are saved. Status is USER-REPORTED SAVED. It is not SecretSynced and it is not value-verified.
 
 - `OIDC_CLIENT_ID` = `dev-env-v2-portal-internal`
 - `OIDC_CLIENT_SECRET` = the installed Authentik provider secret, not rotated and not pasted here
 
-Runtime, same item, explicitly HELD until provisioning and runtime parsing match. Do not tell Tom to populate these yet:
+Runtime, same item, explicitly HELD. Do not tell Tom to populate these. No credential or key is generated, and no new item is requested.
 
-- `DB_USERNAME`, intended to be `dev_env_v2_portal_runtime` when that handoff is reviewed
-- `DB_PASSWORD`, format and writer unresolved, not generated
-- `SESSION_AEAD_KEY`, prior format was canonical base64 of 32 bytes, unresolved until M6 parsing matches
-- `SESSION_GENERATION`, prior format was 32–128 characters aligned with the fence, not generated
+- `DB_USERNAME` must equal the accepted SQL role `dev_env_v2_portal_runtime`. The published parser compares the mounted file with that role.
+- `DB_PASSWORD` must match the reviewed CNPG basic-auth provisioning mechanism in the inert `dev-env-v2-portal-runtime-db` projection. The writer is not authorized.
+- `SESSION_AEAD_KEY` must be standard base64 (`StdEncoding`, strict) of exactly 32 bytes, with no whitespace. That is the published `canonicalKey` and `base64.StdEncoding.Strict` check.
+- `SESSION_GENERATION` must be 32–128 characters from letters, digits, `-`, and `_`. That is `validGeneration`.
 
-The later handoff, when authorized, is a reviewed secure UI write by Tom to those property names only. It is not a chat paste, a generated value in git, or a second 1Password item. Source projections of `dev-env` already use twelve other property names; none collide with these six. Fields on the item that this packet does not name are preserved by omission.
+`config/subject` is unresolved. The parser requires that file, and it is the existing issuer-plus-subject pin. It is not a 1Password property. This packet does not invent `PORTAL_SUBJECT`, a file, or a user step that would create a field.
+
+The later handoff, when authorized, is a reviewed secure UI write by Tom to the held property names only. It is not a chat paste, a generated value in git, or a second 1Password item. Source projections of `dev-env` already use twelve other property names; none collide with the six portal names above. Fields on the item that this packet does not name are preserved by omission. The rendered OIDC consumer selects `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`. The rendered runtime and database projections select only their named properties and stay unpopulated.
 
 ## Unverified inputs
 
 These are explicit and unresolved:
 
-- M6 executable, image repository, digest, probe implementation, and file loader.
+- Verified immutable image digest for `ghcr.io/thaynes43/dev-env-portal`. The Deployment still uses the unpublished sentinel.
+- Probe Host. The process requires `Host: dev-env-v2.haynesops.com`. The Probe API cannot set that header, so `/healthz` and `/readyz` fail closed at the process.
 - Serving certificate issuer, Traefik CA secret key, and leaf certificate.
-- Public PostgreSQL CA bytes, fingerprint, validity, and renewal owner name.
-- Whether `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` are present on existing item `HaynesKube/dev-env`. UNKNOWN. Runtime properties are HELD, not unverified population.
-- Admission ConfigMap UID and resourceVersion.
+- Public PostgreSQL CA bytes and the four peer CA files, each with fingerprint, validity, and renewal owner name.
+- `SecretSynced` for the two OIDC properties. Tom's save is USER-REPORTED SAVED, not SecretSynced and not value-verified. Runtime properties are an inert projection. Population and install are HELD.
+- `config/subject`. Existing issuer-plus-subject pin. Not an item property. The file is absent. `PORTAL_SUBJECT` is not used.
+- Admission ConfigMap UID and resourceVersion. `config/admission-uid` stays absent until that UID is recorded.
 - Whether Reloader is installed and selects this namespace. The annotations follow the existing convention; this packet does not measure the controller.
 - Effective CCNP selection, DNS resolution, Traefik header trust, and backend bypass. Source does not prove them.
 - Tom issuer subject and Admins membership. Private values stay out of source. No group membership is changed.

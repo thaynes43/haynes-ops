@@ -1,5 +1,7 @@
 # Render-only Story178 internal reader packet.
 # No Flux Kustomization may reference this directory. Rendering is not registration.
+# Runtime and CNPG ExternalSecrets are inert staged projections.
+# ValidatePortalConsumer accepts those properties. Population and install stay HELD.
 # ccnp-exclusion.yaml is a review template and is intentionally not a resource.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -12,6 +14,10 @@ resources:
   - networkpolicy.yaml
   - config.yaml
   - postgres-ca.yaml
+  - admission-ca.yaml
+  - issuer-ca.yaml
+  - openproject-ca.yaml
+  - operator-ca.yaml
   - deployment.yaml
   - service.yaml
   - ingressroute.yaml

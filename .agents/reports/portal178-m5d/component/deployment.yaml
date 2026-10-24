@@ -1,7 +1,13 @@
-# UNREGISTERED consumer. Image, probes, and file layout are the deployment
-# side of the contract. Merged NewRuntimeAssembly does not implement them yet.
-# Missing serving TLS and postgres ca.crt are required mounts, so the pod
-# cannot start until those separate inputs exist.
+# UNREGISTERED consumer aligned to M6 PR541 6a522e843a8768099d8eb8086f9ff8272f94b725.
+# Mount root is /etc/dev-env-portal. Probes are HTTPS GET /healthz and /readyz.
+# The process also requires Host dev-env-v2.haynesops.com. A Probe cannot set
+# that header, so these probes fail closed until that interface is resolved.
+# Image remains the unpublished sentinel. uid and gid are 65532.
+# Held runtime files are mount paths only. This render does not select them.
+# Serving TLS, peer CA files, admission-uid, and config/subject are
+# unprovisioned, so the kubelet cannot start this pod.
+# config/subject is the existing issuer-plus-subject pin. It is not a
+# 1Password property. PORTAL_SUBJECT is not a mount and not an item field.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,9 +30,10 @@ spec:
         app.kubernetes.io/name: dev-env-v2-portal
       annotations:
         reloader.stakater.com/auto: "true"
-        configmap.reloader.stakater.com/reload: dev-env-v2-portal-config,dev-env-v2-portal-postgres-ca
+        configmap.reloader.stakater.com/reload: dev-env-v2-portal-config,dev-env-v2-portal-postgres-ca,dev-env-v2-portal-admission-ca,dev-env-v2-portal-issuer-ca,dev-env-v2-portal-openproject-ca,dev-env-v2-portal-operator-ca
         secret.reloader.stakater.com/reload: dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-tls
         dev-env.haynesops.com/postgres-ca-sha256: UNVERIFIED
+        dev-env.haynesops.com/oidc-population: user-reported-saved
     spec:
       serviceAccountName: dev-env-v2-portal
       automountServiceAccountToken: false
@@ -37,8 +44,8 @@ spec:
             value: "1"
       securityContext:
         runAsNonRoot: true
-        runAsUser: 65534
-        runAsGroup: 65534
+        runAsUser: 65532
+        runAsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -62,7 +69,7 @@ spec:
               memory: 256Mi
           startupProbe:
             httpGet:
-              path: /portal/livez
+              path: /healthz
               port: https
               scheme: HTTPS
             periodSeconds: 5
@@ -70,7 +77,7 @@ spec:
             failureThreshold: 12
           livenessProbe:
             httpGet:
-              path: /portal/livez
+              path: /healthz
               port: https
               scheme: HTTPS
             periodSeconds: 10
@@ -78,7 +85,7 @@ spec:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /portal/readyz
+              path: /readyz
               port: https
               scheme: HTTPS
             periodSeconds: 10
@@ -86,19 +93,59 @@ spec:
             failureThreshold: 3
           volumeMounts:
             - name: config
-              mountPath: /etc/portal/config
+              mountPath: /etc/dev-env-portal/config
               readOnly: true
             - name: oidc
-              mountPath: /etc/portal/oidc
+              mountPath: /etc/dev-env-portal/secrets/OIDC_CLIENT_ID
+              subPath: OIDC_CLIENT_ID
+              readOnly: true
+            - name: oidc
+              mountPath: /etc/dev-env-portal/secrets/OIDC_CLIENT_SECRET
+              subPath: OIDC_CLIENT_SECRET
               readOnly: true
             - name: runtime
-              mountPath: /etc/portal/runtime
+              mountPath: /etc/dev-env-portal/secrets/DB_USERNAME
+              subPath: DB_USERNAME
+              readOnly: true
+            - name: runtime
+              mountPath: /etc/dev-env-portal/secrets/DB_PASSWORD
+              subPath: DB_PASSWORD
+              readOnly: true
+            - name: runtime
+              mountPath: /etc/dev-env-portal/secrets/SESSION_AEAD_KEY
+              subPath: SESSION_AEAD_KEY
+              readOnly: true
+            - name: runtime
+              mountPath: /etc/dev-env-portal/secrets/SESSION_GENERATION
+              subPath: SESSION_GENERATION
               readOnly: true
             - name: postgres-ca
-              mountPath: /etc/portal/postgres
+              mountPath: /etc/dev-env-portal/ca/ca.crt
+              subPath: ca.crt
+              readOnly: true
+            - name: admission-ca
+              mountPath: /etc/dev-env-portal/ca/admission-ca.crt
+              subPath: admission-ca.crt
+              readOnly: true
+            - name: issuer-ca
+              mountPath: /etc/dev-env-portal/ca/issuer-ca.crt
+              subPath: issuer-ca.crt
+              readOnly: true
+            - name: openproject-ca
+              mountPath: /etc/dev-env-portal/ca/openproject-ca.crt
+              subPath: openproject-ca.crt
+              readOnly: true
+            - name: operator-ca
+              mountPath: /etc/dev-env-portal/ca/operator-ca.crt
+              subPath: operator-ca.crt
               readOnly: true
             - name: serving-tls
-              mountPath: /etc/portal/tls
+              mountPath: /etc/dev-env-portal/tls/tls.crt
+              subPath: tls.crt
+              readOnly: true
+            - name: serving-tls
+              mountPath: /etc/dev-env-portal/tls/tls.key
+              subPath: tls.key
               readOnly: true
             - name: api
               mountPath: /var/run/portal/api
@@ -135,6 +182,30 @@ spec:
             items:
               - key: ca.crt
                 path: ca.crt
+        - name: admission-ca
+          configMap:
+            name: dev-env-v2-portal-admission-ca
+            items:
+              - key: ca.crt
+                path: admission-ca.crt
+        - name: issuer-ca
+          configMap:
+            name: dev-env-v2-portal-issuer-ca
+            items:
+              - key: ca.crt
+                path: issuer-ca.crt
+        - name: openproject-ca
+          configMap:
+            name: dev-env-v2-portal-openproject-ca
+            items:
+              - key: ca.crt
+                path: openproject-ca.crt
+        - name: operator-ca
+          configMap:
+            name: dev-env-v2-portal-operator-ca
+            items:
+              - key: ca.crt
+                path: operator-ca.crt
         - name: serving-tls
           secret:
             secretName: dev-env-v2-portal-tls

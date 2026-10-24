@@ -14,14 +14,14 @@ Foundations reused, unchanged by this packet:
 - Pending manifests under `.agents/reports/portal178-m5c/pending/` for the runtime ExternalSecret, the CNPG basic-auth projection, and the BFF CiliumNetworkPolicy.
 - Merged dev-env session constructors: exact origin host, callback `origin + /auth/callback`, postgres host `postgres16-rw.database.svc.cluster.local`, username `dev_env_v2_portal_runtime`, database `dev_env_v2_portal`, `sslmode=verify-full`, MaxConns 2, and admission API path `/api/v1/namespaces/dev-agents/configmaps/dev-env-v2-portal-admission`.
 
-RUNTIME-CONTRACT.md: absent
+Runtime alignment, 2026-10-24. The current contract is `/home/dev/work/orders/portal178-runtime-assembly-20261024/integration-fixes-02/RUNTIME-CONTRACT.md`. It supersedes `/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md`. Source PR541 head `6a522e843a8768099d8eb8086f9ff8272f94b725` remains the published runtime source this packet was checked against, together with the parser updates in that same worktree. Earlier packets recorded no contract. Those checks are superseded. This packet follows the integration-fixes contract. It is not a merge and it does not install the component.
 
-The first packet checked `/home/dev/work/orders/portal178-runtime-assembly-20261024/RUNTIME-CONTRACT.md` and it was absent. This continuation checks `/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md`. Merged `NewRuntimeAssembly` still returns an empty `AssemblyConfig` and answers every path with unavailable. Independent portions below use the accepted constructors and the existing pending manifests. They do not claim the Go process reads these files yet.
+The published process is executable `dev-env-portal`, HTTPS on `:8443`, probes `GET /healthz` and `GET /readyz`, mount root `/etc/dev-env-portal`, and uid/gid 65532. The image repository named by that contract is `ghcr.io/thaynes43/dev-env-portal`. No digest is published. The Deployment image stays `unregistered.invalid/dev-env-v2-portal:UNPUBLISHED`.
 
 
 ## Canonical 1Password item
 
-Supersession, 2026-10-24. The canonical item is existing `HaynesKube/dev-env`. Prior instructions to use or create `dev-env-v2-portal` or `dev-env-v2-portal-runtime` are superseded. Those names remain in historical reports and in this paragraph so the earlier instruction stays visible. They are not remoteRef keys. Provider id `dev-env-v2-portal-internal`, application slug, callback, Kubernetes object names, and mount paths are unchanged. Credentials are not rotated.
+Supersession, 2026-10-24. The canonical item is existing `HaynesKube/dev-env`. Prior instructions to use or create `dev-env-v2-portal` or `dev-env-v2-portal-runtime` are superseded. Those names remain in historical reports and in this paragraph so the earlier instruction stays visible. They are not remoteRef keys. Provider id `dev-env-v2-portal-internal`, application slug, callback, and Kubernetes object names are unchanged. Mount paths now follow the published runtime contract. Credentials are not rotated.
 
 Every portal remoteRef is an individual `property` on `key: dev-env`. There is no `dataFrom` and no whole-item extract. Unrelated fields already stored on the item are not projected.
 
@@ -33,16 +33,15 @@ Runtime properties stay on the same item and are HELD until provisioning and the
 
 | Property | Future source | Format known now | Unresolved |
 | --- | --- | --- | --- |
-| `OIDC_CLIENT_ID` | Existing item `dev-env` | Public value `dev-env-v2-portal-internal` | Whether Tom has saved it. UNKNOWN. |
-| `OIDC_CLIENT_SECRET` | Same item, installed provider secret | Existing secret, not rotated | Population UNKNOWN. Value is never read here. |
-| `DB_USERNAME` | Same item, later reviewed handoff | Intended username `dev_env_v2_portal_runtime` when provisioning matches | HELD. Do not write it yet. |
-| `DB_PASSWORD` | Same item, later reviewed handoff | Not generated here | HELD. Encoding and writer are not authorized now. |
-| `SESSION_AEAD_KEY` | Same item, later reviewed handoff | Prior contract said canonical base64 of 32 bytes | HELD until M6 parsing matches that format. |
-| `SESSION_GENERATION` | Same item, later reviewed handoff | Prior contract said 32–128 characters aligned with the fence | HELD. No value is generated. |
+| `OIDC_CLIENT_ID` | Existing item `dev-env` | Public value `dev-env-v2-portal-internal` | USER-REPORTED SAVED. Not SecretSynced. Not value-verified. No duplicate request. |
+| `OIDC_CLIENT_SECRET` | Same item, installed provider secret | Existing secret, not rotated | USER-REPORTED SAVED. Not SecretSynced. Not value-verified. Value is never read here. |
+| `DB_USERNAME` | Same item, later reviewed handoff | Must equal the accepted SQL role `dev_env_v2_portal_runtime` | HELD. The parser compares the mounted file with that role. Do not write it yet. |
+| `DB_PASSWORD` | Same item, later reviewed handoff | Must match the reviewed CNPG basic-auth provisioning mechanism | HELD. Not generated here. The writer is not authorized. |
+| `SESSION_AEAD_KEY` | Same item, later reviewed handoff | Standard base64 (`StdEncoding`, strict) of exactly 32 bytes, with no whitespace | HELD. The published parser is `canonicalKey` plus `base64.StdEncoding.Strict`. No key is generated. |
+| `SESSION_GENERATION` | Same item, later reviewed handoff | 32–128 characters from letters, digits, `-`, and `_` | HELD. That is `validGeneration`. No value is generated. |
+| `config/subject` | Existing issuer-plus-subject pin. Not an item property | The parser reads `config/subject` | Unresolved. The file is absent. Do not invent `PORTAL_SUBJECT` or ask for a new field. |
 
-M6 contract path checked: `/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md`.
-
-RUNTIME-CONTRACT.md: absent
+`ValidatePortalConsumer` accepts individual `remoteRef.property` entries for `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `DB_USERNAME`, `DB_PASSWORD`, `SESSION_AEAD_KEY`, and `SESSION_GENERATION` on item `dev-env`. `secretKey` must equal the property. Acceptance of the four runtime properties is an inert staged definition. It is not population, not installation, and not SecretSynced. `PORTAL_SUBJECT` and the two `SSH_CA_*` keeper fields are rejected. The unregistered render includes those inert projections. No file under `kubernetes/` references them.
 
 ## Render root
 
@@ -59,11 +58,15 @@ stays unregistered and must not be applied in addition to this packet.
 | --- | --- | --- | --- |
 | Deployment | dev-agents | dev-env-v2-portal | 2 replicas, surge 1, maxUnavailable 0. Pool bound is 2 connections per replica, so 2+1 replicas use 6 of the proposed connectionLimit 8. |
 | Service | dev-agents | dev-env-v2-portal | ClusterIP TCP 8443. |
-| ConfigMap | dev-agents | dev-env-v2-portal-config | Non-secret accepted settings, including admission UID sentinel `PENDING-CLOSED-BOOTSTRAP`. |
+| ConfigMap | dev-agents | dev-env-v2-portal-config | Pinned non-secret files. `config/admission-uid` is absent. |
 | ConfigMap | dev-agents | dev-env-v2-portal-postgres-ca | Public CA input. `ca.crt` is absent. Annotation `dev-env.haynesops.com/ca-sha256=UNVERIFIED`. |
+| ConfigMap | dev-agents | dev-env-v2-portal-admission-ca | Peer CA input. `ca.crt` is absent. |
+| ConfigMap | dev-agents | dev-env-v2-portal-issuer-ca | Peer CA input. `ca.crt` is absent. |
+| ConfigMap | dev-agents | dev-env-v2-portal-openproject-ca | Peer CA input. `ca.crt` is absent. |
+| ConfigMap | dev-agents | dev-env-v2-portal-operator-ca | Peer CA input. `ca.crt` is absent. |
 | ExternalSecret | dev-agents | dev-env-v2-portal-oidc | 1Password item `dev-env`, properties `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` only. Kubernetes name unchanged. |
-| ExternalSecret | dev-agents | dev-env-v2-portal-runtime | Same item `dev-env`, four runtime properties only. Population HELD. Kubernetes name unchanged. |
-| ExternalSecret | database | dev-env-v2-portal-runtime-db | Same item `dev-env`, `DB_USERNAME` and `DB_PASSWORD` only, `kubernetes.io/basic-auth`, `cnpg.io/reload=true`. Population HELD. |
+| ExternalSecret | dev-agents | dev-env-v2-portal-runtime | Inert staged projection of the four runtime properties. Population and install HELD. Kubernetes name unchanged. |
+| ExternalSecret | database | dev-env-v2-portal-runtime-db | Inert staged basic-auth projection of `DB_USERNAME` and `DB_PASSWORD`. Population and install HELD. |
 | CiliumNetworkPolicy | dev-agents | dev-env-v2-portal | Copy of the pending BFF policy. |
 | IngressRoute | dev | dev-env-v2-portal | Internal host only. |
 | ServersTransport | dev | dev-env-v2-portal | Backend TLS verification for this service only. |
@@ -78,21 +81,45 @@ Mounts:
 
 | Volume | Source | Mount | Keys |
 | --- | --- | --- | --- |
-| config | ConfigMap `dev-env-v2-portal-config` | `/etc/portal/config` | accepted non-secret keys |
-| oidc | Secret `dev-env-v2-portal-oidc` | `/etc/portal/oidc` | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` |
-| runtime | Secret `dev-env-v2-portal-runtime` | `/etc/portal/runtime` | `DB_USERNAME`, `DB_PASSWORD`, `SESSION_AEAD_KEY`, `SESSION_GENERATION` |
-| postgres-ca | ConfigMap `dev-env-v2-portal-postgres-ca` | `/etc/portal/postgres/ca.crt` | `ca.crt` required and currently absent |
-| serving-tls | Secret `dev-env-v2-portal-tls` | `/etc/portal/tls` | `tls.crt`, `tls.key`; Secret is not created here |
-| api | projected SA token plus `kube-root-ca.crt` | `/var/run/portal/api/token`, `/var/run/portal/api/ca.crt` | token lifetime 3600 seconds |
+| config | ConfigMap `dev-env-v2-portal-config` | `/etc/dev-env-portal/config` | pinned lowercase files listed below |
+| oidc | Secret `dev-env-v2-portal-oidc` | `/etc/dev-env-portal/secrets/OIDC_CLIENT_ID`, `/etc/dev-env-portal/secrets/OIDC_CLIENT_SECRET` | those two properties only |
+| runtime | Secret `dev-env-v2-portal-runtime`, not created by this render | `/etc/dev-env-portal/secrets/DB_USERNAME`, `DB_PASSWORD`, `SESSION_AEAD_KEY`, `SESSION_GENERATION` | filenames only; no ExternalSecret selects them |
+| postgres-ca | ConfigMap `dev-env-v2-portal-postgres-ca` | `/etc/dev-env-portal/ca/ca.crt` | key absent |
+| admission-ca | ConfigMap `dev-env-v2-portal-admission-ca` | `/etc/dev-env-portal/ca/admission-ca.crt` | key absent |
+| issuer-ca | ConfigMap `dev-env-v2-portal-issuer-ca` | `/etc/dev-env-portal/ca/issuer-ca.crt` | key absent |
+| openproject-ca | ConfigMap `dev-env-v2-portal-openproject-ca` | `/etc/dev-env-portal/ca/openproject-ca.crt` | key absent |
+| operator-ca | ConfigMap `dev-env-v2-portal-operator-ca` | `/etc/dev-env-portal/ca/operator-ca.crt` | key absent |
+| serving-tls | Secret `dev-env-v2-portal-tls`, not created here | `/etc/dev-env-portal/tls/tls.crt`, `/etc/dev-env-portal/tls/tls.key` | both absent |
+| api | projected SA token plus `kube-root-ca.crt` | `/var/run/portal/api/token`, `/var/run/portal/api/ca.crt` | token lifetime 3600 seconds; `config/admission-token-file` names the token path |
 
-Image: `unregistered.invalid/dev-env-v2-portal:UNPUBLISHED`. There is no digest. Replace this only with the immutable reference M6 publishes in `RUNTIME-CONTRACT.md`.
+`config/subject` is not in the ConfigMap. It is the existing issuer-plus-subject pin, not a 1Password property, and its value is unresolved. `PORTAL_SUBJECT` is not a mount and not an item field. `config/admission-uid` is not in the ConfigMap. `config/session-bindings.json`, `secrets/OPENPROJECT_TOKEN`, and `secrets/OPERATOR_TOKEN` are all absent, which is the published disabled-metadata state. The pod still cannot start: `config/subject` is missing, and the serving secret and every peer CA key are missing. The runtime ExternalSecret is inert and unpopulated.
 
-Probes, proposed by this deployment contract and unmet by merged Go:
+Pinned config files:
 
-- startup and liveness: HTTPS GET `/portal/livez` on port `https`
-- readiness: HTTPS GET `/portal/readyz` on port `https`
+- `origin` `https://dev-env-v2.haynesops.com`
+- `issuer` `https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/`
+- `authorization-url` `https://authentik.haynesnetwork.com/application/o/authorize/`
+- `token-url` `https://authentik.haynesnetwork.com/application/o/token/`
+- `userinfo-url` `https://authentik.haynesnetwork.com/application/o/userinfo/`
+- `jwks-url` `https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/jwks/`
+- `openproject-base-url` `https://work.haynesnetwork.com`
+- `operator-api-url` `https://dev-env-operator.dev-env-system.svc.cluster.local:8443` from the operator HelmRelease `--api-url`
+- `admission-api-url` `https://kubernetes.default.svc.cluster.local`
+- `admission-token-file` `/var/run/portal/api/token`
+- `auth-style` `header`
+- `login-ttl` `1m`, `idle-ttl` `30m`, `absolute-ttl` `1h`, `fresh-for` `1m`, `clock-skew` `0s`
+- `witness-gets-per-second` `30`, `witness-get-burst` `57`
 
-Kubelet probe success is not certificate verification and is not Gate A. M6 must implement those paths so they can return success while every reader route stays fail-closed, and so they do not inherit the public-host check that rejects kubelet requests. Until that process exists, these probes do not make a pod Ready.
+The duration, auth-style, and witness values are the published `production_test.go` fixture and sit inside the contract bounds. They are not a launch SLO. The stable contract may replace them before freeze.
+
+Image: `unregistered.invalid/dev-env-v2-portal:UNPUBLISHED`. There is no digest. The contract names `ghcr.io/thaynes43/dev-env-portal` and a `sha-<short>` tag from `main`. This packet does not invent that tag. uid and gid are 65532.
+
+Probes:
+
+- startup and liveness: HTTPS GET `/healthz` on port `https`
+- readiness: HTTPS GET `/readyz` on port `https`
+
+The published gate also requires `Host: dev-env-v2.haynesops.com` and returns a body `ok`. The Probe API cannot set the Host header, and this packet does not add one. Kubelet requests therefore fail closed at the process. Probe success is not claimed. Kubelet probe success is not certificate verification and is not Gate A.
 
 DNS: `ClusterFirst` and `ndots=1`, matching `.agents/reports/portal178-m5c/pending/bff-network-exclusions.json`.
 
@@ -126,8 +153,8 @@ That policy is additive. `dev-env-session-platform` and `dev-env-session-web` st
 | ServiceAccount `dev-agents/dev-env-v2-portal` | ConfigMap `dev-agents/dev-env-v2-portal-admission` | get | Witness grant, registered in PR4265 `portal-witness.yaml` | Referenced. Role is not copied or widened. |
 | ServiceAccount `dev/dev-env` | same ConfigMap | get, update | Same witness grant. Recovery also has pre-existing read breadth that this Role does not define. | Unchanged. |
 | BFF pod | Secret `dev-agents/dev-env-v2-portal-oidc` | mount two OIDC keys | Existing item `HaynesKube/dev-env` | Staged ExternalSecret. Historical `dev-env-system` proposal is not a second consumer. |
-| BFF pod | Secret `dev-agents/dev-env-v2-portal-runtime` | mount four runtime keys | Existing item `HaynesKube/dev-env` | Staged ExternalSecret. Population HELD. |
-| CNPG `postgres16` | Secret `database/dev-env-v2-portal-runtime-db` | username and password | Pending `role-externalsecrets.yaml` | Staged. Migrator stays NOLOGIN with no mounted credential. |
+| BFF pod | Secret `dev-agents/dev-env-v2-portal-runtime` | mount four runtime filenames | Existing item `HaynesKube/dev-env` | Unregistered ExternalSecret. Population and install HELD. Not a live grant. |
+| CNPG `postgres16` | Secret `database/dev-env-v2-portal-runtime-db` | username and password | Pending `role-externalsecrets.yaml` | Unregistered inert projection. `DB_PASSWORD` must match that reviewed basic-auth mechanism. Migrator stays NOLOGIN. |
 | Traefik internal | IngressRoute `dev/dev-env-v2-portal` | Host `dev-env-v2.haynesops.com`, websecure, existing reflected certificate | Approved internal host | Staged. No public route and no reflector edit. |
 | Traefik to BFF | ServersTransport `dev/dev-env-v2-portal` | HTTPS, verify CA, exact serverName | Required isolation in the internal-reader sequence | Template. Serving CA Secret is absent. |
 | BFF pod | CNP `dev-agents/dev-env-v2-portal` | ingress and egress above | Pending `bff-networkpolicy.yaml` | Staged copy. |
@@ -139,7 +166,7 @@ That policy is additive. `dev-env-session-platform` and `dev-env-session-web` st
 
 ## Public CA version, hash, and reload
 
-The ConfigMap is the only public trust input for `postgres16-rw.database.svc.cluster.local`. It currently has `provenance: absent` and no `ca.crt`. The Deployment mounts `ca.crt`, so the kubelet cannot start the pod while the key is missing.
+ConfigMap `dev-env-v2-portal-postgres-ca` is the public trust input for `postgres16-rw.database.svc.cluster.local`, mounted at `/etc/dev-env-portal/ca/ca.crt`. It has `provenance: absent` and no `ca.crt`. The admission, issuer, OpenProject, and operator peer ConfigMaps are the same shape for their contract filenames. The kubelet cannot start the pod while any of those keys is missing.
 
 Registration of a real certificate is one reviewed change that does all of the following:
 
@@ -175,4 +202,4 @@ The renewal owner/contact is whoever already holds authorized certificate access
 
 Every rendered object carries `dev-env.haynesops.com/portal-registration: unregistered`. The admission ConfigMap is absent from the render. The six HBA rejects remain the live `cluster16` list. No hostssl allow, Database, managed role, migrator credential, public entrypoint, or broad RBAC object is in the render.
 
-1Password population is UNKNOWN for the two OIDC properties on existing item `dev-env`. Runtime properties on that same item are HELD and are not a population request. Absence of the ExternalSecrets does not show whether Tom has written the OIDC fields. This packet does not ask again.
+Tom reported `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` saved on `HaynesKube/dev-env`. That status is USER-REPORTED SAVED. It is not SecretSynced and it is not value-verified. This packet does not ask again. The four runtime properties are an inert staged projection. Population and install remain HELD. That projection is not a population request.
