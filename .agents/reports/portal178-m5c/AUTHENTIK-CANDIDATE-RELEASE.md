@@ -33,10 +33,23 @@ passing disposable proof on this digest. Main publication loads that archive,
 pushes `ghcr.io/thaynes43/authentik-userinfo-redaction:sha-<commit>`, and signs
 the registry digest. The registry digest is that job's `RepoDigests` value.
 
-Until that publish job runs, the candidate identity is the digest summary
-artifact `authentik-userinfo-redaction-digests-<commit>` from the pull-request
-run: archive SHA-256, config SHA-256, image id, and buildx manifest digest when
-the builder emits one. Do not invent a registry digest in the Helm pin.
+Measured on pull-request run 40060699220, before the canary assertion was
+corrected. That correction does not change the Dockerfile or build context.
+The image check passed and recorded:
+
+| Identity | Value |
+|---|---|
+| Archive SHA-256 | `fd766ce876e872605eb1b2dcc19fd62697393644c29cd6cebcf77c00493baa00` |
+| Image id / config | `sha256:27208b5ce501d57daf558c44730ee02fe0f9a4e1f0bc5bb96fbdf5abf247c870` |
+| Buildx manifest | `sha256:d39684927413cf724566352022711c6e8955c98cbe21ddfffeabd5366f18f452` |
+| Registry digest | not published |
+| New layer | `authentik/providers/oauth2/utils.py` only |
+
+Runtime user, entrypoint, command, environment hash, labels, and linux/amd64
+matched the base, and the base rootfs layers were the prefix of the candidate.
+A later run of the same Dockerfile must reproduce these digests. Do not invent
+a registry digest in the Helm pin. The pin uses the main publish job's
+`RepoDigests` value after root accepts this artifact.
 
 ## Current effective refs
 
