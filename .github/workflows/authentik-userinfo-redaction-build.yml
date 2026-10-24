@@ -175,14 +175,7 @@ jobs:
           verify_status=$?
           set -e
           if [[ "$verify_status" -eq 2 ]]; then
-            python3 -B - <<'PY'
-            import json, os, sys
-            from pathlib import Path
-            sys.path.insert(0, "scripts/authentik-userinfo-redaction")
-            import verify_candidate
-            report = json.loads(Path(os.environ["RUNNER_TEMP"], "candidate-digests.json").read_text())
-            verify_candidate.assert_bootstrap_continuation(report)
-            PY
+            python3 -B -c 'import json, os, sys; from pathlib import Path; sys.path.insert(0, "scripts/authentik-userinfo-redaction"); import verify_candidate; report = json.loads(Path(os.environ["RUNNER_TEMP"], "candidate-digests.json").read_text()); verify_candidate.assert_bootstrap_continuation(report)'
           elif [[ "$verify_status" -ne 0 ]]; then
             echo "candidate proof failed before the reviewed digest pin"
             exit "$verify_status"

@@ -35,6 +35,7 @@ WHITEOUTS = frozenset((
     SITE + "/.wh." + install_certifi.OLD_DIST,
     SITE + "/certifi/.wh.__pycache__",
 ))
+LAYER_OWNERS = {"ak-root": (1000, 1000)}
 ALLOWED_DIRS = set()
 for _path in list(ALLOWED_FILES) + list(WHITEOUTS):
     _parts = _path.split("/")
@@ -226,8 +227,9 @@ def assert_layer(members):
             raise SystemExit("layer contains a link")
         if member["kind"] not in ("dir", "file"):
             raise SystemExit("layer contains an unexpected member type")
-        if member["uid"] != 0 or member["gid"] != 0:
-            raise SystemExit("layer member owner is not root")
+        expected_uid, expected_gid = LAYER_OWNERS.get(path, (0, 0))
+        if member["uid"] != expected_uid or member["gid"] != expected_gid:
+            raise SystemExit("layer member owner is not the reviewed owner")
         mode = _permission_mode(member["mode"])
         if member["kind"] == "dir":
             if path not in ALLOWED_DIRS:

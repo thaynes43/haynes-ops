@@ -8,6 +8,8 @@ import importlib.util
 import io
 import json
 import pathlib
+import re
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -198,9 +200,19 @@ def overlay_files():
     return files
 
 
-def layer_archive(files, whiteouts=None, extra=None, file_mode=0o644, owner=0, dir_mode=0o755, repeat=None):
+def member_owner(name, owner, owners):
+    if name in owners:
+        return owners[name]
+    if name == "ak-root":
+        return (1000, 1000)
+    return (owner, owner)
+
+
+def layer_archive(files, whiteouts=None, extra=None, file_mode=0o644, owner=0, dir_mode=0o755, repeat=None, owners=None):
     if whiteouts is None:
         whiteouts = verify_candidate.WHITEOUTS
+    if owners is None:
+        owners = {}
     layer_buf = io.BytesIO()
     dirs = set()
     for name in list(files) + list(whiteouts):
@@ -212,28 +224,24 @@ def layer_archive(files, whiteouts=None, extra=None, file_mode=0o644, owner=0, d
             info = tarfile.TarInfo(name)
             info.type = tarfile.DIRTYPE
             info.mode = dir_mode
-            info.uid = owner
-            info.gid = owner
+            info.uid, info.gid = member_owner(name, owner, owners)
             layer.addfile(info)
         for name, payload in sorted(files.items()):
             info = tarfile.TarInfo(name)
             info.size = len(payload)
             info.mode = file_mode
-            info.uid = owner
-            info.gid = owner
+            info.uid, info.gid = member_owner(name, owner, owners)
             layer.addfile(info, io.BytesIO(payload))
         for name in sorted(whiteouts):
             info = tarfile.TarInfo(name)
             info.size = 0
             info.mode = 0
-            info.uid = owner
-            info.gid = owner
+            info.uid, info.gid = member_owner(name, owner, owners)
             layer.addfile(info, io.BytesIO(b""))
         if extra:
             kind, name, payload = extra
             info = tarfile.TarInfo(name)
-            info.uid = owner
-            info.gid = owner
+            info.uid, info.gid = member_owner(name, owner, owners)
             if kind == "symlink":
                 info.type = tarfile.SYMTYPE
                 info.linkname = payload
@@ -249,8 +257,7 @@ def layer_archive(files, whiteouts=None, extra=None, file_mode=0o644, owner=0, d
         if repeat:
             kind, name = repeat
             info = tarfile.TarInfo(name)
-            info.uid = owner
-            info.gid = owner
+            info.uid, info.gid = member_owner(name, owner, owners)
             if kind == "dir":
                 info.type = tarfile.DIRTYPE
                 info.mode = dir_mode
@@ -648,6 +655,112 @@ class CertifiOverlayTests(unittest.TestCase):
         self.assertTrue(text.endswith("USER 1000\n"))
         self.assertIn("certifi-2026.10.23-py3-none-any.whl", text)
         self.assertNotIn("pip install", text)
+
+    def test_ak_root_owner_is_exact_and_other_members_stay_root(self):
+        path = self._file()
+        path.write_bytes(layer_archive(overlay_files()))
+        verify_candidate.layer_members(path)
+        whiteout = verify_candidate.SITE + "/.wh.certifi-2026.10.19.dist-info"
+        for owners in (
+            {"ak-root": (0, 0)},
+            {"ak-root": (1000, 0)},
+            {"ak-root/.venv": (1000, 1000)},
+            {"authentik": (1000, 1000)},
+            {verify_candidate.UTILS: (1000, 1000)},
+            {whiteout: (1000, 1000)},
+        ):
+            path.write_bytes(layer_archive(overlay_files(), owners=owners))
+            with self.assertRaises(SystemExit):
+                verify_candidate.layer_members(path)
+
+    def test_rendered_workflow_scripts_pass_bash_syntax(self):
+        workflow = (ROOT / ".github/workflows/authentik-userinfo-redaction-build.yml").read_text()
+        rendered = [render_run(style, body) for style, body in workflow_runs(workflow)]
+        guard = next(script for script in rendered if "assert_bootstrap_continuation" in script)
+        self.assertIn('if [[ "$verify_status" -eq 2 ]]; then', guard)
+        self.assertIn("compare_canary.py", guard)
+        self.assertIn("--report", guard)
+        self.assertIn('exit "$verify_status"', guard)
+        self.assertIn("assert_bootstrap_continuation(report)", guard)
+        for script in rendered:
+            status, err = bash_syntax(script)
+            self.assertEqual(status, 0, err)
+        indented = "if [[ \"$verify_status\" -eq 2 ]]; then\n  python3 -B - <<'PY'\n  import verify_candidate\n  PY\nfi\n"
+        status, err = bash_syntax(indented)
+        self.assertNotEqual(status, 0)
+        self.assertIn("end of file", err)
+
+
+def workflow_runs(text):
+    lines = text.splitlines()
+    blocks = []
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].lstrip(" ")
+        indent = len(lines[index]) - len(stripped)
+        if not stripped.startswith("run:"):
+            index += 1
+            continue
+        rest = stripped[4:].strip()
+        if rest in {"|", "|-", ">", ">-", ">+", "|+"}:
+            index += 1
+            body = []
+            while index < len(lines):
+                current = lines[index]
+                if current.strip() == "":
+                    body.append("")
+                    index += 1
+                    continue
+                current_indent = len(current) - len(current.lstrip(" "))
+                if current_indent <= indent:
+                    break
+                body.append(current)
+                index += 1
+            blocks.append((rest, "\n".join(body) + "\n"))
+            continue
+        if rest:
+            blocks.append(("scalar", rest + "\n"))
+        index += 1
+    return blocks
+
+
+def render_run(style, body):
+    if style == "scalar":
+        rendered = body
+    else:
+        lines = body.splitlines()
+        indents = [len(line) - len(line.lstrip(" ")) for line in lines if line.strip()]
+        cut = min(indents) if indents else 0
+        dedented = []
+        for line in lines:
+            if line.strip() == "":
+                dedented.append("")
+            else:
+                dedented.append(line[cut:])
+        if style.startswith("|"):
+            rendered = "\n".join(dedented) + ("" if style.endswith("-") else "\n")
+        else:
+            paragraphs = []
+            current = []
+            for line in dedented:
+                if line.strip() == "":
+                    if current:
+                        paragraphs.append(" ".join(part.strip() for part in current))
+                        current = []
+                    paragraphs.append("")
+                else:
+                    current.append(line)
+            if current:
+                paragraphs.append(" ".join(part.strip() for part in current))
+            rendered = "\n".join(paragraphs)
+            if not style.endswith("-"):
+                rendered += "\n"
+    return re.sub(r"\$\{\{.*?\}\}", "gha_expr", rendered, flags=re.DOTALL)
+
+
+def bash_syntax(script):
+    completed = subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True)
+    return completed.returncode, completed.stderr
 
 
 if __name__ == "__main__":
