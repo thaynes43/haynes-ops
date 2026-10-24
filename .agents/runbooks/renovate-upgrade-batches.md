@@ -4,7 +4,7 @@ How to work through a large backlog of Renovate update PRs safely: batch by blas
 
 ## Core loop (every batch)
 
-Deliver **one pull request per command** and stop the batch on the first nonzero exit. Independent review of that exact head, both required GitHub checks green on that head, and a completed preflight are required before a merge. Permission is scoped to merging the named pull request. Pass `--reconcile namespace/name` only for the Flux kustomizations this pull request should roll out. `--source-only` merges the source pull request and does not reconcile.
+Deliver **one pull request per command** and stop the batch on the first nonzero exit. Independent review of that exact head, the repository profile's required GitHub checks green on that head, and a completed preflight are required before a merge. Permission is scoped to merging the named pull request. Pass `--reconcile namespace/name` only for the Flux kustomizations this haynes-ops pull request should roll out. `--source-only` merges the source pull request and does not reconcile. This loop is the haynes-ops profile. dev-env delivery is source-only; it is not this reconcile loop.
 
 A native Sol approval is source-review evidence for `--reviewed-head`. This command reads the required check status from GitHub. It does not read GitHub review decisions or agent comments, and those are not a substitute for the required checks.
 
@@ -32,7 +32,7 @@ python3 scripts/upgrade-agent/deliver_reviewed_pr.py \
   -- <preflight-command> <args>
 ```
 
-The command runs `<preflight-command>` as an argv list with a finite timeout. After that process exits 0 it requires `Flux Local - Success` and `Diff Scope - Success` to be completed and successful on the pull request head, and that head must equal `--head`. It squash-merges with `--match-head-commit`, verifies the pull request is merged, and only then runs `flux reconcile kustomization <name> --namespace <namespace> --with-source` for each named target, one at a time. A preflight that is still running, times out, or exits nonzero, a required check that is pending, failed, missing, or otherwise unknown, or a head mismatch stops the command before `gh pr merge` and before `flux`.
+For `thaynes43/haynes-ops`, the command runs `<preflight-command>` as an argv list with a finite timeout. After that process exits 0 it requires `Flux Local - Success` and `Diff Scope - Success` to be completed and successful on the pull request head, and that head must equal `--head`. It squash-merges with `--squash --delete-branch --match-head-commit`, verifies the pull request is merged, and only then runs `flux reconcile kustomization <name> --namespace <namespace> --with-source` for each named target, one at a time. A preflight that is still running, times out, exits nonzero, or cannot be started, a required check that is pending, failed, missing, duplicated with a mixed result, or otherwise unknown, or a head mismatch stops the command before `gh pr merge` and before `flux`. A failed post-merge read stops there too: the command does not merge again and does not reconcile.
 
 Supply one trusted preflight program with explicit arguments. It must check each internal prerequisite separately and propagate failure, including any required review-comment publication or activity declaration. Do not supply an opaque `bash -c` compound chain whose final success can hide an earlier failure. The delivery command checks the program's exit; it cannot establish whether an arbitrary program correctly checked its own internals. The reviewed-head flag records the caller's exact-source review evidence and grants no runtime permission or release of an existing hold.
 
@@ -40,7 +40,32 @@ If delivery returns nonzero, stop the batch and inspect the failed stage. Do not
 
 Then **verify** the affected workloads (see Verification below). **Roll back on snag** (see Rollback) and research before retrying.
 
-Branch protection requires both aggregate contexts, `Flux Local - Success` and `Diff Scope - Success`. Each pull request is delivered on its own head; another pull request's green checks do not cover it.
+## Repository delivery profiles
+
+These profiles are fixed repository workflow contexts for this command. They choose the required GitHub aggregate and whether a Flux reconcile is allowed. They are not Kubernetes security profiles, launch profiles, RBAC, or runtime authority.
+
+`thaynes43/haynes-ops` keeps the two aggregate contexts `Flux Local - Success` and `Diff Scope - Success`. Merge argv stays `--squash --delete-branch --match-head-commit`. Reconcile runs only when the caller passes `--reconcile namespace/name`, and only after the pull request is verified merged.
+
+`thaynes43/dev-env` requires the aggregate context `CI - Success` from that repository's `.github/workflows/ci.yml`. Do not reuse the haynes-ops check names for it. The profile is source-only. Any `--reconcile` request is refused before preflight, `gh`, and `flux`. Merge argv is `--squash --match-head-commit` and omits `--delete-branch`, so the source branch remains as evidence. Source-only delivery is not a deployment, a reconcile, or a release.
+
+```bash
+python3 scripts/upgrade-agent/deliver_reviewed_pr.py \
+  --repo thaynes43/dev-env \
+  --pr <n> \
+  --head <40-hex> \
+  --reviewed-head <same-40-hex> \
+  --preflight-timeout 120 \
+  --source-only \
+  -- <preflight-command> <args>
+```
+
+Any other repository is refused before preflight. The command has no check-name, skip, force, admin, or auto flag, and it does not read `REQUIRED_CHECKS` from the environment or from a replaced module global.
+
+A standing agent-opened normal source merge does not need a second human approval once that exact head was reviewed, the profile's required checks are green, and the preflight completed. Holds, security policy, and runtime authority remain separate decisions. This command does not grant them. An optional advisory failure, including a Claude review failure, does not block when the required aggregate succeeded, and an advisory or unknown native-looking check does not supply the review.
+
+The caller owns the preflight and the exact reviewed head. `--reviewed-head` records that evidence and does not by itself grant merge, reconcile, or release. Propagate each preflight prerequisite with an ordinary nonzero exit. Do not use `assert` as the only check, because `python -O` removes assertions. Do not use an opaque `bash -c` chain. Do not append an unconditional `gh pr merge` after the preflight. If the dev-env workflow handoff checker is part of a preflight, exit 0 means the record reduced, not that the merge is ready: a blocked result can still exit 0. Read the printed semantic result and continue only when it explicitly recommends the normal merge, with no pending hold and no writable owner. This runbook does not run that checker.
+
+Branch protection on `thaynes43/haynes-ops` requires both aggregate contexts, `Flux Local - Success` and `Diff Scope - Success`. dev-env's required aggregate is `CI - Success` only. Each pull request is delivered on its own head; another pull request's green checks do not cover it.
 
 ## Survey first
 
