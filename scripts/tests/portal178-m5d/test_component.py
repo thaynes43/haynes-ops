@@ -134,6 +134,33 @@ def remote_properties(doc):
     return [item["remoteRef"]["property"] for item in doc["spec"]["data"]]
 
 
+def metadata_dns_rule(pending_rule):
+    """Complete CoreDNS rule: the pending rule plus the two fixed metadata names."""
+    rule = deepcopy(pending_rule)
+    rule["toPorts"][0]["rules"]["dns"].extend([
+        {"matchName": "work.haynesnetwork.com"},
+        {"matchName": "dev-env-operator.dev-env-system.svc.cluster.local"},
+    ])
+    return rule
+
+
+def dns_policy_violation(spec, pending_spec):
+    """Reject any CoreDNS rule that is not the one minimal port-53 rule.
+
+    Equality covers port, protocol, selector, and DNS names. A later egress
+    rule that also selects kube-system or kube-dns is separate breadth.
+    """
+    expected = metadata_dns_rule(pending_spec["egress"][0])
+    if spec["egress"][0] != expected:
+        return "coredns rule differs from the complete minimal rule"
+    for rule in spec["egress"][1:]:
+        for endpoint in rule.get("toEndpoints", []):
+            labels = endpoint.get("matchLabels", {})
+            if labels.get("k8s-app") == "kube-dns" or labels.get("io.kubernetes.pod.namespace") == "kube-system":
+                return "extra coredns egress rule"
+    return None
+
+
 def unqualified_transport_lookup(route):
     """Traefik v3.7.16 makeServersTransportKey for a name without '@'.
 
@@ -375,21 +402,43 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(spec["endpointSelector"], {"matchLabels": {"app.kubernetes.io/name": "dev-env-v2-portal"}})
         self.assertEqual(spec["enableDefaultDeny"], {"ingress": True, "egress": True})
         self.assertEqual(spec["ingress"], pending_spec["ingress"])
-        self.assertEqual(spec["egress"][0]["toEndpoints"], pending_spec["egress"][0]["toEndpoints"])
+        self.assertEqual(pending_spec["egress"][0], {
+            "toEndpoints": [{"matchLabels": {
+                "io.kubernetes.pod.namespace": "kube-system",
+                "k8s-app": "kube-dns",
+            }}],
+            "toPorts": [{
+                "ports": [{"port": "53", "protocol": "ANY"}],
+                "rules": {"dns": [
+                    {"matchName": "authentik.haynesnetwork.com"},
+                    {"matchName": "postgres16-rw.database.svc.cluster.local"},
+                    {"matchName": "kubernetes.default.svc.cluster.local"},
+                ]},
+            }],
+        })
+        self.assertIsNone(dns_policy_violation(spec, pending_spec))
+        self.assertEqual(spec["egress"][0], metadata_dns_rule(pending_spec["egress"][0]))
+        broadened = deepcopy(spec)
+        broadened["egress"][0]["toPorts"].append({"ports": [{"port": "8080", "protocol": "TCP"}]})
+        self.assertEqual(dns_policy_violation(broadened, pending_spec), "coredns rule differs from the complete minimal rule")
+        broadened = deepcopy(spec)
+        broadened["egress"][0]["toPorts"][0]["ports"].append({"port": "53", "protocol": "UDP"})
+        self.assertIsNotNone(dns_policy_violation(broadened, pending_spec))
+        broadened = deepcopy(spec)
+        del broadened["egress"][0]["toEndpoints"][0]["matchLabels"]["k8s-app"]
+        self.assertIsNotNone(dns_policy_violation(broadened, pending_spec))
+        broadened = deepcopy(spec)
+        broadened["egress"].append({
+            "toEndpoints": [{"matchLabels": {
+                "io.kubernetes.pod.namespace": "kube-system",
+                "k8s-app": "kube-dns",
+            }}],
+            "toPorts": [{"ports": [{"port": "8080", "protocol": "TCP"}]}],
+        })
+        self.assertEqual(dns_policy_violation(broadened, pending_spec), "extra coredns egress rule")
         self.assertEqual(spec["egress"][1], pending_spec["egress"][1])
         self.assertEqual(spec["egress"][2], pending_spec["egress"][2])
         self.assertEqual(spec["egress"][3], pending_spec["egress"][3])
-        dns_names = [item["matchName"] for item in spec["egress"][0]["toPorts"][0]["rules"]["dns"]]
-        pending_names = [item["matchName"] for item in pending_spec["egress"][0]["toPorts"][0]["rules"]["dns"]]
-        self.assertEqual(pending_names, [
-            "authentik.haynesnetwork.com",
-            "postgres16-rw.database.svc.cluster.local",
-            "kubernetes.default.svc.cluster.local",
-        ])
-        self.assertEqual(dns_names, pending_names + [
-            "work.haynesnetwork.com",
-            "dev-env-operator.dev-env-system.svc.cluster.local",
-        ])
         self.assertEqual(spec["egress"][4], {
             "toFQDNs": [{"matchName": "work.haynesnetwork.com"}],
             "toPorts": [{"ports": [{"port": "443", "protocol": "TCP"}]}],
@@ -521,6 +570,14 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn("work.haynesnetwork.com", contract)
         self.assertIn("dev-env-operator.dev-env-system.svc.cluster.local", contract)
         self.assertIn("120, 121, 122, 123, and 178", contract)
+        self.assertIn("/v1/sessions?repo=dev-env", contract)
+        self.assertIn("/v1/task-claims/{name}?project=dev-env", contract)
+        self.assertIn("matches the bound session name and UID", contract)
+        self.assertIn("does not claim the operator or OpenProject enforces them as backend ACLs", contract)
+        self.assertNotIn("named dev-env session", contract)
+        self.assertIn("not a 1Password technical limitation", contract)
+        self.assertIn("Tom's secure UI", contract)
+        self.assertIn("No approved automated writer", contract)
         self.assertNotIn("6a522e843a8768099d8eb8086f9ff8272f94b725", contract)
         self.assertNotIn("Probe API cannot", contract)
         self.assertNotIn("no ExternalSecret selects", contract)
