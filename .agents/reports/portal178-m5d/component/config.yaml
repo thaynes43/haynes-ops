@@ -3,8 +3,8 @@
 # fixture, inside the contract bounds. They are not a launch SLO.
 # operator-api-url is the deployed operator HelmRelease origin.
 # openproject-base-url stays the value the published image pins.
-# The approved dial target is https://openproject-web.frontend.svc.cluster.local:8443
-# and replaces this value only when a new signed image pins it.
+# approved-readers-06 head 12ca8fe6 wants the internal origin and has no digest.
+# Replace this value only with a signed image that pins it.
 # config/admission-uid and config/session-bindings.json are absent on purpose.
 apiVersion: v1
 kind: ConfigMap

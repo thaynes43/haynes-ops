@@ -9,7 +9,6 @@ resources:
 - ./helmrelease.yaml
 - ./ingressroute.yaml
 - ./networkpolicy.yaml
-- ./certificates.yaml
 configMapGenerator:
 - name: openproject-nginx
   options:

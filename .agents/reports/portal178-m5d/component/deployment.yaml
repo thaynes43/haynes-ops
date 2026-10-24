@@ -108,29 +108,8 @@ spec:
             - name: config
               mountPath: /etc/dev-env-portal/config
               readOnly: true
-            - name: oidc
-              mountPath: /etc/dev-env-portal/secrets/OIDC_CLIENT_ID
-              subPath: OIDC_CLIENT_ID
-              readOnly: true
-            - name: oidc
-              mountPath: /etc/dev-env-portal/secrets/OIDC_CLIENT_SECRET
-              subPath: OIDC_CLIENT_SECRET
-              readOnly: true
-            - name: runtime
-              mountPath: /etc/dev-env-portal/secrets/DB_USERNAME
-              subPath: DB_USERNAME
-              readOnly: true
-            - name: runtime
-              mountPath: /etc/dev-env-portal/secrets/DB_PASSWORD
-              subPath: DB_PASSWORD
-              readOnly: true
-            - name: runtime
-              mountPath: /etc/dev-env-portal/secrets/SESSION_AEAD_KEY
-              subPath: SESSION_AEAD_KEY
-              readOnly: true
-            - name: runtime
-              mountPath: /etc/dev-env-portal/secrets/SESSION_GENERATION
-              subPath: SESSION_GENERATION
+            - name: secrets
+              mountPath: /etc/dev-env-portal/secrets
               readOnly: true
             - name: postgres-ca
               mountPath: /etc/dev-env-portal/ca/ca.crt
@@ -160,14 +139,6 @@ spec:
               mountPath: /etc/dev-env-portal/tls/tls.key
               subPath: tls.key
               readOnly: true
-            - name: openproject
-              mountPath: /etc/dev-env-portal/secrets/OPENPROJECT_TOKEN
-              subPath: OPENPROJECT_TOKEN
-              readOnly: true
-            - name: operator-token
-              mountPath: /etc/dev-env-portal/secrets/OPERATOR_TOKEN
-              subPath: token
-              readOnly: true
             - name: api
               mountPath: /var/run/portal/api
               readOnly: true
@@ -177,26 +148,37 @@ spec:
         - name: config
           configMap:
             name: dev-env-v2-portal-config
-        - name: oidc
-          secret:
-            secretName: dev-env-v2-portal-oidc
-            items:
-              - key: OIDC_CLIENT_ID
-                path: OIDC_CLIENT_ID
-              - key: OIDC_CLIENT_SECRET
-                path: OIDC_CLIENT_SECRET
-        - name: runtime
-          secret:
-            secretName: dev-env-v2-portal-runtime
-            items:
-              - key: DB_USERNAME
-                path: DB_USERNAME
-              - key: DB_PASSWORD
-                path: DB_PASSWORD
-              - key: SESSION_AEAD_KEY
-                path: SESSION_AEAD_KEY
-              - key: SESSION_GENERATION
-                path: SESSION_GENERATION
+        - name: secrets
+          projected:
+            sources:
+              - secret:
+                  name: dev-env-v2-portal-oidc
+                  items:
+                    - key: OIDC_CLIENT_ID
+                      path: OIDC_CLIENT_ID
+                    - key: OIDC_CLIENT_SECRET
+                      path: OIDC_CLIENT_SECRET
+              - secret:
+                  name: dev-env-v2-portal-runtime
+                  items:
+                    - key: DB_USERNAME
+                      path: DB_USERNAME
+                    - key: DB_PASSWORD
+                      path: DB_PASSWORD
+                    - key: SESSION_AEAD_KEY
+                      path: SESSION_AEAD_KEY
+                    - key: SESSION_GENERATION
+                      path: SESSION_GENERATION
+              - secret:
+                  name: dev-env-v2-portal-openproject
+                  optional: true
+                  items:
+                    - key: OPENPROJECT_TOKEN
+                      path: OPENPROJECT_TOKEN
+              - serviceAccountToken:
+                  path: OPERATOR_TOKEN
+                  expirationSeconds: 3600
+                  audience: dev-env-operator
         - name: postgres-ca
           configMap:
             name: dev-env-v2-portal-postgres-ca
@@ -235,19 +217,6 @@ spec:
                 path: tls.crt
               - key: tls.key
                 path: tls.key
-        - name: openproject
-          secret:
-            secretName: dev-env-v2-portal-openproject
-            items:
-              - key: OPENPROJECT_TOKEN
-                path: OPENPROJECT_TOKEN
-        - name: operator-token
-          projected:
-            sources:
-              - serviceAccountToken:
-                  path: token
-                  expirationSeconds: 3600
-                  audience: dev-env-operator
         - name: api
           projected:
             sources:

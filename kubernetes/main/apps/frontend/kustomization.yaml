@@ -19,4 +19,5 @@ resources:
   - ./sigoalumni/ks.yaml
   - ./outline/ks.yaml
   - ./haynes-quest/ks.yaml
+  - ./openproject/pki/ks.yaml
   - ./openproject/ks.yaml

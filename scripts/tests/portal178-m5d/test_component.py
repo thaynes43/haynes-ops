@@ -166,6 +166,11 @@ def dns_policy_violation(spec, pending_spec):
     return None
 
 
+def replacement_allowed(certificate_ready, dependency_recorded):
+    """A missing serving certificate must not replace the running OpenProject web pod."""
+    return bool(certificate_ready) and bool(dependency_recorded)
+
+
 def openproject_egress_violation(spec):
     """The portal may reach only the OpenProject web pods on TCP 8443."""
     found = False
@@ -332,14 +337,9 @@ class ComponentRenderTest(unittest.TestCase):
             self.assertEqual(http["httpHeaders"], [{"name": "Host", "value": "dev-env-v2.haynesops.com"}])
         mounts = {item["mountPath"]: item for item in container["volumeMounts"]}
         self.assertEqual(mounts["/etc/dev-env-portal/config"]["name"], "config")
-        for field in OIDC_FIELDS:
-            item = mounts["/etc/dev-env-portal/secrets/" + field]
-            self.assertEqual(item["name"], "oidc")
-            self.assertEqual(item["subPath"], field)
-        for field in RUNTIME_FIELDS:
-            item = mounts["/etc/dev-env-portal/secrets/" + field]
-            self.assertEqual(item["name"], "runtime")
-            self.assertEqual(item["subPath"], field)
+        secrets_mount = mounts["/etc/dev-env-portal/secrets"]
+        self.assertEqual(secrets_mount["name"], "secrets")
+        self.assertNotIn("subPath", secrets_mount)
         self.assertNotIn("/etc/dev-env-portal/secrets/PORTAL_SUBJECT", mounts)
         self.assertEqual(mounts["/etc/dev-env-portal/ca/ca.crt"]["subPath"], "ca.crt")
         self.assertEqual(mounts["/etc/dev-env-portal/ca/admission-ca.crt"]["subPath"], "admission-ca.crt")
@@ -351,17 +351,25 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertNotIn("/etc/portal", self.rendered)
         self.assertNotIn("/portal/livez", self.rendered)
         volumes = {item["name"]: item for item in pod["volumes"]}
-        self.assertEqual([item["key"] for item in volumes["oidc"]["secret"]["items"]], OIDC_FIELDS)
-        self.assertEqual([item["key"] for item in volumes["runtime"]["secret"]["items"]], RUNTIME_FIELDS)
+        sources = volumes["secrets"]["projected"]["sources"]
+        by_secret = {item["secret"]["name"]: item["secret"] for item in sources if "secret" in item}
+        self.assertEqual([item["key"] for item in by_secret["dev-env-v2-portal-oidc"]["items"]], OIDC_FIELDS)
+        self.assertNotIn("optional", by_secret["dev-env-v2-portal-oidc"])
+        self.assertEqual([item["key"] for item in by_secret["dev-env-v2-portal-runtime"]["items"]], RUNTIME_FIELDS)
+        self.assertNotIn("optional", by_secret["dev-env-v2-portal-runtime"])
+        self.assertIs(by_secret["dev-env-v2-portal-openproject"]["optional"], True)
+        self.assertEqual(by_secret["dev-env-v2-portal-openproject"]["items"], [{"key": "OPENPROJECT_TOKEN", "path": "OPENPROJECT_TOKEN"}])
+        operator_token = next(item["serviceAccountToken"] for item in sources if "serviceAccountToken" in item)
+        self.assertEqual(operator_token["path"], "OPERATOR_TOKEN")
+        self.assertEqual(operator_token["audience"], "dev-env-operator")
+        self.assertEqual(operator_token["expirationSeconds"], 3600)
         self.assertEqual(volumes["postgres-ca"]["configMap"]["items"], [{"key": "ca.crt", "path": "ca.crt"}])
         self.assertEqual([item["key"] for item in volumes["serving-tls"]["secret"]["items"]], ["tls.crt", "tls.key"])
         mounted_secrets = [item["secret"]["secretName"] for item in pod["volumes"] if "secret" in item]
         self.assertNotIn("dev-env-v2-portal-ca", mounted_secrets)
         self.assertNotIn("openproject-portal-ca", mounted_secrets)
-        self.assertEqual(volumes["openproject"]["secret"]["items"], [{"key": "OPENPROJECT_TOKEN", "path": "OPENPROJECT_TOKEN"}])
-        operator_token = volumes["operator-token"]["projected"]["sources"][0]["serviceAccountToken"]
-        self.assertEqual(operator_token["audience"], "dev-env-operator")
-        self.assertEqual(operator_token["expirationSeconds"], 3600)
+        api_mount = mounts["/var/run/portal/api"]
+        self.assertNotIn("subPath", api_mount)
         projected = volumes["api"]["projected"]["sources"]
         self.assertEqual(projected[0]["serviceAccountToken"]["path"], "token")
         self.assertEqual(projected[0]["serviceAccountToken"]["expirationSeconds"], 3600)
@@ -539,6 +547,10 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn("All present is the only enabled state", contract)
         self.assertIn("config/session-bindings.json` is absent from this render", contract)
         self.assertIn("not a permanent product inventory", contract)
+        self.assertIn("12ca8fe6003cb0c108baeb0abb923d664deba28d", contract)
+        self.assertIn("no published digest", contract)
+        self.assertIn("--enable-portal-reader", contract)
+        self.assertIn("offset=<page>&pageSize=50", contract)
         self.assertEqual(by_kind(self.docs, "CiliumClusterwideNetworkPolicy"), [])
         exclusion = load(COMPONENT / "ccnp-exclusion.yaml")
         self.assertEqual(exclusion["append"], "dev-env-v2-portal")
@@ -705,19 +717,41 @@ class ComponentRenderTest(unittest.TestCase):
         with self.assertRaises(preflight.PreflightReject):
             preflight.evaluate({"roles": [], "users": [], "token": "nope"})
 
+        import json
+        fixture = json.loads((ROOT / "scripts/portal178-m5d/openproject_query_contract.json").read_text())
         template = (ROOT / "kubernetes/main/apps/frontend/openproject/app/nginx.conf.template").read_text()
         portal_server = template.split("listen 8443 ssl;", 1)[1]
-        patterns = re.findall(r'\$args ~ "(\^.*\$)"', portal_server)
+        pattern = re.search(r'\$args !~ "(\^.*\$)"', portal_server).group(1)
         def query_ok(args):
-            if args == "":
-                return True
-            return any(re.fullmatch(item, args) for item in patterns)
-        for good in ("", "offset=0", "pageSize=1", "pageSize=100", "offset=20&pageSize=50",
-                     'offset=0&pageSize=20&sortBy=%5B%5B%22updatedAt%22%2C%22desc%22%5D%5D'):
+            return re.fullmatch(pattern, args) is not None
+        self.assertEqual(fixture["canonical"], "offset=1&pageSize=50")
+        self.assertIs(fixture["offsetIsPageNumber"], True)
+        for good in fixture["accepted"]:
             self.assertTrue(query_ok(good), good)
-        for bad in ("pageSize=101", "pageSize=0", "offset=100000", "filters=%5B%5D",
-                    "offset=1&pageSize=20&token=abc", "/api/v3/projects/8/work_packages"):
+        for bad in fixture["rejected"]:
             self.assertFalse(query_ok(bad), bad)
+        self.assertNotIn("location = /api/v3/projects/8/work_packages", portal_server)
+        self.assertNotIn("location = /api/v3/work_packages/", portal_server)
+        self.assertIn("if ($request_method != GET)", portal_server)
+        inherited = deepcopy(ready)
+        inherited["users"][0]["memberships"][0]["inherited"] = True
+        with self.assertRaises(preflight.PreflightReject) as inherited_reject:
+            preflight.plan(inherited)
+        self.assertEqual(inherited_reject.exception.reason, "inherited-membership")
+        created = preflight.plan({"roles": [], "users": []})
+        keys = set()
+        def collect(node):
+            if isinstance(node, dict):
+                keys.update(node)
+                for value in node.values():
+                    collect(value)
+            elif isinstance(node, list):
+                for value in node:
+                    collect(value)
+        collect(created)
+        self.assertTrue({"token", "password", "secret", "value"}.isdisjoint(keys))
+        self.assertEqual(created["steps"][-1]["writer"], "none")
+        self.assertEqual(created["steps"][-1]["property"], "OPENPROJECT_TOKEN")
         self.assertIn("location = /api/v3/projects/3/work_packages", portal_server)
         self.assertIn('proxy_pass http://127.0.0.1:8080;', portal_server)
         self.assertIn('proxy_set_header Cookie "";', portal_server)
@@ -752,6 +786,33 @@ class ComponentRenderTest(unittest.TestCase):
         ])
         self.assertEqual(leaf["spec"]["secretName"], "dev-env-v2-portal-tls")
         self.assertEqual(leaf["spec"]["privateKey"]["rotationPolicy"], "Always")
+
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            current = Path(directory) / "OPERATOR_TOKEN"
+            current.write_text("first")
+            subpath_snapshot = current.read_text()
+            replacement = Path(directory) / "OPERATOR_TOKEN.next"
+            replacement.write_text("second")
+            os.replace(replacement, current)
+            self.assertEqual(current.read_text(), "second")
+            self.assertEqual(subpath_snapshot, "first")
+
+        pki = load(ROOT / "kubernetes/main/apps/frontend/openproject/pki/ks.yaml")
+        app = load(ROOT / "kubernetes/main/apps/frontend/openproject/ks.yaml")
+        self.assertEqual(pki["spec"]["healthChecks"], [
+            {"apiVersion": "cert-manager.io/v1", "kind": "Certificate", "name": "openproject-portal-ca", "namespace": "frontend"},
+            {"apiVersion": "cert-manager.io/v1", "kind": "Certificate", "name": "openproject-portal-api", "namespace": "frontend"},
+        ])
+        self.assertIs(pki["spec"]["wait"], True)
+        self.assertIn({"name": "openproject-portal-pki", "namespace": "frontend"}, app["spec"]["dependsOn"])
+        app_resources = load(ROOT / "kubernetes/main/apps/frontend/openproject/app/kustomization.yaml")["resources"]
+        self.assertNotIn("./certificates.yaml", app_resources)
+        self.assertFalse(replacement_allowed(False, True))
+        self.assertTrue(replacement_allowed(True, True))
+        web = load(ROOT / "kubernetes/main/apps/frontend/openproject/app/helmrelease.yaml")
+        self.assertEqual(web["spec"]["values"]["controllers"]["web"]["strategy"], "Recreate")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,8 @@ spec:
     namespace: external-secrets
   - name: cloudnative-pg
     namespace: database
+  - name: openproject-portal-pki
+    namespace: frontend
   path: ./kubernetes/main/apps/frontend/openproject/app
   sourceRef:
     kind: GitRepository
