@@ -5,7 +5,7 @@
 # ///
 """Unregistered packet guard + synthetic mapping tests, not live IdP/DB proof."""
 import argparse
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from copy import deepcopy
 import hashlib
 import io
@@ -294,13 +294,41 @@ class Packet(unittest.TestCase):
         self.assertEqual(len(calls), 3)
         self.assertTrue(calls[-1][1]["input"].startswith(helper.VERIFY_PREFIX))
         self.assertIn("BEGIN READ ONLY;", calls[-1][1]["input"])
-        helper.assert_verify_readonly((PACKET / "030-verify.sql").read_text())
+        pinned = (PACKET / "030-verify.sql").read_text()
+        helper.assert_verify_readonly(pinned)
         for writable in ("BEGIN READ WRITE;", "SET TRANSACTION READ WRITE;",
                          "SET default_transaction_read_only = off;",
                          "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE;",
-                         "RESET ALL;", "\\c postgres", "\\i other.sql", "\\!\n"):
+                         "SET transaction_read_only = off;",
+                         "SET LOCAL transaction_read_only TO off;",
+                         "RESET ALL;", "RESET ROLE;", "DISCARD ALL;",
+                         "\\c postgres", "\\i other.sql", "\\!\n",
+                         "\\set ON_ERROR_STOP off"):
             with self.assertRaisesRegex(RuntimeError, "read-only transaction"):
                 helper.assert_verify_readonly(writable)
+        helper.assert_verify_readonly("\\set ON_ERROR_STOP on\nBEGIN READ ONLY;\nCOMMIT;\n")
+        attacked = pinned + "\nSET LOCAL transaction_read_only TO off;\n"
+        attacked_digest = hashlib.sha256(attacked.encode()).hexdigest()
+        original_read = Path.read_bytes
+
+        def read_attack(self):
+            if self.name == "030-verify.sql":
+                return attacked.encode()
+            return original_read(self)
+
+        calls.clear()
+        with mock.patch.object(Path, "read_bytes", read_attack), mock.patch.object(helper, "invoke", fake_verify), mock.patch.object(sys, "argv", [str(path), "--verify-reviewed-sha256", attacked_digest]):
+            with self.assertRaisesRegex(RuntimeError, "read-only transaction"):
+                helper.main()
+        self.assertEqual(len(calls), 2, "read-only denylist must refuse before psql")
+        errors = io.StringIO()
+        with redirect_stderr(errors), self.assertRaises(SystemExit):
+            helper.stop(json.JSONDecodeError("bad", "secret-doc", 0))
+        self.assertEqual(errors.getvalue().strip(),
+                         "STOP: peer bootstrap JSONDecodeError; no retry or alternate identity")
+        self.assertNotIn("secret-doc", errors.getvalue())
+        self.assertTrue(issubclass(json.JSONDecodeError, ValueError))
+        self.assertIn(KeyError, helper.STOP_ERRORS)
         calls.clear()
         with mock.patch.object(helper, "invoke", fake_verify), mock.patch.object(sys, "argv", [str(path), "--verify-reviewed-sha256", "0"*64]):
             with self.assertRaisesRegex(RuntimeError, "differs from reviewed hash"):

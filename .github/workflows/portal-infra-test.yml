@@ -6,12 +6,20 @@ on:
       - .agents/reports/portal178-m5c/pending/**
       - scripts/tests/portal178-m5c/**
       - .github/workflows/portal-infra-test.yml
+      - kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml
+      - kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml
+      - kubernetes/main/apps/dev-env-system/rbac/app/kustomization.yaml
+      - kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml
   push:
     branches: [main, 'agent/**']
     paths:
       - .agents/reports/portal178-m5c/pending/**
       - scripts/tests/portal178-m5c/**
       - .github/workflows/portal-infra-test.yml
+      - kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml
+      - kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml
+      - kubernetes/main/apps/dev-env-system/rbac/app/kustomization.yaml
+      - kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml
 permissions:
   contents: read
 concurrency:

@@ -105,10 +105,12 @@ gates; no database-wide NetworkPolicy affecting consumers is proposed.
    is required for this existing psql route. Atomic first creation fails42P07 on
    a collision; inspect the outcome, never reset or blindly retry.
 4. **`--verify-reviewed-sha256`** runs [030-verify.sql](pending/030-verify.sql)
-   only when the digest matches. It opens one read-only transaction before those
-   bytes and refuses `READ WRITE`, transaction-control statements, `RESET ALL`,
-   and the psql connect/include/shell commands in them. The hash remains the pin
-   for every other byte. A later `BEGIN READ WRITE` is rejected before psql.
+   only when the digest matches. The SHA256 pin and review of those exact bytes
+   are the control. Before psql, a best-effort denylist refuses
+   `transaction_read_only` assignments, `RESET`, `DISCARD`, read-write
+   transaction syntax, and any psql backslash line except the exact
+   `\set ON_ERROR_STOP on`. That denylist is not an SQL sandbox. Accepted bytes
+   are then prefixed with one read-only transaction.
    Bare `--verify` is not a mode. It emits bounded datacl/nspacl/relacl/default-ACL/role-setting
    evidence plus exact effective-rights booleans, including no portal routines or
    extra composite types, no cluster-wide portal role settings, and no runtime or
@@ -214,7 +216,7 @@ FAILED;714e/c3 and later runs corrected the harness and passed. None is relabele
 as proof for a different head. Current corrected-head receipts belong in the PR
 and durable handoff after execution; native exact-head recheck remains required.
 
-Local corrected-source serial nice19:6 packet groups PASS, immutable CNPG and
+Local corrected-source serial nice19:7 packet tests PASS, immutable CNPG and
 actual live CRD structural validation PASS, proposed-selector comparison against
 all119 observed dev-agents pods ×2 shared tiers =238 unchanged non-BFF matches.
 No policy applied; no CEL/admission/controller/effective-network claim. Hosted CI

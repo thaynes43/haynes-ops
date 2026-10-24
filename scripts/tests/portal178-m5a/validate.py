@@ -135,6 +135,10 @@ def validate(blueprint, projection, schema):
     require(mapped["scope_name"] == "profile", "portal mapping scope changed")
     require(PINNED_ADMINS_SHA256 in mapped["expression"] and "portal_is_active" in mapped["expression"]
             and "portal_is_admin" in mapped["expression"], "portal mapping pin changed")
+    require("current.groups.all()" in mapped["expression"]
+            and 'sha256(str(group.pk).lower().encode("utf-8")).hexdigest()' in mapped["expression"]
+            and re.search(r"(?m)^\s*direct_admin\s*=\s*active\b", mapped["expression"]) is None,
+            "portal mapping must read direct membership")
     require(DIRECTORY_UUID.search(mapped["expression"]) is None, "raw directory UUID in mapping")
     require(provider["model"] == "authentik_providers_oauth2.oauth2provider" and
             provider["id"] == "portal-provider" and
@@ -306,6 +310,13 @@ def main():
         ("raw-directory-uuid", "raw directory UUID in mapping",
          lambda b, p: b["entries"][1]["attrs"].update(expression=b["entries"][1]["attrs"]["expression"] +
              "\n# 00000000-0000-4000-8000-000000000099\n")),
+        ("direct-admin-equals-active", "portal mapping must read direct membership",
+         lambda b, p: b["entries"][1]["attrs"].update(expression=(
+             'PINNED_ADMINS_SHA256 = "%s"\n'
+             "active = True\n"
+             "direct_admin = active\n"
+             'return {"portal_is_active": active, "portal_is_admin": direct_admin}\n'
+         ) % PINNED_ADMINS_SHA256)),
     ]
     for name, reason, mutate in mutations:
         b, p = deepcopy(bp), deepcopy(projection)

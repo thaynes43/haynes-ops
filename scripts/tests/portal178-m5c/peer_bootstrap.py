@@ -3,9 +3,9 @@
 
 An explicit mode is required. There is no default.
 --preflight reads catalog counts only.
---verify-reviewed-sha256 checks bounded effective ACLs. It refuses a file whose
-SHA256 differs from the reviewed digest, and it sets the session read-only
-before that file is read.
+--verify-reviewed-sha256 checks bounded effective ACLs. The SHA256 pin and
+review of those exact bytes are the control. A best-effort denylist runs
+before psql; it is not an SQL sandbox. The session is then opened read-only.
 --apply-reviewed-sha256 bootstraps ACLs; --migrate-reviewed-sha256 executes the
 reviewed tables once with SET ROLE migrator. Both require config review/CI and
 actual role/DB provisioning; neither distributes a password or enables LOGIN.
@@ -24,17 +24,29 @@ SQL_FILE = ROOT / ".agents/reports/portal178-m5c/pending/010-bootstrap.sql"
 NAMESPACE = "database"
 CLUSTER = "postgres16"
 VERIFY_PREFIX = "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;\nBEGIN READ ONLY;\n"
-# Explicit controls that can leave the read-only transaction the prefix opens.
-# The reviewed file's own BEGIN READ ONLY is allowed; READ WRITE is not.
-WRITABLE_SQL = re.compile(
-    r"(?i)(\bread\s+write\b|default_transaction_read_only|\bset\s+transaction\b|"
-    r"\bstart\s+transaction\b|\bset\s+session\s+characteristics\b|\breset\s+all\b|"
-    r"(?:^|\n)\s*\\(?:connect|include|c|i|!))")
+ALLOWED_META = "\\set ON_ERROR_STOP on"
+# Best-effort denylist. The hash pin and review of the exact file are the control.
+VERIFY_DENY = re.compile(
+    r"(?i)(transaction_read_only|\bread\s+write\b|\breset\b|\bdiscard\b|"
+    r"\bset\s+transaction\b|\bstart\s+transaction\b|"
+    r"\bset\s+session\s+characteristics\b|default_transaction_read_only)")
+STOP_ERRORS = (RuntimeError, subprocess.CalledProcessError, ValueError, KeyError)
 
 
 def assert_verify_readonly(sql_text):
-    if WRITABLE_SQL.search(sql_text):
+    """Refuse known read-write and psql escapes before psql. Not an SQL sandbox."""
+    for raw in sql_text.splitlines():
+        line = raw.strip()
+        if line.startswith("\\") and line != ALLOWED_META:
+            raise RuntimeError("verification SQL can leave the read-only transaction; stop")
+    if VERIFY_DENY.search(sql_text):
         raise RuntimeError("verification SQL can leave the read-only transaction; stop")
+
+
+def stop(error):
+    # Type name only. Do not print the exception text or psql stdout.
+    print(f"STOP: peer bootstrap {type(error).__name__}; no retry or alternate identity", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def invoke(args, **kwargs):
@@ -85,9 +97,7 @@ def main():
         if hashlib.sha256(source).hexdigest() != args.verify_reviewed_sha256:
             raise RuntimeError("SQL differs from reviewed hash; stop")
         text = source.decode()
-        # Hash pins the bytes. The prefix opens one read-only transaction before
-        # those bytes, and the scan rejects explicit controls that would leave it.
-        # A hash mismatch never reaches psql.
+        # The digest is the control. The denylist is best-effort and runs before psql.
         assert_verify_readonly(text)
         result = invoke([*command, "--dbname=dev_env_v2_portal", "-q", "-A", "-t", "--file=-"],
                         input=VERIFY_PREFIX + text,
@@ -121,8 +131,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, subprocess.CalledProcessError) as error:
-        # SQL contains no credentials. Do not include environment, command output
-        # or exception arguments in the wrapper's own diagnostics.
-        print(f"STOP: peer bootstrap {type(error).__name__}; no retry or alternate identity", file=sys.stderr)
-        raise SystemExit(1)
+    except STOP_ERRORS as error:
+        stop(error)
