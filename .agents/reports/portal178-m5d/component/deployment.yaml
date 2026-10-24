@@ -1,0 +1,159 @@
+# UNREGISTERED consumer. Image, probes, and file layout are the deployment
+# side of the contract. Merged NewRuntimeAssembly does not implement them yet.
+# Missing serving TLS and postgres ca.crt are required mounts, so the pod
+# cannot start until those separate inputs exist.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dev-env-v2-portal
+  namespace: dev-agents
+spec:
+  replicas: 2
+  revisionHistoryLimit: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-v2-portal
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dev-env-v2-portal
+      annotations:
+        reloader.stakater.com/auto: "true"
+        configmap.reloader.stakater.com/reload: dev-env-v2-portal-config,dev-env-v2-portal-postgres-ca
+        secret.reloader.stakater.com/reload: dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-tls
+        dev-env.haynesops.com/postgres-ca-sha256: UNVERIFIED
+    spec:
+      serviceAccountName: dev-env-v2-portal
+      automountServiceAccountToken: false
+      dnsPolicy: ClusterFirst
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: portal
+          image: unregistered.invalid/dev-env-v2-portal:UNPUBLISHED
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          startupProbe:
+            httpGet:
+              path: /portal/livez
+              port: https
+              scheme: HTTPS
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /portal/livez
+              port: https
+              scheme: HTTPS
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /portal/readyz
+              port: https
+              scheme: HTTPS
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          volumeMounts:
+            - name: config
+              mountPath: /etc/portal/config
+              readOnly: true
+            - name: oidc
+              mountPath: /etc/portal/oidc
+              readOnly: true
+            - name: runtime
+              mountPath: /etc/portal/runtime
+              readOnly: true
+            - name: postgres-ca
+              mountPath: /etc/portal/postgres
+              readOnly: true
+            - name: serving-tls
+              mountPath: /etc/portal/tls
+              readOnly: true
+            - name: api
+              mountPath: /var/run/portal/api
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: dev-env-v2-portal-config
+        - name: oidc
+          secret:
+            secretName: dev-env-v2-portal-oidc
+            items:
+              - key: OIDC_CLIENT_ID
+                path: OIDC_CLIENT_ID
+              - key: OIDC_CLIENT_SECRET
+                path: OIDC_CLIENT_SECRET
+        - name: runtime
+          secret:
+            secretName: dev-env-v2-portal-runtime
+            items:
+              - key: DB_USERNAME
+                path: DB_USERNAME
+              - key: DB_PASSWORD
+                path: DB_PASSWORD
+              - key: SESSION_AEAD_KEY
+                path: SESSION_AEAD_KEY
+              - key: SESSION_GENERATION
+                path: SESSION_GENERATION
+        - name: postgres-ca
+          configMap:
+            name: dev-env-v2-portal-postgres-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: serving-tls
+          secret:
+            secretName: dev-env-v2-portal-tls
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        - name: api
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

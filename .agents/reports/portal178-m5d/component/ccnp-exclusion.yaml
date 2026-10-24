@@ -1,0 +1,11 @@
+# UNREGISTERED review template. Not a Kustomize resource and not applied.
+# Append this one name to the existing app.kubernetes.io/name NotIn values on
+# dev-env-session-platform and dev-env-session-web. Preserve every other
+# selector and rule. Additive CiliumNetworkPolicy cannot remove those allows.
+state: unregistered-review-template
+operation: append-only
+labelKey: app.kubernetes.io/name
+append: dev-env-v2-portal
+targets:
+  - kubernetes/main/apps/dev-env-system/network/app/session-platform.yaml
+  - kubernetes/main/apps/dev-env-system/network/app/session-web.yaml

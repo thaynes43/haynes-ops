@@ -1,0 +1,13 @@
+# UNREGISTERED public-CA input. No PEM is present. The mount requires ca.crt,
+# so a pod cannot start until an attested public certificate is added and the
+# Deployment hash annotation is updated in the same reviewed change.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-v2-portal-postgres-ca
+  namespace: dev-agents
+  annotations:
+    dev-env.haynesops.com/ca-input: public-only-awaiting-owner-attestation
+    dev-env.haynesops.com/ca-sha256: UNVERIFIED
+data:
+  provenance: absent

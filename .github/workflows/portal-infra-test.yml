@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - .agents/reports/portal178-m5c/pending/**
+      - .agents/reports/portal178-m5d/**
+      - scripts/tests/portal178-m5d/**
       - scripts/tests/portal178-m5c/**
       - .github/workflows/portal-infra-test.yml
       - kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml
@@ -14,6 +16,8 @@ on:
     branches: [main, 'agent/**']
     paths:
       - .agents/reports/portal178-m5c/pending/**
+      - .agents/reports/portal178-m5d/**
+      - scripts/tests/portal178-m5d/**
       - scripts/tests/portal178-m5c/**
       - .github/workflows/portal-infra-test.yml
       - kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml
@@ -113,3 +117,32 @@ jobs:
       - name: Remove disposable private fixture material
         if: always()
         run: rm -rf "$RUNNER_TEMP/portal-infra-tls"
+
+  component:
+    name: Portal unregistered component render
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install isolated hash-locked dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/portal-component-venv"
+          "$RUNNER_TEMP/portal-component-venv/bin/python" -I -m pip install \
+            --only-binary=:all: --require-hashes --disable-pip-version-check \
+            -r scripts/tests/portal178-m5c/requirements.lock
+      - name: Install checksum-pinned Kustomize
+        run: |
+          mkdir "$RUNNER_TEMP/portal-kustomize"
+          cd "$RUNNER_TEMP/portal-kustomize"
+          curl --fail --silent --show-error --location \
+            https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.3/kustomize_v5.8.3_linux_amd64.tar.gz \
+            --output kustomize_v5.8.3_linux_amd64.tar.gz
+          sha256sum --check "$GITHUB_WORKSPACE/scripts/tests/portal178-m5a/kustomize.sha256"
+          tar -xzf kustomize_v5.8.3_linux_amd64.tar.gz
+          echo "$RUNNER_TEMP/portal-kustomize" >> "$GITHUB_PATH"
+      - name: Render the unregistered component
+        run: |
+          nice -n 19 "$RUNNER_TEMP/portal-component-venv/bin/python" -I -B \
+            scripts/tests/portal178-m5d/test_component.py -v
+          git diff --exit-code
