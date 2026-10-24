@@ -128,6 +128,7 @@ def main():
     parser.add_argument("--archive", required=True)
     parser.add_argument("--metadata", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--expect")
     args = parser.parse_args()
     base = runtime_identity(json.loads(Path(args.base_inspect).read_text()))
     candidate = runtime_identity(json.loads(Path(args.candidate_inspect).read_text()))
@@ -168,6 +169,11 @@ def main():
         "layerPaths": layer["layerPaths"],
         "registryPublished": False,
     }
+    if args.expect:
+        expected = json.loads(Path(args.expect).read_text())
+        for key in ("archiveSha256", "candidateConfigSha256", "candidateImageId", "buildxManifestDigest"):
+            if report[key] != expected[key]:
+                raise SystemExit("built candidate does not match reviewed " + key)
     Path(args.out).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({
         "verified": True,

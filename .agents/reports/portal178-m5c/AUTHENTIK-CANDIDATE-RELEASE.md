@@ -29,13 +29,15 @@ Dockerfile. Pull-request CI builds a docker archive, checks runtime
 user/entrypoint/cmd/env hash/platform against the base, checks the new layer is
 only that Python file, and runs the canary on both images at DEBUG and INFO.
 The measured canary envelope is 2 CPU and 2 GiB, the same limits as the
-passing disposable proof on this digest. Main publication loads that archive,
-pushes `ghcr.io/thaynes43/authentik-userinfo-redaction:sha-<commit>`, and signs
-the registry digest. The registry digest is that job's `RepoDigests` value.
+passing disposable proof on this digest. A push to main builds that Dockerfile
+again. Publish loads the archive from that same main run and refuses to push
+unless its archive SHA-256 and image id match `reviewed-digests.json`. It then
+pushes `ghcr.io/thaynes43/authentik-userinfo-redaction:sha-<commit>`, signs the
+registry digest, and writes that digest to the job summary. The registry
+digest is that job's `RepoDigests` value, not a value stored in Git.
 
-Measured on pull-request run 40060699220, before the canary assertion was
-corrected. That correction does not change the Dockerfile or build context.
-The image check passed and recorded:
+The digests below were measured on run 40060699220 and reproduced on run
+40060895887. The Dockerfile and build context did not change between them:
 
 | Identity | Value |
 |---|---|

@@ -126,6 +126,12 @@ class ProposalTests(unittest.TestCase):
         changed = verify_candidate.runtime_identity(image(["layer-a", "layer-b"], ["PATH=/usr/bin", "TMPDIR=/var/tmp"]))
         self.assertFalse(verify_candidate.same_runtime(base, changed)["runtimeMatch"])
 
+    def test_reviewed_pin_matches_config_and_image_id(self):
+        pin = json.loads((REDACTION / "reviewed-digests.json").read_text())
+        self.assertEqual(pin["candidateImageId"], "sha256:" + pin["candidateConfigSha256"])
+        self.assertEqual(len(pin["archiveSha256"]), 64)
+        self.assertTrue(pin["buildxManifestDigest"].startswith("sha256:"))
+
     def test_layer_archive_accepts_only_utils(self):
         import io
         import tarfile
