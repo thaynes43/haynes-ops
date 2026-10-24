@@ -26,7 +26,9 @@ PUBLISHED_HEAD = "5b39ebb13f3651c8aa741a2b4358bc1eecf6dd30"
 
 RESOURCES = [
     "oidc-externalsecret.yaml",
+    "openproject-externalsecret.yaml",
     "runtime-externalsecret.yaml",
+    "certificates.yaml",
     "role-externalsecret.yaml",
     "networkpolicy.yaml",
     "config.yaml",
@@ -48,7 +50,7 @@ HISTORICAL_ITEMS = {"dev-env-v2-portal", "dev-env-v2-portal-runtime"}
 PORTAL_PROPERTIES = set(OIDC_FIELDS + RUNTIME_FIELDS)
 STORE = {"kind": "ClusterSecretStore", "name": "onepassword-connect"}
 FORBIDDEN_KINDS = {
-    "Secret", "Certificate", "Issuer", "ClusterIssuer", "Role", "ClusterRole",
+    "Secret", "ClusterIssuer", "Role", "ClusterRole",
     "RoleBinding", "ClusterRoleBinding", "Ingress", "Gateway", "HTTPRoute",
     "Database", "Cluster", "ServiceAccount",
 }
@@ -76,6 +78,8 @@ def allowed_properties(doc):
     name = doc["metadata"]["name"]
     if name.endswith("-oidc"):
         return set(OIDC_FIELDS)
+    if name.endswith("-openproject"):
+        return {"OPENPROJECT_TOKEN"}
     if name.endswith("-runtime-db"):
         return set(DB_FIELDS)
     return set(RUNTIME_FIELDS)
@@ -139,7 +143,7 @@ def metadata_dns_rule(pending_rule):
     """Complete CoreDNS rule: the pending rule plus the two fixed metadata names."""
     rule = deepcopy(pending_rule)
     rule["toPorts"][0]["rules"]["dns"].extend([
-        {"matchName": "work.haynesnetwork.com"},
+        {"matchName": "openproject-web.frontend.svc.cluster.local"},
         {"matchName": "dev-env-operator.dev-env-system.svc.cluster.local"},
     ])
     return rule
@@ -159,6 +163,33 @@ def dns_policy_violation(spec, pending_spec):
             labels = endpoint.get("matchLabels", {})
             if labels.get("k8s-app") == "kube-dns" or labels.get("io.kubernetes.pod.namespace") == "kube-system":
                 return "extra coredns egress rule"
+    return None
+
+
+def openproject_egress_violation(spec):
+    """The portal may reach only the OpenProject web pods on TCP 8443."""
+    found = False
+    for rule in spec["egress"]:
+        ports = {
+            (item["port"], item["protocol"])
+            for block in rule.get("toPorts", [])
+            for item in block["ports"]
+        }
+        if ("8081", "TCP") in ports or ("8082", "TCP") in ports:
+            return "plaintext-openproject"
+        for endpoint in rule.get("toEndpoints", []):
+            labels = endpoint.get("matchLabels", {})
+            if labels.get("io.kubernetes.pod.namespace") != "frontend":
+                continue
+            if labels != {
+                "io.kubernetes.pod.namespace": "frontend",
+                "app.kubernetes.io/instance": "openproject",
+                "app.kubernetes.io/controller": "web",
+            } or ports != {("8443", "TCP")}:
+                return "broad-frontend"
+            found = True
+    if not found:
+        return "missing-openproject"
     return None
 
 
@@ -188,7 +219,8 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertNotIn("ccnp-exclusion.yaml", manifest["resources"])
         self.assertIn("runtime-externalsecret.yaml", manifest["resources"])
         self.assertIn("role-externalsecret.yaml", manifest["resources"])
-        self.assertEqual(len(self.docs), len(RESOURCES))
+        # certificates.yaml is four objects in one resource file.
+        self.assertEqual(len(self.docs), len(RESOURCES) + 3)
 
     def test_every_object_is_marked_unregistered(self):
         for doc in self.docs:
@@ -203,6 +235,7 @@ class ComponentRenderTest(unittest.TestCase):
             [
                 ("database", "dev-env-v2-portal-runtime-db"),
                 ("dev-agents", "dev-env-v2-portal-oidc"),
+                ("dev-agents", "dev-env-v2-portal-openproject"),
                 ("dev-agents", "dev-env-v2-portal-runtime"),
             ],
         )
@@ -244,6 +277,14 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertNotIn("dataFrom", self.rendered)
         for kind in FORBIDDEN_KINDS:
             self.assertEqual(by_kind(self.docs, kind), [])
+        self.assertEqual(
+            sorted(doc["metadata"]["name"] for doc in by_kind(self.docs, "Certificate")),
+            ["dev-env-v2-portal-ca", "dev-env-v2-portal-serving"],
+        )
+        self.assertEqual(
+            sorted(doc["metadata"]["name"] for doc in by_kind(self.docs, "Issuer")),
+            ["dev-env-v2-portal-ca", "dev-env-v2-portal-selfsigned"],
+        )
         deployment = by_kind(self.docs, "Deployment")[0]
         container = deployment["spec"]["template"]["spec"]["containers"][0]
         self.assertNotIn("env", container)
@@ -271,7 +312,7 @@ class ComponentRenderTest(unittest.TestCase):
         )
         self.assertEqual(
             annotations["secret.reloader.stakater.com/reload"],
-            "dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-tls",
+            "dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-openproject,dev-env-v2-portal-tls",
         )
         self.assertEqual(pod["securityContext"]["runAsUser"], 65532)
         self.assertEqual(pod["securityContext"]["runAsGroup"], 65532)
@@ -314,6 +355,13 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual([item["key"] for item in volumes["runtime"]["secret"]["items"]], RUNTIME_FIELDS)
         self.assertEqual(volumes["postgres-ca"]["configMap"]["items"], [{"key": "ca.crt", "path": "ca.crt"}])
         self.assertEqual([item["key"] for item in volumes["serving-tls"]["secret"]["items"]], ["tls.crt", "tls.key"])
+        mounted_secrets = [item["secret"]["secretName"] for item in pod["volumes"] if "secret" in item]
+        self.assertNotIn("dev-env-v2-portal-ca", mounted_secrets)
+        self.assertNotIn("openproject-portal-ca", mounted_secrets)
+        self.assertEqual(volumes["openproject"]["secret"]["items"], [{"key": "OPENPROJECT_TOKEN", "path": "OPENPROJECT_TOKEN"}])
+        operator_token = volumes["operator-token"]["projected"]["sources"][0]["serviceAccountToken"]
+        self.assertEqual(operator_token["audience"], "dev-env-operator")
+        self.assertEqual(operator_token["expirationSeconds"], 3600)
         projected = volumes["api"]["projected"]["sources"]
         self.assertEqual(projected[0]["serviceAccountToken"]["path"], "token")
         self.assertEqual(projected[0]["serviceAccountToken"]["expirationSeconds"], 3600)
@@ -441,8 +489,12 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(spec["egress"][2], pending_spec["egress"][2])
         self.assertEqual(spec["egress"][3], pending_spec["egress"][3])
         self.assertEqual(spec["egress"][4], {
-            "toFQDNs": [{"matchName": "work.haynesnetwork.com"}],
-            "toPorts": [{"ports": [{"port": "443", "protocol": "TCP"}]}],
+            "toEndpoints": [{"matchLabels": {
+                "io.kubernetes.pod.namespace": "frontend",
+                "app.kubernetes.io/instance": "openproject",
+                "app.kubernetes.io/controller": "web",
+            }}],
+            "toPorts": [{"ports": [{"port": "8443", "protocol": "TCP"}]}],
         })
         operator_rule = spec["egress"][5]
         self.assertEqual(operator_rule, {
@@ -454,6 +506,7 @@ class ComponentRenderTest(unittest.TestCase):
         })
         self.assertEqual(len(spec["egress"]), 6)
         policy_text = (COMPONENT / "networkpolicy.yaml").read_text()
+        self.assertNotIn("work.haynesnetwork.com", policy_text)
         self.assertNotIn("matchPattern", policy_text)
         for rule in spec["egress"]:
             for endpoint in rule.get("toEndpoints", []):
@@ -473,15 +526,19 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(api["ports"]["https"]["port"], 8443)
         self.assertNotEqual(spec, pending_spec)
         for doc in by_kind(self.docs, "ExternalSecret"):
-            self.assertNotIn("OPENPROJECT_TOKEN", remote_properties(doc))
             self.assertNotIn("OPERATOR_TOKEN", remote_properties(doc))
+            if doc["metadata"]["name"] == "dev-env-v2-portal-openproject":
+                self.assertEqual(remote_properties(doc), ["OPENPROJECT_TOKEN"])
+            else:
+                self.assertNotIn("OPENPROJECT_TOKEN", remote_properties(doc))
         config = by_kind(self.docs, "ConfigMap")
         config_data = next(item["data"] for item in config if item["metadata"]["name"] == "dev-env-v2-portal-config")
         self.assertNotIn("session-bindings.json", config_data)
         contract = CONTRACT.read_text()
         self.assertIn("All absent leaves metadata disabled", contract)
         self.assertIn("All present is the only enabled state", contract)
-        self.assertIn("This render has none of the three files", contract)
+        self.assertIn("config/session-bindings.json` is absent from this render", contract)
+        self.assertIn("not a permanent product inventory", contract)
         self.assertEqual(by_kind(self.docs, "CiliumClusterwideNetworkPolicy"), [])
         exclusion = load(COMPONENT / "ccnp-exclusion.yaml")
         self.assertEqual(exclusion["append"], "dev-env-v2-portal")
@@ -494,8 +551,15 @@ class ComponentRenderTest(unittest.TestCase):
                 if item.get("key") == "app.kubernetes.io/name" and item.get("operator") == "NotIn"
             ]
             self.assertEqual(len(matched), 1)
-            self.assertNotIn("dev-env-v2-portal", matched[0]["values"])
+            self.assertEqual(matched[0]["values"][-1], "dev-env-v2-portal")
+            self.assertEqual(matched[0]["values"].count("dev-env-v2-portal"), 1)
             self.assertEqual(policy["spec"]["endpointSelector"]["matchLabels"]["io.kubernetes.pod.namespace"], "dev-agents")
+        web = load(ROOT / "kubernetes/main/apps/dev-env-system/network/app/session-web.yaml")
+        egress_notin = [
+            item for item in web["spec"]["endpointSelector"]["matchExpressions"]
+            if item.get("key") == "dev-env.haynesops.com/egress"
+        ]
+        self.assertEqual(egress_notin, [{"key": "dev-env.haynesops.com/egress", "operator": "NotIn", "values": ["ops"]}])
 
     def test_live_tree_keeps_rejects_and_does_not_register_the_packet(self):
         cluster = load(CLUSTER)
@@ -519,7 +583,7 @@ class ComponentRenderTest(unittest.TestCase):
 
     def test_historical_item_keys_and_unrelated_properties_are_rejected(self):
         rendered_secrets = by_kind(self.docs, "ExternalSecret")
-        self.assertEqual(len(rendered_secrets), 3)
+        self.assertEqual(len(rendered_secrets), 4)
         for doc in rendered_secrets:
             self.assertEqual(projection_violations(doc, allowed_properties(doc)), [])
         mutated = deepcopy(rendered_secrets[0])
@@ -612,6 +676,82 @@ class ComponentRenderTest(unittest.TestCase):
             self.assertIn("config/subject", stable)
             self.assertIn("USER-REPORTED SAVED", stable)
             self.assertIn("historical source", stable)
+
+    def test_approved_reader_route_certificates_and_preflight(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "openproject_reader_preflight",
+            ROOT / "scripts/portal178-m5d/openproject_reader_preflight.py",
+        )
+        preflight = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(preflight)
+        self.assertEqual(preflight.evaluate({"roles": [], "users": []}), "absent-ready")
+        ready = {
+            "roles": [{"name": "Dev-env portal reader", "permissions": ["view_work_packages", "view_project"]}],
+            "users": [{
+                "name": "dev-env-portal-reader",
+                "admin": False,
+                "global_roles": [],
+                "groups": [],
+                "memberships": [{"project_id": 3, "roles": ["Dev-env portal reader"]}],
+            }],
+        }
+        self.assertEqual(preflight.evaluate(ready), "idempotent")
+        mismatched = deepcopy(ready)
+        mismatched["users"][0]["memberships"].append({"project_id": 8, "roles": ["Dev-env portal reader"]})
+        with self.assertRaises(preflight.PreflightReject) as raised:
+            preflight.evaluate(mismatched)
+        self.assertEqual(raised.exception.reason, "membership-scope")
+        with self.assertRaises(preflight.PreflightReject):
+            preflight.evaluate({"roles": [], "users": [], "token": "nope"})
+
+        template = (ROOT / "kubernetes/main/apps/frontend/openproject/app/nginx.conf.template").read_text()
+        portal_server = template.split("listen 8443 ssl;", 1)[1]
+        patterns = re.findall(r'\$args ~ "(\^.*\$)"', portal_server)
+        def query_ok(args):
+            if args == "":
+                return True
+            return any(re.fullmatch(item, args) for item in patterns)
+        for good in ("", "offset=0", "pageSize=1", "pageSize=100", "offset=20&pageSize=50",
+                     'offset=0&pageSize=20&sortBy=%5B%5B%22updatedAt%22%2C%22desc%22%5D%5D'):
+            self.assertTrue(query_ok(good), good)
+        for bad in ("pageSize=101", "pageSize=0", "offset=100000", "filters=%5B%5D",
+                    "offset=1&pageSize=20&token=abc", "/api/v3/projects/8/work_packages"):
+            self.assertFalse(query_ok(bad), bad)
+        self.assertIn("location = /api/v3/projects/3/work_packages", portal_server)
+        self.assertIn('proxy_pass http://127.0.0.1:8080;', portal_server)
+        self.assertIn('proxy_set_header Cookie "";', portal_server)
+        self.assertIn('proxy_set_header Authorization $http_authorization;', portal_server)
+        self.assertIn("listen 0.0.0.0:8081;", template)
+        self.assertIn("listen 0.0.0.0:8082;", template)
+
+        policies = list(yaml.safe_load_all((ROOT / "kubernetes/main/apps/frontend/openproject/app/networkpolicy.yaml").read_text()))
+        plain = next(item for item in policies if item["metadata"]["name"] == "openproject")
+        dev_agents = [
+            rule for rule in plain["spec"]["ingress"]
+            if rule["toPorts"][0]["ports"][0]["port"] == "8082"
+            and rule["fromEndpoints"][0]["matchLabels"].get("io.kubernetes.pod.namespace") == "dev-agents"
+        ]
+        self.assertEqual(dev_agents[0]["fromEndpoints"][0]["matchExpressions"][0]["values"], ["dev-env-v2-portal"])
+        portal_api = next(item for item in policies if item["metadata"]["name"] == "openproject-portal-api")
+        self.assertEqual(portal_api["spec"]["ingress"][0]["toPorts"][0]["ports"], [{"port": "8443", "protocol": "TCP"}])
+        self.assertNotIn("egress", portal_api["spec"])
+        portal_spec = by_kind(self.docs, "CiliumNetworkPolicy")[0]["spec"]
+        self.assertIsNone(openproject_egress_violation(portal_spec))
+        broadened = deepcopy(portal_spec)
+        broadened["egress"].append({
+            "toEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "frontend"}}],
+            "toPorts": [{"ports": [{"port": "8082", "protocol": "TCP"}]}],
+        })
+        self.assertEqual(openproject_egress_violation(broadened), "plaintext-openproject")
+
+        leaf = next(doc for doc in self.docs if doc.get("kind") == "Certificate" and doc["metadata"]["name"] == "dev-env-v2-portal-serving")
+        self.assertEqual(leaf["spec"]["dnsNames"], [
+            "dev-env-v2.haynesops.com",
+            "dev-env-v2-portal.dev-agents.svc.cluster.local",
+        ])
+        self.assertEqual(leaf["spec"]["secretName"], "dev-env-v2-portal-tls")
+        self.assertEqual(leaf["spec"]["privateKey"]["rotationPolicy"], "Always")
 
 
 if __name__ == "__main__":

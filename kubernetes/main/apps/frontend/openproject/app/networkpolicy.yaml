@@ -27,6 +27,11 @@ spec:
   - fromEndpoints:
     - matchLabels:
         io.kubernetes.pod.namespace: dev-agents
+      matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: NotIn
+        values:
+        - dev-env-v2-portal
     toPorts:
     - ports:
       - port: '8082'
@@ -152,3 +157,25 @@ spec:
     - ports:
       - port: '443'
         protocol: TCP
+---
+# Portal reader only. Selects the web pods and allows TCP 8443 from the portal.
+# No egress section, so this object does not deny the web pod's existing egress.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: openproject-portal-api
+  namespace: frontend
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/instance: openproject
+      app.kubernetes.io/controller: web
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-agents
+            app.kubernetes.io/name: dev-env-v2-portal
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP

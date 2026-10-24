@@ -1,0 +1,58 @@
+# Dedicated portal-reader CA. The key stays in Secret openproject-portal-ca.
+# NGINX mounts only the leaf Secret openproject-portal-api-tls.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: openproject-portal-selfsigned
+  namespace: frontend
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openproject-portal-ca
+  namespace: frontend
+spec:
+  isCA: true
+  commonName: openproject-portal-ca
+  secretName: openproject-portal-ca
+  duration: 87600h
+  renewBefore: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: openproject-portal-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: openproject-portal-ca
+  namespace: frontend
+spec:
+  ca:
+    secretName: openproject-portal-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openproject-portal-api
+  namespace: frontend
+spec:
+  secretName: openproject-portal-api-tls
+  dnsNames:
+    - openproject-web.frontend.svc.cluster.local
+  duration: 2160h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+    - server auth
+    - digital signature
+  issuerRef:
+    name: openproject-portal-ca
+    kind: Issuer

@@ -42,6 +42,7 @@ spec:
           - dev-env-owned-luna-1019-8
           - dev-env-owned-luna-1019-9
           - dev-env-project-bootstrap-check
+          - dev-env-v2-portal
   ingress:
     - {}
   egress:

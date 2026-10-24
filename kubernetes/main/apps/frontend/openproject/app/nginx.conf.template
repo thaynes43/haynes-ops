@@ -76,4 +76,36 @@ http {
         }
         location / { return 404; }
     }
+    # Private portal reader. TLS ends in this Pod. The upstream is loopback only.
+    server {
+        listen 8443 ssl;
+        server_name openproject-web.frontend.svc.cluster.local;
+        ssl_certificate /etc/openproject-portal-api-tls/tls.crt;
+        ssl_certificate_key /etc/openproject-portal-api-tls/tls.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        location = /api/v3/projects/3/work_packages {
+            if ($request_method != GET) { return 405; }
+            if ($http_authorization !~ "^Bearer [A-Za-z0-9._~+/-]+=*$") { return 401; }
+            set $qok 0;
+            if ($args = "") { set $qok 1; }
+            if ($args ~ "^offset=[0-9]{1,5}$") { set $qok 1; }
+            if ($args ~ "^pageSize=(100|[1-9][0-9]?)$") { set $qok 1; }
+            if ($args ~ "^offset=[0-9]{1,5}&pageSize=(100|[1-9][0-9]?)$") { set $qok 1; }
+            if ($args ~ "^offset=[0-9]{1,5}&pageSize=(100|[1-9][0-9]?)&sortBy=%5B%5B%22(id|createdAt|updatedAt)%22%2C%22(asc|desc)%22%5D%5D$") { set $qok 1; }
+            if ($qok = 0) { return 400; }
+            proxy_pass http://127.0.0.1:8080;
+            proxy_set_header Host work.haynesnetwork.com;
+            proxy_set_header X-Forwarded-Proto https;
+            proxy_set_header Authorization $http_authorization;
+            proxy_set_header Cookie "";
+            proxy_set_header X-Authenticated-User "";
+            proxy_set_header X-Remote-User "";
+            proxy_set_header Remote-User "";
+            proxy_set_header X-authentik-username "";
+            proxy_set_header X-authentik-uid "";
+            proxy_set_header X-Forwarded-User "";
+            proxy_set_header X-Auth-Request-User "";
+        }
+        location / { return 404; }
+    }
 }

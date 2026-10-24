@@ -34,7 +34,7 @@ spec:
       annotations:
         reloader.stakater.com/auto: "true"
         configmap.reloader.stakater.com/reload: dev-env-v2-portal-config,dev-env-v2-portal-postgres-ca,dev-env-v2-portal-admission-ca,dev-env-v2-portal-issuer-ca,dev-env-v2-portal-openproject-ca,dev-env-v2-portal-operator-ca
-        secret.reloader.stakater.com/reload: dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-tls
+        secret.reloader.stakater.com/reload: dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-openproject,dev-env-v2-portal-tls
         dev-env.haynesops.com/postgres-ca-sha256: UNVERIFIED
         dev-env.haynesops.com/oidc-population: user-reported-saved
     spec:
@@ -160,6 +160,14 @@ spec:
               mountPath: /etc/dev-env-portal/tls/tls.key
               subPath: tls.key
               readOnly: true
+            - name: openproject
+              mountPath: /etc/dev-env-portal/secrets/OPENPROJECT_TOKEN
+              subPath: OPENPROJECT_TOKEN
+              readOnly: true
+            - name: operator-token
+              mountPath: /etc/dev-env-portal/secrets/OPERATOR_TOKEN
+              subPath: token
+              readOnly: true
             - name: api
               mountPath: /var/run/portal/api
               readOnly: true
@@ -227,6 +235,19 @@ spec:
                 path: tls.crt
               - key: tls.key
                 path: tls.key
+        - name: openproject
+          secret:
+            secretName: dev-env-v2-portal-openproject
+            items:
+              - key: OPENPROJECT_TOKEN
+                path: OPENPROJECT_TOKEN
+        - name: operator-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+                  audience: dev-env-operator
         - name: api
           projected:
             sources:

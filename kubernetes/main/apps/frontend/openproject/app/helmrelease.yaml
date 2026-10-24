@@ -357,6 +357,9 @@ spec:
             port: 8081
           api:
             port: 8082
+          portal-api:
+            port: 8443
+            protocol: HTTPS
       cache:
         controller: cache
         ports:
@@ -383,4 +386,12 @@ spec:
           web:
             nginx:
             - path: /config
+              readOnly: true
+      portal-api-tls:
+        type: secret
+        name: openproject-portal-api-tls
+        advancedMounts:
+          web:
+            nginx:
+            - path: /etc/openproject-portal-api-tls
               readOnly: true

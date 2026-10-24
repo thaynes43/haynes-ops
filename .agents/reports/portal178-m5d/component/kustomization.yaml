@@ -9,7 +9,9 @@ commonAnnotations:
   dev-env.haynesops.com/portal-registration: unregistered
 resources:
   - oidc-externalsecret.yaml
+  - openproject-externalsecret.yaml
   - runtime-externalsecret.yaml
+  - certificates.yaml
   - role-externalsecret.yaml
   - networkpolicy.yaml
   - config.yaml
