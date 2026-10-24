@@ -1,9 +1,11 @@
-# UNREGISTERED consumer aligned to M6 PR541 6a522e843a8768099d8eb8086f9ff8272f94b725.
+# UNREGISTERED consumer aligned to M6 head 51db852c281a20996f59fd4b7f14eda1f5a52f26.
 # Mount root is /etc/dev-env-portal. Probes are HTTPS GET /healthz and /readyz.
-# The process also requires Host dev-env-v2.haynesops.com. A Probe cannot set
-# that header, so these probes fail closed until that interface is resolved.
+# Host is set with httpHeaders, not httpGet.host, so the dial target stays the pod IP.
 # Image remains the unpublished sentinel. uid and gid are 65532.
-# Held runtime files are mount paths only. This render does not select them.
+# CPU limit 200m is the staged bound for this reader. dev-agents rejects a pod
+# with no CPU limit and any container above 8 CPU.
+# Runtime properties are selected by the inert ExternalSecrets in this render.
+# They are not populated and not installed.
 # Serving TLS, peer CA files, admission-uid, and config/subject are
 # unprovisioned, so the kubelet cannot start this pod.
 # config/subject is the existing issuer-plus-subject pin. It is not a
@@ -66,12 +68,16 @@ spec:
               cpu: 50m
               memory: 64Mi
             limits:
+              cpu: 200m
               memory: 256Mi
           startupProbe:
             httpGet:
               path: /healthz
               port: https
               scheme: HTTPS
+              httpHeaders:
+                - name: Host
+                  value: dev-env-v2.haynesops.com
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 12
@@ -80,6 +86,9 @@ spec:
               path: /healthz
               port: https
               scheme: HTTPS
+              httpHeaders:
+                - name: Host
+                  value: dev-env-v2.haynesops.com
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
@@ -88,6 +97,9 @@ spec:
               path: /readyz
               port: https
               scheme: HTTPS
+              httpHeaders:
+                - name: Host
+                  value: dev-env-v2.haynesops.com
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3

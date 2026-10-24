@@ -14,7 +14,7 @@ Foundations reused, unchanged by this packet:
 - Pending manifests under `.agents/reports/portal178-m5c/pending/` for the runtime ExternalSecret, the CNPG basic-auth projection, and the BFF CiliumNetworkPolicy.
 - Merged dev-env session constructors: exact origin host, callback `origin + /auth/callback`, postgres host `postgres16-rw.database.svc.cluster.local`, username `dev_env_v2_portal_runtime`, database `dev_env_v2_portal`, `sslmode=verify-full`, MaxConns 2, and admission API path `/api/v1/namespaces/dev-agents/configmaps/dev-env-v2-portal-admission`.
 
-Runtime alignment, 2026-10-24. The current contract is `/home/dev/work/orders/portal178-runtime-assembly-20261024/integration-fixes-02/RUNTIME-CONTRACT.md`. It supersedes `/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md`. Source PR541 head `6a522e843a8768099d8eb8086f9ff8272f94b725` remains the published runtime source this packet was checked against, together with the parser updates in that same worktree. Earlier packets recorded no contract. Those checks are superseded. This packet follows the integration-fixes contract. It is not a merge and it does not install the component.
+Runtime alignment, 2026-10-24. The current contract is `/home/dev/work/orders/portal178-runtime-assembly-20261024/integration-fixes-02/RUNTIME-CONTRACT.md`. It supersedes `/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md`. The checked runtime source is M6 head `51db852c281a20996f59fd4b7f14eda1f5a52f26`. The earlier head recorded in the prior order directory is not this head, and that receipt file is left unchanged. Earlier packets recorded no contract. Those checks are superseded. This packet follows the integration-fixes contract. It is not a merge and it does not install the component.
 
 The published process is executable `dev-env-portal`, HTTPS on `:8443`, probes `GET /healthz` and `GET /readyz`, mount root `/etc/dev-env-portal`, and uid/gid 65532. The image repository named by that contract is `ghcr.io/thaynes43/dev-env-portal`. No digest is published. The Deployment image stays `unregistered.invalid/dev-env-v2-portal:UNPUBLISHED`.
 
@@ -83,7 +83,7 @@ Mounts:
 | --- | --- | --- | --- |
 | config | ConfigMap `dev-env-v2-portal-config` | `/etc/dev-env-portal/config` | pinned lowercase files listed below |
 | oidc | Secret `dev-env-v2-portal-oidc` | `/etc/dev-env-portal/secrets/OIDC_CLIENT_ID`, `/etc/dev-env-portal/secrets/OIDC_CLIENT_SECRET` | those two properties only |
-| runtime | Secret `dev-env-v2-portal-runtime`, not created by this render | `/etc/dev-env-portal/secrets/DB_USERNAME`, `DB_PASSWORD`, `SESSION_AEAD_KEY`, `SESSION_GENERATION` | filenames only; no ExternalSecret selects them |
+| runtime | ExternalSecret `dev-env-v2-portal-runtime` selects these four properties in this unregistered render | `/etc/dev-env-portal/secrets/DB_USERNAME`, `DB_PASSWORD`, `SESSION_AEAD_KEY`, `SESSION_GENERATION` | selected in inert source; not populated and not installed |
 | postgres-ca | ConfigMap `dev-env-v2-portal-postgres-ca` | `/etc/dev-env-portal/ca/ca.crt` | key absent |
 | admission-ca | ConfigMap `dev-env-v2-portal-admission-ca` | `/etc/dev-env-portal/ca/admission-ca.crt` | key absent |
 | issuer-ca | ConfigMap `dev-env-v2-portal-issuer-ca` | `/etc/dev-env-portal/ca/issuer-ca.crt` | key absent |
@@ -112,14 +112,16 @@ Pinned config files:
 
 The duration, auth-style, and witness values are the published `production_test.go` fixture and sit inside the contract bounds. They are not a launch SLO. The stable contract may replace them before freeze.
 
-Image: `unregistered.invalid/dev-env-v2-portal:UNPUBLISHED`. There is no digest. The contract names `ghcr.io/thaynes43/dev-env-portal` and a `sha-<short>` tag from `main`. This packet does not invent that tag. uid and gid are 65532.
+Image: `unregistered.invalid/dev-env-v2-portal:UNPUBLISHED`. There is no digest. The contract names `ghcr.io/thaynes43/dev-env-portal` and a `sha-<short>` tag from `main`. This packet does not invent that tag. uid and gid are 65532. The container requests `50m` CPU and limits CPU to `200m`, under the `dev-agents` ceiling of 8 CPU in `dev-env-require-cpu-limit`. Memory request `64Mi` and limit `256Mi` are unchanged. The CPU limit is a staged bound, not a measured capacity.
 
 Probes:
 
 - startup and liveness: HTTPS GET `/healthz` on port `https`
 - readiness: HTTPS GET `/readyz` on port `https`
+- each sets `httpHeaders` `Host: dev-env-v2.haynesops.com`
+- none sets `httpGet.host`, so the kubelet still dials the pod IP
 
-The published gate also requires `Host: dev-env-v2.haynesops.com` and returns a body `ok`. The Probe API cannot set the Host header, and this packet does not add one. Kubelet requests therefore fail closed at the process. Probe success is not claimed. Kubelet probe success is not certificate verification and is not Gate A.
+The published gate requires that Host and returns a body `ok`. Kubernetes HTTP probes set a virtual host through `httpHeaders`, not through `httpGet.host` (Pod `HTTPGetAction`: host is the dial name and defaults to the pod IP). Kubelet HTTPS probes skip certificate verification, so a successful probe is not serving-certificate proof and is not Gate A.
 
 DNS: `ClusterFirst` and `ndots=1`, matching `.agents/reports/portal178-m5c/pending/bff-network-exclusions.json`.
 
@@ -136,9 +138,11 @@ IngressRoute namespace is `dev` because `certificate-haynesops` is already refle
 - Service `dev-agents/dev-env-v2-portal` port 8443, scheme `https`, `passHostHeader: true`, `serversTransport: dev-env-v2-portal`.
 - No forward-auth middleware and no homepage annotation.
 
-ServersTransport `dev/dev-env-v2-portal` sets `insecureSkipVerify: false`, `serverName: dev-env-v2-portal.dev-agents.svc.cluster.local`, and `rootCAsSecrets: [dev-env-v2-portal-serving-ca]`. The shared Traefik setting `serversTransport.insecureSkipVerify=true` remains in place for other backends. This object overrides it only for the portal service.
+ServersTransport `dev/dev-env-v2-portal` sets `insecureSkipVerify: false`, `serverName: dev-env-v2-portal.dev-agents.svc.cluster.local`, and `rootCAs: [{secret: dev-env-v2-portal-serving-ca}]`. The shared Traefik setting `serversTransport.insecureSkipVerify=true` remains in place for other backends. This object overrides it only for the portal service.
 
-Secret `dev/dev-env-v2-portal-serving-ca` and Secret `dev-agents/dev-env-v2-portal-tls` are not in the render. No Certificate, Issuer, or private key is created. The PEM key Traefik chart 42.1.3 reads from `rootCAsSecrets` is unverified and must be confirmed before registration. Reusing `dev-env-ca` or the PostgreSQL CA for the BFF listener is not approved here.
+The leaf in Secret `dev-agents/dev-env-v2-portal-tls` is what the process loads from `tls/tls.crt` and `tls/tls.key`. `sanMatch` accepts the leaf only when `DNSNames` contains `dev-env-v2.haynesops.com`. Traefik verifies that same leaf against `serverName`, so the leaf also needs DNS SAN `dev-env-v2-portal.dev-agents.svc.cluster.local`. Those are the two required DNS SANs. No other name is added here.
+
+Secret `dev/dev-env-v2-portal-serving-ca` holds the public CA that signed that leaf. Traefik chart 42.1.3 ships appVersion v3.7.16. In `pkg/provider/kubernetes/crd/traefikio/v1alpha1/serverstransport.go` at that tag, a referenced Secret must contain the certificate under `tls.ca` or `ca.crt`. The v3.7 ServersTransport reference states the same pair of keys. `rootCAsSecrets` is deprecated there; `rootCAs[].secret` is the current field, and this render uses it. Neither Secret is in the render. No Certificate, Issuer, private key, or CA is created. Reusing `dev-env-ca` or the PostgreSQL CA for the BFF listener is not approved here.
 
 ## Network isolation
 

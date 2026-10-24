@@ -17,7 +17,7 @@ CHECKLIST = ROOT / ".agents/reports/portal178-m5d/LAUNCH-CHECKLIST.md"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
 RUNTIME_CONTRACT = Path("/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md")
 STABLE_CONTRACT = Path("/home/dev/work/orders/portal178-runtime-assembly-20261024/integration-fixes-02/RUNTIME-CONTRACT.md")
-M6_HEAD = "6a522e843a8768099d8eb8086f9ff8272f94b725"
+M6_HEAD = "51db852c281a20996f59fd4b7f14eda1f5a52f26"
 
 RESOURCES = [
     "oidc-externalsecret.yaml",
@@ -233,10 +233,16 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertNotIn("@sha256:", container["image"])
         self.assertNotIn("ghcr.io", container["image"])
         self.assertEqual(container["ports"], [{"name": "https", "containerPort": 8443, "protocol": "TCP"}])
+        self.assertEqual(container["resources"]["requests"]["cpu"], "50m")
+        self.assertEqual(container["resources"]["limits"]["cpu"], "200m")
+        self.assertEqual(container["resources"]["limits"]["memory"], "256Mi")
         for probe, path in (("startupProbe", "/healthz"), ("livenessProbe", "/healthz"), ("readinessProbe", "/readyz")):
             http = container[probe]["httpGet"]
-            self.assertEqual(http, {"path": path, "port": "https", "scheme": "HTTPS"})
-            self.assertNotIn("httpHeaders", container[probe])
+            self.assertEqual(http["path"], path)
+            self.assertEqual(http["port"], "https")
+            self.assertEqual(http["scheme"], "HTTPS")
+            self.assertNotIn("host", http)
+            self.assertEqual(http["httpHeaders"], [{"name": "Host", "value": "dev-env-v2.haynesops.com"}])
         mounts = {item["mountPath"]: item for item in container["volumeMounts"]}
         self.assertEqual(mounts["/etc/dev-env-portal/config"]["name"], "config")
         for field in OIDC_FIELDS:
@@ -327,7 +333,8 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(transport["metadata"]["namespace"], "dev")
         self.assertIs(transport["spec"]["insecureSkipVerify"], False)
         self.assertEqual(transport["spec"]["serverName"], "dev-env-v2-portal.dev-agents.svc.cluster.local")
-        self.assertEqual(transport["spec"]["rootCAsSecrets"], ["dev-env-v2-portal-serving-ca"])
+        self.assertNotIn("rootCAsSecrets", transport["spec"])
+        self.assertEqual(transport["spec"]["rootCAs"], [{"secret": "dev-env-v2-portal-serving-ca"}])
         service_doc = by_kind(self.docs, "Service")[0]
         self.assertEqual(service_doc["spec"]["type"], "ClusterIP")
         self.assertEqual(service_doc["spec"]["ports"], [{"name": "https", "port": 8443, "protocol": "TCP", "targetPort": "https"}])
@@ -421,6 +428,14 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn("integration-fixes-02", contract)
         self.assertIn("config/subject", contract)
         self.assertIn(M6_HEAD, contract)
+        self.assertNotIn("6a522e843a8768099d8eb8086f9ff8272f94b725", contract)
+        self.assertNotIn("Probe API cannot", contract)
+        self.assertNotIn("no ExternalSecret selects", contract)
+        self.assertIn("selected in inert source", contract)
+        self.assertIn("httpHeaders", contract)
+        self.assertIn("200m", contract)
+        self.assertIn("tls.ca", contract)
+        self.assertIn("dev-env-v2-portal.dev-agents.svc.cluster.local", contract)
         self.assertIn("Historical record only; not loaded", contract)
         self.assertIn("HaynesKube/dev-env", contract)
         self.assertIn("canonical-item-01/RUNTIME-CONTRACT.md", contract)

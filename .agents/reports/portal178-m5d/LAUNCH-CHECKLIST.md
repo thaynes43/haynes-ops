@@ -12,7 +12,7 @@ Status values are source or handoff facts. They are not live acceptance.
 | Exact-head independent review of the staged source, then required CI. Do not merge a change that adds a live route, policy, ExternalSecret, or admission object. | Coordinator picks the reviewer. M5D keeps correction custody. | Required before merge. |
 | Follow `/home/dev/work/orders/portal178-runtime-assembly-20261024/integration-fixes-02/RUNTIME-CONTRACT.md`. That file is the current contract and supersedes `canonical-item-01/RUNTIME-CONTRACT.md`. | M6 `8372053b-36b5-4cf2-b2c8-5a7146a42c45` | Current contract read. Independent review of this head is still required before merge. |
 | Replace `unregistered.invalid/dev-env-v2-portal:UNPUBLISHED` with a verified immutable `ghcr.io/thaynes43/dev-env-portal:sha-<short>` artifact. No digest is invented here. | M6, then M5D source bump | Required before any pod is admitted. Image stays the unpublished sentinel. |
-| Confirm the Traefik 42.1.3 `rootCAsSecrets` PEM key. Supply public serving CA Secret `dev/dev-env-v2-portal-serving-ca` and leaf Secret `dev-agents/dev-env-v2-portal-tls` from an already authorized certificate owner. | Certificate owner and portal owner | Required before route registration. Authority to mint a new issuer is not granted here. |
+| Supply public serving CA Secret `dev/dev-env-v2-portal-serving-ca` under `tls.ca` or `ca.crt`, and leaf Secret `dev-agents/dev-env-v2-portal-tls` whose certificate has DNS SANs `dev-env-v2.haynesops.com` and `dev-env-v2-portal.dev-agents.svc.cluster.local`. | Certificate owner, then portal owner | Required before route registration. Traefik v3.7.16 accepts either CA key. No key or certificate is generated here. |
 | Deliver public `ca.crt` for `postgres16-rw`, plus public peer files for admission, the issuer, OpenProject, and the operator. Set each CA hash annotation to that file SHA-256 in the same change. | Already-authorized certificate administrator, then portal owner | Required before the CA mounts can start. No PEM is in source. |
 | Check the rendered OIDC ExternalSecret for `SecretSynced` and the two approved property names only. | M5D after a reviewed consumer exists | Required later. OIDC on `HaynesKube/dev-env` is USER-REPORTED SAVED, not SecretSynced and not value-verified. No duplicate OIDC request. Runtime properties are HELD. |
 | Append `dev-env-v2-portal` to the two CCNP `NotIn` lists using `ccnp-exclusion.yaml`, after a rendered diff shows every other selector and rule unchanged. | M5D source, separate reviewed registration | Required before the dedicated policy is effective. Not applied. |
@@ -55,8 +55,8 @@ The later handoff, when authorized, is a reviewed secure UI write by Tom to the 
 These are explicit and unresolved:
 
 - Verified immutable image digest for `ghcr.io/thaynes43/dev-env-portal`. The Deployment still uses the unpublished sentinel.
-- Probe Host. The process requires `Host: dev-env-v2.haynesops.com`. The Probe API cannot set that header, so `/healthz` and `/readyz` fail closed at the process.
-- Serving certificate issuer, Traefik CA secret key, and leaf certificate.
+- The serving leaf and the public CA bytes. Required DNS SANs and the Traefik secret keys `tls.ca` or `ca.crt` are recorded above. No material is in source.
+- Probe success against a running pod. The source sets Host through `httpHeaders`. That is not a live probe and not certificate verification.
 - Public PostgreSQL CA bytes and the four peer CA files, each with fingerprint, validity, and renewal owner name.
 - `SecretSynced` for the two OIDC properties. Tom's save is USER-REPORTED SAVED, not SecretSynced and not value-verified. Runtime properties are an inert projection. Population and install are HELD.
 - `config/subject`. Existing issuer-plus-subject pin. Not an item property. The file is absent. `PORTAL_SUBJECT` is not used.
