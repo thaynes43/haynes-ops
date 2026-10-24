@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Render the unregistered Story178 consumer packet and reject live registration."""
+import re
 import subprocess
 import unittest
+from copy import deepcopy
 from pathlib import Path
 
 import yaml
@@ -13,7 +15,7 @@ M5A = ROOT / ".agents/reports/portal178-m5a/pending/externalsecret.yaml"
 CONTRACT = ROOT / ".agents/reports/portal178-m5d/DEPLOYMENT-CONTRACT.md"
 CHECKLIST = ROOT / ".agents/reports/portal178-m5d/LAUNCH-CHECKLIST.md"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
-RUNTIME_ORDER = Path("/home/dev/work/orders/portal178-runtime-assembly-20261024")
+RUNTIME_CONTRACT = Path("/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md")
 
 RESOURCES = [
     "oidc-externalsecret.yaml",
@@ -30,6 +32,9 @@ RESOURCES = [
 OIDC_FIELDS = ["OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET"]
 RUNTIME_FIELDS = ["DB_USERNAME", "DB_PASSWORD", "SESSION_AEAD_KEY", "SESSION_GENERATION"]
 DB_FIELDS = ["DB_USERNAME", "DB_PASSWORD"]
+CANONICAL_ITEM = "dev-env"
+HISTORICAL_ITEMS = {"dev-env-v2-portal", "dev-env-v2-portal-runtime"}
+PORTAL_PROPERTIES = set(OIDC_FIELDS + RUNTIME_FIELDS)
 STORE = {"kind": "ClusterSecretStore", "name": "onepassword-connect"}
 FORBIDDEN_KINDS = {
     "Secret", "Certificate", "Issuer", "ClusterIssuer", "Role", "ClusterRole",
@@ -49,6 +54,53 @@ ATTESTATION = [
     "renewal owner/contact",
     "rotation statement",
 ]
+
+
+
+def remote_keys(doc):
+    return [item["remoteRef"]["key"] for item in doc["spec"]["data"]]
+
+
+def allowed_properties(doc):
+    name = doc["metadata"]["name"]
+    if name.endswith("-oidc"):
+        return set(OIDC_FIELDS)
+    if name.endswith("-runtime-db"):
+        return set(DB_FIELDS)
+    return set(RUNTIME_FIELDS)
+
+
+def projection_violations(doc, allowed):
+    spec = doc["spec"]
+    violations = []
+    if "dataFrom" in spec:
+        violations.append("dataFrom")
+    projected = []
+    for item in spec.get("data", []):
+        ref = item["remoteRef"]
+        if ref.get("key") != CANONICAL_ITEM:
+            violations.append(ref.get("key"))
+        if ref.get("key") in HISTORICAL_ITEMS:
+            violations.append(ref.get("key"))
+        if ref.get("property") not in allowed:
+            violations.append(ref.get("property"))
+        if set(ref) - {"key", "property"}:
+            violations.append("extra-remoteRef")
+        projected.append(ref.get("property"))
+    if "data" in spec and set(projected) != set(allowed):
+        violations.append("property-set")
+    return violations
+
+
+def dev_env_properties(tree):
+    inline = re.compile(r"key:\s*dev-env(?![A-Za-z0-9_-])\s*,\s*property:\s*([A-Za-z0-9_]+)")
+    block = re.compile(r"key:\s*dev-env(?![A-Za-z0-9_-])\s*\n\s*property:\s*([A-Za-z0-9_]+)")
+    found = set()
+    for path in tree.rglob("*.yaml"):
+        text = path.read_text(errors="replace")
+        found.update(inline.findall(text))
+        found.update(block.findall(text))
+    return found
 
 
 def load(path):
@@ -109,10 +161,11 @@ class ComponentRenderTest(unittest.TestCase):
         database = indexed[("database", "dev-env-v2-portal-runtime-db")]
         self.assertEqual(remote_properties(oidc), OIDC_FIELDS)
         self.assertEqual(sorted(oidc["spec"]["target"]["template"]["data"]), OIDC_FIELDS)
-        self.assertEqual([item["remoteRef"]["key"] for item in oidc["spec"]["data"]], ["dev-env-v2-portal", "dev-env-v2-portal"])
+        self.assertEqual([item["remoteRef"]["key"] for item in oidc["spec"]["data"]], [CANONICAL_ITEM, CANONICAL_ITEM])
         self.assertEqual(remote_properties(runtime), RUNTIME_FIELDS)
         self.assertEqual(sorted(runtime["spec"]["target"]["template"]["data"]), sorted(RUNTIME_FIELDS))
-        self.assertEqual({item["remoteRef"]["key"] for item in runtime["spec"]["data"]}, {"dev-env-v2-portal-runtime"})
+        self.assertEqual({item["remoteRef"]["key"] for item in runtime["spec"]["data"]}, {CANONICAL_ITEM})
+        self.assertEqual({item["remoteRef"]["key"] for item in database["spec"]["data"]}, {CANONICAL_ITEM})
         self.assertEqual(remote_properties(database), DB_FIELDS)
         self.assertEqual(sorted(database["spec"]["target"]["template"]["data"]), ["password", "username"])
         self.assertEqual(database["spec"]["target"]["template"]["type"], "kubernetes.io/basic-auth")
@@ -122,6 +175,7 @@ class ComponentRenderTest(unittest.TestCase):
         historical = load(M5A)
         self.assertEqual(historical["metadata"]["namespace"], "dev-env-system")
         self.assertEqual(remote_properties(historical), OIDC_FIELDS)
+        self.assertEqual({item["remoteRef"]["key"] for item in historical["spec"]["data"]}, {CANONICAL_ITEM})
         self.assertEqual(historical["spec"]["secretStoreRef"], STORE)
         self.assertEqual(load(COMPONENT / "runtime-externalsecret.yaml"), load(PENDING / "runtime-externalsecret.yaml"))
         self.assertEqual(load(COMPONENT / "role-externalsecret.yaml"), load(PENDING / "role-externalsecrets.yaml"))
@@ -264,18 +318,45 @@ class ComponentRenderTest(unittest.TestCase):
             if "kind: ConfigMap" in text and "name: dev-env-v2-portal-admission" in text:
                 self.fail("CLOSED admission seed is registered in " + str(path))
 
+
+    def test_historical_item_keys_and_unrelated_properties_are_rejected(self):
+        for doc in by_kind(self.docs, "ExternalSecret"):
+            self.assertEqual(projection_violations(doc, allowed_properties(doc)), [])
+        mutated = deepcopy(by_kind(self.docs, "ExternalSecret")[1])
+        mutated["spec"]["data"][0]["remoteRef"]["key"] = "dev-env-v2-portal"
+        self.assertIn("dev-env-v2-portal", projection_violations(mutated, allowed_properties(mutated)))
+        mutated = deepcopy(by_kind(self.docs, "ExternalSecret")[2])
+        mutated["spec"]["data"].append({
+            "secretKey": "CLAUDE_CODE_OAUTH_TOKEN",
+            "remoteRef": {"key": CANONICAL_ITEM, "property": "CLAUDE_CODE_OAUTH_TOKEN"},
+        })
+        self.assertIn("CLAUDE_CODE_OAUTH_TOKEN", projection_violations(mutated, PORTAL_PROPERTIES))
+        self.assertTrue(projection_violations({"spec": {"dataFrom": [{"extract": {"key": CANONICAL_ITEM}}], "data": []}}, PORTAL_PROPERTIES))
+        occupied = dev_env_properties(ROOT / "kubernetes")
+        self.assertTrue(occupied)
+        self.assertTrue(PORTAL_PROPERTIES.isdisjoint(occupied))
+        for path in [COMPONENT / "oidc-externalsecret.yaml", COMPONENT / "runtime-externalsecret.yaml",
+                     COMPONENT / "role-externalsecret.yaml", PENDING / "runtime-externalsecret.yaml",
+                     PENDING / "role-externalsecrets.yaml", M5A]:
+            for ref_key in remote_keys(load(path)):
+                self.assertEqual(ref_key, CANONICAL_ITEM, path)
+                self.assertNotIn(ref_key, HISTORICAL_ITEMS)
+
     def test_contract_records_missing_runtime_and_attestation(self):
         contract = CONTRACT.read_text()
         checklist = CHECKLIST.read_text()
         self.assertIn("RUNTIME-CONTRACT.md: absent", contract)
         self.assertIn("RUNTIME-CONTRACT.md: absent", checklist)
         self.assertIn("Historical record only; not loaded", contract)
-        self.assertIn("Population is UNKNOWN", checklist)
+        self.assertIn("is UNKNOWN", checklist)
+        self.assertIn("HaynesKube/dev-env", contract)
+        self.assertIn("canonical-item-01/RUNTIME-CONTRACT.md", contract)
+        self.assertIn("Population of these properties is HELD", (PENDING / "role-externalsecrets.yaml").read_text())
         for field in ATTESTATION:
             self.assertIn(field, contract)
-        if RUNTIME_ORDER.is_dir():
+        if RUNTIME_CONTRACT.parent.is_dir():
             self.assertFalse(
-                (RUNTIME_ORDER / "RUNTIME-CONTRACT.md").exists(),
+                RUNTIME_CONTRACT.exists(),
                 "M6 published RUNTIME-CONTRACT.md; reconcile the deployment packet before review",
             )
 

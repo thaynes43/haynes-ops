@@ -152,8 +152,11 @@ class Packet(unittest.TestCase):
             fields = ["DB_USERNAME", "DB_PASSWORD"]
             if i == 1:
                 fields += ["SESSION_AEAD_KEY", "SESSION_GENERATION"]
-            item = "dev-env-v2-portal-runtime"
+            item = "dev-env"
             self.assertEqual(spec["data"], [{"secretKey": f, "remoteRef": {"key": item, "property": f}} for f in fields])
+            self.assertNotIn("dev-env-v2-portal", [entry["remoteRef"]["key"] for entry in spec["data"]])
+            self.assertNotIn("dev-env-v2-portal-runtime", [entry["remoteRef"]["key"] for entry in spec["data"]])
+            self.assertNotIn("dataFrom", spec)
             self.assertEqual(spec["target"]["deletionPolicy"], "Delete")
             self.assertEqual(spec["target"]["creationPolicy"], "Owner")
             if i == 0:

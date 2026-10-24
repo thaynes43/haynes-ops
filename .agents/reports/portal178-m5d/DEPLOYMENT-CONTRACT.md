@@ -16,12 +16,33 @@ Foundations reused, unchanged by this packet:
 
 RUNTIME-CONTRACT.md: absent
 
-M6 order path checked while this packet was written:
-`/home/dev/work/orders/portal178-runtime-assembly-20261024/RUNTIME-CONTRACT.md`.
-The file was not there. Merged `NewRuntimeAssembly` still returns an empty
-`AssemblyConfig` and answers every path with unavailable. Independent portions
-below use the accepted constructors and the existing pending manifests. They do
-not claim the Go process reads these files yet.
+The first packet checked `/home/dev/work/orders/portal178-runtime-assembly-20261024/RUNTIME-CONTRACT.md` and it was absent. This continuation checks `/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md`. Merged `NewRuntimeAssembly` still returns an empty `AssemblyConfig` and answers every path with unavailable. Independent portions below use the accepted constructors and the existing pending manifests. They do not claim the Go process reads these files yet.
+
+
+## Canonical 1Password item
+
+Supersession, 2026-10-24. The canonical item is existing `HaynesKube/dev-env`. Prior instructions to use or create `dev-env-v2-portal` or `dev-env-v2-portal-runtime` are superseded. Those names remain in historical reports and in this paragraph so the earlier instruction stays visible. They are not remoteRef keys. Provider id `dev-env-v2-portal-internal`, application slug, callback, Kubernetes object names, and mount paths are unchanged. Credentials are not rotated.
+
+Every portal remoteRef is an individual `property` on `key: dev-env`. There is no `dataFrom` and no whole-item extract. Unrelated fields already stored on the item are not projected.
+
+Source metadata under `kubernetes/` already projects these properties from `key: dev-env`: `CIGAR_JOURNAL_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLOUDFLARE_PERSONAL_DNS_TOKEN`, `CURSOR_MEATBALL_KEY`, `DEV_ENV_PUSHOVER_TOKEN`, `HW_SSH_PRIVATE_KEY_B64`, `OMNI_OPERATOR_KEY`, `OMNI_SERVICE_ACCOUNT_KEY`, `PROXMOX_OPERATOR_TOKEN_ID`, `PROXMOX_OPERATOR_TOKEN_SECRET`, `SSH_CA_PRIVATE_KEY_B64`, `SSH_CA_PUBLIC_KEY`. None of those names collide with `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `DB_USERNAME`, `DB_PASSWORD`, `SESSION_AEAD_KEY`, or `SESSION_GENERATION`. This list is source projection metadata, not a secret read and not a claim that the item has no other unreferenced fields.
+
+`OIDC_CLIENT_ID` value remains the public client id `dev-env-v2-portal-internal`. `OIDC_CLIENT_SECRET` is the existing installed Authentik provider secret. Root already instructed Tom to put only those two properties on `HaynesKube/dev-env`.
+
+Runtime properties stay on the same item and are HELD until provisioning and the runtime parser match. Do not populate them yet. Future format, still unresolved where noted:
+
+| Property | Future source | Format known now | Unresolved |
+| --- | --- | --- | --- |
+| `OIDC_CLIENT_ID` | Existing item `dev-env` | Public value `dev-env-v2-portal-internal` | Whether Tom has saved it. UNKNOWN. |
+| `OIDC_CLIENT_SECRET` | Same item, installed provider secret | Existing secret, not rotated | Population UNKNOWN. Value is never read here. |
+| `DB_USERNAME` | Same item, later reviewed handoff | Intended username `dev_env_v2_portal_runtime` when provisioning matches | HELD. Do not write it yet. |
+| `DB_PASSWORD` | Same item, later reviewed handoff | Not generated here | HELD. Encoding and writer are not authorized now. |
+| `SESSION_AEAD_KEY` | Same item, later reviewed handoff | Prior contract said canonical base64 of 32 bytes | HELD until M6 parsing matches that format. |
+| `SESSION_GENERATION` | Same item, later reviewed handoff | Prior contract said 32–128 characters aligned with the fence | HELD. No value is generated. |
+
+M6 contract path checked: `/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md`.
+
+RUNTIME-CONTRACT.md: absent
 
 ## Render root
 
@@ -40,9 +61,9 @@ stays unregistered and must not be applied in addition to this packet.
 | Service | dev-agents | dev-env-v2-portal | ClusterIP TCP 8443. |
 | ConfigMap | dev-agents | dev-env-v2-portal-config | Non-secret accepted settings, including admission UID sentinel `PENDING-CLOSED-BOOTSTRAP`. |
 | ConfigMap | dev-agents | dev-env-v2-portal-postgres-ca | Public CA input. `ca.crt` is absent. Annotation `dev-env.haynesops.com/ca-sha256=UNVERIFIED`. |
-| ExternalSecret | dev-agents | dev-env-v2-portal-oidc | Item `dev-env-v2-portal`, fields `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` only. |
-| ExternalSecret | dev-agents | dev-env-v2-portal-runtime | Item `dev-env-v2-portal-runtime`, four approved fields only. |
-| ExternalSecret | database | dev-env-v2-portal-runtime-db | Same runtime item, `DB_USERNAME` and `DB_PASSWORD` only, `kubernetes.io/basic-auth`, `cnpg.io/reload=true`. |
+| ExternalSecret | dev-agents | dev-env-v2-portal-oidc | 1Password item `dev-env`, properties `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` only. Kubernetes name unchanged. |
+| ExternalSecret | dev-agents | dev-env-v2-portal-runtime | Same item `dev-env`, four runtime properties only. Population HELD. Kubernetes name unchanged. |
+| ExternalSecret | database | dev-env-v2-portal-runtime-db | Same item `dev-env`, `DB_USERNAME` and `DB_PASSWORD` only, `kubernetes.io/basic-auth`, `cnpg.io/reload=true`. Population HELD. |
 | CiliumNetworkPolicy | dev-agents | dev-env-v2-portal | Copy of the pending BFF policy. |
 | IngressRoute | dev | dev-env-v2-portal | Internal host only. |
 | ServersTransport | dev | dev-env-v2-portal | Backend TLS verification for this service only. |
@@ -104,8 +125,8 @@ That policy is additive. `dev-env-session-platform` and `dev-env-session-web` st
 | --- | --- | --- | --- | --- |
 | ServiceAccount `dev-agents/dev-env-v2-portal` | ConfigMap `dev-agents/dev-env-v2-portal-admission` | get | Witness grant, registered in PR4265 `portal-witness.yaml` | Referenced. Role is not copied or widened. |
 | ServiceAccount `dev/dev-env` | same ConfigMap | get, update | Same witness grant. Recovery also has pre-existing read breadth that this Role does not define. | Unchanged. |
-| BFF pod | Secret `dev-agents/dev-env-v2-portal-oidc` | mount two OIDC keys | Item `HaynesKube/dev-env-v2-portal` | Staged ExternalSecret. Historical `dev-env-system` proposal is not a second consumer. |
-| BFF pod | Secret `dev-agents/dev-env-v2-portal-runtime` | mount four runtime keys | Item `dev-env-v2-portal-runtime` | Staged ExternalSecret. |
+| BFF pod | Secret `dev-agents/dev-env-v2-portal-oidc` | mount two OIDC keys | Existing item `HaynesKube/dev-env` | Staged ExternalSecret. Historical `dev-env-system` proposal is not a second consumer. |
+| BFF pod | Secret `dev-agents/dev-env-v2-portal-runtime` | mount four runtime keys | Existing item `HaynesKube/dev-env` | Staged ExternalSecret. Population HELD. |
 | CNPG `postgres16` | Secret `database/dev-env-v2-portal-runtime-db` | username and password | Pending `role-externalsecrets.yaml` | Staged. Migrator stays NOLOGIN with no mounted credential. |
 | Traefik internal | IngressRoute `dev/dev-env-v2-portal` | Host `dev-env-v2.haynesops.com`, websecure, existing reflected certificate | Approved internal host | Staged. No public route and no reflector edit. |
 | Traefik to BFF | ServersTransport `dev/dev-env-v2-portal` | HTTPS, verify CA, exact serverName | Required isolation in the internal-reader sequence | Template. Serving CA Secret is absent. |
@@ -154,4 +175,4 @@ The renewal owner/contact is whoever already holds authorized certificate access
 
 Every rendered object carries `dev-env.haynesops.com/portal-registration: unregistered`. The admission ConfigMap is absent from the render. The six HBA rejects remain the live `cluster16` list. No hostssl allow, Database, managed role, migrator credential, public entrypoint, or broad RBAC object is in the render.
 
-1Password population is UNKNOWN. Absence of the ExternalSecrets in the cluster does not show whether the items are filled. This packet does not ask for the OIDC copy again.
+1Password population is UNKNOWN for the two OIDC properties on existing item `dev-env`. Runtime properties on that same item are HELD and are not a population request. Absence of the ExternalSecrets does not show whether Tom has written the OIDC fields. This packet does not ask again.
