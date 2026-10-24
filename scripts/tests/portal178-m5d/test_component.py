@@ -769,7 +769,7 @@ class ComponentRenderTest(unittest.TestCase):
         pattern = re.search(r'\$args !~ "(\^.*\$)"', portal_server).group(1)
         def query_ok(args):
             return re.fullmatch(pattern, args) is not None
-        self.assertEqual(fixture["canonical"], "offset=1&pageSize=50")
+        self.assertEqual(fixture["canonical"], "offset=1&pageSize=50&filters=%5B%5D")
         self.assertIs(fixture["offsetIsPageNumber"], True)
         for good in fixture["accepted"]:
             self.assertTrue(query_ok(good), good)
