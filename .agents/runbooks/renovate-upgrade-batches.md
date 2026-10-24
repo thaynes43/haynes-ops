@@ -65,7 +65,7 @@ A standing agent-opened normal source merge does not need a second human approva
 
 The caller owns the preflight and the exact reviewed head. `--reviewed-head` records that evidence and does not by itself grant merge, reconcile, or release. Propagate each preflight prerequisite with an ordinary nonzero exit. Do not use `assert` as the only check, because `python -O` removes assertions. Do not use an opaque `bash -c` chain. Do not append an unconditional `gh pr merge` after the preflight. If the dev-env workflow handoff checker is part of a preflight, exit 0 means the record reduced, not that the merge is ready: a blocked result can still exit 0. Read the printed semantic result and continue only when it explicitly recommends the normal merge, with no pending hold and no writable owner. This runbook does not run that checker.
 
-Branch protection on `thaynes43/haynes-ops` requires both aggregate contexts, `Flux Local - Success` and `Diff Scope - Success`. dev-env's required aggregate is `CI - Success` only. Each pull request is delivered on its own head; another pull request's green checks do not cover it.
+The supported haynes-ops delivery workflow and this guard require both aggregate contexts, `Flux Local - Success` and `Diff Scope - Success`. dev-env's required aggregate is `CI - Success` only. Each pull request is delivered on its own head; another pull request's green checks do not cover it.
 
 ## Survey first
 
