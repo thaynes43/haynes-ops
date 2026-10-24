@@ -33,7 +33,7 @@ spec:
       image:
         repository: ghcr.io/thaynes43/authentik-userinfo-redaction
         tag: "2026.8.5"
-        digest: sha256:18fc99f13617a4b83dfc470e4f8cda7ed76cf513c5147c90e1de888838325663
+        digest: sha256:c99f42e656549a8f36020eb6d2237124216540066db9e119d91804dea9fad8a5
       deploymentAnnotations:
         secret.reloader.stakater.com/reload: authentik-secret
         # PLAN-042: restart pods when the web-lowering script changes so the
