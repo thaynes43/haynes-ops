@@ -1,4 +1,4 @@
-# UNREGISTERED consumer. Runtime source is merged dev-env fa8b1e2cf3af91e33bf0558873d70920e569751d.
+# UNREGISTERED consumer. Runtime source is merged dev-env 5b39ebb13f3651c8aa741a2b4358bc1eecf6dd30.
 # The image pin is the published portal digest. It is not installation.
 # Mount root is /etc/dev-env-portal. Probes are HTTPS GET /healthz and /readyz.
 # Host is set with httpHeaders, not httpGet.host, so the dial target stays the pod IP.
@@ -34,7 +34,7 @@ spec:
       annotations:
         reloader.stakater.com/auto: "true"
         configmap.reloader.stakater.com/reload: dev-env-v2-portal-config,dev-env-v2-portal-postgres-ca,dev-env-v2-portal-admission-ca,dev-env-v2-portal-issuer-ca,dev-env-v2-portal-openproject-ca,dev-env-v2-portal-operator-ca
-        secret.reloader.stakater.com/reload: dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-tls
+        secret.reloader.stakater.com/reload: dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-openproject,dev-env-v2-portal-tls
         dev-env.haynesops.com/postgres-ca-sha256: UNVERIFIED
         dev-env.haynesops.com/oidc-population: user-reported-saved
     spec:
@@ -53,7 +53,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          image: ghcr.io/thaynes43/dev-env-portal:sha-fa8b1e2@sha256:a273ea9941d2956534975fa832fb6318a78ec9b8d926403a0357a1674b9fe622
+          image: ghcr.io/thaynes43/dev-env-portal:sha-5b39ebb@sha256:b6491747e5730a7a220ac0b79b07493399449425a0acb1e177b52efa00e4233a
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
@@ -108,29 +108,8 @@ spec:
             - name: config
               mountPath: /etc/dev-env-portal/config
               readOnly: true
-            - name: oidc
-              mountPath: /etc/dev-env-portal/secrets/OIDC_CLIENT_ID
-              subPath: OIDC_CLIENT_ID
-              readOnly: true
-            - name: oidc
-              mountPath: /etc/dev-env-portal/secrets/OIDC_CLIENT_SECRET
-              subPath: OIDC_CLIENT_SECRET
-              readOnly: true
-            - name: runtime
-              mountPath: /etc/dev-env-portal/secrets/DB_USERNAME
-              subPath: DB_USERNAME
-              readOnly: true
-            - name: runtime
-              mountPath: /etc/dev-env-portal/secrets/DB_PASSWORD
-              subPath: DB_PASSWORD
-              readOnly: true
-            - name: runtime
-              mountPath: /etc/dev-env-portal/secrets/SESSION_AEAD_KEY
-              subPath: SESSION_AEAD_KEY
-              readOnly: true
-            - name: runtime
-              mountPath: /etc/dev-env-portal/secrets/SESSION_GENERATION
-              subPath: SESSION_GENERATION
+            - name: secrets
+              mountPath: /etc/dev-env-portal/secrets
               readOnly: true
             - name: postgres-ca
               mountPath: /etc/dev-env-portal/ca/ca.crt
@@ -169,26 +148,37 @@ spec:
         - name: config
           configMap:
             name: dev-env-v2-portal-config
-        - name: oidc
-          secret:
-            secretName: dev-env-v2-portal-oidc
-            items:
-              - key: OIDC_CLIENT_ID
-                path: OIDC_CLIENT_ID
-              - key: OIDC_CLIENT_SECRET
-                path: OIDC_CLIENT_SECRET
-        - name: runtime
-          secret:
-            secretName: dev-env-v2-portal-runtime
-            items:
-              - key: DB_USERNAME
-                path: DB_USERNAME
-              - key: DB_PASSWORD
-                path: DB_PASSWORD
-              - key: SESSION_AEAD_KEY
-                path: SESSION_AEAD_KEY
-              - key: SESSION_GENERATION
-                path: SESSION_GENERATION
+        - name: secrets
+          projected:
+            sources:
+              - secret:
+                  name: dev-env-v2-portal-oidc
+                  items:
+                    - key: OIDC_CLIENT_ID
+                      path: OIDC_CLIENT_ID
+                    - key: OIDC_CLIENT_SECRET
+                      path: OIDC_CLIENT_SECRET
+              - secret:
+                  name: dev-env-v2-portal-runtime
+                  items:
+                    - key: DB_USERNAME
+                      path: DB_USERNAME
+                    - key: DB_PASSWORD
+                      path: DB_PASSWORD
+                    - key: SESSION_AEAD_KEY
+                      path: SESSION_AEAD_KEY
+                    - key: SESSION_GENERATION
+                      path: SESSION_GENERATION
+              - secret:
+                  name: dev-env-v2-portal-openproject
+                  optional: true
+                  items:
+                    - key: OPENPROJECT_TOKEN
+                      path: OPENPROJECT_TOKEN
+              - serviceAccountToken:
+                  path: OPERATOR_TOKEN
+                  expirationSeconds: 3600
+                  audience: dev-env-operator
         - name: postgres-ca
           configMap:
             name: dev-env-v2-portal-postgres-ca

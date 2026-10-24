@@ -1,0 +1,29 @@
+{
+  "method": "GET",
+  "path": "/api/v3/projects/3/work_packages",
+  "canonical": "offset=1&pageSize=50&filters=%5B%5D",
+  "offsetIsPageNumber": true,
+  "accepted": [
+    "offset=1&pageSize=50",
+    "offset=2&pageSize=50",
+    "offset=82&pageSize=50",
+    "offset=1&pageSize=50&filters=%5B%5D",
+    "offset=2&pageSize=50&filters=%5B%5D",
+    "offset=82&pageSize=50&filters=%5B%5D"
+  ],
+  "rejected": [
+    "",
+    "pageSize=50&offset=1",
+    "offset=0&pageSize=50",
+    "offset=01&pageSize=50",
+    "offset=1&pageSize=20",
+    "offset=1&pageSize=100",
+    "offset=1&pageSize=50&sortBy=%5B%5B%22id%22%2C%22asc%22%5D%5D",
+    "offset=1&offset=2&pageSize=50",
+    "offset=1%26pageSize=50",
+    "offset=100000&pageSize=50",
+    "offset=1&pageSize=50&filters=[]",
+    "offset=1&pageSize=50&filters=%5B%7B%7D%5D",
+    "filters=%5B%5D&offset=1&pageSize=50"
+  ]
+}

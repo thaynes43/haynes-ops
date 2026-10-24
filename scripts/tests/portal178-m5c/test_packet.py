@@ -76,18 +76,21 @@ def network_exclusion_proof(policies, pods):
     bff = {"io.kubernetes.pod.namespace": "dev-agents", "app.kubernetes.io/name": "dev-env-v2-portal"}
     checked = 0
     for policy in selected.values():
-        before = policy["spec"]["endpointSelector"]
-        after = deepcopy(before)
-        expression, = [e for e in after["matchExpressions"]
+        staged = policy["spec"]["endpointSelector"]
+        without = deepcopy(staged)
+        expression, = [e for e in staged["matchExpressions"]
                        if e["key"] == "app.kubernetes.io/name" and e["operator"] == "NotIn"]
-        assert proposal["podNameLabel"] not in expression["values"]
-        expression["values"].append(proposal["podNameLabel"])
-        assert matches(before, bff) and not matches(after, bff)
+        assert expression["values"][-1] == proposal["podNameLabel"]
+        assert expression["values"].count(proposal["podNameLabel"]) == 1
+        removed, = [e for e in without["matchExpressions"]
+                    if e["key"] == "app.kubernetes.io/name" and e["operator"] == "NotIn"]
+        removed["values"] = [value for value in removed["values"] if value != proposal["podNameLabel"]]
+        assert not matches(staged, bff) and matches(without, bff)
         for pod in pods:
             labels = dict(pod["metadata"].get("labels", {}))
             labels["io.kubernetes.pod.namespace"] = pod["metadata"]["namespace"]
             assert labels.get("app.kubernetes.io/name") != proposal["podNameLabel"], "name already exists; stop"
-            assert matches(before, labels) == matches(after, labels), "other pod selector changed"
+            assert matches(staged, labels) == matches(without, labels), "other pod selector changed"
             checked += 1
     return checked
 

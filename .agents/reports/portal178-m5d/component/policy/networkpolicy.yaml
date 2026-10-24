@@ -4,6 +4,11 @@
 # REQUIRED pod DNS: ClusterFirst + dnsConfig.options ndots=1 (contract JSON).
 # Exact names stay narrow; never deploy this with the default ndots=5. Verify
 # actual DNS/resolver behavior in the runtime network tests before activation.
+# OpenProject and the operator are the fixed metadata destinations. DNS allows
+# the OpenProject service name, the operator name, and the earlier three.
+# OpenProject egress selects the web pods on TCP 8443. Operator egress selects
+# the repository operator pod label and TCP 8443. This file does not create
+# tokens or enable metadata.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -36,6 +41,8 @@ spec:
               - matchName: authentik.haynesnetwork.com
               - matchName: postgres16-rw.database.svc.cluster.local
               - matchName: kubernetes.default.svc.cluster.local
+              - matchName: openproject-web.frontend.svc.cluster.local
+              - matchName: dev-env-operator.dev-env-system.svc.cluster.local
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: database
@@ -49,3 +56,16 @@ spec:
         - matchName: authentik.haynesnetwork.com
       toPorts:
         - ports: [{port: '443', protocol: TCP}]
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: frontend
+            app.kubernetes.io/instance: openproject
+            app.kubernetes.io/controller: web
+      toPorts:
+        - ports: [{port: '8443', protocol: TCP}]
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-operator
+      toPorts:
+        - ports: [{port: '8443', protocol: TCP}]

@@ -1,4 +1,5 @@
-# UNREGISTERED review template. Not a Kustomize resource and not applied.
+# Review template. Not a Kustomize resource. The same one-name append is staged
+# in the two registered session policies and is not applied until that source merges.
 # Append this one name to the existing app.kubernetes.io/name NotIn values on
 # dev-env-session-platform and dev-env-session-web. Preserve every other
 # selector and rule. Additive CiliumNetworkPolicy cannot remove those allows.

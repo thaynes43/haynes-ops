@@ -1,0 +1,60 @@
+# UNREGISTERED. Applied only when this component is registered.
+# The CA Secret keeps its key. The portal mounts only the leaf keys.
+# Public Secret dev-env-v2-portal-serving-ca is not created here.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: dev-env-v2-portal-selfsigned
+  namespace: dev-agents
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dev-env-v2-portal-ca
+  namespace: dev-agents
+spec:
+  isCA: true
+  commonName: dev-env-v2-portal-ca
+  secretName: dev-env-v2-portal-ca
+  duration: 87600h
+  renewBefore: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: dev-env-v2-portal-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: dev-env-v2-portal-ca
+  namespace: dev-agents
+spec:
+  ca:
+    secretName: dev-env-v2-portal-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dev-env-v2-portal-serving
+  namespace: dev-agents
+spec:
+  secretName: dev-env-v2-portal-tls
+  dnsNames:
+    - dev-env-v2.haynesops.com
+    - dev-env-v2-portal.dev-agents.svc.cluster.local
+  duration: 2160h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+    - server auth
+    - digital signature
+  issuerRef:
+    name: dev-env-v2-portal-ca
+    kind: Issuer
