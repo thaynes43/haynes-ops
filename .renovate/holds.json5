@@ -204,6 +204,18 @@
       automerge: false,
       dependencyDashboardApproval: true,
     },
+    {
+      description: [
+        'Disable only the built-in dockerfile extractor duplicate of ghcr.io/goauthentik/server in scripts/authentik-userinfo-redaction/Dockerfile.',
+        'Reason: that extractor sees a digest-only FROM and has no version, so lookup warns. The custom regex manager tracks the same logical dependency, version 2026.8.5 and digest sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5, and it stays enabled with dashboard approval. This does not disable the file, the syntax frontend, the custom manager result, or any other image.',
+        'Recorded: 2026-10-24 by Grok under story 186. A negative dockerfile managerFilePatterns entry is unioned by getMatchingFiles, so it cannot exclude one file. This rule is after the closure hold and sets enabled false only for manager dockerfile.',
+      ],
+      matchManagers: ['dockerfile'],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['ghcr.io/goauthentik/server'],
+      matchFileNames: ['scripts/authentik-userinfo-redaction/Dockerfile'],
+      enabled: false,
+    },
     // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
     //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
     //   protection (Host/Origin validation on every route, 403 for non-loopback Host).
