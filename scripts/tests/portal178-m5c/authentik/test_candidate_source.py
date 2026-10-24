@@ -198,7 +198,7 @@ def overlay_files():
     return files
 
 
-def layer_archive(files, whiteouts=None, extra=None, file_mode=0o644, owner=0):
+def layer_archive(files, whiteouts=None, extra=None, file_mode=0o644, owner=0, dir_mode=0o755, repeat=None):
     if whiteouts is None:
         whiteouts = verify_candidate.WHITEOUTS
     layer_buf = io.BytesIO()
@@ -211,7 +211,7 @@ def layer_archive(files, whiteouts=None, extra=None, file_mode=0o644, owner=0):
         for name in sorted(dirs):
             info = tarfile.TarInfo(name)
             info.type = tarfile.DIRTYPE
-            info.mode = 0o755
+            info.mode = dir_mode
             info.uid = owner
             info.gid = owner
             layer.addfile(info)
@@ -237,10 +237,33 @@ def layer_archive(files, whiteouts=None, extra=None, file_mode=0o644, owner=0):
             if kind == "symlink":
                 info.type = tarfile.SYMTYPE
                 info.linkname = payload
+                layer.addfile(info)
+            elif kind == "hardlink":
+                info.type = tarfile.LNKTYPE
+                info.linkname = payload
+                layer.addfile(info)
             else:
                 info.size = len(payload)
                 info.mode = 0o644
-            layer.addfile(info, None if kind == "symlink" else io.BytesIO(payload))
+                layer.addfile(info, io.BytesIO(payload))
+        if repeat:
+            kind, name = repeat
+            info = tarfile.TarInfo(name)
+            info.uid = owner
+            info.gid = owner
+            if kind == "dir":
+                info.type = tarfile.DIRTYPE
+                info.mode = dir_mode
+                layer.addfile(info)
+            elif kind == "whiteout":
+                info.size = 0
+                info.mode = 0
+                layer.addfile(info, io.BytesIO(b""))
+            else:
+                payload = files[name]
+                info.size = len(payload)
+                info.mode = file_mode
+                layer.addfile(info, io.BytesIO(payload))
     config = b'{"created":"pinned"}'
     outer = io.BytesIO()
     with tarfile.open(fileobj=outer, mode="w") as image:
@@ -266,8 +289,14 @@ def seed_site(site, wheel_path):
         dest.write_bytes(payload)
     cache = site / "certifi" / "__pycache__"
     cache.mkdir()
-    (cache / "__init__.cpython-314.pyc").write_bytes(b"stale")
-    (site / "certifi-2026.10.19.dist-info" / "INSTALLER").write_text("uv\n")
+    for name in ("__init__.cpython-314.pyc", "__main__.cpython-314.pyc", "core.cpython-314.pyc"):
+        (cache / name).write_bytes(b"stale-" + name.encode())
+    tests = site / "certifi" / "tests" / "__pycache__"
+    tests.mkdir(parents=True)
+    (tests / "__init__.cpython-314.pyc").write_bytes(b"keep-init")
+    (tests / "test_certify.cpython-314.pyc").write_bytes(b"keep-test")
+    (site / "certifi-2026.10.19.dist-info" / "INSTALLER").write_bytes(b"uv")
+    (site / "certifi-2026.10.19.dist-info" / "REQUESTED").write_bytes(b"")
 
 
 class CertifiOverlayTests(unittest.TestCase):
@@ -383,7 +412,10 @@ class CertifiOverlayTests(unittest.TestCase):
         self.assertEqual(dists, ["2026.10.23"])
         self.assertFalse((site / "certifi-2026.10.19.dist-info").exists())
         self.assertFalse((site / "certifi" / "__pycache__").exists())
+        self.assertEqual((site / "certifi" / "tests" / "__pycache__" / "__init__.cpython-314.pyc").read_bytes(), b"keep-init")
+        self.assertEqual((site / "certifi" / "tests" / "__pycache__" / "test_certify.cpython-314.pyc").read_bytes(), b"keep-test")
         self.assertFalse((site / "certifi-2026.10.23.dist-info" / "INSTALLER").exists())
+        self.assertFalse((site / "certifi-2026.10.23.dist-info" / "REQUESTED").exists())
         self.assertEqual(sha256((site / "certifi" / "core.py").read_bytes()), install_certifi.WHEEL_FILES["certifi/core.py"])
         self.assertEqual((site / "certifi" / "cacert.pem").stat().st_mode & 0o777, 0o644)
         altered = self._site()
@@ -428,13 +460,60 @@ class CertifiOverlayTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             verify_candidate.layer_members(path)
 
+    def test_special_mode_bits_are_not_masked_away(self):
+        path = self._file()
+        path.write_bytes(layer_archive(overlay_files(), file_mode=0o4644))
+        with self.assertRaises(SystemExit):
+            verify_candidate.layer_members(path)
+        path.write_bytes(layer_archive(overlay_files(), dir_mode=0o2755))
+        with self.assertRaises(SystemExit):
+            verify_candidate.layer_members(path)
+        path.write_bytes(layer_archive(overlay_files(), file_mode=0o1644))
+        with self.assertRaises(SystemExit):
+            verify_candidate.layer_members(path)
+
+    def test_duplicate_link_and_traversal_paths_are_rejected(self):
+        path = self._file()
+        files = overlay_files()
+        for kind, name in (
+            ("file", verify_candidate.UTILS),
+            ("dir", "authentik"),
+            ("whiteout", verify_candidate.SITE + "/.wh.certifi-2026.10.19.dist-info"),
+        ):
+            path.write_bytes(layer_archive(files, repeat=(kind, name)))
+            with self.assertRaises(SystemExit):
+                verify_candidate.layer_members(path)
+        io_path = self._file()
+        io_path.write_bytes(layer_archive(files))
+        loaded = verify_candidate.read_layer(io_path)
+        cloned = dict(next(item for item in loaded["members"] if item["path"] == verify_candidate.UTILS))
+        with self.assertRaises(SystemExit):
+            verify_candidate.assert_layer([cloned] + loaded["members"])
+        path.write_bytes(layer_archive(files, extra=("hardlink", verify_candidate.SITE + "/certifi/hard", "cacert.pem")))
+        with self.assertRaises(SystemExit):
+            verify_candidate.layer_members(path)
+        path.write_bytes(layer_archive(files, extra=("file", "authentik/../../outside", b"x")))
+        with self.assertRaises(SystemExit):
+            verify_candidate.layer_members(path)
+        path.write_bytes(layer_archive(files, extra=("file", "/etc/passwd", b"x")))
+        with self.assertRaises(SystemExit):
+            verify_candidate.layer_members(path)
+
+    def test_inspected_base_image_id_is_the_reviewed_config(self):
+        image_id = "sha256:32dd380d0e766ff6a8100935f957b27574bd6af349832e1f0780c99f963b0204"
+        self.assertEqual(verify_candidate.assert_reviewed_base({"imageId": image_id}), image_id)
+        with self.assertRaises(SystemExit):
+            verify_candidate.assert_reviewed_base({"imageId": "sha256:" + ("ab" * 32)})
+
     def test_expect_mismatch_writes_unaccepted_report_before_exit(self):
         report = {
             "archiveSha256": "a" * 64,
             "candidateConfigSha256": "b" * 64,
             "candidateImageId": "sha256:" + ("b" * 64),
             "buildxManifestDigest": "sha256:" + ("c" * 64),
-            "qualified": True,
+            "structuralQualified": True,
+            "qualified": False,
+            "canaryCompared": False,
         }
         expect = self._file()
         expect.write_text(json.dumps({
@@ -450,8 +529,16 @@ class CertifiOverlayTests(unittest.TestCase):
         written = json.loads(out.read_text())
         self.assertEqual(written["acceptance"], "UNACCEPTED")
         self.assertFalse(written["expectMatch"])
+        self.assertFalse(written["qualified"])
+        self.assertTrue(written["structuralQualified"])
+        self.assertFalse(written["canaryCompared"])
         self.assertEqual(written["expectMismatches"], ["archiveSha256"])
+        verify_candidate.assert_bootstrap_continuation(written)
         self.assertFalse(written["signed"])
+        blocked = dict(written)
+        blocked["structuralQualified"] = False
+        with self.assertRaises(SystemExit):
+            verify_candidate.assert_bootstrap_continuation(blocked)
         matched = self._file()
         matched.write_text(json.dumps({
             "archiveSha256": "a" * 64,
@@ -461,7 +548,76 @@ class CertifiOverlayTests(unittest.TestCase):
         }))
         out.write_text("")
         verify_candidate.enforce_expect(report, matched, out)
-        self.assertEqual(json.loads(out.read_text())["acceptance"], "REVIEWED")
+        accepted = json.loads(out.read_text())
+        self.assertEqual(accepted["acceptance"], "UNACCEPTED")
+        self.assertTrue(accepted["expectMatch"])
+        self.assertTrue(accepted["structuralQualified"])
+        self.assertFalse(accepted["qualified"])
+        self.assertFalse(accepted["canaryCompared"])
+
+    def test_canary_comparator_does_not_qualify_a_pin_mismatch(self):
+        paths = {}
+        for artifact, level in (("base", "DEBUG"), ("base", "INFO"), ("patched", "DEBUG"), ("patched", "INFO")):
+            handle = self._file()
+            handle.write_text(json.dumps(matrix(artifact, level)))
+            paths[(artifact, level)] = handle
+        draft = {
+            "structuralQualified": True,
+            "expectMatch": False,
+            "expectMismatches": ["archiveSha256"],
+            "qualified": False,
+            "acceptance": "UNACCEPTED",
+            "canaryCompared": False,
+        }
+        out = self._file()
+        out.write_text(json.dumps(draft))
+        argv = [
+            "compare_canary",
+            "--base-debug", str(paths[("base", "DEBUG")]),
+            "--base-info", str(paths[("base", "INFO")]),
+            "--patched-debug", str(paths[("patched", "DEBUG")]),
+            "--patched-info", str(paths[("patched", "INFO")]),
+            "--report", str(out),
+        ]
+        old_argv = sys.argv
+        sys.argv = argv
+        try:
+            compare_canary.main()
+        finally:
+            sys.argv = old_argv
+        written = json.loads(out.read_text())
+        self.assertTrue(written["canaryCompared"])
+        self.assertFalse(written["qualified"])
+        self.assertEqual(written["acceptance"], "UNACCEPTED")
+        qualified = compare_canary.record_canary({
+            "structuralQualified": True,
+            "expectMatch": True,
+            "qualified": False,
+            "acceptance": "UNACCEPTED",
+            "canaryCompared": False,
+        })
+        self.assertTrue(qualified["canaryCompared"])
+        self.assertTrue(qualified["qualified"])
+        self.assertEqual(qualified["acceptance"], "REVIEWED")
+        untouched = self._file()
+        untouched.write_text(json.dumps(draft))
+        sys.argv = [
+            "compare_canary",
+            "--base-debug", str(paths[("base", "DEBUG")]),
+            "--base-info", str(paths[("base", "INFO")]),
+            "--patched-debug", str(paths[("patched", "DEBUG")]),
+            "--patched-info", str(paths[("patched", "INFO")]),
+            "--report", str(untouched),
+        ]
+        raw = json.loads(paths[("base", "DEBUG")].read_text())
+        raw["cases"][0]["logCanaryVisible"] = False
+        paths[("base", "DEBUG")].write_text(json.dumps(raw))
+        try:
+            with self.assertRaises(SystemExit):
+                compare_canary.main()
+        finally:
+            sys.argv = old_argv
+        self.assertFalse(json.loads(untouched.read_text())["canaryCompared"])
 
     def test_legacy_pins_record_the_accepted_image(self):
         legacy = json.loads((REDACTION / "accepted-legacy-digests.json").read_text())

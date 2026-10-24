@@ -7,8 +7,10 @@ e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1,
 from https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl.
 
 Upstream commit b60466c9f2882d9cf088943c650b0faac06c080c changes the version
-and removes two roots. This does not claim a key compromise. Files that are
-identical in the 2026.10.19 and 2026.10.23 wheels are left untouched.
+and removes the emSign C1 and C3 roots. Certifi 2026.10.19 already fixes
+GHSA-6q48-6c7w-9gw2. The 2026.10.23 removal is root retirement, not a new CVE.
+Files that are identical in the two wheels are left untouched. The main
+certifi bytecode cache is removed. The unchanged tests bytecode cache stays.
 """
 import base64
 import hashlib
@@ -259,12 +261,40 @@ def install(site, wheel, require_root=True):
         raise SystemExit("certifi files are not root-owned")
     for rel in OVERLAY_RELS:
         _write_file(site / rel, payloads[rel], template, site)
+    for name in (
+        "INSTALLER", "METADATA", "RECORD", "REQUESTED", "WHEEL", "top_level.txt",
+        "licenses/LICENSE",
+    ):
+        path = old_dist / name
+        if path.is_symlink() or not path.is_file():
+            raise SystemExit("installed certifi metadata file is missing")
+    main_cache = site / "certifi" / "__pycache__"
+    if main_cache.is_symlink() or not main_cache.is_dir():
+        raise SystemExit("main certifi bytecode cache is missing")
+    main_names = sorted(path.name for path in main_cache.iterdir() if path.is_file())
+    if main_names != ["__init__.cpython-314.pyc", "__main__.cpython-314.pyc", "core.cpython-314.pyc"]:
+        raise SystemExit("main certifi bytecode cache is not the measured set")
+    tests_cache = site / "certifi" / "tests" / "__pycache__"
+    if tests_cache.is_symlink() or not tests_cache.is_dir():
+        raise SystemExit("unchanged certifi tests bytecode cache is missing")
+    test_names = sorted(path.name for path in tests_cache.iterdir() if path.is_file())
+    if test_names != ["__init__.cpython-314.pyc", "test_certify.cpython-314.pyc"]:
+        raise SystemExit("unchanged certifi tests bytecode cache changed")
+    preserved_tests = {
+        path.name: path.read_bytes() for path in tests_cache.iterdir() if path.is_file()
+    }
     _remove_tree(old_dist)
-    _remove_tree(site / "certifi" / "__pycache__")
+    _remove_tree(main_cache)
     for pyc in (site / "certifi").rglob("*.pyc"):
         if "tests" in pyc.relative_to(site / "certifi").parts:
             continue
-        raise SystemExit("certifi bytecode remains")
+        raise SystemExit("non-test certifi bytecode remains")
+    if main_cache.exists():
+        raise SystemExit("main certifi bytecode cache remains")
+    for name, payload in preserved_tests.items():
+        current = tests_cache / name
+        if current.is_symlink() or not current.is_file() or current.read_bytes() != payload:
+            raise SystemExit("unchanged certifi tests bytecode cache was rewritten")
     for rel in OVERLAY_RELS:
         if sha256((site / rel).read_bytes()) != WHEEL_FILES[rel]:
             raise SystemExit("overlay write mismatch")

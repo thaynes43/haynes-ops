@@ -12,6 +12,16 @@ Authentik `2026.8.5` base and keeps all three `access_token` redactions. It
 does not change the live trust store, a Kubernetes pin, or a running pod, and
 it does not fix the GPU outage. Official Authentik remains `2026.8.5`.
 
+Certifi `2026.10.19`, already in the accepted image, is the patched release
+for GHSA-6q48-6c7w-9gw2 in the curated GitHub advisory. The October 19 and
+October 21 remediations stay valid. The `2026.10.23` change removes emSign C1
+and C3 under Mozilla Root Store Policy 7.5.3 (Mozilla bug 2083709). That is
+root retirement, not a new compromise or CVE. The CA states that non-test TLS
+issuance is absent; that is the CA's statement, not compatibility proof for
+every Authentik integration. The overlay affects default Python certifi trust
+only. It leaves the system store, LDAP trust, Go outposts, and Rust roots
+unchanged, and it leaves the unchanged certifi tests bytecode cache in place.
+
 Pull-request CI builds an archive and does not publish or sign it. The four
 keys in `scripts/authentik-userinfo-redaction/reviewed-digests.json` still
 identify the accepted utils-only build below, so the new archive fails that

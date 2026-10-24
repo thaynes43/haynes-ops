@@ -118,12 +118,24 @@ def compare(results):
     return {"compared": True, "runs": sorted(summary), "cases": len(SHAPES) * len(BRANCHES) * 4}
 
 
+def record_canary(report):
+    """Record a successful comparison without treating a pin mismatch as qualified."""
+    updated = dict(report)
+    updated["canaryCompared"] = True
+    structural = updated.get("structuralQualified") is True
+    matched = updated.get("expectMatch") is True
+    updated["qualified"] = structural and matched
+    updated["acceptance"] = "REVIEWED" if updated["qualified"] else "UNACCEPTED"
+    return updated
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-debug", required=True)
     parser.add_argument("--base-info", required=True)
     parser.add_argument("--patched-debug", required=True)
     parser.add_argument("--patched-info", required=True)
+    parser.add_argument("--report")
     args = parser.parse_args()
     report = compare({
         ("base", "DEBUG"): load_result(args.base_debug),
@@ -131,6 +143,10 @@ def main():
         ("patched", "DEBUG"): load_result(args.patched_debug),
         ("patched", "INFO"): load_result(args.patched_info),
     })
+    if args.report:
+        path = Path(args.report)
+        current = json.loads(path.read_text())
+        path.write_text(json.dumps(record_canary(current), indent=2, sort_keys=True) + "\n")
     print(json.dumps(report, sort_keys=True))
 
 

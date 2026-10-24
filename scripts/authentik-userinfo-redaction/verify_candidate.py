@@ -20,6 +20,8 @@ PATCHED_SHA = "ae1494c6c145d094fd1ad473517f4c0e5fbb8fdfc7b145c651235f29f1871b97"
 UTILS = "authentik/providers/oauth2/utils.py"
 SITE = "ak-root/.venv/lib/python3.14/site-packages"
 ACCEPTED_IMAGE = "sha256:18fc99f13617a4b83dfc470e4f8cda7ed76cf513c5147c90e1de888838325663"
+BASE_IMAGE_ID = "sha256:32dd380d0e766ff6a8100935f957b27574bd6af349832e1f0780c99f963b0204"
+SPECIAL_MODE_BITS = 0o7000
 EXPECT_KEYS = (
     "archiveSha256",
     "candidateConfigSha256",
@@ -108,6 +110,29 @@ def utils_delta(base_bytes, patched_bytes, proposal):
     return {"utilsDeltaMatch": True, "baseUtilsSha256": SOURCE_SHA, "patchedUtilsSha256": PATCHED_SHA}
 
 
+def assert_reviewed_base(base):
+    image_id = base.get("imageId")
+    if image_id != BASE_IMAGE_ID:
+        raise SystemExit("inspected base image id is not the reviewed config")
+    return image_id
+
+
+def assert_bootstrap_continuation(report):
+    if report.get("structuralQualified") is not True:
+        raise SystemExit("bootstrap continuation lacks structural proof")
+    if report.get("expectMatch") is not False:
+        raise SystemExit("bootstrap continuation is not a pin mismatch")
+    mismatched = report.get("expectMismatches")
+    if not isinstance(mismatched, list) or not mismatched:
+        raise SystemExit("bootstrap continuation lacks explicit pin mismatches")
+    if any(key not in EXPECT_KEYS for key in mismatched):
+        raise SystemExit("bootstrap continuation names an unknown pin")
+    if report.get("qualified") is not False or report.get("acceptance") != "UNACCEPTED":
+        raise SystemExit("bootstrap continuation is not an unaccepted draft")
+    if report.get("canaryCompared") is not False:
+        raise SystemExit("bootstrap continuation already records the canary")
+
+
 def assert_runtime_certifi(payload):
     if payload.get("importlibMetadataVersion") != install_certifi.NEW_VERSION:
         raise SystemExit("importlib.metadata version is not 2026.10.23")
@@ -143,13 +168,16 @@ def read_layer(archive_path):
         config_bytes = archive.extractfile(config_name).read()
         layer_bytes = archive.extractfile(layer_name).read()
     members = []
+    seen = set()
     with tarfile.open(fileobj=io.BytesIO(layer_bytes), mode="r:*") as layer_tar:
         for member in layer_tar:
             name = _member_name(member.name)
+            if name in seen:
+                raise SystemExit("duplicate layer path")
             if member.issym() or member.islnk():
-                kind = "symlink"
-                payload = b""
-            elif member.isdir():
+                raise SystemExit("layer contains a link")
+            seen.add(name)
+            if member.isdir():
                 kind = "dir"
                 payload = b""
             elif member.isfile():
@@ -164,7 +192,7 @@ def read_layer(archive_path):
             members.append({
                 "path": name,
                 "kind": kind,
-                "mode": member.mode & 0o777,
+                "mode": member.mode,
                 "uid": member.uid,
                 "gid": member.gid,
                 "size": member.size,
@@ -177,32 +205,45 @@ def read_layer(archive_path):
     }
 
 
+def _permission_mode(mode):
+    if not isinstance(mode, int) or mode < 0 or mode & ~0o7777:
+        raise SystemExit("layer mode is not a permission value")
+    if mode & SPECIAL_MODE_BITS:
+        raise SystemExit("layer mode contains setuid, setgid, or sticky")
+    return mode
+
+
 def assert_layer(members):
     files = {}
     whiteouts = {}
+    seen = set()
     for member in members:
         path = member["path"]
+        if path in seen:
+            raise SystemExit("duplicate layer path")
+        seen.add(path)
         if member["kind"] == "symlink":
-            raise SystemExit("layer contains a symlink")
+            raise SystemExit("layer contains a link")
         if member["kind"] not in ("dir", "file"):
             raise SystemExit("layer contains an unexpected member type")
         if member["uid"] != 0 or member["gid"] != 0:
             raise SystemExit("layer member owner is not root")
+        mode = _permission_mode(member["mode"])
         if member["kind"] == "dir":
             if path not in ALLOWED_DIRS:
                 raise SystemExit("layer directory is not part of the overlay")
-            if member["mode"] != 0o755:
+            if mode != 0o755:
                 raise SystemExit("layer directory mode is not 0755")
             continue
         base = path.rsplit("/", 1)[-1]
         if base.startswith(".wh."):
-            if member["size"] != 0 or member["mode"] != 0 or member["sha256"] != sha256(b""):
+            if member["size"] != 0 or mode != 0 or member["sha256"] != sha256(b""):
                 raise SystemExit("whiteout is not an empty mode-0 file")
             whiteouts[path] = member
             continue
         if path not in ALLOWED_FILES:
             raise SystemExit("layer file is not part of the overlay")
-        if member["mode"] != 0o644:
+        if mode != 0o644:
             raise SystemExit("layer file mode is not 0644")
         if member["sha256"] != ALLOWED_FILES[path]:
             raise SystemExit("layer file bytes were not reviewed")
@@ -210,7 +251,7 @@ def assert_layer(members):
     if set(files) != set(ALLOWED_FILES):
         raise SystemExit("layer is missing an overlay file")
     if set(whiteouts) != WHITEOUTS:
-        raise SystemExit("layer whiteouts are not the certifi metadata and bytecode removals")
+        raise SystemExit("layer whiteouts are not the old certifi distribution and the main bytecode cache")
     return {
         "layerPaths": sorted(ALLOWED_FILES),
         "layerWhiteouts": sorted(WHITEOUTS),
@@ -248,6 +289,9 @@ def enforce_expect(report, expect_path, out_path):
     report = dict(report)
     report["acceptance"] = "UNACCEPTED"
     report["expectMatch"] = False
+    report["qualified"] = False
+    report["canaryCompared"] = False
+    report.setdefault("structuralQualified", False)
     report["signed"] = False
     write_report(report, out_path)
     if not expect_path:
@@ -259,7 +303,6 @@ def enforce_expect(report, expect_path, out_path):
         write_report(report, out_path)
         print("built candidate does not match reviewed " + ",".join(mismatched), file=sys.stderr)
         raise SystemExit(2)
-    report["acceptance"] = "REVIEWED"
     report["expectMatch"] = True
     write_report(report, out_path)
     return report
@@ -284,6 +327,7 @@ def main():
     args = parser.parse_args()
     base = runtime_identity(json.loads(Path(args.base_inspect).read_text()))
     candidate = runtime_identity(json.loads(Path(args.candidate_inspect).read_text()))
+    base_image_id = assert_reviewed_base(base)
     runtime = same_runtime(base, candidate)
     if not runtime["runtimeMatch"]:
         raise SystemExit("runtime identity mismatch: " + ",".join(runtime["mismatches"] or ["rootfs"]))
@@ -306,7 +350,9 @@ def main():
         "archiveSha256": sha256(archive),
         "baseAmd64ManifestDigest": "sha256:6b924afb97053a27ca3f42f006c920464fb77763558c72219019365db191827b",
         "baseCompressedLayerBytes": 377501332,
-        "baseConfigDigest": "sha256:32dd380d0e766ff6a8100935f957b27574bd6af349832e1f0780c99f963b0204",
+        "baseConfigDigest": base_image_id,
+        "baseImageId": base_image_id,
+        "canaryCompared": False,
         "baseIndexDigest": "sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5",
         "baseLayers": runtime["baseLayers"],
         "baseUtilsSha256": delta["baseUtilsSha256"],
@@ -338,6 +384,7 @@ def main():
             "candidateSigned": False,
         },
         "signed": False,
+        "structuralQualified": False,
         "user": runtime["user"],
         "utilsDeltaMatch": True,
         "version": runtime["version"],
@@ -361,7 +408,8 @@ def main():
         write_report(report, args.out)
         print(message, file=sys.stderr)
         raise SystemExit(1) from None
-    report["qualified"] = True
+    report["structuralQualified"] = True
+    report["qualified"] = False
     report["layerPaths"] = layer["layerPaths"]
     report["layerWhiteouts"] = layer["layerWhiteouts"]
     enforce_expect(report, args.expect, args.out)
@@ -374,6 +422,7 @@ def main():
         "expectMatch": written["expectMatch"],
         "layerPaths": written["layerPaths"],
         "qualified": written["qualified"],
+        "structuralQualified": written["structuralQualified"],
         "registryPublished": False,
         "signed": False,
     }, sort_keys=True))

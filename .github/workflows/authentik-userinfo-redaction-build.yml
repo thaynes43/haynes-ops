@@ -174,7 +174,16 @@ jobs:
             --out "${RUNNER_TEMP}/candidate-digests.json"
           verify_status=$?
           set -e
-          if [[ "$verify_status" -ne 0 && "$verify_status" -ne 2 ]]; then
+          if [[ "$verify_status" -eq 2 ]]; then
+            python3 -B - <<'PY'
+            import json, os, sys
+            from pathlib import Path
+            sys.path.insert(0, "scripts/authentik-userinfo-redaction")
+            import verify_candidate
+            report = json.loads(Path(os.environ["RUNNER_TEMP"], "candidate-digests.json").read_text())
+            verify_candidate.assert_bootstrap_continuation(report)
+            PY
+          elif [[ "$verify_status" -ne 0 ]]; then
             echo "candidate proof failed before the reviewed digest pin"
             exit "$verify_status"
           fi
@@ -209,7 +218,8 @@ jobs:
             --base-debug "${RUNNER_TEMP}/base-debug.json" \
             --base-info "${RUNNER_TEMP}/base-info.json" \
             --patched-debug "${RUNNER_TEMP}/patched-debug.json" \
-            --patched-info "${RUNNER_TEMP}/patched-info.json"
+            --patched-info "${RUNNER_TEMP}/patched-info.json" \
+            --report "${RUNNER_TEMP}/candidate-digests.json"
           if [[ "$verify_status" -ne 0 ]]; then
             echo "candidate proofs passed; reviewed digest pin does not match this unaccepted build"
             exit "$verify_status"
@@ -234,6 +244,8 @@ jobs:
           lines = [
               "### Authentik candidate",
               "- acceptance `%s`" % report.get("acceptance"),
+              "- structural `%s`" % report.get("structuralQualified"),
+              "- canary `%s`" % report.get("canaryCompared"),
               "- qualified `%s`" % report.get("qualified"),
               "- expect match `%s`" % report.get("expectMatch"),
               "- archive `%s`" % report.get("archiveSha256"),
@@ -246,8 +258,9 @@ jobs:
           ]
           summary.write_text("\n".join(lines))
           print(json.dumps({key: report.get(key) for key in (
-              "acceptance", "qualified", "expectMatch", "archiveSha256",
-              "candidateImageId", "buildxManifestDigest", "signed")}, sort_keys=True))
+              "acceptance", "structuralQualified", "canaryCompared", "qualified",
+              "expectMatch", "archiveSha256", "candidateImageId",
+              "buildxManifestDigest", "signed")}, sort_keys=True))
           PY
 
       - name: Upload the digest summary
